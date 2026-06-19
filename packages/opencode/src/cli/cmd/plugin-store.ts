@@ -2,7 +2,7 @@ import { cmd } from "./cmd"
 import { UI } from "../ui"
 
 export const PluginStoreCommand = cmd({
-  command: "plugin",
+  command: "plugin-store",
   describe: "browse, install, and publish arcana plugins",
   builder: (yargs) =>
     yargs
