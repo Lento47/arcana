@@ -2,6 +2,9 @@
 
 **Self-improving AI agent CLI** — skills, memory, gateway, coding, and cron in one terminal.
 
+[![npm](https://img.shields.io/npm/v/arcana-ai?label=npm)](https://www.npmjs.com/package/arcana-ai)
+[![license](https://img.shields.io/badge/license-MIT%20%2B%20Commercial-blue)](LICENSE)
+
 ```sh
 arcana                  # launch the TUI
 arcana run "query"      # one-shot agent session
