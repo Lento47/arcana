@@ -2,15 +2,25 @@ import { cmd } from "./cmd"
 import { UI } from "../ui"
 
 const API = "https://api.arcana.otnelhq.com"
+const FALLBACK = "https://arcana-license-server.lejzerv.workers.dev"
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(10000),
-  })
-  return (await res.json()) as T
+  const urls = [API, FALLBACK]
+  let last: Error | undefined
+  for (const base of urls) {
+    try {
+      const res = await fetch(`${base}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
+      })
+      return (await res.json()) as T
+    } catch (e) {
+      last = e instanceof Error ? e : new Error(String(e))
+    }
+  }
+  throw last ?? new Error("All license servers unreachable")
 }
 
 function getMachineId(): string {
