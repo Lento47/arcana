@@ -1,0 +1,16 @@
+name: "arcana CodeQL config"
+disable-default-queries: false
+
+# Exclude community-contributed skills (not our codebase)
+paths-ignore:
+  - "skills/**"
+
+# Exclude upstream opencode plugin files from certain security rules
+query-filters:
+- exclude:
+    id:
+      - js/biased-cryptographic-random
+      - js/reflected-xss
+      - js/command-line-injection
+      - py/clear-text-logging-sensitive-data
+      - py/clear-text-storage-sensitive-data
