@@ -1818,6 +1818,7 @@ export type ProviderConfig = {
       }
       experimental?: boolean
       status?: "alpha" | "beta" | "deprecated" | "active"
+      tier?: "free" | "go" | "premium"
       provider?: {
         npm?: string
         api?: string
@@ -2116,6 +2117,7 @@ export type Model = {
     output: number
   }
   status: "alpha" | "beta" | "deprecated" | "active"
+  tier?: "free" | "go" | "premium"
   options: {
     [key: string]: unknown
   }

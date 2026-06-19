@@ -420,6 +420,7 @@ export function createPromptState(input: PromptInput): PromptState {
       { kind: "slash", name: "exit", display: "/exit", description: "close arcana" } satisfies SlashOption,
       { kind: "slash", name: "goal", display: "/goal", description: "set a goal for this session" } satisfies SlashOption,
       { kind: "slash", name: "loop", display: "/loop", description: "check in on goal progress" } satisfies SlashOption,
+      { kind: "slash", name: "review", display: "/review", description: "review staged code changes" } satisfies SlashOption,
     ]
     const hidden = new Set(builtins.map((item) => item.name))
     const showSkillMenu = !shell() && skillCommands().length > 0 && !hasSkillsCommand()

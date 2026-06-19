@@ -28,6 +28,7 @@ import { SessionCommand } from "./cli/cmd/session"
 import { DbCommand } from "./cli/cmd/db"
 import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
+import { PluginStoreCommand } from "./cli/cmd/plugin-store"
 import { Heap } from "./cli/heap"
 import { DoctorCommand } from "@arcana/arcana/cli/cmd/doctor"
 import { MemoryCommand } from "@arcana/arcana/cli/cmd/memory"
@@ -39,6 +40,7 @@ import { GatewayCommand } from "@arcana/arcana/cli/cmd/gateway"
 import { SkillsCommand } from "@arcana/arcana/cli/cmd/skills"
 import { ConfigCommand } from "@arcana/arcana/cli/cmd/config"
 import { ThemeCommand } from "@arcana/arcana/cli/cmd/theme"
+import { TeamCommand } from "./cli/cmd/team"
 
 const args = hideBin(process.argv)
 
@@ -110,6 +112,7 @@ const cli = yargs(args)
   .command(PrCommand)
   .command(SessionCommand)
   .command(PluginCommand)
+  .command(PluginStoreCommand)
   .command(DbCommand)
   .command(DoctorCommand)
   .command(MemoryCommand)
@@ -120,7 +123,7 @@ const cli = yargs(args)
   .command(GatewayCommand)
   .command(SkillsCommand)
   .command(ConfigCommand)
-  .command(ThemeCommand)
+  .command(TeamCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||

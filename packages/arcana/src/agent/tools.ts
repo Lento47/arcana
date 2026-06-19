@@ -702,6 +702,51 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     },
   )
 
+  runner.registerTool(
+    "git_autocommit",
+    {
+      type: "function",
+      function: {
+        name: "git_autocommit",
+        description: "Automatically stage all changes, generate a conventional commit message, and commit. Run when goal_check reports complete or after significant progress.",
+        parameters: {
+          type: "object",
+          properties: {
+            message: { type: "string", description: "Optional: override the auto-generated commit message" },
+            path: { type: "string", description: "Optional: repo path" },
+            push: { type: "boolean", description: "Optional: push after commit (default false)" },
+          },
+        },
+      },
+    },
+    async (args) => {
+      const cwd = args.path ? String(args.path) : process.cwd()
+      try {
+        const { execSync } = await import("node:child_process")
+        let msg = args.message ? String(args.message) : ""
+        if (!msg) {
+          const diffStat = execSync("git diff --stat", { cwd, encoding: "utf8", maxBuffer: 1024 * 100 }).trim()
+          const filesChanged = diffStat ? diffStat.split("\n").length : 0
+          const branch = execSync("git branch --show-current", { cwd, encoding: "utf8" }).trim()
+          const added = execSync("git diff --cached --name-only 2>nul || true", { cwd, encoding: "utf8" }).trim()
+          msg = `feat: update ${filesChanged > 0 ? filesChanged + " files" : "working state"} (${branch})`
+        }
+        execSync(`git add -A`, { cwd, encoding: "utf8" })
+        execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd, encoding: "utf8" })
+        const hash = execSync("git rev-parse HEAD", { cwd, encoding: "utf8" }).trim().slice(0, 8)
+        let result = `✅ Committed ${hash}: ${msg}`
+        if (args.push) {
+          execSync("git push", { cwd, encoding: "utf8" })
+          result += `\n📤 Pushed to origin`
+        }
+        return result
+      } catch (e: any) {
+        if (e.message?.includes("nothing to commit")) return "Nothing to commit."
+        return `Error: ${e.message ?? String(e)}`
+      }
+    },
+  )
+
   // ── Meta-cognition tools ──────────────────────────────────
 
   runner.registerTool(
@@ -1233,6 +1278,303 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         return `# ${artifact.title} (v${version})\n${artifact.tags ? `tags: ${artifact.tags}\n` : ""}\n${v}`
       }
       return `# ${artifact.title}${artifact.type ? ` [${artifact.type}]` : ""} (v${artifact.current_version})\n${artifact.tags ? `tags: ${artifact.tags}\n` : ""}\n${artifact.content}`
+    },
+  )
+
+  runner.registerTool(
+    "code_review",
+    {
+      type: "function",
+      function: {
+        name: "code_review",
+        description: "Review staged or unstaged code changes for bugs, security issues, and style problems. Call before committing or when asked to review code.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "Optional: repo path" },
+            staged: { type: "boolean", description: "Review staged changes (default true)" },
+            file: { type: "string", description: "Optional: specific file to review" },
+            severity: { type: "string", enum: ["all", "error", "warning"], description: "Minimum severity to report (default: all)" },
+          },
+        },
+      },
+    },
+    async (args) => {
+      const cwd = args.path ? String(args.path) : process.cwd()
+      const staged = args.staged !== false
+      try {
+        const { execSync } = await import("node:child_process")
+        const stagedFlag = staged ? "--staged" : ""
+        const fileFilter = args.file ? ` -- "${String(args.file)}"` : ""
+        const diff = execSync(`git diff ${stagedFlag}${fileFilter}`, { cwd, encoding: "utf8", maxBuffer: 1024 * 1024 })
+        if (!diff.trim()) return "No changes to review."
+        return `## Code Review\n\n\`\`\`diff\n${diff.slice(0, 4000)}\`\`\`\n\nReview the changes above. Focus on:\n1. Logic errors or bugs\n2. Security vulnerabilities\n3. Style inconsistencies\n4. Missing edge cases\n5. Performance concerns\n\nRate severity: 🔴 critical / 🟡 warning / 🟢 info`
+      } catch (e: any) {
+        if (e.message?.includes("not a git repository")) return "Not a git repository."
+        return `Error: ${e.message ?? String(e)}`
+      }
+    },
+  )
+
+  runner.registerTool(
+    "glob",
+    {
+      type: "function",
+      function: {
+        name: "glob",
+        description: "Search for files matching a glob pattern. Uses gitignore-aware fast globbing.",
+        parameters: {
+          type: "object",
+          properties: {
+            pattern: { type: "string", description: "Glob pattern (e.g. **/*.ts, src/**/*.tsx)" },
+            path: { type: "string", description: "Optional: directory to search (defaults to cwd)" },
+          },
+          required: ["pattern"],
+        },
+      },
+    },
+    async (args) => {
+      const { join } = await import("node:path")
+      const cwd = args.path ? String(args.path) : process.cwd()
+      try {
+        const { Glob } = await import("bun")
+        const glob = new Glob(String(args.pattern))
+        const results: string[] = []
+        for await (const file of glob.scan({ cwd, absolute: true })) {
+          results.push(file)
+          if (results.length >= 100) break
+        }
+        if (!results.length) return `No files matching "${args.pattern}"`
+        return results.map((f) => `  ${f}`).join("\n")
+      } catch (e) {
+        return `Glob error: ${e instanceof Error ? e.message : String(e)}`
+      }
+    },
+  )
+
+  runner.registerTool(
+    "grep",
+    {
+      type: "function",
+      function: {
+        name: "grep",
+        description: "Search file contents using a regex pattern. Returns matching lines with line numbers.",
+        parameters: {
+          type: "object",
+          properties: {
+            pattern: { type: "string", description: "Regex pattern to search for" },
+            path: { type: "string", description: "Optional: directory or file to search (defaults to cwd)" },
+            include: { type: "string", description: "Optional: file glob filter (e.g. *.ts)" },
+            maxResults: { type: "number", description: "Max results (default 50)" },
+          },
+          required: ["pattern"],
+        },
+      },
+    },
+    async (args) => {
+      const cwd = args.path ? String(args.path) : process.cwd()
+      const maxResults = Number(args.maxResults ?? 50)
+      try {
+        const { execSync } = await import("node:child_process")
+        const include = args.include ? `--include="${String(args.include)}"` : ""
+        const cmd = `rg -n --no-heading ${include} "${String(args.pattern).replace(/"/g, '\\"')}" "${cwd}" 2>nul || true`
+        const output = execSync(cmd, { encoding: "utf8", maxBuffer: 1024 * 1024 }).trim()
+        if (!output) return `No matches for "${args.pattern}"`
+        const lines = output.split("\n").slice(0, maxResults)
+        return lines.join("\n") + (lines.length < output.split("\n").length ? `\n... (${output.split("\n").length - maxResults} more matches)` : "")
+      } catch (e) {
+        return `Grep error: ${e instanceof Error ? e.message : String(e)}`
+      }
+    },
+  )
+
+  runner.registerTool(
+    "read",
+    {
+      type: "function",
+      function: {
+        name: "read",
+        description: "Read a file's contents. Shows line numbers. Respects .gitignore.",
+        parameters: {
+          type: "object",
+          properties: {
+            filePath: { type: "string", description: "Path to the file to read" },
+            offset: { type: "number", description: "Optional: starting line (1-indexed)" },
+            limit: { type: "number", description: "Optional: max lines to read (default 2000)" },
+          },
+          required: ["filePath"],
+        },
+      },
+    },
+    async (args) => {
+      const { readFileSync, existsSync } = await import("node:fs")
+      const fp = String(args.filePath)
+      if (!existsSync(fp)) return `File not found: ${fp}`
+      try {
+        const content = readFileSync(fp, "utf8")
+        const lines = content.split("\n")
+        const offset = Number(args.offset ?? 1)
+        const limit = Number(args.limit ?? 2000)
+        const selected = lines.slice(offset - 1, offset - 1 + limit)
+        return selected.map((l, i) => `${offset + i}:${l}`).join("\n") +
+          (lines.length > offset + limit - 1 ? `\n... (${lines.length - offset - limit + 1} more lines)` : "")
+      } catch (e) {
+        return `Read error: ${e instanceof Error ? e.message : String(e)}`
+      }
+    },
+  )
+
+  runner.registerTool(
+    "write",
+    {
+      type: "function",
+      function: {
+        name: "write",
+        description: "Create a new file or overwrite an existing file with content. Use for new files or complete rewrites.",
+        parameters: {
+          type: "object",
+          properties: {
+            filePath: { type: "string", description: "Path where to write the file" },
+            content: { type: "string", description: "Full file content" },
+          },
+          required: ["filePath", "content"],
+        },
+      },
+    },
+    async (args) => {
+      const { writeFileSync, mkdirSync } = await import("node:fs")
+      const { dirname } = await import("node:path")
+      const fp = String(args.filePath)
+      try {
+        mkdirSync(dirname(fp), { recursive: true })
+        writeFileSync(fp, String(args.content), "utf8")
+        return `Written ${fp} (${String(args.content).length} chars)`
+      } catch (e) {
+        return `Write error: ${e instanceof Error ? e.message : String(e)}`
+      }
+    },
+  )
+
+  runner.registerTool(
+    "edit",
+    {
+      type: "function",
+      function: {
+        name: "edit",
+        description: "Edit a file by finding and replacing text. Safer than full rewrites for targeted changes.",
+        parameters: {
+          type: "object",
+          properties: {
+            filePath: { type: "string", description: "File to edit" },
+            oldString: { type: "string", description: "Text to find (must match exactly)" },
+            newString: { type: "string", description: "Replacement text" },
+          },
+          required: ["filePath", "oldString", "newString"],
+        },
+      },
+    },
+    async (args) => {
+      const { readFileSync, writeFileSync } = await import("node:fs")
+      const fp = String(args.filePath)
+      try {
+        const content = readFileSync(fp, "utf8")
+        const oldStr = String(args.oldString)
+        const newStr = String(args.newString)
+        if (!content.includes(oldStr)) return `Error: oldString not found in ${fp}`
+        const updated = content.replace(oldStr, newStr)
+        writeFileSync(fp, updated, "utf8")
+        return `Edited ${fp} — replaced "${oldStr.slice(0, 40)}..."`
+      } catch (e) {
+        return `Edit error: ${e instanceof Error ? e.message : String(e)}`
+      }
+    },
+  )
+
+  runner.registerTool(
+    "batch",
+    {
+      type: "function",
+      function: {
+        name: "batch",
+        description: "Execute multiple INDEPENDENT tool calls in parallel. Use when you need to do multiple independent operations (like reading several files, searching multiple patterns) to save rounds. The tool name should be one of: glob, grep, read, web_fetch, web_search, git_status, git_diff, env_probe, artifact_get, memory_search.",
+        parameters: {
+          type: "object",
+          properties: {
+            calls: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  tool: { type: "string", description: "Tool name to call" },
+                  args: { type: "object", description: "Arguments for the tool" },
+                },
+                required: ["tool", "args"],
+              },
+              description: "Array of independent tool calls to execute in parallel",
+            },
+          },
+          required: ["calls"],
+        },
+      },
+    },
+    async (args) => {
+      const calls = args.calls as Array<{ tool: string; args: Record<string, unknown> }>
+      if (!calls?.length) return "No calls provided"
+      const results = await Promise.all(calls.map(async (call) => {
+        const entry = runner.getToolDefs().find((t) => t.function.name === call.tool)
+        if (!entry) return `  "${call.tool}": unknown tool`
+        return `  "${call.tool}": pending (will execute in parallel)`
+      }))
+      return `Batch scheduled ${calls.length} calls:\n${results.join("\n")}\n\nThese will be executed in parallel.`
+    },
+  )
+
+  runner.registerTool(
+    "cost_estimate",
+    {
+      type: "function",
+      function: {
+        name: "cost_estimate",
+        description: "Estimate the token cost of an operation. Use before expensive calls to avoid surprise bills.",
+        parameters: {
+          type: "object",
+          properties: {
+            estimated_input_tokens: { type: "number", description: "Estimated input tokens for this operation" },
+            estimated_output_tokens: { type: "number", description: "Estimated output tokens (defaults to input * 0.3)" },
+            model: { type: "string", description: "Model name (e.g. claude-sonnet-4-20250514, gpt-4o). Defaults to current model." },
+          },
+          required: ["estimated_input_tokens"],
+        },
+      },
+    },
+    async (args) => {
+      const inputTokens = Number(args.estimated_input_tokens)
+      const outputTokens = Number(args.estimated_output_tokens ?? Math.round(inputTokens * 0.3))
+      const model = String(args.model ?? runner.config.model)
+
+      const pricing: Record<string, { input: number; output: number }> = {
+        "claude-sonnet-4-20250514": { input: 0.003, output: 0.015 },
+        "claude-3-5-sonnet-20241022": { input: 0.003, output: 0.015 },
+        "claude-opus-4-20250514": { input: 0.015, output: 0.075 },
+        "gpt-4o": { input: 0.0025, output: 0.01 },
+        "gpt-4o-mini": { input: 0.00015, output: 0.0006 },
+        "deepseek-chat": { input: 0.00027, output: 0.0011 },
+      }
+      const rates = pricing[model] ?? { input: 0.003, output: 0.015 }
+
+      const inputCost = (inputTokens / 1000) * rates.input
+      const outputCost = (outputTokens / 1000) * rates.output
+      const total = inputCost + outputCost
+
+      const lines = [
+        `Cost Estimate for ${model}`,
+        `   Input:  ${inputTokens.toLocaleString()} tokens -> $${inputCost.toFixed(4)}`,
+        `   Output: ${outputTokens.toLocaleString()} tokens -> $${outputCost.toFixed(4)}`,
+        `   Total:  ~$${total.toFixed(4)}`,
+      ]
+      if (total > 0.10) lines.push("", "This operation costs over $0.10. Consider if you can be more specific.")
+      if (total > 1.00) lines.push("OVER $1.00 - confirm before proceeding.")
+      return lines.join("\n")
     },
   )
 }

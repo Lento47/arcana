@@ -9,8 +9,6 @@ import { redactSecrets, checkDangerousCommand, RateLimiter, auditLog } from "./g
 import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
 
-const MAX_TOOL_ROUNDS = 10
-const MAX_HISTORY_TURNS = 20  // keep system + last N turns, summarize older
 const TOOL_RESULT_MAX = 2000  // truncate large tool outputs to this many chars
 
 /** Map arcana provider ids to AI SDK language model constructors. */
@@ -83,12 +81,16 @@ function toCoreMessages(messages: ChatMessage[]): ModelMessage[] {
 
 export class AgentRunner {
   private tools: ToolRegistry = new Map()
-  private limiter = new RateLimiter()
+  private limiter: RateLimiter
   private sessionId: string | null = null
   readonly sandbox: SandboxConfig | null = null
 
-  constructor(private readonly config: AgentConfig, sandbox?: SandboxConfig) {
+  readonly config: AgentConfig
+
+  constructor(config: AgentConfig, sandbox?: SandboxConfig) {
+    this.config = config
     this.sandbox = sandbox ?? null
+    this.limiter = new RateLimiter(this.config.maxToolsPerSession, this.config.maxWebFetchesPerSession)
   }
 
   /** Set session ID for audit logging. */
@@ -109,7 +111,7 @@ export class AgentRunner {
     const systemMsg = messages.find((m) => m.role === "system")
     const rest = messages.filter((m) => m.role !== "system")
     let history: ChatMessage[]
-    if (rest.length > MAX_HISTORY_TURNS) {
+    if (rest.length > (this.config.maxHistoryTurns ?? 20)) {
       const userIndices: number[] = []
       for (let i = rest.length - 1; i >= 0 && userIndices.length < 3; i--) {
         if (rest[i]!.role === "user") userIndices.push(i)
@@ -142,7 +144,7 @@ export class AgentRunner {
     let finalContent = ""
 
     const toolResultCache = new Map<string, { result: string; ts: number }>()
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    for (let round = 0; round < (this.config.maxToolRounds ?? 10); round++) {
       const { model, tools } = await resolveModel(this.config, this.getToolDefs())
       const coreMessages = toCoreMessages(history)
       const hasTools = Object.keys(tools).length > 0
@@ -255,6 +257,27 @@ export class AgentRunner {
               continue
             }
 
+            // Parallel execution for batch tool
+            if (tc.toolName === "batch") {
+              const batchArgs = tc.input as any
+              const batchCalls = batchArgs?.calls as Array<{ tool: string; args: Record<string, unknown> }> | undefined
+              if (batchCalls?.length) {
+                const batchResults = await Promise.all(batchCalls.map(async (batchCall) => {
+                  const batchEntry = this.tools.get(batchCall.tool)
+                  if (!batchEntry) return `"${batchCall.tool}": unknown tool`
+                  try {
+                    const result = await batchEntry.handler(batchCall.args)
+                    return `"${batchCall.tool}": ${result.slice(0, 500)}`
+                  } catch (e) {
+                    return `"${batchCall.tool}": error - ${String(e)}`
+                  }
+                }))
+                resultStr = `Parallel results:\n${batchResults.join("\n")}`
+                history.push({ role: "tool", tool_call_id: tc.toolCallId, content: resultStr, toolName: tc.toolName } as any)
+                continue
+              }
+            }
+
             // Execute (redact secrets only if not godlike)
             const rawArgs = JSON.stringify(tc.input)
             const timeout = this.config.toolTimeout ?? 30000
@@ -284,6 +307,9 @@ export class AgentRunner {
           : resultStr
         history.push({ role: "tool", tool_call_id: tc.toolCallId, content: truncated, toolName: tc.toolName } as any)
       }
+    }
+
+    if (this.config.maxTokensPerSession && totalInput > this.config.maxTokensPerSession * 0.8) {
     }
 
     return { content: finalContent, toolCalls, inputTokens: totalInput, outputTokens: totalOutput }
