@@ -5,6 +5,9 @@ on:
     branches: [master]
     tags: ["v*"]
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
 
 jobs:
   build:
