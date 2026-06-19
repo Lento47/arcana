@@ -5,6 +5,7 @@ import { validator } from "hono-openapi"
 import z from "zod"
 import { cors } from "hono/cors"
 import { Share } from "~/core/share"
+import { MemorySync, type SharedFact } from "../../core/memory-sync"
 
 const app = new Hono()
 
@@ -137,6 +138,22 @@ app
       return c.json({})
     },
   )
+  .post("/api/team/:orgId/memory/sync", async (c) => {
+    try {
+      const orgId = c.req.param("orgId")
+      const body = await c.req.json() as { facts: SharedFact[]; orgId?: string }
+      if (!body.facts?.length) return c.json({ error: "no_facts" }, 400)
+      const result = MemorySync.mergeFacts(orgId, body.facts)
+      return c.json({ merged: result.merged, conflicts: result.conflicts, total: MemorySync.getOrgFacts(orgId).length })
+    } catch (e) {
+      return c.json({ error: String(e) }, 500)
+    }
+  })
+  .get("/api/team/:orgId/memory/facts", async (c) => {
+    const orgId = c.req.param("orgId")
+    const facts = MemorySync.getOrgFacts(orgId)
+    return c.json({ facts })
+  })
 
 export function GET(event: APIEvent) {
   return app.fetch(event.request)

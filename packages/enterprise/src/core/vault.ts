@@ -1,4 +1,3 @@
-import { Effect } from "effect"
 import { Hono } from "hono"
 
 type Env = {
