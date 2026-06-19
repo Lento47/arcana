@@ -3,7 +3,7 @@
   "name": "arcana",
   "description": "The self-improving AI agent — skills, memory, gateway, coding, and cron in one CLI",
   "private": true,
-  "version": "0.2.7",
+  "version": "0.2.8",
   "type": "module",
   "packageManager": "bun@1.3.14",
   "scripts": {
