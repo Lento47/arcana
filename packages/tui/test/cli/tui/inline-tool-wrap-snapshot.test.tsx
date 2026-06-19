@@ -29,7 +29,7 @@ const tools: readonly ToolFixture[] = [
   {
     icon: "✱",
     label:
-      'Grep "OPENCODE.*DB|database|sqlite|drizzle|dev.*db|data.*dir|xdg|APPDATA" in packages/opencode/src (151 matches)',
+      'Grep "ARCANA.*DB|database|sqlite|drizzle|dev.*db|data.*dir|xdg|APPDATA" in packages/opencode/src (151 matches)',
   },
   {
     icon: "✱",

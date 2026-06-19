@@ -25,7 +25,7 @@ export function cliErrorMessage(input: unknown): string | undefined {
       `Model not found: ${field(model, "providerID")}/${field(model, "modelID")}`,
       ...(suggestions.length ? ["Did you mean: " + suggestions.join(", ")] : []),
       "Try: `arcana models` to list available models",
-      "Or check your config (opencode.json) provider/model names",
+      "Or check your config (arcana.json) provider/model names",
     ].join("\n")
   }
 

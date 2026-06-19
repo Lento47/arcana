@@ -158,7 +158,7 @@ describe("internal notifications TUI plugin", () => {
     expect(harness.notifications).toEqual([
       {
         title: "Demo session",
-        message: "Session done",
+        message: "The rite is complete",
         notification: { when: "blurred" },
         sound: { name: "done", when: "always" },
       },
@@ -189,7 +189,7 @@ describe("internal notifications TUI plugin", () => {
       },
       {
         title: "Subagent session",
-        message: "Session done",
+        message: "The rite is complete",
         notification: false,
         sound: { name: "subagent_done", when: "always" },
       },

@@ -5,7 +5,8 @@ import os from "os"
 import path from "path"
 import { Process } from "@/util/process"
 
-const MANAGED_PLIST_DOMAIN = "ai.opencode.managed"
+const MANAGED_PLIST_DOMAIN = "com.arcana.managed"
+const MANAGED_PLIST_DOMAIN_LEGACY = "ai.opencode.managed"
 
 // Keys injected by macOS/MDM into the managed plist that are not OpenCode config
 const PLIST_META = new Set([
@@ -17,19 +18,27 @@ const PLIST_META = new Set([
   "_manualProfile",
 ])
 
-function systemManagedConfigDir(): string {
+function systemManagedConfigDirs(): string[] {
   switch (process.platform) {
     case "darwin":
-      return "/Library/Application Support/opencode"
+      return ["/Library/Application Support/arcana", "/Library/Application Support/opencode"]
     case "win32":
-      return path.join(process.env.ProgramData || "C:\\ProgramData", "arcana")
+      return [
+        path.join(process.env.ProgramData || "C:\\ProgramData", "arcana"),
+        path.join(process.env.ProgramData || "C:\\ProgramData", "opencode"),
+      ]
     default:
-      return "/etc/opencode"
+      return ["/etc/arcana", "/etc/opencode"]
   }
 }
 
 export function managedConfigDir() {
-  return process.env.ARCANA_TEST_MANAGED_CONFIG_DIR || systemManagedConfigDir()
+  if (process.env.ARCANA_TEST_MANAGED_CONFIG_DIR) return process.env.ARCANA_TEST_MANAGED_CONFIG_DIR
+  const dirs = systemManagedConfigDirs()
+  for (const dir of dirs) {
+    if (existsSync(dir)) return dir
+  }
+  return dirs[0]
 }
 
 export function parseManagedPlist(json: string): string {
@@ -53,6 +62,8 @@ export async function readManagedPreferences() {
   const paths = [
     path.join("/Library/Managed Preferences", user, `${MANAGED_PLIST_DOMAIN}.plist`),
     path.join("/Library/Managed Preferences", `${MANAGED_PLIST_DOMAIN}.plist`),
+    path.join("/Library/Managed Preferences", user, `${MANAGED_PLIST_DOMAIN_LEGACY}.plist`),
+    path.join("/Library/Managed Preferences", `${MANAGED_PLIST_DOMAIN_LEGACY}.plist`),
   ]
 
   for (const plist of paths) {

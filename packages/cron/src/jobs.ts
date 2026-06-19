@@ -38,7 +38,7 @@ function expandField(field: string, max: number): Set<number> {
   return values
 }
 
-function nextRun(schedule: string, timezone = "UTC"): string {
+function nextRun(schedule: string, _timezone = "UTC"): string {
   const parsed = parseSchedule(schedule)
   const parts = parsed.split(" ")
   if (parts.length < 5) return now()

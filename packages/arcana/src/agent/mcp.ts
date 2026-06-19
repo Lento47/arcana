@@ -68,8 +68,9 @@ export async function registerMcpTools(runner: AgentRunner, serverFilter?: strin
         }
         runner.registerTool(toolName, toolDef, async (args) => {
           const result = await client.callTool({ name: tool.name, arguments: args as Record<string, unknown> })
-          if (result.isError) return `MCP error: ${result.content.map((c: any) => c.text ?? JSON.stringify(c)).join("\n")}`
-          return result.content.map((c: any) => c.text ?? JSON.stringify(c)).join("\n")
+          const content = result.content as Array<{ text?: string; [key: string]: unknown }>
+          if (result.isError) return `MCP error: ${content.map((c) => c.text ?? JSON.stringify(c)).join("\n")}`
+          return content.map((c) => c.text ?? JSON.stringify(c)).join("\n")
         })
       }
       connected.push(`${name} (${tools.tools.length} tools)`)

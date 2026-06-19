@@ -51,7 +51,7 @@ export const Info = Schema.Struct({
 export type Info = Schema.Schema.Type<typeof Info>
 
 export function userAgent(client = "cli") {
-  return `opencode/${InstallationChannel}/${InstallationVersion}/${client}`
+  return `arcana/${InstallationChannel}/${InstallationVersion}/${client}`
 }
 
 export const USER_AGENT = userAgent()
@@ -315,7 +315,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
             upgradeResult = yield* run(["choco", "upgrade", "arcana", `--version=${target}`, "-y"])
             break
           case "scoop":
-            upgradeResult = yield* run(["scoop", "install", `opencode@${target}`])
+            upgradeResult = yield* run(["scoop", "install", `arcana@${target}`])
             break
           default:
             return yield* new UpgradeFailedError({ stderr: `Unknown installation method: ${m}` })

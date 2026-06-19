@@ -18,7 +18,7 @@ import { Dynamic } from "solid-js/web"
 import path from "node:path"
 import { mkdir, writeFile } from "node:fs/promises"
 import { useRoute, useRouteData } from "../../context/route"
-import { Lexicon, Glyph } from "../../branding"
+import { Lexicon, Glyph, AgentSigil, VerbPool } from "../../branding"
 import { useProject } from "../../context/project"
 import { useSync } from "../../context/sync"
 import { useEvent } from "../../context/event"
@@ -28,6 +28,7 @@ import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { Spinner } from "../../component/spinner"
 import { SigilSpinner } from "../../component/sigil-spinner"
 import { Scramble } from "../../component/scramble"
+import { pickVerb } from "../../util/verb"
 import { createSyntaxStyleMemo, generateSubtleSyntax, selectedForeground, useTheme } from "../../context/theme"
 import { BoxRenderable, ScrollBoxRenderable, addDefaultParsers, TextAttributes, RGBA } from "@opentui/core"
 import { Prompt, type PromptRef } from "../../component/prompt"
@@ -1409,7 +1410,9 @@ function UserMessage(props: {
         >
           {/* ❯ glyph prefix — cleaner arcane identity, replacing opencode's left border rail */}
           <box flexDirection="row">
-            <text fg={color()} width={2}>{Glyph.prompt}</text>
+            <box width={2}>
+              <text fg={color()}>{Glyph.prompt}</text>
+            </box>
             <box
               flexGrow={1}
               onMouseOver={() => {
@@ -1532,7 +1535,7 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
                   x.state.metadata?.background !== true,
               )}
             >
-              <span style={{ fg: theme.textMuted }}> · </span>
+              <span style={{ fg: theme.textMuted }}> {Glyph.sep} </span>
               {backgroundShortcut()}
               <span style={{ fg: theme.textMuted }}> background</span>
             </Show>
@@ -1565,15 +1568,15 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
                     : theme.accent,
                 }}
               >
-                ▣{" "}
+                {Glyph.diamond}{" "}
               </span>{" "}
-              <span style={{ fg: theme.accent }}>{Locale.titlecase(props.message.mode)}</span>
-              <span style={{ fg: theme.textMuted }}> · {model()}</span>
+              <span style={{ fg: theme.accent }}>{Lexicon.Agent[props.message.mode as keyof typeof Lexicon.Agent] ?? Locale.titlecase(props.message.mode)}</span>
+              <span style={{ fg: theme.textMuted }}> {Glyph.sep} {model()}</span>
               <Show when={duration()}>
-                <span style={{ fg: theme.textMuted }}> · {Locale.duration(duration())}</span>
+                <span style={{ fg: theme.textMuted }}> {Glyph.sep} {Locale.duration(duration())}</span>
               </Show>
               <Show when={props.message.error?.name === "MessageAbortedError"}>
-                <span style={{ fg: theme.textMuted }}> · interrupted</span>
+                <span style={{ fg: theme.textMuted }}> {Glyph.sep} interrupted</span>
               </Show>
             </text>
           </box>
@@ -1634,10 +1637,14 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
             done={isDone()}
             title={summary().title}
             duration={isDone() ? Locale.duration(duration()) : undefined}
+            verbSeed={props.message.sessionID}
           />
         </box>
         <Show when={(!inMinimal() || expanded()) && summary().body}>
-          <box paddingLeft={inMinimal() ? 2 : 0} marginTop={1}>
+          <box paddingLeft={inMinimal() ? 2 : 0} marginTop={1}
+            border={["left"]}
+            borderColor={theme.borderThinking}
+          >
             <code
               filetype="markdown"
               drawUnstyledText={false}
@@ -1660,35 +1667,38 @@ function ReasoningHeader(props: {
   done: boolean
   title: string | null
   duration?: string
+  verbSeed: string
 }) {
   const { theme } = useTheme()
   const fg = () =>
     props.open
       ? RGBA.fromValues(theme.accent.r, theme.accent.g, theme.accent.b, theme.thinkingOpacity)
       : theme.accent
+  const verb = createMemo(() => pickVerb(VerbPool.thought, props.verbSeed))
+  const verbIng = createMemo(() => pickVerb(VerbPool.thinking, props.verbSeed))
 
   return (
     <Switch>
       <Match when={!props.done}>
         <box flexDirection="row">
-          <SigilSpinner color={fg()}>{props.title ? "Divining: " + props.title : "Divining"}</SigilSpinner>
+          <SigilSpinner color={fg()}>{props.title ? verbIng() + ": " + props.title : verbIng()}</SigilSpinner>
         </box>
       </Match>
       <Match when={true}>
         <text fg={fg()} wrapMode="none">
           <Show when={props.toggleable}>
-            <span>{props.open ? "- " : "+ "}</span>
+            <span>{props.open ? Glyph.sigil + " " : AgentSigil.subagent + " "}</span>
           </Show>
-          <span>Divined</span>
+          <span>{verb()}</span>
           <Show when={props.title || props.duration}>
-            <span>: </span>
+            <span> </span>
           </Show>
           <Show when={props.title}>
             <span>{props.title}</span>
           </Show>
           <Show when={props.duration}>
             <span>
-              {props.title ? " · " : ""}
+              {props.title ? ` ${Glyph.sep} ` : ""}
               {props.duration}
             </span>
           </Show>
@@ -2358,12 +2368,12 @@ export function formatSubagentTitle(agent: string, description: string, backgrou
 }
 
 export function formatSubagentRetry(attempt: number, message: string) {
-  return `Retrying (attempt ${attempt}) · ${message}`
+  return `Retrying (attempt ${attempt}) ${Glyph.sep} ${message}`
 }
 
 export function formatCompletedSubagentDetail(toolcalls: number, duration: string) {
   if (toolcalls === 0) return duration
-  return `${formatSubagentToolcalls(toolcalls)} · ${duration}`
+  return `${formatSubagentToolcalls(toolcalls)} ${Glyph.sep} ${duration}`
 }
 
 function Edit(props: ToolProps) {

@@ -31,7 +31,7 @@ async function loadLocalExtras(): Promise<Record<string, ModelsDevProvider>> {
     const raw = await readFile(LOCAL_EXTRAS_PATH, "utf8")
     localExtrasCache = (JSON.parse(raw) as any).provider ?? {}
   } catch { localExtrasCache = {} }
-  return localExtrasCache
+  return localExtrasCache ?? {}
 }
 
 export async function resolveProvider(provider: string): Promise<ProviderProfile> {

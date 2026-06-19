@@ -1,4 +1,4 @@
-import { generateText, streamText, type CoreMessage, type CoreTool } from "ai"
+import { generateText, streamText, type ModelMessage } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
 import { createAnthropic } from "@ai-sdk/anthropic"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
@@ -24,7 +24,7 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
   }
 
   const modelId = config.model || profile.defaultModel || "gpt-4o"
-  const aiTools: Record<string, CoreTool> = {}
+  const aiTools: Record<string, any> = {}
   for (const t of tools) {
     aiTools[t.function.name] = {
       description: t.function.description,
@@ -55,9 +55,17 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
   return { model: compat(modelId), tools: aiTools }
 }
 
-function toCoreMessages(messages: ChatMessage[]): CoreMessage[] {
+function toCoreMessages(messages: ChatMessage[]): ModelMessage[] {
   return messages.map((m) => {
-    if (m.role === "tool") return { role: "tool" as const, content: [{ type: "text" as const, text: (m.content ?? "").slice(0, TOOL_RESULT_MAX) }], toolCallId: m.tool_call_id!, toolName: (m as any).toolName ?? m.tool_call_id ?? "" }
+    if (m.role === "tool") return {
+      role: "tool" as const,
+      content: [{
+        type: "tool-result" as const,
+        toolCallId: m.tool_call_id!,
+        toolName: (m as any).toolName ?? m.tool_call_id ?? "",
+        output: { type: "text" as const, value: (m.content ?? "").slice(0, TOOL_RESULT_MAX) },
+      }],
+    }
     if (m.role === "assistant" && m.tool_calls?.length) {
       return {
         role: "assistant" as const,
@@ -65,7 +73,7 @@ function toCoreMessages(messages: ChatMessage[]): CoreMessage[] {
           type: "tool-call" as const,
           toolCallId: tc.id,
           toolName: tc.function.name,
-          args: JSON.parse(tc.function.arguments),
+          input: JSON.parse(tc.function.arguments),
         })),
       }
     }
@@ -116,7 +124,7 @@ export class AgentRunner {
           { role: "system", content: summaryPrompt },
           { role: "user", content: dropped.filter((m) => m.role !== "tool").map((m) => `${m.role}: ${(m.content ?? "").slice(0, 300)}`).join("\n") },
         ]
-        const compacted = await generateText({ model, messages: toCoreMessages(summaryMsgs), maxTokens: 200, temperature: 0.3 })
+        const compacted = await generateText({ model, messages: toCoreMessages(summaryMsgs), maxOutputTokens: 200, temperature: 0.3 })
         compactionNote = compacted.text
       } catch { /* compaction is best-effort */ }
       history = systemMsg
@@ -140,10 +148,9 @@ export class AgentRunner {
         const result = await streamText({
           model,
           messages: coreMessages,
-          maxTokens: this.config.maxTokens ?? 4096,
+          maxOutputTokens: this.config.maxTokens ?? 4096,
           temperature: this.config.temperature ?? 0.7,
           tools: hasTools ? tools : undefined,
-          maxSteps: 1,
         })
         let content = ""
         for await (const chunk of result.textStream) {
@@ -152,8 +159,8 @@ export class AgentRunner {
         }
         await result.finishReason // consume stream
         const usage = await result.usage
-        totalInput += usage?.promptTokens ?? 0
-        totalOutput += usage?.completionTokens ?? 0
+        totalInput += usage?.inputTokens ?? 0
+        totalOutput += usage?.outputTokens ?? 0
         finalContent = content
         history.push({ role: "assistant", content })
         break
@@ -163,14 +170,13 @@ export class AgentRunner {
       const result = await generateText({
         model,
         messages: coreMessages,
-        maxTokens: this.config.maxTokens ?? 4096,
+        maxOutputTokens: this.config.maxTokens ?? 4096,
         temperature: this.config.temperature ?? 0.7,
         tools: hasTools ? tools : undefined,
-        maxSteps: 1,
       })
 
-      totalInput += result.usage?.promptTokens ?? 0
-      totalOutput += result.usage?.completionTokens ?? 0
+      totalInput += result.usage?.inputTokens ?? 0
+      totalOutput += result.usage?.outputTokens ?? 0
 
       const toolRequests = result.toolCalls
       const text = result.text
@@ -186,7 +192,7 @@ export class AgentRunner {
       const toolCallsList = toolRequests.map((tc) => ({
         id: tc.toolCallId,
         type: "function" as const,
-        function: { name: tc.toolName, arguments: JSON.stringify(tc.args) },
+        function: { name: tc.toolName, arguments: JSON.stringify(tc.input) },
       }))
       history.push({ role: "assistant", content: text || null, tool_calls: toolCallsList as any })
       toolCalls += toolRequests.length
@@ -200,7 +206,7 @@ export class AgentRunner {
           try {
             // Sandbox: path jail for file tools
             if (this.sandbox) {
-              const args = tc.args as Record<string, unknown>
+              const args = tc.input as Record<string, unknown>
               const path = args.path ?? args.filePath ?? args.filepath ?? args.file
               if (path && (tc.toolName === "write" || tc.toolName === "edit" || tc.toolName === "read" || tc.toolName === "apply_patch")) {
                 const blocked = checkSandboxPath(this.sandbox, String(path), tc.toolName)
@@ -220,23 +226,23 @@ export class AgentRunner {
               if (warn) resultStr = warn
             }
 
-            // Guard: dangerous command check (skip in godlike mode)
+              // Guard: dangerous command check (skip in godlike mode)
             if (!this.config.godlike && (tc.toolName === "shell" || tc.toolName.includes("bash"))) {
-              const args = tc.args as Record<string, unknown>
+              const args = tc.input as Record<string, unknown>
               const cmd = String(args.command ?? args.cmd ?? "")
               const blocked = checkDangerousCommand(cmd)
-              if (blocked) { resultStr = blocked; auditLog({ tool: tc.toolName, args: tc.args, result: blocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() }); history.push({ role: "tool", tool_call_id: tc.toolCallId, content: blocked, toolName: tc.toolName } as any); continue }
+              if (blocked) { resultStr = blocked; auditLog({ tool: tc.toolName, args: tc.input, result: blocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() }); history.push({ role: "tool", tool_call_id: tc.toolCallId, content: blocked, toolName: tc.toolName } as any); continue }
             }
 
             // Execute (redact secrets only if not godlike)
-            const rawArgs = JSON.stringify(tc.args)
-            resultStr = await entry.handler(tc.args as Record<string, unknown>)
+            const rawArgs = JSON.stringify(tc.input)
+            resultStr = await entry.handler(tc.input as Record<string, unknown>)
             resultStr = this.config.godlike ? resultStr : redactSecrets(resultStr)
-            if (!this.config.godlike) auditLog({ tool: tc.toolName, args: tc.args, result: resultStr.slice(0, 200), session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+            if (!this.config.godlike) auditLog({ tool: tc.toolName, args: tc.input, result: resultStr.slice(0, 200), session: this.sessionId ?? undefined, ts: new Date().toISOString() })
             toolHistory.push({ name: tc.toolName, ts: Date.now() })
           } catch (e) {
             resultStr = `Tool error: ${String(e)}`
-            auditLog({ tool: tc.toolName, args: tc.args, result: `ERROR: ${e}`, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+            auditLog({ tool: tc.toolName, args: tc.input, result: `ERROR: ${e}`, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
           }
         }
         // Truncate large tool results to keep context manageable

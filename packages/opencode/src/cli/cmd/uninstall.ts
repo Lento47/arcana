@@ -129,13 +129,13 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
 
   if (method !== "curl" && method !== "unknown") {
     const cmds: Record<string, string> = {
-      npm: "npm uninstall -g opencode-ai",
-      pnpm: "pnpm uninstall -g opencode-ai",
-      bun: "bun remove -g opencode-ai",
-      yarn: "yarn global remove opencode-ai",
-      brew: "brew uninstall opencode",
-      choco: "choco uninstall opencode",
-      scoop: "scoop uninstall opencode",
+      npm: "npm uninstall -g @arcana/arcana",
+      pnpm: "pnpm uninstall -g @arcana/arcana",
+      bun: "bun remove -g @arcana/arcana",
+      yarn: "yarn global remove @arcana/arcana",
+      brew: "brew uninstall arcana",
+      choco: "choco uninstall arcana",
+      scoop: "scoop uninstall arcana",
     }
     prompts.log.info(`  ✓ Package: ${cmds[method] || method}`)
   }

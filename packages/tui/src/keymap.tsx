@@ -21,7 +21,7 @@ export const LEADER_TOKEN = "leader"
 export const ARCANA_BASE_MODE = "base"
 export const COMMAND_PALETTE_COMMAND = "command.palette.show"
 
-const ARCANA_MODE_KEY = "opencode.mode"
+const ARCANA_MODE_KEY = "arcana.mode"
 
 export const OpencodeKeymapProvider = KeymapProvider
 export const useOpencodeKeymap = useKeymap

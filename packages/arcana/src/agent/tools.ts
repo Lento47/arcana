@@ -8,6 +8,7 @@ export const toolHistory: Array<{ name: string; ts: number }> = []
 import { homedir } from "node:os"
 import { join, dirname } from "node:path"
 import { mkdirSync, writeFileSync, existsSync } from "node:fs"
+import { initBoard, loadBoard, saveBoard, addCard, moveCard, archiveDone, formatBoard, type KanbanCard } from "./kanban.js"
 
 export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, skillDirs: string[]): void {
   let skills: SkillInfo[] = []
@@ -242,7 +243,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         },
       },
     },
-    async () => {
+    async (args: any) => {
       const name = String(args.name)
       const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-") // safe: directory slug from skill name, no shell/url context
       const tags = args.tags ? (args.tags as string[]).map(String) : []
@@ -619,6 +620,157 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         return `⚠️ Loop detected! Repeated tools: ${repeats.map(([n, c]) => `${n} (${c}x)`).join(", ")}. Consider changing strategy, asking for help, or trying a different approach.`
       }
       return "No loop detected. Recent tool calls are varied."
+    },
+  )
+
+  runner.registerTool(
+    "goal_set",
+    {
+      type: "function",
+      function: {
+        name: "goal_set",
+        description: "RECORD the user's stated goal. MUST call this once you understand what the user wants done. The goal is binding — all subsequent actions must align with it.",
+        parameters: {
+          type: "object",
+          properties: {
+            goal: { type: "string", description: "The user's goal — what they asked to be done. Be specific and complete." },
+            scope: { type: "string", description: "Scope boundaries: what's in scope, what's explicitly out of scope." },
+            priority: { type: "string", enum: ["high", "medium", "low"], description: "How important is this goal?" },
+          },
+          required: ["goal"],
+        },
+      },
+    },
+    async (args) => {
+      const goal = String(args.goal)
+      const scope = args.scope ? String(args.scope) : "not specified"
+      const priority = String(args.priority ?? "medium")
+      memory.recordUserFact("active.goal", goal, "goal_set")
+      memory.recordUserFact("active.goal.scope", scope, "goal_set")
+      memory.recordUserFact("active.goal.priority", priority, "goal_set")
+      const sessionId = `goal-${Date.now()}`
+      const board = initBoard(sessionId, goal, scope)
+      return `Goal recorded: "${goal}"\nScope: ${scope}\nPriority: ${priority}\nKanban board initialized.\nThis goal is now active — all actions MUST align with it.`
+    },
+  )
+
+  runner.registerTool(
+    "goal_check",
+    {
+      type: "function",
+      function: {
+        name: "goal_check",
+        description: "CHECK IN on goal progress. Call periodically to verify the active goal is being achieved. Reports what's done, what's pending, what's blocked. If the goal is fully achieved, this will tell you to stop.",
+        parameters: {
+          type: "object",
+          properties: {
+            status: { type: "string", enum: ["in_progress", "complete", "blocked", "stale"], description: "Current status of the work" },
+            done: { type: "string", description: "What has been accomplished so far." },
+            pending: { type: "string", description: "What still needs to be done." },
+            blocked: { type: "string", description: "Any blockers or obstacles." },
+          },
+          required: ["status"],
+        },
+      },
+    },
+    async (args) => {
+      const status = String(args.status)
+      const done = args.done ? String(args.done) : "nothing yet"
+      const pending = args.pending ? String(args.pending) : "unknown"
+      const blocked = args.blocked ? String(args.blocked) : "none"
+
+      // Look up the active goal
+      const goalResults = memory.search("active.goal")
+      const goalLine = goalResults.length > 0 ? goalResults[0]!.snippet : "No active goal set. Call goal_set first."
+
+      // Record the check-in
+      const checkId = `check-${Date.now()}`
+      const dir = join(homedir(), ".arcana", "reflections")
+      mkdirSync(dir, { recursive: true })
+      const entry = [
+        `# Goal Check: ${checkId}`,
+        "",
+        `**Status:** ${status}`,
+        `**Done:** ${done}`,
+        `**Pending:** ${pending}`,
+        `**Blocked:** ${blocked}`,
+        `**Time:** ${new Date().toISOString()}`,
+      ].join("\n")
+      writeFileSync(join(dir, `${checkId}.md`), entry, "utf8")
+
+      const lines = [`## Goal Check-in\n`, `**Active Goal:** ${goalLine}`]
+      lines.push(`**Status:** ${status === "complete" ? "✅ Complete" : status === "blocked" ? "❌ Blocked" : status === "stale" ? "⚠️ Stale" : "🔄 In Progress"}`)
+      lines.push(`**Done:** ${done}`)
+      if (pending) lines.push(`**Pending:** ${pending}`)
+      if (blocked !== "none") lines.push(`**Blocked:** ${blocked}`)
+
+      if (status === "complete") {
+        lines.push("", "🎯 GOAL ACHIEVED. You should stop working and report completion to the user.")
+      } else if (status === "blocked") {
+        lines.push("", "⛔ Blocked. Consider asking the user for help or changing approach.")
+      } else if (status === "stale") {
+        lines.push("", "⚠️ Goal may be stale. Reconsider if this is still the right objective.")
+      }
+
+      return lines.join("\n")
+    },
+  )
+
+  runner.registerTool(
+    "kanban",
+    {
+      type: "function",
+      function: {
+        name: "kanban",
+        description: "MANAGE the goal kanban board. Use init to create a board, add to add tasks, move to change status, view to see the full board. Board data is auto-saved as vault wiki.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: { type: "string", enum: ["init", "add", "move", "view", "archive"], description: "init: create board for goal. add: add a card. move: change card status. view: show full board. archive: remove done cards." },
+            title: { type: "string", description: "Card title (required for add, optional for move)." },
+            description: { type: "string", description: "Card description (for add)." },
+            card_id: { type: "string", description: "Card ID to move or archive (for move)." },
+            status: { type: "string", enum: ["backlog", "in_progress", "done", "blocked"], description: "Target status (for move)." },
+            priority: { type: "string", enum: ["high", "medium", "low"], description: "Card priority (for add)." },
+            session_id: { type: "string", description: "Session ID for the board (auto-generated by goal_set if omitted)." },
+          },
+          required: ["command"],
+        },
+      },
+    },
+    async (args) => {
+      const cmd = String(args.command)
+      const sid = args.session_id ? String(args.session_id) : `goal-${Date.now()}`
+      let board = loadBoard(sid)
+
+      if (cmd === "init") {
+        const goal = args.title ? String(args.title) : "untitled goal"
+        board = initBoard(sid, goal, String(args.description ?? ""))
+        return formatBoard(board)
+      }
+
+      if (!board) return "No kanban board found for this session. Call goal_set first or use `kanban init`."
+
+      if (cmd === "add") {
+        if (!args.title) return "title is required for add."
+        addCard(board, String(args.title), String(args.description ?? ""), (args.priority as KanbanCard["priority"]) ?? "medium")
+        saveBoard(sid, board)
+        return `Card added: "${args.title}"\n${formatBoard(board)}`
+      }
+
+      if (cmd === "move") {
+        if (!args.card_id || !args.status) return "card_id and status are required for move."
+        const card = moveCard(board, String(args.card_id), args.status as KanbanCard["status"])
+        if (!card) return `Card not found: ${args.card_id}`
+        return `Card moved to ${args.status}: "${card.title}"\n${formatBoard(board)}`
+      }
+
+      if (cmd === "archive") {
+        const count = archiveDone(board)
+        return `Archived ${count} done cards.\n${formatBoard(board)}`
+      }
+
+      return formatBoard(board)
     },
   )
 

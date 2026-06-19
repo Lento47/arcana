@@ -59,6 +59,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
             >
               <box paddingRight={1}>
                 <text fg={theme.text}>
+                  <span style={{ fg: theme.primary }}>{Glyph.sigil}</span>{" "}
                   <b>{session()!.title}</b>
                 </text>
                 <Show when={InstallationChannel !== "latest"}>
