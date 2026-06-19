@@ -7,7 +7,8 @@
   },
   "main": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./cli/cmd/*": "./src/cli/cmd/*.ts"
   },
   "dependencies": {
     "@arcana/memory": "workspace:*",

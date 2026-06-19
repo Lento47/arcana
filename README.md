@@ -6,18 +6,19 @@
 [![license](https://img.shields.io/badge/license-MIT%20%2B%20Commercial-blue)](LICENSE)
 
 ```sh
-arcana                  # launch the TUI
-arcana run "query"      # one-shot agent session
-arcana run              # interactive REPL (streaming)
-arcana skills list      # browse 174 available skills
-arcana gateway          # start chat bots (Telegram, Discord, Slack)
-arcana cron             # scheduled agent tasks
+arcana doctor            # check system health
+arcana run "query"       # one-shot agent session
+arcana skills list       # browse 174 available skills
+arcana memory sessions   # view past sessions
+arcana cron list         # list scheduled jobs
+arcana gateway           # start chat bots (Telegram, Discord, Slack, WhatsApp)
+arcana learn list        # view accumulated knowledge
 ```
 
 ## Install
 
 ```sh
-# Quick: no install needed
+# Quick start (shim downloads binary on first run)
 npx arcana-ai
 
 # Or global install
@@ -30,7 +31,7 @@ bun install
 bun link                 # from packages/arcana/ — creates global `arcana` bin
 ```
 
-Zero dependencies — the binary bundles the Bun runtime. Just download and run.
+Single binary distribution; source build requires Node.js/Bun dependencies.
 
 ## Quick start
 
@@ -38,11 +39,21 @@ Zero dependencies — the binary bundles the Bun runtime. Just download and run.
 # Set your API key (or use provider-specific env var)
 export OPENAI_API_KEY=sk-...
 
+# Verify everything is ready
+arcana doctor
+
 # Launch the terminal UI
 arcana
 
 # Or use the CLI
 arcana run "explain this codebase"
+
+# Browse and resume past sessions
+arcana history list
+arcana history resume --id <session-id>
+
+# Search memory
+arcana memory search --query "deployment config"
 ```
 
 ### Gateway (chat bots)
@@ -96,6 +107,83 @@ arcana cron remove <job-id>
 | `@arcana/skills` | 174 skill files across 28 categories |
 | `@arcana/plugin` | Plugin system (30+ lifecycle hooks) |
 | `@arcana/enterprise` | SolidJS/Start web dashboard |
+| `@arcana/http-recorder` | VCR-style HTTP cassette recorder for Effect-based testing |
+
+## Deep Dive
+
+Undocumented features that are ready to use:
+
+### `arcana memory` — FTS5-powered session memory
+
+Search past session conversations, extracted facts, artifacts, and skill observations:
+```sh
+arcana memory search "deployment config"
+arcana memory sessions --limit 10
+arcana memory facts
+arcana memory stats
+```
+
+### `arcana history` — browse and resume past sessions
+
+List, inspect, and resume previous agent sessions:
+```sh
+arcana history list
+arcana history show --id <session-id>
+arcana history resume --id <session-id>
+```
+
+### `arcana learn` — self-improving knowledge pipeline
+
+After sessions with 2+ turns, the agent extracts learnings into wiki files and a map of consciousness:
+```sh
+arcana learn list
+arcana learn show --slug kebab-case-slug
+arcana learn moc       # show map of consciousness
+```
+
+### `arcana doctor` — system health diagnostics
+
+Check config, API keys, cache files, and runtime environment:
+```sh
+arcana doctor
+```
+
+### Gateway — Telegram, Discord, Slack, and WhatsApp
+
+Four chat platform adapters with per-chat agent sessions. WhatsApp runs via Cloud API webhook (self-hosted HTTP server on port 3100):
+```sh
+arcana gateway
+```
+
+Configure in `~/.arcana/config.json` (see Gateway section below).
+
+### `@arcana/http-recorder` — VCR-style HTTP cassette testing
+
+Record and replay Effect HTTP client traffic with deterministic cassettes. Secret redaction, request matching, auto record/replay mode detection:
+```ts
+import { HttpRecorder } from "@arcana/http-recorder"
+```
+
+### `@arcana/function` — Cloudflare Worker with DurableObjects
+
+Share/sync server using Cloudflare DurableObjects, GitHub App JWT token exchange, R2 storage, and a Feishu-to-Discord bridge. Deployed via SST.
+
+### Cron daemon — scheduled autonomous agents
+
+The cron scheduler runs as a persistent daemon, evaluating jobs every 60s. Jobs persist to a JSON store and integrate with memory:
+```sh
+arcana cron add "daily-review" --schedule "0 9 * * *" --prompt "review today's changes"
+arcana cron list
+arcana cron start     # run daemon (blocking)
+```
+
+### Plugin lifecycle — 30+ hooks
+
+The plugin system defines hooks for agent, tool, config, auth, chat, permissions, and workspace lifecycle events. Types and examples in `@arcana/plugin`:
+```sh
+arcana skills list          # 174 available
+arcana skills search "git"  # search by keyword
+```
 
 ## Skills
 
@@ -128,7 +216,7 @@ Env overrides: `ARCANA_PROVIDER`, `ARCANA_MODEL`, `ARCANA_API_KEY`, `OPENAI_API_
 
 ```sh
 bun install
-bun run typecheck   # 19/20 packages green
+bun run typecheck   # build status: restored for v0.2.6
 bun run build
 bun run test
 ```
@@ -149,12 +237,12 @@ bun packages/arcana/src/index.ts run "hello"
 
 ## Themes
 
-22 arcane themes. `⛧ themes` in the TUI or set in `~/.config/arcana/tui.json`:
+7 arcane themes. `⛧ themes` in the TUI or set in `~/.config/arcana/tui.json`:
 ```json
 { "theme": "dragon" }
 ```
 
-Themes: alchemist, bloodmoon, cauldron, coven, crypt, demon, dragon, fae, golem, graveyard, hex, lich, necromancer, oracle, potion, rune, specter, vampire, werewolf, wraith + arcana (default).
+Themes: arcana (default), bloodmoon, coven, crypt, dragon, lich, wraith.
 
 ## Thanks
 

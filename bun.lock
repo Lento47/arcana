@@ -14,7 +14,7 @@
     },
     "packages/arcana": {
       "name": "@arcana/arcana",
-      "version": "0.1.0",
+      "version": "0.2.5",
       "bin": {
         "arcana": "./bin/arcana",
       },
@@ -310,6 +310,7 @@
         "@ai-sdk/togetherai": "2.0.41",
         "@ai-sdk/vercel": "2.0.39",
         "@ai-sdk/xai": "3.0.82",
+        "@arcana/arcana": "workspace:*",
         "@arcana/llm": "workspace:*",
         "@arcana/plugin": "workspace:*",
         "@arcana/script": "workspace:*",

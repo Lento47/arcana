@@ -40,22 +40,22 @@ export async function maybeEvolve(runner: AgentRunner, currentPrompt: string): P
   writeFileSync(EVOLVE_LOCK, String(count), "utf8")
 
   try {
-  const reflections = readDirJson(join(homedir(), ".arcana", "reflections"))
-  const strategies = readDirJson(join(homedir(), ".arcana", "strategies"))
-  const proposals = readDirJson(EVOLVE_DIR)
+    const reflections = readDirJson(join(homedir(), ".arcana", "reflections"))
+    const strategies = readDirJson(join(homedir(), ".arcana", "strategies"))
+    const proposals = readDirJson(EVOLVE_DIR)
 
-  if (reflections.length + strategies.length < 3) return currentPrompt // not enough data
+    if (reflections.length + strategies.length < 3) return currentPrompt
 
-  const successRate = strategies.filter((s: any) => s.outcome === "success").length / Math.max(1, strategies.length)
-  const data = [
-    `Session count: ${count}`,
-    `Success rate: ${Math.round(successRate * 100)}%`,
-    reflections.length ? `Recent reflections:\n${reflections.slice(-3).map((r: any) => `- [${r.outcome}] ${r.lesson}`).join("\n")}` : "",
-    strategies.length ? `Recent strategies:\n${strategies.slice(-3).map((s: any) => `- [${s.outcome}] ${s.task}: ${s.approach}`).join("\n")}` : "",
-    proposals.length ? `Past proposals:\n${proposals.slice(-3).map((p: any) => `- score=${p.score} ${p.reason?.slice(0, 80)}`).join("\n")}` : "",
-  ].filter(Boolean).join("\n\n")
+    const successRate = strategies.filter((s: any) => s.outcome === "success").length / Math.max(1, strategies.length)
+    const data = [
+      `Session count: ${count}`,
+      `Success rate: ${Math.round(successRate * 100)}%`,
+      reflections.length ? `Recent reflections:\n${reflections.slice(-3).map((r: any) => `- [${r.outcome}] ${r.lesson}`).join("\n")}` : "",
+      strategies.length ? `Recent strategies:\n${strategies.slice(-3).map((s: any) => `- [${s.outcome}] ${s.task}: ${s.approach}`).join("\n")}` : "",
+      proposals.length ? `Past proposals:\n${proposals.slice(-3).map((p: any) => `- score=${p.score} ${p.reason?.slice(0, 80)}`).join("\n")}` : "",
+    ].filter(Boolean).join("\n\n")
 
-  const reviewPrompt = `You are an AI prompt engineer. Review this performance data and propose an improved system prompt.
+    const reviewPrompt = `You are an AI prompt engineer. Review this performance data and propose an improved system prompt.
 
 PERFORMANCE DATA:
 ${data}
@@ -72,26 +72,24 @@ Rules:
 
 NEW SYSTEM PROMPT:`
 
-  try {
-    const result = await runner.run([{ role: "user", content: reviewPrompt }])
-    const proposed = result.content.trim()
-    if (!proposed || proposed.length < 50) return currentPrompt
+    try {
+      const result = await runner.run([{ role: "user", content: reviewPrompt }])
+      const proposed = result.content.trim()
+      if (!proposed || proposed.length < 50) return currentPrompt
 
-    // Save proposal
-    const id = `v${Date.now()}`
-    writeFileSync(join(EVOLVE_DIR, `${id}.txt`), proposed, "utf8")
-    // Score seed: 0.5 neutral — will be adjusted by reflect tool feedback
-    writeFileSync(join(EVOLVE_DIR, `${id}.json`), JSON.stringify({ score: 0.5, ts: new Date().toISOString(), reason: "auto-evolved" }), "utf8")
+      const id = `v${Date.now()}`
+      writeFileSync(join(EVOLVE_DIR, `${id}.txt`), proposed, "utf8")
+      writeFileSync(join(EVOLVE_DIR, `${id}.json`), JSON.stringify({ score: 0.5, ts: new Date().toISOString(), reason: "auto-evolved" }), "utf8")
 
-    // Check if this beats current
-    const best = findBest()
-    if (best && best.score > 0.6) {
-      writeFileSync(ACTIVE_PROMPT, readFileSync(join(EVOLVE_DIR, `${best.id}.txt`), "utf8"), "utf8")
-      return readFileSync(ACTIVE_PROMPT, "utf8").trim()
-    }
-  } catch { /* evolution is best-effort */ }
-    // Remove lock
+      const best = findBest()
+      if (best && best.score > 0.6) {
+        writeFileSync(ACTIVE_PROMPT, readFileSync(join(EVOLVE_DIR, `${best.id}.txt`), "utf8"), "utf8")
+        return readFileSync(ACTIVE_PROMPT, "utf8").trim()
+      }
+    } catch { /* evolution is best-effort */ }
+  } finally {
     try { unlinkSync(EVOLVE_LOCK) } catch {}
+  }
 
   return currentPrompt
 }

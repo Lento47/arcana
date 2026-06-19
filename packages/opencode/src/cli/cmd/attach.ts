@@ -6,7 +6,7 @@ import { ServerAuth } from "@/server/auth"
 
 export const AttachCommand = cmd({
   command: "attach <url>",
-  describe: "attach to a running opencode server",
+  describe: "attach to a running arcana server",
   builder: (yargs) =>
     yargs
       .positional("url", {
@@ -40,7 +40,7 @@ export const AttachCommand = cmd({
       .option("username", {
         alias: ["u"],
         type: "string",
-        describe: "basic auth username (defaults to ARCANA_SERVER_USERNAME or 'opencode')",
+        describe: "basic auth username (defaults to ARCANA_SERVER_USERNAME or 'arcana')",
       }),
   handler: async (args) => {
     const { TuiConfig } = await import("@/config/tui")

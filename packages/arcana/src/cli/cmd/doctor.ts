@@ -19,8 +19,8 @@ export const DoctorCommand: CommandModule = {
     checks.push({ label: "Bun runtime", ok: !!bunVer, detail: `v${bunVer}` })
 
     // node_modules
-    const nm = join(import.meta.dir, "..", "..", "..", "..", "node_modules")
-    checks.push({ label: "node_modules", ok: existsSync(nm), detail: existsSync(nm) ? "present" : "missing — run bun install" })
+    const nm = [join(import.meta.dir, "..", "..", "..", "..", "..", "node_modules"), join(import.meta.dir, "..", "..", "..", "..", "node_modules")].find(existsSync)
+    checks.push({ label: "node_modules", ok: !!nm, detail: nm ? `found` : "missing — run bun install" })
 
     // Config
     try {

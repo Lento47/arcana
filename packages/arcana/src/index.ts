@@ -7,9 +7,10 @@ import path from "node:path"
 import { existsSync } from "node:fs"
 
 const args = process.argv.slice(2)
+const HELP_FLAGS = new Set(["--help", "-h", "--version", "-v"])
 const SUBCOMMANDS = ["run", "skills", "cron", "memory", "gateway", "completion", "config", "learn", "doctor", "history", "theme"]
 const firstArg = args[0]
-const isArcanaSubcommand = firstArg && SUBCOMMANDS.includes(firstArg)
+const isArcanaSubcommand = firstArg && (SUBCOMMANDS.includes(firstArg) || HELP_FLAGS.has(firstArg))
 
 if (!isArcanaSubcommand) {
   // === TUI fast path ===
