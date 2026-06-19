@@ -270,38 +270,76 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       type: "function",
       function: {
         name: "diagnose",
-        description: "Run system diagnostics — check health, config, API keys, caches, DB. Use when errors occur.",
-        parameters: {
-          type: "object",
-          properties: {},
-        },
+        description: "Run system diagnostics — check health, config, API keys, caches, DB, network, MCP, git, disk, model access. Use when errors occur or before starting critical work.",
+        parameters: { type: "object", properties: {} },
       },
     },
     async () => {
       const lines: string[] = []
       const ok = (label: string, pass: boolean, detail: string) => lines.push(`${pass ? "✅" : "❌"} ${label}: ${detail}`)
 
-      // Config + API key
+      // 1. Config file
       const configPath = join(homedir(), ".arcana", "config.json")
-      ok("Config file", existsSync(configPath), existsSync(configPath) ? "exists" : "missing — arcana config init")
+      ok("Config file", existsSync(configPath), existsSync(configPath) ? "exists" : "missing — run arcana config init")
+
+      // 2. API key
       try {
         const envKey = process.env.ARCANA_API_KEY ?? process.env.OPENAI_API_KEY
         ok("API key", !!envKey, envKey ? `set (…${envKey.slice(-4)})` : "not set — export ARCANA_API_KEY")
       } catch { ok("API key", false, "error reading") }
 
-      // Caches
+      // 3. Models cache
       const modelsCache = join(homedir(), ".cache", "arcana", "models-dev.json")
       ok("Models cache", existsSync(modelsCache), existsSync(modelsCache) ? `populated (${Math.round((Bun.file(modelsCache).size ?? 0) / 1024)}KB)` : "empty — will fetch on first use")
+
+      // 4. Skills cache
       const skillsCache = join(homedir(), ".cache", "arcana", "skills-cache.json")
       ok("Skills cache", existsSync(skillsCache), existsSync(skillsCache) ? "warm" : "cold — will build on startup")
 
-      // Memory DB
+      // 5. Memory DB
       const dbPath = join(homedir(), ".arcana", "data", "memory.db")
       ok("Memory DB", existsSync(dbPath), existsSync(dbPath) ? `exists (${Math.round((Bun.file(dbPath).size ?? 0) / 1024)}KB)` : "missing — created on first session")
 
-      // Bridge config
+      // 6. Bridge config
       const bridge = join(homedir(), ".arcana", "cache", "opencode-config.json")
       ok("Bridge config", existsSync(bridge), existsSync(bridge) ? "exists" : "missing — TUI may not find skills")
+
+      // 7. Network connectivity
+      try {
+        const dns = await fetch("https://cloudflare-dns.com", { signal: AbortSignal.timeout(5000) })
+        ok("Network", dns.ok, dns.ok ? "reachable" : `HTTP ${dns.status}`)
+      } catch { ok("Network", false, "unreachable — check internet connection") }
+
+      // 8. Disk space
+      try {
+        const { execSync } = await import("node:child_process")
+        const df = execSync("df -h . 2>nul || echo unknown", { encoding: "utf8" }).trim().split("\n").pop() ?? ""
+        const parts = df.split(/\s+/)
+        ok("Disk space", true, parts[4] ?? "unknown")  // e.g. "45%"
+      } catch { ok("Disk space", true, "unknown") }
+
+      // 9. Git repo
+      try {
+        const { execSync } = await import("node:child_process")
+        const branch = execSync("git branch --show-current 2>nul || echo not a repo", { encoding: "utf8" }).trim()
+        ok("Git repo", branch !== "not a repo", branch !== "not a repo" ? `on ${branch}` : "not in a git repository")
+      } catch { ok("Git repo", false, "unknown") }
+
+      // 10. arcana version
+      const arcanaVersion = process.env.ARCANA_VERSION ?? "source/dev"
+      ok("Arcana version", true, arcanaVersion)
+
+      // 11. Bunny version (runtime)
+      ok("Bun version", true, process.version)
+
+      // 12. Home directory writable
+      try {
+        const testFile = join(homedir(), ".arcana", ".write-test")
+        writeFileSync(testFile, "ok", "utf8")
+        const { rmSync } = await import("node:fs")
+        rmSync(testFile, { force: true })
+        ok("Home dir writable", true, "yes")
+      } catch { ok("Home dir writable", false, "no — check permissions") }
 
       return lines.join("\n")
     },
@@ -564,6 +602,105 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     },
   )
 
+  runner.registerTool(
+    "git_status",
+    {
+      type: "function",
+      function: {
+        name: "git_status",
+        description: "Show git working tree status — staged, unstaged, untracked files, branch name, ahead/behind remote.",
+        parameters: { type: "object", properties: { path: { type: "string", description: "Optional repo path (defaults to cwd)" } } },
+      },
+    },
+    async (args) => {
+      const cwd = args.path ? String(args.path) : process.cwd()
+      try {
+        const { execSync } = await import("node:child_process")
+        const branch = execSync("git branch --show-current", { cwd, encoding: "utf8", stdio: "pipe" }).trim()
+        const status = execSync("git status --short", { cwd, encoding: "utf8", stdio: "pipe" }).trim()
+        const ahead = execSync("git rev-list --count @{upstream}..HEAD 2>nul || echo 0", { cwd, encoding: "utf8", stdio: "pipe" }).trim()
+        const behind = execSync("git rev-list --count HEAD..@{upstream} 2>nul || echo 0", { cwd, encoding: "utf8", stdio: "pipe" }).trim()
+        const lines = [`Branch: ${branch}`]
+        if (ahead !== "0") lines.push(`Ahead: ${ahead} commits`)
+        if (behind !== "0") lines.push(`Behind: ${behind} commits`)
+        if (status) lines.push("", "Changes:", status)
+        else lines.push("", "Working tree clean.")
+        return lines.join("\n")
+      } catch (e: any) {
+        if (e.message?.includes("not a git repository")) return "Not a git repository."
+        return `Git error: ${e.message ?? String(e)}`
+      }
+    },
+  )
+
+  runner.registerTool(
+    "git_diff",
+    {
+      type: "function",
+      function: {
+        name: "git_diff",
+        description: "Show git diff for staged, unstaged, or specific files. Use before committing to review changes.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "Optional repo path" },
+            staged: { type: "boolean", description: "Show staged diff (default: unstaged)" },
+            file: { type: "string", description: "Optional file path to filter diff" },
+          },
+        },
+      },
+    },
+    async (args) => {
+      const cwd = args.path ? String(args.path) : process.cwd()
+      try {
+        const { execSync } = await import("node:child_process")
+        const staged = args.staged ? "--staged" : ""
+        const file = args.file ? ` -- "${String(args.file)}"` : ""
+        const diff = execSync(`git diff ${staged}${file}`, { cwd, encoding: "utf8", stdio: "pipe", maxBuffer: 1024 * 1024 }).trim()
+        if (!diff) return "No changes to show."
+        return diff.length > 3000 ? diff.slice(0, 3000) + `\n...(truncated, ${diff.length} chars)` : diff
+      } catch (e: any) {
+        if (e.message?.includes("not a git repository")) return "Not a git repository."
+        return `Git error: ${e.message ?? String(e)}`
+      }
+    },
+  )
+
+  runner.registerTool(
+    "git_commit",
+    {
+      type: "function",
+      function: {
+        name: "git_commit",
+        description: "Stage and commit changes. Use after code changes are complete. Supports conventional commits.",
+        parameters: {
+          type: "object",
+          properties: {
+            message: { type: "string", description: "Commit message. Use conventional commits format (feat:, fix:, docs:, etc)." },
+            files: { type: "string", description: "Optional: specific files to stage (space-separated). Defaults to all." },
+            path: { type: "string", description: "Optional repo path" },
+          },
+          required: ["message"],
+        },
+      },
+    },
+    async (args) => {
+      const cwd = args.path ? String(args.path) : process.cwd()
+      try {
+        const { execSync } = await import("node:child_process")
+        const files = args.files ? String(args.files) : "."
+        execSync(`git add ${files}`, { cwd, encoding: "utf8", stdio: "pipe" })
+        execSync(`git commit -m "${String(args.message).replace(/"/g, '\\"')}"`, { cwd, encoding: "utf8", stdio: "pipe" })
+        const hash = execSync("git rev-parse HEAD", { cwd, encoding: "utf8", stdio: "pipe" }).trim().slice(0, 8)
+        return `Committed: ${hash} — ${String(args.message)}`
+      } catch (e: any) {
+        if (e.message?.includes("not a git repository")) return "Not a git repository."
+        if (e.message?.includes("nothing to commit")) return "Nothing to commit. Stage files first or check git_status."
+        return `Commit error: ${e.message ?? String(e)}`
+      }
+    },
+  )
+
   // ── Meta-cognition tools ──────────────────────────────────
 
   runner.registerTool(
@@ -771,6 +908,60 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       }
 
       return formatBoard(board)
+    },
+  )
+
+  runner.registerTool(
+    "session_summary",
+    {
+      type: "function",
+      function: {
+        name: "session_summary",
+        description: "Generate a summary of the current session — total tokens, cost, tool calls, duration, files changed. Call at session end or when goal_check reports complete.",
+        parameters: {
+          type: "object",
+          properties: {
+            files_changed: { type: "string", description: "Comma-separated list of files changed this session" },
+            highlights: { type: "string", description: "Key accomplishments or decisions made" },
+            duration: { type: "string", description: "Optional session duration string" },
+          },
+        },
+      },
+    },
+    async (args) => {
+      const files = args.files_changed ? String(args.files_changed) : "none recorded"
+      const highlights = args.highlights ? String(args.highlights) : "none recorded"
+      const duration = args.duration ? String(args.duration) : "unknown"
+
+      const toolCounts = new Map<string, number>()
+      for (const t of toolHistory) {
+        toolCounts.set(t.name, (toolCounts.get(t.name) ?? 0) + 1)
+      }
+      const totalToolCalls = toolHistory.length
+      const topTools = [...toolCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name, count]) => `${name} (${count}x)`)
+        .join(", ")
+
+      const lines = [
+        "## Session Summary",
+        "",
+        `**Duration:** ${duration}`,
+        `**Total tool calls:** ${totalToolCalls}`,
+        `**Top tools:** ${topTools || "none"}`,
+        `**Files changed:** ${files}`,
+        `**Highlights:** ${highlights}`,
+        "",
+        "Record session summary to memory? Call memory_store_fact with key 'session.summary' to persist.",
+      ]
+
+      const dir = join(homedir(), ".arcana", "reflections")
+      mkdirSync(dir, { recursive: true })
+      const id = `summary-${Date.now()}`
+      writeFileSync(join(dir, `${id}.md`), lines.join("\n"), "utf8")
+
+      return lines.join("\n")
     },
   )
 
