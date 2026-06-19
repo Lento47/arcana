@@ -235,10 +235,12 @@ for (const item of targets) {
 	    const arcanaKey = key.replace("@arcana/opencode", "arcana")
 	    if (key.includes("linux")) {
 	      await $`tar -czf ../../../${arcanaKey}.tar.gz *`.cwd(`dist/${key}/bin`)
-	      assets.push(`./dist/${arcanaKey}.tar.gz`)
+	      await $`shasum -a 256 ../../${arcanaKey}.tar.gz | cut -d' ' -f1 > ../../${arcanaKey}.tar.gz.sha256`.cwd(`dist/${key}`)
+	      assets.push(`./dist/${arcanaKey}.tar.gz`, `./dist/${arcanaKey}.tar.gz.sha256`)
 	    } else {
 	      await $`zip -r ../../../${arcanaKey}.zip *`.cwd(`dist/${key}/bin`)
-	      assets.push(`./dist/${arcanaKey}.zip`)
+	      await $`shasum -a 256 ../../${arcanaKey}.zip | cut -d' ' -f1 > ../../${arcanaKey}.zip.sha256`.cwd(`dist/${key}`)
+	      assets.push(`./dist/${arcanaKey}.zip`, `./dist/${arcanaKey}.zip.sha256`)
 	    }
 	  }
 	  await $`gh release upload ${Script.version} ${assets} --clobber --repo ${process.env.GH_REPO}`
