@@ -1,0 +1,19 @@
+{
+  "name": "arcana-ai",
+  "version": "0.1.2",
+  "description": "Self-improving AI agent CLI — opencode TUI + skills. Installs the arcana binary.",
+  "bin": {
+    "arcana": "./bin/arcana.js"
+  },
+  "files": [
+    "bin/arcana.js",
+    "README.md"
+  ],
+  "repository": "github:Lento47/arcana",
+  "homepage": "https://github.com/Lento47/arcana",
+  "keywords": ["ai", "agent", "cli", "tui", "opencode", "arcana", "llm", "coding-assistant"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

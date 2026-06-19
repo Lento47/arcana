@@ -1,0 +1,60 @@
+{
+  "disk": {
+    "arcana_src_kb": 187843.0,
+    "skills_kb": 11806.0,
+    "opencode_src_kb": 2628609.0
+  },
+  "startup": {
+    "delta": {
+      "warm": 296.0,
+      "cold": 280.0
+    },
+    "opencode": {
+      "warm": [
+        1251,
+        1246,
+        1227
+      ],
+      "warmAvg": 1241.0,
+      "cold": [
+        1250,
+        1239,
+        1218
+      ],
+      "coldAvg": 1236.0
+    },
+    "arcana": {
+      "warm": [
+        1541,
+        1557,
+        1514
+      ],
+      "warmAvg": 1537.0,
+      "cold": [
+        1535,
+        1516,
+        1497
+      ],
+      "coldAvg": 1516.0
+    }
+  },
+  "meta": {
+    "timestamp": "2026-06-18_19-59-41",
+    "provider": "opencode",
+    "skipLLM": true,
+    "rounds": 3,
+    "skipBuild": true,
+    "repo": "L:\\PROJECTS\\arcana",
+    "model": "deepseek-v4-flash-free"
+  },
+  "skills": {
+    "arcana_categories": 28,
+    "opencode_modules": 3,
+    "arcana_packages": 18,
+    "arcana_skills": 174
+  },
+  "memory": {
+    "opencode": null,
+    "arcana": null
+  }
+}

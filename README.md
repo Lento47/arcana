@@ -14,12 +14,20 @@ arcana cron             # scheduled agent tasks
 ## Install
 
 ```sh
-git clone <repo-url> arcana && cd arcana
+# Quick: no install needed
+npx arcana-ai
+
+# Or global install
+npm install -g arcana-ai
+arcana
+
+# From source (dev)
+git clone https://github.com/Lento47/arcana && cd arcana
 bun install
 bun link                 # from packages/arcana/ — creates global `arcana` bin
 ```
 
-Requires **Bun** ≥1.3. [Get Bun](https://bun.sh).
+Zero dependencies — the binary bundles the Bun runtime. Just download and run.
 
 ## Quick start
 
@@ -144,6 +152,21 @@ bun packages/arcana/src/index.ts run "hello"
 ```
 
 Themes: alchemist, bloodmoon, cauldron, coven, crypt, demon, dragon, fae, golem, graveyard, hex, lich, necromancer, oracle, potion, rune, specter, vampire, werewolf, wraith + arcana (default).
+
+## Thanks
+
+Arcana builds on incredible open-source work:
+
+- **[OpenCode](https://github.com/anomalyco/opencode)** — the TUI engine (SolidJS + OpenTUI), provider system, tools, and CLI architecture. Arcana began as a fork and would not exist without it.
+- **[Hermes Agent](https://github.com/Lento47/hermes-agent)** — autonomous AI agent framework with sandboxing, memory, and multi-provider routing. Powers arcana's non-interactive agent mode.
+- **[models.dev](https://models.dev)** — community model catalog powering arcana's provider auto-discovery (200+ models across 33 providers).
+- **[Effect](https://effect.website)** — typed functional effect system for reliable concurrency, error handling, and dependency injection.
+- **[Bun](https://bun.sh)** — JavaScript runtime, bundler, and compiler. The zero-dependency standalone binary is produced by `Bun.build({ compile })`.
+- **[SolidJS](https://solidjs.com)** + **[OpenTUI](https://github.com/opentui/core)** — reactive UI framework + terminal rendering engine.
+- **[AI SDK](https://sdk.vercel.ai)** — unified LLM provider interface (OpenAI, Anthropic, Google, Bedrock, and 30+ more).
+- 174 skills from the open-source community across 28 categories.
+
+All arcana modifications are MIT-licensed and upstreamable.
 
 ## License
 
