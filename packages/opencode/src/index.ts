@@ -33,6 +33,7 @@ import { DoctorCommand } from "@arcana/arcana/cli/cmd/doctor"
 import { MemoryCommand } from "@arcana/arcana/cli/cmd/memory"
 import { HistoryCommand } from "@arcana/arcana/cli/cmd/history"
 import { LearnCommand } from "@arcana/arcana/cli/cmd/learn"
+import { LicenseCommand } from "./cli/cmd/license"
 import { CronCommand } from "@arcana/arcana/cli/cmd/cron"
 import { GatewayCommand } from "@arcana/arcana/cli/cmd/gateway"
 import { SkillsCommand } from "@arcana/arcana/cli/cmd/skills"
@@ -114,6 +115,7 @@ const cli = yargs(args)
   .command(MemoryCommand)
   .command(HistoryCommand)
   .command(LearnCommand)
+  .command(LicenseCommand)
   .command(CronCommand)
   .command(GatewayCommand)
   .command(SkillsCommand)

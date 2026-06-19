@@ -4,6 +4,11 @@ export class Gateway {
   private adapters: PlatformAdapter[] = []
 
   async start(config: GatewayConfig, handler: MessageHandler): Promise<void> {
+    const licenseTier = process.env.ARCANA_LICENSE_TIER ?? process.env.ARCANA_LICENSE_KEY ? "pro" : "free"
+    if (licenseTier === "free") {
+      console.warn("[gateway] Gateway requires a pro or enterprise license. Set ARCANA_LICENSE_KEY.")
+    }
+
     if (config.telegram) {
       const { TelegramAdapter } = await import("./platforms/telegram.js")
       const adapter = new TelegramAdapter(config.telegram)

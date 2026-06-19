@@ -47,12 +47,15 @@ export function resource(): { serviceName: string; serviceVersion: string; attri
   }
 }
 
+const isEnterprise = process.env.ARCANA_LICENSE_TIER === "enterprise"
+
 export function loggers() {
   if (!endpoint) return []
   return [OtlpLogger.make({ url: `${endpoint}/v1/logs`, resource: resource(), headers })]
 }
 
 export async function tracingLayer() {
+  if (isEnterprise && !process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return Layer.empty
   if (!endpoint) return Layer.empty
   const NodeSdk = await import("@effect/opentelemetry/NodeSdk")
   const OTLP = await import("@opentelemetry/exporter-trace-otlp-http")

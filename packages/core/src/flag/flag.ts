@@ -75,4 +75,7 @@ export const Flag = {
   get ARCANA_CLIENT() {
     return process.env["ARCANA_CLIENT"] ?? "cli"
   },
+  get ARCANA_LICENSE_KEY() {
+    return process.env["ARCANA_LICENSE_KEY"]
+  },
 }
