@@ -4,7 +4,7 @@
 # the arcana wrapper for CLI handling.
 param([string[]]$PassedArgs)
 
-$subcommands = @("run", "skills", "cron", "memory", "gateway", "completion")
+$subcommands = @("run", "skills", "cron", "memory", "gateway", "completion", "--version", "-v", "--help", "-h")
 $firstArg = if ($PassedArgs.Count -gt 0) { $PassedArgs[0] } else { "" }
 $isSubcommand = $subcommands -contains $firstArg
 

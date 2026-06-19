@@ -1834,7 +1834,7 @@ function GenericTool(props: ToolProps) {
     <Show
       when={props.output && ctx.showGenericToolOutput()}
       fallback={
-        <InlineTool icon="⚙" pending={Lexicon.pending.generic} complete={true} part={props.part}>
+        <InlineTool icon="⚙" pending={pickVerb(VerbPool.pending.generic, props.part.sessionID) + "…"} complete={true} part={props.part}>
           {props.tool} {input(props.input)}
         </InlineTool>
       }
@@ -2138,7 +2138,7 @@ function Shell(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="$" pending={Lexicon.pending.shell} complete={stringValue(props.input.command)} part={props.part}>
+        <InlineTool icon="$" pending={pickVerb(VerbPool.pending.shell, props.part.sessionID) + "…"} complete={stringValue(props.input.command)} part={props.part}>
           {stringValue(props.input.command)}
         </InlineTool>
       </Match>
@@ -2172,7 +2172,7 @@ function Write(props: ToolProps) {
       <Match when={true}>
         <InlineTool
           icon="←"
-          pending={Lexicon.pending.write}
+          pending={pickVerb(VerbPool.pending.write, props.part.sessionID) + "…"}
           complete={stringValue(props.input.filePath)}
           part={props.part}
         >
@@ -2186,7 +2186,7 @@ function Write(props: ToolProps) {
 function Glob(props: ToolProps) {
   const pathFormatter = usePathFormatter()
   return (
-    <InlineTool icon="✱" pending={Lexicon.pending.find} complete={stringValue(props.input.pattern)} part={props.part}>
+    <InlineTool icon="✱" pending={pickVerb(VerbPool.pending.search, props.part.sessionID) + "…"} complete={stringValue(props.input.pattern)} part={props.part}>
       Glob "{stringValue(props.input.pattern)}"{" "}
       <Show when={stringValue(props.input.path)}>in {pathFormatter.format(stringValue(props.input.path))} </Show>
       <Show when={numberValue(props.metadata.count)}>
@@ -2211,7 +2211,7 @@ function Read(props: ToolProps) {
     <>
       <InlineTool
         icon="→"
-        pending={Lexicon.pending.read}
+        pending={pickVerb(VerbPool.pending.read, props.part.sessionID) + "…"}
         complete={stringValue(props.input.filePath)}
         spinner={isRunning()}
         part={props.part}
@@ -2234,7 +2234,7 @@ function Read(props: ToolProps) {
 function Grep(props: ToolProps) {
   const pathFormatter = usePathFormatter()
   return (
-    <InlineTool icon="✱" pending={Lexicon.pending.search} complete={stringValue(props.input.pattern)} part={props.part}>
+    <InlineTool icon="✱" pending={pickVerb(VerbPool.pending.search, props.part.sessionID) + "…"} complete={stringValue(props.input.pattern)} part={props.part}>
       Grep "{stringValue(props.input.pattern)}"{" "}
       <Show when={stringValue(props.input.path)}>in {pathFormatter.format(stringValue(props.input.path))} </Show>
       <Show when={numberValue(props.metadata.matches)}>
@@ -2246,7 +2246,7 @@ function Grep(props: ToolProps) {
 
 function WebFetch(props: ToolProps) {
   return (
-    <InlineTool icon="%" pending={Lexicon.pending.fetch} complete={stringValue(props.input.url)} part={props.part}>
+    <InlineTool icon="%" pending={pickVerb(VerbPool.pending.fetch, props.part.sessionID) + "…"} complete={stringValue(props.input.url)} part={props.part}>
       WebFetch {stringValue(props.input.url)}
     </InlineTool>
   )
@@ -2254,7 +2254,7 @@ function WebFetch(props: ToolProps) {
 
 function WebSearch(props: ToolProps) {
   return (
-    <InlineTool icon="◈" pending={Lexicon.pending.websearch} complete={stringValue(props.input.query)} part={props.part}>
+    <InlineTool icon="◈" pending={pickVerb(VerbPool.pending.search, props.part.sessionID) + "…"} complete={stringValue(props.input.query)} part={props.part}>
       {webSearchProviderLabel(props.metadata.provider)} "{stringValue(props.input.query)}"{" "}
       <Show when={numberValue(props.metadata.numResults)}>({numberValue(props.metadata.numResults)} results)</Show>
     </InlineTool>
@@ -2344,7 +2344,7 @@ function Task(props: ToolProps) {
       color={retry() ? theme.error : undefined}
       spinner={isRunning()}
       complete={stringValue(props.input.description)}
-      pending={Lexicon.pending.task}
+      pending={pickVerb(VerbPool.pending.task, props.part.sessionID) + "…"}
       part={props.part}
       onClick={() => {
         if (sessionID()) {
@@ -2421,7 +2421,7 @@ function Edit(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="←" pending={Lexicon.pending.edit} complete={stringValue(props.input.filePath)} part={props.part}>
+        <InlineTool icon="←" pending={pickVerb(VerbPool.pending.edit, props.part.sessionID) + "…"} complete={stringValue(props.input.filePath)} part={props.part}>
           Edit {pathFormatter.format(stringValue(props.input.filePath))} {input({ replaceAll: props.input.replaceAll })}
         </InlineTool>
       </Match>
@@ -2497,7 +2497,7 @@ function ApplyPatch(props: ToolProps) {
         </For>
       </Match>
       <Match when={true}>
-        <InlineTool icon="%" pending={Lexicon.pending.patch} failure="Patch failed" complete={false} part={props.part}>
+        <InlineTool icon="%" pending={pickVerb(VerbPool.pending.edit, props.part.sessionID) + "…"} failure="Patch failed" complete={false} part={props.part}>
           Patch
         </InlineTool>
       </Match>
@@ -2519,7 +2519,7 @@ function TodoWrite(props: ToolProps) {
       <Match when={true}>
         <InlineTool
           icon="⚙"
-          pending={Lexicon.pending.todo}
+          pending={pickVerb(VerbPool.pending.todo, props.part.sessionID) + "…"}
           failure="Todo update failed"
           complete={false}
           part={props.part}
@@ -2559,7 +2559,7 @@ function Question(props: ToolProps) {
         </BlockTool>
       </Match>
       <Match when={true}>
-        <InlineTool icon="→" pending={Lexicon.pending.question} complete={count()} part={props.part}>
+        <InlineTool icon="→" pending={pickVerb(VerbPool.pending.question, props.part.sessionID) + "…"} complete={count()} part={props.part}>
           Asked {count()} question{count() !== 1 ? "s" : ""}
         </InlineTool>
       </Match>
@@ -2569,7 +2569,7 @@ function Question(props: ToolProps) {
 
 function Skill(props: ToolProps) {
   return (
-    <InlineTool icon="→" pending={Lexicon.pending.skill} complete={stringValue(props.input.name)} part={props.part}>
+    <InlineTool icon="→" pending={pickVerb(VerbPool.pending.skill, props.part.sessionID) + "…"} complete={stringValue(props.input.name)} part={props.part}>
       Skill "{stringValue(props.input.name)}"
     </InlineTool>
   )
