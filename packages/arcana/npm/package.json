@@ -1,6 +1,6 @@
 {
   "name": "arcana-ai",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Self-improving AI agent CLI — opencode TUI + skills. Installs the arcana binary.",
   "bin": {
     "arcana": "./bin/arcana.js"

@@ -32,11 +32,15 @@ const CACHE_DIR = process.env.ARCANA_CACHE || path.join(os.homedir(), ".arcana",
 const CACHED_BINARY = path.join(CACHE_DIR, entry.binary)
 
 async function downloadAndExtract() {
-  // Clean up any stale temp file from previous failed attempts
+  const ext = entry.asset.endsWith(".tar.gz") ? ".tar.gz" : ".zip"
+  const zipName = `arcana-${platform}${ext}`
+
+  // Clean up any stale temp files from previous failed attempts
+  try { unlinkSync(path.join(CACHE_DIR, zipName)) } catch {}
   try { unlinkSync(path.join(CACHE_DIR, entry.asset)) } catch {}
 
   const url = `https://github.com/${REPO}/releases/download/${VERSION}/${entry.asset}`
-  console.error(`arcana: downloading ${entry.asset}...`)
+  console.error(`arcana: downloading ${zipName}...`)
 
   mkdirSync(CACHE_DIR, { recursive: true })
 
@@ -46,10 +50,10 @@ async function downloadAndExtract() {
     process.exit(1)
   }
 
-  const tmp = path.join(CACHE_DIR, entry.asset)
+  const tmp = path.join(CACHE_DIR, zipName)
   const buf = Buffer.from(await res.arrayBuffer())
   writeFileSync(tmp, buf)
-  console.error(`arcana: ${(buf.length / 1e6).toFixed(1)}MB downloaded, extracting...`)
+  console.error(`arcana: ${(buf.length / 1e6).toFixed(1)}MB, extracting...`)
 
   try {
     if (entry.asset.endsWith(".tar.gz")) {
