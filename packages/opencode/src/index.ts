@@ -40,6 +40,7 @@ import { GatewayCommand } from "@arcana/arcana/cli/cmd/gateway"
 import { SkillsCommand } from "@arcana/arcana/cli/cmd/skills"
 import { ConfigCommand } from "@arcana/arcana/cli/cmd/config"
 import { ThemeCommand } from "@arcana/arcana/cli/cmd/theme"
+import { AuditCommand } from "./cli/cmd/audit"
 import { TeamCommand } from "./cli/cmd/team"
 
 const args = hideBin(process.argv)
@@ -124,6 +125,7 @@ const cli = yargs(args)
   .command(SkillsCommand)
   .command(ConfigCommand)
   .command(TeamCommand)
+  .command(AuditCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||

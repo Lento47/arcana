@@ -155,6 +155,65 @@ app
     return c.json({ facts })
   })
 
+const auditStore: Array<{
+  id: string
+  org_id?: string
+  actor: string
+  action: string
+  resource?: string
+  detail?: any
+  tool?: string
+  tool_args?: any
+  tool_result?: string
+  duration_ms?: number
+  tokens_used?: number
+  cost?: number
+  time_created: number
+}> = []
+
+app.post("/api/team/:orgId/audit/events", async (c) => {
+  try {
+    const orgId = c.req.param("orgId")
+    const body = await c.req.json() as { events: any[] }
+    if (!body.events?.length) return c.json({ error: "no_events" }, 400)
+    const now = Date.now()
+    for (const evt of body.events) {
+      auditStore.push({ ...evt, org_id: orgId, time_created: now })
+    }
+    const orgEvents = auditStore.filter((e) => e.org_id === orgId)
+    if (orgEvents.length > 10000) {
+      const excess = orgEvents.length - 10000
+      for (let i = 0; i < excess; i++) {
+        const idx = auditStore.indexOf(orgEvents[i]!)
+        if (idx >= 0) auditStore.splice(idx, 1)
+      }
+    }
+    return c.json({ accepted: body.events.length })
+  } catch (e) {
+    return c.json({ error: String(e) }, 500)
+  }
+})
+
+app.get("/api/team/:orgId/audit/events", async (c) => {
+  const orgId = c.req.param("orgId")
+  const limit = Math.min(Number(c.req.query("limit") ?? "100"), 1000)
+  const offset = Number(c.req.query("offset") ?? "0")
+  const action = c.req.query("action")
+  const actor = c.req.query("actor")
+
+  let events = auditStore.filter((e) => e.org_id === orgId)
+  if (action) events = events.filter((e) => e.action === action)
+  if (actor) events = events.filter((e) => e.actor === actor)
+  events.sort((a, b) => b.time_created - a.time_created)
+
+  return c.json({
+    events: events.slice(offset, offset + limit),
+    total: events.length,
+    limit,
+    offset,
+  })
+})
+
 export function GET(event: APIEvent) {
   return app.fetch(event.request)
 }
