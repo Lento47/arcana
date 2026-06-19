@@ -863,7 +863,7 @@ export function RunFooterView(props: RunFooterViewProps) {
 
                 <Show when={responsive().statusline.showModel && modelStatus()}>
                   {(info) => (
-                    <box paddingRight={1} backgroundColor="transparent" flexShrink={0}>
+                    <box paddingRight={1} backgroundColor="transparent" flexShrink={1}>
                       <text fg={theme().text} wrapMode="none">
                         {info().model}
                         <Show when={info().provider}>
@@ -883,7 +883,7 @@ export function RunFooterView(props: RunFooterViewProps) {
 
                 <For each={contextHints()}>
                   {(hint, index) => (
-                    <box paddingRight={1} backgroundColor="transparent" flexShrink={0} maxWidth={24}>
+                    <box paddingRight={1} backgroundColor="transparent" flexShrink={1} maxWidth={24}>
                       <text fg={theme().text} wrapMode="none" truncate>
                         <Show when={index() > 0 || ((hasActivityMeta() || hasModelStatus()) && index() === 0)}>
                           {sectionSeparator()}

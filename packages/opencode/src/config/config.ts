@@ -12,7 +12,7 @@ import { Auth } from "../auth"
 import { Env } from "../env"
 import { applyEdits, modify } from "jsonc-parser"
 import { InstallationLocal, InstallationVersion } from "@arcana/core/installation/version"
-import { existsSync } from "fs"
+
 import { Account } from "@/account/account"
 import { isRecord } from "@/util/record"
 import type { ConsoleState } from "@arcana/core/v1/config/console-state"
@@ -35,6 +35,35 @@ import { ConfigPlugin } from "./plugin"
 import { ConfigVariable } from "./variable"
 import { Npm } from "@arcana/core/npm"
 import { withTransientReadRetry } from "@/util/effect-http-client"
+
+const fileCache = new Map<string, { data: any; ts: number }>()
+const CACHE_TTL = 5000
+
+function cachedReadFileSync(path: string, encoding: BufferEncoding): string | null {
+  const now = Date.now()
+  const cached = fileCache.get(path)
+  if (cached && (now - cached.ts) < CACHE_TTL) {
+    return cached.data
+  }
+  try {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs")
+    const data = readFileSync(path, encoding)
+    fileCache.set(path, { data, ts: now })
+    return data
+  } catch { return null }
+}
+
+function cachedExistsSync(path: string): boolean {
+  const now = Date.now()
+  const cached = fileCache.get(path)
+  if (cached) return true
+  try {
+    const { existsSync } = require("node:fs") as typeof import("node:fs")
+    const exists = existsSync(path)
+    if (exists) fileCache.set(path, { data: true, ts: now })
+    return exists
+  } catch { return false }
+}
 
 // Custom merge function that concatenates array fields instead of replacing them
 // Keep remeda's deep conditional merge type out of hot config-loading paths; TS profiling showed it dominates here.
@@ -141,7 +170,7 @@ function globalConfigFile() {
     path.join(Global.Path.config, file),
   )
   for (const file of candidates) {
-    if (existsSync(file)) return file
+    if (cachedExistsSync(file)) return file
   }
   return candidates[0]
 }
@@ -249,7 +278,7 @@ export const layer = Layer.effect(
       // explicitly routes config through env-provided paths or content.
       if (!Flag.ARCANA_CONFIG && !Flag.ARCANA_CONFIG_DIR && !Flag.ARCANA_CONFIG_CONTENT) {
         const file = globalConfigFile()
-        if (!existsSync(file)) {
+        if (!cachedExistsSync(file)) {
           yield* fs
             .writeWithDirs(file, JSON.stringify({ $schema: "https://arcana.ai/config.json" }, null, 2))
             .pipe(Effect.catch(() => Effect.void))
@@ -262,7 +291,7 @@ export const layer = Layer.effect(
       result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "arcana.jsonc"), env))
 
       const legacy = path.join(Global.Path.config, "config")
-      if (existsSync(legacy)) {
+      if (cachedExistsSync(legacy)) {
         yield* Effect.promise(() =>
           import(pathToFileURL(legacy).href, { with: { type: "toml" } })
             .then(async (mod) => {
@@ -287,7 +316,7 @@ export const layer = Layer.effect(
         ),
         Effect.orElseSucceed((): Info => ({})),
       ),
-      Duration.infinity,
+      Duration.seconds(30),
     )
 
     const getGlobal = Effect.fn("Config.getGlobal")(function* () {
@@ -518,7 +547,7 @@ export const layer = Layer.effect(
         }
 
         const managedDir = ConfigManaged.managedConfigDir()
-        if (existsSync(managedDir)) {
+        if (cachedExistsSync(managedDir)) {
           for (const file of ["opencode.json", "opencode.jsonc", "arcana.json", "arcana.jsonc"]) {
             const source = path.join(managedDir, file)
             yield* merge(source, yield* loadFile(source), "global")

@@ -109,6 +109,10 @@ export const Provider = Schema.Struct({
 
 export type Provider = Schema.Schema.Type<typeof Provider>
 
+let cachedModelsDev: Record<string, Provider> | null = null
+let cachedModelsDevTime = 0
+const CACHE_TTL = 30000
+
 export const Event = {
   Refreshed: EventV2.define({
     type: "models-dev.refreshed",
@@ -215,7 +219,20 @@ export const layer = Layer.effect(
 
     const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
 
-    const get = (): Effect.Effect<Record<string, Provider>> => cachedGet
+    const get = (): Effect.Effect<Record<string, Provider>> => {
+      const now = Date.now()
+      if (cachedModelsDev && (now - cachedModelsDevTime) < CACHE_TTL) {
+        return Effect.succeed(cachedModelsDev)
+      }
+      return cachedGet.pipe(
+        Effect.tap((result) =>
+          Effect.sync(() => {
+            cachedModelsDev = result
+            cachedModelsDevTime = Date.now()
+          })
+        ),
+      )
+    }
 
     const refresh = Effect.fn("ModelsDev.refresh")(function* (force = false) {
       if (!force && (yield* fresh())) return
@@ -226,6 +243,7 @@ export const layer = Layer.effect(
           // our outer check and lock acquisition.
           if (!force && (yield* fresh())) return
           yield* fetchAndWrite()
+          cachedModelsDev = null
           yield* invalidate
           yield* events.publish(Event.Refreshed, {})
         }),
