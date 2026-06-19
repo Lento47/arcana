@@ -35,5 +35,8 @@ case "${1:-}" in
     ;;
 esac
 
-# TUI mode — spawn opencode directly, zero arcana overhead
-exec bun run --conditions=browser "$REPO_ROOT/packages/opencode/src/index.ts" "$@"
+# TUI mode — spawn the engine directly, zero arcana overhead.
+# --cwd so bun resolves JSX transpile config (jsxImportSource: @opentui/solid)
+# from the engine package regardless of launch dir; exported PWD above keeps the
+# app pointed at the user's project (it reads PWD, not bun's cwd).
+exec bun run --cwd "$REPO_ROOT/packages/engine" --conditions=browser "$REPO_ROOT/packages/engine/src/index.ts" "$@"

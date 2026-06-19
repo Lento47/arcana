@@ -44,3 +44,5 @@ Thumbs.db
 # Temporary / Research
 temporary-*.md
 research/
+
+.wrangler/

@@ -17,7 +17,7 @@ export interface Interface {
   readonly grep: (input: FileSystem.GrepInput) => Effect.Effect<readonly FileSystem.Match[]>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/FileSystem/Search") {}
+export class Service extends Context.Service<Service, Interface>()("@arcana/v2/FileSystem/Search") {}
 
 export const ripgrepLayer = Layer.effect(
   Service,

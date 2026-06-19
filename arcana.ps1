@@ -12,7 +12,7 @@ if (-not $isSubcommand) {
     # TUI mode — spawn opencode directly, skipping the arcana wrapper bun JIT.
     # Bridge config is generated lazily by opencode if ARCANA_CONFIG is set.
     $repoRoot = $PSScriptRoot
-    $opencodeDir = Join-Path $repoRoot "packages\opencode"
+    $engineDir = Join-Path $repoRoot "packages\engine"
     $arcanaHome = if ($env:ARCANA_HOME) { $env:ARCANA_HOME } else { Join-Path $HOME ".arcana" }
     $configPath = Join-Path $arcanaHome "cache\opencode-config.json"
 
@@ -52,9 +52,16 @@ if (-not $isSubcommand) {
     }
 
     $env:ARCANA_CONFIG = $configPath
+    # Preserve the user's real project dir for the app (it reads $env:PWD, not bun's
+    # cwd, to resolve the project root — see resolveThreadDirectory in cli/cmd/tui.ts).
     $env:PWD = (Get-Location).Path
 
-    bun run --conditions=browser (Join-Path $opencodeDir "src\index.ts") @PassedArgs
+    # Run bun with cwd=packages/engine so it resolves JSX transpile config from that
+    # package's tsconfig ("jsxImportSource": "@opentui/solid") regardless of where the
+    # user launched arcana from. Without this, bun walks up from an unrelated CWD, finds
+    # a tsconfig lacking jsxImportSource, defaults to react, and crashes on the missing
+    # 'react/jsx-dev-runtime'. $env:PWD above keeps the app pointed at the user's dir.
+    bun run --cwd $engineDir --conditions=browser (Join-Path $engineDir "src\index.ts") @PassedArgs
     exit $LASTEXITCODE
 }
 

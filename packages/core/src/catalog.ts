@@ -79,7 +79,7 @@ export interface Interface {
   }
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/Catalog") {}
+export class Service extends Context.Service<Service, Interface>()("@arcana/v2/Catalog") {}
 
 enableMapSet()
 

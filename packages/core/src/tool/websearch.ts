@@ -63,7 +63,7 @@ export interface Config {
   readonly parallelApiKey?: string
 }
 
-export class ConfigService extends Context.Service<ConfigService, Config>()("@opencode/v2/WebSearchConfig") {}
+export class ConfigService extends Context.Service<ConfigService, Config>()("@arcana/v2/WebSearchConfig") {}
 
 /** Isolates the retained product environment contract from the generic tool implementation. */
 export const defaultConfigLayer = Layer.sync(ConfigService, () =>

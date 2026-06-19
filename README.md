@@ -95,7 +95,7 @@ arcana cron remove <job-id>
 |---------|-------------|
 | `@arcana/arcana` | CLI entry + agent runner |
 | `@arcana/core` | Effect-based agent runtime, tools, session, database |
-| `@arcana/opencode` | Forked OpenCode TUI (SolidJS + OpenTUI) |
+| `@arcana/engine` | Agent/session/tool/provider engine + TUI host (SolidJS + OpenTUI) |
 | `@arcana/tui` | Terminal UI components, branding, theme |
 | `@arcana/ui` | Web UI component library (SolidJS) |
 | `@arcana/llm` | Multi-provider LLM routing (OpenAI, Anthropic, Gemini, Bedrock, etc.) |
@@ -226,7 +226,7 @@ bun run test
 ```sh
 bun run dev:tui          # from repo root
 # or
-bun run --conditions=browser packages/opencode/src/index.ts
+bun run --cwd packages/engine --conditions=browser packages/engine/src/index.ts
 ```
 
 ### Arcana CLI (standalone, no TUI)

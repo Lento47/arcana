@@ -40,7 +40,7 @@ jobs:
           OPENCODE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0' }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: "Lento47/arcana"
-        run: bun run --cwd packages/opencode script/build.ts --skip-embed-web-ui
+        run: bun run --cwd packages/engine script/build.ts --skip-embed-web-ui
 
       - name: Publish to npmjs.org
         if: startsWith(github.ref, 'refs/tags/v')

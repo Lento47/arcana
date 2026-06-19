@@ -27,7 +27,7 @@ export function response<S extends Schema.Top>(data: S) {
   return Schema.Struct({ location: Info, data })
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/Location") {}
+export class Service extends Context.Service<Service, Interface>()("@arcana/Location") {}
 
 export const layer = (ref: Ref) =>
   Layer.effect(

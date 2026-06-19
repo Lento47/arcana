@@ -185,6 +185,7 @@ export default {
         CREATE TABLE \`session\` (
           \`id\` text PRIMARY KEY,
           \`project_id\` text NOT NULL,
+          \`org_id\` text,
           \`workspace_id\` text,
           \`parent_id\` text,
           \`slug\` text NOT NULL,
@@ -271,6 +272,7 @@ export default {
       yield* tx.run(`CREATE INDEX \`session_project_idx\` ON \`session\` (\`project_id\`);`)
       yield* tx.run(`CREATE INDEX \`session_workspace_idx\` ON \`session\` (\`workspace_id\`);`)
       yield* tx.run(`CREATE INDEX \`session_parent_idx\` ON \`session\` (\`parent_id\`);`)
+      yield* tx.run(`CREATE INDEX \`session_org_idx\` ON \`session\` (\`org_id\`);`)
       yield* tx.run(`CREATE INDEX \`todo_session_idx\` ON \`todo\` (\`session_id\`);`)
     })
   },
