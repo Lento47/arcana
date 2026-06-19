@@ -6,6 +6,7 @@ import Notifications from "./system/notifications"
 import PluginManager from "./system/plugins"
 import StatusBar from "./system/statusbar"
 import WhichKey from "./system/which-key"
+import ArtifactsSidebar from "./sidebar/artifacts"
 
 export type BuiltinTuiPlugin = Omit<TuiPluginModule, "id"> & {
   id: string
@@ -22,5 +23,6 @@ export function createBuiltinPlugins(options: { experimentalEventSystem: boolean
     StatusBar,
     WhichKey,
     DiffViewer,
+    ArtifactsSidebar,
   ]
 }
