@@ -29,6 +29,7 @@ import { DbCommand } from "./cli/cmd/db"
 import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { PluginStoreCommand } from "./cli/cmd/plugin-store"
+import { ProxyCommand } from "./cli/cmd/proxy"
 import { Heap } from "./cli/heap"
 import { DoctorCommand } from "@arcana/arcana/cli/cmd/doctor"
 import { MemoryCommand } from "@arcana/arcana/cli/cmd/memory"
@@ -122,6 +123,7 @@ const cli = yargs(args)
   .command(LicenseCommand)
   .command(CronCommand)
   .command(GatewayCommand)
+  .command(ProxyCommand)
   .command(SkillsCommand)
   .command(ConfigCommand)
   .command(TeamCommand)
