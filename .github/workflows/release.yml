@@ -85,12 +85,4 @@ jobs:
             git tag -d "$TAG"
             exit 1
           }
-          echo "Tagged $TAG"
-
-      - name: Publish to npmjs.org
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          cd packages/arcana/npm
-          echo "//registry.npmjs.org/:_authToken=$NODE_AUTH_TOKEN" >> .npmrc
-          npm publish --access public
+          echo "Tagged $TAG — build.yml will publish to npm after binaries are ready"
