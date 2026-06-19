@@ -127,7 +127,7 @@ async function main() {
   process.exit(child.status ?? 0)
 }
 
-main().catch((err) => {
+main().then((code) => process.exit(code), (err) => {
   console.error(`arcana: ${err.message}`)
   process.exit(1)
 })
