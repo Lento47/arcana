@@ -7,7 +7,7 @@ import { SessionManager } from "../../agent/session.js"
 import { registerBuiltinTools } from "../../agent/tools.js"
 import { registerMcpTools } from "../../agent/mcp.js"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
-import { loadSkills, type SkillInfo } from "../../skills/loader.js"
+import { loadSkills, loadSkillBody, type SkillCatalog } from "../../skills/loader.js"
 import { EXTRACTION_PROMPT, extractAndMerge, type LearningExtraction } from "../../learning.js"
 import { maybeEvolve, incrementSessionCount, getActivePrompt } from "../../agent/evolve.js"
 import { detectInjection, auditLog } from "../../agent/guard.js"
@@ -275,7 +275,7 @@ export const RunCommand: CommandModule = {
       }
 
       if (input === "/skills") {
-        const grouped = new Map<string, SkillInfo[]>()
+        const grouped = new Map<string, SkillCatalog[]>()
         for (const s of skills) {
           const cat = s.category || "misc"
           if (!grouped.has(cat)) grouped.set(cat, [])
@@ -293,7 +293,8 @@ export const RunCommand: CommandModule = {
         const id = input.slice(7).trim()
         const skill = skills.find((s) => s.id === id || s.name.toLowerCase().includes(id.toLowerCase()))
         if (!skill) { process.stdout.write(c.red(`Skill not found: ${id}\n`)); askLine(); continue }
-        const injection = `\n\n<arcana-skill name="${skill.name}">\n${skill.body}\n</arcana-skill>`
+        const body = await loadSkillBody(skill.id, config.skillsDirs)
+        const injection = `\n\n<arcana-skill name="${skill.name}">\n${body}\n</arcana-skill>`
         const msgs = sessionMgr?.getHistory()
         if (msgs?.[0]?.role === "system") (msgs[0] as { role: string; content: string }).content += injection
         else systemPrompt += injection
