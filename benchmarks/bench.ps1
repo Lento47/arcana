@@ -19,9 +19,9 @@ $pwsh = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
 if (-not $pwsh) { $pwsh = "powershell" }
 
 $arcanaLauncher = Join-Path $repo "arcana.ps1"
-$opencodeSrc    = Join-Path $repo "packages\opencode\src\index.ts"
+$opencodeSrc    = Join-Path $repo "packages\engine\src\index.ts"
 $arcanaSrc      = Join-Path $repo "packages\arcana\src\index.ts"
-$opencodeDir    = Join-Path $repo "packages\opencode"
+$opencodeDir    = Join-Path $repo "packages\engine"
 $arcanaDir      = Join-Path $repo "packages\arcana"
 $llmScript      = Join-Path $repo "benchmarks\llm-call.ts"
 
@@ -208,7 +208,7 @@ $arcanaCategories = Get-ChildItem -Path $arcanaSkillsDir -Directory -ErrorAction
 $arcanaCategoryCount = $arcanaCategories.Count
 
 # opencode built-in skills (from source)
-$ocSkillDir = Join-Path $repo "packages\opencode\src\skill"
+$ocSkillDir = Join-Path $repo "packages\engine\src\skill"
 $ocSkillFiles = Get-ChildItem -Path $ocSkillDir -Recurse -Filter "*.ts" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch '\.test\.' }
 
 # Count arcana @arcana/* packages

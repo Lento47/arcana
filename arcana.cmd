@@ -28,7 +28,7 @@ if "%_arg1%"=="--help" goto :subcommand
 if "%_arg1%"=="-h" goto :subcommand
 
 REM TUI mode — spawn opencode directly
-bun run --conditions=browser "%~dp0packages\opencode\src\index.ts" %*
+bun run --conditions=browser "%~dp0packages\engine\src\index.ts" %*
 goto :end
 
 :subcommand

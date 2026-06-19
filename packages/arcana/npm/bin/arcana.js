@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
 // Copyright (c) 2026 arcana contributors
-// arcana launcher — downloads the binary from GitHub releases if needed, then runs it.
+// arcana launcher — downloads the binary from R2 if needed, then runs it.
 // Entrypoint for: npx arcana-ai
 const { spawnSync, execSync } = require("child_process")
 const { existsSync, mkdirSync, chmodSync, writeFileSync, unlinkSync } = require("fs")
@@ -9,8 +9,8 @@ const path = require("path")
 const crypto = require("crypto")
 const os = require("os")
 
-const REPO = "Lento47/arcana"
-const VERSION = "v0.2.24"
+const RELEASES_URL = "https://releases.otnelhq.com/arcana"
+const VERSION = "v0.2.25"
 
 const PLATFORM_MAP = {
   "win32-x64":    { asset: "arcana-windows-x64.zip",    binary: "arcana.exe" },
@@ -26,7 +26,7 @@ const entry = PLATFORM_MAP[platform]
 
 if (!entry) {
   console.error(`arcana: unsupported platform ${platform}`)
-  console.error(`arcana: try installing from source: https://github.com/Lento47/arcana`)
+  console.error(`arcana: supported platforms: ${Object.keys(PLATFORM_MAP).join(", ")}`)
   process.exit(1)
 }
 
@@ -38,7 +38,7 @@ async function downloadAndExtract() {
   // Clean up any stale temp file from previous failed attempts
   try { unlinkSync(path.join(CACHE_DIR, entry.asset)) } catch {}
 
-  const url = `https://github.com/${REPO}/releases/download/${VERSION}/${entry.asset}`
+  const url = `${RELEASES_URL}/${VERSION}/${entry.asset}`
   console.error(`arcana: ${VERSION} — downloading ${entry.asset}...`)
 
   mkdirSync(CACHE_DIR, { recursive: true })

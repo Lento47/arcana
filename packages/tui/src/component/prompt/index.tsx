@@ -1333,6 +1333,14 @@ export function Prompt(props: PromptProps) {
                 auto()?.onInput(value)
                 syncExtmarksWithPromptParts()
                 setCursorVersion((value) => value + 1)
+                // Force scroll-to-cursor after newline insert
+                // Workaround for opentui textarea not auto-scrolling on Shift+Enter
+                const co = input.cursorOffset
+                if (co > 0) {
+                  // Toggle offset briefly to trigger re-render of scroll position
+                  input.cursorOffset = co - 1
+                  input.cursorOffset = co
+                }
               }}
               onCursorChange={() => setCursorVersion((value) => value + 1)}
               onKeyDown={(e: { preventDefault(): void }) => {

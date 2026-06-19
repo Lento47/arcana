@@ -52,7 +52,7 @@ export class LocationMiddleware extends HttpApiMiddleware.Service<
   {
     provides: LocationServices
   }
->()("@opencode/HttpApiLocation") {}
+>()("@arcana/HttpApiLocation") {}
 
 export const LocationGroup = HttpApiGroup.make("server.location")
   .add(

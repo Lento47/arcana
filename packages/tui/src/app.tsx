@@ -403,6 +403,26 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       console.error("Failed to load TUI plugins", error)
     })
     .finally(() => {
+      if (process.env["ARCANA_PROFILE_STARTUP"]) {
+        performance.mark("tui-ready")
+        // Flush profile marks after TUI is interactive
+        setTimeout(() => {
+          const entries = performance.getEntriesByType("measure")
+          if (entries.length) {
+            process.stderr.write("[profile] Startup phase timings:\n")
+            for (const e of entries) {
+              process.stderr.write(`[profile] ${e.name.padEnd(80)} ${Math.round(e.duration)}ms\n`)
+            }
+          }
+          const allMarks = performance.getEntriesByType("mark")
+          if (allMarks.length >= 2) {
+            const total = Math.round(allMarks[allMarks.length - 1].startTime - allMarks[0].startTime)
+            process.stderr.write(`[profile] TOTAL${"".padEnd(83)}${total}ms\n`)
+          }
+          performance.clearMarks()
+          performance.clearMeasures()
+        }, 0)
+      }
       setReady(true)
     })
 

@@ -32,6 +32,7 @@ export const Path = paths
 
 Flock.setGlobal({ state })
 
+if (process.env["ARCANA_PROFILE_STARTUP"]) performance.mark("global-mkdir-start")
 await Promise.all([
   fs.mkdir(Path.data, { recursive: true }),
   fs.mkdir(Path.config, { recursive: true }),
@@ -41,8 +42,9 @@ await Promise.all([
   fs.mkdir(Path.bin, { recursive: true }),
   fs.mkdir(Path.repos, { recursive: true }),
 ])
+if (process.env["ARCANA_PROFILE_STARTUP"]) { performance.mark("global-mkdir-end"); try { performance.measure("global-mkdir", "global-mkdir-start", "global-mkdir-end") } catch {} }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/Global") {}
+export class Service extends Context.Service<Service, Interface>()("@arcana/Global") {}
 
 export interface Interface {
   readonly home: string

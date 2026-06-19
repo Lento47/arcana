@@ -65,7 +65,7 @@ export interface Interface {
   readonly grep: (input: GrepInput) => Effect.Effect<readonly Match[]>
 }
 
-export class Service extends Context.Service<Service, Interface>()("@opencode/v2/FileSystem") {}
+export class Service extends Context.Service<Service, Interface>()("@arcana/v2/FileSystem") {}
 
 const baseLayer = Layer.effect(
   Service,
