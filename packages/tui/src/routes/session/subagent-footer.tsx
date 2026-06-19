@@ -118,7 +118,7 @@ export function SubagentFooter() {
             <For each={tailMessages()}>
               {(m) => (
                 <text fg={theme.textMuted} wrapMode="none" truncate>
-                  {m.role === "tool" ? `${Glyph.chevron} ${(m as any).toolName ?? "tool"}` : `${m.content ?? ""}`}
+                  {(m as any).role === "tool" ? `${Glyph.chevron} ${(m as any).toolName ?? "tool"}` : `${(m as any).content ?? ""}`}
                 </text>
               )}
             </For>
