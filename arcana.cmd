@@ -22,6 +22,10 @@ if "%_arg1%"=="cron" goto :subcommand
 if "%_arg1%"=="memory" goto :subcommand
 if "%_arg1%"=="gateway" goto :subcommand
 if "%_arg1%"=="completion" goto :subcommand
+if "%_arg1%"=="--version" goto :subcommand
+if "%_arg1%"=="-v" goto :subcommand
+if "%_arg1%"=="--help" goto :subcommand
+if "%_arg1%"=="-h" goto :subcommand
 
 REM TUI mode — spawn opencode directly
 bun run --conditions=browser "%~dp0packages\opencode\src\index.ts" %*

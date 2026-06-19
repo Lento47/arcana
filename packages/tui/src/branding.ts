@@ -169,6 +169,19 @@ export const VerbPool = {
     "Pierced", "Fathomed", "Woven",
     "Dissected", "Contemplated", "Unspooled", "Parsed",
   ] as const,
+  pending: {
+    search: ["Divining", "Scrying", "Decrypting", "Decoding", "Interpreting", "Translating", "Parsing"] as const,
+    read: ["Scrying", "Reading", "Deciphering", "Decoding", "Unraveling"] as const,
+    write: ["Inscribing", "Writing", "Etching", "Engraving", "Glyphing"] as const,
+    edit: ["Transmuting", "Editing", "Altering", "Reforging", "Morphing"] as const,
+    fetch: ["Summoning", "Fetching", "Calling", "Drawing", "Pulling"] as const,
+    shell: ["Invoking", "Executing", "Running", "Calling", "Triggering"] as const,
+    task: ["Conjuring", "Tasking", "Assembling", "Orchestrating", "Weaving"] as const,
+    skill: ["Channeling", "Focusing", "Attuning", "Syncing", "Harmonizing"] as const,
+    generic: ["Invoking", "Running", "Processing", "Working", "Operating"] as const,
+    todo: ["Inscribing", "Tracking", "Recording", "Logging", "Listing"] as const,
+    question: ["Divining", "Asking", "Inquiring", "Querying", "Probing"] as const,
+  },
 }
 
 /** Glyph pool for error "unencrypt" glitch effect — heavier, chaotic blocks. */
