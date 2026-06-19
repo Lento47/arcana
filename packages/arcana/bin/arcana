@@ -21,7 +21,7 @@ if [ ! -f "$CONFIG" ]; then
       SKILLS_DIRS="\"$ARCANA_HOME/skills\""
     fi
   fi
-  printf '{"$schema":"https://opencode.ai/config.json","skills":{"paths":[%s]}}\n' "$SKILLS_DIRS" > "$CONFIG"
+  printf '{"$schema":"https://raw.githubusercontent.com/Lento47/arcana/master/schema/config.json","skills":{"paths":[%s]}}\n' "$SKILLS_DIRS" > "$CONFIG"
 fi
 
 export ARCANA_CONFIG="$CONFIG"

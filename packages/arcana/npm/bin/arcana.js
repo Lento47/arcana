@@ -6,6 +6,7 @@
 const { spawnSync, execSync } = require("child_process")
 const { existsSync, mkdirSync, chmodSync, writeFileSync, unlinkSync } = require("fs")
 const path = require("path")
+const crypto = require("crypto")
 const os = require("os")
 
 const REPO = "Lento47/arcana"
@@ -53,7 +54,34 @@ async function downloadAndExtract() {
   const tmp = path.join(CACHE_DIR, zipName)
   const buf = Buffer.from(await res.arrayBuffer())
   writeFileSync(tmp, buf)
-  console.error(`arcana: ${(buf.length / 1e6).toFixed(1)}MB, extracting...`)
+  console.error(`arcana: ${(buf.length / 1e6).toFixed(1)}MB, verifying checksum...`)
+
+  // Verify binary checksum against GitHub release .sha256 artifact
+  const shaUrl = url + ".sha256"
+  try {
+    const shaRes = await fetch(shaUrl)
+    if (!shaRes.ok) {
+      console.error(`arcana: checksum file not found (${shaUrl}), skipping verification`)
+    } else {
+      const shaText = (await shaRes.text()).trim()
+      const expectedHash = shaText.split(/\s+/)[0]
+      const actualHash = crypto.createHash("sha256").update(buf).digest("hex")
+      if (expectedHash !== actualHash) {
+        console.error(`arcana: CHECKSUM MISMATCH for ${zipName}`)
+        console.error(`  expected: ${expectedHash}`)
+        console.error(`  actual:   ${actualHash}`)
+        console.error(`arcana: binary may be corrupted or tampered — deleting`)
+        try { unlinkSync(tmp) } catch {}
+        process.exit(1)
+      }
+      console.error(`arcana: checksum OK (SHA256: ${actualHash.slice(0, 16)}...)`)
+    }
+  } catch (e) {
+    console.error(`arcana: checksum verification failed: ${e.message}`)
+    process.exit(1)
+  }
+
+  console.error(`arcana: extracting...`)
 
   try {
     if (entry.asset.endsWith(".tar.gz")) {

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://opencode.ai/config.json",
+  "$schema": "https://raw.githubusercontent.com/Lento47/arcana/master/schema/config.json",
   "provider": {
     "nous-portal": {
       "name": "Nous Portal",

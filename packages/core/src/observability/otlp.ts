@@ -40,8 +40,8 @@ export function resource(): { serviceName: string; serviceVersion: string; attri
     attributes: {
       ...resourceAttributes(),
       "deployment.environment.name": InstallationChannel,
-      "opencode.client": Flag.ARCANA_CLIENT,
-      "opencode.run": runID,
+      "arcana.client": Flag.ARCANA_CLIENT,
+      "arcana.run": runID,
       "service.instance.id": runID,
     },
   }

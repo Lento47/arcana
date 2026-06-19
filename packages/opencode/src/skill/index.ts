@@ -25,15 +25,15 @@ const EXTERNAL_SKILL_PATTERN = "skills/**/SKILL.md"
 const ARCANA_SKILL_PATTERN = "{skill,skills}/**/SKILL.md"
 const SKILL_PATTERN = "**/SKILL.md"
 
-// Built-in skill that ships with opencode. The model's intuition for what an
-// opencode.json should look like is often wrong, and opencode hard-fails on
+// Built-in skill that ships with arcana. The model's intuition for what an
+// arcana.json should look like is often wrong, and arcana hard-fails on
 // invalid config, so users hit cryptic startup errors. Loading this skill
-// when the model is asked to touch opencode's own config files gives it the
+// when the model is asked to touch arcana's own config files gives it the
 // actual schemas instead of guesses.
-const CUSTOMIZE_ARCANA_SKILL_NAME = "customize-opencode"
+const CUSTOMIZE_ARCANA_SKILL_NAME = "customize-arcana"
 const CUSTOMIZE_ARCANA_SKILL_DESCRIPTION =
-  "Use ONLY when the user is editing or creating opencode's own configuration: opencode.json, opencode.jsonc, files under .opencode/, or files under ~/.config/opencode/. Also use when creating or fixing opencode agents, subagents, skills, plugins, MCP servers, or permission rules. Do not use for the user's own application code, or for any project that is not configuring opencode itself."
-const CUSTOMIZE_ARCANA_SKILL_BODY = SkillPlugin.CustomizeOpencodeContent
+  "Use ONLY when the user is editing or creating arcana's own configuration: arcana.json, arcana.jsonc, files under .arcana/, or files under ~/.config/arcana/. Also use when creating or fixing arcana agents, subagents, skills, plugins, MCP servers, or permission rules. Do not use for the user's own application code, or for any project that is not configuring arcana itself."
+const CUSTOMIZE_ARCANA_SKILL_BODY = SkillPlugin.CustomizeArcanaContent
 
 export const Info = Schema.Struct({
   name: Schema.String,
