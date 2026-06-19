@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+// SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
+// Copyright (c) 2026 arcana contributors
 // Bare `arcana` → fast-path: spawn opencode TUI directly. Imports yargs + commands
 // ONLY for subcommands, saving ~9s of bun JIT on the 90% TUI case.
 import path from "node:path"

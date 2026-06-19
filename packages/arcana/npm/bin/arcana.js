@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
+// Copyright (c) 2026 arcana contributors
 // arcana launcher — downloads the binary from GitHub releases if needed, then runs it.
 // Entrypoint for: npx arcana-ai
 const { spawnSync, execSync } = require("child_process")
