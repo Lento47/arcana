@@ -33,7 +33,7 @@ jobs:
       - name: Build arcana binaries
         env:
           OPENCODE_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
-          OPENCODE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          OPENCODE_VERSION: "0.1.2"
           GH_TOKEN: ${{ github.token }}
           GH_REPO: "Lento47/arcana"
         run: bun run --cwd packages/opencode script/build.ts --skip-embed-web-ui
