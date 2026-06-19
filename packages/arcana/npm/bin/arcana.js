@@ -2,21 +2,20 @@
 // arcana launcher — downloads the binary from GitHub releases if needed, then runs it.
 // Entrypoint for: npx arcana-ai
 const { spawnSync, execSync } = require("child_process")
-const { existsSync, mkdirSync, chmodSync, writeFileSync, unlinkSync, renameSync } = require("fs")
+const { existsSync, mkdirSync, chmodSync, writeFileSync, unlinkSync } = require("fs")
 const path = require("path")
 const os = require("os")
 
-const REPO = "anomalyco/opencode"
-const VERSION = "v1.17.8" // TODO: fetch latest via GitHub API
+const REPO = "Lento47/arcana"
+const VERSION = "v0.1.0" // TODO: fetch latest via GitHub API
 
-// Asset name = what GitHub release calls it. Binary name = what we rename it to.
 const PLATFORM_MAP = {
-  "win32-x64":    { asset: "opencode-windows-x64.zip",    binary: "arcana.exe" },
-  "win32-arm64":  { asset: "opencode-windows-arm64.zip",  binary: "arcana.exe" },
-  "linux-x64":    { asset: "opencode-linux-x64.tar.gz",   binary: "arcana" },
-  "linux-arm64":  { asset: "opencode-linux-arm64.tar.gz", binary: "arcana" },
-  "darwin-x64":   { asset: "opencode-darwin-x64.zip",     binary: "arcana" },
-  "darwin-arm64": { asset: "opencode-darwin-arm64.zip",   binary: "arcana" },
+  "win32-x64":    { asset: "arcana-windows-x64.zip",    binary: "arcana.exe" },
+  "win32-arm64":  { asset: "arcana-windows-arm64.zip",  binary: "arcana.exe" },
+  "linux-x64":    { asset: "arcana-linux-x64.tar.gz",   binary: "arcana" },
+  "linux-arm64":  { asset: "arcana-linux-arm64.tar.gz", binary: "arcana" },
+  "darwin-x64":   { asset: "arcana-darwin-x64.zip",     binary: "arcana" },
+  "darwin-arm64": { asset: "arcana-darwin-arm64.zip",   binary: "arcana" },
 }
 
 const platform = `${os.platform()}-${os.arch()}`
@@ -35,9 +34,8 @@ async function downloadAndExtract() {
   const ext = entry.asset.endsWith(".tar.gz") ? ".tar.gz" : ".zip"
   const zipName = `arcana-${platform}${ext}`
 
-  // Clean up any stale temp files from previous failed attempts
+  // Clean up any stale temp file from previous failed attempts
   try { unlinkSync(path.join(CACHE_DIR, zipName)) } catch {}
-  try { unlinkSync(path.join(CACHE_DIR, entry.asset)) } catch {}
 
   const url = `https://github.com/${REPO}/releases/download/${VERSION}/${entry.asset}`
   console.error(`arcana: downloading ${zipName}...`)
@@ -76,13 +74,6 @@ async function downloadAndExtract() {
   } catch (e) {
     console.error(`arcana: extraction failed: ${e.message}`)
     process.exit(1)
-  }
-
-  // Rename extracted binary from opencode → arcana
-  const extracted = path.join(CACHE_DIR, os.platform() === "win32" ? "opencode.exe" : "opencode")
-  if (existsSync(extracted) && extracted !== CACHED_BINARY) {
-    try { unlinkSync(CACHED_BINARY) } catch {}
-    renameSync(extracted, CACHED_BINARY)
   }
 
   if (os.platform() !== "win32") {
