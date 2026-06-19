@@ -2,6 +2,8 @@ name: Release
 
 # Trigger: manual or "bump" comment on commit
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
     inputs:
       bump:
@@ -27,33 +29,45 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
 
+          # Detect bump level from commit message or workflow input
+          BUMP="${{ inputs.bump }}"
+          if [ -z "$BUMP" ]; then
+            MSG=$(git log -1 --format=%B)
+            if echo "$MSG" | grep -qE '\[bump major\]|bump:major'; then
+              BUMP="major"
+            elif echo "$MSG" | grep -qE '\[bump minor\]|bump:minor'; then
+              BUMP="minor"
+            elif echo "$MSG" | grep -qE '\[bump\]|bump:patch|\[release\]'; then
+              BUMP="patch"
+            else
+              echo "No bump directive in commit message — skipping release"
+              exit 0
+            fi
+          fi
+          echo "Bump level: $BUMP"
+
           # Read current version from npm package
           VERSION=$(node -p "require('./packages/arcana/npm/package.json').version")
           echo "Current version: $VERSION"
 
-          # Split version
+          # Split and bump
           MAJOR=$(echo $VERSION | cut -d. -f1)
           MINOR=$(echo $VERSION | cut -d. -f2)
           PATCH=$(echo $VERSION | cut -d. -f3)
-
-          BUMP="${{ inputs.bump }}"
           case $BUMP in
             major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
             minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
             patch) PATCH=$((PATCH + 1)) ;;
           esac
-
           NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
           echo "New version: $NEW_VERSION"
 
-          # Update version in files
+          # Update version in all files
           cd packages/arcana/npm
           npm version "$NEW_VERSION" --no-git-tag-version
           cd ../../..
-          # Also track version in root for reference
           node -p "const p=require('./package.json');p.version='$NEW_VERSION';JSON.stringify(p,null,2)" > /tmp/pkg.json
           cat /tmp/pkg.json > package.json
-          # Update launcher VERSION constant
           sed -i "s/const VERSION = \"[^\"]*\"/const VERSION = \"v$NEW_VERSION\"/" packages/arcana/npm/bin/arcana.js
 
           TAG="v$NEW_VERSION"
