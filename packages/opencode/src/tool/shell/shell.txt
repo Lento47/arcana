@@ -1,0 +1,21 @@
+${intro}
+
+OS: ${os}, Shell: ${shell}
+
+${workdirSection}
+
+Use `${tmp}` for temporary work outside workspace. Directory already created, exists, pre-approved for external access.
+
+IMPORTANT: This tool is for terminal operations (git, npm, docker, etc.). DO NOT use it for file operations (reading, writing, editing, searching, finding files) — use specialized tools instead.
+
+${commandSection}
+
+# Git and GitHub
+- Only commit, amend, push, or create PRs when explicitly requested.
+- Before committing: inspect `git status`, `git diff`, `git log --oneline -10`. Stage only intended files. Never commit secrets.
+- Write concise commit message matching repo style.
+- Do not update git config, skip hooks, use interactive `-i`, force-push, or create empty commits unless explicitly requested.
+- If commit fails or hooks reject: fix the issue, create new commit. Do not amend the failed commit.
+- Before PR: inspect status, diff, remote tracking, recent commits, diff from base branch.
+- Review all commits in PR, not just the latest.
+- Use `gh` for GitHub tasks (PRs, issues, checks, releases). Return PR URL when done.

@@ -1,0 +1,10 @@
+Interact with Language Server Protocol (LSP) servers for code intelligence.
+
+Operations: goToDefinition, findReferences, hover, documentSymbol, workspaceSymbol, goToImplementation, prepareCallHierarchy, incomingCalls, outgoingCalls.
+
+All require: filePath, line (1-based), character (1-based).
+workspaceSymbol also takes: query (symbol name to search. Empty = all symbols).
+
+For workspaceSymbol, filePath selects and starts the matching LSP server but is not sent in the LSP request.
+
+LSP servers must be configured for the file type. Error if no server available.

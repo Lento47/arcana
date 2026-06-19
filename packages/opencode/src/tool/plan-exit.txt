@@ -1,0 +1,5 @@
+Exit plan agent when planning phase complete. Asks user to switch to build agent for implementation.
+
+Call when: complete plan written to plan file, all questions clarified, plan ready for implementation.
+
+Skip when: plan not yet created/finalized, unanswered questions remain, user wants to continue planning.

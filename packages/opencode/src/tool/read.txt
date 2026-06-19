@@ -1,0 +1,12 @@
+Read file or directory from local filesystem. Error if path not found.
+
+- filePath must be absolute path
+- Returns up to 2000 lines from file start by default
+- offset: line number to start from (1-indexed). Call again with larger offset for later sections.
+- Use Grep to find content in large files or files with long lines
+- Use Glob to find files by pattern when unsure of path
+- Lines prefixed: `<line>: <content>`. Directories: entries one per line, trailing `/` for subdirs.
+- Lines over 2000 chars truncated
+- Read multiple files in parallel when known
+- Avoid tiny repeated slices (30 lines). Read larger window if more context needed.
+- Can read images and PDFs — returns as file attachments.

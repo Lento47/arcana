@@ -1,0 +1,6 @@
+Write file to local filesystem. Overwrites if exists.
+
+- Must Read existing file first — tool fails otherwise
+- Prefer editing existing files. Never write new unless required.
+- Never proactively create documentation files (*.md, README). Only if user requests.
+- No emojis unless user requests.

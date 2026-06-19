@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@opencode-ai/plugin",
+  "version": "1.17.8",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tool": "./src/tool.ts",
+    "./tui": "./src/tui.ts"
+  },
+  "dependencies": {
+    "@arcana/plugin": "workspace:*"
+  }
+}

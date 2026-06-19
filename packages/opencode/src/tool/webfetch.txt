@@ -1,0 +1,8 @@
+Fetch content from URL. Takes URL + optional format. Returns content in requested format (markdown default).
+
+- If better web-fetch tool available, prefer it.
+- URL must be fully-formed valid URL
+- HTTP auto-upgraded to HTTPS
+- Format: "markdown" (default), "text", "html"
+- Read-only, no file modification
+- Large content may be summarized

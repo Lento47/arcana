@@ -1,0 +1,9 @@
+Ask user questions during execution. Use to:
+- Gather preferences or requirements
+- Clarify ambiguous instructions
+- Get decisions on implementation choices
+- Offer choices about direction
+
+- When `custom` enabled (default), "Type your own answer" option added automatically — skip "Other" options.
+- Answers returned as label arrays. Set `multiple: true` for multi-select.
+- If recommending a specific option, make it first + append "(Recommended)".

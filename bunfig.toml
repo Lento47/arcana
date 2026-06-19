@@ -1,0 +1,5 @@
+[install]
+exact = true
+
+[install.lockfile]
+print = "bun"

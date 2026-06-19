@@ -1,0 +1,7 @@
+Fast content search via ripgrep. Works with any codebase size.
+- Full regex syntax: "log.*Error", "function\s+\w+"
+- Filter by glob pattern: "*.js", "*.{ts,tsx}"
+- Returns file paths with matching lines and line numbers
+- Use to find files containing specific patterns
+- To count matches within files, use Bash with `rg` directly. Do NOT pipe `grep`.
+- For open-ended search with multiple rounds, use Task tool instead

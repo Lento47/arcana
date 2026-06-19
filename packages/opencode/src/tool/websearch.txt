@@ -1,0 +1,6 @@
+Real-time web search via session's search provider. Returns content from most relevant sites.
+
+- Live crawling: 'fallback' (use cached if live unavailable) or 'preferred' (prioritize live)
+- Search types: 'auto' (balanced), 'fast' (quick), 'deep' (comprehensive)
+- Configurable result count, domain filtering, context length
+- Uses {{year}} for date-sensitive searches. When user asks about current/recent info, include current year in query.

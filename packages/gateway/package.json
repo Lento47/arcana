@@ -1,0 +1,25 @@
+{
+  "name": "@arcana/gateway",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./telegram": "./src/platforms/telegram.ts",
+    "./discord": "./src/platforms/discord.ts",
+    "./slack": "./src/platforms/slack.ts"
+  },
+  "dependencies": {
+    "@arcana/memory": "workspace:*",
+    "node-telegram-bot-api": "catalog:",
+    "@types/node-telegram-bot-api": "catalog:",
+    "discord.js": "catalog:",
+    "@slack/bolt": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

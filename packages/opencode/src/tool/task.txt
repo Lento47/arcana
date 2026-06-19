@@ -1,0 +1,16 @@
+Launch subagent for complex, multi-step tasks. Must specify subagent_type.
+
+Skip when: reading known file paths (Read/Glob), searching for class/function definitions (Grep), searching within 2-3 files (Read), no agent fits.
+
+Usage:
+- Launch multiple agents concurrently — single message, multiple tool uses
+- Don't duplicate delegated work. Wait for result or continue non-overlapping tasks.
+- Agent returns one final message. Result hidden from user — send concise summary to user.
+- Fresh context per invocation unless task_id given to resume. Fresh start needs detailed task description + exactly what info to return.
+- Agent outputs generally trusted.
+- Tell agent: write code vs research only. How to verify work.
+- If agent description says "use proactively", use it without user asking first.
+- schema: JSON Schema for structured output. Subagent instructed to call StructuredOutput. Validated after completion. One retry on mismatch.
+- isolation: "worktree" — isolated git worktree for the subagent. Auto-cleaned if unchanged.
+- timeout: max milliseconds. Subagent aborted on timeout, error returned.
+

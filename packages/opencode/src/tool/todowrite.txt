@@ -1,0 +1,15 @@
+Create and maintain structured task list for current coding session. Tracks progress, organizes multi-step work.
+
+Proactive when: 3+ distinct steps, non-trivial work, user provides multiple tasks, new instructions arrive.
+Skip when: single straightforward task, informational/conversational, tracking adds no value.
+
+States: `pending`, `in_progress` (exactly ONE at a time), `completed`, `cancelled`.
+
+Rules:
+- Update in real time — don't batch completions
+- Mark `completed` only after work actually done + verified. Never on intent.
+- If blocked or partial, keep `in_progress` + add follow-up describing blocker
+- Preserve user-provided commands verbatim (flags, args, order)
+- Items specific and actionable. Break large work into smaller steps.
+
+When in doubt, use it.

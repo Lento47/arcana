@@ -1,0 +1,44 @@
+# Local Obsidian knowledge vault (migrated Claude auto-memory)
+.vault/
+
+# Dependencies
+node_modules/
+.bun/
+
+# Turbo cache
+.turbo/cache
+
+# Claude session lock files
+.claude/scheduled_tasks.lock
+
+# Build output
+dist/
+dist-*/
+gen/
+.artifacts/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+*.log.*
+
+# IDE / Editor
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Packages (tarballs, tgz)
+*.tgz
+
+# Temporary / Research
+temporary-*.md
+research/

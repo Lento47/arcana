@@ -1,0 +1,9 @@
+Exact string replacement in files.
+
+- Must Read file in conversation before editing — tool errors otherwise
+- Match content AFTER line number prefix (`1: `). Never include prefix in oldString/newString.
+- Prefer editing existing files. Never write new unless required.
+- No emojis unless user requests.
+- Edit FAILS if oldString not found: "oldString not found in content"
+- Edit FAILS if oldString found multiple times: "Found multiple matches". Provide more surrounding context, or use replaceAll: true.
+- Use replaceAll to rename variables or replace every occurrence.

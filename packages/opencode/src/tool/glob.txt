@@ -1,0 +1,6 @@
+Fast file pattern matching for any codebase size.
+- Supports glob patterns: "**/*.js", "src/**/*.ts"
+- Returns matching file paths sorted by modification time
+- Use to find files by name patterns
+- For open-ended search with multiple rounds of glob+grep, use Task tool instead
+- Batch multiple speculative searches in single response — parallel tool calls

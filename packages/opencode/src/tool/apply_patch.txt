@@ -1,0 +1,16 @@
+Edit files via stripped-down diff format.
+
+Format:
+```
+*** Begin Patch
+[file sections]
+*** End Patch
+```
+
+Headers:
+- *** Add File: <path> — create new file. Every line is +line.
+- *** Delete File: <path> — remove file. Nothing follows.
+- *** Update File: <path> — patch in place, optionally with `*** Move to: <newpath>`
+
+- Must include action header (Add/Delete/Update)
+- Must prefix new lines with `+` even for new files

@@ -1,0 +1,7 @@
+Suggest switching to plan agent when request benefits from planning before implementation.
+
+Always call if user explicitly wants to create a plan.
+
+Call when: complex request, want to research/design before changes, multiple files or significant architectural decisions.
+
+Skip when: simple straightforward tasks, user wants immediate implementation.

@@ -1,0 +1,39 @@
+#!/usr/bin/env sh
+set -e
+
+# Resolve repo root from script location (packages/arcana/bin/arcana → repo root)
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
+REPO_ROOT="$(CDPATH='' cd -- "$SCRIPT_DIR/../.." && pwd -P)"
+ARCANA_HOME="${ARCANA_HOME:-$HOME/.arcana}"
+CONFIG="$ARCANA_HOME/cache/opencode-config.json"
+
+# Generate bridge config once if missing (sub-50ms)
+if [ ! -f "$CONFIG" ]; then
+  mkdir -p "$ARCANA_HOME/cache" 2>/dev/null || true
+  SKILLS_DIRS=""
+  if [ -d "$REPO_ROOT/skills" ]; then
+    SKILLS_DIRS="\"$REPO_ROOT/skills\""
+  fi
+  if [ -d "$ARCANA_HOME/skills" ]; then
+    if [ -n "$SKILLS_DIRS" ]; then
+      SKILLS_DIRS="$SKILLS_DIRS,\"$ARCANA_HOME/skills\""
+    else
+      SKILLS_DIRS="\"$ARCANA_HOME/skills\""
+    fi
+  fi
+  printf '{"$schema":"https://opencode.ai/config.json","skills":{"paths":[%s]}}\n' "$SKILLS_DIRS" > "$CONFIG"
+fi
+
+export ARCANA_CONFIG="$CONFIG"
+PWD="${PWD:-$(pwd)}"
+export PWD
+
+# Subcommand check — delegate to full arcana TypeScript CLI
+case "${1:-}" in
+  run|skills|cron|memory|gateway|completion)
+    exec bun run "$REPO_ROOT/packages/arcana/src/index.ts" "$@"
+    ;;
+esac
+
+# TUI mode — spawn opencode directly, zero arcana overhead
+exec bun run --conditions=browser "$REPO_ROOT/packages/opencode/src/index.ts" "$@"

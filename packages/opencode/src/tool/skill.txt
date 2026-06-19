@@ -1,0 +1,1 @@
+Load specialized skill from the system prompt skills list. Injects skill's instructions and resources into conversation. Name must match one of the listed skills.

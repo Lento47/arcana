@@ -1,0 +1,129 @@
+/**
+ * Central brand identity for the arcana TUI.
+ *
+ * Single source for the app name, taglines, external links, and the signature
+ * glyphs/sigils used across the cyberpunk/arcane redesign. Anything that shows
+ * the product name or a brand mark should read from here, not a string literal.
+ */
+
+export const APP_NAME = "arcana"
+export const APP_NAME_UPPER = "ARCANA"
+
+/** Short descriptor used after the wordmark / in titles. */
+export const TAGLINE = "arcane terminal"
+/** Decorative line rendered under the launch wordmark. */
+export const WORDMARK_TAGLINE = "« decrypt the arcane »"
+
+/** Abbreviation used in compact spots (e.g. the terminal-title prefix). */
+export const APP_ABBR = "ARC"
+
+/**
+ * External links. Still pointed at functional upstream targets until
+ * arcana-owned URLs exist — swap these two in one place when they do.
+ */
+export const DOCS_URL = "https://arcana.ai/docs"
+export const BUG_URL = "https://github.com/anomalyco/arcana/issues/new"
+
+/** Notification sound-pack display name (id stays as registered in core). */
+export const SOUND_PACK_NAME = "Arcana Default"
+
+/** Signature glyphs for cyberpunk/crypto chrome. */
+export const Glyph = {
+  prompt: "❯",
+  bullet: "▰",
+  sep: "▰",
+  diamond: "◆",
+  sigil: "⛧",
+  star: "✦",
+  chevron: "›",
+} as const
+
+// --- Phase 5a: Voice Core ---
+
+/**
+ * Arcane verb lexicon — tool action display labels.
+ * Used by InlineTool pending= strings in session/index.tsx.
+ */
+export const Lexicon = {
+  think: "Divining",
+  thought: "Divined",
+  read: "scrying",
+  write: "inscribing",
+  edit: "transmuting",
+  search: "divining",
+  find: "seeking",
+  shell: "invoking",
+  fetch: "summoning",
+  task: "conjuring",
+  skill: "channeling",
+  /** Compound pending strings for InlineTool `pending=` labels. */
+  pending: {
+    generic: "Invoking…",
+    shell: "Invoking…",
+    write: "Inscribing…",
+    find: "Seeking…",
+    read: "Scrying…",
+    search: "Divining…",
+    fetch: "Summoning…",
+    websearch: "Divining…",
+    task: "Conjuring…",
+    edit: "Transmuting…",
+    patch: "Transmuting…",
+    todo: "Inscribing…",
+    question: "Divining…",
+    skill: "Channeling…",
+  },
+} as const
+
+/** Boot/splash phrase pool — one picked per launch for pre-ready state. */
+export const BOOT_PHRASES = [
+  "decrypting arcane registry…",
+  "binding sigils…",
+  "aligning ley lines…",
+  "consulting the grimoire…",
+  "tracing the circle…",
+  "waking familiars…",
+] as const
+
+/** Home prompt placeholder pools (rotating examples). */
+export const PLACEHOLDER = {
+  normal: [
+    "Speak your intent…",
+    "What secrets does this codebase hold?",
+    "Inscribe a change…",
+  ],
+  shell: [
+    "invoke a rite…",
+    "cat /dev/arcana",
+    "echo $SECRETS",
+  ],
+}
+
+/** Prompt framing prefix text. */
+export const PROMPT_FRAME = {
+  normal: "Speak your intent…",
+  shell: "Inscribe a command…",
+}
+
+/** Miscellaneous copy strings (toasts, notifications, empty states). */
+export const COPY = {
+  inscribedToClipboard: "Inscribed to clipboard",
+  riteComplete: "The rite is complete",
+  noEchoesFound: "No echoes found",
+  chronicleEmpty: "The chronicle is empty",
+} as const
+
+/** Home idle epigram pool — rotates every ~12s with decrypt animation. */
+export const IDLE_PHRASES = [
+  "the arcane speaks in riddles…",
+  "every cipher has its key…",
+  "sigils flicker; truths emerge…",
+  "the grimoire remembers all…",
+  "ley lines hum beneath the code…",
+  "a glyph in the static…",
+  "silence between keystrokes…",
+  "the veil thins at compile time…",
+] as const
+
+/** Glyph pool for error "unencrypt" glitch effect — heavier, chaotic blocks. */
+export const CORRUPT_GLYPHS = "░▒▓█▄▀■□▪▫◊○●◙◘◧◨◩◪◫◭◮◯◰◱◲◳◎◆◇◈◉"
