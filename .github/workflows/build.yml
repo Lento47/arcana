@@ -26,11 +26,12 @@ jobs:
       - name: Build arcana binaries
         env:
           OPENCODE_RELEASE: "1"
-        run: bun run --cwd packages/opencode script/build.ts
+        run: bun run --cwd packages/opencode script/build.ts --skip-embed-web-ui
 
       - name: Upload to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: packages/opencode/dist/*/bin/*
-          fail_on_unmatched_files: true
+          files: |
+            packages/opencode/dist/*.zip
+            packages/opencode/dist/*.tar.gz
