@@ -368,19 +368,19 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const max = Number(args.max_chars ?? 8000)
 
       /** SSRF protection — validate URL before fetching */
-      const validateUrl = (raw: string): string | null => {
-        let parsed: URL
-        try {
-          parsed = new URL(raw)
-        } catch {
-          return `Invalid URL: ${raw}`
-        }
-        if (parsed.protocol !== "https:") {
-          return `Blocked protocol: ${parsed.protocol} Only https:// URLs are allowed.`
-        }
-        const host = parsed.hostname.toLowerCase()
-        // Block localhost
-        if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "[::1]" || host === "[::]") {
+  const validateUrl = (raw: string): string | null => {
+    let parsed: URL
+    try {
+      parsed = new URL(raw)
+    } catch {
+      return `Invalid URL: ${raw}`
+    }
+    if (parsed.protocol !== "https:") {
+      return `Blocked protocol: ${parsed.protocol} Only https:// URLs are allowed.`
+    }
+    const host = parsed.hostname.toLowerCase()
+    // Block localhost
+    if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") {
           return `Blocked: localhost access is not allowed.`
         }
         // Block link-local and internal domains
@@ -399,6 +399,10 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
           if (a === 192 && b === 168) return `Blocked: private address (192.168.0.0/16)`
           if (a === 169 && b === 254) return `Blocked: link-local address (169.254.0.0/16)`
         }
+        // Block IPv6 private/local addresses
+        if (host === "[::1]" || host === "[::]") return `Blocked: IPv6 loopback address`
+        if (host.startsWith("[fd") || host.startsWith("[fc")) return `Blocked: IPv6 unique local address`
+        if (host.startsWith("[fe80")) return `Blocked: IPv6 link-local address`
         return null
       }
 

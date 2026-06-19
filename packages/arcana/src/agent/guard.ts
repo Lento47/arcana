@@ -62,6 +62,10 @@ const BLOCKED_COMMANDS = [
 ]
 
 export function checkDangerousCommand(cmd: string): string | null {
+  // Shell injection patterns — block metacharacters outside quoted strings
+  if (/[;&|`$]/.test(cmd) && !/^["'].*["']$/.test(cmd.trim())) {
+    return `Blocked: shell metacharacters detected in command`
+  }
   for (const pattern of BLOCKED_COMMANDS) {
     if (pattern.test(cmd)) return `Blocked dangerous command: ${pattern.source.slice(0, 30)}`
   }
