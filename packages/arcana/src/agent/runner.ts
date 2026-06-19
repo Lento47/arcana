@@ -106,27 +106,30 @@ export class AgentRunner {
     messages: ChatMessage[],
     onChunk?: (text: string) => void,
   ): Promise<TurnResult> {
-    // Cap history: keep system message + last MAX_HISTORY_TURNS user/assistant/tool messages.
-    // Dropped turns are compacted via LLM into a 2-3 sentence summary prefix.
     const systemMsg = messages.find((m) => m.role === "system")
     const rest = messages.filter((m) => m.role !== "system")
     let history: ChatMessage[]
     if (rest.length > MAX_HISTORY_TURNS) {
-      const kept = rest.slice(-MAX_HISTORY_TURNS)
-      const dropped = rest.slice(0, -MAX_HISTORY_TURNS)
-      // Summarize dropped turns into a compact context prefix
+      const userIndices: number[] = []
+      for (let i = rest.length - 1; i >= 0 && userIndices.length < 3; i--) {
+        if (rest[i]!.role === "user") userIndices.push(i)
+      }
+      userIndices.sort((a, b) => a - b)
+      const keepFromIdx = userIndices[0]!
+      const kept = rest.slice(keepFromIdx)
+      const dropped = rest.slice(0, keepFromIdx)
       let compactionNote = ""
       try {
         const cheapModel = this.config.utilityModel ?? "gpt-4o-mini"
         const { model } = await resolveModel({ ...this.config, model: cheapModel } as AgentConfig, [])
-        const summaryPrompt = "Summarize these conversation turns into 2-3 sentences. Include key decisions, facts, and context. Be dense."
+        const summaryPrompt = "Summarize these conversation turns into 2-3 sentences capturing key decisions, facts, and context. Prioritize information still relevant to the current task."
         const summaryMsgs: ChatMessage[] = [
           { role: "system", content: summaryPrompt },
           { role: "user", content: dropped.filter((m) => m.role !== "tool").map((m) => `${m.role}: ${(m.content ?? "").slice(0, 300)}`).join("\n") },
         ]
         const compacted = await generateText({ model, messages: toCoreMessages(summaryMsgs), maxOutputTokens: 200, temperature: 0.3 })
         compactionNote = compacted.text
-      } catch { /* compaction is best-effort */ }
+      } catch {}
       history = systemMsg
         ? [systemMsg, { role: "system", content: `[Earlier context: ${compactionNote || "prior conversation omitted"}]` }, ...kept]
         : [{ role: "system", content: `[Earlier context: ${compactionNote || "prior conversation omitted"}]` }, ...kept]
@@ -138,6 +141,7 @@ export class AgentRunner {
     let toolCalls = 0
     let finalContent = ""
 
+    const toolResultCache = new Map<string, { result: string; ts: number }>()
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const { model, tools } = await resolveModel(this.config, this.getToolDefs())
       const coreMessages = toCoreMessages(history)
@@ -197,9 +201,16 @@ export class AgentRunner {
       history.push({ role: "assistant", content: text || null, tool_calls: toolCallsList as any })
       toolCalls += toolRequests.length
 
+      const WRITE_TOOLS = new Set(["write", "edit", "apply_patch", "delete", "rename", "env_write", "env_install", "env_clean", "skill_create"])
+
       for (const tc of toolRequests) {
-        const entry = this.tools.get(tc.toolName)
         let resultStr: string
+        if (this.config.safeMode && WRITE_TOOLS.has(tc.toolName)) {
+          resultStr = `[SAFE MODE] Tool "${tc.toolName}" is disabled in safe mode. Use --safe=false to enable write tools.`
+          history.push({ role: "tool", tool_call_id: tc.toolCallId, content: resultStr, toolName: tc.toolName } as any)
+          continue
+        }
+        const entry = this.tools.get(tc.toolName)
         if (!entry) {
           resultStr = `Unknown tool: ${tc.toolName}`
         } else {
@@ -234,10 +245,32 @@ export class AgentRunner {
               if (blocked) { resultStr = blocked; auditLog({ tool: tc.toolName, args: tc.input, result: blocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() }); history.push({ role: "tool", tool_call_id: tc.toolCallId, content: blocked, toolName: tc.toolName } as any); continue }
             }
 
+            const cacheKey = `${tc.toolName}:${JSON.stringify(tc.input)}`
+            const cached = toolResultCache.get(cacheKey)
+            if (cached && (Date.now() - cached.ts) < 5000) {
+              toolResultCache.delete(cacheKey)
+              toolResultCache.set(cacheKey, cached)
+              resultStr = cached.result
+              history.push({ role: "tool", tool_call_id: tc.toolCallId, content: resultStr, toolName: tc.toolName } as any)
+              continue
+            }
+
             // Execute (redact secrets only if not godlike)
             const rawArgs = JSON.stringify(tc.input)
-            resultStr = await entry.handler(tc.input as Record<string, unknown>)
+            const timeout = this.config.toolTimeout ?? 30000
+            const resultPromise = entry.handler(tc.input as Record<string, unknown>)
+            resultStr = await Promise.race([
+              resultPromise,
+              new Promise<string>((_, reject) =>
+                setTimeout(() => reject(new Error(`Tool timed out after ${timeout}ms`)), timeout),
+              ),
+            ])
             resultStr = this.config.godlike ? resultStr : redactSecrets(resultStr)
+            toolResultCache.set(cacheKey, { result: resultStr, ts: Date.now() })
+            if (toolResultCache.size > 50) {
+              const oldest = toolResultCache.keys().next().value
+              if (oldest) toolResultCache.delete(oldest)
+            }
             if (!this.config.godlike) auditLog({ tool: tc.toolName, args: tc.input, result: resultStr.slice(0, 200), session: this.sessionId ?? undefined, ts: new Date().toISOString() })
             toolHistory.push({ name: tc.toolName, ts: Date.now() })
           } catch (e) {

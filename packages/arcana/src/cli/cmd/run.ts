@@ -57,7 +57,9 @@ export const RunCommand: CommandModule = {
       .option("godlike",         { type: "boolean", default: false, describe: "⚠️ disable ALL guardrails (red/blue/purple team use only)" })
       .option("sandbox",         { type: "string", describe: "isolate agent to a root directory (creates tmpdir if empty)" })
       .option("sandbox-net",     { type: "boolean", default: false, describe: "allow network in sandbox mode" })
-      .option("disable-memory",  { type: "boolean", default: false, describe: "disable memory for this session" }),
+      .option("disable-memory",  { type: "boolean", default: false, describe: "disable memory for this session" })
+      .option("tool-timeout", { type: "number", default: 30000, describe: "max execution time per tool call in ms" })
+      .option("safe", { type: "boolean", default: false, describe: "run in read-only mode — disable all write/edit/delete tools" }),
 
   async handler(args) {
     const config = await loadConfig()
@@ -104,7 +106,7 @@ export const RunCommand: CommandModule = {
       process.stderr.write(c.yellow(`\n  Sandbox: ${sandbox.root}\n`))
       process.stderr.write(c.dim(`  Network: ${sandbox.network ? "allowed" : "BLOCKED"}\n\n`))
     }
-    const runner = new AgentRunner({ provider, model, apiKey, utilityModel: config.utilityModel, godlike }, sandbox)
+    const runner = new AgentRunner({ provider, model, apiKey, utilityModel: config.utilityModel, godlike, safeMode: args.safe === true, toolTimeout: args.toolTimeout as number | undefined }, sandbox)
     if (memory) registerBuiltinTools(runner, memory, config.skillsDirs)
 
     const mcpServers = await registerMcpTools(runner)

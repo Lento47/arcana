@@ -761,6 +761,14 @@ export const RunCommand = effectCmd({
 
         await share(client, sessionID)
 
+        const warmup = (async () => {
+          try {
+            await client.provider.list().catch(() => {})
+            await client.command.list().catch(() => {})
+            await client.v2.model.list().catch(() => {})
+          } catch {}
+        })()
+
         if (!args.interactive) {
           const events = await client.event.subscribe()
           const completed = loop(client, events).catch((e) => {
