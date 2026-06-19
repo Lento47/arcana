@@ -55,6 +55,7 @@ export const Model = Schema.Struct({
   ),
   experimental: Schema.optional(Schema.Boolean),
   status: Schema.optional(ModelStatus),
+  tier: Schema.optional(Schema.Literals(["free", "go", "premium"])),
   provider: Schema.optional(
     Schema.Struct({ npm: Schema.optional(Schema.String), api: Schema.optional(Schema.String) }),
   ),

@@ -1025,6 +1025,7 @@ export const Model = Schema.Struct({
   cost: ProviderCost,
   limit: ProviderLimit,
   status: ModelStatus,
+  tier: optionalOmitUndefined(Schema.Literals(["free", "go", "premium"])),
   options: Schema.Record(Schema.String, Schema.Any),
   headers: Schema.Record(Schema.String, Schema.String),
   release_date: Schema.String,
@@ -1180,6 +1181,7 @@ function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model
       npm: model.provider?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible",
     },
     status: model.status ?? "active",
+    tier: model.tier,
     headers: {},
     options: {},
     cost: cost(model.cost),
@@ -1408,6 +1410,7 @@ export const layer = Layer.effect(
                 url: model.provider?.api ?? provider?.api ?? existingModel?.api.url ?? modelsDev[providerID]?.api ?? "",
               },
               status: model.status ?? existingModel?.status ?? "active",
+              tier: model.tier ?? existingModel?.tier,
               name,
               providerID: ProviderV2.ID.make(providerID),
               capabilities: {
@@ -1580,6 +1583,8 @@ export const layer = Layer.effect(
               delete provider.models[modelID]
             if (model.status === "alpha" && !runtimeFlags.enableExperimentalModels) delete provider.models[modelID]
             if (model.status === "deprecated") delete provider.models[modelID]
+            if (model.tier === "premium" && !runtimeFlags.premiumFeatures) delete provider.models[modelID]
+            if (model.tier === "go" && runtimeFlags.licenseTier === "free") delete provider.models[modelID]
             if (
               (configProvider?.blacklist && configProvider.blacklist.includes(modelID)) ||
               (configProvider?.whitelist && !configProvider.whitelist.includes(modelID))
