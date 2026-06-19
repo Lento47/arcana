@@ -8,6 +8,7 @@ import { Lexicon, Glyph, AgentSigil } from "../../branding"
 import { Locale } from "../../util/locale"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useCommandShortcut, useOpencodeKeymap } from "../../keymap"
+import { Scramble } from "../../component/scramble"
 
 export function SubagentFooter() {
   const route = useRouteData("session")
@@ -56,6 +57,7 @@ export function SubagentFooter() {
     return { context: pct ? `${Locale.number(tokens)} (${pct})` : Locale.number(tokens), cost: cost > 0 ? money.format(cost) : undefined }
   })
 
+  const [revealedErrors, setRevealedErrors] = createSignal(new Set<string>())
   const { theme } = useTheme()
   const keymap = useOpencodeKeymap()
   const parentShortcut = useCommandShortcut("session.parent")
@@ -116,11 +118,24 @@ export function SubagentFooter() {
         <Show when={status().label !== "" && hover() === "self" && tailMessages().length > 0}>
           <scrollbox maxHeight={3} flexShrink={0}>
             <For each={tailMessages()}>
-              {(m) => (
-                <text fg={theme.textMuted} wrapMode="none" truncate>
-                  {(m as any).role === "tool" ? `${Glyph.chevron} ${(m as any).toolName ?? "tool"}` : `${(m as any).content ?? ""}`}
-                </text>
-              )}
+              {(m, idx) => {
+                const text = (m as any).role === "tool" ? `${Glyph.chevron} ${(m as any).toolName ?? "tool"}` : `${(m as any).content ?? ""}`
+                const isError = text.toLowerCase().includes("error") || text.toLowerCase().includes("fail") || text.toLowerCase().includes("exception")
+                const id = `err-${idx()}`
+                return (
+                  <Show when={isError} fallback={<text fg={theme.textMuted} wrapMode="none" truncate>{text}</text>}>
+                    <Show when={revealedErrors().has(id)} fallback={
+                      <box onMouseUp={() => setRevealedErrors(prev => new Set([...prev, id]))}>
+                        <text fg={theme.error} wrapMode="none" truncate>
+                          {Glyph.sigil} error (click)
+                        </text>
+                      </box>
+                    }>
+                      <Scramble error text={text} fg={theme.error} />
+                    </Show>
+                  </Show>
+                )
+              }}
             </For>
           </scrollbox>
         </Show>
