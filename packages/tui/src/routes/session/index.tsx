@@ -85,6 +85,8 @@ import { DialogRetryAction } from "../../component/dialog-retry-action"
 import { getRevertDiffFiles } from "../../util/revert-diff"
 import { ARCANA_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } from "../../keymap"
 import { PathFormatterProvider, usePathFormatter } from "../../context/path-format"
+import { ArtifactViewer } from "./artifact-viewer"
+import { getArtifact } from "../../util/artifacts"
 
 addDefaultParsers(parsers.parsers)
 
@@ -273,6 +275,7 @@ export function Session() {
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
   const [_animationsEnabled, _setAnimationsEnabled] = kv.signal("animations_enabled", true)
   const [showGenericToolOutput, setShowGenericToolOutput] = kv.signal("generic_tool_output_visibility", false)
+  const [viewingArtifact, setViewingArtifact] = createSignal<string | null>(null)
 
   const wide = createMemo(() => dimensions().width > Size.wideBreakpoint)
   const sidebarVisible = createMemo(() => {
@@ -1354,6 +1357,20 @@ export function Session() {
             <Toast />
           </box>
         </box>
+        <Show when={viewingArtifact()}>
+          {(id) => {
+            const artifact = getArtifact(id())
+            if (!artifact) return null
+            return (
+              <box position="absolute" width="100%" height="100%" zIndex={10}>
+                <ArtifactViewer
+                  artifact={artifact}
+                  onClose={() => setViewingArtifact(null)}
+                />
+              </box>
+            )
+          }}
+        </Show>
       </context.Provider>
     </PathFormatterProvider>
   )
