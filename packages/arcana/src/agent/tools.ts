@@ -1089,12 +1089,13 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       type: "function",
       function: {
         name: "artifact_save",
-        description: "Save research, findings, or generated content as a persistent artifact. Returns a shareable link.",
+        description: "Save research, findings, or generated content as a persistent artifact with version tracking. Returns artifact ID and version number.",
         parameters: {
           type: "object",
           properties: {
             title: { type: "string", description: "Short title for the artifact" },
             content: { type: "string", description: "Full content to save (markdown supported)" },
+            type: { type: "string", enum: ["markdown", "code", "svg", "html", "diagram"], description: "Type of artifact content" },
             tags: { type: "array", items: { type: "string" }, description: "Optional tags for categorization" },
           },
           required: ["title", "content"],
@@ -1102,12 +1103,55 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      const artifact = memory.saveArtifact({
-        title: String(args.title),
-        content: String(args.content),
-        tags: args.tags ? (args.tags as string[]).map(String) : undefined,
-      })
-      return `Artifact saved: ${artifact.title} (${artifact.id.slice(0, 8)})\nShare: arcana://artifact/${artifact.id}\nView: arcana learn show --artifact ${artifact.id.slice(0, 8)}`
+      const { createArtifact } = await import("../../../core/src/artifact/schema")
+      const id = `art-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+      const artifact = createArtifact(
+        id,
+        String(args.title),
+        String(args.content),
+        (args.type as any) ?? "markdown",
+        undefined,
+        args.tags ? (args.tags as string[]).map(String) : [],
+      )
+      const { writeFileSync, mkdirSync, existsSync, readFileSync } = await import("node:fs")
+      const { join } = await import("node:path")
+      const { homedir } = await import("node:os")
+      const dir = join(homedir(), ".arcana", "artifacts")
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, `${id}.json`), JSON.stringify(artifact, null, 2), "utf8")
+      return `Artifact saved: ${artifact.title} (v${artifact.current_version})\nID: ${id}\nType: ${artifact.type}`
+    },
+  )
+
+  runner.registerTool(
+    "artifact_update",
+    {
+      type: "function",
+      function: {
+        name: "artifact_update",
+        description: "Update an existing artifact by ID. Creates a new version. Previous versions are preserved.",
+        parameters: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Artifact ID to update" },
+            content: { type: "string", description: "New content for the new version" },
+          },
+          required: ["id", "content"],
+        },
+      },
+    },
+    async (args) => {
+      const { addVersion } = await import("../../../core/src/artifact/schema")
+      const { readFileSync, writeFileSync, existsSync } = await import("node:fs")
+      const { join } = await import("node:path")
+      const { homedir } = await import("node:os")
+      const dir = join(homedir(), ".arcana", "artifacts")
+      const filePath = join(dir, `${String(args.id)}.json`)
+      if (!existsSync(filePath)) return `Artifact not found: ${args.id}`
+      const artifact = JSON.parse(readFileSync(filePath, "utf8"))
+      addVersion(artifact, String(args.content))
+      writeFileSync(filePath, JSON.stringify(artifact, null, 2), "utf8")
+      return `Artifact updated: ${artifact.title} (v${artifact.current_version})`
     },
   )
 
@@ -1123,15 +1167,34 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
           properties: {
             query: { type: "string", description: "Search query" },
             limit: { type: "number", description: "Max results (default 10)" },
+            type: { type: "string", description: "Optional: filter by artifact type" },
           },
           required: ["query"],
         },
       },
     },
     async (args) => {
-      const results = memory.searchArtifacts(String(args.query), Number(args.limit ?? 10))
+      const { readFileSync, existsSync } = await import("node:fs")
+      const { join } = await import("node:path")
+      const { homedir } = await import("node:os")
+      const dir = join(homedir(), ".arcana", "artifacts")
+      const q = String(args.query).toLowerCase()
+      const limit = Number(args.limit ?? 10)
+      const typeFilter = args.type ? String(args.type) : null
+      const results: any[] = []
+      if (!existsSync(dir)) return "No artifacts found."
+      const files = await import("node:fs").then(m => m.readdirSync(dir))
+      for (const file of files) {
+        if (!file.endsWith(".json")) continue
+        const artifact = JSON.parse(readFileSync(join(dir, file), "utf8"))
+        if (typeFilter && artifact.type !== typeFilter) continue
+        if (artifact.title.toLowerCase().includes(q) || artifact.content.toLowerCase().includes(q)) {
+          results.push(artifact)
+          if (results.length >= limit) break
+        }
+      }
       if (!results.length) return "No artifacts found."
-      return results.map((a) => `[${a.id.slice(0, 8)}] ${a.title}${a.tags ? ` (${a.tags})` : ""}`).join("\n")
+      return results.map((a) => `[${a.id}] ${a.title} (v${a.current_version})${a.type ? ` [${a.type}]` : ""}`).join("\n")
     },
   )
 
@@ -1146,21 +1209,29 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
           type: "object",
           properties: {
             id: { type: "string", description: "Artifact ID or prefix (first 8 chars)" },
+            version: { type: "number", description: "Optional: specific version to retrieve" },
           },
           required: ["id"],
         },
       },
     },
     async (args) => {
+      const { readFileSync, existsSync } = await import("node:fs")
+      const { join } = await import("node:path")
+      const { homedir } = await import("node:os")
+      const { getVersion } = await import("../../../core/src/artifact/schema")
+      const dir = join(homedir(), ".arcana", "artifacts")
       const id = String(args.id)
-      // Try exact match first, then prefix match
-      let artifact = memory.getArtifact(id)
-      if (!artifact) {
-        const all = memory.listArtifacts(100)
-        artifact = all.find((a) => a.id.startsWith(id)) ?? null
+      const filePath = join(dir, `${id}.json`)
+      if (!existsSync(filePath)) return `Artifact not found: ${id}`
+      const artifact = JSON.parse(readFileSync(filePath, "utf8"))
+      const version = args.version ? Number(args.version) : undefined
+      if (version) {
+        const v = getVersion(artifact, version)
+        if (!v) return `Version ${version} not found for artifact ${id}`
+        return `# ${artifact.title} (v${version})\n${artifact.tags ? `tags: ${artifact.tags}\n` : ""}\n${v}`
       }
-      if (!artifact) return `Artifact not found: ${id}`
-      return `# ${artifact.title}\n${artifact.tags ? `tags: ${artifact.tags}\n` : ""}\n${artifact.content}`
+      return `# ${artifact.title}${artifact.type ? ` [${artifact.type}]` : ""} (v${artifact.current_version})\n${artifact.tags ? `tags: ${artifact.tags}\n` : ""}\n${artifact.content}`
     },
   )
 }
