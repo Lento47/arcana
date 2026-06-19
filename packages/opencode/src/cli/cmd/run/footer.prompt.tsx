@@ -417,7 +417,7 @@ export function createPromptState(input: PromptInput): PromptState {
         description: "compose in your external editor",
       } satisfies SlashOption,
       { kind: "slash", name: "new", display: "/new", description: "start a new session" } satisfies SlashOption,
-      { kind: "slash", name: "exit", display: "/exit", description: "close OpenCode" } satisfies SlashOption,
+      { kind: "slash", name: "exit", display: "/exit", description: "close arcana" } satisfies SlashOption,
       { kind: "slash", name: "goal", display: "/goal", description: "set a goal for this session" } satisfies SlashOption,
       { kind: "slash", name: "loop", display: "/loop", description: "check in on goal progress" } satisfies SlashOption,
     ]

@@ -100,7 +100,7 @@ export function RejectField(props: {
       minHeight={1}
       maxHeight={3}
       wrapMode="word"
-      placeholder="Tell OpenCode what to do differently"
+      placeholder="Tell Arcana what to do differently"
       placeholderColor={props.theme.muted}
       textColor={props.theme.text}
       focusedTextColor={props.theme.text}
