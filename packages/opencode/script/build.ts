@@ -243,6 +243,5 @@ for (const item of targets) {
 	  }
 	  await $`gh release upload v${Script.version} ${assets} --clobber --repo ${process.env.GH_REPO}`
 	}
-}
 
 export { binaries }
