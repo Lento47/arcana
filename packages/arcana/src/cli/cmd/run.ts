@@ -34,7 +34,9 @@ GOAL DISCIPLINE:
 4. Move cards on the kanban as tasks progress (backlog → in_progress → done).
 5. The active goal is BINDING — all tool calls must align with it.
 6. If goal_check reports "complete", stop working and summarize results to the user.
-7. If goal_check reports "blocked", ask the user for guidance before proceeding.`
+7. If goal_check reports "blocked", ask the user for guidance before proceeding.
+8. After completing the goal, use git_autocommit to save changes.
+9. Run git_status to verify the working tree is clean.`
 
 const c = {
   purple: (s: string) => `\x1b[35m${s}\x1b[0m`,

@@ -69,27 +69,32 @@ export function checkDangerousCommand(cmd: string): string | null {
 }
 
 // ── Rate limiter ─────────────────────────────────────────────
-const MAX_TOOLS = 50
-const MAX_WEB_FETCH = 20
 
 export class RateLimiter {
   toolCount = 0
   webFetchCount = 0
+  private maxTools: number
+  private maxWebFetch: number
+
+  constructor(maxTools = 50, maxWebFetch = 20) {
+    this.maxTools = maxTools
+    this.maxWebFetch = maxWebFetch
+  }
 
   /** Returns warning message if approaching limit, throws on hard limit. */
   check(toolName: string): string | null {
     this.toolCount++
     if (toolName === "web_fetch" || toolName === "web_search") this.webFetchCount++
 
-    if (this.toolCount >= MAX_TOOLS) {
-      throw new Error(`Rate limit: ${MAX_TOOLS} tool calls per session exceeded`)
+    if (this.toolCount >= this.maxTools) {
+      throw new Error(`Rate limit: ${this.maxTools} tool calls per session exceeded`)
     }
-    if (this.webFetchCount >= MAX_WEB_FETCH) {
-      throw new Error(`Rate limit: ${MAX_WEB_FETCH} web fetch calls per session exceeded`)
+    if (this.webFetchCount >= this.maxWebFetch) {
+      throw new Error(`Rate limit: ${this.maxWebFetch} web fetch calls per session exceeded`)
     }
 
-    if (this.toolCount >= MAX_TOOLS * 0.8) return `⚠️ ${this.toolCount}/${MAX_TOOLS} tool calls used`
-    if (this.webFetchCount >= MAX_WEB_FETCH * 0.8) return `⚠️ ${this.webFetchCount}/${MAX_WEB_FETCH} web fetches used`
+    if (this.toolCount >= this.maxTools * 0.8) return `⚠️ ${this.toolCount}/${this.maxTools} tool calls used`
+    if (this.webFetchCount >= this.maxWebFetch * 0.8) return `⚠️ ${this.webFetchCount}/${this.maxWebFetch} web fetches used`
     return null
   }
 }

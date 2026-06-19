@@ -34,6 +34,11 @@ export type AgentConfig = {
   godlike?: boolean
   safeMode?: boolean
   toolTimeout?: number  // milliseconds, default 30000
+  maxToolRounds?: number
+  maxHistoryTurns?: number
+  maxToolsPerSession?: number
+  maxWebFetchesPerSession?: number
+  maxTokensPerSession?: number
 }
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<string>
