@@ -10,7 +10,7 @@ const crypto = require("crypto")
 const os = require("os")
 
 const REPO = "Lento47/arcana"
-const VERSION = "v0.1.2"
+const VERSION = "v0.2.3"
 
 const PLATFORM_MAP = {
   "win32-x64":    { asset: "arcana-windows-x64.zip",    binary: "arcana.exe" },
