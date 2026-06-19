@@ -72,6 +72,13 @@ export type PromptProps = {
   }
 }
 
+function sanitizeInput(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+    .replace(/\x1b\][0-9;]*\x07/g, "")
+    .replace(/\x1b[\]^_][^\x1b]*\x1b\\/g, "")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
+}
+
 function pastedFilepath(value: string, platform: string) {
   const raw = value.replace(/^['"]+|['"]+$/g, "")
   if (raw.startsWith("file://")) {
@@ -235,7 +242,7 @@ export function Prompt(props: PromptProps) {
   event.on("tui.prompt.append", (evt, { workspace }) => {
     if (workspace !== project.workspace.current()) return
     if (!input || input.isDestroyed) return
-    input.insertText(evt.properties.text)
+    input.insertText(sanitizeInput(evt.properties.text))
     setTimeout(() => {
       // setTimeout is a workaround and needs to be addressed properly
       if (!input || input.isDestroyed) return
@@ -1158,7 +1165,7 @@ export function Prompt(props: PromptProps) {
   }
 
   async function pasteInputText(text: string) {
-    const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+    const normalizedText = sanitizeInput(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
     const pastedContent = normalizedText.trim()
     const filepath = pastedFilepath(pastedContent, terminalEnvironment.platform)
     const isUrl = /^(https?):\/\//.test(filepath)
@@ -1348,7 +1355,7 @@ export function Prompt(props: PromptProps) {
                 // Normalize line endings at the boundary
                 // Windows ConPTY/Terminal often sends CR-only newlines in bracketed paste
                 // Replace CRLF first, then any remaining CR
-                const normalizedText = decodePasteBytes(event.bytes).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+                const normalizedText = sanitizeInput(decodePasteBytes(event.bytes)).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
                 const pastedContent = normalizedText.trim()
 
                 // Windows Terminal <1.25 can surface image-only clipboard as an

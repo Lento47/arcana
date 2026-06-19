@@ -113,6 +113,7 @@ export function openMemoryDB(dataDir: string): Database {
   mkdirSync(dataDir, { recursive: true })
   const db = new Database(join(dataDir, "memory.db"), { create: true })
   db.exec("PRAGMA journal_mode = WAL")
+  db.exec("PRAGMA synchronous = NORMAL")
   db.exec("PRAGMA foreign_keys = ON")
   db.exec(SCHEMA)
   return db

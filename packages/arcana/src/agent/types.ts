@@ -32,6 +32,8 @@ export type AgentConfig = {
   temperature?: number
   /** Disable all guardrails for red/blue/purple team testing. ⚠️ UNSAFE. */
   godlike?: boolean
+  safeMode?: boolean
+  toolTimeout?: number  // milliseconds, default 30000
 }
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<string>
