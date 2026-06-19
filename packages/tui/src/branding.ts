@@ -66,23 +66,6 @@ export const Lexicon = {
   fetch: "summoning",
   task: "conjuring",
   skill: "channeling",
-  /** Compound pending strings for InlineTool `pending=` labels. */
-  pending: {
-    generic: "Invoking…",
-    shell: "Invoking…",
-    write: "Inscribing…",
-    find: "Seeking…",
-    read: "Scrying…",
-    search: "Divining…",
-    fetch: "Summoning…",
-    websearch: "Divining…",
-    task: "Conjuring…",
-    edit: "Transmuting…",
-    patch: "Transmuting…",
-    todo: "Inscribing…",
-    question: "Divining…",
-    skill: "Channeling…",
-  },
   Token: {
     label: "glyphs",
     labelShort: "glphs",

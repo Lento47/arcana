@@ -9,6 +9,12 @@ const id = "internal:statusbar"
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 
+function renderBar(pct: number): string {
+  const filled = Math.round(pct / 10)
+  const empty = 10 - filled
+  return "▰".repeat(Math.max(0, filled)) + "▱".repeat(Math.max(0, empty))
+}
+
 // Minimal session metrics, rendered in the global app_bottom slot. Off-session
 // (home) it renders nothing. No sidebar — this thin line is the only metrics surface.
 function View(props: { api: TuiPluginApi }) {
@@ -91,6 +97,18 @@ function View(props: { api: TuiPluginApi }) {
           <text fg={theme().warning}>↻ retry</text>
         </Show>
         <Show when={model()}>{(value) => <text fg={theme().textMuted}>{Glyph.sigil} {value()}</text>}</Show>
+        <Show when={usage()}>
+          {(u) => (
+            <Show when={u().percent !== null}>
+              <text fg={theme().textMuted}>|</text>
+              <text fg={theme().primary}>
+                <span style={{ fg: u().percent! > 95 ? theme().error : u().percent! > 80 ? theme().warning : theme().primary }}>
+                  {renderBar(u().percent!)}
+                </span>
+              </text>
+            </Show>
+          )}
+        </Show>
         <box flexGrow={1} minHeight={0} />
         <Show when={usage()}>
           {(value) => (
