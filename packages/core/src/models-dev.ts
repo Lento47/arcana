@@ -14,7 +14,7 @@ import { httpClient } from "./effect/layer-node-platform"
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
 export type CatalogModelStatus = typeof CatalogModelStatus.Type
 
-const USER_AGENT = `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.ARCANA_CLIENT}`
+const USER_AGENT = `arcana/${InstallationChannel}/${InstallationVersion}/${Flag.ARCANA_CLIENT}`
 
 const CostTier = Schema.Struct({
   input: Schema.Finite,

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Arcana Config",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "skills": {
+      "type": "object",
+      "description": "Skill paths configuration",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "description": "Paths to skill directories",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "object",
+      "description": "Provider overrides",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "npm": { "type": "string" },
+          "api": { "type": "string" },
+          "env": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "models": {
+            "type": "object",
+            "description": "Provider model definitions",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "tool_call": { "type": "boolean" },
+                "limit": {
+                  "type": "object",
+                  "properties": {
+                    "context": { "type": "integer" },
+                    "output": { "type": "integer" }
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": ["name", "npm", "api", "env", "models"]
+      }
+    }
+  },
+  "additionalProperties": true
+}

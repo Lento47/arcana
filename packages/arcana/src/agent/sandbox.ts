@@ -29,12 +29,13 @@ export function createSandbox(root?: string): SandboxConfig {
 
 /** Check if a path is within the sandbox root. Resolves symlinks. */
 export function isInSandbox(sandbox: SandboxConfig, filepath: string): boolean {
-  if (!isAbsolute(filepath) && !filepath.startsWith(".")) return true // relative path, resolved later
   try {
     const resolved = realpathSync(resolve(filepath))
     return resolved.startsWith(sandbox.root)
   } catch {
-    return false // path doesn't exist yet — check string prefix
+    // Path doesn't exist yet — resolve absolute and check prefix
+    const absolute = resolve(filepath)
+    return absolute.startsWith(sandbox.root)
   }
 }
 

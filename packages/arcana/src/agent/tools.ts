@@ -210,7 +210,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         // Play via system player
         const platform = process.platform
         if (platform === "win32") {
-          Bun.spawn(["powershell", "-c", `(New-Object Media.SoundPlayer '${tmp}').PlaySync()`])
+          Bun.spawn(["powershell", "-c", "(New-Object Media.SoundPlayer (Get-Item -Path $args[0]).FullName).PlaySync()", "--", tmp])
         } else if (platform === "darwin") {
           Bun.spawn(["afplay", tmp])
         } else {
@@ -326,6 +326,45 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     async (args) => {
       const url = String(args.url)
       const max = Number(args.max_chars ?? 8000)
+
+      /** SSRF protection — validate URL before fetching */
+      const validateUrl = (raw: string): string | null => {
+        let parsed: URL
+        try {
+          parsed = new URL(raw)
+        } catch {
+          return `Invalid URL: ${raw}`
+        }
+        if (parsed.protocol !== "https:") {
+          return `Blocked protocol: ${parsed.protocol} Only https:// URLs are allowed.`
+        }
+        const host = parsed.hostname.toLowerCase()
+        // Block localhost
+        if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "[::1]" || host === "[::]") {
+          return `Blocked: localhost access is not allowed.`
+        }
+        // Block link-local and internal domains
+        if (host.endsWith(".local") || host.endsWith(".internal")) {
+          return `Blocked: private/internal domain (${host}) is not allowed.`
+        }
+        // Check literal IP addresses against private ranges
+        const ipMatch = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+        if (ipMatch) {
+          const parts = ipMatch.slice(1).map(Number)
+          if (parts.some((p) => p > 255)) return `Invalid IP address: ${host}`
+          const [a, b] = parts
+          if (a === 127) return `Blocked: loopback address (127.0.0.0/8)`
+          if (a === 10) return `Blocked: private address (10.0.0.0/8)`
+          if (a === 172 && b >= 16 && b <= 31) return `Blocked: private address (172.16.0.0/12)`
+          if (a === 192 && b === 168) return `Blocked: private address (192.168.0.0/16)`
+          if (a === 169 && b === 254) return `Blocked: link-local address (169.254.0.0/16)`
+        }
+        return null
+      }
+
+      const urlError = validateUrl(url)
+      if (urlError) return urlError
+
       const res = await fetch(url, {
         headers: { "User-Agent": "arcana-agent/0.1" },
         signal: AbortSignal.timeout(15_000),

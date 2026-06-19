@@ -173,4 +173,4 @@ All arcana modifications are MIT-licensed and upstreamable.
 
 ## License
 
-MIT
+Dual-licensed under MIT (non-commercial) and Commercial. See [LICENSE](LICENSE).
