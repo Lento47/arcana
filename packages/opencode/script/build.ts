@@ -229,17 +229,20 @@ for (const item of targets) {
   binaries[name] = Script.version
 }
 
-if (Script.release) {
-  for (const key of Object.keys(binaries)) {
-    // Rename archives to arcana-* instead of @arcana/opencode-*
-    const arcanaKey = key.replace("@arcana/opencode", "arcana")
-    if (key.includes("linux")) {
-      await $`tar -czf ../../${arcanaKey}.tar.gz *`.cwd(`dist/${key}/bin`)
-    } else {
-      await $`zip -r ../../${arcanaKey}.zip *`.cwd(`dist/${key}/bin`)
-    }
-  }
-  await $`gh release upload v${Script.version} ./dist/*.zip ./dist/*.tar.gz --clobber --repo ${process.env.GH_REPO}`
+	if (Script.release) {
+	  const assets: string[] = []
+	  for (const key of Object.keys(binaries)) {
+	    const arcanaKey = key.replace("@arcana/opencode", "arcana")
+	    if (key.includes("linux")) {
+	      await $`tar -czf ../../${arcanaKey}.tar.gz *`.cwd(`dist/${key}/bin`)
+	      assets.push(`./dist/${arcanaKey}.tar.gz`)
+	    } else {
+	      await $`zip -r ../../${arcanaKey}.zip *`.cwd(`dist/${key}/bin`)
+	      assets.push(`./dist/${arcanaKey}.zip`)
+	    }
+	  }
+	  await $`gh release upload v${Script.version} ${assets} --clobber --repo ${process.env.GH_REPO}`
+	}
 }
 
 export { binaries }
