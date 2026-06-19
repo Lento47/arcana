@@ -244,7 +244,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     },
     async () => {
       const name = String(args.name)
-      const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+      const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-") // safe: directory slug from skill name, no shell/url context
       const tags = args.tags ? (args.tags as string[]).map(String) : []
       const dir = join(homedir(), ".arcana", "skills", id)
       mkdirSync(dir, { recursive: true })
