@@ -212,6 +212,15 @@ export class AgentRunner {
           history.push({ role: "tool", tool_call_id: tc.toolCallId, content: resultStr, toolName: tc.toolName } as any)
           continue
         }
+        const allowedTools = this.config.allowedTools ?? process.env.ARCANA_ALLOWED_TOOLS
+        if (allowedTools && !this.config.godlike) {
+          const allowed = new Set(allowedTools.split(","))
+          if (!allowed.has("*") && !allowed.has(tc.toolName)) {
+            resultStr = `[LICENSE] Tool "${tc.toolName}" is not available on your plan. Upgrade at https://arcana.otnelhq.com`
+            history.push({ role: "tool", tool_call_id: tc.toolCallId, content: resultStr, toolName: tc.toolName } as any)
+            continue
+          }
+        }
         const entry = this.tools.get(tc.toolName)
         if (!entry) {
           resultStr = `Unknown tool: ${tc.toolName}`
