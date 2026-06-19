@@ -7,13 +7,14 @@ const DEV_KEY = "ARCANA-DEV-0000-0000-0000-000000000001"
 
 async function proxyFetch(path: string, opts?: any): Promise<any> {
   const key = process.env.ARCANA_PROXY_KEY ?? DEV_KEY
+  const timeout = opts?.signal ? undefined : 15000
   const urls = [`${PROXY_URL}${path}`, `${FALLBACK}${path}`]
   for (const base of urls) {
     try {
       const res = await fetch(base, {
         ...opts,
         headers: { ...opts?.headers, Authorization: `Bearer ${key}` },
-        signal: AbortSignal.timeout(5000),
+        ...(timeout ? { signal: AbortSignal.timeout(timeout) } : {}),
       })
       return await res.json()
     } catch {}
@@ -85,6 +86,69 @@ export const ProxyCommand = cmd({
             UI.println(`   Tokens in:  ${(data.tokensIn ?? 0).toLocaleString()}`)
             UI.println(`   Tokens out: ${(data.tokensOut ?? 0).toLocaleString()}`)
             UI.println(`   Requests:   ${(data.requests ?? 0).toLocaleString()}`)
+          } catch (e) {
+            UI.println(`Error: ${e instanceof Error ? e.message : String(e)}`)
+          }
+        },
+      })
+      .command({
+        command: "balance",
+        describe: "check your pay-as-you-go credit balance",
+        async handler() {
+          try {
+            const data = await proxyFetch("/v1/balance")
+            UI.println("⛧ Proxy Balance")
+            UI.println(`   Credits: $${data.dollars}`)
+          } catch (e) {
+            UI.println(`Error: ${e instanceof Error ? e.message : String(e)}`)
+          }
+        },
+      })
+      .command({
+        command: "buy <amount>",
+        describe: "buy credits via PayPal (min $5)",
+        builder: (y) => y.positional("amount", { describe: "USD amount", type: "number" }),
+        async handler(args: any) {
+          try {
+            const data = await proxyFetch("/v1/pay/create-order", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ amount: args.amount }),
+            })
+            if (data.approvalUrl) {
+              UI.println(`⛧ PayPal checkout ready`)
+              UI.println(`   Amount: $${args.amount}`)
+              UI.println(`   Open this URL in your browser:`)
+              UI.println(`   ${data.approvalUrl}`)
+              UI.println(``)
+              UI.println(`After approving, run: arcana proxy capture ${data.orderId}`)
+            } else {
+              UI.println(`Error: ${data.error ?? "unknown"}`)
+            }
+          } catch (e) {
+            UI.println(`Error: ${e instanceof Error ? e.message : String(e)}`)
+          }
+        },
+      })
+      .command({
+        command: "capture <orderId>",
+        describe: "capture PayPal payment and credit your account",
+        builder: (y) => y.positional("orderId", { describe: "PayPal order ID", type: "string" }),
+        async handler(args: any) {
+          try {
+            const key = process.env.ARCANA_PROXY_KEY ?? DEV_KEY
+            const data = await proxyFetch("/v1/pay/capture-order", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId: args.orderId, userId: key }),
+            })
+            if (data.success) {
+              UI.println(`✅ Payment captured!`)
+              UI.println(`   Credits added: $${(data.creditsAdded / 100).toFixed(2)}`)
+              UI.println(`   New balance: $${(data.newBalance / 100).toFixed(2)}`)
+            } else {
+              UI.println(`Error: ${data.error ?? "capture failed"}`)
+            }
           } catch (e) {
             UI.println(`Error: ${e instanceof Error ? e.message : String(e)}`)
           }
