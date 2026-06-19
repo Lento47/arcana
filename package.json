@@ -104,5 +104,8 @@
   "prettier": {
     "semi": false,
     "printWidth": 120
+  },
+  "dependencies": {
+    "@noble/curves": "2.2.0"
   }
 }
