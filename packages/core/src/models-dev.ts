@@ -91,6 +91,7 @@ export const Model = Schema.Struct({
     }),
   ),
   status: Schema.optional(CatalogModelStatus),
+  tier: Schema.optional(Schema.Literals(["free", "go", "premium"])),
   provider: Schema.optional(
     Schema.Struct({ npm: Schema.optional(Schema.String), api: Schema.optional(Schema.String) }),
   ),
