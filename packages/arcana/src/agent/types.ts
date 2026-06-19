@@ -32,6 +32,7 @@ export type AgentConfig = {
   temperature?: number
   /** Disable all guardrails for red/blue/purple team testing. ⚠️ UNSAFE. */
   godlike?: boolean
+  allowedTools?: string
   safeMode?: boolean
   toolTimeout?: number  // milliseconds, default 30000
   maxToolRounds?: number

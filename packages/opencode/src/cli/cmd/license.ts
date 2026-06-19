@@ -126,6 +126,7 @@ export const ActivateCommand = cmd({
     if (result.valid) {
       UI.println(`✅ License activated — ${result.tier ?? "unknown"} tier`)
       if (result.features?.length) UI.println(`   Features: ${result.features.join(", ")}`)
+      if (result.tier) UI.println(`   Tools: ${result.tools?.length ?? "standard"} available`)
     } else {
       UI.println(`❌ Activation failed: ${result.error ?? "unknown error"}`)
     }
@@ -158,6 +159,8 @@ export const StatusCommand = cmd({
       if (result.valid) {
         UI.println(`⛧ License: ${result.tier ?? "unknown"} tier`)
         if (result.features?.length) UI.println(`   Features: ${result.features.join(", ")}`)
+        if (result.tools?.length) UI.println(`   Tools: ${result.tools.length} available`)
+        if (result.limits) UI.println(`   Limits: ${result.limits.toolsPerSession} tools/session, ${result.limits.sessionsPerDay} sessions/day`)
         if (result.expiresAt) UI.println(`   Expires: ${new Date(result.expiresAt).toLocaleDateString()}`)
         if (result.machinesActivated !== undefined) UI.println(`   Machines: ${result.machinesActivated}`)
       } else {
