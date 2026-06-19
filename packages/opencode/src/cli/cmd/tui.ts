@@ -187,6 +187,18 @@ export const TuiThreadCommand = cmd({
         client.call("checkUpgrade", { directory: cwd }).catch(() => {})
       }, 1000).unref?.()
 
+      setTimeout(async () => {
+        try {
+          const { existsSync, readFileSync } = await import("node:fs")
+          const { join } = await import("node:path")
+          const { homedir } = await import("node:os")
+          const dbPath = join(homedir(), ".arcana", "data", "arcana.db")
+          if (existsSync(dbPath)) {
+            fetch("https://api.arcana.otnelhq.com/api/health", { signal: AbortSignal.timeout(5000) }).catch(() => {})
+          }
+        } catch {}
+      }, 2000).unref?.()
+
       try {
         const { Effect } = await import("effect")
         const { run } = await import("../tui/layer")

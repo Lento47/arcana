@@ -91,12 +91,15 @@ export const fromCatalogModel = (
   connection?: IntegrationConnection.Info,
   credential?: Credential.Stored,
 ): Effect.Effect<Model, UnsupportedApiError> => {
-  const resolved =
-    credential?.value.metadata === undefined
-      ? model
-      : produce(model, (draft) => {
-          Object.assign(draft.request.body, credential.value.metadata)
-        })
+  const meta =
+    credential?.value.type === "key" || credential?.value.type === "oauth"
+      ? credential.value.metadata
+      : undefined
+  const resolved = meta === undefined
+    ? model
+    : produce(model, (draft) => {
+        Object.assign(draft.request.body, meta)
+      })
   const key = apiKey(resolved, connection, credential)
   if (resolved.api.type === "aisdk" && resolved.api.package === "@ai-sdk/openai") {
     return Effect.succeed(

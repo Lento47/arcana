@@ -29,7 +29,14 @@ export class Key extends Schema.Class<Key>("Credential.Key")({
   metadata: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 }) {}
 
-export const Info = Schema.Union([OAuth, Key])
+export class License extends Schema.Class<License>("Credential.License")({
+  type: Schema.Literal("license"),
+  key: Schema.String,
+  tier: Schema.String,
+  activatedAt: Schema.Number,
+}) {}
+
+export const Info = Schema.Union([OAuth, Key, License])
   .pipe(Schema.toTaggedUnion("type"))
   .annotate({ identifier: "Credential.Info" })
 export type Info = Schema.Schema.Type<typeof Info>

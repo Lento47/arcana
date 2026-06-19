@@ -53,6 +53,8 @@ export class Service extends ConfigService.Service<Service>()("@opencode/Runtime
   experimentalNativeLlm: bool("ARCANA_EXPERIMENTAL_NATIVE_LLM"),
   experimentalWebSockets: bool("ARCANA_EXPERIMENTAL_WEBSOCKETS"),
   client: Config.string("ARCANA_CLIENT").pipe(Config.withDefault("cli")),
+  licenseTier: Config.string("ARCANA_LICENSE_TIER").pipe(Config.withDefault("free")),
+  premiumFeatures: bool("ARCANA_PREMIUM"),
 }) {}
 
 export type Info = Context.Service.Shape<typeof Service>
