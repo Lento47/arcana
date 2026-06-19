@@ -96,9 +96,16 @@ export const ProxyCommand = cmd({
         describe: "check your pay-as-you-go credit balance",
         async handler() {
           try {
-            const data = await proxyFetch("/v1/balance")
+            const [data, health] = await Promise.all([
+              proxyFetch("/v1/balance"),
+              proxyFetch("/v1/health"),
+            ])
             UI.println("⛧ Proxy Balance")
-            UI.println(`   Credits: $${data.dollars}`)
+            if (health.tier === "enterprise") {
+              UI.println("   Credits: Unlimited (Enterprise plan)")
+            } else {
+              UI.println(`   Credits: $${data.dollars}`)
+            }
           } catch (e) {
             UI.println(`Error: ${e instanceof Error ? e.message : String(e)}`)
           }
