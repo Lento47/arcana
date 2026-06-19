@@ -10,7 +10,7 @@ const crypto = require("crypto")
 const os = require("os")
 
 const REPO = "Lento47/arcana"
-const VERSION = "v0.2.3"
+const VERSION = "v0.2.4"
 
 const PLATFORM_MAP = {
   "win32-x64":    { asset: "arcana-windows-x64.zip",    binary: "arcana.exe" },
@@ -32,16 +32,14 @@ if (!entry) {
 
 const CACHE_DIR = process.env.ARCANA_CACHE || path.join(os.homedir(), ".arcana", "bin")
 const CACHED_BINARY = path.join(CACHE_DIR, entry.binary)
+const VERSION_FILE = path.join(CACHE_DIR, ".version")
 
 async function downloadAndExtract() {
-  const ext = entry.asset.endsWith(".tar.gz") ? ".tar.gz" : ".zip"
-  const zipName = `arcana-${platform}${ext}`
-
   // Clean up any stale temp file from previous failed attempts
-  try { unlinkSync(path.join(CACHE_DIR, zipName)) } catch {}
+  try { unlinkSync(path.join(CACHE_DIR, entry.asset)) } catch {}
 
   const url = `https://github.com/${REPO}/releases/download/${VERSION}/${entry.asset}`
-  console.error(`arcana: downloading ${zipName}...`)
+  console.error(`arcana: ${VERSION} — downloading ${entry.asset}...`)
 
   mkdirSync(CACHE_DIR, { recursive: true })
 
@@ -51,12 +49,12 @@ async function downloadAndExtract() {
     process.exit(1)
   }
 
-  const tmp = path.join(CACHE_DIR, zipName)
+  const tmp = path.join(CACHE_DIR, entry.asset)
   const buf = Buffer.from(await res.arrayBuffer())
   writeFileSync(tmp, buf)
-  console.error(`arcana: ${(buf.length / 1e6).toFixed(1)}MB, verifying checksum...`)
+  console.error(`arcana: ${(buf.length / 1e6).toFixed(1)}MB, verifying...`)
 
-  // Verify binary integrity — checksum is mandatory, GitHub generates .sha256 for every asset
+  // Verify binary integrity — checksum is mandatory
   const shaUrl = url + ".sha256"
   const shaRes = await fetch(shaUrl)
   if (!shaRes.ok) {
@@ -69,24 +67,22 @@ async function downloadAndExtract() {
   const expectedHash = shaText.split(/\s+/)[0]
   const actualHash = crypto.createHash("sha256").update(buf).digest("hex")
   if (expectedHash !== actualHash) {
-    console.error(`arcana: CHECKSUM MISMATCH for ${zipName}`)
+    console.error(`arcana: CHECKSUM MISMATCH`)
     console.error(`  expected: ${expectedHash}`)
     console.error(`  actual:   ${actualHash}`)
     console.error(`arcana: binary may be corrupted or tampered — deleting`)
     try { unlinkSync(tmp) } catch {}
     process.exit(1)
   }
-  console.error(`arcana: checksum OK (SHA256: ${actualHash.slice(0, 16)}...)`)
+  console.error(`arcana: checksum OK`)
 
   console.error(`arcana: extracting...`)
-
   try {
     if (entry.asset.endsWith(".tar.gz")) {
       execSync(`tar xzf "${tmp}" -C "${CACHE_DIR}"`, { stdio: "pipe" })
       unlinkSync(tmp)
     } else if (entry.asset.endsWith(".zip")) {
       if (os.platform() === "win32") {
-        // .NET ZipFile — built into .NET, no PowerShell module needed
         const safeTmp = tmp.replace(/'/g, "''")
         const safeDir = CACHE_DIR.replace(/'/g, "''")
         execSync(
@@ -107,16 +103,22 @@ async function downloadAndExtract() {
     try { chmodSync(CACHED_BINARY, 0o755) } catch {}
   }
 
-  console.error(`arcana: ready — ${CACHED_BINARY}`)
+  // Write version file so we can detect staleness on next run
+  try { writeFileSync(VERSION_FILE, VERSION, "utf8") } catch {}
+  console.error(`arcana: ready`)
 }
 
 async function main() {
-  if (!existsSync(CACHED_BINARY)) {
+  // Check if cached binary is stale (wrong version)
+  let cachedVersion = ""
+  try { cachedVersion = require("fs").readFileSync(VERSION_FILE, "utf8").trim() } catch {}
+
+  if (!existsSync(CACHED_BINARY) || cachedVersion !== VERSION) {
     await downloadAndExtract()
   }
 
   if (!existsSync(CACHED_BINARY)) {
-    console.error(`arcana: binary not found: ${CACHED_BINARY}`)
+    console.error(`arcana: binary not found after download`)
     process.exit(1)
   }
 
