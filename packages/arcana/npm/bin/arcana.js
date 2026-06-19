@@ -56,30 +56,27 @@ async function downloadAndExtract() {
   writeFileSync(tmp, buf)
   console.error(`arcana: ${(buf.length / 1e6).toFixed(1)}MB, verifying checksum...`)
 
-  // Verify binary checksum against GitHub release .sha256 artifact
+  // Verify binary integrity — checksum is mandatory, GitHub generates .sha256 for every asset
   const shaUrl = url + ".sha256"
-  try {
-    const shaRes = await fetch(shaUrl)
-    if (!shaRes.ok) {
-      console.error(`arcana: checksum file not found (${shaUrl}), skipping verification`)
-    } else {
-      const shaText = (await shaRes.text()).trim()
-      const expectedHash = shaText.split(/\s+/)[0]
-      const actualHash = crypto.createHash("sha256").update(buf).digest("hex")
-      if (expectedHash !== actualHash) {
-        console.error(`arcana: CHECKSUM MISMATCH for ${zipName}`)
-        console.error(`  expected: ${expectedHash}`)
-        console.error(`  actual:   ${actualHash}`)
-        console.error(`arcana: binary may be corrupted or tampered — deleting`)
-        try { unlinkSync(tmp) } catch {}
-        process.exit(1)
-      }
-      console.error(`arcana: checksum OK (SHA256: ${actualHash.slice(0, 16)}...)`)
-    }
-  } catch (e) {
-    console.error(`arcana: checksum verification failed: ${e.message}`)
+  const shaRes = await fetch(shaUrl)
+  if (!shaRes.ok) {
+    console.error(`arcana: FATAL — checksum unavailable (${shaUrl})`)
+    console.error(`arcana: the binary cannot be verified and will not be executed`)
+    try { unlinkSync(tmp) } catch {}
     process.exit(1)
   }
+  const shaText = (await shaRes.text()).trim()
+  const expectedHash = shaText.split(/\s+/)[0]
+  const actualHash = crypto.createHash("sha256").update(buf).digest("hex")
+  if (expectedHash !== actualHash) {
+    console.error(`arcana: CHECKSUM MISMATCH for ${zipName}`)
+    console.error(`  expected: ${expectedHash}`)
+    console.error(`  actual:   ${actualHash}`)
+    console.error(`arcana: binary may be corrupted or tampered — deleting`)
+    try { unlinkSync(tmp) } catch {}
+    process.exit(1)
+  }
+  console.error(`arcana: checksum OK (SHA256: ${actualHash.slice(0, 16)}...)`)
 
   console.error(`arcana: extracting...`)
 
