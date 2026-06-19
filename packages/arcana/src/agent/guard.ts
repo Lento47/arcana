@@ -116,6 +116,30 @@ export function auditLog(entry: { tool: string; args?: unknown; result?: string;
     auditInit = true
   }
   try {
-    appendFileSync(auditPath, JSON.stringify({ ...entry, args: redactSecrets(JSON.stringify(entry.args ?? {})) }) + "\n", "utf8")
+    const safeEntry = { ...entry, args: redactSecrets(JSON.stringify(entry.args ?? {})) }
+    // Local append
+    appendFileSync(auditPath, JSON.stringify(safeEntry) + "\n", "utf8")
+    // Enterprise sync (fire-and-forget, best-effort)
+    if (process.env.ARCANA_LICENSE_TIER && process.env.ARCANA_LICENSE_TIER !== "free") {
+      const orgId = process.env.ARCANA_ORG_ID ?? "default"
+      const actor = process.env.ARCANA_USER ?? process.env.USER ?? "local"
+      fetch("https://api.arcana.otnelhq.com/api/team/" + orgId + "/audit/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          events: [{
+            id: `${entry.ts}-${entry.tool}-${Math.random().toString(36).slice(2, 6)}`,
+            actor,
+            action: "tool.call",
+            resource: entry.session ?? undefined,
+            detail: { tool: entry.tool },
+            tool: entry.tool,
+            tool_args: safeEntry.args,
+            tool_result: entry.result?.slice(0, 500),
+            time_created: new Date(entry.ts).getTime(),
+          }],
+        }),
+      }).catch(() => {})
+    }
   } catch { /* audit is best-effort, never block execution */ }
 }
