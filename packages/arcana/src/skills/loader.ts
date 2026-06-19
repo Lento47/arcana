@@ -10,13 +10,14 @@ import { homedir } from "node:os"
 import { createHash } from "node:crypto"
 import matter from "gray-matter"
 
-export type SkillInfo = {
+export type SkillCatalog = {
   name: string
   description: string
-  body: string
   id: string
   category: string
 }
+
+export type SkillInfo = SkillCatalog & { body: string }
 
 const CACHE_PATH = join(homedir(), ".cache", "arcana", "skills-cache.json")
 
@@ -57,7 +58,7 @@ async function scanDir(dir: string): Promise<SkillInfo[]> {
   return results
 }
 
-export async function loadSkills(skillDirs: string[]): Promise<SkillInfo[]> {
+export async function loadSkills(skillDirs: string[]): Promise<SkillCatalog[]> {
   const validDirs = skillDirs.filter((d) => existsSync(d))
   if (!validDirs.length) return []
 
@@ -67,12 +68,11 @@ export async function loadSkills(skillDirs: string[]): Promise<SkillInfo[]> {
     try {
       const cached = JSON.parse(readFileSync(CACHE_PATH, "utf8"))
       if (cached.key === key && cached.skills) {
-        const result: SkillInfo[] = []
+        const result: SkillCatalog[] = []
         for (const [id, info] of Object.entries(cached.skills as Record<string, any>)) {
           result.push({
             name: info.name,
             description: info.description ?? "",
-            body: info.content ?? "",
             id,
             category: info.location ? dirname(info.location).split(/[\\/]/).pop() ?? "misc" : "misc",
           })
@@ -87,5 +87,34 @@ export async function loadSkills(skillDirs: string[]): Promise<SkillInfo[]> {
   for (const dir of validDirs) {
     results.push(...await scanDir(dir))
   }
-  return results
+  return results.map(({ name, description, id, category }) => ({ name, description, id, category }))
+}
+
+export async function loadSkillBody(skillId: string, skillDirs: string[]): Promise<string> {
+  for (const dir of skillDirs.filter(d => existsSync(d))) {
+    const found = await findSkillBodyFile(dir, skillId)
+    if (found !== null) return found
+  }
+  throw new Error(`Skill not found: ${skillId}`)
+}
+
+async function findSkillBodyFile(dir: string, skillId: string): Promise<string | null> {
+  const entries = await readdir(dir, { withFileTypes: true })
+  for (const e of entries) {
+    const full = join(dir, e.name)
+    if (!e.isDirectory()) continue
+    const mdPath = join(full, "SKILL.md")
+    try {
+      const raw = await readFile(mdPath, "utf8")
+      const parsed = matter(raw)
+      const name = parsed.data?.name
+      if (name) {
+        const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        if (id === skillId) return parsed.content.trim()
+      }
+    } catch { /* skip */ }
+    const sub = await findSkillBodyFile(full, skillId)
+    if (sub !== null) return sub
+  }
+  return null
 }

@@ -1,7 +1,7 @@
 import type { CommandModule } from "yargs"
 import { JobStore, Scheduler } from "@arcana/cron"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
-import { loadSkills, type SkillInfo } from "../../skills/loader.js"
+import { loadSkills, loadSkillBody, type SkillCatalog } from "../../skills/loader.js"
 import { AgentRunner } from "../../agent/runner.js"
 import { SessionManager } from "../../agent/session.js"
 import { registerBuiltinTools } from "../../agent/tools.js"
@@ -12,7 +12,7 @@ import type { Job } from "@arcana/cron"
 
 const CRON_SYSTEM = `You are Arcana running a scheduled job. Complete the task described in the user message, then stop. Be concise.`
 
-async function runJob(job: Job, config: Awaited<ReturnType<typeof loadConfig>>, memory: MemoryStore, skills: SkillInfo[]): Promise<string> {
+async function runJob(job: Job, config: Awaited<ReturnType<typeof loadConfig>>, memory: MemoryStore, skills: SkillCatalog[]): Promise<string> {
   const apiKey = config.apiKey
   if (!apiKey) throw new Error("No API key configured")
 
@@ -26,7 +26,10 @@ async function runJob(job: Job, config: Awaited<ReturnType<typeof loadConfig>>, 
   let system = CRON_SYSTEM
   if (job.skill) {
     const skill = skills.find((s) => s.id === job.skill || s.name.toLowerCase().includes((job.skill ?? "").toLowerCase()))
-    if (skill) system += `\n\n<arcana-skill name="${skill.name}">\n${skill.body}\n</arcana-skill>`
+    if (skill) {
+      const body = await loadSkillBody(skill.id, config.skillsDirs)
+      system += `\n\n<arcana-skill name="${skill.name}">\n${body}\n</arcana-skill>`
+    }
   }
 
   sessionMgr.start(system)

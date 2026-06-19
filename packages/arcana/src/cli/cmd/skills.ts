@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs"
-import { loadSkills } from "../../skills/loader.js"
+import { loadSkills, loadSkillBody } from "../../skills/loader.js"
 import { loadConfig, getDataDir } from "../../config.js"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
 
@@ -64,7 +64,8 @@ export const SkillsCommand: CommandModule = {
       console.log(`ID:          ${skill.id}`)
       console.log(`Category:    ${skill.category}`)
       console.log(`Description: ${skill.description}`)
-      console.log(`\n${skill.body}`)
+      const body = await loadSkillBody(skill.id, config.skillsDirs)
+      console.log(`\n${body}`)
       return
     }
 

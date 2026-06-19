@@ -1,7 +1,7 @@
 import type { AgentRunner } from "./runner.js"
 import type { MemoryStore } from "@arcana/memory"
-import type { SkillInfo } from "../skills/loader.js"
-import { loadSkills } from "../skills/loader.js"
+import type { SkillCatalog } from "../skills/loader.js"
+import { loadSkills, loadSkillBody } from "../skills/loader.js"
 // Module-level tool history for loop_detect
 export const toolHistory: Array<{ name: string; ts: number }> = []
 
@@ -11,8 +11,8 @@ import { mkdirSync, writeFileSync, existsSync } from "node:fs"
 import { initBoard, loadBoard, saveBoard, addCard, moveCard, archiveDone, formatBoard, type KanbanCard } from "./kanban.js"
 
 export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, skillDirs: string[]): void {
-  let skills: SkillInfo[] = []
-  const skillsPromise = loadSkills(skillDirs).then((s) => { skills = s; return s })
+  let skills: SkillCatalog[] = []
+  const catalogPromise = loadSkills(skillDirs).then((s) => { skills = s; return s })
 
   runner.registerTool(
     "memory_search",
@@ -80,12 +80,13 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     },
     async (args) => {
       const skillId = String(args.skill_id).toLowerCase()
-      await skillsPromise
+      await catalogPromise
       const skill = skills.find((s) => s.id === skillId || s.name.toLowerCase().includes(skillId))
       if (!skill) {
         memory.recordSkillObservation(skillId, "error: skill not found")
         return `Skill not found: ${skillId}. Use skill_list to see available skills.`
       }
+      const fullBody = await loadSkillBody(skill.id, skillDirs)
       memory.recordSkillObservation(skillId, `success: activated ${skill.name}`)
       return `Activated: ${skill.name}. Instructions injected into context.`
     },
@@ -107,7 +108,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      await skillsPromise
+      await catalogPromise
       const q = args.query ? String(args.query).toLowerCase() : ""
       const filtered = q
         ? skills.filter((s) => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q) || s.category.includes(q))
