@@ -14,10 +14,9 @@ import "opentui-spinner/solid"
 import path from "path"
 import { fileURLToPath } from "url"
 import { useLocal } from "../../context/local"
-import { PROMPT_FRAME } from "../../branding"
+import { PROMPT_FRAME, Glyph, AgentSigil, Lexicon } from "../../branding"
 import { Flag } from "@arcana/core/flag/flag"
 import { tint, useTheme } from "../../context/theme"
-import { EmptyBorder, SplitBorder } from "../../ui/border"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { useClipboard } from "../../context/clipboard"
 import { Spinner } from "../spinner"
@@ -39,11 +38,10 @@ import { usePromptStash } from "../../prompt/stash"
 import { DialogStash } from "../dialog-stash"
 import { type AutocompleteRef, Autocomplete } from "./autocomplete"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
-import type { AssistantMessage, FilePart, UserMessage } from "@arcana/sdk/v2"
+import type { FilePart, UserMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
 import { errorMessage } from "../../util/error"
 import { formatDuration } from "../../util/format"
-import { createColors, createFrames } from "../../ui/spinner"
 import { useDialog } from "../../ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
@@ -95,10 +93,6 @@ export type PromptRef = {
   submit(): void
 }
 
-const money = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-})
 
 const DRAFT_RETENTION_MIN_CHARS = 20
 
@@ -264,25 +258,6 @@ export function Prompt(props: PromptProps) {
     return messages.findLast((m): m is UserMessage => m.role === "user")
   })
 
-  const usage = createMemo(() => {
-    if (!props.sessionID) return
-    const session = sync.session.get(props.sessionID)
-    const msg = sync.data.message[props.sessionID] ?? []
-    const last = msg.findLast((item): item is AssistantMessage => item.role === "assistant" && item.tokens.output > 0)
-    if (!last) return
-
-    const tokens =
-      last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
-    if (tokens <= 0) return
-
-    const model = sync.data.provider.find((item) => item.id === last.providerID)?.models[last.modelID]
-    const pct = model?.limit.context ? `${Math.round((tokens / model.limit.context) * 100)}%` : undefined
-    const cost = session?.cost ?? 0
-    return {
-      context: pct ? `${Locale.number(tokens)} (${pct})` : Locale.number(tokens),
-      cost: cost > 0 ? money.format(cost) : undefined,
-    }
-  })
 
   const [store, setStore] = createStore<{
     prompt: PromptInfo
@@ -1321,29 +1296,6 @@ export function Prompt(props: PromptProps) {
     return `${PROMPT_FRAME.normal} "${list()[store.placeholder % list().length]}"`
   })
 
-  const spinnerDef = createMemo(() => {
-    const agent =
-      status().type !== "idle"
-        ? (local.agent.list().find((a) => a.name === lastUserMessage()?.agent) ?? local.agent.current())
-        : local.agent.current()
-    const color = agent ? local.agent.color(agent.name) : theme.border
-    return {
-      frames: createFrames({
-        color,
-        style: "blocks",
-        inactiveFactor: 0.6,
-        // enableFading: false,
-        minAlpha: 0.3,
-      }),
-      color: createColors({
-        color,
-        style: "blocks",
-        inactiveFactor: 0.6,
-        // enableFading: false,
-        minAlpha: 0.3,
-      }),
-    }
-  })
   const maxHeight = createMemo(() => tuiConfig.prompt?.max_height ?? Math.max(6, Math.floor(dimensions().height / 3)))
   const moveLabelWidth = createMemo(() => Math.max(12, Math.min(44, dimensions().width - 48)))
 
@@ -1439,7 +1391,7 @@ export function Prompt(props: PromptProps) {
                   {(agent) => (
                     <>
                       <text fg={fadeColor(theme.accent, agentMetaAlpha())}>
-                        {store.mode === "shell" ? "shell" : agent().name.toLowerCase()}
+                        {Glyph.sigil} {store.mode === "shell" ? "shell" : agent().name.toLowerCase()}
                       </text>
                       <Show when={store.mode === "normal"}>
                         <box flexDirection="row" gap={1}>
@@ -1620,13 +1572,6 @@ export function Prompt(props: PromptProps) {
               <Switch>
                 <Match when={store.mode === "normal"}>
                   <Switch>
-                    <Match when={usage()}>
-                      {(item) => (
-                        <text fg={theme.textMuted} wrapMode="none">
-                          {[item().context, item().cost].filter(Boolean).join(" · ")}
-                        </text>
-                      )}
-                    </Match>
                     <Match when={true}>
                       <text fg={theme.text}>
                         {agentShortcut()} <span style={{ fg: theme.textMuted }}>agents</span>

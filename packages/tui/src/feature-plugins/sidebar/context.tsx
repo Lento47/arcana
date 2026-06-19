@@ -1,6 +1,7 @@
 import type { AssistantMessage } from "@arcana/sdk/v2"
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
+import { Lexicon, Glyph } from "../../branding"
 import { createMemo } from "solid-js"
 
 const id = "internal:sidebar-context"
@@ -40,9 +41,9 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
         <span style={{ fg: theme().accent }}>◆ </span>
         <b>CONTEXT</b>
       </text>
-      <text fg={theme().textMuted}>{state().tokens.toLocaleString()} tokens</text>
-      <text fg={theme().textMuted}>{state().percent ?? 0}% used</text>
-      <text fg={theme().textMuted}>{money.format(cost())} spent</text>
+      <text fg={theme().textMuted}>{Glyph.charge} {state().tokens.toLocaleString()} {Lexicon.Token.label}</text>
+      <text fg={theme().textMuted}>{Glyph.meter} {state().percent ?? 0}%</text>
+      <text fg={theme().textMuted}>{Glyph.diamond} {money.format(cost())} {Lexicon.Token.cost}</text>
     </box>
   )
 }

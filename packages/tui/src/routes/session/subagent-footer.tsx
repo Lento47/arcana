@@ -4,6 +4,7 @@ import { useSync } from "../../context/sync"
 import { useTheme } from "../../context/theme"
 import { SplitBorder } from "../../ui/border"
 import type { AssistantMessage } from "@arcana/sdk/v2"
+import { Lexicon, Glyph, AgentSigil } from "../../branding"
 import { Locale } from "../../util/locale"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useCommandShortcut, useOpencodeKeymap } from "../../keymap"
@@ -78,17 +79,17 @@ export function SubagentFooter() {
         <box flexDirection="row" justifyContent="space-between" gap={1}>
           <box flexDirection="row" gap={1}>
             <text fg={theme.text}>
-              <b>{subagentInfo().label}</b>
+              <span style={{ fg: theme.textMuted }}>{AgentSigil.subagent}</span> <b>{subagentInfo().label}</b>
             </text>
             <Show when={subagentInfo().total > 0}>
               <text style={{ fg: theme.textMuted }}>
-                ({subagentInfo().index} of {subagentInfo().total})
+                {subagentInfo().index}/{subagentInfo().total} {Lexicon.Agent.school}
               </text>
             </Show>
             <Show when={usage()}>
               {(item) => (
                 <text fg={theme.textMuted} wrapMode="none">
-                  {[item().context, item().cost].filter(Boolean).join(" · ")}
+                  {[item().context, item().cost].filter(Boolean).join(` ${Glyph.sep} `)}
                 </text>
               )}
             </Show>

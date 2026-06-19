@@ -77,7 +77,9 @@ export async function createOpencodeServer(options?: ServerOptions) {
                 // Server not ready yet — retry once after 500ms
                 setTimeout(() => {
                   fetch(healthUrl, { signal: options.signal })
-                    .then((r2) => (r2.ok ? resolve(match[1]!) : reject(new Error(`Server health check failed: ${r2.status}`))))
+                    .then((r2) =>
+                      r2.ok ? resolve(match[1]!) : reject(new Error(`Server health check failed: ${r2.status}`)),
+                    )
                     .catch(() => resolve(match[1]!)) // ultimate fallback
                 }, 500)
               } else {

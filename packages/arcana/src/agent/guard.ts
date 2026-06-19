@@ -5,6 +5,7 @@
 import { appendFileSync, mkdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { homedir } from "node:os"
+import { PhaseGuard, type AgentPhase } from "./modes.js"
 
 // ── Secret patterns ──────────────────────────────────────────
 const SECRET_PATTERNS: Array<[string, RegExp]> = [
@@ -91,6 +92,13 @@ export class RateLimiter {
     if (this.webFetchCount >= MAX_WEB_FETCH * 0.8) return `⚠️ ${this.webFetchCount}/${MAX_WEB_FETCH} web fetches used`
     return null
   }
+}
+
+export { PhaseGuard, type AgentPhase }
+
+export function checkPhaseGuard(toolName: string, phase?: AgentPhase): string | null {
+  const guard = new PhaseGuard(phase)
+  return guard.check(toolName)
 }
 
 // ── Audit log ────────────────────────────────────────────────

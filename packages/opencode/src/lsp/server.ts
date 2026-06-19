@@ -188,7 +188,7 @@ export const ESLint: Info = {
 
       const ok = await Archive.extractZip(zipPath, Global.Path.bin)
         .then(() => true)
-        .catch((error) => {
+        .catch((_error) => {
           return false
         })
       if (!ok) return
@@ -556,7 +556,7 @@ export const ElixirLS: Info = {
 
         const ok = await Archive.extractZip(zipPath, Global.Path.bin)
           .then(() => true)
-          .catch((error) => {
+          .catch((_error) => {
             return false
           })
         if (!ok) return
@@ -655,7 +655,7 @@ export const Zls: Info = {
       if (ext === "zip") {
         const ok = await Archive.extractZip(tempPath, Global.Path.bin)
           .then(() => true)
-          .catch((error) => {
+          .catch((_error) => {
             return false
           })
         if (!ok) return
@@ -1036,7 +1036,7 @@ export const Clangd: Info = {
     if (zip) {
       const ok = await Archive.extractZip(archive, Global.Path.bin)
         .then(() => true)
-        .catch((error) => {
+        .catch((_error) => {
           return false
         })
       if (!ok) return
@@ -1338,7 +1338,7 @@ export const KotlinLS: Info = {
       await Filesystem.writeStream(archivePath, download.body)
       const ok = await Archive.extractZip(archivePath, distPath)
         .then(() => true)
-        .catch((error) => {
+        .catch((_error) => {
           return false
         })
       if (!ok) return
@@ -1471,14 +1471,14 @@ export const LuaLS: Info = {
       if (ext === "zip") {
         const ok = await Archive.extractZip(tempPath, installDir)
           .then(() => true)
-          .catch((error) => {
+          .catch((_error) => {
             return false
           })
         if (!ok) return
       } else {
         const ok = await run(["tar", "-xzf", tempPath, "-C", installDir])
           .then((result) => result.code === 0)
-          .catch((error: unknown) => {
+          .catch((_error: unknown) => {
             return false
           })
         if (!ok) return
@@ -1497,7 +1497,7 @@ export const LuaLS: Info = {
         const ok = await fs
           .chmod(bin, 0o755)
           .then(() => true)
-          .catch((error: unknown) => {
+          .catch((_error: unknown) => {
             return false
           })
         if (!ok) return
@@ -1661,7 +1661,7 @@ export const TerraformLS: Info = {
 
       const ok = await Archive.extractZip(tempPath, Global.Path.bin)
         .then(() => true)
-        .catch((error) => {
+        .catch((_error) => {
           return false
         })
       if (!ok) return
@@ -1741,7 +1741,7 @@ export const TexLab: Info = {
       if (ext === "zip") {
         const ok = await Archive.extractZip(tempPath, Global.Path.bin)
           .then(() => true)
-          .catch((error) => {
+          .catch((_error) => {
             return false
           })
         if (!ok) return
@@ -1921,7 +1921,7 @@ export const Tinymist: Info = {
       if (ext === "zip") {
         const ok = await Archive.extractZip(tempPath, Global.Path.bin)
           .then(() => true)
-          .catch((error) => {
+          .catch((_error) => {
             return false
           })
         if (!ok) return

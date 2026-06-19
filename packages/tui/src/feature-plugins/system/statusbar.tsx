@@ -1,6 +1,7 @@
 import type { AssistantMessage } from "@arcana/sdk/v2"
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
+import { Lexicon, Glyph } from "../../branding"
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
 
 const id = "internal:statusbar"
@@ -88,20 +89,20 @@ function View(props: { api: TuiPluginApi }) {
         <Show when={status()?.type === "retry"}>
           <text fg={theme().warning}>↻ retry</text>
         </Show>
-        <Show when={model()}>{(value) => <text fg={theme().textMuted}>{value()}</text>}</Show>
+        <Show when={model()}>{(value) => <text fg={theme().textMuted}>{Glyph.sigil} {value()}</text>}</Show>
         <box flexGrow={1} minHeight={0} />
         <Show when={usage()}>
           {(value) => (
             <text fg={theme().textMuted}>
-              <span style={{ fg: theme().primary }}>{value().tokens.toLocaleString()}</span> tok
+              <span style={{ fg: theme().primary }}>{value().tokens.toLocaleString()}</span> {Lexicon.Token.label}
               <Show when={value().percent !== null}>
-                <span style={{ fg: theme().secondary }}>{" " + value().percent + "%"}</span>
+                <span style={{ fg: theme().secondary }}>{Glyph.meter} {value().percent + "%"}</span>
               </Show>
             </text>
           )}
         </Show>
         <Show when={cost() !== undefined && cost()! > 0}>
-          <text fg={theme().textMuted}>{money.format(cost()!)}</text>
+          <text fg={theme().textMuted}>{Glyph.diamond} {money.format(cost()!)}</text>
         </Show>
       </box>
     </Show>

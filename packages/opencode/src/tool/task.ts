@@ -356,20 +356,25 @@ export const TaskTool = Tool.define(
         }),
         () =>
           Effect.gen(function* () {
-            let waitEffect = Effect.raceFirst(
+            let waitEffect: Effect.Effect<BackgroundJob.Info | undefined, Error, never> = Effect.raceFirst(
               background.wait({ id: nextSession.id }).pipe(Effect.map((waited) => waited.info)),
               background.waitForPromotion(nextSession.id),
             )
-            if (params.timeout && params.timeout > 0) {
-              waitEffect = Effect.gen(function* () {
-                const timed = yield* Effect.timeout(waitEffect, params.timeout)
-                if (timed._tag === "None") {
-                  yield* ops.cancel(nextSession.id)
-                  yield* background.cancel(nextSession.id)
-                  return yield* Effect.fail(new Error(`Task timed out after ${params.timeout}ms`))
-                }
-                return timed.value
-              })
+            if (params.timeout !== undefined && params.timeout > 0) {
+              waitEffect = waitEffect.pipe(
+                Effect.timeout(params.timeout),
+                Effect.flatMap((timed) => {
+                  if (timed === undefined) {
+                    return Effect.all([
+                      ops.cancel(nextSession.id),
+                      background.cancel(nextSession.id),
+                    ], { discard: true }).pipe(
+                      Effect.flatMap(() => Effect.fail(new Error(`Task timed out after ${params.timeout}ms`)))
+                    )
+                  }
+                  return Effect.succeed(timed)
+                })
+              )
             }
             const result = yield* waitEffect
             if (result?.metadata?.background === true) return backgroundResult()

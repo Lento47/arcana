@@ -121,7 +121,7 @@ export const McpListCommand = effectCmd({
 
     if (servers.length === 0) {
       prompts.log.warn("No MCP servers configured")
-      prompts.outro("Add servers with: opencode mcp add")
+      prompts.outro("Add servers with: arcana mcp add")
       return
     }
 
@@ -189,7 +189,7 @@ export const McpAuthCommand = effectCmd({
 
     if (servers.length === 0) {
       prompts.log.warn("No OAuth-capable MCP servers configured")
-      prompts.log.info("Remote MCP servers support OAuth by default. Add a remote server in opencode.json:")
+      prompts.log.info("Remote MCP servers support OAuth by default. Add a remote server in arcana.json:")
       prompts.log.info(`
   "mcp": {
     "my-server": {
@@ -570,7 +570,7 @@ export const McpAddCommand = effectCmd({
       if (type === "local") {
         const command = await prompts.text({
           message: "Enter command to run",
-          placeholder: "e.g., opencode x @modelcontextprotocol/server-filesystem",
+          placeholder: "e.g., arcana x @modelcontextprotocol/server-filesystem",
           validate: (x) => (x && x.length > 0 ? undefined : "Required"),
         })
         if (prompts.isCancel(command)) throw new UI.CancelledError()

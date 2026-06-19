@@ -60,7 +60,7 @@ export function providerOptions(list: { id: string; name: string }[]): ProviderO
         value: provider.id,
         providerID: provider.id,
         description: {
-          opencode: "(Recommended)",
+          arcana: "(Recommended)",
           anthropic: "(API key)",
           openai: "(ChatGPT Plus/Pro or API key)",
           "opencode-go": "Low cost subscription for everyone",
@@ -369,7 +369,7 @@ function ApiMethod(props: ApiMethodProps) {
       placeholder="API key"
       description={
         {
-          opencode: (
+          arcana: (
             <box gap={1}>
               <text fg={theme.textMuted}>
                 OpenCode Zen gives you access to all the best coding models at the cheapest prices with a single API

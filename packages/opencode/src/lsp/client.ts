@@ -4,7 +4,7 @@ import { createMessageConnection, StreamMessageReader, StreamMessageWriter } fro
 import type { Diagnostic as VSCodeDiagnostic } from "vscode-languageserver-types"
 import { Process } from "@/util/process"
 import { LANGUAGE_EXTENSIONS } from "./language"
-import { Effect, Schema } from "effect"
+import { Schema } from "effect"
 import type * as LSPServer from "./server"
 import { withTimeout } from "../util/timeout"
 import { Filesystem } from "@/util/filesystem"
@@ -127,8 +127,6 @@ export async function create(input: {
   directory: string
   instance: InstanceContext
 }) {
-  const instance = input.instance
-
   const connection = createMessageConnection(
     new StreamMessageReader(input.server.process.stdout as any),
     new StreamMessageWriter(input.server.process.stdin as any),
@@ -170,7 +168,7 @@ export async function create(input: {
     }
     updatePushDiagnostics(filePath, params.diagnostics)
   })
-  connection.onRequest("window/workDoneProgress/create", (params) => {
+  connection.onRequest("window/workDoneProgress/create", (_params) => {
     return null
   })
   connection.onRequest("workspace/configuration", async (params) => {

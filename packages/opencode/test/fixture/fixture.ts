@@ -47,7 +47,7 @@ export async function disposeAllInstances() {
 
 // Strip null bytes from paths (defensive fix for CI environment issues)
 function sanitizePath(p: string): string {
-  return p.replace(/\0/g, "")
+  return p.replace(/\x00/g, "")
 }
 
 function exists(dir: string) {

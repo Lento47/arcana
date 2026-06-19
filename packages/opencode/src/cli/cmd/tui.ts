@@ -165,7 +165,7 @@ export const TuiThreadCommand = cmd({
             events: undefined,
           }
         : {
-            url: "http://opencode.internal",
+            url: "http://arcana.internal",
             fetch: createWorkerFetch(client),
             events: createEventSource(client),
           }

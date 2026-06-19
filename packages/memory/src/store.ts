@@ -61,7 +61,7 @@ export type SearchResult = {
 }
 
 export class MemoryStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: Database) {}
 
   createSession(opts: { title?: string; model?: string; provider?: string } = {}): Session {
     const session: Session = {

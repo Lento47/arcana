@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect"
+import { tryGenerateAfterUpdate } from "../util/autodoc.js"
 import * as Tool from "./tool"
 import DESCRIPTION_WRITE from "./todowrite.txt"
 import { Todo } from "../session/todo"
@@ -43,6 +44,8 @@ export const TodoWriteTool = Tool.define<typeof Parameters, Metadata, Todo.Servi
             sessionID: ctx.sessionID,
             todos: params.todos,
           })
+
+          yield* tryGenerateAfterUpdate(params.todos, process.cwd())
 
           return {
             title: `${params.todos.filter((x) => x.status !== "completed").length} todos`,

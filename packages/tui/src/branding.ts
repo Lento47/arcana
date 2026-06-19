@@ -36,6 +36,16 @@ export const Glyph = {
   sigil: "⛧",
   star: "✦",
   chevron: "›",
+  charge: "◈",
+  meter: "▰",
+  well: "▣",
+} as const
+
+/** Agent sigil glyphs by mode. */
+export const AgentSigil = {
+  primary: "⛧",
+  subagent: "⛤",
+  all: "⛧",
 } as const
 
 // --- Phase 5a: Voice Core ---
@@ -72,6 +82,26 @@ export const Lexicon = {
     todo: "Inscribing…",
     question: "Divining…",
     skill: "Channeling…",
+  },
+  Token: {
+    label: "glyphs",
+    labelShort: "glphs",
+    meter: "charge",
+    cost: "tribute",
+    pool: "well",
+  },
+  Agent: {
+    primary: "Adept",
+    subagent: "Familiar",
+    all: "Adept",
+    school: "coven",
+  },
+  Status: {
+    idle: "dormant",
+    busy: "channeling",
+    retry: "re-casting",
+    error: "corrupted",
+    done: "complete",
   },
 } as const
 
@@ -125,5 +155,30 @@ export const IDLE_PHRASES = [
   "the veil thins at compile time…",
 ] as const
 
+/** Verb pools — deterministic per-seed rotation avoids repetitive labels across sessions. */
+export const VerbPool = {
+  thinking: [
+    "Divining", "Scrying", "Channeling", "Unraveling",
+    "Decrypting", "Interpreting", "Decoding", "Translating",
+    "Piercing", "Fathoming", "Weaving",
+    "Dissecting", "Contemplating", "Unspooling", "Parsing",
+  ] as const,
+  thought: [
+    "Divined", "Scried", "Channeled", "Unraveled",
+    "Decrypted", "Interpreted", "Decoded", "Translated",
+    "Pierced", "Fathomed", "Woven",
+    "Dissected", "Contemplated", "Unspooled", "Parsed",
+  ] as const,
+}
+
 /** Glyph pool for error "unencrypt" glitch effect — heavier, chaotic blocks. */
 export const CORRUPT_GLYPHS = "░▒▓█▄▀■□▪▫◊○●◙◘◧◨◩◪◫◭◮◯◰◱◲◳◎◆◇◈◉"
+
+/** Visual charge/glyph meter levels (0-4 segments). */
+export const Meter = {
+  0: "○○○○",
+  1: "●○○○",
+  2: "●●○○",
+  3: "●●●○",
+  4: "●●●●",
+} as const
