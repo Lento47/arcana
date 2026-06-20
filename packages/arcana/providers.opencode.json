@@ -1,4 +1,5 @@
 {
+  "$schema": "https://arcana.otnelhq.com/schema/config.json",
   "provider": {
     "arcana-proxy": {
       "name": "Arcana Proxy",
