@@ -3,9 +3,8 @@ import { UI } from "../ui"
 
 const PROXY_URL = "https://proxy.arcana.otnelhq.com"
 const FALLBACK = "https://arcana-proxy.lejzerv.workers.dev"
-const DEV_KEY = "ARCANA-DEV-0000-0000-0000-000000000001"
 
-function getProxyKey(): string {
+function getProxyKey(): string | undefined {
   if (process.env.ARCANA_PROXY_KEY) return process.env.ARCANA_PROXY_KEY
   // Auto-resolve from license activation
   try {
@@ -15,7 +14,7 @@ function getProxyKey(): string {
     const keyFile = join(home, "proxy_key")
     if (existsSync(keyFile)) return readFileSync(keyFile, "utf8").trim()
   } catch {}
-  return DEV_KEY
+  return undefined
 }
 
 async function proxyFetch(path: string, opts?: any): Promise<any> {
