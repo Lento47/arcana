@@ -57,14 +57,6 @@ if (!process.env.ARCANA_PROXY_KEY) {
     if (existsSync(keyFile)) process.env.ARCANA_PROXY_KEY = readFileSync(keyFile, "utf8").trim()
   } catch {}
 }
-// When proxy key is available, auto-fill provider API keys so /connect
-// routes through the proxy without asking for individual provider keys.
-// User's own keys take priority — only set if not already configured.
-if (process.env.ARCANA_PROXY_KEY) {
-  for (const envName of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"]) {
-    if (!process.env[envName]) process.env[envName] = process.env.ARCANA_PROXY_KEY
-  }
-}
 
 const args = hideBin(process.argv)
 
