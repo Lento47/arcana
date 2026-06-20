@@ -193,10 +193,6 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
               for (const m of list) {
                 const id = m?.id as string | undefined
                 if (!id || input.models[id]) continue
-                // OpenRouter ":free" models 404 with a data-policy error unless the
-                // account opts into provider training (openrouter.ai/settings/privacy).
-                // Hide them so they aren't a dead option; drop this line once enabled.
-                if (id.endsWith(":free")) continue
                 const inMod: string[] = m.architecture?.input_modalities ?? []
                 const params: string[] = m.supported_parameters ?? []
                 const ctx = m.context_length ?? m.top_provider?.context_length ?? 0
