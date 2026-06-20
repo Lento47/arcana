@@ -314,6 +314,29 @@ function cmd(shell: string, command: string, cwd: string, env: NodeJS.ProcessEnv
     detached: process.platform !== "win32",
   })
 }
+/** Strip sensitive environment variables before passing to child processes. */
+function filterEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  const blockedWords = ["KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "AUTH", "LICENSE"]
+  const isSensitive = (key: string): boolean => {
+    const upper = key.toUpperCase()
+    return blockedWords.some((word) => {
+      const idx = upper.indexOf(word)
+      if (idx === -1) return false
+      // Must be at the start or preceded by underscore
+      if (idx > 0 && upper[idx - 1] !== "_") return false
+      // Must be at the end or followed by underscore
+      const end = idx + word.length
+      if (end < upper.length && upper[end] !== "_") return false
+      return true
+    })
+  }
+  const filtered: Record<string, string | undefined> = {}
+  for (const [k, v] of Object.entries(env)) {
+    if (!isSensitive(k)) filtered[k] = v
+  }
+  return filtered
+}
+
 const parser = lazy(async () => {
   const { Parser } = await import("web-tree-sitter")
   const { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
@@ -426,7 +449,7 @@ export const ShellTool = Tool.define(
         { env: {} },
       )
       return {
-        ...process.env,
+        ...filterEnv(process.env),
         ...extra.env,
       }
     })

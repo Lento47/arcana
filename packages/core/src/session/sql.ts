@@ -29,6 +29,9 @@ export const SessionTable = sqliteTable(
     org_id: text().$type<string>(),
     workspace_id: text().$type<WorkspaceV2.ID>(),
     parent_id: text().$type<SessionSchema.ID>(),
+    // TODO: Add user_id column for multi-user session isolation. Currently
+    // sessions are accessible by any caller who knows the session ID. See
+    // security audit.
     slug: text().notNull(),
     directory: DatabasePath.directoryColumn().notNull(),
     path: DatabasePath.pathColumn(),

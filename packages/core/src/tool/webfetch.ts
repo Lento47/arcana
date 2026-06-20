@@ -5,6 +5,7 @@ import { Duration, Effect, Layer, Schema, Stream } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { Parser } from "htmlparser2"
 import TurndownService from "turndown"
+import { promises as dns } from "node:dns"
 import { PermissionV2 } from "../permission"
 import { Tool } from "./tool"
 import { Tools } from "./tools"
@@ -82,6 +83,42 @@ const assertHttpUrl = (url: URL) => {
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("URL must use http:// or https://")
 }
 
+const isPrivateIP = (ip: string): boolean => {
+  const ipv4Match = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (ipv4Match) {
+    const parts = ipv4Match.slice(1).map(Number)
+    if (parts.some((p) => p > 255)) return true
+    const [a, b] = parts
+    if (a === 127) return true
+    if (a === 10) return true
+    if (a === 172 && b >= 16 && b <= 31) return true
+    if (a === 192 && b === 168) return true
+    if (a === 169 && b === 254) return true
+    if (a === 0) return true
+  }
+  return false
+}
+
+const assertSafeUrl = (url: URL): void => {
+  assertHttpUrl(url)
+  const host = url.hostname.toLowerCase()
+  if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1" || host === "[::1]") {
+    throw new Error("Blocked: localhost/loopback access is not allowed")
+  }
+  if (host.endsWith(".local") || host.endsWith(".internal")) {
+    throw new Error("Blocked: private/internal domain is not allowed")
+  }
+  if (isPrivateIP(host)) {
+    throw new Error("Blocked: private IP address is not allowed")
+  }
+  if (host.startsWith("[fd") || host.startsWith("[fc")) {
+    throw new Error("Blocked: IPv6 unique local address")
+  }
+  if (host.startsWith("[fe80")) {
+    throw new Error("Blocked: IPv6 link-local address")
+  }
+}
+
 const execute = (http: HttpClient.HttpClient, url: string, format: Format, userAgent = browserUserAgent) =>
   http.execute(request(url, format, userAgent)).pipe(Effect.flatMap(HttpClientResponse.filterStatusOk))
 
@@ -139,10 +176,29 @@ export const layer = Layer.effectDiscard(
           toModelOutput: ({ output }) => [{ type: "text", text: output.output }],
           execute: (input, context) =>
             Effect.gen(function* () {
+              const url = yield* Effect.try({
+                try: () => new URL(input.url),
+                catch: (error) => error as Error,
+              })
               yield* Effect.try({
-                try: () => assertHttpUrl(new URL(input.url)),
+                try: () => assertSafeUrl(url),
                 catch: (error) => error,
               })
+
+              // DNS resolution for non-IP hostnames (SSRF defense in depth)
+              const host = url.hostname.toLowerCase()
+              const isIpHost = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(host) || host.startsWith("[")
+              if (!isIpHost) {
+                const resolved = yield* Effect.promise(() =>
+                  dns.lookup(host).then(
+                    (result) => result.address,
+                    () => "",
+                  ),
+                )
+                if (resolved && isPrivateIP(resolved)) {
+                  yield* Effect.fail(new Error(`Blocked: host ${host} resolves to private IP ${resolved}`))
+                }
+              }
 
               yield* permission.assert({
                 action: name,

@@ -55,6 +55,9 @@ export const layer = Layer.effectDiscard(
             return Effect.gen(function* () {
               const absolute = path.resolve(location.directory, input.path)
               const selected = path.isAbsolute(input.path) ? path.dirname(absolute) : location.directory
+              // PATH TRAVERSAL GUARD: Resolve the requested path against the project directory,
+              // then verify the resolved absolute path stays within the allowed root.
+              // This prevents directory traversal attacks (e.g., "../../etc/passwd").
               if (!path.isAbsolute(input.path) && !FSUtil.contains(location.directory, absolute))
                 return yield* Effect.die(new Error("Path escapes the allowed read root"))
               const real = yield* fs.realPath(absolute).pipe(Effect.orDie)

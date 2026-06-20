@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { promises as dns } from "node:dns"
 import { Parser } from "htmlparser2"
 import * as Tool from "./tool"
 import TurndownService from "turndown"
@@ -9,6 +10,41 @@ import { isImageAttachment } from "@/util/media"
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024 // 5MB
 const DEFAULT_TIMEOUT = 30 * 1000 // 30 seconds
 const MAX_TIMEOUT = 120 * 1000 // 2 minutes
+
+// SSRF protection helpers
+const isPrivateIP = (ip: string): boolean => {
+  const ipv4Match = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (ipv4Match) {
+    const parts = ipv4Match.slice(1).map(Number)
+    if (parts.some((p) => p > 255)) return true
+    const [a, b] = parts
+    if (a === 127) return true
+    if (a === 10) return true
+    if (a === 172 && b >= 16 && b <= 31) return true
+    if (a === 192 && b === 168) return true
+    if (a === 169 && b === 254) return true
+    if (a === 0) return true
+  }
+  return false
+}
+
+const assertHostSafe = (host: string): void => {
+  if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1" || host === "[::1]") {
+    throw new Error("Blocked: localhost/loopback access is not allowed")
+  }
+  if (host.endsWith(".local") || host.endsWith(".internal")) {
+    throw new Error("Blocked: private/internal domain is not allowed")
+  }
+  if (isPrivateIP(host)) {
+    throw new Error("Blocked: private IP address is not allowed")
+  }
+  if (host.startsWith("[fd") || host.startsWith("[fc")) {
+    throw new Error("Blocked: IPv6 unique local address")
+  }
+  if (host.startsWith("[fe80")) {
+    throw new Error("Blocked: IPv6 link-local address")
+  }
+}
 
 export const Parameters = Schema.Struct({
   url: Schema.String.annotate({ description: "The URL to fetch content from" }),
@@ -34,6 +70,25 @@ export const WebFetchTool = Tool.define(
         Effect.gen(function* () {
           if (!params.url.startsWith("http://") && !params.url.startsWith("https://")) {
             throw new Error("URL must start with http:// or https://")
+          }
+
+          // SSRF protection — validate hostname against private/internal ranges
+          const parsedUrl = new URL(params.url)
+          assertHostSafe(parsedUrl.hostname.toLowerCase())
+
+          // DNS resolution for non-IP hostnames (SSRF defense in depth)
+          const requestHost = parsedUrl.hostname.toLowerCase()
+          const isIpHost = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(requestHost) || requestHost.startsWith("[")
+          if (!isIpHost) {
+            const resolved = yield* Effect.promise(() =>
+              dns.lookup(requestHost).then(
+                (result) => result.address,
+                () => "",
+              ),
+            )
+            if (resolved && isPrivateIP(resolved)) {
+              throw new Error(`Blocked: host ${requestHost} resolves to private IP ${resolved}`)
+            }
           }
 
           yield* ctx.ask({

@@ -1,3 +1,4 @@
+import fs from "node:fs"
 import { Database } from "bun:sqlite"
 import { drizzle } from "drizzle-orm/bun-sqlite"
 import * as Context from "effect/Context"
@@ -165,6 +166,10 @@ const nativeLayer = (config: Config) =>
         native.run("PRAGMA journal_mode = WAL;")
         native.run("PRAGMA synchronous = NORMAL;")
       }
+      // Restrict database files to owner-only read/write
+      try { fs.chmodSync(config.filename, 0o600) } catch {}
+      try { fs.chmodSync(config.filename + "-wal", 0o600) } catch {}
+      try { fs.chmodSync(config.filename + "-shm", 0o600) } catch {}
       return native
     }),
   )
