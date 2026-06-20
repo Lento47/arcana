@@ -55,6 +55,12 @@ if (-not $isSubcommand) {
     # cwd, to resolve the project root — see resolveThreadDirectory in cli/cmd/tui.ts).
     $env:PWD = (Get-Location).Path
 
+    # Auto-load proxy key from license activation
+    $proxyKeyFile = Join-Path $arcanaHome "proxy_key"
+    if (-not $env:ARCANA_PROXY_KEY -and (Test-Path $proxyKeyFile)) {
+      $env:ARCANA_PROXY_KEY = (Get-Content $proxyKeyFile -Raw).Trim()
+    }
+
     # Run bun with cwd=packages/engine so it resolves JSX transpile config from that
     # package's tsconfig ("jsxImportSource": "@opentui/solid") regardless of where the
     # user launched arcana from. Without this, bun walks up from an unrelated CWD, finds
