@@ -149,13 +149,21 @@ export const StatusCommand = cmd({
       const { readFileSync, existsSync } = require("node:fs") as typeof import("node:fs")
       const { join } = require("node:path") as typeof import("node:path")
       const { homedir } = require("node:os") as typeof import("node:os")
-      const { execSync } = require("node:child_process") as typeof import("node:child_process")
-      const dbPath = join(homedir(), ".arcana", "data", "arcana.db")
+      const home = process.env.ARCANA_HOME ?? join(process.env.USERPROFILE ?? homedir(), ".arcana")
       let key = ""
-      if (existsSync(dbPath)) {
-        const raw = readFileSync(dbPath, "utf8")
-        const m = raw.match(/"(license_[^"]+)"/)
-        if (m) key = m[1]
+      // Check flat file first (written by license activate)
+      const keyFile = join(home, "proxy_key")
+      if (existsSync(keyFile)) {
+        key = readFileSync(keyFile, "utf8").trim()
+      }
+      // Fallback: search SQLite database
+      if (!key) {
+        const dbPath = join(home, "data", "arcana.db")
+        if (existsSync(dbPath)) {
+          const raw = readFileSync(dbPath, "utf8")
+          const m = raw.match(/"(license_[^"]+)"/)
+          if (m) key = m[1]
+        }
       }
       if (!key) {
         UI.println("No license key found. Run: arcana license activate <key>")
