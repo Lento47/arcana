@@ -1,5 +1,4 @@
 {
-  "$schema": "https://raw.githubusercontent.com/Lento47/arcana/master/schema/config.json",
   "provider": {
     "arcana-proxy": {
       "name": "Arcana Proxy",
