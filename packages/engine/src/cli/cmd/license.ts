@@ -77,7 +77,17 @@ async function post<T>(path: string, body: unknown): Promise<T> {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(10000),
       })
-      const json = await res.json()
+      // Read as text first: a down/misconfigured server returns an HTML error
+      // page, and res.json() would throw an opaque "Failed to parse JSON".
+      const text = await res.text()
+      let json: any = null
+      try {
+        json = JSON.parse(text)
+      } catch {}
+      if (json === null) {
+        last = new Error(`${base} returned a non-JSON response (HTTP ${res.status})`)
+        continue
+      }
 
       if (json.signature && json.data) {
         if (!(await verifySignatureAsync(json.data, json.signature))) {
@@ -91,6 +101,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
         return result
       }
 
+      if (!res.ok) {
+        last = new Error(`${base} error (HTTP ${res.status})${json.error ? ` — ${json.error}` : ""}`)
+        continue
+      }
       if (!json.valid) return json as T
       continue
     } catch (e) {
@@ -122,7 +136,14 @@ export const ActivateCommand = cmd({
     yargs.positional("key", { describe: "license key", type: "string" }),
   async handler(args: any) {
     const machineId = getMachineId()
-    const result = await post<any>("/api/license/activate", { licenseKey: args.key, machineId })
+    let result: any
+    try {
+      result = await post<any>("/api/license/activate", { licenseKey: args.key, machineId })
+    } catch (e) {
+      UI.println(`❌ Could not reach the license server: ${e instanceof Error ? e.message : String(e)}`)
+      UI.println(`   If you already activated before, your existing key still works — this only refreshes tier info.`)
+      return
+    }
     if (result.valid) {
       UI.println(`✅ License activated — ${result.tier ?? "unknown"} tier`)
       if (result.features?.length) UI.println(`   Features: ${result.features.join(", ")}`)
