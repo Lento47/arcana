@@ -27,6 +27,11 @@ if "%_arg1%"=="-v" goto :subcommand
 if "%_arg1%"=="--help" goto :subcommand
 if "%_arg1%"=="-h" goto :subcommand
 
+REM Auto-load proxy key from license activation
+if not defined ARCANA_PROXY_KEY if exist "%USERPROFILE%\.arcana\proxy_key" (
+    set /p ARCANA_PROXY_KEY=<"%USERPROFILE%\.arcana\proxy_key"
+)
+
 REM TUI mode — spawn opencode directly
 bun run --conditions=browser "%~dp0packages\engine\src\index.ts" %*
 goto :end
