@@ -117,10 +117,13 @@ export const ProxyCommand = cmd({
         builder: (y) => y.positional("amount", { describe: "USD amount", type: "number" }),
         async handler(args: any) {
           try {
+            // Bind the order to the buyer's account so credits land on the same key
+            // /v1/balance reads, and so capture is authorized for real license keys.
+            const key = process.env.ARCANA_PROXY_KEY ?? DEV_KEY
             const data = await proxyFetch("/v1/pay/create-order", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ amount: args.amount }),
+              body: JSON.stringify({ amount: args.amount, userId: key }),
             })
             if (data.approvalUrl) {
               UI.println(`⛧ PayPal checkout ready`)
@@ -143,11 +146,12 @@ export const ProxyCommand = cmd({
         builder: (y) => y.positional("orderId", { describe: "PayPal order ID", type: "string" }),
         async handler(args: any) {
           try {
-            const key = process.env.ARCANA_PROXY_KEY ?? DEV_KEY
+            // Worker credits the authenticated caller's account (from the Bearer key),
+            // so no userId is needed in the body — real license keys are authorized.
             const data = await proxyFetch("/v1/pay/capture-order", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ orderId: args.orderId, userId: key }),
+              body: JSON.stringify({ orderId: args.orderId }),
             })
             if (data.success) {
               UI.println(`✅ Payment captured!`)
