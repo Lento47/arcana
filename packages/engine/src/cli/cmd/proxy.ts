@@ -131,7 +131,8 @@ export const ProxyCommand = cmd({
           try {
             // Bind the order to the buyer's account so credits land on the same key
             // /v1/balance reads, and so capture is authorized for real license keys.
-            const key = process.env.ARCANA_PROXY_KEY ?? DEV_KEY
+            const key = getProxyKey()
+            if (!key) { UI.error("No proxy key configured. Run: arcana license activate <key>"); return }
             const data = await proxyFetch("/v1/pay/create-order", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
