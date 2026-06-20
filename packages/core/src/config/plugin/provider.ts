@@ -40,6 +40,19 @@ export const Plugin = PluginV2.define({
           }
         }
       }
+      // When proxy key is configured, register it as a fallback env method
+      // for ALL providers so they can authenticate through the proxy.
+      if (process.env.ARCANA_PROXY_KEY) {
+        for (const ref of integrations.list()) {
+          const hasEnv = ref.methods.some((m: any) => m.type === "env")
+          if (hasEnv) {
+            integrations.method.update({
+              integrationID: ref.id,
+              method: { type: "env", names: ["ARCANA_PROXY_KEY"] },
+            })
+          }
+        }
+      }
     })
 
     yield* transform((catalog) => {
