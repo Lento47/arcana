@@ -145,6 +145,11 @@ export function createDialogProviderOptions() {
           gutter: connected && onboarded() ? () => <text fg={theme.success}>✓</text> : undefined,
           async onSelect() {
             if (consoleManaged) return
+            // Skip auth if already connected (e.g., via ARCANA_PROXY_KEY)
+            if (connected) {
+              dialog.replace(() => <DialogModel providerID={providerID} />)
+              return
+            }
 
             const methods = sync.data.provider_auth[providerID] ?? [
               {
