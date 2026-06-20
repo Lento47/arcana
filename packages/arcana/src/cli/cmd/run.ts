@@ -1,4 +1,5 @@
 import type { CommandModule } from "yargs"
+import path from "node:path"
 import { createInterface } from "node:readline"
 import { mkdir } from "node:fs/promises"
 import { loadConfig, getDataDir } from "../../config.js"
