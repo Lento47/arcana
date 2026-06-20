@@ -1413,9 +1413,14 @@ export const layer = Layer.effect(
         const configProviders = Object.entries(cfg.provider ?? {})
         // Built-in proxy provider: when a license/proxy key is present, guarantee the
         // `arcana-proxy` provider exists regardless of any external bridge config (the
-        // launcher's cached config can be stale). Its models are discovered at runtime
-        // from the proxy catalog — see custom()["arcana-proxy"].discoverModels above.
+        // launcher's cached config can be stale). The full catalog is discovered at
+        // runtime from the proxy (see custom()["arcana-proxy"].discoverModels above),
+        // but we ALSO seed a few static models so the provider always has >=1 model and
+        // survives the zero-models drop even if that network fetch is slow/fails during
+        // a busy startup (the provider state is computed once and cached). Discovery
+        // only merges ids not already present, so seeds + discovery don't duplicate.
         if (process.env.ARCANA_PROXY_KEY && !cfg.provider?.["arcana-proxy"]) {
+          const seed = (context: number, output: number) => ({ limit: { context, output } })
           configProviders.unshift([
             "arcana-proxy",
             {
@@ -1423,6 +1428,13 @@ export const layer = Layer.effect(
               npm: "@ai-sdk/openai-compatible",
               api: "https://proxy.arcana.otnelhq.com/v1",
               env: ["ARCANA_PROXY_KEY"],
+              models: {
+                "anthropic/claude-sonnet-latest": { name: "Claude Sonnet (latest)", ...seed(200000, 64000) },
+                "anthropic/claude-haiku-4-5": { name: "Claude Haiku 4.5", ...seed(200000, 64000) },
+                "openai/gpt-latest": { name: "GPT (latest)", ...seed(128000, 16384) },
+                "openai/gpt-4o-mini": { name: "GPT-4o mini", ...seed(128000, 16384) },
+                "google/gemini-pro-latest": { name: "Gemini Pro (latest)", ...seed(1048576, 65536) },
+              },
             },
           ] as (typeof configProviders)[number])
         }
