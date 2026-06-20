@@ -60,6 +60,9 @@ if (-not $isSubcommand) {
     if (-not $env:ARCANA_PROXY_KEY -and (Test-Path $proxyKeyFile)) {
       $env:ARCANA_PROXY_KEY = (Get-Content $proxyKeyFile -Raw).Trim()
     }
+    if ($env:ARCANA_PROXY_KEY -and -not $env:OPENAI_API_KEY) {
+      $env:OPENAI_API_KEY = $env:ARCANA_PROXY_KEY
+    }
 
     # Run bun with cwd=packages/engine so it resolves JSX transpile config from that
     # package's tsconfig ("jsxImportSource": "@opentui/solid") regardless of where the
