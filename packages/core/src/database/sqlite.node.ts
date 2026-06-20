@@ -1,3 +1,4 @@
+import fs from "node:fs"
 import { DatabaseSync, type SQLInputValue } from "node:sqlite"
 import { drizzle } from "drizzle-orm/node-sqlite"
 import * as Context from "effect/Context"
@@ -156,7 +157,13 @@ const nativeLayer = (config: Config) =>
         open: true,
       })
       yield* Effect.addFinalizer(() => Effect.sync(() => native.close()))
-      if (config.disableWAL !== true && config.readonly !== true) native.exec("PRAGMA journal_mode = WAL;")
+      if (config.disableWAL !== true && config.readonly !== true) {
+        native.exec("PRAGMA journal_mode = WAL;")
+      }
+      // Restrict database files to owner-only read/write
+      try { fs.chmodSync(config.filename, 0o600) } catch {}
+      try { fs.chmodSync(config.filename + "-wal", 0o600) } catch {}
+      try { fs.chmodSync(config.filename + "-shm", 0o600) } catch {}
       return native
     }),
   )

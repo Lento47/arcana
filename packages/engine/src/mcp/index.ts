@@ -324,6 +324,16 @@ export const layer = Layer.effect(
       }
     })
 
+    /** Strip sensitive environment variables before passing to child processes. */
+    function filterEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
+      const blocked = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i
+      const filtered: Record<string, string | undefined> = {}
+      for (const [k, v] of Object.entries(env)) {
+        if (!blocked.test(k)) filtered[k] = v
+      }
+      return filtered
+    }
+
     const connectLocal = Effect.fn("MCP.connectLocal")(function* (
       key: string,
       mcp: ConfigMCPV1.Info & { type: "local" },
@@ -337,7 +347,7 @@ export const layer = Layer.effect(
         args,
         cwd,
         env: {
-          ...process.env,
+          ...filterEnv(process.env),
           ...(cmd === "arcana" ? { BUN_BE_BUN: "1" } : {}),
           ...mcp.environment,
         },

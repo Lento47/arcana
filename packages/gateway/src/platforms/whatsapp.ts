@@ -42,7 +42,7 @@ export class WhatsAppAdapter implements PlatformAdapter {
         const mode = url.searchParams.get("hub.mode")
         const token = url.searchParams.get("hub.verify_token")
         const challenge = url.searchParams.get("hub.challenge")
-        if (mode === "subscribe" && token === (this.config.verifyToken ?? "arcana")) {
+        if (mode === "subscribe" && token === (this.config.verifyToken ?? process.env.ARCANA_WHATSAPP_VERIFY_TOKEN ?? crypto.randomUUID())) {
           res.writeHead(200, { "Content-Type": "text/plain" })
           res.end(challenge ?? "")
         } else {
@@ -55,7 +55,17 @@ export class WhatsAppAdapter implements PlatformAdapter {
       // Incoming message (POST with JSON body)
       if (req.method === "POST") {
         let body = ""
-        for await (const chunk of req) body += chunk
+        let size = 0
+        const MAX_BODY_SIZE = 1 * 1024 * 1024 // 1MB — prevents memory exhaustion attacks
+        for await (const chunk of req) {
+          size += Buffer.byteLength(chunk)
+          if (size > MAX_BODY_SIZE) {
+            res.writeHead(413, { "Content-Type": "text/plain" })
+            res.end("Payload too large")
+            return
+          }
+          body += chunk
+        }
 
         // Verify signature if app secret is set
         const signature = req.headers["x-hub-signature-256"]
