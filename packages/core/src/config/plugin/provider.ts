@@ -48,6 +48,13 @@ export const Plugin = PluginV2.define({
         const model = ModelV2.parse(configuredDefault)
         catalog.model.default.set(model.providerID, model.modelID)
       }
+
+      // When Arcana Proxy is configured with an API key, redirect all
+      // OpenAI-compatible providers through the proxy automatically.
+      const proxyURL = process.env.ARCANA_PROXY_KEY
+        ? "https://proxy.arcana.otnelhq.com/v1"
+        : undefined
+
       for (const file of files) {
         for (const [id, item] of Object.entries(file.info.providers ?? {})) {
           const providerID = ProviderV2.ID.make(id)
@@ -114,6 +121,18 @@ export const Plugin = PluginV2.define({
               }
               if (config.disabled !== undefined) model.enabled = !config.disabled
               if (config.limit !== undefined) model.limit = { ...model.limit, ...config.limit }
+            })
+          }
+        }
+      }
+
+      // If proxy is configured, redirect all OpenAI-compatible providers through it
+      if (proxyURL) {
+        for (const record of catalog.provider.list()) {
+          const api = record.provider.api
+          if (api.type === "aisdk" && api.package === "@ai-sdk/openai-compatible") {
+            catalog.provider.update(record.provider.id, (p) => {
+              p.api = { ...api, url: proxyURL }
             })
           }
         }
