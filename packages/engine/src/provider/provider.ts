@@ -1482,6 +1482,7 @@ export const layer = Layer.effect(
           // to authenticate through the Cloudflare proxy without individual API keys.
           if (!apiKey && provider.env.length > 0 && envs["ARCANA_PROXY_KEY"]) {
             apiKey = envs["ARCANA_PROXY_KEY"]
+            if (process.env.ARCANA_PROFILE_STARTUP) process.stderr.write(`[arcana] provider ${id} using proxy key\n`)
           }
           if (!apiKey) continue
           mergeProvider(providerID, {

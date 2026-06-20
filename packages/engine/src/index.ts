@@ -54,7 +54,10 @@ if (!process.env.ARCANA_PROXY_KEY) {
     const { join } = require("node:path") as typeof import("node:path")
     const home = process.env.ARCANA_HOME ?? join(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".arcana")
     const keyFile = join(home, "proxy_key")
-    if (existsSync(keyFile)) process.env.ARCANA_PROXY_KEY = readFileSync(keyFile, "utf8").trim()
+    if (existsSync(keyFile)) {
+      process.env.ARCANA_PROXY_KEY = readFileSync(keyFile, "utf8").trim()
+      process.stderr.write(`[arcana] proxy key loaded from ${keyFile}\n`)
+    }
   } catch {}
 }
 
