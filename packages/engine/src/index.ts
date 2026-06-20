@@ -60,6 +60,12 @@ if (!process.env.ARCANA_PROXY_KEY) {
     }
   } catch {}
 }
+// When proxy key is available, auto-configure the OpenAI-compatible provider
+// env var so ALL providers route through the proxy without individual API keys.
+// The proxy validates the license key and forwards to OpenRouter (200+ models).
+if (process.env.ARCANA_PROXY_KEY && !process.env.OPENAI_API_KEY) {
+  process.env.OPENAI_API_KEY = process.env.ARCANA_PROXY_KEY
+}
 
 const args = hideBin(process.argv)
 
