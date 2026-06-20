@@ -47,6 +47,17 @@ import { AuditCommand } from "./cli/cmd/audit"
 import { TeamCommand } from "./cli/cmd/team"
 mark("cli-import-end")
 
+// Auto-configure proxy auth from stored license key
+if (!process.env.ARCANA_PROXY_KEY) {
+  try {
+    const { readFileSync, existsSync } = require("node:fs") as typeof import("node:fs")
+    const { join } = require("node:path") as typeof import("node:path")
+    const home = process.env.ARCANA_HOME ?? join(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".arcana")
+    const keyFile = join(home, "proxy_key")
+    if (existsSync(keyFile)) process.env.ARCANA_PROXY_KEY = readFileSync(keyFile, "utf8").trim()
+  } catch {}
+}
+
 const args = hideBin(process.argv)
 
 function show(out: string) {

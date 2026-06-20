@@ -127,6 +127,12 @@ export const ActivateCommand = cmd({
       UI.println(`✅ License activated — ${result.tier ?? "unknown"} tier`)
       if (result.features?.length) UI.println(`   Features: ${result.features.join(", ")}`)
       if (result.tier) UI.println(`   Tools: ${result.tools?.length ?? "standard"} available`)
+      // Auto-configure proxy auth so the user doesn't need ARCANA_PROXY_KEY env var
+      const { writeFileSync, mkdirSync, existsSync } = require("node:fs") as typeof import("node:fs")
+      const { join } = require("node:path") as typeof import("node:path")
+      const home = process.env.ARCANA_HOME ?? join(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".arcana")
+      if (!existsSync(home)) mkdirSync(home, { recursive: true })
+      writeFileSync(join(home, "proxy_key"), args.key.trim())
     } else {
       UI.println(`❌ Activation failed: ${result.error ?? "unknown error"}`)
     }

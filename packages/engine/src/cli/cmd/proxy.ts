@@ -5,8 +5,21 @@ const PROXY_URL = "https://proxy.arcana.otnelhq.com"
 const FALLBACK = "https://arcana-proxy.lejzerv.workers.dev"
 const DEV_KEY = "ARCANA-DEV-0000-0000-0000-000000000001"
 
+function getProxyKey(): string {
+  if (process.env.ARCANA_PROXY_KEY) return process.env.ARCANA_PROXY_KEY
+  // Auto-resolve from license activation
+  try {
+    const { readFileSync, existsSync } = require("node:fs") as typeof import("node:fs")
+    const { join } = require("node:path") as typeof import("node:path")
+    const home = process.env.ARCANA_HOME ?? join(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".arcana")
+    const keyFile = join(home, "proxy_key")
+    if (existsSync(keyFile)) return readFileSync(keyFile, "utf8").trim()
+  } catch {}
+  return DEV_KEY
+}
+
 async function proxyFetch(path: string, opts?: any): Promise<any> {
-  const key = process.env.ARCANA_PROXY_KEY ?? DEV_KEY
+  const key = getProxyKey()
   const timeout = opts?.signal ? undefined : 15000
   const urls = [`${PROXY_URL}${path}`, `${FALLBACK}${path}`]
   for (const base of urls) {
