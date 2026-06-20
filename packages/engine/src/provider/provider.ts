@@ -1476,7 +1476,13 @@ export const layer = Layer.effect(
         for (const [id, provider] of Object.entries(database)) {
           const providerID = ProviderV2.ID.make(id)
           if (disabled.has(providerID)) continue
-          const apiKey = provider.env.map((item) => envs[item]).find(Boolean)
+          let apiKey = provider.env.map((item) => envs[item]).find(Boolean)
+          // If no provider-specific key is set, fall back to the Arcana proxy key
+          // (set automatically from license activation). This allows all providers
+          // to authenticate through the Cloudflare proxy without individual API keys.
+          if (!apiKey && provider.env.length > 0 && envs["ARCANA_PROXY_KEY"]) {
+            apiKey = envs["ARCANA_PROXY_KEY"]
+          }
           if (!apiKey) continue
           mergeProvider(providerID, {
             source: "env",
