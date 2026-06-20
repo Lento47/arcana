@@ -167,6 +167,77 @@ function selectBedrockMantleLanguageModel(sdk: BundledSDK, modelID: string) {
 
 function custom(dep: CustomDep): Record<string, CustomLoader> {
   return {
+    "arcana-proxy": Effect.fnUntraced(function* (input: Info) {
+      const env = yield* dep.env()
+      const key = env["ARCANA_PROXY_KEY"]
+      return {
+        autoload: !!key,
+        // Discover the proxy's full catalog (OpenRouter-backed) at runtime so the
+        // provider carries models and survives the zero-models drop. Everything
+        // routes through proxy.arcana.otnelhq.com using the license key.
+        async discoverModels(): Promise<Record<string, Model>> {
+          if (!key) return {}
+          const bases = ["https://proxy.arcana.otnelhq.com", "https://arcana-proxy.lejzerv.workers.dev"]
+          const price = (v: unknown) => (v != null ? Number(v) * 1_000_000 : 0)
+          for (const base of bases) {
+            try {
+              const res = await fetch(`${base}/v1/models`, {
+                headers: { Authorization: `Bearer ${key}` },
+                signal: AbortSignal.timeout(10000),
+              })
+              if (!res.ok) continue
+              const json = (await res.json()) as { data?: any[] }
+              const list = json.data ?? []
+              if (!list.length) continue
+              const models: Record<string, Model> = {}
+              for (const m of list) {
+                const id = m?.id as string | undefined
+                if (!id || input.models[id]) continue
+                const inMod: string[] = m.architecture?.input_modalities ?? []
+                const params: string[] = m.supported_parameters ?? []
+                const ctx = m.context_length ?? m.top_provider?.context_length ?? 0
+                const out = m.top_provider?.max_completion_tokens ?? 0
+                models[id] = {
+                  id: ModelV2.ID.make(id),
+                  providerID: ProviderV2.ID.make("arcana-proxy"),
+                  name: m.name ?? id,
+                  family: "",
+                  api: { id, url: `${base}/v1`, npm: "@ai-sdk/openai-compatible" },
+                  status: "active",
+                  headers: {},
+                  options: {},
+                  cost: {
+                    input: price(m.pricing?.prompt),
+                    output: price(m.pricing?.completion),
+                    cache: { read: price(m.pricing?.input_cache_read), write: price(m.pricing?.input_cache_write) },
+                  },
+                  limit: { context: ctx, output: out },
+                  capabilities: {
+                    temperature: params.includes("temperature"),
+                    reasoning: params.includes("reasoning") || Boolean(m.reasoning),
+                    attachment: inMod.includes("image") || inMod.includes("file") || inMod.includes("pdf"),
+                    toolcall: params.includes("tools"),
+                    input: {
+                      text: true,
+                      audio: inMod.includes("audio"),
+                      image: inMod.includes("image"),
+                      video: inMod.includes("video"),
+                      pdf: inMod.includes("file") || inMod.includes("pdf"),
+                    },
+                    output: { text: true, audio: false, image: false, video: false, pdf: false },
+                    interleaved: false,
+                  },
+                  release_date: "",
+                  variants: {},
+                }
+              }
+              return models
+            } catch {}
+          }
+          return {}
+        },
+      }
+    }),
     anthropic: () =>
       Effect.succeed({
         autoload: false,
@@ -1340,6 +1411,21 @@ export const layer = Layer.effect(
 
         // now read config providers - includes any modifications from plugin config() hook
         const configProviders = Object.entries(cfg.provider ?? {})
+        // Built-in proxy provider: when a license/proxy key is present, guarantee the
+        // `arcana-proxy` provider exists regardless of any external bridge config (the
+        // launcher's cached config can be stale). Its models are discovered at runtime
+        // from the proxy catalog — see custom()["arcana-proxy"].discoverModels above.
+        if (process.env.ARCANA_PROXY_KEY && !cfg.provider?.["arcana-proxy"]) {
+          configProviders.unshift([
+            "arcana-proxy",
+            {
+              name: "Arcana Proxy",
+              npm: "@ai-sdk/openai-compatible",
+              api: "https://proxy.arcana.otnelhq.com/v1",
+              env: ["ARCANA_PROXY_KEY"],
+            },
+          ] as (typeof configProviders)[number])
+        }
         const disabled = new Set(cfg.disabled_providers ?? [])
         const enabled = cfg.enabled_providers ? new Set(cfg.enabled_providers) : null
 
@@ -1476,14 +1562,12 @@ export const layer = Layer.effect(
         for (const [id, provider] of Object.entries(database)) {
           const providerID = ProviderV2.ID.make(id)
           if (disabled.has(providerID)) continue
-          let apiKey = provider.env.map((item) => envs[item]).find(Boolean)
-          // If no provider-specific key is set, fall back to the Arcana proxy key
-          // (set automatically from license activation). This allows all providers
-          // to authenticate through the Cloudflare proxy without individual API keys.
-          if (!apiKey && provider.env.length > 0 && envs["ARCANA_PROXY_KEY"]) {
-            apiKey = envs["ARCANA_PROXY_KEY"]
-            if (process.env.ARCANA_PROFILE_STARTUP) process.stderr.write(`[arcana] provider ${id} using proxy key\n`)
-          }
+          // Native providers connect only via their own key (env or auth.json).
+          // The license/proxy path is served by the dedicated `arcana-proxy`
+          // provider (which resolves ARCANA_PROXY_KEY through its own `env`),
+          // not by spoofing every native provider's credentials — those would
+          // carry the proxy key to the wrong host and 401.
+          const apiKey = provider.env.map((item) => envs[item]).find(Boolean)
           if (!apiKey) continue
           mergeProvider(providerID, {
             source: "env",
@@ -1553,18 +1637,20 @@ export const layer = Layer.effect(
           mergeProvider(providerID, partial)
         }
 
-        const gitlab = ProviderV2.ID.make("gitlab")
-        if (discoveryLoaders[gitlab] && providers[gitlab] && isProviderAllowed(gitlab)) {
-          yield* Effect.promise(async () => {
-            try {
-              const discovered = await discoveryLoaders[gitlab]()
-              for (const [modelID, model] of Object.entries(discovered)) {
-                if (!providers[gitlab].models[modelID]) {
-                  providers[gitlab].models[modelID] = model
+        for (const discoverID of ["gitlab", "arcana-proxy"]) {
+          const pid = ProviderV2.ID.make(discoverID)
+          if (discoveryLoaders[pid] && providers[pid] && isProviderAllowed(pid)) {
+            yield* Effect.promise(async () => {
+              try {
+                const discovered = await discoveryLoaders[pid]()
+                for (const [modelID, model] of Object.entries(discovered)) {
+                  if (!providers[pid].models[modelID]) {
+                    providers[pid].models[modelID] = model
+                  }
                 }
-              }
-            } catch (e) {}
-          })
+              } catch (e) {}
+            })
+          }
         }
 
         for (const [id, provider] of Object.entries(providers)) {

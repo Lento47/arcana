@@ -55,13 +55,12 @@ if (-not $isSubcommand) {
     # cwd, to resolve the project root — see resolveThreadDirectory in cli/cmd/tui.ts).
     $env:PWD = (Get-Location).Path
 
-    # Auto-load proxy key from license activation
+    # Auto-load proxy key from license activation. The proxy is reached via the
+    # dedicated `arcana-proxy` provider (ARCANA_PROXY_KEY); we do NOT mirror it into
+    # OPENAI_API_KEY, which would 401 the real openai provider against the proxy key.
     $proxyKeyFile = Join-Path $arcanaHome "proxy_key"
     if (-not $env:ARCANA_PROXY_KEY -and (Test-Path $proxyKeyFile)) {
       $env:ARCANA_PROXY_KEY = (Get-Content $proxyKeyFile -Raw).Trim()
-    }
-    if ($env:ARCANA_PROXY_KEY -and -not $env:OPENAI_API_KEY) {
-      $env:OPENAI_API_KEY = $env:ARCANA_PROXY_KEY
     }
 
     # Run bun with cwd=packages/engine so it resolves JSX transpile config from that
