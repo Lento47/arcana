@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/Lento47/arcana/master/schema/config.json",
   "title": "Arcana Config",
   "type": "object",
   "properties": {

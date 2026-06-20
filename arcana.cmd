@@ -8,7 +8,7 @@ set "CONFIG=%ARCANA_HOME%\cache\opencode-config.json"
 
 REM Generate bridge config once (nearly instant — 2 dir checks + 1 JSON file)
 if not exist "%CONFIG%" (
-    powershell -NoProfile -Command "mkdir '%ARCANA_HOME%\cache' -Force *>$null; $s=@(); if(Test-Path '%~dp0skills'){$s+='%~dp0skills'}; if(Test-Path '%ARCANA_HOME%\skills'){$s+='%ARCANA_HOME%\skills'}; @{'$schema'='https://raw.githubusercontent.com/Lento47/arcana/master/schema/config.json';'skills'=@{paths=$s}} | ConvertTo-Json -Depth 3 | Out-File '%CONFIG%' -Encoding utf8"
+    powershell -NoProfile -Command "mkdir '%ARCANA_HOME%\cache' -Force *>$null; $s=@(); if(Test-Path '%~dp0skills'){$s+='%~dp0skills'}; if(Test-Path '%ARCANA_HOME%\skills'){$s+='%ARCANA_HOME%\skills'}; @{'skills'=@{paths=$s}} | ConvertTo-Json -Depth 3 | Out-File '%CONFIG%' -Encoding utf8"
 )
 
 set "ARCANA_CONFIG=%CONFIG%"

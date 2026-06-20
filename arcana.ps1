@@ -42,7 +42,6 @@ if (-not $isSubcommand) {
         }
 
         $config = @{
-            '$schema' = "https://raw.githubusercontent.com/Lento47/arcana/master/schema/config.json"
             skills = @{ paths = $skillsPaths }
         }
         if ($provider.Count -gt 0) { $config.provider = $provider }
