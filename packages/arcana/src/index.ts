@@ -14,19 +14,19 @@ const isArcanaSubcommand = firstArg && (SUBCOMMANDS.includes(firstArg) || HELP_F
 
 if (!isArcanaSubcommand) {
   // === TUI fast path ===
-  // Generate bridge config (providers + skills paths) for opencode
+  // Generate bridge config (providers + skills paths) for arcana engine
   const { generateBridgeConfig } = await import("./skills/bridge.js")
   const arcanaConfig = process.env.ARCANA_CONFIG
     ? undefined
     : await generateBridgeConfig()
 
-  const opencodeDir = path.join(import.meta.dir, "../../opencode")
-  const opencodeEntry = path.join(opencodeDir, "src/index.ts")
+  const engineDir = path.join(import.meta.dir, "../../engine")
+  const engineEntry = path.join(engineDir, "src/index.ts")
 
   const child = Bun.spawn({
-    cmd: ["bun", "run", "--conditions=browser", opencodeEntry, ...args],
+    cmd: ["bun", "run", "--conditions=browser", engineEntry, ...args],
     stdio: ["inherit", "inherit", "inherit"],
-    cwd: opencodeDir,
+    cwd: engineDir,
     env: {
       ...process.env,
       PWD: process.cwd(),
