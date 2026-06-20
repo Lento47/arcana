@@ -40,18 +40,16 @@ export const Plugin = PluginV2.define({
           }
         }
       }
-      // When proxy key is configured, register it as a fallback env method
-      // for ALL providers so they can authenticate through the proxy.
+      // The proxy is served by the dedicated `arcana-proxy` provider only.
+      // Register ARCANA_PROXY_KEY as its env method when present; do NOT attach it
+      // to every provider (those route to the real vendor host and would 401).
       if (process.env.ARCANA_PROXY_KEY) {
-        for (const ref of integrations.list()) {
-          const methods = integrations.method.list(ref.id)
-          const hasEnv = methods.some((m) => m.type === "env")
-          if (hasEnv) {
-            integrations.method.update({
-              integrationID: ref.id,
-              method: { type: "env", names: ["ARCANA_PROXY_KEY"] },
-            })
-          }
+        const proxyRef = integrations.list().find((ref) => ref.id === "arcana-proxy")
+        if (proxyRef) {
+          integrations.method.update({
+            integrationID: proxyRef.id,
+            method: { type: "env", names: ["ARCANA_PROXY_KEY"] },
+          })
         }
       }
     })
