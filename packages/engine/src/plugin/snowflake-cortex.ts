@@ -162,7 +162,7 @@ const HTML_SUCCESS = `<!doctype html>
   <body style="font-family: system-ui; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; background:#111; color:#eee;">
     <div style="text-align:center; max-width:36rem; padding:2rem;">
       <h1 style="color:#7ee787;">Authorization Successful</h1>
-      <p>You can close this window and return to OpenCode.</p>
+      <p>You can close this window and return to Arcana.</p>
     </div>
     <script>setTimeout(() => window.close(), 1500)</script>
   </body>
