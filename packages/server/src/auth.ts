@@ -40,7 +40,7 @@ export class Config extends Context.Service<Config, Info>()("@arcana/ServerAuthC
 export function required(config: Info) {
   const ok = Option.isSome(config.password) && config.password.value !== ""
   if (!ok) {
-    console.warn("[arcana-server] WARNING: No server password configured. All API endpoints are unauthenticated.")
+    console.info("[arcana] Running without server password (localhost-only). Set ARCANA_SERVER_PASSWORD to enable auth.")
   }
   return ok
 }
