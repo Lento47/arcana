@@ -177,8 +177,57 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         // routes through proxy.arcana.otnelhq.com using the license key.
         async discoverModels(): Promise<Record<string, Model>> {
           if (!key) return {}
-          const bases = ["https://proxy.arcana.otnelhq.com", "https://arcana-proxy.lejzerv.workers.dev"]
+          const { readFileSync, writeFileSync, mkdirSync, existsSync } = require("node:fs") as typeof import("node:fs")
+          const { join } = require("node:path") as typeof import("node:path")
+          const home = process.env.ARCANA_HOME ?? join(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".arcana")
+          const cacheFile = join(home, "cache", "proxy-models.json")
           const price = (v: unknown) => (v != null ? Number(v) * 1_000_000 : 0)
+          const build = (list: any[], base: string): Record<string, Model> => {
+            const models: Record<string, Model> = {}
+            for (const m of list) {
+              const id = m?.id as string | undefined
+              if (!id || input.models[id]) continue
+              const inMod: string[] = m.architecture?.input_modalities ?? []
+              const params: string[] = m.supported_parameters ?? []
+              const ctx = m.context_length ?? m.top_provider?.context_length ?? 0
+              const out = m.top_provider?.max_completion_tokens ?? 0
+              models[id] = {
+                id: ModelV2.ID.make(id),
+                providerID: ProviderV2.ID.make("arcana-proxy"),
+                name: m.name ?? id,
+                family: "",
+                api: { id, url: `${base}/v1`, npm: "@ai-sdk/openai-compatible" },
+                status: "active",
+                headers: {},
+                options: {},
+                cost: {
+                  input: price(m.pricing?.prompt),
+                  output: price(m.pricing?.completion),
+                  cache: { read: price(m.pricing?.input_cache_read), write: price(m.pricing?.input_cache_write) },
+                },
+                limit: { context: ctx, output: out },
+                capabilities: {
+                  temperature: params.includes("temperature"),
+                  reasoning: params.includes("reasoning") || Boolean(m.reasoning),
+                  attachment: inMod.includes("image") || inMod.includes("file") || inMod.includes("pdf"),
+                  toolcall: params.includes("tools"),
+                  input: {
+                    text: true,
+                    audio: inMod.includes("audio"),
+                    image: inMod.includes("image"),
+                    video: inMod.includes("video"),
+                    pdf: inMod.includes("file") || inMod.includes("pdf"),
+                  },
+                  output: { text: true, audio: false, image: false, video: false, pdf: false },
+                  interleaved: false,
+                },
+                release_date: "",
+                variants: {},
+              }
+            }
+            return models
+          }
+          const bases = ["https://proxy.arcana.otnelhq.com", "https://arcana-proxy.lejzerv.workers.dev"]
           for (const base of bases) {
             try {
               const res = await fetch(`${base}/v1/models`, {
@@ -189,51 +238,22 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
               const json = (await res.json()) as { data?: any[] }
               const list = json.data ?? []
               if (!list.length) continue
-              const models: Record<string, Model> = {}
-              for (const m of list) {
-                const id = m?.id as string | undefined
-                if (!id || input.models[id]) continue
-                const inMod: string[] = m.architecture?.input_modalities ?? []
-                const params: string[] = m.supported_parameters ?? []
-                const ctx = m.context_length ?? m.top_provider?.context_length ?? 0
-                const out = m.top_provider?.max_completion_tokens ?? 0
-                models[id] = {
-                  id: ModelV2.ID.make(id),
-                  providerID: ProviderV2.ID.make("arcana-proxy"),
-                  name: m.name ?? id,
-                  family: "",
-                  api: { id, url: `${base}/v1`, npm: "@ai-sdk/openai-compatible" },
-                  status: "active",
-                  headers: {},
-                  options: {},
-                  cost: {
-                    input: price(m.pricing?.prompt),
-                    output: price(m.pricing?.completion),
-                    cache: { read: price(m.pricing?.input_cache_read), write: price(m.pricing?.input_cache_write) },
-                  },
-                  limit: { context: ctx, output: out },
-                  capabilities: {
-                    temperature: params.includes("temperature"),
-                    reasoning: params.includes("reasoning") || Boolean(m.reasoning),
-                    attachment: inMod.includes("image") || inMod.includes("file") || inMod.includes("pdf"),
-                    toolcall: params.includes("tools"),
-                    input: {
-                      text: true,
-                      audio: inMod.includes("audio"),
-                      image: inMod.includes("image"),
-                      video: inMod.includes("video"),
-                      pdf: inMod.includes("file") || inMod.includes("pdf"),
-                    },
-                    output: { text: true, audio: false, image: false, video: false, pdf: false },
-                    interleaved: false,
-                  },
-                  release_date: "",
-                  variants: {},
-                }
-              }
-              return models
+              // Cache the real catalog so a future slow/failed fetch falls back to actual
+              // discovered models — never a hardcoded list.
+              try {
+                mkdirSync(join(home, "cache"), { recursive: true })
+                writeFileSync(cacheFile, JSON.stringify({ base, list }))
+              } catch {}
+              return build(list, base)
             } catch {}
           }
+          // All fetches failed — fall back to the last real catalog from disk.
+          try {
+            if (existsSync(cacheFile)) {
+              const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as { base?: string; list?: any[] }
+              if (cached?.list?.length) return build(cached.list, cached.base ?? bases[0])
+            }
+          } catch {}
           return {}
         },
       }
@@ -1413,14 +1433,11 @@ export const layer = Layer.effect(
         const configProviders = Object.entries(cfg.provider ?? {})
         // Built-in proxy provider: when a license/proxy key is present, guarantee the
         // `arcana-proxy` provider exists regardless of any external bridge config (the
-        // launcher's cached config can be stale). The full catalog is discovered at
-        // runtime from the proxy (see custom()["arcana-proxy"].discoverModels above),
-        // but we ALSO seed a few static models so the provider always has >=1 model and
-        // survives the zero-models drop even if that network fetch is slow/fails during
-        // a busy startup (the provider state is computed once and cached). Discovery
-        // only merges ids not already present, so seeds + discovery don't duplicate.
+        // launcher's cached config can be stale). Its models come entirely from the
+        // proxy catalog at runtime — discovered live and cached to disk so a slow/failed
+        // fetch falls back to the last real catalog (no hardcoded model list). See
+        // custom()["arcana-proxy"].discoverModels above.
         if (process.env.ARCANA_PROXY_KEY && !cfg.provider?.["arcana-proxy"]) {
-          const seed = (context: number, output: number) => ({ limit: { context, output } })
           configProviders.unshift([
             "arcana-proxy",
             {
@@ -1428,13 +1445,6 @@ export const layer = Layer.effect(
               npm: "@ai-sdk/openai-compatible",
               api: "https://proxy.arcana.otnelhq.com/v1",
               env: ["ARCANA_PROXY_KEY"],
-              models: {
-                "anthropic/claude-sonnet-latest": { name: "Claude Sonnet (latest)", ...seed(200000, 64000) },
-                "anthropic/claude-haiku-4-5": { name: "Claude Haiku 4.5", ...seed(200000, 64000) },
-                "openai/gpt-latest": { name: "GPT (latest)", ...seed(128000, 16384) },
-                "openai/gpt-4o-mini": { name: "GPT-4o mini", ...seed(128000, 16384) },
-                "google/gemini-pro-latest": { name: "Gemini Pro (latest)", ...seed(1048576, 65536) },
-              },
             },
           ] as (typeof configProviders)[number])
         }
@@ -1574,11 +1584,10 @@ export const layer = Layer.effect(
         for (const [id, provider] of Object.entries(database)) {
           const providerID = ProviderV2.ID.make(id)
           if (disabled.has(providerID)) continue
-          // Native providers connect only via their own key (env or auth.json).
-          // The license/proxy path is served by the dedicated `arcana-proxy`
-          // provider (which resolves ARCANA_PROXY_KEY through its own `env`),
-          // not by spoofing every native provider's credentials — those would
-          // carry the proxy key to the wrong host and 401.
+          // Native providers connect via their own key when present.
+          // Providers without a native key are still visible through the
+          // `arcana-proxy` provider (all models from proxy) — the proxy
+          // handles keyless access via license validation.
           const apiKey = provider.env.map((item) => envs[item]).find(Boolean)
           if (!apiKey) continue
           mergeProvider(providerID, {
@@ -1589,10 +1598,15 @@ export const layer = Layer.effect(
 
         // load apikeys
         const auths = yield* auth.all().pipe(Effect.orDie)
+        const proxyKey = envs["ARCANA_PROXY_KEY"]
         for (const [id, provider] of Object.entries(auths)) {
           const providerID = ProviderV2.ID.make(id)
           if (disabled.has(providerID)) continue
           if (provider.type === "api") {
+            // When proxy key is active, the arcana-proxy provider serves
+            // all models. auth.json API keys for individual providers
+            // route to the proxy host and fail license validation.
+            if (proxyKey) continue
             mergeProvider(providerID, {
               source: "api",
               key: provider.key,
@@ -1776,7 +1790,18 @@ export const layer = Layer.effect(
         })
 
         if (baseURL !== undefined) options["baseURL"] = baseURL
-        if (options["apiKey"] === undefined && provider.key) options["apiKey"] = provider.key
+        if (options["apiKey"] === undefined && provider?.key) options["apiKey"] = provider.key
+
+        // Route OpenAI-compatible providers through the proxy when a license
+        // key is present. This is the System B equivalent of the config-plugin's
+        // Catalog URL redirect — ensures all requests carry the license key and
+        // hit the proxy URL regardless of how the provider was loaded.
+        const proxyKey = envs["ARCANA_PROXY_KEY"]
+        if (proxyKey && model.api.npm === "@ai-sdk/openai-compatible") {
+          options["apiKey"] ??= proxyKey
+          options["baseURL"] ??= "https://proxy.arcana.otnelhq.com/v1"
+        }
+
         if (model.headers)
           options["headers"] = {
             ...options["headers"],
