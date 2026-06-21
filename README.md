@@ -36,8 +36,11 @@ Single binary distribution; source build requires Node.js/Bun dependencies.
 ## Quick start
 
 ```sh
-# Set your API key (or use provider-specific env var)
-export OPENAI_API_KEY=sk-...
+# Activate a license — all models route through the Arcana proxy, no per-provider key needed
+arcana license activate <your-license-key>
+
+# ...or bring your own provider key instead
+export OPENAI_API_KEY=sk-...        # or ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.
 
 # Verify everything is ready
 arcana doctor
@@ -88,6 +91,27 @@ arcana cron add "daily digest" "@daily" "summarize today's changes"
 arcana cron list
 arcana cron remove <job-id>
 ```
+
+## License & Proxy
+
+Activate a license and every model routes through the **Arcana proxy** — no per-provider API keys required:
+
+```sh
+arcana license activate <your-license-key>
+arcana license status
+```
+
+This stores the key in `~/.arcana/proxy_key` and connects the **Arcana Proxy** provider, which serves the full catalog (200+ models via OpenRouter) through `proxy.arcana.otnelhq.com`. In the TUI, run `/connect` and pick an *Arcana Proxy* model — no key prompt. Enterprise tier is unlimited; pay-as-you-go tiers draw from credits.
+
+```sh
+arcana proxy status      # connection + tier
+arcana proxy models      # list available models
+arcana proxy usage       # today's token usage
+arcana proxy balance     # credit balance
+arcana proxy buy 10      # add $10 credits (PayPal)
+```
+
+Prefer your own keys? Skip the license and set a provider key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, …) or run `arcana providers login`. The two coexist — a provider you've added your own key for routes directly to that vendor; everything else goes through the proxy.
 
 ## Packages
 
