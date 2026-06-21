@@ -36,6 +36,7 @@ import { Snapshot } from "@/snapshot"
 import { ProjectV2 } from "@arcana/core/project"
 import { WorkspaceV2 } from "@arcana/core/workspace"
 import { SessionID, MessageID, PartID } from "./schema"
+import { acquireLock } from "./session-lock"
 
 import type { Provider } from "@/provider/provider"
 import { Permission } from "@/permission"
@@ -717,6 +718,12 @@ export const layer: Layer.Layer<
     }) {
       const ctx = yield* InstanceState.context
       const workspace = yield* InstanceState.workspaceID
+
+      // Acquire concurrent session lock (failure mode #13)
+      yield* Effect.sync(() => {
+        acquireLock(ctx.directory)
+      })
+
       return yield* createNext({
         parentID: input?.parentID,
         directory: ctx.directory,

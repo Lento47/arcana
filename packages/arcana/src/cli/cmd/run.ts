@@ -9,7 +9,7 @@ import { registerBuiltinTools } from "../../agent/tools.js"
 import { registerMcpTools } from "../../agent/mcp.js"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
 import { loadSkills, loadSkillBody, type SkillCatalog } from "../../skills/loader.js"
-import { EXTRACTION_PROMPT, extractAndMerge, type LearningExtraction } from "../../learning.js"
+import { EXTRACTION_PROMPT, extractAndMerge, type LearningExtraction, type MergeResult } from "../../learning.js"
 import { maybeEvolve, incrementSessionCount, getActivePrompt } from "../../agent/evolve.js"
 import { detectInjection, auditLog } from "../../agent/guard.js"
 import { createSandbox } from "../../agent/sandbox.js"
@@ -267,8 +267,9 @@ export const RunCommand: CommandModule = {
             ])
             const json = JSON.parse(resp.content) as LearningExtraction
             const created = extractAndMerge(process.cwd(), json, sessionId ?? undefined)
-            if (created.length) {
-              process.stdout.write(c.dim(`  Learned ${created.length} thing(s) → .arcana/learned/\n`))
+            const totalCreated = created.wikiFilesCreated.length + created.quarantinedFiles.length
+            if (totalCreated) {
+              process.stdout.write(c.dim(`  Learned ${totalCreated} thing(s) → .arcana/learned/\n`))
             }
             if (process.env.ARCANA_LICENSE_TIER !== "free") {
               const { readFileSync, readdirSync, existsSync } = await import("node:fs")
