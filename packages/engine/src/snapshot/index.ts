@@ -165,7 +165,14 @@ export const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Serv
 
         const enabled = Effect.fnUntraced(function* () {
           if (state.vcs !== "git") return false
-          return (yield* config.get()).snapshot !== false
+          if ((yield* config.get()).snapshot === false) return false
+          // Never snapshot the user's home directory. `git add --all` over a home
+          // worktree enumerates everything (node_modules, caches, downloads) and takes
+          // tens of seconds PER TURN, then fails on lock contention. Snapshots are only
+          // meaningful for an actual project dir, so skip when launched from home.
+          const home = process.env.USERPROFILE ?? process.env.HOME
+          if (home && path.resolve(state.worktree) === path.resolve(home)) return false
+          return true
         })
 
         const excludes = Effect.fnUntraced(function* () {
