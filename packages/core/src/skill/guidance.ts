@@ -20,14 +20,10 @@ const render = (skills: ReadonlyArray<Summary>) =>
     ...(skills.length === 0
       ? ["No skills are currently available."]
       : [
-          "<available_skills>",
-          ...skills.flatMap((skill) => [
-            "  <skill>",
-            `    <name>${skill.name}</name>`,
-            `    <description>${skill.description}</description>`,
-            "  </skill>",
-          ]),
-          "</available_skills>",
+          "Available skills:",
+          // Markdown bullets instead of XML — ~40% fewer tokens for the same
+          // name+description index, which is injected every turn for all skills.
+          ...skills.map((skill) => `- **${skill.name}**: ${skill.description}`),
         ]),
   ].join("\n")
 
