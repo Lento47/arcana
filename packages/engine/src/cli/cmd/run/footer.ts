@@ -34,6 +34,7 @@ import { RUN_COMMAND_PANEL_ROWS, RUN_SUBAGENT_PANEL_ROWS } from "./footer.comman
 import { SUBAGENT_INSPECTOR_ROWS } from "./footer.subagent"
 import { PROMPT_MAX_ROWS, TEXTAREA_MIN_ROWS } from "./footer.prompt"
 import { RunFooterView } from "./footer.view"
+import type { PlanSummary } from "./footer.plan"
 import { RunScrollbackStream } from "./scrollback.surface"
 import { RUN_THEME_FALLBACK, resolveRunTheme, type RunTheme } from "./theme"
 import { modelInfo } from "./variant.shared"
@@ -343,6 +344,7 @@ export class RunFooter implements FooterApi {
               onStatus: footer.setStatus,
               onSubagentSelect: options.onSubagentSelect,
               onQueuedRemove: footer.handleQueuedRemove,
+              onPlanSummary: footer.handlePlanSummary,
             })
           },
         }),
@@ -769,6 +771,39 @@ export class RunFooter implements FooterApi {
     }
 
     return true
+  }
+
+  private handlePlanSummary = (summary: PlanSummary): void => {
+    if (this.isClosed) {
+      return
+    }
+
+    const stateIcon =
+      summary.state === "running" ? "⚡" :
+      summary.state === "partial" ? "⚠" :
+      summary.state === "completed" ? "✅" : "·"
+
+    const stateLabel =
+      summary.state === "running" ? "EXECUTING" :
+      summary.state === "partial" ? "PARTIAL" :
+      summary.state === "completed" ? "DONE" : summary.state.toUpperCase()
+
+    const lines = [
+      `${stateIcon} Plan ${stateLabel} — ${summary.approved}/${summary.total} approved, ${summary.rejected} rejected`,
+      summary.succeeded > 0 || summary.failed > 0
+        ? `  succeeded ${summary.succeeded}, failed ${summary.failed}`
+        : "",
+      summary.state === "partial"
+        ? `  r = retry failed · R = re-run all`
+        : "",
+    ].filter(Boolean)
+
+    this.append({
+      kind: "system",
+      text: lines.join("\n"),
+      phase: summary.state === "running" ? "start" : "final",
+      source: "system",
+    })
   }
 
   private handlePermissionReply = async (input: PermissionReply): Promise<void> => {

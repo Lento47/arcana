@@ -50,12 +50,14 @@ export const layer: Layer.Layer<Service, never, Project.Service | InstanceBootst
                 directory: input.directory,
                 worktree: input.worktree,
                 project: input.project,
+                startedAt: Date.now(),
               }
             : yield* project.fromDirectory(input.directory).pipe(
                 Effect.map((result) => ({
                   directory: input.directory,
                   worktree: result.sandbox,
                   project: result.project,
+                  startedAt: Date.now(),
                 })),
               )
         yield* bootstrap.run.pipe(Effect.provideService(InstanceRef, ctx))

@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import * as path from "path"
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
 import * as Tool from "./tool"
 import { LSP } from "@/lsp/lsp"
 import { createTwoFilesPatch } from "diff"
@@ -44,6 +44,19 @@ export const WriteTool = Tool.define(
           yield* assertExternalDirectoryEffect(ctx, filepath)
 
           const exists = yield* fs.existsSafe(filepath)
+          // Check repo drift: if the file existed before the session started and its
+          // mtime is newer than the session start, an external process touched it.
+          let stale = false
+          if (exists) {
+            const info = yield* fs.stat(filepath).pipe(Effect.catch(() => Effect.succeed(undefined)))
+            if (info && info.type !== "Directory") {
+              const mtimeMs = Option.getOrElse(info.mtime, () => new Date(0)).getTime()
+              if (mtimeMs > instance.startedAt) {
+                stale = true
+              }
+            }
+          }
+
           const source = exists ? yield* Bom.readFile(fs, filepath) : { bom: false, text: "" }
           const next = Bom.split(params.content)
           const desiredBom = source.bom || next.bom
@@ -71,7 +84,7 @@ export const WriteTool = Tool.define(
             event: exists ? "change" : "add",
           })
 
-          let output = "Wrote file successfully."
+          let output = stale ? "[STALE] Wrote file successfully." : "Wrote file successfully."
           yield* lsp.touchFile(filepath, "document")
           const diagnostics = yield* lsp.diagnostics()
           const normalizedFilepath = FSUtil.normalizePath(filepath)
@@ -95,6 +108,7 @@ export const WriteTool = Tool.define(
               diagnostics,
               filepath,
               exists: exists,
+              ...(stale ? { stale: true } : {}),
             },
             output,
           }

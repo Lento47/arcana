@@ -25,7 +25,7 @@ import { FOOTER_MENU_ROWS, RunFooterMenu } from "./footer.menu"
 import { RunFooterSubagentBody } from "./footer.subagent"
 import { RunPromptBody, createPromptState } from "./footer.prompt"
 import { RunPermissionBody } from "./footer.permission"
-import { RunPlanBody } from "./footer.plan"
+import { RunPlanBody, type PlanSummary } from "./footer.plan"
 import { RunQuestionBody } from "./footer.question"
 import { footerWidthPolicy } from "./footer.width"
 import {
@@ -110,6 +110,7 @@ type RunFooterViewProps = {
   onStatus: (text: string) => void
   onSubagentSelect?: (sessionID: string | undefined) => void
   onQueuedRemove: (messageID: string) => Promise<boolean>
+  onPlanSummary?: (summary: PlanSummary) => void
 }
 
 export { TEXTAREA_MIN_ROWS, TEXTAREA_MAX_ROWS } from "./footer.prompt"
@@ -800,6 +801,14 @@ export function RunFooterView(props: RunFooterViewProps) {
                                 props.onPermissionReply({ requestID: reqs[0].id, reply: "reject" })
                               }
                             }}
+                            onApproveSelected={(ids) => {
+                              if (ids.length === 0) return
+                              for (const id of ids) {
+                                props.onPermissionReply({ requestID: id, reply: "once" })
+                                  .catch(() => {})
+                              }
+                            }}
+                            onPlanSummary={props.onPlanSummary}
                           />
                         </Match>
                         <Match when={active().type === "permission"}>
