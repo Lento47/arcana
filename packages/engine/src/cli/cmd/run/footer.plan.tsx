@@ -3,10 +3,20 @@
 // Displays inside the footer when the reducer pushes FooterView { type: "plan" }.
 // Each tool shows risk [SAFE..DANGER] + confidence [CONF:HIGH..LOW] inline.
 // Risk perimeter: border color green->yellow->red based on highest pending risk.
-// Keyboard: Enter = all, Esc = reject, Tab = toggle LOW-confidence-only filter.
+//
+// Keyboard:
+//   Enter = execute approved lines only (rejected lines are skipped)
+//   Esc   = reject ALL remaining lines
+//   Tab   = toggle LOW-confidence-only filter
+//   ←/→   = move selection cursor between plan lines
+//   Space = toggle approve/reject for the selected line
+//   r     = retry failed (when in partial state)
+//   R     = re-run all (when in partial state)
+//
+// Plan state machine: pending → running (Enter) → partial (any failure) / completed (all ok)
 /** @jsxImportSource @opentui/solid */
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
-import { For, createMemo, createSignal } from "solid-js"
+import { For, createEffect, createMemo, createSignal } from "solid-js"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { permissionInfo } from "./permission.shared"
 import { footerWidthPolicy } from "./footer.width"
@@ -14,6 +24,17 @@ import { transparent, type RunFooterTheme } from "./theme"
 
 type RiskLevel = "safe" | "write" | "mutate" | "danger"
 type ConfLevel = "HIGH" | "MED" | "LOW"
+export type PlanState = "pending" | "running" | "partial" | "completed"
+
+export type PlanSummary = {
+  state: PlanState
+  total: number
+  approved: number
+  rejected: number
+  succeeded: number
+  failed: number
+  failedIds: string[]
+}
 
 const SAFE_TOOLS = new Set(["read", "grep", "glob", "ls", "lsp", "question", "todowrite", "skill"])
 const WRITE_TOOLS = new Set(["write", "edit", "apply_patch", "task"])
@@ -86,31 +107,20 @@ export function RunPlanBody(props: {
   theme: RunFooterTheme
   onApproveAll: () => void
   onRejectAll: () => void
+  onApproveSelected?: (ids: string[]) => void
+  planState?: () => PlanState
+  onRetryFailed?: () => void
+  onReRunAll?: () => void
+  onPlanSummary?: (summary: PlanSummary) => void
 }) {
   const risk = createMemo(() => highestRisk(props.requests))
   const borderColor = createMemo(() => riskColor(risk(), props.theme))
   const [lowOnly, setLowOnly] = createSignal(false)
+  const [selectedIndex, setSelectedIndex] = createSignal(0)
+  const [rejectedIds, setRejectedIds] = createSignal(new Set<string>())
+  const [planState, setPlanState] = createSignal<PlanState>(props.planState?.() ?? "pending")
 
-  let handled = false
-  useKeyboard((event) => {
-    if (handled) {
-      event.preventDefault()
-      return
-    }
-    if (event.name === "return") {
-      handled = true
-      event.preventDefault()
-      props.onApproveAll()
-    } else if (event.name === "escape") {
-      handled = true
-      event.preventDefault()
-      props.onRejectAll()
-    } else if (event.name === "tab") {
-      event.preventDefault()
-      setLowOnly((prev) => !prev)
-    }
-  })
-
+  // Clamp selectedIndex when lines change
   const dims = useTerminalDimensions()
   const tw = createMemo(() => dims().width)
 
@@ -122,14 +132,109 @@ export function RunPlanBody(props: {
       const cf = confidence(r)
       const icon = info.icon ? ` ${info.icon} ` : " "
       const title = info.title ?? "unknown action"
-      const tagLen = 14 + (cf !== "HIGH" ? 11 : 0)
+      const meta = (r.metadata ?? {}) as Record<string, unknown>
+      const isStale = meta.stale === true
+      const staleTag = isStale ? 8 : 0 // "[STALE]" = 8 chars
+      const tagLen = 14 + (cf !== "HIGH" ? 11 : 0) + staleTag
       const maxLen = Math.max(10, tw() - tagLen)
       const truncated = title.length > maxLen ? title.slice(0, maxLen - 1) + "…" : title
-      return { icon, title: truncated, level: rl.level, label: rl.label, conf: cf }
+      return { id: r.id, icon, title: truncated, level: rl.level, label: rl.label, conf: cf, stale: isStale }
     })
     const filtered = lowOnly() ? all.filter((l) => l.conf === "LOW") : all
-    if (filtered.length <= MAX_VISIBLE) return { lines: filtered, overflow: 0 }
-    return { lines: filtered.slice(0, MAX_VISIBLE), overflow: filtered.length - MAX_VISIBLE }
+    if (filtered.length <= MAX_VISIBLE) return { lines: filtered, overflow: 0, ids: filtered.map((l) => l.id) }
+    const visible = filtered.slice(0, MAX_VISIBLE)
+    return { lines: visible, overflow: filtered.length - MAX_VISIBLE, ids: visible.map((l) => l.id) }
+  })
+
+  // Clamp selection to valid range
+  const clampedIndex = createMemo(() => {
+    const max = Math.max(0, lines().lines.length - 1)
+    const cur = selectedIndex()
+    return Math.max(0, Math.min(cur, max))
+  })
+
+  // Keep selectedIndex in sync with clamped value
+  createEffect(() => {
+    const clamped = clampedIndex()
+    if (selectedIndex() !== clamped) {
+      setSelectedIndex(clamped)
+    }
+  })
+
+  let handled = false
+  useKeyboard((event) => {
+    if (handled) {
+      event.preventDefault()
+      return
+    }
+    if (event.name === "return") {
+      event.preventDefault()
+      const rejected = rejectedIds()
+      const allIds = lines().ids
+      const approved = allIds.filter((id) => !rejected.has(id))
+      if (approved.length === 0) {
+        // If all lines are rejected, reject all
+        handled = true
+        props.onRejectAll()
+        return
+      }
+      // Check if all lines are approved — if so, use the fast path
+      if (approved.length === allIds.length && !props.onApproveSelected) {
+        handled = true
+        props.onApproveAll()
+        return
+      }
+      handled = true
+      setPlanState("running")
+      const summary: PlanSummary = {
+        state: "running",
+        total: props.requests.length,
+        approved: approved.length,
+        rejected: rejected.size,
+        succeeded: 0,
+        failed: 0,
+        failedIds: [],
+      }
+      props.onPlanSummary?.(summary)
+      if (props.onApproveSelected) {
+        props.onApproveSelected(approved)
+      } else {
+        props.onApproveAll()
+      }
+    } else if (event.name === "escape") {
+      handled = true
+      event.preventDefault()
+      props.onRejectAll()
+    } else if (event.name === "tab") {
+      event.preventDefault()
+      setLowOnly((prev) => !prev)
+    } else if (event.name === "left" || event.name === "up") {
+      event.preventDefault()
+      setSelectedIndex((prev) => Math.max(0, prev - 1))
+    } else if (event.name === "right" || event.name === "down") {
+      event.preventDefault()
+      setSelectedIndex((prev) => prev + 1)
+    } else if (event.name === "space" || (event.char && event.char === " ")) {
+      event.preventDefault()
+      const idx = clampedIndex()
+      const line = lines().lines[idx]
+      if (!line) return
+      setRejectedIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(line.id)) {
+          next.delete(line.id)
+        } else {
+          next.add(line.id)
+        }
+        return next
+      })
+    } else if (event.char === "r" && planState() === "partial") {
+      event.preventDefault()
+      props.onRetryFailed?.()
+    } else if (event.char === "R" && planState() === "partial") {
+      event.preventDefault()
+      props.onReRunAll?.()
+    }
   })
 
   const count = props.requests.length
@@ -139,29 +244,65 @@ export function RunPlanBody(props: {
     : lowCount > 0
       ? `Tab: show ${lowCount} low-confidence`
       : ""
-  const header = `⚡ ${count} action${count !== 1 ? "s" : ""} pending — Enter to execute · Esc to reject · ${filterHint || "Tab: filter none needed"}`
+
+  const pState = planState()
+  const header = pState === "running"
+    ? `⚡ ${count} action${count !== 1 ? "s" : ""} executing...`
+    : pState === "partial"
+      ? `⚠ ${count} action${count !== 1 ? "s" : ""} — r = retry failed · R = re-run all`
+      : pState === "completed"
+        ? `✅ ${count} action${count !== 1 ? "s" : ""} completed`
+        : `⚡ ${count} action${count !== 1 ? "s" : ""} pending — ←/→ select · Space toggle · Enter execute · Esc reject · ${filterHint || "Tab: filter"}`
 
   return (
     <box flexDirection="column" paddingLeft={1} paddingRight={1}>
       <box flexDirection="row" height={1} gap={1}>
-        <text fg={props.theme.muted}>{header}</text>
+        <text fg={
+          pState === "running" ? props.theme.highlight :
+          pState === "partial" ? props.theme.warning :
+          pState === "completed" ? props.theme.success :
+          props.theme.muted
+        }>{header}</text>
       </box>
 
       <For each={lines().lines}>
-        {(line) => (
-          <box flexDirection="row" height={1} gap={1}>
-            <text fg={riskColor(line.level, props.theme)}>{`[${line.label}]`}</text>
-            {line.conf !== "HIGH" && (
-              <text fg={line.conf === "LOW" ? props.theme.warning : props.theme.muted}>
-                {`[CONF:${line.conf}]`}
+        {(line, index) => {
+          const isSelected = createMemo(() => index() === clampedIndex())
+          const isRejected = createMemo(() => rejectedIds().has(line.id))
+          return (
+            <box
+              flexDirection="row"
+              height={1}
+              gap={1}
+              backgroundColor={isSelected() ? props.theme.selected : transparent}
+            >
+              {isRejected() ? (
+                <text fg={props.theme.error}>[✗]</text>
+              ) : (
+                <text fg={riskColor(line.level, props.theme)}>{`[${line.label}]`}</text>
+              )}
+              {line.stale && !isRejected() && (
+                <text fg={props.theme.warning}>[STALE]</text>
+              )}
+              {line.conf !== "HIGH" && !isRejected() && (
+                <text fg={line.conf === "LOW" ? props.theme.warning : props.theme.muted}>
+                  {`[CONF:${line.conf}]`}
+                </text>
+              )}
+              <text fg={
+                isRejected() ? props.theme.error :
+                isSelected() ? props.theme.selectedText :
+                line.conf === "LOW" ? props.theme.muted : props.theme.muted
+              }>
+                {line.icon}
+                {line.title}
               </text>
-            )}
-            <text fg={line.conf === "LOW" ? props.theme.muted : props.theme.muted}>
-              {line.icon}
-              {line.title}
-            </text>
-          </box>
-        )}
+              {isSelected() && (
+                <text fg={props.theme.muted}>{isRejected() ? " [rejected]" : " [✓ approved]"}</text>
+              )}
+            </box>
+          )
+        }}
       </For>
       {lines().overflow > 0 && (
         <box flexDirection="row" height={1} gap={1}>
@@ -173,7 +314,10 @@ export function RunPlanBody(props: {
         <text fg={borderColor()}>
           {risk() === "danger" ? "⛔ DANGER" : risk() === "mutate" ? "⚠ MUTATE" : risk() === "write" ? "◈ WRITE" : "● SAFE"}
         </text>
-        <text fg={props.theme.muted}>{props.requests.length} action{props.requests.length !== 1 ? "s" : ""}</text>
+        <text fg={props.theme.muted}>
+          {props.requests.length} action{props.requests.length !== 1 ? "s" : ""}
+          {rejectedIds().size > 0 ? ` · ${rejectedIds().size} rejected` : ""}
+        </text>
       </box>
     </box>
   )

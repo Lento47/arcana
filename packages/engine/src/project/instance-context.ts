@@ -6,6 +6,8 @@ export interface InstanceContext {
   directory: string
   worktree: string
   project: Project.Info
+  /** Epoch millis when the instance was first loaded. Used for repo drift detection. */
+  startedAt: number
 }
 
 export const context = LocalContext.create<InstanceContext>("instance")

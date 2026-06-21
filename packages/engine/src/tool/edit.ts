@@ -4,7 +4,7 @@
 // https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-26-25.ts
 
 import * as path from "path"
-import { Effect, Schema, Semaphore } from "effect"
+import { Effect, Option, Schema, Semaphore } from "effect"
 import * as Tool from "./tool"
 import { LSP } from "@/lsp/lsp"
 import { createTwoFilesPatch, diffLines } from "diff"
@@ -85,6 +85,7 @@ export const EditTool = Tool.define(
           let diff = ""
           let contentOld = ""
           let contentNew = ""
+          let stale = false
           yield* lock(filePath).withPermits(1)(
             Effect.gen(function* () {
               if (params.oldString === "") {
@@ -123,6 +124,11 @@ export const EditTool = Tool.define(
               const info = yield* afs.stat(filePath).pipe(Effect.catch(() => Effect.succeed(undefined)))
               if (!info) throw new Error(`File ${filePath} not found`)
               if (info.type === "Directory") throw new Error(`Path is a directory, not a file: ${filePath}`)
+              // Check repo drift: file modified externally since session started
+              const mtimeMs = Option.getOrElse(info.mtime, () => new Date(0)).getTime()
+              if (mtimeMs > instance.startedAt) {
+                stale = true
+              }
               const source = yield* Bom.readFile(afs, filePath)
               contentOld = source.text
 
@@ -193,7 +199,7 @@ export const EditTool = Tool.define(
             },
           })
 
-          let output = "Edit applied successfully."
+          let output = stale ? "[STALE] Edit applied successfully." : "Edit applied successfully."
           yield* lsp.touchFile(filePath, "document")
           const diagnostics = yield* lsp.diagnostics()
           const normalizedFilePath = FSUtil.normalizePath(filePath)
@@ -205,6 +211,7 @@ export const EditTool = Tool.define(
               diagnostics,
               diff,
               filediff,
+              ...(stale ? { stale: true } : {}),
             },
             title: `${path.relative(instance.worktree, filePath)}`,
             output,

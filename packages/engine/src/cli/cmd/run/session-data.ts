@@ -86,22 +86,8 @@ export type SessionData = {
   visible: Map<string, string>
   end: Set<string>
   echo: Map<string, Set<string>>
-  /** Per-run budget counters tracked from tool completions. */
-  budget: SessionBudget
-}
-
-export type SessionBudget = {
-  enabled: boolean
-  destructiveOps: number
-  maxDestructiveOps: number
-  filesTouched: number
-  maxFilesTouched: number
-  locChanged: number
-  maxLocChanged: number
-  externalCalls: number
-  maxExternalCalls: number
-  startTime: number
-  maxDurationMs: number
+  /** True when a write/edit tool detected an externally-modified file (repo drift). */
+  stale: boolean
 }
 
 export type SessionDataInput = {
@@ -140,19 +126,7 @@ export function createSessionData(
     visible: new Map(),
     end: new Set(),
     echo: new Map(),
-    budget: {
-      enabled: true,
-      destructiveOps: 0,
-      maxDestructiveOps: 5,
-      filesTouched: 0,
-      maxFilesTouched: 50,
-      locChanged: 0,
-      maxLocChanged: 2000,
-      externalCalls: 0,
-      maxExternalCalls: 10,
-      startTime: Date.now(),
-      maxDurationMs: 15 * 60 * 1000,
-    },
+    stale: false,
   }
 }
 
@@ -228,24 +202,6 @@ function patch(patch?: FooterPatch, view?: FooterView): FooterOutput | undefined
     patch,
     view,
   }
-}
-
-function formatBudgetStatus(bgt: SessionBudget): string | undefined {
-  if (!bgt.enabled) return undefined
-  if (bgt.destructiveOps >= bgt.maxDestructiveOps) {
-    return `[BUDGET] Destructive ops: ${bgt.destructiveOps}/${bgt.maxDestructiveOps} — limit reached. Run paused.`
-  }
-  if (bgt.filesTouched >= bgt.maxFilesTouched) {
-    return `[BUDGET] Files touched: ${bgt.filesTouched}/${bgt.maxFilesTouched} — limit reached. Run paused.`
-  }
-  if (bgt.externalCalls >= bgt.maxExternalCalls) {
-    return `[BUDGET] External calls: ${bgt.externalCalls}/${bgt.maxExternalCalls} — limit reached. Run paused.`
-  }
-  const elapsed = Date.now() - bgt.startTime
-  if (elapsed >= bgt.maxDurationMs) {
-    return `[BUDGET] Duration: ${Math.round(elapsed / 1000)}s / ${Math.round(bgt.maxDurationMs / 1000)}s — limit reached. Run paused.`
-  }
-  return undefined
 }
 
 function out(data: SessionData, commits: SessionCommit[], footer?: FooterOutput): SessionDataOutput {
@@ -370,12 +326,21 @@ function enrichPermission(data: SessionData, request: PermissionRequest): Permis
   }
 
   const input = data.call.get(key(request.tool.messageID, request.tool.callID))
-  if (!input) {
-    return request
+  const meta = request.metadata ?? {}
+
+  // Propagate stale flag from session data to permission metadata
+  if (data.stale && !meta.stale) {
+    return {
+      ...request,
+      metadata: {
+        ...meta,
+        ...(input && meta.input !== input ? { input } : {}),
+        stale: true,
+      },
+    }
   }
 
-  const meta = request.metadata ?? {}
-  if (meta.input === input) {
+  if (!input || meta.input === input) {
     return request
   }
 
@@ -1010,7 +975,11 @@ export function reduceSessionData(input: SessionDataInput): SessionDataOutput {
         data.ids.add(part.id)
         stashEcho(data, part)
 
+        // Detect repo drift from tool output [STALE] prefix
         const output = part.state.output
+        if (!data.stale && typeof output === "string" && output.startsWith("[STALE]")) {
+          data.stale = true
+        }
         if (mode.output && typeof output === "string" && output.trim()) {
           commits.push({
             kind: "tool",
@@ -1027,26 +996,6 @@ export function reduceSessionData(input: SessionDataInput): SessionDataOutput {
 
         if (mode.final) {
           commits.push(doneTool(part))
-        }
-
-        // Budget tracking
-        const bgt = data.budget
-        if (bgt.enabled && part.tool) {
-          const toolName = part.tool.toLowerCase()
-          if (toolName === "edit" || toolName === "write") {
-            bgt.destructiveOps = Math.min(bgt.destructiveOps + 1, bgt.maxDestructiveOps)
-            bgt.filesTouched = Math.min(bgt.filesTouched + 1, bgt.maxFilesTouched)
-          } else if (toolName === "bash") {
-            bgt.destructiveOps = Math.min(bgt.destructiveOps + 1, bgt.maxDestructiveOps)
-          } else if (toolName === "web_fetch" || toolName === "websearch" || toolName === "web_search") {
-            bgt.externalCalls = Math.min(bgt.externalCalls + 1, bgt.maxExternalCalls)
-          }
-        }
-
-        // Budget exceeded status overlay
-        const budgetStatus = formatBudgetStatus(bgt)
-        if (budgetStatus) {
-          return out(data, commits, patch({ status: budgetStatus }))
         }
 
         return out(data, commits, view)
