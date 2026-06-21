@@ -37,7 +37,7 @@ jobs:
               BUMP="major"
             elif echo "$MSG" | grep -qE '\[bump minor\]|bump:minor'; then
               BUMP="minor"
-            elif echo "$MSG" | grep -qE '\[bump\]|bump:patch|\[release\]'; then
+            elif echo "$MSG" | grep -qE '\[bump\]|bump:patch|\[bump patch\]|\[release\]'; then
               BUMP="patch"
             else
               echo "No bump directive in commit message — skipping release"
