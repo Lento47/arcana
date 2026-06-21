@@ -40,14 +40,16 @@ export const Plugin = PluginV2.define({
           }
         }
       }
-      // The proxy is served by the dedicated `arcana-proxy` provider only.
-      // Register ARCANA_PROXY_KEY as its env method when present; do NOT attach it
-      // to every provider (those route to the real vendor host and would 401).
+      // When proxy key is present, register it for ALL integrations.
+      // The catalog transform below redirects OpenAI-compatible providers' URLs
+      // to the proxy, so they must use the proxy key for auth — sending a
+      // native API key to the proxy host would fail license validation.
+      // Non-OpenAI-compatible providers (openai, anthropic) use their own SDK
+      // auth or auth.json keys, unaffected by the integration method.
       if (process.env.ARCANA_PROXY_KEY) {
-        const proxyRef = integrations.list().find((ref) => ref.id === "arcana-proxy")
-        if (proxyRef) {
+        for (const ref of integrations.list()) {
           integrations.method.update({
-            integrationID: proxyRef.id,
+            integrationID: ref.id,
             method: { type: "env", names: ["ARCANA_PROXY_KEY"] },
           })
         }
