@@ -50,6 +50,17 @@ export type Prepared = {
   readonly headers: Record<string, string>
 }
 
+// Always-on, model-agnostic efficiency rule appended to the main system prompt.
+// Nudges the model to locate code via ripgrep search and change it with targeted
+// edits instead of reading whole files / many round-trips (saves tokens).
+const TOOL_EFFICIENCY = [
+  "# Working efficiently",
+  "- To find code, use the grep tool (ripgrep regex) to search by pattern. Do not read whole files just to locate things.",
+  "- To change code, use targeted edit (old→new) or apply_patch. Never rewrite an entire file.",
+  "- Use glob to find files by name; read only the specific lines or sections you need.",
+  "- Batch independent tool calls and minimize round-trips.",
+].join("\n")
+
 const mergeOptions = (target: Record<string, any>, source: Record<string, any> | undefined): Record<string, any> =>
   mergeDeep(target, source ?? {}) as Record<string, any>
 
@@ -58,6 +69,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
   const system = [
     [
       ...(input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)),
+      ...(input.small ? [] : [TOOL_EFFICIENCY]),
       ...input.system,
       ...(input.user.system ? [input.user.system] : []),
     ]
