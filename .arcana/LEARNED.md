@@ -5,6 +5,7 @@
 > Auto-updated by the self-learning loop.
 
 ## Project: arcana
+- [[ghost-preview-system]] — Ghost preview TUI, risk labels, confidence tags, 15 failure modes hardened
 - [[branding-ts-voice-source]] — branding.ts is the single source for voice/theme/lexicon/glyphs
 - [[session-slugs-core-util]] — session slugs generated in packages/core/src/util/slug.ts
 - [[scramble-reruns-on-text-change]] — Scramble component re-animates on text prop change
