@@ -50,11 +50,11 @@ jobs:
         run: |
           npm install -g wrangler
           V="${{ github.ref_name }}"
-          for f in packages/engine/arcana-*.zip packages/engine/arcana-*.tar.gz; do
+          for f in packages/engine/dist/arcana-*.zip packages/engine/dist/arcana-*.tar.gz; do
             [ -f "$f" ] || continue
             wrangler r2 object put "arcana-releases/arcana/$V/$(basename $f)" --file "$f" --remote
           done
-          for f in packages/engine/arcana-*.sha256; do
+          for f in packages/engine/dist/arcana-*.sha256; do
             [ -f "$f" ] || continue
             wrangler r2 object put "arcana-releases/arcana/$V/$(basename $f)" --file "$f" --remote
           done
