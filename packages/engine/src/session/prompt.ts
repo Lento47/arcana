@@ -6,6 +6,7 @@ import os from "os"
 import { SessionID, MessageID, PartID } from "./schema"
 import { MessageV2 } from "./message-v2"
 import { SessionRevert } from "./revert"
+import { BudgetExceededError, SessionBudget } from "./budget"
 import { Session } from "./session"
 import { Agent } from "../agent/agent"
 import { Provider } from "@/provider/provider"
@@ -124,6 +125,7 @@ export const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const budget = yield* SessionBudget.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
@@ -1183,6 +1185,24 @@ export const layer = Layer.effect(
           }
 
           step++
+          // Safety budget check — blocks further steps if any budget is exceeded.
+          const budgetExit = yield* Effect.exit(budget.checkOrBlock(sessionID))
+          if (Exit.isFailure(budgetExit)) {
+            const budgetError = Cause.squash(budgetExit.cause)
+            if (BudgetExceededError.isInstance(budgetError)) {
+              yield* Effect.logWarning("budget exceeded", {
+                "session.id": sessionID,
+                budget: budgetError.data.budget,
+                current: budgetError.data.current,
+                limit: budgetError.data.limit,
+              })
+              yield* events.publish(Session.Event.Error, {
+                sessionID,
+                error: budgetError.toObject(),
+              })
+              break
+            }
+          }
           if (step === 1)
             yield* title({
               session,
@@ -1572,6 +1592,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(Plugin.defaultLayer),
     Layer.provide(Session.defaultLayer),
     Layer.provide(SessionRevert.defaultLayer),
+    Layer.provide(SessionBudget.defaultLayer),
     Layer.provide(SessionSummary.defaultLayer),
     Layer.provide(Image.defaultLayer),
     Layer.provide(
@@ -1712,6 +1733,7 @@ export const node = LayerNode.make(layer, [
   Instruction.node,
   SessionRunState.node,
   SessionRevert.node,
+  SessionBudget.node,
   SessionSummary.node,
   SystemPrompt.node,
   LLM.node,

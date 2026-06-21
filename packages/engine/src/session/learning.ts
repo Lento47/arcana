@@ -2,26 +2,18 @@
  * Self-learning loop — post-session knowledge extraction.
  *
  * After a session completes (or compaction runs), this module extracts:
- * - New facts → .arcana/learned/{slug}.md wiki files
+ * - New facts → .arcana/learned/{slug}.md wiki files (verified runs only)
  * - New patterns → same
  * - Mistakes → same
  * - Preference updates → .arcana/SOUL.md
  *
  * LEARNED.md acts as a MOC (Map of Content) with [[wikilinks]] to individual wiki files.
  *
+ * Plan-to-history gating: only VERIFIED runs promote to permanent history.
+ * Unproven/partial/failed runs go to .arcana/learned/.quarantine/{run-id}/
+ * and are held separate from LEARNED.md until explicitly promoted.
+ *
  * Integration point: call `extractAndMerge()` after session summary/compaction completes.
- *
- * ## Memory gate — only VERIFIED runs update LEARNED.md (failure mode #12)
- * When `verified === false`, wiki files are written to `.arcana/learned/.quarantine/`
- * with a `quarantined: true` frontmatter field. Quarantined entries go to
- * `LEARNED.md.quarantine` instead of `LEARNED.md`. Use `promoteLearnings()` to
- * move quarantined entries to the main learned directory.
- *
- * ## Confidence decay pipeline (failure mode #14)
- * Tracks model confidence vs actual outcomes via `model_trust` entries.
- * The extraction prompt asks the model to identify overconfidence cases.
- * `.arcana/learned/model-trust.md` records per-model reliability scores.
- * When a model has >3 confidence mismatches, future plans default to `[CONF:LOW]*`.
  */
 
 import path from "path"
@@ -31,12 +23,13 @@ import fs from "fs"
 // Types
 // ---------------------------------------------------------------------------
 
+/** Run verification status for plan-to-history gating. */
+export type RunStatus = "verified" | "unproven" | "partial" | "failed"
+
 export interface LearningExtraction {
   facts: LearningEntry[]
   patterns: LearningEntry[]
   mistakes: LearningEntry[]
-  /** Confidence decay entries — cases where the model was overconfident (Feature #14) */
-  confidence_decay?: ConfidenceDecayEntry[]
   preferenceUpdates: PreferenceUpdate[]
 }
 
@@ -51,41 +44,11 @@ export interface LearningEntry {
   tags: string[]
 }
 
-/**
- * Confidence decay entry — records when a model tagged an action HIGH
- * confidence but the outcome was a failure (failure mode #14).
- */
-export interface ConfidenceDecayEntry {
-  /** Model identifier, e.g. "claude-sonnet-4-20250514" */
-  modelId: string
-  /** Provider identifier, e.g. "anthropic" */
-  providerId: string
-  /** What the model was overconfident about */
-  claim: string
-  /** The actual outcome that contradicted the claim */
-  actual: string
-  /** The session slug where this mismatch occurred */
-  sourceSession?: string
-}
-
 export interface PreferenceUpdate {
   /** Section heading in SOUL.md to update */
   section: string
   /** New content for that section */
   content: string
-}
-
-/**
- * Model trust scores derived from confidence_decay entries.
- * Written to `.arcana/learned/model-trust.md`.
- */
-export interface ModelTrustScore {
-  modelId: string
-  providerId: string
-  /** Total confidence mismatches recorded */
-  mismatches: number
-  /** Whether future plans from this model should default to [CONF:LOW]* */
-  lowConfidenceDefault: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -95,8 +58,6 @@ export interface ModelTrustScore {
 /**
  * Prompt for extracting learnings from a session summary.
  * Designed for a small/cheap model (Haiku-class). ~250 tokens.
- *
- * Includes confidence_decay anti-pattern detection (failure mode #14).
  */
 export const EXTRACTION_PROMPT = `Extract learnings from this session summary. Output ONLY valid JSON, no markdown.
 
@@ -111,14 +72,6 @@ export const EXTRACTION_PROMPT = `Extract learnings from this session summary. O
   ],
   "patterns": [ /* same structure — reusable techniques discovered */ ],
   "mistakes": [ /* same structure — errors made + corrections */ ],
-  "confidence_decay": [
-    {
-      "modelId": "model-id-used",
-      "providerId": "provider-name",
-      "claim": "What the model claimed with high confidence",
-      "actual": "What actually happened (the failure/error)"
-    }
-  ],
   "preferenceUpdates": [
     {
       "section": "Section heading in SOUL.md",
@@ -134,11 +87,6 @@ Rules:
 - tags: 1-4 lowercase tags. Use project name, technology, category.
 - Only include genuinely NEW learnings. Skip obvious/trivial.
 - If nothing new, return empty arrays.
-- confidence_decay: identify cases where the model expressed HIGH confidence
-  but the action FAILED or produced incorrect results. Include the model id,
-  provider, the overconfident claim, and the actual outcome. This helps track
-  model reliability over time — models with repeated confidence mismatches
-  should be treated with lower trust.
 - preferenceUpdates: only if user explicitly expressed a preference or corrected behavior. Rare.`
 
 // ---------------------------------------------------------------------------
@@ -174,20 +122,12 @@ function readTags(filepath: string): string[] {
 // Wiki file creation
 // ---------------------------------------------------------------------------
 
-/**
- * Create a wiki file in the learned directory or quarantine directory.
- *
- * @param quarantine If true, file goes to `.arcana/learned/.quarantine/`
- *   with `quarantined: true` frontmatter (failure mode #12).
- */
 export function createWikiFile(
   projectRoot: string,
   entry: LearningEntry,
   sourceSession?: string,
-  quarantine?: boolean,
 ): string {
-  const baseDir = path.join(projectRoot, ".arcana", "learned")
-  const dir = quarantine ? path.join(baseDir, ".quarantine") : baseDir
+  const dir = path.join(projectRoot, ".arcana", "learned")
   ensureDir(dir)
 
   const filename = slugToFilename(entry.slug)
@@ -198,7 +138,7 @@ export function createWikiFile(
     `tags: [${entry.tags.join(", ")}]`,
     `date: ${new Date().toISOString().split("T")[0]}`,
     sourceSession ? `source: ${sourceSession}` : "",
-    quarantine ? "quarantined: true" : "",
+    "---",
   ]
     .filter(Boolean)
     .join("\n")
@@ -213,37 +153,13 @@ export function createWikiFile(
 // LEARNED.md MOC update
 // ---------------------------------------------------------------------------
 
-function defaultLearnedContent(): string {
-  return `# LEARNED — Accumulated Knowledge Index\n\n> Auto-updated by self-learning loop.\n\n## Project\n\n## Patterns\n\n## Mistakes\n`
-}
-
 export function updateLearnedMd(
   projectRoot: string,
   entries: LearningEntry[],
   category: "facts" | "patterns" | "mistakes",
 ): void {
   const learnedPath = path.join(projectRoot, ".arcana", "LEARNED.md")
-  appendLearningsToMoc(learnedPath, entries, category)
-}
 
-/**
- * Append quarantine learnings to LEARNED.md.quarantine instead of LEARNED.md.
- * Used when verified === false (failure mode #12).
- */
-export function updateLearnedMdQuarantine(
-  projectRoot: string,
-  entries: LearningEntry[],
-  category: "facts" | "patterns" | "mistakes",
-): void {
-  const quarantinePath = path.join(projectRoot, ".arcana", "LEARNED.md.quarantine")
-  appendLearningsToMoc(quarantinePath, entries, category)
-}
-
-function appendLearningsToMoc(
-  mocPath: string,
-  entries: LearningEntry[],
-  category: "facts" | "patterns" | "mistakes",
-): void {
   const categoryHeading =
     category === "facts"
       ? "## Project"
@@ -253,9 +169,10 @@ function appendLearningsToMoc(
 
   let content: string
   try {
-    content = fs.readFileSync(mocPath, "utf-8")
+    content = fs.readFileSync(learnedPath, "utf-8")
   } catch {
-    content = defaultLearnedContent()
+    // Create new LEARNED.md if it doesn't exist
+    content = `# LEARNED — Accumulated Knowledge Index\n\n> Auto-updated by self-learning loop.\n\n## Project\n\n## Patterns\n\n## Mistakes\n`
   }
 
   for (const entry of entries) {
@@ -268,261 +185,17 @@ function appendLearningsToMoc(
     // Insert after the category heading
     const headingIndex = content.indexOf(categoryHeading)
     if (headingIndex === -1) {
+      // Category heading doesn't exist — append at end
       content += `\n${categoryHeading}\n${line}\n`
     } else {
+      // Find end of heading line, insert after it
       const insertAt = content.indexOf("\n", headingIndex) + 1
       content = content.slice(0, insertAt) + line + "\n" + content.slice(insertAt)
     }
   }
 
-  ensureDir(path.dirname(mocPath))
-  fs.writeFileSync(mocPath, content, "utf-8")
-}
-
-// ---------------------------------------------------------------------------
-// Promote: move quarantined learnings to main (failure mode #12)
-// ---------------------------------------------------------------------------
-
-export interface PromoteResult {
-  /** Files that were successfully promoted */
-  promoted: string[]
-  /** Slugs that weren't found in quarantine */
-  notFound: string[]
-  /** Count of files promoted */
-  count: number
-}
-
-/**
- * Promote quarantined learnings to the main learned directory.
- * Removes `quarantined: true` from frontmatter, moves files from
- * `.quarantine/` to parent directory, and merges LEARNED.md.quarantine
- * entries into LEARNED.md.
- *
- * This is the user-facing `/promote` concept: after reviewing quarantined
- * learnings, the user can move them to the main index.
- *
- * @param projectRoot Project root directory
- * @param slugs Specific slugs to promote. If empty, promotes ALL quarantined files.
- */
-export function promoteLearnings(projectRoot: string, slugs?: string[]): PromoteResult {
-  const baseDir = path.join(projectRoot, ".arcana", "learned")
-  const quarantineDir = path.join(baseDir, ".quarantine")
-  const result: PromoteResult = { promoted: [], notFound: [], count: 0 }
-
-  if (!fs.existsSync(quarantineDir)) return result
-
-  const files = fs.readdirSync(quarantineDir).filter((f) => f.endsWith(".md"))
-  const targetSet = slugs ? new Set(slugs) : undefined
-
-  for (const file of files) {
-    const slug = file.replace(/\.md$/, "")
-    if (targetSet && !targetSet.has(slug)) continue
-
-    const srcPath = path.join(quarantineDir, file)
-    const dstPath = path.join(baseDir, file)
-
-    try {
-      let content = fs.readFileSync(srcPath, "utf-8")
-      // Remove quarantined: true from frontmatter
-      content = content.replace(/^quarantined:\s*true\s*\n/m, "")
-      fs.writeFileSync(dstPath, content, "utf-8")
-      fs.unlinkSync(srcPath)
-      result.promoted.push(slug)
-      result.count++
-    } catch {
-      result.notFound.push(slug)
-    }
-  }
-
-  // Merge LEARNED.md.quarantine into LEARNED.md for promoted slugs
-  const quarantineMocPath = path.join(projectRoot, ".arcana", "LEARNED.md.quarantine")
-  if (fs.existsSync(quarantineMocPath)) {
-    const quarantineMoc = fs.readFileSync(quarantineMocPath, "utf-8")
-    const learnedPath = path.join(projectRoot, ".arcana", "LEARNED.md")
-    let learnedContent: string
-    try {
-      learnedContent = fs.readFileSync(learnedPath, "utf-8")
-    } catch {
-      learnedContent = defaultLearnedContent()
-    }
-
-    for (const slug of result.promoted) {
-      // Extract the line from quarantine MOC
-      const lineRegex = new RegExp(`^- \\[\\[${slug}\\]\\].*$`, "m")
-      const match = quarantineMoc.match(lineRegex)
-      if (!match) continue
-
-      const line = match[0]
-      if (learnedContent.includes(`[[${slug}]]`)) continue
-
-      // Determine which category this entry belongs to
-      let categoryHeading = ""
-      const lines = quarantineMoc.split("\n")
-      const lineIdx = lines.findIndex((l) => l === line)
-      for (let i = lineIdx; i >= 0; i--) {
-        if (lines[i].startsWith("## ")) {
-          categoryHeading = lines[i]
-          break
-        }
-      }
-
-      if (categoryHeading) {
-        const headingIndex = learnedContent.indexOf(categoryHeading)
-        if (headingIndex === -1) {
-          learnedContent += `\n${categoryHeading}\n${line}\n`
-        } else {
-          const insertAt = learnedContent.indexOf("\n", headingIndex) + 1
-          learnedContent =
-            learnedContent.slice(0, insertAt) + line + "\n" + learnedContent.slice(insertAt)
-        }
-      }
-    }
-
-    // Remove promoted lines from quarantine MOC
-    let updatedQuarantine = quarantineMoc
-    for (const slug of result.promoted) {
-      const lineRegex = new RegExp(`^- \\[\\[${slug}\\]\\].*\n?`, "m")
-      updatedQuarantine = updatedQuarantine.replace(lineRegex, "")
-    }
-
-    if (targetSet) {
-      fs.writeFileSync(quarantineMocPath, updatedQuarantine, "utf-8")
-      fs.writeFileSync(learnedPath, learnedContent, "utf-8")
-    } else {
-      // All promoted — remove quarantine MOC entirely
-      if (result.promoted.length === files.length) {
-        try {
-          fs.unlinkSync(quarantineMocPath)
-        } catch {
-          // Fine if it doesn't exist
-        }
-      } else {
-        fs.writeFileSync(quarantineMocPath, updatedQuarantine, "utf-8")
-      }
-      fs.writeFileSync(learnedPath, learnedContent, "utf-8")
-    }
-  }
-
-  // Clean up empty quarantine directory
-  try {
-    const remaining = fs.readdirSync(quarantineDir)
-    if (remaining.length === 0) fs.rmdirSync(quarantineDir)
-  } catch {
-    // Directory may not exist, that's fine
-  }
-
-  return result
-}
-
-// ---------------------------------------------------------------------------
-// Model trust tracking (failure mode #14)
-// ---------------------------------------------------------------------------
-
-/**
- * Update `.arcana/learned/model-trust.md` with confidence decay entries.
- * When a model has >3 confidence mismatches, it defaults to `[CONF:LOW]*`.
- */
-export function updateModelTrust(
-  projectRoot: string,
-  entries: ConfidenceDecayEntry[],
-): ModelTrustScore[] {
-  if (entries.length === 0) return []
-
-  const trustPath = path.join(projectRoot, ".arcana", "learned", "model-trust.md")
-
-  // Load existing trust data
-  const existing = new Map<string, ModelTrustScore>()
-  if (fs.existsSync(trustPath)) {
-    try {
-      const content = fs.readFileSync(trustPath, "utf-8")
-      // Parse markdown table rows
-      const rowRegex = /^\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|\s*(\d+)\s*\|/gm
-      let match: RegExpExecArray | null
-      while ((match = rowRegex.exec(content)) !== null) {
-        const key = `${match[2]}/${match[1]}`
-        const mismatches = parseInt(match[3], 10)
-        existing.set(key, {
-          modelId: match[1],
-          providerId: match[2],
-          mismatches,
-          lowConfidenceDefault: mismatches > 3,
-        })
-      }
-    } catch {
-      // Corrupted file — start fresh
-    }
-  }
-
-  // Merge new entries
-  for (const entry of entries) {
-    const key = `${entry.providerId}/${entry.modelId}`
-    const current = existing.get(key)
-    if (current) {
-      current.mismatches++
-    } else {
-      existing.set(key, {
-        modelId: entry.modelId,
-        providerId: entry.providerId,
-        mismatches: 1,
-        lowConfidenceDefault: false,
-      })
-    }
-  }
-
-  // Update lowConfidenceDefault for models exceeding threshold
-  const scores: ModelTrustScore[] = []
-  for (const score of existing.values()) {
-    if (score.mismatches > 3) {
-      score.lowConfidenceDefault = true
-    }
-    scores.push(score)
-  }
-
-  // Write model-trust.md
-  const lines = [
-    "# Model Trust Index",
-    "",
-    "> Auto-updated by confidence decay pipeline (failure mode #14).",
-    "> Models with >3 confidence mismatches get `[CONF:LOW]*` on future plans.",
-    "",
-    "| Model | Provider | Mismatches | Confidence Default |",
-    "|-------|----------|------------|-------------------|",
-  ]
-  for (const score of scores) {
-    const conf = score.lowConfidenceDefault ? "LOW*" : "normal"
-    lines.push(`| \`${score.modelId}\` | \`${score.providerId}\` | ${score.mismatches} | ${conf} |`)
-  }
-  lines.push("")
-
-  ensureDir(path.dirname(trustPath))
-  fs.writeFileSync(trustPath, lines.join("\n"), "utf-8")
-
-  return scores
-}
-
-/**
- * Check whether a given model should default to low confidence.
- * Returns true if the model has >3 confidence mismatches on record.
- */
-export function isModelLowConfidence(
-  projectRoot: string,
-  modelId: string,
-  providerId: string,
-): boolean {
-  const trustPath = path.join(projectRoot, ".arcana", "learned", "model-trust.md")
-  if (!fs.existsSync(trustPath)) return false
-
-  try {
-    const content = fs.readFileSync(trustPath, "utf-8")
-    const pattern = new RegExp(
-      `\\|\\s*\`${modelId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\`\\s*\\|\\s*\`${providerId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\`\\s*\\|\\s*\\d+\\s*\\|\\s*(LOW\\*|normal)\\s*\\|`,
-      "m",
-    )
-    const match = content.match(pattern)
-    return match ? match[1] === "LOW*" : false
-  } catch {
-    return false
-  }
+  ensureDir(path.dirname(learnedPath))
+  fs.writeFileSync(learnedPath, content, "utf-8")
 }
 
 // ---------------------------------------------------------------------------
@@ -564,6 +237,21 @@ export function updateSoulMd(
     fs.writeFileSync(soulPath, content, "utf-8")
   }
   return changed
+}
+
+// ---------------------------------------------------------------------------
+// Quarantine constants
+// ---------------------------------------------------------------------------
+
+const QUARANTINE_DIR = ".quarantine"
+const QUARANTINE_MD = "QUARANTINE.md"
+
+function quarantineDir(projectRoot: string): string {
+  return path.join(projectRoot, ".arcana", "learned", QUARANTINE_DIR)
+}
+
+function quarantineRunDir(projectRoot: string, runId: string): string {
+  return path.join(quarantineDir(projectRoot), runId)
 }
 
 // ---------------------------------------------------------------------------
@@ -626,85 +314,103 @@ export function crossReference(projectRoot: string, newSlugs: string[]): void {
 
 export interface MergeResult {
   wikiFilesCreated: string[]
-  /** Files written to .quarantine/ (when verified === false) */
-  quarantinedFiles: string[]
   learnedMdUpdated: boolean
   soulMdUpdated: boolean
   crossReferencesAdded: number
-  /** Model trust scores that were updated */
-  modelTrustScores: ModelTrustScore[]
+  /** Run status used for this extraction. */
+  runStatus: RunStatus
+  /** If quarantined, the run-id the entries were stored under. */
+  quarantinedRunId?: string
 }
 
 /**
  * Extract learnings from a session summary JSON, create wiki files,
  * update LEARNED.md MOC, and cross-reference.
  *
- * Call this after session compaction or completion.
+ * Plan-to-history gating: only VERIFIED runs promote to permanent history.
+ * Unproven, partial, or failed runs go to .arcana/learned/.quarantine/{run-id}/
+ * where they stay until explicitly promoted or discarded.
  *
- * @param projectRoot Project root directory
- * @param extraction Parsed learning extraction from LLM
- * @param sourceSession Optional session identifier for frontmatter
- * @param verified Whether this run is verified. When false, wiki files
- *   go to `.arcana/learned/.quarantine/` with `quarantined: true`.
- *   Only verified runs update LEARNED.md; quarantined entries go to
- *   LEARNED.md.quarantine. (failure mode #12)
+ * Call this after session compaction or completion.
  */
 export function extractAndMerge(
   projectRoot: string,
   extraction: LearningExtraction,
-  sourceSession?: string,
-  verified?: boolean,
+  options?: {
+    sourceSession?: string
+    /** Run verification status. Defaults to "verified" for backward compatibility. */
+    runStatus?: RunStatus
+    /** Run identifier for quarantine. Required when runStatus !== "verified". */
+    runId?: string
+  },
 ): MergeResult {
-  const isVerified = verified !== false // default to true for backward compat
+  const runStatus = options?.runStatus ?? "verified"
+  const sourceSession = options?.sourceSession
+  const runId = options?.runId ?? sourceSession ?? `run-${Date.now()}`
+
   const result: MergeResult = {
     wikiFilesCreated: [],
-    quarantinedFiles: [],
     learnedMdUpdated: false,
     soulMdUpdated: false,
     crossReferencesAdded: 0,
-    modelTrustScores: [],
+    runStatus,
   }
 
-  const categories: Array<{
-    key: "facts" | "patterns" | "mistakes"
-    entries: LearningEntry[]
-  }> = [
-    { key: "facts", entries: extraction.facts },
-    { key: "patterns", entries: extraction.patterns },
-    { key: "mistakes", entries: extraction.mistakes },
+  const isQuarantined = runStatus !== "verified"
+
+  const allEntries: Array<{ entry: LearningEntry; category: "facts" | "patterns" | "mistakes" }> = [
+    ...extraction.facts.map((e) => ({ entry: e, category: "facts" as const })),
+    ...extraction.patterns.map((e) => ({ entry: e, category: "patterns" as const })),
+    ...extraction.mistakes.map((e) => ({ entry: e, category: "mistakes" as const })),
   ]
 
-  for (const { key, entries } of categories) {
-    if (entries.length === 0) continue
+  if (isQuarantined) {
+    result.quarantinedRunId = runId
 
-    for (const entry of entries) {
-      if (isVerified) {
-        const filepath = createWikiFile(projectRoot, entry, sourceSession)
-        result.wikiFilesCreated.push(filepath)
-      } else {
-        const filepath = createWikiFile(projectRoot, entry, sourceSession, true)
-        result.quarantinedFiles.push(filepath)
-      }
+    // Write wiki files to quarantine directory
+    const qDir = quarantineRunDir(projectRoot, runId)
+    ensureDir(qDir)
+
+    for (const { entry, category } of allEntries) {
+      const filepath = createWikiFileInDir(qDir, entry, sourceSession)
+      result.wikiFilesCreated.push(filepath)
     }
 
-    if (isVerified) {
-      updateLearnedMd(projectRoot, entries, key)
+    // Update QUARANTINE.md with the quarantined entries
+    updateQuarantineMd(projectRoot, runId, allEntries)
+  } else {
+    // Verified run — write to main learned/ directory
+    // Facts
+    for (const entry of extraction.facts) {
+      const filepath = createWikiFile(projectRoot, entry, sourceSession)
+      result.wikiFilesCreated.push(filepath)
+    }
+    if (extraction.facts.length > 0) {
+      updateLearnedMd(projectRoot, extraction.facts, "facts")
       result.learnedMdUpdated = true
-    } else {
-      updateLearnedMdQuarantine(projectRoot, entries, key)
     }
-  }
 
-  // SOUL.md preference updates
-  result.soulMdUpdated = updateSoulMd(projectRoot, extraction.preferenceUpdates)
+    // Patterns
+    for (const entry of extraction.patterns) {
+      const filepath = createWikiFile(projectRoot, entry, sourceSession)
+      result.wikiFilesCreated.push(filepath)
+    }
+    if (extraction.patterns.length > 0) {
+      updateLearnedMd(projectRoot, extraction.patterns, "patterns")
+      result.learnedMdUpdated = true
+    }
 
-  // Confidence decay — always tracked regardless of verification status
-  if (extraction.confidence_decay && extraction.confidence_decay.length > 0) {
-    result.modelTrustScores = updateModelTrust(projectRoot, extraction.confidence_decay)
-  }
+    // Mistakes
+    for (const entry of extraction.mistakes) {
+      const filepath = createWikiFile(projectRoot, entry, sourceSession)
+      result.wikiFilesCreated.push(filepath)
+    }
+    if (extraction.mistakes.length > 0) {
+      updateLearnedMd(projectRoot, extraction.mistakes, "mistakes")
+      result.learnedMdUpdated = true
+    }
 
-  // Cross-reference (only for verified files — quarantine is isolated)
-  if (isVerified) {
+    // Cross-reference
     const allSlugs = [
       ...extraction.facts,
       ...extraction.patterns,
@@ -716,5 +422,224 @@ export function extractAndMerge(
     }
   }
 
+  // SOUL.md preference updates (always apply, regardless of run status)
+  result.soulMdUpdated = updateSoulMd(projectRoot, extraction.preferenceUpdates)
+
   return result
+}
+
+// ---------------------------------------------------------------------------
+// Quarantine operations
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a wiki file in a specific directory (used for quarantine).
+ */
+function createWikiFileInDir(
+  dir: string,
+  entry: LearningEntry,
+  sourceSession?: string,
+): string {
+  ensureDir(dir)
+
+  const filename = slugToFilename(entry.slug)
+  const filepath = path.join(dir, filename)
+
+  const frontmatter = [
+    "---",
+    `tags: [${entry.tags.join(", ")}]`,
+    `date: ${new Date().toISOString().split("T")[0]}`,
+    sourceSession ? `source: ${sourceSession}` : "",
+    "---",
+  ]
+    .filter(Boolean)
+    .join("\n")
+
+  const content = `${frontmatter}\n# ${entry.slug.replace(/-/g, " ")}\n\n${entry.summary}\n\n${entry.body}\n`
+
+  fs.writeFileSync(filepath, content, "utf-8")
+  return filepath
+}
+
+/**
+ * Update or create QUARANTINE.md listing all quarantined entries.
+ */
+function updateQuarantineMd(
+  projectRoot: string,
+  runId: string,
+  entries: Array<{ entry: LearningEntry; category: "facts" | "patterns" | "mistakes" }>,
+): void {
+  const qDir = quarantineDir(projectRoot)
+  ensureDir(qDir)
+  const quarantinePath = path.join(qDir, QUARANTINE_MD)
+
+  let content: string
+  try {
+    content = fs.readFileSync(quarantinePath, "utf-8")
+  } catch {
+    content = `# QUARANTINE — Unverified Learnings\n\n> Entries held pending verification.\n> Use \`promote(runId)\` to promote or \`discard(runId)\` to delete.\n\n`
+  }
+
+  // Add section for this run if not already present
+  const runHeading = `## ${runId}`
+  if (!content.includes(runHeading)) {
+    const runSection = [
+      runHeading,
+      `date: ${new Date().toISOString().split("T")[0]}`,
+      "",
+      ...entries.map(({ entry, category }) => {
+        const catLabel = category === "facts" ? "Project" : category === "patterns" ? "Patterns" : "Mistakes"
+        return `- [[${entry.slug}]] (${catLabel}) — ${entry.summary}`
+      }),
+      "",
+    ].join("\n")
+    content += runSection
+  }
+
+  fs.writeFileSync(quarantinePath, content, "utf-8")
+}
+
+/**
+ * Promote quarantined entries from a run to the main learned/ directory.
+ * Moves wiki files and adds entries to LEARNED.md.
+ *
+ * @returns Number of files promoted.
+ */
+export function promote(projectRoot: string, runId: string): number {
+  const qDir = quarantineRunDir(projectRoot, runId)
+  if (!fs.existsSync(qDir)) return 0
+
+  const learnedDir = path.join(projectRoot, ".arcana", "learned")
+  ensureDir(learnedDir)
+
+  const files = fs.readdirSync(qDir).filter((f) => f.endsWith(".md"))
+  let promoted = 0
+
+  for (const file of files) {
+    const src = path.join(qDir, file)
+    const dest = path.join(learnedDir, file)
+
+    // If destination already exists, skip (don't overwrite)
+    if (fs.existsSync(dest)) {
+      continue
+    }
+
+    fs.copyFileSync(src, dest)
+    promoted++
+  }
+
+  // Add to LEARNED.md
+  if (promoted > 0) {
+    updateLearnedMdFromQuarantine(projectRoot, qDir, files)
+    // Cross-reference with existing wiki files
+    const slugs = files.map((f) => f.replace(/\.md$/, ""))
+    crossReference(projectRoot, slugs)
+  }
+
+  // Remove the quarantine directory
+  fs.rmSync(qDir, { recursive: true, force: true })
+
+  // Update QUARANTINE.md to remove this run's section
+  removeQuarantineSection(projectRoot, runId)
+
+  return promoted
+}
+
+/**
+ * Discard quarantined entries for a run. Permanently deletes the files.
+ *
+ * @returns Number of files discarded.
+ */
+export function discard(projectRoot: string, runId: string): number {
+  const qDir = quarantineRunDir(projectRoot, runId)
+  if (!fs.existsSync(qDir)) return 0
+
+  const files = fs.readdirSync(qDir).filter((f) => f.endsWith(".md"))
+  const count = files.length
+
+  fs.rmSync(qDir, { recursive: true, force: true })
+
+  // Update QUARANTINE.md
+  removeQuarantineSection(projectRoot, runId)
+
+  return count
+}
+
+/**
+ * List all quarantined run IDs.
+ */
+export function listQuarantined(projectRoot: string): string[] {
+  const qDir = quarantineDir(projectRoot)
+  if (!fs.existsSync(qDir)) return []
+
+  return fs
+    .readdirSync(qDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+}
+
+// ---------------------------------------------------------------------------
+// Internal quarantine helpers
+// ---------------------------------------------------------------------------
+
+function updateLearnedMdFromQuarantine(
+  projectRoot: string,
+  qDir: string,
+  files: string[],
+): void {
+  for (const file of files) {
+    const filepath = path.join(qDir, file)
+    try {
+      const content = fs.readFileSync(filepath, "utf-8")
+      const summaryMatch = content.match(/\n\n([^\n]+)\n\n/)
+      const summary = summaryMatch ? summaryMatch[1] : ""
+      const slug = file.replace(/\.md$/, "")
+
+      // Infer category from tags
+      const tagMatch = content.match(/tags:\s*\[(.*?)\]/)
+      const tags = tagMatch
+        ? tagMatch[1].split(",").map((t) => t.trim().replace(/"/g, "").replace(/'/g, ""))
+        : []
+
+      const category: "facts" | "patterns" | "mistakes" = tags.includes("mistake") ? "mistakes" : tags.includes("pattern") ? "patterns" : "facts"
+
+      updateLearnedMd(projectRoot, [{ slug, summary, body: "", tags }], category)
+    } catch {
+      // Skip files we can't read
+    }
+  }
+}
+
+function removeQuarantineSection(projectRoot: string, runId: string): void {
+  const quarantinePath = path.join(quarantineDir(projectRoot), QUARANTINE_MD)
+  if (!fs.existsSync(quarantinePath)) return
+
+  let content = fs.readFileSync(quarantinePath, "utf-8")
+  const runHeading = `## ${runId}`
+
+  const startIdx = content.indexOf(runHeading)
+  if (startIdx === -1) return
+
+  // Find the next ## heading after this run's section
+  const afterStart = content.indexOf("\n## ", startIdx + runHeading.length)
+  const endIdx = afterStart === -1 ? content.length : afterStart
+
+  // Remove the section
+  content = content.slice(0, startIdx) + content.slice(endIdx).replace(/^\n+/, "\n")
+
+  // If only the header remains, remove the file
+  const trimmed = content.trim()
+  if (
+    trimmed === "# QUARANTINE — Unverified Learnings" ||
+    trimmed === "# QUARANTINE — Unverified Learnings\n\n> Entries held pending verification.\n> Use `promote(runId)` to promote or `discard(runId)` to delete."
+  ) {
+    try {
+      fs.unlinkSync(quarantinePath)
+    } catch {
+      // ok to fail
+    }
+    return
+  }
+
+  fs.writeFileSync(quarantinePath, content, "utf-8")
 }

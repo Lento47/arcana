@@ -86,6 +86,22 @@ export type SessionData = {
   visible: Map<string, string>
   end: Set<string>
   echo: Map<string, Set<string>>
+  /** Per-run budget counters tracked from tool completions. */
+  budget: SessionBudget
+}
+
+export type SessionBudget = {
+  enabled: boolean
+  destructiveOps: number
+  maxDestructiveOps: number
+  filesTouched: number
+  maxFilesTouched: number
+  locChanged: number
+  maxLocChanged: number
+  externalCalls: number
+  maxExternalCalls: number
+  startTime: number
+  maxDurationMs: number
 }
 
 export type SessionDataInput = {
@@ -124,6 +140,19 @@ export function createSessionData(
     visible: new Map(),
     end: new Set(),
     echo: new Map(),
+    budget: {
+      enabled: true,
+      destructiveOps: 0,
+      maxDestructiveOps: 5,
+      filesTouched: 0,
+      maxFilesTouched: 50,
+      locChanged: 0,
+      maxLocChanged: 2000,
+      externalCalls: 0,
+      maxExternalCalls: 10,
+      startTime: Date.now(),
+      maxDurationMs: 15 * 60 * 1000,
+    },
   }
 }
 
@@ -199,6 +228,24 @@ function patch(patch?: FooterPatch, view?: FooterView): FooterOutput | undefined
     patch,
     view,
   }
+}
+
+function formatBudgetStatus(bgt: SessionBudget): string | undefined {
+  if (!bgt.enabled) return undefined
+  if (bgt.destructiveOps >= bgt.maxDestructiveOps) {
+    return `[BUDGET] Destructive ops: ${bgt.destructiveOps}/${bgt.maxDestructiveOps} — limit reached. Run paused.`
+  }
+  if (bgt.filesTouched >= bgt.maxFilesTouched) {
+    return `[BUDGET] Files touched: ${bgt.filesTouched}/${bgt.maxFilesTouched} — limit reached. Run paused.`
+  }
+  if (bgt.externalCalls >= bgt.maxExternalCalls) {
+    return `[BUDGET] External calls: ${bgt.externalCalls}/${bgt.maxExternalCalls} — limit reached. Run paused.`
+  }
+  const elapsed = Date.now() - bgt.startTime
+  if (elapsed >= bgt.maxDurationMs) {
+    return `[BUDGET] Duration: ${Math.round(elapsed / 1000)}s / ${Math.round(bgt.maxDurationMs / 1000)}s — limit reached. Run paused.`
+  }
+  return undefined
 }
 
 function out(data: SessionData, commits: SessionCommit[], footer?: FooterOutput): SessionDataOutput {
@@ -980,6 +1027,26 @@ export function reduceSessionData(input: SessionDataInput): SessionDataOutput {
 
         if (mode.final) {
           commits.push(doneTool(part))
+        }
+
+        // Budget tracking
+        const bgt = data.budget
+        if (bgt.enabled && part.tool) {
+          const toolName = part.tool.toLowerCase()
+          if (toolName === "edit" || toolName === "write") {
+            bgt.destructiveOps = Math.min(bgt.destructiveOps + 1, bgt.maxDestructiveOps)
+            bgt.filesTouched = Math.min(bgt.filesTouched + 1, bgt.maxFilesTouched)
+          } else if (toolName === "bash") {
+            bgt.destructiveOps = Math.min(bgt.destructiveOps + 1, bgt.maxDestructiveOps)
+          } else if (toolName === "web_fetch" || toolName === "websearch" || toolName === "web_search") {
+            bgt.externalCalls = Math.min(bgt.externalCalls + 1, bgt.maxExternalCalls)
+          }
+        }
+
+        // Budget exceeded status overlay
+        const budgetStatus = formatBudgetStatus(bgt)
+        if (budgetStatus) {
+          return out(data, commits, patch({ status: budgetStatus }))
         }
 
         return out(data, commits, view)
