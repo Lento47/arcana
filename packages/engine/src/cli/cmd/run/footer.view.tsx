@@ -785,8 +785,11 @@ export function RunFooterView(props: RunFooterViewProps) {
                             requests={plan()!.requests}
                             theme={theme()}
                             onApproveAll={() => {
-                              for (const r of plan()!.requests) {
+                              const reqs = plan()!.requests
+                              if (reqs.length === 0) return
+                              for (const r of reqs) {
                                 props.onPermissionReply({ requestID: r.id, reply: "once" })
+                                  .catch(() => {}) // already resolved — idempotent, ignore
                               }
                             }}
                             onRejectAll={() => {

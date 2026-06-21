@@ -36,8 +36,19 @@ function riskLabel(request: PermissionRequest): { level: RiskLevel; label: strin
     return { level: "write", label: "SHELL" }
   }
 
-  // Network tools
-  if (tool === "webfetch" || tool === "websearch") return { level: "mutate", label: "NETWORK" }
+  // Write/edit — inspect diff/args for dangerous content
+  if (tool === "write" || tool === "edit" || tool === "apply_patch") {
+    const diff = (request.metadata as any)?.diff ?? (request.metadata as any)?.input ?? ""
+    const content = typeof diff === "string" ? diff : JSON.stringify(diff)
+    if (/rm\s+-rf|>\/dev\/null|curl.*\|.*sh|eval\s|exec\s/.test(content))
+      return { level: "danger", label: "DANGER" }
+    if (/\.\.\/|\.\.\\/.test(content))
+      return { level: "danger", label: "PATH" } // path traversal in write target
+    return { level: "write", label: "WRITE" }
+  }
+
+  // Network tools — external side effects
+  if (tool === "webfetch" || tool === "websearch") return { level: "mutate", label: "EXT" }
 
   return { level: "write", label: "WRITE" }
 }
@@ -103,6 +114,7 @@ export function RunPlanBody(props: {
   const dims = useTerminalDimensions()
   const tw = createMemo(() => dims().width)
 
+  const MAX_VISIBLE = 12
   const lines = createMemo(() => {
     const all = props.requests.map((r) => {
       const info = permissionInfo(r)
@@ -115,8 +127,9 @@ export function RunPlanBody(props: {
       const truncated = title.length > maxLen ? title.slice(0, maxLen - 1) + "…" : title
       return { icon, title: truncated, level: rl.level, label: rl.label, conf: cf }
     })
-    if (lowOnly()) return all.filter((l) => l.conf === "LOW")
-    return all
+    const filtered = lowOnly() ? all.filter((l) => l.conf === "LOW") : all
+    if (filtered.length <= MAX_VISIBLE) return { lines: filtered, overflow: 0 }
+    return { lines: filtered.slice(0, MAX_VISIBLE), overflow: filtered.length - MAX_VISIBLE }
   })
 
   const count = props.requests.length
@@ -134,7 +147,7 @@ export function RunPlanBody(props: {
         <text fg={props.theme.muted}>{header}</text>
       </box>
 
-      <For each={lines()}>
+      <For each={lines().lines}>
         {(line) => (
           <box flexDirection="row" height={1} gap={1}>
             <text fg={riskColor(line.level, props.theme)}>{`[${line.label}]`}</text>
@@ -143,17 +156,25 @@ export function RunPlanBody(props: {
                 {`[CONF:${line.conf}]`}
               </text>
             )}
-            <text
-              fg={line.conf === "LOW" ? props.theme.muted : props.theme.muted}
-            >
+            <text fg={line.conf === "LOW" ? props.theme.muted : props.theme.muted}>
               {line.icon}
               {line.title}
             </text>
           </box>
         )}
       </For>
+      {lines().overflow > 0 && (
+        <box flexDirection="row" height={1} gap={1}>
+          <text fg={props.theme.muted}>… and {lines().overflow} more (scroll in scrollback)</text>
+        </box>
+      )}
 
-      <box flexDirection="row" height={1} borderTop={1} borderColor={borderColor()} />
+      <box flexDirection="row" height={1} borderTop={1} borderColor={borderColor()} gap={1}>
+        <text fg={borderColor()}>
+          {risk() === "danger" ? "⛔ DANGER" : risk() === "mutate" ? "⚠ MUTATE" : risk() === "write" ? "◈ WRITE" : "● SAFE"}
+        </text>
+        <text fg={props.theme.muted}>{props.requests.length} action{props.requests.length !== 1 ? "s" : ""}</text>
+      </box>
     </box>
   )
 }

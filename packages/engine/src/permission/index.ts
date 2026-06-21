@@ -120,7 +120,9 @@ export const layer = Layer.effect(
     const reply = Effect.fn("Permission.reply")(function* (input: PermissionV1.ReplyInput) {
       const { approved, pending } = yield* InstanceState.get(state)
       const existing = pending.get(input.requestID)
-      if (!existing) return yield* new PermissionV1.NotFoundError({ requestID: input.requestID })
+      // Idempotent: if the request was already resolved (double-Enter, race, cascade reject),
+      // return silently — the user's intent was already applied.
+      if (!existing) return Effect.void
 
       pending.delete(input.requestID)
       yield* events.publish(Event.Replied, {

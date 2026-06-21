@@ -699,7 +699,7 @@ export class RunFooter implements FooterApi {
     const type = v.type
     const height =
       type === "plan"
-        ? this.base + PLAN_BASE_ROWS + v.requests.length
+        ? this.base + PLAN_BASE_ROWS + Math.min(v.requests.length, 12)
         : type === "permission"
           ? this.base + PERMISSION_ROWS
           : type === "question"
