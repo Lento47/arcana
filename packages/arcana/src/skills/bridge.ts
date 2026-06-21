@@ -46,13 +46,18 @@ export async function generateBridgeConfig(): Promise<string> {
     const raw = JSON.parse(await readFile(providersPath, "utf8")) as {
       provider?: Record<string, unknown>
     }
-    provider = raw.provider ?? {}
+    // Strip arcana-proxy — the engine seed fix injects it with models
+    // when ARCANA_PROXY_KEY is set. Including it here without models
+    // overrides the seed injection, causing zero models and dropping
+    // the provider from the TUI.
+    const { "arcana-proxy": _, ...rest } = raw.provider ?? {}
+    provider = rest
   } catch {
     // committed file missing/unreadable — proceed with no provider extras
   }
 
   const config: Record<string, unknown> = {
-    $schema: "https://arcana.ai/config.json",
+    $schema: "https://arcana.otnelhq.com/schema/config.json",
     skills: { paths: skillsDirs },
   }
   if (Object.keys(provider).length) config.provider = provider

@@ -169,7 +169,10 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
   return {
     "arcana-proxy": Effect.fnUntraced(function* (input: Info) {
       const env = yield* dep.env()
-      const key = env["ARCANA_PROXY_KEY"]
+      // Check both the Env service snapshot AND live process.env.
+      // The Env service snapshots at init time, which may miss
+      // ARCANA_PROXY_KEY set after the snapshot but before use.
+      const key = env["ARCANA_PROXY_KEY"] || process.env["ARCANA_PROXY_KEY"]
       return {
         autoload: !!key,
         // Discover the proxy's full catalog (OpenRouter-backed) at runtime so the
@@ -1437,16 +1440,22 @@ export const layer = Layer.effect(
         // proxy catalog at runtime — discovered live and cached to disk so a slow/failed
         // fetch falls back to the last real catalog (no hardcoded model list). See
         // custom()["arcana-proxy"].discoverModels above.
-        if (process.env.ARCANA_PROXY_KEY && !cfg.provider?.["arcana-proxy"]) {
-          configProviders.unshift([
-            "arcana-proxy",
-            {
-              name: "Arcana Proxy",
-              npm: "@ai-sdk/openai-compatible",
-              api: "https://proxy.arcana.otnelhq.com/v1",
-              env: ["ARCANA_PROXY_KEY"],
-            },
-          ] as (typeof configProviders)[number])
+        // Always inject when ARCANA_PROXY_KEY is set — even if a config entry exists
+        // without models, which would override the discovery and drop the provider.
+        if (process.env.ARCANA_PROXY_KEY) {
+          const existing = cfg.provider?.["arcana-proxy"]
+          const hasNoModels = !existing || !(existing as any).models || Object.keys((existing as any).models ?? {}).length === 0
+          if (!existing || hasNoModels) {
+            configProviders.unshift([
+              "arcana-proxy",
+              {
+                name: "Arcana Proxy",
+                npm: "@ai-sdk/openai-compatible",
+                api: "https://proxy.arcana.otnelhq.com/v1",
+                env: ["ARCANA_PROXY_KEY"],
+              },
+            ] as (typeof configProviders)[number])
+          }
         }
         const disabled = new Set(cfg.disabled_providers ?? [])
         const enabled = cfg.enabled_providers ? new Set(cfg.enabled_providers) : null
