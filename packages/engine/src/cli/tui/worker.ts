@@ -12,6 +12,22 @@ import { Effect } from "effect"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
 
 if (process.env["ARCANA_PROFILE_STARTUP"]) performance.mark("worker-init-start")
+
+// bun Workers don't inherit process.env, and env-passing to a Worker can be unreliable
+// in a `bun --compile` binary. Load the proxy key from disk directly (os.homedir() does
+// NOT depend on inherited env) so the engine's arcana-proxy self-inject always sees
+// ARCANA_PROXY_KEY — fixes /connect not showing Arcana Proxy in the packaged TUI.
+if (!process.env["ARCANA_PROXY_KEY"]) {
+  try {
+    const { readFileSync, existsSync } = require("node:fs") as typeof import("node:fs")
+    const { join } = require("node:path") as typeof import("node:path")
+    const { homedir } = require("node:os") as typeof import("node:os")
+    const home = process.env["ARCANA_HOME"] ?? join(homedir(), ".arcana")
+    const keyFile = join(home, "proxy_key")
+    if (existsSync(keyFile)) process.env["ARCANA_PROXY_KEY"] = readFileSync(keyFile, "utf8").trim()
+  } catch {}
+}
+
 Heap.start()
 
 // Subscribe to global events and forward them via RPC
