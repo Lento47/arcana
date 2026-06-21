@@ -50,13 +50,14 @@ jobs:
         run: |
           npm install -g wrangler
           V="${{ github.ref_name }}"
+          ACCT="${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
           for f in packages/engine/dist/arcana-*.zip packages/engine/dist/arcana-*.tar.gz; do
             [ -f "$f" ] || continue
-            wrangler r2 object put "arcana-releases/arcana/$V/$(basename $f)" --file "$f" --remote
+            wrangler r2 object put "arcana-releases/arcana/$V/$(basename $f)" --file "$f" --account-id "$ACCT" --remote
           done
           for f in packages/engine/dist/arcana-*.sha256; do
             [ -f "$f" ] || continue
-            wrangler r2 object put "arcana-releases/arcana/$V/$(basename $f)" --file "$f" --remote
+            wrangler r2 object put "arcana-releases/arcana/$V/$(basename $f)" --file "$f" --account-id "$ACCT" --remote
           done
 
       - name: Publish to npmjs.org
