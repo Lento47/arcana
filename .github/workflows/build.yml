@@ -58,6 +58,9 @@ jobs:
             [ -f "$f" ] || continue
             wrangler r2 object put "arcana-releases/arcana/$V/$(basename $f)" --file "$f" --remote
           done
+          # Write latest version pointer — upgrade command reads this
+          echo "$V" > /tmp/latest.txt
+          wrangler r2 object put "arcana-releases/arcana/latest.txt" --file /tmp/latest.txt --remote
 
       - name: Publish to npmjs.org
         if: startsWith(github.ref, 'refs/tags/v')

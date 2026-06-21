@@ -266,13 +266,18 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
           return data.version
         }
 
+        // GitHub Releases API requires auth for private repos — use public R2
         const response = yield* httpOk.execute(
-          HttpClientRequest.get("https://api.github.com/repos/Lento47/arcana/releases/latest").pipe(
-            HttpClientRequest.acceptJson,
+          HttpClientRequest.get("https://releases.otnelhq.com/arcana/latest.txt").pipe(
+            HttpClientRequest.setHeaders({ Accept: "text/plain" }),
           ),
         )
-        const data = yield* HttpClientResponse.schemaBodyJson(GitHubRelease)(response)
-        return data.tag_name.replace(/^v/, "")
+        const data = yield* response.text
+        const version = data.trim().replace(/^v/, "")
+        if (!version || !/^\d+\.\d+\.\d+/.test(version)) {
+          return yield* Effect.dieMessage(`Invalid version from releases: ${data}`)
+        }
+        return version
       }, Effect.orDie),
       upgrade: Effect.fn("Installation.upgrade")(function* (m: Method, target: string) {
         let upgradeResult: { code: number; stdout: string; stderr: string } | undefined
