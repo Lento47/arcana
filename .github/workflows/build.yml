@@ -46,16 +46,17 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           npm install -g wrangler
           V="${{ github.ref_name }}"
           for f in ./arcana-*.zip ./arcana-*.tar.gz; do
             [ -f "$f" ] || continue
-            wrangler r2 object put "arcana/$V/$(basename $f)" --file "$f" --bucket arcana-releases
+            wrangler r2 object put "arcana-releases/arcana/$V/$(basename $f)" --file "$f"
           done
           for f in ./arcana-*.sha256; do
             [ -f "$f" ] || continue
-            wrangler r2 object put "arcana/$V/$(basename $f)" --file "$f" --bucket arcana-releases
+            wrangler r2 object put "arcana-releases/arcana/$V/$(basename $f)" --file "$f"
           done
 
       - name: Publish to npmjs.org
