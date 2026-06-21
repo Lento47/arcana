@@ -42,6 +42,22 @@ jobs:
           GH_REPO: "Lento47/arcana"
         run: bun run --cwd packages/engine script/build.ts --skip-embed-web-ui
 
+      - name: Upload binaries to R2
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npm install -g wrangler
+          V="${{ github.ref_name }}"
+          for f in ./arcana-*.zip ./arcana-*.tar.gz; do
+            [ -f "$f" ] || continue
+            wrangler r2 object put "arcana/$V/$(basename $f)" --file "$f"
+          done
+          for f in ./arcana-*.sha256; do
+            [ -f "$f" ] || continue
+            wrangler r2 object put "arcana/$V/$(basename $f)" --file "$f"
+          done
+
       - name: Publish to npmjs.org
         if: startsWith(github.ref, 'refs/tags/v')
         env:
