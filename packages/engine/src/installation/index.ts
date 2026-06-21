@@ -18,6 +18,51 @@ export type Method = "curl" | "npm" | "yarn" | "pnpm" | "bun" | "brew" | "scoop"
 
 export type ReleaseType = "patch" | "minor" | "major"
 
+// Self-contained arcana upgrade script (curl method). Downloads the platform binary
+// from R2, verifies its sha256, and replaces the running binary. Uses only `$VAR`
+// (no `${}`) so nothing is interpolated by this TS template literal. VERSION + ARCANA_BIN
+// are passed via env. Replaces the old behaviour of piping upstream opencode's installer.
+const ARCANA_UPGRADE_SCRIPT = `set -e
+V="$VERSION"
+case "$V" in v*) ;; *) V="v$V" ;; esac
+BIN="$ARCANA_BIN"
+OS=$(uname -s)
+ARCH=$(uname -m)
+case "$ARCH" in
+  x86_64|amd64) A=x64 ;;
+  aarch64|arm64) A=arm64 ;;
+  *) echo "arcana: unsupported arch $ARCH" >&2; exit 1 ;;
+esac
+case "$OS" in
+  Linux) OSN=linux; EXT=tar.gz ;;
+  Darwin) OSN=darwin; EXT=zip ;;
+  *) echo "arcana: unsupported os $OS (use npm/bun to upgrade)" >&2; exit 1 ;;
+esac
+ASSET="arcana-$OSN-$A.$EXT"
+if [ "$OSN" = linux ] && grep -qi musl /etc/os-release 2>/dev/null; then
+  ASSET="arcana-linux-$A-musl.$EXT"
+fi
+URL="https://releases.otnelhq.com/arcana/$V/$ASSET"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+curl -fsSL "$URL" -o "$TMP/pkg" || { echo "arcana: download failed $URL" >&2; exit 1; }
+if curl -fsSL "$URL.sha256" -o "$TMP/sha" 2>/dev/null && [ -s "$TMP/sha" ]; then
+  EXP=$(cut -d' ' -f1 "$TMP/sha")
+  if command -v sha256sum >/dev/null 2>&1; then GOT=$(sha256sum "$TMP/pkg" | cut -d' ' -f1); else GOT=$(shasum -a 256 "$TMP/pkg" | cut -d' ' -f1); fi
+  [ "$EXP" = "$GOT" ] || { echo "arcana: checksum mismatch" >&2; exit 1; }
+fi
+mkdir -p "$TMP/x"
+case "$EXT" in
+  tar.gz) tar -xzf "$TMP/pkg" -C "$TMP/x" ;;
+  zip) unzip -oq "$TMP/pkg" -d "$TMP/x" ;;
+esac
+NEW=$(find "$TMP/x" -type f -name arcana | head -1)
+[ -n "$NEW" ] || { echo "arcana: binary not found in archive" >&2; exit 1; }
+chmod +x "$NEW"
+cp "$NEW" "$BIN.new" && chmod +x "$BIN.new" && mv -f "$BIN.new" "$BIN"
+echo "arcana: upgraded to $V"
+`
+
 export const Event = {
   Updated: EventV2.define({
     type: "installation.updated",
@@ -156,14 +201,14 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
 
     const upgradeCurl = Effect.fnUntraced(
       function* (target: string) {
-        const response = yield* httpOk.execute(HttpClientRequest.get("https://opencode.ai/install"))
-        const body = yield* response.text
-        const bodyBytes = new TextEncoder().encode(body)
+        // Run arcana's own upgrade script (downloads the binary from R2) — NOT the
+        // upstream opencode installer, which installs the wrong product and fails.
+        const bodyBytes = new TextEncoder().encode(ARCANA_UPGRADE_SCRIPT)
         const shell = yield* upgradeScriptShell()
         const result = yield* appProcess.run(
           ChildProcess.make(shell, [], {
             stdin: Stream.make(bodyBytes),
-            env: { VERSION: target },
+            env: { VERSION: target, ARCANA_BIN: process.execPath },
             extendEnv: true,
           }),
         )
