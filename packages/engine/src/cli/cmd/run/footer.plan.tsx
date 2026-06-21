@@ -1,18 +1,19 @@
 // Ghost plan preview — renders pending tool calls as dimmed text before execution.
 //
 // Displays inside the footer when the reducer pushes FooterView { type: "plan" }.
-// Each tool shows a risk label [SAFE]/[WRITE]/[MUTATE]/[DANGER] and description.
-// Risk perimeter: border color shifts green->yellow->red based on highest pending risk.
-// Keyboard: Enter = approve all, Esc = reject all.
+// Each tool shows risk [SAFE..DANGER] + confidence [CONF:HIGH..LOW] inline.
+// Risk perimeter: border color green->yellow->red based on highest pending risk.
+// Keyboard: Enter = all, Esc = reject, Tab = toggle LOW-confidence-only filter.
 /** @jsxImportSource @opentui/solid */
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
-import { For, createMemo } from "solid-js"
+import { For, createMemo, createSignal } from "solid-js"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { permissionInfo } from "./permission.shared"
 import { footerWidthPolicy } from "./footer.width"
 import { transparent, type RunFooterTheme } from "./theme"
 
 type RiskLevel = "safe" | "write" | "mutate" | "danger"
+type ConfLevel = "HIGH" | "MED" | "LOW"
 
 const SAFE_TOOLS = new Set(["read", "grep", "glob", "ls", "lsp", "question", "todowrite", "skill"])
 const WRITE_TOOLS = new Set(["write", "edit", "apply_patch", "task"])
@@ -50,6 +51,15 @@ function riskColor(level: RiskLevel, theme: RunFooterTheme): string {
   }
 }
 
+function confidence(request: PermissionRequest): ConfLevel {
+  const meta = (request.metadata ?? {}) as Record<string, unknown>
+  const raw = meta.confidence ?? meta.conf ?? meta.certainty
+  if (typeof raw === "string" && ["LOW", "MED", "HIGH"].includes(raw.toUpperCase())) {
+    return raw.toUpperCase() as ConfLevel
+  }
+  return "HIGH" // default: assume confident unless tagged otherwise
+}
+
 function highestRisk(requests: PermissionRequest[]): RiskLevel {
   const order: RiskLevel[] = ["safe", "write", "mutate", "danger"]
   let max = 0
@@ -68,6 +78,7 @@ export function RunPlanBody(props: {
 }) {
   const risk = createMemo(() => highestRisk(props.requests))
   const borderColor = createMemo(() => riskColor(risk(), props.theme))
+  const [lowOnly, setLowOnly] = createSignal(false)
 
   let handled = false
   useKeyboard((event) => {
@@ -83,41 +94,58 @@ export function RunPlanBody(props: {
       handled = true
       event.preventDefault()
       props.onRejectAll()
+    } else if (event.name === "tab") {
+      event.preventDefault()
+      setLowOnly((prev) => !prev)
     }
   })
 
   const dims = useTerminalDimensions()
-  const widthPolicy = createMemo(() => footerWidthPolicy(dims().width))
   const tw = createMemo(() => dims().width)
 
   const lines = createMemo(() => {
-    return props.requests.map((r) => {
+    const all = props.requests.map((r) => {
       const info = permissionInfo(r)
       const rl = riskLabel(r)
+      const cf = confidence(r)
       const icon = info.icon ? ` ${info.icon} ` : " "
       const title = info.title ?? "unknown action"
-      const maxLen = Math.max(10, tw() - 14)
+      const tagLen = 14 + (cf !== "HIGH" ? 11 : 0)
+      const maxLen = Math.max(10, tw() - tagLen)
       const truncated = title.length > maxLen ? title.slice(0, maxLen - 1) + "…" : title
-      return { icon, title: truncated, level: rl.level, label: rl.label }
+      return { icon, title: truncated, level: rl.level, label: rl.label, conf: cf }
     })
+    if (lowOnly()) return all.filter((l) => l.conf === "LOW")
+    return all
   })
 
   const count = props.requests.length
-  const header = `⚡ ${count} action${count !== 1 ? "s" : ""} pending — Enter to execute · Esc to reject`
+  const lowCount = props.requests.filter((r) => confidence(r) === "LOW").length
+  const filterHint = lowOnly()
+    ? `[filter: LOW only · ${lowCount} step${lowCount !== 1 ? "s" : ""}]`
+    : lowCount > 0
+      ? `Tab: show ${lowCount} low-confidence`
+      : ""
+  const header = `⚡ ${count} action${count !== 1 ? "s" : ""} pending — Enter to execute · Esc to reject · ${filterHint || "Tab: filter none needed"}`
 
   return (
     <box flexDirection="column" paddingLeft={1} paddingRight={1}>
-      {/* Ghost plan header */}
       <box flexDirection="row" height={1} gap={1}>
         <text fg={props.theme.muted}>{header}</text>
       </box>
 
-      {/* Tool preview lines */}
       <For each={lines()}>
         {(line) => (
           <box flexDirection="row" height={1} gap={1}>
             <text fg={riskColor(line.level, props.theme)}>{`[${line.label}]`}</text>
-            <text fg={props.theme.muted}>
+            {line.conf !== "HIGH" && (
+              <text fg={line.conf === "LOW" ? props.theme.warning : props.theme.muted}>
+                {`[CONF:${line.conf}]`}
+              </text>
+            )}
+            <text
+              fg={line.conf === "LOW" ? props.theme.muted : props.theme.muted}
+            >
               {line.icon}
               {line.title}
             </text>
@@ -125,7 +153,6 @@ export function RunPlanBody(props: {
         )}
       </For>
 
-      {/* Risk perimeter border */}
       <box flexDirection="row" height={1} borderTop={1} borderColor={borderColor()} />
     </box>
   )
