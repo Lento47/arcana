@@ -25,6 +25,7 @@ import { FOOTER_MENU_ROWS, RunFooterMenu } from "./footer.menu"
 import { RunFooterSubagentBody } from "./footer.subagent"
 import { RunPromptBody, createPromptState } from "./footer.prompt"
 import { RunPermissionBody } from "./footer.permission"
+import { RunPlanBody } from "./footer.plan"
 import { RunQuestionBody } from "./footer.question"
 import { footerWidthPolicy } from "./footer.width"
 import {
@@ -271,6 +272,10 @@ export function RunFooterView(props: RunFooterViewProps) {
   const permission = createMemo<Extract<FooterView, { type: "permission" }> | undefined>(() => {
     const view = active()
     return view.type === "permission" ? view : undefined
+  })
+  const plan = createMemo<Extract<FooterView, { type: "plan" }> | undefined>(() => {
+    const view = active()
+    return view.type === "plan" ? view : undefined
   })
   const question = createMemo<Extract<FooterView, { type: "question" }> | undefined>(() => {
     const view = active()
@@ -772,6 +777,22 @@ export function RunFooterView(props: RunFooterViewProps) {
                             onSelect={(variant) => {
                               props.onVariantSelect(variant)
                               closePanel()
+                            }}
+                          />
+                        </Match>
+                        <Match when={active().type === "plan"}>
+                          <RunPlanBody
+                            requests={plan()!.requests}
+                            theme={theme()}
+                            onApproveAll={() => {
+                              for (const r of plan()!.requests) {
+                                props.onPermissionReply({ requestID: r.id, reply: "once" })
+                              }
+                            }}
+                            onRejectAll={() => {
+                              for (const r of plan()!.requests) {
+                                props.onPermissionReply({ requestID: r.id, reply: "reject" })
+                              }
                             }}
                           />
                         </Match>

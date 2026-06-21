@@ -216,9 +216,10 @@ function out(data: SessionData, commits: SessionCommit[], footer?: FooterOutput)
   }
 }
 
-export function pickBlockerView(input: { permission?: PermissionRequest; question?: QuestionRequest }): FooterView {
-  if (input.permission) {
-    return { type: "permission", request: input.permission }
+export function pickBlockerView(input: { permission?: PermissionRequest; question?: QuestionRequest; permissions?: PermissionRequest[] }): FooterView {
+  const all = input.permissions?.length ? input.permissions : input.permission ? [input.permission] : []
+  if (all.length > 0) {
+    return { type: "plan", requests: all }
   }
 
   if (input.question) {
@@ -229,6 +230,10 @@ export function pickBlockerView(input: { permission?: PermissionRequest; questio
 }
 
 export function blockerStatus(view: FooterView) {
+  if (view.type === "plan") {
+    return "awaiting approval"
+  }
+
   if (view.type === "permission") {
     return "awaiting permission"
   }
@@ -243,6 +248,7 @@ export function blockerStatus(view: FooterView) {
 function pickSessionView(data: SessionData): FooterView {
   return pickBlockerView({
     permission: data.permissions[0],
+    permissions: data.permissions,
     question: data.questions[0],
   })
 }
