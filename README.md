@@ -268,6 +268,21 @@ bun packages/arcana/src/index.ts run "hello"
 
 Themes: arcana (default), bloodmoon, coven, crypt, dragon, lich, wraith.
 
+### Background image
+
+Set a custom full-screen background image (truecolor terminals — Kitty, iTerm2, WezTerm, Windows Terminal). In `~/.config/arcana/tui.json`:
+```json
+{
+  "background": {
+    "enabled": true,
+    "image": "~/wallpapers/space.png",
+    "opacity": 0.4,
+    "fit": "cover"
+  }
+}
+```
+`opacity` (0–1) dims the image so text stays readable. PNG/JPEG. Shows on the home screen and empty areas; falls back to the theme color where unsupported.
+
 ## Thanks
 
 Arcana builds on incredible open-source work:

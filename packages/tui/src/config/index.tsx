@@ -50,6 +50,18 @@ export const Prompt = Schema.Struct({
   }),
 }).annotate({ description: "Prompt size settings" })
 
+export const Background = Schema.Struct({
+  image: Schema.optional(Schema.String).annotate({ description: "Path to a background image (PNG/JPEG)" }),
+  enabled: Schema.optional(Schema.Boolean).annotate({ description: "Enable the background image" }),
+  opacity: Schema.optional(
+    Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
+  ).annotate({ description: "Image brightness 0-1 so foreground text stays readable (default 0.5)" }),
+  fit: Schema.optional(Schema.Literals(["cover", "contain"])).annotate({
+    description: "How the image fills the screen (default cover)",
+  }),
+})
+export type Background = Schema.Schema.Type<typeof Background>
+
 export const Info = Schema.Struct({
   $schema: Schema.optional(Schema.String),
   theme: Schema.optional(Schema.String),
@@ -63,6 +75,7 @@ export const Info = Schema.Struct({
   scroll_acceleration: Schema.optional(ScrollAcceleration),
   diff_style: Schema.optional(DiffStyle),
   mouse: Schema.optional(Schema.Boolean).annotate({ description: "Enable or disable mouse capture (default: true)" }),
+  background: Schema.optional(Background).annotate({ description: "Custom TUI background image" }),
 })
 export type Info = Schema.Schema.Type<typeof Info>
 

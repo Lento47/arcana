@@ -208,6 +208,19 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
         Effect.sync(() => registerOpencodeKeymap(keymap, renderer, input.config)),
         (unregister) => Effect.sync(unregister),
       )
+      // Optional custom background image (composited into empty cells; see background.ts).
+      const bg = input.config.background
+      if (!process.env.NO_COLOR && bg?.enabled && bg.image) {
+        yield* Effect.promise(async () => {
+          const { decodeImage, createBackgroundComposite } = await import("./background")
+          const image = await decodeImage(bg.image!)
+          if (image && !renderer.isDestroyed) {
+            renderer.addPostProcessFn(
+              createBackgroundComposite(image, { opacity: bg.opacity ?? 0.5, fit: bg.fit ?? "cover" }),
+            )
+          }
+        })
+      }
       yield* Effect.addFinalizer(() =>
         Effect.promise(async () => {
           try {
