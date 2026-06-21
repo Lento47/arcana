@@ -133,7 +133,11 @@ export const TuiThreadCommand = cmd({
       const cwd = Filesystem.resolve(process.cwd())
 
       mark("worker-create")
-      const worker = new Worker(file)
+      // bun Workers do NOT inherit process.env — forward it so the engine running
+      // in the worker sees ARCANA_PROXY_KEY / OPENAI_API_KEY etc. (loaded by index.ts
+      // in the main process). Without this the arcana-proxy self-inject never fires
+      // and /connect shows no providers.
+      const worker = new Worker(file, { env: process.env })
       const client = Rpc.client<typeof rpc>(worker)
       const reload = () => {
         client.call("reload", undefined).catch(() => {})
