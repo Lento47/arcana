@@ -51,11 +51,11 @@ jobs:
           V="${{ github.ref_name }}"
           for f in ./arcana-*.zip ./arcana-*.tar.gz; do
             [ -f "$f" ] || continue
-            wrangler r2 object put "arcana/$V/$(basename $f)" --file "$f"
+            wrangler r2 object put "arcana/$V/$(basename $f)" --file "$f" --bucket arcana-releases
           done
           for f in ./arcana-*.sha256; do
             [ -f "$f" ] || continue
-            wrangler r2 object put "arcana/$V/$(basename $f)" --file "$f"
+            wrangler r2 object put "arcana/$V/$(basename $f)" --file "$f" --bucket arcana-releases
           done
 
       - name: Publish to npmjs.org
