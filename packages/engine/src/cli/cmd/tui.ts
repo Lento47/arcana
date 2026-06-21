@@ -137,7 +137,7 @@ export const TuiThreadCommand = cmd({
       // in the worker sees ARCANA_PROXY_KEY / OPENAI_API_KEY etc. (loaded by index.ts
       // in the main process). Without this the arcana-proxy self-inject never fires
       // and /connect shows no providers.
-      const worker = new Worker(file, { env: process.env })
+      const worker = new Worker(file, { env: process.env as Record<string, string> })
       const client = Rpc.client<typeof rpc>(worker)
       const reload = () => {
         client.call("reload", undefined).catch(() => {})
