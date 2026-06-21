@@ -695,10 +695,11 @@ export class RunFooter implements FooterApi {
   // Resizes the footer to fit the current view. Permission and question views
   // get fixed extra rows; the prompt view scales with textarea line count.
   private applyHeight(): void {
-    const type = this.view().type
+    const v = this.view()
+    const type = v.type
     const height =
       type === "plan"
-        ? this.base + PLAN_BASE_ROWS + (this.view() as { requests: unknown[] }).requests.length
+        ? this.base + PLAN_BASE_ROWS + v.requests.length
         : type === "permission"
           ? this.base + PERMISSION_ROWS
           : type === "question"

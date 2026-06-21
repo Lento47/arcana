@@ -9,7 +9,7 @@
 // The view itself is stateless except for derived memos.
 /** @jsxImportSource @opentui/solid */
 import { useTerminalDimensions } from "@opentui/solid"
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { For, Match, Show, Switch, createEffect, createMemo, onCleanup } from "solid-js"
 import "opentui-spinner/solid"
 import { createColors, createFrames } from "@arcana/tui/ui/spinner"
 import {
@@ -790,8 +790,11 @@ export function RunFooterView(props: RunFooterViewProps) {
                               }
                             }}
                             onRejectAll={() => {
-                              for (const r of plan()!.requests) {
-                                props.onPermissionReply({ requestID: r.id, reply: "reject" })
+                              // Reject first request only — Permission.Service.reply cascades
+                              // and rejects all pending for this session (permission/index.ts:140-149)
+                              const reqs = plan()!.requests
+                              if (reqs.length > 0) {
+                                props.onPermissionReply({ requestID: reqs[0].id, reply: "reject" })
                               }
                             }}
                           />
