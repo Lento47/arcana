@@ -302,8 +302,13 @@ function firstByOrder<T extends { id: string }>(left: T[], right: T[], order: Ma
 }
 
 function pickView(data: SessionData, subagent: SubagentData, order: Map<string, number>): FooterView {
+  const visible = listSubagentPermissions(subagent)
+  const ordered = visible
+    .filter((id) => data.permissions.some((p) => p.id === id))
+    .sort((a, b) => (blockerOrder(order, a) - blockerOrder(order, b)) || a.localeCompare(b))
   return pickBlockerView({
-    permission: firstByOrder(data.permissions, listSubagentPermissions(subagent), order),
+    permission: firstByOrder(data.permissions, visible, order),
+    permissions: ordered.map((id) => data.permissions.find((p) => p.id === id)!).filter(Boolean),
     question: firstByOrder(data.questions, listSubagentQuestions(subagent), order),
   })
 }

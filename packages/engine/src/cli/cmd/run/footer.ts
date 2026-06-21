@@ -101,6 +101,7 @@ type RunFooterOptions = {
 }
 
 const PERMISSION_ROWS = 12
+const PLAN_BASE_ROWS = 5
 const QUESTION_ROWS = 14
 const COMMAND_ROWS = RUN_COMMAND_PANEL_ROWS
 const SKILL_ROWS = RUN_COMMAND_PANEL_ROWS
@@ -696,9 +697,11 @@ export class RunFooter implements FooterApi {
   private applyHeight(): void {
     const type = this.view().type
     const height =
-      type === "permission"
-        ? this.base + PERMISSION_ROWS
-        : type === "question"
+      type === "plan"
+        ? this.base + PLAN_BASE_ROWS + (this.view() as { requests: unknown[] }).requests.length
+        : type === "permission"
+          ? this.base + PERMISSION_ROWS
+          : type === "question"
           ? this.base + QUESTION_ROWS
           : this.promptRoute.type === "command"
             ? 1 + COMMAND_ROWS
