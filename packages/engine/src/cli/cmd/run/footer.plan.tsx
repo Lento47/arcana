@@ -2,8 +2,8 @@
 //
 // Displays inside the footer when the reducer pushes FooterView { type: "plan" }.
 // Each tool shows a risk label [SAFE]/[WRITE]/[MUTATE]/[DANGER] and description.
-// Risk perimeter: border color shifts green→yellow→red based on highest pending risk.
-// Keyboard: Enter = approve all, Esc = reject all, Tab = focus first for editing.
+// Risk perimeter: border color shifts green->yellow->red based on highest pending risk.
+// Keyboard: Enter = approve all, Esc = reject all.
 /** @jsxImportSource @opentui/solid */
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { For, createMemo } from "solid-js"
@@ -11,22 +11,33 @@ import type { PermissionRequest } from "@arcana/sdk/v2"
 import { permissionInfo } from "./permission.shared"
 import { footerWidthPolicy } from "./footer.width"
 import { transparent, type RunFooterTheme } from "./theme"
-import type { PermissionReply } from "./types"
 
 type RiskLevel = "safe" | "write" | "mutate" | "danger"
 
-function riskLabel(info: ReturnType<typeof permissionInfo>): { level: RiskLevel; label: string } {
-  const title = info.title?.toLowerCase() ?? ""
-  const tool = info.icon ?? ""
+const SAFE_TOOLS = new Set(["read", "grep", "glob", "ls", "lsp", "question", "todowrite", "skill"])
+const WRITE_TOOLS = new Set(["write", "edit", "apply_patch", "task"])
+const MUTATE_PATTERN = /\b(install|uninstall|apt-get|brew|pip|npm\s+(install|uninstall)|build|compile|deploy|migrate)\b/
+const DANGER_PATTERN = /\b(rm\s+-[rf]|rm\s+--recursive|rm\s+--force|>\/dev\/|dd\s+if=|mkfs\.|curl.*\|.*(sh|bash)|wget.*\|.*(sh|bash)|npm\s+(publish|unpublish|deprecate)|git\s+(push|tag|merge|rebase))\b/
+const SHELL_SAFE_PATTERN = /\b(echo|cat|ls|pwd|git\s+(status|diff|log)|grep|find|head|tail|wc)\b/
+
+function riskLabel(request: PermissionRequest): { level: RiskLevel; label: string } {
+  const tool = request.permission
+  if (SAFE_TOOLS.has(tool)) return { level: "safe", label: "SAFE" }
+  if (WRITE_TOOLS.has(tool)) return { level: "write", label: "WRITE" }
+
+  // Shell commands — inspect the actual command line, not the description
   if (tool === "bash" || tool === "shell") {
-    if (/rm\s+-rf|curl.*\|.*sh|>\/dev\/|dd\s+if=|mkfs/.test(title)) return { level: "danger", label: "DANGER" }
-    if (/install|uninstall|apt|brew|pip|npm\s+(install|uninstall)/.test(title)) return { level: "mutate", label: "MUTATE" }
-    if (/curl|wget|fetch|api|http/.test(title)) return { level: "mutate", label: "NETWORK" }
-    if (/echo|cat|ls|git\s+(status|diff|log)|grep|find/.test(title)) return { level: "safe", label: "SAFE" }
+    const cmd = (request.input as any)?.command ?? (request.metadata as any)?.command ?? ""
+    if (DANGER_PATTERN.test(cmd)) return { level: "danger", label: "DANGER" }
+    if (MUTATE_PATTERN.test(cmd)) return { level: "mutate", label: "MUTATE" }
+    if (/curl|wget|fetch|api\./.test(cmd)) return { level: "mutate", label: "NETWORK" }
+    if (SHELL_SAFE_PATTERN.test(cmd)) return { level: "safe", label: "SAFE" }
     return { level: "write", label: "SHELL" }
   }
-  if (tool === "write" || tool === "edit" || tool === "apply_patch") return { level: "write", label: "WRITE" }
-  if (tool === "read" || tool === "grep" || tool === "glob") return { level: "safe", label: "SAFE" }
+
+  // Network tools
+  if (tool === "webfetch" || tool === "websearch") return { level: "mutate", label: "NETWORK" }
+
   return { level: "write", label: "WRITE" }
 }
 
@@ -39,12 +50,11 @@ function riskColor(level: RiskLevel, theme: RunFooterTheme): string {
   }
 }
 
-function highestRisk(infos: Array<ReturnType<typeof permissionInfo>>): RiskLevel {
+function highestRisk(requests: PermissionRequest[]): RiskLevel {
   const order: RiskLevel[] = ["safe", "write", "mutate", "danger"]
   let max = 0
-  for (const info of infos) {
-    const r = riskLabel(info)
-    const i = order.indexOf(r.level)
+  for (const r of requests) {
+    const i = order.indexOf(riskLabel(r).level)
     if (i > max) max = i
   }
   return order[max]!
@@ -56,42 +66,50 @@ export function RunPlanBody(props: {
   onApproveAll: () => void
   onRejectAll: () => void
 }) {
-  const infos = createMemo(() => props.requests.map((r) => permissionInfo(r)))
-  const risk = createMemo(() => highestRisk(infos()))
+  const risk = createMemo(() => highestRisk(props.requests))
   const borderColor = createMemo(() => riskColor(risk(), props.theme))
 
-  useKeyboard(() => ({
-    onReturn() {
+  let handled = false
+  useKeyboard((event) => {
+    if (handled) {
+      event.preventDefault()
+      return
+    }
+    if (event.name === "return") {
+      handled = true
+      event.preventDefault()
       props.onApproveAll()
-    },
-    onEscape() {
+    } else if (event.name === "escape") {
+      handled = true
+      event.preventDefault()
       props.onRejectAll()
-    },
-  }))
+    }
+  })
 
-  const term = useTerminalDimensions()
-  const width = createMemo(() => footerWidthPolicy(term()))
+  const dims = useTerminalDimensions()
+  const widthPolicy = createMemo(() => footerWidthPolicy(dims().width))
+  const tw = createMemo(() => dims().width)
 
   const lines = createMemo(() => {
-    return infos().map((info) => {
-      const r = riskLabel(info)
-      const icon = info.icon ? ` ${info.icon} ` : ""
+    return props.requests.map((r) => {
+      const info = permissionInfo(r)
+      const rl = riskLabel(r)
+      const icon = info.icon ? ` ${info.icon} ` : " "
       const title = info.title ?? "unknown action"
-      const truncated = title.length > width() - 14 ? title.slice(0, width() - 17) + "…" : title
-      return { icon, title: truncated, level: r.level, label: r.label }
+      const maxLen = Math.max(10, tw() - 14)
+      const truncated = title.length > maxLen ? title.slice(0, maxLen - 1) + "…" : title
+      return { icon, title: truncated, level: rl.level, label: rl.label }
     })
   })
 
-  const hint = "Enter: execute all  ·  Esc: reject all"
+  const count = props.requests.length
+  const header = `⚡ ${count} action${count !== 1 ? "s" : ""} pending — Enter to execute · Esc to reject`
 
   return (
     <box flexDirection="column" paddingLeft={1} paddingRight={1}>
       {/* Ghost plan header */}
       <box flexDirection="row" height={1} gap={1}>
-        <text fg={props.theme.muted} attributes="dim">
-          ⚡ {props.requests.length} action{props.requests.length !== 1 ? "s" : ""} pending —
-          press Enter to execute
-        </text>
+        <text fg={props.theme.muted}>{header}</text>
       </box>
 
       {/* Tool preview lines */}
@@ -99,7 +117,7 @@ export function RunPlanBody(props: {
         {(line) => (
           <box flexDirection="row" height={1} gap={1}>
             <text fg={riskColor(line.level, props.theme)}>{`[${line.label}]`}</text>
-            <text fg={props.theme.muted} attributes="dim">
+            <text fg={props.theme.muted}>
               {line.icon}
               {line.title}
             </text>
@@ -107,20 +125,8 @@ export function RunPlanBody(props: {
         )}
       </For>
 
-      {/* Risk perimeter + hint bar */}
-      <box
-        flexDirection="row"
-        height={1}
-        borderTop={1}
-        borderColor={borderColor()}
-        paddingTop={0}
-        marginTop={0}
-        gap={1}
-      >
-        <text fg={props.theme.muted} attributes="dim">
-          {hint}
-        </text>
-      </box>
+      {/* Risk perimeter border */}
+      <box flexDirection="row" height={1} borderTop={1} borderColor={borderColor()} />
     </box>
   )
 }
