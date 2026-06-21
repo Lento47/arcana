@@ -1,4 +1,4 @@
-import { Config as EffectConfig, Context, Effect, Layer } from "effect"
+import { Config as EffectConfig, ConfigProvider, Context, Effect, Layer } from "effect"
 import { HttpApiBuilder, OpenApi } from "effect/unstable/httpapi"
 import { HttpClient, HttpMiddleware, HttpRouter, HttpServer, HttpServerResponse } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
@@ -288,11 +288,18 @@ export function createRoutes(
 export const routes = createRoutes()
 
 export const webHandler = lazy(() =>
-  HttpRouter.toWebHandler(routes, {
-    disableLogger: true,
-    memoMap,
-    middleware: disposeMiddleware,
-  }),
+  HttpRouter.toWebHandler(
+    routes.pipe(
+      Layer.provide(
+        ConfigProvider.layer(ConfigProvider.fromEnv()),
+      ),
+    ),
+    {
+      disableLogger: true,
+      memoMap,
+      middleware: disposeMiddleware,
+    },
+  ),
 )
 
 export * as HttpApiApp from "./server"

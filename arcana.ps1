@@ -37,7 +37,13 @@ if (-not $isSubcommand) {
         if (Test-Path $providersPath) {
             try {
                 $raw = Get-Content $providersPath -Raw | ConvertFrom-Json
-                if ($raw.provider) { $provider = $raw.provider }
+                if ($raw.provider) {
+                    $provider = $raw.provider
+                    # Strip arcana-proxy — the engine seed fix injects it with
+                    # models when ARCANA_PROXY_KEY is set. Including it here
+                    # without models overrides the seed, dropping the provider.
+                    $provider.Remove("arcana-proxy")
+                }
             } catch {}
         }
 
