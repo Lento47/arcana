@@ -60,6 +60,17 @@ CREATE TABLE IF NOT EXISTS user_facts (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS feedback (
+  id TEXT PRIMARY KEY,
+  session_id TEXT,
+  message_id TEXT,
+  rating TEXT CHECK(rating IN ('up', 'down')),
+  category TEXT,
+  note TEXT,
+  source TEXT NOT NULL DEFAULT 'cli',
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -109,12 +120,21 @@ CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
 END;
 `
 
+// Tables only need creating once per file per process; subsequent opens of the
+// same db skip the ~30 CREATE-IF-NOT-EXISTS statements.
+const _schemaApplied = new Set<string>()
+
 export function openMemoryDB(dataDir: string): Database {
   mkdirSync(dataDir, { recursive: true })
-  const db = new Database(join(dataDir, "memory.db"), { create: true })
+  const file = join(dataDir, "memory.db")
+  const db = new Database(file, { create: true })
+  // PRAGMAs are per-connection — must run on every new handle.
   db.exec("PRAGMA journal_mode = WAL")
   db.exec("PRAGMA synchronous = NORMAL")
   db.exec("PRAGMA foreign_keys = ON")
-  db.exec(SCHEMA)
+  if (!_schemaApplied.has(file)) {
+    db.exec(SCHEMA)
+    _schemaApplied.add(file)
+  }
   return db
 }

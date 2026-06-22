@@ -1,7 +1,7 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode acp --help 1`] = `
-"opencode acp
+"arcana acp
 
 start ACP (Agent Client Protocol) server
 
@@ -15,23 +15,23 @@ Options:
       --hostname     hostname to listen on                           [string] [default: "127.0.0.1"]
       --mdns         enable mDNS service discovery (defaults hostname to 0.0.0.0)
                                                                           [boolean] [default: false]
-      --mdns-domain  custom domain name for mDNS service (default: opencode.local)
-                                                                [string] [default: "opencode.local"]
+      --mdns-domain  custom domain name for mDNS service (default: arcana.local)
+                                                                  [string] [default: "arcana.local"]
       --cors         additional domains to allow for CORS                      [array] [default: []]
       --cwd          working directory [string] [default: "<HOME>"]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode mcp --help 1`] = `
-"opencode mcp
+"arcana mcp
 
 manage MCP (Model Context Protocol) servers
 
 Commands:
-  opencode mcp add [name]     add an MCP server
-  opencode mcp list           list MCP servers and their status                        [aliases: ls]
-  opencode mcp auth [name]    authenticate with an OAuth-enabled MCP server
-  opencode mcp logout [name]  remove OAuth credentials for an MCP server
-  opencode mcp debug <name>   debug OAuth connection for an MCP server
+  arcana mcp add [name]     add an MCP server
+  arcana mcp list           list MCP servers and their status                          [aliases: ls]
+  arcana mcp auth [name]    authenticate with an OAuth-enabled MCP server
+  arcana mcp logout [name]  remove OAuth credentials for an MCP server
+  arcana mcp debug <name>   debug OAuth connection for an MCP server
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -42,9 +42,9 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode attach --help 1`] = `
-"opencode attach <url>
+"arcana attach <url>
 
-attach to a running opencode server
+attach to a running arcana server
 
 Positionals:
   url  http://localhost:4096                                                     [string] [required]
@@ -59,14 +59,14 @@ Options:
   -c, --continue    continue the last session                                              [boolean]
   -s, --session     session id to continue                                                  [string]
       --fork        fork the session when continuing (use with --continue or --session)    [boolean]
-  -p, --password    basic auth password (defaults to OPENCODE_SERVER_PASSWORD)              [string]
-  -u, --username    basic auth username (defaults to OPENCODE_SERVER_USERNAME or 'opencode')[string]"
+  -p, --password    basic auth password (defaults to ARCANA_SERVER_PASSWORD)                [string]
+  -u, --username    basic auth username (defaults to ARCANA_SERVER_USERNAME or 'arcana')    [string]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode run --help 1`] = `
-"opencode run [message..]
+"arcana run [message..]
 
-run opencode with a message
+run arcana with a message
 
 Positionals:
   message  message to send                                                     [array] [default: []]
@@ -90,12 +90,12 @@ Options:
   -f, --file                          file(s) to attach to message                           [array]
       --title                         title for the session (uses truncated prompt if no value
                                       provided)                                             [string]
-      --attach                        attach to a running opencode server (e.g.,
+      --attach                        attach to a running arcana server (e.g.,
                                       http://localhost:4096)                                [string]
-  -p, --password                      basic auth password (defaults to OPENCODE_SERVER_PASSWORD)
+  -p, --password                      basic auth password (defaults to ARCANA_SERVER_PASSWORD)
                                                                                             [string]
-  -u, --username                      basic auth username (defaults to OPENCODE_SERVER_USERNAME or
-                                      'opencode')                                           [string]
+  -u, --username                      basic auth username (defaults to ARCANA_SERVER_USERNAME or
+                                      'arcana')                                             [string]
       --dir                           directory to run in, path on remote server if attaching
                                                                                             [string]
       --port                          port for the local server (defaults to random port if no value
@@ -116,24 +116,24 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode debug --help 1`] = `
-"opencode debug
+"arcana debug
 
 debugging and troubleshooting tools
 
 Commands:
-  opencode debug config        show resolved configuration
-  opencode debug lsp           LSP debugging utilities
-  opencode debug rg            ripgrep debugging utilities
-  opencode debug file          file system debugging utilities
-  opencode debug scrap         list all known projects
-  opencode debug skill         list all available skills
-  opencode debug snapshot      snapshot debugging utilities
-  opencode debug startup       print startup timing
-  opencode debug agent <name>  show agent configuration details
-  opencode debug v2            debug v2 catalog and built-in plugins
-  opencode debug info          show debug information
-  opencode debug paths         show global paths (data, config, cache, state)
-  opencode debug wait          wait indefinitely (for debugging)
+  arcana debug config        show resolved configuration
+  arcana debug lsp           LSP debugging utilities
+  arcana debug rg            ripgrep debugging utilities
+  arcana debug file          file system debugging utilities
+  arcana debug scrap         list all known projects
+  arcana debug skill         list all available skills
+  arcana debug snapshot      snapshot debugging utilities
+  arcana debug startup       print startup timing
+  arcana debug agent <name>  show agent configuration details
+  arcana debug v2            debug v2 catalog and built-in plugins
+  arcana debug info          show debug information
+  arcana debug paths         show global paths (data, config, cache, state)
+  arcana debug wait          wait indefinitely (for debugging)
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -144,14 +144,14 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode providers --help 1`] = `
-"opencode providers
+"arcana providers
 
 manage AI providers and credentials
 
 Commands:
-  opencode providers list               list providers and credentials                 [aliases: ls]
-  opencode providers login [url]        log in to a provider
-  opencode providers logout [provider]  log out from a configured provider
+  arcana providers list               list providers and credentials                   [aliases: ls]
+  arcana providers login [url]        log in to a provider
+  arcana providers logout [provider]  log out from a configured provider
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -162,13 +162,13 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode agent --help 1`] = `
-"opencode agent
+"arcana agent
 
 manage agents
 
 Commands:
-  opencode agent create  create a new agent
-  opencode agent list    list all available agents
+  arcana agent create  create a new agent
+  arcana agent list    list all available agents
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -179,9 +179,9 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode upgrade --help 1`] = `
-"opencode upgrade [target]
+"arcana upgrade [target]
 
-upgrade opencode to the latest or a specific version
+upgrade arcana to the latest or a specific version
 
 Positionals:
   target  version to upgrade to, for ex '0.1.48' or 'v0.1.48'                               [string]
@@ -197,9 +197,9 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode uninstall --help 1`] = `
-"opencode uninstall
+"arcana uninstall
 
-uninstall opencode and remove all related files
+uninstall arcana and remove all related files
 
 Options:
   -h, --help         show help                                                             [boolean]
@@ -214,9 +214,9 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode serve --help 1`] = `
-"opencode serve
+"arcana serve
 
-starts a headless opencode server
+starts a headless arcana server
 
 Options:
   -h, --help         show help                                                             [boolean]
@@ -228,15 +228,15 @@ Options:
       --hostname     hostname to listen on                           [string] [default: "127.0.0.1"]
       --mdns         enable mDNS service discovery (defaults hostname to 0.0.0.0)
                                                                           [boolean] [default: false]
-      --mdns-domain  custom domain name for mDNS service (default: opencode.local)
-                                                                [string] [default: "opencode.local"]
+      --mdns-domain  custom domain name for mDNS service (default: arcana.local)
+                                                                  [string] [default: "arcana.local"]
       --cors         additional domains to allow for CORS                      [array] [default: []]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode web --help 1`] = `
-"opencode web
+"arcana web
 
-start opencode server and open web interface
+start arcana server and open web interface
 
 Options:
   -h, --help         show help                                                             [boolean]
@@ -248,13 +248,13 @@ Options:
       --hostname     hostname to listen on                           [string] [default: "127.0.0.1"]
       --mdns         enable mDNS service discovery (defaults hostname to 0.0.0.0)
                                                                           [boolean] [default: false]
-      --mdns-domain  custom domain name for mDNS service (default: opencode.local)
-                                                                [string] [default: "opencode.local"]
+      --mdns-domain  custom domain name for mDNS service (default: arcana.local)
+                                                                  [string] [default: "arcana.local"]
       --cors         additional domains to allow for CORS                      [array] [default: []]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode models --help 1`] = `
-"opencode models [provider]
+"arcana models [provider]
 
 list all available models
 
@@ -272,7 +272,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode stats --help 1`] = `
-"opencode stats
+"arcana stats
 
 show token usage and cost statistics
 
@@ -290,7 +290,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode export --help 1`] = `
-"opencode export [sessionID]
+"arcana export [sessionID]
 
 export session data as JSON
 
@@ -307,7 +307,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode import --help 1`] = `
-"opencode import <file>
+"arcana import <file>
 
 import session data from JSON file or URL
 
@@ -323,13 +323,13 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode github --help 1`] = `
-"opencode github
+"arcana github
 
 manage GitHub agent
 
 Commands:
-  opencode github install  install the GitHub agent
-  opencode github run      run the GitHub agent
+  arcana github install  install the GitHub agent
+  arcana github run      run the GitHub agent
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -340,9 +340,9 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode pr --help 1`] = `
-"opencode pr <number>
+"arcana pr <number>
 
-fetch and checkout a GitHub PR branch, then run opencode
+fetch and checkout a GitHub PR branch, then run arcana
 
 Positionals:
   number  PR number to checkout                                                  [number] [required]
@@ -356,13 +356,13 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode session --help 1`] = `
-"opencode session
+"arcana session
 
 manage sessions
 
 Commands:
-  opencode session list                list sessions
-  opencode session delete <sessionID>  delete a session
+  arcana session list                list sessions
+  arcana session delete <sessionID>  delete a session
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -373,7 +373,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode plugin --help 1`] = `
-"opencode plugin <module>
+"arcana plugin <module>
 
 install plugin and update config
 
@@ -391,13 +391,13 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode db --help 1`] = `
-"opencode db
+"arcana db
 
 database tools
 
 Commands:
-  opencode db [query]     open an interactive sqlite3 shell or run a query                 [default]
-  opencode db path        print the database path
+  arcana db [query]     open an interactive sqlite3 shell or run a query                   [default]
+  arcana db path        print the database path
 
 Positionals:
   query  SQL query to execute                                                               [string]
@@ -412,7 +412,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode mcp list --help 1`] = `
-"opencode mcp list
+"arcana mcp list
 
 list MCP servers and their status
 
@@ -425,7 +425,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode mcp add --help 1`] = `
-"opencode mcp add [name]
+"arcana mcp add [name]
 
 add an MCP server
 
@@ -444,12 +444,12 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode mcp auth --help 1`] = `
-"opencode mcp auth [name]
+"arcana mcp auth [name]
 
 authenticate with an OAuth-enabled MCP server
 
 Commands:
-  opencode mcp auth list  list OAuth-capable MCP servers and their auth status         [aliases: ls]
+  arcana mcp auth list  list OAuth-capable MCP servers and their auth status           [aliases: ls]
 
 Positionals:
   name  name of the MCP server                                                              [string]
@@ -463,7 +463,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode mcp logout --help 1`] = `
-"opencode mcp logout [name]
+"arcana mcp logout [name]
 
 remove OAuth credentials for an MCP server
 
@@ -479,7 +479,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode providers list --help 1`] = `
-"opencode providers list
+"arcana providers list
 
 list providers and credentials
 
@@ -492,12 +492,12 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode providers login --help 1`] = `
-"opencode providers login [url]
+"arcana providers login [url]
 
 log in to a provider
 
 Positionals:
-  url  opencode auth provider                                                               [string]
+  url  auth provider                                                                        [string]
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -510,7 +510,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode providers logout --help 1`] = `
-"opencode providers logout [provider]
+"arcana providers logout [provider]
 
 log out from a configured provider
 
@@ -526,7 +526,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode agent create --help 1`] = `
-"opencode agent create
+"arcana agent create
 
 create a new agent
 
@@ -546,7 +546,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode agent list --help 1`] = `
-"opencode agent list
+"arcana agent list
 
 list all available agents
 
@@ -559,7 +559,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode session list --help 1`] = `
-"opencode session list
+"arcana session list
 
 list sessions
 
@@ -574,7 +574,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode session delete --help 1`] = `
-"opencode session delete <sessionID>
+"arcana session delete <sessionID>
 
 delete a session
 
@@ -590,7 +590,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode github install --help 1`] = `
-"opencode github install
+"arcana github install
 
 install the GitHub agent
 
@@ -603,7 +603,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode github run --help 1`] = `
-"opencode github run
+"arcana github run
 
 run the GitHub agent
 
@@ -618,7 +618,7 @@ Options:
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode db path --help 1`] = `
-"opencode db path
+"arcana db path
 
 print the database path
 

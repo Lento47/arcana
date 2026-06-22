@@ -37,6 +37,10 @@ export function loadBoard(sessionId: string): KanbanBoard | null {
 export function saveBoard(sessionId: string, board: KanbanBoard): void {
   mkdirSync(KANBAN_DIR, { recursive: true })
   writeFileSync(boardPath(sessionId), JSON.stringify(board, null, 2), "utf8")
+  // Keep the vault wiki in sync on each mutation (best-effort). Previously this
+  // ran inside formatBoard(), so a pure "format" call wrote to disk every time
+  // the board was displayed.
+  writeBoardWiki(board)
 }
 
 export function initBoard(sessionId: string, goal: string, scope: string): KanbanBoard {
@@ -91,7 +95,8 @@ export function archiveDone(board: KanbanBoard): number {
   return before - board.cards.length
 }
 
-export function formatBoard(board: KanbanBoard): string {
+/** Pure: render the board to markdown lines. No side effects. */
+function renderBoard(board: KanbanBoard): string[] {
   const cols = ["backlog", "in_progress", "done", "blocked"] as const
   const labels: Record<string, string> = {
     backlog: "📋 Backlog",
@@ -116,9 +121,11 @@ export function formatBoard(board: KanbanBoard): string {
     }
     lines.push("")
   }
+  return lines
+}
 
-  // Write wiki summary to vault if available
-  const vaultPath = join(process.cwd(), ".vault", "kanban.md")
+/** Best-effort: write the board's vault wiki page. Called from saveBoard. */
+function writeBoardWiki(board: KanbanBoard): void {
   try {
     const wiki = [
       "---",
@@ -131,11 +138,14 @@ export function formatBoard(board: KanbanBoard): string {
       "",
       `> Auto-generated from active goal board.`,
       "",
-      ...lines.slice(1),
+      ...renderBoard(board).slice(1),
     ].join("\n")
     mkdirSync(join(process.cwd(), ".vault"), { recursive: true })
-    writeFileSync(vaultPath, wiki, "utf8")
+    writeFileSync(join(process.cwd(), ".vault", "kanban.md"), wiki, "utf8")
   } catch {}
+}
 
-  return lines.join("\n")
+/** Pure formatter for display. (No longer writes to disk — see writeBoardWiki.) */
+export function formatBoard(board: KanbanBoard): string {
+  return renderBoard(board).join("\n")
 }

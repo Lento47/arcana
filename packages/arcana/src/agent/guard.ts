@@ -51,7 +51,12 @@ export function detectInjection(text: string): string | null {
 // ── Dangerous commands ───────────────────────────────────────
 const BLOCKED_COMMANDS = [
   /^sudo\b/,
-  /\brm\s+-rf\s+\/\b/,
+  // Catastrophic recursive-force delete of root/home. The previous pattern
+  // (`rm -rf \/\b`) FAILED OPEN on the exact `rm -rf /` — `\b` needs a word
+  // char after `/`, but at end-of-line there is none, so it never matched.
+  // Match both flag orders (-rf / -fr, incl. -Rfv etc.) and root, root-glob, or ~.
+  /\brm\s+-[a-z]*r[a-z]*f[a-z]*\s+(\/|~)(\*|\s|$)/i,
+  /\brm\s+-[a-z]*f[a-z]*r[a-z]*\s+(\/|~)(\*|\s|$)/i,
   /\bmkfs\b/,
   /\bdd\s+if=/,
   /chmod\s+(-R\s+)?777\s+\//,

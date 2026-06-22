@@ -10,6 +10,43 @@ import { join, dirname } from "node:path"
 import { mkdirSync, writeFileSync, existsSync } from "node:fs"
 import { initBoard, loadBoard, saveBoard, addCard, moveCard, archiveDone, formatBoard, type KanbanCard } from "./kanban.js"
 
+// ── web_search helpers ───────────────────────────────────────
+/** Decode the common HTML entities DuckDuckGo emits in titles/snippets/hrefs. */
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&#x2F;/g, "/")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+}
+
+/** Strip tags, decode entities, collapse whitespace. */
+function cleanText(s: string): string {
+  return decodeHtmlEntities(s.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim()
+}
+
+/**
+ * DuckDuckGo HTML wraps every result in a redirector:
+ *   //duckduckgo.com/l/?uddg=<url-encoded real url>&rut=<tracking>
+ * The previous code returned that redirect link verbatim, so the model never
+ * got real destination URLs. Unwrap `uddg` to recover the actual URL.
+ */
+function extractRealUrl(href: string): string {
+  let h = decodeHtmlEntities(href)
+  if (h.startsWith("//")) h = "https:" + h
+  try {
+    const real = new URL(h).searchParams.get("uddg")
+    if (real) return real
+  } catch { /* not a wrapped URL — return as-is */ }
+  return h
+}
+
 export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, skillDirs: string[]): void {
   let skills: SkillCatalog[] = []
   const catalogPromise = loadSkills(skillDirs).then((s) => { skills = s; return s })
@@ -124,11 +161,15 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       type: "function",
       function: {
         name: "web_search",
-        description: "Search the web and return results with titles, snippets, and URLs",
+        description:
+          "Search the live internet for information the user is asking about. " +
+          "Use the user's actual request as the query — do NOT scope it to this project, repo, or local files " +
+          "(use grep/read tools for local code, and memory_search for past sessions). " +
+          "Returns ranked results with titles, snippets, and real destination URLs.",
         parameters: {
           type: "object",
           properties: {
-            query: { type: "string", description: "Search query" },
+            query: { type: "string", description: "What the user wants to find on the web, in natural language or keywords" },
             limit: { type: "number", description: "Max results (default 5, max 10)" },
           },
           required: ["query"],
@@ -136,34 +177,40 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      const query = encodeURIComponent(String(args.query))
-      const limit = Math.min(Number(args.limit ?? 5), 10)
+      const queryStr = String(args.query ?? "").trim()
+      if (!queryStr) return "web_search needs a non-empty query."
+      const query = encodeURIComponent(queryStr)
+      const limit = Math.min(Math.max(Number(args.limit ?? 5), 1), 10)
       try {
         // DuckDuckGo HTML search — free, no API key required
         const res = await fetch(`https://html.duckduckgo.com/html/?q=${query}`, {
-          headers: { "User-Agent": "arcana-agent/0.1" },
+          headers: {
+            // Realistic UA — DDG rate-limits / degrades unknown agents
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            Accept: "text/html",
+          },
           signal: AbortSignal.timeout(10000),
         })
         if (!res.ok) return `Search failed: HTTP ${res.status}`
         const html = await res.text()
-        // Extract result links from DDG HTML
+        // Extract result links from DDG HTML (title text may contain <b> highlights)
         const results: Array<{ title: string; snippet: string; url: string }> = []
-        const linkRe = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/gi
-        const snippetRe = /<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi
+        const linkRe = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
+        const snippetRe = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi
         let m
         const links: Array<{ title: string; url: string }> = []
         while ((m = linkRe.exec(html)) !== null && links.length < limit) {
-          const url = m[1]!.startsWith("//") ? "https:" + m[1] : m[1]!
-          links.push({ title: m[2]!.replace(/<[^>]+>/g, "").trim(), url })
+          links.push({ title: cleanText(m[2]!), url: extractRealUrl(m[1]!) })
         }
         const snippets: string[] = []
         while ((m = snippetRe.exec(html)) !== null && snippets.length < limit) {
-          snippets.push(m[1]!.replace(/<[^>]+>/g, "").trim())
+          snippets.push(cleanText(m[1]!))
         }
         for (let i = 0; i < links.length; i++) {
           results.push({ title: links[i]!.title, url: links[i]!.url, snippet: snippets[i] ?? "" })
         }
-        if (!results.length) return "No results found."
+        if (!results.length) return `No results found for "${queryStr}". Try rephrasing or broadening the query.`
         return results.map((r, i) => `${i + 1}. **${r.title}**\n   ${r.snippet}\n   ${r.url}`).join("\n\n")
       } catch (e) {
         return `Search error: ${e instanceof Error ? e.message : String(e)}`
@@ -1266,14 +1313,22 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      const { readFileSync, existsSync } = await import("node:fs")
+      const { readFileSync, existsSync, readdirSync } = await import("node:fs")
       const { join } = await import("node:path")
       const { homedir } = await import("node:os")
       const { getVersion } = await import("../../../core/src/artifact/schema")
       const dir = join(homedir(), ".arcana", "artifacts")
       const id = String(args.id)
-      const filePath = join(dir, `${id}.json`)
-      if (!existsSync(filePath)) return `Artifact not found: ${id}`
+      let filePath = join(dir, `${id}.json`)
+      if (!existsSync(filePath)) {
+        // The param is documented as "ID or prefix (first 8 chars)" — honor that:
+        // fall back to the first artifact whose filename starts with the prefix.
+        const match = existsSync(dir)
+          ? readdirSync(dir).find((f) => f.endsWith(".json") && f.startsWith(id))
+          : undefined
+        if (!match) return `Artifact not found: ${id}`
+        filePath = join(dir, match)
+      }
       const artifact = JSON.parse(readFileSync(filePath, "utf8"))
       const version = args.version ? Number(args.version) : undefined
       if (version) {
@@ -1379,13 +1434,29 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const cwd = args.path ? String(args.path) : process.cwd()
       const maxResults = Number(args.maxResults ?? 50)
       try {
-        const { execSync } = await import("node:child_process")
-        const include = args.include ? `--include="${String(args.include)}"` : ""
-        const cmd = `rg -n --no-heading ${include} "${String(args.pattern).replace(/"/g, '\\"')}" "${cwd}" 2>nul || true`
-        const output = execSync(cmd, { encoding: "utf8", maxBuffer: 1024 * 1024 }).trim()
+        const { execFileSync } = await import("node:child_process")
+        // Pass args directly (no shell) — avoids the cross-platform `2>nul || true`
+        // breakage (stray `nul` file on POSIX, `'true' not recognized` on Windows)
+        // and shell injection from the model-supplied pattern. `--glob` is rg's
+        // include filter (`--include` is GNU grep, which rg rejects). `--` ends flags.
+        const rgArgs = ["-n", "--no-heading"]
+        if (args.include) rgArgs.push("--glob", String(args.include))
+        rgArgs.push("--", String(args.pattern), cwd)
+        let output = ""
+        try {
+          output = execFileSync("rg", rgArgs, {
+            encoding: "utf8",
+            maxBuffer: 1024 * 1024,
+            stdio: ["ignore", "pipe", "ignore"],
+          }).trim()
+        } catch (e: any) {
+          if (e?.status === 1) return `No matches for "${args.pattern}"` // rg exit 1 = no matches
+          throw e
+        }
         if (!output) return `No matches for "${args.pattern}"`
-        const lines = output.split("\n").slice(0, maxResults)
-        return lines.join("\n") + (lines.length < output.split("\n").length ? `\n... (${output.split("\n").length - maxResults} more matches)` : "")
+        const all = output.split("\n")
+        const lines = all.slice(0, maxResults)
+        return lines.join("\n") + (all.length > maxResults ? `\n... (${all.length - maxResults} more matches)` : "")
       } catch (e) {
         return `Grep error: ${e instanceof Error ? e.message : String(e)}`
       }
@@ -1417,8 +1488,10 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       try {
         const content = readFileSync(fp, "utf8")
         const lines = content.split("\n")
-        const offset = Number(args.offset ?? 1)
-        const limit = Number(args.limit ?? 2000)
+        // Clamp: offset is 1-indexed and limit positive. Guards against
+        // offset<=0 → slice(-1,…) returning garbage from the end of the file.
+        const offset = Math.max(1, Number(args.offset ?? 1) || 1)
+        const limit = Math.max(1, Number(args.limit ?? 2000) || 2000)
         const selected = lines.slice(offset - 1, offset - 1 + limit)
         return selected.map((l, i) => `${offset + i}:${l}`).join("\n") +
           (lines.length > offset + limit - 1 ? `\n... (${lines.length - offset - limit + 1} more lines)` : "")

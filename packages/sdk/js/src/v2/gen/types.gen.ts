@@ -52,7 +52,6 @@ export type Event =
   | EventSessionError
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
-  | EventFileEdited
   | EventPermissionV2Asked
   | EventPermissionV2Replied
   | EventReferenceUpdated
@@ -75,6 +74,7 @@ export type Event =
   | EventTuiSessionSelect2
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
+  | EventFileEdited
   | EventCommandExecuted
   | EventProjectUpdated
   | EventSessionStatus
@@ -1259,13 +1259,6 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "file.edited"
-        properties: {
-          file: string
-        }
-      }
-    | {
-        id: string
         type: "permission.v2.asked"
         properties: {
           id: string
@@ -1475,6 +1468,13 @@ export type GlobalEvent = {
         properties: {
           mcpName: string
           url: string
+        }
+      }
+    | {
+        id: string
+        type: "file.edited"
+        properties: {
+          file: string
         }
       }
     | {
@@ -2383,6 +2383,13 @@ export type Agent = {
     [key: string]: unknown
   }
   steps?: number
+  routing?: {
+    keywords?: Array<string>
+    patterns?: Array<string>
+    capabilities?: Array<string>
+    priority?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    confidence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
 }
 
 export type LspStatus = {
@@ -4792,14 +4799,6 @@ export type EventInstallationUpdateAvailable = {
   }
 }
 
-export type EventFileEdited = {
-  id: string
-  type: "file.edited"
-  properties: {
-    file: string
-  }
-}
-
 export type EventPermissionV2Asked = {
   id: string
   type: "permission.v2.asked"
@@ -4977,6 +4976,14 @@ export type EventMcpBrowserOpenFailed = {
   properties: {
     mcpName: string
     url: string
+  }
+}
+
+export type EventFileEdited = {
+  id: string
+  type: "file.edited"
+  properties: {
+    file: string
   }
 }
 

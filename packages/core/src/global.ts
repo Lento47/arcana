@@ -1,5 +1,6 @@
 import path from "path"
 import fs from "fs/promises"
+import { existsSync } from "fs"
 import { xdgData, xdgCache, xdgConfig, xdgState } from "xdg-basedir"
 import os from "os"
 import { Context, Effect, Layer } from "effect"
@@ -33,15 +34,14 @@ export const Path = paths
 Flock.setGlobal({ state })
 
 if (process.env["ARCANA_PROFILE_STARTUP"]) performance.mark("global-mkdir-start")
-await Promise.all([
-  fs.mkdir(Path.data, { recursive: true }),
-  fs.mkdir(Path.config, { recursive: true }),
-  fs.mkdir(Path.state, { recursive: true }),
-  fs.mkdir(Path.tmp, { recursive: true }),
-  fs.mkdir(Path.log, { recursive: true }),
-  fs.mkdir(Path.bin, { recursive: true }),
-  fs.mkdir(Path.repos, { recursive: true }),
-])
+// Recursive mkdir of these 7 dirs measured ~116ms on Windows even when they all
+// already exist (warm runs — the common case). Skip the syscall when the dir is
+// already present; only create the missing ones on first run.
+await Promise.all(
+  [Path.data, Path.config, Path.state, Path.tmp, Path.log, Path.bin, Path.repos].map((d) =>
+    existsSync(d) ? Promise.resolve() : fs.mkdir(d, { recursive: true }),
+  ),
+)
 if (process.env["ARCANA_PROFILE_STARTUP"]) { performance.mark("global-mkdir-end"); try { performance.measure("global-mkdir", "global-mkdir-start", "global-mkdir-end") } catch {} }
 
 export class Service extends Context.Service<Service, Interface>()("@arcana/Global") {}

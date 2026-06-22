@@ -234,7 +234,12 @@ const lowerMessages = Effect.fn("Gemini.lowerMessages")(function* (request: LLMR
           continue
         }
         if (part.type === "reasoning") {
-          parts.push({ text: part.text, thought: true, thoughtSignature: thoughtSignature(part.providerMetadata) })
+          const sig = thoughtSignature(part.providerMetadata)
+          // An empty reasoning part carrying neither text nor a thought signature
+          // is nothing to send — emitting it produces a junk empty content entry
+          // that Gemini rejects / that pollutes the payload.
+          if (!part.text && !sig) continue
+          parts.push({ text: part.text, thought: true, thoughtSignature: sig })
           continue
         }
         if (part.type === "tool-call") {
@@ -242,7 +247,9 @@ const lowerMessages = Effect.fn("Gemini.lowerMessages")(function* (request: LLMR
           continue
         }
       }
-      contents.push({ role: "model", parts })
+      // Don't emit an empty model turn (e.g. an assistant message whose only
+      // part was empty reasoning) — it serializes to `{}` and breaks the request.
+      if (parts.length > 0) contents.push({ role: "model", parts })
       continue
     }
 

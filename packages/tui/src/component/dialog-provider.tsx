@@ -400,16 +400,25 @@ function ApiMethod(props: ApiMethodProps) {
       }
       onConfirm={async (value) => {
         if (!value) return
-        await sdk.client.auth.set({
-          providerID: props.providerID,
-          auth: {
-            type: "api",
-            key: value,
-            ...(props.metadata ? { metadata: props.metadata } : {}),
-          },
-        })
-        await sdk.client.instance.dispose()
-        await sync.bootstrap()
+        try {
+          const { error } = await sdk.client.auth.set({
+            providerID: props.providerID,
+            auth: {
+              type: "api",
+              key: value,
+              ...(props.metadata ? { metadata: props.metadata } : {}),
+            },
+          })
+          if (error) {
+            toast.show({ variant: "error", message: `Failed to save key: ${JSON.stringify(error)}` })
+            return
+          }
+          await sdk.client.instance.dispose()
+          await sync.bootstrap()
+        } catch (err) {
+          toast.show({ variant: "error", message: `Failed to save key: ${err instanceof Error ? err.message : String(err)}` })
+          return
+        }
         if (props.custom && !sync.data.provider_next.all.some((provider) => provider.id === props.providerID)) {
           toast.show({
             variant: "info",

@@ -38,22 +38,39 @@ export const STALE_LOCK_MS = 24 * 60 * 60 * 1000
 const acquiredLocks = new Set<string>()
 let exitHandlerRegistered = false
 
+function cleanupOwnedLocks(): void {
+  for (const lockPath of acquiredLocks) {
+    try {
+      if (fs.existsSync(lockPath)) {
+        // Only clean up if we still own it
+        const raw = JSON.parse(fs.readFileSync(lockPath, "utf-8"))
+        if (raw.pid === process.pid) fs.unlinkSync(lockPath)
+      }
+    } catch {
+      // Best-effort
+    }
+  }
+}
+
 function registerExitHandlerOnce(): void {
   if (exitHandlerRegistered) return
   exitHandlerRegistered = true
-  process.on("exit", () => {
-    for (const lockPath of acquiredLocks) {
-      try {
-        if (fs.existsSync(lockPath)) {
-          // Only clean up if we still own it
-          const raw = JSON.parse(fs.readFileSync(lockPath, "utf-8"))
-          if (raw.pid === process.pid) fs.unlinkSync(lockPath)
-        }
-      } catch {
-        // Best-effort on process exit
-      }
+  process.on("exit", cleanupOwnedLocks)
+  // 'exit' does NOT fire on Ctrl-C / kill, so without this the lock would leak
+  // until it goes stale (24h). Release it on the common termination signals too.
+  const onSignal = (sig: NodeJS.Signals) => {
+    cleanupOwnedLocks()
+    // A registered signal listener suppresses Node's default termination, so we
+    // must hand control back: remove ourselves, then re-raise only if no other
+    // listener remains to drive shutdown (avoids fighting a graceful-shutdown
+    // handler the app may have installed elsewhere).
+    process.removeListener(sig, onSignal)
+    if (process.listenerCount(sig) === 0) {
+      try { process.kill(process.pid, sig) } catch { /* already gone */ }
     }
-  })
+  }
+  process.on("SIGINT", onSignal)
+  process.on("SIGTERM", onSignal)
 }
 
 function trackLock(lockPath: string): void {
@@ -75,11 +92,16 @@ function ensureLockDir(projectRoot: string): void {
 
 function isProcessAlive(pid: number): boolean {
   try {
-    // Signal 0 is a null signal on POSIX — checks if process exists
+    // Signal 0 is a null signal — checks if the process exists
     process.kill(pid, 0)
     return true
-  } catch {
-    return false
+  } catch (e: any) {
+    // EPERM means the process exists but is owned by another user (common on
+    // Windows / cross-user) — we can't signal it, but it IS alive. Only ESRCH
+    // ("no such process") means dead.
+    // NOTE: PID reuse can still make a recycled PID read as alive; verifying the
+    // process start-time would be needed to fully rule that out.
+    return e?.code === "EPERM"
   }
 }
 

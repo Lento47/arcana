@@ -73,8 +73,10 @@ export async function generateBridgeConfig(): Promise<string> {
   if (!existsSync(modelsDevCache)) {
     // Fire-and-forget: don't block startup on this
     fetch("https://models.dev/api.json", { signal: AbortSignal.timeout(10000) })
-      .then((r) => r.text())
-      .then(async (text) => {
+      .then(async (r) => {
+        if (!r.ok) return // don't cache an error page
+        const text = await r.text()
+        JSON.parse(text) // validate — throws on HTML/garbage → caught, no write
         await mkdir(dirname(modelsDevCache), { recursive: true })
         await writeFile(modelsDevCache, text, "utf8")
       })

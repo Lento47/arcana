@@ -17,6 +17,7 @@ import {
 import { Dynamic } from "solid-js/web"
 import path from "node:path"
 import { mkdir, writeFile } from "node:fs/promises"
+import { recordTuiFeedback } from "../../feedback"
 import { useRoute, useRouteData } from "../../context/route"
 import { Lexicon, Glyph, AgentSigil, VerbPool } from "../../branding"
 import { useProject } from "../../context/project"
@@ -473,6 +474,40 @@ export function Session() {
   }
 
   const sessionCommandList = createMemo(() => [
+    {
+      title: "Rate last response 👍",
+      value: "session.feedback_good",
+      category: "Session",
+      slash: { name: "good" },
+      run: async () => {
+        const msg = lastAssistant()
+        if (!msg) {
+          toast.show({ message: "No response to rate yet", variant: "warning" })
+          return
+        }
+        await recordTuiFeedback({ sessionID: route.sessionID, messageID: msg.id, rating: "up" })
+          .then(() => toast.show({ message: "Thanks — feedback recorded 👍", variant: "success" }))
+          .catch(() => toast.show({ message: "Failed to record feedback", variant: "error" }))
+        dialog.clear()
+      },
+    },
+    {
+      title: "Rate last response 👎",
+      value: "session.feedback_bad",
+      category: "Session",
+      slash: { name: "bad" },
+      run: async () => {
+        const msg = lastAssistant()
+        if (!msg) {
+          toast.show({ message: "No response to rate yet", variant: "warning" })
+          return
+        }
+        await recordTuiFeedback({ sessionID: route.sessionID, messageID: msg.id, rating: "down" })
+          .then(() => toast.show({ message: "Thanks — feedback recorded 👎", variant: "success" }))
+          .catch(() => toast.show({ message: "Failed to record feedback", variant: "error" }))
+        dialog.clear()
+      },
+    },
     {
       title: session()?.share?.url ? "Copy share link" : "Share session",
       value: "session.share",
@@ -2034,15 +2069,24 @@ export function InlineToolRow(props: {
               >
                 {props.icon}
               </text>
-              <text
-                flexGrow={1}
-                fg={props.failed ? props.errorColor : props.color}
-                attributes={props.denied ? TextAttributes.STRIKETHROUGH : undefined}
+              <Show
+                when={props.failed && !props.complete && props.failure}
+                fallback={
+                  <text
+                    flexGrow={1}
+                    fg={props.failed ? props.errorColor : props.color}
+                    attributes={props.denied ? TextAttributes.STRIKETHROUGH : undefined}
+                  >
+                    {props.children}
+                  </text>
+                }
               >
-                {props.failed && !props.complete
-                  ? (props.failure ? <Scramble error text={props.failure} fg={props.errorColor} /> : props.children)
-                  : props.children}
-              </text>
+                {/* Scramble renders its own <text>; wrap in a flex box rather than nesting
+                    a text-returning component inside <text> (rejected under SSR rendering). */}
+                <box flexGrow={1}>
+                  <Scramble error text={props.failure!} fg={props.errorColor} />
+                </box>
+              </Show>
             </box>
           </Show>
         </Match>

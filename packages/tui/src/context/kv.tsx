@@ -7,7 +7,7 @@ import { readJson, writeJsonAtomic } from "../util/persistence"
 import { useTuiPaths } from "./runtime"
 import path from "path"
 
-export const { use: useKV, provider: KVProvider } = createSimpleContext({
+export const { use: useKV, provider: KVProvider, context: KVContext } = createSimpleContext({
   name: "KV",
   init: () => {
     const paths = useTuiPaths()

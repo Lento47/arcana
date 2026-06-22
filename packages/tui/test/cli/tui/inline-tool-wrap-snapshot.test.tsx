@@ -15,6 +15,20 @@ import {
   parseTodos,
   toolDisplay,
 } from "../../../src/routes/session"
+import { Glyph } from "../../../src/branding"
+import { KVContext } from "../../../src/context/kv"
+
+// Spinner/SigilSpinner/Scramble (rendered by pending + error tool rows) call useKV.
+// Provide a minimal KV via the raw context — not KVProvider, whose async ready-gate
+// would withhold children on a single renderOnce. Report animations off so Scramble
+// resolves to its final text immediately (deterministic snapshots, no flicker frame).
+const mockKV: any = {
+  ready: true,
+  store: {},
+  signal: (_name: string, def: unknown) => [() => def, () => {}],
+  get: (key: string, def?: unknown) => (key === "animations_enabled" ? false : def),
+  set: () => {},
+}
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined
 
@@ -198,7 +212,10 @@ function FailedCompleteToolFixture() {
 }
 
 async function renderFrame(component: () => JSX.Element, options: { width: number; height: number }) {
-  testSetup = await testRender(component, options)
+  testSetup = await testRender(
+    () => <KVContext.Provider value={mockKV}>{component()}</KVContext.Provider>,
+    options,
+  )
   await testSetup.renderOnce()
 
   return testSetup
@@ -262,8 +279,8 @@ describe("TUI inline tool wrapping", () => {
 
   test("formats completed subagent toolcall details", () => {
     expect(formatCompletedSubagentDetail(0, "501ms")).toBe("501ms")
-    expect(formatCompletedSubagentDetail(1, "501ms")).toBe("1 toolcall · 501ms")
-    expect(formatCompletedSubagentDetail(2, "501ms")).toBe("2 toolcalls · 501ms")
+    expect(formatCompletedSubagentDetail(1, "501ms")).toBe(`1 toolcall ${Glyph.sep} 501ms`)
+    expect(formatCompletedSubagentDetail(2, "501ms")).toBe(`2 toolcalls ${Glyph.sep} 501ms`)
     expect(formatSubagentToolcalls(0)).toBe("0 toolcalls")
   })
 
@@ -275,7 +292,7 @@ describe("TUI inline tool wrapping", () => {
   })
 
   test("keeps retry status ahead of wrapping messages", () => {
-    expect(formatSubagentRetry(2, "Rate limited by provider")).toBe("Retrying (attempt 2) · Rate limited by provider")
+    expect(formatSubagentRetry(2, "Rate limited by provider")).toBe(`Retrying (attempt 2) ${Glyph.sep} Rate limited by provider`)
   })
 
   test("snapshots consecutive grep, glob, and read rows at a narrow width", async () => {

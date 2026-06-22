@@ -52,6 +52,17 @@ export type SkillObservation = {
   created_at: string
 }
 
+export type Feedback = {
+  id: string
+  session_id?: string
+  message_id?: string
+  rating?: "up" | "down"
+  category?: string
+  note?: string
+  source: string
+  created_at: string
+}
+
 export type SearchResult = {
   type: "session" | "message"
   id: string
@@ -258,5 +269,42 @@ export class MemoryStore {
 
   getSkillObservations(skillId: string, limit = 20): SkillObservation[] {
     return this.db.prepare(`SELECT * FROM skills_memory WHERE skill_id = ? ORDER BY created_at DESC LIMIT ?`).all(skillId, limit) as SkillObservation[]
+  }
+
+  // --- Feedback ---
+
+  recordFeedback(opts: {
+    note?: string
+    rating?: "up" | "down"
+    category?: string
+    sessionId?: string
+    messageId?: string
+    source?: string
+  }): Feedback {
+    const fb: Feedback = {
+      id: randomUUID(),
+      session_id: opts.sessionId,
+      message_id: opts.messageId,
+      rating: opts.rating,
+      category: opts.category,
+      note: opts.note,
+      source: opts.source ?? "cli",
+      created_at: now(),
+    }
+    this.db
+      .prepare(`INSERT INTO feedback (id, session_id, message_id, rating, category, note, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(fb.id, fb.session_id ?? null, fb.message_id ?? null, fb.rating ?? null, fb.category ?? null, fb.note ?? null, fb.source, fb.created_at)
+    return fb
+  }
+
+  listFeedback(limit = 50): Feedback[] {
+    return this.db.prepare(`SELECT * FROM feedback ORDER BY created_at DESC LIMIT ?`).all(limit) as Feedback[]
+  }
+
+  feedbackStats(): { total: number; up: number; down: number } {
+    const row = this.db
+      .prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN rating = 'up' THEN 1 ELSE 0 END) AS up, SUM(CASE WHEN rating = 'down' THEN 1 ELSE 0 END) AS down FROM feedback`)
+      .get() as { total: number; up: number | null; down: number | null }
+    return { total: row.total ?? 0, up: row.up ?? 0, down: row.down ?? 0 }
   }
 }
