@@ -112,6 +112,19 @@ const VARIANT_ROWS = RUN_COMMAND_PANEL_ROWS
 const NOTICE_DURATION = 3000
 const THEME_REFRESH_DELAYS = [1000, 1000] as const
 
+// Startup-phase profiling — emits JSON markers on stderr gated on
+// ARCANA_PROFILE_STARTUP. Tracks first paint + first footer patch.
+const FOOTER_PROFILE = !!process.env["ARCANA_PROFILE_STARTUP"]
+const FOOTER_PROFILE_PID = process.pid
+const FOOTER_PROFILE_T0 = performance.now()
+function footerEmit(phase: string, ts_ms: number) {
+  if (!FOOTER_PROFILE) return
+  process.stderr.write(JSON.stringify({ phase, ts_ms, pid: FOOTER_PROFILE_PID }) + "\n")
+}
+let footerConstructedEmitted = false
+let footerFirstPatchEmitted = false
+footerEmit("footer_module_load", FOOTER_PROFILE_T0)
+
 function createEmptySubagentState(): FooterSubagentState {
   return {
     tabs: [],
@@ -238,6 +251,10 @@ export class RunFooter implements FooterApi {
     private renderer: CliRenderer,
     private options: RunFooterOptions,
   ) {
+    if (!footerConstructedEmitted) {
+      footerConstructedEmitted = true
+      footerEmit("footer_constructed", performance.now())
+    }
     const [state, setState] = createSignal<FooterState>({
       phase: "idle",
       status: "",
@@ -507,6 +524,12 @@ export class RunFooter implements FooterApi {
     }
 
     this.setState(state)
+
+    if (!footerFirstPatchEmitted) {
+      footerFirstPatchEmitted = true
+      footerEmit("footer_first_patch", performance.now())
+      footerEmit("footer_first_patch_ms", Math.round(performance.now() - FOOTER_PROFILE_T0))
+    }
 
     if (prev.phase === "running" && state.phase === "idle") {
       this.flush()

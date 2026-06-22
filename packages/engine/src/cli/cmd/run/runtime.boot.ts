@@ -14,6 +14,15 @@ import { resolveSession, sessionHistory } from "./session.shared"
 import type { RunDiffStyle, RunInput, RunPrompt, RunProvider, RunTuiConfig } from "./types"
 import { pickVariant } from "./variant.shared"
 
+// Startup phase profiling — emits one JSON line per phase on stderr.
+// Gated on ARCANA_PROFILE_STARTUP. Consumers: scripts/bench-startup.ts.
+const BOOT_PROFILE = !!process.env["ARCANA_PROFILE_STARTUP"]
+const BOOT_PROFILE_PID = process.pid
+function bootEmit(phase: string, ts_ms: number) {
+  if (!BOOT_PROFILE) return
+  process.stderr.write(JSON.stringify({ phase, ts_ms, pid: BOOT_PROFILE_PID }) + "\n")
+}
+
 export type ModelInfo = {
   providers: RunProvider[]
   variants: string[]
@@ -180,7 +189,12 @@ export async function resolveModelInfo(
   directory: string,
   model: RunInput["model"],
 ): Promise<ModelInfo> {
-  return runtime.runPromise((svc) => svc.resolveModelInfo(sdk, directory, model)).catch(() => emptyModelInfo())
+  const t0 = performance.now()
+  bootEmit("resolveModelInfo_start", t0)
+  const out = await runtime.runPromise((svc) => svc.resolveModelInfo(sdk, directory, model)).catch(() => emptyModelInfo())
+  bootEmit("resolveModelInfo_end", performance.now())
+  bootEmit("resolveModelInfo_ms", Math.round(performance.now() - t0))
+  return out
 }
 
 // Fetches session messages to determine if this is the first turn and build prompt history.
@@ -189,14 +203,29 @@ export async function resolveSessionInfo(
   sessionID: string,
   model: RunInput["model"],
 ): Promise<SessionInfo> {
-  return runtime.runPromise((svc) => svc.resolveSessionInfo(sdk, sessionID, model)).catch(() => emptySessionInfo())
+  const t0 = performance.now()
+  bootEmit("resolveSessionInfo_start", t0)
+  const out = await runtime.runPromise((svc) => svc.resolveSessionInfo(sdk, sessionID, model)).catch(() => emptySessionInfo())
+  bootEmit("resolveSessionInfo_end", performance.now())
+  bootEmit("resolveSessionInfo_ms", Math.round(performance.now() - t0))
+  return out
 }
 
 // Reads TUI config once for direct mode keymap setup and display preferences.
 export async function resolveRunTuiConfig(): Promise<RunTuiConfig> {
-  return runtime.runPromise((svc) => svc.resolveRunTuiConfig()).catch(() => defaultRunTuiConfig())
+  const t0 = performance.now()
+  bootEmit("resolveRunTuiConfig_start", t0)
+  const out = await runtime.runPromise((svc) => svc.resolveRunTuiConfig()).catch(() => defaultRunTuiConfig())
+  bootEmit("resolveRunTuiConfig_end", performance.now())
+  bootEmit("resolveRunTuiConfig_ms", Math.round(performance.now() - t0))
+  return out
 }
 
 export async function resolveDiffStyle(): Promise<RunDiffStyle> {
-  return runtime.runPromise((svc) => svc.resolveDiffStyle()).catch(() => "auto")
+  const t0 = performance.now()
+  bootEmit("resolveDiffStyle_start", t0)
+  const out = await runtime.runPromise((svc) => svc.resolveDiffStyle()).catch(() => "auto")
+  bootEmit("resolveDiffStyle_end", performance.now())
+  bootEmit("resolveDiffStyle_ms", Math.round(performance.now() - t0))
+  return out
 }
