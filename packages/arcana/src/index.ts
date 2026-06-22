@@ -6,23 +6,38 @@
 import path from "node:path"
 import { existsSync } from "node:fs"
 
+const PROFILE = !!process.env["ARCANA_PROFILE_STARTUP"]
+const PROFILE_PID = process.pid
+function profileEmit(phase: string, ts_ms: number) {
+  if (!PROFILE) return
+  // JSON-per-line markers on stderr. Schema: {"phase","ts_ms","pid"}.
+  // Consumed by scripts/bench-startup.ts to compute per-phase p50/p90.
+  process.stderr.write(JSON.stringify({ phase, ts_ms, pid: PROFILE_PID }) + "\n")
+}
+profileEmit("arcana_entry", performance.now())
+
 const args = process.argv.slice(2)
 const HELP_FLAGS = new Set(["--help", "-h", "--version", "-v"])
-const SUBCOMMANDS = ["run", "skills", "cron", "memory", "gateway", "completion", "config", "learn", "doctor", "history", "theme"]
+const SUBCOMMANDS = ["run", "skills", "cron", "memory", "gateway", "completion", "config", "learn", "doctor", "history", "theme", "feedback"]
 const firstArg = args[0]
 const isArcanaSubcommand = firstArg && (SUBCOMMANDS.includes(firstArg) || HELP_FLAGS.has(firstArg))
 
 if (!isArcanaSubcommand) {
   // === TUI fast path ===
+  profileEmit("fast_path_enter", performance.now())
   // Generate bridge config (providers + skills paths) for arcana engine
   const { generateBridgeConfig } = await import("./skills/bridge.js")
+  const t0 = performance.now()
   const arcanaConfig = process.env.ARCANA_CONFIG
     ? undefined
     : await generateBridgeConfig()
+  profileEmit("bridge_config_done", performance.now())
+  profileEmit("bridge_config_ms", Math.round(performance.now() - t0))
 
   const engineDir = path.join(import.meta.dir, "../../engine")
   const engineEntry = path.join(engineDir, "src/index.ts")
 
+  const tSpawn = performance.now()
   const child = Bun.spawn({
     cmd: ["bun", "run", "--conditions=browser", engineEntry, ...args],
     stdio: ["inherit", "inherit", "inherit"],
@@ -33,6 +48,8 @@ if (!isArcanaSubcommand) {
       ...(arcanaConfig ? { ARCANA_CONFIG: arcanaConfig } : {}),
     },
   })
+  profileEmit("engine_spawn_done", performance.now())
+  profileEmit("engine_spawn_ms", Math.round(performance.now() - tSpawn))
   for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     process.on(sig, () => {
       try { child.kill(sig) } catch { /* already exited */ }
@@ -76,6 +93,7 @@ async function loadCommands() {
     { DoctorCommand },
     { HistoryCommand },
     { ThemeCommand },
+    { FeedbackCommand },
   ] = await Promise.all([
     import("./cli/cmd/run.js"),
     import("./cli/cmd/skills.js"),
@@ -87,8 +105,9 @@ async function loadCommands() {
     import("./cli/cmd/doctor.js"),
     import("./cli/cmd/history.js"),
     import("./cli/cmd/theme.js"),
+    import("./cli/cmd/feedback.js"),
   ])
-  return { RunCommand, SkillsCommand, CronCommand, MemoryCommand, GatewayCommand, ConfigCommand, LearnCommand, DoctorCommand, HistoryCommand, ThemeCommand }
+  return { RunCommand, SkillsCommand, CronCommand, MemoryCommand, GatewayCommand, ConfigCommand, LearnCommand, DoctorCommand, HistoryCommand, ThemeCommand, FeedbackCommand }
 }
 
 const cmds = await loadCommands()
@@ -121,6 +140,7 @@ const cli = yargs(args)
   .command(cmds.DoctorCommand)
   .command(cmds.HistoryCommand)
   .command(cmds.ThemeCommand)
+  .command(cmds.FeedbackCommand)
   .usage("")
   .completion("completion", "generate shell completion script")
   .fail((msg, err) => {

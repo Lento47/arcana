@@ -66,6 +66,20 @@ type Trace = {
 
 const StreamClosed = undefined as never
 
+// Startup-phase profiling — emits JSON markers on stderr gated on
+// ARCANA_PROFILE_STARTUP. Tracks first StreamCommit (first paint proxy)
+// and first FooterPatch (footer swap proxy).
+const STREAM_PROFILE = !!process.env["ARCANA_PROFILE_STARTUP"]
+const STREAM_PROFILE_PID = process.pid
+const STREAM_PROFILE_T0 = performance.now()
+function streamEmit(phase: string, ts_ms: number) {
+  if (!STREAM_PROFILE) return
+  process.stderr.write(JSON.stringify({ phase, ts_ms, pid: STREAM_PROFILE_PID }) + "\n")
+}
+let firstCommitEmitted = false
+let firstFooterPatchEmitted = false
+streamEmit("stream_transport_module_load", STREAM_PROFILE_T0)
+
 type StreamInput = {
   sdk: OpencodeClient
   directory?: string
@@ -309,6 +323,7 @@ function firstByOrder<T extends { id: string }>(left: T[], right: T[], order: Ma
 function pickView(data: SessionData, subagent: SubagentData, order: Map<string, number>): FooterView {
   const visible = listSubagentPermissions(subagent)
   const ordered = visible
+    .map((req) => req.id)
     .filter((id) => data.permissions.some((p) => p.id === id))
     .sort((a, b) => (blockerOrder(order, a) - blockerOrder(order, b)) || a.localeCompare(b))
   return pickBlockerView({
@@ -523,6 +538,17 @@ function createLayer(input: StreamInput) {
           if (commits.length === 0 && !footer) {
             state.footerView = current
             return
+          }
+
+          if (!firstCommitEmitted && commits.length > 0) {
+            firstCommitEmitted = true
+            streamEmit("first_stream_commit", performance.now())
+            streamEmit("first_stream_commit_ms", Math.round(performance.now() - STREAM_PROFILE_T0))
+          }
+          if (!firstFooterPatchEmitted && footer !== undefined) {
+            firstFooterPatchEmitted = true
+            streamEmit("first_footer_patch", performance.now())
+            streamEmit("first_footer_patch_ms", Math.round(performance.now() - STREAM_PROFILE_T0))
           }
 
           input.trace?.write("reduce.output", {
