@@ -35,6 +35,7 @@ import { SessionSummary } from "../../src/session/summary"
 import { Instruction } from "../../src/session/instruction"
 import { SessionProcessor } from "../../src/session/processor"
 import { SessionPrompt } from "../../src/session/prompt"
+import { SessionBudget } from "../../src/session/budget"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
@@ -214,6 +215,7 @@ function makePrompt(input?: { processor?: "blocking" }) {
   )
   return SessionPrompt.layer.pipe(
     Layer.provide(SessionRevert.defaultLayer),
+    Layer.provide(SessionBudget.defaultLayer),
     Layer.provide(Image.defaultLayer),
     Layer.provide(summary),
     Layer.provideMerge(run),

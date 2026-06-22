@@ -47,7 +47,18 @@ export async function registerMcpTools(runner: AgentRunner, serverFilter?: strin
     try {
       let transport
       if (cfg.command) {
-        transport = new StdioClientTransport({ command: cfg.command[0]!, args: cfg.command.slice(1), env: cfg.env })
+        // Merge parent env — StdioClientTransport REPLACES the child env when one
+        // is given (only undefined falls back to a default with PATH), so passing
+        // bare cfg.env would strip PATH/HOME and break the server's spawn.
+        const childEnv = cfg.env
+          ? {
+              ...(Object.fromEntries(
+                Object.entries(process.env).filter(([, v]) => v !== undefined),
+              ) as Record<string, string>),
+              ...cfg.env,
+            }
+          : undefined
+        transport = new StdioClientTransport({ command: cfg.command[0]!, args: cfg.command.slice(1), env: childEnv })
       } else if (cfg.url) {
         transport = new StreamableHTTPClientTransport(new URL(cfg.url), { requestInit: cfg.headers ? { headers: cfg.headers } : undefined })
       } else continue

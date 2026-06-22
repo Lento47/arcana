@@ -80,6 +80,7 @@ NEW SYSTEM PROMPT:`
       const id = `v${Date.now()}`
       writeFileSync(join(EVOLVE_DIR, `${id}.txt`), proposed, "utf8")
       writeFileSync(join(EVOLVE_DIR, `${id}.json`), JSON.stringify({ score: 0.5, ts: new Date().toISOString(), reason: "auto-evolved" }), "utf8")
+      pruneProposals() // bound `.arcana/prompts/` growth — proposals accumulated forever
 
       const best = findBest()
       if (best && best.score > 0.6) {
@@ -102,6 +103,20 @@ function readDirJson(dir: string): any[] {
       .map((f) => { try { return JSON.parse(readFileSync(join(dir, f), "utf8")) } catch { return null } })
       .filter(Boolean)
   } catch { return [] }
+}
+
+/** Keep only the newest `keep` proposal pairs (vN.txt/vN.json); delete older. */
+function pruneProposals(keep = 10): void {
+  try {
+    const versions = readdirSync(EVOLVE_DIR)
+      .filter((f) => /^v\d+\.json$/.test(f))
+      .map((f) => f.replace(".json", ""))
+      .sort() // v + fixed-width ms timestamp → lexicographic == chronological
+    for (const id of versions.slice(0, Math.max(0, versions.length - keep))) {
+      try { unlinkSync(join(EVOLVE_DIR, `${id}.txt`)) } catch {}
+      try { unlinkSync(join(EVOLVE_DIR, `${id}.json`)) } catch {}
+    }
+  } catch { /* best-effort */ }
 }
 
 function findBest(): { id: string; score: number } | null {

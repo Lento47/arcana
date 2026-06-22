@@ -33,16 +33,12 @@ import { PluginCommand } from "./cli/cmd/plug"
 import { PluginStoreCommand } from "./cli/cmd/plugin-store"
 import { ProxyCommand } from "./cli/cmd/proxy"
 import { Heap } from "./cli/heap"
-import { DoctorCommand } from "@arcana/arcana/cli/cmd/doctor"
-import { MemoryCommand } from "@arcana/arcana/cli/cmd/memory"
-import { HistoryCommand } from "@arcana/arcana/cli/cmd/history"
-import { LearnCommand } from "@arcana/arcana/cli/cmd/learn"
 import { LicenseCommand } from "./cli/cmd/license"
-import { CronCommand } from "@arcana/arcana/cli/cmd/cron"
-import { GatewayCommand } from "@arcana/arcana/cli/cmd/gateway"
-import { SkillsCommand } from "@arcana/arcana/cli/cmd/skills"
-import { ConfigCommand } from "@arcana/arcana/cli/cmd/config"
-import { ThemeCommand } from "@arcana/arcana/cli/cmd/theme"
+// NOTE: doctor/memory/history/learn/cron/gateway/skills/config/theme are intentionally
+// NOT imported/registered here. They are in the arcana CLI's SUBCOMMANDS, so `arcana`
+// handles them in-process and never spawns the engine for them (see packages/arcana/src/index.ts).
+// Importing them eagerly pulled the whole @arcana/arcana command tree into every engine
+// cold start for nothing. (ThemeCommand was imported but never even registered.)
 import { AuditCommand } from "./cli/cmd/audit"
 import { TeamCommand } from "./cli/cmd/team"
 mark("cli-import-end")
@@ -56,7 +52,11 @@ if (!process.env.ARCANA_PROXY_KEY) {
     const keyFile = join(home, "proxy_key")
     if (existsSync(keyFile)) {
       process.env.ARCANA_PROXY_KEY = readFileSync(keyFile, "utf8").trim()
-      process.stderr.write(`[arcana] proxy key loaded from ${keyFile}\n`)
+      // Silent by default — this fired on every command (incl. --help and piped
+      // usage), leaking the local key path. Only surface it under --print-logs.
+      if (process.argv.includes("--print-logs") || process.env.ARCANA_PRINT_LOGS === "1") {
+        process.stderr.write(`[arcana] proxy key loaded from ${keyFile}\n`)
+      }
     }
   } catch {}
 }
@@ -69,7 +69,10 @@ const args = hideBin(process.argv)
 
 function show(out: string) {
   const text = out.trimStart()
-  if (!text.startsWith("opencode ")) {
+  // CLI was rebranded to `arcana` (scriptName above), so subcommand help now
+  // starts with "arcana …"; the stale "opencode " check never matched and the
+  // logo banner was being prepended to every subcommand's --help output.
+  if (!text.startsWith("arcana ")) {
     process.stderr.write(UI.logo() + EOL + EOL)
     process.stderr.write(text + EOL)
     return
@@ -138,16 +141,8 @@ const cli = yargs(args)
   .command(PluginCommand)
   .command(PluginStoreCommand)
   .command(DbCommand)
-  .command(DoctorCommand)
-  .command(MemoryCommand)
-  .command(HistoryCommand)
-  .command(LearnCommand)
   .command(LicenseCommand)
-  .command(CronCommand)
-  .command(GatewayCommand)
   .command(ProxyCommand)
-  .command(SkillsCommand)
-  .command(ConfigCommand)
   .command(TeamCommand)
   .command(AuditCommand)
   .fail((msg, err) => {

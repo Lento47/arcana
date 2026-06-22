@@ -9,7 +9,7 @@
 // The view itself is stateless except for derived memos.
 /** @jsxImportSource @opentui/solid */
 import { useTerminalDimensions } from "@opentui/solid"
-import { For, Match, Show, Switch, createEffect, createMemo, onCleanup } from "solid-js"
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import "opentui-spinner/solid"
 import { createColors, createFrames } from "@arcana/tui/ui/spinner"
 import {
@@ -789,7 +789,7 @@ export function RunFooterView(props: RunFooterViewProps) {
                               const reqs = plan()!.requests
                               if (reqs.length === 0) return
                               for (const r of reqs) {
-                                props.onPermissionReply({ requestID: r.id, reply: "once" })
+                                Promise.resolve(props.onPermissionReply({ requestID: r.id, reply: "once" }))
                                   .catch(() => {}) // already resolved — idempotent, ignore
                               }
                             }}
@@ -804,7 +804,7 @@ export function RunFooterView(props: RunFooterViewProps) {
                             onApproveSelected={(ids) => {
                               if (ids.length === 0) return
                               for (const id of ids) {
-                                props.onPermissionReply({ requestID: id, reply: "once" })
+                                Promise.resolve(props.onPermissionReply({ requestID: id, reply: "once" }))
                                   .catch(() => {})
                               }
                             }}

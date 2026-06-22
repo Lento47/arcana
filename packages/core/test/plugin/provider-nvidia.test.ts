@@ -36,7 +36,7 @@ describe("NvidiaPlugin", () => {
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.make("nvidia"))).request.headers).toEqual({
         Existing: "value",
-        "HTTP-Referer": "https://opencode.ai/",
+        "HTTP-Referer": "https://github.com/Lento47/arcana-community",
         "X-Title": "arcana",
         "X-BILLING-INVOKE-ORIGIN": "arcana",
       })
@@ -62,7 +62,7 @@ describe("NvidiaPlugin", () => {
       })
 
       expect((yield* catalog.provider.get(ProviderV2.ID.make("nvidia"))).request.headers).toEqual({
-        "HTTP-Referer": "https://opencode.ai/",
+        "HTTP-Referer": "https://github.com/Lento47/arcana-community",
         "X-Title": "arcana",
         "X-BILLING-INVOKE-ORIGIN": "arcana",
       })
@@ -90,7 +90,7 @@ describe("NvidiaPlugin", () => {
       })
 
       expect((yield* catalog.provider.get(ProviderV2.ID.make("nvidia"))).request.headers).toEqual({
-        "HTTP-Referer": "https://opencode.ai/",
+        "HTTP-Referer": "https://github.com/Lento47/arcana-community",
         "X-Title": "arcana",
         "X-BILLING-INVOKE-ORIGIN": "CustomOrigin",
       })

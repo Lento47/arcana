@@ -7,11 +7,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Lento47/arcana.git",
+    "url": "git+https://github.com/Lento47/arcana-community.git",
     "directory": "packages/http-recorder"
   },
-  "homepage": "https://github.com/Lento47/arcana/tree/dev/packages/http-recorder",
-  "bugs": "https://github.com/Lento47/arcana/issues",
+  "homepage": "https://github.com/Lento47/arcana-community/tree/dev/packages/http-recorder",
+  "bugs": "https://github.com/Lento47/arcana-community/issues",
   "keywords": [
     "effect",
     "http",

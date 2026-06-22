@@ -144,6 +144,10 @@ export class AgentRunner {
     let finalContent = ""
 
     const toolResultCache = new Map<string, { result: string; ts: number }>()
+    // Only read-only/idempotent tools may be cached. Caching side-effectful tools
+    // (bash/shell, write, edit, speak, memory_store_fact, ...) would silently skip
+    // a real second execution of an identical call within the 5s window.
+    const CACHEABLE_TOOLS = new Set(["web_search", "web_fetch", "memory_search", "skill_list"])
     for (let round = 0; round < (this.config.maxToolRounds ?? 10); round++) {
       const { model, tools } = await resolveModel(this.config, this.getToolDefs())
       const coreMessages = toCoreMessages(history)
@@ -257,7 +261,8 @@ export class AgentRunner {
             }
 
             const cacheKey = `${tc.toolName}:${JSON.stringify(tc.input)}`
-            const cached = toolResultCache.get(cacheKey)
+            const cacheable = CACHEABLE_TOOLS.has(tc.toolName)
+            const cached = cacheable ? toolResultCache.get(cacheKey) : undefined
             if (cached && (Date.now() - cached.ts) < 5000) {
               toolResultCache.delete(cacheKey)
               toolResultCache.set(cacheKey, cached)
@@ -274,6 +279,22 @@ export class AgentRunner {
                 const batchResults = await Promise.all(batchCalls.map(async (batchCall) => {
                   const batchEntry = this.tools.get(batchCall.tool)
                   if (!batchEntry) return `"${batchCall.tool}": unknown tool`
+                  // Sub-calls must pass the same guards as top-level calls — otherwise
+                  // `batch: [{tool:"bash", command:"rm -rf /"}]` bypasses them entirely.
+                  if (!this.config.godlike) {
+                    try { this.limiter.check(batchCall.tool) } catch (e) {
+                      return `"${batchCall.tool}": ${e instanceof Error ? e.message : String(e)}`
+                    }
+                    if (batchCall.tool === "shell" || batchCall.tool.includes("bash")) {
+                      const a = (batchCall.args ?? {}) as Record<string, unknown>
+                      const cmd = String(a.command ?? a.cmd ?? "")
+                      const blocked = checkDangerousCommand(cmd)
+                      if (blocked) {
+                        auditLog({ tool: batchCall.tool, args: batchCall.args, result: blocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+                        return `"${batchCall.tool}": ${blocked}`
+                      }
+                    }
+                  }
                   try {
                     const result = await batchEntry.handler(batchCall.args)
                     return `"${batchCall.tool}": ${result.slice(0, 500)}`
@@ -298,10 +319,12 @@ export class AgentRunner {
               ),
             ])
             resultStr = this.config.godlike ? resultStr : redactSecrets(resultStr)
-            toolResultCache.set(cacheKey, { result: resultStr, ts: Date.now() })
-            if (toolResultCache.size > 50) {
-              const oldest = toolResultCache.keys().next().value
-              if (oldest) toolResultCache.delete(oldest)
+            if (cacheable) {
+              toolResultCache.set(cacheKey, { result: resultStr, ts: Date.now() })
+              if (toolResultCache.size > 50) {
+                const oldest = toolResultCache.keys().next().value
+                if (oldest) toolResultCache.delete(oldest)
+              }
             }
             if (!this.config.godlike) auditLog({ tool: tc.toolName, args: tc.input, result: resultStr.slice(0, 200), session: this.sessionId ?? undefined, ts: new Date().toISOString() })
             toolHistory.push({ name: tc.toolName, ts: Date.now() })

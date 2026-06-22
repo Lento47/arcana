@@ -26,12 +26,13 @@ export const DEFAULT_BUDGET_CONFIG: BudgetConfig = {
   maxDurationMs: 15 * 60 * 1000,
 }
 
+const NonNegInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 export const BudgetConfig = Schema.Struct({
-  maxDestructiveOps: Schema.NonNegativeInt,
-  maxFilesTouched: Schema.NonNegativeInt,
-  maxLocChanged: Schema.NonNegativeInt,
-  maxExternalCalls: Schema.NonNegativeInt,
-  maxDurationMs: Schema.Number.pipe(Schema.nonNegative()),
+  maxDestructiveOps: NonNegInt,
+  maxFilesTouched: NonNegInt,
+  maxLocChanged: NonNegInt,
+  maxExternalCalls: NonNegInt,
+  maxDurationMs: NonNegInt,
 })
 export type BudgetConfig = Schema.Schema.Type<typeof BudgetConfig>
 

@@ -91,6 +91,34 @@ export async function loadSkills(skillDirs: string[]): Promise<SkillCatalog[]> {
 }
 
 export async function loadSkillBody(skillId: string, skillDirs: string[]): Promise<string> {
+  // Fast path: the shared cache already stores each skill's body (`content`,
+  // frontmatter stripped) and its `location`. Return the cached body directly
+  // instead of recursively scanning + parsing every skill on disk.
+  try {
+    if (existsSync(CACHE_PATH)) {
+      const cached = JSON.parse(readFileSync(CACHE_PATH, "utf8"))
+      const skills = cached?.skills as Record<string, any> | undefined
+      if (skills) {
+        let info = skills[skillId]
+        if (!info) {
+          // fallback match: cache key may differ from the recomputed id
+          for (const [id, v] of Object.entries(skills)) {
+            const computed = ((v as any).name ?? id).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+            if (id === skillId || computed === skillId) { info = v; break }
+          }
+        }
+        if (typeof info?.content === "string" && info.content.trim()) {
+          return info.content.trim()
+        }
+        if (info?.location && existsSync(info.location)) {
+          const raw = await readFile(info.location, "utf8")
+          return matter(raw).content.trim()
+        }
+      }
+    }
+  } catch { /* cache stale/corrupt — fall back to scan */ }
+
+  // Fallback: recursive filesystem scan (cold cache / cache miss).
   for (const dir of skillDirs.filter(d => existsSync(d))) {
     const found = await findSkillBodyFile(dir, skillId)
     if (found !== null) return found

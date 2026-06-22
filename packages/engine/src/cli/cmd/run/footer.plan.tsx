@@ -17,6 +17,7 @@
 /** @jsxImportSource @opentui/solid */
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { For, createEffect, createMemo, createSignal } from "solid-js"
+import type { ColorInput } from "@opentui/core"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { permissionInfo } from "./permission.shared"
 import { footerWidthPolicy } from "./footer.width"
@@ -49,7 +50,7 @@ function riskLabel(request: PermissionRequest): { level: RiskLevel; label: strin
 
   // Shell commands — inspect the actual command line, not the description
   if (tool === "bash" || tool === "shell") {
-    const cmd = (request.input as any)?.command ?? (request.metadata as any)?.command ?? ""
+    const cmd = (request as any).input?.command ?? (request.metadata as any)?.command ?? ""
     if (DANGER_PATTERN.test(cmd)) return { level: "danger", label: "DANGER" }
     if (MUTATE_PATTERN.test(cmd)) return { level: "mutate", label: "MUTATE" }
     if (/curl|wget|fetch|api\./.test(cmd)) return { level: "mutate", label: "NETWORK" }
@@ -74,7 +75,7 @@ function riskLabel(request: PermissionRequest): { level: RiskLevel; label: strin
   return { level: "write", label: "WRITE" }
 }
 
-function riskColor(level: RiskLevel, theme: RunFooterTheme): string {
+function riskColor(level: RiskLevel, theme: RunFooterTheme): ColorInput {
   switch (level) {
     case "danger": return theme.error
     case "mutate": return theme.warning
@@ -214,7 +215,7 @@ export function RunPlanBody(props: {
     } else if (event.name === "right" || event.name === "down") {
       event.preventDefault()
       setSelectedIndex((prev) => prev + 1)
-    } else if (event.name === "space" || (event.char && event.char === " ")) {
+    } else if (event.name === "space" || event.sequence === " ") {
       event.preventDefault()
       const idx = clampedIndex()
       const line = lines().lines[idx]
@@ -228,10 +229,10 @@ export function RunPlanBody(props: {
         }
         return next
       })
-    } else if (event.char === "r" && planState() === "partial") {
+    } else if (event.sequence === "r" && planState() === "partial") {
       event.preventDefault()
       props.onRetryFailed?.()
-    } else if (event.char === "R" && planState() === "partial") {
+    } else if (event.sequence === "R" && planState() === "partial") {
       event.preventDefault()
       props.onReRunAll?.()
     }
@@ -310,7 +311,7 @@ export function RunPlanBody(props: {
         </box>
       )}
 
-      <box flexDirection="row" height={1} borderTop={1} borderColor={borderColor()} gap={1}>
+      <box flexDirection="row" height={1} border={["top"]} borderColor={borderColor()} gap={1}>
         <text fg={borderColor()}>
           {risk() === "danger" ? "⛔ DANGER" : risk() === "mutate" ? "⚠ MUTATE" : risk() === "write" ? "◈ WRITE" : "● SAFE"}
         </text>

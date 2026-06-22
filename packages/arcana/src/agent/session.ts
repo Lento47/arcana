@@ -26,12 +26,17 @@ export class SessionManager {
     this.sessionId = sessionId
     const dbMessages = this.memory.getMessages(sessionId)
     if (dbMessages.length) {
-      this.messages = dbMessages.map((m) => {
-        if (m.role === "tool") return { role: "tool" as const, tool_call_id: "", content: m.content }
-        if (m.role === "system") return { role: "system" as const, content: m.content }
-        if (m.role === "assistant") return { role: "assistant" as const, content: m.content }
-        return { role: "user" as const, content: m.content }
-      })
+      // Drop tool-role messages on resume: the store never persists tool_call_id
+      // (nor the assistant's tool_calls), so rebuilding them yields orphaned tool
+      // messages with empty ids — invalid history that 400s most providers. The
+      // assistant's text responses remain, preserving the conversation context.
+      this.messages = dbMessages
+        .filter((m) => m.role !== "tool")
+        .map((m) => {
+          if (m.role === "system") return { role: "system" as const, content: m.content }
+          if (m.role === "assistant") return { role: "assistant" as const, content: m.content }
+          return { role: "user" as const, content: m.content }
+        })
     } else if (systemPrompt) {
       this.messages = [{ role: "system", content: systemPrompt }]
     }

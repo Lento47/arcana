@@ -84,6 +84,7 @@ it.live("makeRuntime inherits InstanceRef from the current fiber", () =>
         time: { created: 0, updated: 0 },
         sandboxes: [],
       },
+      startedAt: 0,
     }),
   ),
 )

@@ -320,7 +320,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
         const data = yield* response.text
         const version = data.trim().replace(/^v/, "")
         if (!version || !/^\d+\.\d+\.\d+/.test(version)) {
-          return yield* Effect.dieMessage(`Invalid version from releases: ${data}`)
+          return yield* Effect.die(new Error(`Invalid version from releases: ${data}`))
         }
         return version
       }, Effect.orDie),

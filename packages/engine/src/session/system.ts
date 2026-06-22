@@ -2,6 +2,7 @@ import { LayerNode } from "@arcana/core/effect/layer-node"
 import { Context, Effect, Layer } from "effect"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { readdirSync, readFileSync, statSync } from "node:fs"
 import { Database } from "bun:sqlite"
 
 import { InstanceState } from "@/effect/instance-state"
@@ -39,6 +40,81 @@ export function provider(model: Provider.Model) {
   if (model.api.id.toLowerCase().includes("trinity")) return [PROMPT_TRINITY]
   if (model.api.id.toLowerCase().includes("kimi")) return [PROMPT_KIMI]
   return [PROMPT_DEFAULT]
+}
+
+// ---------------------------------------------------------------------------
+// Cached resources for SystemPrompt.memory — avoid per-turn fs + db churn.
+// memory() runs on every system-prompt build (i.e. every LLM request).
+// ---------------------------------------------------------------------------
+
+let _memoryDb: Database | null = null
+let _memoryStmt: ReturnType<Database["prepare"]> | null = null
+
+/** Lazily open one shared readonly handle + prepared statement; reuse across turns. */
+function getMemoryStmt() {
+  if (_memoryStmt) return _memoryStmt
+  try {
+    const dbPath = join(homedir(), ".arcana", "data", "memory.db")
+    _memoryDb = new Database(dbPath, { readonly: true })
+    _memoryStmt = _memoryDb.prepare(
+      "SELECT key, value, confidence FROM user_facts WHERE confidence >= 0.5 ORDER BY confidence DESC, updated_at DESC LIMIT 5",
+    )
+  } catch {
+    _memoryDb = null
+    _memoryStmt = null
+  }
+  return _memoryStmt
+}
+
+/** Drop the cached handle so the next turn re-opens (e.g. db replaced/corrupted). */
+function resetMemoryDb() {
+  try { _memoryDb?.close() } catch { /* already closed */ }
+  _memoryDb = null
+  _memoryStmt = null
+}
+
+interface LearnedEntry { slug: string; excerpt: string }
+let _learnedCache: { mtimeMs: number; entries: LearnedEntry[] } | null = null
+
+/**
+ * Read + parse learned-wiki excerpts, cached and invalidated on the learned
+ * dir's mtime (changes when files are added/removed). Avoids re-reading every
+ * .md on every turn; content-only edits to an existing file are rare.
+ */
+function getLearnedEntries(): LearnedEntry[] {
+  try {
+    const learnedDir = join(homedir(), ".arcana", "learned")
+    const st = statSync(learnedDir)
+    if (_learnedCache && _learnedCache.mtimeMs === st.mtimeMs) return _learnedCache.entries
+    const files = readdirSync(learnedDir).filter((f) => f.endsWith(".md"))
+    const entries: LearnedEntry[] = files.map((f) => {
+      const slug = f.replace(".md", "")
+      const body = readFileSync(join(learnedDir, f), "utf-8")
+      const excerpt = body
+        .split("\n")
+        .filter((l) => !l.startsWith("---") && !l.startsWith("tags:") && !l.startsWith("date:") && !l.startsWith("source:") && !l.startsWith("Related:") && l.trim())
+        .slice(0, 2)
+        .join(" ")
+        .slice(0, 150)
+      return { slug, excerpt }
+    })
+    _learnedCache = { mtimeMs: st.mtimeMs, entries }
+    return entries
+  } catch {
+    return []
+  }
+}
+
+/** Pick up to `n` distinct random entries (unbiased — no sort-comparator hack). */
+function pickRandom<T>(arr: T[], n: number): T[] {
+  const pool = arr.slice()
+  const out: T[] = []
+  const count = Math.min(n, pool.length)
+  for (let i = 0; i < count; i++) {
+    const idx = Math.floor(Math.random() * pool.length)
+    out.push(pool.splice(idx, 1)[0])
+  }
+  return out
 }
 
 export interface Interface {
@@ -98,40 +174,29 @@ export const layer = Layer.effect(
       memory: Effect.fn("SystemPrompt.memory")(function* () {
         const parts: string[] = []
 
-        // Read user facts from shared SQLite DB (same as CLI writes to)
-        try {
-          const dbPath = join(homedir(), ".arcana", "data", "memory.db")
-          const db = new Database(dbPath, { readonly: true })
-          const rows = db.prepare("SELECT key, value, confidence FROM user_facts WHERE confidence >= 0.5 ORDER BY confidence DESC, updated_at DESC LIMIT 5").all() as Array<{ key: string; value: string; confidence: number }>
-          db.close()
-          if (rows.length) {
-            const lines = rows.map((r) => `- ${r.key}: ${r.value}`)
-            parts.push("<persistent-memory>\nThese facts were stored by the user or learned from past sessions and persist across conversations:\n" + lines.join("\n") + "\n</persistent-memory>")
-          }
-        } catch { /* DB may not exist yet */ }
-
-        // Read learned wiki entries
-        try {
-          const arcanaHome = join(homedir(), ".arcana")
-          const learnedDir = join(arcanaHome, "learned")
-          const fsMod = yield* Effect.tryPromise(() => import("node:fs")).pipe(Effect.catch(() => Effect.succeed(null)))
-          if (fsMod) {
-            const { readdirSync, readFileSync, existsSync } = fsMod
-            if (existsSync(learnedDir)) {
-              const files = readdirSync(learnedDir).filter((f: string) => f.endsWith(".md"))
-              if (files.length) {
-                const chosen = files.sort(() => Math.random() - 0.5).slice(0, 2)
-                const entries = chosen.map((f: string) => {
-                  const slug = f.replace(".md", "")
-                  const body = readFileSync(join(learnedDir, f), "utf-8")
-                  const excerpt = body.split("\n").filter((l: string) => !l.startsWith("---") && !l.startsWith("tags:") && !l.startsWith("date:") && !l.startsWith("source:") && !l.startsWith("Related:") && l.trim()).slice(0, 2).join(" ").slice(0, 150)
-                  return `- [[${slug}]]: ${excerpt}`
-                })
-                parts.push("<persistent-memory>\nKnowledge learned from past sessions:\n" + entries.join("\n") + "\n</persistent-memory>")
-              }
+        // Read user facts from shared SQLite DB (same as CLI writes to).
+        // Reuses one cached readonly handle + prepared statement across turns.
+        const stmt = getMemoryStmt()
+        if (stmt) {
+          try {
+            const rows = stmt.all() as Array<{ key: string; value: string; confidence: number }>
+            if (rows.length) {
+              const lines = rows.map((r) => `- ${r.key}: ${r.value}`)
+              parts.push("<persistent-memory>\nThese facts were stored by the user or learned from past sessions and persist across conversations:\n" + lines.join("\n") + "\n</persistent-memory>")
             }
+          } catch {
+            // handle went bad (db replaced/corrupted) — drop it, retry next turn
+            resetMemoryDb()
           }
-        } catch { /* best-effort */ }
+        }
+
+        // Read learned wiki entries (cached; invalidated on dir mtime).
+        const learned = getLearnedEntries()
+        if (learned.length) {
+          const chosen = pickRandom(learned, 2)
+          const lines = chosen.map((e) => `- [[${e.slug}]]: ${e.excerpt}`)
+          parts.push("<persistent-memory>\nKnowledge learned from past sessions:\n" + lines.join("\n") + "\n</persistent-memory>")
+        }
 
         return parts.length ? parts.join("\n") : undefined
       }),
@@ -140,7 +205,10 @@ export const layer = Layer.effect(
         if (Permission.disabled(["skill"], agent.permission).has("skill")) return
 
         const list = yield* skill.available(agent)
-        const MAX_SKILLS = 40
+        // Cap how many skills are inlined in the system prompt. Overridable via
+        // ARCANA_MAX_SKILLS; defaults to 40. The rest stay reachable via skill_list.
+        const envMax = Number(process.env["ARCANA_MAX_SKILLS"])
+        const MAX_SKILLS = Number.isInteger(envMax) && envMax > 0 ? envMax : 40
         const shown = list.length > MAX_SKILLS
           ? list.slice(0, MAX_SKILLS)
           : list

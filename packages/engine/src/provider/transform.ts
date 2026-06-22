@@ -186,6 +186,31 @@ function normalizeMessages(
       .filter((msg): msg is ModelMessage => msg !== undefined && msg.content !== "")
   }
 
+  // Gemini/Google rejects empty content turns too — drop empty string messages
+  // and empty text/reasoning parts (keep reasoning that carries a thought signature).
+  if (model.api.npm === "@ai-sdk/google") {
+    msgs = msgs
+      .map((msg) => {
+        if (typeof msg.content === "string") {
+          if (msg.content === "") return undefined
+          return msg
+        }
+        if (!Array.isArray(msg.content)) return msg
+        const filtered = msg.content.filter((part) => {
+          if (part.type === "text") {
+            return part.text !== ""
+          }
+          if (part.type === "reasoning") {
+            return part.text.trim().length > 0 || part.providerOptions?.google != null
+          }
+          return true
+        })
+        if (filtered.length === 0) return undefined
+        return { ...msg, content: filtered }
+      })
+      .filter((msg): msg is ModelMessage => msg !== undefined && msg.content !== "")
+  }
+
   if (model.api.id.includes("claude")) {
     const scrub = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "_")
     msgs = msgs.map((msg) => {

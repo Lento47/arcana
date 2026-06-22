@@ -22,7 +22,7 @@ export const APP_ABBR = "ARC"
  * arcana-owned URLs exist — swap these two in one place when they do.
  */
 export const DOCS_URL = "https://arcana.ai/docs"
-export const BUG_URL = "https://github.com/Lento47/arcana/issues/new"
+export const BUG_URL = "https://github.com/Lento47/arcana-community/issues/new"
 
 /** Notification sound-pack display name (id stays as registered in core). */
 export const SOUND_PACK_NAME = "Arcana Default"

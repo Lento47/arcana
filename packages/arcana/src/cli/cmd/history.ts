@@ -18,7 +18,11 @@ export const HistoryCommand: CommandModule = {
 
     if (action === "show" || action === "resume") {
       if (!args.id) { console.error("--id required"); process.exit(1) }
-      const session = memory.getSession(String(args.id))
+      const wanted = String(args.id)
+      // `history list` displays 8-char IDs — resolve a prefix to the full session
+      // (getSession is exact-match), so the IDs users see actually work here.
+      let session = memory.getSession(wanted)
+      if (!session) session = memory.listSessions(1000).find((s) => s.id.startsWith(wanted)) ?? null
       if (!session) { console.error(`Session not found: ${args.id}`); process.exit(1) }
 
       if (action === "resume") {

@@ -1198,7 +1198,10 @@ export const layer = Layer.effect(
               })
               yield* events.publish(Session.Event.Error, {
                 sessionID,
-                error: budgetError.toObject(),
+                // BudgetExceededError is an engine-side error not present in the core
+                // SessionV1 error union; surface it as UnknownError (full detail is
+                // already logged above) so the event payload stays schema-valid.
+                error: { name: "UnknownError", data: { message: budgetError.data.message } },
               })
               break
             }
@@ -1595,6 +1598,10 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(SessionBudget.defaultLayer),
     Layer.provide(SessionSummary.defaultLayer),
     Layer.provide(Image.defaultLayer),
+    // Chained .pipe() — `pipe()` overloads cap at 20 operations; this layer has 21
+    // provides, so the final mergeAll provide goes in a second .pipe() call.
+    // Semantically identical: a.pipe(...x).pipe(y) === a.pipe(...x, y).
+  ).pipe(
     Layer.provide(
       Layer.mergeAll(
         Agent.defaultLayer,

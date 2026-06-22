@@ -148,10 +148,23 @@ export const RunCommand: CommandModule = {
       // Rotate facts — pick 3 from top 10 weighted by confidence, different each session
       const facts = memory.getTopFacts(10, 0.4)
       if (facts.length) {
-        // Weighted random: higher confidence = more likely to be picked
+        // Weighted random sample without replacement: higher confidence = more
+        // likely. (Was `sort(() => Math.random() - 0.5)` — a non-transitive
+        // comparator that is neither a valid shuffle nor confidence-weighted.)
         const pick = (pool: typeof facts, n: number) => {
-          const sorted = [...pool].sort(() => Math.random() - 0.5)
-          return sorted.slice(0, Math.min(n, sorted.length))
+          const remaining = [...pool]
+          const out: typeof facts = []
+          for (let i = 0; i < n && remaining.length; i++) {
+            const totalW = remaining.reduce((s, f) => s + Math.max(f.confidence, 0.01), 0)
+            let r = Math.random() * totalW
+            let idx = 0
+            for (; idx < remaining.length - 1; idx++) {
+              r -= Math.max(remaining[idx]!.confidence, 0.01)
+              if (r <= 0) break
+            }
+            out.push(remaining.splice(idx, 1)[0]!)
+          }
+          return out
         }
         const chosen = pick(facts, 3)
         const factLines = chosen
@@ -182,10 +195,14 @@ export const RunCommand: CommandModule = {
       try {
         const { readdirSync, readFileSync, existsSync } = await import("node:fs")
         if (existsSync(learnedDir)) {
-          const files = readdirSync(learnedDir)
-            .filter((f: string) => f.endsWith(".md"))
-            .sort(() => Math.random() - 0.5) // shuffle for variety
-            .slice(0, 2)
+          const allFiles = readdirSync(learnedDir).filter((f: string) => f.endsWith(".md"))
+          // Pick up to 2 at random (unbiased). Was `sort(() => Math.random() - 0.5)`,
+          // a non-transitive comparator that is not a valid shuffle.
+          const files: string[] = []
+          const poolF = [...allFiles]
+          for (let i = 0; i < 2 && poolF.length; i++) {
+            files.push(poolF.splice(Math.floor(Math.random() * poolF.length), 1)[0]!)
+          }
           if (files.length) {
             const entries = files.map((f: string) => {
               const slug = f.replace(".md", "")
