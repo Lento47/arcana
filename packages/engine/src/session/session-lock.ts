@@ -237,6 +237,15 @@ export function checkLock(projectRoot: string): LockStatus {
   }
 }
 
+/**
+ * True if the given lock is held by the current process. Used to avoid
+ * warning about a "concurrent session" when a single arcana invocation
+ * creates multiple sessions in the same project (e.g. /new, /fork, subagents).
+ */
+export function isOwnLock(lock: SessionLockData): boolean {
+  return lock.pid === process.pid
+}
+
 // ---------------------------------------------------------------------------
 // Acquire / release (Effect wrappers)
 // ---------------------------------------------------------------------------
@@ -307,6 +316,23 @@ export function acquireLock(
     }
 
     case "active": {
+      // The lock is held by an active process. If that process is US, the
+      // caller is just creating another session in the same arcana
+      // invocation — refresh the lock (so the timestamp stays current for
+      // the PID-recycle grace check) and return success silently.
+      if (isOwnLock({
+        pid: status.pid,
+        timestamp: status.timestamp,
+      })) {
+        writeLock(projectRoot, {
+          pid: process.pid,
+          ppid: process.ppid,
+          timestamp: Date.now(),
+          sessionId,
+        })
+        trackLock(lockPath)
+        return "acquired"
+      }
       console.warn(
         `[arcana] Another arcana session is active (PID ${status.pid}). Concurrent sessions may conflict.`,
       )

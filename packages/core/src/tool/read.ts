@@ -15,6 +15,16 @@ import { Tools } from "./tools"
 
 export const name = "read"
 const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
+// Build a pagination object that only includes defined keys. Spreading
+// { offset: undefined, limit: undefined } would create a real property
+// and break consumers/tests that distinguish "no page params" from
+// "page params with undefined values".
+function pageWith(offset: number | undefined, limit: number | undefined): ReadToolFileSystem.PageInput {
+  return {
+    ...(offset !== undefined ? { offset } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+  }
+}
 const LocationInput = Schema.Struct({
   path: Schema.String,
   offset: ReadToolFileSystem.PageInput.fields.offset.annotate({
@@ -75,11 +85,9 @@ export const layer = Layer.effectDiscard(
                 agent: context.agent,
                 source: { type: "tool", messageID: context.assistantMessageID, callID: context.toolCallID },
               })
-              if (type === "directory") return yield* reader.list(target, { offset: input.offset, limit: input.limit })
-              const content = yield* reader.read(target, resource, {
-                offset: input.offset,
-                limit: input.limit,
-              })
+              if (type === "directory")
+                return yield* reader.list(target, pageWith(input.offset, input.limit))
+              const content = yield* reader.read(target, resource, pageWith(input.offset, input.limit))
               if ("encoding" in content && content.encoding === "base64" && SUPPORTED_IMAGE_MIMES.has(content.mime)) {
                 return yield* image
                   .normalize(resource, { ...content, encoding: "base64" })
