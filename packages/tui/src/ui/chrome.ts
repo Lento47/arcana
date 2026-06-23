@@ -11,6 +11,7 @@
  */
 
 import { EmptyBorder } from "./border"
+import type { RGBA } from "@opentui/core"
 
 /** Heavy square frame — primary cyberpunk panel chrome. */
 export const FrameBorder = {
@@ -87,3 +88,32 @@ export const Size = {
   dialogLarge: 88,
   dialogXLarge: 116,
 } as const
+
+/**
+ * Theme token names that the brand surface touches. Use with a resolved Theme
+ * to pull the canonical accent / highlight / muted color for sigils, idle
+ * phrase chrome, and splash transition glyphs.
+ */
+export const BrandToken = {
+  /** Primary brand accent — sigils, idle phrases, splashes (violet/gold per theme). */
+  sigil: "accent",
+  /** Quiet chrome for secondary brand marks in status bar / chrome bar. */
+  chrome: "highlight",
+  /** Dimmed brand marks used when the footer / status row is at rest. */
+  muted: "muted",
+} as const
+
+export type BrandTokenName = (typeof BrandToken)[keyof typeof BrandToken]
+
+/**
+ * Resolve a brand token to its RGBA color from a resolved Theme. Provides a
+ * single import surface for engine callers that don't otherwise touch the
+ * theme module.
+ */
+export function pickBrandColor(
+  theme: { accent: RGBA; highlight?: RGBA },
+  name: BrandTokenName = BrandToken.sigil,
+): RGBA {
+  if (name === BrandToken.sigil) return theme.accent
+  return theme.highlight ?? theme.accent
+}

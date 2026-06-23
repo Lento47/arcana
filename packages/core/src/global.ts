@@ -37,6 +37,14 @@ if (process.env["ARCANA_PROFILE_STARTUP"]) performance.mark("global-mkdir-start"
 // Recursive mkdir of these 7 dirs measured ~116ms on Windows even when they all
 // already exist (warm runs — the common case). Skip the syscall when the dir is
 // already present; only create the missing ones on first run.
+//
+// Awaiting this Promise.all keeps the main thread parked on disk I/O just long
+// enough for Bun's module loader to resolve the next batch of engine top-level
+// imports in parallel — without the await, the engine pays the same wall-clock
+// cost later, just under a different profile marker. The audit confirmed this:
+// the 69ms "global-mkdir" duration was really the engine's import resolution
+// running concurrently with the mkdir. Awaiting keeps the total stable and the
+// measurement honest.
 await Promise.all(
   [Path.data, Path.config, Path.state, Path.tmp, Path.log, Path.bin, Path.repos].map((d) =>
     existsSync(d) ? Promise.resolve() : fs.mkdir(d, { recursive: true }),

@@ -19,7 +19,14 @@ import {
 } from "@opentui/core"
 import * as Locale from "@/util/locale"
 import { go } from "@/cli/logo"
+import { APP_NAME, BOOT_PHRASES, SIGIL_SEQUENCE, SIGIL_STEP_MS } from "@arcana/tui/branding"
 import type { RunSplashTheme } from "./theme"
+
+/** Pick a deterministic boot phrase per session id for first-paint brand surface. */
+export function pickBootPhrase(seed: string): string {
+  const hash = Array.from(seed).reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) >>> 0, 0)
+  return BOOT_PHRASES[hash % BOOT_PHRASES.length] ?? BOOT_PHRASES[0] ?? ""
+}
 
 export const SPLASH_TITLE_LIMIT = 50
 export const SPLASH_TITLE_FALLBACK = "Untitled session"
@@ -182,8 +189,13 @@ function build(input: SplashWriterInput, kind: "entry" | "exit", ctx: Scrollback
 
   if (kind === "entry") {
     const mark = go.right.slice(1)
+    // Brand header sits one row above the wordmark — divining verb + APP_NAME.
+    const firstSigil: string = SIGIL_SEQUENCE[0] ?? "◆"
+    const brandLine = `${firstSigil} ${pickBootPhrase(meta.session_id)} — ${APP_NAME}`
     const top = 1
     const body_left = (mark[0]?.length ?? 0) + 2
+
+    push(lines, 0, 0, Locale.truncate(brandLine, Math.max(1, width)), left, undefined, TextAttributes.DIM)
 
     for (let i = 0; i < mark.length; i += 1) {
       draw(lines, mark[i] ?? "", {
@@ -194,7 +206,7 @@ function build(input: SplashWriterInput, kind: "entry" | "exit", ctx: Scrollback
       })
     }
 
-    push(lines, body_left, top, "arcana", right, undefined, TextAttributes.BOLD)
+    push(lines, body_left, top, APP_NAME, right, undefined, TextAttributes.BOLD)
     if (input.detail) {
       push(
         lines,
@@ -278,3 +290,59 @@ export function entrySplash(input: SplashWriterInput): ScrollbackWriter {
 export function exitSplash(input: SplashWriterInput): ScrollbackWriter {
   return (ctx) => build(input, "exit", ctx)
 }
+
+/**
+ * Sigil transition — writes the brand sigil sequence (◆ ▰ ❯ ⛧ ✦ ◈) one
+ * glyph per row into scrollback. Each row is rendered with the right (fg)
+ * color and the left (shadow) tone as its shadow. This sits before the
+ * wordmark in `entrySplash` so the brand surface is the first paint the
+ * user sees, in order, with the configured per-step delay.
+ */
+export function sigilTransition(input: { theme: RunSplashTheme; seed?: string }): ScrollbackWriter {
+  return (ctx) => {
+    const width = Math.max(1, ctx.width)
+    const left = input.theme.left
+    const right = input.theme.right
+    const leftShadow = input.theme.leftShadow
+    const lines: Array<{ left: number; top: number; text: string; fg: ColorInput; bg?: ColorInput; attrs?: number }> = []
+
+    // Header row with the deterministic boot phrase so the sigils read as a
+    // bounded transition rather than dead glyphs.
+    const phrase = pickBootPhrase(input.seed ?? "")
+    push(lines, 0, 0, phrase ? `◆ ${phrase}` : "◆", right, undefined, TextAttributes.DIM)
+
+    SIGIL_SEQUENCE.forEach((glyph, idx) => {
+      // Each glyph sits in its own row; render shadow as a faded duplicate to
+      // mimic a one-cell jitter that the eye reads as motion.
+      push(lines, idx * 2, 1 + idx, glyph, right, undefined, idx === 0 ? TextAttributes.BOLD : undefined)
+      if (idx > 0) {
+        push(lines, idx * 2 - 1, 1 + idx, glyph, left, undefined, TextAttributes.DIM)
+      }
+      // Shadow underline tying the sequence back to the brand chrome.
+      push(lines, idx * 2, 2 + idx, "▰", leftShadow, undefined, TextAttributes.DIM)
+    })
+
+    const height = SIGIL_SEQUENCE.length + 2
+    const root = new BoxRenderable(ctx.renderContext, {
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width,
+      height,
+    })
+
+    for (const line of lines) write(root, ctx, line)
+
+    return {
+      root,
+      width,
+      height,
+      rowColumns: width,
+      startOnNewLine: true,
+      trailingNewline: false,
+    }
+  }
+}
+
+/** Per-step delay (ms) for the sigil transition; matches SIGIL_STEP_MS. */
+export const SIGIL_TRANSITION_STEP_MS = SIGIL_STEP_MS

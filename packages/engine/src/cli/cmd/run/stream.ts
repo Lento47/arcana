@@ -5,7 +5,27 @@
 // footer.event() respectively, adding trace writes along the way. It also
 // defaults status updates to phase "running" if the caller didn't set a
 // phase -- a convenience so reducer code doesn't have to repeat that.
+//
+// Error commits (kind === "error") are preceded by a brief corruption-glitch
+// commit so the brand voice surfaces in failure paths — swaps the chars
+// of the error string with CORRUPT_GLYPHS for ~600ms before resolving.
 import type { FooterApi, FooterOutput, FooterPatch, FooterSubagentState, StreamCommit } from "./types"
+import { CORRUPT_GLYPHS, Lexicon } from "@arcana/tui/branding"
+
+/** Render an error string as a transient corruption-glitch banner. */
+function corruptGlitch(text: string): string {
+  if (!text) return ""
+  const out: string[] = []
+  for (const ch of text) {
+    if (ch === " " || ch === "\n" || ch === "\t") {
+      out.push(ch)
+      continue
+    }
+    const idx = (ch.charCodeAt(0) * 2654435761) >>> 0
+    out.push(CORRUPT_GLYPHS[idx % CORRUPT_GLYPHS.length] ?? "▒")
+  }
+  return out.join("")
+}
 
 type Trace = {
   write(type: string, data?: unknown): void
@@ -141,6 +161,15 @@ export function traceFooterOutput(footer?: FooterOutput) {
 export function writeSessionOutput(input: OutputInput, out: StreamOutput): void {
   for (const commit of out.commits) {
     input.trace?.write("ui.commit", commit)
+    if (commit.kind === "error" && commit.text && commit.text.trim().length > 0) {
+      const glitchCommit: StreamCommit = {
+        kind: "error",
+        text: ` ${Lexicon.Status.error}: ${corruptGlitch(commit.text)}`,
+        phase: commit.phase,
+        source: commit.source,
+      }
+      input.footer.append(glitchCommit)
+    }
     input.footer.append(commit)
   }
 

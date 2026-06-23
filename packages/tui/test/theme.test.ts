@@ -79,3 +79,34 @@ test("custom theme precedence follows directory order", async () => {
 
   await expect(discoverThemes([global, project])).resolves.toEqual({ custom: { source: "project" } })
 })
+
+const BRAND_THEMES: string[] = ["arcana", "bloodmoon", "coven", "crypt", "dragon", "lich", "wraith"]
+
+test.each(BRAND_THEMES)("%s theme defines a brand-surface accent token", (name: string) => {
+  const json = DEFAULT_THEMES[name]
+  expect(json).toBeDefined()
+  expect(json.theme.accent).toBeDefined()
+})
+
+test.each(BRAND_THEMES)("%s theme resolves to a visible accent color in dark mode", (name: string) => {
+  const resolved = resolveTheme(structuredClone(DEFAULT_THEMES[name]!), "dark")
+  expect(resolved.accent).toBeDefined()
+  // accent must be opaque and have non-zero RGB so the sigil glyphs render
+  const { r, g, b, a } = resolved.accent
+  expect(a).toBeGreaterThan(0)
+  expect(r + g + b).toBeGreaterThan(0)
+})
+
+test.each(BRAND_THEMES)("%s theme resolves to a visible accent color in light mode", (name: string) => {
+  const resolved = resolveTheme(structuredClone(DEFAULT_THEMES[name]!), "light")
+  const { r, g, b, a } = resolved.accent
+  expect(a).toBeGreaterThan(0)
+  expect(r + g + b).toBeGreaterThan(0)
+})
+
+test("brand themes all share the same accent token name (sigils stay theme-correct)", () => {
+  for (const name of BRAND_THEMES) {
+    const json = DEFAULT_THEMES[name]!
+    expect(json.theme.accent).toBeDefined()
+  }
+})

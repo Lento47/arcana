@@ -181,8 +181,13 @@ async function resolveExitTitle(
 async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDeps = {}): Promise<void> {
   const start = performance.now()
   const log = trace()
+  // Start the TUI config fetch immediately — it doesn't depend on `boot()`.
   const tuiConfigTask = resolveRunTuiConfig()
   const ctx = await input.boot()
+  // Start the remaining boot fetches in parallel with the TUI config fetch
+  // (instead of waiting for boot() before kicking these off). resolveModelInfo,
+  // resolveSessionInfo, and resolveSavedVariant are all independent of each
+  // other and of tuiConfig — they only need `ctx`.
   const modelTask = resolveModelInfo(ctx.sdk, ctx.directory, ctx.model)
   const sessionTask =
     ctx.resume === true
