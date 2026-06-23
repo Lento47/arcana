@@ -10,6 +10,39 @@ import { join, dirname } from "node:path"
 import { mkdirSync, writeFileSync, existsSync } from "node:fs"
 import { initBoard, loadBoard, saveBoard, addCard, moveCard, archiveDone, formatBoard, type KanbanCard } from "./kanban.js"
 
+// ── Artifact schema (inlined — originally from @arcana/core/artifact/schema;
+//     the dynamic import violated this package's tsconfig rootDir, and the
+//     schema is small enough to live next to the tools that use it). ─────
+type ArtifactType = "markdown" | "code" | "svg" | "html" | "diagram" | "react"
+interface ArtifactVersion { version: number; content: string; created_at: number; session_id?: string }
+interface ArtifactInfo {
+  id: string; title: string; type: ArtifactType; tags: string[]
+  session_id?: string; versions: ArtifactVersion[]; current_version: number
+  created_at: number; updated_at: number
+}
+function createArtifact(
+  id: string, title: string, content: string, type: ArtifactType = "markdown",
+  session_id?: string, tags: string[] = [],
+): ArtifactInfo {
+  const now = Date.now()
+  return {
+    id, title, type, tags, session_id,
+    versions: [{ version: 1, content, created_at: now, session_id }],
+    current_version: 1, created_at: now, updated_at: now,
+  }
+}
+function addVersion(artifact: ArtifactInfo, content: string, session_id?: string): ArtifactInfo {
+  const next = artifact.versions.length + 1
+  artifact.versions.push({ version: next, content, created_at: Date.now(), session_id })
+  artifact.current_version = next
+  artifact.updated_at = Date.now()
+  return artifact
+}
+function getArtifactVersion(artifact: ArtifactInfo, version?: number) {
+  if (version === undefined) return artifact.versions.find((v) => v.version === artifact.current_version)
+  return artifact.versions.find((v) => v.version === version)
+}
+
 /**
  * Tool-selection guide — injected into the system prompt so the LLM can
  * map user intent to the right tool instead of guessing from descriptions.
@@ -37,6 +70,8 @@ Map user intent to exactly one tool. Don't combine unless the user explicitly as
 - "git status / diff / commit"      → git_status / git_diff / git_commit
 - "diagnose system health"          → diagnose()
 - "save / list artifacts"           → artifact_save / artifact_search / artifact_get
+- "multi-model debate + vote"       → council(prompt=..., models=[...], rounds=1|2)
+- "estimate call cost"              → cost_estimate(estimated_input_tokens=...)
 
 When unsure: read before write, list before activate, search before fetch.
 </tool-selection>`
@@ -602,11 +637,11 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       type: "function",
       function: {
         name: "env_install",
-        description: "Install a package into the environment. Requires --sandbox mode.",
+        description: "Install a package into the sandbox. Requires --sandbox mode. Supported managers: npm, pip. (apt/cargo/go install would need root + network allowlist — open an issue if you need it.)",
         parameters: {
           type: "object",
           properties: {
-            manager: { type: "string", description: "Package manager: npm, pip, apt, cargo, go" },
+            manager: { type: "string", description: "Package manager: npm, pip" },
             package: { type: "string", description: "Package name or spec" },
           },
           required: ["manager", "package"],
@@ -1231,7 +1266,6 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      const { createArtifact } = await import("../../../core/src/artifact/schema")
       const id = `art-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
       const artifact = createArtifact(
         id,
@@ -1269,7 +1303,6 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      const { addVersion } = await import("../../../core/src/artifact/schema")
       const { readFileSync, writeFileSync, existsSync } = await import("node:fs")
       const { join } = await import("node:path")
       const { homedir } = await import("node:os")
@@ -1347,7 +1380,6 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const { readFileSync, existsSync, readdirSync } = await import("node:fs")
       const { join } = await import("node:path")
       const { homedir } = await import("node:os")
-      const { getVersion } = await import("../../../core/src/artifact/schema")
       const dir = join(homedir(), ".arcana", "artifacts")
       const id = String(args.id)
       let filePath = join(dir, `${id}.json`)
@@ -1363,7 +1395,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const artifact = JSON.parse(readFileSync(filePath, "utf8"))
       const version = args.version ? Number(args.version) : undefined
       if (version) {
-        const v = getVersion(artifact, version)
+        const v = getArtifactVersion(artifact, version)
         if (!v) return `Version ${version} not found for artifact ${id}`
         return `# ${artifact.title} (v${version})\n${artifact.tags ? `tags: ${artifact.tags}\n` : ""}\n${v}`
       }
@@ -1626,14 +1658,19 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      const calls = args.calls as Array<{ tool: string; args: Record<string, unknown> }>
+      // The real executor lives in AgentRunner.run() — it intercepts toolName === "batch"
+      // before this handler ever runs, applies rate-limit + dangerous-command guards to
+      // every sub-call, and runs them via Promise.all. This handler only fires when the
+      // tool is invoked outside the agent loop (e.g., from a unit test). Return a useful
+      // no-op instead of a misleading "will execute" stub.
+      const calls = args.calls as Array<{ tool: string; args: Record<string, unknown> }> | undefined
       if (!calls?.length) return "No calls provided"
-      const results = await Promise.all(calls.map(async (call) => {
-        const entry = runner.getToolDefs().find((t) => t.function.name === call.tool)
-        if (!entry) return `  "${call.tool}": unknown tool`
-        return `  "${call.tool}": pending (will execute in parallel)`
-      }))
-      return `Batch scheduled ${calls.length} calls:\n${results.join("\n")}\n\nThese will be executed in parallel.`
+      const known = new Set(runner.getToolDefs().map((t) => t.function.name))
+      const unknown = calls.filter((c) => !known.has(c.tool)).map((c) => c.tool)
+      const summary = unknown.length
+        ? `Batch of ${calls.length} calls; ${unknown.length} unknown sub-tool(s): ${unknown.join(", ")}. Known sub-tools will execute in parallel via the agent loop.`
+        : `Batch of ${calls.length} calls will execute in parallel via the agent loop (sub-tools: ${[...new Set(calls.map((c) => c.tool))].join(", ")}).`
+      return summary
     },
   )
 
@@ -1683,6 +1720,46 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       if (total > 0.10) lines.push("", "This operation costs over $0.10. Consider if you can be more specific.")
       if (total > 1.00) lines.push("OVER $1.00 - confirm before proceeding.")
       return lines.join("\n")
+    },
+  )
+
+  runner.registerTool(
+    "council",
+    {
+      type: "function",
+      function: {
+        name: "council",
+        description: "Convene a paid-license council of 2-5 LLMs to debate a question, then return the winning answer. Each model proposes, optionally critiques (rounds=2), then votes. Use for high-stakes decisions, architecture choices, or when one model's blindspot is the risk. License: Pro/Team/Enterprise (or --godlike).",
+        parameters: {
+          type: "object",
+          properties: {
+            prompt: { type: "string", description: "The question to put to the council. Be specific." },
+            models: {
+              type: "array",
+              items: { type: "string" },
+              minItems: 2,
+              maxItems: 5,
+              description: 'Models as "provider/model" (e.g. ["anthropic/claude-sonnet-4-20250514", "openai/gpt-4o", "google/gemini-2.0-flash"]). 2-5 entries.',
+            },
+            rounds: { type: "integer", enum: [1, 2], description: "1 = propose+vote, 2 = +critique+revise (default 1)" },
+            vote_mode: { type: "string", enum: ["majority", "ranked", "judge"], description: "majority=plurality wins, ranked=ignore (v1 same as majority), judge=judge model picks (default majority)" },
+            judge_model: { type: "string", description: 'For vote_mode="judge": which model decides. Defaults to first model.' },
+            context: { type: "string", description: "Optional background the council should consider alongside the prompt." },
+          },
+          required: ["prompt", "models"],
+        },
+      },
+    },
+    async (args) => {
+      const { runCouncil } = await import("./council.js")
+      return runCouncil({
+        prompt: String(args.prompt),
+        models: (args.models as string[]) ?? [],
+        rounds: args.rounds as 1 | 2 | undefined,
+        vote_mode: args.vote_mode as "majority" | "ranked" | "judge" | undefined,
+        judge_model: args.judge_model as string | undefined,
+        context: args.context as string | undefined,
+      }, runner)
     },
   )
 }
