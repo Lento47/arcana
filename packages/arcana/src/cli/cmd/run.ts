@@ -106,7 +106,7 @@ export const RunCommand: CommandModule = {
     // Sandbox: isolate agent to configurable root directory
     let sandbox: ReturnType<typeof createSandbox> | undefined
     if (args.sandbox !== undefined) {
-      sandbox = createSandbox(args.sandbox || undefined)
+      sandbox = createSandbox((args.sandbox as string | undefined) || undefined)
       if (args["sandbox-net"]) sandbox.network = true
       process.stderr.write(c.yellow(`\n  Sandbox: ${sandbox.root}\n`))
       process.stderr.write(c.dim(`  Network: ${sandbox.network ? "allowed" : "BLOCKED"}\n\n`))
@@ -139,8 +139,13 @@ export const RunCommand: CommandModule = {
     if (args.skill) {
       const skill = skills.find((s) => s.id === String(args.skill) || s.name.toLowerCase().includes(String(args.skill).toLowerCase()))
       if (skill) {
-        systemPrompt += `\n\n<arcana-skill name="${skill.name}">\n${skill.body}\n</arcana-skill>`
-        process.stderr.write(c.purple(`◆ Skill loaded: ${skill.meta.name}\n`))
+        const body = await loadSkillBody(skill.id, config.skillsDirs)
+        if (body) {
+          systemPrompt += `\n\n<arcana-skill name="${skill.name}">\n${body}\n</arcana-skill>`
+          process.stderr.write(c.purple(`◆ Skill loaded: ${skill.name}\n`))
+        } else {
+          process.stderr.write(c.yellow(`Warning: skill body unavailable: ${args.skill}\n`))
+        }
       } else {
         process.stderr.write(c.yellow(`Warning: skill not found: ${args.skill}\n`))
       }
