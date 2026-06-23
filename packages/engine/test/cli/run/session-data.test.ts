@@ -209,10 +209,10 @@ describe("run session data", () => {
     })
 
     expect(ask.footer).toEqual({
-      patch: { status: "awaiting permission" },
+      patch: { status: "awaiting approval" },
       view: {
-        type: "permission",
-        request: expect.objectContaining({ id: "perm-1" }),
+        type: "plan",
+        requests: expect.arrayContaining([expect.objectContaining({ id: "perm-1" })]),
       },
     })
 
@@ -269,15 +269,17 @@ describe("run session data", () => {
 
     expect(out.footer).toEqual({
       view: {
-        type: "permission",
-        request: expect.objectContaining({
-          id: "perm-1",
-          metadata: expect.objectContaining({
-            input: {
-              command: "git status --short",
-            },
+        type: "plan",
+        requests: expect.arrayContaining([
+          expect.objectContaining({
+            id: "perm-1",
+            metadata: expect.objectContaining({
+              input: {
+                command: "git status --short",
+              },
+            }),
           }),
-        }),
+        ]),
       },
     })
   })

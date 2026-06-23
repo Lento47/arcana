@@ -169,7 +169,7 @@ const layer = Layer.effect(
     })
 
     const resolveDiffStyle = Effect.fn("RunBoot.resolveDiffStyle")(function* () {
-      return runTuiConfig(yield* config()).diff_style ?? "auto"
+      return (runTuiConfig(yield* config()).diff_style ?? "auto") as RunDiffStyle
     })
 
     return Service.of({
@@ -224,7 +224,7 @@ export async function resolveRunTuiConfig(): Promise<RunTuiConfig> {
 export async function resolveDiffStyle(): Promise<RunDiffStyle> {
   const t0 = performance.now()
   bootEmit("resolveDiffStyle_start", t0)
-  const out = await runtime.runPromise((svc) => svc.resolveDiffStyle()).catch(() => "auto")
+  const out = await runtime.runPromise((svc) => svc.resolveDiffStyle()).catch(() => "auto" as RunDiffStyle)
   bootEmit("resolveDiffStyle_end", performance.now())
   bootEmit("resolveDiffStyle_ms", Math.round(performance.now() - t0))
   return out

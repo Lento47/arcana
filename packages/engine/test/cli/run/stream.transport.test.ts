@@ -1374,23 +1374,22 @@ describe("run stream transport", () => {
       expect(
         await waitFor(() => {
           const item = ui.events.findLast((event) => event.type === "stream.view")
-          return item?.type === "stream.view" && item.view.type === "permission" && item.view.request.id === "perm-1"
+          return item?.type === "stream.view" &&
+            item.view.type === "plan" &&
+            item.view.requests.some((req) => req.id === "perm-1")
             ? item
             : undefined
         }),
       ).toEqual({
         type: "stream.view",
         view: {
-          type: "permission",
-          request: expect.objectContaining({
-            id: "perm-1",
-            metadata: {
-              input: {
-                filePath: "src/run/subagent-data.ts",
-                diff: "@@ -1 +1 @@",
-              },
-            },
-          }),
+          type: "plan",
+          requests: expect.arrayContaining([
+            expect.objectContaining({
+              id: "perm-1",
+              sessionID: "child-1",
+            }),
+          ]),
         },
       })
     } finally {
