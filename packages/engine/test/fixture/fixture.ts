@@ -203,7 +203,15 @@ export const withTmpdirInstance =
   <A, E, R>(self: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
       const directory = yield* tmpdirScoped(options)
-      return yield* self.pipe(Effect.provideService(TestInstance, { directory }), provideInstanceEffect(directory))
+      // Pin worktree to the test directory. Without this, `git.find` walks up
+      // from the tmpdir and may discover an outer repository (e.g. the user's
+      // home if it happens to be a git repo). That makes `ctx.worktree` much
+      // larger than the test dir, breaking scoping assertions like
+      // "does not spawn LSP for files outside instance".
+      return yield* self.pipe(
+        Effect.provideService(TestInstance, { directory }),
+        provideInstanceEffect(directory, directory),
+      )
     }).pipe(Effect.provide(testInstanceStoreLayer), Effect.provide(CrossSpawnSpawner.defaultLayer))
 
 export function provideTmpdirServer<A, E, R>(
