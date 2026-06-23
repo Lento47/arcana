@@ -93,6 +93,28 @@ function isProcessAlive(pid: number, lockPpid?: number): boolean {
 
 const acquiredLocks = new Set<string>()
 let exitHandlerRegistered = false
+let heartbeatHandle: NodeJS.Timeout | undefined
+
+/**
+ * Heartbeat interval (ms). Refreshes the timestamp on every owned lock so a
+ * sibling arcana invocation can tell our TUI is alive even when it isn't
+ * creating sessions. Must be much smaller than PID_RECYCLE_GRACE_MS (5 min)
+ * so the foreign side never sees us as stale.
+ *
+ * Tests can override via {@link setHeartbeatInterval}.
+ */
+export let HEARTBEAT_MS = 60 * 1000
+
+export function setHeartbeatInterval(ms: number): void {
+  HEARTBEAT_MS = ms
+  if (heartbeatHandle) {
+    clearInterval(heartbeatHandle)
+    heartbeatHandle = undefined
+    // The next trackLock call will re-create the timer at the new rate.
+    // Anything currently in `acquiredLocks` keeps its old coverage; we just
+    // restart on next acquire/release.
+  }
+}
 
 function cleanupOwnedLocks(): void {
   for (const lockPath of acquiredLocks) {
@@ -108,13 +130,42 @@ function cleanupOwnedLocks(): void {
   }
 }
 
+function refreshOwnedLocks(): void {
+  const now = Date.now()
+  for (const lockPath of acquiredLocks) {
+    try {
+      if (!fs.existsSync(lockPath)) {
+        acquiredLocks.delete(lockPath)
+        continue
+      }
+      const raw = JSON.parse(fs.readFileSync(lockPath, "utf-8"))
+      if (raw.pid !== process.pid) {
+        // Someone else owns this lock now — stop tracking.
+        acquiredLocks.delete(lockPath)
+        continue
+      }
+      fs.writeFileSync(
+        lockPath,
+        JSON.stringify({ ...raw, timestamp: now }, null, 2),
+        "utf-8",
+      )
+    } catch {
+      // Best-effort — a missed heartbeat is non-fatal
+    }
+  }
+}
+
 function registerExitHandlerOnce(): void {
   if (exitHandlerRegistered) return
   exitHandlerRegistered = true
-  process.on("exit", cleanupOwnedLocks)
+  process.on("exit", () => {
+    if (heartbeatHandle) clearInterval(heartbeatHandle)
+    cleanupOwnedLocks()
+  })
   // 'exit' does NOT fire on Ctrl-C / kill, so without this the lock would leak
   // until it goes stale (24h). Release it on the common termination signals too.
   const onSignal = (sig: NodeJS.Signals) => {
+    if (heartbeatHandle) clearInterval(heartbeatHandle)
     cleanupOwnedLocks()
     // A registered signal listener suppresses Node's default termination, so we
     // must hand control back: remove ourselves, then re-raise only if no other
@@ -129,8 +180,16 @@ function registerExitHandlerOnce(): void {
   process.on("SIGTERM", onSignal)
 }
 
+function ensureHeartbeat(): void {
+  if (heartbeatHandle) return
+  heartbeatHandle = setInterval(refreshOwnedLocks, HEARTBEAT_MS)
+  // Don't keep the event loop alive just to refresh the lock.
+  heartbeatHandle.unref?.()
+}
+
 function trackLock(lockPath: string): void {
   acquiredLocks.add(lockPath)
+  ensureHeartbeat()
 }
 
 // ---------------------------------------------------------------------------
@@ -364,6 +423,10 @@ export function releaseLock(projectRoot: string): void {
   if (existing.pid === process.pid) {
     deleteLock(projectRoot)
     acquiredLocks.delete(lockFilePath(projectRoot))
+    if (acquiredLocks.size === 0 && heartbeatHandle) {
+      clearInterval(heartbeatHandle)
+      heartbeatHandle = undefined
+    }
   }
 }
 
