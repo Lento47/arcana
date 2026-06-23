@@ -5,7 +5,7 @@ import { mkdir } from "node:fs/promises"
 import { loadConfig, getDataDir } from "../../config.js"
 import { AgentRunner } from "../../agent/runner.js"
 import { SessionManager } from "../../agent/session.js"
-import { registerBuiltinTools } from "../../agent/tools.js"
+import { registerBuiltinTools, TOOL_SELECTION_GUIDE } from "../../agent/tools.js"
 import { registerMcpTools } from "../../agent/mcp.js"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
 import { loadSkills, loadSkillBody, type SkillCatalog } from "../../skills/loader.js"
@@ -27,6 +27,8 @@ const SYSTEM_PROMPT = `You are Arcana, a self-improving AI agent. You have acces
 When you learn something important about the user, store it with memory_store_fact.
 When asked to use a specific workflow, check skill_list and activate the relevant skill.
 Be concise and direct. Format code in markdown blocks.
+
+${TOOL_SELECTION_GUIDE}
 
 GOAL DISCIPLINE:
 1. As soon as you understand what the user wants, call goal_set to record it.

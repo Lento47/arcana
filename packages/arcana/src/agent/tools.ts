@@ -10,6 +10,37 @@ import { join, dirname } from "node:path"
 import { mkdirSync, writeFileSync, existsSync } from "node:fs"
 import { initBoard, loadBoard, saveBoard, addCard, moveCard, archiveDone, formatBoard, type KanbanCard } from "./kanban.js"
 
+/**
+ * Tool-selection guide — injected into the system prompt so the LLM can
+ * map user intent to the right tool instead of guessing from descriptions.
+ * Keep ≤30 lines. Tweak here, not in run.ts, so it ships with the tools.
+ */
+export const TOOL_SELECTION_GUIDE = `<tool-selection>
+Map user intent to exactly one tool. Don't combine unless the user explicitly asks for batched/parallel work.
+
+- "search the web for X"            → web_search(query=X)
+- "fetch URL content"               → web_fetch(url=X)
+- "read a file"                     → read(filePath=X)
+- "create / overwrite a file"       → write(filePath=X, content=...)
+- "edit a file in place"            → edit(filePath=X, oldString=..., newString=...)
+- "find files by glob"              → glob(pattern=**/*.ts)
+- "search file contents"            → grep(pattern=...)
+- "run a shell command"             → shell(cmd=X)        [NOT SANDBOXED — use carefully]
+- "remember a fact"                 → memory_store_fact(key=..., value=...)
+- "recall past context"             → memory_search(query=...)
+- "list available skills"           → skill_list(query=...)
+- "activate a skill"                → skill_activate(skill_id=...)
+- "record the goal"                 → goal_set(goal=...)
+- "check goal progress"             → goal_check(status=in_progress|complete|blocked)
+- "manage tasks"                    → kanban(command=init|add|move|view|archive, ...)
+- "run independent ops in parallel" → batch(calls=[{tool, args}, ...])
+- "git status / diff / commit"      → git_status / git_diff / git_commit
+- "diagnose system health"          → diagnose()
+- "save / list artifacts"           → artifact_save / artifact_search / artifact_get
+
+When unsure: read before write, list before activate, search before fetch.
+</tool-selection>`
+
 // ── web_search helpers ───────────────────────────────────────
 /** Decode the common HTML entities DuckDuckGo emits in titles/snippets/hrefs. */
 function decodeHtmlEntities(s: string): string {
@@ -162,10 +193,10 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       function: {
         name: "web_search",
         description:
-          "Search the live internet for information the user is asking about. " +
+          "Search the live internet when the user asks a question that needs external knowledge. " +
           "Use the user's actual request as the query — do NOT scope it to this project, repo, or local files " +
-          "(use grep/read tools for local code, and memory_search for past sessions). " +
-          "Returns ranked results with titles, snippets, and real destination URLs.",
+          "(use grep/read for local code, memory_search for past sessions, skill_activate for known workflows). " +
+          "Returns ranked results with titles, snippets, and real destination URLs (DuckDuckGo HTML, no API key).",
         parameters: {
           type: "object",
           properties: {
@@ -399,11 +430,11 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       type: "function",
       function: {
         name: "web_fetch",
-        description: "Fetch text content from a URL",
+        description: "Fetch raw text content from a known URL (HTTPS only, SSRF-protected — blocks localhost/private/link-local IPs). Use AFTER web_search once you have a destination URL; HTML is stripped to plain text.",
         parameters: {
           type: "object",
           properties: {
-            url: { type: "string", description: "URL to fetch" },
+            url: { type: "string", description: "URL to fetch (must be HTTPS, no localhost/private IPs)" },
             max_chars: { type: "number", description: "Max characters to return (default 8000)" },
           },
           required: ["url"],
@@ -1469,7 +1500,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       type: "function",
       function: {
         name: "read",
-        description: "Read a file's contents. Shows line numbers. Respects .gitignore.",
+        description: "Read a file's contents (cat-style, with line numbers). Use FIRST before edit/apply_patch so you know what the file looks like.",
         parameters: {
           type: "object",
           properties: {
@@ -1507,7 +1538,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       type: "function",
       function: {
         name: "write",
-        description: "Create a new file or overwrite an existing file with content. Use for new files or complete rewrites.",
+        description: "Create a new file or overwrite an existing file with content. Use for NEW files or FULL rewrites; prefer edit for targeted changes to existing files.",
         parameters: {
           type: "object",
           properties: {
@@ -1538,7 +1569,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       type: "function",
       function: {
         name: "edit",
-        description: "Edit a file by finding and replacing text. Safer than full rewrites for targeted changes.",
+        description: "Edit an existing file by find-and-replace. oldString must match exactly. Use for SMALL targeted changes — safer than write/apply_patch. Read first if unsure of current contents.",
         parameters: {
           type: "object",
           properties: {
@@ -1573,7 +1604,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       type: "function",
       function: {
         name: "batch",
-        description: "Execute multiple INDEPENDENT tool calls in parallel. Use when you need to do multiple independent operations (like reading several files, searching multiple patterns) to save rounds. The tool name should be one of: glob, grep, read, web_fetch, web_search, git_status, git_diff, env_probe, artifact_get, memory_search.",
+        description: "Execute multiple INDEPENDENT tool calls in parallel to save round-trips. Use ONLY for genuinely independent reads (e.g. reading several files, multiple grep patterns). DO NOT batch when later calls depend on earlier results. Sub-calls re-run through rate-limit and dangerous-command guards. Supported sub-tools: glob, grep, read, web_fetch, web_search, git_status, git_diff, env_probe, artifact_get, memory_search.",
         parameters: {
           type: "object",
           properties: {
