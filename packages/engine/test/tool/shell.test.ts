@@ -52,7 +52,12 @@ const run = Effect.fn("ShellToolTest.run")(function* (
   return yield* bash.execute(args, next)
 })
 
-const runIn = <A, E, R>(directory: string, self: Effect.Effect<A, E, R>) => self.pipe(provideInstance(directory))
+// Pin the worktree to the test directory itself so paths outside the tmpdir
+// (e.g. /tmp/sibling-XXXX/outside.txt) actually trigger external_directory —
+// without this, project resolution walks up to a parent (often $HOME on
+// developer machines) and treats every path under that parent as inside.
+const runIn = <A, E, R>(directory: string, self: Effect.Effect<A, E, R>) =>
+  self.pipe(provideInstance(directory, directory))
 
 const fail = Effect.fn("ShellToolTest.fail")(function* (
   args: Tool.InferParameters<typeof ShellTool>,

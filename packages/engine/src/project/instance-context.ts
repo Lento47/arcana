@@ -19,8 +19,15 @@ export const context = LocalContext.create<InstanceContext>("instance")
  */
 export function containsPath(filepath: string, ctx: InstanceContext): boolean {
   if (FSUtil.contains(ctx.directory, filepath)) return true
-  // Non-git projects set worktree to "/" which would match ANY absolute path.
-  // Skip worktree check in this case to preserve external_directory permissions.
-  if (ctx.worktree === "/") return false
+  // Non-git projects set worktree to the filesystem root ("/" on POSIX, "C:\\" on
+  // Windows) which would match ANY absolute path under that root. Skip the
+  // worktree check in that case to preserve external_directory permissions.
+  if (isFilesystemRoot(ctx.worktree)) return false
   return FSUtil.contains(ctx.worktree, filepath)
+}
+
+function isFilesystemRoot(path: string): boolean {
+  if (path === "/") return true
+  // Windows drive root: "C:\\", "c:/", etc.
+  return /^[A-Za-z]:[\\/]?$/.test(path)
 }
