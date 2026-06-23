@@ -48,6 +48,13 @@ function jsonResponse(body: unknown) {
   })
 }
 
+function textResponse(body: string) {
+  return new Response(body, {
+    status: 200,
+    headers: { "content-type": "text/plain" },
+  })
+}
+
 function testLayer(
   httpHandler: (request: HttpClientRequest.HttpClientRequest) => Response,
   spawnHandler?: (cmd: string, args: readonly string[]) => string | { code: number; stdout?: string; stderr?: string },
@@ -58,7 +65,7 @@ function testLayer(
 
 describe("installation", () => {
   describe("latest", () => {
-    testEffect(testLayer(() => jsonResponse({ tag_name: "v1.2.3" }))).effect(
+    testEffect(testLayer(() => textResponse("1.2.3"))).effect(
       "reads release version from GitHub releases",
       () =>
         Effect.gen(function* () {
@@ -67,7 +74,7 @@ describe("installation", () => {
         }),
     )
 
-    testEffect(testLayer(() => jsonResponse({ tag_name: "v4.0.0-beta.1" }))).effect(
+    testEffect(testLayer(() => textResponse("v4.0.0-beta.1"))).effect(
       "strips v prefix from GitHub release tag",
       () =>
         Effect.gen(function* () {
@@ -86,7 +93,7 @@ describe("installation", () => {
       Effect.gen(function* () {
         const result = yield* Installation.use.latest("npm")
         expect(result).toBe("1.5.0")
-        expect(npmCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
+        expect(npmCalls).toContain(`https://registry.npmjs.org/arcana-ai/${InstallationChannel}`)
       }),
     )
 
@@ -100,7 +107,7 @@ describe("installation", () => {
       Effect.gen(function* () {
         const result = yield* Installation.use.latest("bun")
         expect(result).toBe("1.6.0")
-        expect(bunCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
+        expect(bunCalls).toContain(`https://registry.npmjs.org/arcana-ai/${InstallationChannel}`)
       }),
     )
 
@@ -114,7 +121,7 @@ describe("installation", () => {
       Effect.gen(function* () {
         const result = yield* Installation.use.latest("pnpm")
         expect(result).toBe("1.7.0")
-        expect(pnpmCalls).toContain(`https://registry.npmjs.org/opencode-ai/${InstallationChannel}`)
+        expect(pnpmCalls).toContain(`https://registry.npmjs.org/arcana-ai/${InstallationChannel}`)
       }),
     )
 
