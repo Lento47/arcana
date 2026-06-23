@@ -178,3 +178,18 @@ export const Meter = {
   3: "●●●○",
   4: "●●●●",
 } as const
+
+/**
+ * Sigil transition sequence — used for splash animation and brand motion.
+ * Order matters: cycles left-to-right.
+ */
+export const SIGIL_SEQUENCE = ["◆", "▰", "❯", "⛧", "✦", "◈"] as const
+
+/** Per-step delay for the sigil transition (ms). Tuned for ~1.2s total animation. */
+export const SIGIL_STEP_MS = 200
+
+/**
+ * Brand surface that picks the theme `accent` token for sigil coloring.
+ * Engine callers pass a resolved Theme; chrome.ts holds the type guard.
+ */
+export const SIGIL_TOKEN = "accent" as const

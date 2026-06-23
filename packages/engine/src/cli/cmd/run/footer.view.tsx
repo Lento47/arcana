@@ -36,6 +36,7 @@ import {
   useKeymapSelector,
   type OpenTuiKeymap,
 } from "@arcana/tui/keymap"
+import { Glyph, IDLE_PHRASES } from "@arcana/tui/branding"
 import type {
   FooterPromptRoute,
   FooterQueuedPrompt,
@@ -387,6 +388,35 @@ export function RunFooterView(props: RunFooterViewProps) {
   const shell = createMemo(() => prompt() && composer.shell())
   const menu = createMemo(() => prompt() && composer.visible())
   const stateStatus = createMemo(() => props.state().status.trim())
+  // Idle-phrase rotation: when the footer is at rest (no busy, no shell, no
+  // explicit status), cycle through the brand IDLE_PHRASES list every 30s.
+  // Picks a deterministic seed from session state so different sessions see
+  // different starting phrases but the cycle stays predictable per session.
+  const initialIdleIndex = (props.state().model.length + props.state().status.length) % IDLE_PHRASES.length
+  const [idleIndex, setIdleIndex] = createSignal(initialIdleIndex)
+  const idleRotationActive = createMemo(() => !busy() && !exiting() && !shell() && stateStatus().length === 0)
+  let idleTick: ReturnType<typeof setInterval> | undefined
+  const stopIdleRotation = () => {
+    if (idleTick) {
+      clearInterval(idleTick)
+      idleTick = undefined
+    }
+  }
+  const startIdleRotation = () => {
+    if (idleTick) return
+    idleTick = setInterval(() => {
+      setIdleIndex((i) => (i + 1) % IDLE_PHRASES.length)
+    }, 30_000)
+  }
+  createEffect(() => {
+    if (idleRotationActive()) {
+      startIdleRotation()
+    } else {
+      stopIdleRotation()
+    }
+  })
+  onCleanup(stopIdleRotation)
+  const idlePhrase = createMemo(() => `${Glyph.sep} ${IDLE_PHRASES[idleIndex()]}`)
   const modeLabel = createMemo(() => {
     if (exiting()) {
       return "EXIT"
@@ -846,6 +876,23 @@ export function RunFooterView(props: RunFooterViewProps) {
                 border={false}
                 paddingLeft={0}
               />
+            </Show>
+
+            <Show when={!panel() && !menu() && idleRotationActive()}>
+              <box
+                width="100%"
+                height={1}
+                flexShrink={0}
+                flexDirection="row"
+                gap={0}
+                backgroundColor={statuslineBackground()}
+              >
+                <box paddingLeft={1} paddingRight={1} backgroundColor="transparent" flexShrink={0}>
+                  <text wrapMode="none" truncate>
+                    <span style={{ fg: theme().muted }}>{idlePhrase()}</span>
+                  </text>
+                </box>
+              </box>
             </Show>
 
             <Show when={!panel() && !menu()}>

@@ -17,7 +17,7 @@ import { registerOpencodeKeymap } from "@arcana/tui/keymap"
 import { Session as SessionApi } from "@/session/session"
 import * as Locale from "@/util/locale"
 import { resolveInteractiveStdin } from "./runtime.stdin"
-import { entrySplash, exitSplash, splashMeta } from "./splash"
+import { entrySplash, exitSplash, sigilTransition, splashMeta } from "./splash"
 import { resolveRunTheme } from "./theme"
 import type {
   FooterApi,
@@ -37,6 +37,7 @@ const FOOTER_HEIGHT = 4
 type SplashState = {
   entry: boolean
   exit: boolean
+  transition: boolean
 }
 
 type CycleResult = {
@@ -200,6 +201,7 @@ export async function createRuntimeLifecycle(input: LifecycleInput): Promise<Lif
     const state: SplashState = {
       entry: false,
       exit: false,
+      transition: false,
     }
     const splash = splashInfo(input.sessionTitle, input.history)
     const meta = splashMeta({
@@ -211,7 +213,11 @@ export async function createRuntimeLifecycle(input: LifecycleInput): Promise<Lif
       model: input.model,
       variant: input.variant,
     })
-    const footerTask = import("./footer")
+    // Brand surface: write the sigil transition before the entry splash so
+    // the user sees ◆ ▰ ❯ ⛧ ✦ ◈ as the first paint. The transition is a
+    // single snapshot (scrollback is immutable), so the perceived motion is
+    // the eye reading the diagonal glyph/shadow pairs.
+    queueSplash(renderer, state, "transition", sigilTransition({ theme: theme.splash, seed: input.sessionID }))
     const wrote = queueSplash(
       renderer,
       state,
@@ -225,6 +231,7 @@ export async function createRuntimeLifecycle(input: LifecycleInput): Promise<Lif
     )
     await renderer.idle().catch(() => {})
 
+    const footerTask = import("./footer")
     const { RunFooter } = await footerTask
     let closed = false
     let sigintRegistered = false

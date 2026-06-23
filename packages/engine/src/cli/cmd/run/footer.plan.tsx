@@ -250,13 +250,13 @@ export function RunPlanBody(props: {
   const header = pState === "running"
     ? `⚡ ${count} action${count !== 1 ? "s" : ""} executing...`
     : pState === "partial"
-      ? `⚠ ${count} action${count !== 1 ? "s" : ""} — r = retry failed · R = re-run all`
+      ? `⚠ ${count} action${count !== 1 ? "s" : ""} — r = re-cast failed · R = re-inscribe all`
       : pState === "completed"
-        ? `✅ ${count} action${count !== 1 ? "s" : ""} completed`
-        : `⚡ ${count} action${count !== 1 ? "s" : ""} pending — ←/→ select · Space toggle · Enter execute · Esc reject · ${filterHint || "Tab: filter"}`
+        ? `✅ ${count} action${count !== 1 ? "s" : ""} inscribed`
+        : `⛧ ${count} action${count !== 1 ? "s" : ""} pending — ←/→ select · Space transmute · Enter inscribe · Esc rescind · ${filterHint || "Tab: filter"}`
 
   return (
-    <box flexDirection="column" paddingLeft={1} paddingRight={1}>
+    <box flexDirection="column" paddingLeft={1} paddingRight={1} aria-label="Plan preview — Enter inscribe (y), Space transmute, Esc rescind (n)">
       <box flexDirection="row" height={1} gap={1}>
         <text fg={
           pState === "running" ? props.theme.highlight :
@@ -299,7 +299,7 @@ export function RunPlanBody(props: {
                 {line.title}
               </text>
               {isSelected() && (
-                <text fg={props.theme.muted}>{isRejected() ? " [rejected]" : " [✓ approved]"}</text>
+                <text fg={props.theme.muted}>{isRejected() ? " [✗ rescinded]" : " [⛧ inscribed]"}</text>
               )}
             </box>
           )
@@ -317,7 +317,7 @@ export function RunPlanBody(props: {
         </text>
         <text fg={props.theme.muted}>
           {props.requests.length} action{props.requests.length !== 1 ? "s" : ""}
-          {rejectedIds().size > 0 ? ` · ${rejectedIds().size} rejected` : ""}
+          {rejectedIds().size > 0 ? ` · ${rejectedIds().size} rescinded` : ""}
         </text>
       </box>
     </box>
