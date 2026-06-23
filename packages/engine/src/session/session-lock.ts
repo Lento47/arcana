@@ -23,6 +23,12 @@ import { Effect } from "effect"
 export interface SessionLockData {
   pid: number
   timestamp: number
+  /**
+   * Parent PID at lock-acquire time. Used to detect PID reuse on the
+   * recorded PID: if the parent is gone, the original process tree is dead
+   * and the PID was almost certainly recycled to a different process.
+   */
+  ppid?: number
   sessionId?: string
 }
 
@@ -30,6 +36,56 @@ export interface SessionLockData {
  * Maximum lock age before it is treated as stale (24 hours in ms).
  */
 export const STALE_LOCK_MS = 24 * 60 * 60 * 1000
+
+/**
+ * If the lock's PID appears alive but the lock is older than this AND no
+ * parent process is recorded, treat it as a recycled PID. PID reuse on
+ * Windows/Linux can fool `process.kill(pid, 0)` — a freshly-spawned process
+ * may inherit the recycled PID. This is the empirical window observed on
+ * developer machines where the warning spuriously fires.
+ */
+const PID_RECYCLE_GRACE_MS = 5 * 60 * 1000 // 5 minutes
+
+/**
+ * Cross-platform PID-alive check.
+ *
+ * `process.kill(pid, 0)` is portable but unreliable on Windows PID reuse
+ * (a freshly-launched process can be assigned a PID that was just freed).
+ * To reduce false positives we additionally require that:
+ *   1. The PID matches its own (we never own another's PID), AND
+ *   2. The lock is younger than PID_RECYCLE_GRACE_MS, OR
+ *      the lock includes a `ppid` that still matches an alive parent.
+ *
+ * Falls back to the portable signal-0 probe when `ppid` is missing.
+ */
+function isProcessAlive(pid: number, lockPpid?: number): boolean {
+  try {
+    process.kill(pid, 0)
+  } catch (e: any) {
+    // Only ESRCH ("no such process") means dead; EPERM means alive but
+    // unowned by us.
+    return e?.code === "EPERM"
+  }
+
+  // PID is alive according to signal-0. Guard against PID reuse:
+  if (typeof lockPpid === "number") {
+    if (lockPpid === 1) {
+      // Orphan — parent already reaped. PID may have been recycled.
+      return false
+    }
+    try {
+      process.kill(lockPpid, 0)
+      // Parent still alive — most likely the same session.
+      return true
+    } catch {
+      // Parent is gone. PID very likely recycled.
+      return false
+    }
+  }
+
+  // No ppid recorded in the lock file. Trust signal-0 but lean conservative.
+  return true
+}
 
 // ---------------------------------------------------------------------------
 // Process exit cleanup
@@ -88,21 +144,6 @@ function lockFilePath(projectRoot: string): string {
 function ensureLockDir(projectRoot: string): void {
   const dir = path.join(projectRoot, ".arcana")
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-}
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    // Signal 0 is a null signal — checks if the process exists
-    process.kill(pid, 0)
-    return true
-  } catch (e: any) {
-    // EPERM means the process exists but is owned by another user (common on
-    // Windows / cross-user) — we can't signal it, but it IS alive. Only ESRCH
-    // ("no such process") means dead.
-    // NOTE: PID reuse can still make a recycled PID read as alive; verifying the
-    // process start-time would be needed to fully rule that out.
-    return e?.code === "EPERM"
-  }
 }
 
 function readLock(projectRoot: string): SessionLockData | null {
@@ -166,8 +207,21 @@ export function checkLock(projectRoot: string): LockStatus {
     }
   }
 
-  // PID is dead → stale
-  if (!isProcessAlive(existing.pid)) {
+  // PID is dead OR its parent is gone → stale (covers PID reuse)
+  if (!isProcessAlive(existing.pid, existing.ppid)) {
+    return {
+      type: "stale_dead",
+      pid: existing.pid,
+      timestamp: existing.timestamp,
+    }
+  }
+
+  // PID alive but the lock is older than the PID-recycle grace window and
+  // the lock has no recorded ppid — treat as stale. This catches the case
+  // where the original process is dead AND its PID was recycled to a
+  // different process that happens to be alive (e.g. an unrelated arcana
+  // invocation started after the lock was written).
+  if (existing.ppid === undefined && age > PID_RECYCLE_GRACE_MS) {
     return {
       type: "stale_dead",
       pid: existing.pid,
@@ -214,6 +268,7 @@ export function acquireLock(
     case "free": {
       writeLock(projectRoot, {
         pid: process.pid,
+        ppid: process.ppid,
         timestamp: Date.now(),
         sessionId,
       })
@@ -228,6 +283,7 @@ export function acquireLock(
       deleteLock(projectRoot)
       writeLock(projectRoot, {
         pid: process.pid,
+        ppid: process.ppid,
         timestamp: Date.now(),
         sessionId,
       })
@@ -242,6 +298,7 @@ export function acquireLock(
       deleteLock(projectRoot)
       writeLock(projectRoot, {
         pid: process.pid,
+        ppid: process.ppid,
         timestamp: Date.now(),
         sessionId,
       })
@@ -256,6 +313,7 @@ export function acquireLock(
       // Still write our lock — caller decides whether to proceed
       writeLock(projectRoot, {
         pid: process.pid,
+        ppid: process.ppid,
         timestamp: Date.now(),
         sessionId,
       })
