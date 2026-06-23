@@ -1,9 +1,13 @@
 import fs from "fs/promises"
-import { tmpdir as osTmpdir } from "os"
+import os from "os"
 import path from "path"
 
+// Prevent temp test directories from being treated as inside an outer git repo
+// (e.g. the user's home directory) when VCS discovery walks upward.
+if (!process.env.GIT_CEILING_DIRECTORIES) process.env.GIT_CEILING_DIRECTORIES = os.tmpdir()
+
 export const tmpdir = async () => {
-  const dir = await fs.realpath(await fs.mkdtemp(path.join(osTmpdir(), "opencode-core-test-")))
+  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "opencode-core-test-")))
   return {
     path: dir,
     async [Symbol.asyncDispose]() {

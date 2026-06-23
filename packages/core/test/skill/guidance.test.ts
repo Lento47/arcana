@@ -53,12 +53,8 @@ describe("SkillGuidance", () => {
         [
           "Skills provide specialized instructions and workflows for specific tasks.",
           "Use the skill tool to load a skill when a task matches its description.",
-          "<available_skills>",
-          "  <skill>",
-          "    <name>effect</name>",
-          "    <description>Build applications with Effect</description>",
-          "  </skill>",
-          "</available_skills>",
+          "Available skills:",
+          "- **effect**: Build applications with Effect",
         ].join("\n"),
       )
 
@@ -128,7 +124,7 @@ describe("SkillGuidance", () => {
       const guidance = yield* SkillGuidance.Service
       expect(
         (yield* guidance.load({ id: agent.id, info: agent }).pipe(Effect.flatMap(SystemContext.initialize))).baseline,
-      ).toContain("<name>effect</name>")
+      ).toContain("**effect**")
     }).pipe(Effect.provide(layer(() => [effect])))
   })
 

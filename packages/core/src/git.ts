@@ -2,6 +2,20 @@ export * as Git from "./git"
 
 import path from "path"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
+
+function gitCeilingFor(directory: string): string | undefined {
+  const raw = process.env.GIT_CEILING_DIRECTORIES
+  if (!raw) return undefined
+  let best: string | undefined
+  for (const ceiling of raw.split(path.delimiter)) {
+    if (!ceiling) continue
+    const relative = path.relative(ceiling, directory)
+    if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+      if (!best || ceiling.length > best.length) best = ceiling
+    }
+  }
+  return best
+}
 import { ChildProcess } from "effect/unstable/process"
 import { AbsolutePath } from "./schema"
 import { FSUtil } from "./fs-util"
@@ -83,10 +97,12 @@ export const layer = Layer.effect(
     const proc = yield* AppProcess.Service
 
     const find = Effect.fn("Git.find")(function* (input: AbsolutePath) {
-      const dotgit = yield* fs.up({ targets: [".git"], start: input }).pipe(
-        Effect.map((matches) => matches[0]),
-        Effect.catch(() => Effect.succeed(undefined)),
-      )
+      const dotgit = yield* fs
+        .up({ targets: [".git"], start: input, stop: gitCeilingFor(input) })
+        .pipe(
+          Effect.map((matches) => matches[0]),
+          Effect.catch(() => Effect.succeed(undefined)),
+        )
       if (!dotgit) return undefined
 
       const cwd = path.dirname(dotgit)
