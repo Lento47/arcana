@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import fs from "fs"
 import os from "os"
 import path from "path"
-import { acquireLock, releaseLock } from "../../src/session/session-lock"
+import { acquireLock, releaseLock, setHeartbeatInterval } from "../../src/session/session-lock"
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 describe("session-lock", () => {
   let dir: string
@@ -78,5 +80,49 @@ describe("session-lock", () => {
     )
     const result = acquireLock(dir)
     expect(result).toBe("stale_cleaned")
+  })
+
+  it("keeps the lock timestamp fresh via heartbeat so sibling invocations don't see us as stale", async () => {
+    // Speed up the heartbeat so the test doesn't have to wait the production
+    // 60s. Reset in afterEach-style logic by re-acquiring a no-op lock? No —
+    // setHeartbeatInterval sets a module-level value, but bun's test runner
+    // reuses the process across tests in this file, so subsequent tests
+    // would inherit the fast heartbeat. We restore the default at the end.
+    setHeartbeatInterval(50)
+    try {
+      expect(acquireLock(dir)).toBe("acquired")
+      const lockPath = path.join(dir, ".arcana", ".session-lock")
+      // Backdate the timestamp past the PID-recycle grace window so a stale
+      // read would categorize the lock as `stale_dead`.
+      const before = JSON.parse(fs.readFileSync(lockPath, "utf-8"))
+      const backdated = Date.now() - 10 * 60 * 1000
+      fs.writeFileSync(
+        lockPath,
+        JSON.stringify({ ...before, timestamp: backdated }),
+        "utf-8",
+      )
+      // Wait long enough for one heartbeat tick (50ms) plus jitter.
+      await sleep(200)
+      const after = JSON.parse(fs.readFileSync(lockPath, "utf-8"))
+      expect(after.timestamp).toBeGreaterThan(backdated)
+      expect(after.pid).toBe(process.pid)
+    } finally {
+      setHeartbeatInterval(60 * 1000)
+    }
+  })
+
+  it("stops the heartbeat after the last owned lock is released", () => {
+    expect(acquireLock(dir)).toBe("acquired")
+    releaseLock(dir)
+    // Re-acquire on a fresh dir confirms the previous one cleaned up.
+    const dir2 = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "arcana-lock-test-")))
+    try {
+      expect(acquireLock(dir2)).toBe("acquired")
+      // First dir's lock file should be gone (cleaned up by releaseLock).
+      expect(fs.existsSync(path.join(dir, ".arcana", ".session-lock"))).toBe(false)
+    } finally {
+      releaseLock(dir2)
+      fs.rmSync(dir2, { recursive: true, force: true })
+    }
   })
 })
