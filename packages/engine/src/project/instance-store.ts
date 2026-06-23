@@ -44,11 +44,20 @@ export const layer: Layer.Layer<Service, never, Project.Service | InstanceBootst
 
     const boot = (input: LoadInput & { directory: string }) =>
       Effect.gen(function* () {
-        const ctx: InstanceContext =
-          input.project && input.worktree
+        // If only worktree is provided (test fixtures that want to pin it to
+        // the test directory itself), skip project resolution and reuse
+        // directory/worktree. Otherwise go through the normal project boot.
+        const ctx: InstanceContext = input.worktree && !input.project
+          ? {
+              directory: input.directory,
+              worktree: input.worktree,
+              project: yield* project.fromDirectory(input.directory).pipe(Effect.map((r) => r.project)),
+              startedAt: Date.now(),
+            }
+          : input.project
             ? {
                 directory: input.directory,
-                worktree: input.worktree,
+                worktree: input.worktree ?? input.directory,
                 project: input.project,
                 startedAt: Date.now(),
               }
