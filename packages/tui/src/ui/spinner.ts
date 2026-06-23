@@ -243,7 +243,7 @@ export function deriveInactiveColor(brightColor: ColorInput, factor: number = 0.
   return RGBA.fromValues(baseRgba.r, baseRgba.g, baseRgba.b, factor)
 }
 
-export type KnightRiderStyle = "blocks" | "diamonds"
+export type KnightRiderStyle = "blocks" | "diamonds" | "charge" | "signal" | "pulse"
 
 export interface KnightRiderOptions {
   width?: number
@@ -274,6 +274,47 @@ export function createFrames(options: KnightRiderOptions = {}): string[] {
   const style = options.style ?? "diamonds"
   const holdStart = options.holdStart ?? 30
   const holdEnd = options.holdEnd ?? 9
+
+  // Charge: single cell cycling through bar heights (▁▂▃▄▅▆▇) — feels like
+  // energy accumulating, not scanning. Width is the frame count, defaulting
+  // to one full cycle (7 levels, looping). The "charged" (done) state is a
+  // single ▇ — a settled bar, suggesting completion.
+  if (style === "charge") {
+    const levels = ["▁", "▂", "▃", "▄", "▅", "▆", "▇"]
+    return levels
+  }
+
+  // Signal: fluid wave rotation, less common than dots. Three glyphs cycle
+  // across the width to suggest flow.
+  if (style === "signal") {
+    const barWidth = options.width ?? 4
+    const glyphs = ["⌁", "≋", "∿", "≈"]
+    const frames: string[] = []
+    for (let offset = 0; offset < barWidth; offset++) {
+      const frame: string[] = []
+      for (let i = 0; i < barWidth; i++) {
+        frame.push(glyphs[(i + offset) % glyphs.length] ?? "⌁")
+      }
+      frames.push(frame.join(""))
+    }
+    return frames
+  }
+
+  // Pulse: soft quarter-arc rotation. Drawn from Braille patterns so the
+  // motion looks technical and understated. Width is the visible bar length.
+  if (style === "pulse") {
+    const barWidth = options.width ?? 4
+    const pulse = ["⠁", "⠂", "⠄", "⡀", "⢀", "⠠", "⠐", "⠈"]
+    const frames: string[] = []
+    for (let offset = 0; offset < pulse.length; offset++) {
+      const frame: string[] = []
+      for (let i = 0; i < barWidth; i++) {
+        frame.push(pulse[(i + offset) % pulse.length] ?? "⠁")
+      }
+      frames.push(frame.join(""))
+    }
+    return frames
+  }
 
   const colors =
     options.colors ??
@@ -334,6 +375,18 @@ export function createFrames(options: KnightRiderOptions = {}): string[] {
  * @returns ColorGenerator function
  */
 export function createColors(options: KnightRiderOptions = {}): ColorGenerator {
+  // For non-scanner styles (charge, signal, pulse), every char gets the same
+  // base color — there's no trail/gradient to derive. Resolve once and return
+  // a flat color function.
+  if (options.style === "charge" || options.style === "signal" || options.style === "pulse") {
+    const color = options.color
+      ? options.color instanceof RGBA
+        ? options.color
+        : RGBA.fromHex((options.color as string) || "#ffffff")
+      : RGBA.fromHex("#ffffff")
+    return () => color
+  }
+
   const holdStart = options.holdStart ?? 30
   const holdEnd = options.holdEnd ?? 9
 

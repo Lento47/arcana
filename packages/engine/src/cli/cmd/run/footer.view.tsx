@@ -259,13 +259,13 @@ export function RunFooterView(props: RunFooterViewProps) {
     return {
       frames: createFrames({
         color: theme().highlight,
-        style: "blocks",
+        style: "charge",
         inactiveFactor: 0.6,
         minAlpha: 0.3,
       }),
       color: createColors({
         color: theme().highlight,
-        style: "blocks",
+        style: "charge",
         inactiveFactor: 0.6,
         minAlpha: 0.3,
       }),

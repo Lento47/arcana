@@ -75,6 +75,7 @@ export type LifecycleInput = {
   onVariantSelect?: (variant: string | undefined) => CycleResult | void | Promise<CycleResult | void>
   onInterrupt?: () => void
   onBackground?: () => void
+  onEditorOpen?: (input: { value: string }) => Promise<string | undefined>
   onSubagentSelect?: (sessionID: string | undefined) => void
 }
 
