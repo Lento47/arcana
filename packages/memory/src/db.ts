@@ -50,6 +50,10 @@ CREATE TABLE IF NOT EXISTS skills_memory (
   created_at TEXT NOT NULL
 );
 
+-- user_facts: persistent long-term user facts.
+-- Schema additions in this file are *forward-only and idempotent*.
+-- The last_accessed_at / content_hash / value_normalized columns are
+-- used for dedup refresh + scoring (Direction 5).
 CREATE TABLE IF NOT EXISTS user_facts (
   id TEXT PRIMARY KEY,
   key TEXT NOT NULL,
@@ -57,7 +61,19 @@ CREATE TABLE IF NOT EXISTS user_facts (
   source TEXT,
   confidence REAL DEFAULT 1.0,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  last_accessed_at TEXT,
+  content_hash TEXT,
+  value_normalized TEXT
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS user_facts_fts USING fts5(
+  id UNINDEXED,
+  key,
+  value,
+  content='user_facts',
+  content_rowid='rowid',
+  tokenize='porter unicode61'
 );
 
 CREATE TABLE IF NOT EXISTS feedback (
@@ -94,6 +110,11 @@ CREATE TRIGGER IF NOT EXISTS artifacts_fts_insert AFTER INSERT ON artifacts BEGI
   INSERT INTO artifact_fts(rowid, id, title, content, tags) VALUES (new.rowid, new.id, new.title, new.content, new.tags);
 END;
 
+CREATE TRIGGER IF NOT EXISTS artifacts_fts_update AFTER UPDATE ON artifacts BEGIN
+  INSERT INTO artifact_fts(artifact_fts, rowid, id, title, content, tags) VALUES ('delete', old.rowid, old.id, old.title, old.content, old.tags);
+  INSERT INTO artifact_fts(rowid, id, title, content, tags) VALUES (new.rowid, new.id, new.title, new.content, new.tags);
+END;
+
 CREATE TRIGGER IF NOT EXISTS artifacts_fts_delete AFTER DELETE ON artifacts BEGIN
   INSERT INTO artifact_fts(artifact_fts, rowid, id, title, content, tags) VALUES ('delete', old.rowid, old.id, old.title, old.content, old.tags);
 END;
@@ -115,10 +136,49 @@ CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
   INSERT INTO message_fts(rowid, id, session_id, role, content) VALUES (new.rowid, new.id, new.session_id, new.role, new.content);
 END;
 
+CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
+  INSERT INTO message_fts(message_fts, rowid, id, session_id, role, content) VALUES ('delete', old.rowid, old.id, old.session_id, old.role, old.content);
+  INSERT INTO message_fts(rowid, id, session_id, role, content) VALUES (new.rowid, new.id, new.session_id, new.role, new.content);
+END;
+
 CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
   INSERT INTO message_fts(message_fts, rowid, id, session_id, role, content) VALUES ('delete', old.rowid, old.id, old.session_id, old.role, old.content);
 END;
+
+CREATE TRIGGER IF NOT EXISTS user_facts_fts_insert AFTER INSERT ON user_facts BEGIN
+  INSERT INTO user_facts_fts(rowid, id, key, value) VALUES (new.rowid, new.id, new.key, new.value);
+END;
+
+CREATE TRIGGER IF NOT EXISTS user_facts_fts_update AFTER UPDATE ON user_facts BEGIN
+  INSERT INTO user_facts_fts(user_facts_fts, rowid, id, key, value) VALUES ('delete', old.rowid, old.id, old.key, old.value);
+  INSERT INTO user_facts_fts(rowid, id, key, value) VALUES (new.rowid, new.id, new.key, new.value);
+END;
+
+CREATE TRIGGER IF NOT EXISTS user_facts_fts_delete AFTER DELETE ON user_facts BEGIN
+  INSERT INTO user_facts_fts(user_facts_fts, rowid, id, key, value) VALUES ('delete', old.rowid, old.id, old.key, old.value);
+END;
+
+CREATE INDEX IF NOT EXISTS idx_user_facts_hash ON user_facts(content_hash);
+CREATE INDEX IF NOT EXISTS idx_user_facts_last_accessed ON user_facts(last_accessed_at);
 `
+
+// Forward-only, idempotent column migrations applied on every open.
+// SQLite ALTER TABLE ADD COLUMN fails if the column already exists, so we
+// gate each with a PRAGMA table_info check. Cheap (one int per column).
+const COLUMN_MIGRATIONS: Array<{ table: string; column: string; type: string }> = [
+  { table: "user_facts", column: "last_accessed_at", type: "TEXT" },
+  { table: "user_facts", column: "content_hash", type: "TEXT" },
+  { table: "user_facts", column: "value_normalized", type: "TEXT" },
+]
+
+function applyColumnMigrations(db: Database): void {
+  for (const { table, column, type } of COLUMN_MIGRATIONS) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+    if (!cols.some((c) => c.name === column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
+    }
+  }
+}
 
 // Tables only need creating once per file per process; subsequent opens of the
 // same db skip the ~30 CREATE-IF-NOT-EXISTS statements.
@@ -132,9 +192,15 @@ export function openMemoryDB(dataDir: string): Database {
   db.exec("PRAGMA journal_mode = WAL")
   db.exec("PRAGMA synchronous = NORMAL")
   db.exec("PRAGMA foreign_keys = ON")
+  db.exec("PRAGMA busy_timeout = 5000")
   if (!_schemaApplied.has(file)) {
     db.exec(SCHEMA)
     _schemaApplied.add(file)
   }
+  // Column migrations are safe to run every open — they're gated by
+  // PRAGMA table_info checks internally. We don't memoize them because
+  // some edge cases (e.g. a previous process crashed mid-migration) need
+  // to be retried on next open.
+  applyColumnMigrations(db)
   return db
 }
