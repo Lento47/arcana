@@ -126,7 +126,7 @@ describe("CloudflareWorkersAIPlugin", () => {
     ),
   )
 
-  itWithAccount.effect("falls back to account metadata when account env is absent", () =>
+  it.effect("uses configured account metadata when env is absent", () =>
     withEnv(
       {
         CLOUDFLARE_ACCOUNT_ID: undefined,
@@ -135,27 +135,20 @@ describe("CloudflareWorkersAIPlugin", () => {
       () =>
         Effect.gen(function* () {
           const plugin = yield* PluginV2.Service
-          const credentials = yield* Credential.Service
           const catalog = yield* Catalog.Service
-          yield* credentials.create({
-            integrationID: Integration.ID.make("cloudflare-workers-ai"),
-            value: new Credential.Key({
-              type: "key",
-              key: "account-key",
-              metadata: { accountId: "account-acct" },
-            }),
-          })
           yield* plugin.add(CloudflareWorkersAIPlugin)
           const transform = yield* catalog.transform()
           yield* transform((catalog) =>
             catalog.provider.update(ProviderV2.ID.make("cloudflare-workers-ai"), (provider) => {
               provider.api = { type: "aisdk", package: "test-provider" }
+              provider.request.body.accountId = "configured-acct"
+              provider.request.body.apiKey = "configured-key"
             }),
           )
           expect((yield* catalog.provider.get(ProviderV2.ID.make("cloudflare-workers-ai"))).request.body).toMatchObject(
             {
-              apiKey: "account-key",
-              accountId: "account-acct",
+              apiKey: "configured-key",
+              accountId: "configured-acct",
             },
           )
         }),

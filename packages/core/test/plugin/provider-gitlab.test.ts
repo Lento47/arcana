@@ -163,7 +163,7 @@ describe("GitLabPlugin", () => {
     }),
   )
 
-  itWithAccount.effect("uses active account API token over GITLAB_TOKEN", () =>
+  it.effect("prefers configured apiKey over GITLAB_TOKEN", () =>
     withEnv(
       {
         GITLAB_TOKEN: "env-token",
@@ -172,15 +172,14 @@ describe("GitLabPlugin", () => {
         Effect.gen(function* () {
           gitlabSDKOptions.length = 0
           const plugin = yield* PluginV2.Service
-          const credentials = yield* Credential.Service
           const catalog = yield* Catalog.Service
-          yield* credentials.create({
-            integrationID: Integration.ID.make("gitlab"),
-            value: new Credential.Key({ type: "key", key: "account-token" }),
-          })
           yield* plugin.add(GitLabPlugin)
           const transform = yield* catalog.transform()
-          yield* transform((catalog) => catalog.provider.update(ProviderV2.ID.make("gitlab"), () => {}))
+          yield* transform((catalog) =>
+            catalog.provider.update(ProviderV2.ID.make("gitlab"), (provider) => {
+              provider.request.body.apiKey = "configured-token"
+            }),
+          )
           const provider = yield* catalog.provider.get(ProviderV2.ID.make("gitlab"))
           yield* plugin.trigger(
             "aisdk.sdk",
@@ -191,32 +190,21 @@ describe("GitLabPlugin", () => {
             },
             {},
           )
-          expect(gitlabSDKOptions[0].apiKey).toBe("account-token")
+          expect(gitlabSDKOptions[0].apiKey).toBe("configured-token")
         }),
     ),
   )
 
-  itWithAccount.effect("uses active account OAuth access token when no API token exists", () =>
+  it.effect("falls back to GITLAB_TOKEN when configured apiKey is absent", () =>
     withEnv(
       {
-        GITLAB_TOKEN: undefined,
+        GITLAB_TOKEN: "env-token",
       },
       () =>
         Effect.gen(function* () {
           gitlabSDKOptions.length = 0
           const plugin = yield* PluginV2.Service
-          const credentials = yield* Credential.Service
           const catalog = yield* Catalog.Service
-          yield* credentials.create({
-            integrationID: Integration.ID.make("gitlab"),
-            value: new Credential.OAuth({
-              type: "oauth",
-              methodID: Integration.MethodID.make("oauth"),
-              refresh: "refresh-token",
-              access: "account-oauth-token",
-              expires: 9999999999999,
-            }),
-          })
           yield* plugin.add(GitLabPlugin)
           const transform = yield* catalog.transform()
           yield* transform((catalog) => catalog.provider.update(ProviderV2.ID.make("gitlab"), () => {}))
@@ -230,7 +218,7 @@ describe("GitLabPlugin", () => {
             },
             {},
           )
-          expect(gitlabSDKOptions[0].apiKey).toBe("account-oauth-token")
+          expect(gitlabSDKOptions[0].apiKey).toBe("env-token")
         }),
     ),
   )
