@@ -73,7 +73,7 @@ describe("AzurePlugin", () => {
     ),
   )
 
-  itWithAccount.effect("prefers account resourceName over env", () =>
+  it.effect("prefers configured resourceName over env", () =>
     withEnv(
       {
         AZURE_RESOURCE_NAME: "from-env",
@@ -81,24 +81,16 @@ describe("AzurePlugin", () => {
       () =>
         Effect.gen(function* () {
           const plugin = yield* PluginV2.Service
-          const credentials = yield* Credential.Service
           const catalog = yield* Catalog.Service
-          yield* credentials.create({
-            integrationID: Integration.ID.make("azure"),
-            value: new Credential.Key({
-              type: "key",
-              key: "key",
-              metadata: { resourceName: "from-account" },
-            }),
-          })
           yield* plugin.add(AzurePlugin)
           const transform = yield* catalog.transform()
           yield* transform((catalog) => {
             catalog.provider.update(ProviderV2.ID.azure, (item) => {
               item.api = { type: "aisdk", package: "@ai-sdk/azure" }
+              item.request.body.resourceName = "from-config"
             })
           })
-          expect((yield* catalog.provider.get(ProviderV2.ID.azure)).request.body.resourceName).toBe("from-account")
+          expect((yield* catalog.provider.get(ProviderV2.ID.azure)).request.body.resourceName).toBe("from-config")
         }),
     ),
   )
