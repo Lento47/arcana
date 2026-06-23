@@ -3,6 +3,10 @@ import { ConfigV1 } from "@arcana/core/v1/config/config"
 import * as fs from "fs/promises"
 import os from "os"
 import path from "path"
+
+// Prevent git in temp test directories from walking up into an outer repository
+// (e.g. a user's home directory) when looking for a worktree.
+if (!process.env.GIT_CEILING_DIRECTORIES) process.env.GIT_CEILING_DIRECTORIES = os.tmpdir()
 import { Effect, Context, Layer } from "effect"
 import type * as PlatformError from "effect/PlatformError"
 import type * as Scope from "effect/Scope"

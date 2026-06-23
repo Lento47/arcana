@@ -279,7 +279,7 @@ test("keeps the locked write schema, semantics docstring, and deferred UX TODOs 
 
   expect(Object.keys(schema.properties ?? {}).sort()).toEqual(["content", "path"])
   expect(source).toContain(
-    "Named project references\n * are read-oriented and deliberately are not accepted by mutation tools.",
+    "Model-facing V2 file-write leaf. Relative paths resolve within the active\n * Location. Absolute paths inside that Location are accepted, while explicit\n * absolute external paths retain mutation capability through a separate\n * external_directory approval before edit approval.",
   )
   for (const todo of [
     "Revisit whether model-facing mutation schemas should prefer absolute `filePath` naming for trained-in compatibility after evaluating model behavior.",

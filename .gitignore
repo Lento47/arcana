@@ -46,3 +46,6 @@ temporary-*.md
 research/
 
 .wrangler/
+
+# Local project memory (Claude session notes, not uploaded)
+.memory/
