@@ -8,6 +8,7 @@ import type { AgentConfig, ChatMessage, TurnResult, ToolDef, ToolHandler, ToolRe
 import { redactSecrets, checkDangerousCommand, RateLimiter, auditLog } from "./guard.js"
 import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
+import { applyMlPreflight, buildMlRevisionMessages, evaluateMlFinalResponse, prepareMlRuntime } from "./ml-runtime.js"
 
 const TOOL_RESULT_MAX = 2000  // truncate large tool outputs to this many chars
 
@@ -138,6 +139,10 @@ export class AgentRunner {
     } else {
       history = systemMsg ? [systemMsg, ...rest] : rest
     }
+
+    const mlRuntime = prepareMlRuntime(history, this.config, Boolean(this.sandbox))
+    history = applyMlPreflight(history, mlRuntime)
+
     let totalInput = 0
     let totalOutput = 0
     let toolCalls = 0
@@ -154,7 +159,8 @@ export class AgentRunner {
       const hasTools = Object.keys(tools).length > 0
 
       if (onChunk && !hasTools) {
-        // Streaming path: no tools → stream tokens directly
+        // Streaming path: no tools → stream tokens directly. ML preflight still
+        // applies, but postflight cannot silently revise already-emitted tokens.
         const result = await streamText({
           model,
           messages: coreMessages,
@@ -192,9 +198,35 @@ export class AgentRunner {
       const text = result.text
 
       if (!toolRequests.length) {
-        finalContent = text
-        if (onChunk) onChunk(text)
-        history.push({ role: "assistant", content: text })
+        let finalText = text
+        const postflight = evaluateMlFinalResponse(mlRuntime, text)
+        if (postflight?.shouldRevise && postflight.revisionPrompt && mlRuntime.maxSilentRevisions > 0) {
+          try {
+            const revisionMessages = buildMlRevisionMessages(mlRuntime, text, postflight.revisionPrompt)
+            const revised = await generateText({
+              model,
+              messages: toCoreMessages(revisionMessages),
+              maxOutputTokens: this.config.maxTokens ?? 4096,
+              temperature: Math.min(this.config.temperature ?? 0.7, 0.4),
+            })
+            totalInput += revised.usage?.inputTokens ?? 0
+            totalOutput += revised.usage?.outputTokens ?? 0
+            if (revised.text.trim()) finalText = revised.text
+          } catch (error) {
+            if (!this.config.godlike) {
+              auditLog({
+                tool: "ml_quality_revision",
+                args: { verdict: postflight.quality.verdict },
+                result: `ERROR: ${error instanceof Error ? error.message : String(error)}`,
+                session: this.sessionId ?? undefined,
+                ts: new Date().toISOString(),
+              })
+            }
+          }
+        }
+        finalContent = finalText
+        if (onChunk) onChunk(finalText)
+        history.push({ role: "assistant", content: finalText })
         break
       }
 
