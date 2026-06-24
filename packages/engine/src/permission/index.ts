@@ -34,6 +34,12 @@ interface PendingEntry {
 interface State {
   pending: Map<PermissionV1.ID, PendingEntry>
   approved: PermissionV1.Rule[]
+  // IDs of requests that have already been resolved (approved, rejected, or
+  // cascade-rejected). Tracked so a duplicate reply to a resolved request is
+  // idempotent (double-Enter, cascade races) without swallowing genuinely
+  // unknown IDs — those still surface as NotFoundError to preserve the 404
+  // contract. See bc4a95d for the idempotency rationale.
+  resolved: Set<PermissionV1.ID>
 }
 
 export function evaluate(permission: string, pattern: string, ...rulesets: PermissionV1.Ruleset[]): PermissionV1.Rule {
@@ -60,6 +66,7 @@ export const layer = Layer.effect(
         const state = {
           pending: new Map<PermissionV1.ID, PendingEntry>(),
           approved: [],
+          resolved: new Set<PermissionV1.ID>(),
         }
 
         yield* Effect.addFinalizer(() =>
@@ -118,13 +125,20 @@ export const layer = Layer.effect(
     })
 
     const reply = Effect.fn("Permission.reply")(function* (input: PermissionV1.ReplyInput) {
-      const { approved, pending } = yield* InstanceState.get(state)
+      const { approved, pending, resolved } = yield* InstanceState.get(state)
       const existing = pending.get(input.requestID)
-      // Idempotent: if the request was already resolved (double-Enter, race, cascade reject),
-      // return silently — the user's intent was already applied.
-      if (!existing) return Effect.void
+      // Idempotent: if the request was already resolved (double-Enter, race,
+      // cascade reject), return silently — the user's intent was already
+      // applied. A genuinely unknown ID (never asked, never resolved) is NOT
+      // swallowed here — it falls through to NotFoundError to keep the 404
+      // contract. See bc4a95d for the idempotency rationale.
+      if (!existing) {
+        if (resolved.has(input.requestID)) return Effect.void
+        return yield* new PermissionV1.NotFoundError({ requestID: input.requestID })
+      }
 
       pending.delete(input.requestID)
+      resolved.add(input.requestID)
       yield* events.publish(Event.Replied, {
         sessionID: existing.info.sessionID,
         requestID: existing.info.id,
@@ -142,6 +156,7 @@ export const layer = Layer.effect(
         for (const [id, item] of pending.entries()) {
           if (item.info.sessionID !== existing.info.sessionID) continue
           pending.delete(id)
+          resolved.add(id)
           yield* events.publish(Event.Replied, {
             sessionID: item.info.sessionID,
             requestID: item.info.id,
@@ -170,6 +185,7 @@ export const layer = Layer.effect(
         )
         if (!ok) continue
         pending.delete(id)
+        resolved.add(id)
         yield* events.publish(Event.Replied, {
           sessionID: item.info.sessionID,
           requestID: item.info.id,

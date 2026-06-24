@@ -859,7 +859,7 @@ describe("session HttpApi", () => {
 
         const query = new URLSearchParams({
           scope: "project",
-          path: "packages/opencode/src",
+          path: "packages/arcana/src",
           directory: currentDir,
         })
         const headers = { "x-opencode-directory": test.directory }
