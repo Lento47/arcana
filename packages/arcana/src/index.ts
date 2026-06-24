@@ -18,7 +18,7 @@ profileEmit("arcana_entry", performance.now())
 
 const args = process.argv.slice(2)
 const HELP_FLAGS = new Set(["--help", "-h", "--version", "-v"])
-const SUBCOMMANDS = ["run", "skills", "cron", "memory", "gateway", "completion", "config", "learn", "doctor", "history", "theme", "feedback"]
+const SUBCOMMANDS = ["run", "skills", "cron", "memory", "gateway", "completion", "config", "learn", "doctor", "history", "theme", "feedback", "web"]
 const firstArg = args[0]
 const isArcanaSubcommand = firstArg && (SUBCOMMANDS.includes(firstArg) || HELP_FLAGS.has(firstArg))
 
@@ -94,6 +94,7 @@ async function loadCommands() {
     { HistoryCommand },
     { ThemeCommand },
     { FeedbackCommand },
+    { WebCommand },
   ] = await Promise.all([
     import("./cli/cmd/run.js"),
     import("./cli/cmd/skills.js"),
@@ -106,8 +107,9 @@ async function loadCommands() {
     import("./cli/cmd/history.js"),
     import("./cli/cmd/theme.js"),
     import("./cli/cmd/feedback.js"),
+    import("./cli/cmd/web.js"),
   ])
-  return { RunCommand, SkillsCommand, CronCommand, MemoryCommand, GatewayCommand, ConfigCommand, LearnCommand, DoctorCommand, HistoryCommand, ThemeCommand, FeedbackCommand }
+  return { RunCommand, SkillsCommand, CronCommand, MemoryCommand, GatewayCommand, ConfigCommand, LearnCommand, DoctorCommand, HistoryCommand, ThemeCommand, FeedbackCommand, WebCommand }
 }
 
 const cmds = await loadCommands()
@@ -141,6 +143,7 @@ const cli = yargs(args)
   .command(cmds.HistoryCommand)
   .command(cmds.ThemeCommand)
   .command(cmds.FeedbackCommand)
+  .command(cmds.WebCommand)
   .usage("")
   .completion("completion", "generate shell completion script")
   .fail((msg, err) => {
