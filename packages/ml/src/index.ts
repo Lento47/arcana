@@ -34,7 +34,6 @@ export type {
   ResponsePipelinePreflightInput,
 } from "./response-pipeline.js"
 export type { ContextItem, ContextItemKind, ContextPlan, ContextPlanInput, PlannedContextItem } from "./context.js"
-export type { EvalCaseResult, EvalRunResult, EvalStatus } from "./evals.js"
 
 export { analyzeTool, analyzeTurn, createSignalEngine } from "./signals.js"
 export { formatToolSignalForAudit, formatTurnSignalForSystemPrompt } from "./llm.js"
@@ -49,4 +48,3 @@ export { formatExpectationContractForPrompt, inferExpectationContract } from "./
 export { buildRevisionPrompt, evaluateResponseQuality, formatQualityGateForAudit } from "./quality.js"
 export { evaluateResponsePostflight, prepareResponsePreflight } from "./response-pipeline.js"
 export { formatContextPlanForAudit, planContextPack } from "./context.js"
-export { runMlEvals } from "./evals.js"

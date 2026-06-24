@@ -35,6 +35,11 @@ export type SemanticCompressionResult = {
 const DEFAULT_CONTEXT = 128_000
 const DEFAULT_OUTPUT = 4_096
 
+function nonNegativeInteger(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback
+  return Math.max(0, Math.floor(value))
+}
+
 export function estimateTokens(text: string): number {
   if (!text) return 0
   const words = text.trim().split(/\s+/).filter(Boolean).length
@@ -49,11 +54,11 @@ function getInputText(input: TokenBudgetInput): string {
 
 export function planTokenBudget(input: TokenBudgetInput): TokenBudgetPlan {
   const estimatedInputTokens = estimateTokens(getInputText(input))
-  const maxContextTokens = input.maxContextTokens ?? DEFAULT_CONTEXT
-  const reservedOutputTokens = input.reservedOutputTokens ?? DEFAULT_OUTPUT
+  const maxContextTokens = nonNegativeInteger(input.maxContextTokens, DEFAULT_CONTEXT)
+  const reservedOutputTokens = nonNegativeInteger(input.reservedOutputTokens, DEFAULT_OUTPUT)
   const availableInputTokens = Math.max(0, maxContextTokens - reservedOutputTokens)
   const utilization = availableInputTokens === 0 ? 1 : Number((estimatedInputTokens / availableInputTokens).toFixed(4))
-  const target = input.targetUtilization ?? 0.72
+  const target = Math.max(0.01, Math.min(1, input.targetUtilization ?? 0.72))
   const recommendations: string[] = []
 
   if (utilization > 1) {

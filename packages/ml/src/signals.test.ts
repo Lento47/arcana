@@ -173,6 +173,17 @@ describe("Arcana Signal Engine", () => {
     expect(result.problems.length).toBeGreaterThan(0)
   })
 
+  test("strict quality gate revises generic output even when it contains concrete markers", () => {
+    const expectation = inferExpectationContract({ request: "avoid generic output and give exact implementation details" })
+    const result = evaluateResponseQuality({
+      request: "avoid generic output and give exact implementation details",
+      response: "Use best practices in `src/index.ts` to build a robust solution.",
+      expectation,
+    })
+
+    expect(result.verdict).toBe("revise_silently")
+  })
+
   test("builds focused revision prompts for failed quality gates", () => {
     const expectation = inferExpectationContract({ request: "avoid generic output and give specific implementation details" })
     const result = evaluateResponseQuality({
@@ -236,5 +247,25 @@ describe("Arcana Signal Engine", () => {
     expect(plan.summarize.some((item) => item.id === "quality.ts")).toBe(true)
     expect(plan.drop.some((item) => item.id === "marketing")).toBe(true)
     expect(formatContextPlanForAudit(plan)).toContain("summarize=1")
+  })
+
+  test("context planner preserves required context under budget pressure", () => {
+    const plan = planContextPack({
+      request: "must keep system policy",
+      maxInputTokens: 32,
+      items: [
+        {
+          id: "system-policy",
+          kind: "system",
+          content: "never drop this system policy".repeat(40),
+          canDrop: false,
+          canSummarize: false,
+        },
+      ],
+    })
+
+    expect(plan.included.some((item) => item.id === "system-policy")).toBe(true)
+    expect(plan.drop.some((item) => item.id === "system-policy")).toBe(false)
+    expect(plan.warnings.some((warning) => warning.includes("preserved"))).toBe(true)
   })
 })

@@ -98,12 +98,17 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   const genericHits = phraseHits(input.response, GENERIC_PHRASES)
   const problems: string[] = []
   const revisionHints: string[] = []
+  const strict = input.expectation?.qualityBar === "strict"
 
   const genericityScore = clamp(genericHits.length / 5)
   const specificityScore = clamp(overlap(requestTokens, responseTokens) * 0.6 + (hasConcreteMarkers(input.response) ? 0.4 : 0))
   const actionabilityScore = actionability(input.response)
   const constraintFitScore = constraintFit(input.response, input.expectation)
 
+  if (!input.response.trim()) {
+    problems.push("Response is empty.")
+    revisionHints.push("Provide a concrete response aligned with the user's request.")
+  }
   if (genericHits.length) {
     problems.push(`Generic phrases detected: ${genericHits.join(", ")}`)
     revisionHints.push("Replace generic phrases with concrete decisions, constraints, file names, commands, or measurable outcomes.")
@@ -120,7 +125,7 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
     problems.push("Response may not satisfy explicit user constraints.")
     revisionHints.push("Re-read constraints and explicitly satisfy or call out each one.")
   }
-  if (input.expectation?.qualityBar === "strict" && !hasConcreteMarkers(input.response)) {
+  if (strict && !hasConcreteMarkers(input.response)) {
     problems.push("Strict quality bar requires concrete markers such as commands, files, metrics, code, or evidence.")
     revisionHints.push("Add evidence, validation commands, or precise implementation details before responding.")
   }
@@ -133,8 +138,10 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   )
 
   let verdict: QualityGateVerdict = "pass"
+  const threshold = strict ? 0.78 : 0.64
+  const hardFail = input.response.trim().length === 0 || (strict && problems.length > 0) || (strict && genericHits.length > 0)
   if (score < 0.45 && input.expectation?.interactionIntervention === "confirm") verdict = "ask_user"
-  else if (score < (input.expectation?.qualityBar === "strict" ? 0.78 : 0.64)) verdict = "revise_silently"
+  else if (hardFail || score < threshold) verdict = "revise_silently"
 
   return {
     verdict,

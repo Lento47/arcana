@@ -100,9 +100,13 @@ function rankItems(request: string, items: ContextItem[]): PlannedContextItem[] 
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.relevanceScore - a.relevanceScore || a.estimatedTokens - b.estimatedTokens)
 }
 
+function isRequiredContext(item: ContextItem): boolean {
+  return item.kind === "request" || item.kind === "system" || item.canDrop === false
+}
+
 export function planContextPack(input: ContextPlanInput): ContextPlan {
-  const reservedTokens = input.reservedTokens ?? 0
-  const tokenBudget = Math.max(0, input.maxInputTokens - reservedTokens)
+  const reservedTokens = Math.max(0, Math.floor(input.reservedTokens ?? 0))
+  const tokenBudget = Math.max(0, Math.floor(input.maxInputTokens) - reservedTokens)
   const minRelevanceScore = input.minRelevanceScore ?? 0.08
   const warnings: string[] = []
   const included: PlannedContextItem[] = []
@@ -113,8 +117,8 @@ export function planContextPack(input: ContextPlanInput): ContextPlan {
   if (tokenBudget <= 0) warnings.push("No available input-token budget after reserves.")
 
   for (const item of rankItems(input.request, input.items)) {
-    const mustInclude = item.pinned || item.kind === "request" || item.kind === "system"
-    const tooLowSignal = !mustInclude && item.relevanceScore < minRelevanceScore
+    const mustPreserve = Boolean(item.pinned) || isRequiredContext(item)
+    const tooLowSignal = !mustPreserve && item.relevanceScore < minRelevanceScore
 
     if (tooLowSignal && item.canDrop !== false) {
       drop.push({ ...item, decision: "drop", reasons: [...item.reasons, "below relevance threshold"] })
@@ -139,12 +143,17 @@ export function planContextPack(input: ContextPlanInput): ContextPlan {
       continue
     }
 
-    if (mustInclude) {
-      warnings.push(`Pinned or required context item ${item.id} exceeds remaining budget.`)
+    if (mustPreserve) {
+      included.push({ ...item, decision: "include", reasons: [...item.reasons, "preserved despite budget pressure"] })
+      used += item.estimatedTokens
+      warnings.push(`Required context item ${item.id} exceeds the remaining budget and was preserved.`)
+      continue
     }
+
     drop.push({ ...item, decision: "drop", reasons: [...item.reasons, "does not fit budget"] })
   }
 
+  if (used > tokenBudget) warnings.push(`Included context exceeds token budget by ${used - tokenBudget} estimated token(s).`)
   if (drop.length > 0) warnings.push(`${drop.length} context item(s) dropped to protect context budget.`)
   if (summarize.length > 0) warnings.push(`${summarize.length} context item(s) should be summarized before the LLM call.`)
 
