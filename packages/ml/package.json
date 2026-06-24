@@ -19,6 +19,7 @@
     "./expectation": "./src/expectation.ts",
     "./quality": "./src/quality.ts",
     "./response-pipeline": "./src/response-pipeline.ts",
+    "./context": "./src/context.ts",
     "./evals": "./src/evals.ts"
   },
   "scripts": {
