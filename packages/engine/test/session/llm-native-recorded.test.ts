@@ -447,9 +447,6 @@ describe("session.llm native recorded", () => {
       // re-recording pass — same pattern as mcp-session-recovery.
       test.skip(`${scenario.name}: drives a tool loop to a final text answer`, () => {})
       continue
-      }
-      test.skip(`${scenario.name}: drives a tool loop to a final text answer`, () => {})
-      continue
     }
     const it = testEffect(recordedNativeLLMLayer(scenario))
     it.instance(`${scenario.name}: drives a tool loop to a final text answer`, () => driveToolLoop(scenario))
