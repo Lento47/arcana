@@ -7,6 +7,7 @@ import { parseFeedback, serializeFeedback, summarizeFeedback } from "./feedback.
 import { compressSemantically, estimateTokens, planTokenBudget } from "./token.js"
 import { rewriteSemantics } from "./semantic.js"
 import { analyzeSqlOptimization } from "./sql.js"
+import { formatMachineResourcePlan, planMachineResourceUse } from "./machine.js"
 
 describe("Arcana Signal Engine", () => {
   test("routes code-fix prompts toward sandboxed code posture", () => {
@@ -119,5 +120,29 @@ describe("Arcana Signal Engine", () => {
     expect(plan.intent).toBe("read_query")
     expect(plan.findings.some((finding) => finding.category === "index")).toBe(true)
     expect(plan.findings.some((finding) => finding.category === "pagination")).toBe(true)
+  })
+
+  test("protects the user's machine with recyclable resource planning", () => {
+    const memoryOnly = planMachineResourceUse({ operation: "classify prompt" })
+    const temp = planMachineResourceUse({
+      operation: "rerank local snippets",
+      estimatedBytesToWrite: 4096,
+      filesToCreate: 1,
+      containsUserData: true,
+      canRegenerate: true,
+    })
+    const persistent = planMachineResourceUse({
+      operation: "persist embedding index",
+      estimatedBytesToWrite: 1024,
+      filesToCreate: 1,
+      persistent: true,
+      containsUserData: true,
+    })
+
+    expect(memoryOnly.posture).toBe("memory_only")
+    expect(temp.posture).toBe("recycle_temp")
+    expect(temp.cleanup.strategy).toBe("delete_temp")
+    expect(persistent.requiresApproval).toBe(true)
+    expect(formatMachineResourcePlan(persistent)).toContain("requires_approval=true")
   })
 })
