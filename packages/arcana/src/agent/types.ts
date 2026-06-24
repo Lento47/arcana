@@ -40,6 +40,10 @@ export type AgentConfig = {
   maxToolsPerSession?: number
   maxWebFetchesPerSession?: number
   maxTokensPerSession?: number
+  /** Opt-in ML response pipeline. Also enabled by ARCANA_ML_RUNTIME=1. */
+  mlRuntime?: boolean
+  /** Maximum silent quality revisions per final assistant response. Default: 1 when ML runtime is enabled. */
+  mlSilentRevisions?: number
 }
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<string>
