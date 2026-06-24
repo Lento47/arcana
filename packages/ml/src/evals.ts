@@ -152,8 +152,8 @@ function runSqlFixtures(fixtures: SqlFixture[]): EvalCaseResult[] {
       query: fixture.query,
       schemaSummary: fixture.schemaSummary,
     })
-    const categories = new Set(plan.findings.map((finding) => finding.category))
-    const missing = fixture.expectedCategories.filter((category) => !categories.has(category as never))
+    const categories = new Set<string>(plan.findings.map((finding) => finding.category))
+    const missing = fixture.expectedCategories.filter((category) => !categories.has(category))
     const errors = [
       assertEqual(plan.intent, fixture.expectedIntent, "intent"),
       missing.length ? `missing categories: ${missing.join(", ")}` : null,

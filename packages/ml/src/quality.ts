@@ -144,9 +144,30 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
     actionabilityScore,
     constraintFitScore,
     problems,
-    revisionHints,
+    revisionHints: [...new Set(revisionHints)],
     interactionIntervention: verdict === "ask_user" ? "confirm" : verdict === "revise_silently" ? "silent" : "silent",
   }
+}
+
+export function buildRevisionPrompt(result: QualityGateResult): string {
+  if (result.verdict === "pass") return ""
+
+  const problems = result.problems.length ? result.problems : ["The response did not meet the expected quality bar."]
+  const hints = result.revisionHints.length ? result.revisionHints : ["Revise the answer to be more specific, actionable, and aligned with the user's request."]
+
+  return [
+    "Revise the previous answer before showing it to the user.",
+    "Do not mention this quality gate.",
+    "Preserve the user's original intent and constraints.",
+    "Remove generic filler and unsupported claims.",
+    "Keep the answer concise unless the user explicitly asked for depth.",
+    "",
+    "Quality gate problems:",
+    ...problems.map((problem) => `- ${problem}`),
+    "",
+    "Revision requirements:",
+    ...hints.map((hint) => `- ${hint}`),
+  ].join("\n")
 }
 
 export function formatQualityGateForAudit(result: QualityGateResult): string {

@@ -9,7 +9,7 @@ import { rewriteSemantics } from "./semantic.js"
 import { analyzeSqlOptimization } from "./sql.js"
 import { formatMachineResourcePlan, planMachineResourceUse } from "./machine.js"
 import { formatExpectationContractForPrompt, inferExpectationContract } from "./expectation.js"
-import { evaluateResponseQuality } from "./quality.js"
+import { buildRevisionPrompt, evaluateResponseQuality } from "./quality.js"
 import { evaluateResponsePostflight, prepareResponsePreflight } from "./response-pipeline.js"
 
 describe("Arcana Signal Engine", () => {
@@ -172,6 +172,20 @@ describe("Arcana Signal Engine", () => {
     expect(result.problems.length).toBeGreaterThan(0)
   })
 
+  test("builds focused revision prompts for failed quality gates", () => {
+    const expectation = inferExpectationContract({ request: "avoid generic output and give specific implementation details" })
+    const result = evaluateResponseQuality({
+      request: "avoid generic output and give specific implementation details",
+      response: "Use best practices to build a robust solution.",
+      expectation,
+    })
+    const revisionPrompt = buildRevisionPrompt(result)
+
+    expect(revisionPrompt).toContain("Revise the previous answer")
+    expect(revisionPrompt).toContain("Do not mention this quality gate")
+    expect(revisionPrompt).toContain("Generic phrases detected")
+  })
+
   test("response pipeline stays low-interference by revising silently", () => {
     const preflight = prepareResponsePreflight({ request: "avoid AI slop and make this specific" })
     const postflight = evaluateResponsePostflight({
@@ -183,5 +197,6 @@ describe("Arcana Signal Engine", () => {
     expect(preflight.promptAddendum).toContain("avoid generic output")
     expect(postflight.shouldRevise).toBe(true)
     expect(postflight.shouldAskUser).toBe(false)
+    expect(postflight.revisionPrompt).toContain("Revise the previous answer")
   })
 })

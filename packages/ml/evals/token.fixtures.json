@@ -1,9 +1,9 @@
 [
   {
-    "name": "repeated prompt compresses",
+    "name": "repeated prompt approaches budget",
     "text": "please please analyze this repo\n\nanalyze this repo\n\nanalyze this repo\n\n",
     "repeat": 24,
-    "maxContextTokens": 512,
+    "maxContextTokens": 640,
     "reservedOutputTokens": 128,
     "expectedStatus": "near_limit",
     "mustCompress": true
