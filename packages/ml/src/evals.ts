@@ -1,9 +1,15 @@
 import { readFile } from "node:fs/promises"
-import { analyzeSqlOptimization, type SqlDialect } from "./sql.js"
+import { analyzeSqlOptimization, type SqlDialect, type SqlOptimizationPlan } from "./sql.js"
 import { compressSemantically, planTokenBudget, type TokenBudgetPlan } from "./token.js"
 import { evaluateResponseQuality, type QualityGateVerdict } from "./quality.js"
-import { inferExpectationContract, type ExpectedDeliverable, type QualityBar } from "./expectation.js"
-import { planMachineResourceUse, type DiskPosture, type MachineResourceInput } from "./machine.js"
+import {
+  inferExpectationContract,
+  type EvidenceNeed,
+  type ExpectedDeliverable,
+  type InteractionIntervention,
+  type QualityBar,
+} from "./expectation.js"
+import { planMachineResourceUse, type DiskPosture, type MachineResourceInput, type MachineResourcePlan } from "./machine.js"
 
 export type EvalStatus = "pass" | "fail"
 
@@ -27,8 +33,8 @@ type ExpectationFixture = {
   expected: {
     deliverable: ExpectedDeliverable
     qualityBar: QualityBar
-    evidenceNeed?: string
-    interactionIntervention?: string
+    evidenceNeed?: EvidenceNeed
+    interactionIntervention?: InteractionIntervention
   }
 }
 
@@ -56,8 +62,8 @@ type SqlFixture = {
   dialect: SqlDialect
   query: string
   schemaSummary?: string
-  expectedIntent: string
-  expectedCategories: string[]
+  expectedIntent: SqlOptimizationPlan["intent"]
+  expectedCategories: Array<SqlOptimizationPlan["findings"][number]["category"]>
 }
 
 type MachineFixture = {
@@ -66,7 +72,7 @@ type MachineFixture = {
   expected: {
     posture: DiskPosture
     requiresApproval: boolean
-    cleanupStrategy: string
+    cleanupStrategy: MachineResourcePlan["cleanup"]["strategy"]
   }
 }
 
@@ -108,7 +114,7 @@ function runExpectationFixtures(fixtures: ExpectationFixture[]): EvalCaseResult[
       fixture.expected.interactionIntervention
         ? assertEqual(actual.interactionIntervention, fixture.expected.interactionIntervention, "interactionIntervention")
         : null,
-    ].filter(Boolean)
+    ].filter((error): error is string => Boolean(error))
     return errors.length ? fail("expectation", fixture.name, errors.join("; ")) : pass("expectation", fixture.name)
   })
 }
@@ -122,7 +128,7 @@ function runQualityFixtures(fixtures: QualityFixture[]): EvalCaseResult[] {
       actual.problems.length >= (fixture.minimumProblems ?? 0)
         ? null
         : `problems: expected at least ${fixture.minimumProblems ?? 0}, got ${actual.problems.length}`,
-    ].filter(Boolean)
+    ].filter((error): error is string => Boolean(error))
     return errors.length ? fail("quality", fixture.name, errors.join("; ")) : pass("quality", fixture.name)
   })
 }
@@ -140,7 +146,7 @@ function runTokenFixtures(fixtures: TokenFixture[]): EvalCaseResult[] {
     const errors = [
       assertEqual(budget.status, fixture.expectedStatus, "status"),
       assertEqual(didCompress, fixture.mustCompress, "mustCompress"),
-    ].filter(Boolean)
+    ].filter((error): error is string => Boolean(error))
     return errors.length ? fail("token", fixture.name, errors.join("; ")) : pass("token", fixture.name)
   })
 }
@@ -152,12 +158,12 @@ function runSqlFixtures(fixtures: SqlFixture[]): EvalCaseResult[] {
       query: fixture.query,
       schemaSummary: fixture.schemaSummary,
     })
-    const categories = new Set<string>(plan.findings.map((finding) => finding.category))
+    const categories = new Set<SqlOptimizationPlan["findings"][number]["category"]>(plan.findings.map((finding) => finding.category))
     const missing = fixture.expectedCategories.filter((category) => !categories.has(category))
     const errors = [
       assertEqual(plan.intent, fixture.expectedIntent, "intent"),
       missing.length ? `missing categories: ${missing.join(", ")}` : null,
-    ].filter(Boolean)
+    ].filter((error): error is string => Boolean(error))
     return errors.length ? fail("sql", fixture.name, errors.join("; ")) : pass("sql", fixture.name)
   })
 }
@@ -169,7 +175,7 @@ function runMachineFixtures(fixtures: MachineFixture[]): EvalCaseResult[] {
       assertEqual(plan.posture, fixture.expected.posture, "posture"),
       assertEqual(plan.requiresApproval, fixture.expected.requiresApproval, "requiresApproval"),
       assertEqual(plan.cleanup.strategy, fixture.expected.cleanupStrategy, "cleanup.strategy"),
-    ].filter(Boolean)
+    ].filter((error): error is string => Boolean(error))
     return errors.length ? fail("machine", fixture.name, errors.join("; ")) : pass("machine", fixture.name)
   })
 }
