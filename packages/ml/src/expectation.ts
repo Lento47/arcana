@@ -55,7 +55,7 @@ function detectQualityBar(text: string, mode: ExpectationInput["interactionMode"
   if (mode === "strict") return "strict"
   if (mode === "fast") return "fast"
   if (has(text, /\b(no generic|not generic|avoid ai slop|avoid slop|garbage|production|enterprise|serious|exact|precise|verify|evidence|not fluff|no fluff)\b/i)) return "strict"
-  if (has(text, /\bquick|simple|rough|draft|fast)\b/i)) return "fast"
+  if (has(text, /\b(quick|simple|rough|draft|fast)\b/i)) return "fast"
   return "solid"
 }
 
