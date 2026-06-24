@@ -154,7 +154,7 @@ afterEach(async () => {
 // without 400.
 describe("httpapi query schema drift", () => {
   const routingParams = (dir: string) =>
-    `directory=${encodeURIComponent(dir)}&workspace=${encodeURIComponent("ws_test")}`
+    `directory=${encodeURIComponent(dir)}&workspace=${encodeURIComponent("wrk_test")}`
 
   const expectNotSchemaRejection = (status: number, url: string) => {
     expect(status, `route ${url} 400'd, query schema is missing routing fields`).not.toBe(400)
