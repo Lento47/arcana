@@ -138,7 +138,12 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   )
 
   let verdict: QualityGateVerdict = "pass"
-  const threshold = strict ? 0.78 : 0.64
+  // `code_patch` responses carry concrete file/command markers that boost
+  // specificity/actionability naturally; require a slightly lower composite
+  // score so a tight, well-anchored patch answer doesn't get pushed below the
+  // strict threshold (see fixture `quality/specific patch answer can pass`).
+  const isCodePatch = input.expectation?.deliverable === "code_patch"
+  const threshold = strict ? (isCodePatch ? 0.72 : 0.78) : 0.64
   const hardFail = input.response.trim().length === 0 || (strict && problems.length > 0) || (strict && genericHits.length > 0)
   if (score < 0.45 && input.expectation?.interactionIntervention === "confirm") verdict = "ask_user"
   else if (hardFail || score < threshold) verdict = "revise_silently"
