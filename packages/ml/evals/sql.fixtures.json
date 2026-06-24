@@ -1,0 +1,18 @@
+[
+  {
+    "name": "postgres wildcard and offset",
+    "dialect": "postgres",
+    "query": "SELECT * FROM users WHERE email LIKE '%@example.com' ORDER BY created_at OFFSET 1000",
+    "schemaSummary": "users(id, email, created_at)",
+    "expectedIntent": "read_query",
+    "expectedCategories": ["index", "pagination", "query_shape"]
+  },
+  {
+    "name": "unsafe update",
+    "dialect": "generic",
+    "query": "UPDATE users SET active = false",
+    "schemaSummary": "users(id primary key, active)",
+    "expectedIntent": "write_query",
+    "expectedCategories": ["safety"]
+  }
+]
