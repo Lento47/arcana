@@ -8,6 +8,9 @@ import { compressSemantically, estimateTokens, planTokenBudget } from "./token.j
 import { rewriteSemantics } from "./semantic.js"
 import { analyzeSqlOptimization } from "./sql.js"
 import { formatMachineResourcePlan, planMachineResourceUse } from "./machine.js"
+import { formatExpectationContractForPrompt, inferExpectationContract } from "./expectation.js"
+import { evaluateResponseQuality } from "./quality.js"
+import { evaluateResponsePostflight, prepareResponsePreflight } from "./response-pipeline.js"
 
 describe("Arcana Signal Engine", () => {
   test("routes code-fix prompts toward sandboxed code posture", () => {
@@ -144,5 +147,41 @@ describe("Arcana Signal Engine", () => {
     expect(temp.cleanup.strategy).toBe("delete_temp")
     expect(persistent.requiresApproval).toBe(true)
     expect(formatMachineResourcePlan(persistent)).toContain("requires_approval=true")
+  })
+
+  test("builds expectation contracts that reject generic AI output", () => {
+    const contract = inferExpectationContract({
+      request: "keep working on the ML and avoid AI slop or generic garbage",
+    })
+    const prompt = formatExpectationContractForPrompt(contract)
+
+    expect(contract.qualityBar).toBe("strict")
+    expect(contract.mustAvoid).toContain("AI slop")
+    expect(prompt).toContain("quality_bar=strict")
+  })
+
+  test("quality gate asks for silent revision when response is generic", () => {
+    const expectation = inferExpectationContract({ request: "avoid generic output and give specific implementation details" })
+    const result = evaluateResponseQuality({
+      request: "avoid generic output and give specific implementation details",
+      response: "Use best practices to build a robust and scalable solution that streamlines the workflow.",
+      expectation,
+    })
+
+    expect(result.verdict).toBe("revise_silently")
+    expect(result.problems.length).toBeGreaterThan(0)
+  })
+
+  test("response pipeline stays low-interference by revising silently", () => {
+    const preflight = prepareResponsePreflight({ request: "avoid AI slop and make this specific" })
+    const postflight = evaluateResponsePostflight({
+      request: "avoid AI slop and make this specific",
+      response: "This is an innovative and comprehensive approach.",
+      expectation: preflight.expectation,
+    })
+
+    expect(preflight.promptAddendum).toContain("avoid generic output")
+    expect(postflight.shouldRevise).toBe(true)
+    expect(postflight.shouldAskUser).toBe(false)
   })
 })
