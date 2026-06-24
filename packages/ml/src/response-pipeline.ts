@@ -1,5 +1,5 @@
 import { inferExpectationContract, type ExpectationContract, type ExpectationInput } from "./expectation.js"
-import { evaluateResponseQuality, type QualityGateInput, type QualityGateResult } from "./quality.js"
+import { buildRevisionPrompt, evaluateResponseQuality, type QualityGateInput, type QualityGateResult } from "./quality.js"
 import { planTokenBudget, type TokenBudgetPlan } from "./token.js"
 import { planMachineResourceUse, type MachineResourceInput, type MachineResourcePlan } from "./machine.js"
 
@@ -25,6 +25,7 @@ export type ResponsePipelinePostflight = {
   shouldRespond: boolean
   shouldRevise: boolean
   shouldAskUser: boolean
+  revisionPrompt: string | null
 }
 
 export function prepareResponsePreflight(input: ResponsePipelinePreflightInput): ResponsePipelinePreflight {
@@ -51,10 +52,13 @@ export function prepareResponsePreflight(input: ResponsePipelinePreflightInput):
 
 export function evaluateResponsePostflight(input: ResponsePipelinePostflightInput): ResponsePipelinePostflight {
   const quality = evaluateResponseQuality(input)
+  const shouldRevise = quality.verdict === "revise_silently"
+  const shouldAskUser = quality.verdict === "ask_user"
   return {
     quality,
     shouldRespond: quality.verdict === "pass",
-    shouldRevise: quality.verdict === "revise_silently",
-    shouldAskUser: quality.verdict === "ask_user",
+    shouldRevise,
+    shouldAskUser,
+    revisionPrompt: shouldRevise ? buildRevisionPrompt(quality) : null,
   }
 }
