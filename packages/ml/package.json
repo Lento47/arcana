@@ -15,7 +15,10 @@
     "./token": "./src/token.ts",
     "./semantic": "./src/semantic.ts",
     "./sql": "./src/sql.ts",
-    "./machine": "./src/machine.ts"
+    "./machine": "./src/machine.ts",
+    "./expectation": "./src/expectation.ts",
+    "./quality": "./src/quality.ts",
+    "./response-pipeline": "./src/response-pipeline.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

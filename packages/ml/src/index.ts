@@ -18,6 +18,21 @@ export type { SemanticCompressionInput, SemanticCompressionResult, TokenBudgetIn
 export type { SemanticRewriteInput, SemanticRewriteMode, SemanticRewriteResult } from "./semantic.js"
 export type { SqlDialect, SqlOptimizationFinding, SqlOptimizationInput, SqlOptimizationPlan } from "./sql.js"
 export type { DataLifetime, DiskPosture, MachineResourceInput, MachineResourcePlan } from "./machine.js"
+export type {
+  EvidenceNeed,
+  ExpectationContract,
+  ExpectationInput,
+  ExpectedDeliverable,
+  InteractionIntervention,
+  QualityBar,
+} from "./expectation.js"
+export type { QualityGateInput, QualityGateResult, QualityGateVerdict } from "./quality.js"
+export type {
+  ResponsePipelinePostflight,
+  ResponsePipelinePostflightInput,
+  ResponsePipelinePreflight,
+  ResponsePipelinePreflightInput,
+} from "./response-pipeline.js"
 
 export { analyzeTool, analyzeTurn, createSignalEngine } from "./signals.js"
 export { formatToolSignalForAudit, formatTurnSignalForSystemPrompt } from "./llm.js"
@@ -28,3 +43,6 @@ export { compressSemantically, estimateTokens, planTokenBudget } from "./token.j
 export { rewriteSemantics } from "./semantic.js"
 export { analyzeSqlOptimization } from "./sql.js"
 export { formatMachineResourcePlan, planMachineResourceUse } from "./machine.js"
+export { formatExpectationContractForPrompt, inferExpectationContract } from "./expectation.js"
+export { evaluateResponseQuality, formatQualityGateForAudit } from "./quality.js"
+export { evaluateResponsePostflight, prepareResponsePreflight } from "./response-pipeline.js"
