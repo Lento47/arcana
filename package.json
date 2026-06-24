@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "bun packages/arcana/src/index.ts",
     "dev:tui": "bun --cwd packages/tui dev",
-    "dev:web": "bun --cwd packages/app dev",
+    "dev:web": "bun --cwd packages/enterprise dev",
+    "web:build": "bun --cwd packages/enterprise build",
     "lint": "oxlint",
     "typecheck": "bun turbo typecheck",
     "build": "bun turbo build",
