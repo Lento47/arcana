@@ -11,7 +11,10 @@
     "./llm": "./src/llm.ts",
     "./rerank": "./src/rerank.ts",
     "./policy": "./src/policy.ts",
-    "./feedback": "./src/feedback.ts"
+    "./feedback": "./src/feedback.ts",
+    "./token": "./src/token.ts",
+    "./semantic": "./src/semantic.ts",
+    "./sql": "./src/sql.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
