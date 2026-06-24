@@ -1,0 +1,38 @@
+{
+  "name": "@arcana/ml",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./signals": "./src/signals.ts",
+    "./llm": "./src/llm.ts",
+    "./rerank": "./src/rerank.ts",
+    "./policy": "./src/policy.ts",
+    "./feedback": "./src/feedback.ts",
+    "./token": "./src/token.ts",
+    "./semantic": "./src/semantic.ts",
+    "./sql": "./src/sql.ts",
+    "./machine": "./src/machine.ts",
+    "./expectation": "./src/expectation.ts",
+    "./quality": "./src/quality.ts",
+    "./response-pipeline": "./src/response-pipeline.ts",
+    "./context": "./src/context.ts",
+    "./evals": "./src/evals.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun test src --only-failures",
+    "test:all": "bun test src",
+    "eval": "bun src/evals.ts",
+    "build": "true"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  }
+}

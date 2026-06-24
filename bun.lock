@@ -17,7 +17,7 @@
     },
     "packages/arcana": {
       "name": "@arcana/arcana",
-      "version": "0.2.37",
+      "version": "0.2.43",
       "bin": {
         "arcana": "./bin/arcana",
       },
@@ -29,6 +29,7 @@
         "@arcana/cron": "workspace:*",
         "@arcana/gateway": "workspace:*",
         "@arcana/memory": "workspace:*",
+        "@arcana/ml": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
         "ai": "catalog:",
         "gray-matter": "catalog:",
@@ -413,6 +414,16 @@
         "typescript": "catalog:",
       },
     },
+    "packages/ml": {
+      "name": "@arcana/ml",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@typescript/native-preview": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/plugin": {
       "name": "@arcana/plugin",
       "version": "1.17.8",
@@ -738,6 +749,8 @@
     "@arcana/llm": ["@arcana/llm@workspace:packages/llm"],
 
     "@arcana/memory": ["@arcana/memory@workspace:packages/memory"],
+
+    "@arcana/ml": ["@arcana/ml@workspace:packages/ml"],
 
     "@arcana/plugin": ["@arcana/plugin@workspace:packages/plugin"],
 
