@@ -4,6 +4,9 @@ import { formatTurnSignalForSystemPrompt } from "./llm.js"
 import { decideToolPolicy, decideTurnPolicy } from "./policy.js"
 import { rerankCandidates } from "./rerank.js"
 import { parseFeedback, serializeFeedback, summarizeFeedback } from "./feedback.js"
+import { compressSemantically, estimateTokens, planTokenBudget } from "./token.js"
+import { rewriteSemantics } from "./semantic.js"
+import { analyzeSqlOptimization } from "./sql.js"
 
 describe("Arcana Signal Engine", () => {
   test("routes code-fix prompts toward sandboxed code posture", () => {
@@ -82,5 +85,39 @@ describe("Arcana Signal Engine", () => {
     expect(parsed?.outcome).toBe("overridden")
     expect(summary.total).toBe(1)
     expect(summary.corrections).toBe(1)
+  })
+
+  test("plans token budget and compresses repeated prompt text", () => {
+    const text = "please please analyze this repo\n\nanalyze this repo\n\n".repeat(20)
+    const plan = planTokenBudget({ text, maxContextTokens: 512, reservedOutputTokens: 128 })
+    const compressed = compressSemantically({ text, targetRatio: 0.5 })
+
+    expect(estimateTokens(text)).toBeGreaterThan(0)
+    expect(plan.availableInputTokens).toBe(384)
+    expect(compressed.compressedEstimatedTokens).toBeLessThan(compressed.originalEstimatedTokens)
+  })
+
+  test("rewrites user requests into clearer LLM-ready semantics", () => {
+    const rewritten = rewriteSemantics({
+      request: "can you maybe optimize the sql thing",
+      mode: "llm_prompt",
+      constraints: ["preserve user intent"],
+    })
+
+    expect(rewritten.detectedIntent).toBe("database")
+    expect(rewritten.rewritten).toContain("Constraints")
+    expect(rewritten.improvements.length).toBeGreaterThan(0)
+  })
+
+  test("detects common SQL optimization opportunities", () => {
+    const plan = analyzeSqlOptimization({
+      dialect: "postgres",
+      query: "SELECT * FROM users WHERE email LIKE '%@example.com' ORDER BY created_at OFFSET 1000",
+      schemaSummary: "users(id, email, created_at)",
+    })
+
+    expect(plan.intent).toBe("read_query")
+    expect(plan.findings.some((finding) => finding.category === "index")).toBe(true)
+    expect(plan.findings.some((finding) => finding.category === "pagination")).toBe(true)
   })
 })
