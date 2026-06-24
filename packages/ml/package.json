@@ -14,7 +14,8 @@
     "./feedback": "./src/feedback.ts",
     "./token": "./src/token.ts",
     "./semantic": "./src/semantic.ts",
-    "./sql": "./src/sql.ts"
+    "./sql": "./src/sql.ts",
+    "./machine": "./src/machine.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

@@ -17,6 +17,7 @@ export type { FeedbackSummary, SignalFeedback, SignalFeedbackOutcome } from "./f
 export type { SemanticCompressionInput, SemanticCompressionResult, TokenBudgetInput, TokenBudgetPlan } from "./token.js"
 export type { SemanticRewriteInput, SemanticRewriteMode, SemanticRewriteResult } from "./semantic.js"
 export type { SqlDialect, SqlOptimizationFinding, SqlOptimizationInput, SqlOptimizationPlan } from "./sql.js"
+export type { DataLifetime, DiskPosture, MachineResourceInput, MachineResourcePlan } from "./machine.js"
 
 export { analyzeTool, analyzeTurn, createSignalEngine } from "./signals.js"
 export { formatToolSignalForAudit, formatTurnSignalForSystemPrompt } from "./llm.js"
@@ -26,3 +27,4 @@ export { createFeedbackEvent, parseFeedback, serializeFeedback, summarizeFeedbac
 export { compressSemantically, estimateTokens, planTokenBudget } from "./token.js"
 export { rewriteSemantics } from "./semantic.js"
 export { analyzeSqlOptimization } from "./sql.js"
+export { formatMachineResourcePlan, planMachineResourceUse } from "./machine.js"
