@@ -1,0 +1,20 @@
+[
+  {
+    "name": "repeated prompt compresses",
+    "text": "please please analyze this repo\n\nanalyze this repo\n\nanalyze this repo\n\n",
+    "repeat": 24,
+    "maxContextTokens": 512,
+    "reservedOutputTokens": 128,
+    "expectedStatus": "near_limit",
+    "mustCompress": true
+  },
+  {
+    "name": "small request stays under budget",
+    "text": "fix the package export and tell me the test command",
+    "repeat": 1,
+    "maxContextTokens": 4096,
+    "reservedOutputTokens": 512,
+    "expectedStatus": "under_budget",
+    "mustCompress": false
+  }
+]

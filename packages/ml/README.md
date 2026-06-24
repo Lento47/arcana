@@ -14,6 +14,7 @@ It is intentionally dependency-light in its first version: no TensorFlow/native 
 - machine stewardship and recyclable resource planning
 - expectation contracts for user intent and quality bars
 - anti-generic response quality gates
+- fixture-backed evals for regression control
 - LLM system-prompt signal formatting
 - audit-line formatting for tool signals
 
@@ -38,6 +39,18 @@ Arcana should not ship generic model filler as a final answer. The response pipe
 5. Ask the user only when ambiguity blocks correctness or a high-impact action needs approval.
 
 This avoids turning every exchange into a confirmation flow while still rejecting low-quality output.
+
+## Evals
+
+The package includes deterministic JSON fixtures for expectation, response quality, token budgeting, SQL optimization, and machine stewardship.
+
+Run them with:
+
+```sh
+bun --cwd packages/ml run eval
+```
+
+The eval runner is intentionally local and dependency-light. Add a fixture before changing heuristics so regressions are visible.
 
 ## Machine stewardship
 

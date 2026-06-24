@@ -18,11 +18,14 @@
     "./machine": "./src/machine.ts",
     "./expectation": "./src/expectation.ts",
     "./quality": "./src/quality.ts",
-    "./response-pipeline": "./src/response-pipeline.ts"
+    "./response-pipeline": "./src/response-pipeline.ts",
+    "./evals": "./src/evals.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
     "test": "bun test src --only-failures",
+    "test:all": "bun test src",
+    "eval": "bun src/evals.ts",
     "build": "true"
   },
   "devDependencies": {
