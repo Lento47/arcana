@@ -8,7 +8,10 @@
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
     "./signals": "./src/signals.ts",
-    "./llm": "./src/llm.ts"
+    "./llm": "./src/llm.ts",
+    "./rerank": "./src/rerank.ts",
+    "./policy": "./src/policy.ts",
+    "./feedback": "./src/feedback.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

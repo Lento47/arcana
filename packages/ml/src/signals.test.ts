@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { analyzeTool, analyzeTurn } from "./signals.js"
 import { formatTurnSignalForSystemPrompt } from "./llm.js"
+import { decideToolPolicy, decideTurnPolicy } from "./policy.js"
+import { rerankCandidates } from "./rerank.js"
+import { parseFeedback, serializeFeedback, summarizeFeedback } from "./feedback.js"
 
 describe("Arcana Signal Engine", () => {
   test("routes code-fix prompts toward sandboxed code posture", () => {
@@ -41,5 +44,43 @@ describe("Arcana Signal Engine", () => {
     expect(formatted).toContain("<arcana-signal-engine>")
     expect(formatted).toContain("intent")
     expect(formatted).toContain("execution_posture")
+  })
+
+  test("converts turn and tool signals into policy decisions", () => {
+    const turn = analyzeTurn({
+      prompt: "edit files in this repo",
+      userSovereignty: { requireApprovalForWrites: true },
+    })
+    const tool = analyzeTool({
+      toolName: "write",
+      args: { filePath: "src/index.ts", content: "export {}" },
+      userSovereignty: { requireApprovalForWrites: true },
+    })
+
+    expect(decideTurnPolicy(turn).action).toBe("ask_approval")
+    expect(decideToolPolicy(tool).action).toBe("ask_approval")
+  })
+
+  test("reranks memory or skill candidates using local lexical signals", () => {
+    const ranked = rerankCandidates({
+      query: "typescript failing tests",
+      candidates: [
+        { id: "a", title: "Marketing copy", content: "Brand voice and landing page notes" },
+        { id: "b", title: "TypeScript test debugging", content: "How to inspect failing bun tests" },
+      ],
+    })
+
+    expect(ranked[0]?.id).toBe("b")
+    expect(ranked[0]?.score ?? 0).toBeGreaterThan(ranked[1]?.score ?? 0)
+  })
+
+  test("serializes feedback for future supervised datasets", () => {
+    const line = serializeFeedback({ signalKind: "policy", outcome: "overridden", correction: "approval was too strict", score: 0.3 })
+    const parsed = parseFeedback(line)
+    const summary = summarizeFeedback(parsed ? [parsed] : [])
+
+    expect(parsed?.outcome).toBe("overridden")
+    expect(summary.total).toBe(1)
+    expect(summary.corrections).toBe(1)
   })
 })
