@@ -348,7 +348,9 @@ describe("HttpApi UI fallback", () => {
       const csp = response.headers.get("content-security-policy") ?? ""
       expect(csp).toContain("script-src 'self' 'wasm-unsafe-eval'")
       expect(csp).toContain(`'sha256-${createHash("sha256").update(script).digest("base64")}'`)
-      expect(csp).toContain("connect-src * data:")
+      // connect-src is tightened to arcana-owned endpoints plus data: (see
+      // src/server/shared/ui.ts csp) — no longer the wildcard `*`.
+      expect(csp).toContain("connect-src 'self' https://api.arcana.otnelhq.com https://proxy.arcana.otnelhq.com data:")
     }),
   )
 
@@ -382,7 +384,7 @@ describe("HttpApi UI fallback", () => {
         username: "arcana",
         disableEmbeddedWebUi: true,
         client: httpClient(new Response("<html>opencode</html>", { headers: { "content-type": "text/html" } })),
-      }).request(`/?auth_token=${btoa("opencode:secret")}`)
+      }).request(`/?auth_token=${btoa("arcana:secret")}`)
 
       expect(response.status).toBe(200)
       expect(yield* responseText(response)).toBe("<html>opencode</html>")
@@ -396,7 +398,7 @@ describe("HttpApi UI fallback", () => {
         username: "arcana",
         disableEmbeddedWebUi: true,
       }).request("/", {
-        headers: { authorization: `Basic ${btoa("opencode:secret")}` },
+        headers: { authorization: `Basic ${btoa("arcana:secret")}` },
       })
 
       expect(response.status).toBe(200)
@@ -410,7 +412,7 @@ describe("HttpApi UI fallback", () => {
         username: "arcana",
         disableEmbeddedWebUi: true,
       }).request("/", {
-        headers: { authorization: `Basic ${btoa("opencode:sec:ret")}` },
+        headers: { authorization: `Basic ${btoa("arcana:sec:ret")}` },
       })
 
       expect(response.status).toBe(200)

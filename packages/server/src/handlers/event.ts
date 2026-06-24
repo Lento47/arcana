@@ -42,6 +42,20 @@ export const EventHandler = HttpApiBuilder.group(Api, "server.event", (handlers)
                       event.location?.directory === location.directory &&
                       event.location.workspaceID === location.workspaceID,
                   ),
+                  // EventV2 payloads carry location as a Location.Ref (directory +
+                  // workspaceID only); the project is stripped by the payload schema.
+                  // The filter above guarantees the event's directory matches the
+                  // resolved request location, so we can safely attach its project
+                  // to produce a full Location.Info on the wire — matching the
+                  // server.connected payload and the SSE location contract.
+                  Stream.map((event) => ({
+                    ...event,
+                    location: new Location.Info({
+                      directory: event.location?.directory ?? location.directory,
+                      workspaceID: event.location?.workspaceID,
+                      project: location.project,
+                    }),
+                  })),
                 ),
             ),
             Stream.map(eventData),

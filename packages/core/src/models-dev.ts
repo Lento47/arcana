@@ -109,6 +109,20 @@ export const Provider = Schema.Struct({
 
 export type Provider = Schema.Schema.Type<typeof Provider>
 
+// Rebrand the upstream models.dev "opencode" catalog entry to our `arcana`
+// provider identity so every consumer (engine provider loader, httpapi
+// provider list, core catalog) keys the OpenCode Zen provider as "arcana" —
+// matching `ProviderV2.ID.opencode` (= "arcana") and the core OpencodePlugin
+// (provider id "arcana"). Only the catalog key and the provider's `id` field
+// are renamed; the upstream env (`OPENCODE_API_KEY`) is preserved (Tier 3
+// rebrand deferred). An explicit `arcana` entry, if present upstream, wins.
+function rebrandCatalog(record: Record<string, Provider>): Record<string, Provider> {
+  const opencode = record["opencode"]
+  if (!opencode || record["arcana"]) return record
+  const { opencode: _omit, ...rest } = record
+  return { ...rest, arcana: { ...opencode, id: "arcana" } }
+}
+
 let cachedModelsDev: Record<string, Provider> | null = null
 let cachedModelsDevTime = 0
 const CACHE_TTL = 30000
@@ -215,7 +229,8 @@ export const layer = Layer.effect(
         }),
       )
       return JSON.parse(text) as Record<string, Provider>
-    }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
+    })
+      .pipe(Effect.map(rebrandCatalog), Effect.withSpan("ModelsDev.populate"), Effect.orDie)
 
     const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
 
