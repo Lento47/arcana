@@ -11,6 +11,7 @@ import { formatMachineResourcePlan, planMachineResourceUse } from "./machine.js"
 import { formatExpectationContractForPrompt, inferExpectationContract } from "./expectation.js"
 import { buildRevisionPrompt, evaluateResponseQuality } from "./quality.js"
 import { evaluateResponsePostflight, prepareResponsePreflight } from "./response-pipeline.js"
+import { formatContextPlanForAudit, planContextPack } from "./context.js"
 
 describe("Arcana Signal Engine", () => {
   test("routes code-fix prompts toward sandboxed code posture", () => {
@@ -198,5 +199,42 @@ describe("Arcana Signal Engine", () => {
     expect(postflight.shouldRevise).toBe(true)
     expect(postflight.shouldAskUser).toBe(false)
     expect(postflight.revisionPrompt).toContain("Revise the previous answer")
+  })
+
+  test("plans context packs by including, summarizing, and dropping items", () => {
+    const plan = planContextPack({
+      request: "fix the TypeScript quality gate and run tests",
+      maxInputTokens: 220,
+      reservedTokens: 40,
+      items: [
+        {
+          id: "request",
+          kind: "request",
+          content: "fix the TypeScript quality gate and run tests",
+          pinned: true,
+          canDrop: false,
+        },
+        {
+          id: "quality.ts",
+          kind: "file",
+          title: "packages/ml/src/quality.ts",
+          content: "export function evaluateResponseQuality() { return 'quality gate' }".repeat(20),
+          tags: ["typescript", "quality", "gate"],
+          canSummarize: true,
+        },
+        {
+          id: "marketing",
+          kind: "memory",
+          title: "marketing copy",
+          content: "brand voice landing page social copy".repeat(20),
+          canDrop: true,
+        },
+      ],
+    })
+
+    expect(plan.included.some((item) => item.id === "request")).toBe(true)
+    expect(plan.summarize.some((item) => item.id === "quality.ts")).toBe(true)
+    expect(plan.drop.some((item) => item.id === "marketing")).toBe(true)
+    expect(formatContextPlanForAudit(plan)).toContain("summarize=1")
   })
 })

@@ -9,6 +9,7 @@ It is intentionally dependency-light in its first version: no TensorFlow/native 
 - execution posture hints
 - model routing hints
 - token budget planning and semantic compression
+- context packing for include/summarize/drop decisions
 - semantic request rewriting
 - SQL optimization analysis
 - machine stewardship and recyclable resource planning
@@ -24,7 +25,7 @@ The LLM reasons. The signal engine senses.
 
 Arcana can use this layer before, during, and after LLM calls to preserve user sovereignty:
 
-1. Before the LLM: classify intent, risk, required sandboxing, model route, token budget, machine-resource posture, and expected deliverable quality.
+1. Before the LLM: classify intent, risk, required sandboxing, model route, token budget, context pack, machine-resource posture, and expected deliverable quality.
 2. During tool use: score write/network/secret-adjacent tool calls and avoid unnecessary disk materialization.
 3. After execution: provide structured signal data for audit, policy, cleanup, recycling, response-quality checks, and future learned models.
 
@@ -33,10 +34,11 @@ Arcana can use this layer before, during, and after LLM calls to preserve user s
 Arcana should not ship generic model filler as a final answer. The response pipeline is intentionally low-interference:
 
 1. Preflight: infer an expectation contract from the user's request.
-2. LLM call: provide the contract as a small prompt addendum, without rewriting the user's request or changing their intent.
-3. Postflight: score the candidate response for genericity, specificity, actionability, and constraint fit.
-4. If the response fails but the request is clear, revise silently.
-5. Ask the user only when ambiguity blocks correctness or a high-impact action needs approval.
+2. Context pack: include what matters, summarize bulky relevant context, and drop irrelevant context before the LLM call.
+3. LLM call: provide the contract as a small prompt addendum, without rewriting the user's request or changing their intent.
+4. Postflight: score the candidate response for genericity, specificity, actionability, and constraint fit.
+5. If the response fails but the request is clear, revise silently.
+6. Ask the user only when ambiguity blocks correctness or a high-impact action needs approval.
 
 This avoids turning every exchange into a confirmation flow while still rejecting low-quality output.
 
@@ -78,6 +80,7 @@ import {
   analyzeTurn,
   evaluateResponsePostflight,
   formatTurnSignalForSystemPrompt,
+  planContextPack,
   planMachineResourceUse,
   prepareResponsePreflight,
 } from "@arcana/ml"
@@ -94,6 +97,12 @@ const resourcePlan = planMachineResourceUse({
   filesToCreate: 1,
   containsUserData: true,
   canRegenerate: true,
+})
+
+const contextPlan = planContextPack({
+  request: "fix this repo and run tests",
+  maxInputTokens: 4096,
+  items: [],
 })
 
 const preflight = prepareResponsePreflight({
