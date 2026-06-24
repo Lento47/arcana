@@ -1,0 +1,43 @@
+[
+  {
+    "name": "classification stays memory only",
+    "input": {
+      "operation": "classify prompt"
+    },
+    "expected": {
+      "posture": "memory_only",
+      "requiresApproval": false,
+      "cleanupStrategy": "drop_memory"
+    }
+  },
+  {
+    "name": "temporary user data is recyclable",
+    "input": {
+      "operation": "rerank local snippets",
+      "estimatedBytesToWrite": 4096,
+      "filesToCreate": 1,
+      "containsUserData": true,
+      "canRegenerate": true
+    },
+    "expected": {
+      "posture": "recycle_temp",
+      "requiresApproval": false,
+      "cleanupStrategy": "delete_temp"
+    }
+  },
+  {
+    "name": "persistent user data requires approval",
+    "input": {
+      "operation": "persist embedding index",
+      "estimatedBytesToWrite": 1024,
+      "filesToCreate": 1,
+      "persistent": true,
+      "containsUserData": true
+    },
+    "expected": {
+      "posture": "approval_required",
+      "requiresApproval": true,
+      "cleanupStrategy": "manual_review"
+    }
+  }
+]

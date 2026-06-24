@@ -33,6 +33,7 @@ export type {
   ResponsePipelinePreflight,
   ResponsePipelinePreflightInput,
 } from "./response-pipeline.js"
+export type { EvalCaseResult, EvalRunResult, EvalStatus } from "./evals.js"
 
 export { analyzeTool, analyzeTurn, createSignalEngine } from "./signals.js"
 export { formatToolSignalForAudit, formatTurnSignalForSystemPrompt } from "./llm.js"
@@ -46,3 +47,4 @@ export { formatMachineResourcePlan, planMachineResourceUse } from "./machine.js"
 export { formatExpectationContractForPrompt, inferExpectationContract } from "./expectation.js"
 export { evaluateResponseQuality, formatQualityGateForAudit } from "./quality.js"
 export { evaluateResponsePostflight, prepareResponsePreflight } from "./response-pipeline.js"
+export { runMlEvals } from "./evals.js"

@@ -1,0 +1,22 @@
+[
+  {
+    "name": "generic answer must revise silently",
+    "request": "avoid generic output and give specific implementation details",
+    "response": "Use best practices to build a robust and scalable solution that streamlines the workflow.",
+    "expectation": {
+      "request": "avoid generic output and give specific implementation details"
+    },
+    "expectedVerdict": "revise_silently",
+    "minimumProblems": 1
+  },
+  {
+    "name": "specific patch answer can pass",
+    "request": "avoid generic output and give the exact patch",
+    "response": "Patch `packages/ml/src/quality.ts` by adding `buildRevisionPrompt()`, then run `bun --cwd packages/ml test` to validate the quality gate.",
+    "expectation": {
+      "request": "avoid generic output and give the exact patch"
+    },
+    "expectedVerdict": "pass",
+    "minimumProblems": 0
+  }
+]

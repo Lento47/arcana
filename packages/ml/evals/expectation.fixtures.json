@@ -1,0 +1,32 @@
+[
+  {
+    "name": "strict anti slop request",
+    "request": "keep working on the ML; avoid AI slop and generic garbage",
+    "expected": {
+      "deliverable": "direct_answer",
+      "qualityBar": "strict",
+      "evidenceNeed": "none",
+      "interactionIntervention": "silent"
+    }
+  },
+  {
+    "name": "repo review expects evidence",
+    "request": "review this repo and verify the highest impact bugs",
+    "expected": {
+      "deliverable": "repo_review",
+      "qualityBar": "strict",
+      "evidenceNeed": "required",
+      "interactionIntervention": "silent"
+    }
+  },
+  {
+    "name": "fast rough draft stays fast",
+    "request": "quick rough draft of the launch copy",
+    "expected": {
+      "deliverable": "direct_answer",
+      "qualityBar": "fast",
+      "evidenceNeed": "none",
+      "interactionIntervention": "silent"
+    }
+  }
+]
