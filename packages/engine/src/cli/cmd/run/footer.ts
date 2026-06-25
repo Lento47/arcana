@@ -519,6 +519,7 @@ export class RunFooter implements FooterApi {
           : prev.interrupt,
       exit:
         typeof next.exit === "number" && Number.isFinite(next.exit) ? Math.max(0, Math.floor(next.exit)) : prev.exit,
+      ml: typeof next.ml === "boolean" ? next.ml : prev.ml,
     }
 
     if (state.phase === "idle") {
@@ -649,6 +650,7 @@ export class RunFooter implements FooterApi {
       return
     }
 
+    process.off("SIGUSR2", this.handleThemeSignal)
     this.flush()
     this.notifyClose()
   }

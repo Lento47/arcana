@@ -224,11 +224,17 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
       return state.session
     }
 
-    state.session = input.resolveSession(ctx).then((next) => {
-      state.sessionID = next.sessionID
-      state.sessionTitle = next.sessionTitle ?? state.sessionTitle
-      state.agent = next.agent
-    })
+    state.session = input
+      .resolveSession(ctx)
+      .then((next) => {
+        state.sessionID = next.sessionID
+        state.sessionTitle = next.sessionTitle ?? state.sessionTitle
+        state.agent = next.agent
+      })
+      .catch((error) => {
+        state.session = undefined // allow next turn to retry
+        throw error
+      })
     return state.session
   }
 
@@ -350,12 +356,16 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
       }
 
       state.aborting = true
+      const timeout = setTimeout(() => {
+        state.aborting = false
+      }, 10_000)
       void ctx.sdk.session
         .abort({
           sessionID: state.sessionID,
         })
         .catch(() => {})
         .finally(() => {
+          clearTimeout(timeout)
           state.aborting = false
         })
     },
@@ -434,33 +444,36 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
     void Promise.resolve(input.afterPaint(ctx)).catch(() => {})
   }
 
-  void modelTask.then((info) => {
-    state.providers = info.providers
-    state.variants = variantsFor(state.providers, state.model)
-    state.limits = info.limits
+  void modelTask
+    .then((info) => {
+      state.providers = info.providers
+      state.variants = variantsFor(state.providers, state.model)
+      state.limits = info.limits
 
-    const next = resolveVariant(ctx.variant, session.variant, savedVariant, state.variants)
-    if (next !== state.activeVariant) {
-      state.activeVariant = next
-    }
+      const next = resolveVariant(ctx.variant, session.variant, savedVariant, state.variants)
+      if (next !== state.activeVariant) {
+        state.activeVariant = next
+      }
 
-    if (footer.isClosed) {
-      return
-    }
+      if (footer.isClosed) {
+        return
+      }
 
-    footer.event({ type: "models", providers: info.providers })
-    footer.event({ type: "variants", variants: state.variants, current: state.activeVariant })
-    if (!state.model) {
-      return
-    }
+      footer.event({ type: "models", providers: info.providers })
+      footer.event({ type: "variants", variants: state.variants, current: state.activeVariant })
+      if (!state.model) {
+        return
+      }
 
-    footer.event({
-      type: "model",
-      model: formatModelLabel(state.model, state.activeVariant, state.providers),
+      footer.event({
+        type: "model",
+        model: formatModelLabel(state.model, state.activeVariant, state.providers),
+      })
     })
-  })
+    .catch(() => {})
 
   const streamTask = deps.streamTransport ?? import("./stream.transport")
+  let streamGeneration = 0
   const ensureStream = () => {
     if (state.stream) {
       return state.stream
@@ -468,6 +481,9 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
 
     // Share eager prewarm and first-turn boot through one in-flight promise,
     // but clear it if transport creation fails so a later prompt can retry.
+    // A generation counter guards against concurrent calls that both pass
+    // the `state.stream` check before the first reaches assignment.
+    const gen = ++streamGeneration
     const next = (async () => {
       await ensureSession()
       if (footer.isClosed) {
@@ -496,6 +512,13 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
         throw new Error("runtime closed")
       }
 
+      // Only commit if this generation is still the latest — a newer
+      // ensureStream() call may have started while we were awaiting
+      // ensureSession() or creating the transport.
+      if (gen !== streamGeneration) {
+        await handle.close()
+        throw new Error("stream superseded")
+      }
       state.selectSubagent = (sessionID) => handle.selectSubagent(sessionID)
       return { mod, handle }
     })()

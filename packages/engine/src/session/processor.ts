@@ -581,8 +581,8 @@ export const layer = Layer.effect(
             if (!toolCall && value.result.type === "error") return
             if (value.result.type === "error") {
               // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
-              if (mirrorAssistant) {
-                const assistantMessageID = yield* requireV2AssistantMessage(toolCall?.call)
+              if (mirrorAssistant && toolCall) {
+                const assistantMessageID = yield* requireV2AssistantMessage(toolCall.call)
                 yield* events.publish(SessionEvent.Tool.Failed, {
                   sessionID: ctx.sessionID,
                   assistantMessageID,
@@ -599,6 +599,7 @@ export const layer = Layer.effect(
               yield* failToolCall(value.id, value.result.value)
               return
             }
+            if (!toolCall) return // orphan non-error tool-result
             const rawOutput = toolResultOutput(value)
             const normalized = yield* Effect.forEach(rawOutput.attachments ?? [], (attachment) =>
               attachment.mime.startsWith("image/")
@@ -678,6 +679,7 @@ export const layer = Layer.effect(
 
           case "tool-error": {
             const toolCall = yield* readToolCall(value.id)
+            if (!toolCall) return // orphan tool-error
             // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
             if (mirrorAssistant) {
               const assistantMessageID = yield* requireV2AssistantMessage(toolCall?.call)
@@ -814,7 +816,12 @@ export const layer = Layer.effect(
           case "text-delta":
             if (!ctx.currentText) return
             ctx.currentText.text += value.text
-            if (value.providerMetadata) ctx.currentText.metadata = value.providerMetadata
+            if (value.providerMetadata) {
+              ctx.currentText.metadata = {
+                ...(ctx.currentText.metadata ?? {}),
+                ...value.providerMetadata,
+              }
+            }
             if (mirrorAssistant) {
               yield* events.publish(SessionEvent.Text.Delta, {
                 sessionID: ctx.sessionID,
@@ -922,7 +929,12 @@ export const layer = Layer.effect(
               const end = Date.now()
               ctx.currentText.time = { start: ctx.currentText.time?.start ?? end, end }
             }
-            if (value.providerMetadata) ctx.currentText.metadata = value.providerMetadata
+            if (value.providerMetadata) {
+              ctx.currentText.metadata = {
+                ...(ctx.currentText.metadata ?? {}),
+                ...value.providerMetadata,
+              }
+            }
             yield* session.updatePart(ctx.currentText)
             ctx.currentText = undefined
             ctx.currentTextID = undefined
@@ -1060,6 +1072,7 @@ export const layer = Layer.effect(
             ctx.currentText = undefined
             ctx.currentTextID = undefined
             ctx.reasoningMap = {}
+            ctx.mlRevisionsUsed = 0
             yield* status.set(ctx.sessionID, { type: "busy" })
             const stream = llm.stream(streamInput)
 
