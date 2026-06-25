@@ -414,6 +414,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     })
     .catch((error) => {
       console.error("Failed to load TUI plugins", error)
+      toast.show({ message: "Failed to load plugins — check console for details", variant: "error", duration: 8000 })
     })
     .finally(() => {
       if (process.env["ARCANA_PROFILE_STARTUP"]) {
