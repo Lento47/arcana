@@ -29,8 +29,9 @@ PWD="${PWD:-$(pwd)}"
 export PWD
 
 # Subcommand check — delegate to full arcana TypeScript CLI
+# Keep this list in sync with packages/arcana/src/index.ts SUBCOMMANDS.
 case "${1:-}" in
-  run|skills|cron|memory|gateway|completion)
+  run|skills|cron|memory|gateway|completion|config|learn|doctor|history|theme|feedback|web)
     exec bun run "$REPO_ROOT/packages/arcana/src/index.ts" "$@"
     ;;
 esac

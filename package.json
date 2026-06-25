@@ -17,6 +17,7 @@
     "test": "bun turbo test",
     "ml:eval": "bun --cwd packages/ml run eval",
     "verify": "bun run lint && bun run typecheck && bun run test && bun run ml:eval && bun run build",
+    "smoke": "bun run script/smoke.ts",
     "clean": "bun turbo clean"
   },
   "workspaces": {

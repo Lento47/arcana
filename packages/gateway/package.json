@@ -9,6 +9,13 @@
     "./discord": "./src/platforms/discord.ts",
     "./slack": "./src/platforms/slack.ts"
   },
+  "scripts": {
+    "lint": "oxlint src",
+    "typecheck": "tsgo --noEmit",
+    "build": "echo skip",
+    "test": "bun test src",
+    "clean": "rm -rf dist .turbo"
+  },
   "dependencies": {
     "@arcana/memory": "workspace:*",
     "node-telegram-bot-api": "catalog:",
@@ -20,6 +27,7 @@
   "devDependencies": {
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
     "typescript": "catalog:"
   }
 }
