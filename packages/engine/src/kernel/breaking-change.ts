@@ -67,10 +67,10 @@ export function nativeBreakingChanges(): ArcanaNativeBreakingChange[] {
       id: "mutation-through-diff-gate",
       axis: "mutation_authority",
       upstream_assumption: "Edit/write/apply-patch tools own file mutation directly.",
-      arcana_replacement: "Arcana makes file mutation a diff-gate concern: proposed, approved, applied, rejected, and rolled back.",
+      arcana_replacement: "Arcana makes file mutation a diff-gate concern: proposed, approved, applied, rejected, and reverted.",
       authority: "mutation",
-      enforcement: "migration",
-      status: "planned",
+      enforcement: "contract",
+      status: "started",
     },
     {
       id: "verifier-owns-completion",
