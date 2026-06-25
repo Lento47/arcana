@@ -79,4 +79,7 @@ export const Flag = {
   get ARCANA_LICENSE_KEY() {
     return process.env["ARCANA_LICENSE_KEY"]
   },
+  get ARCANA_ML_RUNTIME() {
+    return truthy("ARCANA_ML_RUNTIME")
+  },
 }

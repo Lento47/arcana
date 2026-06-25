@@ -52,6 +52,22 @@ export function isNewCommand(input: string): boolean {
   return input.trim().toLowerCase() === "/new"
 }
 
+export type MlCommandAction = "on" | "off" | "toggle" | "status"
+
+export function parseMlCommand(input: string): MlCommandAction | undefined {
+  const text = input.trim().toLowerCase()
+  if (!text) return undefined
+  const stripped = text.startsWith("/") ? text.slice(1) : text
+  const [command, ...rest] = stripped.split(/\s+/)
+  if (command !== "ml") return undefined
+  const arg = rest.join(" ").trim()
+  if (!arg) return "toggle"
+  if (arg === "on" || arg === "enable" || arg === "1" || arg === "true") return "on"
+  if (arg === "off" || arg === "disable" || arg === "0" || arg === "false") return "off"
+  if (arg === "status" || arg === "state" || arg === "?") return "status"
+  return "toggle"
+}
+
 export function createPromptHistory(items?: RunPrompt[]): PromptHistoryState {
   const list = (items ?? []).filter((item) => item.text.trim().length > 0).map(promptCopy)
   const next: RunPrompt[] = []

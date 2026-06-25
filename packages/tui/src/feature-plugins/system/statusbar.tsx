@@ -57,6 +57,8 @@ function View(props: { api: TuiPluginApi }) {
     return api.state.session.get(sid)?.cost
   })
 
+  const mlRuntime = createMemo(() => Boolean(api.kv.get("ml_runtime_enabled", false)))
+
   const status = createMemo(() => {
     const sid = sessionID()
     if (!sid) return undefined
@@ -97,6 +99,11 @@ function View(props: { api: TuiPluginApi }) {
           <text fg={theme().warning}>↻ retry</text>
         </Show>
         <Show when={model()}>{(value) => <text fg={theme().textMuted}>{Glyph.sigil} {value()}</text>}</Show>
+        <Show when={mlRuntime()}>
+          <text fg={theme().primary}>
+            <span style={{ fg: theme().primary, bold: true }}>ML</span>
+          </text>
+        </Show>
         <Show when={usage()}>
           {(u) => (
             <Show when={u().percent !== null}>

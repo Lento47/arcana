@@ -131,6 +131,7 @@ type RuntimeState = {
   agent: string | undefined
   switching?: Promise<void>
   demo?: ReturnType<typeof createRunDemo>
+  mlRuntime: boolean
   selectSubagent?: (sessionID: string | undefined) => void
   session?: Promise<void>
   stream?: Promise<StreamState>
@@ -212,6 +213,7 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
     localRows: [],
     sessionTitle: ctx.sessionTitle,
     agent: ctx.agent,
+    mlRuntime: Flag.ARCANA_ML_RUNTIME,
   }
   const ensureSession = () => {
     if (!input.resolveSession || state.sessionID) {
@@ -642,6 +644,28 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
             }
           }
         : undefined,
+      onMlCommand: (action) => {
+        let next: boolean
+        switch (action) {
+          case "on":
+            next = true
+            break
+          case "off":
+            next = false
+            break
+          case "toggle":
+            next = !state.mlRuntime
+            break
+          case "status":
+            return { enabled: state.mlRuntime, status: `ml runtime ${state.mlRuntime ? "on" : "off"}` }
+        }
+        const previous = state.mlRuntime
+        state.mlRuntime = next
+        return {
+          enabled: next,
+          status: `ml runtime ${next ? "on" : "off"}${previous === next ? "" : " (was " + (previous ? "on" : "off") + ")"}`,
+        }
+      },
       run: async (prompt, signal) => {
         if (state.demo && (await state.demo.prompt(prompt, signal))) {
           return

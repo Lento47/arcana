@@ -385,6 +385,7 @@ test("direct command panel renders grouped command palette", async () => {
           onVariantCycle={() => {}}
           onCommand={() => {}}
           onNew={() => {}}
+          onMl={() => {}}
           onExit={() => {}}
         />
       </box>
@@ -526,6 +527,7 @@ test("direct command panel shows subagent entry when available", async () => {
           onVariantCycle={() => {}}
           onCommand={() => {}}
           onNew={() => {}}
+          onMl={() => {}}
           onExit={() => {}}
         />
       </box>
@@ -574,6 +576,7 @@ test("direct command panel keeps completed subagents available", async () => {
           onVariantCycle={() => {}}
           onCommand={() => {}}
           onNew={() => {}}
+          onMl={() => {}}
           onExit={() => {}}
         />
       </box>

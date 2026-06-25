@@ -25,6 +25,7 @@
 // two-press pattern where the first press shows a hint and the second press
 // within 5 seconds actually fires the action.
 import { CliRenderEvents, type CliRenderer, type KeyEvent, type Renderable, type TreeSitterClient } from "@opentui/core"
+import { Flag } from "@arcana/core/flag/flag"
 import type { Keymap } from "@opentui/keymap"
 import { render } from "@opentui/solid"
 import { createComponent, createSignal, type Accessor, type Setter } from "solid-js"
@@ -265,6 +266,7 @@ export class RunFooter implements FooterApi {
       first: options.first,
       interrupt: 0,
       exit: 0,
+      ml: Flag.ARCANA_ML_RUNTIME,
     })
     this.state = state
     this.setState = setState
