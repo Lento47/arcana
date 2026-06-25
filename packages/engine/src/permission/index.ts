@@ -7,6 +7,7 @@ import os from "os"
 import { PermissionV1 } from "@arcana/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { EventV2 } from "@arcana/core/event"
+import { riskFromMetadata, riskRequiresFreshAsk, riskRequiresInitialAsk } from "./risk-policy"
 
 export const Event = {
   Asked: EventV2.define({ type: "permission.asked", schema: PermissionV1.Request.fields }),
@@ -85,17 +86,32 @@ export const layer = Layer.effect(
     const ask = Effect.fn("Permission.ask")(function* (input: PermissionV1.AskInput) {
       const { approved, pending } = yield* InstanceState.get(state)
       const { ruleset, ...request } = input
+      const engineRisk = riskFromMetadata(request.metadata)
+      const forceInitialAskFromRisk = riskRequiresInitialAsk(engineRisk)
+      const forceFreshAskFromRisk = riskRequiresFreshAsk(engineRisk)
       let needsAsk = false
 
       for (const pattern of request.patterns) {
-        const rule = evaluate(request.permission, pattern, ruleset, approved)
-        yield* Effect.logInfo("evaluated", { permission: request.permission, pattern, action: rule })
-        if (rule.action === "deny") {
+        const configuredRule = evaluate(request.permission, pattern, ruleset)
+        const approvedRule = evaluate(request.permission, pattern, approved)
+        const rule = approvedRule.action !== "ask" ? approvedRule : configuredRule
+        yield* Effect.logInfo("evaluated", {
+          permission: request.permission,
+          pattern,
+          action: rule,
+          configuredAction: configuredRule.action,
+          approvedAction: approvedRule.action,
+          engineRisk: engineRisk?.level,
+          forceInitialAskFromRisk,
+          forceFreshAskFromRisk,
+        })
+        if (configuredRule.action === "deny") {
           return yield* new PermissionV1.DeniedError({
             ruleset: ruleset.filter((rule) => Wildcard.match(request.permission, rule.permission)),
           })
         }
-        if (rule.action === "allow") continue
+        if (approvedRule.action === "allow" && !forceFreshAskFromRisk) continue
+        if (rule.action === "allow" && !forceInitialAskFromRisk) continue
         needsAsk = true
       }
 
@@ -111,7 +127,13 @@ export const layer = Layer.effect(
         always: request.always,
         tool: request.tool,
       }
-      yield* Effect.logInfo("asking", { id, permission: info.permission, patterns: info.patterns })
+      yield* Effect.logInfo("asking", {
+        id,
+        permission: info.permission,
+        patterns: info.patterns,
+        engineRisk: engineRisk?.level,
+        riskReasons: engineRisk?.reasons,
+      })
 
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
       pending.set(id, { info, deferred })
@@ -204,7 +226,7 @@ export const layer = Layer.effect(
   }),
 )
 
-function expand(pattern: string): string {
+function expand(pattern: string) {
   if (pattern.startsWith("~/")) return os.homedir() + pattern.slice(1)
   if (pattern === "~") return os.homedir()
   if (pattern.startsWith("$HOME/")) return os.homedir() + pattern.slice(5)

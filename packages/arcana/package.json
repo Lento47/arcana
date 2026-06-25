@@ -8,6 +8,7 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./proof": "./src/proof/index.ts",
     "./cli/cmd/*": "./src/cli/cmd/*.ts"
   },
   "dependencies": {
