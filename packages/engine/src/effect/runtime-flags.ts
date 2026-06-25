@@ -52,6 +52,7 @@ export class Service extends ConfigService.Service<Service>()("@arcana/RuntimeFl
   bashDefaultTimeoutMs: positiveInteger("ARCANA_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS"),
   experimentalNativeLlm: bool("ARCANA_EXPERIMENTAL_NATIVE_LLM"),
   experimentalWebSockets: bool("ARCANA_EXPERIMENTAL_WEBSOCKETS"),
+  mlRuntime: bool("ARCANA_ML_RUNTIME"),
   client: Config.string("ARCANA_CLIENT").pipe(Config.withDefault("cli")),
   licenseTier: Config.string("ARCANA_LICENSE_TIER").pipe(Config.withDefault("free")),
   premiumFeatures: bool("ARCANA_PREMIUM"),

@@ -203,6 +203,7 @@
         "@ai-sdk/xai": "3.0.82",
         "@arcana/arcana": "workspace:*",
         "@arcana/llm": "workspace:*",
+        "@arcana/ml": "workspace:*",
         "@arcana/plugin": "workspace:*",
         "@arcana/script": "workspace:*",
         "@arcana/sdk": "workspace:*",

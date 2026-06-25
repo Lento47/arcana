@@ -347,6 +347,7 @@ export function RunCommandMenuBody(props: {
   onVariant: () => void
   onVariantCycle: () => void
   onCommand: (name: string) => void
+  onMl: () => void
   onNew: () => void
   onExit: () => void
 }) {
@@ -386,6 +387,14 @@ export function RunCommandMenuBody(props: {
         display: "New session",
         footer: "/new",
         keywords: "new session clear",
+      },
+      {
+        action: "slash",
+        category: "Session",
+        name: "ml",
+        display: "ML runtime",
+        footer: "/ml",
+        keywords: "ml runtime quality gate revision signal",
       },
     ]
     const prompt: CommandEntry[] =
@@ -511,6 +520,11 @@ export function RunCommandMenuBody(props: {
 
     if (item.name === "new") {
       props.onNew()
+      return
+    }
+
+    if (item.name === "ml") {
+      props.onMl()
       return
     }
 

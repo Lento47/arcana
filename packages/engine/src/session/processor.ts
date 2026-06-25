@@ -31,6 +31,11 @@ import { ProviderV2 } from "@arcana/core/provider"
 import * as DateTime from "effect/DateTime"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ToolOutput, Usage, type LLMEvent } from "@arcana/llm"
+import {
+  prepareResponsePreflight,
+  evaluateResponsePostflight,
+  type ResponsePipelinePostflight,
+} from "@arcana/ml/response-pipeline"
 
 const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
@@ -83,6 +88,8 @@ interface ProcessorContext extends Input {
   currentTextID: string | undefined
   reasoningMap: Record<string, SessionV1.ReasoningPart>
   v2AssistantMessageID: SessionMessage.ID | undefined
+  mlRequest: string | undefined
+  mlRevisionsUsed: number
 }
 
 type StreamEvent = LLMEvent
@@ -125,9 +132,32 @@ export const layer = Layer.effect(
         currentTextID: undefined,
         reasoningMap: {},
         v2AssistantMessageID: undefined,
+        mlRequest: undefined,
+        mlRevisionsUsed: 0,
       }
       const mirrorAssistant = flags.experimentalEventSystem && !input.assistantMessage.summary
       let aborted = false
+
+      // Seed ML runtime with the most recent user request so the postflight
+      // hook can score the assistant's response against the actual prompt.
+      if (flags.mlRuntime) {
+        const history = yield* session
+          .messages({ sessionID: input.sessionID })
+          .pipe(Effect.orElseSucceed(() => [] as SessionV1.WithParts[]))
+        for (let i = history.length - 1; i >= 0; i--) {
+          const entry = history[i]
+          if (!entry || entry.info.role !== "user") continue
+          const text = entry.parts
+            .filter((part): part is SessionV1.TextPart => part.type === "text")
+            .map((part) => part.text)
+            .join("\n")
+            .trim()
+          if (text) {
+            ctx.mlRequest = text
+            break
+          }
+        }
+      }
 
       const parse = (e: unknown) =>
         MessageV2.fromError(e, {
@@ -816,6 +846,66 @@ export const layer = Layer.effect(
               },
               { text: ctx.currentText.text },
             )).text
+            // ML runtime postflight: if enabled and we have a captured user
+            // request, score the final text. When the quality gate asks for a
+            // silent revision we annotate the text part so the user sees ML
+            // intervened (engine streams can't issue a follow-up LLM call
+            // mid-`text-end` without a much larger refactor; the postflight
+            // signal is the user-visible value here, matching the engine's
+            // role as a single-shot processor).
+            if (flags.mlRuntime && ctx.mlRequest && ctx.currentText.text.trim().length > 0) {
+              const postflight: ResponsePipelinePostflight | null = yield* Effect.sync(() => {
+                const preflight = prepareResponsePreflight({
+                  request: ctx.mlRequest!,
+                  reservedOutputTokens: 4096,
+                  machine: {
+                    operation: "engine session postflight",
+                    persistent: false,
+                    canRegenerate: false,
+                    needsCache: false,
+                    containsUserData: false,
+                  },
+                  explicitConstraints: [
+                    "Preserve the user's request and do not rewrite their intent.",
+                    "Avoid generic AI filler; prefer concrete files, commands, tradeoffs, and validation when applicable.",
+                  ],
+                })
+                return evaluateResponsePostflight({
+                  request: ctx.mlRequest!,
+                  response: ctx.currentText!.text,
+                  expectation: preflight.expectation,
+                })
+              }).pipe(Effect.orElseSucceed(() => null))
+              if (postflight) {
+                ctx.currentText.metadata = {
+                  ...(ctx.currentText.metadata ?? {}),
+                  "arcana.ml": {
+                    verdict: postflight.quality.verdict,
+                    score: postflight.quality.score,
+                    shouldRevise: postflight.shouldRevise,
+                    shouldAskUser: postflight.shouldAskUser,
+                    problems: postflight.quality.problems,
+                  },
+                }
+                if (postflight.shouldRevise && ctx.mlRevisionsUsed === 0) {
+                  ctx.mlRevisionsUsed += 1
+                  const reasons = postflight.quality.problems.join("; ") || "low specificity"
+                  ctx.currentText.text = `${ctx.currentText.text}\n\n<arcana-ml>quality=${postflight.quality.verdict} score=${postflight.quality.score.toFixed(2)} reasons=${reasons}</arcana-ml>`
+                  yield* Effect.logWarning("arcana.ml postflight revise", {
+                    sessionID: ctx.sessionID,
+                    messageID: ctx.assistantMessage.id,
+                    score: postflight.quality.score,
+                    problems: postflight.quality.problems,
+                  })
+                } else if (postflight.shouldRevise) {
+                  yield* Effect.logDebug("arcana.ml postflight revision cap reached", {
+                    sessionID: ctx.sessionID,
+                    messageID: ctx.assistantMessage.id,
+                    revisionsUsed: ctx.mlRevisionsUsed,
+                  })
+                }
+              }
+            }
             if (!ctx.assistantMessage.summary) {
               // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
               if (mirrorAssistant) {

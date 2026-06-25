@@ -184,6 +184,10 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  mlRuntime: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Opt-in @arcana/ml signal engine for the TUI: quality gate + silent revision. Equivalent to ARCANA_ML_RUNTIME=1.",
+  }),
 }).annotate({ identifier: "Config" })
 
 export type Info = DeepMutable<Schema.Schema.Type<typeof Info>>

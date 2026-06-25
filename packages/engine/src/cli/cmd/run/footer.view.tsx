@@ -766,6 +766,10 @@ export function RunFooterView(props: RunFooterViewProps) {
                               composer.submitText("/new")
                               closePanel()
                             }}
+                            onMl={() => {
+                              composer.submitText("/ml")
+                              closePanel()
+                            }}
                             onExit={props.onExit}
                           />
                         </Match>
@@ -962,6 +966,15 @@ export function RunFooterView(props: RunFooterViewProps) {
                       </text>
                     </box>
                   )}
+                </Show>
+
+                <Show when={props.state().ml}>
+                  <box paddingRight={1} backgroundColor="transparent" flexShrink={0}>
+                    <text fg={theme().statusAccent} wrapMode="none">
+                      {sectionSeparator()}
+                      <span style={{ fg: theme().statusAccent, bold: true }}>ML</span>
+                    </text>
+                  </box>
                 </Show>
 
                 <For each={contextHints()}>

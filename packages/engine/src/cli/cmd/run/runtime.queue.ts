@@ -10,7 +10,7 @@
 // Resolves when the footer closes and all in-flight work finishes.
 import * as Locale from "@/util/locale"
 import { MessageID, PartID } from "@/session/schema"
-import { isExitCommand, isNewCommand } from "./prompt.shared"
+import { isExitCommand, isNewCommand, parseMlCommand } from "./prompt.shared"
 import type { FooterApi, FooterEvent, FooterQueuedPrompt, RunPrompt } from "./types"
 
 type Trace = {
@@ -29,6 +29,9 @@ export type QueueInput = {
   trace?: Trace
   onSend?: (prompt: RunPrompt) => void
   onNewSession?: () => void | Promise<void>
+  onMlCommand?: (
+    action: "on" | "off" | "toggle" | "status",
+  ) => { enabled: boolean; status: string } | undefined
   run: (prompt: RunPrompt, signal: AbortSignal) => Promise<void>
 }
 
@@ -160,6 +163,41 @@ export async function runPromptQueue(input: QueueInput): Promise<void> {
             )
             await input.onNewSession()
             continue
+          }
+
+          if (prompt.mode !== "shell") {
+            const mlAction = parseMlCommand(prompt.text)
+            if (mlAction && input.onMlCommand) {
+              const result = input.onMlCommand(mlAction)
+              if (result) {
+                emit(
+                  {
+                    type: "stream.patch",
+                    patch: { ml: result.enabled, status: result.status },
+                  },
+                  { ml: result.enabled, status: result.status },
+                )
+              } else {
+                emit(
+                  {
+                    type: "stream.patch",
+                    patch: { status: "ml runtime unavailable" },
+                  },
+                  { status: "ml runtime unavailable" },
+                )
+              }
+              continue
+            }
+            if (mlAction && !input.onMlCommand) {
+              emit(
+                {
+                  type: "stream.patch",
+                  patch: { status: "ml runtime unavailable" },
+                },
+                { status: "ml runtime unavailable" },
+              )
+              continue
+            }
           }
 
           const sent =

@@ -90,6 +90,7 @@ export type FooterState = {
   first: boolean
   interrupt: number
   exit: number
+  ml?: boolean
 }
 
 // A partial update to FooterState. The footer merges this onto the current state.

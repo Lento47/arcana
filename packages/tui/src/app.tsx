@@ -468,6 +468,9 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const [pasteSummaryEnabled, setPasteSummaryEnabled] = createSignal(
     kv.get("paste_summary_enabled", !sync.data.config.experimental?.disable_paste_summary),
   )
+  const [mlRuntimeEnabled, setMlRuntimeEnabled] = createSignal(
+    kv.get("ml_runtime_enabled", Flag.ARCANA_ML_RUNTIME),
+  )
 
   // Update terminal window title based on current route and session
   createEffect(() => {
@@ -608,6 +611,26 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         run: () => {
           route.navigate({
             type: "home",
+          })
+          dialog.clear()
+        },
+      },
+      {
+        name: "ml.toggle",
+        title: mlRuntimeEnabled() ? "Disable ML runtime" : "Enable ML runtime",
+        suggested: mlRuntimeEnabled(),
+        category: "ML",
+        slashName: "ml",
+        slashAliases: ["quality"],
+        run: () => {
+          setMlRuntimeEnabled((prev) => {
+            const next = !prev
+            kv.set("ml_runtime_enabled", next)
+            toast.show({
+              message: next ? "ML runtime on (quality gate + silent revision)" : "ML runtime off",
+              variant: next ? "info" : "info",
+            })
+            return next
           })
           dialog.clear()
         },
