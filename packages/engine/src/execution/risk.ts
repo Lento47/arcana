@@ -49,14 +49,26 @@ function result(level: RiskLevel, reasons: string[], required_controls: Required
   return { level, reasons, required_controls }
 }
 
+function inferToolKind(input: RiskInput): EngineActionKind {
+  if (input.kind !== "tool") return input.kind
+
+  const name = input.name.toLowerCase().replace(/[-_]/g, "")
+  if (["bash", "shell", "terminal", "exec"].includes(name)) return "shell"
+  if (["edit", "write", "applypatch", "patch", "multiedit"].includes(name)) return "file_write"
+  if (["read", "grep", "glob", "list", "ls"].includes(name)) return "file_read"
+  if (["webfetch", "websearch", "fetch", "http"].includes(name)) return "network"
+  return input.kind
+}
+
 export function assessActionRisk(input: RiskInput): RiskAssessment {
+  const kind = inferToolKind(input)
   const body = `${input.name} ${text(input.input)}`.toLowerCase()
 
-  if (input.kind === "file_write") {
+  if (kind === "file_write") {
     return result("medium", ["Action mutates files and must pass through a diff gate."], ["diff", "checkpoint"])
   }
 
-  if (input.kind === "shell") {
+  if (kind === "shell") {
     if (destructiveShellPatterns.some((pattern) => pattern.test(body))) {
       return result(
         "critical",
@@ -80,22 +92,22 @@ export function assessActionRisk(input: RiskInput): RiskAssessment {
     return result("medium", ["Shell command can affect local runtime state."], ["approval"])
   }
 
-  if (input.kind === "network" || input.kind === "mcp") {
+  if (kind === "network" || kind === "mcp") {
     return result("medium", ["Action may cross a local trust boundary."], ["approval"])
   }
 
-  if (input.kind === "model") {
+  if (kind === "model") {
     return result("low", ["Model call does not directly mutate local state."], [])
   }
 
-  if (input.kind === "file_read") {
+  if (kind === "file_read") {
     if (body.includes(".env") || body.includes("secret") || body.includes("credential") || body.includes("token")) {
       return result("high", ["File read may expose secrets or credentials."], ["approval", "human_review"])
     }
     return result("low", ["Read-only file access."], [])
   }
 
-  if (input.kind === "session") {
+  if (kind === "session") {
     return result("low", ["Session metadata operation."], [])
   }
 
