@@ -55,6 +55,10 @@ process.on("uncaughtException", (err) => {
   process.stderr.write(`[arcana] Uncaught exception: ${err.stack ?? String(err)}\n`)
   process.exit(1)
 })
+process.on("SIGTERM", () => {
+  process.stderr.write("[arcana] Received SIGTERM, shutting down\n")
+  process.exit(0)
+})
 
 // Auto-configure proxy auth from stored license key
 if (!process.env.ARCANA_PROXY_KEY) {

@@ -106,6 +106,14 @@ export async function runPromptQueue(input: QueueInput): Promise<void> {
     }
 
     state.closed = true
+    const discarded = state.queue.length + state.queued.length
+    if (discarded > 0) {
+      input.trace?.write("prompts.discarded", { count: discarded })
+      input.footer.event({
+        type: "stream.patch",
+        patch: { status: `discarded ${discarded} queued prompt${discarded === 1 ? "" : "s"}` },
+      })
+    }
     state.queue.length = 0
     state.queued.length = 0
     state.ctrl?.abort()
