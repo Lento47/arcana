@@ -3,4 +3,5 @@
 
 export * from "./breaking-change"
 export * from "./kernel"
+export * from "./migration"
 export * from "./mutation"
