@@ -61,6 +61,14 @@ export const ArcanaMutationProposal = Schema.Struct({
 })
 export type ArcanaMutationProposal = typeof ArcanaMutationProposal.Type
 
+export const ArcanaMutationTransition = Schema.Struct({
+  from: ArcanaMutationState,
+  to: ArcanaMutationState,
+  allowed: Schema.Boolean,
+  reason: Schema.String,
+})
+export type ArcanaMutationTransition = typeof ArcanaMutationTransition.Type
+
 export function newMutationID(): ArcanaMutationID {
   return ArcanaMutationID.make(`mut_${crypto.randomUUID()}`)
 }
@@ -94,4 +102,28 @@ export function createMutationProposal(input: Omit<ArcanaMutationProposal, "id" 
     controls: input.controls ?? defaultMutationControls(input.risk),
     evidence: input.evidence ?? {},
   }
+}
+
+export function canTransitionMutation(from: ArcanaMutationState, to: ArcanaMutationState): ArcanaMutationTransition {
+  const allowed =
+    (from === "proposed" && (to === "approved" || to === "rejected" || to === "failed")) ||
+    (from === "approved" && (to === "applied" || to === "rejected" || to === "failed")) ||
+    (from === "applied" && (to === "verified" || to === "reverted" || to === "failed")) ||
+    (from === "verified" && to === "reverted")
+
+  return {
+    from,
+    to,
+    allowed,
+    reason: allowed
+      ? `Mutation may transition from ${from} to ${to}.`
+      : `Mutation cannot transition from ${from} to ${to}; mutation authority requires ordered proposal, approval, apply, verification, and revert states.`,
+  }
+}
+
+export function mutationHasApplyEvidence(proposal: ArcanaMutationProposal): boolean {
+  if (proposal.state !== "approved") return false
+  if (proposal.controls.requires_checkpoint && !proposal.evidence.checkpoint_id) return false
+  if (proposal.controls.requires_human_review && !proposal.evidence.runproof_id) return false
+  return true
 }
