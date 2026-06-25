@@ -13,6 +13,15 @@ import { EXTRACTION_PROMPT, extractAndMerge, type LearningExtraction, type Merge
 import { maybeEvolve, incrementSessionCount, getActivePrompt } from "../../agent/evolve.js"
 import { detectInjection, auditLog } from "../../agent/guard.js"
 import { createSandbox } from "../../agent/sandbox.js"
+import {
+  completeRunProof,
+  createRunProof,
+  recordCommand,
+  renderRunProofMarkdown,
+  renderRunProofTerminal,
+  saveRunProof,
+  type RunProof,
+} from "../../proof/index.js"
 
 const SYSTEM_PROMPT = `You are Arcana, a self-improving AI agent. You have access to:
 - memory_search: search past sessions and conversations
@@ -49,6 +58,20 @@ const c = {
   dim:    (s: string) => `\x1b[90m${s}\x1b[0m`,
 }
 
+function commandForPrompt(prompt: string | undefined, proofMode: boolean): string {
+  const flags = proofMode ? " --proof" : ""
+  return prompt ? `arcana run${flags} ${JSON.stringify(prompt)}` : `arcana run${flags}`
+}
+
+async function persistAndRenderProof(proof: RunProof) {
+  const markdown = renderRunProofMarkdown(proof)
+  const stored = await saveRunProof(proof, { markdown })
+
+  process.stderr.write(`\n${renderRunProofTerminal(proof)}\n`)
+  process.stderr.write(c.dim(`\nProof JSON: ${stored.json_path}\n`))
+  if (stored.markdown_path) process.stderr.write(c.dim(`Proof Markdown: ${stored.markdown_path}\n`))
+}
+
 export const RunCommand: CommandModule = {
   command: "run [prompt]",
   describe: "start an arcana agent session (REPL or one-shot)",
@@ -64,11 +87,36 @@ export const RunCommand: CommandModule = {
       .option("sandbox-net",     { type: "boolean", default: false, describe: "allow network in sandbox mode" })
       .option("disable-memory",  { type: "boolean", default: false, describe: "disable memory for this session" })
       .option("tool-timeout", { type: "number", default: 30000, describe: "max execution time per tool call in ms" })
-      .option("safe", { type: "boolean", default: false, describe: "run in read-only mode — disable all write/edit/delete tools" }),
+      .option("safe", { type: "boolean", default: false, describe: "run in read-only mode — disable all write/edit/delete tools" })
+      .option("proof", {
+        alias: "evidence",
+        type: "boolean",
+        default: false,
+        describe: "capture and export a RunProof evidence package",
+      }),
 
   async handler(args) {
     const config = await loadConfig()
     const dataDir = getDataDir(config)
+    const prompt = args.prompt ? String(args.prompt) : undefined
+    const proofMode = args.proof === true || args.evidence === true
+    let runProof: RunProof | undefined
+
+    if (proofMode) {
+      runProof = createRunProof({
+        user_intent: prompt ?? "Interactive Arcana session",
+        command: commandForPrompt(prompt, true),
+      })
+      recordCommand(runProof, {
+        command: "runproof.lifecycle planning",
+        source: "system",
+        state_before: "created",
+        state_after: "planning",
+        visible_in_tui: true,
+        reversible: false,
+        result_summary: "Proof capture initialized; command execution entering planning state.",
+      })
+    }
 
     const apiKey = config.apiKey
     if (!apiKey) {
@@ -250,18 +298,76 @@ export const RunCommand: CommandModule = {
         process.stderr.write(c.dim(`  [${result.toolCalls} tool call(s) · ${result.inputTokens}↑ ${result.outputTokens}↓ tok]\n`))
       }
 
+      if (runProof) {
+        recordCommand(runProof, {
+          command: "agent.run_turn",
+          source: "agent",
+          state_before: runProof.lifecycle.status,
+          state_after: "verifying",
+          visible_in_tui: true,
+          reversible: false,
+          result_summary: `${result.toolCalls ?? 0} tool call(s), ${result.inputTokens} input tokens, ${result.outputTokens} output tokens.`,
+        })
+      }
+
       return result.content
     }
 
     if (args.prompt) {
-      const reply = await runTurn(String(args.prompt))
-      process.stdout.write(reply + "\n")
+      try {
+        const reply = await runTurn(String(args.prompt))
+        process.stdout.write(reply + "\n")
+
+        if (runProof) {
+          recordCommand(runProof, {
+            command: "runproof.finalize",
+            source: "system",
+            state_before: runProof.lifecycle.status,
+            state_after: "completed",
+            visible_in_tui: true,
+            reversible: false,
+            result_summary: "One-shot run completed and evidence package finalized.",
+          })
+          completeRunProof(runProof, {
+            status: "completed",
+            summary: "One-shot run completed. Diff gates and independent verifier are not wired yet; human review remains recommended.",
+            commands_run: [commandForPrompt(prompt, true)],
+            proof_score: 25,
+            human_review_recommended: true,
+          })
+          await persistAndRenderProof(runProof)
+        }
+      } catch (e) {
+        if (runProof) {
+          const msg = e instanceof Error ? e.message : String(e)
+          recordCommand(runProof, {
+            command: "runproof.finalize_failed",
+            source: "system",
+            state_before: runProof.lifecycle.status,
+            state_after: "failed",
+            visible_in_tui: true,
+            reversible: false,
+            result_summary: msg,
+          })
+          completeRunProof(runProof, {
+            status: "failed",
+            summary: msg,
+            commands_run: [commandForPrompt(prompt, true)],
+            proof_score: 10,
+            human_review_recommended: true,
+          })
+          await persistAndRenderProof(runProof)
+        }
+        throw e
+      }
       process.exit(0)
     }
 
     const memLabel = memory ? c.dim(`  memory:${sessionId?.slice(0, 6) ?? "?"}`) : c.dim("  memory:off")
     process.stdout.write(c.purple(`\n◆ ARCANA`) + c.dim(`  ${model} @ ${provider}`) + memLabel + "\n")
-    process.stdout.write(c.dim("  /skills  /skill <id>  /clear  /history  /exit\n\n"))
+    process.stdout.write(c.dim("  /skills  /skill <id>  /clear  /history  /exit\n"))
+    if (runProof) process.stdout.write(c.dim("  proof:on  evidence will be saved when the session exits\n"))
+    process.stdout.write("\n")
 
     const rl = createInterface({ input: process.stdin, terminal: false })
 
@@ -324,11 +430,39 @@ export const RunCommand: CommandModule = {
             // Extraction is best-effort; never block exit
           }
         }
+        if (runProof) {
+          recordCommand(runProof, {
+            command: "/exit",
+            source: "user",
+            state_before: runProof.lifecycle.status,
+            state_after: "completed",
+            visible_in_tui: true,
+            reversible: false,
+            result_summary: "Interactive proof session exited by user.",
+          })
+          completeRunProof(runProof, {
+            status: "completed",
+            summary: "Interactive session completed. Diff gates and independent verifier are not wired yet; human review remains recommended.",
+            commands_run: runProof.command_history.map((entry) => entry.command),
+            proof_score: 20,
+            human_review_recommended: true,
+          })
+          await persistAndRenderProof(runProof)
+        }
         process.exit(0)
       }
 
       if (input === "/clear") {
         if (sessionMgr && memory) sessionMgr.start(systemPrompt)
+        if (runProof) recordCommand(runProof, {
+          command: "/clear",
+          source: "user",
+          state_before: runProof.lifecycle.status,
+          state_after: runProof.lifecycle.status,
+          visible_in_tui: true,
+          reversible: false,
+          result_summary: "Session context cleared.",
+        })
         process.stdout.write(c.dim("Session cleared.\n"))
         askLine(); continue
       }
@@ -341,6 +475,15 @@ export const RunCommand: CommandModule = {
           const text = ("content" in m && m.content ? String(m.content) : "(tool call)").slice(0, 120)
           process.stdout.write(`${label} ${text}\n`)
         }
+        if (runProof) recordCommand(runProof, {
+          command: "/history",
+          source: "user",
+          state_before: runProof.lifecycle.status,
+          state_after: runProof.lifecycle.status,
+          visible_in_tui: true,
+          reversible: false,
+          result_summary: "Displayed session history.",
+        })
         askLine(); continue
       }
 
@@ -356,6 +499,15 @@ export const RunCommand: CommandModule = {
           for (const s of catSkills) process.stdout.write(`  ${s.id.padEnd(36)} ${s.description}\n`)
         }
         process.stdout.write(`\n${skills.length} skills\n\n`)
+        if (runProof) recordCommand(runProof, {
+          command: "/skills",
+          source: "user",
+          state_before: runProof.lifecycle.status,
+          state_after: runProof.lifecycle.status,
+          visible_in_tui: true,
+          reversible: false,
+          result_summary: "Displayed skill catalog.",
+        })
         askLine(); continue
       }
 
@@ -368,6 +520,15 @@ export const RunCommand: CommandModule = {
         const msgs = sessionMgr?.getHistory()
         if (msgs?.[0]?.role === "system") (msgs[0] as { role: string; content: string }).content += injection
         else systemPrompt += injection
+        if (runProof) recordCommand(runProof, {
+          command: input,
+          source: "user",
+          state_before: runProof.lifecycle.status,
+          state_after: runProof.lifecycle.status,
+          visible_in_tui: true,
+          reversible: false,
+          result_summary: `Loaded skill: ${skill.name}`,
+        })
         process.stdout.write(c.purple(`◆ Skill loaded: ${skill.name}\n`))
         askLine(); continue
       }
@@ -380,11 +541,29 @@ export const RunCommand: CommandModule = {
         if (injection) {
           process.stdout.write(c.red(`⚠️ ${injection}\n`))
           auditLog({ tool: "prompt-injection", args: { input: input.slice(0, 100) }, session: sessionId ?? undefined, ts: new Date().toISOString() })
+          if (runProof) recordCommand(runProof, {
+            command: input,
+            source: "user",
+            state_before: runProof.lifecycle.status,
+            state_after: "failed",
+            visible_in_tui: true,
+            reversible: false,
+            result_summary: `Prompt injection blocked: ${injection}`,
+          })
           askLine(); continue
         }
       }
 
       try {
+        if (runProof) recordCommand(runProof, {
+          command: input,
+          source: "user",
+          state_before: runProof.lifecycle.status,
+          state_after: "planning",
+          visible_in_tui: true,
+          reversible: false,
+          result_summary: "User turn accepted.",
+        })
         const reply = await runTurn(input)
         process.stdout.write(reply + "\n\n")
       } catch (e) {
