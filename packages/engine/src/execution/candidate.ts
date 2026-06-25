@@ -82,7 +82,7 @@ export function createCandidatePatch(input: Omit<CandidatePatch, "id" | "status"
 }
 
 export function selectBestCandidate(candidates: CandidatePatch[]): CandidatePatch | undefined {
-  return candidates
+  return [...candidates]
     .filter((candidate) => candidate.score)
     .sort((a, b) => engineeringQualityScore(b.score!) - engineeringQualityScore(a.score!))[0]
 }
