@@ -7,18 +7,18 @@ import { EngineActionID, RequiredControl } from "./action"
 export const PipelineID = Schema.String.pipe(Schema.brand("PipelineID"))
 export type PipelineID = typeof PipelineID.Type
 
-export const PipelineKind = Schema.Literal("fix", "feature", "security", "refactor", "forge", "research")
+export const PipelineKind = Schema.Literals(["fix", "feature", "security", "refactor", "forge", "research"])
 export type PipelineKind = typeof PipelineKind.Type
 
 export const AcceptanceCriterion = Schema.Struct({
   id: Schema.String,
   description: Schema.String,
-  verification: Schema.Literal("test", "typecheck", "lint", "build", "manual", "verifier", "benchmark", "security_check"),
+  verification: Schema.Literals(["test", "typecheck", "lint", "build", "manual", "verifier", "benchmark", "security_check"]),
   required: Schema.Boolean,
 })
 export type AcceptanceCriterion = typeof AcceptanceCriterion.Type
 
-export const PipelineStageStatus = Schema.Literal("pending", "running", "passed", "failed", "skipped")
+export const PipelineStageStatus = Schema.Literals(["pending", "running", "passed", "failed", "skipped"])
 export type PipelineStageStatus = typeof PipelineStageStatus.Type
 
 export const PipelineStage = Schema.Struct({
@@ -34,7 +34,7 @@ export type PipelineStage = typeof PipelineStage.Type
 export const StopCondition = Schema.Struct({
   id: Schema.String,
   reason: Schema.String,
-  severity: Schema.Literal("info", "warning", "hard_stop"),
+  severity: Schema.Literals(["info", "warning", "hard_stop"]),
 })
 export type StopCondition = typeof StopCondition.Type
 
