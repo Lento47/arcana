@@ -6,7 +6,7 @@ import { RequiredControl, RiskAssessment } from "./action"
 
 export const SecurityAsset = Schema.Struct({
   name: Schema.String,
-  kind: Schema.Literal("auth", "secret", "user_data", "payment", "network", "filesystem", "dependency", "runtime", "unknown"),
+  kind: Schema.Literals(["auth", "secret", "user_data", "payment", "network", "filesystem", "dependency", "runtime", "unknown"]),
   path: Schema.optional(Schema.String),
   reason: Schema.String,
 })
@@ -20,7 +20,7 @@ export const TrustBoundary = Schema.Struct({
 })
 export type TrustBoundary = typeof TrustBoundary.Type
 
-export const DangerousCapability = Schema.Literal(
+export const DangerousCapability = Schema.Literals([
   "shell",
   "network",
   "file_write",
@@ -29,7 +29,7 @@ export const DangerousCapability = Schema.Literal(
   "permission_change",
   "auth_change",
   "destructive_operation",
-)
+])
 export type DangerousCapability = typeof DangerousCapability.Type
 
 export const SecurityContext = Schema.Struct({
