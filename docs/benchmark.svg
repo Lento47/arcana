@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 440" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="arcana" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c4a035"/>
+      <stop offset="100%" stop-color="#8b6914"/>
+    </linearGradient>
+    <linearGradient id="opencode" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6b5b8a"/>
+      <stop offset="100%" stop-color="#4a3d6e"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="720" height="440" rx="8" fill="#0d0d12"/>
+
+  <!-- Title -->
+  <text x="360" y="36" text-anchor="middle" fill="#c4a035" font-size="16" font-weight="700" filter="url(#glow)">⛧ arcana vs opencode — benchmark</text>
+
+  <!-- === Chart 1: Performance (lower is better) === -->
+  <text x="40" y="72" fill="#888" font-size="11" font-weight="600">PERFORMANCE (lower is better)</text>
+
+  <!-- CLI startup -->
+  <text x="40" y="98" fill="#ccc" font-size="10">CLI startup</text>
+  <rect x="160" y="86" width="180" height="14" rx="3" fill="url(#arcana)"/>
+  <text x="346" y="96" fill="#c4a035" font-size="9" font-weight="700">0.36s</text>
+  <rect x="160" y="102" width="353" height="14" rx="3" fill="url(#opencode)"/>
+  <text x="518" y="112" fill="#6b5b8a" font-size="9" font-weight="700">0.71s</text>
+
+  <!-- Doctor -->
+  <text x="40" y="132" fill="#ccc" font-size="10">Doctor</text>
+  <rect x="160" y="120" width="120" height="14" rx="3" fill="url(#arcana)"/>
+  <text x="286" y="130" fill="#c4a035" font-size="9" font-weight="700">0.36s</text>
+  <rect x="160" y="136" width="352" height="14" rx="3" fill="url(#opencode)"/>
+  <text x="517" y="146" fill="#6b5b8a" font-size="9" font-weight="700">1.06s</text>
+
+  <!-- LLM latency -->
+  <text x="40" y="166" fill="#ccc" font-size="10">LLM latency</text>
+  <rect x="160" y="154" width="153" height="14" rx="3" fill="url(#arcana)"/>
+  <text x="319" y="164" fill="#c4a035" font-size="9" font-weight="700">3.48s</text>
+  <rect x="160" y="170" width="352" height="14" rx="3" fill="url(#opencode)"/>
+  <text x="517" y="180" fill="#6b5b8a" font-size="9" font-weight="700">7.99s</text>
+
+  <!-- Divider -->
+  <line x1="40" y1="200" x2="680" y2="200" stroke="#222" stroke-width="1"/>
+
+  <!-- === Chart 2: Scale (higher is better) === -->
+  <text x="40" y="224" fill="#888" font-size="11" font-weight="600">SCALE (higher is better)</text>
+
+  <!-- Packages -->
+  <text x="40" y="250" fill="#ccc" font-size="10">Packages</text>
+  <rect x="160" y="238" width="249" height="14" rx="3" fill="url(#arcana)"/>
+  <text x="414" y="248" fill="#c4a035" font-size="9" font-weight="700">22</text>
+  <rect x="160" y="254" width="352" height="14" rx="3" fill="url(#opencode)"/>
+  <text x="517" y="264" fill="#6b5b8a" font-size="9" font-weight="700">31</text>
+
+  <!-- Commands -->
+  <text x="40" y="284" fill="#ccc" font-size="10">Commands</text>
+  <rect x="160" y="272" width="352" height="14" rx="3" fill="url(#arcana)"/>
+  <text x="517" y="282" fill="#c4a035" font-size="9" font-weight="700">41</text>
+  <rect x="160" y="288" width="197" height="14" rx="3" fill="url(#opencode)"/>
+  <text x="362" y="298" fill="#6b5b8a" font-size="9" font-weight="700">23</text>
+
+  <!-- Skills -->
+  <text x="40" y="318" fill="#ccc" font-size="10">Skills</text>
+  <rect x="160" y="306" width="352" height="14" rx="3" fill="url(#arcana)"/>
+  <text x="517" y="316" fill="#c4a035" font-size="9" font-weight="700">175</text>
+  <rect x="160" y="322" width="6" height="14" rx="3" fill="url(#opencode)"/>
+  <text x="172" y="332" fill="#6b5b8a" font-size="9" font-weight="700">3</text>
+
+  <!-- TS files -->
+  <text x="40" y="352" fill="#ccc" font-size="10">TS files</text>
+  <rect x="160" y="340" width="272" height="14" rx="3" fill="url(#arcana)"/>
+  <text x="437" y="350" fill="#c4a035" font-size="9" font-weight="700">1,731</text>
+  <rect x="160" y="356" width="352" height="14" rx="3" fill="url(#opencode)"/>
+  <text x="517" y="366" fill="#6b5b8a" font-size="9" font-weight="700">2,240</text>
+
+  <!-- Legend -->
+  <rect x="40" y="392" width="12" height="12" rx="2" fill="url(#arcana)"/>
+  <text x="58" y="402" fill="#ccc" font-size="10">Arcana</text>
+  <rect x="140" y="392" width="12" height="12" rx="2" fill="url(#opencode)"/>
+  <text x="158" y="402" fill="#ccc" font-size="10">OpenCode</text>
+
+  <!-- Footnote -->
+  <text x="360" y="428" text-anchor="middle" fill="#444" font-size="8">deepseek-v4-pro[1m] via api.deepseek.com/anthropic · Bun 1.3.14 · Windows 11</text>
+</svg>
