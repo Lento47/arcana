@@ -7,6 +7,7 @@ import type { Permission } from "../permission"
 import type { SessionID, MessageID } from "../session/schema"
 import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
+import { assessActionRisk, createEngineAction } from "@/execution"
 
 interface Metadata {
   [key: string]: any
@@ -111,13 +112,57 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
       const decode = Schema.decodeUnknownEffect(toolInfo.parameters)
       const execute = toolInfo.execute
       toolInfo.execute = (args, ctx) => {
+        const risk = assessActionRisk({ kind: "tool", name: id, input: args })
+        const action = createEngineAction({
+          sessionID: ctx.sessionID,
+          messageID: ctx.messageID,
+          source: "agent",
+          kind: "tool",
+          name: id,
+          input: args,
+          risk,
+          reversible: risk.required_controls.includes("checkpoint"),
+        })
+        const governedCtx: Context = {
+          ...ctx,
+          ask(input) {
+            return ctx.ask({
+              ...input,
+              metadata: {
+                ...input.metadata,
+                engine_action: {
+                  id: action.id,
+                  kind: action.kind,
+                  name: action.name,
+                  risk: action.risk,
+                  policy: action.policy,
+                  reversible: action.reversible,
+                },
+              },
+            })
+          },
+        }
         const attrs = {
           "tool.name": id,
           "session.id": ctx.sessionID,
           "message.id": ctx.messageID,
+          "engine.action.id": action.id,
+          "engine.action.kind": action.kind,
+          "engine.action.source": action.source,
+          "engine.risk.level": action.risk.level,
+          "engine.policy.action": action.policy.action,
           ...(ctx.callID ? { "tool.call_id": ctx.callID } : {}),
         }
-        return Effect.gen(function* () {
+        const execution = Effect.gen(function* () {
+          yield* Effect.logInfo("engine.action.proposed", {
+            actionID: action.id,
+            sessionID: action.sessionID,
+            messageID: action.messageID,
+            kind: action.kind,
+            name: action.name,
+            risk: action.risk.level,
+            policy: action.policy.action,
+          })
           const decoded = yield* decode(args).pipe(
             Effect.mapError(
               (error) =>
@@ -127,7 +172,14 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
                 }),
             ),
           )
-          const result = yield* execute(decoded as Schema.Schema.Type<Parameters>, ctx)
+          const result = yield* execute(decoded as Schema.Schema.Type<Parameters>, governedCtx)
+          yield* Effect.logInfo("engine.action.completed", {
+            actionID: action.id,
+            sessionID: action.sessionID,
+            messageID: action.messageID,
+            kind: action.kind,
+            name: action.name,
+          })
           if (result.metadata.truncated !== undefined) {
             return result
           }
@@ -142,7 +194,24 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
               ...(truncated.truncated && { outputPath: truncated.outputPath }),
             },
           }
-        }).pipe(Effect.orDie, Effect.withSpan("Tool.execute", { attributes: attrs }))
+        })
+        return execution.pipe(
+          Effect.catchAll((error) =>
+            Effect.gen(function* () {
+              yield* Effect.logInfo("engine.action.failed", {
+                actionID: action.id,
+                sessionID: action.sessionID,
+                messageID: action.messageID,
+                kind: action.kind,
+                name: action.name,
+                error: error instanceof Error ? error.message : String(error),
+              })
+              return yield* Effect.fail(error)
+            }),
+          ),
+          Effect.orDie,
+          Effect.withSpan("Tool.execute", { attributes: attrs }),
+        )
       }
       return toolInfo
     })
