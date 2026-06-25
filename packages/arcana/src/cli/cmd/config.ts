@@ -22,15 +22,13 @@ export const ConfigCommand: CommandModule = {
         return
       }
       const defaults: Partial<ArcanaConfig> = {
-        provider: "openai",
-        model: "gpt-4o",
-        utilityModel: "gpt-4o-mini",
         memory: { enabled: true, maxSessions: 1000 },
         cron: { enabled: true, intervalSeconds: 60 },
       }
       await writeFile(configPath, JSON.stringify(defaults, null, 2), "utf8")
       console.log(`Created ${configPath}`)
-      console.log("Edit this file to configure arcana, or set ARCANA_PROVIDER / ARCANA_MODEL / ARCANA_API_KEY env vars.")
+      console.log("Provider and model are auto-detected from env vars via models.dev.")
+      console.log("Set a provider key (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY) to activate.")
       return
     }
 

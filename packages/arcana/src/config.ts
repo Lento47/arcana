@@ -4,9 +4,9 @@ import { homedir } from "node:os"
 import { existsSync } from "node:fs"
 
 export type ArcanaConfig = {
-  provider: string
-  model: string
-  /** Cheap model for extraction, compaction, and background tasks. Default: gpt-4o-mini. */
+  provider?: string
+  model?: string
+  /** Cheap model for extraction and compaction. Falls back to the main model when unset. */
   utilityModel?: string
   apiKey?: string
   dataDir?: string
@@ -31,9 +31,6 @@ export function getDataDir(config: ArcanaConfig): string {
 
 function defaults(): ArcanaConfig {
   return {
-    provider: "openai",
-    model: "gpt-4o",
-    utilityModel: "gpt-4o-mini",
     skillsDirs: [
       join(getArcanaHome(), "skills"),
       join(import.meta.dir, "..", "..", "..", "skills"),
@@ -57,11 +54,23 @@ export async function loadConfig(): Promise<ArcanaConfig> {
   if (process.env.ARCANA_API_KEY) file.apiKey = process.env.ARCANA_API_KEY
   if (process.env.OPENAI_API_KEY && !file.apiKey) file.apiKey = process.env.OPENAI_API_KEY
 
+  // Auto-detect provider + model from models.dev. Env-set keys take
+  // precedence over file config so a stale config file doesn't lock
+  // you into a provider whose key was rotated or removed.
+  try {
+    const { autoDetectProvider } = await import("./agent/providers.js")
+    const detected = await autoDetectProvider()
+    if (detected.provider) {
+      file.provider = detected.provider
+      if (!file.model) file.model = detected.model ?? file.model
+    }
+  } catch (e) { console.error("[arcana] auto-detect provider failed:", e instanceof Error ? e.message : String(e)) }
+
   const base = defaults()
   return {
-    provider: (file.provider as string) ?? base.provider,
-    model: (file.model as string) ?? base.model,
-    utilityModel: (file.utilityModel as string) ?? base.utilityModel,
+    provider: file.provider as string | undefined,
+    model: file.model as string | undefined,
+    utilityModel: file.utilityModel as string | undefined,
     apiKey: file.apiKey as string | undefined,
     dataDir: file.dataDir as string | undefined,
     skillsDirs: (file.skillsDirs as string[]) ?? base.skillsDirs,

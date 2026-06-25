@@ -14,15 +14,25 @@ const TOOL_RESULT_MAX = 2000  // truncate large tool outputs to this many chars
 
 /** Map arcana provider ids to AI SDK language model constructors. */
 async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
+  if (!config.provider) {
+    throw new Error(
+      "No provider configured. Set a provider in ~/.arcana/config.json, pass --provider, or set a provider env key (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.).",
+    )
+  }
   const profile = await resolveProvider(config.provider)
   const key = (profile.envKey ? process.env[profile.envKey] : undefined) ?? config.apiKey
   if (!key) {
     throw new Error(
-      `No API key for provider "${config.provider}". Set ${profile.envKey ?? "ARCANA_API_KEY"} (or ARCANA_API_KEY / OPENAI_API_KEY).`,
+      `No API key for provider "${config.provider}". Set ${profile.envKey ?? "ARCANA_API_KEY"} (or set the env var from models.dev).`,
     )
   }
 
-  const modelId = config.model || profile.defaultModel || "gpt-4o"
+  const modelId = config.model || profile.defaultModel
+  if (!modelId) {
+    throw new Error(
+      `No model configured for provider "${config.provider}". Set a model in ~/.arcana/config.json or pass --model.`,
+    )
+  }
   const aiTools: Record<string, any> = {}
   for (const t of tools) {
     aiTools[t.function.name] = {
@@ -123,7 +133,7 @@ export class AgentRunner {
       const dropped = rest.slice(0, keepFromIdx)
       let compactionNote = ""
       try {
-        const cheapModel = this.config.utilityModel ?? "gpt-4o-mini"
+        const cheapModel = this.config.utilityModel || this.config.model
         const { model } = await resolveModel({ ...this.config, model: cheapModel } as AgentConfig, [])
         const summaryPrompt = "Summarize these conversation turns into 2-3 sentences capturing key decisions, facts, and context. Prioritize information still relevant to the current task."
         const summaryMsgs: ChatMessage[] = [

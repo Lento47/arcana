@@ -22,9 +22,9 @@ export type ToolDef = {
 }
 
 export type AgentConfig = {
-  provider: string
-  model: string
-  /** Cheap model for compaction/extraction. Default: gpt-4o-mini. */
+  provider?: string
+  model?: string
+  /** Cheap model for compaction/extraction. Falls back to main model from models.dev. */
   utilityModel?: string
   apiKey?: string
   baseURL?: string
