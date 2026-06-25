@@ -93,11 +93,9 @@ export type InferMetadata<T> =
 export type InferDef<T> =
   T extends Info<infer P, infer M>
     ? Def<P, M>
-    : T extends Effect.Effect<Info<any, any>, any, any>
-      ? never
-      : T extends Effect.Effect<Info<infer P, infer M>, any, any>
-        ? Def<P, M>
-        : never
+    : T extends Effect.Effect<Info<infer P, infer M>, any, any>
+      ? Def<P, M>
+      : never
 
 function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadata>(
   id: string,
