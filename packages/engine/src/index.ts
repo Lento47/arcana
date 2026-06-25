@@ -41,6 +41,7 @@ import { LicenseCommand } from "./cli/cmd/license"
 // cold start for nothing. (ThemeCommand was imported but never even registered.)
 import { AuditCommand } from "./cli/cmd/audit"
 import { TeamCommand } from "./cli/cmd/team"
+import { createKernelContract, type ArcanaKernelContract } from "./kernel/kernel"
 mark("cli-import-end")
 
 // Catch unhandled rejections and exceptions so the process doesn't silently
@@ -141,6 +142,18 @@ const cli = yargs(args)
     // plugins or scripts that still check OPENCODE.
     if (opts.compatOpencodeEnv || process.env.ARCANA_COMPAT_OPENCODE === "1") {
       process.env.OPENCODE = "1"
+    }
+
+    // Create and expose the Arcana kernel contract. Telemetry, RunProof, and
+    // the TUI cockpit read this contract at runtime to know which authorities
+    // own which decisions.
+    const kernelSurface = opts.tui ? "tui" as const : "cli" as const
+    const kernelContract = createKernelContract(kernelSurface)
+    process.env.ARCANA_KERNEL_CONTRACT = JSON.stringify(kernelContract)
+    if (process.env.ARCANA_PRINT_LOGS === "1") {
+      process.stderr.write(
+        `[arcana] kernel contract: identity=${kernelContract.identity.surface} authorities=${kernelContract.authorities.length}\n`,
+      )
     }
   })
   .usage("")

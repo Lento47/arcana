@@ -37,6 +37,13 @@ export function createRunProof(input: { user_intent: string; cwd?: string; comma
     timestamp: now,
     repo: currentRepoSnapshot(cwd),
     user_intent: input.user_intent,
+    kernel: (() => {
+      try {
+        const raw = process.env.ARCANA_KERNEL_CONTRACT
+        if (raw) return JSON.parse(raw) as RunProof["kernel"]
+      } catch {}
+      return undefined
+    })(),
     lifecycle: {
       status: "created",
       started_at: now,

@@ -199,6 +199,12 @@ export type RunProof = {
   timestamp: string
   repo: RepoSnapshot
   user_intent: string
+  kernel?: {
+    product: string
+    runtime: string
+    surface: string
+    authorities: string[]
+  }
 
   lifecycle: RunProofLifecycle
   command_history: TUICommandReflection[]
