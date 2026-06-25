@@ -7,25 +7,16 @@ import { MessageID, SessionID } from "@/session/schema"
 export const EngineActionID = Schema.String.pipe(Schema.brand("EngineActionID"))
 export type EngineActionID = typeof EngineActionID.Type
 
-export const RiskLevel = Schema.Literal("low", "medium", "high", "critical")
+export const RiskLevel = Schema.Literals(["low", "medium", "high", "critical"])
 export type RiskLevel = typeof RiskLevel.Type
 
-export const EngineActionSource = Schema.Literal("user", "agent", "subagent", "system", "verifier")
+export const EngineActionSource = Schema.Literals(["user", "agent", "subagent", "system", "verifier"])
 export type EngineActionSource = typeof EngineActionSource.Type
 
-export const EngineActionKind = Schema.Literal(
-  "tool",
-  "mcp",
-  "file_read",
-  "file_write",
-  "shell",
-  "network",
-  "session",
-  "model",
-)
+export const EngineActionKind = Schema.Literals(["tool", "mcp", "file_read", "file_write", "shell", "network", "session", "model"])
 export type EngineActionKind = typeof EngineActionKind.Type
 
-export const RequiredControl = Schema.Literal("approval", "diff", "checkpoint", "sandbox", "verifier", "human_review")
+export const RequiredControl = Schema.Literals(["approval", "diff", "checkpoint", "sandbox", "verifier", "human_review"])
 export type RequiredControl = typeof RequiredControl.Type
 
 export const RiskAssessment = Schema.Struct({
@@ -43,33 +34,12 @@ export const SandboxConstraint = Schema.Struct({
 export type SandboxConstraint = typeof SandboxConstraint.Type
 
 export const PolicyDecision = Schema.Union(
-  Schema.Struct({
-    action: Schema.Literal("allow"),
-    reason: Schema.String,
-    evidence_required: Schema.Array(Schema.String),
-  }),
-  Schema.Struct({
-    action: Schema.Literal("deny"),
-    reason: Schema.String,
-  }),
-  Schema.Struct({
-    action: Schema.Literal("ask"),
-    reason: Schema.String,
-    approval_scope: Schema.Literal("once", "session", "project"),
-  }),
-  Schema.Struct({
-    action: Schema.Literal("sandbox"),
-    reason: Schema.String,
-    constraints: Schema.Array(SandboxConstraint),
-  }),
-  Schema.Struct({
-    action: Schema.Literal("propose_diff"),
-    reason: Schema.String,
-  }),
-  Schema.Struct({
-    action: Schema.Literal("require_verifier"),
-    reason: Schema.String,
-  }),
+  Schema.Struct({ action: Schema.Literals(["allow"]), reason: Schema.String, evidence_required: Schema.Array(Schema.String) }),
+  Schema.Struct({ action: Schema.Literals(["deny"]), reason: Schema.String }),
+  Schema.Struct({ action: Schema.Literals(["ask"]), reason: Schema.String, approval_scope: Schema.Literals(["once", "session", "project"]) }),
+  Schema.Struct({ action: Schema.Literals(["sandbox"]), reason: Schema.String, constraints: Schema.Array(SandboxConstraint) }),
+  Schema.Struct({ action: Schema.Literals(["propose_diff"]), reason: Schema.String }),
+  Schema.Struct({ action: Schema.Literals(["require_verifier"]), reason: Schema.String }),
 )
 export type PolicyDecision = typeof PolicyDecision.Type
 
@@ -86,11 +56,7 @@ export const EngineAction = Schema.Struct({
   policy: PolicyDecision,
   reversible: Schema.Boolean,
   proof_event_id: Schema.optional(Schema.String),
-  time: Schema.Struct({
-    created: Schema.Number,
-    started: Schema.optional(Schema.Number),
-    ended: Schema.optional(Schema.Number),
-  }),
+  time: Schema.Struct({ created: Schema.Number, started: Schema.optional(Schema.Number), ended: Schema.optional(Schema.Number) }),
 })
 export type EngineAction = typeof EngineAction.Type
 
@@ -120,23 +86,23 @@ export const VerifierPass = Schema.Struct({
   actionIDs: Schema.Array(EngineActionID),
   diffIDs: Schema.Array(Schema.String),
   model: Schema.optional(Schema.String),
-  status: Schema.Literal("passed", "failed", "inconclusive"),
+  status: Schema.Literals(["passed", "failed", "inconclusive"]),
   concerns: Schema.Array(Schema.String),
   required_followups: Schema.Array(Schema.String),
 })
 export type VerifierPass = typeof VerifierPass.Type
 
 export const EngineEvent = Schema.Union(
-  Schema.Struct({ type: Schema.Literal("action.proposed"), action: EngineAction }),
-  Schema.Struct({ type: Schema.Literal("policy.decided"), actionID: EngineActionID, decision: PolicyDecision }),
-  Schema.Struct({ type: Schema.Literal("action.started"), actionID: EngineActionID }),
-  Schema.Struct({ type: Schema.Literal("action.completed"), actionID: EngineActionID, output: Schema.Unknown }),
-  Schema.Struct({ type: Schema.Literal("action.failed"), actionID: EngineActionID, error: Schema.Unknown }),
-  Schema.Struct({ type: Schema.Literal("diff.proposed"), proposal: MutationProposal }),
-  Schema.Struct({ type: Schema.Literal("diff.applied"), proposalID: Schema.String }),
-  Schema.Struct({ type: Schema.Literal("verification.completed"), verifier: VerifierPass }),
-  Schema.Struct({ type: Schema.Literal("rollback.created"), checkpointID: Schema.String }),
-  Schema.Struct({ type: Schema.Literal("runproof.updated"), runproofID: Schema.String }),
+  Schema.Struct({ type: Schema.Literals(["action.proposed"]), action: EngineAction }),
+  Schema.Struct({ type: Schema.Literals(["policy.decided"]), actionID: EngineActionID, decision: PolicyDecision }),
+  Schema.Struct({ type: Schema.Literals(["action.started"]), actionID: EngineActionID }),
+  Schema.Struct({ type: Schema.Literals(["action.completed"]), actionID: EngineActionID, output: Schema.Unknown }),
+  Schema.Struct({ type: Schema.Literals(["action.failed"]), actionID: EngineActionID, error: Schema.Unknown }),
+  Schema.Struct({ type: Schema.Literals(["diff.proposed"]), proposal: MutationProposal }),
+  Schema.Struct({ type: Schema.Literals(["diff.applied"]), proposalID: Schema.String }),
+  Schema.Struct({ type: Schema.Literals(["verification.completed"]), verifier: VerifierPass }),
+  Schema.Struct({ type: Schema.Literals(["rollback.created"]), checkpointID: Schema.String }),
+  Schema.Struct({ type: Schema.Literals(["runproof.updated"]), runproofID: Schema.String }),
 )
 export type EngineEvent = typeof EngineEvent.Type
 
