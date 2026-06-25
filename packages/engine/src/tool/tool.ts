@@ -196,14 +196,17 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           }
         })
         return execution.pipe(
-          Effect.tapError((error) =>
-            Effect.logInfo("engine.action.failed", {
-              actionID: action.id,
-              sessionID: action.sessionID,
-              messageID: action.messageID,
-              kind: action.kind,
-              name: action.name,
-              error: error instanceof Error ? error.message : String(error),
+          Effect.catchAll((error) =>
+            Effect.gen(function* () {
+              yield* Effect.logInfo("engine.action.failed", {
+                actionID: action.id,
+                sessionID: action.sessionID,
+                messageID: action.messageID,
+                kind: action.kind,
+                name: action.name,
+                error: error instanceof Error ? error.message : String(error),
+              })
+              return yield* Effect.fail(error)
             }),
           ),
           Effect.orDie,
