@@ -123,6 +123,25 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           risk,
           reversible: risk.required_controls.includes("checkpoint"),
         })
+        const governedCtx: Context = {
+          ...ctx,
+          ask(input) {
+            return ctx.ask({
+              ...input,
+              metadata: {
+                ...input.metadata,
+                engine_action: {
+                  id: action.id,
+                  kind: action.kind,
+                  name: action.name,
+                  risk: action.risk,
+                  policy: action.policy,
+                  reversible: action.reversible,
+                },
+              },
+            })
+          },
+        }
         const attrs = {
           "tool.name": id,
           "session.id": ctx.sessionID,
@@ -153,7 +172,7 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
                 }),
             ),
           )
-          const result = yield* execute(decoded as Schema.Schema.Type<Parameters>, ctx)
+          const result = yield* execute(decoded as Schema.Schema.Type<Parameters>, governedCtx)
           yield* Effect.logInfo("engine.action.completed", {
             actionID: action.id,
             sessionID: action.sessionID,
