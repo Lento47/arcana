@@ -43,6 +43,19 @@ import { AuditCommand } from "./cli/cmd/audit"
 import { TeamCommand } from "./cli/cmd/team"
 mark("cli-import-end")
 
+// Catch unhandled rejections and exceptions so the process doesn't silently
+// continue in an indeterminate state. These fire for promise rejections and
+// synchronous throws outside the Effect runtime scope (e.g. fire-and-forget
+// async callbacks, timer handlers, MCP subprocess stderr).
+process.on("unhandledRejection", (reason) => {
+  process.stderr.write(`[arcana] Unhandled rejection: ${String(reason)}\n`)
+  process.exit(1)
+})
+process.on("uncaughtException", (err) => {
+  process.stderr.write(`[arcana] Uncaught exception: ${err.stack ?? String(err)}\n`)
+  process.exit(1)
+})
+
 // Auto-configure proxy auth from stored license key
 if (!process.env.ARCANA_PROXY_KEY) {
   try {
