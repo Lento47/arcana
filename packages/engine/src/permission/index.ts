@@ -7,6 +7,7 @@ import os from "os"
 import { PermissionV1 } from "@arcana/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { EventV2 } from "@arcana/core/event"
+import type { RiskAssessment } from "@/execution"
 
 export const Event = {
   Asked: EventV2.define({ type: "permission.asked", schema: PermissionV1.Request.fields }),
@@ -42,6 +43,14 @@ interface State {
   resolved: Set<PermissionV1.ID>
 }
 
+type EnginePermissionMetadata = {
+  engine_action?: {
+    id?: string
+    risk?: RiskAssessment
+    policy?: { action?: string }
+  }
+}
+
 export function evaluate(permission: string, pattern: string, ...rulesets: PermissionV1.Ruleset[]): PermissionV1.Rule {
   return (
     rulesets
@@ -52,6 +61,21 @@ export function evaluate(permission: string, pattern: string, ...rulesets: Permi
       pattern: "*",
     }
   )
+}
+
+function riskFromMetadata(metadata: Record<string, unknown>): RiskAssessment | undefined {
+  const risk = (metadata as EnginePermissionMetadata).engine_action?.risk
+  if (!risk || typeof risk !== "object") return undefined
+  if (!Array.isArray(risk.required_controls)) return undefined
+  if (!Array.isArray(risk.reasons)) return undefined
+  if (risk.level !== "low" && risk.level !== "medium" && risk.level !== "high" && risk.level !== "critical") return undefined
+  return risk
+}
+
+function riskRequiresAsk(risk: RiskAssessment | undefined): boolean {
+  if (!risk) return false
+  if (risk.level === "high" || risk.level === "critical") return true
+  return risk.required_controls.includes("approval") || risk.required_controls.includes("human_review")
 }
 
 export class Service extends Context.Service<Service, Interface>()("@arcana/Permission") {}
@@ -85,17 +109,25 @@ export const layer = Layer.effect(
     const ask = Effect.fn("Permission.ask")(function* (input: PermissionV1.AskInput) {
       const { approved, pending } = yield* InstanceState.get(state)
       const { ruleset, ...request } = input
+      const engineRisk = riskFromMetadata(request.metadata)
+      const forceAskFromRisk = riskRequiresAsk(engineRisk)
       let needsAsk = false
 
       for (const pattern of request.patterns) {
         const rule = evaluate(request.permission, pattern, ruleset, approved)
-        yield* Effect.logInfo("evaluated", { permission: request.permission, pattern, action: rule })
+        yield* Effect.logInfo("evaluated", {
+          permission: request.permission,
+          pattern,
+          action: rule,
+          engineRisk: engineRisk?.level,
+          forceAskFromRisk,
+        })
         if (rule.action === "deny") {
           return yield* new PermissionV1.DeniedError({
             ruleset: ruleset.filter((rule) => Wildcard.match(request.permission, rule.permission)),
           })
         }
-        if (rule.action === "allow") continue
+        if (rule.action === "allow" && !forceAskFromRisk) continue
         needsAsk = true
       }
 
@@ -111,7 +143,13 @@ export const layer = Layer.effect(
         always: request.always,
         tool: request.tool,
       }
-      yield* Effect.logInfo("asking", { id, permission: info.permission, patterns: info.patterns })
+      yield* Effect.logInfo("asking", {
+        id,
+        permission: info.permission,
+        patterns: info.patterns,
+        engineRisk: engineRisk?.level,
+        riskReasons: engineRisk?.reasons,
+      })
 
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
       pending.set(id, { info, deferred })
@@ -204,7 +242,7 @@ export const layer = Layer.effect(
   }),
 )
 
-function expand(pattern: string): string {
+function expand(pattern: string) {
   if (pattern.startsWith("~/")) return os.homedir() + pattern.slice(1)
   if (pattern === "~") return os.homedir()
   if (pattern.startsWith("$HOME/")) return os.homedir() + pattern.slice(5)
