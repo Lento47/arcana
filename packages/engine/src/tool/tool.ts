@@ -134,7 +134,7 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           "engine.policy.action": action.policy.action,
           ...(ctx.callID ? { "tool.call_id": ctx.callID } : {}),
         }
-        return Effect.gen(function* () {
+        const execution = Effect.gen(function* () {
           yield* Effect.logInfo("engine.action.proposed", {
             actionID: action.id,
             sessionID: action.sessionID,
@@ -175,7 +175,21 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
               ...(truncated.truncated && { outputPath: truncated.outputPath }),
             },
           }
-        }).pipe(Effect.orDie, Effect.withSpan("Tool.execute", { attributes: attrs }))
+        })
+        return execution.pipe(
+          Effect.tapError((error) =>
+            Effect.logInfo("engine.action.failed", {
+              actionID: action.id,
+              sessionID: action.sessionID,
+              messageID: action.messageID,
+              kind: action.kind,
+              name: action.name,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          ),
+          Effect.orDie,
+          Effect.withSpan("Tool.execute", { attributes: attrs }),
+        )
       }
       return toolInfo
     })
