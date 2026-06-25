@@ -7,7 +7,7 @@ import os from "os"
 import { PermissionV1 } from "@arcana/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { EventV2 } from "@arcana/core/event"
-import type { RiskAssessment } from "@/execution"
+import { riskFromMetadata, riskRequiresFreshAsk, riskRequiresInitialAsk } from "./risk-policy"
 
 export const Event = {
   Asked: EventV2.define({ type: "permission.asked", schema: PermissionV1.Request.fields }),
@@ -43,14 +43,6 @@ interface State {
   resolved: Set<PermissionV1.ID>
 }
 
-type EnginePermissionMetadata = {
-  engine_action?: {
-    id?: string
-    risk?: RiskAssessment
-    policy?: { action?: string }
-  }
-}
-
 export function evaluate(permission: string, pattern: string, ...rulesets: PermissionV1.Ruleset[]): PermissionV1.Rule {
   return (
     rulesets
@@ -61,21 +53,6 @@ export function evaluate(permission: string, pattern: string, ...rulesets: Permi
       pattern: "*",
     }
   )
-}
-
-function riskFromMetadata(metadata: Record<string, unknown>): RiskAssessment | undefined {
-  const risk = (metadata as EnginePermissionMetadata).engine_action?.risk
-  if (!risk || typeof risk !== "object") return undefined
-  if (!Array.isArray(risk.required_controls)) return undefined
-  if (!Array.isArray(risk.reasons)) return undefined
-  if (risk.level !== "low" && risk.level !== "medium" && risk.level !== "high" && risk.level !== "critical") return undefined
-  return risk
-}
-
-function riskRequiresAsk(risk: RiskAssessment | undefined): boolean {
-  if (!risk) return false
-  if (risk.level === "high" || risk.level === "critical") return true
-  return risk.required_controls.includes("approval") || risk.required_controls.includes("human_review")
 }
 
 export class Service extends Context.Service<Service, Interface>()("@arcana/Permission") {}
@@ -110,24 +87,31 @@ export const layer = Layer.effect(
       const { approved, pending } = yield* InstanceState.get(state)
       const { ruleset, ...request } = input
       const engineRisk = riskFromMetadata(request.metadata)
-      const forceAskFromRisk = riskRequiresAsk(engineRisk)
+      const forceInitialAskFromRisk = riskRequiresInitialAsk(engineRisk)
+      const forceFreshAskFromRisk = riskRequiresFreshAsk(engineRisk)
       let needsAsk = false
 
       for (const pattern of request.patterns) {
-        const rule = evaluate(request.permission, pattern, ruleset, approved)
+        const configuredRule = evaluate(request.permission, pattern, ruleset)
+        const approvedRule = evaluate(request.permission, pattern, approved)
+        const rule = approvedRule.action !== "ask" ? approvedRule : configuredRule
         yield* Effect.logInfo("evaluated", {
           permission: request.permission,
           pattern,
           action: rule,
+          configuredAction: configuredRule.action,
+          approvedAction: approvedRule.action,
           engineRisk: engineRisk?.level,
-          forceAskFromRisk,
+          forceInitialAskFromRisk,
+          forceFreshAskFromRisk,
         })
-        if (rule.action === "deny") {
+        if (configuredRule.action === "deny") {
           return yield* new PermissionV1.DeniedError({
             ruleset: ruleset.filter((rule) => Wildcard.match(request.permission, rule.permission)),
           })
         }
-        if (rule.action === "allow" && !forceAskFromRisk) continue
+        if (approvedRule.action === "allow" && !forceFreshAskFromRisk) continue
+        if (rule.action === "allow" && !forceInitialAskFromRisk) continue
         needsAsk = true
       }
 
