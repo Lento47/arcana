@@ -20,7 +20,7 @@ export const CandidateScore = Schema.Struct({
 })
 export type CandidateScore = typeof CandidateScore.Type
 
-export const CandidatePatchStatus = Schema.Literal("proposed", "evaluating", "selected", "rejected", "applied")
+export const CandidatePatchStatus = Schema.Literals(["proposed", "evaluating", "selected", "rejected", "applied"])
 export type CandidatePatchStatus = typeof CandidatePatchStatus.Type
 
 export const CandidatePatch = Schema.Struct({
