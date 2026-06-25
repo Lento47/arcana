@@ -45,3 +45,35 @@ export async function resolveProvider(provider: string): Promise<ProviderProfile
   const defaultModel = md.models ? Object.keys(md.models)[0] : undefined
   return { baseURL: md.api, envKey, defaultModel }
 }
+
+/** Auto-detect which provider is configured via env vars. Reads models.dev to
+  * find providers whose env key or BASE_URL is set. Priority: *_BASE_URL first
+  * (explicit user intent), then exact env key matches. No hardcoded names. */
+export async function autoDetectProvider(): Promise<{ provider?: string; model?: string }> {
+  const [all, localExtras] = await Promise.all([fetchModelsDev(), loadLocalExtras()])
+  const merged = { ...all, ...localExtras }
+
+  const makeResult = (id: string, md: ModelsDevProvider) => ({
+    provider: id,
+    model: md.models ? Object.keys(md.models)[0] : undefined,
+  })
+
+  // Priority 1: *_BASE_URL signals explicit user intent. ANTHROPIC_BASE_URL
+  // → anthropic regardless of what other env keys happen to be set.
+  for (const [id, md] of Object.entries(merged)) {
+    for (const [envKey, envVal] of Object.entries(process.env)) {
+      if (!envKey.endsWith("_BASE_URL") || !envVal) continue
+      const prefix = envKey.replace(/_BASE_URL$/i, "").toLowerCase()
+      if (id.toLowerCase().startsWith(prefix)) return makeResult(id, md)
+    }
+  }
+
+  // Priority 2: exact env-key match (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY).
+  for (const [id, md] of Object.entries(merged)) {
+    for (const envKey of md.env ?? []) {
+      if (process.env[envKey]) return makeResult(id, md)
+    }
+  }
+
+  return {}
+}

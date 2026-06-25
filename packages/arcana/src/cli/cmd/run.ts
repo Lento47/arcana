@@ -79,8 +79,18 @@ export const RunCommand: CommandModule = {
       )
     }
 
-    const model    = (args.model    as string | undefined) ?? config.model
-    const provider = (args.provider as string | undefined) ?? config.provider
+    let model    = (args.model    as string | undefined) ?? config.model
+    let provider = (args.provider as string | undefined) ?? config.provider
+
+    // Auto-detect provider + model from env vars via models.dev when not configured.
+    // Each provider in models.dev declares its env key — if that key is set in the
+    // environment, the provider is available. Models come from the provider's catalog.
+    if (!provider || !model) {
+      const { autoDetectProvider } = await import("../../agent/providers.js")
+      const detected = await autoDetectProvider()
+      if (!provider) provider = detected.provider
+      if (!model) model = detected.model ?? model
+    }
     const useMemory = !(args.disableMemory as boolean) && config.memory.enabled
 
     await mkdir(dataDir, { recursive: true })
@@ -283,7 +293,7 @@ export const RunCommand: CommandModule = {
               .filter((m) => m.role !== "system")
               .map((m) => `${m.role}: ${("content" in m && m.content) ? String(m.content).slice(0, 500) : "(tool)"}`)
               .join("\n")
-            const utilModel = config.utilityModel ?? "gpt-4o-mini"
+            const utilModel = config.utilityModel || config.model
             const cheapRunner = new AgentRunner({ provider, model: utilModel, apiKey })
             const resp = await cheapRunner.run([
               { role: "system", content: EXTRACTION_PROMPT },
