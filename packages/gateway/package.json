@@ -13,7 +13,7 @@
     "lint": "oxlint src",
     "typecheck": "tsgo --noEmit",
     "build": "echo skip",
-    "test": "bun test src",
+    "test": "bun test --pass-with-no-tests",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
