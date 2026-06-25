@@ -233,8 +233,9 @@ export const layer = Layer.effect(
           const step = MIGRATIONS[i]!
           const exit = yield* Effect.exit(step(dir, fs, git))
           if (Exit.isFailure(exit)) {
-            yield* Effect.logError("failed to run migration", { index: i, cause: exit.cause })
-            break
+            yield* Effect.logError("failed to run migration — skipping and continuing", { index: i, cause: exit.cause })
+            yield* fs.writeWithDirs(marker, String(i + 1))
+            continue
           }
           yield* fs.writeWithDirs(marker, String(i + 1))
         }

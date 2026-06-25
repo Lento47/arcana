@@ -212,7 +212,14 @@ export const layer = Layer.effect(
     const npmSvc = yield* Npm.Service
     const http = yield* HttpClient.HttpClient
 
-    const readConfigFile = (filepath: string) => fs.readFileStringSafe(filepath).pipe(Effect.orDie)
+    const readConfigFile = (filepath: string) =>
+      fs.readFileStringSafe(filepath).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("failed to read config file, skipping", { filepath, error }).pipe(
+            Effect.andThen(() => Effect.succeed(undefined)),
+          ),
+        ),
+      )
 
     const fetchRemoteJson = Effect.fnUntraced(function* <S extends Schema.Top>(
       url: string,
@@ -230,13 +237,21 @@ export const layer = Layer.effect(
       const body = yield* response.text.pipe(
         Effect.catch((error) => Effect.die(new Error(`failed to read remote config from ${url}: ${String(error)}`))),
       )
-      // An auth proxy can answer with an HTML login page at HTTP 200 (passes filterStatusOk); treat it as a re-auth error, not a decode failure.
+      // Detect auth proxy responses BEFORE decoding. Auth proxies return:
+      //  - HTTP 401/403 (standard) or 200 + HTML login page (SPA gateways).
       const contentType = (response.headers["content-type"] ?? "").toLowerCase()
-      if (contentType.includes("html") || /^\s*<!doctype|^\s*<html/i.test(body)) {
-        return yield* Effect.die(new RemoteAuthError({ url: loginOrigin, remote: url }))
+      const looksLikeHtml =
+        contentType.includes("html") ||
+        /^\s*<!doctype|^\s*<html|^\s*<script|^\s*<body|^\s*<div|^\s*<head|^\s*<meta/i.test(body)
+      const notJson = !/^\s*[{[]/.test(body)
+      if (response.status === 401 || response.status === 403 || response.status === 302) {
+        return yield* Effect.fail(new RemoteAuthError({ url: loginOrigin, remote: url }))
+      }
+      if (looksLikeHtml || notJson) {
+        return yield* Effect.fail(new RemoteAuthError({ url: loginOrigin, remote: url }))
       }
       return yield* Schema.decodeEffect(Schema.fromJsonString(schema))(body).pipe(
-        Effect.catch((error) => Effect.die(new Error(`failed to decode remote config from ${url}: ${String(error)}`))),
+        Effect.mapError((error) => new Error(`failed to decode remote config from ${url}: ${String(error)}`)),
       )
     })
 
@@ -634,7 +649,14 @@ export const layer = Layer.effect(
     const state = yield* InstanceState.make<State>(
       Effect.fn("Config.state")(function* (ctx) {
         mark("config-load-start")
-        const result = yield* loadInstanceState(ctx).pipe(Effect.orDie)
+        const result = yield* loadInstanceState(ctx).pipe(
+          Effect.orElseSucceed((): State => ({
+            config: {} as Info,
+            directories: [],
+            deps: [],
+            consoleState: { consoleManagedProviders: [] as string[], activeOrgName: undefined, switchableOrgCount: 0 },
+          })),
+        )
         mark("config-load-end")
         measure("config-load-start", "config-load-end", "config-load")
         return result
