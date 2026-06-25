@@ -196,7 +196,7 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           }
         })
         return execution.pipe(
-          Effect.catchAll((error) =>
+          Effect.catch((error) =>
             Effect.gen(function* () {
               yield* Effect.logInfo("engine.action.failed", {
                 actionID: action.id,

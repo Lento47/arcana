@@ -33,14 +33,14 @@ export const SandboxConstraint = Schema.Struct({
 })
 export type SandboxConstraint = typeof SandboxConstraint.Type
 
-export const PolicyDecision = Schema.Union(
+export const PolicyDecision = Schema.Union([
   Schema.Struct({ action: Schema.Literals(["allow"]), reason: Schema.String, evidence_required: Schema.Array(Schema.String) }),
   Schema.Struct({ action: Schema.Literals(["deny"]), reason: Schema.String }),
   Schema.Struct({ action: Schema.Literals(["ask"]), reason: Schema.String, approval_scope: Schema.Literals(["once", "session", "project"]) }),
   Schema.Struct({ action: Schema.Literals(["sandbox"]), reason: Schema.String, constraints: Schema.Array(SandboxConstraint) }),
   Schema.Struct({ action: Schema.Literals(["propose_diff"]), reason: Schema.String }),
   Schema.Struct({ action: Schema.Literals(["require_verifier"]), reason: Schema.String }),
-)
+])
 export type PolicyDecision = typeof PolicyDecision.Type
 
 export const EngineAction = Schema.Struct({
@@ -92,7 +92,7 @@ export const VerifierPass = Schema.Struct({
 })
 export type VerifierPass = typeof VerifierPass.Type
 
-export const EngineEvent = Schema.Union(
+export const EngineEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literals(["action.proposed"]), action: EngineAction }),
   Schema.Struct({ type: Schema.Literals(["policy.decided"]), actionID: EngineActionID, decision: PolicyDecision }),
   Schema.Struct({ type: Schema.Literals(["action.started"]), actionID: EngineActionID }),
@@ -103,7 +103,7 @@ export const EngineEvent = Schema.Union(
   Schema.Struct({ type: Schema.Literals(["verification.completed"]), verifier: VerifierPass }),
   Schema.Struct({ type: Schema.Literals(["rollback.created"]), checkpointID: Schema.String }),
   Schema.Struct({ type: Schema.Literals(["runproof.updated"]), runproofID: Schema.String }),
-)
+])
 export type EngineEvent = typeof EngineEvent.Type
 
 export function lowRisk(reason: string, controls: RequiredControl[] = []): RiskAssessment {
