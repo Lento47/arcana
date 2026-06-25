@@ -4,9 +4,11 @@ import { SessionID, MessageID } from "@/session/schema"
 
 describe("createEngineAction", () => {
   test("creates a stable action envelope with defaults", () => {
+    const sessionID = SessionID.descending()
+    const messageID = MessageID.ascending()
     const action = createEngineAction({
-      sessionID: SessionID.descending("ses_test"),
-      messageID: MessageID.ascending("msg_test"),
+      sessionID,
+      messageID,
       source: "agent",
       kind: "tool",
       name: "read",
@@ -14,8 +16,8 @@ describe("createEngineAction", () => {
     })
 
     expect(action.id.startsWith("act_")).toBe(true)
-    expect(action.sessionID).toBe("ses_test")
-    expect(action.messageID).toBe("msg_test")
+    expect(action.sessionID).toBe(sessionID)
+    expect(action.messageID).toBe(messageID)
     expect(action.source).toBe("agent")
     expect(action.kind).toBe("tool")
     expect(action.name).toBe("read")
@@ -30,7 +32,7 @@ describe("createEngineAction", () => {
     const policy = allow("test policy", ["tool output"])
 
     const action = createEngineAction({
-      sessionID: SessionID.descending("ses_test"),
+      sessionID: SessionID.descending(),
       source: "system",
       kind: "model",
       name: "verifier",
