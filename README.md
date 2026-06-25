@@ -7,12 +7,18 @@
 
 ```sh
 arcana doctor            # check system health
+arcana doctor --web      # + checks for the web app
 arcana run "query"       # one-shot agent session
-arcana skills list       # browse 174 available skills
+arcana skills list       # browse available skills
 arcana memory sessions   # view past sessions
+arcana history list      # browse past sessions (alias)
 arcana cron list         # list scheduled jobs
 arcana gateway           # start chat bots (Telegram, Discord, Slack, WhatsApp)
 arcana learn list        # view accumulated knowledge
+arcana theme set dragon  # switch TUI theme
+arcana feedback "..."    # send feedback
+arcana web               # start the optional web app (packages/enterprise)
+arcana web --build       # build the web app instead of starting dev mode
 ```
 
 ## Install
@@ -79,14 +85,18 @@ arcana gateway
 
 ```sh
 # Every 4 hours: run code review
-arcana cron add "review PRs" "0 */4 * * *" "review open PRs for bugs"
+arcana cron add --name "review PRs" --schedule "0 */4 * * *" --prompt "review open PRs for bugs"
 
 # Daily summary
-arcana cron add "daily digest" "@daily" "summarize today's changes"
+arcana cron add --name "daily digest" --schedule "@daily" --prompt "summarize today's changes"
 
-# List / remove
+# List / remove / pause / resume / run-now
 arcana cron list
-arcana cron remove <job-id>
+arcana cron remove --id <job-id>
+arcana cron pause --id <job-id>
+arcana cron resume --id <job-id>
+arcana cron run --id <job-id>
+arcana cron start    # run daemon (blocking)
 ```
 
 ## Providers
@@ -116,9 +126,11 @@ The full catalog of supported providers and their env keys is documented in `pac
 | `@arcana/gateway` | Chat platform adapters (Telegram, Discord, Slack) |
 | `@arcana/memory` | SQLite-backed conversation memory + FTS5 search |
 | `@arcana/cron` | Scheduled agent jobs |
-| `@arcana/skills` | 174 skill files across 28 categories |
+| `@arcana/skills` | Skill catalog (loaded from `skills/` + `~/.arcana/skills/`) |
+| `@arcana/ml` | Signal engine — turn/tool signals, quality gate, ML runtime policy |
 | `@arcana/plugin` | Plugin system (30+ lifecycle hooks) |
 | `@arcana/enterprise` | SolidJS/Start web dashboard |
+| `@arcana/function` | Cloudflare Worker with DurableObjects for share/sync |
 | `@arcana/http-recorder` | VCR-style HTTP cassette recorder for Effect-based testing |
 
 ## Deep Dive
@@ -184,22 +196,48 @@ Share/sync server using Cloudflare DurableObjects, GitHub App JWT token exchange
 
 The cron scheduler runs as a persistent daemon, evaluating jobs every 60s. Jobs persist to a JSON store and integrate with memory:
 ```sh
-arcana cron add "daily-review" --schedule "0 9 * * *" --prompt "review today's changes"
+arcana cron add --name "daily-review" --schedule "0 9 * * *" --prompt "review today's changes"
 arcana cron list
 arcana cron start     # run daemon (blocking)
+```
+
+### `@arcana/ml` — opt-in ML signal engine (NEW in 0.2.44)
+
+Quality gate + expectation contract + silent revision. Off by default. Enable per session via env var:
+
+```sh
+ARCANA_ML_RUNTIME=1 arcana run "explain this codebase"
+```
+
+The engine detects generic filler (best practices, robust, scalable, …), forces specific output anchored to file/command names, and revises silently up to one round before showing the answer. Verifiable:
+
+```sh
+bun run ml:eval         # 12 eval fixtures, exits non-zero on regression
+```
+
+### `arcana web` — optional SolidJS web app
+
+The web app lives in `packages/enterprise` (Vite + SolidJS Start + Nitro). It is optional — if `packages/enterprise/package.json` is missing, `arcana web` exits cleanly:
+
+```sh
+bun run dev:web         # vite dev on http://localhost:3002
+bun run web:build       # production build
+arcana web --host 127.0.0.1 --port 3000 --open
+arcana web --build
+arcana doctor --web     # checks enterprise pkg + source + build + vite + port
 ```
 
 ### Plugin lifecycle — 30+ hooks
 
 The plugin system defines hooks for agent, tool, config, auth, chat, permissions, and workspace lifecycle events. Types and examples in `@arcana/plugin`:
 ```sh
-arcana skills list          # 174 available
+arcana skills list          # available skills
 arcana skills search "git"  # search by keyword
 ```
 
 ## Skills
 
-174 skills across categories: software-development, devops, security, data-science, blockchain, web-development, creative, productivity, and more.
+Skills across categories: software-development, devops, security, data-science, blockchain, web-development, creative, productivity, and more.
 
 ```sh
 arcana skills list
@@ -228,9 +266,13 @@ Env overrides: `ARCANA_PROVIDER`, `ARCANA_MODEL`, `ARCANA_API_KEY`, `OPENAI_API_
 
 ```sh
 bun install
-bun run typecheck   # build status: restored for v0.2.6
-bun run build
-bun run test
+bun run typecheck       # turbo typecheck (16 packages)
+bun run lint            # oxlint (warnings only; 0 errors required)
+bun run test            # turbo test
+bun run ml:eval         # @arcana/ml evaluation fixtures (12/12)
+bun run smoke           # CLI/TUI/ML/web surface sanity check (~1s)
+bun run verify          # lint + typecheck + test + ml:eval + build
+bun run build           # turbo build
 ```
 
 ### Arcana TUI
