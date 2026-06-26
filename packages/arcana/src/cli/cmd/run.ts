@@ -175,6 +175,13 @@ export const RunCommand: CommandModule = {
     const mcpServers = await registerMcpTools(runner)
     if (mcpServers.length) process.stderr.write(c.dim(`  MCP: ${mcpServers.join(", ")}\n`))
 
+    // Pipeline shadow: create a lightweight plan from the objective
+    // if one was provided. The pipeline drives cockpit stage rendering.
+    let pipelinePlan: string | undefined
+    if (args.prompt) {
+      pipelinePlan = `pipeline: intent→plan→action→verify (objective: ${String(args.prompt).slice(0, 80)})`
+    }
+
     const sessionMgr = memory ? new SessionManager(memory, model, provider) : null
 
     // Support --resume to continue a previous session

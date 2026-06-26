@@ -168,6 +168,28 @@ export class AgentRunner {
       const coreMessages = toCoreMessages(history)
       const hasTools = Object.keys(tools).length > 0
 
+      // Context pack shadow: measure what the context pack WOULD trim
+      // without enforcing budgets yet. This is observational — it feeds
+      // the cockpit token-console and performance meters.
+      if (history.length > 5) {
+        const estimatedTotal = history.reduce(
+          (sum, m) => sum + Math.ceil((m.content ?? "").length / 4),
+          0,
+        )
+        const systemTokens = history
+          .filter((m) => m.role === "system")
+          .reduce((sum, m) => sum + Math.ceil((m.content ?? "").length / 4), 0)
+        const toolTokens = history
+          .filter((m) => m.role === "tool")
+          .reduce((sum, m) => sum + Math.ceil((m.content ?? "").length / 4), 0)
+        // Non-blocking: just log the pack metrics for cockpit to observe
+        if (estimatedTotal > 8000) {
+          console.error(
+            `[arcana] context-pack shadow: ${estimatedTotal} est tokens, ${systemTokens} system, ${toolTokens} tool, ${history.length} messages`,
+          )
+        }
+      }
+
       if (onChunk && !hasTools) {
         // Streaming path: no tools → stream tokens directly. ML preflight still
         // applies, but postflight cannot silently revise already-emitted tokens.

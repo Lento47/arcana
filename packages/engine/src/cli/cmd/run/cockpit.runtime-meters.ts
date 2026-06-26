@@ -11,6 +11,7 @@ export type CockpitRuntimeMeterID =
   | "provider-route"
   | "provider-state"
   | "compat-blockers"
+  | "perf-budget"
 
 export type CockpitRuntimeMeter = {
   readonly id: CockpitRuntimeMeterID
@@ -19,6 +20,20 @@ export type CockpitRuntimeMeter = {
   readonly value: string
   readonly severity: "calm" | "attention" | "danger" | "blocked"
   readonly reason: string
+}
+
+export function perfBudgetMeter(p95: number, threshold: number): CockpitRuntimeMeter {
+  const withinBudget = p95 <= threshold
+  return {
+    id: "perf-budget",
+    step: 56,
+    label: "Perf Budget",
+    value: withinBudget ? `p95 ${p95}ms ≤ ${threshold}ms` : `p95 ${p95}ms > ${threshold}ms`,
+    severity: withinBudget ? "calm" : p95 > threshold * 2 ? "danger" : "attention",
+    reason: withinBudget
+      ? "p95 within budget"
+      : `p95 exceeds threshold by ${Math.round(p95 - threshold)}ms`,
+  }
 }
 
 export type CockpitRuntimeMeterInput = {
