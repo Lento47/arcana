@@ -12,17 +12,23 @@ const os = require("os")
 const RELEASES_URL = "https://releases.otnelhq.com/arcana"
 const VERSION = "v0.3.1"
 
-// Ed25519 public key — embedded at build time. The corresponding private key
-// signs every .sha256 checksum in CI. If signature verification fails, the
-// binary is not executed even if the SHA-256 matches.
-const SIGNING_PUBLIC_KEY_PEM = [
-  "-----BEGIN PUBLIC KEY-----",
-  process.env.ARCANA_SIGNING_PUBLIC_KEY || "",
-  "-----END PUBLIC KEY-----",
-].join("\n")
+// Ed25519 public key — hardcoded in the launcher so signature verification
+// works without any env var. The corresponding private key lives in GitHub
+// Secrets (ARCANA_SIGNING_PRIVATE_KEY) and signs every .sha256 in CI.
+//
+// To rotate: generate new key pair, update this constant, redeploy to npm.
+//   openssl genpkey -algorithm Ed25519 -out private.pem
+//   openssl pkey -in private.pem -pubout | base64 -w0   ← paste below
+const SIGNING_PUBLIC_KEY_BASE64 =
+  "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUNvd0JRWURLMlZ3QXlFQVVaV3ViNlZodUdzc056TzhSVHhrU2FMeVEyZmphdFlFMGFLVEpDK2R5Tm89Ci0tLS0tRU5EIFBVQkxJQyBLRVktLS0tLQo="
+
+const SIGNING_PUBLIC_KEY_PEM = SIGNING_PUBLIC_KEY_BASE64
+  ? atob(SIGNING_PUBLIC_KEY_BASE64)
+  : ""
 
 function verifySha256Signature(sha256Content, signatureHex) {
   try {
+    if (!SIGNING_PUBLIC_KEY_PEM) return true // not configured — skip verification
     const key = crypto.createPublicKey({ key: SIGNING_PUBLIC_KEY_PEM, format: "pem", type: "spki" })
     const sig = Buffer.from(signatureHex, "hex")
     return crypto.verify(null, Buffer.from(sha256Content), key, sig)
@@ -88,7 +94,7 @@ async function downloadAndExtract() {
   // Both checksum and signature come from R2 — signature proves
   // the checksum was authored by the CI signing key, not an attacker
   // who gained write access to the R2 bucket.
-  if (SIGNING_PUBLIC_KEY_PEM.includes("-----BEGIN PUBLIC KEY-----") && !SIGNING_PUBLIC_KEY_PEM.includes("-----BEGIN PUBLIC KEY-----\n\n-----END PUBLIC KEY-----")) {
+  if (SIGNING_PUBLIC_KEY_PEM) {
     const sigUrl = url + ".sha256.sig"
     const sigRes = await fetch(sigUrl)
     if (!sigRes.ok) {
