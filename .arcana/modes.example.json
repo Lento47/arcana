@@ -1,0 +1,33 @@
+{
+  "default": "advise",
+  "profiles": {
+    "solo-founder": {
+      "mode": "advise",
+      "allowOverrides": true,
+      "description": "Warn clearly and continue by default. Best for fast local development."
+    },
+    "security-researcher": {
+      "mode": "ask",
+      "allowOverrides": true,
+      "confirmExternalProviders": true,
+      "confirmDependencyChanges": true,
+      "confirmDestructiveCommands": true,
+      "description": "Ask at risk boundaries. Best for security-sensitive analysis."
+    },
+    "enterprise-team": {
+      "mode": "enforce",
+      "allowOverrides": false,
+      "requireContracts": true,
+      "requireVerificationForProvenSuccess": true,
+      "description": "Block policy violations. Best for shared production-adjacent work."
+    },
+    "locked-client-env": {
+      "mode": "locked",
+      "allowOverrides": false,
+      "allowExternalProviders": false,
+      "allowUnapprovedTools": false,
+      "requireApprovedContracts": true,
+      "description": "Allow only pre-approved paths. Best for regulated, airgapped, or high-sensitivity environments."
+    }
+  }
+}
