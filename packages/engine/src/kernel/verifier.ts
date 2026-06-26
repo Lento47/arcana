@@ -90,7 +90,7 @@ export function verifierGatesSatisfied(run: ArcanaVerificationRun): boolean {
  */
 export function completionGatesSatisfied(
   run: ArcanaVerificationRun,
-  requiredChecks: string[] = run.required_checks,
+  requiredChecks: readonly string[] = run.required_checks,
 ): boolean {
   if (!verifierGatesSatisfied(run)) return false
   const executed = new Set(run.evidence.map((e) => e.kind))

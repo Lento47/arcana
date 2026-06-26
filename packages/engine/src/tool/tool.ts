@@ -156,7 +156,7 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
       // every LLM tool invocation.
       const decode = Schema.decodeUnknownEffect(toolInfo.parameters)
       const execute = toolInfo.execute
-      toolInfo.execute = (args, ctx) => {
+      toolInfo.execute = (args, ctx): any => {
         const kind = inferToolActionKind(id)
         const action = createEngineAction({
           id: ctx.callID ? `act_${ctx.callID}` : `act_${crypto.randomUUID()}`,
@@ -246,7 +246,7 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           }
         })
         return execution.pipe(
-          Effect.catchAll((error) =>
+          Effect.catch((error: unknown) =>
             Effect.gen(function* () {
               yield* Effect.logInfo("engine.action.failed", {
                 actionID: action.id,
