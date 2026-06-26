@@ -16,6 +16,10 @@ locked mode allowlists
 ## Examples
 
 - `routing.policy.example.json`
+- `memory.policy.example.json`
+- `context.policy.example.json`
+
+Tool-risk policy is documented in `docs/tool-risk-model.md` instead of a JSON example for now.
 
 ## Status
 
