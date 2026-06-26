@@ -1,0 +1,26 @@
+{
+  "name": "default-context-policy",
+  "version": "0.1.0",
+  "trustLevels": {
+    "repo_file_at_commit": "trusted",
+    "verified_command_output": "trusted",
+    "explicit_user_intent": "trusted_as_intent",
+    "generated_summary": "unknown",
+    "external_documentation": "possibly_stale",
+    "unknown_pasted_text": "untrusted"
+  },
+  "rules": {
+    "requireSourceRef": true,
+    "requireSelectionReason": true,
+    "markSummariesAsDerived": true,
+    "preserveOriginalSourceRef": true,
+    "recordContextInCapsule": true
+  },
+  "modeBehavior": {
+    "observe": "record",
+    "advise": "label_trust_and_staleness",
+    "ask": "confirm_untrusted_influential_context",
+    "enforce": "require_trusted_or_confirmed_context",
+    "locked": "approved_context_only"
+  }
+}
