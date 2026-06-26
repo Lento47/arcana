@@ -53,7 +53,8 @@ describe("Arcana cockpit QA gates", () => {
   })
 
   test("evaluates command coverage gate", () => {
-    const gate = cockpitCommandCoverageGate(undefined)
+    const commands = [{ name: "mission" }, { name: "actions" }, { name: "risk" }, { name: "diffgate" }, { name: "verify" }, { name: "proof" }, { name: "tokens" }, { name: "candidate" }, { name: "rollback" }, { name: "sovereignty" }, { name: "compat" }, { name: "layout" }, { name: "focus" }, { name: "help" }]
+    const gate = cockpitCommandCoverageGate(commands)
 
     expect(gate.step).toBe(64)
     expect(gate.passed).toBe(true)

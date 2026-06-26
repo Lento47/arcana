@@ -20,7 +20,7 @@ describe("Arcana cockpit shell text view", () => {
     const shell = createCockpitShell(createEmptyCockpitProjection({ run_id: "run_1" }))
 
     expect(cockpitShellFingerprint(shell)).toBe(
-      "14:mission-header|15:action-timeline|16:diffgate-queue|17:risk-cockpit|18:verifier-board|19:proof-ledger|20:token-console|21:sovereignty-compat",
+      "14:mission-header|15:action-timeline|16:diffgate-queue|17:risk-cockpit|18:verifier-board|19:proof-ledger|20:token-console|21:sovereignty-compat|22:candidate-panel|23:rollback-panel|24:compat-panel|25:layout-panel|26:focus-panel|27:help-panel",
     )
   })
 
