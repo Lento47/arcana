@@ -91,6 +91,8 @@ export type FooterState = {
   interrupt: number
   exit: number
   ml?: boolean
+  /** Kernel projection snapshot for TUI cockpit rendering. */
+  kernel_projection?: { risk_band: string; mutation_count: number; proof_completeness: number }
 }
 
 // A partial update to FooterState. The footer merges this onto the current state.
