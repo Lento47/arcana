@@ -5,7 +5,7 @@
 import { TextAttributes } from "@opentui/core"
 import { For, createMemo, type Accessor } from "solid-js"
 import type { ArcanaCockpitShell } from "./cockpit.shell"
-import { CockpitAreaCard } from "./cockpit.area-card"
+import { CockpitAreaCard } from "./cockpit.area-card.component"
 import type { RunFooterTheme } from "./theme"
 
 export type ArcanaCockpitComponentMode = "cockpit" | "focus" | "dense"
