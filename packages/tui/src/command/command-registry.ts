@@ -70,14 +70,18 @@ function stringValue(value: unknown) {
   return typeof value === "string" ? value : undefined
 }
 
-export function arcanaCommandName(command: CommandLike): ArcanaCommandName | undefined {
+function registryName(command: CommandLike): string | undefined {
   const slash = stringValue(command.slashName)
-  if (slash && slash in ARCANA_COMMAND_COPY) return slash as ArcanaCommandName
+  if (slash) return slash
 
   const name = stringValue(command.name)
-  const cockpitName = name?.startsWith("cockpit.") ? name.slice("cockpit.".length) : undefined
-  if (cockpitName && cockpitName in ARCANA_COMMAND_COPY) return cockpitName as ArcanaCommandName
+  const dot = name?.lastIndexOf(".") ?? -1
+  return dot === -1 ? name : name?.slice(dot + 1)
+}
 
+export function arcanaCommandName(command: CommandLike): ArcanaCommandName | undefined {
+  const name = registryName(command)
+  if (name && name in ARCANA_COMMAND_COPY) return name as ArcanaCommandName
   return undefined
 }
 
