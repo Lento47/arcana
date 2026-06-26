@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
 // Copyright (c) 2026 arcana contributors
 
+export * from "./action"
 export * from "./breaking-change"
 export * from "./candidate"
 export * from "./compat"
