@@ -177,6 +177,7 @@ export type RunEntryBody =
 // "prompt".
 export type FooterView =
   | { type: "prompt" }
+  | { type: "cockpit" }
   | { type: "permission"; request: PermissionRequest }
   | { type: "plan"; requests: PermissionRequest[] }
   | { type: "question"; request: QuestionRequest }
