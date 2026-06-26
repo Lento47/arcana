@@ -16,43 +16,70 @@ This branch is documentation-first. It adds documentation, conventions, and exam
 4. [`agent-operating-layer-review.md`](./agent-operating-layer-review.md)
    - Readiness review, decisions, open questions, and implementation block.
 
-5. [`user-space-extension-model.md`](./user-space-extension-model.md)
+5. [`adr/0001-agent-operating-layer.md`](./adr/0001-agent-operating-layer.md)
+   - Architecture decision record for Arcana as an Agent Operating Layer.
+
+6. [`end-to-end-examples.md`](./end-to-end-examples.md)
+   - Full flows showing contract, mode, route, capsule, verification, and memory interaction.
+
+7. [`object-schemas.md`](./object-schemas.md)
+   - Draft object shapes for contracts, capsules, routes, verification, memory, context, plugins, and skills.
+
+8. [`user-space-extension-model.md`](./user-space-extension-model.md)
    - User-owned extension model for `CONTRACTS.md`, `.arcana/`, contracts, modes, policies, skills, and plugins.
 
-6. [`contracts-md.md`](./contracts-md.md)
+9. [`contracts-md.md`](./contracts-md.md)
    - `CONTRACTS.md` convention and recommended repo-level contract guide.
 
-7. [`plugin-extension-model.md`](./plugin-extension-model.md)
-   - Plugin hook model, safety levels, outputs, and QA checklist.
+10. [`plugin-extension-model.md`](./plugin-extension-model.md)
+    - Plugin hook model, safety levels, outputs, and QA checklist.
 
-8. [`skill-extension-model.md`](./skill-extension-model.md)
-   - Skill folder model and contract-aware capability design.
+11. [`plugin-permissions.md`](./plugin-permissions.md)
+    - Draft permission model for plugins.
 
-9. [`autonomy-modes.md`](./autonomy-modes.md)
-   - Progressive control ladder: observe, advise, ask, enforce, locked.
+12. [`skill-extension-model.md`](./skill-extension-model.md)
+    - Skill folder model and contract-aware capability design.
 
-10. [`implementation-strengthening-plan.md`](./implementation-strengthening-plan.md)
+13. [`trust-boundaries.md`](./trust-boundaries.md)
+    - Trust-boundary model for data, tools, models, plugins, memory, context, and external routes.
+
+14. [`resolution-and-recovery.md`](./resolution-and-recovery.md)
+    - Warning, confirmation, block, denial, proof language, and approved next-step UX.
+
+15. [`case-usage-cookbook.md`](./case-usage-cookbook.md)
+    - User cases for solo founders, maintainers, enterprise teams, support, release, docs, and local-only work.
+
+16. [`adoption-levels.md`](./adoption-levels.md)
+    - Gradual adoption path from normal agent usage to locked controlled autonomy.
+
+17. [`tool-risk-model.md`](./tool-risk-model.md)
+    - Tool risk classes and mode-aware behavior.
+
+18. [`autonomy-modes.md`](./autonomy-modes.md)
+    - Progressive control ladder: observe, advise, ask, enforce, locked.
+
+19. [`implementation-strengthening-plan.md`](./implementation-strengthening-plan.md)
     - Implementation levels, rollout path, proof language, and non-blocking user experience.
 
-11. [`progressive-mode-examples.md`](./progressive-mode-examples.md)
+20. [`progressive-mode-examples.md`](./progressive-mode-examples.md)
     - Concrete UX examples for permissive, advisory, confirmation, enforcement, and locked behavior.
 
-12. [`agent-contracts.md`](./agent-contracts.md)
+21. [`agent-contracts.md`](./agent-contracts.md)
     - Object model for bounded autonomous work.
 
-13. [`run-capsules.md`](./run-capsules.md)
+22. [`run-capsules.md`](./run-capsules.md)
     - Object model for portable autonomous work records.
 
-14. [`context-supply-chain.md`](./context-supply-chain.md)
+23. [`context-supply-chain.md`](./context-supply-chain.md)
     - Object model for traceable context provenance.
 
-15. [`memory-receipts.md`](./memory-receipts.md)
+24. [`memory-receipts.md`](./memory-receipts.md)
     - Object model for sourced, scoped, challengeable memory.
 
-16. [`route-decisions.md`](./route-decisions.md)
+25. [`route-decisions.md`](./route-decisions.md)
     - Object model for sovereign model/provider/tool routing.
 
-17. [`verification-records.md`](./verification-records.md)
+26. [`verification-records.md`](./verification-records.md)
     - Object model for separating claimed success from proven success.
 
 ## User-space examples added
@@ -64,8 +91,12 @@ CONTRACTS.md
 .arcana/contracts/README.md
 .arcana/contracts/safe-refactor.contract.example.json
 .arcana/contracts/dependency-change.contract.example.json
+.arcana/contracts/docs-update.contract.example.json
+.arcana/contracts/release-readiness.contract.example.json
 .arcana/policies/README.md
 .arcana/policies/routing.policy.example.json
+.arcana/policies/memory.policy.example.json
+.arcana/policies/context.policy.example.json
 .arcana/skills/README.md
 .arcana/skills/secure-code-review/SKILL.md
 .arcana/skills/secure-code-review/contract.example.json
@@ -168,13 +199,13 @@ Arcana should say: here is the risk, here is the clean path, here is what your m
 
 ```txt
 Documentation status:
-  strengthened with user-space extension model and concrete examples
+  strengthened with user-space extension model, object schemas, trust boundaries, adoption path, ADR, and concrete examples
 
 Implementation status:
   runtime implementation still not added in this branch
 
 Reason:
-  the operating model now defines progressive modes, user-space files, concrete examples, and acceptance criteria, but runtime support still needs JSON schemas, lifecycle diagrams, composition examples, and implementation planning before code begins
+  the operating model now defines progressive modes, user-space files, concrete examples, schemas, and acceptance criteria, but runtime support still needs lifecycle diagrams, composition examples, and implementation sequencing before code begins
 ```
 
 ## What to improve next
@@ -182,11 +213,11 @@ Reason:
 Next documentation-only improvements:
 
 ```txt
-1. Add JSON schema drafts for contract, mode, policy, plugin decision, and skill metadata.
-2. Add one end-to-end example: contract → mode → route → run capsule → verification → memory receipt.
-3. Add capsule comparison examples.
-4. Add lifecycle diagrams for the operating loop.
-5. Add a migration path from existing skills to contract-aware skills.
+1. Add capsule comparison examples.
+2. Add lifecycle diagrams for the operating loop.
+3. Add a migration path from existing skills to contract-aware skills.
+4. Add command UX examples for `arcana contract`, `arcana capsule`, `arcana mode`, and `arcana route`.
+5. Add implementation sequencing for a small event-first runtime.
 ```
 
 ## Non-goals for this branch
