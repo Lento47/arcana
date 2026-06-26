@@ -111,11 +111,14 @@ export function totalTokens(totals: ArcanaTokenTotals): number {
 }
 
 export function tokenTotalsFromEntries(entries: readonly ArcanaTokenLedgerEntry[], field: "estimated_tokens" | "actual_tokens"): ArcanaTokenTotals {
-  const totals = zeroTokenTotals()
-  for (const entry of entries) {
-    totals[entry.token_class] += entry[field] ?? 0
-  }
-  return totals
+  return entries.reduce<ArcanaTokenTotals>((totals, entry) => {
+    const value = entry[field] ?? 0
+    if (value === 0) return totals
+    return {
+      ...totals,
+      [entry.token_class]: totals[entry.token_class] + value,
+    }
+  }, zeroTokenTotals())
 }
 
 function stableStringify(value: unknown): string {
