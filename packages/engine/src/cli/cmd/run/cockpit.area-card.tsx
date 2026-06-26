@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
 // Copyright (c) 2026 arcana contributors
 
+import { TextAttributes } from "@opentui/core"
 import { createMemo, type Accessor } from "solid-js"
 import type { ArcanaCockpitArea } from "./cockpit.shell"
 import { cockpitAreaCardView, type ArcanaCockpitAreaTone } from "./cockpit.area-card"
@@ -35,7 +36,7 @@ export function CockpitAreaCard(props: {
       paddingRight={1}
     >
       <box width="100%" height={1} flexDirection="row" gap={1} backgroundColor="transparent">
-        <text fg={color()} attributes={props.focused ? 1 : undefined} wrapMode="none" truncate flexGrow={1}>
+        <text fg={color()} attributes={props.focused ? TextAttributes.BOLD : undefined} wrapMode="none" truncate flexGrow={1}>
           {view().title}
         </text>
         <text fg={props.theme().muted} wrapMode="none" truncate flexShrink={0}>
