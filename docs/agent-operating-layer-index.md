@@ -1,6 +1,6 @@
 # Agent Operating Layer Documentation Index
 
-This branch is documentation-only. It does not add implementation code.
+This branch is documentation-first. It adds documentation, conventions, and example user-space files. It does not add runtime implementation code.
 
 ## Recommended reading order
 
@@ -16,32 +16,62 @@ This branch is documentation-only. It does not add implementation code.
 4. [`agent-operating-layer-review.md`](./agent-operating-layer-review.md)
    - Readiness review, decisions, open questions, and implementation block.
 
-5. [`autonomy-modes.md`](./autonomy-modes.md)
+5. [`user-space-extension-model.md`](./user-space-extension-model.md)
+   - User-owned extension model for `CONTRACTS.md`, `.arcana/`, contracts, modes, policies, skills, and plugins.
+
+6. [`contracts-md.md`](./contracts-md.md)
+   - `CONTRACTS.md` convention and recommended repo-level contract guide.
+
+7. [`plugin-extension-model.md`](./plugin-extension-model.md)
+   - Plugin hook model, safety levels, outputs, and QA checklist.
+
+8. [`skill-extension-model.md`](./skill-extension-model.md)
+   - Skill folder model and contract-aware capability design.
+
+9. [`autonomy-modes.md`](./autonomy-modes.md)
    - Progressive control ladder: observe, advise, ask, enforce, locked.
 
-6. [`implementation-strengthening-plan.md`](./implementation-strengthening-plan.md)
-   - Implementation levels, rollout path, proof language, and non-blocking user experience.
+10. [`implementation-strengthening-plan.md`](./implementation-strengthening-plan.md)
+    - Implementation levels, rollout path, proof language, and non-blocking user experience.
 
-7. [`progressive-mode-examples.md`](./progressive-mode-examples.md)
-   - Concrete UX examples for permissive, advisory, confirmation, enforcement, and locked behavior.
+11. [`progressive-mode-examples.md`](./progressive-mode-examples.md)
+    - Concrete UX examples for permissive, advisory, confirmation, enforcement, and locked behavior.
 
-8. [`agent-contracts.md`](./agent-contracts.md)
-   - Object model for bounded autonomous work.
+12. [`agent-contracts.md`](./agent-contracts.md)
+    - Object model for bounded autonomous work.
 
-9. [`run-capsules.md`](./run-capsules.md)
-   - Object model for portable autonomous work records.
+13. [`run-capsules.md`](./run-capsules.md)
+    - Object model for portable autonomous work records.
 
-10. [`context-supply-chain.md`](./context-supply-chain.md)
+14. [`context-supply-chain.md`](./context-supply-chain.md)
     - Object model for traceable context provenance.
 
-11. [`memory-receipts.md`](./memory-receipts.md)
+15. [`memory-receipts.md`](./memory-receipts.md)
     - Object model for sourced, scoped, challengeable memory.
 
-12. [`route-decisions.md`](./route-decisions.md)
+16. [`route-decisions.md`](./route-decisions.md)
     - Object model for sovereign model/provider/tool routing.
 
-13. [`verification-records.md`](./verification-records.md)
+17. [`verification-records.md`](./verification-records.md)
     - Object model for separating claimed success from proven success.
+
+## User-space examples added
+
+```txt
+CONTRACTS.md
+.arcana/README.md
+.arcana/modes.example.json
+.arcana/contracts/README.md
+.arcana/contracts/safe-refactor.contract.example.json
+.arcana/contracts/dependency-change.contract.example.json
+.arcana/policies/README.md
+.arcana/policies/routing.policy.example.json
+.arcana/skills/README.md
+.arcana/skills/secure-code-review/SKILL.md
+.arcana/skills/secure-code-review/contract.example.json
+.arcana/plugins/README.md
+.arcana/plugins/dependency-intent.plugin.example.ts
+```
 
 ## Current evolved thesis
 
@@ -49,6 +79,13 @@ This branch is documentation-only. It does not add implementation code.
 Arcana is a terminal-native operating layer for autonomous work.
 
 It turns prompts into contracts, sessions into capsules, context into traceable supply chains, memory into receipts, and model choice into sovereign route decisions.
+```
+
+## Current user-space thesis
+
+```txt
+Arcana core provides the operating layer.
+Users own their autonomy model through contracts, modes, policies, skills, and plugins.
 ```
 
 ## Current implementation thesis
@@ -107,6 +144,19 @@ observe → advise → ask → enforce → locked
 | Enforce | block policy and contract violations |
 | Locked | allow only pre-approved paths |
 
+## Current extension ladder
+
+```txt
+Markdown intent → JSON contracts/policies → plugins → locked/signed policies
+```
+
+| Layer | File/path | Purpose |
+|---|---|---|
+| Markdown | `CONTRACTS.md`, `SKILL.md` | human-readable intent |
+| JSON | `.arcana/contracts`, `.arcana/policies`, `.arcana/modes.json` | machine-readable boundaries |
+| Plugins | `.arcana/plugins/*.ts` | advanced custom behavior |
+| Locked policies | `.arcana/policies/*.allowlist.json` | strict enterprise/user control |
+
 ## Current UX rule
 
 ```txt
@@ -118,13 +168,13 @@ Arcana should say: here is the risk, here is the clean path, here is what your m
 
 ```txt
 Documentation status:
-  improving, coherent enough for further review
+  strengthened with user-space extension model and concrete examples
 
 Implementation status:
-  implementation design strengthened, runtime implementation still not added in this branch
+  runtime implementation still not added in this branch
 
 Reason:
-  the operating model now defines progressive modes, concrete examples, and acceptance criteria, but still needs JSON examples, lifecycle diagrams, and composition examples before runtime work begins
+  the operating model now defines progressive modes, user-space files, concrete examples, and acceptance criteria, but runtime support still needs JSON schemas, lifecycle diagrams, composition examples, and implementation planning before code begins
 ```
 
 ## What to improve next
@@ -132,11 +182,11 @@ Reason:
 Next documentation-only improvements:
 
 ```txt
-1. Add JSON examples for P0 objects.
+1. Add JSON schema drafts for contract, mode, policy, plugin decision, and skill metadata.
 2. Add one end-to-end example: contract → mode → route → run capsule → verification → memory receipt.
-3. Add route policy examples for local-first, no-training, and enterprise-approved modes.
-4. Add capsule comparison examples.
-5. Add lifecycle diagrams for the operating loop.
+3. Add capsule comparison examples.
+4. Add lifecycle diagrams for the operating loop.
+5. Add a migration path from existing skills to contract-aware skills.
 ```
 
 ## Non-goals for this branch
