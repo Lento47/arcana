@@ -427,6 +427,54 @@ export function createPromptState(input: PromptInput): PromptState {
         display: "/ml",
         description: "toggle ML runtime (quality gate + silent revision)",
       } satisfies SlashOption,
+      {
+        kind: "slash",
+        name: "sovereignty",
+        display: "/sovereignty",
+        description: "check provider route, region, and model sovereignty",
+      } satisfies SlashOption,
+      {
+        kind: "slash",
+        name: "tokens",
+        display: "/tokens",
+        description: "show token usage, budget, and context pressure",
+      } satisfies SlashOption,
+      {
+        kind: "slash",
+        name: "proof",
+        display: "/proof",
+        description: "show RunProof evidence and completeness",
+      } satisfies SlashOption,
+      {
+        kind: "slash",
+        name: "verify",
+        display: "/verify",
+        description: "run verifier checks on completion gates",
+      } satisfies SlashOption,
+      {
+        kind: "slash",
+        name: "diffgate",
+        display: "/diffgate",
+        description: "show mutation queue and approval state",
+      } satisfies SlashOption,
+      {
+        kind: "slash",
+        name: "risk",
+        display: "/risk",
+        description: "show risk cockpit for current actions",
+      } satisfies SlashOption,
+      {
+        kind: "slash",
+        name: "actions",
+        display: "/actions",
+        description: "show action timeline",
+      } satisfies SlashOption,
+      {
+        kind: "slash",
+        name: "compat",
+        display: "/compat",
+        description: "show compatibility shim status and decay",
+      } satisfies SlashOption,
     ]
     const hidden = new Set(builtins.map((item) => item.name))
     const showSkillMenu = !shell() && skillCommands().length > 0 && !hasSkillsCommand()
