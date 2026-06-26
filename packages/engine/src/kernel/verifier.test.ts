@@ -4,6 +4,8 @@ import {
   createVerificationRun,
   createVerifierRecord,
   defaultRequiredChecks,
+  forgeRequiredChecks,
+  securityRequiredChecks,
   verifierGatesSatisfied,
   type ArcanaVerificationEvidence,
   type ArcanaVerifierLimitation,
@@ -32,7 +34,7 @@ describe("verifier authority", () => {
     expect(run.required_checks).toEqual(defaultRequiredChecks())
   })
 
-  test("verifierGatesSatisfied returns true only for passed", () => {
+  test("verifierGatesSatisfied requires passed verdict and evidence", () => {
     const run = createVerificationRun("mut_1", [])
     expect(verifierGatesSatisfied(run)).toBe(false)
 
@@ -43,7 +45,7 @@ describe("verifier authority", () => {
     }
     expect(verifierGatesSatisfied(passed)).toBe(true)
 
-    const failed: ArcanaVerificationRun = { ...run, verdict: "failed" }
+    const failed: ArcanaVerificationRun = { ...run, verdict: "failed", evidence: [makeEvidence()] }
     expect(verifierGatesSatisfied(failed)).toBe(false)
 
     const noEvidence: ArcanaVerificationRun = {
@@ -51,7 +53,32 @@ describe("verifier authority", () => {
       verdict: "passed",
       evidence: [],
     }
-    expect(verifierGatesSatisfied(noEvidence)).toBe(true) // passed with no evidence still passes the gate
+    expect(verifierGatesSatisfied(noEvidence)).toBe(false)
+  })
+
+  test("verifier gate fails when any evidence fails", () => {
+    const run: ArcanaVerificationRun = {
+      ...createVerificationRun("mut_1", []),
+      verdict: "passed",
+      evidence: [makeEvidence(), makeEvidence({ kind: "typecheck_output", passed: false })],
+    }
+
+    expect(verifierGatesSatisfied(run)).toBe(false)
+  })
+
+  test("skipped verdict requires explicit justification evidence", () => {
+    const skippedWithoutJustification: ArcanaVerificationRun = {
+      ...createVerificationRun("mut_skip", []),
+      verdict: "skipped",
+      evidence: [makeEvidence({ kind: "test_output" })],
+    }
+    expect(verifierGatesSatisfied(skippedWithoutJustification)).toBe(false)
+
+    const skippedWithJustification: ArcanaVerificationRun = {
+      ...skippedWithoutJustification,
+      evidence: [makeEvidence({ kind: "manual_confirmation", detail: "User explicitly skipped local build on unsupported platform." })],
+    }
+    expect(verifierGatesSatisfied(skippedWithJustification)).toBe(true)
   })
 
   test("completionGatesSatisfied requires all checks executed", () => {
@@ -123,5 +150,12 @@ describe("verifier authority", () => {
       ),
     }
     expect(verifierGatesSatisfied(run)).toBe(false)
+  })
+
+  test("security and forge required checks extend normal completion evidence", () => {
+    expect(securityRequiredChecks()).toContain("security_scan")
+    expect(securityRequiredChecks()).toContain("manual_confirmation")
+    expect(forgeRequiredChecks()).toContain("benchmark")
+    expect(forgeRequiredChecks()).toContain("candidate_evaluation")
   })
 })
