@@ -1,0 +1,50 @@
+{
+  "name": "release-readiness",
+  "version": "0.1.0",
+  "mode": "enforce",
+  "goal": "Prepare release readiness evidence while keeping release actions restricted by default.",
+  "scope": {
+    "read": ["package.json", "packages/**/package.json", "CHANGELOG.md", "README.md", "docs/**", ".github/**"],
+    "write": ["CHANGELOG.md", "docs/**"]
+  },
+  "allowed": [
+    "read_files",
+    "inspect_package_metadata",
+    "run_local_tests",
+    "run_typecheck",
+    "run_build",
+    "create_release_readiness_report",
+    "update_changelog"
+  ],
+  "restricted": [
+    "external_release_action",
+    "protected_branch_update",
+    "version_change_without_instruction",
+    "test_removal",
+    "release_check_removal"
+  ],
+  "success": [
+    "typecheck_passes",
+    "tests_pass",
+    "build_passes_when_available",
+    "changelog_reviewed",
+    "release_risks_recorded"
+  ],
+  "verification": {
+    "requiredForProvenSuccess": true,
+    "commands": [
+      "bun run typecheck",
+      "bun test",
+      "bun run build"
+    ]
+  },
+  "risk": {
+    "default": "high",
+    "escalateOn": [
+      "version_change",
+      "ci_change",
+      "lockfile_change",
+      "restricted_release_action"
+    ]
+  }
+}
