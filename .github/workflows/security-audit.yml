@@ -57,11 +57,9 @@ jobs:
         continue-on-error: true
 
       - name: Check OSSF Scorecard
-        uses: ossf/scorecard-action@v2.4.0
-        with:
-          results_file: scorecard.json
-          results_format: json
-          publish_results: false
+        # Skipped — requires public repo. Enable when repo visibility changes.
+        if: false
+        run: echo "Scorecard skipped (private repo)"
 
   dependabot:
     runs-on: ubuntu-latest
