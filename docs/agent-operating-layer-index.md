@@ -16,22 +16,28 @@ This branch is documentation-only. It does not add implementation code.
 4. [`agent-operating-layer-review.md`](./agent-operating-layer-review.md)
    - Readiness review, decisions, open questions, and implementation block.
 
-5. [`agent-contracts.md`](./agent-contracts.md)
+5. [`autonomy-modes.md`](./autonomy-modes.md)
+   - Progressive control ladder: observe, advise, ask, enforce, locked.
+
+6. [`implementation-strengthening-plan.md`](./implementation-strengthening-plan.md)
+   - Implementation levels, rollout path, proof language, and non-blocking user experience.
+
+7. [`agent-contracts.md`](./agent-contracts.md)
    - Object model for bounded autonomous work.
 
-6. [`run-capsules.md`](./run-capsules.md)
+8. [`run-capsules.md`](./run-capsules.md)
    - Object model for portable autonomous work records.
 
-7. [`context-supply-chain.md`](./context-supply-chain.md)
+9. [`context-supply-chain.md`](./context-supply-chain.md)
    - Object model for traceable context provenance.
 
-8. [`memory-receipts.md`](./memory-receipts.md)
-   - Object model for sourced, scoped, challengeable memory.
+10. [`memory-receipts.md`](./memory-receipts.md)
+    - Object model for sourced, scoped, challengeable memory.
 
-9. [`route-decisions.md`](./route-decisions.md)
-   - Object model for sovereign model/provider/tool routing.
+11. [`route-decisions.md`](./route-decisions.md)
+    - Object model for sovereign model/provider/tool routing.
 
-10. [`verification-records.md`](./verification-records.md)
+12. [`verification-records.md`](./verification-records.md)
     - Object model for separating claimed success from proven success.
 
 ## Current evolved thesis
@@ -40,6 +46,20 @@ This branch is documentation-only. It does not add implementation code.
 Arcana is a terminal-native operating layer for autonomous work.
 
 It turns prompts into contracts, sessions into capsules, context into traceable supply chains, memory into receipts, and model choice into sovereign route decisions.
+```
+
+## Current implementation thesis
+
+```txt
+Arcana should work before it enforces.
+
+First it records.
+Then it advises.
+Then it asks.
+Then it enforces.
+Then it locks down.
+
+The user chooses the level.
 ```
 
 ## Current object model
@@ -70,6 +90,20 @@ Verification Record
 contract → route → execute → record → verify → compare → remember → replay
 ```
 
+## Current autonomy ladder
+
+```txt
+observe → advise → ask → enforce → locked
+```
+
+| Mode | Default behavior |
+|---|---|
+| Observe | record without blocking |
+| Advise | warn and suggest, continue by default |
+| Ask | confirm at risk boundaries |
+| Enforce | block policy and contract violations |
+| Locked | allow only pre-approved paths |
+
 ## QA status
 
 ```txt
@@ -77,10 +111,10 @@ Documentation status:
   improving, coherent enough for further review
 
 Implementation status:
-  blocked
+  implementation design strengthened, runtime implementation still not added in this branch
 
 Reason:
-  object model still needs examples, JSON shapes, lifecycle diagrams, and composition examples before runtime work begins
+  the operating model now defines progressive modes and acceptance criteria, but still needs JSON examples, lifecycle diagrams, and composition examples before runtime work begins
 ```
 
 ## What to improve next
@@ -89,16 +123,16 @@ Next documentation-only improvements:
 
 ```txt
 1. Add JSON examples for P0 objects.
-2. Add one end-to-end example: contract → run capsule → verification → memory receipt.
+2. Add one end-to-end example: contract → mode → route → run capsule → verification → memory receipt.
 3. Add route policy examples for local-first, no-training, and enterprise-approved modes.
 4. Add capsule comparison examples.
-5. Add failure-case examples.
+5. Add failure-case examples across observe/advise/ask/enforce/locked modes.
 ```
 
 ## Non-goals for this branch
 
 ```txt
-No implementation.
+No runtime implementation.
 No dashboard work.
 No marketplace work.
 No paid service requirements.
