@@ -47,7 +47,6 @@ describe("Arcana cockpit shell", () => {
         createRunProofEvent({ kind: "pipeline", summary: "pipeline" }),
         createRunProofEvent({ kind: "action", summary: "action" }),
         createRunProofEvent({ kind: "security", summary: "security" }),
-        createRunProofEvent({ kind: "verification", summary: "verification" }),
       ],
     })
     const withAction = reduceCockpitProjection(createEmptyCockpitProjection({ run_id: "run_1" }), { type: "action", action })
