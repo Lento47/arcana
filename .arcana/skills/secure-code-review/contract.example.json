@@ -1,0 +1,45 @@
+{
+  "name": "secure-code-review",
+  "version": "0.1.0",
+  "mode": "ask",
+  "goal": "Review security-sensitive code and produce evidence-backed remediation guidance.",
+  "scope": {
+    "read": ["packages/**", "apps/**", "docs/**"],
+    "write": []
+  },
+  "allowed": [
+    "read_files",
+    "inspect_configuration",
+    "summarize_risks",
+    "recommend_tests",
+    "recommend_fixes",
+    "create_report"
+  ],
+  "forbidden": [
+    "modify_files",
+    "delete_files",
+    "access_secrets",
+    "run_destructive_commands",
+    "publish_or_deploy",
+    "provide_harmful_operational_instructions"
+  ],
+  "success": [
+    "findings_include_evidence",
+    "uncertainty_is_labeled",
+    "recommendations_are_actionable",
+    "scope_is_respected"
+  ],
+  "verification": {
+    "requiredForProvenSuccess": false,
+    "notes": "Secure review output is evidence-backed and reviewable, but final acceptance requires human review."
+  },
+  "risk": {
+    "default": "medium",
+    "escalateOn": [
+      "secret_access_attempt",
+      "external_provider_for_sensitive_code",
+      "write_attempt",
+      "destructive_command"
+    ]
+  }
+}
