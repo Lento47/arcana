@@ -47,6 +47,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ARCANA_SIGNING_PRIVATE_KEY: ${{ secrets.ARCANA_SIGNING_PRIVATE_KEY }}
         run: |
           npm install -g wrangler
           V="${{ github.ref_name }}"
@@ -58,6 +59,18 @@ jobs:
             [ -f "$f" ] || continue
             wrangler r2 object put "arcana-releases/arcana/$V/$(basename $f)" --file "$f" --remote
           done
+          # Sign checksums with Ed25519 private key. The public key is embedded
+          # in bin/arcana.js. Signature proves the checksum was authored by CI.
+          if [ -n "$ARCANA_SIGNING_PRIVATE_KEY" ]; then
+            echo "$ARCANA_SIGNING_PRIVATE_KEY" | base64 -d > /tmp/signing.key
+            for f in packages/engine/dist/arcana-*.sha256; do
+              [ -f "$f" ] || continue
+              cat "$f" | openssl pkeyutl -sign -inkey /tmp/signing.key |
+                xxd -p -c 256 > "${f}.sig"
+              wrangler r2 object put "arcana-releases/arcana/$V/$(basename ${f}.sig)" --file "${f}.sig" --remote
+            done
+            rm -f /tmp/signing.key
+          fi
           # Write latest version pointer — upgrade command reads this
           echo "$V" > /tmp/latest.txt
           wrangler r2 object put "arcana-releases/arcana/latest.txt" --file /tmp/latest.txt --remote
