@@ -1,0 +1,59 @@
+{
+  "name": "dependency-change",
+  "version": "0.1.0",
+  "mode": "ask",
+  "goal": "Allow dependency changes only when intent, alternatives, and risk are recorded.",
+  "scope": {
+    "read": ["package.json", "bun.lock", "packages/**/package.json"],
+    "write": ["package.json", "bun.lock", "packages/**/package.json"]
+  },
+  "allowed": [
+    "inspect_existing_dependencies",
+    "add_dependency",
+    "remove_dependency",
+    "update_lockfile",
+    "run_install",
+    "run_tests"
+  ],
+  "forbidden": [
+    "add_unlicensed_dependency",
+    "add_unknown_license_without_review",
+    "add_duplicate_package_without_justification",
+    "disable_tests",
+    "publish_package",
+    "deploy"
+  ],
+  "requiredIntent": {
+    "questions": [
+      "Why this dependency?",
+      "Why not existing code or an existing dependency?",
+      "What license does it use?",
+      "What is the maintenance/transitive risk?",
+      "What runtime or bundle impact does it create?"
+    ]
+  },
+  "success": [
+    "dependency_intent_recorded",
+    "license_metadata_reviewed",
+    "lockfile_updated_intentionally",
+    "tests_or_typecheck_run"
+  ],
+  "verification": {
+    "requiredForProvenSuccess": true,
+    "commands": [
+      "bun install --frozen-lockfile",
+      "bun run typecheck",
+      "bun test"
+    ]
+  },
+  "risk": {
+    "default": "medium",
+    "escalateOn": [
+      "unknown_license",
+      "copyleft_license",
+      "native_dependency",
+      "postinstall_script",
+      "large_transitive_tree"
+    ]
+  }
+}
