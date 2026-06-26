@@ -58,7 +58,7 @@ export function permissionGovernanceActions(projection: ArcanaCockpitProjection)
 
 export function mutationGovernanceActions(projection: ArcanaCockpitProjection): readonly CockpitGovernanceAction[] {
   const mutation = projection.mutations.find((item) => item.state === "proposed" || item.state === "approved" || item.state === "applied")
-  const canAllow = mutation ? canTransitionMutation(mutation.state, mutation.state === "proposed" ? "approved" : "applied").allowed : false
+  const canAllow = mutation ? canTransitionMutation(mutation.state, mutation.state === "proposed" ? "approved" : mutation.state === "approved" ? "applied" : "verified").allowed : false
   const canDeny = mutation ? canTransitionMutation(mutation.state, "rejected").allowed : false
   return [
     governanceAction({

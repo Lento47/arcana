@@ -38,7 +38,7 @@ export function missionHeaderView(projection: ArcanaCockpitProjection): CockpitP
     step: 29,
     title: "Mission Header",
     summary: projection.objective || "No active objective",
-    metric: projection.kernel ? `${projection.kernel.risk_band} · ${Math.round(projection.kernel.proof_completeness * 100)}% proof` : "no kernel projection",
+    metric: projection.kernel ? `${projection.kernel.risk_band} · ${Math.round((projection.proof?.completeness ?? projection.kernel?.proof_completeness ?? 0) * 100)}% proof` : "no kernel projection",
     rows: [
       `run ${projection.run_id}`,
       `focus ${projection.focus.panel}:${projection.focus.index}`,
@@ -103,7 +103,7 @@ export function riskCockpitView(projection: ArcanaCockpitProjection): CockpitPan
     summary: projection.kernel ? `risk band ${projection.kernel.risk_band}` : "No kernel risk band",
     metric: `${actions.length} elevated actions`,
     rows: actions.map((action) => `${action.id} · ${action.risk} · ${action.required_controls.join(",") || "no controls"}`),
-    empty: !projection.kernel && actions.length === 0,
+    empty: actions.length === 0,
   }
 }
 

@@ -57,7 +57,7 @@ export function arcanaCockpitCommandEntries(): ArcanaCockpitCommandEntry[] {
 }
 
 export function auditCockpitCommandCoverage(commands: readonly Pick<RunCommand, "name">[] | undefined): ArcanaCommandCoverage {
-  const reflected = new Set([...(commands ?? []).map((command) => command.name), ...arcanaCockpitCommandEntries().map((command) => command.name)])
+  const reflected = new Set([...(commands ?? []).map((command) => command.name)])
   const missing = ARCANA_COCKPIT_COMMANDS.filter((command) => !reflected.has(command))
   return {
     required: ARCANA_COCKPIT_COMMANDS,

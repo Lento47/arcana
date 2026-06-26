@@ -13,6 +13,7 @@ export type CockpitSovereigntyCompatView = {
   readonly route: "gateway" | "direct" | "local" | "self_hosted" | "unknown"
   readonly usage_style: string
   readonly compat: string
+  readonly compat_blocking_shims: number
   readonly rows: readonly string[]
   readonly empty: boolean
 }
@@ -26,7 +27,22 @@ function providerRoute(profile: ArcanaTokenProviderProfile | undefined): Cockpit
 
 function inferProviderFromProjection(projection: ArcanaCockpitProjection): string | undefined {
   const modelAction = [...projection.actions].reverse().find((action) => action.kind === "model" || action.kind === "provider")
-  return modelAction?.name
+  if (modelAction?.name) return modelAction.name
+  // Fallback: check the kernel's provider_route for a known provider prefix
+  if (projection.kernel?.provider_route) {
+    const route = projection.kernel.provider_route.toLowerCase()
+    const knownProviders = ["openai", "anthropic", "google", "azure", "aws", "xai", "mistral", "cohere", "deepseek"]
+    for (const name of knownProviders) {
+      if (route.includes(name)) return name
+    }
+  }
+  // Fallback: try to extract a model name from the objective for display
+  if (projection.objective) {
+    const knownModels = ["gpt-4", "gpt-3.5", "claude", "gemini", "llama", "mistral", "deepseek"]
+    const match = knownModels.find((m) => projection.objective.toLowerCase().includes(m))
+    if (match) return match
+  }
+  return undefined
 }
 
 export function sovereigntyCompatView(
@@ -58,6 +74,7 @@ export function sovereigntyCompatView(
     route,
     usage_style: provider?.usage_style ?? "unknown",
     compat: compat ? `${compat.active_shims} active / ${compat.blocking_shims} blocking` : "no compat state",
+    compat_blocking_shims: compat?.blocking_shims ?? 0,
     rows,
     empty: !provider && !compat,
   }
@@ -65,6 +82,6 @@ export function sovereigntyCompatView(
 
 export function sovereigntyNeedsAttention(view: CockpitSovereigntyCompatView): boolean {
   const unknownRoute = view.route === "unknown" || view.region === "unknown"
-  const compatBlocking = view.compat.includes("blocking") && !view.compat.startsWith("0 active / 0 blocking")
+  const compatBlocking = view.compat_blocking_shims > 0
   return unknownRoute || compatBlocking
 }

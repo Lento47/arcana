@@ -18,7 +18,7 @@ describe("Arcana cockpit area cards", () => {
     const view = cockpitAreaCardView({ ...shell.areas[1]!, state: "active" })
 
     expect(view.state_label).toBe("live")
-    expect(view.tone).toBe("accent")
+    expect(view.tone).toBe("normal")
     expect(view.focusable).toBe(true)
   })
 

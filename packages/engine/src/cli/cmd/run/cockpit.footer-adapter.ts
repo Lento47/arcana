@@ -15,6 +15,7 @@ import type { FooterPatch } from "./types"
  */
 export function cockpitFooterPatch(
   projection: ArcanaCockpitProjection,
+  now?: string,
 ): FooterPatch {
   const shell = createCockpitShell(projection)
   const mission = cockpitMissionLine(shell, 80)
@@ -22,8 +23,15 @@ export function cockpitFooterPatch(
   const riskBand = projection.kernel?.risk_band ?? "calm"
   const proofPct = Math.round((projection.proof?.completeness ?? 0) * 100)
 
+  // Check freshness: mark as stale if last update is older than 30 seconds
+  const stale = projection.updated_at && now
+    ? (new Date(now).getTime() - new Date(projection.updated_at).getTime()) > 30000
+    : false
+
   return {
-    cockpit_summary: `${mission} | ${riskBand} | proof ${proofPct}%`,
+    cockpit_summary: stale
+      ? `${mission} | ${riskBand} | proof ${proofPct}% (stale)`
+      : `${mission} | ${riskBand} | proof ${proofPct}%`,
     kernel_projection: {
       risk_band: riskBand,
       mutation_count: projection.mutations.length,

@@ -112,7 +112,7 @@ export function reduceCockpitProjection(
       verifier: event.projection.verifier ?? projection.verifier,
       compat: projection.compat
         ? { ...projection.compat, active_shims: event.projection.compatibility_active }
-        : projection.compat,
+        : { active_shims: event.projection.compatibility_active, total_shims: 0, observed_hits: 0, blocking_shims: 0, ready_for_contraction: false },
       updated_at: now,
     }
   }

@@ -17,11 +17,11 @@ export type CockpitTokenConsoleView = {
 }
 
 function formatTokens(value: number | undefined): string {
-  return value === undefined ? "unknown" : `${value} tokens`
+  return value === undefined || Number.isNaN(value) ? "unknown" : `${value} tokens`
 }
 
 function formatCost(value: number | undefined): string {
-  return value === undefined ? "unknown" : `${value}µ`
+  return value === undefined || Number.isNaN(value) ? "unknown" : `${value}µ`
 }
 
 export function tokenConsoleView(projection: ArcanaCockpitProjection): CockpitTokenConsoleView {
