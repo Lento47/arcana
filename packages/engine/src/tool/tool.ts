@@ -7,7 +7,7 @@ import type { Permission } from "../permission"
 import type { SessionID, MessageID } from "../session/schema"
 import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
-import { createEngineAction } from "@/kernel"
+import { createEngineAction, type ArcanaActionKind } from "@/kernel"
 
 interface Metadata {
   [key: string]: any
@@ -36,16 +36,26 @@ function extractStringValues(input: unknown, keys: string[]): string[] {
   return out
 }
 
+function inferToolActionKind(id: string): ArcanaActionKind {
+  const name = id.toLowerCase().replaceAll("_", "").replaceAll("-", "")
+  if (name.includes("bash") || name.includes("shell") || name.includes("terminal") || name.includes("exec")) return "shell"
+  if (name.includes("write") || name.includes("edit") || name.includes("applypatch") || name.includes("patch")) return "file_write"
+  if (name.includes("read") || name.includes("grep") || name.includes("glob") || name.includes("list") || name === "ls") return "file_read"
+  if (name.includes("web") || name.includes("fetch") || name.includes("http") || name.includes("network")) return "network"
+  if (name.includes("mcp")) return "mcp"
+  return "tool"
+}
+
 function inferToolSecurity(id: string, input: unknown) {
-  const name = id.toLowerCase()
+  const actionKind = inferToolActionKind(id)
   const paths = extractStringValues(input, ["path", "file", "filename", "files", "target", "cwd"])
   const command = extractStringValues(input, ["command", "cmd", "script"])[0]
-  return {
+  const security = {
     paths,
-    command,
-    network_egress: name.includes("web") || name.includes("fetch") || name.includes("http") || name.includes("network"),
+    network_egress: actionKind === "network",
     modifies_dependencies: paths.some((path) => /(^|\/)(package\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb|requirements\.txt|pyproject\.toml|cargo\.toml|go\.mod)$/i.test(path)),
   }
+  return command ? { ...security, command } : security
 }
 
 // TODO: remove this hack
@@ -147,12 +157,13 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
       const decode = Schema.decodeUnknownEffect(toolInfo.parameters)
       const execute = toolInfo.execute
       toolInfo.execute = (args, ctx) => {
+        const kind = inferToolActionKind(id)
         const action = createEngineAction({
           id: ctx.callID ? `act_${ctx.callID}` : `act_${crypto.randomUUID()}`,
           session_id: ctx.sessionID,
           message_id: ctx.messageID,
           source: "builder",
-          kind: "tool",
+          kind,
           name: id,
           input_summary: summarizeToolInput(args),
           security: inferToolSecurity(id, args),
@@ -235,7 +246,7 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           }
         })
         return execution.pipe(
-          Effect.catch((error) =>
+          Effect.catchAll((error) =>
             Effect.gen(function* () {
               yield* Effect.logInfo("engine.action.failed", {
                 actionID: action.id,
