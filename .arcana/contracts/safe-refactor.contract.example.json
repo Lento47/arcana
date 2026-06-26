@@ -1,0 +1,54 @@
+{
+  "name": "safe-refactor",
+  "version": "0.1.0",
+  "mode": "advise",
+  "goal": "Refactor code without changing public behavior.",
+  "scope": {
+    "read": ["packages/**", "docs/**"],
+    "write": ["packages/**/src/**", "packages/**/test/**", "docs/**"]
+  },
+  "allowed": [
+    "read_files",
+    "edit_source_files",
+    "edit_tests",
+    "run_local_tests",
+    "create_patch",
+    "summarize_changes"
+  ],
+  "forbidden": [
+    "add_dependency",
+    "delete_tests",
+    "disable_tests",
+    "change_public_api",
+    "modify_release_config",
+    "publish_package",
+    "deploy"
+  ],
+  "success": [
+    "relevant_tests_pass",
+    "typecheck_passes_when_available",
+    "no_public_api_change",
+    "no_new_dependency"
+  ],
+  "verification": {
+    "requiredForProvenSuccess": true,
+    "commands": [
+      "bun run typecheck",
+      "bun test"
+    ]
+  },
+  "budget": {
+    "maxFilesChanged": 12,
+    "maxPatchLines": 600,
+    "maxRetries": 2
+  },
+  "risk": {
+    "default": "medium",
+    "escalateOn": [
+      "lockfile_change",
+      "ci_change",
+      "auth_change",
+      "delete_operation"
+    ]
+  }
+}
