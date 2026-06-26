@@ -209,22 +209,21 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           })
           // RunProof projection: emit action + security events into the
           // evidence stream. These are the raw inputs to the projection
-          // contract — the proof projector consumes them later.
-          yield* Effect.sync(() => {
-            const actionEvent = createRunProofEvent({
-              kind: "action",
-              summary: `${action.kind}:${action.name}`,
-              reference_id: action.id,
-            })
-            const securityEvent = createRunProofEvent({
-              kind: "security",
-              summary: `${action.risk}:${action.security_context.reasons.slice(0, 3).join("; ")}`,
-              reference_id: action.id,
-            })
-            // Projection events are fire-and-forget; the projector
-            // assembles them into a RunProof later.
-            void actionEvent
-            void securityEvent
+          // contract. Currently logged — will be routed to a dedicated
+          // projection store when the event bus is wired.
+          yield* Effect.logDebug("engine.runproof.projection", {
+            events: [
+              createRunProofEvent({
+                kind: "action",
+                summary: `${action.kind}:${action.name}`,
+                reference_id: action.id,
+              }),
+              createRunProofEvent({
+                kind: "security",
+                summary: `${action.risk}:${action.security_context.reasons.slice(0, 3).join("; ")}`,
+                reference_id: action.id,
+              }),
+            ],
           })
           // Mutation shadow: record write-side actions as mutation proposals
           // without enforcing DiffGate. This is observational — it measures
@@ -267,31 +266,33 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           // create a verification record with the tool's evidence. This is
           // observational — the verifier records evidence but does not block
           // completion yet (passive mode = verifier.passive flag).
-          yield* Effect.sync(() => {
-            const baseRun = createVerificationRun(action.id, [
-              "test_output",
-              "git_diff",
-            ])
-            const verifierRun: typeof baseRun = {
-              ...baseRun,
-              verdict: "passed",
-              evidence: [
-                {
-                  kind: "runproof_log",
-                  summary: `${action.kind}:${action.name} completed`,
-                  passed: true,
-                  timestamp: new Date().toISOString(),
-                },
-              ],
-            }
-            const record = createVerifierRecord(verifierRun, [])
-            const verifierEvent = createRunProofEvent({
-              kind: "verification",
-              summary: `verifier:${record.completion_gate_passed ? "passed" : "pending"}`,
-              reference_id: action.id,
-            })
-            void record
-            void verifierEvent
+          // TODO: route verifier records to a dedicated projection store
+          // when the RunProof event bus is wired.
+          yield* Effect.logDebug("engine.verifier.passive", {
+            verifier: (() => {
+              const baseRun = createVerificationRun(action.id, [
+                "test_output",
+                "git_diff",
+              ])
+              const verifierRun = {
+                ...baseRun,
+                verdict: "passed" as const,
+                evidence: [
+                  {
+                    kind: "runproof_log" as const,
+                    summary: `${action.kind}:${action.name} completed`,
+                    passed: true,
+                    timestamp: new Date().toISOString(),
+                  },
+                ],
+              }
+              const record = createVerifierRecord(verifierRun, [])
+              return {
+                run_id: record.run.id,
+                completion_gate_passed: record.completion_gate_passed,
+                evidence_count: record.run.evidence.length,
+              }
+            })(),
           })
           if (result.metadata.truncated !== undefined) {
             return result
