@@ -520,6 +520,8 @@ export class RunFooter implements FooterApi {
       exit:
         typeof next.exit === "number" && Number.isFinite(next.exit) ? Math.max(0, Math.floor(next.exit)) : prev.exit,
       ml: typeof next.ml === "boolean" ? next.ml : prev.ml,
+      kernel_projection:
+        next.kernel_projection !== undefined ? next.kernel_projection : prev.kernel_projection,
     }
 
     if (state.phase === "idle") {
