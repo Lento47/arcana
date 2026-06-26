@@ -33,16 +33,34 @@ function row(value: string | undefined): string[] {
 }
 
 export function missionHeaderView(projection: ArcanaCockpitProjection): CockpitPanelView {
+  const contract = projection.contract
+  const proofPct = Math.round((projection.proof?.completeness ?? projection.kernel?.proof_completeness ?? 0) * 100)
+  const contractMetric = contract
+    ? `${contract.constraints.length}c · ${contract.evidence_required.length}g${contract.rollback_plan ? " · rollback" : ""}`
+    : ""
   return {
     id: "mission-header",
     step: 29,
     title: "Mission Header",
     summary: projection.objective || "No active objective",
-    metric: projection.kernel ? `${projection.kernel.risk_band} · ${Math.round((projection.proof?.completeness ?? projection.kernel?.proof_completeness ?? 0) * 100)}% proof` : "no kernel projection",
+    metric: [
+      projection.kernel ? `${projection.kernel.risk_band} · ${proofPct}% proof` : "no kernel",
+      contractMetric,
+    ].filter(Boolean).join(" | "),
     rows: [
       `run ${projection.run_id}`,
-      `focus ${projection.focus.panel}:${projection.focus.index}`,
-      ...row(projection.pipeline ? `pipeline ${projection.pipeline.pipeline}` : undefined),
+      ...(contract
+        ? [
+            `contract ${contract.name} (${contract.source})`,
+            ...contract.constraints.map((c) => `  ┣ ${c}`),
+            ...contract.evidence_required.map((g) => `  ✓ ${g}`),
+          ]
+        : projection.pipeline_plan
+          ? [
+              `pipeline ${projection.pipeline_plan.plan}`,
+              ...projection.pipeline_plan.stages.map((s) => `  → ${s}`),
+            ]
+          : [`focus ${projection.focus.panel}:${projection.focus.index}`]),
     ],
     empty: !projection.objective,
   }
