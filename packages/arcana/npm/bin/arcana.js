@@ -12,6 +12,25 @@ const os = require("os")
 const RELEASES_URL = "https://releases.otnelhq.com/arcana"
 const VERSION = "v0.3.1"
 
+// Ed25519 public key — embedded at build time. The corresponding private key
+// signs every .sha256 checksum in CI. If signature verification fails, the
+// binary is not executed even if the SHA-256 matches.
+const SIGNING_PUBLIC_KEY_PEM = [
+  "-----BEGIN PUBLIC KEY-----",
+  process.env.ARCANA_SIGNING_PUBLIC_KEY || "",
+  "-----END PUBLIC KEY-----",
+].join("\n")
+
+function verifySha256Signature(sha256Content, signatureHex) {
+  try {
+    const key = crypto.createPublicKey({ key: SIGNING_PUBLIC_KEY_PEM, format: "pem", type: "spki" })
+    const sig = Buffer.from(signatureHex, "hex")
+    return crypto.verify(null, Buffer.from(sha256Content), key, sig)
+  } catch {
+    return false
+  }
+}
+
 const PLATFORM_MAP = {
   "win32-x64":    { asset: "arcana-windows-x64.zip",    binary: "arcana.exe" },
   "win32-arm64":  { asset: "arcana-windows-arm64.zip",  binary: "arcana.exe" },
@@ -64,6 +83,30 @@ async function downloadAndExtract() {
     process.exit(1)
   }
   const shaText = (await shaRes.text()).trim()
+
+  // Verify Ed25519 signature on checksum before trusting it.
+  // Both checksum and signature come from R2 — signature proves
+  // the checksum was authored by the CI signing key, not an attacker
+  // who gained write access to the R2 bucket.
+  if (SIGNING_PUBLIC_KEY_PEM.includes("-----BEGIN PUBLIC KEY-----") && !SIGNING_PUBLIC_KEY_PEM.includes("-----BEGIN PUBLIC KEY-----\n\n-----END PUBLIC KEY-----")) {
+    const sigUrl = url + ".sha256.sig"
+    const sigRes = await fetch(sigUrl)
+    if (!sigRes.ok) {
+      console.error(`arcana: FATAL — signature unavailable (${sigUrl})`)
+      console.error(`arcana: the binary cannot be verified and will not be executed`)
+      try { unlinkSync(tmp) } catch {}
+      process.exit(1)
+    }
+    const sigHex = (await sigRes.text()).trim()
+    if (!verifySha256Signature(shaText, sigHex)) {
+      console.error("arcana: SIGNATURE VERIFICATION FAILED")
+      console.error("arcana: the checksum may have been tampered with — aborting")
+      try { unlinkSync(tmp) } catch {}
+      process.exit(1)
+    }
+    console.error("arcana: signature OK")
+  }
+
   const expectedHash = shaText.split(/\s+/)[0]
   const actualHash = crypto.createHash("sha256").update(buf).digest("hex")
   if (expectedHash !== actualHash) {
