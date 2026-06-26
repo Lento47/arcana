@@ -206,13 +206,27 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
         const execution = Effect.gen(function* () {
           yield* Effect.logInfo("engine.action.proposed", {
             actionID: action.id,
-            sessionID: action.session_id,
-            messageID: action.message_id,
-            kind: action.kind,
-            name: action.name,
-            risk: action.risk,
-            policy: action.policy,
           })
+          // Mutation shadow: record write-side actions as mutation proposals
+          // without enforcing DiffGate. This is observational — it measures
+          // coverage of the mutation contract against real tool execution.
+          if (action.kind === "file_write" || action.kind === "shell") {
+            const { mutationProposalFromAction } = yield* Effect.promise(() =>
+              import("@/kernel/mutation-shadow").then((m) => ({
+                mutationProposalFromAction: m.mutationProposalFromAction,
+              })),
+            )
+            const proposal = mutationProposalFromAction(action as any)
+            if (proposal) {
+              yield* Effect.logInfo("engine.mutation.shadow", {
+                mutation_id: proposal.id,
+                action_id: action.id,
+                state: proposal.state,
+                files: proposal.files.length,
+                requires_approval: proposal.controls.requires_approval,
+              })
+            }
+          }
           const decoded = yield* decode(args).pipe(
             Effect.mapError(
               (error) =>
