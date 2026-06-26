@@ -64,5 +64,7 @@ export function sovereigntyCompatView(
 }
 
 export function sovereigntyNeedsAttention(view: CockpitSovereigntyCompatView): boolean {
-  return view.route === "unknown" || view.region === "unknown" || view.compat.includes("blocking") && !view.compat.startsWith("0 active / 0 blocking")
+  const unknownRoute = view.route === "unknown" || view.region === "unknown"
+  const compatBlocking = view.compat.includes("blocking") && !view.compat.startsWith("0 active / 0 blocking")
+  return unknownRoute || compatBlocking
 }
