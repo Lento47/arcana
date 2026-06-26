@@ -41,6 +41,18 @@ function defaults(): ArcanaConfig {
 }
 
 export async function loadConfig(): Promise<ArcanaConfig> {
+  // Load proxy_key from disk before auto-detect. The arcana CLI spawns the
+  // engine as a child process, so engine/src/index.ts side-effects run too
+  // late — auto-detect in this process needs ARCANA_PROXY_KEY already set.
+  if (!process.env.ARCANA_PROXY_KEY) {
+    try {
+      const keyPath = join(getArcanaHome(), "proxy_key")
+      if (existsSync(keyPath)) {
+        process.env.ARCANA_PROXY_KEY = (await readFile(keyPath, "utf8")).trim()
+      }
+    } catch {}
+  }
+
   const configPath = join(getArcanaHome(), "config.json")
   let file: Record<string, unknown> = {}
 
@@ -52,19 +64,25 @@ export async function loadConfig(): Promise<ArcanaConfig> {
   if (process.env.ARCANA_PROVIDER) file.provider = process.env.ARCANA_PROVIDER
   if (process.env.ARCANA_MODEL) file.model = process.env.ARCANA_MODEL
   if (process.env.ARCANA_API_KEY) file.apiKey = process.env.ARCANA_API_KEY
-  if (process.env.OPENAI_API_KEY && !file.apiKey) file.apiKey = process.env.OPENAI_API_KEY
+  // Only use OPENAI_API_KEY as generic apiKey fallback when the provider
+  // is actually openai or not yet known — never leak it to another provider.
+  if (process.env.OPENAI_API_KEY && !file.apiKey) {
+    if (!file.provider || file.provider === "openai") file.apiKey = process.env.OPENAI_API_KEY
+  }
 
-  // Auto-detect provider + model from models.dev. Env-set keys take
-  // precedence over file config so a stale config file doesn't lock
-  // you into a provider whose key was rotated or removed.
-  try {
-    const { autoDetectProvider } = await import("./agent/providers.js")
-    const detected = await autoDetectProvider()
-    if (detected.provider) {
-      file.provider = detected.provider
-      if (!file.model) file.model = detected.model ?? file.model
-    }
-  } catch (e) { console.error("[arcana] auto-detect provider failed:", e instanceof Error ? e.message : String(e)) }
+  // Auto-detect provider + model from models.dev ONLY when neither
+  // was set explicitly (config file, ARCANA_PROVIDER, ARCANA_MODEL).
+  // Never override a deliberate user choice.
+  if (!file.provider) {
+    try {
+      const { autoDetectProvider } = await import("./agent/providers.js")
+      const detected = await autoDetectProvider()
+      if (detected.provider) {
+        file.provider = detected.provider
+        if (!file.model) file.model = detected.model ?? file.model
+      }
+    } catch (e) { console.error("[arcana] auto-detect provider failed:", e instanceof Error ? e.message : String(e)) }
+  }
 
   const base = defaults()
   return {

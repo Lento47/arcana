@@ -475,6 +475,24 @@ export function createPromptState(input: PromptInput): PromptState {
         display: "/compat",
         description: "show compatibility shim status and decay",
       } satisfies SlashOption,
+      {
+        kind: "slash",
+        name: "contract",
+        display: "/contract",
+        description: "list or activate agent contracts",
+      } satisfies SlashOption,
+      {
+        kind: "slash",
+        name: "mission",
+        display: "/mission",
+        description: "show active mission and objective",
+      } satisfies SlashOption,
+      {
+        kind: "slash",
+        name: "rollback",
+        display: "/rollback",
+        description: "show rollback readiness and checkpoints",
+      } satisfies SlashOption,
     ]
     const hidden = new Set(builtins.map((item) => item.name))
     const showSkillMenu = !shell() && skillCommands().length > 0 && !hasSkillsCommand()

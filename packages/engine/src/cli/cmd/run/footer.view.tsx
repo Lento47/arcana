@@ -284,14 +284,22 @@ export function RunFooterView(props: RunFooterViewProps) {
     return view.type === "question" ? view : undefined
   })
   function CockpitView(_props: { theme: Accessor<RunFooterTheme>; state: Accessor<FooterState> }) {
+    const summary = _props.state().cockpit_summary
     return (
       <box width="100%" flexDirection="column" paddingLeft={2} paddingRight={2}>
         <text fg={theme().text}>
           <span style={{ bold: true }}>⛧ COCKPIT</span>
+          <span style={{ fg: theme().muted }}>  esc to return</span>
         </text>
-        <text fg={theme().muted}>
-          {_props.state().cockpit_summary ?? "no projection data"}
-        </text>
+        {summary
+          ? <text fg={theme().muted}>{summary}</text>
+          : (
+            <box flexDirection="column" paddingTop={1}>
+              <text fg={theme().muted}>No active run projection.</text>
+              <text fg={theme().muted}>Start a prompt to populate cockpit data.</text>
+              <text fg={theme().muted}>Use /contract /tokens /proof to query state.</text>
+            </box>
+          )}
       </box>
     )
   }
@@ -874,9 +882,6 @@ export function RunFooterView(props: RunFooterViewProps) {
                             onReply={props.onQuestionReply}
                             onReject={props.onQuestionReject}
                           />
-                        </Match>
-                        <Match when={active().type === "cockpit"}>
-                          <CockpitView theme={theme} state={props.state} />
                         </Match>
                       </Switch>
                     </box>

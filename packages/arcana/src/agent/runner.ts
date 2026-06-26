@@ -27,7 +27,39 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
     )
   }
 
-  const modelId = config.model || profile.defaultModel
+  let modelId = config.model || profile.defaultModel
+  let proxyURL = profile.baseURL // may be overridden by fallback during discovery
+  // arcana-proxy discovers models at runtime — try the proxy catalog cache first,
+  // then fetch live from the proxy. Avoids "No model configured" on first run.
+  if (!modelId && config.provider) {
+    const { readFileSync, existsSync } = await import("node:fs")
+    const { join } = await import("node:path")
+    const home = process.env.ARCANA_HOME ?? join(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".arcana")
+    const cacheFile = join(home, "cache", "proxy-models.json")
+    // Try cached proxy models first
+    try {
+      if (existsSync(cacheFile)) {
+        const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as { list?: Array<{ id?: string }> }
+        if (cached.list?.length) {
+          modelId = cached.list[0].id
+        }
+      }
+    } catch {}
+    // Fallback: fetch from provider base URL, then Workers.dev fallback
+    if (!modelId && profile.baseURL && key) {
+      const bases = [profile.baseURL, "https://arcana-proxy.lejzerv.workers.dev/v1"]
+      for (const base of bases) {
+        try {
+          const url = (base.endsWith("/") ? base.slice(0, -1) : base) + "/models"
+          const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(5000) })
+          if (res.ok) {
+            const data = await res.json() as { data?: Array<{ id?: string }> }
+            if (data.data?.length) { modelId = data.data[0].id; proxyURL = base; break }
+          }
+        } catch { continue }
+      }
+    }
+  }
   if (!modelId) {
     throw new Error(
       `No model configured for provider "${config.provider}". Set a model in ~/.arcana/config.json or pass --model.`,
@@ -58,7 +90,7 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
   // OpenAI-compatible fallback — covers DeepSeek, Groq, Together, xAI, Mistral, etc.
   const compat = createOpenAICompatible({
     apiKey: key,
-    baseURL: profile.baseURL ?? `https://api.${config.provider}.com/v1`,
+    baseURL: proxyURL ?? profile.baseURL ?? `https://api.${config.provider}.com/v1`,
     name: config.provider,
   })
   return { model: compat(modelId), tools: aiTools }

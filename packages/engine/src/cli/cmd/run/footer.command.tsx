@@ -467,8 +467,23 @@ export function RunCommandMenuBody(props: {
       )
       .sort((a, b) => categoryRank(a.category) - categoryRank(b.category) || a.display.localeCompare(b.display))
 
+    const cockpit: CommandEntry[] = [
+      { action: "slash", category: "Cockpit", name: "contract", display: "Contracts", footer: "/contract", keywords: "contract constraints evidence gates" },
+      { action: "slash", category: "Cockpit", name: "mission", display: "Mission", footer: "/mission", keywords: "mission objective pipeline" },
+      { action: "slash", category: "Cockpit", name: "actions", display: "Actions", footer: "/actions", keywords: "actions timeline tool execution" },
+      { action: "slash", category: "Cockpit", name: "risk", display: "Risk Cockpit", footer: "/risk", keywords: "risk security controls" },
+      { action: "slash", category: "Cockpit", name: "diffgate", display: "DiffGate", footer: "/diffgate", keywords: "diffgate mutation approval" },
+      { action: "slash", category: "Cockpit", name: "verify", display: "Verifier", footer: "/verify", keywords: "verify verifier completion gate" },
+      { action: "slash", category: "Cockpit", name: "proof", display: "Proof Ledger", footer: "/proof", keywords: "proof runproof evidence" },
+      { action: "slash", category: "Cockpit", name: "tokens", display: "Token Console", footer: "/tokens", keywords: "tokens budget context pressure" },
+      { action: "slash", category: "Cockpit", name: "rollback", display: "Rollback", footer: "/rollback", keywords: "rollback checkpoint revert" },
+      { action: "slash", category: "Cockpit", name: "sovereignty", display: "Sovereignty", footer: "/sovereignty", keywords: "sovereignty provider route region" },
+      { action: "slash", category: "Cockpit", name: "compat", display: "Compat", footer: "/compat", keywords: "compat compatibility shims decay" },
+    ]
+
     return [
       ...session,
+      ...cockpit,
       ...prompt,
       ...agent,
       ...commands,
