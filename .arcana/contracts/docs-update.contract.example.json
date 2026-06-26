@@ -1,0 +1,45 @@
+{
+  "name": "docs-update",
+  "version": "0.1.0",
+  "mode": "advise",
+  "goal": "Update documentation without changing runtime behavior.",
+  "scope": {
+    "read": ["README.md", "docs/**", "CONTRACTS.md", ".arcana/**"],
+    "write": ["README.md", "docs/**", "CONTRACTS.md", ".arcana/**"]
+  },
+  "allowed": [
+    "read_files",
+    "edit_markdown",
+    "edit_examples",
+    "summarize_changes",
+    "create_documentation"
+  ],
+  "forbidden": [
+    "edit_source_files",
+    "edit_lockfile",
+    "add_dependency",
+    "delete_tests",
+    "modify_release_config",
+    "publish_package",
+    "deploy"
+  ],
+  "success": [
+    "documentation_matches_current_design",
+    "no_runtime_code_changed",
+    "examples_are_clear",
+    "status_notes_are_honest"
+  ],
+  "verification": {
+    "requiredForProvenSuccess": false,
+    "commands": [],
+    "review": "human_review_recommended"
+  },
+  "risk": {
+    "default": "low",
+    "escalateOn": [
+      "source_file_change",
+      "lockfile_change",
+      "release_file_change"
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "default-routing",
+  "version": "0.1.0",
+  "defaultPolicy": "local-first",
+  "policies": {
+    "local-first": {
+      "description": "Prefer local/private execution when quality is sufficient.",
+      "prefer": ["local", "private-cloud", "approved-external"],
+      "confirmExternalProviders": false,
+      "maxDataExposure": "private-cloud"
+    },
+    "no-training": {
+      "description": "Allow only providers/routes that do not train on submitted data according to configured policy.",
+      "requireNoTraining": true,
+      "confirmExternalProviders": true,
+      "maxDataExposure": "approved-external"
+    },
+    "enterprise-approved": {
+      "description": "Allow only enterprise-approved routes and providers.",
+      "allowProviders": ["local", "private-cloud", "approved-external"],
+      "denyProviders": ["unknown", "personal-account", "unapproved-external"],
+      "requireRouteDecision": true
+    },
+    "locked-local": {
+      "description": "No external model/provider calls.",
+      "allowProviders": ["local"],
+      "denyProviders": ["private-cloud", "approved-external", "unknown", "personal-account", "unapproved-external"],
+      "maxDataExposure": "local"
+    }
+  }
+}
