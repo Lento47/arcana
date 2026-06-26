@@ -31,6 +31,13 @@ export const ArcanaVerificationEvidenceKind = Schema.Literals([
   "approval_record",
   "rollback_drill",
   "manual_confirmation",
+  "security_scan",
+  "sarif_report",
+  "sbom_report",
+  "osv_report",
+  "benchmark",
+  "candidate_evaluation",
+  "policy_record",
 ])
 export type ArcanaVerificationEvidenceKind = typeof ArcanaVerificationEvidenceKind.Type
 
@@ -67,11 +74,12 @@ export type ArcanaVerificationRun = typeof ArcanaVerificationRun.Type
  * justification = not done.
  */
 export function verifierGatesSatisfied(run: ArcanaVerificationRun): boolean {
-  if (run.verdict === "passed") return true
   if (run.evidence.length === 0) return false
   if (run.failures.length > 0) return false
-  if (run.verdict === "pending" || run.verdict === "running") return false
-  return run.verdict === "skipped" && run.failures.length === 0
+  if (run.evidence.some((e) => !e.passed)) return false
+  if (run.verdict === "pending" || run.verdict === "running" || run.verdict === "failed" || run.verdict === "inconclusive") return false
+  if (run.verdict === "skipped") return run.evidence.some((e) => Boolean(e.detail) || e.kind === "manual_confirmation")
+  return run.verdict === "passed"
 }
 
 /**
@@ -82,7 +90,7 @@ export function verifierGatesSatisfied(run: ArcanaVerificationRun): boolean {
  */
 export function completionGatesSatisfied(
   run: ArcanaVerificationRun,
-  requiredChecks: string[],
+  requiredChecks: string[] = run.required_checks,
 ): boolean {
   if (!verifierGatesSatisfied(run)) return false
   const executed = new Set(run.evidence.map((e) => e.kind))
@@ -98,6 +106,34 @@ export function completionGatesSatisfied(
  */
 export function defaultRequiredChecks(): string[] {
   return ["test_output", "typecheck_output", "lint_output", "git_diff"]
+}
+
+/**
+ * Required checks for security-sensitive changes. This extends the normal
+ * software evidence set with scanner, policy, and human-review evidence.
+ */
+export function securityRequiredChecks(): string[] {
+  return [
+    ...defaultRequiredChecks(),
+    "security_scan",
+    "policy_record",
+    "approval_record",
+    "manual_confirmation",
+  ]
+}
+
+/**
+ * Required checks for forge/candidate-search work. Improvement claims must
+ * be benchmarked and linked to candidate evaluation evidence.
+ */
+export function forgeRequiredChecks(): string[] {
+  return [
+    "test_output",
+    "benchmark",
+    "candidate_evaluation",
+    "git_diff",
+    "runproof_log",
+  ]
 }
 
 /**
@@ -145,6 +181,6 @@ export function createVerifierRecord(
   return {
     run,
     limitations,
-    completion_gate_passed: verifierGatesSatisfied(run),
+    completion_gate_passed: completionGatesSatisfied(run, run.required_checks),
   }
 }
