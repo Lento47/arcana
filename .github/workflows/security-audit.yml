@@ -32,10 +32,11 @@ jobs:
 
       - name: Generate SBOM (CycloneDX)
         run: |
-          npx --yes @cyclonedx/cyclonedx-npm --output-file arcana-sbom.json --spec-version 1.5
+          bun x @cyclonedx/cyclonedx-npm --output-file arcana-sbom.json --spec-version 1.5 || echo "SBOM generation skipped (tool not available)"
         continue-on-error: true
 
       - name: Upload SBOM
+        if: hashFiles('arcana-sbom.json') != ''
         uses: actions/upload-artifact@v4
         with:
           name: sbom
@@ -56,11 +57,11 @@ jobs:
         continue-on-error: true
 
       - name: Check OSSF Scorecard
-        uses: ossf/scorecard-action@v2
+        uses: ossf/scorecard-action@v2.4.0
         with:
           results_file: scorecard.json
           results_format: json
-          publish_results: true
+          publish_results: false
 
   dependabot:
     runs-on: ubuntu-latest
