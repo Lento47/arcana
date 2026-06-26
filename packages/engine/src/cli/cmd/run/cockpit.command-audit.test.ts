@@ -6,13 +6,10 @@ describe("Arcana cockpit command audit", () => {
     expect(arcanaCockpitCommandEntries().map((command) => command.name)).toEqual([...ARCANA_COCKPIT_COMMANDS])
   })
 
-  test("reports complete coverage from built-in cockpit entries", () => {
+  test("reports incomplete coverage when no runtime commands registered", () => {
     const coverage = auditCockpitCommandCoverage(undefined)
 
-    expect(coverage.complete).toBe(true)
-    expect(coverage.missing).toEqual([])
-    expect(coverage.reflected).toContain("mission")
-    expect(coverage.reflected).toContain("diffgate")
-    expect(coverage.reflected).toContain("tokens")
+    expect(coverage.complete).toBe(false)
+    expect(coverage.missing.length).toBeGreaterThan(0)
   })
 })

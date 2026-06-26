@@ -15,6 +15,12 @@ describe("Arcana cockpit component", () => {
       "proof-ledger",
       "token-console",
       "sovereignty-compat",
+      "candidate-panel",
+      "rollback-panel",
+      "compat-panel",
+      "layout-panel",
+      "focus-panel",
+      "help-panel",
     ])
   })
 

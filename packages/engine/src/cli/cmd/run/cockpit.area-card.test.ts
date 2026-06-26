@@ -8,7 +8,7 @@ describe("Arcana cockpit area cards", () => {
     const shell = createCockpitShell(createEmptyCockpitProjection({ run_id: "run_1", objective: "ship cockpit" }))
     const views = cockpitAreaCardViews(shell)
 
-    expect(views).toHaveLength(8)
+    expect(views).toHaveLength(14)
     expect(views[0]?.id).toBe("mission-header")
     expect(views[1]?.id).toBe("action-timeline")
   })

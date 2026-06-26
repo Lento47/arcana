@@ -9,7 +9,7 @@ describe("Arcana cockpit shell", () => {
     const shell = createCockpitShell(projection)
 
     expect(cockpitShellCoversSteps(shell)).toBe(true)
-    expect(shell.areas.map((area) => area.step)).toEqual([14, 15, 16, 17, 18, 19, 20, 21])
+    expect(shell.areas.map((area) => area.step)).toEqual([14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27])
   })
 
   test("uses Arcana-native proof and sovereignty surfaces", () => {
