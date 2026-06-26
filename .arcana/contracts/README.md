@@ -8,7 +8,7 @@ Contracts define bounded autonomous work:
 goal
 scope
 allowed actions
-forbidden actions
+forbidden actions or restricted actions
 success criteria
 verification
 budget
@@ -19,6 +19,8 @@ risk escalation
 
 - `safe-refactor.contract.example.json`
 - `dependency-change.contract.example.json`
+- `docs-update.contract.example.json`
+- `release-readiness.contract.example.json`
 
 ## Status
 
