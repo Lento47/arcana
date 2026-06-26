@@ -641,13 +641,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         },
       },
       ...["contract", "mission", "actions", "risk", "diffgate", "verify", "proof", "tokens", "rollback", "sovereignty", "compat"].map((cmd) => ({
-        name: `cockpit.${cmd}`,
-        title: `Cockpit: ${cmd}`,
-        category: "Cockpit",
+        name: cmd,
         slashName: cmd,
         run: () => {
           route.navigate({ type: "session" } as any)
-          toast.show({ message: `Switched to cockpit: ${cmd}`, variant: "info" })
+          toast.show({ message: `/ ${cmd}`, variant: "info" })
           dialog.clear()
         },
       })),
