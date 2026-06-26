@@ -10,7 +10,7 @@ const crypto = require("crypto")
 const os = require("os")
 
 const RELEASES_URL = "https://releases.otnelhq.com/arcana"
-const VERSION = "v0.3.0"
+const VERSION = "v0.3.1"
 
 const PLATFORM_MAP = {
   "win32-x64":    { asset: "arcana-windows-x64.zip",    binary: "arcana.exe" },

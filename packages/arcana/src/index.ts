@@ -78,7 +78,7 @@ function show(out: string) {
   process.stderr.write(text + "\n")
 }
 
-const VERSION = "0.3.0"
+const VERSION = "0.3.1"
 
 // Lazy-load commands — each is only needed for its own subcommand
 async function loadCommands() {
