@@ -522,6 +522,8 @@ export class RunFooter implements FooterApi {
       ml: typeof next.ml === "boolean" ? next.ml : prev.ml,
       kernel_projection:
         next.kernel_projection !== undefined ? next.kernel_projection : prev.kernel_projection,
+      cockpit_summary:
+        next.cockpit_summary !== undefined ? next.cockpit_summary : prev.cockpit_summary,
     }
 
     if (state.phase === "idle") {

@@ -93,6 +93,8 @@ export type FooterState = {
   ml?: boolean
   /** Kernel projection snapshot for TUI cockpit rendering. */
   kernel_projection?: { risk_band: string; mutation_count: number; proof_completeness: number }
+  /** Cockpit shell summary — rendered from projection store via shell adapter. */
+  cockpit_summary?: string
 }
 
 // A partial update to FooterState. The footer merges this onto the current state.
