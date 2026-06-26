@@ -7,7 +7,7 @@ import type { Permission } from "../permission"
 import type { SessionID, MessageID } from "../session/schema"
 import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
-import { createEngineAction, type ArcanaActionKind } from "@/kernel"
+import { createEngineAction, type ArcanaActionKind, createRunProofEvent } from "@/kernel"
 
 interface Metadata {
   [key: string]: any
@@ -206,6 +206,25 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
         const execution = Effect.gen(function* () {
           yield* Effect.logInfo("engine.action.proposed", {
             actionID: action.id,
+          })
+          // RunProof projection: emit action + security events into the
+          // evidence stream. These are the raw inputs to the projection
+          // contract — the proof projector consumes them later.
+          yield* Effect.sync(() => {
+            const actionEvent = createRunProofEvent({
+              kind: "action",
+              summary: `${action.kind}:${action.name}`,
+              reference_id: action.id,
+            })
+            const securityEvent = createRunProofEvent({
+              kind: "security",
+              summary: `${action.risk}:${action.security_context.reasons.slice(0, 3).join("; ")}`,
+              reference_id: action.id,
+            })
+            // Projection events are fire-and-forget; the projector
+            // assembles them into a RunProof later.
+            void actionEvent
+            void securityEvent
           })
           // Mutation shadow: record write-side actions as mutation proposals
           // without enforcing DiffGate. This is observational — it measures
