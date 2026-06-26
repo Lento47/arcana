@@ -9,7 +9,7 @@
 // The view itself is stateless except for derived memos.
 /** @jsxImportSource @opentui/solid */
 import { useTerminalDimensions } from "@opentui/solid"
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, type Accessor } from "solid-js"
 import "opentui-spinner/solid"
 import { createColors, createFrames } from "@arcana/tui/ui/spinner"
 import {
@@ -55,7 +55,7 @@ import type {
   RunResource,
   RunTuiConfig,
 } from "./types"
-import type { RunTheme } from "./theme"
+import type { RunFooterTheme, RunTheme } from "./theme"
 import { modelInfo } from "./variant.shared"
 
 const EMPTY_BORDER = {
@@ -283,6 +283,19 @@ export function RunFooterView(props: RunFooterViewProps) {
     const view = active()
     return view.type === "question" ? view : undefined
   })
+  function CockpitView(_props: { theme: Accessor<RunFooterTheme>; state: Accessor<FooterState> }) {
+    return (
+      <box width="100%" flexDirection="column" paddingLeft={2} paddingRight={2}>
+        <text fg={theme().text}>
+          <span style={{ bold: true }}>⛧ COCKPIT</span>
+        </text>
+        <text fg={theme().muted}>
+          {_props.state().cockpit_summary ?? "no projection data"}
+        </text>
+      </box>
+    )
+  }
+
   const promptView = createMemo(() => {
     if (active().type !== "prompt") {
       return active().type
@@ -861,6 +874,9 @@ export function RunFooterView(props: RunFooterViewProps) {
                             onReply={props.onQuestionReply}
                             onReject={props.onQuestionReject}
                           />
+                        </Match>
+                        <Match when={active().type === "cockpit"}>
+                          <CockpitView theme={theme} state={props.state} />
                         </Match>
                       </Switch>
                     </box>
