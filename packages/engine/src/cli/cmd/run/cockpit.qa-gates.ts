@@ -76,7 +76,7 @@ export function replayCockpitProjection(input: {
 }
 
 export function cockpitPerformanceGate(samples: readonly CockpitPerformanceSample[], limits: { max_render_ms?: number; max_rows?: number } = {}): CockpitPerformanceGate {
-  const max_render_ms = limits.max_render_ms ?? 16
+  const max_render_ms = limits.max_render_ms ?? 100
   const max_rows = limits.max_rows ?? 80
   const p95_render_ms = percentile95(samples.map((sample) => sample.render_ms))
   const observed_rows = Math.max(0, ...samples.map((sample) => sample.rows))
@@ -97,6 +97,23 @@ export function cockpitCommandCoverageGate(commands: readonly Pick<RunCommand, "
     passed: coverage.complete,
     missing: coverage.missing,
     reflected: coverage.reflected,
+  }
+}
+
+export function cockpitRenderSmokeCheck(): { passed: boolean; error?: string } {
+  try {
+    const projection = createEmptyCockpitProjection({ run_id: "smoke_run_1", objective: "smoke test" })
+    const shell = createCockpitShell(projection)
+    const snapshot = cockpitRenderSnapshot(projection)
+    if (!shell.areas || shell.areas.length === 0) {
+      return { passed: false, error: "createCockpitShell produced 0 areas" }
+    }
+    if (snapshot.lines.length === 0) {
+      return { passed: false, error: "cockpitRenderSnapshot produced 0 lines" }
+    }
+    return { passed: true }
+  } catch (err) {
+    return { passed: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
 

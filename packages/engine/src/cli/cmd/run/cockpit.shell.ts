@@ -12,13 +12,19 @@ export type ArcanaCockpitAreaID =
   | "proof-ledger"
   | "token-console"
   | "sovereignty-compat"
+  | "candidate-panel"
+  | "rollback-panel"
+  | "compat-panel"
+  | "layout-panel"
+  | "focus-panel"
+  | "help-panel"
 
 export type ArcanaCockpitAreaState = "empty" | "active" | "attention" | "danger" | "blocked"
 export type ArcanaCockpitAreaColumn = "full" | "left" | "right"
 
 export type ArcanaCockpitArea = {
   readonly id: ArcanaCockpitAreaID
-  readonly step: 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21
+  readonly step: 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27
   readonly panel: ArcanaCockpitPanel
   readonly title: string
   readonly column: ArcanaCockpitAreaColumn
@@ -154,13 +160,79 @@ export function createCockpitAreas(projection: ArcanaCockpitProjection): readonl
     {
       id: "sovereignty-compat",
       step: 21,
-      panel: "sovereignty",
+      panel: "compat",
       title: "Sovereignty / Compat",
       column: "full",
       order: 7,
       state: compatState(projection),
       summary: "Provider route, local/cloud mode, and compat decay",
       metric: projection.compat ? `${projection.compat.active_shims} active shims` : "no compat state",
+    },
+    {
+      id: "candidate-panel",
+      step: 22,
+      panel: "candidate",
+      title: "Candidate",
+      column: "right",
+      order: 8,
+      state: "empty",
+      summary: "Candidate proposals",
+      metric: "no data",
+    },
+    {
+      id: "rollback-panel",
+      step: 23,
+      panel: "rollback",
+      title: "Rollback",
+      column: "right",
+      order: 9,
+      state: "empty",
+      summary: "Rollback state",
+      metric: "no data",
+    },
+    {
+      id: "compat-panel",
+      step: 24,
+      panel: "compat",
+      title: "Compat",
+      column: "right",
+      order: 10,
+      state: "empty",
+      summary: "Compatibility shims",
+      metric: "no data",
+    },
+    {
+      id: "layout-panel",
+      step: 25,
+      panel: "layout",
+      title: "Layout",
+      column: "right",
+      order: 11,
+      state: "empty",
+      summary: "Cockpit layout",
+      metric: "no data",
+    },
+    {
+      id: "focus-panel",
+      step: 26,
+      panel: "focus",
+      title: "Focus",
+      column: "right",
+      order: 12,
+      state: "empty",
+      summary: "Focus mode",
+      metric: "no data",
+    },
+    {
+      id: "help-panel",
+      step: 27,
+      panel: "help",
+      title: "Help",
+      column: "right",
+      order: 13,
+      state: "empty",
+      summary: "Keyboard shortcuts and help",
+      metric: "no data",
     },
   ]
 }

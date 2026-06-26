@@ -23,7 +23,7 @@ export const COCKPIT_PANEL_ROUTES = {
 export type CockpitPanelRouteName = keyof typeof COCKPIT_PANEL_ROUTES
 
 export function normalizeCockpitRouteName(name: string): CockpitPanelRouteName | undefined {
-  const normalized = name.trim().replace(/^[:/]/, "")
+  const normalized = name.trim().replace(/^[:/]+/, "")
   return normalized in COCKPIT_PANEL_ROUTES ? (normalized as CockpitPanelRouteName) : undefined
 }
 

@@ -35,13 +35,22 @@ export function createCockpitAccessibilityState(input: {
   readonly panel_order?: readonly ArcanaCockpitPanel[]
   readonly panel_counts?: Readonly<Partial<Record<ArcanaCockpitPanel, number>>>
   readonly visual_mode?: CockpitVisualMode
+  readonly query?: string
 } = {}): CockpitAccessibilityState {
+  const queryMode = parseVisualMode(input.query)
   return {
     focus: input.focus ?? { panel: "mission", index: 0 },
     panel_order: input.panel_order ?? DEFAULT_COCKPIT_PANEL_ORDER,
     panel_counts: input.panel_counts ?? {},
-    visual_mode: input.visual_mode ?? "standard",
+    visual_mode: input.visual_mode ?? queryMode ?? "standard",
   }
+}
+
+function parseVisualMode(query?: string): CockpitVisualMode | undefined {
+  if (!query) return undefined
+  const match = query.match(/[?&]mode=(dense|high_contrast)(?:&|$)/)
+  if (match) return match[1] as CockpitVisualMode
+  return undefined
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -58,6 +67,8 @@ function maxItemIndex(state: CockpitAccessibilityState, panel: ArcanaCockpitPane
 }
 
 export function moveCockpitFocus(state: CockpitAccessibilityState, key: CockpitNavigationKey): CockpitAccessibilityState {
+  // Guard: no panels to navigate — return focus unchanged
+  if (state.panel_order.length === 0) return state
   const currentPanelIndex = panelIndex(state)
   if (key === "left" || key === "up") {
     const panel = state.panel_order[clamp(currentPanelIndex - 1, 0, state.panel_order.length - 1)] ?? state.focus.panel

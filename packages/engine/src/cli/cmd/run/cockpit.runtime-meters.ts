@@ -33,11 +33,13 @@ export type CockpitRuntimeMeterInput = {
 }
 
 function percent(value: number): string {
+  if (!Number.isFinite(value)) return "0%"
   return `${Math.round(value * 100)}%`
 }
 
 function ratio(numerator: number, denominator: number): number {
   if (denominator <= 0) return 0
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator)) return 0
   return Math.max(0, Math.min(1, numerator / denominator))
 }
 
@@ -74,7 +76,7 @@ export function cacheHitRatioMeter(input: CockpitRuntimeMeterInput = {}): Cockpi
     id: "cache-hit-ratio",
     step: 52,
     label: "Cache hit ratio",
-    value: percent(hitRatio),
+    value: read === 0 ? "N/A" : percent(hitRatio),
     severity: total === 0 ? "attention" : hitRatio < 0.1 ? "attention" : "calm",
     reason: total === 0 ? "No cache-classified input tokens are available." : `${read} cache-read tokens out of ${total} input tokens.`,
   }

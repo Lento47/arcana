@@ -20,7 +20,7 @@ export function cockpitAreaTone(area: ArcanaCockpitArea): ArcanaCockpitAreaTone 
   if (area.state === "blocked") return "error"
   if (area.state === "danger") return "error"
   if (area.state === "attention") return "warning"
-  if (area.state === "active") return "accent"
+  if (area.state === "active") return "normal"
   return "muted"
 }
 
