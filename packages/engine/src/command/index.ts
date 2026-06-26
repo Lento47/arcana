@@ -8,6 +8,7 @@ import { Config } from "@/config/config"
 import { MCP } from "../mcp"
 import { Skill } from "../skill"
 import { EventV2 } from "@arcana/core/event"
+import { arcanaCockpitCommandTemplates } from "./cockpit"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 
@@ -93,6 +94,18 @@ export const layer = Layer.effect(
         },
         subtask: true,
         hints: hints(PROMPT_REVIEW),
+      }
+
+      for (const item of arcanaCockpitCommandTemplates()) {
+        commands[item.name] = {
+          name: item.name,
+          description: item.description,
+          source: "command",
+          get template() {
+            return item.template
+          },
+          hints: [],
+        }
       }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {

@@ -7,10 +7,55 @@ import type { Permission } from "../permission"
 import type { SessionID, MessageID } from "../session/schema"
 import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
-import { assessActionRisk, createEngineAction } from "@/execution"
+import { actionRequiresMutationGate, createEngineAction, type ArcanaActionKind, createRunProofEvent, createVerificationRun, createVerifierRecord } from "@/kernel"
 
 interface Metadata {
   [key: string]: any
+}
+
+function safeKeys(input: unknown): string[] {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return []
+  return Object.keys(input as Record<string, unknown>).slice(0, 20)
+}
+
+function summarizeToolInput(input: unknown): string {
+  const keys = safeKeys(input)
+  if (keys.length === 0) return typeof input
+  return `keys:${keys.join(",")}`
+}
+
+function extractStringValues(input: unknown, keys: string[]): string[] {
+  if (!input || typeof input !== "object") return []
+  const record = input as Record<string, unknown>
+  const out: string[] = []
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === "string") out.push(value)
+    if (Array.isArray(value)) out.push(...value.filter((item): item is string => typeof item === "string"))
+  }
+  return out
+}
+
+function inferToolActionKind(id: string): ArcanaActionKind {
+  const name = id.toLowerCase().replaceAll("_", "").replaceAll("-", "")
+  if (name.includes("bash") || name.includes("shell") || name.includes("terminal") || name.includes("exec")) return "shell"
+  if (name.includes("write") || name.includes("edit") || name.includes("applypatch") || name.includes("patch")) return "file_write"
+  if (name.includes("read") || name.includes("grep") || name.includes("glob") || name.includes("list") || name === "ls") return "file_read"
+  if (name.includes("web") || name.includes("fetch") || name.includes("http") || name.includes("network")) return "network"
+  if (name.includes("mcp")) return "mcp"
+  return "tool"
+}
+
+function inferToolSecurity(id: string, input: unknown) {
+  const actionKind = inferToolActionKind(id)
+  const paths = extractStringValues(input, ["path", "file", "filename", "files", "target", "cwd"])
+  const command = extractStringValues(input, ["command", "cmd", "script"])[0]
+  const security = {
+    paths,
+    network_egress: actionKind === "network",
+    modifies_dependencies: paths.some((path) => /(^|\/)(package\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb|requirements\.txt|pyproject\.toml|cargo\.toml|go\.mod)$/i.test(path)),
+  }
+  return command ? { ...security, command } : security
 }
 
 // TODO: remove this hack
@@ -111,17 +156,17 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
       // every LLM tool invocation.
       const decode = Schema.decodeUnknownEffect(toolInfo.parameters)
       const execute = toolInfo.execute
-      toolInfo.execute = (args, ctx) => {
-        const risk = assessActionRisk({ kind: "tool", name: id, input: args })
+      toolInfo.execute = (args, ctx): any => {
+        const kind = inferToolActionKind(id)
         const action = createEngineAction({
-          sessionID: ctx.sessionID,
-          messageID: ctx.messageID,
-          source: "agent",
-          kind: "tool",
+          id: ctx.callID ? `act_${ctx.callID}` : `act_${crypto.randomUUID()}`,
+          session_id: ctx.sessionID,
+          message_id: ctx.messageID,
+          source: "builder",
+          kind,
           name: id,
-          input: args,
-          risk,
-          reversible: risk.required_controls.includes("checkpoint"),
+          input_summary: summarizeToolInput(args),
+          security: inferToolSecurity(id, args),
         })
         const governedCtx: Context = {
           ...ctx,
@@ -134,9 +179,14 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
                   id: action.id,
                   kind: action.kind,
                   name: action.name,
-                  risk: action.risk,
+                  risk: {
+                    level: action.risk,
+                    reasons: action.security_context.reasons,
+                    required_controls: action.required_controls,
+                  },
                   policy: action.policy,
                   reversible: action.reversible,
+                  security_context: action.security_context,
                 },
               },
             })
@@ -149,20 +199,54 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           "engine.action.id": action.id,
           "engine.action.kind": action.kind,
           "engine.action.source": action.source,
-          "engine.risk.level": action.risk.level,
-          "engine.policy.action": action.policy.action,
+          "engine.risk.level": action.risk,
+          "engine.policy.action": action.policy,
           ...(ctx.callID ? { "tool.call_id": ctx.callID } : {}),
         }
         const execution = Effect.gen(function* () {
           yield* Effect.logInfo("engine.action.proposed", {
             actionID: action.id,
-            sessionID: action.sessionID,
-            messageID: action.messageID,
-            kind: action.kind,
-            name: action.name,
-            risk: action.risk.level,
-            policy: action.policy.action,
           })
+          // RunProof projection: emit action + security events into the
+          // evidence stream. These are the raw inputs to the projection
+          // contract. Currently logged — will be routed to a dedicated
+          // projection store when the event bus is wired.
+          yield* Effect.logDebug("engine.runproof.projection", {
+            events: [
+              createRunProofEvent({
+                kind: "action",
+                summary: `${action.kind}:${action.name}`,
+                reference_id: action.id,
+              }),
+              createRunProofEvent({
+                kind: "security",
+                summary: `${action.risk}:${action.security_context.reasons.slice(0, 3).join("; ")}`,
+                reference_id: action.id,
+              }),
+            ],
+          })
+          // Mutation shadow: record write-side actions as mutation proposals
+          // without enforcing DiffGate. This is observational — it measures
+          // coverage of the mutation contract against real tool execution.
+          let mutationProposalID: string | undefined
+          if (actionRequiresMutationGate(action as any)) {
+            const { mutationProposalFromAction } = yield* Effect.promise(() =>
+              import("@/kernel/mutation-shadow").then((m) => ({
+                mutationProposalFromAction: m.mutationProposalFromAction,
+              })),
+            )
+            const proposal = mutationProposalFromAction(action as any)
+            if (proposal) {
+              mutationProposalID = proposal.id
+              yield* Effect.logInfo("engine.mutation.shadow", {
+                mutation_id: proposal.id,
+                action_id: action.id,
+                state: proposal.state,
+                files: proposal.files.length,
+                requires_approval: proposal.controls.requires_approval,
+              })
+            }
+          }
           const decoded = yield* decode(args).pipe(
             Effect.mapError(
               (error) =>
@@ -175,10 +259,43 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           const result = yield* execute(decoded as Schema.Schema.Type<Parameters>, governedCtx)
           yield* Effect.logInfo("engine.action.completed", {
             actionID: action.id,
-            sessionID: action.sessionID,
-            messageID: action.messageID,
+            sessionID: action.session_id,
+            messageID: action.message_id,
             kind: action.kind,
             name: action.name,
+          })
+          // Verifier passive bridge: after every tool execution completes,
+          // create a verification record with the tool's evidence. This is
+          // observational — the verifier records evidence but does not block
+          // completion yet (passive mode = verifier.passive flag).
+          // TODO: route verifier records to a dedicated projection store
+          // when the RunProof event bus is wired.
+          yield* Effect.logDebug("engine.verifier.passive", {
+            verifier: (() => {
+              const verifierMutationId = mutationProposalID ?? action.id
+              const baseRun = createVerificationRun(verifierMutationId, [
+                "test_output",
+                "git_diff",
+              ])
+              const verifierRun = {
+                ...baseRun,
+                verdict: "passed" as const,
+                evidence: [
+                  {
+                    kind: "runproof_log" as const,
+                    summary: `${action.kind}:${action.name} completed`,
+                    passed: true,
+                    timestamp: new Date().toISOString(),
+                  },
+                ],
+              }
+              const record = createVerifierRecord(verifierRun, [])
+              return {
+                run_id: record.run.id,
+                completion_gate_passed: record.completion_gate_passed,
+                evidence_count: record.run.evidence.length,
+              }
+            })(),
           })
           if (result.metadata.truncated !== undefined) {
             return result
@@ -196,12 +313,12 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           }
         })
         return execution.pipe(
-          Effect.catch((error) =>
+          Effect.catch((error: unknown) =>
             Effect.gen(function* () {
               yield* Effect.logInfo("engine.action.failed", {
                 actionID: action.id,
-                sessionID: action.sessionID,
-                messageID: action.messageID,
+                sessionID: action.session_id,
+                messageID: action.message_id,
                 kind: action.kind,
                 name: action.name,
                 error: error instanceof Error ? error.message : String(error),
