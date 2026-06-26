@@ -60,16 +60,25 @@ jobs:
             wrangler r2 object put "arcana-releases/arcana/$V/$(basename $f)" --file "$f" --remote
           done
           # Sign checksums with Ed25519 private key. The public key is embedded
-          # in bin/arcana.js. Signature proves the checksum was authored by CI.
+          # in bin/arcana.js. Uses Node.js crypto.sign for portability — same
+          # API as the launcher's crypto.verify, avoiding OpenSSL version skew.
           if [ -n "$ARCANA_SIGNING_PRIVATE_KEY" ]; then
-            echo "$ARCANA_SIGNING_PRIVATE_KEY" | base64 -d > /tmp/signing.key
+            cat > /tmp/sign-checksums.mjs << 'ENDSCRIPT'
+          import { sign, createPrivateKey } from "node:crypto"
+          import { readFileSync, writeFileSync } from "node:fs"
+          const pem = Buffer.from(process.env.ARCANA_SIGNING_PRIVATE_KEY, "base64").toString("utf8")
+          const key = createPrivateKey({ key: pem, format: "pem", type: "pkcs8" })
+          const file = process.argv[2]
+          const data = readFileSync(file)
+          const sig = sign(null, data, key)
+          writeFileSync(file + ".sig", sig.toString("hex"))
+          console.log("signed: " + file)
+          ENDSCRIPT
             for f in packages/engine/dist/arcana-*.sha256; do
               [ -f "$f" ] || continue
-              cat "$f" | openssl pkeyutl -sign -inkey /tmp/signing.key |
-                xxd -p -c 256 > "${f}.sig"
+              node /tmp/sign-checksums.mjs "$f"
               wrangler r2 object put "arcana-releases/arcana/$V/$(basename ${f}.sig)" --file "${f}.sig" --remote
             done
-            rm -f /tmp/signing.key
           fi
           # Write latest version pointer — upgrade command reads this
           echo "$V" > /tmp/latest.txt
