@@ -165,3 +165,5 @@ export function phaseIsLive(phase: string): boolean {
   if (flags.length === 0) return false
   return flags.every((f) => f.mode !== "off")
 }
+
+export type ArcanaRollout = RolloutFlag
