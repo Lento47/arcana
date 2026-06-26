@@ -267,6 +267,31 @@ export function formatUnknownError(error: unknown): string {
   }
 
   if (error instanceof Error) {
+    // "No output generated" is a wrapper — unwrap its cause
+    if (error.message === "No output generated. Check the stream for errors.") {
+      if (error.cause instanceof Error) return formatUnknownError(error.cause)
+    }
+    // AI SDK errors carry diagnostic properties that produce massive dumps
+    // when Bun serializes them. Extract only the actionable message.
+    if ((error as any)["vercel.ai.error"]) {
+      try {
+        const data = (error as { data?: { error?: { message?: string } } }).data
+        if (data?.error?.message) return `API error: ${data.error.message}`
+      } catch {}
+      try {
+        const retry = error as { errors?: Array<{ message?: string }> }
+        if (retry.errors?.length) {
+          const msgs = [...new Set(retry.errors.map((e) => e.message))]
+          if (msgs.length === 1) return msgs[0]!
+          return `Failed after ${retry.errors.length} attempts. ${msgs[0]}`
+        }
+      } catch {}
+    }
+    // For AI SDK retry errors, unwrap the last inner error
+    try {
+      const retry = error as { errors?: Array<{ message?: string }> }
+      return retry.errors?.[0]?.message ?? error.message || error.name
+    } catch {}
     return error.message || error.name
   }
 

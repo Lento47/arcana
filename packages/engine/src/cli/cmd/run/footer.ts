@@ -524,6 +524,8 @@ export class RunFooter implements FooterApi {
         next.kernel_projection !== undefined ? next.kernel_projection : prev.kernel_projection,
       cockpit_summary:
         next.cockpit_summary !== undefined ? next.cockpit_summary : prev.cockpit_summary,
+      contracts_active:
+        next.contracts_active !== undefined ? next.contracts_active : prev.contracts_active,
     }
 
     if (state.phase === "idle") {

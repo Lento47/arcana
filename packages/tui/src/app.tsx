@@ -640,6 +640,17 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           dialog.clear()
         },
       },
+      ...["contract", "mission", "actions", "risk", "diffgate", "verify", "proof", "tokens", "rollback", "sovereignty", "compat"].map((cmd) => ({
+        name: `cockpit.${cmd}`,
+        title: `Cockpit: ${cmd}`,
+        category: "Cockpit",
+        slashName: cmd,
+        run: () => {
+          route.navigate({ type: "session" } as any)
+          toast.show({ message: `Switched to cockpit: ${cmd}`, variant: "info" })
+          dialog.clear()
+        },
+      })),
       {
         name: "workspace.copy_path",
         title: "Copy worktree path",

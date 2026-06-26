@@ -69,7 +69,7 @@ export function parseMlCommand(input: string): MlCommandAction | undefined {
 }
 
 const COCKPIT_COMMANDS = new Set([
-  "sovereignty", "tokens", "proof", "verify", "diffgate", "risk", "actions", "compat",
+  "actions", "compat", "contract", "diffgate", "mission", "proof", "risk", "rollback", "sovereignty", "tokens", "verify",
 ])
 
 export function isCockpitCommand(input: string): boolean {

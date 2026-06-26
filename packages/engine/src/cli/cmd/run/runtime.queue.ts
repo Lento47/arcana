@@ -10,7 +10,7 @@
 // Resolves when the footer closes and all in-flight work finishes.
 import * as Locale from "@/util/locale"
 import { MessageID, PartID } from "@/session/schema"
-import { isCockpitCommand, isExitCommand, isNewCommand, parseCockpitCommand, parseMlCommand } from "./prompt.shared"
+import { isExitCommand, isNewCommand, parseMlCommand } from "./prompt.shared"
 import type { FooterApi, FooterEvent, FooterQueuedPrompt, RunPrompt } from "./types"
 
 type Trace = {
@@ -203,30 +203,6 @@ export async function runPromptQueue(input: QueueInput): Promise<void> {
                   patch: { status: "ml runtime unavailable" },
                 },
                 { status: "ml runtime unavailable" },
-              )
-              continue
-            }
-          }
-
-          // Cockpit commands: /sovereignty, /tokens, /proof, /verify, /diffgate,
-          // /risk, /actions, /compat — dispatch to cockpit view instead of LLM.
-          if (prompt.mode !== "shell") {
-            const cockpit = parseCockpitCommand(prompt.text)
-            if (cockpit) {
-              emit(
-                { type: "stream.view", view: { type: "cockpit" } },
-                { view: "cockpit" },
-              )
-              emit(
-                {
-                  type: "stream.patch",
-                  patch: {
-                    status: cockpit.args
-                      ? `cockpit:${cockpit.command} ${cockpit.args}`
-                      : `cockpit:${cockpit.command}`,
-                  },
-                },
-                { status: cockpit.command },
               )
               continue
             }

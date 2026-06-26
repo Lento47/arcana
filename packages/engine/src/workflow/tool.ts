@@ -35,7 +35,7 @@ const GEN_PROMPT = [
   "Each step object: { \"id\": string (unique), \"type\": \"subagent\"|\"prompt\"|\"merge\"|\"condition\", \"description\": string,",
   "  \"dependsOn\"?: string[] (ids that must finish first), \"subagent_type\"?: string, \"prompt\"?: string,",
   "  \"sources\"?: string[] (for merge), \"condition\"?: string (JS expr over prior outputs), \"ifTrue\"?: string[], \"ifFalse\"?: string[] }.",
-  "Rules: use `subagent` for work needing a specialized agent (subagent_type \"auto\" auto-routes to the best one);",
+  "Rules: use `subagent` for work needing a specialized agent. Valid subagent_type values: build, plan, general, explore, title, summary, compaction. Use \"auto\" to let the engine pick. Do NOT invent agent names.",
   "`prompt` for direct reasoning; `merge` to combine prior outputs (set `sources` to step ids); `condition` to branch",
   "(its `ifTrue`/`ifFalse` list the step ids to skip on the other branch). Reference earlier outputs with {{stepId}} in prompts.",
   "Steps with no shared dependency run in PARALLEL, so only add `dependsOn` when a step truly needs a prior result.",
@@ -54,7 +54,7 @@ export const WorkflowTool = Tool.define(
       description:
         "Define and execute a multi-step workflow with dependency-driven PARALLELISM. Steps with no shared " +
         "dependency run concurrently; use `dependsOn` only for real ordering. Step types: `subagent` (run a " +
-        "specialized agent — subagent_type \"auto\" routes to the best one), `prompt` (one-shot LLM call), `merge` " +
+        "specialized agent — subagent_type must be one of: build, plan, general, explore, title, summary, compaction, auto), `prompt` (one-shot LLM call), `merge` " +
         "(combine other steps' outputs via `sources`), `condition` (branch: evaluate `condition` over prior outputs, " +
         "skip the `ifTrue`/`ifFalse` ids on the untaken branch). Reference earlier outputs via `{{stepId}}`. " +
         "Instead of authoring `steps`, you may pass a high-level `goal` and the engine will plan the steps itself.",
