@@ -7,10 +7,45 @@ import type { Permission } from "../permission"
 import type { SessionID, MessageID } from "../session/schema"
 import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
-import { assessActionRisk, createEngineAction } from "@/execution"
+import { createEngineAction } from "@/kernel"
 
 interface Metadata {
   [key: string]: any
+}
+
+function safeKeys(input: unknown): string[] {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return []
+  return Object.keys(input as Record<string, unknown>).slice(0, 20)
+}
+
+function summarizeToolInput(input: unknown): string {
+  const keys = safeKeys(input)
+  if (keys.length === 0) return typeof input
+  return `keys:${keys.join(",")}`
+}
+
+function extractStringValues(input: unknown, keys: string[]): string[] {
+  if (!input || typeof input !== "object") return []
+  const record = input as Record<string, unknown>
+  const out: string[] = []
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === "string") out.push(value)
+    if (Array.isArray(value)) out.push(...value.filter((item): item is string => typeof item === "string"))
+  }
+  return out
+}
+
+function inferToolSecurity(id: string, input: unknown) {
+  const name = id.toLowerCase()
+  const paths = extractStringValues(input, ["path", "file", "filename", "files", "target", "cwd"])
+  const command = extractStringValues(input, ["command", "cmd", "script"])[0]
+  return {
+    paths,
+    command,
+    network_egress: name.includes("web") || name.includes("fetch") || name.includes("http") || name.includes("network"),
+    modifies_dependencies: paths.some((path) => /(^|\/)(package\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb|requirements\.txt|pyproject\.toml|cargo\.toml|go\.mod)$/i.test(path)),
+  }
 }
 
 // TODO: remove this hack
@@ -112,16 +147,15 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
       const decode = Schema.decodeUnknownEffect(toolInfo.parameters)
       const execute = toolInfo.execute
       toolInfo.execute = (args, ctx) => {
-        const risk = assessActionRisk({ kind: "tool", name: id, input: args })
         const action = createEngineAction({
-          sessionID: ctx.sessionID,
-          messageID: ctx.messageID,
-          source: "agent",
+          id: ctx.callID ? `act_${ctx.callID}` : `act_${crypto.randomUUID()}`,
+          session_id: ctx.sessionID,
+          message_id: ctx.messageID,
+          source: "builder",
           kind: "tool",
           name: id,
-          input: args,
-          risk,
-          reversible: risk.required_controls.includes("checkpoint"),
+          input_summary: summarizeToolInput(args),
+          security: inferToolSecurity(id, args),
         })
         const governedCtx: Context = {
           ...ctx,
@@ -134,9 +168,14 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
                   id: action.id,
                   kind: action.kind,
                   name: action.name,
-                  risk: action.risk,
+                  risk: {
+                    level: action.risk,
+                    reasons: action.security_context.reasons,
+                    required_controls: action.required_controls,
+                  },
                   policy: action.policy,
                   reversible: action.reversible,
+                  security_context: action.security_context,
                 },
               },
             })
@@ -149,19 +188,19 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           "engine.action.id": action.id,
           "engine.action.kind": action.kind,
           "engine.action.source": action.source,
-          "engine.risk.level": action.risk.level,
-          "engine.policy.action": action.policy.action,
+          "engine.risk.level": action.risk,
+          "engine.policy.action": action.policy,
           ...(ctx.callID ? { "tool.call_id": ctx.callID } : {}),
         }
         const execution = Effect.gen(function* () {
           yield* Effect.logInfo("engine.action.proposed", {
             actionID: action.id,
-            sessionID: action.sessionID,
-            messageID: action.messageID,
+            sessionID: action.session_id,
+            messageID: action.message_id,
             kind: action.kind,
             name: action.name,
-            risk: action.risk.level,
-            policy: action.policy.action,
+            risk: action.risk,
+            policy: action.policy,
           })
           const decoded = yield* decode(args).pipe(
             Effect.mapError(
@@ -175,8 +214,8 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           const result = yield* execute(decoded as Schema.Schema.Type<Parameters>, governedCtx)
           yield* Effect.logInfo("engine.action.completed", {
             actionID: action.id,
-            sessionID: action.sessionID,
-            messageID: action.messageID,
+            sessionID: action.session_id,
+            messageID: action.message_id,
             kind: action.kind,
             name: action.name,
           })
@@ -200,8 +239,8 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
             Effect.gen(function* () {
               yield* Effect.logInfo("engine.action.failed", {
                 actionID: action.id,
-                sessionID: action.sessionID,
-                messageID: action.messageID,
+                sessionID: action.session_id,
+                messageID: action.message_id,
                 kind: action.kind,
                 name: action.name,
                 error: error instanceof Error ? error.message : String(error),
