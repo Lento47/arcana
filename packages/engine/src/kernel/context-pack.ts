@@ -158,3 +158,8 @@ export function packTrimLoss(
   }
   return loss
 }
+
+/** Rough token estimate from message content — ~4 chars per token. */
+export function estimateTokensFromContent(content: string): number {
+  return Math.ceil(content.length / 4)
+}
