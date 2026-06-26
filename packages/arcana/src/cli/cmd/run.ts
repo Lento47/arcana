@@ -201,6 +201,40 @@ export const RunCommand: CommandModule = {
     systemPrompt = await maybeEvolve(runner, systemPrompt)
     incrementSessionCount()
 
+    // Load agent contracts from .arcana/contracts/ if available.
+    // Contracts inject constraints, evidence requirements, and rollback
+    // plans into the system prompt so the agent operates within bounds.
+    try {
+      const contractsDir = path.join(process.cwd(), ".arcana", "contracts")
+      const { readdirSync, readFileSync, existsSync } = await import("node:fs")
+      if (existsSync(contractsDir)) {
+        const contractFiles = readdirSync(contractsDir).filter((f: string) => f.endsWith(".json"))
+        if (contractFiles.length > 0) {
+          const contracts = contractFiles.map((f: string) => {
+            try {
+              return JSON.parse(readFileSync(path.join(contractsDir, f), "utf8")) as Record<string, unknown>
+            } catch { return null }
+          }).filter(Boolean)
+          if (contracts.length > 0) {
+            const constraints = contracts.flatMap((c) => (c!.constraints as string[]) ?? [])
+            const gates = contracts.flatMap((c) => (c!.evidence_required as string[]) ?? [])
+            const rollback = contracts.find((c) => c!.rollback_plan)
+            systemPrompt += [
+              "",
+              "<arcana-contracts>",
+              `Active contracts: ${contracts.length} (${contracts.map((c) => c!.name).join(", ")})`,
+              constraints.length ? `Constraints:\n${constraints.map((c) => `- ${c}`).join("\n")}` : "",
+              gates.length ? `Evidence required:\n${gates.map((g) => `- ${g}`).join("\n")}` : "",
+              rollback ? `Rollback plan: ${rollback.rollback_plan}` : "",
+              "Operate within these contracts. Report violations before acting.",
+              "</arcana-contracts>",
+            ].filter(Boolean).join("\n")
+            process.stderr.write(c.dim(`  Contracts: ${contracts.length} loaded (${constraints.length} constraints, ${gates.length} gates)\n`))
+          }
+        }
+      }
+    } catch { /* contracts are best-effort */ }
+
     if (args.skill) {
       const skill = skills.find((s) => s.id === String(args.skill) || s.name.toLowerCase().includes(String(args.skill).toLowerCase()))
       if (skill) {
