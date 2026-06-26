@@ -7,7 +7,7 @@ import type { Permission } from "../permission"
 import type { SessionID, MessageID } from "../session/schema"
 import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
-import { createEngineAction, type ArcanaActionKind, createRunProofEvent, createVerificationRun, createVerifierRecord } from "@/kernel"
+import { actionRequiresMutationGate, createEngineAction, type ArcanaActionKind, createRunProofEvent, createVerificationRun, createVerifierRecord } from "@/kernel"
 
 interface Metadata {
   [key: string]: any
@@ -228,7 +228,8 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           // Mutation shadow: record write-side actions as mutation proposals
           // without enforcing DiffGate. This is observational — it measures
           // coverage of the mutation contract against real tool execution.
-          if (action.kind === "file_write" || action.kind === "shell") {
+          let mutationProposalID: string | undefined
+          if (actionRequiresMutationGate(action as any)) {
             const { mutationProposalFromAction } = yield* Effect.promise(() =>
               import("@/kernel/mutation-shadow").then((m) => ({
                 mutationProposalFromAction: m.mutationProposalFromAction,
@@ -236,6 +237,7 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
             )
             const proposal = mutationProposalFromAction(action as any)
             if (proposal) {
+              mutationProposalID = proposal.id
               yield* Effect.logInfo("engine.mutation.shadow", {
                 mutation_id: proposal.id,
                 action_id: action.id,
@@ -270,7 +272,8 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           // when the RunProof event bus is wired.
           yield* Effect.logDebug("engine.verifier.passive", {
             verifier: (() => {
-              const baseRun = createVerificationRun(action.id, [
+              const verifierMutationId = mutationProposalID ?? action.id
+              const baseRun = createVerificationRun(verifierMutationId, [
                 "test_output",
                 "git_diff",
               ])

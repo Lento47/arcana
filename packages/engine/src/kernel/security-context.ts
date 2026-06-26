@@ -59,6 +59,7 @@ export type ArcanaDangerousCapability = (typeof ARCANA_DANGEROUS_CAPABILITIES)[n
 export const ARCANA_SECURITY_CONTROLS = [
   "approval",
   "checkpoint",
+  "diff",
   "verifier",
   "human_review",
   "sandbox",
