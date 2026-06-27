@@ -10,11 +10,6 @@ import {
 } from "../keymap"
 import { useTuiConfig } from "../config"
 import { Glyph } from "../branding"
-import {
-  normalizeCommandCategory,
-  normalizeCommandDescription,
-  normalizeCommandTitle,
-} from "../command/command-registry"
 
 type PaletteCommandEntry = ReturnType<OpenTuiKeymap["getCommandEntries"]>[number]
 
@@ -53,9 +48,9 @@ export function CommandPaletteDialog() {
   })
   const options = createMemo(() =>
     entries().map((entry) => ({
-      title: normalizeCommandTitle(entry.command),
-      description: normalizeCommandDescription(entry.command),
-      category: normalizeCommandCategory(entry.command),
+      title: typeof entry.command.title === "string" ? entry.command.title : entry.command.name,
+      description: typeof entry.command.desc === "string" ? entry.command.desc : undefined,
+      category: typeof entry.command.category === "string" ? entry.command.category : undefined,
       footer: formatKeyBindings(entry.bindings, config),
       value: entry.command.name,
       suggested: isSuggestedPaletteCommand(entry),
