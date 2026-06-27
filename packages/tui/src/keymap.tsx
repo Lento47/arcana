@@ -267,13 +267,21 @@ export function useCommandSlashes(): Accessor<readonly CommandSlashEntry[]> {
     }),
   )
 
-  return createMemo<CommandSlashEntry[]>(() =>
-    entries().flatMap((entry) => {
+  return createMemo<CommandSlashEntry[]>(() => {
+    const seen = new Set<string>()
+    const slashes: CommandSlashEntry[] = []
+
+    for (const entry of entries()) {
       const slashName = entry.command.slashName
-      if (typeof slashName !== "string" || !slashName) return []
+      if (typeof slashName !== "string" || !slashName) continue
+
+      const display = `/${slashName}`
+      if (seen.has(display)) continue
+      seen.add(display)
+
       const slashAliases = entry.command.slashAliases
-      return {
-        display: `/${slashName}`,
+      slashes.push({
+        display,
         description:
           typeof entry.command.desc === "string"
             ? entry.command.desc
@@ -284,7 +292,9 @@ export function useCommandSlashes(): Accessor<readonly CommandSlashEntry[]> {
           ? slashAliases.filter((alias): alias is string => typeof alias === "string").map((alias) => `/${alias}`)
           : undefined,
         onSelect: () => keymap.dispatchCommand(entry.command.name),
-      }
-    }),
-  )
+      })
+    }
+
+    return slashes
+  })
 }
