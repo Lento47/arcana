@@ -16,7 +16,6 @@ import { KeymapProvider, useKeymap, useKeymapSelector, useBindings } from "@open
 import { createMemo, type Accessor } from "solid-js"
 import { useTuiConfig } from "./config"
 import { TuiKeybind } from "./config/keybind"
-import { normalizeCommandDescription } from "./command/command-registry"
 
 export const LEADER_TOKEN = "leader"
 export const ARCANA_BASE_MODE = "base"
@@ -268,19 +267,25 @@ export function useCommandSlashes(): Accessor<readonly CommandSlashEntry[]> {
     }),
   )
 
-  return createMemo<CommandSlashEntry[]>(() =>
-    entries().flatMap((entry) => {
+  return createMemo<CommandSlashEntry[]>(() => {
+    const bySlashName = new Map<string, CommandSlashEntry>()
+
+    for (const entry of entries()) {
       const slashName = entry.command.slashName
-      if (typeof slashName !== "string" || !slashName) return []
+      if (typeof slashName !== "string" || !slashName) continue
+      if (bySlashName.has(slashName)) continue
+
       const slashAliases = entry.command.slashAliases
-      return {
+      bySlashName.set(slashName, {
         display: `/${slashName}`,
-        description: normalizeCommandDescription(entry.command),
+        description: entry.command.desc ?? entry.command.title,
         aliases: Array.isArray(slashAliases)
           ? slashAliases.filter((alias): alias is string => typeof alias === "string").map((alias) => `/${alias}`)
           : undefined,
         onSelect: () => keymap.dispatchCommand(entry.command.name),
-      }
-    }),
-  )
+      })
+    }
+
+    return Array.from(bySlashName.values())
+  })
 }
