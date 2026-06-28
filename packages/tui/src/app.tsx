@@ -1,5 +1,7 @@
 import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { readdir, readFile, stat } from "node:fs/promises"
+import { join } from "node:path"
 import { Deferred, Effect } from "effect"
 import { Global } from "@arcana/core/global"
 import { Flag } from "@arcana/core/flag/flag"
@@ -23,6 +25,7 @@ import {
   batch,
   Show,
   on,
+  For,
 } from "solid-js"
 import { TuiPathsProvider, TuiStartupProvider, TuiTerminalEnvironmentProvider, useTuiStartup } from "./context/runtime"
 import { DialogProvider, useDialog } from "./ui/dialog"
@@ -131,6 +134,250 @@ const appBindingCommands = [
   "app.toggle.paste_summary",
   "app.toggle.session_directory_filter",
 ] as const
+
+type RunProofContractView = {
+  goal?: string
+  scope?: string
+  allowed_files?: string[]
+  allowed_commands?: string[]
+  risk_level?: string
+  required_approvals?: string[]
+  expected_artifacts?: string[]
+  rollback_plan?: string
+  verification_steps?: string[]
+  status?: string
+}
+
+type RunProofEventView = {
+  timestamp?: string
+  type?: string
+  actor?: string
+  summary?: string
+  risk?: string
+  status?: string
+  refs?: Record<string, string>
+}
+
+type RunProofView = {
+  id?: string
+  user_intent?: string
+  timestamp?: string
+  contract?: RunProofContractView
+  events?: RunProofEventView[]
+}
+
+type ProofLoadResult =
+  | { status: "ready"; proof: RunProofView; path: string }
+  | { status: "empty"; directory: string }
+  | { status: "error"; message: string }
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+function proofString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
+}
+
+function normalizeProofView(value: unknown): RunProofView {
+  const proof = asRecord(value) ?? {}
+  const contract = asRecord(proof.contract)
+  const events = Array.isArray(proof.events) ? proof.events : []
+  return {
+    id: proofString(proof.id),
+    user_intent: proofString(proof.user_intent),
+    timestamp: proofString(proof.timestamp),
+    contract: contract
+      ? {
+          goal: proofString(contract.goal),
+          scope: proofString(contract.scope),
+          allowed_files: asStringArray(contract.allowed_files),
+          allowed_commands: asStringArray(contract.allowed_commands),
+          risk_level: proofString(contract.risk_level),
+          required_approvals: asStringArray(contract.required_approvals),
+          expected_artifacts: asStringArray(contract.expected_artifacts),
+          rollback_plan: proofString(contract.rollback_plan),
+          verification_steps: asStringArray(contract.verification_steps),
+          status: proofString(contract.status),
+        }
+      : undefined,
+    events: events.flatMap((item): RunProofEventView[] => {
+      const event = asRecord(item)
+      if (!event) return []
+      const refs = asRecord(event.refs)
+      return [
+        {
+          timestamp: proofString(event.timestamp),
+          type: proofString(event.type),
+          actor: proofString(event.actor),
+          summary: proofString(event.summary),
+          risk: proofString(event.risk),
+          status: proofString(event.status),
+          refs: refs
+            ? Object.fromEntries(
+                Object.entries(refs).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+              )
+            : undefined,
+        },
+      ]
+    }),
+  }
+}
+
+async function loadLatestRunProof(directory: string): Promise<ProofLoadResult> {
+  const proofDir = join(directory, ".arcana", "proofs")
+  try {
+    const files = await readdir(proofDir)
+    const candidates = await Promise.all(
+      files
+        .filter((file) => file.endsWith(".json"))
+        .map(async (file) => {
+          const path = join(proofDir, file)
+          const info = await stat(path)
+          return { path, mtime: info.mtimeMs }
+        }),
+    )
+    const latest = candidates.toSorted((a, b) => b.mtime - a.mtime)[0]
+    if (!latest) return { status: "empty", directory: proofDir }
+    return {
+      status: "ready",
+      proof: normalizeProofView(JSON.parse(await readFile(latest.path, "utf8"))),
+      path: latest.path,
+    }
+  } catch (error) {
+    const code =
+      typeof error === "object" && error !== null && "code" in error ? (error as { code?: unknown }).code : undefined
+    if (code === "ENOENT") return { status: "empty", directory: proofDir }
+    return { status: "error", message: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+function FieldList(props: { items: string[] | undefined; empty: string }) {
+  const { theme } = useTheme()
+  return (
+    <Show when={props.items && props.items.length > 0} fallback={<text fg={theme.textMuted}>{props.empty}</text>}>
+      <For each={props.items}>{(item) => <text fg={theme.text}>- {item}</text>}</For>
+    </Show>
+  )
+}
+
+function DialogRunProofContract(props: { proof: RunProofView; path: string }) {
+  const { theme } = useTheme()
+  const dialog = useDialog()
+  const contract = () => props.proof.contract
+  return (
+    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
+      <box flexDirection="row" justifyContent="space-between">
+        <text fg={theme.text}>
+          <b>Execution Contract</b>
+        </text>
+        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+          esc
+        </text>
+      </box>
+      <text fg={theme.textMuted}>{props.path}</text>
+      <Show when={contract()} fallback={<text fg={theme.warning}>Active RunProof has no execution contract.</text>}>
+        {(value) => (
+          <box gap={1}>
+            <text fg={theme.text}>Goal: {value().goal ?? props.proof.user_intent ?? "not recorded"}</text>
+            <text fg={theme.text}>Scope: {value().scope ?? "not recorded"}</text>
+            <text fg={theme.text}>Risk: {value().risk_level ?? "not recorded"}</text>
+            <text fg={theme.text}>Status: {value().status ?? "not recorded"}</text>
+            <text fg={theme.text}>Allowed files</text>
+            <FieldList items={value().allowed_files} empty="No file allowlist recorded." />
+            <text fg={theme.text}>Allowed commands</text>
+            <FieldList items={value().allowed_commands} empty="No command allowlist recorded." />
+            <text fg={theme.text}>Required approvals</text>
+            <FieldList items={value().required_approvals} empty="No required approvals recorded." />
+            <text fg={theme.text}>Expected artifacts</text>
+            <FieldList items={value().expected_artifacts} empty="No expected artifacts recorded." />
+            <text fg={theme.text}>Rollback plan: {value().rollback_plan ?? "not recorded"}</text>
+            <text fg={theme.text}>Verification steps</text>
+            <FieldList items={value().verification_steps} empty="No verification steps recorded." />
+          </box>
+        )}
+      </Show>
+    </box>
+  )
+}
+
+function refsText(refs: Record<string, string> | undefined): string | undefined {
+  if (!refs || Object.keys(refs).length === 0) return undefined
+  return Object.entries(refs)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${key}=${value}`)
+    .join("  ")
+}
+
+function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
+  const { theme } = useTheme()
+  const dialog = useDialog()
+  const events = () => props.proof.events ?? []
+  return (
+    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
+      <box flexDirection="row" justifyContent="space-between">
+        <text fg={theme.text}>
+          <b>RunProof Actions</b>
+        </text>
+        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+          esc
+        </text>
+      </box>
+      <text fg={theme.textMuted}>{props.path}</text>
+      <Show when={events().length > 0} fallback={<text fg={theme.warning}>No RunProof events recorded.</text>}>
+        <For each={events()}>
+          {(event) => (
+            <box gap={0}>
+              <text fg={theme.text}>
+                {event.timestamp ?? "no timestamp"} [{event.type ?? "event"}] {event.actor ?? "unknown"}
+              </text>
+              <text fg={theme.text}>{event.summary ?? "No summary recorded."}</text>
+              <Show when={event.risk || event.status}>
+                <text fg={theme.textMuted}>
+                  {[event.risk ? `risk=${event.risk}` : undefined, event.status ? `status=${event.status}` : undefined]
+                    .filter(Boolean)
+                    .join("  ")}
+                </text>
+              </Show>
+              <Show when={refsText(event.refs)}>{(refs) => <text fg={theme.textMuted}>{refs()}</text>}</Show>
+            </box>
+          )}
+        </For>
+      </Show>
+    </box>
+  )
+}
+
+function DialogRunProofMissing(props: { result: Extract<ProofLoadResult, { status: "empty" | "error" }> }) {
+  const { theme } = useTheme()
+  const dialog = useDialog()
+  return (
+    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
+      <box flexDirection="row" justifyContent="space-between">
+        <text fg={theme.text}>
+          <b>RunProof</b>
+        </text>
+        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+          esc
+        </text>
+      </box>
+      <Show
+        when={props.result.status === "empty" ? props.result : undefined}
+        fallback={
+          <text fg={theme.error}>
+            Failed to read RunProof: {props.result.status === "error" ? props.result.message : "unknown error"}
+          </text>
+        }
+      >
+        {(result) => <text fg={theme.warning}>No RunProof JSON found in {result().directory}</text>}
+      </Show>
+    </box>
+  )
+}
 
 export type TuiInput = {
   url: string
@@ -454,7 +701,9 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     offSelectionKeys()
     attention.dispose()
     for (const fn of eventUnsubs) {
-      try { fn() } catch {}
+      try {
+        fn()
+      } catch {}
     }
   })
 
@@ -473,9 +722,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const [pasteSummaryEnabled, setPasteSummaryEnabled] = createSignal(
     kv.get("paste_summary_enabled", !sync.data.config.experimental?.disable_paste_summary),
   )
-  const [mlRuntimeEnabled, setMlRuntimeEnabled] = createSignal(
-    kv.get("ml_runtime_enabled", Flag.ARCANA_ML_RUNTIME),
-  )
+  const [mlRuntimeEnabled, setMlRuntimeEnabled] = createSignal(kv.get("ml_runtime_enabled", Flag.ARCANA_ML_RUNTIME))
 
   // Update terminal window title based on current route and session
   createEffect(() => {
@@ -584,6 +831,31 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (workspace?.type !== "worktree" || !workspace.directory) return
     return workspace
   })
+  async function showRunProofSurface(kind: "contract" | "actions") {
+    const directory = project.instance.directory()
+    const result = await loadLatestRunProof(directory)
+    if (result.status !== "ready") {
+      dialog.replace(() => <DialogRunProofMissing result={result} />)
+      return
+    }
+    dialog.replace(() =>
+      kind === "contract" ? (
+        <DialogRunProofContract proof={result.proof} path={result.path} />
+      ) : (
+        <DialogRunProofActions proof={result.proof} path={result.path} />
+      ),
+    )
+    dialog.setSize("xlarge")
+  }
+
+  function showUnwiredArcanaCommand(title: string) {
+    toast.show({
+      message: `${title} is not connected to a RunProof view yet`,
+      variant: "warning",
+    })
+    dialog.clear()
+  }
+
   const appCommands = createMemo(() =>
     [
       {
@@ -640,48 +912,46 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           dialog.clear()
         },
       },
-      ...[
-        {
-          name: "arcana.contract",
-          slashName: "contract",
-          title: "Inspect active execution contract",
-          desc: "Show the active execution contract for this session",
-        },
-        {
-          name: "arcana.actions",
-          slashName: "actions",
-          title: "Show action timeline",
-          desc: "Show the execution action timeline",
-        },
-        {
-          name: "arcana.diffgate",
-          slashName: "diffgate",
-          title: "Show diff gate state",
-          desc: "Show verification gate state",
-        },
-        {
-          name: "arcana.verify",
-          slashName: "verify",
-          title: "Show verifier board",
-          desc: "Show verifier board and completion gates",
-        },
-        {
-          name: "arcana.sovereignty",
-          slashName: "sovereignty",
-          title: "Show AI sovereignty state",
-          desc: "Show provider route and AI sovereignty state",
-        },
-      ].map((command) => ({
-        ...command,
+      {
+        name: "arcana.contract",
+        slashName: "contract",
+        title: "Inspect active execution contract",
+        desc: "Show the active execution contract for this session",
         category: "Arcana",
-        run: () => {
-          toast.show({
-            message: `${command.title} is not connected to a view yet`,
-            variant: "warning",
-          })
-          dialog.clear()
-        },
-      })),
+        run: () => void showRunProofSurface("contract").catch(toast.error),
+      },
+      {
+        name: "arcana.actions",
+        slashName: "actions",
+        title: "Show action timeline",
+        desc: "Show the execution action timeline",
+        category: "Arcana",
+        run: () => void showRunProofSurface("actions").catch(toast.error),
+      },
+      {
+        name: "arcana.diffgate",
+        slashName: "diffgate",
+        title: "Show diff gate state",
+        desc: "Show verification gate state",
+        category: "Arcana",
+        run: () => showUnwiredArcanaCommand("Show diff gate state"),
+      },
+      {
+        name: "arcana.verify",
+        slashName: "verify",
+        title: "Show verifier board",
+        desc: "Show verifier board and completion gates",
+        category: "Arcana",
+        run: () => showUnwiredArcanaCommand("Show verifier board"),
+      },
+      {
+        name: "arcana.sovereignty",
+        slashName: "sovereignty",
+        title: "Show AI sovereignty state",
+        desc: "Show provider route and AI sovereignty state",
+        category: "Arcana",
+        run: () => showUnwiredArcanaCommand("Show AI sovereignty state"),
+      },
       {
         name: "workspace.copy_path",
         title: "Copy worktree path",
@@ -1182,9 +1452,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         evt.stopPropagation()
       }}
       onMouseUp={
-        !Flag.ARCANA_EXPERIMENTAL_DISABLE_COPY_ON_SELECT
-          ? () => Selection.copy(renderer, toast, clipboard)
-          : undefined
+        !Flag.ARCANA_EXPERIMENTAL_DISABLE_COPY_ON_SELECT ? () => Selection.copy(renderer, toast, clipboard) : undefined
       }
     >
       <Show when={Flag.ARCANA_SHOW_TTFD}>
