@@ -640,12 +640,45 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           dialog.clear()
         },
       },
-      ...["contract", "mission", "actions", "risk", "diffgate", "verify", "proof", "tokens", "rollback", "sovereignty", "compat"].map((cmd) => ({
-        name: cmd,
-        slashName: cmd,
+      ...[
+        {
+          name: "arcana.contract",
+          slashName: "contract",
+          title: "Inspect active execution contract",
+          desc: "Show the active execution contract for this session",
+        },
+        {
+          name: "arcana.actions",
+          slashName: "actions",
+          title: "Show action timeline",
+          desc: "Show the execution action timeline",
+        },
+        {
+          name: "arcana.diffgate",
+          slashName: "diffgate",
+          title: "Show diff gate state",
+          desc: "Show verification gate state",
+        },
+        {
+          name: "arcana.verify",
+          slashName: "verify",
+          title: "Show verifier board",
+          desc: "Show verifier board and completion gates",
+        },
+        {
+          name: "arcana.sovereignty",
+          slashName: "sovereignty",
+          title: "Show AI sovereignty state",
+          desc: "Show provider route and AI sovereignty state",
+        },
+      ].map((command) => ({
+        ...command,
+        category: "Arcana",
         run: () => {
-          route.navigate({ type: "session" } as any)
-          toast.show({ message: `/ ${cmd}`, variant: "info" })
+          toast.show({
+            message: `${command.title} is not connected to a view yet`,
+            variant: "warning",
+          })
           dialog.clear()
         },
       })),
