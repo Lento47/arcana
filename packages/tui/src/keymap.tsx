@@ -268,20 +268,16 @@ export function useCommandSlashes(): Accessor<readonly CommandSlashEntry[]> {
   )
 
   return createMemo<CommandSlashEntry[]>(() => {
-    const seen = new Set<string>()
-    const slashes: CommandSlashEntry[] = []
+    const bySlashName = new Map<string, CommandSlashEntry>()
 
     for (const entry of entries()) {
       const slashName = entry.command.slashName
       if (typeof slashName !== "string" || !slashName) continue
-
-      const display = `/${slashName}`
-      if (seen.has(display)) continue
-      seen.add(display)
+      if (bySlashName.has(slashName)) continue
 
       const slashAliases = entry.command.slashAliases
-      slashes.push({
-        display,
+      bySlashName.set(slashName, {
+        display: `/${slashName}`,
         description:
           typeof entry.command.desc === "string"
             ? entry.command.desc
@@ -295,6 +291,6 @@ export function useCommandSlashes(): Accessor<readonly CommandSlashEntry[]> {
       })
     }
 
-    return slashes
+    return Array.from(bySlashName.values())
   })
 }
