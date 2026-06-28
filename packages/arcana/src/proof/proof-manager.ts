@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
 // Copyright (c) 2026 arcana contributors
 
-import {
-  completeRunProof,
-  createRunProof,
-  recordCommand,
-} from "./create.js"
+import { completeRunProof, createRunProof, recordCommand, recordEvent } from "./create.js"
 import { renderRunProofMarkdown, renderRunProofTerminal } from "./render.js"
 import { saveRunProof, type ProofStoreTarget, type StoredRunProof } from "./store.js"
 import type {
@@ -19,7 +15,9 @@ import type {
   MCPCallRecord,
   ManualCheck,
   RiskBlock,
+  RollbackBlock,
   RunProof,
+  RunProofEvent,
   RunProofStatus,
   ShellCommandRecord,
   TestResult,
@@ -32,10 +30,12 @@ export type ProofManagerOptions = {
   user_intent: string
   cwd?: string
   command?: string
+  contract?: Parameters<typeof createRunProof>[0]["contract"]
   store_target?: ProofStoreTarget
 }
 
 export type CommandReflectionInput = Omit<TUICommandReflection, "id" | "timestamp" | "runproof_id">
+export type RunProofEventInput = Omit<RunProofEvent, "id" | "timestamp">
 
 export type DiffInput = Omit<DiffRecord, "id" | "status">
 export type FileReadInput = Omit<FileAccessRecord, "id" | "timestamp">
@@ -72,6 +72,7 @@ export class ProofManager {
         user_intent: options.user_intent,
         cwd: options.cwd,
         command: options.command,
+        contract: options.contract,
       }),
       options.store_target ?? "repo",
     )
@@ -97,6 +98,10 @@ export class ProofManager {
     return recordCommand(this.proof, input)
   }
 
+  recordEvent(input: RunProofEventInput): RunProofEvent {
+    return recordEvent(this.proof, input)
+  }
+
   updateRisk(risk: Partial<RiskBlock> & Pick<RiskBlock, "level">): RiskBlock {
     this.proof.risk = {
       ...this.proof.risk,
@@ -104,10 +109,43 @@ export class ProofManager {
       reasons: risk.reasons ?? this.proof.risk.reasons,
       required_approval: risk.required_approval ?? this.proof.risk.required_approval,
     }
+    this.proof.contract.risk_level = risk.level
+    this.recordEvent({
+      type: this.proof.risk.required_approval ? "approval.required" : "risk.evaluated",
+      actor: "system",
+      summary: this.proof.risk.reasons[0] ?? `Risk evaluated as ${risk.level}.`,
+      risk: risk.level,
+      status: this.proof.risk.required_approval ? "awaiting_approval" : this.proof.lifecycle.status,
+      refs: { contract_id: this.proof.contract.id },
+    })
     return this.proof.risk
   }
 
-  addPlanStep(description: string, status: RunProof["plan"]["steps"][number]["status"] = "planned"): RunProof["plan"]["steps"][number] {
+  updateRollback(rollback: Partial<RollbackBlock> & Pick<RollbackBlock, "strategy">): RollbackBlock {
+    this.proof.rollback = {
+      ...this.proof.rollback,
+      ...rollback,
+      checkpoint_id: rollback.checkpoint_id ?? this.proof.rollback.checkpoint_id,
+    }
+    if (this.proof.rollback.strategy !== "none") {
+      this.recordEvent({
+        type: "rollback.available",
+        actor: "system",
+        summary: this.proof.rollback.restore_command
+          ? `Rollback available via ${this.proof.rollback.restore_command}.`
+          : `Rollback checkpoint available: ${this.proof.rollback.checkpoint_id}.`,
+        status: this.proof.lifecycle.status,
+        refs: { checkpoint_id: this.proof.rollback.checkpoint_id },
+        data: { strategy: this.proof.rollback.strategy, valid_until: this.proof.rollback.valid_until },
+      })
+    }
+    return this.proof.rollback
+  }
+
+  addPlanStep(
+    description: string,
+    status: RunProof["plan"]["steps"][number]["status"] = "planned",
+  ): RunProof["plan"]["steps"][number] {
     const step = { id: id("step"), description, status }
     this.proof.plan.steps.push(step)
     return step
@@ -129,6 +167,14 @@ export class ProofManager {
   addProposedDiff(input: DiffInput): DiffRecord {
     const diff: DiffRecord = { id: id("diff"), status: "proposed", ...input }
     this.proof.diffs.proposed.push(diff)
+    this.recordEvent({
+      type: "diff.created",
+      actor: "agent",
+      summary: `Proposed diff for ${input.path}: ${input.summary}`,
+      status: "diff_proposed",
+      refs: { diff_id: diff.id, path: input.path },
+      data: { additions: input.additions, deletions: input.deletions },
+    })
     this.transitionState("diff_proposed", `Proposed diff recorded for ${input.path}.`)
     return diff
   }
@@ -190,12 +236,28 @@ export class ProofManager {
   recordToolCall(input: ToolCallInput): ToolCallRecord {
     const call = { id: id("tool"), timestamp: now(), ...input }
     this.proof.execution.tool_calls.push(call)
+    this.recordEvent({
+      type: "tool.requested",
+      actor: "agent",
+      summary: input.input_summary ? `${input.name}: ${input.input_summary}` : `Tool requested: ${input.name}`,
+      risk: input.risk,
+      status: input.status,
+      refs: { tool_call_id: call.id, tool: input.name },
+    })
     return call
   }
 
   recordMCPCall(input: MCPCallInput): MCPCallRecord {
     const call = { id: id("mcp"), timestamp: now(), ...input }
     this.proof.execution.mcp_calls.push(call)
+    this.recordEvent({
+      type: "tool.requested",
+      actor: "agent",
+      summary: input.input_summary ? `${input.name}: ${input.input_summary}` : `MCP tool requested: ${input.name}`,
+      risk: input.risk,
+      status: input.status,
+      refs: { mcp_call_id: call.id, tool: input.name, server: input.server ?? "" },
+    })
     return call
   }
 
@@ -203,6 +265,15 @@ export class ProofManager {
     const command = { id: id("shell"), timestamp: now(), ...input }
     this.proof.execution.shell_commands.push(command)
     this.proof.final_evidence.commands_run.push(input.command)
+    this.recordEvent({
+      type: "command.executed",
+      actor: "agent",
+      summary: input.command,
+      risk: input.risk,
+      status: input.status,
+      refs: { shell_command_id: command.id, cwd: input.cwd },
+      data: { exit_code: input.exit_code },
+    })
     return command
   }
 
@@ -215,19 +286,35 @@ export class ProofManager {
   addTestResult(input: Omit<TestResult, "id">): TestResult {
     const test = { id: id("test"), ...input }
     this.proof.verification.tests.push(test)
+    this.recordEvent({
+      type:
+        input.status === "passed"
+          ? "verification.passed"
+          : input.status === "failed"
+            ? "verification.failed"
+            : "verification.started",
+      actor: "verifier",
+      summary: `test: ${input.command} - ${input.summary}`,
+      status: input.status,
+      refs: { test_id: test.id, command: input.command },
+      data: { duration_ms: input.duration_ms, passed: input.passed, failed: input.failed, skipped: input.skipped },
+    })
     return test
   }
 
   setTypecheck(result: CheckResult): void {
     this.proof.verification.typecheck = result
+    this.recordVerificationEvent("typecheck", result)
   }
 
   setLint(result: CheckResult): void {
     this.proof.verification.lint = result
+    this.recordVerificationEvent("lint", result)
   }
 
   setBuild(result: CheckResult): void {
     this.proof.verification.build = result
+    this.recordVerificationEvent("build", result)
   }
 
   setVerifierReview(result: VerifierResult): void {
@@ -238,6 +325,18 @@ export class ProofManager {
   addManualCheck(input: Omit<ManualCheck, "id">): ManualCheck {
     const check = { id: id("manual"), ...input }
     this.proof.verification.manual_checks.push(check)
+    this.recordEvent({
+      type:
+        input.status === "passed"
+          ? "verification.passed"
+          : input.status === "failed"
+            ? "verification.failed"
+            : "verification.started",
+      actor: "verifier",
+      summary: input.evidence ? `${input.description}: ${input.evidence}` : input.description,
+      status: input.status,
+      refs: { manual_check_id: check.id },
+    })
     return check
   }
 
@@ -260,9 +359,32 @@ export class ProofManager {
       files_changed: input.evidence?.files_changed ?? this.proof.final_evidence.files_changed,
       commands_run: input.evidence?.commands_run ?? this.proof.final_evidence.commands_run,
       proof_score: clampProofScore(input.evidence?.proof_score ?? this.proof.final_evidence.proof_score),
-      human_review_recommended: input.evidence?.human_review_recommended ?? this.proof.final_evidence.human_review_recommended,
+      human_review_recommended:
+        input.evidence?.human_review_recommended ?? this.proof.final_evidence.human_review_recommended,
     })
+    this.proof.contract.status =
+      input.status === "completed"
+        ? "completed"
+        : input.status === "cancelled"
+          ? "cancelled"
+          : this.proof.contract.status
     return this.proof
+  }
+
+  private recordVerificationEvent(kind: "typecheck" | "lint" | "build", result: CheckResult): void {
+    this.recordEvent({
+      type:
+        result.status === "passed"
+          ? "verification.passed"
+          : result.status === "failed"
+            ? "verification.failed"
+            : "verification.started",
+      actor: "verifier",
+      summary: `${kind}: ${result.summary}`,
+      status: result.status,
+      refs: { command: result.command },
+      data: { duration_ms: result.duration_ms },
+    })
   }
 
   renderTerminal(): string {

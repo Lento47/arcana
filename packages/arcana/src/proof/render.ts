@@ -2,14 +2,20 @@
 // Copyright (c) 2026 arcana contributors
 
 import type { RunProof, VerificationStatus } from "./types.js"
+import { normalizeRunProof } from "./compat.js"
 
 const mark = (status: VerificationStatus | "running") => {
   switch (status) {
-    case "passed": return "✓"
-    case "failed": return "✕"
-    case "skipped": return "-"
-    case "running": return "→"
-    case "not_run": return "☐"
+    case "passed":
+      return "✓"
+    case "failed":
+      return "✕"
+    case "skipped":
+      return "-"
+    case "running":
+      return "→"
+    case "not_run":
+      return "☐"
   }
 }
 
@@ -21,6 +27,7 @@ const line = (label: string, value: string | number | boolean | undefined) => {
 const compactId = (id: string) => id.replace(/^rp_/, "").slice(0, 8)
 
 export function renderRunProofTerminal(proof: RunProof): string {
+  proof = normalizeRunProof(proof)
   const out: string[] = []
   out.push(`ARCANA RUNPROOF  •  ${compactId(proof.id)}  •  ${proof.risk.level.toUpperCase()} Risk`)
   out.push("")
@@ -30,10 +37,21 @@ export function renderRunProofTerminal(proof: RunProof): string {
   out.push(`Status:  ${proof.lifecycle.status}`)
   out.push("")
 
+  out.push("Execution Contract")
+  out.push(`  Goal: ${proof.contract.goal}`)
+  out.push(`  Scope: ${proof.contract.scope}`)
+  out.push(`  Risk: ${proof.contract.risk_level}`)
+  out.push(
+    `  Approvals: ${proof.contract.required_approvals.length ? proof.contract.required_approvals.join(", ") : "none"}`,
+  )
+  out.push(`  Rollback: ${proof.contract.rollback_plan}`)
+  out.push("")
+
   out.push("Plan")
   if (proof.plan.steps.length === 0) out.push("  ☐ plan capture pending")
   for (const step of proof.plan.steps) {
-    const glyph = step.status === "executed" ? "✓" : step.status === "failed" ? "✕" : step.status === "skipped" ? "-" : "·"
+    const glyph =
+      step.status === "executed" ? "✓" : step.status === "failed" ? "✕" : step.status === "skipped" ? "-" : "·"
     out.push(`  ${glyph} ${step.description}`)
   }
   out.push("")
@@ -57,12 +75,21 @@ export function renderRunProofTerminal(proof: RunProof): string {
   out.push(`  ${checks.join("     ")}`)
   for (const test of proof.verification.tests) out.push(`  ${mark(test.status)} ${test.command} — ${test.summary}`)
   if (proof.verification.verifier_review) {
-    out.push(`  ${mark(proof.verification.verifier_review.status)} verifier — ${proof.verification.verifier_review.summary}`)
+    out.push(
+      `  ${mark(proof.verification.verifier_review.status)} verifier — ${proof.verification.verifier_review.summary}`,
+    )
   }
   out.push("")
 
+  out.push("Timeline")
+  if (proof.events.length === 0) out.push("  no events recorded")
+  for (const event of proof.events) out.push(`  [${event.type}] ${event.summary}`)
+  out.push("")
+
   out.push("Rollback")
-  out.push(`  ${proof.rollback.strategy}${proof.rollback.restore_command ? `   → ${proof.rollback.restore_command}` : ""}`)
+  out.push(
+    `  ${proof.rollback.strategy}${proof.rollback.restore_command ? `   → ${proof.rollback.restore_command}` : ""}`,
+  )
   out.push("")
 
   out.push("Unresolved")
@@ -84,6 +111,7 @@ export function renderRunProofTerminal(proof: RunProof): string {
 }
 
 export function renderRunProofMarkdown(proof: RunProof): string {
+  proof = normalizeRunProof(proof)
   const lines: string[] = []
   lines.push(`# RunProof ${compactId(proof.id)}`)
   lines.push("")
@@ -100,14 +128,41 @@ export function renderRunProofMarkdown(proof: RunProof): string {
     line("Branch", proof.repo.branch),
     line("Commit", proof.repo.commit),
     line("Dirty before", proof.repo.dirty_before),
-  ].filter(Boolean)) lines.push(`- ${entry}`)
+  ].filter(Boolean))
+    lines.push(`- ${entry}`)
+  lines.push("")
+
+  lines.push("## Execution Contract")
+  lines.push(`- Goal: ${proof.contract.goal}`)
+  lines.push(`- Scope: ${proof.contract.scope}`)
+  lines.push(
+    `- Allowed files: ${proof.contract.allowed_files.length ? proof.contract.allowed_files.join(", ") : "unspecified"}`,
+  )
+  lines.push(
+    `- Allowed commands: ${proof.contract.allowed_commands.length ? proof.contract.allowed_commands.join(", ") : "unspecified"}`,
+  )
+  lines.push(`- Risk level: ${proof.contract.risk_level}`)
+  lines.push(
+    `- Required approvals: ${proof.contract.required_approvals.length ? proof.contract.required_approvals.join(", ") : "none"}`,
+  )
+  lines.push(`- Expected artifacts: ${proof.contract.expected_artifacts.join(", ")}`)
+  lines.push(`- Rollback plan: ${proof.contract.rollback_plan}`)
+  lines.push(`- Verification steps: ${proof.contract.verification_steps.join(", ")}`)
   lines.push("")
 
   lines.push("## Plan")
   lines.push(proof.plan.summary)
   lines.push("")
   if (proof.plan.steps.length === 0) lines.push("- [ ] Plan capture pending")
-  for (const step of proof.plan.steps) lines.push(`- [${step.status === "executed" ? "x" : " "}] ${step.description} (${step.status})`)
+  for (const step of proof.plan.steps)
+    lines.push(`- [${step.status === "executed" ? "x" : " "}] ${step.description} (${step.status})`)
+  lines.push("")
+
+  lines.push("## RunProof Timeline")
+  if (proof.events.length === 0) lines.push("No timeline events recorded.")
+  for (const event of proof.events) {
+    lines.push(`- ${event.timestamp} — **${event.type}** — ${event.summary}`)
+  }
   lines.push("")
 
   lines.push("## Command History")
@@ -120,15 +175,23 @@ export function renderRunProofMarkdown(proof: RunProof): string {
   lines.push("## Diffs")
   const diffs = [...proof.diffs.proposed, ...proof.diffs.applied, ...proof.diffs.rejected]
   if (diffs.length === 0) lines.push("No diffs recorded.")
-  for (const diff of diffs) lines.push(`- **${diff.path}**: +${diff.additions}/-${diff.deletions}, ${diff.status} — ${diff.summary}`)
+  for (const diff of diffs)
+    lines.push(`- **${diff.path}**: +${diff.additions}/-${diff.deletions}, ${diff.status} — ${diff.summary}`)
   lines.push("")
 
   lines.push("## Verification")
-  if (proof.verification.typecheck) lines.push(`- Typecheck: ${proof.verification.typecheck.status} — ${proof.verification.typecheck.summary}`)
-  if (proof.verification.lint) lines.push(`- Lint: ${proof.verification.lint.status} — ${proof.verification.lint.summary}`)
-  if (proof.verification.build) lines.push(`- Build: ${proof.verification.build.status} — ${proof.verification.build.summary}`)
-  for (const test of proof.verification.tests) lines.push(`- Test: ${test.status} — \`${test.command}\` — ${test.summary}`)
-  if (proof.verification.verifier_review) lines.push(`- Verifier: ${proof.verification.verifier_review.status} — ${proof.verification.verifier_review.summary}`)
+  if (proof.verification.typecheck)
+    lines.push(`- Typecheck: ${proof.verification.typecheck.status} — ${proof.verification.typecheck.summary}`)
+  if (proof.verification.lint)
+    lines.push(`- Lint: ${proof.verification.lint.status} — ${proof.verification.lint.summary}`)
+  if (proof.verification.build)
+    lines.push(`- Build: ${proof.verification.build.status} — ${proof.verification.build.summary}`)
+  for (const test of proof.verification.tests)
+    lines.push(`- Test: ${test.status} — \`${test.command}\` — ${test.summary}`)
+  if (proof.verification.verifier_review)
+    lines.push(
+      `- Verifier: ${proof.verification.verifier_review.status} — ${proof.verification.verifier_review.summary}`,
+    )
   lines.push("")
 
   lines.push("## Rollback")

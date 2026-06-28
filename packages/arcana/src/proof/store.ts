@@ -4,6 +4,7 @@
 import path from "node:path"
 import { mkdir, writeFile } from "node:fs/promises"
 import type { RunProof } from "./types.js"
+import { normalizeRunProof } from "./compat.js"
 
 export type ProofStoreTarget = "repo" | "home"
 
@@ -29,6 +30,7 @@ export async function saveRunProof(
   proof: RunProof,
   input: { cwd?: string; target?: ProofStoreTarget; markdown?: string } = {},
 ): Promise<StoredRunProof> {
+  proof = normalizeRunProof(proof)
   const dir = proofDir({ cwd: input.cwd, target: input.target })
   await mkdir(dir, { recursive: true })
 
