@@ -76,6 +76,10 @@ function uniq(items: string[]): string[] {
   return [...new Set(items)]
 }
 
+function checkPassed(check: CheckResult | undefined): boolean {
+  return check?.status === "passed"
+}
+
 export function evaluateShellCommandPolicy(command: string, options: { approved?: boolean } = {}): PolicyGateDecision {
   const normalized = command.toLowerCase()
   let risk: RiskLevel = "medium"
@@ -539,14 +543,40 @@ export class ProofManager {
     summary: string
     evidence?: Partial<FinalEvidence>
   }): RunProof {
+    let proofScore = input.evidence?.proof_score ?? this.proof.final_evidence.proof_score
+    let humanReviewRecommended = input.evidence?.human_review_recommended ?? this.proof.final_evidence.human_review_recommended
+
+    if (input.status === "completed" && this.proof.execution.file_writes.length > 0) {
+      const hasVerificationEvidence =
+        checkPassed(this.proof.verification.typecheck) ||
+        checkPassed(this.proof.verification.lint) ||
+        checkPassed(this.proof.verification.build) ||
+        this.proof.verification.tests.some((test) => test.status === "passed") ||
+        this.proof.verification.manual_checks.some((check) => check.status === "passed") ||
+        this.proof.verification.verifier_review?.status === "passed"
+
+      if (!hasVerificationEvidence) {
+        const gap = "Completion has file write evidence but no passing verification evidence."
+        this.addSkippedTest(gap)
+        this.recordEvent({
+          type: "verification.failed",
+          actor: "verifier",
+          summary: gap,
+          status: "failed",
+          data: { file_writes: this.proof.execution.file_writes.length },
+        })
+        proofScore = Math.min(clampProofScore(proofScore), 40)
+        humanReviewRecommended = true
+      }
+    }
+
     completeRunProof(this.proof, {
       status: input.status,
       summary: input.summary,
       files_changed: input.evidence?.files_changed ?? this.proof.final_evidence.files_changed,
       commands_run: input.evidence?.commands_run ?? this.proof.final_evidence.commands_run,
-      proof_score: clampProofScore(input.evidence?.proof_score ?? this.proof.final_evidence.proof_score),
-      human_review_recommended:
-        input.evidence?.human_review_recommended ?? this.proof.final_evidence.human_review_recommended,
+      proof_score: clampProofScore(proofScore),
+      human_review_recommended: humanReviewRecommended,
     })
     this.proof.contract.status =
       input.status === "completed"
