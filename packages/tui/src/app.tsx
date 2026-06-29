@@ -191,6 +191,37 @@ type RunProofDiffView = {
   summary?: string
 }
 
+type RunProofCheckView = {
+  id?: string
+  command?: string
+  source?: string
+  description?: string
+  status?: string
+  summary?: string
+  evidence?: string
+  passed?: number
+  failed?: number
+  skipped?: number
+  duration_ms?: number
+}
+
+type RunProofVerifierReviewView = {
+  model?: string
+  status?: string
+  summary?: string
+  concerns?: string[]
+}
+
+type RunProofVerificationView = {
+  diagnostics: RunProofCheckView[]
+  tests: RunProofCheckView[]
+  manual_checks: RunProofCheckView[]
+  typecheck?: RunProofCheckView
+  lint?: RunProofCheckView
+  build?: RunProofCheckView
+  verifier_review?: RunProofVerifierReviewView
+}
+
 type RunProofView = {
   id?: string
   user_intent?: string
@@ -206,6 +237,7 @@ type RunProofView = {
     applied: RunProofDiffView[]
     rejected: RunProofDiffView[]
   }
+  verification?: RunProofVerificationView
 }
 
 type ProofLoadResult =
@@ -252,6 +284,28 @@ function normalizeDiffs(value: unknown): RunProofDiffView[] {
     : []
 }
 
+function normalizeCheck(value: unknown): RunProofCheckView | undefined {
+  const check = asRecord(value)
+  if (!check) return undefined
+  return {
+    id: proofString(check.id),
+    command: proofString(check.command),
+    source: proofString(check.source),
+    description: proofString(check.description),
+    status: proofString(check.status),
+    summary: proofString(check.summary),
+    evidence: proofString(check.evidence),
+    passed: proofNumber(check.passed),
+    failed: proofNumber(check.failed),
+    skipped: proofNumber(check.skipped),
+    duration_ms: proofNumber(check.duration_ms),
+  }
+}
+
+function normalizeChecks(value: unknown): RunProofCheckView[] {
+  return Array.isArray(value) ? value.flatMap((item) => normalizeCheck(item) ?? []) : []
+}
+
 function normalizeProofView(value: unknown): RunProofView {
   const proof = asRecord(value) ?? {}
   const contract = asRecord(proof.contract)
@@ -260,6 +314,8 @@ function normalizeProofView(value: unknown): RunProofView {
   const rollback = asRecord(proof.rollback)
   const finalEvidence = asRecord(proof.final_evidence)
   const diffs = asRecord(proof.diffs)
+  const verification = asRecord(proof.verification)
+  const verifierReview = asRecord(verification?.verifier_review)
   const events = Array.isArray(proof.events) ? proof.events : []
   return {
     id: proofString(proof.id),
@@ -312,6 +368,22 @@ function normalizeProofView(value: unknown): RunProofView {
       proposed: normalizeDiffs(diffs?.proposed),
       applied: normalizeDiffs(diffs?.applied),
       rejected: normalizeDiffs(diffs?.rejected),
+    },
+    verification: {
+      diagnostics: normalizeChecks(verification?.diagnostics),
+      tests: normalizeChecks(verification?.tests),
+      manual_checks: normalizeChecks(verification?.manual_checks),
+      typecheck: normalizeCheck(verification?.typecheck),
+      lint: normalizeCheck(verification?.lint),
+      build: normalizeCheck(verification?.build),
+      verifier_review: verifierReview
+        ? {
+            model: proofString(verifierReview.model),
+            status: proofString(verifierReview.status),
+            summary: proofString(verifierReview.summary),
+            concerns: asStringArray(verifierReview.concerns),
+          }
+        : undefined,
     },
     events: events.flatMap((item): RunProofEventView[] => {
       const event = asRecord(item)
@@ -536,6 +608,110 @@ function DialogRunProofDiffGate(props: { proof: RunProofView; path: string }) {
       <DiffList title="Proposed diffs" diffs={diffs().proposed} empty="No proposed diffs." />
       <DiffList title="Applied diffs" diffs={diffs().applied} empty="No applied diffs." />
       <DiffList title="Rejected diffs" diffs={diffs().rejected} empty="No rejected diffs." />
+    </box>
+  )
+}
+
+function checkLabel(check: RunProofCheckView): string {
+  return check.command ?? check.description ?? check.source ?? check.id ?? "verification check"
+}
+
+function statusMark(status: string | undefined): string {
+  if (status === "passed") return "PASS"
+  if (status === "failed") return "FAIL"
+  if (status === "skipped") return "SKIP"
+  if (status === "not_run") return "WAIT"
+  return (status ?? "unknown").toUpperCase()
+}
+
+function CheckList(props: { title: string; checks: RunProofCheckView[]; empty: string }) {
+  const { theme } = useTheme()
+  return (
+    <box gap={0}>
+      <text fg={theme.text}>{props.title}</text>
+      <Show when={props.checks.length > 0} fallback={<text fg={theme.textMuted}>{props.empty}</text>}>
+        <For each={props.checks}>
+          {(check) => (
+            <box gap={0}>
+              <text fg={theme.text}>
+                {statusMark(check.status)}  {checkLabel(check)}
+              </text>
+              <Show when={check.summary || check.evidence}>
+                <text fg={theme.textMuted}>{check.summary ?? check.evidence}</text>
+              </Show>
+              <Show when={check.passed !== undefined || check.failed !== undefined || check.skipped !== undefined}>
+                <text fg={theme.textMuted}>
+                  passed={check.passed ?? 0}  failed={check.failed ?? 0}  skipped={check.skipped ?? 0}
+                </text>
+              </Show>
+            </box>
+          )}
+        </For>
+      </Show>
+    </box>
+  )
+}
+
+function DialogRunProofVerify(props: { proof: RunProofView; path: string }) {
+  const { theme } = useTheme()
+  const dialog = useDialog()
+  const verification = () =>
+    props.proof.verification ?? {
+      diagnostics: [],
+      tests: [],
+      manual_checks: [],
+    }
+  const fixedChecks = () =>
+    [verification().typecheck, verification().lint, verification().build].filter(
+      (check): check is RunProofCheckView => check !== undefined,
+    )
+  const allChecks = () => [
+    ...fixedChecks(),
+    ...verification().diagnostics,
+    ...verification().tests,
+    ...verification().manual_checks,
+    ...(verification().verifier_review
+      ? [{ status: verification().verifier_review?.status, summary: verification().verifier_review?.summary, source: "verifier" }]
+      : []),
+  ]
+  const passed = () => allChecks().filter((check) => check.status === "passed").length
+  const failed = () => allChecks().filter((check) => check.status === "failed").length
+  const pending = () => allChecks().filter((check) => check.status !== "passed" && check.status !== "failed").length
+  const score = () => props.proof.final_evidence?.proof_score
+  return (
+    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
+      <box flexDirection="row" justifyContent="space-between">
+        <text fg={theme.text}>
+          <b>Verifier Board</b>
+        </text>
+        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+          esc
+        </text>
+      </box>
+      <text fg={theme.textMuted}>{props.path}</text>
+      <box gap={0}>
+        <text fg={theme.text}>
+          Passed: {passed()}  Failed: {failed()}  Pending: {pending()}
+        </text>
+        <text fg={theme.text}>
+          Final: {props.proof.final_evidence?.completed === true ? "completed" : "open"}
+          {score() === undefined ? "" : `  Proof: ${score()}/100`}
+        </text>
+        <text fg={theme.textMuted}>{props.proof.final_evidence?.summary ?? "No final evidence summary recorded."}</text>
+      </box>
+      <CheckList title="Required checks" checks={fixedChecks()} empty="No typecheck, lint, or build evidence recorded." />
+      <CheckList title="Tests" checks={verification().tests} empty="No test evidence recorded." />
+      <CheckList title="Diagnostics" checks={verification().diagnostics} empty="No diagnostic evidence recorded." />
+      <CheckList title="Manual checks" checks={verification().manual_checks} empty="No manual checks recorded." />
+      <Show when={verification().verifier_review}>
+        {(review) => (
+          <box gap={0}>
+            <text fg={theme.text}>Verifier review: {statusMark(review().status)} {review().model ?? ""}</text>
+            <text fg={theme.textMuted}>{review().summary ?? "No verifier summary recorded."}</text>
+            <FieldList items={review().concerns} empty="No verifier concerns recorded." />
+          </box>
+        )}
+      </Show>
     </box>
   )
 }
@@ -1019,7 +1195,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (workspace?.type !== "worktree" || !workspace.directory) return
     return workspace
   })
-  async function showRunProofSurface(kind: "contract" | "actions" | "diffgate") {
+  async function showRunProofSurface(kind: "contract" | "actions" | "diffgate" | "verify") {
     const result = await loadActiveRunProof()
     if (result.status !== "ready") {
       dialog.replace(() => <DialogRunProofMissing result={result} />)
@@ -1028,6 +1204,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     dialog.replace(() => {
       if (kind === "contract") return <DialogRunProofContract proof={result.proof} path={result.path} />
       if (kind === "diffgate") return <DialogRunProofDiffGate proof={result.proof} path={result.path} />
+      if (kind === "verify") return <DialogRunProofVerify proof={result.proof} path={result.path} />
       return <DialogRunProofActions proof={result.proof} path={result.path} />
     })
     dialog.setSize("xlarge")
@@ -1127,7 +1304,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         title: "Show verifier board",
         desc: "Show verifier board and completion gates",
         category: "Arcana",
-        run: () => showUnwiredArcanaCommand("Show verifier board"),
+        run: () => void showRunProofSurface("verify").catch(toast.error),
       },
       {
         name: "arcana.sovereignty",
