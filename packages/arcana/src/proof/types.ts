@@ -26,6 +26,7 @@ export type DiffStatus = "proposed" | "applied" | "rejected"
 export type FileWriteMode = "proposed" | "applied" | "rejected"
 export type ToolRisk = RiskLevel | "unknown"
 export type ExecutionContractStatus = "draft" | "active" | "completed" | "cancelled"
+export type PolicyGateAction = "shell_command"
 export type RunProofEventType =
   | "plan.created"
   | "tool.requested"
@@ -65,6 +66,15 @@ export type RunProofEvent = {
   status?: RunProofStatus | VerificationStatus | "running"
   refs?: Record<string, string>
   data?: Record<string, unknown>
+}
+
+export type PolicyGateDecision = {
+  action: PolicyGateAction
+  command: string
+  risk: RiskLevel
+  required_approval: boolean
+  blocked: boolean
+  reasons: string[]
 }
 
 export type RepoSnapshot = {

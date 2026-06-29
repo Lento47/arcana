@@ -40,6 +40,10 @@ function formatReplayRefs(refs: Record<string, string> | undefined): string {
     .join(",")}`
 }
 
+function policyGateEvents(proof: RunProof) {
+  return proof.events.filter((event) => event.data?.action === "shell_command")
+}
+
 export function renderRunProofTerminal(proof: RunProof): string {
   proof = normalizeRunProof(proof)
   const out: string[] = []
@@ -98,6 +102,15 @@ export function renderRunProofTerminal(proof: RunProof): string {
   out.push("Timeline")
   if (proof.events.length === 0) out.push("  no events recorded")
   for (const event of proof.events) out.push(`  [${event.type}] ${event.summary}`)
+  out.push("")
+
+  const gates = policyGateEvents(proof)
+  out.push("Policy Gates")
+  if (gates.length === 0) out.push("  no policy gates recorded")
+  for (const gate of gates) {
+    const blocked = gate.data?.blocked ? "blocked" : "allowed"
+    out.push(`  ${blocked}  ${gate.risk ?? "unknown"}  ${gate.summary}`)
+  }
   out.push("")
 
   out.push("Rollback")
@@ -176,6 +189,18 @@ export function renderRunProofMarkdown(proof: RunProof): string {
   if (proof.events.length === 0) lines.push("No timeline events recorded.")
   for (const event of proof.events) {
     lines.push(`- ${event.timestamp} — **${event.type}** — ${event.summary}`)
+  }
+  lines.push("")
+
+  const gates = policyGateEvents(proof)
+  lines.push("## Policy Gates")
+  if (gates.length === 0) lines.push("No policy gates recorded.")
+  for (const gate of gates) {
+    lines.push(
+      `- ${gate.data?.blocked ? "Blocked" : "Allowed"} — ${gate.risk ?? "unknown"} — ${gate.summary}`,
+    )
+    const reasons = Array.isArray(gate.data?.reasons) ? gate.data.reasons.filter((item) => typeof item === "string") : []
+    for (const reason of reasons) lines.push(`  - ${reason}`)
   }
   lines.push("")
 
