@@ -37,6 +37,7 @@ export type RunProofEventType =
   | "verification.passed"
   | "verification.failed"
   | "rollback.available"
+  | "sovereignty.routed"
 
 export type ExecutionContract = {
   id: string

@@ -14,6 +14,13 @@ export type ProofRuntime = {
   manager?: ProofManager
   enabled: boolean
   activeProofPath(): string | undefined
+  recordModelRoute(input: {
+    provider: string
+    model: string
+    route: "local" | "cloud"
+    reason: string
+    data_left_local: boolean
+  }): Promise<void>
   recordUserCommand(command: string, summary?: string): Promise<void>
   recordSystemTransition(status: RunProofStatus, summary?: string): Promise<void>
   recordAgentTurn(input: {
@@ -65,6 +72,25 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
     manager,
     enabled: Boolean(manager),
     activeProofPath: () => activePath,
+
+    async recordModelRoute(input) {
+      if (!manager) return
+      manager.recordEvent({
+        type: "sovereignty.routed",
+        actor: "system",
+        summary: `Provider route selected: ${input.model} via ${input.provider}.`,
+        status: manager.proof.lifecycle.status,
+        refs: { provider: input.provider, model: input.model },
+        data: {
+          provider: input.provider,
+          model: input.model,
+          route: input.route,
+          reason: input.reason,
+          data_left_local: input.data_left_local,
+        },
+      })
+      await saveSnapshot()
+    },
 
     async recordUserCommand(command, summary = "User command accepted.") {
       if (!manager) return
