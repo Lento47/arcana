@@ -166,6 +166,27 @@ export class AgentRunner {
     ].join("\n")
   }
 
+  private filePathFromMutationTool(toolName: string, input: Record<string, unknown>): string | undefined {
+    if (toolName !== "write" && toolName !== "edit" && toolName !== "apply_patch") return undefined
+    const path = input.path ?? input.filePath ?? input.filepath ?? input.file
+    return typeof path === "string" && path.trim() ? path : undefined
+  }
+
+  private async runProofFileGate(toolName: string, input: Record<string, unknown>): Promise<string | undefined> {
+    const path = this.filePathFromMutationTool(toolName, input)
+    if (!path || !this.config.proofGate) return undefined
+    const decision = await this.config.proofGate.gateFileMutation(path, {
+      operation: toolName,
+      approved: this.config.godlike === true,
+    })
+    if (!decision.blocked) return undefined
+    return [
+      `Blocked by RunProof file policy gate: ${path}`,
+      `Risk: ${decision.risk}`,
+      ...decision.reasons.map((reason) => `- ${reason}`),
+    ].join("\n")
+  }
+
   async run(
     messages: ChatMessage[],
     onChunk?: (text: string) => void,
@@ -375,6 +396,14 @@ export class AgentRunner {
               continue
             }
 
+            const filePolicyBlocked = await this.runProofFileGate(tc.toolName, tc.input as Record<string, unknown>)
+            if (filePolicyBlocked) {
+              resultStr = filePolicyBlocked
+              auditLog({ tool: tc.toolName, args: tc.input, result: filePolicyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+              history.push({ role: "tool", tool_call_id: tc.toolCallId, content: filePolicyBlocked, toolName: tc.toolName } as any)
+              continue
+            }
+
               // Guard: dangerous command check (skip in godlike mode)
             if (!this.config.godlike && (tc.toolName === "shell" || tc.toolName.includes("bash"))) {
               const args = tc.input as Record<string, unknown>
@@ -404,17 +433,22 @@ export class AgentRunner {
                   if (!batchEntry) return `"${batchCall.tool}": unknown tool`
                   // Sub-calls must pass the same guards as top-level calls — otherwise
                   // `batch: [{tool:"bash", command:"rm -rf /"}]` bypasses them entirely.
+                  const filePolicyBlocked = await this.runProofFileGate(batchCall.tool, batchCall.args ?? {})
+                  if (filePolicyBlocked) {
+                    auditLog({ tool: batchCall.tool, args: batchCall.args, result: filePolicyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+                    return `"${batchCall.tool}": ${filePolicyBlocked}`
+                  }
+                  const policyBlocked = await this.runProofShellGate(batchCall.tool, batchCall.args ?? {})
+                  if (policyBlocked) {
+                    auditLog({ tool: batchCall.tool, args: batchCall.args, result: policyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+                    return `"${batchCall.tool}": ${policyBlocked}`
+                  }
                   if (!this.config.godlike) {
                     try { this.limiter.check(batchCall.tool) } catch (e) {
                       return `"${batchCall.tool}": ${e instanceof Error ? e.message : String(e)}`
                     }
                     if (batchCall.tool === "shell" || batchCall.tool.includes("bash")) {
                       const a = (batchCall.args ?? {}) as Record<string, unknown>
-                      const policyBlocked = await this.runProofShellGate(batchCall.tool, a)
-                      if (policyBlocked) {
-                        auditLog({ tool: batchCall.tool, args: batchCall.args, result: policyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
-                        return `"${batchCall.tool}": ${policyBlocked}`
-                      }
                       const cmd = String(a.command ?? a.cmd ?? "")
                       const blocked = checkDangerousCommand(cmd)
                       if (blocked) {
