@@ -157,12 +157,41 @@ type RunProofEventView = {
   refs?: Record<string, string>
 }
 
+type RunProofLifecycleView = {
+  status?: string
+  started_at?: string
+  ended_at?: string
+}
+
+type RunProofRiskView = {
+  level?: string
+  reasons?: string[]
+  required_approval?: boolean
+}
+
+type RunProofRollbackView = {
+  checkpoint_id?: string
+  strategy?: string
+  restore_command?: string
+}
+
+type RunProofFinalEvidenceView = {
+  completed?: boolean
+  summary?: string
+  proof_score?: number
+  human_review_recommended?: boolean
+}
+
 type RunProofView = {
   id?: string
   user_intent?: string
   timestamp?: string
+  lifecycle?: RunProofLifecycleView
   contract?: RunProofContractView
   events?: RunProofEventView[]
+  risk?: RunProofRiskView
+  rollback?: RunProofRollbackView
+  final_evidence?: RunProofFinalEvidenceView
 }
 
 type ProofLoadResult =
@@ -178,6 +207,14 @@ function proofString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined
 }
 
+function proofNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
+function proofBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
 }
@@ -185,11 +222,22 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 function normalizeProofView(value: unknown): RunProofView {
   const proof = asRecord(value) ?? {}
   const contract = asRecord(proof.contract)
+  const lifecycle = asRecord(proof.lifecycle)
+  const risk = asRecord(proof.risk)
+  const rollback = asRecord(proof.rollback)
+  const finalEvidence = asRecord(proof.final_evidence)
   const events = Array.isArray(proof.events) ? proof.events : []
   return {
     id: proofString(proof.id),
     user_intent: proofString(proof.user_intent),
     timestamp: proofString(proof.timestamp),
+    lifecycle: lifecycle
+      ? {
+          status: proofString(lifecycle.status),
+          started_at: proofString(lifecycle.started_at),
+          ended_at: proofString(lifecycle.ended_at),
+        }
+      : undefined,
     contract: contract
       ? {
           goal: proofString(contract.goal),
@@ -202,6 +250,28 @@ function normalizeProofView(value: unknown): RunProofView {
           rollback_plan: proofString(contract.rollback_plan),
           verification_steps: asStringArray(contract.verification_steps),
           status: proofString(contract.status),
+        }
+      : undefined,
+    risk: risk
+      ? {
+          level: proofString(risk.level),
+          reasons: asStringArray(risk.reasons),
+          required_approval: proofBoolean(risk.required_approval),
+        }
+      : undefined,
+    rollback: rollback
+      ? {
+          checkpoint_id: proofString(rollback.checkpoint_id),
+          strategy: proofString(rollback.strategy),
+          restore_command: proofString(rollback.restore_command),
+        }
+      : undefined,
+    final_evidence: finalEvidence
+      ? {
+          completed: proofBoolean(finalEvidence.completed),
+          summary: proofString(finalEvidence.summary),
+          proof_score: proofNumber(finalEvidence.proof_score),
+          human_review_recommended: proofBoolean(finalEvidence.human_review_recommended),
         }
       : undefined,
     events: events.flatMap((item): RunProofEventView[] => {
@@ -305,27 +375,54 @@ function refsText(refs: Record<string, string> | undefined): string | undefined 
     .join("  ")
 }
 
+function compactProofId(id: string | undefined): string {
+  if (!id) return "unknown"
+  return id.length > 16 ? `${id.slice(0, 10)}...${id.slice(-4)}` : id
+}
+
+function eventTime(value: string | undefined): string {
+  if (!value) return "--:--"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+}
+
+function eventLabel(value: string | undefined): string {
+  return (value ?? "event").replace(/[._-]+/g, " ").toUpperCase()
+}
+
 function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const events = () => props.proof.events ?? []
+  const status = () => props.proof.lifecycle?.status ?? props.proof.contract?.status ?? "unknown"
+  const risk = () => props.proof.risk?.level ?? props.proof.contract?.risk_level ?? "unknown"
+  const score = () => props.proof.final_evidence?.proof_score
   return (
     <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text fg={theme.text}>
-          <b>RunProof Actions</b>
+          <b>RunProof Tape</b>
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
           esc
         </text>
       </box>
       <text fg={theme.textMuted}>{props.path}</text>
+      <box gap={0}>
+        <text fg={theme.text}>Run: {compactProofId(props.proof.id)}  State: {status()}  Risk: {risk()}</text>
+        <text fg={theme.text}>Intent: {props.proof.user_intent ?? "not recorded"}</text>
+        <text fg={theme.textMuted}>
+          Rollback: {props.proof.rollback?.strategy ?? props.proof.contract?.rollback_plan ?? "not recorded"}
+          {score() === undefined ? "" : `  Proof: ${score()}/100`}
+        </text>
+      </box>
       <Show when={events().length > 0} fallback={<text fg={theme.warning}>No RunProof events recorded.</text>}>
         <For each={events()}>
           {(event) => (
             <box gap={0}>
               <text fg={theme.text}>
-                {event.timestamp ?? "no timestamp"} [{event.type ?? "event"}] {event.actor ?? "unknown"}
+                {eventTime(event.timestamp)}  {eventLabel(event.type)}  {event.actor ?? "unknown"}
               </text>
               <text fg={theme.text}>{event.summary ?? "No summary recorded."}</text>
               <Show when={event.risk || event.status}>
