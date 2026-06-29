@@ -151,7 +151,19 @@ export const RunCommand: CommandModule = {
       process.stderr.write(c.yellow(`\n  Sandbox: ${sandbox.root}\n`))
       process.stderr.write(c.dim(`  Network: ${sandbox.network ? "allowed" : "BLOCKED"}\n\n`))
     }
-    const runner = new AgentRunner({ provider, model, apiKey, utilityModel: config.utilityModel, godlike, safeMode: args.safe === true, toolTimeout: args.toolTimeout as number | undefined }, sandbox)
+    const runner = new AgentRunner(
+      {
+        provider,
+        model,
+        apiKey,
+        utilityModel: config.utilityModel,
+        godlike,
+        safeMode: args.safe === true,
+        toolTimeout: args.toolTimeout as number | undefined,
+        proofGate: proofRuntime.enabled ? proofRuntime : undefined,
+      },
+      sandbox,
+    )
     if (memory) registerBuiltinTools(runner, memory, config.skillsDirs)
 
     const mcpServers = await registerMcpTools(runner)
