@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
 // Copyright (c) 2026 arcana contributors
 
-import { ProofManager, type RunProofStatus, type StoredRunProof } from "../../proof/index.js"
+import { ProofManager, type RiskLevel, type RunProofStatus, type StoredRunProof } from "../../proof/index.js"
 
 export type ProofRuntimeOptions = {
   enabled: boolean
@@ -38,6 +38,37 @@ function commandForPrompt(prompt: string | undefined): string {
   return prompt ? `arcana run --proof ${JSON.stringify(prompt)}` : "arcana run --proof"
 }
 
+function assessInitialRisk(input: { prompt?: string; command: string }): {
+  level: RiskLevel
+  reasons: string[]
+  required_approval: boolean
+} {
+  const text = `${input.prompt ?? ""} ${input.command}`.toLowerCase()
+  const reasons = ["Agent execution can inspect context, call tools, and mutate repository state."]
+
+  if (/\b(prod|production|deploy|secret|credential|payment|billing|database|migration|drop|delete|remove|rm\s+-rf)\b/.test(text)) {
+    return {
+      level: "critical",
+      reasons: [...reasons, "Prompt or command references production, secrets, destructive operations, billing, or database migration risk."],
+      required_approval: true,
+    }
+  }
+
+  if (/\b(auth|security|permission|dependency|install|upgrade|lockfile|package|token)\b/.test(text)) {
+    return {
+      level: "high",
+      reasons: [...reasons, "Prompt or command references security, auth, permissions, dependency, or token-sensitive work."],
+      required_approval: true,
+    }
+  }
+
+  return {
+    level: "medium",
+    reasons,
+    required_approval: false,
+  }
+}
+
 async function saveAndPrint(manager: ProofManager): Promise<StoredRunProof> {
   const stored = await manager.save()
   process.stderr.write(`\n${manager.renderTerminal()}\n`)
@@ -58,6 +89,7 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
 
   if (manager) {
     manager.transitionState("planning", "Proof capture initialized; command execution entering planning state.")
+    manager.updateRisk(assessInitialRisk({ prompt: options.prompt, command: options.command || commandForPrompt(options.prompt) }))
   }
 
   async function saveSnapshot(): Promise<void> {
