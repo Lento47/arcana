@@ -35,6 +35,15 @@ export type ProofRuntime = {
     risk: string
     reasons: string[]
   }>
+  recordContextAccess(input: {
+    tool: "read" | "grep" | "glob"
+    path?: string
+    pattern?: string
+    summary: string
+    exists?: boolean
+    bytes_read?: number
+    result_count?: number
+  }): Promise<void>
   recordAgentTurn(input: {
     input_summary: string
     output_summary: string
@@ -197,6 +206,12 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
       const decision = manager.gateFileMutation(path, options)
       await saveSnapshot()
       return decision
+    },
+
+    async recordContextAccess(input) {
+      if (!manager) return
+      manager.recordContextAccess(input)
+      await saveSnapshot()
     },
 
     async recordAgentTurn(input) {

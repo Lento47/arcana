@@ -74,6 +74,14 @@ export function renderRunProofTerminal(proof: RunProof): string {
   }
   out.push("")
 
+  out.push("Context Access")
+  if (proof.execution.file_reads.length === 0) out.push("  no context files recorded")
+  for (const read of proof.execution.file_reads.slice(0, 12)) {
+    out.push(`  ${read.path}${read.exists === false ? " (missing)" : ""} — ${read.reason}`)
+  }
+  if (proof.execution.file_reads.length > 12) out.push(`  ... ${proof.execution.file_reads.length - 12} more`)
+  out.push("")
+
   const proposed = proof.diffs.proposed.length
   const applied = proof.diffs.applied.length
   const rejected = proof.diffs.rejected.length
@@ -183,6 +191,17 @@ export function renderRunProofMarkdown(proof: RunProof): string {
   if (proof.plan.steps.length === 0) lines.push("- [ ] Plan capture pending")
   for (const step of proof.plan.steps)
     lines.push(`- [${step.status === "executed" ? "x" : " "}] ${step.description} (${step.status})`)
+  lines.push("")
+
+  lines.push("## Context Access")
+  if (proof.execution.file_reads.length === 0) lines.push("No context files recorded.")
+  for (const read of proof.execution.file_reads) {
+    lines.push(
+      `- ${read.path}${read.exists === false ? " (missing)" : ""} — ${read.reason}${
+        read.bytes_read === undefined ? "" : ` (${read.bytes_read} bytes)`
+      }`,
+    )
+  }
   lines.push("")
 
   lines.push("## RunProof Timeline")
