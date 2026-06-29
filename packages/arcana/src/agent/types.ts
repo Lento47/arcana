@@ -49,6 +49,10 @@ export type AgentConfig = {
       command: string,
       options?: { cwd?: string; approved?: boolean },
     ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
+    gateFileMutation(
+      path: string,
+      options?: { operation?: string; approved?: boolean },
+    ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
   }
 }
 

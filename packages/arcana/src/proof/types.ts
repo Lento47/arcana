@@ -26,7 +26,7 @@ export type DiffStatus = "proposed" | "applied" | "rejected"
 export type FileWriteMode = "proposed" | "applied" | "rejected"
 export type ToolRisk = RiskLevel | "unknown"
 export type ExecutionContractStatus = "draft" | "active" | "completed" | "cancelled"
-export type PolicyGateAction = "shell_command"
+export type PolicyGateAction = "shell_command" | "file_mutation"
 export type RunProofEventType =
   | "plan.created"
   | "tool.requested"
@@ -70,7 +70,9 @@ export type RunProofEvent = {
 
 export type PolicyGateDecision = {
   action: PolicyGateAction
-  command: string
+  command?: string
+  path?: string
+  operation?: string
   risk: RiskLevel
   required_approval: boolean
   blocked: boolean

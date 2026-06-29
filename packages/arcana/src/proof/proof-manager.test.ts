@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { normalizeRunProof } from "./compat.js"
 import { createRunProof } from "./create.js"
-import { evaluateShellCommandPolicy, ProofManager } from "./proof-manager.js"
+import { evaluateFileMutationPolicy, evaluateShellCommandPolicy, ProofManager } from "./proof-manager.js"
 import { renderRunProofMarkdown } from "./render.js"
 import { saveRunProof } from "./store.js"
 import type { RunProof } from "./types.js"
@@ -146,6 +146,36 @@ describe("RunProof execution governance", () => {
     expect(manager.proof.events.map((event) => event.type)).toContain("approval.required")
     expect(markdown).toContain("## Policy Gates")
     expect(markdown).toContain("Shell command blocked pending approval")
+  })
+
+  test("gates file mutations before write tools run", () => {
+    const manager = ProofManager.create({
+      user_intent: "Classify file mutation gates",
+      cwd: process.cwd(),
+    })
+
+    const sourceDecision = manager.gateFileMutation("packages/tui/src/app.tsx", { operation: "edit" })
+    const lockfileDecision = manager.gateFileMutation("pnpm-lock.yaml", { operation: "write" })
+    const secretDecision = evaluateFileMutationPolicy(".env.production", { operation: "write" })
+    const approvedDecision = evaluateFileMutationPolicy("packages/arcana/src/auth/session.ts", {
+      operation: "edit",
+      approved: true,
+    })
+    const markdown = manager.renderMarkdown()
+
+    expect(sourceDecision.risk).toBe("medium")
+    expect(sourceDecision.blocked).toBe(false)
+    expect(lockfileDecision.risk).toBe("high")
+    expect(lockfileDecision.required_approval).toBe(true)
+    expect(lockfileDecision.blocked).toBe(true)
+    expect(secretDecision.risk).toBe("critical")
+    expect(secretDecision.blocked).toBe(true)
+    expect(approvedDecision.required_approval).toBe(true)
+    expect(approvedDecision.blocked).toBe(false)
+    expect(manager.proof.risk.required_approval).toBe(true)
+    expect(manager.proof.contract.required_approvals).toContain("file mutation policy gate")
+    expect(manager.proof.events.map((event) => event.type)).toContain("approval.required")
+    expect(markdown).toContain("File mutation blocked pending approval")
   })
 
   test("normalizes legacy RunProof 0.1 records without contract or events", () => {

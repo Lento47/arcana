@@ -104,6 +104,40 @@ export function evaluateShellCommandPolicy(command: string, options: { approved?
   }
 }
 
+export function evaluateFileMutationPolicy(
+  path: string,
+  options: { operation?: string; approved?: boolean } = {},
+): PolicyGateDecision {
+  const normalized = path.replace(/\\/g, "/").toLowerCase()
+  const operation = options.operation ?? "write"
+  let risk: RiskLevel = "medium"
+  const reasons = ["File mutation changes repository state and requires RunProof evidence."]
+
+  if (/(^|\/)\.env(\.|$)|(^|\/)\.npmrc$|(^|\/)\.pypirc$|(^|\/)id_rsa$|secret|credential|private[_-]?key/.test(normalized)) {
+    risk = "critical"
+    reasons.push("Target path appears to contain secrets, credentials, private keys, or environment configuration.")
+  } else if (
+    /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|cargo\.lock|poetry\.lock)$/.test(normalized) ||
+    /(^|\/)(migrations?|database|db)\//.test(normalized) ||
+    /(^|\/)(auth|security|permissions?)\//.test(normalized) ||
+    /(auth|security|permission|middleware|policy)/.test(normalized)
+  ) {
+    risk = "high"
+    reasons.push("Target path touches lockfiles, migrations, auth, security, permissions, or policy-sensitive code.")
+  }
+
+  const requiredApproval = risk === "high" || risk === "critical"
+  return {
+    action: "file_mutation",
+    path,
+    operation,
+    risk,
+    required_approval: requiredApproval,
+    blocked: requiredApproval && !options.approved,
+    reasons,
+  }
+}
+
 export class ProofManager {
   readonly proof: RunProof
   readonly store_target: ProofStoreTarget
@@ -189,6 +223,38 @@ export class ProofManager {
       risk: decision.risk,
       status: decision.blocked ? "awaiting_approval" : this.proof.lifecycle.status,
       refs: { command, cwd: options.cwd ?? this.proof.repo.path },
+      data: {
+        action: decision.action,
+        required_approval: decision.required_approval,
+        blocked: decision.blocked,
+        approved: Boolean(options.approved),
+        reasons: decision.reasons,
+      },
+    })
+    return decision
+  }
+
+  gateFileMutation(path: string, options: { operation?: string; approved?: boolean } = {}): PolicyGateDecision {
+    const decision = evaluateFileMutationPolicy(path, options)
+    this.proof.risk = {
+      ...this.proof.risk,
+      level: maxRisk(this.proof.risk.level, decision.risk),
+      reasons: uniq([...this.proof.risk.reasons, ...decision.reasons]),
+      required_approval: this.proof.risk.required_approval || decision.required_approval,
+    }
+    this.proof.contract.risk_level = maxRisk(this.proof.contract.risk_level, decision.risk)
+    if (decision.required_approval && !this.proof.contract.required_approvals.includes("file mutation policy gate")) {
+      this.proof.contract.required_approvals.push("file mutation policy gate")
+    }
+    this.recordEvent({
+      type: decision.required_approval ? "approval.required" : "risk.evaluated",
+      actor: "system",
+      summary: decision.blocked
+        ? `File mutation blocked pending approval: ${path}`
+        : `File mutation policy evaluated: ${path}`,
+      risk: decision.risk,
+      status: decision.blocked ? "awaiting_approval" : this.proof.lifecycle.status,
+      refs: { path, operation: decision.operation ?? "write" },
       data: {
         action: decision.action,
         required_approval: decision.required_approval,

@@ -41,7 +41,7 @@ function formatReplayRefs(refs: Record<string, string> | undefined): string {
 }
 
 function policyGateEvents(proof: RunProof) {
-  return proof.events.filter((event) => event.data?.action === "shell_command")
+  return proof.events.filter((event) => event.data?.action === "shell_command" || event.data?.action === "file_mutation")
 }
 
 export function renderRunProofTerminal(proof: RunProof): string {

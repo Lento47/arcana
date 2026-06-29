@@ -30,6 +30,11 @@ export type ProofRuntime = {
     risk: string
     reasons: string[]
   }>
+  gateFileMutation(path: string, options?: { operation?: string; approved?: boolean }): Promise<{
+    blocked: boolean
+    risk: string
+    reasons: string[]
+  }>
   recordAgentTurn(input: {
     input_summary: string
     output_summary: string
@@ -183,6 +188,13 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
     async gateShellCommand(command, options = {}) {
       if (!manager) return { blocked: false, risk: "unknown", reasons: [] }
       const decision = manager.gateShellCommand(command, options)
+      await saveSnapshot()
+      return decision
+    },
+
+    async gateFileMutation(path, options = {}) {
+      if (!manager) return { blocked: false, risk: "unknown", reasons: [] }
+      const decision = manager.gateFileMutation(path, options)
       await saveSnapshot()
       return decision
     },
