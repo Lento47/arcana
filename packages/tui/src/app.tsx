@@ -582,6 +582,10 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
       <box gap={0}>
         <text fg={theme.text}>Run: {compactProofId(props.proof.id)}  State: {status()}  Risk: {risk()}</text>
         <text fg={theme.text}>Intent: {props.proof.user_intent ?? "not recorded"}</text>
+        <text fg={props.proof.risk?.required_approval ? theme.warning : theme.textMuted}>
+          Approval: {props.proof.risk?.required_approval ? "required" : "not required"}
+        </text>
+        <FieldList items={props.proof.risk?.reasons} empty="No risk reasons recorded." />
         <text fg={theme.textMuted}>
           Rollback: {props.proof.rollback?.strategy ?? props.proof.contract?.rollback_plan ?? "not recorded"}
           {score() === undefined ? "" : `  Proof: ${score()}/100`}
@@ -667,6 +671,7 @@ function DialogRunProofDiffGate(props: { proof: RunProofView; path: string }) {
           Pending: {pending()}  Applied: {applied()}  Rejected: {rejected()}
         </text>
         <text fg={theme.text}>Risk: {risk()}  Approval: {approval()}</text>
+        <FieldList items={props.proof.risk?.reasons} empty="No risk reasons recorded." />
         <text fg={theme.textMuted}>
           Rollback: {props.proof.rollback?.restore_command ?? props.proof.contract?.rollback_plan ?? "not recorded"}
         </text>
