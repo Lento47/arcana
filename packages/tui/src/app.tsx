@@ -182,6 +182,15 @@ type RunProofFinalEvidenceView = {
   human_review_recommended?: boolean
 }
 
+type RunProofDiffView = {
+  id?: string
+  path?: string
+  status?: string
+  additions?: number
+  deletions?: number
+  summary?: string
+}
+
 type RunProofView = {
   id?: string
   user_intent?: string
@@ -192,6 +201,11 @@ type RunProofView = {
   risk?: RunProofRiskView
   rollback?: RunProofRollbackView
   final_evidence?: RunProofFinalEvidenceView
+  diffs?: {
+    proposed: RunProofDiffView[]
+    applied: RunProofDiffView[]
+    rejected: RunProofDiffView[]
+  }
 }
 
 type ProofLoadResult =
@@ -219,6 +233,25 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
 }
 
+function normalizeDiffs(value: unknown): RunProofDiffView[] {
+  return Array.isArray(value)
+    ? value.flatMap((item): RunProofDiffView[] => {
+        const diff = asRecord(item)
+        if (!diff) return []
+        return [
+          {
+            id: proofString(diff.id),
+            path: proofString(diff.path),
+            status: proofString(diff.status),
+            additions: proofNumber(diff.additions),
+            deletions: proofNumber(diff.deletions),
+            summary: proofString(diff.summary),
+          },
+        ]
+      })
+    : []
+}
+
 function normalizeProofView(value: unknown): RunProofView {
   const proof = asRecord(value) ?? {}
   const contract = asRecord(proof.contract)
@@ -226,6 +259,7 @@ function normalizeProofView(value: unknown): RunProofView {
   const risk = asRecord(proof.risk)
   const rollback = asRecord(proof.rollback)
   const finalEvidence = asRecord(proof.final_evidence)
+  const diffs = asRecord(proof.diffs)
   const events = Array.isArray(proof.events) ? proof.events : []
   return {
     id: proofString(proof.id),
@@ -274,6 +308,11 @@ function normalizeProofView(value: unknown): RunProofView {
           human_review_recommended: proofBoolean(finalEvidence.human_review_recommended),
         }
       : undefined,
+    diffs: {
+      proposed: normalizeDiffs(diffs?.proposed),
+      applied: normalizeDiffs(diffs?.applied),
+      rejected: normalizeDiffs(diffs?.rejected),
+    },
     events: events.flatMap((item): RunProofEventView[] => {
       const event = asRecord(item)
       if (!event) return []
@@ -437,6 +476,66 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
           )}
         </For>
       </Show>
+    </box>
+  )
+}
+
+function DiffList(props: { title: string; diffs: RunProofDiffView[]; empty: string }) {
+  const { theme } = useTheme()
+  return (
+    <box gap={0}>
+      <text fg={theme.text}>{props.title}</text>
+      <Show when={props.diffs.length > 0} fallback={<text fg={theme.textMuted}>{props.empty}</text>}>
+        <For each={props.diffs}>
+          {(diff) => (
+            <box gap={0}>
+              <text fg={theme.text}>
+                {diff.path ?? "unknown path"}  +{diff.additions ?? 0} -{diff.deletions ?? 0}
+              </text>
+              <text fg={theme.textMuted}>{diff.summary ?? diff.id ?? "No diff summary recorded."}</text>
+            </box>
+          )}
+        </For>
+      </Show>
+    </box>
+  )
+}
+
+function DialogRunProofDiffGate(props: { proof: RunProofView; path: string }) {
+  const { theme } = useTheme()
+  const dialog = useDialog()
+  const diffs = () => props.proof.diffs ?? { proposed: [], applied: [], rejected: [] }
+  const pending = () => diffs().proposed.length
+  const applied = () => diffs().applied.length
+  const rejected = () => diffs().rejected.length
+  const risk = () => props.proof.risk?.level ?? props.proof.contract?.risk_level ?? "unknown"
+  const approval = () =>
+    props.proof.risk?.required_approval || (props.proof.contract?.required_approvals?.length ?? 0) > 0
+      ? "required"
+      : "not required"
+  return (
+    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
+      <box flexDirection="row" justifyContent="space-between">
+        <text fg={theme.text}>
+          <b>Diff Gate</b>
+        </text>
+        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+          esc
+        </text>
+      </box>
+      <text fg={theme.textMuted}>{props.path}</text>
+      <box gap={0}>
+        <text fg={theme.text}>
+          Pending: {pending()}  Applied: {applied()}  Rejected: {rejected()}
+        </text>
+        <text fg={theme.text}>Risk: {risk()}  Approval: {approval()}</text>
+        <text fg={theme.textMuted}>
+          Rollback: {props.proof.rollback?.restore_command ?? props.proof.contract?.rollback_plan ?? "not recorded"}
+        </text>
+      </box>
+      <DiffList title="Proposed diffs" diffs={diffs().proposed} empty="No proposed diffs." />
+      <DiffList title="Applied diffs" diffs={diffs().applied} empty="No applied diffs." />
+      <DiffList title="Rejected diffs" diffs={diffs().rejected} empty="No rejected diffs." />
     </box>
   )
 }
@@ -920,19 +1019,17 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (workspace?.type !== "worktree" || !workspace.directory) return
     return workspace
   })
-  async function showRunProofSurface(kind: "contract" | "actions") {
+  async function showRunProofSurface(kind: "contract" | "actions" | "diffgate") {
     const result = await loadActiveRunProof()
     if (result.status !== "ready") {
       dialog.replace(() => <DialogRunProofMissing result={result} />)
       return
     }
-    dialog.replace(() =>
-      kind === "contract" ? (
-        <DialogRunProofContract proof={result.proof} path={result.path} />
-      ) : (
-        <DialogRunProofActions proof={result.proof} path={result.path} />
-      ),
-    )
+    dialog.replace(() => {
+      if (kind === "contract") return <DialogRunProofContract proof={result.proof} path={result.path} />
+      if (kind === "diffgate") return <DialogRunProofDiffGate proof={result.proof} path={result.path} />
+      return <DialogRunProofActions proof={result.proof} path={result.path} />
+    })
     dialog.setSize("xlarge")
   }
 
@@ -1022,7 +1119,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         title: "Show diff gate state",
         desc: "Show verification gate state",
         category: "Arcana",
-        run: () => showUnwiredArcanaCommand("Show diff gate state"),
+        run: () => void showRunProofSurface("diffgate").catch(toast.error),
       },
       {
         name: "arcana.verify",
