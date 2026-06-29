@@ -233,6 +233,14 @@ type RunProofSovereigntyView = {
   summary?: string
 }
 
+type RunProofTokenUsageView = {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  tool_calls: number
+  turns: number
+}
+
 type RunProofView = {
   id?: string
   user_intent?: string
@@ -250,6 +258,7 @@ type RunProofView = {
   }
   verification?: RunProofVerificationView
   sovereignty?: RunProofSovereigntyView
+  token_usage?: RunProofTokenUsageView
 }
 
 type ProofLoadResult =
@@ -419,6 +428,7 @@ function normalizeProofView(value: unknown): RunProofView {
         : undefined,
     },
     sovereignty: sovereigntyFromEvents(normalizedEvents),
+    token_usage: tokenUsageFromEvents(normalizedEvents),
     events: normalizedEvents,
   }
 }
@@ -436,6 +446,24 @@ function sovereigntyFromEvents(events: RunProofEventView[]): RunProofSovereignty
     timestamp: event.timestamp,
     summary: event.summary,
   }
+}
+
+function tokenUsageFromEvents(events: RunProofEventView[]): RunProofTokenUsageView | undefined {
+  const usage = events.filter((item) => item.type === "token.used")
+  if (usage.length === 0) return undefined
+
+  return usage.reduce<RunProofTokenUsageView>(
+    (total, event) => {
+      const data = event.data ?? {}
+      total.input_tokens += proofNumber(data.input_tokens) ?? 0
+      total.output_tokens += proofNumber(data.output_tokens) ?? 0
+      total.total_tokens += proofNumber(data.total_tokens) ?? 0
+      total.tool_calls += proofNumber(data.tool_calls) ?? 0
+      total.turns += 1
+      return total
+    },
+    { input_tokens: 0, output_tokens: 0, total_tokens: 0, tool_calls: 0, turns: 0 },
+  )
 }
 
 function activeProofPath(): string | undefined {
@@ -539,6 +567,7 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
   const status = () => props.proof.lifecycle?.status ?? props.proof.contract?.status ?? "unknown"
   const risk = () => props.proof.risk?.level ?? props.proof.contract?.risk_level ?? "unknown"
   const score = () => props.proof.final_evidence?.proof_score
+  const tokens = () => props.proof.token_usage
   return (
     <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
       <box flexDirection="row" justifyContent="space-between">
@@ -557,6 +586,13 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
           Rollback: {props.proof.rollback?.strategy ?? props.proof.contract?.rollback_plan ?? "not recorded"}
           {score() === undefined ? "" : `  Proof: ${score()}/100`}
         </text>
+        <Show when={tokens()}>
+          {(value) => (
+            <text fg={theme.textMuted}>
+              Tokens: {value().total_tokens.toLocaleString()} total  {value().input_tokens.toLocaleString()} in  {value().output_tokens.toLocaleString()} out  Tool calls: {value().tool_calls}
+            </text>
+          )}
+        </Show>
       </box>
       <Show when={events().length > 0} fallback={<text fg={theme.warning}>No RunProof events recorded.</text>}>
         <For each={events()}>
