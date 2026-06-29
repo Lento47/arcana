@@ -26,6 +26,20 @@ const line = (label: string, value: string | number | boolean | undefined) => {
 
 const compactId = (id: string) => id.replace(/^rp_/, "").slice(0, 8)
 
+function formatReplayTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toISOString()
+}
+
+function formatReplayRefs(refs: Record<string, string> | undefined): string {
+  if (!refs || Object.keys(refs).length === 0) return ""
+  return ` refs=${Object.entries(refs)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${key}:${value}`)
+    .join(",")}`
+}
+
 export function renderRunProofTerminal(proof: RunProof): string {
   proof = normalizeRunProof(proof)
   const out: string[] = []
@@ -205,6 +219,63 @@ export function renderRunProofMarkdown(proof: RunProof): string {
   lines.push(`- Summary: ${proof.final_evidence.summary}`)
   lines.push(`- Proof score: ${proof.final_evidence.proof_score}/100`)
   lines.push(`- Human review recommended: ${proof.final_evidence.human_review_recommended}`)
+
+  return `${lines.join("\n")}\n`
+}
+
+export function renderRunProofReplayLog(proof: RunProof): string {
+  proof = normalizeRunProof(proof)
+  const lines: string[] = []
+  lines.push(`ARCANA RUNPROOF REPLAY ${proof.id}`)
+  lines.push(`intent=${proof.user_intent}`)
+  lines.push(`status=${proof.lifecycle.status}`)
+  lines.push(`risk=${proof.risk.level}`)
+  if (proof.repo.branch || proof.repo.commit) {
+    lines.push(`repo=${proof.repo.branch ?? "unknown"}@${proof.repo.commit ?? "unknown"}`)
+  }
+  lines.push("")
+
+  const timeline = [
+    ...proof.events.map((event) => ({
+      timestamp: event.timestamp,
+      label: event.type,
+      actor: event.actor,
+      summary: event.summary,
+      detail: [
+        event.risk ? `risk=${event.risk}` : undefined,
+        event.status ? `status=${event.status}` : undefined,
+        formatReplayRefs(event.refs),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    })),
+    ...proof.command_history.map((command) => ({
+      timestamp: command.timestamp,
+      label: "command.reflected",
+      actor: command.source,
+      summary: command.command,
+      detail: `state=${command.state_before}->${command.state_after} reversible=${command.reversible}`,
+    })),
+  ].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+
+  if (timeline.length === 0) {
+    lines.push("NO_EVENTS")
+  } else {
+    for (const entry of timeline) {
+      lines.push(
+        `${formatReplayTime(entry.timestamp)} ${entry.label} actor=${entry.actor} ${entry.summary}${
+          entry.detail ? ` ${entry.detail}` : ""
+        }`,
+      )
+    }
+  }
+
+  lines.push("")
+  lines.push(`rollback.strategy=${proof.rollback.strategy}`)
+  lines.push(`rollback.checkpoint=${proof.rollback.checkpoint_id}`)
+  if (proof.rollback.restore_command) lines.push(`rollback.restore=${proof.rollback.restore_command}`)
+  lines.push(`proof.score=${proof.final_evidence.proof_score}`)
+  lines.push(`human_review_recommended=${proof.final_evidence.human_review_recommended}`)
 
   return `${lines.join("\n")}\n`
 }

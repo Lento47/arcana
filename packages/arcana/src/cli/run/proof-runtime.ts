@@ -103,6 +103,7 @@ async function saveAndPrint(manager: ProofManager): Promise<StoredRunProof> {
   process.stderr.write(`\n${manager.renderTerminal()}\n`)
   process.stderr.write(`\nProof JSON: ${stored.json_path}\n`)
   if (stored.markdown_path) process.stderr.write(`Proof Markdown: ${stored.markdown_path}\n`)
+  process.stderr.write(`Proof Replay: ${stored.replay_path}\n`)
   return stored
 }
 

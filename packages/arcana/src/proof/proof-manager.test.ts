@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtemp, readFile } from "node:fs/promises"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
 import { normalizeRunProof } from "./compat.js"
 import { createRunProof } from "./create.js"
 import { ProofManager } from "./proof-manager.js"
 import { renderRunProofMarkdown } from "./render.js"
+import { saveRunProof } from "./store.js"
 import type { RunProof } from "./types.js"
 
 describe("RunProof execution governance", () => {
@@ -84,6 +88,39 @@ describe("RunProof execution governance", () => {
     expect(manager.proof.final_evidence.commands_run).toContain(
       "bun test packages/arcana/src/proof/proof-manager.test.ts",
     )
+  })
+
+  test("saves a deterministic replay log next to proof artifacts", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "arcana-runproof-replay-"))
+    const manager = ProofManager.create({
+      user_intent: "Replay a governed agent run",
+      cwd: dir,
+      command: "arcana run --proof replay",
+    })
+
+    manager.updateRisk({
+      level: "medium",
+      reasons: ["Replay log should preserve execution order."],
+      required_approval: false,
+    })
+    manager.recordShellCommand({
+      command: "bun test",
+      cwd: dir,
+      status: "passed",
+      risk: "low",
+      exit_code: 0,
+    })
+
+    const stored = await saveRunProof(manager.proof, { cwd: dir, markdown: manager.renderMarkdown() })
+    const replay = await readFile(stored.replay_path, "utf8")
+
+    expect(stored.replay_path.endsWith(".replay.log")).toBe(true)
+    expect(replay).toContain(`ARCANA RUNPROOF REPLAY ${manager.proof.id}`)
+    expect(replay).toContain("plan.created")
+    expect(replay).toContain("risk.evaluated")
+    expect(replay).toContain("command.executed")
+    expect(replay).toContain("command.reflected")
+    expect(replay).toContain("rollback.strategy=none")
   })
 
   test("normalizes legacy RunProof 0.1 records without contract or events", () => {
