@@ -496,10 +496,23 @@ function FieldList(props: { items: string[] | undefined; empty: string }) {
   )
 }
 
+function rollbackSummary(proof: RunProofView): string {
+  const rollback = proof.rollback
+  if (rollback?.strategy && rollback.strategy !== "none") {
+    return [rollback.strategy, rollback.checkpoint_id].filter(Boolean).join("  ")
+  }
+  return proof.contract?.rollback_plan ?? "not recorded"
+}
+
+function rollbackRestoreCommand(proof: RunProofView): string {
+  return proof.rollback?.restore_command ?? proof.contract?.rollback_plan ?? "not recorded"
+}
+
 function DialogRunProofContract(props: { proof: RunProofView; path: string }) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const contract = () => props.proof.contract
+  const rollback = () => props.proof.rollback
   return (
     <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
       <box flexDirection="row" justifyContent="space-between">
@@ -527,6 +540,12 @@ function DialogRunProofContract(props: { proof: RunProofView; path: string }) {
             <text fg={theme.text}>Expected artifacts</text>
             <FieldList items={value().expected_artifacts} empty="No expected artifacts recorded." />
             <text fg={theme.text}>Rollback plan: {value().rollback_plan ?? "not recorded"}</text>
+            <Show when={rollback()?.strategy && rollback()?.strategy !== "none"}>
+              <box gap={0}>
+                <text fg={theme.text}>Rollback checkpoint: {rollbackSummary(props.proof)}</text>
+                <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
+              </box>
+            </Show>
             <text fg={theme.text}>Verification steps</text>
             <FieldList items={value().verification_steps} empty="No verification steps recorded." />
           </box>
@@ -587,9 +606,12 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
         </text>
         <FieldList items={props.proof.risk?.reasons} empty="No risk reasons recorded." />
         <text fg={theme.textMuted}>
-          Rollback: {props.proof.rollback?.strategy ?? props.proof.contract?.rollback_plan ?? "not recorded"}
+          Rollback: {rollbackSummary(props.proof)}
           {score() === undefined ? "" : `  Proof: ${score()}/100`}
         </text>
+        <Show when={props.proof.rollback?.restore_command}>
+          <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
+        </Show>
         <Show when={tokens()}>
           {(value) => (
             <text fg={theme.textMuted}>
@@ -672,9 +694,8 @@ function DialogRunProofDiffGate(props: { proof: RunProofView; path: string }) {
         </text>
         <text fg={theme.text}>Risk: {risk()}  Approval: {approval()}</text>
         <FieldList items={props.proof.risk?.reasons} empty="No risk reasons recorded." />
-        <text fg={theme.textMuted}>
-          Rollback: {props.proof.rollback?.restore_command ?? props.proof.contract?.rollback_plan ?? "not recorded"}
-        </text>
+        <text fg={theme.textMuted}>Rollback: {rollbackSummary(props.proof)}</text>
+        <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
       </box>
       <DiffList title="Proposed diffs" diffs={diffs().proposed} empty="No proposed diffs." />
       <DiffList title="Applied diffs" diffs={diffs().applied} empty="No applied diffs." />
