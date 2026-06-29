@@ -187,6 +187,57 @@ export class AgentRunner {
     ].join("\n")
   }
 
+  private async recordRunProofContextAccess(
+    toolName: string,
+    input: Record<string, unknown>,
+    result: string,
+  ): Promise<void> {
+    if (!this.config.proofGate) return
+
+    if (toolName === "read") {
+      const path = input.filePath
+      if (typeof path !== "string" || !path.trim()) return
+      const exists = !result.startsWith("File not found:")
+      await this.config.proofGate.recordContextAccess({
+        tool: "read",
+        path,
+        summary: exists ? `Read file context: ${path}` : `Attempted to read missing file: ${path}`,
+        exists,
+        bytes_read: exists ? result.length : undefined,
+      })
+      return
+    }
+
+    if (toolName === "grep") {
+      const pattern = typeof input.pattern === "string" ? input.pattern : undefined
+      const path = typeof input.path === "string" ? input.path : process.cwd()
+      const noMatches = result.startsWith("No matches for")
+      await this.config.proofGate.recordContextAccess({
+        tool: "grep",
+        path,
+        pattern,
+        summary: noMatches ? `Searched context with no matches: ${pattern ?? ""}` : `Searched context: ${pattern ?? ""}`,
+        exists: true,
+        result_count: noMatches ? 0 : result.split("\n").filter((line) => line && !line.startsWith("...")).length,
+      })
+      return
+    }
+
+    if (toolName === "glob") {
+      const pattern = typeof input.pattern === "string" ? input.pattern : undefined
+      const path = typeof input.path === "string" ? input.path : process.cwd()
+      const noMatches = result.startsWith("No files matching")
+      await this.config.proofGate.recordContextAccess({
+        tool: "glob",
+        path,
+        pattern,
+        summary: noMatches ? `Scanned context with no file matches: ${pattern ?? ""}` : `Scanned context files: ${pattern ?? ""}`,
+        exists: true,
+        result_count: noMatches ? 0 : result.split("\n").filter((line) => line.trim()).length,
+      })
+    }
+  }
+
   async run(
     messages: ChatMessage[],
     onChunk?: (text: string) => void,
@@ -419,6 +470,7 @@ export class AgentRunner {
               toolResultCache.delete(cacheKey)
               toolResultCache.set(cacheKey, cached)
               resultStr = cached.result
+              await this.recordRunProofContextAccess(tc.toolName, tc.input as Record<string, unknown>, resultStr)
               history.push({ role: "tool", tool_call_id: tc.toolCallId, content: resultStr, toolName: tc.toolName } as any)
               continue
             }
@@ -459,6 +511,7 @@ export class AgentRunner {
                   }
                   try {
                     const result = await batchEntry.handler(batchCall.args)
+                    await this.recordRunProofContextAccess(batchCall.tool, batchCall.args ?? {}, result)
                     return `"${batchCall.tool}": ${result.slice(0, 500)}`
                   } catch (e) {
                     return `"${batchCall.tool}": error - ${String(e)}`
@@ -480,6 +533,7 @@ export class AgentRunner {
                 setTimeout(() => reject(new Error(`Tool timed out after ${timeout}ms`)), timeout),
               ),
             ])
+            await this.recordRunProofContextAccess(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             resultStr = this.config.godlike ? resultStr : redactSecrets(resultStr)
             if (cacheable) {
               toolResultCache.set(cacheKey, { result: resultStr, ts: Date.now() })

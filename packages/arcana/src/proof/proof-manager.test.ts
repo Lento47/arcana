@@ -178,6 +178,36 @@ describe("RunProof execution governance", () => {
     expect(markdown).toContain("File mutation blocked pending approval")
   })
 
+  test("records context access as proof evidence", () => {
+    const manager = ProofManager.create({
+      user_intent: "Track context accessed by the agent",
+      cwd: process.cwd(),
+    })
+
+    manager.recordContextAccess({
+      tool: "read",
+      path: "packages/arcana/src/proof/types.ts",
+      summary: "Read file context: packages/arcana/src/proof/types.ts",
+      exists: true,
+      bytes_read: 1200,
+    })
+    manager.recordContextAccess({
+      tool: "grep",
+      path: "packages/arcana/src",
+      pattern: "RunProof",
+      summary: "Searched context: RunProof",
+      exists: true,
+      result_count: 7,
+    })
+    const markdown = manager.renderMarkdown()
+
+    expect(manager.proof.execution.file_reads).toHaveLength(2)
+    expect(manager.proof.events.map((event) => event.type)).toContain("context.accessed")
+    expect(manager.proof.events.find((event) => event.type === "context.accessed")?.refs?.tool).toBe("read")
+    expect(markdown).toContain("## Context Access")
+    expect(markdown).toContain("packages/arcana/src/proof/types.ts")
+  })
+
   test("normalizes legacy RunProof 0.1 records without contract or events", () => {
     const legacyProof = {
       id: "rp_legacy",

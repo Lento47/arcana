@@ -29,6 +29,7 @@ export type ExecutionContractStatus = "draft" | "active" | "completed" | "cancel
 export type PolicyGateAction = "shell_command" | "file_mutation"
 export type RunProofEventType =
   | "plan.created"
+  | "context.accessed"
   | "tool.requested"
   | "risk.evaluated"
   | "approval.required"
@@ -77,6 +78,16 @@ export type PolicyGateDecision = {
   required_approval: boolean
   blocked: boolean
   reasons: string[]
+}
+
+export type ContextAccessRecord = {
+  tool: "read" | "grep" | "glob"
+  path?: string
+  pattern?: string
+  summary: string
+  exists?: boolean
+  bytes_read?: number
+  result_count?: number
 }
 
 export type RepoSnapshot = {

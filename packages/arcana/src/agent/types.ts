@@ -53,6 +53,15 @@ export type AgentConfig = {
       path: string,
       options?: { operation?: string; approved?: boolean },
     ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
+    recordContextAccess(input: {
+      tool: "read" | "grep" | "glob"
+      path?: string
+      pattern?: string
+      summary: string
+      exists?: boolean
+      bytes_read?: number
+      result_count?: number
+    }): Promise<void>
   }
 }
 

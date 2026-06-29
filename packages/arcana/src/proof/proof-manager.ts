@@ -7,6 +7,7 @@ import { saveRunProof, type ProofStoreTarget, type StoredRunProof } from "./stor
 import type {
   CheckResult,
   CommandSource,
+  ContextAccessRecord,
   DiagnosticResult,
   DiffRecord,
   FileAccessRecord,
@@ -45,6 +46,7 @@ export type FileWriteInput = Omit<FileWriteRecord, "id" | "timestamp">
 export type ToolCallInput = Omit<ToolCallRecord, "id" | "timestamp">
 export type MCPCallInput = Omit<MCPCallRecord, "id" | "timestamp">
 export type ShellCommandInput = Omit<ShellCommandRecord, "id" | "timestamp">
+export type ContextAccessInput = ContextAccessRecord
 
 const riskRank: Record<RiskLevel, number> = {
   low: 0,
@@ -367,6 +369,37 @@ export class ProofManager {
     const read = { id: id("read"), timestamp: now(), ...input }
     this.proof.execution.file_reads.push(read)
     return read
+  }
+
+  recordContextAccess(input: ContextAccessInput): RunProofEvent {
+    if (input.path) {
+      this.proof.execution.file_reads.push({
+        id: id("read"),
+        path: input.path,
+        timestamp: now(),
+        reason: input.summary,
+        exists: input.exists,
+        bytes_read: input.bytes_read,
+      })
+    }
+
+    const refs: Record<string, string> = { tool: input.tool }
+    if (input.path) refs.path = input.path
+    if (input.pattern) refs.pattern = input.pattern
+
+    return this.recordEvent({
+      type: "context.accessed",
+      actor: "agent",
+      summary: input.summary,
+      status: this.proof.lifecycle.status,
+      refs,
+      data: {
+        tool: input.tool,
+        exists: input.exists,
+        bytes_read: input.bytes_read,
+        result_count: input.result_count,
+      },
+    })
   }
 
   recordFileWrite(input: FileWriteInput): FileWriteRecord {
