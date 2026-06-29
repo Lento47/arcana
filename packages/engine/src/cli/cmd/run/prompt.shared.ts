@@ -68,25 +68,6 @@ export function parseMlCommand(input: string): MlCommandAction | undefined {
   return "toggle"
 }
 
-const COCKPIT_COMMANDS = new Set([
-  "actions", "compat", "contract", "diffgate", "mission", "proof", "risk", "rollback", "sovereignty", "tokens", "verify",
-])
-
-export function isCockpitCommand(input: string): boolean {
-  const text = input.trim().toLowerCase()
-  const stripped = text.startsWith("/") ? text.slice(1) : text
-  const [command] = stripped.split(/\s+/)
-  return COCKPIT_COMMANDS.has(command!)
-}
-
-export function parseCockpitCommand(input: string): { command: string; args: string } | undefined {
-  const text = input.trim()
-  const stripped = text.startsWith("/") ? text.slice(1) : text
-  const [command, ...rest] = stripped.split(/\s+/)
-  if (!command || !COCKPIT_COMMANDS.has(command.toLowerCase())) return undefined
-  return { command: command.toLowerCase(), args: rest.join(" ").trim() }
-}
-
 export function createPromptHistory(items?: RunPrompt[]): PromptHistoryState {
   const list = (items ?? []).filter((item) => item.text.trim().length > 0).map(promptCopy)
   const next: RunPrompt[] = []
