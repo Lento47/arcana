@@ -1,7 +1,6 @@
 import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
-import { readdir, readFile, stat } from "node:fs/promises"
-import { join } from "node:path"
+import { readFile } from "node:fs/promises"
 import { Deferred, Effect } from "effect"
 import { Global } from "@arcana/core/global"
 import { Flag } from "@arcana/core/flag/flag"
@@ -168,7 +167,7 @@ type RunProofView = {
 
 type ProofLoadResult =
   | { status: "ready"; proof: RunProofView; path: string }
-  | { status: "empty"; directory: string }
+  | { status: "unbound" }
   | { status: "error"; message: string }
 
 function asStringArray(value: unknown): string[] {
@@ -228,31 +227,24 @@ function normalizeProofView(value: unknown): RunProofView {
   }
 }
 
-async function loadLatestRunProof(directory: string): Promise<ProofLoadResult> {
-  const proofDir = join(directory, ".arcana", "proofs")
+function activeProofPath(): string | undefined {
+  const value = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+  return typeof value === "string" && value.trim() ? value : undefined
+}
+
+async function loadActiveRunProof(): Promise<ProofLoadResult> {
+  const path = activeProofPath()
+  if (!path) return { status: "unbound" }
+
   try {
-    const files = await readdir(proofDir)
-    const candidates = await Promise.all(
-      files
-        .filter((file) => file.endsWith(".json"))
-        .map(async (file) => {
-          const path = join(proofDir, file)
-          const info = await stat(path)
-          return { path, mtime: info.mtimeMs }
-        }),
-    )
-    const latest = candidates.toSorted((a, b) => b.mtime - a.mtime)[0]
-    if (!latest) return { status: "empty", directory: proofDir }
     return {
       status: "ready",
-      proof: normalizeProofView(JSON.parse(await readFile(latest.path, "utf8"))),
-      path: latest.path,
+      proof: normalizeProofView(JSON.parse(await readFile(path, "utf8"))),
+      path,
     }
   } catch (error) {
-    const code =
-      typeof error === "object" && error !== null && "code" in error ? (error as { code?: unknown }).code : undefined
-    if (code === "ENOENT") return { status: "empty", directory: proofDir }
-    return { status: "error", message: error instanceof Error ? error.message : String(error) }
+    const detail = error instanceof Error ? error.message : String(error)
+    return { status: "error", message: `Failed to read active RunProof at ${path}: ${detail}` }
   }
 }
 
@@ -352,7 +344,7 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
   )
 }
 
-function DialogRunProofMissing(props: { result: Extract<ProofLoadResult, { status: "empty" | "error" }> }) {
+function DialogRunProofMissing(props: { result: Extract<ProofLoadResult, { status: "unbound" | "error" }> }) {
   const { theme } = useTheme()
   const dialog = useDialog()
   return (
@@ -366,14 +358,14 @@ function DialogRunProofMissing(props: { result: Extract<ProofLoadResult, { statu
         </text>
       </box>
       <Show
-        when={props.result.status === "empty" ? props.result : undefined}
+        when={props.result.status === "unbound" ? props.result : undefined}
         fallback={
           <text fg={theme.error}>
             Failed to read RunProof: {props.result.status === "error" ? props.result.message : "unknown error"}
           </text>
         }
       >
-        {(result) => <text fg={theme.warning}>No RunProof JSON found in {result().directory}</text>}
+        <text fg={theme.warning}>No active RunProof is bound to this TUI session</text>
       </Show>
     </box>
   )
@@ -832,8 +824,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     return workspace
   })
   async function showRunProofSurface(kind: "contract" | "actions") {
-    const directory = project.instance.directory()
-    const result = await loadLatestRunProof(directory)
+    const result = await loadActiveRunProof()
     if (result.status !== "ready") {
       dialog.replace(() => <DialogRunProofMissing result={result} />)
       return
