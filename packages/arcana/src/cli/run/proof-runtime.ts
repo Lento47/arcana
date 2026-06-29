@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
 // Copyright (c) 2026 arcana contributors
 
-import { ProofManager, type RunProofStatus } from "../../proof/index.js"
+import { ProofManager, type RunProofStatus, type StoredRunProof } from "../../proof/index.js"
 
 export type ProofRuntimeOptions = {
   enabled: boolean
@@ -13,15 +13,16 @@ export type ProofRuntimeOptions = {
 export type ProofRuntime = {
   manager?: ProofManager
   enabled: boolean
-  recordUserCommand(command: string, summary?: string): void
-  recordSystemTransition(status: RunProofStatus, summary?: string): void
+  activeProofPath(): string | undefined
+  recordUserCommand(command: string, summary?: string): Promise<void>
+  recordSystemTransition(status: RunProofStatus, summary?: string): Promise<void>
   recordAgentTurn(input: {
     input_summary: string
     output_summary: string
     tool_calls?: number
     input_tokens?: number
     output_tokens?: number
-  }): void
+  }): Promise<void>
   finalizeCompleted(summary: string, proof_score?: number): Promise<void>
   finalizeFailed(error: unknown): Promise<void>
 }
@@ -30,14 +31,15 @@ function commandForPrompt(prompt: string | undefined): string {
   return prompt ? `arcana run --proof ${JSON.stringify(prompt)}` : "arcana run --proof"
 }
 
-async function saveAndPrint(manager: ProofManager): Promise<void> {
+async function saveAndPrint(manager: ProofManager): Promise<StoredRunProof> {
   const stored = await manager.save()
   process.stderr.write(`\n${manager.renderTerminal()}\n`)
   process.stderr.write(`\nProof JSON: ${stored.json_path}\n`)
   if (stored.markdown_path) process.stderr.write(`Proof Markdown: ${stored.markdown_path}\n`)
+  return stored
 }
 
-export function createProofRuntime(options: ProofRuntimeOptions): ProofRuntime {
+export async function createProofRuntime(options: ProofRuntimeOptions): Promise<ProofRuntime> {
   const manager = options.enabled
     ? ProofManager.create({
         user_intent: options.prompt ?? "Interactive Arcana session",
@@ -45,16 +47,26 @@ export function createProofRuntime(options: ProofRuntimeOptions): ProofRuntime {
         cwd: options.cwd,
       })
     : undefined
+  let activePath: string | undefined
 
   if (manager) {
     manager.transitionState("planning", "Proof capture initialized; command execution entering planning state.")
   }
 
+  async function saveSnapshot(): Promise<void> {
+    if (!manager) return
+    const stored = await manager.save()
+    activePath = stored.json_path
+    process.env.ARCANA_ACTIVE_RUNPROOF_PATH = activePath
+  }
+  await saveSnapshot()
+
   return {
     manager,
     enabled: Boolean(manager),
+    activeProofPath: () => activePath,
 
-    recordUserCommand(command, summary = "User command accepted.") {
+    async recordUserCommand(command, summary = "User command accepted.") {
       if (!manager) return
       manager.recordCommand({
         command,
@@ -65,13 +77,16 @@ export function createProofRuntime(options: ProofRuntimeOptions): ProofRuntime {
         reversible: false,
         result_summary: summary,
       })
+      await saveSnapshot()
     },
 
-    recordSystemTransition(status, summary) {
-      manager?.transitionState(status, summary)
+    async recordSystemTransition(status, summary) {
+      if (!manager) return
+      manager.transitionState(status, summary)
+      await saveSnapshot()
     },
 
-    recordAgentTurn(input) {
+    async recordAgentTurn(input) {
       if (!manager) return
       manager.recordToolCall({
         name: "agent.run_turn",
@@ -89,6 +104,7 @@ export function createProofRuntime(options: ProofRuntimeOptions): ProofRuntime {
         reversible: false,
         result_summary: `${input.tool_calls ?? 0} tool call(s), ${input.input_tokens ?? 0} input tokens, ${input.output_tokens ?? 0} output tokens.`,
       })
+      await saveSnapshot()
     },
 
     async finalizeCompleted(summary, proof_score = 25) {
@@ -111,7 +127,9 @@ export function createProofRuntime(options: ProofRuntimeOptions): ProofRuntime {
           commands_run: manager.proof.command_history.map((entry) => entry.command),
         },
       })
-      await saveAndPrint(manager)
+      const stored = await saveAndPrint(manager)
+      activePath = stored.json_path
+      process.env.ARCANA_ACTIVE_RUNPROOF_PATH = activePath
     },
 
     async finalizeFailed(error) {
@@ -135,7 +153,9 @@ export function createProofRuntime(options: ProofRuntimeOptions): ProofRuntime {
           commands_run: manager.proof.command_history.map((entry) => entry.command),
         },
       })
-      await saveAndPrint(manager)
+      const stored = await saveAndPrint(manager)
+      activePath = stored.json_path
+      process.env.ARCANA_ACTIVE_RUNPROOF_PATH = activePath
     },
   }
 }
