@@ -14,7 +14,9 @@ import type {
   FinalEvidence,
   MCPCallRecord,
   ManualCheck,
+  PolicyGateDecision,
   RiskBlock,
+  RiskLevel,
   RollbackBlock,
   RunProof,
   RunProofEvent,
@@ -44,6 +46,13 @@ export type ToolCallInput = Omit<ToolCallRecord, "id" | "timestamp">
 export type MCPCallInput = Omit<MCPCallRecord, "id" | "timestamp">
 export type ShellCommandInput = Omit<ShellCommandRecord, "id" | "timestamp">
 
+const riskRank: Record<RiskLevel, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+  critical: 3,
+}
+
 function id(prefix: string): string {
   return `${prefix}_${crypto.randomUUID()}`
 }
@@ -55,6 +64,44 @@ function now(): string {
 function clampProofScore(score: number): number {
   if (!Number.isFinite(score)) return 0
   return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+function maxRisk(a: RiskLevel, b: RiskLevel): RiskLevel {
+  return riskRank[a] >= riskRank[b] ? a : b
+}
+
+function uniq(items: string[]): string[] {
+  return [...new Set(items)]
+}
+
+export function evaluateShellCommandPolicy(command: string, options: { approved?: boolean } = {}): PolicyGateDecision {
+  const normalized = command.toLowerCase()
+  let risk: RiskLevel = "medium"
+  const reasons = ["Shell command execution can mutate repository or machine state."]
+
+  if (/\b(rm\s+-rf|del\s+\/[fsq]|remove-item\b.*\b-recurse\b|git\s+reset\s+--hard|git\s+clean\s+-fd|drop\s+database|terraform\s+destroy)\b/.test(normalized)) {
+    risk = "critical"
+    reasons.push("Command matches a destructive filesystem, git reset, database drop, or infrastructure destroy pattern.")
+  } else if (/\b(npm|pnpm|bun|yarn)\s+(install|add|remove|update|upgrade)\b|\b(pip|poetry|uv|cargo|go)\s+(install|add|get|update)\b/.test(normalized)) {
+    risk = "high"
+    reasons.push("Command can change dependency graph, lockfiles, or supply-chain inputs.")
+  } else if (/\b(deploy|publish|release|migrate|migration|secret|credential|token|chmod|chown|sudo)\b/.test(normalized)) {
+    risk = "high"
+    reasons.push("Command references deployment, migration, secrets, credentials, or elevated permission risk.")
+  } else if (/\b(test|typecheck|lint|build|rg|grep|git\s+diff|git\s+status)\b/.test(normalized)) {
+    risk = "low"
+    reasons.splice(0, reasons.length, "Command appears read-only or verification-oriented.")
+  }
+
+  const requiredApproval = risk === "high" || risk === "critical"
+  return {
+    action: "shell_command",
+    command,
+    risk,
+    required_approval: requiredApproval,
+    blocked: requiredApproval && !options.approved,
+    reasons,
+  }
 }
 
 export class ProofManager {
@@ -119,6 +166,38 @@ export class ProofManager {
       refs: { contract_id: this.proof.contract.id },
     })
     return this.proof.risk
+  }
+
+  gateShellCommand(command: string, options: { cwd?: string; approved?: boolean } = {}): PolicyGateDecision {
+    const decision = evaluateShellCommandPolicy(command, { approved: options.approved })
+    this.proof.risk = {
+      ...this.proof.risk,
+      level: maxRisk(this.proof.risk.level, decision.risk),
+      reasons: uniq([...this.proof.risk.reasons, ...decision.reasons]),
+      required_approval: this.proof.risk.required_approval || decision.required_approval,
+    }
+    this.proof.contract.risk_level = maxRisk(this.proof.contract.risk_level, decision.risk)
+    if (decision.required_approval && !this.proof.contract.required_approvals.includes("shell command policy gate")) {
+      this.proof.contract.required_approvals.push("shell command policy gate")
+    }
+    this.recordEvent({
+      type: decision.required_approval ? "approval.required" : "risk.evaluated",
+      actor: "system",
+      summary: decision.blocked
+        ? `Shell command blocked pending approval: ${command}`
+        : `Shell command policy evaluated: ${command}`,
+      risk: decision.risk,
+      status: decision.blocked ? "awaiting_approval" : this.proof.lifecycle.status,
+      refs: { command, cwd: options.cwd ?? this.proof.repo.path },
+      data: {
+        action: decision.action,
+        required_approval: decision.required_approval,
+        blocked: decision.blocked,
+        approved: Boolean(options.approved),
+        reasons: decision.reasons,
+      },
+    })
+    return decision
   }
 
   updateRollback(rollback: Partial<RollbackBlock> & Pick<RollbackBlock, "strategy">): RollbackBlock {

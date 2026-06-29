@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { normalizeRunProof } from "./compat.js"
 import { createRunProof } from "./create.js"
-import { ProofManager } from "./proof-manager.js"
+import { evaluateShellCommandPolicy, ProofManager } from "./proof-manager.js"
 import { renderRunProofMarkdown } from "./render.js"
 import { saveRunProof } from "./store.js"
 import type { RunProof } from "./types.js"
@@ -121,6 +121,31 @@ describe("RunProof execution governance", () => {
     expect(replay).toContain("command.executed")
     expect(replay).toContain("command.reflected")
     expect(replay).toContain("rollback.strategy=none")
+  })
+
+  test("gates shell commands before execution", () => {
+    const manager = ProofManager.create({
+      user_intent: "Classify shell policy gates",
+      cwd: process.cwd(),
+    })
+
+    const testDecision = manager.gateShellCommand("bun test packages/arcana/src/proof/proof-manager.test.ts")
+    const destructiveDecision = manager.gateShellCommand("git reset --hard HEAD")
+    const approvedDecision = evaluateShellCommandPolicy("pnpm install", { approved: true })
+    const markdown = manager.renderMarkdown()
+
+    expect(testDecision.risk).toBe("low")
+    expect(testDecision.blocked).toBe(false)
+    expect(destructiveDecision.risk).toBe("critical")
+    expect(destructiveDecision.required_approval).toBe(true)
+    expect(destructiveDecision.blocked).toBe(true)
+    expect(approvedDecision.required_approval).toBe(true)
+    expect(approvedDecision.blocked).toBe(false)
+    expect(manager.proof.risk.required_approval).toBe(true)
+    expect(manager.proof.contract.required_approvals).toContain("shell command policy gate")
+    expect(manager.proof.events.map((event) => event.type)).toContain("approval.required")
+    expect(markdown).toContain("## Policy Gates")
+    expect(markdown).toContain("Shell command blocked pending approval")
   })
 
   test("normalizes legacy RunProof 0.1 records without contract or events", () => {
