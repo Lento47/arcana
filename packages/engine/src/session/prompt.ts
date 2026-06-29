@@ -6,7 +6,7 @@ import os from "os"
 import { SessionID, MessageID, PartID } from "./schema"
 import { MessageV2 } from "./message-v2"
 import { SessionRevert } from "./revert"
-import { BudgetExceededError, SessionBudget } from "./budget"
+import { SessionBudget } from "./budget"
 import { Session } from "./session"
 import { Agent } from "../agent/agent"
 import { Provider } from "@/provider/provider"
@@ -125,7 +125,6 @@ export const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
-    const budget = yield* SessionBudget.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
@@ -1185,27 +1184,11 @@ export const layer = Layer.effect(
           }
 
           step++
-          // Safety budget check — blocks further steps if any budget is exceeded.
-          const budgetExit = yield* Effect.exit(budget.checkOrBlock(sessionID))
-          if (Exit.isFailure(budgetExit)) {
-            const budgetError = Cause.squash(budgetExit.cause)
-            if (BudgetExceededError.isInstance(budgetError)) {
-              yield* Effect.logWarning("budget exceeded", {
-                "session.id": sessionID,
-                budget: budgetError.data.budget,
-                current: budgetError.data.current,
-                limit: budgetError.data.limit,
-              })
-              yield* events.publish(Session.Event.Error, {
-                sessionID,
-                // BudgetExceededError is an engine-side error not present in the core
-                // SessionV1 error union; surface it as UnknownError (full detail is
-                // already logged above) so the event payload stays schema-valid.
-                error: { name: "UnknownError", data: { message: budgetError.data.message } },
-              })
-              break
-            }
-          }
+          // No engine-side wall-clock/counter budget gate here: credit enforcement is
+          // owned by the arcana proxy, which returns 402 insufficient_balance / 429
+          // daily_limit_reached when the account is out of credits. That error is
+          // shaped into a friendly non-retryable stop in MessageV2.fromError, which
+          // breaks this loop cleanly. See packages/engine/src/session/message-v2.ts.
           if (step === 1)
             yield* title({
               session,

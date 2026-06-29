@@ -290,7 +290,7 @@ export function formatUnknownError(error: unknown): string {
     // For AI SDK retry errors, unwrap the last inner error
     try {
       const retry = error as { errors?: Array<{ message?: string }> }
-      return retry.errors?.[0]?.message ?? error.message || error.name
+      return retry.errors?.[0]?.message ?? (error.message || error.name)
     } catch {}
     return error.message || error.name
   }

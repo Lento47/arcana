@@ -684,7 +684,52 @@ export function fromError(
         },
         { cause: e },
       ).toObject()
-    case APICallError.isInstance(e):
+    case APICallError.isInstance(e): {
+      // Arcana proxy credit enforcement: the proxy pre-deducts from the account
+      // balance and returns 402 insufficient_balance (out of credits) or 429
+      // daily_limit_reached (per-tier daily cap) before forwarding to OpenRouter.
+      // These are terminal, not retryable — surface a friendly "buy credits"
+      // message and let the run stop. isRetryable:false also prevents the
+      // SessionRetry policy from retrying the 429 variant.
+      const status = (e as APICallError).statusCode
+      const raw = (e as APICallError).responseBody
+      const body = typeof raw === "string" ? raw : ""
+      if (status === 402 && body.includes("insufficient_balance")) {
+        const data = iife(() => {
+          try { return JSON.parse(body) as { balance?: number; required?: number } } catch { return {} }
+        })
+        const detail =
+          typeof data.balance === "number" && typeof data.required === "number"
+            ? ` (have ${data.balance}, need ${data.required})`
+            : ""
+        return new APIError(
+          {
+            message: `No credits remaining${detail}. Run \`arcana proxy buy\` to add credits.`,
+            statusCode: 402,
+            isRetryable: false,
+            responseBody: body,
+            metadata: {
+              proxyError: "insufficient_balance",
+              balance: String(data.balance ?? ""),
+              required: String(data.required ?? ""),
+            },
+          },
+          { cause: e },
+        ).toObject()
+      }
+      if (status === 429 && body.includes("daily_limit_reached")) {
+        return new APIError(
+          {
+            message: "Daily limit reached. Upgrade your plan for more capacity.",
+            statusCode: 429,
+            isRetryable: false,
+            responseBody: body,
+            metadata: { proxyError: "daily_limit_reached" },
+          },
+          { cause: e },
+        ).toObject()
+      }
+
       const parsed = ProviderError.parseAPICallError({
         providerID: ctx.providerID,
         error: e,
@@ -710,6 +755,7 @@ export function fromError(
         },
         { cause: e },
       ).toObject()
+    }
     case e instanceof Error:
       return new NamedError.Unknown({ message: errorMessage(e) }, { cause: e }).toObject()
     default:
