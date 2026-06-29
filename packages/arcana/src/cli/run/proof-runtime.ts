@@ -130,6 +130,18 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
         reversible: false,
         result_summary: `${input.tool_calls ?? 0} tool call(s), ${input.input_tokens ?? 0} input tokens, ${input.output_tokens ?? 0} output tokens.`,
       })
+      manager.recordEvent({
+        type: "token.used",
+        actor: "agent",
+        summary: `Agent turn used ${input.input_tokens ?? 0} input tokens and ${input.output_tokens ?? 0} output tokens.`,
+        status: manager.proof.lifecycle.status,
+        data: {
+          input_tokens: input.input_tokens ?? 0,
+          output_tokens: input.output_tokens ?? 0,
+          total_tokens: (input.input_tokens ?? 0) + (input.output_tokens ?? 0),
+          tool_calls: input.tool_calls ?? 0,
+        },
+      })
       await saveSnapshot()
     },
 
