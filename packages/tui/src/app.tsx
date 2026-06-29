@@ -192,6 +192,22 @@ type RunProofDiffView = {
   summary?: string
 }
 
+type RunProofFileReadView = {
+  id?: string
+  path?: string
+  reason?: string
+  exists?: boolean
+  bytes_read?: number
+}
+
+type RunProofFileWriteView = {
+  id?: string
+  path?: string
+  mode?: string
+  reason?: string
+  bytes_written?: number
+}
+
 type RunProofCheckView = {
   id?: string
   command?: string
@@ -256,6 +272,10 @@ type RunProofView = {
     applied: RunProofDiffView[]
     rejected: RunProofDiffView[]
   }
+  execution?: {
+    file_reads: RunProofFileReadView[]
+    file_writes: RunProofFileWriteView[]
+  }
   verification?: RunProofVerificationView
   sovereignty?: RunProofSovereigntyView
   token_usage?: RunProofTokenUsageView
@@ -305,6 +325,44 @@ function normalizeDiffs(value: unknown): RunProofDiffView[] {
     : []
 }
 
+function normalizeFileReads(value: unknown): RunProofFileReadView[] {
+  return Array.isArray(value)
+    ? value.flatMap((item): RunProofFileReadView[] => {
+        const read = asRecord(item)
+        return read
+          ? [
+              {
+                id: proofString(read.id),
+                path: proofString(read.path),
+                reason: proofString(read.reason),
+                exists: proofBoolean(read.exists),
+                bytes_read: proofNumber(read.bytes_read),
+              },
+            ]
+          : []
+      })
+    : []
+}
+
+function normalizeFileWrites(value: unknown): RunProofFileWriteView[] {
+  return Array.isArray(value)
+    ? value.flatMap((item): RunProofFileWriteView[] => {
+        const write = asRecord(item)
+        return write
+          ? [
+              {
+                id: proofString(write.id),
+                path: proofString(write.path),
+                mode: proofString(write.mode),
+                reason: proofString(write.reason),
+                bytes_written: proofNumber(write.bytes_written),
+              },
+            ]
+          : []
+      })
+    : []
+}
+
 function normalizeCheck(value: unknown): RunProofCheckView | undefined {
   const check = asRecord(value)
   if (!check) return undefined
@@ -335,6 +393,7 @@ function normalizeProofView(value: unknown): RunProofView {
   const rollback = asRecord(proof.rollback)
   const finalEvidence = asRecord(proof.final_evidence)
   const diffs = asRecord(proof.diffs)
+  const execution = asRecord(proof.execution)
   const verification = asRecord(proof.verification)
   const verifierReview = asRecord(verification?.verifier_review)
   const events = Array.isArray(proof.events) ? proof.events : []
@@ -410,6 +469,10 @@ function normalizeProofView(value: unknown): RunProofView {
       proposed: normalizeDiffs(diffs?.proposed),
       applied: normalizeDiffs(diffs?.applied),
       rejected: normalizeDiffs(diffs?.rejected),
+    },
+    execution: {
+      file_reads: normalizeFileReads(execution?.file_reads),
+      file_writes: normalizeFileWrites(execution?.file_writes),
     },
     verification: {
       diagnostics: normalizeChecks(verification?.diagnostics),
@@ -583,6 +646,8 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const events = () => props.proof.events ?? []
+  const fileReads = () => props.proof.execution?.file_reads ?? []
+  const fileWrites = () => props.proof.execution?.file_writes ?? []
   const status = () => props.proof.lifecycle?.status ?? props.proof.contract?.status ?? "unknown"
   const risk = () => props.proof.risk?.level ?? props.proof.contract?.risk_level ?? "unknown"
   const score = () => props.proof.final_evidence?.proof_score
@@ -619,7 +684,29 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
             </text>
           )}
         </Show>
+        <text fg={theme.textMuted}>
+          Evidence: {fileReads().length} context read(s)  {fileWrites().length} file write(s)
+        </text>
       </box>
+      <Show when={fileReads().length > 0 || fileWrites().length > 0}>
+        <box gap={0}>
+          <text fg={theme.text}>Recent evidence</text>
+          <For each={fileReads().slice(-3)}>
+            {(read) => (
+              <text fg={theme.textMuted}>
+                READ  {read.path ?? "unknown path"}  {read.exists === false ? "missing" : (read.reason ?? "")}
+              </text>
+            )}
+          </For>
+          <For each={fileWrites().slice(-3)}>
+            {(write) => (
+              <text fg={theme.textMuted}>
+                WRITE  {write.mode ?? "unknown"}  {write.path ?? "unknown path"}  {write.reason ?? ""}
+              </text>
+            )}
+          </For>
+        </box>
+      </Show>
       <Show when={events().length > 0} fallback={<text fg={theme.warning}>No RunProof events recorded.</text>}>
         <For each={events()}>
           {(event) => (
@@ -672,6 +759,7 @@ function DialogRunProofDiffGate(props: { proof: RunProofView; path: string }) {
   const pending = () => diffs().proposed.length
   const applied = () => diffs().applied.length
   const rejected = () => diffs().rejected.length
+  const writes = () => props.proof.execution?.file_writes ?? []
   const risk = () => props.proof.risk?.level ?? props.proof.contract?.risk_level ?? "unknown"
   const approval = () =>
     props.proof.risk?.required_approval || (props.proof.contract?.required_approvals?.length ?? 0) > 0
@@ -692,6 +780,7 @@ function DialogRunProofDiffGate(props: { proof: RunProofView; path: string }) {
         <text fg={theme.text}>
           Pending: {pending()}  Applied: {applied()}  Rejected: {rejected()}
         </text>
+        <text fg={theme.text}>Write evidence: {writes().length} file write(s)</text>
         <text fg={theme.text}>Risk: {risk()}  Approval: {approval()}</text>
         <FieldList items={props.proof.risk?.reasons} empty="No risk reasons recorded." />
         <text fg={theme.textMuted}>Rollback: {rollbackSummary(props.proof)}</text>
