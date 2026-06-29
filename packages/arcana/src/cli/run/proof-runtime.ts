@@ -44,6 +44,13 @@ export type ProofRuntime = {
     bytes_read?: number
     result_count?: number
   }): Promise<void>
+  recordFileWrite(input: {
+    path: string
+    mode: "proposed" | "applied" | "rejected"
+    reason: string
+    diff_id?: string
+    bytes_written?: number
+  }): Promise<void>
   recordAgentTurn(input: {
     input_summary: string
     output_summary: string
@@ -211,6 +218,12 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
     async recordContextAccess(input) {
       if (!manager) return
       manager.recordContextAccess(input)
+      await saveSnapshot()
+    },
+
+    async recordFileWrite(input) {
+      if (!manager) return
+      manager.recordFileWrite(input)
       await saveSnapshot()
     },
 

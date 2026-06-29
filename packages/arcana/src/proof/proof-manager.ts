@@ -408,6 +408,14 @@ export class ProofManager {
     }
     const write = { id: id("write"), timestamp: now(), ...input }
     this.proof.execution.file_writes.push(write)
+    this.recordEvent({
+      type: "file.written",
+      actor: "agent",
+      summary: `${input.mode} file write for ${input.path}: ${input.reason}`,
+      status: this.proof.lifecycle.status,
+      refs: { file_write_id: write.id, path: input.path },
+      data: { mode: input.mode, diff_id: input.diff_id, bytes_written: input.bytes_written },
+    })
     return write
   }
 

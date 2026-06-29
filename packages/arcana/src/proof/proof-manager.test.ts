@@ -208,6 +208,29 @@ describe("RunProof execution governance", () => {
     expect(markdown).toContain("packages/arcana/src/proof/types.ts")
   })
 
+  test("records file writes as proof evidence", () => {
+    const manager = ProofManager.create({
+      user_intent: "Track files mutated by the agent",
+      cwd: process.cwd(),
+    })
+
+    manager.recordFileWrite({
+      path: "packages/arcana/src/proof/render.ts",
+      mode: "proposed",
+      reason: "edit tool modified packages/arcana/src/proof/render.ts",
+      bytes_written: 42,
+    })
+    const markdown = manager.renderMarkdown()
+
+    expect(manager.proof.execution.file_writes).toHaveLength(1)
+    expect(manager.proof.events.map((event) => event.type)).toContain("file.written")
+    expect(manager.proof.events.find((event) => event.type === "file.written")?.refs?.path).toBe(
+      "packages/arcana/src/proof/render.ts",
+    )
+    expect(markdown).toContain("## File Writes")
+    expect(markdown).toContain("packages/arcana/src/proof/render.ts")
+  })
+
   test("normalizes legacy RunProof 0.1 records without contract or events", () => {
     const legacyProof = {
       id: "rp_legacy",
