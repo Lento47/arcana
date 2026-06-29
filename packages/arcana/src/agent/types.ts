@@ -44,6 +44,12 @@ export type AgentConfig = {
   mlRuntime?: boolean
   /** Maximum silent quality revisions per final assistant response. Default: 1 when ML runtime is enabled. */
   mlSilentRevisions?: number
+  proofGate?: {
+    gateShellCommand(
+      command: string,
+      options?: { cwd?: string; approved?: boolean },
+    ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
+  }
 }
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<string>

@@ -147,6 +147,25 @@ export class AgentRunner {
     return [...this.tools.values()].map((t) => t.def)
   }
 
+  private shellCommandFromTool(toolName: string, input: Record<string, unknown>): string | undefined {
+    if (toolName !== "shell" && !toolName.includes("bash")) return undefined
+    const command = input.command ?? input.cmd
+    return typeof command === "string" && command.trim() ? command : undefined
+  }
+
+  private async runProofShellGate(toolName: string, input: Record<string, unknown>): Promise<string | undefined> {
+    const command = this.shellCommandFromTool(toolName, input)
+    if (!command || !this.config.proofGate) return undefined
+    const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd()
+    const decision = await this.config.proofGate.gateShellCommand(command, { cwd, approved: this.config.godlike === true })
+    if (!decision.blocked) return undefined
+    return [
+      `Blocked by RunProof policy gate: ${command}`,
+      `Risk: ${decision.risk}`,
+      ...decision.reasons.map((reason) => `- ${reason}`),
+    ].join("\n")
+  }
+
   async run(
     messages: ChatMessage[],
     onChunk?: (text: string) => void,
@@ -348,6 +367,14 @@ export class AgentRunner {
               if (warn) resultStr = warn
             }
 
+            const policyBlocked = await this.runProofShellGate(tc.toolName, tc.input as Record<string, unknown>)
+            if (policyBlocked) {
+              resultStr = policyBlocked
+              auditLog({ tool: tc.toolName, args: tc.input, result: policyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+              history.push({ role: "tool", tool_call_id: tc.toolCallId, content: policyBlocked, toolName: tc.toolName } as any)
+              continue
+            }
+
               // Guard: dangerous command check (skip in godlike mode)
             if (!this.config.godlike && (tc.toolName === "shell" || tc.toolName.includes("bash"))) {
               const args = tc.input as Record<string, unknown>
@@ -383,6 +410,11 @@ export class AgentRunner {
                     }
                     if (batchCall.tool === "shell" || batchCall.tool.includes("bash")) {
                       const a = (batchCall.args ?? {}) as Record<string, unknown>
+                      const policyBlocked = await this.runProofShellGate(batchCall.tool, a)
+                      if (policyBlocked) {
+                        auditLog({ tool: batchCall.tool, args: batchCall.args, result: policyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+                        return `"${batchCall.tool}": ${policyBlocked}`
+                      }
                       const cmd = String(a.command ?? a.cmd ?? "")
                       const blocked = checkDangerousCommand(cmd)
                       if (blocked) {

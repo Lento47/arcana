@@ -25,6 +25,11 @@ export type ProofRuntime = {
   }): Promise<void>
   recordUserCommand(command: string, summary?: string): Promise<void>
   recordSystemTransition(status: RunProofStatus, summary?: string): Promise<void>
+  gateShellCommand(command: string, options?: { cwd?: string; approved?: boolean }): Promise<{
+    blocked: boolean
+    risk: string
+    reasons: string[]
+  }>
   recordAgentTurn(input: {
     input_summary: string
     output_summary: string
@@ -173,6 +178,13 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
       if (!manager) return
       manager.transitionState(status, summary)
       await saveSnapshot()
+    },
+
+    async gateShellCommand(command, options = {}) {
+      if (!manager) return { blocked: false, risk: "unknown", reasons: [] }
+      const decision = manager.gateShellCommand(command, options)
+      await saveSnapshot()
+      return decision
     },
 
     async recordAgentTurn(input) {
