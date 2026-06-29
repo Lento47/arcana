@@ -2,11 +2,18 @@ import type { CommandModule } from "yargs"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 
+type WebArgs = {
+  host?: unknown
+  port?: unknown
+  open?: unknown
+  build?: unknown
+}
+
 function enterpriseDir(): string {
   return join(import.meta.dir, "..", "..", "..", "..", "enterprise")
 }
 
-function buildArgs(args: { host?: unknown; port?: unknown; open?: unknown; build?: unknown }): string[] {
+function buildArgs(args: WebArgs): string[] {
   if (args.build) return ["run", "build"]
 
   const cmd = ["run", "dev", "--"]
@@ -26,6 +33,7 @@ export const WebCommand: CommandModule = {
       .option("open", { type: "boolean", default: false, describe: "open the browser after startup" })
       .option("build", { type: "boolean", default: false, describe: "build the web app instead of starting dev mode" }),
   async handler(args) {
+    const webArgs = args as WebArgs
     const cwd = enterpriseDir()
     const packageJson = join(cwd, "package.json")
     if (!existsSync(packageJson)) {
@@ -33,8 +41,8 @@ export const WebCommand: CommandModule = {
       process.exit(1)
     }
 
-    const cmd = ["bun", ...buildArgs(args)]
-    console.log(args.build ? "Building Arcana web app…" : "Starting Arcana web app…")
+    const cmd = ["bun", ...buildArgs(webArgs)]
+    console.log(webArgs.build ? "Building Arcana web app…" : "Starting Arcana web app…")
     console.log(`  cwd: ${cwd}`)
     console.log(`  cmd: ${cmd.join(" ")}`)
 
