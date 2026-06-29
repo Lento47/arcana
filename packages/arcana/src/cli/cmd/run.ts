@@ -114,6 +114,13 @@ export const RunCommand: CommandModule = {
     if (!provider || !model) {
       throw new Error("No provider/model configured and autodetect did not find one.")
     }
+    await proofRuntime.recordModelRoute({
+      provider,
+      model,
+      route: provider === "local" ? "local" : "cloud",
+      reason: "Active model route selected before agent execution.",
+      data_left_local: provider !== "local",
+    })
     const useMemory = !(args.disableMemory as boolean) && config.memory.enabled
 
     await mkdir(dataDir, { recursive: true })

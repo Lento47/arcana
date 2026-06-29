@@ -155,6 +155,7 @@ type RunProofEventView = {
   risk?: string
   status?: string
   refs?: Record<string, string>
+  data?: Record<string, unknown>
 }
 
 type RunProofLifecycleView = {
@@ -222,6 +223,16 @@ type RunProofVerificationView = {
   verifier_review?: RunProofVerifierReviewView
 }
 
+type RunProofSovereigntyView = {
+  provider?: string
+  model?: string
+  route?: string
+  reason?: string
+  data_left_local?: boolean
+  timestamp?: string
+  summary?: string
+}
+
 type RunProofView = {
   id?: string
   user_intent?: string
@@ -238,6 +249,7 @@ type RunProofView = {
     rejected: RunProofDiffView[]
   }
   verification?: RunProofVerificationView
+  sovereignty?: RunProofSovereigntyView
 }
 
 type ProofLoadResult =
@@ -317,6 +329,27 @@ function normalizeProofView(value: unknown): RunProofView {
   const verification = asRecord(proof.verification)
   const verifierReview = asRecord(verification?.verifier_review)
   const events = Array.isArray(proof.events) ? proof.events : []
+  const normalizedEvents = events.flatMap((item): RunProofEventView[] => {
+    const event = asRecord(item)
+    if (!event) return []
+    const refs = asRecord(event.refs)
+    return [
+      {
+        timestamp: proofString(event.timestamp),
+        type: proofString(event.type),
+        actor: proofString(event.actor),
+        summary: proofString(event.summary),
+        risk: proofString(event.risk),
+        status: proofString(event.status),
+        refs: refs
+          ? Object.fromEntries(
+              Object.entries(refs).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+            )
+          : undefined,
+        data: asRecord(event.data),
+      },
+    ]
+  })
   return {
     id: proofString(proof.id),
     user_intent: proofString(proof.user_intent),
@@ -382,29 +415,26 @@ function normalizeProofView(value: unknown): RunProofView {
             status: proofString(verifierReview.status),
             summary: proofString(verifierReview.summary),
             concerns: asStringArray(verifierReview.concerns),
-          }
+        }
         : undefined,
     },
-    events: events.flatMap((item): RunProofEventView[] => {
-      const event = asRecord(item)
-      if (!event) return []
-      const refs = asRecord(event.refs)
-      return [
-        {
-          timestamp: proofString(event.timestamp),
-          type: proofString(event.type),
-          actor: proofString(event.actor),
-          summary: proofString(event.summary),
-          risk: proofString(event.risk),
-          status: proofString(event.status),
-          refs: refs
-            ? Object.fromEntries(
-                Object.entries(refs).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-              )
-            : undefined,
-        },
-      ]
-    }),
+    sovereignty: sovereigntyFromEvents(normalizedEvents),
+    events: normalizedEvents,
+  }
+}
+
+function sovereigntyFromEvents(events: RunProofEventView[]): RunProofSovereigntyView | undefined {
+  const event = events.findLast((item) => item.type === "sovereignty.routed")
+  if (!event) return undefined
+  const data = event.data ?? {}
+  return {
+    provider: proofString(data.provider) ?? event.refs?.provider,
+    model: proofString(data.model) ?? event.refs?.model,
+    route: proofString(data.route),
+    reason: proofString(data.reason),
+    data_left_local: proofBoolean(data.data_left_local),
+    timestamp: event.timestamp,
+    summary: event.summary,
   }
 }
 
@@ -709,6 +739,49 @@ function DialogRunProofVerify(props: { proof: RunProofView; path: string }) {
             <text fg={theme.text}>Verifier review: {statusMark(review().status)} {review().model ?? ""}</text>
             <text fg={theme.textMuted}>{review().summary ?? "No verifier summary recorded."}</text>
             <FieldList items={review().concerns} empty="No verifier concerns recorded." />
+          </box>
+        )}
+      </Show>
+    </box>
+  )
+}
+
+function yesNo(value: boolean | undefined): string {
+  if (value === undefined) return "not recorded"
+  return value ? "yes" : "no"
+}
+
+function DialogRunProofSovereignty(props: { proof: RunProofView; path: string }) {
+  const { theme } = useTheme()
+  const dialog = useDialog()
+  const route = () => props.proof.sovereignty
+  return (
+    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
+      <box flexDirection="row" justifyContent="space-between">
+        <text fg={theme.text}>
+          <b>Model Sovereignty</b>
+        </text>
+        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+          esc
+        </text>
+      </box>
+      <text fg={theme.textMuted}>{props.path}</text>
+      <Show
+        when={route()}
+        fallback={<text fg={theme.warning}>No provider/model route evidence recorded in this RunProof.</text>}
+      >
+        {(value) => (
+          <box gap={1}>
+            <box gap={0}>
+              <text fg={theme.text}>Provider: {value().provider ?? "not recorded"}</text>
+              <text fg={theme.text}>Model: {value().model ?? "not recorded"}</text>
+              <text fg={theme.text}>Route: {value().route ?? "not recorded"}</text>
+              <text fg={theme.text}>Data left local machine: {yesNo(value().data_left_local)}</text>
+            </box>
+            <box gap={0}>
+              <text fg={theme.textMuted}>Recorded: {eventTime(value().timestamp)}</text>
+              <text fg={theme.textMuted}>{value().reason ?? value().summary ?? "No routing reason recorded."}</text>
+            </box>
           </box>
         )}
       </Show>
@@ -1195,7 +1268,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (workspace?.type !== "worktree" || !workspace.directory) return
     return workspace
   })
-  async function showRunProofSurface(kind: "contract" | "actions" | "diffgate" | "verify") {
+  async function showRunProofSurface(kind: "contract" | "actions" | "diffgate" | "verify" | "sovereignty") {
     const result = await loadActiveRunProof()
     if (result.status !== "ready") {
       dialog.replace(() => <DialogRunProofMissing result={result} />)
@@ -1205,17 +1278,10 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       if (kind === "contract") return <DialogRunProofContract proof={result.proof} path={result.path} />
       if (kind === "diffgate") return <DialogRunProofDiffGate proof={result.proof} path={result.path} />
       if (kind === "verify") return <DialogRunProofVerify proof={result.proof} path={result.path} />
+      if (kind === "sovereignty") return <DialogRunProofSovereignty proof={result.proof} path={result.path} />
       return <DialogRunProofActions proof={result.proof} path={result.path} />
     })
     dialog.setSize("xlarge")
-  }
-
-  function showUnwiredArcanaCommand(title: string) {
-    toast.show({
-      message: `${title} is not connected to a RunProof view yet`,
-      variant: "warning",
-    })
-    dialog.clear()
   }
 
   const appCommands = createMemo(() =>
@@ -1312,7 +1378,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         title: "Show AI sovereignty state",
         desc: "Show provider route and AI sovereignty state",
         category: "Arcana",
-        run: () => showUnwiredArcanaCommand("Show AI sovereignty state"),
+        run: () => void showRunProofSurface("sovereignty").catch(toast.error),
       },
       {
         name: "workspace.copy_path",
