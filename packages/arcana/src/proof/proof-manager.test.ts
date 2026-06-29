@@ -231,6 +231,60 @@ describe("RunProof execution governance", () => {
     expect(markdown).toContain("packages/arcana/src/proof/render.ts")
   })
 
+  test("caps completion evidence when file writes have no passing verification", () => {
+    const manager = ProofManager.create({
+      user_intent: "Complete after a file mutation",
+      cwd: process.cwd(),
+    })
+
+    manager.recordFileWrite({
+      path: "src/app.ts",
+      mode: "proposed",
+      reason: "write tool changed src/app.ts",
+    })
+    manager.finalize({
+      status: "completed",
+      summary: "Finished without verification.",
+      evidence: { proof_score: 90, human_review_recommended: false },
+    })
+
+    expect(manager.proof.final_evidence.proof_score).toBe(40)
+    expect(manager.proof.final_evidence.human_review_recommended).toBe(true)
+    expect(manager.proof.unresolved.skipped_tests).toContain(
+      "Completion has file write evidence but no passing verification evidence.",
+    )
+    expect(manager.proof.events.map((event) => event.type)).toContain("verification.failed")
+  })
+
+  test("keeps completion evidence when file writes have passing verification", () => {
+    const manager = ProofManager.create({
+      user_intent: "Complete after verified file mutation",
+      cwd: process.cwd(),
+    })
+
+    manager.recordFileWrite({
+      path: "src/app.ts",
+      mode: "proposed",
+      reason: "write tool changed src/app.ts",
+    })
+    manager.setTypecheck({
+      command: "bun run typecheck",
+      status: "passed",
+      summary: "Typecheck passed.",
+    })
+    manager.finalize({
+      status: "completed",
+      summary: "Finished with verification.",
+      evidence: { proof_score: 90, human_review_recommended: false },
+    })
+
+    expect(manager.proof.final_evidence.proof_score).toBe(90)
+    expect(manager.proof.final_evidence.human_review_recommended).toBe(false)
+    expect(manager.proof.unresolved.skipped_tests).not.toContain(
+      "Completion has file write evidence but no passing verification evidence.",
+    )
+  })
+
   test("normalizes legacy RunProof 0.1 records without contract or events", () => {
     const legacyProof = {
       id: "rp_legacy",
