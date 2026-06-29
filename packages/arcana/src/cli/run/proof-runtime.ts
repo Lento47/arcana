@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
 // Copyright (c) 2026 arcana contributors
 
+import { execFileSync } from "node:child_process"
+
 import { ProofManager, type RiskLevel, type RunProofStatus, type StoredRunProof } from "../../proof/index.js"
 
 export type ProofRuntimeOptions = {
@@ -36,6 +38,33 @@ export type ProofRuntime = {
 
 function commandForPrompt(prompt: string | undefined): string {
   return prompt ? `arcana run --proof ${JSON.stringify(prompt)}` : "arcana run --proof"
+}
+
+function tryGit(args: string[], cwd: string): string | undefined {
+  try {
+    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+function recordInitialRollback(manager: ProofManager, cwd: string): void {
+  const commit = tryGit(["rev-parse", "HEAD"], cwd)
+  if (!commit) return
+
+  const status = tryGit(["status", "--porcelain"], cwd)
+  const shortCommit = commit.slice(0, 12)
+  const dirtySuffix = status ? "-dirty" : ""
+
+  manager.updateRollback({
+    strategy: "git_worktree",
+    checkpoint_id: `${shortCommit}${dirtySuffix}`,
+    restore_command: `git restore --source ${commit} --staged --worktree .`,
+  })
+
+  if (status) {
+    manager.addKnownLimitation("Rollback checkpoint restores tracked files only; pre-existing dirty or untracked files are not fully captured.")
+  }
 }
 
 function assessInitialRisk(input: { prompt?: string; command: string }): {
@@ -90,6 +119,7 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
   if (manager) {
     manager.transitionState("planning", "Proof capture initialized; command execution entering planning state.")
     manager.updateRisk(assessInitialRisk({ prompt: options.prompt, command: options.command || commandForPrompt(options.prompt) }))
+    recordInitialRollback(manager, options.cwd ?? process.cwd())
   }
 
   async function saveSnapshot(): Promise<void> {
