@@ -82,6 +82,14 @@ export function renderRunProofTerminal(proof: RunProof): string {
   if (proof.execution.file_reads.length > 12) out.push(`  ... ${proof.execution.file_reads.length - 12} more`)
   out.push("")
 
+  out.push("File Writes")
+  if (proof.execution.file_writes.length === 0) out.push("  no file writes recorded")
+  for (const write of proof.execution.file_writes.slice(0, 12)) {
+    out.push(`  ${write.mode}  ${write.path} — ${write.reason}`)
+  }
+  if (proof.execution.file_writes.length > 12) out.push(`  ... ${proof.execution.file_writes.length - 12} more`)
+  out.push("")
+
   const proposed = proof.diffs.proposed.length
   const applied = proof.diffs.applied.length
   const rejected = proof.diffs.rejected.length
@@ -199,6 +207,17 @@ export function renderRunProofMarkdown(proof: RunProof): string {
     lines.push(
       `- ${read.path}${read.exists === false ? " (missing)" : ""} — ${read.reason}${
         read.bytes_read === undefined ? "" : ` (${read.bytes_read} bytes)`
+      }`,
+    )
+  }
+  lines.push("")
+
+  lines.push("## File Writes")
+  if (proof.execution.file_writes.length === 0) lines.push("No file writes recorded.")
+  for (const write of proof.execution.file_writes) {
+    lines.push(
+      `- ${write.mode} — ${write.path} — ${write.reason}${
+        write.bytes_written === undefined ? "" : ` (${write.bytes_written} bytes)`
       }`,
     )
   }

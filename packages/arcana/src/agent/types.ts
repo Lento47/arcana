@@ -62,6 +62,13 @@ export type AgentConfig = {
       bytes_read?: number
       result_count?: number
     }): Promise<void>
+    recordFileWrite(input: {
+      path: string
+      mode: "proposed" | "applied" | "rejected"
+      reason: string
+      diff_id?: string
+      bytes_written?: number
+    }): Promise<void>
   }
 }
 

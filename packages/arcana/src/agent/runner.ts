@@ -238,6 +238,34 @@ export class AgentRunner {
     }
   }
 
+  private async recordRunProofFileWrite(
+    toolName: string,
+    input: Record<string, unknown>,
+    result: string,
+  ): Promise<void> {
+    if (!this.config.proofGate) return
+    if (toolName !== "write" && toolName !== "edit") return
+
+    const path = input.filePath
+    if (typeof path !== "string" || !path.trim()) return
+    if (result.startsWith("Write error:") || result.startsWith("Edit error:") || result.startsWith("Error:")) return
+    if (!result.startsWith("Written ") && !result.startsWith("Edited ")) return
+
+    const bytesWritten =
+      toolName === "write" && typeof input.content === "string"
+        ? input.content.length
+        : toolName === "edit" && typeof input.newString === "string"
+          ? input.newString.length
+          : undefined
+
+    await this.config.proofGate.recordFileWrite({
+      path,
+      mode: "proposed",
+      reason: toolName === "write" ? `write tool created or overwrote ${path}` : `edit tool modified ${path}`,
+      bytes_written: bytesWritten,
+    })
+  }
+
   async run(
     messages: ChatMessage[],
     onChunk?: (text: string) => void,
@@ -512,6 +540,7 @@ export class AgentRunner {
                   try {
                     const result = await batchEntry.handler(batchCall.args)
                     await this.recordRunProofContextAccess(batchCall.tool, batchCall.args ?? {}, result)
+                    await this.recordRunProofFileWrite(batchCall.tool, batchCall.args ?? {}, result)
                     return `"${batchCall.tool}": ${result.slice(0, 500)}`
                   } catch (e) {
                     return `"${batchCall.tool}": error - ${String(e)}`
@@ -534,6 +563,7 @@ export class AgentRunner {
               ),
             ])
             await this.recordRunProofContextAccess(tc.toolName, tc.input as Record<string, unknown>, resultStr)
+            await this.recordRunProofFileWrite(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             resultStr = this.config.godlike ? resultStr : redactSecrets(resultStr)
             if (cacheable) {
               toolResultCache.set(cacheKey, { result: resultStr, ts: Date.now() })

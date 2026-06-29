@@ -34,6 +34,7 @@ export type RunProofEventType =
   | "risk.evaluated"
   | "approval.required"
   | "command.executed"
+  | "file.written"
   | "diff.created"
   | "verification.started"
   | "verification.passed"
