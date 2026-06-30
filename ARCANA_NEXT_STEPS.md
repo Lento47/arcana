@@ -271,12 +271,11 @@ Important already-completed slices:
 - Active RunProof binding uses `ARCANA_ACTIVE_RUNPROOF_PATH`; no latest-proof-file scan should be reintroduced.
 - Rollback restore staging, approval, and execution evidence are represented in RunProof, but the TUI still must not execute rollback commands directly unless a future guarded executor slice explicitly adds that behavior.
 - Model route accountability fields are persisted in RunProof and displayed by the existing `/sovereignty` surface.
-- `ProofRuntime.recordCheck()` and `ProofRuntime.recordTestResult()` persist verification evidence, but shell/run call sites still need a conservative bridge so actual test/typecheck/lint/build commands automatically become RunProof verification events.
+- `ProofRuntime.recordCheck()` and `ProofRuntime.recordTestResult()` persist verification evidence, and the agent shell run path now conservatively records obvious test/typecheck/lint/build shell commands as RunProof verification events.
 
 Next narrow implementation target:
 
-- Wire verification-looking shell commands in the agent run path to `ProofRuntime.recordCheck()` / `recordTestResult()`.
-- Keep it conservative: only classify obvious `test`, `typecheck`/`tsc`, `lint`, and `build` commands.
+- Improve verification evidence detail by extracting test counts, exit codes, and durations from real tool results when the shell/tool layer exposes them.
 - Do not add new TUI commands, command registries, RunProof schema fields, prompt-template commands, latest-proof scans, or engine/CLI rewrites.
 
 ## Next Steps
@@ -287,6 +286,6 @@ Next narrow implementation target:
 4. Remaining product gaps to close in priority order:
    - Rollback: if/when adding a TUI execution button, require approved restore state, route through a guarded shell executor, and record `rollback.executed` plus shell command evidence. Do not bypass approval.
    - Provider/model accountability: connect real latency/cost values from model calls when the agent runtime exposes them; keep `/sovereignty` read-only and proof-backed.
-   - Diff/verify gates: wire actual run/check call sites to `ProofRuntime.recordCheck()` and `ProofRuntime.recordTestResult()` so `/verify` and `/diffgate` reflect real command outcomes from live runs.
+   - Diff/verify gates: enrich recorded verification evidence with real exit codes, durations, and test counts when available so `/verify` and `/diffgate` can show stronger proof than pass/fail summaries.
 5. Keep TUI tests green when touching session/dialog components; the root preload now makes `bun test packages/tui` the single source of truth for TUI QA.
 6. Keep the tree clean between slices; do not stage restored stash or worktree files unless a future slice explicitly scopes them in.

@@ -85,6 +85,22 @@ export type AgentConfig = {
       stdout_summary?: string
       stderr_summary?: string
     }): Promise<void>
+    recordCheck?(input: {
+      kind: "typecheck" | "lint" | "build"
+      command: string
+      status: "passed" | "failed" | "skipped" | "not_run"
+      summary: string
+      duration_ms?: number
+    }): Promise<void>
+    recordTestResult?(input: {
+      command: string
+      status: "passed" | "failed" | "skipped" | "not_run"
+      summary: string
+      passed?: number
+      failed?: number
+      skipped?: number
+      duration_ms?: number
+    }): Promise<void>
     recordMlSignal?(input: {
       kind: "turn" | "tool"
       signal: unknown
