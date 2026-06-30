@@ -92,6 +92,10 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   const tuiConfig = useTuiConfig()
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
 
+  // Dialog body may be transparent in system/transparent themes; default inactive
+  // rows to an opaque surface so text remains readable over the terminal.
+  const inactiveBg = createMemo(() => (theme.background.a < 1 ? theme.backgroundPanel : theme.background))
+
   const [store, setStore] = createStore({
     selected: 0,
     filter: "",
@@ -500,7 +504,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     return (
       <box
         flexDirection="row"
-        backgroundColor={active() ? theme.primary : RGBA.fromInts(0, 0, 0, 0)}
+        backgroundColor={active() ? theme.primary : inactiveBg()}
         onMouseUp={() => triggerAction(item)}
       >
         <text
@@ -650,7 +654,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                                 ? actionFocused()
                                   ? theme.backgroundElement
                                   : (option.bg ?? theme.primary)
-                                : RGBA.fromInts(0, 0, 0, 0)
+                                : inactiveBg()
                             }
                           >
                             <Show when={!current() && option.margin}>

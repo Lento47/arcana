@@ -1,5 +1,5 @@
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { batch, createContext, createEffect, onCleanup, Show, useContext, type JSX, type ParentProps } from "solid-js"
+import { batch, createContext, createEffect, createMemo, onCleanup, Show, useContext, type JSX, type ParentProps } from "solid-js"
 import { useTheme } from "../context/theme"
 import { COPY } from "../branding"
 import { MouseButton, Renderable, RGBA } from "@opentui/core"
@@ -19,6 +19,13 @@ export function Dialog(
   const dimensions = useTerminalDimensions()
   const { theme } = useTheme()
   const renderer = useRenderer()
+
+  const dimmer = createMemo(() => {
+    const bg = theme.background
+    const lum = 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b
+    const base = lum > 0.5 ? RGBA.fromInts(0, 0, 0) : RGBA.fromInts(255, 255, 255)
+    return RGBA.fromValues(base.r, base.g, base.b, 150 / 255)
+  })
 
   let dismiss = false
   const width = () => {
@@ -47,7 +54,7 @@ export function Dialog(
       paddingTop={dimensions().height / 4}
       left={0}
       top={0}
-      backgroundColor={RGBA.fromInts(0, 0, 0, 150)}
+      backgroundColor={dimmer()}
     >
       <box
         onMouseUp={(e: { stopPropagation(): void }) => {
