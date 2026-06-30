@@ -1,6 +1,7 @@
 import type { ColorInput } from "@opentui/core"
 import { RGBA } from "@opentui/core"
 import type { ColorGenerator } from "opentui-spinner"
+import type { Theme } from "../theme"
 
 interface AdvancedGradientOptions {
   colors: ColorInput[]
@@ -262,6 +263,8 @@ export interface KnightRiderOptions {
   enableFading?: boolean
   /** Minimum alpha value when fading (default: 0, range: 0-1) */
   minAlpha?: number
+  /** Resolved theme to derive default colors from when no explicit color is given */
+  theme?: Theme
 }
 
 /**
@@ -316,22 +319,10 @@ export function createFrames(options: KnightRiderOptions = {}): string[] {
     return frames
   }
 
-  const colors =
-    options.colors ??
-    (options.color
-      ? deriveTrailColors(options.color, options.trailSteps)
-      : [
-          RGBA.fromHex("#ff0000"), // Brightest Red (Center)
-          RGBA.fromHex("#ff5555"), // Glare/Bloom
-          RGBA.fromHex("#dd0000"), // Trail 1
-          RGBA.fromHex("#aa0000"), // Trail 2
-          RGBA.fromHex("#770000"), // Trail 3
-          RGBA.fromHex("#440000"), // Trail 4
-        ])
+  const bright = options.color ?? options.theme?.primary ?? RGBA.fromHex("#a0a0a0")
+  const colors = options.colors ?? deriveTrailColors(bright, options.trailSteps)
 
-  const defaultColor =
-    options.defaultColor ??
-    (options.color ? deriveInactiveColor(options.color, options.inactiveFactor) : RGBA.fromHex("#330000"))
+  const defaultColor = options.defaultColor ?? deriveInactiveColor(bright, options.inactiveFactor)
 
   const trailOptions = {
     colors,
@@ -383,29 +374,17 @@ export function createColors(options: KnightRiderOptions = {}): ColorGenerator {
       ? options.color instanceof RGBA
         ? options.color
         : RGBA.fromHex((options.color as string) || "#ffffff")
-      : RGBA.fromHex("#ffffff")
+      : options.theme?.text ?? RGBA.fromHex("#ffffff")
     return () => color
   }
 
   const holdStart = options.holdStart ?? 30
   const holdEnd = options.holdEnd ?? 9
 
-  const colors =
-    options.colors ??
-    (options.color
-      ? deriveTrailColors(options.color, options.trailSteps)
-      : [
-          RGBA.fromHex("#ff0000"), // Brightest Red (Center)
-          RGBA.fromHex("#ff5555"), // Glare/Bloom
-          RGBA.fromHex("#dd0000"), // Trail 1
-          RGBA.fromHex("#aa0000"), // Trail 2
-          RGBA.fromHex("#770000"), // Trail 3
-          RGBA.fromHex("#440000"), // Trail 4
-        ])
+  const bright = options.color ?? options.theme?.primary ?? RGBA.fromHex("#a0a0a0")
+  const colors = options.colors ?? deriveTrailColors(bright, options.trailSteps)
 
-  const defaultColor =
-    options.defaultColor ??
-    (options.color ? deriveInactiveColor(options.color, options.inactiveFactor) : RGBA.fromHex("#330000"))
+  const defaultColor = options.defaultColor ?? deriveInactiveColor(bright, options.inactiveFactor)
 
   const trailOptions = {
     colors,

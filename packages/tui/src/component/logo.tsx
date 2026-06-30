@@ -86,7 +86,6 @@ const TRACE = 0.033
 const TAIL = 1.8
 const TRACE_IN = 200
 const GLOW_OUT = 1600
-const PEAK = RGBA.fromInts(255, 255, 255)
 
 type Ring = {
   x: number
@@ -167,15 +166,20 @@ function ramp(t: number, start: number, end: number) {
   return ease((t - start) / (end - start))
 }
 
-function glow(base: RGBA, theme: ReturnType<typeof useTheme>["theme"], n: number) {
+function peakFor(ink: RGBA): RGBA {
+  const lum = 0.299 * ink.r + 0.587 * ink.g + 0.114 * ink.b
+  return lum > 0.5 ? RGBA.fromInts(0, 0, 0) : RGBA.fromInts(255, 255, 255)
+}
+
+function glow(base: RGBA, theme: ReturnType<typeof useTheme>["theme"], n: number, peak: RGBA) {
   const mid = tint(base, theme.primary, 0.84)
-  const top = tint(theme.primary, PEAK, 0.96)
+  const top = tint(theme.primary, peak, 0.96)
   if (n <= 1) return tint(base, mid, Math.min(1, Math.sqrt(Math.max(0, n)) * 1.14))
   return tint(mid, top, Math.min(1, 1 - Math.exp(-2.4 * (n - 1))))
 }
 
-function shade(base: RGBA, theme: ReturnType<typeof useTheme>["theme"], n: number) {
-  if (n >= 0) return glow(base, theme, n)
+function shade(base: RGBA, theme: ReturnType<typeof useTheme>["theme"], n: number, peak: RGBA) {
+  if (n >= 0) return glow(base, theme, n, peak)
   return tint(base, theme.background, Math.min(0.82, -n * 0.64))
 }
 
@@ -688,6 +692,7 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
     state: IdleState | undefined,
   ): JSX.Element[] => {
     const shadow = tint(theme.background, ink, 0.25)
+    const peak = peakFor(ink)
     const attrs = bold ? TextAttributes.BOLD : undefined
 
     return Array.from(line).map((char, i) => {
@@ -708,12 +713,12 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
       const peakMixBot = charLit ? Math.min(1, pulseBot.peak) : 0
       const primaryMixTop = charLit ? Math.min(1, pulseTop.primary) : 0
       const primaryMixBot = charLit ? Math.min(1, pulseBot.primary) : 0
-      // Layer primary tint first, then white peak on top — so the halo/tail pulls toward primary,
-      // while the bright core stays pure white
+      // Layer primary tint first, then the high-contrast peak on top — so the halo/tail pulls toward primary,
+      // while the bright core stays readable against the ink color.
       const inkTopTint = primaryMixTop > 0 ? tint(ink, theme.primary, primaryMixTop) : ink
       const inkBotTint = primaryMixBot > 0 ? tint(ink, theme.primary, primaryMixBot) : ink
-      const inkTop = peakMixTop > 0 ? tint(inkTopTint, PEAK, peakMixTop) : inkTopTint
-      const inkBot = peakMixBot > 0 ? tint(inkBotTint, PEAK, peakMixBot) : inkBotTint
+      const inkTop = peakMixTop > 0 ? tint(inkTopTint, peak, peakMixTop) : inkTopTint
+      const inkBot = peakMixBot > 0 ? tint(inkBotTint, peak, peakMixBot) : inkBotTint
       // For the non-peak-aware brightness channels, use the average of top/bot
       const pulse = {
         glow: (pulseTop.glow + pulseBot.glow) / 2,
@@ -723,14 +728,14 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
       const peakMix = charLit ? Math.min(1, pulse.peak) : 0
       const primaryMix = charLit ? Math.min(1, pulse.primary) : 0
       const inkPrimary = primaryMix > 0 ? tint(ink, theme.primary, primaryMix) : ink
-      const inkTinted = peakMix > 0 ? tint(inkPrimary, PEAK, peakMix) : inkPrimary
+      const inkTinted = peakMix > 0 ? tint(inkPrimary, peak, peakMix) : inkPrimary
       const shadowMixCfg = state?.cfg.shadowMix ?? shimmerConfig.shadowMix
       const shadowMixTop = Math.min(1, pulseTop.peak * shadowMixCfg)
       const shadowMixBot = Math.min(1, pulseBot.peak * shadowMixCfg)
-      const shadowTop = shadowMixTop > 0 ? tint(shadow, PEAK, shadowMixTop) : shadow
-      const shadowBot = shadowMixBot > 0 ? tint(shadow, PEAK, shadowMixBot) : shadow
+      const shadowTop = shadowMixTop > 0 ? tint(shadow, peak, shadowMixTop) : shadow
+      const shadowBot = shadowMixBot > 0 ? tint(shadow, peak, shadowMixBot) : shadow
       const shadowMix = Math.min(1, pulse.peak * shadowMixCfg)
-      const shadowTinted = shadowMix > 0 ? tint(shadow, PEAK, shadowMix) : shadow
+      const shadowTinted = shadowMix > 0 ? tint(shadow, peak, shadowMix) : shadow
       const n = wave(off + i, y, frame, charLit, ctx) + h
       const s = wave(off + i, y, dusk, false, ctx) + h
       const p = charLit ? pick(off + i, y, frame, ctx) : 0
@@ -741,8 +746,8 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
       if (char === "_") {
         return (
           <text
-            fg={shade(inkTinted, theme, s * 0.08)}
-            bg={shade(shadowTinted, theme, ghost(s, 0.24) + ghost(q, 0.06))}
+            fg={shade(inkTinted, theme, s * 0.08, peak)}
+            bg={shade(shadowTinted, theme, ghost(s, 0.24) + ghost(q, 0.06), peak)}
             attributes={attrs}
             selectable={false}
           >
@@ -754,8 +759,8 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
       if (char === "^") {
         return (
           <text
-            fg={shade(inkTop, theme, n + p + e + b)}
-            bg={shade(shadowBot, theme, ghost(s, 0.18) + ghost(q, 0.05) + ghost(b, 0.08))}
+            fg={shade(inkTop, theme, n + p + e + b, peak)}
+            bg={shade(shadowBot, theme, ghost(s, 0.18) + ghost(q, 0.05) + ghost(b, 0.08), peak)}
             attributes={attrs}
             selectable={false}
           >
@@ -766,7 +771,7 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
 
       if (char === "~") {
         return (
-          <text fg={shade(shadowTop, theme, ghost(s, 0.22) + ghost(q, 0.05))} attributes={attrs} selectable={false}>
+          <text fg={shade(shadowTop, theme, ghost(s, 0.22) + ghost(q, 0.05), peak)} attributes={attrs} selectable={false}>
             ▀
           </text>
         )
@@ -774,7 +779,7 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
 
       if (char === ",") {
         return (
-          <text fg={shade(shadowBot, theme, ghost(s, 0.22) + ghost(q, 0.05))} attributes={attrs} selectable={false}>
+          <text fg={shade(shadowBot, theme, ghost(s, 0.22) + ghost(q, 0.05), peak)} attributes={attrs} selectable={false}>
             ▄
           </text>
         )
@@ -784,8 +789,8 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
       if (char === "█" && useSubpixelBlocks()) {
         return (
           <text
-            fg={shade(inkTop, theme, n + p + e + b)}
-            bg={shade(inkBot, theme, n + p + e + b)}
+            fg={shade(inkTop, theme, n + p + e + b, peak)}
+            bg={shade(inkBot, theme, n + p + e + b, peak)}
             attributes={attrs}
             selectable={false}
           >
@@ -797,7 +802,7 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
       // ▀ top-half-lit: fg uses top-pixel sample, bg stays transparent/panel
       if (char === "▀") {
         return (
-          <text fg={shade(inkTop, theme, n + p + e + b)} attributes={attrs} selectable={false}>
+          <text fg={shade(inkTop, theme, n + p + e + b, peak)} attributes={attrs} selectable={false}>
             ▀
           </text>
         )
@@ -806,14 +811,14 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
       // ▄ bottom-half-lit: fg uses bottom-pixel sample
       if (char === "▄") {
         return (
-          <text fg={shade(inkBot, theme, n + p + e + b)} attributes={attrs} selectable={false}>
+          <text fg={shade(inkBot, theme, n + p + e + b, peak)} attributes={attrs} selectable={false}>
             ▄
           </text>
         )
       }
 
       return (
-        <text fg={shade(inkTinted, theme, n + p + e + b)} attributes={attrs} selectable={false}>
+        <text fg={shade(inkTinted, theme, n + p + e + b, peak)} attributes={attrs} selectable={false}>
           {char}
         </text>
       )
