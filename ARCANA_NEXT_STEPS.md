@@ -253,6 +253,32 @@ The previous broad dirty tree was preserved in:
 
 Nested `.claude/worktrees` changes were preserved in separate stashes `stash@{0}` through `stash@{5}` at the time the tree was cleaned. Stash numbering changes after new stash operations.
 
+## Current Checkpoint
+
+Current branch: `architecture/active-runproof-binding`
+
+Current clean state:
+
+- `git status --short` was empty before this documentation checkpoint.
+- Latest commit before this checkpoint: `e1cda44 Persist verification evidence from ProofRuntime`.
+- `changes-tui-contrast-fallbacks.md` is present and documents the committed TUI contrast fallback slice (`783a696 Fix TUI contrast fallbacks`).
+
+Important already-completed slices:
+
+- Prompt-template Arcana commands were removed; real Arcana commands remain in `packages/tui/src/app.tsx`.
+- TUI contrast fallback fixes were documented in `changes-tui-contrast-fallbacks.md`.
+- `/contract`, `/actions`, `/diffgate`, `/verify`, and `/sovereignty` are proof-backed read surfaces, not prompt macros.
+- Active RunProof binding uses `ARCANA_ACTIVE_RUNPROOF_PATH`; no latest-proof-file scan should be reintroduced.
+- Rollback restore staging, approval, and execution evidence are represented in RunProof, but the TUI still must not execute rollback commands directly unless a future guarded executor slice explicitly adds that behavior.
+- Model route accountability fields are persisted in RunProof and displayed by the existing `/sovereignty` surface.
+- `ProofRuntime.recordCheck()` and `ProofRuntime.recordTestResult()` persist verification evidence, but shell/run call sites still need a conservative bridge so actual test/typecheck/lint/build commands automatically become RunProof verification events.
+
+Next narrow implementation target:
+
+- Wire verification-looking shell commands in the agent run path to `ProofRuntime.recordCheck()` / `recordTestResult()`.
+- Keep it conservative: only classify obvious `test`, `typecheck`/`tsc`, `lint`, and `build` commands.
+- Do not add new TUI commands, command registries, RunProof schema fields, prompt-template commands, latest-proof scans, or engine/CLI rewrites.
+
 ## Next Steps
 
 1. Keep `/contract` and `/actions` bound only to the active RunProof path (`ARCANA_ACTIVE_RUNPROOF_PATH`). Do not introduce latest-proof scans.
