@@ -208,6 +208,17 @@ type RunProofFileWriteView = {
   bytes_written?: number
 }
 
+type RunProofShellCommandView = {
+  id?: string
+  command?: string
+  cwd?: string
+  status?: string
+  risk?: string
+  exit_code?: number
+  stdout_summary?: string
+  stderr_summary?: string
+}
+
 type RunProofCheckView = {
   id?: string
   command?: string
@@ -275,6 +286,7 @@ type RunProofView = {
   execution?: {
     file_reads: RunProofFileReadView[]
     file_writes: RunProofFileWriteView[]
+    shell_commands: RunProofShellCommandView[]
   }
   verification?: RunProofVerificationView
   sovereignty?: RunProofSovereigntyView
@@ -356,6 +368,28 @@ function normalizeFileWrites(value: unknown): RunProofFileWriteView[] {
                 mode: proofString(write.mode),
                 reason: proofString(write.reason),
                 bytes_written: proofNumber(write.bytes_written),
+              },
+            ]
+          : []
+      })
+    : []
+}
+
+function normalizeShellCommands(value: unknown): RunProofShellCommandView[] {
+  return Array.isArray(value)
+    ? value.flatMap((item): RunProofShellCommandView[] => {
+        const cmd = asRecord(item)
+        return cmd
+          ? [
+              {
+                id: proofString(cmd.id),
+                command: proofString(cmd.command),
+                cwd: proofString(cmd.cwd),
+                status: proofString(cmd.status),
+                risk: proofString(cmd.risk),
+                exit_code: proofNumber(cmd.exit_code),
+                stdout_summary: proofString(cmd.stdout_summary),
+                stderr_summary: proofString(cmd.stderr_summary),
               },
             ]
           : []
@@ -473,6 +507,7 @@ function normalizeProofView(value: unknown): RunProofView {
     execution: {
       file_reads: normalizeFileReads(execution?.file_reads),
       file_writes: normalizeFileWrites(execution?.file_writes),
+      shell_commands: normalizeShellCommands(execution?.shell_commands),
     },
     verification: {
       diagnostics: normalizeChecks(verification?.diagnostics),
@@ -648,6 +683,7 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
   const events = () => props.proof.events ?? []
   const fileReads = () => props.proof.execution?.file_reads ?? []
   const fileWrites = () => props.proof.execution?.file_writes ?? []
+  const shellCommands = () => props.proof.execution?.shell_commands ?? []
   const status = () => props.proof.lifecycle?.status ?? props.proof.contract?.status ?? "unknown"
   const risk = () => props.proof.risk?.level ?? props.proof.contract?.risk_level ?? "unknown"
   const score = () => props.proof.final_evidence?.proof_score
@@ -685,10 +721,10 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
           )}
         </Show>
         <text fg={theme.textMuted}>
-          Evidence: {fileReads().length} context read(s)  {fileWrites().length} file write(s)
+          Evidence: {fileReads().length} context read(s)  {fileWrites().length} file write(s)  {shellCommands().length} shell command(s)
         </text>
       </box>
-      <Show when={fileReads().length > 0 || fileWrites().length > 0}>
+      <Show when={fileReads().length > 0 || fileWrites().length > 0 || shellCommands().length > 0}>
         <box gap={0}>
           <text fg={theme.text}>Recent evidence</text>
           <For each={fileReads().slice(-3)}>
@@ -702,6 +738,13 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
             {(write) => (
               <text fg={theme.textMuted}>
                 WRITE  {write.mode ?? "unknown"}  {write.path ?? "unknown path"}  {write.reason ?? ""}
+              </text>
+            )}
+          </For>
+          <For each={shellCommands().slice(-3)}>
+            {(cmd) => (
+              <text fg={theme.textMuted}>
+                SHELL  {cmd.status ?? "unknown"}  {cmd.command ?? "unknown command"}  {cmd.risk ?? ""}
               </text>
             )}
           </For>
