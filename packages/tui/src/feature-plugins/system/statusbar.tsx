@@ -17,6 +17,10 @@ function renderBar(pct: number): string {
   return "▰".repeat(Math.max(0, filled)) + "▱".repeat(Math.max(0, empty))
 }
 
+function clampPercent(pct: number): number {
+  return Math.max(0, Math.min(100, pct))
+}
+
 function compactModelName(value: string): string {
   return value.length > 34 ? `${value.slice(0, 31)}...` : value
 }
@@ -43,7 +47,9 @@ function View(props: { api: TuiPluginApi }) {
   })
 
   const latestUsageAssistant = createMemo(() => {
-    return sessionMessages().findLast((item): item is AssistantMessage => item.role === "assistant" && item.tokens.output > 0)
+    return sessionMessages().findLast(
+      (item): item is AssistantMessage => item.role === "assistant" && item.tokens.output > 0,
+    )
   })
 
   const model = createMemo(() => {
@@ -59,7 +65,7 @@ function View(props: { api: TuiPluginApi }) {
     const tokens =
       last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
     const limit = api.state.provider.find((item) => item.id === last.providerID)?.models[last.modelID]?.limit.context
-    return { tokens, percent: limit ? Math.round((tokens / limit) * 100) : null }
+    return { tokens, percent: limit ? clampPercent(Math.round((tokens / limit) * 100)) : null }
   })
 
   const cost = createMemo(() => {
@@ -80,6 +86,14 @@ function View(props: { api: TuiPluginApi }) {
     const sid = sessionID()
     if (!sid) return false
     return api.state.session.compacting(sid)
+  })
+
+  const contextPressure = createMemo(() => {
+    const pct = usage()?.percent
+    if (pct === null || pct === undefined || compacting()) return undefined
+    if (pct >= 95) return { label: "COMPACT NOW", color: theme().error }
+    if (pct >= 80) return { label: "COMPACT SOON", color: theme().warning }
+    return undefined
   })
 
   // Abstract diamond "charge" — pulses ◇→◈→◆→◈ only while the model generates.
@@ -118,10 +132,27 @@ function View(props: { api: TuiPluginApi }) {
             </text>
           </box>
         </Show>
+        <Show when={contextPressure()}>
+          {(pressure) => (
+            <box backgroundColor={pressure().color} paddingLeft={1} paddingRight={1}>
+              <text fg={selectedForeground(theme(), pressure().color)}>
+                <span style={{ fg: selectedForeground(theme(), pressure().color), bold: true }}>
+                  {pressure().label}
+                </span>
+              </text>
+            </box>
+          )}
+        </Show>
         <Show when={status()?.type === "retry"}>
           <text fg={theme().warning}>↻ retry</text>
         </Show>
-        <Show when={model()}>{(value) => <text fg={theme().textMuted}>{Glyph.sigil} {value()}</text>}</Show>
+        <Show when={model()}>
+          {(value) => (
+            <text fg={theme().textMuted}>
+              {Glyph.sigil} {value()}
+            </text>
+          )}
+        </Show>
         <Show when={mlRuntime()}>
           <text fg={theme().primary}>
             <span style={{ fg: theme().primary, bold: true }}>ML</span>
@@ -132,7 +163,11 @@ function View(props: { api: TuiPluginApi }) {
             <Show when={u().percent !== null}>
               <text fg={theme().textMuted}>|</text>
               <text fg={theme().primary}>
-                <span style={{ fg: u().percent! > 95 ? theme().error : u().percent! > 80 ? theme().warning : theme().primary }}>
+                <span
+                  style={{
+                    fg: u().percent! > 95 ? theme().error : u().percent! > 80 ? theme().warning : theme().primary,
+                  }}
+                >
                   {renderBar(u().percent!)}
                 </span>
               </text>
@@ -145,13 +180,17 @@ function View(props: { api: TuiPluginApi }) {
             <text fg={theme().textMuted}>
               <span style={{ fg: theme().primary }}>{Locale.number(value().tokens)}</span> {Lexicon.Token.label}
               <Show when={value().percent !== null}>
-                <span style={{ fg: theme().secondary }}>{Glyph.meter} {value().percent + "%"}</span>
+                <span style={{ fg: theme().secondary }}>
+                  {Glyph.meter} {value().percent + "%"}
+                </span>
               </Show>
             </text>
           )}
         </Show>
         <Show when={cost() !== undefined && cost()! > 0}>
-          <text fg={theme().textMuted}>{Glyph.diamond} {money.format(cost()!)}</text>
+          <text fg={theme().textMuted}>
+            {Glyph.diamond} {money.format(cost()!)}
+          </text>
         </Show>
       </box>
     </Show>
