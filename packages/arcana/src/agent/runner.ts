@@ -8,7 +8,13 @@ import type { AgentConfig, ChatMessage, TurnResult, ToolDef, ToolHandler, ToolRe
 import { redactSecrets, checkDangerousCommand, RateLimiter, auditLog } from "./guard.js"
 import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
-import { applyMlPreflight, buildMlRevisionMessages, evaluateMlFinalResponse, prepareMlRuntime } from "./ml-runtime.js"
+import {
+  applyMlPreflight,
+  buildMlRevisionMessages,
+  evaluateMlFinalResponse,
+  getMlRuntimeModelOverrides,
+  prepareMlRuntime,
+} from "./ml-runtime.js"
 
 const TOOL_RESULT_MAX = 2000  // truncate large tool outputs to this many chars
 
@@ -157,7 +163,12 @@ export class AgentRunner {
     const command = this.shellCommandFromTool(toolName, input)
     if (!command || !this.config.proofGate) return undefined
     const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd()
-    const decision = await this.config.proofGate.gateShellCommand(command, { cwd, approved: this.config.godlike === true })
+    const decision = await this.config.proofGate.gateShellCommand(command, {
+      cwd,
+      approved: this.config.godlike === true,
+      sandboxEnabled: Boolean(this.sandbox),
+      userSovereignty: { requireApprovalForWrites: true, requireApprovalForNetwork: true },
+    })
     if (!decision.blocked) return undefined
     return [
       `Blocked by RunProof policy gate: ${command}`,
@@ -178,6 +189,8 @@ export class AgentRunner {
     const decision = await this.config.proofGate.gateFileMutation(path, {
       operation: toolName,
       approved: this.config.godlike === true,
+      sandboxEnabled: Boolean(this.sandbox),
+      userSovereignty: { requireApprovalForWrites: true, requireApprovalForNetwork: true },
     })
     if (!decision.blocked) return undefined
     return [
@@ -329,8 +342,28 @@ export class AgentRunner {
       history = systemMsg ? [systemMsg, ...rest] : rest
     }
 
-    const mlRuntime = prepareMlRuntime(history, this.config, Boolean(this.sandbox))
+    const availableTools = this.getToolDefs().map((tool) => tool.function.name)
+    const mlRuntime = prepareMlRuntime(history, this.config, Boolean(this.sandbox), availableTools)
     history = applyMlPreflight(history, mlRuntime)
+    const mlOverrides = getMlRuntimeModelOverrides(mlRuntime)
+
+    if (this.config.proofGate?.recordMlSignal && mlRuntime.turnSignal) {
+      try {
+        await this.config.proofGate.recordMlSignal({
+          kind: "turn",
+          signal: mlRuntime.turnSignal,
+          summary: `ML turn signal: ${mlRuntime.turnSignal.intent} | risk=${mlRuntime.turnSignal.risk} | posture=${mlRuntime.turnSignal.executionPosture} | route=${mlRuntime.turnSignal.modelRoute.profile}`,
+          refs: {
+            intent: mlRuntime.turnSignal.intent,
+            risk: mlRuntime.turnSignal.risk,
+            posture: mlRuntime.turnSignal.executionPosture,
+            model_route: mlRuntime.turnSignal.modelRoute.profile,
+          },
+        })
+      } catch {
+        // Non-blocking: ML signal recording failures should not break the run.
+      }
+    }
 
     let totalInput = 0
     let totalOutput = 0
@@ -342,10 +375,13 @@ export class AgentRunner {
     // (bash/shell, write, edit, speak, memory_store_fact, ...) would silently skip
     // a real second execution of an identical call within the 5s window.
     const CACHEABLE_TOOLS = new Set(["web_search", "web_fetch", "memory_search", "skill_list"])
-    for (let round = 0; round < (this.config.maxToolRounds ?? 10); round++) {
+    const maxToolRounds = mlOverrides.maxToolRounds ?? this.config.maxToolRounds ?? 10
+    for (let round = 0; round < maxToolRounds; round++) {
       const { model, tools } = await resolveModel(this.config, this.getToolDefs())
       const coreMessages = toCoreMessages(history)
       const hasTools = Object.keys(tools).length > 0
+      const mlMaxTokens = mlOverrides.maxTokens
+      const mlTemperature = mlOverrides.temperature
 
       // Context pack shadow: measure what the context pack WOULD trim
       // without enforcing budgets yet. This is observational — it feeds
@@ -375,8 +411,8 @@ export class AgentRunner {
         const result = await streamText({
           model,
           messages: coreMessages,
-          maxOutputTokens: this.config.maxTokens ?? 4096,
-          temperature: this.config.temperature ?? 0.7,
+          maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 4096,
+          temperature: mlTemperature ?? this.config.temperature ?? 0.7,
           tools: hasTools ? tools : undefined,
         })
         let content = ""
@@ -397,8 +433,8 @@ export class AgentRunner {
       const result = await generateText({
         model,
         messages: coreMessages,
-        maxOutputTokens: this.config.maxTokens ?? 4096,
-        temperature: this.config.temperature ?? 0.7,
+        maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 4096,
+        temperature: mlTemperature ?? this.config.temperature ?? 0.7,
         tools: hasTools ? tools : undefined,
       })
 
@@ -417,8 +453,8 @@ export class AgentRunner {
             const revised = await generateText({
               model,
               messages: toCoreMessages(revisionMessages),
-              maxOutputTokens: this.config.maxTokens ?? 4096,
-              temperature: Math.min(this.config.temperature ?? 0.7, 0.4),
+              maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 4096,
+              temperature: Math.min(mlTemperature ?? this.config.temperature ?? 0.7, 0.4),
             })
             totalInput += revised.usage?.inputTokens ?? 0
             totalOutput += revised.usage?.outputTokens ?? 0

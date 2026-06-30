@@ -47,12 +47,19 @@ export type AgentConfig = {
   proofGate?: {
     gateShellCommand(
       command: string,
-      options?: { cwd?: string; approved?: boolean },
+      options?: { cwd?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean } },
     ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
     gateFileMutation(
       path: string,
-      options?: { operation?: string; approved?: boolean },
+      options?: { operation?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean } },
     ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
+    recordMlSignal?(input: {
+      kind: "turn" | "tool"
+      signal: unknown
+      decision?: unknown
+      summary?: string
+      refs?: Record<string, string>
+    }): Promise<void>
     recordContextAccess(input: {
       tool: "read" | "grep" | "glob"
       path?: string
@@ -77,6 +84,13 @@ export type AgentConfig = {
       exit_code?: number
       stdout_summary?: string
       stderr_summary?: string
+    }): Promise<void>
+    recordMlSignal?(input: {
+      kind: "turn" | "tool"
+      signal: unknown
+      decision?: unknown
+      summary?: string
+      refs?: Record<string, string>
     }): Promise<void>
   }
 }

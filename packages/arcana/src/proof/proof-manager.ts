@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
 // Copyright (c) 2026 arcana contributors
 
+import { analyzeTool, decideToolPolicy, formatPolicyDecision, formatToolSignalForAudit } from "@arcana/ml"
+import type { PolicyDecision, RiskLevel as MlRiskLevel, ToolSignal as MlToolSignal } from "@arcana/ml"
+
 import { completeRunProof, createRunProof, recordCommand, recordEvent } from "./create.js"
 import { renderRunProofMarkdown, renderRunProofTerminal } from "./render.js"
 import { saveRunProof, type ProofStoreTarget, type StoredRunProof } from "./store.js"
@@ -39,6 +42,15 @@ export type ProofManagerOptions = {
 
 export type CommandReflectionInput = Omit<TUICommandReflection, "id" | "timestamp" | "runproof_id">
 export type RunProofEventInput = Omit<RunProofEvent, "id" | "timestamp">
+
+export type MlGateContext = {
+  sandboxEnabled?: boolean
+  userSovereignty?: {
+    preferLocal?: boolean
+    requireApprovalForWrites?: boolean
+    requireApprovalForNetwork?: boolean
+  }
+}
 
 export type DiffInput = Omit<DiffRecord, "id" | "status">
 export type FileReadInput = Omit<FileAccessRecord, "id" | "timestamp">
@@ -80,7 +92,29 @@ function checkPassed(check: CheckResult | undefined): boolean {
   return check?.status === "passed"
 }
 
-export function evaluateShellCommandPolicy(command: string, options: { approved?: boolean } = {}): PolicyGateDecision {
+function mlRiskToRunProofRisk(risk: MlRiskLevel): RiskLevel {
+  if (risk === "high") return "high"
+  if (risk === "medium") return "medium"
+  return "low"
+}
+
+function mlDecisionRequiresApproval(decision: PolicyDecision): boolean {
+  return decision.action === "ask_approval" || decision.action === "escalate"
+}
+
+function mlSignalAuditReasons(signal: MlToolSignal, decision: PolicyDecision): string[] {
+  return [
+    `ML signal: ${formatToolSignalForAudit(signal)}`,
+    `ML decision: ${formatPolicyDecision(decision)}`,
+    ...(signal.reasons.length ? signal.reasons : []),
+  ]
+}
+
+export function evaluateShellCommandPolicy(
+  command: string,
+  options: { approved?: boolean } = {},
+  mlSignal?: MlToolSignal,
+): PolicyGateDecision {
   const normalized = command.toLowerCase()
   let risk: RiskLevel = "medium"
   const reasons = ["Shell command execution can mutate repository or machine state."]
@@ -100,7 +134,7 @@ export function evaluateShellCommandPolicy(command: string, options: { approved?
   }
 
   const requiredApproval = risk === "high" || risk === "critical"
-  return {
+  const decision: PolicyGateDecision = {
     action: "shell_command",
     command,
     risk,
@@ -108,11 +142,25 @@ export function evaluateShellCommandPolicy(command: string, options: { approved?
     blocked: requiredApproval && !options.approved,
     reasons,
   }
+
+  if (!mlSignal) return decision
+
+  const mlDecision = decideToolPolicy(mlSignal)
+  const combinedRisk = maxRisk(decision.risk, mlRiskToRunProofRisk(mlSignal.risk))
+  const combinedRequiredApproval = decision.required_approval || mlDecisionRequiresApproval(mlDecision)
+  return {
+    ...decision,
+    risk: combinedRisk,
+    required_approval: combinedRequiredApproval,
+    blocked: combinedRequiredApproval && !options.approved,
+    reasons: uniq([...decision.reasons, ...mlSignalAuditReasons(mlSignal, mlDecision)]),
+  }
 }
 
 export function evaluateFileMutationPolicy(
   path: string,
   options: { operation?: string; approved?: boolean } = {},
+  mlSignal?: MlToolSignal,
 ): PolicyGateDecision {
   const normalized = path.replace(/\\/g, "/").toLowerCase()
   const operation = options.operation ?? "write"
@@ -133,7 +181,7 @@ export function evaluateFileMutationPolicy(
   }
 
   const requiredApproval = risk === "high" || risk === "critical"
-  return {
+  const decision: PolicyGateDecision = {
     action: "file_mutation",
     path,
     operation,
@@ -141,6 +189,19 @@ export function evaluateFileMutationPolicy(
     required_approval: requiredApproval,
     blocked: requiredApproval && !options.approved,
     reasons,
+  }
+
+  if (!mlSignal) return decision
+
+  const mlDecision = decideToolPolicy(mlSignal)
+  const combinedRisk = maxRisk(decision.risk, mlRiskToRunProofRisk(mlSignal.risk))
+  const combinedRequiredApproval = decision.required_approval || mlDecisionRequiresApproval(mlDecision)
+  return {
+    ...decision,
+    risk: combinedRisk,
+    required_approval: combinedRequiredApproval,
+    blocked: combinedRequiredApproval && !options.approved,
+    reasons: uniq([...decision.reasons, ...mlSignalAuditReasons(mlSignal, mlDecision)]),
   }
 }
 
@@ -208,8 +269,18 @@ export class ProofManager {
     return this.proof.risk
   }
 
-  gateShellCommand(command: string, options: { cwd?: string; approved?: boolean } = {}): PolicyGateDecision {
-    const decision = evaluateShellCommandPolicy(command, { approved: options.approved })
+  gateShellCommand(
+    command: string,
+    options: { cwd?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: MlGateContext["userSovereignty"] } = {},
+    mlContext?: MlGateContext,
+  ): PolicyGateDecision {
+    const mlSignal = analyzeTool({
+      toolName: "shell",
+      args: { command, cwd: options.cwd },
+      sandboxEnabled: mlContext?.sandboxEnabled ?? options.sandboxEnabled ?? false,
+      userSovereignty: mlContext?.userSovereignty ?? options.userSovereignty,
+    })
+    const decision = evaluateShellCommandPolicy(command, { approved: options.approved }, mlSignal)
     this.proof.risk = {
       ...this.proof.risk,
       level: maxRisk(this.proof.risk.level, decision.risk),
@@ -220,6 +291,7 @@ export class ProofManager {
     if (decision.required_approval && !this.proof.contract.required_approvals.includes("shell command policy gate")) {
       this.proof.contract.required_approvals.push("shell command policy gate")
     }
+    const mlDecision = decideToolPolicy(mlSignal)
     this.recordEvent({
       type: decision.required_approval ? "approval.required" : "risk.evaluated",
       actor: "system",
@@ -235,13 +307,36 @@ export class ProofManager {
         blocked: decision.blocked,
         approved: Boolean(options.approved),
         reasons: decision.reasons,
+        ml_signal: {
+          risk: mlSignal.risk,
+          posture: mlSignal.executionPosture,
+          labels: mlSignal.labels,
+          confidence: mlSignal.confidence.value,
+          reasons: mlSignal.reasons,
+        },
+        ml_decision: {
+          action: mlDecision.action,
+          posture: mlDecision.posture,
+          confidence: mlDecision.confidence,
+          reasons: mlDecision.reasons,
+        },
       },
     })
     return decision
   }
 
-  gateFileMutation(path: string, options: { operation?: string; approved?: boolean } = {}): PolicyGateDecision {
-    const decision = evaluateFileMutationPolicy(path, options)
+  gateFileMutation(
+    path: string,
+    options: { operation?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: MlGateContext["userSovereignty"] } = {},
+    mlContext?: MlGateContext,
+  ): PolicyGateDecision {
+    const mlSignal = analyzeTool({
+      toolName: options.operation ?? "write",
+      args: { path },
+      sandboxEnabled: mlContext?.sandboxEnabled ?? options.sandboxEnabled ?? false,
+      userSovereignty: mlContext?.userSovereignty ?? options.userSovereignty,
+    })
+    const decision = evaluateFileMutationPolicy(path, options, mlSignal)
     this.proof.risk = {
       ...this.proof.risk,
       level: maxRisk(this.proof.risk.level, decision.risk),
@@ -252,6 +347,7 @@ export class ProofManager {
     if (decision.required_approval && !this.proof.contract.required_approvals.includes("file mutation policy gate")) {
       this.proof.contract.required_approvals.push("file mutation policy gate")
     }
+    const mlDecision = decideToolPolicy(mlSignal)
     this.recordEvent({
       type: decision.required_approval ? "approval.required" : "risk.evaluated",
       actor: "system",
@@ -267,9 +363,47 @@ export class ProofManager {
         blocked: decision.blocked,
         approved: Boolean(options.approved),
         reasons: decision.reasons,
+        ml_signal: {
+          risk: mlSignal.risk,
+          posture: mlSignal.executionPosture,
+          labels: mlSignal.labels,
+          confidence: mlSignal.confidence.value,
+          reasons: mlSignal.reasons,
+        },
+        ml_decision: {
+          action: mlDecision.action,
+          posture: mlDecision.posture,
+          confidence: mlDecision.confidence,
+          reasons: mlDecision.reasons,
+        },
       },
     })
     return decision
+  }
+
+  recordMlSignal(input: {
+    kind: "turn" | "tool"
+    signal: unknown
+    decision?: PolicyDecision
+    summary?: string
+    refs?: Record<string, string>
+  }): RunProofEvent {
+    const signal = input.signal as MlToolSignal | { kind: "turn"; intent?: string; risk?: MlRiskLevel; executionPosture?: string; modelRoute?: { profile: string; reason: string }; confidence?: { value: number }; labels?: string[]; reasons?: string[] }
+    const summary =
+      input.summary ??
+      (input.kind === "turn" ? `ML turn signal: intent=${(signal as any).intent ?? "unknown"}` : `ML tool signal: ${(signal as any).toolName ?? "unknown"}`)
+    return this.recordEvent({
+      type: "ml.signal",
+      actor: "system",
+      summary,
+      status: this.proof.lifecycle.status,
+      refs: input.refs,
+      data: {
+        kind: input.kind,
+        signal,
+        decision: input.decision,
+      },
+    })
   }
 
   updateRollback(rollback: Partial<RollbackBlock> & Pick<RollbackBlock, "strategy">): RollbackBlock {
