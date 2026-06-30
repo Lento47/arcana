@@ -174,6 +174,7 @@ type RunProofRollbackView = {
   checkpoint_id?: string
   strategy?: string
   restore_command?: string
+  valid_until?: string
 }
 
 type RunProofFinalEvidenceView = {
@@ -509,6 +510,7 @@ function normalizeProofView(value: unknown): RunProofView {
           checkpoint_id: proofString(rollback.checkpoint_id),
           strategy: proofString(rollback.strategy),
           restore_command: proofString(rollback.restore_command),
+          valid_until: proofString(rollback.valid_until),
         }
       : undefined,
     final_evidence: finalEvidence
@@ -657,6 +659,10 @@ function rollbackRestoreCommand(proof: RunProofView): string {
   return proof.rollback?.restore_command ?? proof.contract?.rollback_plan ?? "not recorded"
 }
 
+function rollbackValidity(proof: RunProofView): string {
+  return proof.rollback?.valid_until ?? "not recorded"
+}
+
 function mlEvidenceSummary(evidence: RunProofMLEvidenceView): string {
   const parts = [
     evidence.kind === "tool" ? `tool=${evidence.tool ?? "unknown"}` : `intent=${evidence.intent ?? "unknown"}`,
@@ -737,6 +743,7 @@ function DialogRunProofContract(props: { proof: RunProofView; path: string }) {
               <box gap={0}>
                 <text fg={theme.text}>Rollback checkpoint: {rollbackSummary(props.proof)}</text>
                 <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
+                <text fg={theme.textMuted}>Valid until: {rollbackValidity(props.proof)}</text>
               </box>
             </Show>
             <text fg={theme.text}>Verification steps</text>
@@ -815,6 +822,9 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
         </text>
         <Show when={props.proof.rollback?.restore_command}>
           <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
+        </Show>
+        <Show when={props.proof.rollback?.valid_until}>
+          <text fg={theme.textMuted}>Rollback valid until: {rollbackValidity(props.proof)}</text>
         </Show>
         <Show when={tokens()}>
           {(value) => (
@@ -935,6 +945,7 @@ function DialogRunProofDiffGate(props: { proof: RunProofView; path: string }) {
         <FieldList items={props.proof.risk?.reasons} empty="No risk reasons recorded." />
         <text fg={theme.textMuted}>Rollback: {rollbackSummary(props.proof)}</text>
         <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
+        <text fg={theme.textMuted}>Valid until: {rollbackValidity(props.proof)}</text>
       </box>
       <DiffList title="Proposed diffs" diffs={diffs().proposed} empty="No proposed diffs." />
       <DiffList title="Applied diffs" diffs={diffs().applied} empty="No applied diffs." />
