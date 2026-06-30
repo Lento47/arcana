@@ -42,6 +42,7 @@ export type RunProofEventType =
   | "rollback.available"
   | "rollback.staged"
   | "rollback.approved"
+  | "rollback.executed"
   | "sovereignty.routed"
   | "token.used"
   | "ml.signal"
@@ -255,6 +256,9 @@ export type RollbackBlock = {
   approval_required?: boolean
   approved_at?: string
   approved_by?: string
+  executed_at?: string
+  execution_status?: VerificationStatus
+  execution_exit_code?: number
 }
 
 export type FinalEvidence = {

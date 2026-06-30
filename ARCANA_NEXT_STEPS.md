@@ -17,6 +17,7 @@ Goal: Arcana becomes the governed execution cockpit for AI agents. The current w
 - `feat: Stage rollback restore behind RunProof approval`
 - `feat: Stage active rollback restore from TUI`
 - `feat: Capture rollback restore approval`
+- `feat: Record rollback restore execution evidence`
 
 ## Current Dirty Scope
 
@@ -184,6 +185,28 @@ Committed rollback approval capture slice:
   - `rg -n "Cockpit:|cockpit\.|Switched to cockpit|/ \$\{cmd\}" packages/tui/src` — no matches
   - `rg -n "readdir|mtime|latest|sort" packages/tui/src/app.tsx` — only local `latestTurnEvidence` ML evidence naming matched, no proof-file scan
 
+Committed rollback restore execution evidence slice:
+
+- Files changed:
+  - `packages/arcana/src/proof/types.ts`
+  - `packages/arcana/src/proof/proof-manager.ts`
+  - `packages/arcana/src/proof/render.ts`
+  - `packages/arcana/src/proof/proof-manager.test.ts`
+  - `packages/tui/src/app.tsx`
+- Behavior:
+  - RunProof now records `rollback.executed` as a distinct ledger event.
+  - `ProofManager.recordRollbackRestoreExecution()` requires an approved restore before execution can be recorded.
+  - Recording execution captures shell command evidence, exit code, stdout/stderr summaries, rollback execution status, and `executed_at`.
+  - Passing execution transitions the run lifecycle to `rolled_back`.
+  - Terminal, Markdown, replay, and existing `/contract`, `/actions`, `/diffgate` surfaces show rollback execution evidence when present.
+  - No TUI restore execution control was added in this slice; the TUI remains read-only for execution evidence.
+- QA passed:
+  - `bun test packages/arcana/src/proof/proof-manager.test.ts` — 16 pass
+  - `bun node_modules/.bun/typescript@5.8.2/node_modules/typescript/bin/tsc -p packages/arcana/tsconfig.json --noEmit`
+  - `bun --cwd packages/tui typecheck`
+  - `rg -n "Cockpit:|cockpit\.|Switched to cockpit|/ \$\{cmd\}" packages/tui/src` — no matches
+  - `rg -n "readdir|mtime|latest|sort" packages/tui/src/app.tsx` — only local `latestTurnEvidence` ML evidence naming matched, no proof-file scan
+
 ## Stashes
 
 The previous broad dirty tree was preserved in:
@@ -198,7 +221,7 @@ Nested `.claude/worktrees` changes were preserved in separate stashes `stash@{0}
 2. Continue wiring real RunProof data before expanding `/diffgate`, `/verify`, or `/sovereignty` behavior.
 3. Avoid new command registries or prompt-template command systems.
 4. Remaining product gaps to close in priority order:
-   - Rollback: add a guarded restore execution path only after approval, with command evidence and rollback execution event capture.
+   - Rollback: if/when adding a TUI execution button, require approved restore state, route through a guarded shell executor, and record `rollback.executed` plus shell command evidence. Do not bypass approval.
    - Provider/model accountability: ensure `recordModelRoute` evidence is captured and shown only when `/sovereignty` is backed by real data.
    - Diff/verify gates: wire verification results (`typecheck`, `lint`, `build`, tests) into RunProof before surfacing `/verify` and `/diffgate`.
 5. Keep TUI tests green when touching session/dialog components; the root preload now makes `bun test packages/tui` the single source of truth for TUI QA.

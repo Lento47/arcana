@@ -29,6 +29,7 @@ import type {
   TestResult,
   ToolCallRecord,
   TUICommandReflection,
+  VerificationStatus,
   VerifierResult,
 } from "./types.js"
 
@@ -541,6 +542,64 @@ export class ProofManager {
         approved_at: this.proof.rollback.approved_at,
         approved_by: this.proof.rollback.approved_by,
         executed: false,
+      },
+    })
+    return this.proof.rollback
+  }
+
+  recordRollbackRestoreExecution(input: {
+    cwd: string
+    status: VerificationStatus
+    exit_code?: number
+    stdout_summary?: string
+    stderr_summary?: string
+    actor?: CommandSource
+    summary?: string
+  }): RollbackBlock {
+    const restoreCommand = this.proof.rollback.restore_command
+    if (!restoreCommand) {
+      throw new Error("Cannot record rollback restore execution without a restore_command.")
+    }
+    if (this.proof.rollback.restore_status !== "approved") {
+      throw new Error("Rollback restore must be approved before execution can be recorded.")
+    }
+
+    const executedAt = now()
+    const shell = this.recordShellCommand({
+      command: restoreCommand,
+      cwd: input.cwd,
+      status: input.status,
+      risk: "high",
+      exit_code: input.exit_code,
+      stdout_summary: input.stdout_summary,
+      stderr_summary: input.stderr_summary,
+    })
+    this.proof.rollback = {
+      ...this.proof.rollback,
+      restore_status: input.status === "passed" ? "executed" : "approved",
+      executed_at: executedAt,
+      execution_status: input.status,
+      execution_exit_code: input.exit_code,
+    }
+    if (input.status === "passed") {
+      this.transitionState("rolled_back", "Rollback restore command completed.", input.actor ?? "system")
+    }
+    this.recordEvent({
+      type: "rollback.executed",
+      actor: input.actor ?? "system",
+      summary: input.summary ?? `Rollback restore ${input.status}: ${restoreCommand}`,
+      risk: "high",
+      status: input.status,
+      refs: {
+        checkpoint_id: this.proof.rollback.checkpoint_id,
+        restore_command: restoreCommand,
+        shell_command_id: shell.id,
+      },
+      data: {
+        exit_code: input.exit_code,
+        restore_status: this.proof.rollback.restore_status,
+        execution_status: input.status,
+        executed_at: executedAt,
       },
     })
     return this.proof.rollback

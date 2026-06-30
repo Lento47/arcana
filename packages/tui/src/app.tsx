@@ -181,6 +181,9 @@ type RunProofRollbackView = {
   approval_required?: boolean
   approved_at?: string
   approved_by?: string
+  executed_at?: string
+  execution_status?: string
+  execution_exit_code?: number
 }
 
 type RunProofFinalEvidenceView = {
@@ -522,6 +525,9 @@ function normalizeProofView(value: unknown): RunProofView {
           approval_required: proofBoolean(rollback.approval_required),
           approved_at: proofString(rollback.approved_at),
           approved_by: proofString(rollback.approved_by),
+          executed_at: proofString(rollback.executed_at),
+          execution_status: proofString(rollback.execution_status),
+          execution_exit_code: proofNumber(rollback.execution_exit_code),
         }
       : undefined,
     final_evidence: finalEvidence
@@ -844,6 +850,17 @@ function rollbackApprovalStatus(proof: RunProofView): string {
   return "not required"
 }
 
+function rollbackExecutionStatus(proof: RunProofView): string | undefined {
+  if (!proof.rollback?.executed_at && !proof.rollback?.execution_status) return undefined
+  return [
+    proof.rollback.execution_status ?? "unknown",
+    proof.rollback.execution_exit_code === undefined ? undefined : `exit=${proof.rollback.execution_exit_code}`,
+    proof.rollback.executed_at,
+  ]
+    .filter(Boolean)
+    .join(" ")
+}
+
 function mlEvidenceSummary(evidence: RunProofMLEvidenceView): string {
   const parts = [
     evidence.kind === "tool" ? `tool=${evidence.tool ?? "unknown"}` : `intent=${evidence.intent ?? "unknown"}`,
@@ -936,6 +953,9 @@ function DialogRunProofContract(props: {
                 <text fg={props.proof.rollback?.approval_required ? theme.warning : theme.textMuted}>
                   Restore approval: {rollbackApprovalStatus(props.proof)}
                 </text>
+                <Show when={rollbackExecutionStatus(props.proof)}>
+                  {(value) => <text fg={theme.textMuted}>Restore execution: {value()}</text>}
+                </Show>
                 <Show when={restoreCommand()}>
                   {(command) => (
                     <box gap={0}>
@@ -1071,6 +1091,9 @@ function DialogRunProofActions(props: {
           <text fg={props.proof.rollback?.approval_required ? theme.warning : theme.textMuted}>
             Restore status: {rollbackRestoreStatus(props.proof)} Approval: {rollbackApprovalStatus(props.proof)}
           </text>
+        </Show>
+        <Show when={rollbackExecutionStatus(props.proof)}>
+          {(value) => <text fg={theme.textMuted}>Restore execution: {value()}</text>}
         </Show>
         <Show when={tokens()}>
           {(value) => (
@@ -1208,6 +1231,9 @@ function DialogRunProofDiffGate(props: {
         <text fg={props.proof.rollback?.approval_required ? theme.warning : theme.textMuted}>
           Restore status: {rollbackRestoreStatus(props.proof)} Approval: {rollbackApprovalStatus(props.proof)}
         </text>
+        <Show when={rollbackExecutionStatus(props.proof)}>
+          {(value) => <text fg={theme.textMuted}>Restore execution: {value()}</text>}
+        </Show>
         <Show when={restoreCommand()}>
           {(command) => (
             <box gap={0}>

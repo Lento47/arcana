@@ -138,6 +138,9 @@ export function renderRunProofTerminal(proof: RunProof): string {
   if (proof.rollback.restore_status) out.push(`  Status: ${proof.rollback.restore_status}`)
   if (proof.rollback.approval_required) out.push("  Approval required before restore execution")
   if (proof.rollback.approved_at) out.push(`  Approved: ${proof.rollback.approved_at}`)
+  if (proof.rollback.executed_at) {
+    out.push(`  Executed: ${proof.rollback.execution_status ?? "unknown"} at ${proof.rollback.executed_at}`)
+  }
   out.push("")
 
   out.push("Unresolved")
@@ -285,6 +288,10 @@ export function renderRunProofMarkdown(proof: RunProof): string {
   if (proof.rollback.staged_at) lines.push(`- Staged at: ${proof.rollback.staged_at}`)
   if (proof.rollback.approved_at) lines.push(`- Approved at: ${proof.rollback.approved_at}`)
   if (proof.rollback.approved_by) lines.push(`- Approved by: ${proof.rollback.approved_by}`)
+  if (proof.rollback.executed_at) lines.push(`- Executed at: ${proof.rollback.executed_at}`)
+  if (proof.rollback.execution_status) lines.push(`- Execution status: ${proof.rollback.execution_status}`)
+  if (proof.rollback.execution_exit_code !== undefined)
+    lines.push(`- Execution exit code: ${proof.rollback.execution_exit_code}`)
   lines.push("")
 
   lines.push("## Final Evidence")
@@ -351,6 +358,10 @@ export function renderRunProofReplayLog(proof: RunProof): string {
   if (proof.rollback.approval_required) lines.push("rollback.approval_required=true")
   if (proof.rollback.approved_at) lines.push(`rollback.approved_at=${proof.rollback.approved_at}`)
   if (proof.rollback.approved_by) lines.push(`rollback.approved_by=${proof.rollback.approved_by}`)
+  if (proof.rollback.executed_at) lines.push(`rollback.executed_at=${proof.rollback.executed_at}`)
+  if (proof.rollback.execution_status) lines.push(`rollback.execution_status=${proof.rollback.execution_status}`)
+  if (proof.rollback.execution_exit_code !== undefined)
+    lines.push(`rollback.execution_exit_code=${proof.rollback.execution_exit_code}`)
   lines.push(`proof.score=${proof.final_evidence.proof_score}`)
   lines.push(`human_review_recommended=${proof.final_evidence.human_review_recommended}`)
 
