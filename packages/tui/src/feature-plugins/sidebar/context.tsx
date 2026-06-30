@@ -2,7 +2,7 @@ import type { AssistantMessage } from "@arcana/sdk/v2"
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { Lexicon, Glyph } from "../../branding"
-import { createMemo } from "solid-js"
+import { createMemo, Show } from "solid-js"
 
 const id = "internal:sidebar-context"
 
@@ -10,6 +10,17 @@ const money = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
 })
+
+function clampPercent(pct: number): number {
+  return Math.max(0, Math.min(100, pct))
+}
+
+function contextPressure(percent: number | null): "compact now" | "compact soon" | undefined {
+  if (percent === null) return undefined
+  if (percent >= 95) return "compact now"
+  if (percent >= 80) return "compact soon"
+  return undefined
+}
 
 function View(props: { api: TuiPluginApi; session_id: string }) {
   const theme = () => props.api.theme.current
@@ -31,9 +42,11 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
     const model = props.api.state.provider.find((item) => item.id === last.providerID)?.models[last.modelID]
     return {
       tokens,
-      percent: model?.limit.context ? Math.round((tokens / model.limit.context) * 100) : null,
+      percent: model?.limit.context ? clampPercent(Math.round((tokens / model.limit.context) * 100)) : null,
     }
   })
+
+  const pressure = createMemo(() => contextPressure(state().percent))
 
   return (
     <box>
@@ -41,9 +54,18 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
         <span style={{ fg: theme().accent }}>◆ </span>
         <b>CONTEXT</b>
       </text>
-      <text fg={theme().textMuted}>{Glyph.charge} {state().tokens.toLocaleString()} {Lexicon.Token.label}</text>
-      <text fg={theme().textMuted}>{Glyph.meter} {state().percent ?? 0}%</text>
-      <text fg={theme().textMuted}>{Glyph.diamond} {money.format(cost())} {Lexicon.Token.cost}</text>
+      <text fg={theme().textMuted}>
+        {Glyph.charge} {state().tokens.toLocaleString()} {Lexicon.Token.label}
+      </text>
+      <text fg={theme().textMuted}>
+        {Glyph.meter} {state().percent ?? 0}%
+      </text>
+      <Show when={pressure()}>
+        {(label) => <text fg={label() === "compact now" ? theme().error : theme().warning}>{label()}</text>}
+      </Show>
+      <text fg={theme().textMuted}>
+        {Glyph.diamond} {money.format(cost())} {Lexicon.Token.cost}
+      </text>
     </box>
   )
 }
