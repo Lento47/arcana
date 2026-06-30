@@ -41,6 +41,7 @@ export type RunProofEventType =
   | "verification.failed"
   | "rollback.available"
   | "rollback.staged"
+  | "rollback.approved"
   | "sovereignty.routed"
   | "token.used"
   | "ml.signal"

@@ -137,6 +137,7 @@ export function renderRunProofTerminal(proof: RunProof): string {
   )
   if (proof.rollback.restore_status) out.push(`  Status: ${proof.rollback.restore_status}`)
   if (proof.rollback.approval_required) out.push("  Approval required before restore execution")
+  if (proof.rollback.approved_at) out.push(`  Approved: ${proof.rollback.approved_at}`)
   out.push("")
 
   out.push("Unresolved")
@@ -282,6 +283,8 @@ export function renderRunProofMarkdown(proof: RunProof): string {
   if (proof.rollback.restore_status) lines.push(`- Restore status: ${proof.rollback.restore_status}`)
   if (proof.rollback.approval_required) lines.push("- Restore approval: required before execution")
   if (proof.rollback.staged_at) lines.push(`- Staged at: ${proof.rollback.staged_at}`)
+  if (proof.rollback.approved_at) lines.push(`- Approved at: ${proof.rollback.approved_at}`)
+  if (proof.rollback.approved_by) lines.push(`- Approved by: ${proof.rollback.approved_by}`)
   lines.push("")
 
   lines.push("## Final Evidence")
@@ -346,6 +349,8 @@ export function renderRunProofReplayLog(proof: RunProof): string {
   if (proof.rollback.restore_command) lines.push(`rollback.restore=${proof.rollback.restore_command}`)
   if (proof.rollback.restore_status) lines.push(`rollback.restore_status=${proof.rollback.restore_status}`)
   if (proof.rollback.approval_required) lines.push("rollback.approval_required=true")
+  if (proof.rollback.approved_at) lines.push(`rollback.approved_at=${proof.rollback.approved_at}`)
+  if (proof.rollback.approved_by) lines.push(`rollback.approved_by=${proof.rollback.approved_by}`)
   lines.push(`proof.score=${proof.final_evidence.proof_score}`)
   lines.push(`human_review_recommended=${proof.final_evidence.human_review_recommended}`)
 

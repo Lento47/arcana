@@ -510,6 +510,42 @@ export class ProofManager {
     return this.proof.rollback
   }
 
+  approveRollbackRestore(input: { actor?: CommandSource; approved_by?: string; summary?: string } = {}): RollbackBlock {
+    const restoreCommand = this.proof.rollback.restore_command
+    if (!restoreCommand) {
+      throw new Error("Cannot approve rollback restore without a restore_command.")
+    }
+    if (this.proof.rollback.restore_status !== "staged") {
+      throw new Error("Rollback restore must be staged before approval.")
+    }
+
+    this.proof.rollback = {
+      ...this.proof.rollback,
+      restore_status: "approved",
+      approval_required: false,
+      approved_at: now(),
+      approved_by: input.approved_by ?? "operator",
+    }
+    this.recordEvent({
+      type: "rollback.approved",
+      actor: input.actor ?? "user",
+      summary: input.summary ?? `Rollback restore approved but not executed: ${restoreCommand}`,
+      risk: "high",
+      status: this.proof.lifecycle.status,
+      refs: {
+        checkpoint_id: this.proof.rollback.checkpoint_id,
+        restore_command: restoreCommand,
+      },
+      data: {
+        restore_status: this.proof.rollback.restore_status,
+        approved_at: this.proof.rollback.approved_at,
+        approved_by: this.proof.rollback.approved_by,
+        executed: false,
+      },
+    })
+    return this.proof.rollback
+  }
+
   addPlanStep(
     description: string,
     status: RunProof["plan"]["steps"][number]["status"] = "planned",

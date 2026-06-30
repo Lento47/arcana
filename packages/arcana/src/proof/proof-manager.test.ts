@@ -119,6 +119,36 @@ describe("RunProof execution governance", () => {
     expect(rendered).toContain("Restore status: staged")
   })
 
+  test("captures rollback restore approval without execution", () => {
+    const manager = ProofManager.create({
+      user_intent: "Approve rollback restore without running it",
+      contract: {
+        rollback_plan: "Restore from git checkpoint.",
+      },
+    })
+
+    manager.updateRollback({
+      strategy: "git_worktree",
+      checkpoint_id: "HEAD",
+      restore_command: "git restore --source HEAD --staged --worktree .",
+    })
+    manager.stageRollbackRestore()
+    manager.approveRollbackRestore({ approved_by: "test-operator" })
+
+    expect(manager.proof.rollback.restore_status).toBe("approved")
+    expect(manager.proof.rollback.approval_required).toBe(false)
+    expect(typeof manager.proof.rollback.approved_at).toBe("string")
+    expect(manager.proof.rollback.approved_by).toBe("test-operator")
+    expect(manager.proof.events.map((event) => event.type)).toContain("rollback.approved")
+    expect(manager.proof.execution.shell_commands.map((command) => command.command)).not.toContain(
+      "git restore --source HEAD --staged --worktree .",
+    )
+
+    const rendered = renderRunProofMarkdown(manager.proof)
+    expect(rendered).toContain("Restore status: approved")
+    expect(rendered).toContain("Approved by: test-operator")
+  })
+
   test("saves a deterministic replay log next to proof artifacts", async () => {
     const dir = await mkdtemp(join(tmpdir(), "arcana-runproof-replay-"))
     const manager = ProofManager.create({

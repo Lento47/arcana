@@ -732,6 +732,66 @@ async function stageActiveRunProofRollbackRestore(): Promise<ProofLoadResult> {
   }
 }
 
+async function approveActiveRunProofRollbackRestore(): Promise<ProofLoadResult> {
+  const path = activeProofPath()
+  if (!path) return { status: "unbound" }
+
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8"))
+    const proof = asRecord(parsed)
+    if (!proof) return { status: "error", message: `Active RunProof at ${path} is not an object.` }
+
+    const rollback = asRecord(proof.rollback)
+    const restoreCommand = proofString(rollback?.restore_command)
+    if (!rollback || !restoreCommand) {
+      return {
+        status: "error",
+        message: "Active RunProof has no rollback.restore_command to approve.",
+      }
+    }
+    if (rollback.restore_status !== "staged") {
+      return {
+        status: "error",
+        message: "Rollback restore must be staged before approval.",
+      }
+    }
+
+    const timestamp = new Date().toISOString()
+    rollback.restore_status = "approved"
+    rollback.approval_required = false
+    rollback.approved_at = timestamp
+    rollback.approved_by = "operator"
+
+    const events = Array.isArray(proof.events) ? proof.events : []
+    events.push({
+      id: `evt_${randomUUID()}`,
+      timestamp,
+      type: "rollback.approved",
+      actor: "user",
+      summary: `Rollback restore approved but not executed: ${restoreCommand}`,
+      risk: "high",
+      status: proofString(asRecord(proof.lifecycle)?.status) ?? "awaiting_approval",
+      refs: {
+        checkpoint_id: proofString(rollback.checkpoint_id) ?? "none",
+        restore_command: restoreCommand,
+      },
+      data: {
+        restore_status: "approved",
+        approved_at: timestamp,
+        approved_by: "operator",
+        executed: false,
+      },
+    })
+    proof.events = events
+
+    await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8")
+    return { status: "ready", proof: normalizeProofView(parsed), path }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    return { status: "error", message: `Failed to approve rollback restore in active RunProof at ${path}: ${detail}` }
+  }
+}
+
 function FieldList(props: { items: string[] | undefined; empty: string }) {
   const { theme } = useTheme()
   return (
@@ -768,6 +828,10 @@ function rollbackRestoreStatus(proof: RunProofView): string {
 function rollbackRestoreCanBeStaged(proof: RunProofView): boolean {
   const status = rollbackRestoreStatus(proof)
   return status === "not_staged" || status === "rejected"
+}
+
+function rollbackRestoreCanBeApproved(proof: RunProofView): boolean {
+  return rollbackRestoreStatus(proof) === "staged"
 }
 
 function rollbackApprovalStatus(proof: RunProofView): string {
@@ -827,6 +891,7 @@ function DialogRunProofContract(props: {
   path: string
   onCopyRollbackRestore?: (command: string) => void
   onStageRollbackRestore?: () => void
+  onApproveRollbackRestore?: () => void
 }) {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -882,6 +947,11 @@ function DialogRunProofContract(props: {
                           stage restore for approval
                         </text>
                       </Show>
+                      <Show when={rollbackRestoreCanBeApproved(props.proof)}>
+                        <text fg={theme.warning} onMouseUp={() => props.onApproveRollbackRestore?.()}>
+                          approve restore
+                        </text>
+                      </Show>
                     </box>
                   )}
                 </Show>
@@ -933,6 +1003,7 @@ function DialogRunProofActions(props: {
   path: string
   onCopyRollbackRestore?: (command: string) => void
   onStageRollbackRestore?: () => void
+  onApproveRollbackRestore?: () => void
 }) {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -981,6 +1052,11 @@ function DialogRunProofActions(props: {
                   <Show when={rollbackRestoreCanBeStaged(props.proof)}>
                     <text fg={theme.warning} onMouseUp={() => props.onStageRollbackRestore?.()}>
                       stage restore for approval
+                    </text>
+                  </Show>
+                  <Show when={rollbackRestoreCanBeApproved(props.proof)}>
+                    <text fg={theme.warning} onMouseUp={() => props.onApproveRollbackRestore?.()}>
+                      approve restore
                     </text>
                   </Show>
                 </box>
@@ -1091,6 +1167,7 @@ function DialogRunProofDiffGate(props: {
   path: string
   onCopyRollbackRestore?: (command: string) => void
   onStageRollbackRestore?: () => void
+  onApproveRollbackRestore?: () => void
 }) {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -1140,6 +1217,11 @@ function DialogRunProofDiffGate(props: {
               <Show when={rollbackRestoreCanBeStaged(props.proof)}>
                 <text fg={theme.warning} onMouseUp={() => props.onStageRollbackRestore?.()}>
                   stage restore for approval
+                </text>
+              </Show>
+              <Show when={rollbackRestoreCanBeApproved(props.proof)}>
+                <text fg={theme.warning} onMouseUp={() => props.onApproveRollbackRestore?.()}>
+                  approve restore
                 </text>
               </Show>
             </box>
@@ -1813,6 +1895,15 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       toast.show({ message: "Rollback restore staged for approval", variant: "warning" })
       await showRunProofSurface(kind)
     }
+    const approveRollbackRestore = async () => {
+      const approved = await approveActiveRunProofRollbackRestore()
+      if (approved.status !== "ready") {
+        dialog.replace(() => <DialogRunProofMissing result={approved} />)
+        return
+      }
+      toast.show({ message: "Rollback restore approved; not executed", variant: "warning" })
+      await showRunProofSurface(kind)
+    }
     dialog.replace(() => {
       if (kind === "contract") {
         return (
@@ -1821,6 +1912,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             path={result.path}
             onCopyRollbackRestore={copyRollbackRestore}
             onStageRollbackRestore={() => void stageRollbackRestore().catch(toast.error)}
+            onApproveRollbackRestore={() => void approveRollbackRestore().catch(toast.error)}
           />
         )
       }
@@ -1831,6 +1923,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             path={result.path}
             onCopyRollbackRestore={copyRollbackRestore}
             onStageRollbackRestore={() => void stageRollbackRestore().catch(toast.error)}
+            onApproveRollbackRestore={() => void approveRollbackRestore().catch(toast.error)}
           />
         )
       }
@@ -1842,6 +1935,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           path={result.path}
           onCopyRollbackRestore={copyRollbackRestore}
           onStageRollbackRestore={() => void stageRollbackRestore().catch(toast.error)}
+          onApproveRollbackRestore={() => void approveRollbackRestore().catch(toast.error)}
         />
       )
     })
