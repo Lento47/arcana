@@ -175,9 +175,9 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       const key = env["ARCANA_PROXY_KEY"] || process.env["ARCANA_PROXY_KEY"]
       return {
         autoload: !!key,
-        // Discover the proxy's full catalog (OpenRouter-backed) at runtime so the
-        // provider carries models and survives the zero-models drop. Everything
-        // routes through proxy.arcana.otnelhq.com using the license key.
+        // Discover the proxy's full catalog so the provider carries models and
+        // survives the zero-models drop. Use the last real catalog first for fast
+        // startup, then fall back to live discovery when no cache exists.
         async discoverModels(): Promise<Record<string, Model>> {
           if (!key) return {}
           const { readFileSync, writeFileSync, mkdirSync, existsSync } = require("node:fs") as typeof import("node:fs")
@@ -231,6 +231,12 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
             return models
           }
           const bases = ["https://proxy.arcana.otnelhq.com", "https://arcana-proxy.lejzerv.workers.dev"]
+          try {
+            if (existsSync(cacheFile)) {
+              const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as { base?: string; list?: any[] }
+              if (cached?.list?.length) return build(cached.list, cached.base ?? bases[0])
+            }
+          } catch {}
           for (const base of bases) {
             try {
               const res = await fetch(`${base}/v1/models`, {
@@ -250,13 +256,6 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
               return build(list, base)
             } catch {}
           }
-          // All fetches failed — fall back to the last real catalog from disk.
-          try {
-            if (existsSync(cacheFile)) {
-              const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as { base?: string; list?: any[] }
-              if (cached?.list?.length) return build(cached.list, cached.base ?? bases[0])
-            }
-          } catch {}
           return {}
         },
       }
