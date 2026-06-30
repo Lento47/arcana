@@ -238,7 +238,9 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
 
     async recordShellCommand(input) {
       if (!manager) return
-      manager.recordShellCommand(input)
+      const decision = manager.gateShellCommand(input.command, { cwd: input.cwd })
+      const risk = input.risk === "unknown" ? decision.risk : input.risk
+      manager.recordShellCommand({ ...input, risk })
       await saveSnapshot()
     },
 
