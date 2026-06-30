@@ -80,6 +80,51 @@ describe("ProofRuntime live evidence capture", () => {
     }
   })
 
+  test("persists model route accountability to the active proof path", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "arcana-proof-runtime-"))
+    const previousActivePath = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+
+    try {
+      const runtime = await createProofRuntime({
+        enabled: true,
+        cwd,
+        command: "arcana run --proof",
+        prompt: "Route a model",
+      })
+
+      await runtime.recordModelRoute({
+        provider: "openai",
+        model: "gpt-4.1",
+        route: "cloud",
+        reason: "CLI override selected the model before execution.",
+        data_left_local: true,
+        selection_source: "cli",
+        fallback_provider: "local",
+        fallback_model: "qwen-coder",
+        data_boundary: "cloud",
+        estimated_cost_usd: 0,
+        latency_ms: 0,
+      })
+
+      const activePath = runtime.activeProofPath()
+      expect(activePath).toBeTruthy()
+      const stored = JSON.parse(await readFile(activePath!, "utf8"))
+      const proof = stored.proof ?? stored
+      const route = proof.events.find((event: { type: string }) => event.type === "sovereignty.routed")
+      expect(route?.data.provider).toBe("openai")
+      expect(route?.data.model).toBe("gpt-4.1")
+      expect(route?.data.selection_source).toBe("cli")
+      expect(route?.data.fallback_provider).toBe("local")
+      expect(route?.data.fallback_model).toBe("qwen-coder")
+      expect(route?.data.data_boundary).toBe("cloud")
+      expect(route?.data.data_left_local).toBe(true)
+    } finally {
+      if (previousActivePath === undefined) delete process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+      else process.env.ARCANA_ACTIVE_RUNPROOF_PATH = previousActivePath
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
   test("records ML turn signals and persists them to the proof", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "arcana-proof-runtime-"))
     const previousActivePath = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
