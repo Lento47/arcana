@@ -35,6 +35,7 @@ import { BoxRenderable, ScrollBoxRenderable, addDefaultParsers, TextAttributes, 
 import { Prompt, type PromptRef } from "../../component/prompt"
 import type {
   AssistantMessage,
+  Message,
   Part,
   Provider,
   ToolPart,
@@ -233,14 +234,57 @@ export function Session() {
       ),
     ),
   )
-  const userMessageIDs = createMemo(
-    () =>
-      new Set(
-        messages()
-          .filter((message) => message.role === "user")
-          .map((message) => message.id),
-      ),
-  )
+
+  // Single pass over messages to derive the three most commonly consulted
+  // indices. This avoids repeated O(n) scans on every message update.
+  const messageMeta = createMemo(() => {
+    const list = messages()
+    const userMessageIDs = new Set<string>()
+    let lastAssistant: Message | undefined
+    let pending: string | undefined
+    let completedID: string | undefined
+    for (let i = list.length - 1; i >= 0; i--) {
+      const message = list[i]
+      if (message.role === "user") {
+        userMessageIDs.add(message.id)
+        continue
+      }
+      if (message.role !== "assistant") continue
+      if (!lastAssistant) lastAssistant = message
+      if (message.time.completed) {
+        if (!completedID) completedID = message.id
+      } else if (!completedID || message.id > completedID) {
+        if (!pending) pending = message.id
+      }
+    }
+    return { userMessageIDs, lastAssistant, pending }
+  })
+  const userMessageIDs = createMemo(() => messageMeta().userMessageIDs)
+  const pending = createMemo(() => messageMeta().pending)
+  const lastAssistant = createMemo(() => messageMeta().lastAssistant)
+
+  // Precompute assistant durations from the parent user message in one pass.
+  // Each AssistantMessage used to rerun this scan individually.
+  const assistantDuration = createMemo(() => {
+    const list = messages()
+    const userTimes = new Map<string, number>()
+    for (const message of list) {
+      if (message.role === "user" && message.time) {
+        userTimes.set(message.id, message.time.created)
+      }
+    }
+    const durations = new Map<string, number>()
+    for (const message of list) {
+      if (message.role !== "assistant" || !message.time.completed || !message.finish) continue
+      if (["tool-calls", "unknown"].includes(message.finish)) continue
+      const created = userTimes.get(message.parentID)
+      if (created !== undefined) {
+        durations.set(message.id, message.time.completed - created)
+      }
+    }
+    return durations
+  })
+
   const permissions = createMemo(() => {
     if (session()?.parentID) return []
     return children().flatMap((x) => sync.data.permission[x.id] ?? [])
@@ -251,16 +295,6 @@ export function Session() {
   })
   const visible = createMemo(() => !session()?.parentID && permissions().length === 0 && questions().length === 0)
   const disabled = createMemo(() => permissions().length > 0 || questions().length > 0)
-
-  const pending = createMemo(() => {
-    const completed = messages().findLast((x) => x.role === "assistant" && x.time.completed)?.id
-    return messages().findLast((x) => x.role === "assistant" && !x.time.completed && (!completed || x.id > completed))
-      ?.id
-  })
-
-  const lastAssistant = createMemo(() => {
-    return messages().findLast((x) => x.role === "assistant")
-  })
 
   const dimensions = useTerminalDimensions()
   const [sidebar, setSidebar] = kv.signal<"auto" | "hide">("sidebar", "auto")
@@ -385,25 +419,25 @@ export function Session() {
     })
   })
 
-  // Helper: Find next visible message boundary in direction
+  // Helper: Find next visible message boundary in direction.
+  // Build a single Set of message IDs with valid text parts so we do not
+  // perform an O(n) find + per-child parts scan for every renderable child.
   const findNextVisibleMessage = (direction: "next" | "prev"): string | null => {
     const children = scroll.getChildren()
     const messagesList = messages()
     const scrollTop = scroll.y
 
-    // Get visible messages sorted by position, filtering for valid non-synthetic, non-ignored content
+    const visibleIDs = new Set<string>()
+    for (const message of messagesList) {
+      const parts = sync.data.part[message.id]
+      if (!parts || !Array.isArray(parts)) continue
+      if (parts.some((part) => part && part.type === "text" && !part.synthetic && !part.ignored)) {
+        visibleIDs.add(message.id)
+      }
+    }
+
     const visibleMessages = children
-      .filter((c) => {
-        if (!c.id) return false
-        const message = messagesList.find((m) => m.id === c.id)
-        if (!message) return false
-
-        // Check if message has valid non-synthetic, non-ignored text parts
-        const parts = sync.data.part[message.id]
-        if (!parts || !Array.isArray(parts)) return false
-
-        return parts.some((part) => part && part.type === "text" && !part.synthetic && !part.ignored)
-      })
+      .filter((c) => c.id !== undefined && visibleIDs.has(c.id))
       .sort((a, b) => a.y - b.y)
 
     if (visibleMessages.length === 0) return null
@@ -413,7 +447,7 @@ export function Session() {
       return visibleMessages.find((c) => c.y > scrollTop + 10)?.id ?? null
     }
     // Find last message above current position
-    return [...visibleMessages].reverse().find((c) => c.y < scrollTop - 10)?.id ?? null
+    return visibleMessages.findLast((c) => c.y < scrollTop - 10)?.id ?? null
   }
 
   // Helper: Scroll to message in direction or fallback to page scroll
@@ -621,11 +655,28 @@ export function Session() {
           })
           return
         }
-        void sdk.client.session.summarize({
-          sessionID: route.sessionID,
-          modelID: selectedModel.modelID,
-          providerID: selectedModel.providerID,
-        })
+        sdk.client.session
+          .summarize({
+            sessionID: route.sessionID,
+            modelID: selectedModel.modelID,
+            providerID: selectedModel.providerID,
+          })
+          .then((response) => {
+            if (response.error) {
+              toast.show({
+                variant: "error",
+                message: `Compaction failed: ${String(response.error)}`,
+                duration: 5000,
+              })
+            }
+          })
+          .catch((error) => {
+            toast.show({
+              variant: "error",
+              message: `Compaction failed: ${error instanceof Error ? error.message : String(error)}`,
+              duration: 5000,
+            })
+          })
         dialog.clear()
       },
     },
@@ -1343,6 +1394,7 @@ export function Session() {
                           last={lastAssistant()?.id === message.id}
                           message={message as AssistantMessage}
                           parts={sync.data.part[message.id] ?? []}
+                          duration={assistantDuration().get(message.id) ?? 0}
                         />
                       </Match>
                     </Switch>
@@ -1431,17 +1483,17 @@ function UserMessage(props: {
   const ctx = use()
   const local = useLocal()
   const text = createMemo(() => {
-    const texts = props.parts
-      .map((x) => {
-        if (x.type === "text" && !x.synthetic) {
-          return x.text
-        }
-        return null
-      })
-      .filter(Boolean)
+    const texts: string[] = []
+    for (const part of props.parts) {
+      if (part.type === "text" && !part.synthetic) texts.push(part.text)
+    }
     return texts.join("\n\n")
   })
-  const files = createMemo(() => props.parts.flatMap((x) => (x.type === "file" ? [x] : [])))
+  const files = createMemo(() => {
+    const result: Extract<Part, { type: "file" }>[] = []
+    for (const part of props.parts) if (part.type === "file") result.push(part)
+    return result
+  })
   const { theme } = useTheme()
   const [hover, setHover] = createSignal(false)
   const queued = createMemo(() => props.pending && props.message.id > props.pending)
@@ -1449,7 +1501,10 @@ function UserMessage(props: {
   const queuedFg = createMemo(() => selectedForeground(theme, color()))
   const metadataVisible = createMemo(() => queued() || ctx.showTimestamps())
 
-  const compaction = createMemo(() => props.parts.find((x) => x.type === "compaction"))
+  const compaction = createMemo(() => {
+    for (const part of props.parts) if (part.type === "compaction") return part
+    return undefined
+  })
 
   return (
     <>
@@ -1532,39 +1587,51 @@ function UserMessage(props: {
   )
 }
 
-function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean }) {
+function AssistantMessage(props: {
+  message: AssistantMessage
+  parts: Part[]
+  last: boolean
+  duration: number
+}) {
   const ctx = use()
   const local = useLocal()
   const { theme } = useTheme()
-  const sync = useSync()
-  const messages = createMemo(() => sync.data.message[props.message.sessionID] ?? [])
   const model = createMemo(() => Model.name(ctx.providers(), props.message.providerID, props.message.modelID))
 
   const final = createMemo(() => {
     return props.message.finish && !["tool-calls", "unknown"].includes(props.message.finish)
   })
 
-  const duration = createMemo(() => {
-    if (!final()) return 0
-    if (!props.message.time.completed) return 0
-    const user = messages().find((x) => x.role === "user" && x.id === props.message.parentID)
-    if (!user || !user.time) return 0
-    return props.message.time.completed - user.time.created
-  })
+  const duration = createMemo(() => (final() ? props.duration : 0))
 
   const childShortcut = useCommandShortcut("session.child.first")
   const backgroundShortcut = useCommandShortcut("session.background")
+
+  const taskTools = createMemo(() => {
+    const result: ToolPart[] = []
+    for (const part of props.parts) {
+      if (part.type === "tool" && part.tool === "task") result.push(part as ToolPart)
+    }
+    return result
+  })
+  const hasTaskTool = createMemo(() => taskTools().length > 0)
+  const hasRunningForegroundTaskTool = createMemo(() => {
+    for (const tool of taskTools()) {
+      if (tool.state.status === "running" && tool.state.metadata?.background !== true) return true
+    }
+    return false
+  })
 
   return (
     <>
       <For each={props.parts}>
         {(part, index) => {
-          const component = createMemo(() => PART_MAPPING[part.type as keyof typeof PART_MAPPING])
+          const Component = PART_MAPPING[part.type as keyof typeof PART_MAPPING]
           return (
-            <Show when={component()}>
+            <Show when={Component}>
               <Dynamic
                 last={index() === props.parts.length - 1}
-                component={component()}
+                component={Component}
                 part={part as any}
                 message={props.message}
               />
@@ -1572,20 +1639,12 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
           )
         }}
       </For>
-      <Show when={props.parts.some((x) => x.type === "tool" && x.tool === "task")}>
+      <Show when={hasTaskTool()}>
         <box paddingTop={1} paddingLeft={3}>
           <text fg={theme.text}>
             {childShortcut()}
             <span style={{ fg: theme.textMuted }}> view subagents</span>
-            <Show
-              when={props.parts.some(
-                (x) =>
-                  x.type === "tool" &&
-                  x.tool === "task" &&
-                  x.state.status === "running" &&
-                  x.state.metadata?.background !== true,
-              )}
-            >
+            <Show when={hasRunningForegroundTaskTool()}>
               <span style={{ fg: theme.textMuted }}> {Glyph.sep} </span>
               {backgroundShortcut()}
               <span style={{ fg: theme.textMuted }}> background</span>

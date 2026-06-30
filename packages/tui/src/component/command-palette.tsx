@@ -1,4 +1,4 @@
-import { createMemo } from "solid-js"
+import { createMemo, createSignal } from "solid-js"
 import { DialogSelect, type DialogSelectRef } from "../ui/dialog-select"
 import { type DialogContext } from "../ui/dialog"
 import {
@@ -61,20 +61,24 @@ export function CommandPaletteDialog() {
     })),
   )
 
-  let ref: DialogSelectRef<string>
-  const list = () => {
-    if (ref?.filter) return options()
-    return [
-      ...options()
-        .filter((option) => option.suggested)
-        .map((option) => ({
-          ...option,
-          value: `suggested:${option.value}`,
-          category: "Suggested",
-        })),
-      ...options(),
-    ]
-  }
+  // Keep the option list stable between renders. DialogSelect receives a new
+  // `options` array on every render by default, which forces its internal
+  // `filtered` memo to re-evaluate continuously. Reading the dialog ref's filter
+  // getter inside a memo correctly tracks the dialog's reactive filter state.
+  const [ref, setRef] = createSignal<DialogSelectRef<string>>()
+  const list = createMemo(() => {
+    const filter = ref()?.filter ?? ""
+    const base = options()
+    if (filter) return base
+    const result: ReturnType<typeof options> = []
+    for (const option of base) {
+      if (option.suggested) {
+        result.push({ ...option, value: `suggested:${option.value}`, category: "Suggested" })
+      }
+    }
+    for (const option of base) result.push(option)
+    return result
+  })
 
-  return <DialogSelect ref={(value) => (ref = value)} title={`${Glyph.sigil} commands`} options={list()} />
+  return <DialogSelect ref={setRef} title={`${Glyph.sigil} commands`} options={list()} />
 }

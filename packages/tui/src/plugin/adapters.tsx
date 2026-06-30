@@ -136,6 +136,9 @@ function stateApi(sync: ReturnType<typeof useSync>): TuiPluginApi["state"] {
       status(sessionID) {
         return sync.data.session_status[sessionID]
       },
+      compacting(sessionID) {
+        return sync.data.session_compacting[sessionID] ?? false
+      },
       permission(sessionID) {
         return sync.data.permission[sessionID] ?? []
       },
