@@ -149,6 +149,51 @@ describe("RunProof execution governance", () => {
     expect(rendered).toContain("Approved by: test-operator")
   })
 
+  test("records rollback restore execution only after approval", () => {
+    const manager = ProofManager.create({
+      user_intent: "Record approved rollback execution evidence",
+      cwd: process.cwd(),
+      contract: {
+        rollback_plan: "Restore from git checkpoint.",
+      },
+    })
+
+    manager.updateRollback({
+      strategy: "git_worktree",
+      checkpoint_id: "HEAD",
+      restore_command: "git restore --source HEAD --staged --worktree .",
+    })
+    expect(() =>
+      manager.recordRollbackRestoreExecution({
+        cwd: process.cwd(),
+        status: "passed",
+        exit_code: 0,
+      }),
+    ).toThrow("Rollback restore must be approved before execution can be recorded.")
+
+    manager.stageRollbackRestore()
+    manager.approveRollbackRestore({ approved_by: "test-operator" })
+    manager.recordRollbackRestoreExecution({
+      cwd: process.cwd(),
+      status: "passed",
+      exit_code: 0,
+      stdout_summary: "restored worktree",
+    })
+
+    expect(manager.proof.rollback.restore_status).toBe("executed")
+    expect(manager.proof.rollback.execution_status).toBe("passed")
+    expect(manager.proof.rollback.execution_exit_code).toBe(0)
+    expect(manager.proof.lifecycle.status).toBe("rolled_back")
+    expect(manager.proof.events.map((event) => event.type)).toContain("rollback.executed")
+    expect(manager.proof.execution.shell_commands.map((command) => command.command)).toContain(
+      "git restore --source HEAD --staged --worktree .",
+    )
+
+    const rendered = renderRunProofMarkdown(manager.proof)
+    expect(rendered).toContain("Restore status: executed")
+    expect(rendered).toContain("Execution status: passed")
+  })
+
   test("saves a deterministic replay log next to proof artifacts", async () => {
     const dir = await mkdtemp(join(tmpdir(), "arcana-runproof-replay-"))
     const manager = ProofManager.create({
