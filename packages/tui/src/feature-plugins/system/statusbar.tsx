@@ -65,6 +65,11 @@ function View(props: { api: TuiPluginApi }) {
     return api.state.session.status(sid)
   })
   const busy = createMemo(() => status()?.type === "busy")
+  const compacting = createMemo(() => {
+    const sid = sessionID()
+    if (!sid) return false
+    return api.state.session.compacting(sid)
+  })
 
   // Abstract diamond "charge" — pulses ◇→◈→◆→◈ only while the model generates.
   const PULSE = ["◇", "◈", "◆", "◈"]
@@ -79,7 +84,7 @@ function View(props: { api: TuiPluginApi }) {
   })
 
   return (
-    <Show when={sessionID() && (busy() || model() || usage())}>
+    <Show when={sessionID() && (busy() || compacting() || model() || usage())}>
       <box
         width="100%"
         flexDirection="row"
@@ -94,6 +99,11 @@ function View(props: { api: TuiPluginApi }) {
       >
         <Show when={busy()}>
           <text fg={theme().accent}>{PULSE[frame()]}</text>
+        </Show>
+        <Show when={compacting()}>
+          <text fg={theme().warning}>
+            <span style={{ fg: theme().warning, bold: true }}>⟳ COMPACT</span>
+          </text>
         </Show>
         <Show when={status()?.type === "retry"}>
           <text fg={theme().warning}>↻ retry</text>

@@ -351,6 +351,21 @@ export const layer = Layer.effect(
         cfg,
         model,
       })
+      // Cap the head so the compaction request never exceeds the model context window
+      // (and stays well under common ~1MB HTTP request body limits). Reserve room for
+      // the compaction prompt itself and the expected summary output.
+      const contextLimit = model.limit.context
+      const reservedTokens = 3_000
+      const headBudget = Math.max(2_000, Math.floor(contextLimit * 0.75) - reservedTokens)
+      const cappedHead = compactWithBudget(selected.head, headBudget)
+      if (cappedHead.length < selected.head.length) {
+        yield* Effect.logInfo("compaction head truncated", {
+          before: selected.head.length,
+          after: cappedHead.length,
+          budget: headBudget,
+        })
+      }
+
       // Allow plugins to inject context or replace compaction prompt.
       const compacting = yield* plugin.trigger(
         "experimental.session.compacting",
@@ -358,12 +373,22 @@ export const layer = Layer.effect(
         { context: [], prompt: undefined },
       )
       const nextPrompt = compacting.prompt ?? buildPrompt({ previousSummary, context: compacting.context })
-      const msgs = structuredClone(selected.head)
+      const msgs = structuredClone(cappedHead)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
-      const modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
+      let modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
         stripMedia: true,
         toolOutputMaxChars: TOOL_OUTPUT_MAX_CHARS,
       })
+
+      // Final safety net: keep JSON payload under ~950KB so it clears ~1MB body limits.
+      const MAX_COMPACTION_JSON_CHARS = 950_000
+      let safetyPass = 0
+      while (JSON.stringify(modelMessages).length > MAX_COMPACTION_JSON_CHARS && modelMessages.length > 2 && safetyPass < 10) {
+        safetyPass++
+        const dropCount = Math.max(1, Math.ceil(modelMessages.length * 0.1))
+        modelMessages = modelMessages.slice(dropCount)
+        yield* Effect.logInfo("compaction JSON safety truncation", { pass: safetyPass, remaining: modelMessages.length })
+      }
       const tailIndex = selected.tail_start_id
         ? history.findIndex((message) => message.info.id === selected.tail_start_id)
         : -1

@@ -79,6 +79,9 @@ export const {
       session_status: {
         [sessionID: string]: SessionStatus
       }
+      session_compacting: {
+        [sessionID: string]: boolean
+      }
       session_diff: {
         [sessionID: string]: SnapshotFileDiff[]
       }
@@ -118,6 +121,7 @@ export const {
       provider_default: {},
       session: [],
       session_status: {},
+      session_compacting: {},
       session_diff: {},
       todo: {},
       message: {},
@@ -292,6 +296,16 @@ export const {
 
         case "session.status": {
           setStore("session_status", event.properties.sessionID, event.properties.status)
+          break
+        }
+
+        case "session.next.compaction.started": {
+          setStore("session_compacting", event.properties.sessionID, true)
+          break
+        }
+
+        case "session.next.compaction.ended": {
+          setStore("session_compacting", event.properties.sessionID, false)
           break
         }
 

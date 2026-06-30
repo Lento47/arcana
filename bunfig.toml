@@ -3,3 +3,6 @@ exact = true
 
 [install.lockfile]
 print = "bun"
+
+[test]
+preload = ["./scripts/tui-test-preload.ts"]
