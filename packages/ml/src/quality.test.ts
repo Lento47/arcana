@@ -52,6 +52,18 @@ describe("evaluateResponseQuality with avoidSlopScore", () => {
     expect(result.genericityScore).toBe(0)
   })
 
+  test("repeated answer loops trigger revision", () => {
+    const repeated = "Run `bun test packages/ml/src/quality.test.ts` and inspect the failures."
+    const result = evaluateResponseQuality({
+      request: "avoid repeating yourself and finish the answer",
+      response: `${repeated}\n${repeated}\nThen summarize the result.`,
+    })
+
+    expect(result.verdict).toBe("revise_silently")
+    expect(result.problems.some((p) => p.includes("Repeated response segments"))).toBe(true)
+    expect(result.revisionHints.some((hint) => hint.includes("Remove repeated sentences"))).toBe(true)
+  })
+
   test("audit format includes genericity score", () => {
     const result = evaluateResponseQuality({
       request: "give me the patch",
