@@ -19,6 +19,7 @@ Goal: Arcana becomes the governed execution cockpit for AI agents. The current w
 - `feat: Capture rollback restore approval`
 - `feat: Record rollback restore execution evidence`
 - `feat: Record model route accountability`
+- `feat: Persist verification evidence from ProofRuntime`
 
 ## Current Dirty Scope
 
@@ -227,6 +228,23 @@ Committed model route accountability slice:
   - `rg -n "Cockpit:|cockpit\.|Switched to cockpit|/ \$\{cmd\}" packages/tui/src` — no matches
   - `rg -n "readdir|mtime|latest|sort" packages/tui/src/app.tsx` — only local `latestTurnEvidence` ML evidence naming matched, no proof-file scan
 
+Committed ProofRuntime verification evidence slice:
+
+- Files changed:
+  - `packages/arcana/src/cli/run/proof-runtime.ts`
+  - `packages/arcana/src/cli/run/proof-runtime.test.ts`
+- Behavior:
+  - `ProofRuntime.recordCheck()` now persists typecheck, lint, and build results to the active RunProof path.
+  - `ProofRuntime.recordTestResult()` now persists focused test evidence to the active RunProof path.
+  - Both methods delegate to existing `ProofManager` verification primitives and save immediately, producing `verification.started`, `verification.passed`, or `verification.failed` ledger events.
+  - No new TUI command, command system, or placeholder `/verify` surface was added. Existing `/verify` and `/diffgate` can now read live verification data when runtime callers record it.
+- QA passed:
+  - `bun test packages/arcana/src/cli/run/proof-runtime.test.ts` — 5 pass
+  - `bun node_modules/.bun/typescript@5.8.2/node_modules/typescript/bin/tsc -p packages/arcana/tsconfig.json --noEmit`
+  - `bun --cwd packages/tui typecheck`
+  - `rg -n "Cockpit:|cockpit\.|Switched to cockpit|/ \$\{cmd\}" packages/tui/src` — no matches
+  - `rg -n "readdir|mtime|latest|sort" packages/tui/src/app.tsx` — only local `latestTurnEvidence` ML evidence naming matched, no proof-file scan
+
 ## Stashes
 
 The previous broad dirty tree was preserved in:
@@ -243,6 +261,6 @@ Nested `.claude/worktrees` changes were preserved in separate stashes `stash@{0}
 4. Remaining product gaps to close in priority order:
    - Rollback: if/when adding a TUI execution button, require approved restore state, route through a guarded shell executor, and record `rollback.executed` plus shell command evidence. Do not bypass approval.
    - Provider/model accountability: connect real latency/cost values from model calls when the agent runtime exposes them; keep `/sovereignty` read-only and proof-backed.
-   - Diff/verify gates: wire verification results (`typecheck`, `lint`, `build`, tests) into RunProof before expanding `/verify` and `/diffgate`.
+   - Diff/verify gates: wire actual run/check call sites to `ProofRuntime.recordCheck()` and `ProofRuntime.recordTestResult()` so `/verify` and `/diffgate` reflect real command outcomes from live runs.
 5. Keep TUI tests green when touching session/dialog components; the root preload now makes `bun test packages/tui` the single source of truth for TUI QA.
 6. Keep the tree clean between slices; do not stage restored stash or worktree files unless a future slice explicitly scopes them in.
