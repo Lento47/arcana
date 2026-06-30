@@ -586,13 +586,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
 
       const deferred = setTimeout(() => {
         void Promise.allSettled([
-          result.location.agent.refresh(),
-          result.location.integration.refresh(),
-          result.location.model.refresh(),
-          result.location.provider.refresh(),
           result.location.reference.refresh(),
-          result.location.command.refresh(),
-          result.location.skill.refresh(),
         ]).then((settled) => logRefreshFailures("deferred", settled))
       }, 250)
       onCleanup(() => clearTimeout(deferred))
