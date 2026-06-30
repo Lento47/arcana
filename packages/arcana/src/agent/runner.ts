@@ -17,6 +17,28 @@ import {
 } from "./ml-runtime.js"
 
 const TOOL_RESULT_MAX = 2000  // truncate large tool outputs to this many chars
+type RunProofVerificationKind = "test" | "typecheck" | "lint" | "build"
+type RunProofVerificationStatus = "passed" | "failed" | "skipped" | "not_run"
+
+export function runProofVerificationKindFromShellCommand(command: string): RunProofVerificationKind | undefined {
+  const normalized = command.toLowerCase().replace(/\s+/g, " ").trim()
+  if (!normalized) return undefined
+
+  if (/\b(bun|npm|pnpm|yarn|vitest|jest|mocha|ava|cargo|go|pytest|python|python3)\s+(run\s+)?test\b/.test(normalized)) return "test"
+  if (/\b(test|vitest|jest|mocha|ava|pytest)\b/.test(normalized)) return "test"
+
+  if (/\b(typecheck|tsc|tsgo)\b/.test(normalized)) return "typecheck"
+  if (/\b(lint|eslint|biome|oxlint)\b/.test(normalized)) return "lint"
+  if (/\b(bun|npm|pnpm|yarn|cargo|go)\s+(run\s+)?build\b/.test(normalized)) return "build"
+  if (/\b(vite|tsup|rollup|webpack|next)\s+build\b/.test(normalized)) return "build"
+
+  return undefined
+}
+
+function runProofVerificationSummary(kind: RunProofVerificationKind, command: string, status: RunProofVerificationStatus): string {
+  const label = kind === "test" ? "Test command" : `${kind[0]!.toUpperCase()}${kind.slice(1)} command`
+  return `${label} ${status}: ${command}`
+}
 
 /** Map arcana provider ids to AI SDK language model constructors. */
 async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
@@ -284,7 +306,7 @@ export class AgentRunner {
     input: Record<string, unknown>,
     result: string,
   ): Promise<void> {
-    if (!this.config.proofGate?.recordShellCommand) return
+    if (!this.config.proofGate) return
     const command = this.shellCommandFromTool(toolName, input)
     if (!command) return
 
@@ -295,16 +317,30 @@ export class AgentRunner {
       result.startsWith("Bash error:") ||
       result.startsWith("Error:") ||
       result.startsWith("error -")
+    const status: RunProofVerificationStatus = failed ? "failed" : "passed"
 
-    await this.config.proofGate.recordShellCommand({
-      command,
-      cwd,
-      status: failed ? "failed" : "passed",
-      risk: "unknown",
-      exit_code: failed ? 1 : undefined,
-      stdout_summary: failed ? undefined : result.slice(0, 500),
-      stderr_summary: failed ? result.slice(0, 500) : undefined,
-    })
+    if (this.config.proofGate.recordShellCommand) {
+      await this.config.proofGate.recordShellCommand({
+        command,
+        cwd,
+        status,
+        risk: "unknown",
+        exit_code: failed ? 1 : undefined,
+        stdout_summary: failed ? undefined : result.slice(0, 500),
+        stderr_summary: failed ? result.slice(0, 500) : undefined,
+      })
+    }
+
+    const verificationKind = runProofVerificationKindFromShellCommand(command)
+    if (!verificationKind) return
+
+    const summary = runProofVerificationSummary(verificationKind, command, status)
+    if (verificationKind === "test") {
+      await this.config.proofGate.recordTestResult?.({ command, status, summary })
+      return
+    }
+
+    await this.config.proofGate.recordCheck?.({ kind: verificationKind, command, status, summary })
   }
 
   async run(
