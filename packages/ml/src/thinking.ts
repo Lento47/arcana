@@ -7,6 +7,7 @@ export type StepPlan = {
   estimatedSteps: number
   requiresValidation: boolean
   requiresMultipleTools: boolean
+  requiresClosure: boolean
 }
 
 export type ThinkingBudget = {
@@ -127,10 +128,10 @@ function budgetForStyle(style: ThinkingStyle): ThinkingBudget {
 }
 
 function inferSteps(input: ThinkingPlanInput): StepPlan {
-  const request = input.request.toLowerCase()
   const steps: string[] = []
   let requiresValidation = input.evidenceNeed !== "none"
   let requiresMultipleTools = (input.availableTools?.length ?? 0) > 2
+  let requiresClosure = input.evidenceNeed !== "none" || STAGED_DELIVERABLES.includes(input.deliverable)
 
   if (input.deliverable === "debug_plan") {
     steps.push("Reproduce or locate the failure.")
@@ -143,31 +144,39 @@ function inferSteps(input: ThinkingPlanInput): StepPlan {
     steps.push("Run the relevant tests or checks.")
     requiresValidation = true
     requiresMultipleTools = true
+    requiresClosure = true
   } else if (input.deliverable === "repo_review") {
     steps.push("Scan the relevant modules for risks.")
     steps.push("Rank findings by impact and confidence.")
     steps.push("Recommend fixes with evidence.")
     requiresValidation = true
+    requiresClosure = true
   } else if (input.deliverable === "execution_plan") {
     steps.push("Clarify the goal, non-goals, and constraints.")
     steps.push("Break the work into ordered phases.")
     steps.push("Define success criteria and validation checks.")
+    requiresClosure = true
   } else if (input.deliverable === "sql_advice") {
     steps.push("Inspect the query, schema, and workload.")
     steps.push("Identify anti-patterns and index opportunities.")
     steps.push("Recommend a measurable change.")
     requiresValidation = true
+    requiresClosure = true
   } else {
     steps.push("Understand the user's request and constraints.")
     steps.push("Produce the requested output.")
     if (input.qualityBar === "strict") {
       steps.push("Self-check against constraints before responding.")
       requiresValidation = true
+      requiresClosure = true
     }
   }
 
   if (requiresValidation) {
     steps.push("Validate the result with a command, test, or explicit assumption.")
+  }
+  if (requiresClosure) {
+    steps.push("Finish with concise status, evidence, and any remaining risk.")
   }
 
   return {
@@ -175,6 +184,7 @@ function inferSteps(input: ThinkingPlanInput): StepPlan {
     estimatedSteps: steps.length,
     requiresValidation,
     requiresMultipleTools,
+    requiresClosure,
   }
 }
 
@@ -183,8 +193,12 @@ export function planThinking(input: ThinkingPlanInput): ThinkingPlan {
   const budget = budgetForStyle(style)
   const steps = inferSteps(input)
 
-  if (steps.requiresMultipleTools) budget.reasons.push("Multiple tools available; allow extra rounds for tool chaining.")
-  if (steps.requiresValidation) budget.reasons.push("Validation required; reserve reasoning for command/test output interpretation.")
+  if (steps.requiresMultipleTools)
+    budget.reasons.push("Multiple tools available; allow extra rounds for tool chaining.")
+  if (steps.requiresValidation)
+    budget.reasons.push("Validation required; reserve reasoning for command/test output interpretation.")
+  if (steps.requiresClosure)
+    budget.reasons.push("Closure required; finish with evidence-backed status instead of open-ended analysis.")
   if (input.hasToolHistory) budget.reasons.push("Prior tool output exists; reason over the accumulated evidence.")
 
   const promptAddendum = [
@@ -194,8 +208,9 @@ export function planThinking(input: ThinkingPlanInput): ThinkingPlan {
     `silent_revisions=${budget.maxSilentRevisions}`,
     `temperature=${budget.temperature}`,
     `validation=${steps.requiresValidation ? "required" : "optional"}`,
+    `closure=${steps.requiresClosure ? "required" : "optional"}`,
     `steps=${steps.steps.join(" | ")}`,
-    "instructions=think step by step; prefer concrete evidence over generic claims; revise silently if the first draft misses constraints; ask the user only when ambiguity blocks correctness",
+    "instructions=use a private checklist; prefer concrete evidence over generic claims; avoid repeated loops; finish the requested work with status, evidence, and remaining risk; revise silently if the first draft misses constraints; ask the user only when ambiguity blocks correctness",
     `reasons=${budget.reasons.join(" | ")}`,
     "</arcana-thinking-plan>",
   ].join("\n")
@@ -212,6 +227,7 @@ export function formatThinkingPlanForAudit(plan: ThinkingPlan): string {
     `temperature=${plan.budget.temperature}`,
     `steps=${plan.steps.steps.length}`,
     `validation=${plan.steps.requiresValidation ? "required" : "optional"}`,
+    `closure=${plan.steps.requiresClosure ? "required" : "optional"}`,
     `reasons=${plan.budget.reasons.join(" | ") || "none"}`,
   ].join(" ")
 }

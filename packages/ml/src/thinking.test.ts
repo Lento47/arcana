@@ -40,6 +40,8 @@ describe("thinking planner", () => {
     })
     expect(result.steps.steps.some((s) => s.toLowerCase().includes("test"))).toBe(true)
     expect(result.steps.requiresValidation).toBe(true)
+    expect(result.steps.requiresClosure).toBe(true)
+    expect(result.steps.steps.at(-1)).toContain("status, evidence")
   })
 
   test("audit line includes style and budget", () => {
@@ -64,5 +66,22 @@ describe("thinking planner", () => {
     expect(result.promptAddendum).toContain("reasoning_budget=")
     expect(result.promptAddendum).toContain("steps=")
     expect(result.promptAddendum).toContain("validation=required")
+    expect(result.promptAddendum).toContain("closure=required")
+    expect(result.promptAddendum).toContain("private checklist")
+    expect(result.promptAddendum).not.toContain("think step by step")
+  })
+
+  test("technical plans include a closure step to prevent endless analysis", () => {
+    const result = plan({
+      request: "debug why startup is slow and fix it",
+      deliverable: "debug_plan",
+      qualityBar: "strict",
+      evidenceNeed: "required",
+      availableTools: ["read", "grep", "edit", "run_test"],
+    })
+
+    expect(result.steps.requiresClosure).toBe(true)
+    expect(result.steps.steps.at(-1)).toBe("Finish with concise status, evidence, and any remaining risk.")
+    expect(formatThinkingPlanForAudit(result)).toContain("closure=required")
   })
 })
