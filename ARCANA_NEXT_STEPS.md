@@ -14,6 +14,7 @@ Goal: Arcana becomes the governed execution cockpit for AI agents. The current w
 - `fix: TUI contrast fallbacks`
 - `fix: Show RunProof rollback validity in TUI`
 - `fix: Add rollback restore copy action`
+- `feat: Stage rollback restore behind RunProof approval`
 
 ## Current Dirty Scope
 
@@ -119,6 +120,30 @@ Committed rollback restore copy slice:
   - `rg -n "readdir|mtime|latest|sort" packages/tui/src/app.tsx` — only local `latestTurnEvidence` ML evidence naming matched, no proof-file scan
   - `git diff --check`
 
+Committed rollback staging semantics slice:
+
+- Files changed:
+  - `packages/arcana/src/proof/types.ts`
+  - `packages/arcana/src/proof/create.ts`
+  - `packages/arcana/src/proof/compat.ts`
+  - `packages/arcana/src/proof/proof-manager.ts`
+  - `packages/arcana/src/proof/render.ts`
+  - `packages/arcana/src/proof/proof-manager.test.ts`
+  - `packages/tui/src/app.tsx`
+- Behavior:
+  - RunProof rollback now carries `restore_status`, `staged_at`, `approval_required`, `approved_at`, and `approved_by`.
+  - New proofs default rollback restore state to `not_staged` with approval required before execution.
+  - Legacy/older proof normalization fills missing rollback restore state without breaking existing RunProof 0.1 data.
+  - `ProofManager.stageRollbackRestore()` records `rollback.staged`, raises risk to at least `high`, adds `rollback restore execution` to required approvals, and never executes the restore command.
+  - Markdown, terminal render, and replay output expose rollback restore status and approval requirement.
+  - Existing `/contract`, `/actions`, and `/diffgate` surfaces show restore status and approval state from active RunProof data.
+- QA passed:
+  - `bun test packages/arcana/src/proof/proof-manager.test.ts` — 14 pass
+  - `bun node_modules/.bun/typescript@5.8.2/node_modules/typescript/bin/tsc -p packages/arcana/tsconfig.json --noEmit`
+  - `bun --cwd packages/tui typecheck`
+  - `rg -n "Cockpit:|cockpit\.|Switched to cockpit|/ \$\{cmd\}" packages/tui/src` — no matches
+  - `git diff --check`
+
 ## Stashes
 
 The previous broad dirty tree was preserved in:
@@ -133,7 +158,7 @@ Nested `.claude/worktrees` changes were preserved in separate stashes `stash@{0}
 2. Continue wiring real RunProof data before expanding `/diffgate`, `/verify`, or `/sovereignty` behavior.
 3. Avoid new command registries or prompt-template command systems.
 4. Remaining product gaps to close in priority order:
-   - Rollback: add explicit rollback staging/approval semantics before any restore command can be executed from the TUI.
+   - Rollback: wire an explicit user-triggered TUI stage action to persist `ProofManager.stageRollbackRestore()` semantics through the active RunProof path. Do not execute restore commands from the TUI yet.
    - Provider/model accountability: ensure `recordModelRoute` evidence is captured and shown only when `/sovereignty` is backed by real data.
    - Diff/verify gates: wire verification results (`typecheck`, `lint`, `build`, tests) into RunProof before surfacing `/verify` and `/diffgate`.
 5. Keep TUI tests green when touching session/dialog components; the root preload now makes `bun test packages/tui` the single source of truth for TUI QA.
