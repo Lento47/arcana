@@ -1,6 +1,7 @@
 import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
-import { readFile } from "node:fs/promises"
+import { readFile, writeFile } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
 import { Deferred, Effect } from "effect"
 import { Global } from "@arcana/core/global"
 import { Flag } from "@arcana/core/flag/flag"
@@ -648,6 +649,89 @@ async function loadActiveRunProof(): Promise<ProofLoadResult> {
   }
 }
 
+const runProofRiskRank: Record<string, number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+  critical: 3,
+}
+
+function maxRunProofRisk(current: string | undefined, next: "high"): string {
+  const currentRank = current ? runProofRiskRank[current] : undefined
+  return currentRank !== undefined && currentRank > runProofRiskRank[next] ? current! : next
+}
+
+function appendUniqueString(value: unknown, item: string): string[] {
+  const items = Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []
+  return items.includes(item) ? items : [...items, item]
+}
+
+async function stageActiveRunProofRollbackRestore(): Promise<ProofLoadResult> {
+  const path = activeProofPath()
+  if (!path) return { status: "unbound" }
+
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8"))
+    const proof = asRecord(parsed)
+    if (!proof) return { status: "error", message: `Active RunProof at ${path} is not an object.` }
+
+    const rollback = asRecord(proof.rollback)
+    const restoreCommand = proofString(rollback?.restore_command)
+    if (!rollback || !restoreCommand) {
+      return {
+        status: "error",
+        message: "Active RunProof has no rollback.restore_command to stage.",
+      }
+    }
+
+    const timestamp = new Date().toISOString()
+    rollback.restore_status = "staged"
+    rollback.staged_at = timestamp
+    rollback.approval_required = true
+
+    const risk = asRecord(proof.risk) ?? {}
+    risk.level = maxRunProofRisk(proofString(risk.level), "high")
+    risk.reasons = appendUniqueString(
+      risk.reasons,
+      "Rollback restore command is staged and requires explicit approval before execution.",
+    )
+    risk.required_approval = true
+    proof.risk = risk
+
+    const contract = asRecord(proof.contract) ?? {}
+    contract.risk_level = maxRunProofRisk(proofString(contract.risk_level), "high")
+    contract.required_approvals = appendUniqueString(contract.required_approvals, "rollback restore execution")
+    proof.contract = contract
+
+    const events = Array.isArray(proof.events) ? proof.events : []
+    events.push({
+      id: `evt_${randomUUID()}`,
+      timestamp,
+      type: "rollback.staged",
+      actor: "user",
+      summary: `Rollback restore staged pending approval: ${restoreCommand}`,
+      risk: "high",
+      status: "awaiting_approval",
+      refs: {
+        checkpoint_id: proofString(rollback.checkpoint_id) ?? "none",
+        restore_command: restoreCommand,
+      },
+      data: {
+        approval_required: true,
+        restore_status: "staged",
+        staged_at: timestamp,
+      },
+    })
+    proof.events = events
+
+    await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8")
+    return { status: "ready", proof: normalizeProofView(parsed), path }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    return { status: "error", message: `Failed to stage rollback restore in active RunProof at ${path}: ${detail}` }
+  }
+}
+
 function FieldList(props: { items: string[] | undefined; empty: string }) {
   const { theme } = useTheme()
   return (
@@ -679,6 +763,11 @@ function rollbackValidity(proof: RunProofView): string {
 
 function rollbackRestoreStatus(proof: RunProofView): string {
   return proof.rollback?.restore_status ?? "not_staged"
+}
+
+function rollbackRestoreCanBeStaged(proof: RunProofView): boolean {
+  const status = rollbackRestoreStatus(proof)
+  return status === "not_staged" || status === "rejected"
 }
 
 function rollbackApprovalStatus(proof: RunProofView): string {
@@ -737,6 +826,7 @@ function DialogRunProofContract(props: {
   proof: RunProofView
   path: string
   onCopyRollbackRestore?: (command: string) => void
+  onStageRollbackRestore?: () => void
 }) {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -783,9 +873,16 @@ function DialogRunProofContract(props: {
                 </text>
                 <Show when={restoreCommand()}>
                   {(command) => (
-                    <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
-                      copy restore command
-                    </text>
+                    <box gap={0}>
+                      <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
+                        copy restore command
+                      </text>
+                      <Show when={rollbackRestoreCanBeStaged(props.proof)}>
+                        <text fg={theme.warning} onMouseUp={() => props.onStageRollbackRestore?.()}>
+                          stage restore for approval
+                        </text>
+                      </Show>
+                    </box>
                   )}
                 </Show>
               </box>
@@ -835,6 +932,7 @@ function DialogRunProofActions(props: {
   proof: RunProofView
   path: string
   onCopyRollbackRestore?: (command: string) => void
+  onStageRollbackRestore?: () => void
 }) {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -876,9 +974,16 @@ function DialogRunProofActions(props: {
             <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
             <Show when={restoreCommand()}>
               {(command) => (
-                <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
-                  copy restore command
-                </text>
+                <box gap={0}>
+                  <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
+                    copy restore command
+                  </text>
+                  <Show when={rollbackRestoreCanBeStaged(props.proof)}>
+                    <text fg={theme.warning} onMouseUp={() => props.onStageRollbackRestore?.()}>
+                      stage restore for approval
+                    </text>
+                  </Show>
+                </box>
               )}
             </Show>
           </box>
@@ -985,6 +1090,7 @@ function DialogRunProofDiffGate(props: {
   proof: RunProofView
   path: string
   onCopyRollbackRestore?: (command: string) => void
+  onStageRollbackRestore?: () => void
 }) {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -1027,9 +1133,16 @@ function DialogRunProofDiffGate(props: {
         </text>
         <Show when={restoreCommand()}>
           {(command) => (
-            <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
-              copy restore command
-            </text>
+            <box gap={0}>
+              <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
+                copy restore command
+              </text>
+              <Show when={rollbackRestoreCanBeStaged(props.proof)}>
+                <text fg={theme.warning} onMouseUp={() => props.onStageRollbackRestore?.()}>
+                  stage restore for approval
+                </text>
+              </Show>
+            </box>
           )}
         </Show>
       </box>
@@ -1691,21 +1804,45 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         .then(() => toast.show({ message: "Copied rollback restore command", variant: "info" }))
         .catch(toast.error)
     }
+    const stageRollbackRestore = async () => {
+      const staged = await stageActiveRunProofRollbackRestore()
+      if (staged.status !== "ready") {
+        dialog.replace(() => <DialogRunProofMissing result={staged} />)
+        return
+      }
+      toast.show({ message: "Rollback restore staged for approval", variant: "warning" })
+      await showRunProofSurface(kind)
+    }
     dialog.replace(() => {
       if (kind === "contract") {
         return (
-          <DialogRunProofContract proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
+          <DialogRunProofContract
+            proof={result.proof}
+            path={result.path}
+            onCopyRollbackRestore={copyRollbackRestore}
+            onStageRollbackRestore={() => void stageRollbackRestore().catch(toast.error)}
+          />
         )
       }
       if (kind === "diffgate") {
         return (
-          <DialogRunProofDiffGate proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
+          <DialogRunProofDiffGate
+            proof={result.proof}
+            path={result.path}
+            onCopyRollbackRestore={copyRollbackRestore}
+            onStageRollbackRestore={() => void stageRollbackRestore().catch(toast.error)}
+          />
         )
       }
       if (kind === "verify") return <DialogRunProofVerify proof={result.proof} path={result.path} />
       if (kind === "sovereignty") return <DialogRunProofSovereignty proof={result.proof} path={result.path} />
       return (
-        <DialogRunProofActions proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
+        <DialogRunProofActions
+          proof={result.proof}
+          path={result.path}
+          onCopyRollbackRestore={copyRollbackRestore}
+          onStageRollbackRestore={() => void stageRollbackRestore().catch(toast.error)}
+        />
       )
     })
     dialog.setSize("xlarge")
