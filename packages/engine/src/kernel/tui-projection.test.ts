@@ -30,7 +30,7 @@ describe("Arcana TUI projection", () => {
     expect(riskBandForProjection({ actions: [action], mutations: [] })).toBe("blocked")
   })
 
-  test("projection computes rollback readiness from mutation evidence", () => {
+  test("projection computes rollback status from mutation evidence", () => {
     const mutation = createMutationProposal({
       source: "agent",
       state: "approved",
