@@ -51,6 +51,15 @@ export type ProofRuntime = {
     diff_id?: string
     bytes_written?: number
   }): Promise<void>
+  recordShellCommand(input: {
+    command: string
+    cwd: string
+    status: "passed" | "failed" | "skipped" | "not_run"
+    risk: RiskLevel | "unknown"
+    exit_code?: number
+    stdout_summary?: string
+    stderr_summary?: string
+  }): Promise<void>
   recordAgentTurn(input: {
     input_summary: string
     output_summary: string
@@ -224,6 +233,12 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
     async recordFileWrite(input) {
       if (!manager) return
       manager.recordFileWrite(input)
+      await saveSnapshot()
+    },
+
+    async recordShellCommand(input) {
+      if (!manager) return
+      manager.recordShellCommand(input)
       await saveSnapshot()
     },
 

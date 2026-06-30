@@ -614,6 +614,7 @@ export class ProofManager {
   async save(): Promise<StoredRunProof> {
     return saveRunProof(this.proof, {
       target: this.store_target,
+      cwd: this.proof.repo.path,
       markdown: this.renderMarkdown(),
     })
   }

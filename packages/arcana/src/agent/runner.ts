@@ -266,6 +266,34 @@ export class AgentRunner {
     })
   }
 
+  private async recordRunProofShellCommand(
+    toolName: string,
+    input: Record<string, unknown>,
+    result: string,
+  ): Promise<void> {
+    if (!this.config.proofGate?.recordShellCommand) return
+    const command = this.shellCommandFromTool(toolName, input)
+    if (!command) return
+
+    const cwd = typeof input.cwd === "string" && input.cwd.trim() ? input.cwd : process.cwd()
+    const failed =
+      result.startsWith("Tool error:") ||
+      result.startsWith("Shell error:") ||
+      result.startsWith("Bash error:") ||
+      result.startsWith("Error:") ||
+      result.startsWith("error -")
+
+    await this.config.proofGate.recordShellCommand({
+      command,
+      cwd,
+      status: failed ? "failed" : "passed",
+      risk: "unknown",
+      exit_code: failed ? 1 : undefined,
+      stdout_summary: failed ? undefined : result.slice(0, 500),
+      stderr_summary: failed ? result.slice(0, 500) : undefined,
+    })
+  }
+
   async run(
     messages: ChatMessage[],
     onChunk?: (text: string) => void,
@@ -541,9 +569,16 @@ export class AgentRunner {
                     const result = await batchEntry.handler(batchCall.args)
                     await this.recordRunProofContextAccess(batchCall.tool, batchCall.args ?? {}, result)
                     await this.recordRunProofFileWrite(batchCall.tool, batchCall.args ?? {}, result)
+                    await this.recordRunProofShellCommand(
+                      batchCall.tool,
+                      batchCall.args ?? {},
+                      this.config.godlike ? result : redactSecrets(result),
+                    )
                     return `"${batchCall.tool}": ${result.slice(0, 500)}`
                   } catch (e) {
-                    return `"${batchCall.tool}": error - ${String(e)}`
+                    const result = `error - ${String(e)}`
+                    await this.recordRunProofShellCommand(batchCall.tool, batchCall.args ?? {}, result)
+                    return `"${batchCall.tool}": ${result}`
                   }
                 }))
                 resultStr = `Parallel results:\n${batchResults.join("\n")}`
@@ -565,6 +600,7 @@ export class AgentRunner {
             await this.recordRunProofContextAccess(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             await this.recordRunProofFileWrite(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             resultStr = this.config.godlike ? resultStr : redactSecrets(resultStr)
+            await this.recordRunProofShellCommand(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             if (cacheable) {
               toolResultCache.set(cacheKey, { result: resultStr, ts: Date.now() })
               if (toolResultCache.size > 50) {
@@ -576,6 +612,7 @@ export class AgentRunner {
             toolHistory.push({ name: tc.toolName, ts: Date.now() })
           } catch (e) {
             resultStr = `Tool error: ${String(e)}`
+            await this.recordRunProofShellCommand(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             auditLog({ tool: tc.toolName, args: tc.input, result: `ERROR: ${e}`, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
           }
         }
