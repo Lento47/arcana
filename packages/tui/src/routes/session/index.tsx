@@ -1546,7 +1546,7 @@ function UserMessage(props: {
                     })
                     return (
                       <text fg={theme.text}>
-                        <span style={{ bg: bg(), fg: theme.background }}> {MIME_BADGE[file.mime] ?? file.mime} </span>
+                        <span style={{ bg: bg(), fg: selectedForeground(theme, bg()) }}> {MIME_BADGE[file.mime] ?? file.mime} </span>
                         <span style={{ bg: theme.backgroundElement, fg: theme.textMuted }}> {file.filename} </span>
                       </text>
                     )
@@ -1780,10 +1780,7 @@ function ReasoningHeader(props: {
   verbSeed: string
 }) {
   const { theme } = useTheme()
-  const fg = () =>
-    props.open
-      ? RGBA.fromValues(theme.accent.r, theme.accent.g, theme.accent.b, theme.thinkingOpacity)
-      : theme.accent
+  const fg = () => theme.accent
   const verb = createMemo(() => pickVerb(VerbPool.thought, props.verbSeed))
   const verbIng = createMemo(() => pickVerb(VerbPool.thinking, props.verbSeed))
 
