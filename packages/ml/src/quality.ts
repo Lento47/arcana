@@ -192,6 +192,24 @@ function hasConcreteMarkers(response: string): boolean {
   return /(```|`[^`]+`|\b[A-Za-z0-9_.-]+\.(ts|tsx|js|json|md|sql|py)\b|\b\d+\b|\b[A-Z_]{3,}\b|\b[a-f0-9]{7,40}\b)/.test(response)
 }
 
+function repeatedSegments(response: string): string[] {
+  const segments = response
+    .split(/\n+|(?<=[.!?])\s+/)
+    .map((item) => item.trim().replace(/\s+/g, " "))
+    .filter((item) => item.length >= 24)
+
+  const counts = new Map<string, number>()
+  for (const segment of segments) {
+    const normalized = segment.toLowerCase()
+    counts.set(normalized, (counts.get(normalized) ?? 0) + 1)
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count >= 2)
+    .map(([segment]) => segment)
+    .slice(0, 5)
+}
+
 function actionability(response: string): number {
   const tokens = tokenize(response)
   const hits = ACTION_TERMS.filter((term) => tokens.includes(term)).length
@@ -274,6 +292,7 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   const responseTokens = tokenize(input.response)
   const slop = avoidSlopScore(input.response)
   const genericHits = slop.hits
+  const repeats = repeatedSegments(input.response)
   const problems: string[] = []
   const revisionHints: string[] = []
   const strict = input.expectation?.qualityBar === "strict"
@@ -290,6 +309,10 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   if (genericHits.length) {
     problems.push(`Generic phrases detected: ${genericHits.slice(0, 5).join(", ")}${genericHits.length > 5 ? "..." : ""}`)
     revisionHints.push(...slop.revisionHints)
+  }
+  if (repeats.length) {
+    problems.push(`Repeated response segments detected: ${repeats.slice(0, 3).join(" | ")}${repeats.length > 3 ? "..." : ""}`)
+    revisionHints.push("Remove repeated sentences or lines; keep one clear statement and continue with new evidence or next steps.")
   }
   if (specificityScore < 0.35) {
     problems.push("Response has weak lexical connection to the user's request.")
@@ -322,7 +345,11 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   // strict threshold (see fixture `quality/specific patch answer can pass`).
   const isCodePatch = input.expectation?.deliverable === "code_patch"
   const threshold = strict ? (isCodePatch ? 0.72 : 0.78) : 0.64
-  const hardFail = input.response.trim().length === 0 || (strict && problems.length > 0) || (strict && genericHits.length > 0)
+  const hardFail =
+    input.response.trim().length === 0 ||
+    repeats.length > 0 ||
+    (strict && problems.length > 0) ||
+    (strict && genericHits.length > 0)
   if (score < 0.45 && input.expectation?.interactionIntervention === "confirm") verdict = "ask_user"
   else if (hardFail || score < threshold) verdict = "revise_silently"
 
