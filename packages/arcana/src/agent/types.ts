@@ -69,6 +69,15 @@ export type AgentConfig = {
       diff_id?: string
       bytes_written?: number
     }): Promise<void>
+    recordShellCommand?(input: {
+      command: string
+      cwd: string
+      status: "passed" | "failed" | "skipped" | "not_run"
+      risk: "low" | "medium" | "high" | "critical" | "unknown"
+      exit_code?: number
+      stdout_summary?: string
+      stderr_summary?: string
+    }): Promise<void>
   }
 }
 
