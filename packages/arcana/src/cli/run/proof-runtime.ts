@@ -238,7 +238,10 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
 
     async recordShellCommand(input) {
       if (!manager) return
-      const decision = manager.gateShellCommand(input.command, { cwd: input.cwd })
+      // The command has already been executed (or attempted) by the agent, so
+      // classify it post-hoc with approval=true. We still evaluate policy to
+      // capture the real risk level for the evidence record.
+      const decision = manager.gateShellCommand(input.command, { cwd: input.cwd, approved: true })
       const risk = input.risk === "unknown" ? decision.risk : input.risk
       manager.recordShellCommand({ ...input, risk })
       await saveSnapshot()
