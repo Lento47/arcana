@@ -659,6 +659,10 @@ function rollbackRestoreCommand(proof: RunProofView): string {
   return proof.rollback?.restore_command ?? proof.contract?.rollback_plan ?? "not recorded"
 }
 
+function rollbackRestoreCommandValue(proof: RunProofView): string | undefined {
+  return proof.rollback?.restore_command
+}
+
 function rollbackValidity(proof: RunProofView): string {
   return proof.rollback?.valid_until ?? "not recorded"
 }
@@ -705,11 +709,12 @@ function MLEvidencePanel(props: { evidence: RunProofMLEvidenceView[]; latestOnly
   )
 }
 
-function DialogRunProofContract(props: { proof: RunProofView; path: string }) {
+function DialogRunProofContract(props: { proof: RunProofView; path: string; onCopyRollbackRestore?: (command: string) => void }) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const contract = () => props.proof.contract
   const rollback = () => props.proof.rollback
+  const restoreCommand = () => rollbackRestoreCommandValue(props.proof)
   const mlEvidence = () => props.proof.ml_evidence ?? []
   const latestTurnEvidence = () => mlEvidence().findLast((item) => item.kind === "turn")
   return (
@@ -744,6 +749,13 @@ function DialogRunProofContract(props: { proof: RunProofView; path: string }) {
                 <text fg={theme.text}>Rollback checkpoint: {rollbackSummary(props.proof)}</text>
                 <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
                 <text fg={theme.textMuted}>Valid until: {rollbackValidity(props.proof)}</text>
+                <Show when={restoreCommand()}>
+                  {(command) => (
+                    <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
+                      copy restore command
+                    </text>
+                  )}
+                </Show>
               </box>
             </Show>
             <text fg={theme.text}>Verification steps</text>
@@ -787,7 +799,7 @@ function eventLabel(value: string | undefined): string {
   return (value ?? "event").replace(/[._-]+/g, " ").toUpperCase()
 }
 
-function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
+function DialogRunProofActions(props: { proof: RunProofView; path: string; onCopyRollbackRestore?: (command: string) => void }) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const events = () => props.proof.events ?? []
@@ -798,6 +810,7 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
   const risk = () => props.proof.risk?.level ?? props.proof.contract?.risk_level ?? "unknown"
   const score = () => props.proof.final_evidence?.proof_score
   const tokens = () => props.proof.token_usage
+  const restoreCommand = () => rollbackRestoreCommandValue(props.proof)
   return (
     <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
       <box flexDirection="row" justifyContent="space-between">
@@ -821,7 +834,16 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
           {score() === undefined ? "" : `  Proof: ${score()}/100`}
         </text>
         <Show when={props.proof.rollback?.restore_command}>
-          <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
+          <box gap={0}>
+            <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
+            <Show when={restoreCommand()}>
+              {(command) => (
+                <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
+                  copy restore command
+                </text>
+              )}
+            </Show>
+          </box>
         </Show>
         <Show when={props.proof.rollback?.valid_until}>
           <text fg={theme.textMuted}>Rollback valid until: {rollbackValidity(props.proof)}</text>
@@ -912,7 +934,7 @@ function DiffList(props: { title: string; diffs: RunProofDiffView[]; empty: stri
   )
 }
 
-function DialogRunProofDiffGate(props: { proof: RunProofView; path: string }) {
+function DialogRunProofDiffGate(props: { proof: RunProofView; path: string; onCopyRollbackRestore?: (command: string) => void }) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const diffs = () => props.proof.diffs ?? { proposed: [], applied: [], rejected: [] }
@@ -921,6 +943,7 @@ function DialogRunProofDiffGate(props: { proof: RunProofView; path: string }) {
   const rejected = () => diffs().rejected.length
   const writes = () => props.proof.execution?.file_writes ?? []
   const risk = () => props.proof.risk?.level ?? props.proof.contract?.risk_level ?? "unknown"
+  const restoreCommand = () => rollbackRestoreCommandValue(props.proof)
   const approval = () =>
     props.proof.risk?.required_approval || (props.proof.contract?.required_approvals?.length ?? 0) > 0
       ? "required"
@@ -946,6 +969,13 @@ function DialogRunProofDiffGate(props: { proof: RunProofView; path: string }) {
         <text fg={theme.textMuted}>Rollback: {rollbackSummary(props.proof)}</text>
         <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
         <text fg={theme.textMuted}>Valid until: {rollbackValidity(props.proof)}</text>
+        <Show when={restoreCommand()}>
+          {(command) => (
+            <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
+              copy restore command
+            </text>
+          )}
+        </Show>
       </box>
       <DiffList title="Proposed diffs" diffs={diffs().proposed} empty="No proposed diffs." />
       <DiffList title="Applied diffs" diffs={diffs().applied} empty="No applied diffs." />
@@ -1586,12 +1616,23 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       dialog.replace(() => <DialogRunProofMissing result={result} />)
       return
     }
+    const copyRollbackRestore = async (command: string) => {
+      if (!command) return
+      await clipboard
+        .write?.(command)
+        .then(() => toast.show({ message: "Copied rollback restore command", variant: "info" }))
+        .catch(toast.error)
+    }
     dialog.replace(() => {
-      if (kind === "contract") return <DialogRunProofContract proof={result.proof} path={result.path} />
-      if (kind === "diffgate") return <DialogRunProofDiffGate proof={result.proof} path={result.path} />
+      if (kind === "contract") {
+        return <DialogRunProofContract proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
+      }
+      if (kind === "diffgate") {
+        return <DialogRunProofDiffGate proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
+      }
       if (kind === "verify") return <DialogRunProofVerify proof={result.proof} path={result.path} />
       if (kind === "sovereignty") return <DialogRunProofSovereignty proof={result.proof} path={result.path} />
-      return <DialogRunProofActions proof={result.proof} path={result.path} />
+      return <DialogRunProofActions proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
     })
     dialog.setSize("xlarge")
   }
