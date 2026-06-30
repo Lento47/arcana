@@ -11,10 +11,13 @@ Goal: Arcana becomes the governed execution cockpit for AI agents. The current w
 - `feat: evaluate shell-command policy risk in ProofRuntime`
 - `feat: render shell-command evidence in TUI /actions timeline`
 - `fix: record shell commands post-hoc with approval context`
+- `fix: TUI contrast fallbacks`
+- `fix: Show RunProof rollback validity in TUI`
+- `fix: Add rollback restore copy action`
 
 ## Current Dirty Scope
 
-- `ARCANA_NEXT_STEPS.md` only (this handoff file)
+- None expected after this handoff commit.
 
 ## Product Status
 
@@ -65,6 +68,57 @@ Resolved in this slice:
   - `packages/tui/src/routes/session/index.tsx`: converted per-message `UserMessage` and `AssistantMessage` array helpers (`text`, `files`, `compaction`, task-tool presence) to native loops and memos.
   - `packages/tui/src/component/command-palette.tsx`: memoized the command-palette option list and made it depend on the dialog's reactive filter, so `DialogSelect` no longer receives a brand-new options array every render.
 
+Committed TUI contrast fallback slice:
+
+- `packages/tui/src/ui/dialog.tsx`: dimmer overlay derives from theme background luminance instead of fixed black.
+- `packages/tui/src/ui/dialog-select.tsx`: inactive option/action rows use an opaque theme fallback when backgrounds are transparent.
+- `packages/tui/src/component/dialog-retry-action.tsx`: inactive retry action buttons use an opaque theme/text-overlay fallback instead of transparent black.
+- `packages/tui/src/component/error-component.tsx`: fatal error UI uses theme tokens when available, with mode-based emergency fallbacks outside `ThemeProvider`.
+- `packages/tui/src/ui/spinner.ts`: public scanner defaults derive from explicit color, theme primary/text, or neutral fallback instead of red/dark-red hardcoded defaults.
+- `packages/tui/src/feature-plugins/system/which-key.tsx`: system which-key plugin reads resolved theme tokens directly instead of hardcoded hex fallbacks.
+- `packages/tui/src/component/logo.tsx`: logo peak highlight switches black/white by ink luminance instead of always white.
+- `packages/tui/src/context/theme.tsx`: exports `ThemeContext` for optional theme reads outside normal provider flow.
+- `changes-tui-contrast-fallbacks.md`: documents the contrast fallback slice and QA.
+
+Additional current QA passed for this dirty slice:
+
+- `bun --cwd packages/tui typecheck`
+- `bun run --filter @arcana/engine typecheck`
+- `bun test packages/tui --timeout 120000` — 206 pass, 1 skip, 0 fail
+- `bun test packages/engine/test/cli/run/footer.view.test.tsx --timeout 120000` — 22 pass, 5 skip, 0 fail
+- `bun test packages/engine/test/cli/run/theme.test.ts --timeout 120000` — 7 pass, 0 fail
+- `rg -n 'RGBA\.fromInts\(0, 0, 0, 0\)|RGBA\.fromInts\(0, 0, 0, 150\)|#ff0000|#330000' packages/tui/src/ui packages/tui/src/component packages/tui/src/feature-plugins/system packages/tui/src/context` — no matches
+
+Committed rollback TUI slice:
+
+- `packages/tui/src/app.tsx` now preserves `proof.rollback.valid_until` while normalizing the active RunProof.
+- `/contract`, `/actions`, and `/diffgate` display rollback validity when present.
+- `packages/tui/src/app.tsx` now exposes a copy action for explicit `proof.rollback.restore_command` values in the existing RunProof-backed dialogs.
+- The copy action only appears when the active proof has an executable `rollback.restore_command`; it does not copy prose fallback text from `contract.rollback_plan`.
+- QA passed:
+  - `bun --cwd packages/tui typecheck`
+  - fake cockpit command search over `packages/tui/src`
+  - active-proof scan guard over `packages/tui/src/app.tsx`
+  - `git diff --check`
+
+Committed rollback restore copy slice:
+
+- Commit: `5b34ecb Add rollback restore copy action`
+- File changed:
+  - `packages/tui/src/app.tsx`
+- Behavior:
+  - `/contract`, `/actions`, and `/diffgate` keep using the existing RunProof-backed dialog surfaces.
+  - When `proof.rollback.restore_command` is present, the dialog shows `copy restore command`.
+  - Clicking the action writes the exact restore command to the clipboard and shows `Copied rollback restore command`.
+  - No rollback command is executed by the TUI.
+  - No fallback to latest proof files was added.
+  - No new command system, registry, or prompt-template command was added.
+- QA passed:
+  - `bun --cwd packages/tui typecheck`
+  - `rg -n "Cockpit:|cockpit\.|Switched to cockpit|/ \$\{cmd\}" packages/tui/src` — no matches
+  - `rg -n "readdir|mtime|latest|sort" packages/tui/src/app.tsx` — only local `latestTurnEvidence` ML evidence naming matched, no proof-file scan
+  - `git diff --check`
+
 ## Stashes
 
 The previous broad dirty tree was preserved in:
@@ -79,7 +133,8 @@ Nested `.claude/worktrees` changes were preserved in separate stashes `stash@{0}
 2. Continue wiring real RunProof data before expanding `/diffgate`, `/verify`, or `/sovereignty` behavior.
 3. Avoid new command registries or prompt-template command systems.
 4. Remaining product gaps to close in priority order:
-   - Rollback: ensure rollback checkpoints created by `proof-manager` are visible in `/contract` and can be staged from the TUI.
+   - Rollback: add explicit rollback staging/approval semantics before any restore command can be executed from the TUI.
    - Provider/model accountability: ensure `recordModelRoute` evidence is captured and shown only when `/sovereignty` is backed by real data.
    - Diff/verify gates: wire verification results (`typecheck`, `lint`, `build`, tests) into RunProof before surfacing `/verify` and `/diffgate`.
 5. Keep TUI tests green when touching session/dialog components; the root preload now makes `bun test packages/tui` the single source of truth for TUI QA.
+6. Keep the tree clean between slices; do not stage restored stash or worktree files unless a future slice explicitly scopes them in.
