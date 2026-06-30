@@ -189,7 +189,35 @@ function overlap(a: string[], b: string[]): number {
 }
 
 function hasConcreteMarkers(response: string): boolean {
-  return /(```|`[^`]+`|\b[A-Za-z0-9_.-]+\.(ts|tsx|js|json|md|sql|py)\b|\b\d+\b|\b[A-Z_]{3,}\b|\b[a-f0-9]{7,40}\b)/.test(response)
+  return /(```|`[^`]+`|\b[A-Za-z0-9_.-]+\.(ts|tsx|js|json|md|sql|py)\b|\b\d+\b|\b[A-Z_]{3,}\b|\b[a-f0-9]{7,40}\b)/.test(
+    response,
+  )
+}
+
+function needsEvidenceForClaims(contract?: ExpectationContract): boolean {
+  if (!contract) return false
+  if (contract.evidenceNeed !== "none") return true
+  return ["code_patch", "repo_review", "debug_plan", "sql_advice"].includes(contract.deliverable)
+}
+
+function hasCompletionClaim(response: string): boolean {
+  const text = response.toLowerCase()
+  if (
+    /\b(not|isn't|wasn't|cannot|can't|didn't|did not)\s+(done|fixed|complete|completed|implemented|verified|passed)\b/.test(
+      text,
+    )
+  )
+    return false
+  return /\b(done|fixed|completed|implemented|verified|validated|passed|tests passed|typecheck passed|build passed|qa passed|committed|pushed)\b/.test(
+    text,
+  )
+}
+
+function hasEvidenceMarkers(response: string): boolean {
+  if (hasConcreteMarkers(response)) return true
+  return /\b(bun|npm|pnpm|git|rg|grep|tsc|pytest|cargo|go test|diff|patch|test|tests|typecheck|build|lint|qa|verified|evidence|commit|changed|failed|passed)\b/i.test(
+    response,
+  )
 }
 
 function repeatedSegments(response: string): string[] {
@@ -213,14 +241,18 @@ function repeatedSegments(response: string): string[] {
 function actionability(response: string): number {
   const tokens = tokenize(response)
   const hits = ACTION_TERMS.filter((term) => tokens.includes(term)).length
-  const commandLike = /\b(bun|npm|pnpm|git|node|python|cargo|go test|pytest|sql|EXPLAIN|ANALYZE)\b/i.test(response) ? 0.25 : 0
+  const commandLike = /\b(bun|npm|pnpm|git|node|python|cargo|go test|pytest|sql|EXPLAIN|ANALYZE)\b/i.test(response)
+    ? 0.25
+    : 0
   return clamp(hits / 8 + commandLike)
 }
 
 function constraintFit(response: string, contract?: ExpectationContract): number {
   if (!contract?.constraints.length) return 1
   const text = response.toLowerCase()
-  const hits = contract.constraints.filter((constraint) => tokenize(constraint).some((token) => text.includes(token))).length
+  const hits = contract.constraints.filter((constraint) =>
+    tokenize(constraint).some((token) => text.includes(token)),
+  ).length
   return clamp(hits / contract.constraints.length)
 }
 
@@ -263,7 +295,9 @@ export function avoidSlopScore(response: string): AvoidSlopScore {
     hedges: 0.3,
   }
 
-  for (const [category, phrases] of Object.entries(GENERIC_PHRASES) as Array<[keyof typeof GENERIC_PHRASES, string[]]>) {
+  for (const [category, phrases] of Object.entries(GENERIC_PHRASES) as Array<
+    [keyof typeof GENERIC_PHRASES, string[]]
+  >) {
     const found = phraseHits(response, phrases)
     if (found.length) {
       categoryHits[category] = found
@@ -293,12 +327,18 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   const slop = avoidSlopScore(input.response)
   const genericHits = slop.hits
   const repeats = repeatedSegments(input.response)
+  const unsupportedCompletionClaim =
+    needsEvidenceForClaims(input.expectation) &&
+    hasCompletionClaim(input.response) &&
+    !hasEvidenceMarkers(input.response)
   const problems: string[] = []
   const revisionHints: string[] = []
   const strict = input.expectation?.qualityBar === "strict"
 
   const genericityScore = clamp(slop.value)
-  const specificityScore = clamp(overlap(requestTokens, responseTokens) * 0.6 + (hasConcreteMarkers(input.response) ? 0.4 : 0))
+  const specificityScore = clamp(
+    overlap(requestTokens, responseTokens) * 0.6 + (hasConcreteMarkers(input.response) ? 0.4 : 0),
+  )
   const actionabilityScore = actionability(input.response)
   const constraintFitScore = constraintFit(input.response, input.expectation)
 
@@ -307,12 +347,24 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
     revisionHints.push("Provide a concrete response aligned with the user's request.")
   }
   if (genericHits.length) {
-    problems.push(`Generic phrases detected: ${genericHits.slice(0, 5).join(", ")}${genericHits.length > 5 ? "..." : ""}`)
+    problems.push(
+      `Generic phrases detected: ${genericHits.slice(0, 5).join(", ")}${genericHits.length > 5 ? "..." : ""}`,
+    )
     revisionHints.push(...slop.revisionHints)
   }
   if (repeats.length) {
-    problems.push(`Repeated response segments detected: ${repeats.slice(0, 3).join(" | ")}${repeats.length > 3 ? "..." : ""}`)
-    revisionHints.push("Remove repeated sentences or lines; keep one clear statement and continue with new evidence or next steps.")
+    problems.push(
+      `Repeated response segments detected: ${repeats.slice(0, 3).join(" | ")}${repeats.length > 3 ? "..." : ""}`,
+    )
+    revisionHints.push(
+      "Remove repeated sentences or lines; keep one clear statement and continue with new evidence or next steps.",
+    )
+  }
+  if (unsupportedCompletionClaim) {
+    problems.push("Completion claim is not backed by evidence.")
+    revisionHints.push(
+      "Do not claim work is done, fixed, verified, or passed without a file, command, diff, test result, metric, or explicit caveat.",
+    )
   }
   if (specificityScore < 0.35) {
     problems.push("Response has weak lexical connection to the user's request.")
@@ -332,10 +384,7 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   }
 
   const score = clamp(
-    specificityScore * 0.34 +
-      actionabilityScore * 0.28 +
-      constraintFitScore * 0.24 +
-      (1 - genericityScore) * 0.14,
+    specificityScore * 0.34 + actionabilityScore * 0.28 + constraintFitScore * 0.24 + (1 - genericityScore) * 0.14,
   )
 
   let verdict: QualityGateVerdict = "pass"
@@ -348,6 +397,7 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   const hardFail =
     input.response.trim().length === 0 ||
     repeats.length > 0 ||
+    unsupportedCompletionClaim ||
     (strict && problems.length > 0) ||
     (strict && genericHits.length > 0)
   if (score < 0.45 && input.expectation?.interactionIntervention === "confirm") verdict = "ask_user"
@@ -370,7 +420,9 @@ export function buildRevisionPrompt(result: QualityGateResult): string {
   if (result.verdict === "pass") return ""
 
   const problems = result.problems.length ? result.problems : ["The response did not meet the expected quality bar."]
-  const hints = result.revisionHints.length ? result.revisionHints : ["Revise the answer to be more specific, actionable, and aligned with the user's request."]
+  const hints = result.revisionHints.length
+    ? result.revisionHints
+    : ["Revise the answer to be more specific, actionable, and aligned with the user's request."]
 
   return [
     "Revise the previous answer before showing it to the user.",

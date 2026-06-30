@@ -27,7 +27,9 @@ describe("avoidSlopScore", () => {
   })
 
   test("single mild hedge does not max out the score", () => {
-    const result = avoidSlopScore("Use `bun test` to validate. It depends on your environment whether the output matches exactly.")
+    const result = avoidSlopScore(
+      "Use `bun test` to validate. It depends on your environment whether the output matches exactly.",
+    )
     expect(result.value).toBeLessThan(0.2)
   })
 })
@@ -46,7 +48,8 @@ describe("evaluateResponseQuality with avoidSlopScore", () => {
   test("specific patch passes with new detector", () => {
     const result = evaluateResponseQuality({
       request: "avoid generic output and give the exact patch",
-      response: "Patch `packages/ml/src/quality.ts` by adding `buildRevisionPrompt()`, then run `bun --cwd packages/ml test` to validate.",
+      response:
+        "Patch `packages/ml/src/quality.ts` by adding `buildRevisionPrompt()`, then run `bun --cwd packages/ml test` to validate.",
     })
     expect(result.verdict).toBe("pass")
     expect(result.genericityScore).toBe(0)
@@ -62,6 +65,47 @@ describe("evaluateResponseQuality with avoidSlopScore", () => {
     expect(result.verdict).toBe("revise_silently")
     expect(result.problems.some((p) => p.includes("Repeated response segments"))).toBe(true)
     expect(result.revisionHints.some((hint) => hint.includes("Remove repeated sentences"))).toBe(true)
+  })
+
+  test("completion claims require evidence for technical deliverables", () => {
+    const result = evaluateResponseQuality({
+      request: "fix the startup performance bug",
+      response: "Done. The startup performance issue is fixed.",
+      expectation: {
+        deliverable: "code_patch",
+        qualityBar: "solid",
+        evidenceNeed: "light",
+        interactionIntervention: "silent",
+        constraints: [],
+        mustAvoid: [],
+        shouldInclude: [],
+        assumptions: [],
+        promptHints: [],
+      },
+    })
+
+    expect(result.verdict).toBe("revise_silently")
+    expect(result.problems).toContain("Completion claim is not backed by evidence.")
+  })
+
+  test("completion claims pass when backed by command or file evidence", () => {
+    const result = evaluateResponseQuality({
+      request: "fix the startup performance bug",
+      response: "Fixed `packages/tui/src/context/sync.tsx` and ran `bun --cwd packages/tui typecheck`.",
+      expectation: {
+        deliverable: "code_patch",
+        qualityBar: "solid",
+        evidenceNeed: "light",
+        interactionIntervention: "silent",
+        constraints: [],
+        mustAvoid: [],
+        shouldInclude: [],
+        assumptions: [],
+        promptHints: [],
+      },
+    })
+
+    expect(result.problems).not.toContain("Completion claim is not backed by evidence.")
   })
 
   test("audit format includes genericity score", () => {
