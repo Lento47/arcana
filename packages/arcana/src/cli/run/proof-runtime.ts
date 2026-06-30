@@ -23,12 +23,27 @@ export type ProofRuntime = {
     route: "local" | "cloud"
     reason: string
     data_left_local: boolean
+    selection_source?: "cli" | "config" | "autodetect"
+    fallback_provider?: string
+    fallback_model?: string
+    data_boundary?: "local" | "cloud"
+    estimated_cost_usd?: number
+    latency_ms?: number
   }): Promise<void>
   recordUserCommand(command: string, summary?: string): Promise<void>
   recordSystemTransition(status: RunProofStatus, summary?: string): Promise<void>
   gateShellCommand(
     command: string,
-    options?: { cwd?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean } },
+    options?: {
+      cwd?: string
+      approved?: boolean
+      sandboxEnabled?: boolean
+      userSovereignty?: {
+        requireApprovalForWrites?: boolean
+        requireApprovalForNetwork?: boolean
+        preferLocal?: boolean
+      }
+    },
   ): Promise<{
     blocked: boolean
     risk: string
@@ -36,7 +51,16 @@ export type ProofRuntime = {
   }>
   gateFileMutation(
     path: string,
-    options?: { operation?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean } },
+    options?: {
+      operation?: string
+      approved?: boolean
+      sandboxEnabled?: boolean
+      userSovereignty?: {
+        requireApprovalForWrites?: boolean
+        requireApprovalForNetwork?: boolean
+        preferLocal?: boolean
+      }
+    },
   ): Promise<{
     blocked: boolean
     risk: string
@@ -112,7 +136,9 @@ function recordInitialRollback(manager: ProofManager, cwd: string): void {
   })
 
   if (status) {
-    manager.addKnownLimitation("Rollback checkpoint restores tracked files only; pre-existing dirty or untracked files are not fully captured.")
+    manager.addKnownLimitation(
+      "Rollback checkpoint restores tracked files only; pre-existing dirty or untracked files are not fully captured.",
+    )
   }
 }
 
@@ -124,10 +150,17 @@ function assessInitialRisk(input: { prompt?: string; command: string }): {
   const text = `${input.prompt ?? ""} ${input.command}`.toLowerCase()
   const reasons = ["Agent execution can inspect context, call tools, and mutate repository state."]
 
-  if (/\b(prod|production|deploy|secret|credential|payment|billing|database|migration|drop|delete|remove|rm\s+-rf)\b/.test(text)) {
+  if (
+    /\b(prod|production|deploy|secret|credential|payment|billing|database|migration|drop|delete|remove|rm\s+-rf)\b/.test(
+      text,
+    )
+  ) {
     return {
       level: "critical",
-      reasons: [...reasons, "Prompt or command references production, secrets, destructive operations, billing, or database migration risk."],
+      reasons: [
+        ...reasons,
+        "Prompt or command references production, secrets, destructive operations, billing, or database migration risk.",
+      ],
       required_approval: true,
     }
   }
@@ -135,7 +168,10 @@ function assessInitialRisk(input: { prompt?: string; command: string }): {
   if (/\b(auth|security|permission|dependency|install|upgrade|lockfile|package|token)\b/.test(text)) {
     return {
       level: "high",
-      reasons: [...reasons, "Prompt or command references security, auth, permissions, dependency, or token-sensitive work."],
+      reasons: [
+        ...reasons,
+        "Prompt or command references security, auth, permissions, dependency, or token-sensitive work.",
+      ],
       required_approval: true,
     }
   }
@@ -168,7 +204,9 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
 
   if (manager) {
     manager.transitionState("planning", "Proof capture initialized; command execution entering planning state.")
-    manager.updateRisk(assessInitialRisk({ prompt: options.prompt, command: options.command || commandForPrompt(options.prompt) }))
+    manager.updateRisk(
+      assessInitialRisk({ prompt: options.prompt, command: options.command || commandForPrompt(options.prompt) }),
+    )
     recordInitialRollback(manager, options.cwd ?? process.cwd())
   }
 
@@ -199,6 +237,12 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
           route: input.route,
           reason: input.reason,
           data_left_local: input.data_left_local,
+          selection_source: input.selection_source,
+          fallback_provider: input.fallback_provider,
+          fallback_model: input.fallback_model,
+          data_boundary: input.data_boundary ?? input.route,
+          estimated_cost_usd: input.estimated_cost_usd,
+          latency_ms: input.latency_ms,
         },
       })
       await saveSnapshot()

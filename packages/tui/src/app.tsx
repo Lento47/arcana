@@ -266,6 +266,12 @@ type RunProofSovereigntyView = {
   route?: string
   reason?: string
   data_left_local?: boolean
+  selection_source?: string
+  fallback_provider?: string
+  fallback_model?: string
+  data_boundary?: string
+  estimated_cost_usd?: number
+  latency_ms?: number
   timestamp?: string
   summary?: string
 }
@@ -581,6 +587,12 @@ function sovereigntyFromEvents(events: RunProofEventView[]): RunProofSovereignty
     route: proofString(data.route),
     reason: proofString(data.reason),
     data_left_local: proofBoolean(data.data_left_local),
+    selection_source: proofString(data.selection_source),
+    fallback_provider: proofString(data.fallback_provider),
+    fallback_model: proofString(data.fallback_model),
+    data_boundary: proofString(data.data_boundary),
+    estimated_cost_usd: proofNumber(data.estimated_cost_usd),
+    latency_ms: proofNumber(data.latency_ms),
     timestamp: event.timestamp,
     summary: event.summary,
   }
@@ -1382,6 +1394,14 @@ function yesNo(value: boolean | undefined): string {
   return value ? "yes" : "no"
 }
 
+function costLabel(value: number | undefined): string {
+  return value === undefined ? "not recorded" : `$${value.toFixed(6)}`
+}
+
+function latencyLabel(value: number | undefined): string {
+  return value === undefined ? "not recorded" : `${value}ms`
+}
+
 function DialogRunProofSovereignty(props: { proof: RunProofView; path: string }) {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -1407,7 +1427,16 @@ function DialogRunProofSovereignty(props: { proof: RunProofView; path: string })
               <text fg={theme.text}>Provider: {value().provider ?? "not recorded"}</text>
               <text fg={theme.text}>Model: {value().model ?? "not recorded"}</text>
               <text fg={theme.text}>Route: {value().route ?? "not recorded"}</text>
+              <text fg={theme.text}>Selection source: {value().selection_source ?? "not recorded"}</text>
+              <text fg={theme.text}>Data boundary: {value().data_boundary ?? "not recorded"}</text>
               <text fg={theme.text}>Data left local machine: {yesNo(value().data_left_local)}</text>
+              <text fg={theme.textMuted}>
+                Fallback:{" "}
+                {[value().fallback_provider, value().fallback_model].filter(Boolean).join("/") || "not recorded"}
+              </text>
+              <text fg={theme.textMuted}>
+                Cost: {costLabel(value().estimated_cost_usd)} Latency: {latencyLabel(value().latency_ms)}
+              </text>
             </box>
             <box gap={0}>
               <text fg={theme.textMuted}>Recorded: {eventTime(value().timestamp)}</text>

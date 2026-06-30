@@ -44,10 +44,10 @@ GOAL DISCIPLINE:
 
 const c = {
   purple: (s: string) => `\x1b[35m${s}\x1b[0m`,
-  cyan:   (s: string) => `\x1b[36m${s}\x1b[0m`,
-  red:    (s: string) => `\x1b[31m${s}\x1b[0m`,
+  cyan: (s: string) => `\x1b[36m${s}\x1b[0m`,
+  red: (s: string) => `\x1b[31m${s}\x1b[0m`,
   yellow: (s: string) => `\x1b[33m${s}\x1b[0m`,
-  dim:    (s: string) => `\x1b[90m${s}\x1b[0m`,
+  dim: (s: string) => `\x1b[90m${s}\x1b[0m`,
 }
 
 function commandForPrompt(prompt: string | undefined, proofMode: boolean): string {
@@ -61,16 +61,24 @@ export const RunCommand: CommandModule = {
   builder: (yargs) =>
     yargs
       .positional("prompt", { type: "string", describe: "one-shot prompt (no REPL)" })
-      .option("skill",           { type: "string",  describe: "activate a skill at session start" })
-      .option("model",           { alias: "m", type: "string", describe: "model override" })
-      .option("provider",        { alias: "p", type: "string", describe: "provider override" })
-      .option("resume",          { alias: "r", type: "string", describe: "resume a previous session by ID" })
-      .option("godlike",         { type: "boolean", default: false, describe: "⚠️ disable ALL guardrails (red/blue/purple team use only)" })
-      .option("sandbox",         { type: "string", describe: "isolate agent to a root directory (creates tmpdir if empty)" })
-      .option("sandbox-net",     { type: "boolean", default: false, describe: "allow network in sandbox mode" })
-      .option("disable-memory",  { type: "boolean", default: false, describe: "disable memory for this session" })
+      .option("skill", { type: "string", describe: "activate a skill at session start" })
+      .option("model", { alias: "m", type: "string", describe: "model override" })
+      .option("provider", { alias: "p", type: "string", describe: "provider override" })
+      .option("resume", { alias: "r", type: "string", describe: "resume a previous session by ID" })
+      .option("godlike", {
+        type: "boolean",
+        default: false,
+        describe: "⚠️ disable ALL guardrails (red/blue/purple team use only)",
+      })
+      .option("sandbox", { type: "string", describe: "isolate agent to a root directory (creates tmpdir if empty)" })
+      .option("sandbox-net", { type: "boolean", default: false, describe: "allow network in sandbox mode" })
+      .option("disable-memory", { type: "boolean", default: false, describe: "disable memory for this session" })
       .option("tool-timeout", { type: "number", default: 30000, describe: "max execution time per tool call in ms" })
-      .option("safe", { type: "boolean", default: false, describe: "run in read-only mode — disable all write/edit/delete tools" })
+      .option("safe", {
+        type: "boolean",
+        default: false,
+        describe: "run in read-only mode — disable all write/edit/delete tools",
+      })
       .option("proof", {
         alias: "evidence",
         type: "boolean",
@@ -99,8 +107,12 @@ export const RunCommand: CommandModule = {
       )
     }
 
-    let model    = (args.model    as string | undefined) ?? config.model
-    let provider = (args.provider as string | undefined) ?? config.provider
+    const argModel = args.model as string | undefined
+    const argProvider = args.provider as string | undefined
+    let model = argModel ?? config.model
+    let provider = argProvider ?? config.provider
+    let modelRouteSource: "cli" | "config" | "autodetect" =
+      argModel || argProvider ? "cli" : provider || model ? "config" : "autodetect"
 
     // Auto-detect provider + model from env vars via models.dev when not configured.
     // Each provider in models.dev declares its env key — if that key is set in the
@@ -108,8 +120,14 @@ export const RunCommand: CommandModule = {
     if (!provider || !model) {
       const { autoDetectProvider } = await import("../../agent/providers.js")
       const detected = await autoDetectProvider()
-      if (!provider) provider = detected.provider
-      if (!model) model = detected.model ?? model
+      if (!provider && detected.provider) {
+        provider = detected.provider
+        modelRouteSource = "autodetect"
+      }
+      if (!model && detected.model) {
+        model = detected.model
+        modelRouteSource = "autodetect"
+      }
     }
     if (!provider || !model) {
       throw new Error("No provider/model configured and autodetect did not find one.")
@@ -120,6 +138,8 @@ export const RunCommand: CommandModule = {
       route: provider === "local" ? "local" : "cloud",
       reason: "Active model route selected before agent execution.",
       data_left_local: provider !== "local",
+      selection_source: modelRouteSource,
+      data_boundary: provider === "local" ? "local" : "cloud",
     })
     const useMemory = !(args.disableMemory as boolean) && config.memory.enabled
 
@@ -140,7 +160,9 @@ export const RunCommand: CommandModule = {
     const godlike = args.godlike === true
     if (godlike) {
       process.stderr.write(c.red("\n⚠️  GODLIKE MODE — ALL GUARDRAILS DISABLED\n"))
-      process.stderr.write(c.dim("  No secret redaction, no injection detection, no command blocking, no rate limits.\n"))
+      process.stderr.write(
+        c.dim("  No secret redaction, no injection detection, no command blocking, no rate limits.\n"),
+      )
       process.stderr.write(c.dim("  For red team / blue team / purple team use only. You are responsible.\n\n"))
     }
     // Sandbox: isolate agent to configurable root directory
@@ -204,11 +226,15 @@ export const RunCommand: CommandModule = {
       if (existsSync(contractsDir)) {
         const contractFiles = readdirSync(contractsDir).filter((f: string) => f.endsWith(".json"))
         if (contractFiles.length > 0) {
-          const contracts = contractFiles.map((f: string) => {
-            try {
-              return JSON.parse(readFileSync(path.join(contractsDir, f), "utf8")) as Record<string, unknown>
-            } catch { return null }
-          }).filter(Boolean)
+          const contracts = contractFiles
+            .map((f: string) => {
+              try {
+                return JSON.parse(readFileSync(path.join(contractsDir, f), "utf8")) as Record<string, unknown>
+              } catch {
+                return null
+              }
+            })
+            .filter(Boolean)
           if (contracts.length > 0) {
             const constraints = contracts.flatMap((c) => (c!.constraints as string[]) ?? [])
             const gates = contracts.flatMap((c) => (c!.evidence_required as string[]) ?? [])
@@ -222,15 +248,25 @@ export const RunCommand: CommandModule = {
               rollback ? `Rollback plan: ${rollback.rollback_plan}` : "",
               "Operate within these contracts. Report violations before acting.",
               "</arcana-contracts>",
-            ].filter(Boolean).join("\n")
-            process.stderr.write(c.dim(`  Contracts: ${contracts.length} loaded (${constraints.length} constraints, ${gates.length} gates)\n`))
+            ]
+              .filter(Boolean)
+              .join("\n")
+            process.stderr.write(
+              c.dim(
+                `  Contracts: ${contracts.length} loaded (${constraints.length} constraints, ${gates.length} gates)\n`,
+              ),
+            )
           }
         }
       }
-    } catch { /* contracts are best-effort */ }
+    } catch {
+      /* contracts are best-effort */
+    }
 
     if (args.skill) {
-      const skill = skills.find((s) => s.id === String(args.skill) || s.name.toLowerCase().includes(String(args.skill).toLowerCase()))
+      const skill = skills.find(
+        (s) => s.id === String(args.skill) || s.name.toLowerCase().includes(String(args.skill).toLowerCase()),
+      )
       if (skill) {
         const body = await loadSkillBody(skill.id, config.skillsDirs)
         if (body) {
@@ -267,9 +303,7 @@ export const RunCommand: CommandModule = {
           return out
         }
         const chosen = pick(facts, 3)
-        const factLines = chosen
-          .map((f) => `- [[${f.key.replace(/[\s.]+/g, "-")}]]: ${f.value}`)
-          .join("\n")
+        const factLines = chosen.map((f) => `- [[${f.key.replace(/[\s.]+/g, "-")}]]: ${f.value}`).join("\n")
         systemPrompt += `\n\n<user-context>\n${factLines}\n</user-context>`
       }
 
@@ -281,7 +315,7 @@ export const RunCommand: CommandModule = {
             signal: AbortSignal.timeout(5000),
           })
           if (response.ok) {
-            const data = await response.json() as { facts: Array<{ key: string; value: string; source?: string }> }
+            const data = (await response.json()) as { facts: Array<{ key: string; value: string; source?: string }> }
             if (data.facts?.length > 0) {
               const factLines = data.facts.map((f) => `${f.key}: ${f.value.slice(0, 200)}`)
               systemPrompt += `\n\n<shared-knowledge>\n${factLines.join("\n")}\n</shared-knowledge>`
@@ -307,13 +341,27 @@ export const RunCommand: CommandModule = {
             const entries = files.map((f: string) => {
               const slug = f.replace(".md", "")
               const body = readFileSync(path.join(learnedDir, f), "utf-8")
-              const excerpt = body.split("\n").filter((l: string) => !l.startsWith("---") && !l.startsWith("tags:") && !l.startsWith("date:") && !l.startsWith("# ") && l.trim()).slice(0, 2).join(" ").slice(0, 150)
+              const excerpt = body
+                .split("\n")
+                .filter(
+                  (l: string) =>
+                    !l.startsWith("---") &&
+                    !l.startsWith("tags:") &&
+                    !l.startsWith("date:") &&
+                    !l.startsWith("# ") &&
+                    l.trim(),
+                )
+                .slice(0, 2)
+                .join(" ")
+                .slice(0, 150)
               return `- [[${slug}]]: ${excerpt}`
             })
             systemPrompt += `\n\n<learned>\n${entries.join("\n")}\n</learned>`
           }
         }
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
     }
 
     // Only start new session if not resuming an existing one
@@ -324,7 +372,9 @@ export const RunCommand: CommandModule = {
       sessionMgr?.addUser(userInput)
 
       const baseMessages = [{ role: "system" as const, content: systemPrompt }]
-      const history = sessionMgr ? sessionMgr.getHistory() : [...baseMessages, { role: "user" as const, content: userInput }]
+      const history = sessionMgr
+        ? sessionMgr.getHistory()
+        : [...baseMessages, { role: "user" as const, content: userInput }]
 
       // Stream tokens in REPL mode (async iterable not available; use callback)
       let streamed = false
@@ -340,7 +390,9 @@ export const RunCommand: CommandModule = {
       sessionMgr?.addAssistant(result.content)
 
       if (result.toolCalls) {
-        process.stderr.write(c.dim(`  [${result.toolCalls} tool call(s) · ${result.inputTokens}↑ ${result.outputTokens}↓ tok]\n`))
+        process.stderr.write(
+          c.dim(`  [${result.toolCalls} tool call(s) · ${result.inputTokens}↑ ${result.outputTokens}↓ tok]\n`),
+        )
       }
 
       await proofRuntime.recordAgentTurn({
@@ -383,7 +435,10 @@ export const RunCommand: CommandModule = {
     askLine()
     for await (const line of rl) {
       const input = line.trim()
-      if (!input) { askLine(); continue }
+      if (!input) {
+        askLine()
+        continue
+      }
 
       if (input === "/exit" || input === "/quit") {
         // Extract learnings from this session before exiting
@@ -394,7 +449,7 @@ export const RunCommand: CommandModule = {
           try {
             const transcript = msgs
               .filter((m) => m.role !== "system")
-              .map((m) => `${m.role}: ${("content" in m && m.content) ? String(m.content).slice(0, 500) : "(tool)"}`)
+              .map((m) => `${m.role}: ${"content" in m && m.content ? String(m.content).slice(0, 500) : "(tool)"}`)
               .join("\n")
             const utilModel = config.utilityModel || config.model
             const cheapRunner = new AgentRunner({ provider, model: utilModel, apiKey })
@@ -448,7 +503,8 @@ export const RunCommand: CommandModule = {
         if (sessionMgr && memory) sessionMgr.start(systemPrompt)
         await proofRuntime.recordUserCommand("/clear", "Session context cleared.")
         process.stdout.write(c.dim("Session cleared.\n"))
-        askLine(); continue
+        askLine()
+        continue
       }
 
       if (input === "/history") {
@@ -460,7 +516,8 @@ export const RunCommand: CommandModule = {
           process.stdout.write(`${label} ${text}\n`)
         }
         await proofRuntime.recordUserCommand("/history", "Displayed session history.")
-        askLine(); continue
+        askLine()
+        continue
       }
 
       if (input === "/skills") {
@@ -476,13 +533,18 @@ export const RunCommand: CommandModule = {
         }
         process.stdout.write(`\n${skills.length} skills\n\n`)
         await proofRuntime.recordUserCommand("/skills", "Displayed skill catalog.")
-        askLine(); continue
+        askLine()
+        continue
       }
 
       if (input.startsWith("/skill ")) {
         const id = input.slice(7).trim()
         const skill = skills.find((s) => s.id === id || s.name.toLowerCase().includes(id.toLowerCase()))
-        if (!skill) { process.stdout.write(c.red(`Skill not found: ${id}\n`)); askLine(); continue }
+        if (!skill) {
+          process.stdout.write(c.red(`Skill not found: ${id}\n`))
+          askLine()
+          continue
+        }
         const body = await loadSkillBody(skill.id, config.skillsDirs)
         const injection = `\n\n<arcana-skill name="${skill.name}">\n${body}\n</arcana-skill>`
         const msgs = sessionMgr?.getHistory()
@@ -490,7 +552,8 @@ export const RunCommand: CommandModule = {
         else systemPrompt += injection
         await proofRuntime.recordUserCommand(input, `Loaded skill: ${skill.name}`)
         process.stdout.write(c.purple(`◆ Skill loaded: ${skill.name}\n`))
-        askLine(); continue
+        askLine()
+        continue
       }
 
       process.stdout.write(c.purple("arcana> "))
@@ -500,10 +563,16 @@ export const RunCommand: CommandModule = {
         const injection = detectInjection(input)
         if (injection) {
           process.stdout.write(c.red(`⚠️ ${injection}\n`))
-          auditLog({ tool: "prompt-injection", args: { input: input.slice(0, 100) }, session: sessionId ?? undefined, ts: new Date().toISOString() })
+          auditLog({
+            tool: "prompt-injection",
+            args: { input: input.slice(0, 100) },
+            session: sessionId ?? undefined,
+            ts: new Date().toISOString(),
+          })
           await proofRuntime.recordUserCommand(input, `Prompt injection blocked: ${injection}`)
           await proofRuntime.recordSystemTransition("failed", `Prompt injection blocked: ${injection}`)
-          askLine(); continue
+          askLine()
+          continue
         }
       }
 
