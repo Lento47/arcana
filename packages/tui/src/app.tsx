@@ -1526,8 +1526,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       {
         name: "arcana.sovereignty",
         slashName: "sovereignty",
-        title: "Show AI sovereignty state",
-        desc: "Show provider route and AI sovereignty state",
+        title: "Show provider route evidence",
+        desc: "Show provider/model route evidence",
         category: "Arcana",
         run: () => void showRunProofSurface("sovereignty").catch(toast.error),
       },
