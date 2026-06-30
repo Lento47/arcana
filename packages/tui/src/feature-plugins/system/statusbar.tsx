@@ -3,6 +3,7 @@ import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { Locale } from "../../util/locale"
 import { Lexicon, Glyph } from "../../branding"
+import { selectedForeground, useTheme } from "../../context/theme"
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
 
 const id = "internal:statusbar"
@@ -101,9 +102,11 @@ function View(props: { api: TuiPluginApi }) {
           <text fg={theme().accent}>{PULSE[frame()]}</text>
         </Show>
         <Show when={compacting()}>
-          <text fg={theme().warning}>
-            <span style={{ fg: theme().warning, bold: true }}>⟳ COMPACT</span>
-          </text>
+          <box backgroundColor={theme().warning} paddingLeft={1} paddingRight={1}>
+            <text fg={selectedForeground(theme(), theme().warning)}>
+              <span style={{ fg: selectedForeground(theme(), theme().warning), bold: true }}>⟳ COMPACT</span>
+            </text>
+          </box>
         </Show>
         <Show when={status()?.type === "retry"}>
           <text fg={theme().warning}>↻ retry</text>

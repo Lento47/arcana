@@ -68,9 +68,16 @@ export type Theme = {
 type ThemeColor = Exclude<keyof Theme, "thinkingOpacity" | "_hasSelectedListItemText">
 export type SyntaxStyleOverrides = Record<string, { italic?: boolean }>
 
-export function selectedForeground(theme: Theme, bg?: RGBA): RGBA {
+export function selectedForeground(
+  theme: {
+    readonly selectedListItemText?: RGBA
+    readonly background: RGBA
+    readonly primary: RGBA
+  },
+  bg?: RGBA,
+): RGBA {
   // If theme explicitly defines selectedListItemText, use it
-  if (theme._hasSelectedListItemText) {
+  if (theme.selectedListItemText) {
     return theme.selectedListItemText
   }
 

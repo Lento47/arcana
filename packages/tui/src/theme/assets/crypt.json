@@ -163,7 +163,7 @@
     },
     "markdownLinkText": {
       "dark": "darkCyan",
-      "light": "darkCyan"
+      "light": "lightCyan"
     },
     "markdownCode": {
       "dark": "darkGreen",
@@ -235,7 +235,7 @@
     },
     "syntaxOperator": {
       "dark": "darkCyan",
-      "light": "darkCyan"
+      "light": "lightCyan"
     },
     "syntaxPunctuation": {
       "dark": "darkStep12",
