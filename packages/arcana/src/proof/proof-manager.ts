@@ -119,13 +119,25 @@ export function evaluateShellCommandPolicy(
   let risk: RiskLevel = "medium"
   const reasons = ["Shell command execution can mutate repository or machine state."]
 
-  if (/\b(rm\s+-rf|del\s+\/[fsq]|remove-item\b.*\b-recurse\b|git\s+reset\s+--hard|git\s+clean\s+-fd|drop\s+database|terraform\s+destroy)\b/.test(normalized)) {
+  if (
+    /\b(rm\s+-rf|del\s+\/[fsq]|remove-item\b.*\b-recurse\b|git\s+reset\s+--hard|git\s+clean\s+-fd|drop\s+database|terraform\s+destroy)\b/.test(
+      normalized,
+    )
+  ) {
     risk = "critical"
-    reasons.push("Command matches a destructive filesystem, git reset, database drop, or infrastructure destroy pattern.")
-  } else if (/\b(npm|pnpm|bun|yarn)\s+(install|add|remove|update|upgrade)\b|\b(pip|poetry|uv|cargo|go)\s+(install|add|get|update)\b/.test(normalized)) {
+    reasons.push(
+      "Command matches a destructive filesystem, git reset, database drop, or infrastructure destroy pattern.",
+    )
+  } else if (
+    /\b(npm|pnpm|bun|yarn)\s+(install|add|remove|update|upgrade)\b|\b(pip|poetry|uv|cargo|go)\s+(install|add|get|update)\b/.test(
+      normalized,
+    )
+  ) {
     risk = "high"
     reasons.push("Command can change dependency graph, lockfiles, or supply-chain inputs.")
-  } else if (/\b(deploy|publish|release|migrate|migration|secret|credential|token|chmod|chown|sudo)\b/.test(normalized)) {
+  } else if (
+    /\b(deploy|publish|release|migrate|migration|secret|credential|token|chmod|chown|sudo)\b/.test(normalized)
+  ) {
     risk = "high"
     reasons.push("Command references deployment, migration, secrets, credentials, or elevated permission risk.")
   } else if (/\b(test|typecheck|lint|build|rg|grep|git\s+diff|git\s+status)\b/.test(normalized)) {
@@ -167,7 +179,9 @@ export function evaluateFileMutationPolicy(
   let risk: RiskLevel = "medium"
   const reasons = ["File mutation changes repository state and requires RunProof evidence."]
 
-  if (/(^|\/)\.env(\.|$)|(^|\/)\.npmrc$|(^|\/)\.pypirc$|(^|\/)id_rsa$|secret|credential|private[_-]?key/.test(normalized)) {
+  if (
+    /(^|\/)\.env(\.|$)|(^|\/)\.npmrc$|(^|\/)\.pypirc$|(^|\/)id_rsa$|secret|credential|private[_-]?key/.test(normalized)
+  ) {
     risk = "critical"
     reasons.push("Target path appears to contain secrets, credentials, private keys, or environment configuration.")
   } else if (
@@ -271,7 +285,12 @@ export class ProofManager {
 
   gateShellCommand(
     command: string,
-    options: { cwd?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: MlGateContext["userSovereignty"] } = {},
+    options: {
+      cwd?: string
+      approved?: boolean
+      sandboxEnabled?: boolean
+      userSovereignty?: MlGateContext["userSovereignty"]
+    } = {},
     mlContext?: MlGateContext,
   ): PolicyGateDecision {
     const mlSignal = analyzeTool({
@@ -327,7 +346,12 @@ export class ProofManager {
 
   gateFileMutation(
     path: string,
-    options: { operation?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: MlGateContext["userSovereignty"] } = {},
+    options: {
+      operation?: string
+      approved?: boolean
+      sandboxEnabled?: boolean
+      userSovereignty?: MlGateContext["userSovereignty"]
+    } = {},
     mlContext?: MlGateContext,
   ): PolicyGateDecision {
     const mlSignal = analyzeTool({
@@ -388,10 +412,23 @@ export class ProofManager {
     summary?: string
     refs?: Record<string, string>
   }): RunProofEvent {
-    const signal = input.signal as MlToolSignal | { kind: "turn"; intent?: string; risk?: MlRiskLevel; executionPosture?: string; modelRoute?: { profile: string; reason: string }; confidence?: { value: number }; labels?: string[]; reasons?: string[] }
+    const signal = input.signal as
+      | MlToolSignal
+      | {
+          kind: "turn"
+          intent?: string
+          risk?: MlRiskLevel
+          executionPosture?: string
+          modelRoute?: { profile: string; reason: string }
+          confidence?: { value: number }
+          labels?: string[]
+          reasons?: string[]
+        }
     const summary =
       input.summary ??
-      (input.kind === "turn" ? `ML turn signal: intent=${(signal as any).intent ?? "unknown"}` : `ML tool signal: ${(signal as any).toolName ?? "unknown"}`)
+      (input.kind === "turn"
+        ? `ML turn signal: intent=${(signal as any).intent ?? "unknown"}`
+        : `ML tool signal: ${(signal as any).toolName ?? "unknown"}`)
     return this.recordEvent({
       type: "ml.signal",
       actor: "system",
@@ -411,6 +448,8 @@ export class ProofManager {
       ...this.proof.rollback,
       ...rollback,
       checkpoint_id: rollback.checkpoint_id ?? this.proof.rollback.checkpoint_id,
+      restore_status: rollback.restore_status ?? this.proof.rollback.restore_status ?? "not_staged",
+      approval_required: rollback.approval_required ?? this.proof.rollback.approval_required ?? true,
     }
     if (this.proof.rollback.strategy !== "none") {
       this.recordEvent({
@@ -424,6 +463,50 @@ export class ProofManager {
         data: { strategy: this.proof.rollback.strategy, valid_until: this.proof.rollback.valid_until },
       })
     }
+    return this.proof.rollback
+  }
+
+  stageRollbackRestore(input: { actor?: CommandSource; summary?: string } = {}): RollbackBlock {
+    const restoreCommand = this.proof.rollback.restore_command
+    if (!restoreCommand) {
+      throw new Error("Cannot stage rollback restore without a restore_command.")
+    }
+
+    this.proof.rollback = {
+      ...this.proof.rollback,
+      restore_status: "staged",
+      staged_at: now(),
+      approval_required: true,
+    }
+    if (!this.proof.contract.required_approvals.includes("rollback restore execution")) {
+      this.proof.contract.required_approvals.push("rollback restore execution")
+    }
+    this.proof.risk = {
+      ...this.proof.risk,
+      level: maxRisk(this.proof.risk.level, "high"),
+      reasons: uniq([
+        ...this.proof.risk.reasons,
+        "Rollback restore command is staged and requires explicit approval before execution.",
+      ]),
+      required_approval: true,
+    }
+    this.proof.contract.risk_level = maxRisk(this.proof.contract.risk_level, "high")
+    this.recordEvent({
+      type: "rollback.staged",
+      actor: input.actor ?? "user",
+      summary: input.summary ?? `Rollback restore staged pending approval: ${restoreCommand}`,
+      risk: "high",
+      status: "awaiting_approval",
+      refs: {
+        checkpoint_id: this.proof.rollback.checkpoint_id,
+        restore_command: restoreCommand,
+      },
+      data: {
+        approval_required: true,
+        restore_status: this.proof.rollback.restore_status,
+        staged_at: this.proof.rollback.staged_at,
+      },
+    })
     return this.proof.rollback
   }
 
@@ -678,7 +761,8 @@ export class ProofManager {
     evidence?: Partial<FinalEvidence>
   }): RunProof {
     let proofScore = input.evidence?.proof_score ?? this.proof.final_evidence.proof_score
-    let humanReviewRecommended = input.evidence?.human_review_recommended ?? this.proof.final_evidence.human_review_recommended
+    let humanReviewRecommended =
+      input.evidence?.human_review_recommended ?? this.proof.final_evidence.human_review_recommended
 
     if (input.status === "completed" && this.proof.execution.file_writes.length > 0) {
       const hasVerificationEvidence =

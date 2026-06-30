@@ -175,6 +175,11 @@ type RunProofRollbackView = {
   strategy?: string
   restore_command?: string
   valid_until?: string
+  restore_status?: string
+  staged_at?: string
+  approval_required?: boolean
+  approved_at?: string
+  approved_by?: string
 }
 
 type RunProofFinalEvidenceView = {
@@ -511,6 +516,11 @@ function normalizeProofView(value: unknown): RunProofView {
           strategy: proofString(rollback.strategy),
           restore_command: proofString(rollback.restore_command),
           valid_until: proofString(rollback.valid_until),
+          restore_status: proofString(rollback.restore_status),
+          staged_at: proofString(rollback.staged_at),
+          approval_required: proofBoolean(rollback.approval_required),
+          approved_at: proofString(rollback.approved_at),
+          approved_by: proofString(rollback.approved_by),
         }
       : undefined,
     final_evidence: finalEvidence
@@ -544,7 +554,7 @@ function normalizeProofView(value: unknown): RunProofView {
             status: proofString(verifierReview.status),
             summary: proofString(verifierReview.summary),
             concerns: asStringArray(verifierReview.concerns),
-        }
+          }
         : undefined,
     },
     sovereignty: sovereigntyFromEvents(normalizedEvents),
@@ -667,6 +677,20 @@ function rollbackValidity(proof: RunProofView): string {
   return proof.rollback?.valid_until ?? "not recorded"
 }
 
+function rollbackRestoreStatus(proof: RunProofView): string {
+  return proof.rollback?.restore_status ?? "not_staged"
+}
+
+function rollbackApprovalStatus(proof: RunProofView): string {
+  if (proof.rollback?.approved_at) {
+    return ["approved", proof.rollback.approved_by ? `by ${proof.rollback.approved_by}` : undefined]
+      .filter(Boolean)
+      .join(" ")
+  }
+  if (proof.rollback?.approval_required) return "required before execution"
+  return "not required"
+}
+
 function mlEvidenceSummary(evidence: RunProofMLEvidenceView): string {
   const parts = [
     evidence.kind === "tool" ? `tool=${evidence.tool ?? "unknown"}` : `intent=${evidence.intent ?? "unknown"}`,
@@ -682,17 +706,17 @@ function MLEvidencePanel(props: { evidence: RunProofMLEvidenceView[]; latestOnly
   const { theme } = useTheme()
   const items = () => (props.latestOnly ? props.evidence.slice(-1) : props.evidence)
   return (
-    <Show
-      when={props.evidence.length > 0}
-      fallback={<text fg={theme.textMuted}>No ML signal evidence recorded.</text>}
-    >
+    <Show when={props.evidence.length > 0} fallback={<text fg={theme.textMuted}>No ML signal evidence recorded.</text>}>
       <box gap={0}>
         <For each={items()}>
           {(evidence) => (
             <box gap={0}>
               <text fg={theme.text}>{mlEvidenceSummary(evidence)}</text>
               <Show when={evidence.route}>
-                <text fg={theme.textMuted}>route={evidence.route}{evidence.route_reason ? `  (${evidence.route_reason})` : ""}</text>
+                <text fg={theme.textMuted}>
+                  route={evidence.route}
+                  {evidence.route_reason ? `  (${evidence.route_reason})` : ""}
+                </text>
               </Show>
               <FieldList items={evidence.reasons} empty="" />
               <Show when={evidence.labels && evidence.labels.length > 0}>
@@ -709,7 +733,11 @@ function MLEvidencePanel(props: { evidence: RunProofMLEvidenceView[]; latestOnly
   )
 }
 
-function DialogRunProofContract(props: { proof: RunProofView; path: string; onCopyRollbackRestore?: (command: string) => void }) {
+function DialogRunProofContract(props: {
+  proof: RunProofView
+  path: string
+  onCopyRollbackRestore?: (command: string) => void
+}) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const contract = () => props.proof.contract
@@ -749,6 +777,10 @@ function DialogRunProofContract(props: { proof: RunProofView; path: string; onCo
                 <text fg={theme.text}>Rollback checkpoint: {rollbackSummary(props.proof)}</text>
                 <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
                 <text fg={theme.textMuted}>Valid until: {rollbackValidity(props.proof)}</text>
+                <text fg={theme.textMuted}>Restore status: {rollbackRestoreStatus(props.proof)}</text>
+                <text fg={props.proof.rollback?.approval_required ? theme.warning : theme.textMuted}>
+                  Restore approval: {rollbackApprovalStatus(props.proof)}
+                </text>
                 <Show when={restoreCommand()}>
                   {(command) => (
                     <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
@@ -799,7 +831,11 @@ function eventLabel(value: string | undefined): string {
   return (value ?? "event").replace(/[._-]+/g, " ").toUpperCase()
 }
 
-function DialogRunProofActions(props: { proof: RunProofView; path: string; onCopyRollbackRestore?: (command: string) => void }) {
+function DialogRunProofActions(props: {
+  proof: RunProofView
+  path: string
+  onCopyRollbackRestore?: (command: string) => void
+}) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const events = () => props.proof.events ?? []
@@ -823,7 +859,9 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string; onCop
       </box>
       <text fg={theme.textMuted}>{props.path}</text>
       <box gap={0}>
-        <text fg={theme.text}>Run: {compactProofId(props.proof.id)}  State: {status()}  Risk: {risk()}</text>
+        <text fg={theme.text}>
+          Run: {compactProofId(props.proof.id)} State: {status()} Risk: {risk()}
+        </text>
         <text fg={theme.text}>Intent: {props.proof.user_intent ?? "not recorded"}</text>
         <text fg={props.proof.risk?.required_approval ? theme.warning : theme.textMuted}>
           Approval: {props.proof.risk?.required_approval ? "required" : "not required"}
@@ -848,15 +886,22 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string; onCop
         <Show when={props.proof.rollback?.valid_until}>
           <text fg={theme.textMuted}>Rollback valid until: {rollbackValidity(props.proof)}</text>
         </Show>
+        <Show when={props.proof.rollback?.restore_status || props.proof.rollback?.approval_required}>
+          <text fg={props.proof.rollback?.approval_required ? theme.warning : theme.textMuted}>
+            Restore status: {rollbackRestoreStatus(props.proof)} Approval: {rollbackApprovalStatus(props.proof)}
+          </text>
+        </Show>
         <Show when={tokens()}>
           {(value) => (
             <text fg={theme.textMuted}>
-              Tokens: {value().total_tokens.toLocaleString()} total  {value().input_tokens.toLocaleString()} in  {value().output_tokens.toLocaleString()} out  Tool calls: {value().tool_calls}
+              Tokens: {value().total_tokens.toLocaleString()} total {value().input_tokens.toLocaleString()} in{" "}
+              {value().output_tokens.toLocaleString()} out Tool calls: {value().tool_calls}
             </text>
           )}
         </Show>
         <text fg={theme.textMuted}>
-          Evidence: {fileReads().length} context read(s)  {fileWrites().length} file write(s)  {shellCommands().length} shell command(s)
+          Evidence: {fileReads().length} context read(s) {fileWrites().length} file write(s) {shellCommands().length}{" "}
+          shell command(s)
         </text>
       </box>
       <Show when={fileReads().length > 0 || fileWrites().length > 0 || shellCommands().length > 0}>
@@ -865,28 +910,30 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string; onCop
           <For each={fileReads().slice(-3)}>
             {(read) => (
               <text fg={theme.textMuted}>
-                READ  {read.path ?? "unknown path"}  {read.exists === false ? "missing" : (read.reason ?? "")}
+                READ {read.path ?? "unknown path"} {read.exists === false ? "missing" : (read.reason ?? "")}
               </text>
             )}
           </For>
           <For each={fileWrites().slice(-3)}>
             {(write) => (
               <text fg={theme.textMuted}>
-                WRITE  {write.mode ?? "unknown"}  {write.path ?? "unknown path"}  {write.reason ?? ""}
+                WRITE {write.mode ?? "unknown"} {write.path ?? "unknown path"} {write.reason ?? ""}
               </text>
             )}
           </For>
           <For each={shellCommands().slice(-3)}>
             {(cmd) => (
               <text fg={theme.textMuted}>
-                SHELL  {cmd.status ?? "unknown"}  {cmd.command ?? "unknown command"}  {cmd.risk ?? ""}
+                SHELL {cmd.status ?? "unknown"} {cmd.command ?? "unknown command"} {cmd.risk ?? ""}
               </text>
             )}
           </For>
         </box>
       </Show>
       <box gap={0}>
-        <text fg={theme.text}>ML evidence ({props.proof.ml_evidence?.length ?? 0} signal{props.proof.ml_evidence?.length === 1 ? "" : "s"})</text>
+        <text fg={theme.text}>
+          ML evidence ({props.proof.ml_evidence?.length ?? 0} signal{props.proof.ml_evidence?.length === 1 ? "" : "s"})
+        </text>
         <MLEvidencePanel evidence={props.proof.ml_evidence ?? []} />
       </box>
       <Show when={events().length > 0} fallback={<text fg={theme.warning}>No RunProof events recorded.</text>}>
@@ -894,7 +941,7 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string; onCop
           {(event) => (
             <box gap={0}>
               <text fg={theme.text}>
-                {eventTime(event.timestamp)}  {eventLabel(event.type)}  {event.actor ?? "unknown"}
+                {eventTime(event.timestamp)} {eventLabel(event.type)} {event.actor ?? "unknown"}
               </text>
               <text fg={theme.text}>{event.summary ?? "No summary recorded."}</text>
               <Show when={event.risk || event.status}>
@@ -923,7 +970,7 @@ function DiffList(props: { title: string; diffs: RunProofDiffView[]; empty: stri
           {(diff) => (
             <box gap={0}>
               <text fg={theme.text}>
-                {diff.path ?? "unknown path"}  +{diff.additions ?? 0} -{diff.deletions ?? 0}
+                {diff.path ?? "unknown path"} +{diff.additions ?? 0} -{diff.deletions ?? 0}
               </text>
               <text fg={theme.textMuted}>{diff.summary ?? diff.id ?? "No diff summary recorded."}</text>
             </box>
@@ -934,7 +981,11 @@ function DiffList(props: { title: string; diffs: RunProofDiffView[]; empty: stri
   )
 }
 
-function DialogRunProofDiffGate(props: { proof: RunProofView; path: string; onCopyRollbackRestore?: (command: string) => void }) {
+function DialogRunProofDiffGate(props: {
+  proof: RunProofView
+  path: string
+  onCopyRollbackRestore?: (command: string) => void
+}) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const diffs = () => props.proof.diffs ?? { proposed: [], applied: [], rejected: [] }
@@ -961,14 +1012,19 @@ function DialogRunProofDiffGate(props: { proof: RunProofView; path: string; onCo
       <text fg={theme.textMuted}>{props.path}</text>
       <box gap={0}>
         <text fg={theme.text}>
-          Pending: {pending()}  Applied: {applied()}  Rejected: {rejected()}
+          Pending: {pending()} Applied: {applied()} Rejected: {rejected()}
         </text>
         <text fg={theme.text}>Write evidence: {writes().length} file write(s)</text>
-        <text fg={theme.text}>Risk: {risk()}  Approval: {approval()}</text>
+        <text fg={theme.text}>
+          Risk: {risk()} Approval: {approval()}
+        </text>
         <FieldList items={props.proof.risk?.reasons} empty="No risk reasons recorded." />
         <text fg={theme.textMuted}>Rollback: {rollbackSummary(props.proof)}</text>
         <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
         <text fg={theme.textMuted}>Valid until: {rollbackValidity(props.proof)}</text>
+        <text fg={props.proof.rollback?.approval_required ? theme.warning : theme.textMuted}>
+          Restore status: {rollbackRestoreStatus(props.proof)} Approval: {rollbackApprovalStatus(props.proof)}
+        </text>
         <Show when={restoreCommand()}>
           {(command) => (
             <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
@@ -1006,14 +1062,14 @@ function CheckList(props: { title: string; checks: RunProofCheckView[]; empty: s
           {(check) => (
             <box gap={0}>
               <text fg={theme.text}>
-                {statusMark(check.status)}  {checkLabel(check)}
+                {statusMark(check.status)} {checkLabel(check)}
               </text>
               <Show when={check.summary || check.evidence}>
                 <text fg={theme.textMuted}>{check.summary ?? check.evidence}</text>
               </Show>
               <Show when={check.passed !== undefined || check.failed !== undefined || check.skipped !== undefined}>
                 <text fg={theme.textMuted}>
-                  passed={check.passed ?? 0}  failed={check.failed ?? 0}  skipped={check.skipped ?? 0}
+                  passed={check.passed ?? 0} failed={check.failed ?? 0} skipped={check.skipped ?? 0}
                 </text>
               </Show>
             </box>
@@ -1043,7 +1099,13 @@ function DialogRunProofVerify(props: { proof: RunProofView; path: string }) {
     ...verification().tests,
     ...verification().manual_checks,
     ...(verification().verifier_review
-      ? [{ status: verification().verifier_review?.status, summary: verification().verifier_review?.summary, source: "verifier" }]
+      ? [
+          {
+            status: verification().verifier_review?.status,
+            summary: verification().verifier_review?.summary,
+            source: "verifier",
+          },
+        ]
       : []),
   ]
   const passed = () => allChecks().filter((check) => check.status === "passed").length
@@ -1063,7 +1125,7 @@ function DialogRunProofVerify(props: { proof: RunProofView; path: string }) {
       <text fg={theme.textMuted}>{props.path}</text>
       <box gap={0}>
         <text fg={theme.text}>
-          Passed: {passed()}  Failed: {failed()}  Pending: {pending()}
+          Passed: {passed()} Failed: {failed()} Pending: {pending()}
         </text>
         <text fg={theme.text}>
           Final: {props.proof.final_evidence?.completed === true ? "completed" : "open"}
@@ -1071,14 +1133,20 @@ function DialogRunProofVerify(props: { proof: RunProofView; path: string }) {
         </text>
         <text fg={theme.textMuted}>{props.proof.final_evidence?.summary ?? "No final evidence summary recorded."}</text>
       </box>
-      <CheckList title="Required checks" checks={fixedChecks()} empty="No typecheck, lint, or build evidence recorded." />
+      <CheckList
+        title="Required checks"
+        checks={fixedChecks()}
+        empty="No typecheck, lint, or build evidence recorded."
+      />
       <CheckList title="Tests" checks={verification().tests} empty="No test evidence recorded." />
       <CheckList title="Diagnostics" checks={verification().diagnostics} empty="No diagnostic evidence recorded." />
       <CheckList title="Manual checks" checks={verification().manual_checks} empty="No manual checks recorded." />
       <Show when={verification().verifier_review}>
         {(review) => (
           <box gap={0}>
-            <text fg={theme.text}>Verifier review: {statusMark(review().status)} {review().model ?? ""}</text>
+            <text fg={theme.text}>
+              Verifier review: {statusMark(review().status)} {review().model ?? ""}
+            </text>
             <text fg={theme.textMuted}>{review().summary ?? "No verifier summary recorded."}</text>
             <FieldList items={review().concerns} empty="No verifier concerns recorded." />
           </box>
@@ -1625,14 +1693,20 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     }
     dialog.replace(() => {
       if (kind === "contract") {
-        return <DialogRunProofContract proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
+        return (
+          <DialogRunProofContract proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
+        )
       }
       if (kind === "diffgate") {
-        return <DialogRunProofDiffGate proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
+        return (
+          <DialogRunProofDiffGate proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
+        )
       }
       if (kind === "verify") return <DialogRunProofVerify proof={result.proof} path={result.path} />
       if (kind === "sovereignty") return <DialogRunProofSovereignty proof={result.proof} path={result.path} />
-      return <DialogRunProofActions proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
+      return (
+        <DialogRunProofActions proof={result.proof} path={result.path} onCopyRollbackRestore={copyRollbackRestore} />
+      )
     })
     dialog.setSize("xlarge")
   }

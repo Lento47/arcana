@@ -41,7 +41,9 @@ function formatReplayRefs(refs: Record<string, string> | undefined): string {
 }
 
 function policyGateEvents(proof: RunProof) {
-  return proof.events.filter((event) => event.data?.action === "shell_command" || event.data?.action === "file_mutation")
+  return proof.events.filter(
+    (event) => event.data?.action === "shell_command" || event.data?.action === "file_mutation",
+  )
 }
 
 export function renderRunProofTerminal(proof: RunProof): string {
@@ -133,6 +135,8 @@ export function renderRunProofTerminal(proof: RunProof): string {
   out.push(
     `  ${proof.rollback.strategy}${proof.rollback.restore_command ? `   → ${proof.rollback.restore_command}` : ""}`,
   )
+  if (proof.rollback.restore_status) out.push(`  Status: ${proof.rollback.restore_status}`)
+  if (proof.rollback.approval_required) out.push("  Approval required before restore execution")
   out.push("")
 
   out.push("Unresolved")
@@ -234,10 +238,10 @@ export function renderRunProofMarkdown(proof: RunProof): string {
   lines.push("## Policy Gates")
   if (gates.length === 0) lines.push("No policy gates recorded.")
   for (const gate of gates) {
-    lines.push(
-      `- ${gate.data?.blocked ? "Blocked" : "Allowed"} — ${gate.risk ?? "unknown"} — ${gate.summary}`,
-    )
-    const reasons = Array.isArray(gate.data?.reasons) ? gate.data.reasons.filter((item) => typeof item === "string") : []
+    lines.push(`- ${gate.data?.blocked ? "Blocked" : "Allowed"} — ${gate.risk ?? "unknown"} — ${gate.summary}`)
+    const reasons = Array.isArray(gate.data?.reasons)
+      ? gate.data.reasons.filter((item) => typeof item === "string")
+      : []
     for (const reason of reasons) lines.push(`  - ${reason}`)
   }
   lines.push("")
@@ -275,6 +279,9 @@ export function renderRunProofMarkdown(proof: RunProof): string {
   lines.push(`- Strategy: ${proof.rollback.strategy}`)
   lines.push(`- Checkpoint: ${proof.rollback.checkpoint_id}`)
   if (proof.rollback.restore_command) lines.push(`- Restore: \`${proof.rollback.restore_command}\``)
+  if (proof.rollback.restore_status) lines.push(`- Restore status: ${proof.rollback.restore_status}`)
+  if (proof.rollback.approval_required) lines.push("- Restore approval: required before execution")
+  if (proof.rollback.staged_at) lines.push(`- Staged at: ${proof.rollback.staged_at}`)
   lines.push("")
 
   lines.push("## Final Evidence")
@@ -337,6 +344,8 @@ export function renderRunProofReplayLog(proof: RunProof): string {
   lines.push(`rollback.strategy=${proof.rollback.strategy}`)
   lines.push(`rollback.checkpoint=${proof.rollback.checkpoint_id}`)
   if (proof.rollback.restore_command) lines.push(`rollback.restore=${proof.rollback.restore_command}`)
+  if (proof.rollback.restore_status) lines.push(`rollback.restore_status=${proof.rollback.restore_status}`)
+  if (proof.rollback.approval_required) lines.push("rollback.approval_required=true")
   lines.push(`proof.score=${proof.final_evidence.proof_score}`)
   lines.push(`human_review_recommended=${proof.final_evidence.human_review_recommended}`)
 

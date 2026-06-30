@@ -90,6 +90,35 @@ describe("RunProof execution governance", () => {
     )
   })
 
+  test("stages rollback restore behind explicit approval", () => {
+    const manager = ProofManager.create({
+      user_intent: "Stage rollback without executing it",
+      contract: {
+        rollback_plan: "Restore from git checkpoint.",
+      },
+    })
+
+    manager.updateRollback({
+      strategy: "git_worktree",
+      checkpoint_id: "HEAD",
+      restore_command: "git restore --source HEAD --staged --worktree .",
+    })
+    manager.stageRollbackRestore()
+
+    expect(manager.proof.rollback.restore_status).toBe("staged")
+    expect(manager.proof.rollback.approval_required).toBe(true)
+    expect(typeof manager.proof.rollback.staged_at).toBe("string")
+    expect(manager.proof.risk.level).toBe("high")
+    expect(manager.proof.risk.required_approval).toBe(true)
+    expect(manager.proof.contract.required_approvals).toContain("rollback restore execution")
+    expect(manager.proof.events.map((event) => event.type)).toContain("rollback.staged")
+
+    const markdown = manager.renderMarkdown()
+    const rendered = renderRunProofMarkdown(manager.proof)
+    expect(markdown).toContain("Restore approval: required before execution")
+    expect(rendered).toContain("Restore status: staged")
+  })
+
   test("saves a deterministic replay log next to proof artifacts", async () => {
     const dir = await mkdtemp(join(tmpdir(), "arcana-runproof-replay-"))
     const manager = ProofManager.create({
@@ -380,7 +409,9 @@ describe("RunProof execution governance", () => {
 
     const gateEvent = manager.proof.events.find((event) => event.data?.action === "shell_command")
     expect(gateEvent).toBeDefined()
-    const data = gateEvent?.data as { ml_signal?: { labels: string[]; confidence: number }; ml_decision?: { action: string } } | undefined
+    const data = gateEvent?.data as
+      | { ml_signal?: { labels: string[]; confidence: number }; ml_decision?: { action: string } }
+      | undefined
     expect(data?.ml_signal).toBeDefined()
     expect(data?.ml_decision).toBeDefined()
     expect(Array.isArray(data?.ml_signal?.labels)).toBe(true)

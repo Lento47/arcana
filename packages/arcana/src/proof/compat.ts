@@ -11,6 +11,12 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
 }
 
+function rollbackRestoreStatus(value: unknown): RunProof["rollback"]["restore_status"] {
+  return value === "staged" || value === "approved" || value === "executed" || value === "rejected"
+    ? value
+    : "not_staged"
+}
+
 function legacyContract(proof: RunProof): ExecutionContract {
   return {
     id: `contract_${proof.id}`,
@@ -120,5 +126,10 @@ export function normalizeRunProof(input: RunProof): RunProof {
   }
 
   if (!Array.isArray(proof.events)) proof.events = legacyEvents(proof)
+  proof.rollback = {
+    ...proof.rollback,
+    restore_status: rollbackRestoreStatus(proof.rollback.restore_status),
+    approval_required: typeof proof.rollback.approval_required === "boolean" ? proof.rollback.approval_required : true,
+  }
   return proof as RunProof
 }

@@ -40,6 +40,7 @@ export type RunProofEventType =
   | "verification.passed"
   | "verification.failed"
   | "rollback.available"
+  | "rollback.staged"
   | "sovereignty.routed"
   | "token.used"
   | "ml.signal"
@@ -248,6 +249,11 @@ export type RollbackBlock = {
   strategy: RollbackStrategy
   restore_command?: string
   valid_until?: string
+  restore_status?: "not_staged" | "staged" | "approved" | "executed" | "rejected"
+  staged_at?: string
+  approval_required?: boolean
+  approved_at?: string
+  approved_by?: string
 }
 
 export type FinalEvidence = {

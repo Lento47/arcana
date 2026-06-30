@@ -121,6 +121,8 @@ export function createRunProof(input: {
     rollback: {
       checkpoint_id: "none",
       strategy: "none",
+      restore_status: "not_staged",
+      approval_required: true,
     },
     unresolved: {
       unverified_assumptions: [],
