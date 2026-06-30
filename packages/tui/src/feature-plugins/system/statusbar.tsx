@@ -11,9 +11,14 @@ const id = "internal:statusbar"
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 
 function renderBar(pct: number): string {
-  const filled = Math.round(pct / 10)
+  const clamped = Math.max(0, Math.min(100, pct))
+  const filled = Math.round(clamped / 10)
   const empty = 10 - filled
   return "▰".repeat(Math.max(0, filled)) + "▱".repeat(Math.max(0, empty))
+}
+
+function compactModelName(value: string): string {
+  return value.length > 34 ? `${value.slice(0, 31)}...` : value
 }
 
 // Minimal session metrics, rendered in the global app_bottom slot. Off-session
@@ -28,23 +33,28 @@ function View(props: { api: TuiPluginApi }) {
     return (route.params as { sessionID?: string } | undefined)?.sessionID
   })
 
-  const model = createMemo(() => {
+  const sessionMessages = createMemo(() => {
     const sid = sessionID()
-    if (!sid) return undefined
-    const last = api.state.session
-      .messages(sid)
-      .findLast((item): item is AssistantMessage => item.role === "assistant")
+    return sid ? api.state.session.messages(sid) : []
+  })
+
+  const latestAssistant = createMemo(() => {
+    return sessionMessages().findLast((item): item is AssistantMessage => item.role === "assistant")
+  })
+
+  const latestUsageAssistant = createMemo(() => {
+    return sessionMessages().findLast((item): item is AssistantMessage => item.role === "assistant" && item.tokens.output > 0)
+  })
+
+  const model = createMemo(() => {
+    const last = latestAssistant()
     if (!last) return undefined
     const provider = api.state.provider.find((item) => item.id === last.providerID)
-    return provider?.models[last.modelID]?.name ?? last.modelID
+    return compactModelName(provider?.models[last.modelID]?.name ?? last.modelID)
   })
 
   const usage = createMemo(() => {
-    const sid = sessionID()
-    if (!sid) return undefined
-    const last = api.state.session
-      .messages(sid)
-      .findLast((item): item is AssistantMessage => item.role === "assistant" && item.tokens.output > 0)
+    const last = latestUsageAssistant()
     if (!last) return undefined
     const tokens =
       last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
