@@ -231,31 +231,34 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
             return models
           }
           const bases = ["https://proxy.arcana.otnelhq.com", "https://arcana-proxy.lejzerv.workers.dev"]
+          const discoveryTimeoutMs = 3_500
           try {
             if (existsSync(cacheFile)) {
               const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as { base?: string; list?: any[] }
               if (cached?.list?.length) return build(cached.list, cached.base ?? bases[0])
             }
           } catch {}
-          for (const base of bases) {
-            try {
-              const res = await fetch(`${base}/v1/models`, {
-                headers: { Authorization: `Bearer ${key}` },
-                signal: AbortSignal.timeout(10000),
-              })
-              if (!res.ok) continue
-              const json = (await res.json()) as { data?: any[] }
-              const list = json.data ?? []
-              if (!list.length) continue
-              // Cache the real catalog so a future slow/failed fetch falls back to actual
-              // discovered models — never a hardcoded list.
-              try {
-                mkdirSync(join(home, "cache"), { recursive: true })
-                writeFileSync(cacheFile, JSON.stringify({ base, list }))
-              } catch {}
-              return build(list, base)
-            } catch {}
+          const fetchCatalog = async (base: string) => {
+            const res = await fetch(`${base}/v1/models`, {
+              headers: { Authorization: `Bearer ${key}` },
+              signal: AbortSignal.timeout(discoveryTimeoutMs),
+            })
+            if (!res.ok) throw new Error(`Arcana proxy model discovery failed: ${res.status}`)
+            const json = (await res.json()) as { data?: any[] }
+            const list = json.data ?? []
+            if (!list.length) throw new Error("Arcana proxy model discovery returned no models")
+            return { base, list }
           }
+          try {
+            const { base, list } = await Promise.any(bases.map(fetchCatalog))
+            // Cache the real catalog so a future slow/failed fetch falls back to actual
+            // discovered models — never a hardcoded list.
+            try {
+              mkdirSync(join(home, "cache"), { recursive: true })
+              writeFileSync(cacheFile, JSON.stringify({ base, list }))
+            } catch {}
+            return build(list, base)
+          } catch {}
           return {}
         },
       }
