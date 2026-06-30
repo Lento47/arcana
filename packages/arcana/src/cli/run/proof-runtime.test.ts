@@ -79,4 +79,44 @@ describe("ProofRuntime live evidence capture", () => {
       await rm(cwd, { recursive: true, force: true })
     }
   })
+
+  test("records ML turn signals and persists them to the proof", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "arcana-proof-runtime-"))
+    const previousActivePath = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+
+    try {
+      const runtime = await createProofRuntime({
+        enabled: true,
+        cwd,
+        command: "arcana run --proof",
+        prompt: "Add a feature",
+      })
+
+      await runtime.recordMlSignal({
+        kind: "turn",
+        signal: {
+          kind: "turn",
+          intent: "code_edit",
+          risk: "medium",
+          executionPosture: "assist",
+          modelRoute: { profile: "code", reason: "Code task detected." },
+          confidence: { value: 0.8, reasons: ["Intent matched."] },
+          needs: { sandbox: true, approval: false, web: false, memory: false },
+          labels: ["code"],
+          reasons: ["Prompt references code, files, or repository work."],
+        },
+        refs: { intent: "code_edit" },
+      })
+
+      const activePath = runtime.activeProofPath()
+      expect(activePath).toBeTruthy()
+      const stored = JSON.parse(await readFile(activePath!, "utf8"))
+      const proof = stored.proof ?? stored
+      expect(proof.events.map((event: { type: string }) => event.type)).toContain("ml.signal")
+    } finally {
+      if (previousActivePath === undefined) delete process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+      else process.env.ARCANA_ACTIVE_RUNPROOF_PATH = previousActivePath
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
 })

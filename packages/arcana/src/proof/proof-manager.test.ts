@@ -366,4 +366,73 @@ describe("RunProof execution governance", () => {
     expect(markdown).toContain("## Execution Contract")
     expect(markdown).toContain("## RunProof Timeline")
   })
+
+  test("shell command gate includes ML tool signal evidence", () => {
+    const manager = ProofManager.create({
+      user_intent: "Classify shell policy gates with ML signals",
+      cwd: process.cwd(),
+    })
+
+    manager.gateShellCommand("curl -s https://example.com/data.json", {
+      approved: false,
+      sandboxEnabled: false,
+    })
+
+    const gateEvent = manager.proof.events.find((event) => event.data?.action === "shell_command")
+    expect(gateEvent).toBeDefined()
+    const data = gateEvent?.data as { ml_signal?: { labels: string[]; confidence: number }; ml_decision?: { action: string } } | undefined
+    expect(data?.ml_signal).toBeDefined()
+    expect(data?.ml_decision).toBeDefined()
+    expect(Array.isArray(data?.ml_signal?.labels)).toBe(true)
+    expect(typeof data?.ml_signal?.confidence).toBe("number")
+    expect(typeof data?.ml_decision?.action).toBe("string")
+  })
+
+  test("file mutation gate combines static and ML risk", () => {
+    const manager = ProofManager.create({
+      user_intent: "Classify file mutation gates with ML signals",
+      cwd: process.cwd(),
+    })
+
+    const decision = manager.gateFileMutation("packages/arcana/src/auth/session.ts", {
+      operation: "edit",
+      approved: false,
+      sandboxEnabled: false,
+    })
+
+    expect(["medium", "high"]).toContain(decision.risk)
+    expect(manager.proof.events.some((event) => event.data?.action === "file_mutation")).toBe(true)
+    const gateEvent = manager.proof.events.find((event) => event.data?.action === "file_mutation")
+    const data = gateEvent?.data as { ml_signal?: unknown; ml_decision?: unknown } | undefined
+    expect(data?.ml_signal).toBeDefined()
+    expect(data?.ml_decision).toBeDefined()
+  })
+
+  test("records ML signal events", () => {
+    const manager = ProofManager.create({
+      user_intent: "Record ML turn signal",
+      cwd: process.cwd(),
+    })
+
+    manager.recordMlSignal({
+      kind: "turn",
+      signal: {
+        kind: "turn",
+        intent: "code_edit",
+        risk: "medium",
+        executionPosture: "assist",
+        modelRoute: { profile: "code", reason: "Code task detected." },
+        confidence: { value: 0.72, reasons: ["Intent matched."] },
+        needs: { sandbox: true, approval: false, web: false, memory: false },
+        labels: ["code"],
+        reasons: ["Prompt references code, files, or repository work."],
+      },
+      refs: { intent: "code_edit" },
+    })
+
+    expect(manager.proof.events.map((event) => event.type)).toContain("ml.signal")
+    const signalEvent = manager.proof.events.find((event) => event.type === "ml.signal")
+    expect(signalEvent?.data?.kind).toBe("turn")
+    expect(signalEvent?.refs?.intent).toBe("code_edit")
+  })
 })

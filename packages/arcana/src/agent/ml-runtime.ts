@@ -1,4 +1,5 @@
 import {
+  analyzeTurn,
   evaluateResponsePostflight,
   prepareResponsePreflight,
   type ResponsePipelinePostflight,
@@ -11,6 +12,8 @@ export type MlRuntimeState = {
   request: string
   preflight: ResponsePipelinePreflight | null
   maxSilentRevisions: number
+  thinkingStyle?: "quick" | "balanced" | "deep" | "staged"
+  turnSignal?: ReturnType<typeof analyzeTurn>
 }
 
 function parseEnvFlag(value: string | undefined): boolean {
@@ -38,7 +41,13 @@ export function appendMlPromptAddendum(messages: ChatMessage[], addendum: string
   return [mlMessage, ...messages]
 }
 
-export function prepareMlRuntime(messages: ChatMessage[], config: AgentConfig, sandboxEnabled: boolean): MlRuntimeState {
+
+export function prepareMlRuntime(
+  messages: ChatMessage[],
+  config: AgentConfig,
+  sandboxEnabled: boolean,
+  availableTools?: string[],
+): MlRuntimeState {
   const enabled = isMlRuntimeEnabled(config)
   const request = getLastUserRequest(messages)
   const maxSilentRevisions = Math.max(0, Math.floor(config.mlSilentRevisions ?? 1))
@@ -47,9 +56,25 @@ export function prepareMlRuntime(messages: ChatMessage[], config: AgentConfig, s
     return { enabled: false, request, preflight: null, maxSilentRevisions: 0 }
   }
 
+  const priorTurnCount = messages.filter((m) => m.role === "user").length
+  const hasToolHistory = messages.some((m) => m.role === "tool")
+
+  const turnSignal = analyzeTurn({
+    prompt: request,
+    availableTools,
+    sandboxEnabled,
+    userSovereignty: {
+      requireApprovalForWrites: true,
+      requireApprovalForNetwork: true,
+    },
+  })
+
   const preflight = prepareResponsePreflight({
     request,
     reservedOutputTokens: config.maxTokens ?? 4096,
+    availableTools,
+    priorTurnCount,
+    hasToolHistory,
     machine: {
       operation: "agent response preflight",
       persistent: false,
@@ -65,12 +90,33 @@ export function prepareMlRuntime(messages: ChatMessage[], config: AgentConfig, s
     ],
   })
 
-  return { enabled: true, request, preflight, maxSilentRevisions }
+  return {
+    enabled: true,
+    request,
+    preflight,
+    maxSilentRevisions: Math.min(maxSilentRevisions, preflight.thinking.budget.maxSilentRevisions),
+    thinkingStyle: preflight.thinking.budget.style,
+    turnSignal,
+  }
 }
 
 export function applyMlPreflight(messages: ChatMessage[], state: MlRuntimeState): ChatMessage[] {
   if (!state.enabled || !state.preflight) return messages
   return appendMlPromptAddendum(messages, state.preflight.promptAddendum)
+}
+
+export function getMlRuntimeModelOverrides(state: MlRuntimeState): Partial<{
+  maxTokens: number
+  temperature: number
+  maxToolRounds: number
+}> {
+  if (!state.enabled || !state.preflight) return {}
+  const { budget } = state.preflight.thinking
+  return {
+    maxTokens: budget.reasoningTokens,
+    temperature: budget.temperature,
+    maxToolRounds: budget.maxToolRounds,
+  }
 }
 
 export function evaluateMlFinalResponse(state: MlRuntimeState, response: string): ResponsePipelinePostflight | null {

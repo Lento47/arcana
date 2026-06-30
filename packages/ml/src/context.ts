@@ -61,8 +61,22 @@ function priorityScore(item: ContextItem): number {
   return 0.4
 }
 
-function summarizeTokenEstimate(tokens: number): number {
-  return Math.max(32, Math.ceil(tokens * 0.28))
+// Per-kind summarization ratios. Tool outputs and memory summaries compress
+// more aggressively; files and artifacts keep more detail because they often
+// contain code or structured evidence.
+function summarizeTokenEstimate(item: PlannedContextItem): number {
+  const base = Math.max(32, Math.ceil(item.estimatedTokens * 0.28))
+  switch (item.kind) {
+    case "tool_output":
+    case "memory":
+    case "summary":
+      return Math.max(24, Math.ceil(item.estimatedTokens * 0.18))
+    case "file":
+    case "artifact":
+      return Math.max(48, Math.ceil(item.estimatedTokens * 0.35))
+    default:
+      return base
+  }
 }
 
 function rankItems(request: string, items: ContextItem[]): PlannedContextItem[] {
@@ -131,8 +145,9 @@ export function planContextPack(input: ContextPlanInput): ContextPlan {
       continue
     }
 
-    if ((item.canSummarize ?? true) && summarizeTokenEstimate(item.estimatedTokens) + used <= tokenBudget) {
-      const summarizedTokens = summarizeTokenEstimate(item.estimatedTokens)
+    const canSummarize = (item.canSummarize ?? true) && item.kind !== "request" && item.kind !== "system"
+    const summarizedTokens = canSummarize ? summarizeTokenEstimate(item) : item.estimatedTokens
+    if (canSummarize && summarizedTokens + used <= tokenBudget) {
       summarize.push({
         ...item,
         estimatedTokens: summarizedTokens,

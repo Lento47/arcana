@@ -3,6 +3,7 @@
 
 import { execFileSync } from "node:child_process"
 
+import type { PolicyDecision, ToolSignal as MlToolSignal, TurnSignal as MlTurnSignal } from "@arcana/ml"
 import { ProofManager, type RiskLevel, type RunProofStatus, type StoredRunProof } from "../../proof/index.js"
 
 export type ProofRuntimeOptions = {
@@ -25,16 +26,29 @@ export type ProofRuntime = {
   }): Promise<void>
   recordUserCommand(command: string, summary?: string): Promise<void>
   recordSystemTransition(status: RunProofStatus, summary?: string): Promise<void>
-  gateShellCommand(command: string, options?: { cwd?: string; approved?: boolean }): Promise<{
+  gateShellCommand(
+    command: string,
+    options?: { cwd?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean } },
+  ): Promise<{
     blocked: boolean
     risk: string
     reasons: string[]
   }>
-  gateFileMutation(path: string, options?: { operation?: string; approved?: boolean }): Promise<{
+  gateFileMutation(
+    path: string,
+    options?: { operation?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean } },
+  ): Promise<{
     blocked: boolean
     risk: string
     reasons: string[]
   }>
+  recordMlSignal(input: {
+    kind: "turn" | "tool"
+    signal: MlTurnSignal | MlToolSignal
+    decision?: PolicyDecision
+    summary?: string
+    refs?: Record<string, string>
+  }): Promise<void>
   recordContextAccess(input: {
     tool: "read" | "grep" | "glob"
     path?: string
@@ -212,16 +226,28 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
 
     async gateShellCommand(command, options = {}) {
       if (!manager) return { blocked: false, risk: "unknown", reasons: [] }
-      const decision = manager.gateShellCommand(command, options)
+      const decision = manager.gateShellCommand(command, options, {
+        sandboxEnabled: options.sandboxEnabled,
+        userSovereignty: options.userSovereignty,
+      })
       await saveSnapshot()
       return decision
     },
 
     async gateFileMutation(path, options = {}) {
       if (!manager) return { blocked: false, risk: "unknown", reasons: [] }
-      const decision = manager.gateFileMutation(path, options)
+      const decision = manager.gateFileMutation(path, options, {
+        sandboxEnabled: options.sandboxEnabled,
+        userSovereignty: options.userSovereignty,
+      })
       await saveSnapshot()
       return decision
+    },
+
+    async recordMlSignal(input) {
+      if (!manager) return
+      manager.recordMlSignal(input)
+      await saveSnapshot()
     },
 
     async recordContextAccess(input) {

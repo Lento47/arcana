@@ -20,23 +20,137 @@ export type QualityGateResult = {
   interactionIntervention: "silent" | "nudge" | "confirm"
 }
 
-const GENERIC_PHRASES = [
-  "it depends",
-  "best practices",
-  "robust solution",
-  "scalable solution",
-  "seamless experience",
-  "user-friendly",
-  "cutting-edge",
-  "leverage",
-  "streamline",
-  "unlock the power",
-  "game changer",
-  "comprehensive approach",
-  "tailored solution",
-  "innovative",
-  "synergy",
-]
+// Generic / AI-slop phrase taxonomy. Each category is weighted separately so
+// responses full of performative business/marketing language score worse than
+// a single mild hedge.
+const GENERIC_PHRASES = {
+  // Empty business filler
+  businessFiller: [
+    "best practices",
+    "robust solution",
+    "scalable solution",
+    "seamless experience",
+    "user-friendly",
+    "cutting-edge",
+    "game changer",
+    "comprehensive approach",
+    "tailored solution",
+    "innovative",
+    "synergy",
+    "unlock the power",
+    "next-generation",
+    "future-proof",
+    "world-class",
+    "industry-leading",
+    "mission-critical",
+    "end-to-end",
+    "holistic",
+    "360-degree",
+    "value-added",
+    "best-in-class",
+    "turnkey",
+    "out-of-the-box",
+    "enterprise-grade",
+    "digital transformation",
+    "thought leadership",
+  ],
+  // Weasel words that avoid committing
+  weasel: [
+    "it depends",
+    "might be",
+    "could be",
+    "may want to",
+    "perhaps",
+    "probably",
+    "generally",
+    "often",
+    "usually",
+    "typically",
+    "in many cases",
+    "consider",
+    "explore",
+    "think about",
+    "look into",
+    "would suggest",
+    "you might",
+    "one option is",
+    "there are many ways",
+  ],
+  // Verbs that sound productive but carry no specifics
+  vagueVerbs: [
+    "leverage",
+    "streamline",
+    "optimize",
+    "enhance",
+    "empower",
+    "facilitate",
+    "enable",
+    "drive",
+    "accelerate",
+    "transform",
+    "revolutionize",
+    "maximize",
+    "unleash",
+    "harness",
+    "align",
+    "synergize",
+    "operationalize",
+    "monetize",
+    "capitalize",
+  ],
+  // Puffery / claims without evidence
+  puffery: [
+    "highly",
+    "significantly",
+    "dramatically",
+    "drastically",
+    "exponentially",
+    "substantially",
+    "remarkably",
+    "notably",
+    "exceptionally",
+    "unparalleled",
+    "groundbreaking",
+    "state-of-the-art",
+    "unprecedented",
+    "astonishing",
+  ],
+  // Padding phrases that add no information
+  padding: [
+    "as mentioned above",
+    "as you know",
+    "in summary",
+    "to summarize",
+    "at the end of the day",
+    "the fact that",
+    "it's important to note",
+    "needless to say",
+    "as a result",
+    "with that said",
+    "having said that",
+    "in order to",
+    "due to the fact that",
+    "for what it's worth",
+    "long story short",
+  ],
+  // Over-apologetic or hedging disclaimers
+  hedges: [
+    "i'm not sure",
+    "i cannot guarantee",
+    "without more context",
+    "i don't have enough information",
+    "it is worth noting",
+    "keep in mind",
+    "please note",
+    "as a disclaimer",
+    "to be fair",
+    "of course",
+    "obviously",
+    "needless to say",
+  ],
+}
+
+const GENERIC_PHRASE_FLAT = Object.values(GENERIC_PHRASES).flat()
 
 const ACTION_TERMS = [
   "add",
@@ -60,7 +174,7 @@ function clamp(value: number): number {
 }
 
 function tokenize(text: string): string[] {
-  return [...new Set(text.toLowerCase().match(/[a-z0-9_./-]+/g) ?? [])]
+  return [...new Set(text.toLowerCase().match(/[a-z0-9_.\/-]+/g) ?? [])]
 }
 
 function phraseHits(text: string, phrases: string[]): string[] {
@@ -92,15 +206,79 @@ function constraintFit(response: string, contract?: ExpectationContract): number
   return clamp(hits / contract.constraints.length)
 }
 
+// Deduplicated slop categories used for revision hints.
+const SLOP_CATEGORY_NAMES: Record<keyof typeof GENERIC_PHRASES, string> = {
+  businessFiller: "business filler",
+  weasel: "weasel words",
+  vagueVerbs: "vague verbs",
+  puffery: "puffery",
+  padding: "padding",
+  hedges: "hedges",
+}
+
+export type AvoidSlopScore = {
+  value: number
+  hits: string[]
+  categoryHits: Partial<Record<keyof typeof GENERIC_PHRASES, string[]>>
+  revisionHints: string[]
+}
+
+/**
+ * Dedicated AI-slop / generic-filler detector.
+ * Returns a 0..1 score where 0 means clean and 1 means heavy slop.
+ * Category weights:
+ *   business filler 1.0, vague verbs 0.7, puffery 0.8, padding 0.4,
+ *   weasel 0.6, hedges 0.3.
+ * The score saturates so a single mild hedge does not tank an otherwise
+ * concrete response, but a pile of marketing language does.
+ */
+export function avoidSlopScore(response: string): AvoidSlopScore {
+  const hits: string[] = []
+  const categoryHits: Partial<Record<keyof typeof GENERIC_PHRASES, string[]>> = {}
+  let weighted = 0
+  const weights: Record<keyof typeof GENERIC_PHRASES, number> = {
+    businessFiller: 1.0,
+    vagueVerbs: 0.7,
+    puffery: 0.8,
+    padding: 0.4,
+    weasel: 0.6,
+    hedges: 0.3,
+  }
+
+  for (const [category, phrases] of Object.entries(GENERIC_PHRASES) as Array<[keyof typeof GENERIC_PHRASES, string[]]>) {
+    const found = phraseHits(response, phrases)
+    if (found.length) {
+      categoryHits[category] = found
+      hits.push(...found)
+      weighted += found.length * weights[category]
+    }
+  }
+
+  const value = clamp(weighted / 5)
+  const revisionHints: string[] = []
+  if (value >= 0.2) {
+    for (const [category, found] of Object.entries(categoryHits) as Array<[keyof typeof GENERIC_PHRASES, string[]]>) {
+      if (found.length) {
+        revisionHints.push(
+          `Remove ${SLOP_CATEGORY_NAMES[category]} (${found.slice(0, 3).join(", ")}${found.length > 3 ? "..." : ""}) and replace with concrete specifics.`,
+        )
+      }
+    }
+  }
+
+  return { value, hits: [...new Set(hits)], categoryHits, revisionHints: [...new Set(revisionHints)] }
+}
+
 export function evaluateResponseQuality(input: QualityGateInput): QualityGateResult {
   const requestTokens = tokenize(input.request)
   const responseTokens = tokenize(input.response)
-  const genericHits = phraseHits(input.response, GENERIC_PHRASES)
+  const slop = avoidSlopScore(input.response)
+  const genericHits = slop.hits
   const problems: string[] = []
   const revisionHints: string[] = []
   const strict = input.expectation?.qualityBar === "strict"
 
-  const genericityScore = clamp(genericHits.length / 5)
+  const genericityScore = clamp(slop.value)
   const specificityScore = clamp(overlap(requestTokens, responseTokens) * 0.6 + (hasConcreteMarkers(input.response) ? 0.4 : 0))
   const actionabilityScore = actionability(input.response)
   const constraintFitScore = constraintFit(input.response, input.expectation)
@@ -110,8 +288,8 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
     revisionHints.push("Provide a concrete response aligned with the user's request.")
   }
   if (genericHits.length) {
-    problems.push(`Generic phrases detected: ${genericHits.join(", ")}`)
-    revisionHints.push("Replace generic phrases with concrete decisions, constraints, file names, commands, or measurable outcomes.")
+    problems.push(`Generic phrases detected: ${genericHits.slice(0, 5).join(", ")}${genericHits.length > 5 ? "..." : ""}`)
+    revisionHints.push(...slop.revisionHints)
   }
   if (specificityScore < 0.35) {
     problems.push("Response has weak lexical connection to the user's request.")

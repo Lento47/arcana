@@ -268,6 +268,25 @@ type RunProofTokenUsageView = {
   turns: number
 }
 
+type RunProofMLEvidenceView = {
+  kind?: "turn" | "tool"
+  timestamp?: string
+  summary?: string
+  intent?: string
+  tool?: string
+  risk?: string
+  posture?: string
+  confidence?: number
+  labels?: string[]
+  reasons?: string[]
+  route?: string
+  route_reason?: string
+  decision_action?: string
+  decision_posture?: string
+  decision_confidence?: number
+  decision_reasons?: string[]
+}
+
 type RunProofView = {
   id?: string
   user_intent?: string
@@ -291,6 +310,7 @@ type RunProofView = {
   verification?: RunProofVerificationView
   sovereignty?: RunProofSovereigntyView
   token_usage?: RunProofTokenUsageView
+  ml_evidence?: RunProofMLEvidenceView[]
 }
 
 type ProofLoadResult =
@@ -527,6 +547,7 @@ function normalizeProofView(value: unknown): RunProofView {
     },
     sovereignty: sovereigntyFromEvents(normalizedEvents),
     token_usage: tokenUsageFromEvents(normalizedEvents),
+    ml_evidence: mlEvidenceFromEvents(normalizedEvents),
     events: normalizedEvents,
   }
 }
@@ -544,6 +565,36 @@ function sovereigntyFromEvents(events: RunProofEventView[]): RunProofSovereignty
     timestamp: event.timestamp,
     summary: event.summary,
   }
+}
+
+function mlEvidenceFromEvents(events: RunProofEventView[]): RunProofMLEvidenceView[] {
+  return events
+    .filter((event) => event.type === "ml.signal")
+    .map((event) => {
+      const data = event.data ?? {}
+      const signal = asRecord(data.signal) ?? {}
+      const decision = asRecord(data.decision)
+      const route = asRecord(signal.modelRoute)
+      const confidenceRecord = asRecord(signal.confidence)
+      return {
+        kind: proofString(data.kind) === "tool" ? "tool" : "turn",
+        timestamp: event.timestamp,
+        summary: event.summary,
+        intent: proofString(signal.intent),
+        tool: proofString(signal.toolName),
+        risk: proofString(signal.risk),
+        posture: proofString(signal.executionPosture),
+        confidence: proofNumber(confidenceRecord?.value ?? signal.confidence),
+        labels: asStringArray(signal.labels),
+        reasons: asStringArray(signal.reasons),
+        route: proofString(route?.profile),
+        route_reason: proofString(route?.reason),
+        decision_action: proofString(decision?.action),
+        decision_posture: proofString(decision?.posture),
+        decision_confidence: proofNumber(decision?.confidence),
+        decision_reasons: asStringArray(decision?.reasons),
+      }
+    })
 }
 
 function tokenUsageFromEvents(events: RunProofEventView[]): RunProofTokenUsageView | undefined {
@@ -606,11 +657,55 @@ function rollbackRestoreCommand(proof: RunProofView): string {
   return proof.rollback?.restore_command ?? proof.contract?.rollback_plan ?? "not recorded"
 }
 
+function mlEvidenceSummary(evidence: RunProofMLEvidenceView): string {
+  const parts = [
+    evidence.kind === "tool" ? `tool=${evidence.tool ?? "unknown"}` : `intent=${evidence.intent ?? "unknown"}`,
+    evidence.risk ? `risk=${evidence.risk}` : undefined,
+    evidence.posture ? `posture=${evidence.posture}` : undefined,
+    evidence.confidence !== undefined ? `confidence=${Math.round(evidence.confidence * 100)}%` : undefined,
+    evidence.decision_action ? `decision=${evidence.decision_action}` : undefined,
+  ].filter((item): item is string => Boolean(item))
+  return parts.join("  ")
+}
+
+function MLEvidencePanel(props: { evidence: RunProofMLEvidenceView[]; latestOnly?: boolean }) {
+  const { theme } = useTheme()
+  const items = () => (props.latestOnly ? props.evidence.slice(-1) : props.evidence)
+  return (
+    <Show
+      when={props.evidence.length > 0}
+      fallback={<text fg={theme.textMuted}>No ML signal evidence recorded.</text>}
+    >
+      <box gap={0}>
+        <For each={items()}>
+          {(evidence) => (
+            <box gap={0}>
+              <text fg={theme.text}>{mlEvidenceSummary(evidence)}</text>
+              <Show when={evidence.route}>
+                <text fg={theme.textMuted}>route={evidence.route}{evidence.route_reason ? `  (${evidence.route_reason})` : ""}</text>
+              </Show>
+              <FieldList items={evidence.reasons} empty="" />
+              <Show when={evidence.labels && evidence.labels.length > 0}>
+                <text fg={theme.textMuted}>labels: {evidence.labels?.join(", ")}</text>
+              </Show>
+              <Show when={evidence.decision_reasons && evidence.decision_reasons.length > 0}>
+                <FieldList items={evidence.decision_reasons} empty="" />
+              </Show>
+            </box>
+          )}
+        </For>
+      </box>
+    </Show>
+  )
+}
+
 function DialogRunProofContract(props: { proof: RunProofView; path: string }) {
   const { theme } = useTheme()
   const dialog = useDialog()
   const contract = () => props.proof.contract
   const rollback = () => props.proof.rollback
+  const mlEvidence = () => props.proof.ml_evidence ?? []
+  const latestTurnEvidence = () => mlEvidence().findLast((item) => item.kind === "turn")
   return (
     <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
       <box flexDirection="row" justifyContent="space-between">
@@ -646,6 +741,14 @@ function DialogRunProofContract(props: { proof: RunProofView; path: string }) {
             </Show>
             <text fg={theme.text}>Verification steps</text>
             <FieldList items={value().verification_steps} empty="No verification steps recorded." />
+          </box>
+        )}
+      </Show>
+      <Show when={latestTurnEvidence()}>
+        {(evidence) => (
+          <box gap={0}>
+            <text fg={theme.text}>ML posture</text>
+            <MLEvidencePanel evidence={[evidence()]} />
           </box>
         )}
       </Show>
@@ -750,6 +853,10 @@ function DialogRunProofActions(props: { proof: RunProofView; path: string }) {
           </For>
         </box>
       </Show>
+      <box gap={0}>
+        <text fg={theme.text}>ML evidence ({props.proof.ml_evidence?.length ?? 0} signal{props.proof.ml_evidence?.length === 1 ? "" : "s"})</text>
+        <MLEvidencePanel evidence={props.proof.ml_evidence ?? []} />
+      </box>
       <Show when={events().length > 0} fallback={<text fg={theme.warning}>No RunProof events recorded.</text>}>
         <For each={events()}>
           {(event) => (

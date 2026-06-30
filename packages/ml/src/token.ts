@@ -40,11 +40,52 @@ function nonNegativeInteger(value: number | undefined, fallback: number): number
   return Math.max(0, Math.floor(value))
 }
 
+// Per-kind token weights. Code blocks and structured tool outputs are denser
+// (fewer tokens per char on average), while natural language is sparser.
+const CODE_BLOCK_WEIGHT = 0.22
+const STRUCTURED_WEIGHT = 0.30
+const NATURAL_WEIGHT = 0.35
+const MIN_ESTIMATE = 1
+
+function splitBlocks(text: string): Array<{ kind: "code" | "structured" | "natural"; value: string }> {
+  const parts: Array<{ kind: "code" | "structured" | "structured" | "natural"; value: string }> = []
+  const codeRe = /```[\s\S]*?```/g
+  let last = 0
+  let match: RegExpExecArray | null
+  while ((match = codeRe.exec(text)) !== null) {
+    if (match.index > last) {
+      parts.push({ kind: "natural", value: text.slice(last, match.index) })
+    }
+    parts.push({ kind: "code", value: match[0] ?? "" })
+    last = match.index + (match[0]?.length ?? 0)
+  }
+  if (last < text.length) parts.push({ kind: "natural", value: text.slice(last) })
+  return parts
+}
+
+function looksStructured(text: string): boolean {
+  // Heuristic for JSON, stack traces, logs, CSV-like tabular output.
+  const lineCount = text.split("\n").filter(Boolean).length
+  if (lineCount < 2) return false
+  const structuredMarkers =
+    (/^\s*[\{\[]/.test(text) && /[\}\]]/.test(text)) ||
+    /^\s*\w+\s*[|:]/.test(text) ||
+    /^\s*at\s+/.test(text) ||
+    /^\s*\d{4}-\d{2}-\d{2}T/.test(text)
+  return structuredMarkers
+}
+
 export function estimateTokens(text: string): number {
   if (!text) return 0
-  const words = text.trim().split(/\s+/).filter(Boolean).length
-  const chars = text.length
-  return Math.max(1, Math.ceil(chars / 4), Math.ceil(words * 1.35))
+  const blocks = splitBlocks(text)
+  let total = 0
+  for (const block of blocks) {
+    const weight = block.kind === "code" ? CODE_BLOCK_WEIGHT : looksStructured(block.value) ? STRUCTURED_WEIGHT : NATURAL_WEIGHT
+    const chars = block.value.length
+    const words = block.value.trim().split(/\s+/).filter(Boolean).length
+    total += Math.max(MIN_ESTIMATE, Math.ceil(chars * weight), Math.ceil(words * 1.35))
+  }
+  return total
 }
 
 function getInputText(input: TokenBudgetInput): string {

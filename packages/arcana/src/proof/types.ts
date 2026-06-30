@@ -42,6 +42,7 @@ export type RunProofEventType =
   | "rollback.available"
   | "sovereignty.routed"
   | "token.used"
+  | "ml.signal"
 
 export type ExecutionContract = {
   id: string
