@@ -4,7 +4,13 @@
 import { execFileSync } from "node:child_process"
 
 import type { PolicyDecision, ToolSignal as MlToolSignal, TurnSignal as MlTurnSignal } from "@arcana/ml"
-import { ProofManager, type RiskLevel, type RunProofStatus, type StoredRunProof } from "../../proof/index.js"
+import {
+  ProofManager,
+  type RiskLevel,
+  type RunProofStatus,
+  type StoredRunProof,
+  type VerificationStatus,
+} from "../../proof/index.js"
 
 export type ProofRuntimeOptions = {
   enabled: boolean
@@ -97,6 +103,22 @@ export type ProofRuntime = {
     exit_code?: number
     stdout_summary?: string
     stderr_summary?: string
+  }): Promise<void>
+  recordCheck(input: {
+    kind: "typecheck" | "lint" | "build"
+    command: string
+    status: VerificationStatus
+    summary: string
+    duration_ms?: number
+  }): Promise<void>
+  recordTestResult(input: {
+    command: string
+    status: VerificationStatus
+    summary: string
+    passed?: number
+    failed?: number
+    skipped?: number
+    duration_ms?: number
   }): Promise<void>
   recordAgentTurn(input: {
     input_summary: string
@@ -314,6 +336,34 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
       const decision = manager.gateShellCommand(input.command, { cwd: input.cwd, approved: true })
       const risk = input.risk === "unknown" ? decision.risk : input.risk
       manager.recordShellCommand({ ...input, risk })
+      await saveSnapshot()
+    },
+
+    async recordCheck(input) {
+      if (!manager) return
+      const result = {
+        command: input.command,
+        status: input.status,
+        summary: input.summary,
+        duration_ms: input.duration_ms,
+      }
+      if (input.kind === "typecheck") manager.setTypecheck(result)
+      else if (input.kind === "lint") manager.setLint(result)
+      else manager.setBuild(result)
+      await saveSnapshot()
+    },
+
+    async recordTestResult(input) {
+      if (!manager) return
+      manager.addTestResult({
+        command: input.command,
+        status: input.status,
+        summary: input.summary,
+        passed: input.passed,
+        failed: input.failed,
+        skipped: input.skipped,
+        duration_ms: input.duration_ms,
+      })
       await saveSnapshot()
     },
 

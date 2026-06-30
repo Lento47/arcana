@@ -125,6 +125,51 @@ describe("ProofRuntime live evidence capture", () => {
     }
   })
 
+  test("persists verification checks to the active proof path", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "arcana-proof-runtime-"))
+    const previousActivePath = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+
+    try {
+      const runtime = await createProofRuntime({
+        enabled: true,
+        cwd,
+        command: "arcana run --proof",
+        prompt: "Verify a change",
+      })
+
+      await runtime.recordCheck({
+        kind: "typecheck",
+        command: "bun --cwd packages/tui typecheck",
+        status: "passed",
+        summary: "TUI typecheck passed.",
+        duration_ms: 1234,
+      })
+      await runtime.recordTestResult({
+        command: "bun test packages/arcana/src/proof/proof-manager.test.ts",
+        status: "passed",
+        summary: "Focused proof tests passed.",
+        passed: 16,
+        failed: 0,
+        skipped: 0,
+        duration_ms: 2000,
+      })
+
+      const activePath = runtime.activeProofPath()
+      expect(activePath).toBeTruthy()
+      const stored = JSON.parse(await readFile(activePath!, "utf8"))
+      const proof = stored.proof ?? stored
+      expect(proof.verification.typecheck.command).toBe("bun --cwd packages/tui typecheck")
+      expect(proof.verification.typecheck.status).toBe("passed")
+      expect(proof.verification.tests[0].command).toBe("bun test packages/arcana/src/proof/proof-manager.test.ts")
+      expect(proof.verification.tests[0].passed).toBe(16)
+      expect(proof.events.map((event: { type: string }) => event.type)).toContain("verification.passed")
+    } finally {
+      if (previousActivePath === undefined) delete process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+      else process.env.ARCANA_ACTIVE_RUNPROOF_PATH = previousActivePath
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
   test("records ML turn signals and persists them to the proof", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "arcana-proof-runtime-"))
     const previousActivePath = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
