@@ -50,6 +50,34 @@ const c = {
   dim: (s: string) => `\x1b[90m${s}\x1b[0m`,
 }
 
+const STARTUP_MCP_TIMEOUT_MS = Number(process.env.ARCANA_STARTUP_MCP_TIMEOUT_MS ?? "1200")
+const SHARED_MEMORY_TIMEOUT_MS = Number(process.env.ARCANA_SHARED_MEMORY_TIMEOUT_MS ?? "1200")
+const EVOLVE_ON_STARTUP = process.env.ARCANA_EVOLVE_ON_STARTUP === "1"
+
+async function withStartupTimeout<T>(label: string, task: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
+  if (timeoutMs <= 0) return task
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      task,
+      new Promise<T>((resolve) => {
+        timeout = setTimeout(() => {
+          process.stderr.write(c.dim(`  ${label}: continuing startup after ${timeoutMs}ms\n`))
+          resolve(fallback)
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
+}
+
+function reportBackgroundFailure(label: string, task: Promise<unknown>): void {
+  task.catch((error) => {
+    process.stderr.write(c.dim(`  ${label}: ${error instanceof Error ? error.message : String(error)}\n`))
+  })
+}
+
 function commandForPrompt(prompt: string | undefined, proofMode: boolean): string {
   const flags = proofMode ? " --proof" : ""
   return prompt ? `arcana run${flags} ${JSON.stringify(prompt)}` : `arcana run${flags}`
@@ -155,7 +183,16 @@ export const RunCommand: CommandModule = {
       }
     }
 
-    const skills = await loadSkills(config.skillsDirs)
+    let skillsCache: SkillCatalog[] | undefined
+    const skillsPromise = loadSkills(config.skillsDirs).then((loaded) => {
+      skillsCache = loaded
+      return loaded
+    })
+    reportBackgroundFailure("skills", skillsPromise)
+    const getSkills = async (): Promise<SkillCatalog[]> => {
+      if (skillsCache) return skillsCache
+      return await skillsPromise
+    }
 
     const godlike = args.godlike === true
     if (godlike) {
@@ -188,7 +225,7 @@ export const RunCommand: CommandModule = {
     )
     if (memory) registerBuiltinTools(runner, memory, config.skillsDirs)
 
-    const mcpServers = await registerMcpTools(runner)
+    const mcpServers = await withStartupTimeout("MCP", registerMcpTools(runner), [], STARTUP_MCP_TIMEOUT_MS)
     if (mcpServers.length) process.stderr.write(c.dim(`  MCP: ${mcpServers.join(", ")}\n`))
 
     // Pipeline shadow: create a lightweight plan from the objective
@@ -213,9 +250,10 @@ export const RunCommand: CommandModule = {
     // Use evolved prompt if one exists and scores better than base
     let systemPrompt = getActivePrompt(SYSTEM_PROMPT)
 
-    // Check for prompt evolution (every N sessions)
-    systemPrompt = await maybeEvolve(runner, systemPrompt)
     incrementSessionCount()
+    if (EVOLVE_ON_STARTUP) {
+      systemPrompt = await maybeEvolve(runner, systemPrompt)
+    }
 
     // Load agent contracts from .arcana/contracts/ if available.
     // Contracts inject constraints, evidence requirements, and rollback
@@ -264,6 +302,7 @@ export const RunCommand: CommandModule = {
     }
 
     if (args.skill) {
+      const skills = await getSkills()
       const skill = skills.find(
         (s) => s.id === String(args.skill) || s.name.toLowerCase().includes(String(args.skill).toLowerCase()),
       )
@@ -312,7 +351,7 @@ export const RunCommand: CommandModule = {
         try {
           const orgId = process.env.ARCANA_ORG_ID ?? "default"
           const response = await fetch(`https://api.arcana.otnelhq.com/api/team/${orgId}/memory/facts`, {
-            signal: AbortSignal.timeout(5000),
+            signal: AbortSignal.timeout(SHARED_MEMORY_TIMEOUT_MS),
           })
           if (response.ok) {
             const data = (await response.json()) as { facts: Array<{ key: string; value: string; source?: string }> }
@@ -523,6 +562,7 @@ export const RunCommand: CommandModule = {
       }
 
       if (input === "/skills") {
+        const skills = await getSkills()
         const grouped = new Map<string, SkillCatalog[]>()
         for (const s of skills) {
           const cat = s.category || "misc"
@@ -541,6 +581,7 @@ export const RunCommand: CommandModule = {
 
       if (input.startsWith("/skill ")) {
         const id = input.slice(7).trim()
+        const skills = await getSkills()
         const skill = skills.find((s) => s.id === id || s.name.toLowerCase().includes(id.toLowerCase()))
         if (!skill) {
           process.stdout.write(c.red(`Skill not found: ${id}\n`))
