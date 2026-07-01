@@ -972,6 +972,28 @@ function MLEvidencePanel(props: { evidence: RunProofMLEvidenceView[]; latestOnly
   )
 }
 
+const ARCANA_DITHER_CELLS = ["░", "▒", "░", "·", "▒", "░"] as const
+
+function ditherPattern(seed: string, length: number): string {
+  const offset = [...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0) % ARCANA_DITHER_CELLS.length
+  return Array.from({ length }, (_, index) => ARCANA_DITHER_CELLS[(index + offset) % ARCANA_DITHER_CELLS.length]).join("")
+}
+
+function ditherTick(seed: string): string {
+  return ARCANA_DITHER_CELLS[[...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0) % ARCANA_DITHER_CELLS.length]
+}
+
+function ArcanaDitherBand(props: { seed: string; label?: string; length?: number }) {
+  const { theme } = useTheme()
+  const pattern = () => ditherPattern(props.seed, props.length ?? 42)
+  return (
+    <text fg={theme.textMuted}>
+      {pattern()}
+      {props.label ? ` ${props.label}` : ""}
+    </text>
+  )
+}
+
 function ArcanaSurface(props: { title: string; path?: string; meta?: string; children: JSX.Element }) {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -992,6 +1014,7 @@ function ArcanaSurface(props: { title: string; path?: string; meta?: string; chi
         <Show when={props.path}>
           {(path) => <text fg={theme.textMuted}>proof {path()}</text>}
         </Show>
+        <ArcanaDitherBand seed={props.title} label="proof tape" />
       </box>
       {props.children}
     </box>
@@ -1003,6 +1026,7 @@ function ArcanaSection(props: { title: string; detail?: string | number; childre
   return (
     <box gap={0}>
       <text fg={theme.text}>
+        <text fg={theme.textMuted}>{ditherPattern(props.title, 8)} </text>
         <b>{props.title}</b>
         {props.detail === undefined ? "" : ` ${props.detail}`}
       </text>
@@ -1036,6 +1060,7 @@ function ArcanaTapeItem(props: {
   return (
     <box gap={0}>
       <text fg={color()}>
+        {ditherTick(props.kind)}{" "}
         {props.time ? `${props.time} ` : ""}
         {props.kind.padEnd(10)} {props.summary}
       </text>
