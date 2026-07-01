@@ -1095,6 +1095,11 @@ export function Prompt(props: PromptProps) {
               {
                 type: "text",
                 text: task,
+                metadata: {
+                  arcana: {
+                    command: arcanaPromptCommand.command,
+                  },
+                },
               },
               ...nonTextParts,
             ],
