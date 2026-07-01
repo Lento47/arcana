@@ -57,6 +57,8 @@ import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
 
+const ARCANA_PROMPT_COMMANDS = new Set(["contract", "actions", "diffgate", "verify", "sovereignty"])
+
 export type PromptProps = {
   sessionID?: string
   visible?: boolean
@@ -136,6 +138,21 @@ function formatEditorContext(selection: EditorSelection) {
   })
 
   return `<system-reminder>${ranges.join("\n")} This may or may not be relevant to the current task.</system-reminder>\n`
+}
+
+function parseArcanaPromptCommand(input: string): { command: string; arguments: string } | undefined {
+  if (!input.startsWith("/")) return
+  const firstLineEnd = input.indexOf("\n")
+  const firstLine = firstLineEnd === -1 ? input : input.slice(0, firstLineEnd)
+  const restOfInput = firstLineEnd === -1 ? "" : input.slice(firstLineEnd + 1)
+  const [head = "", ...firstLineArgs] = firstLine.split(" ")
+  const command = head.slice(1)
+  if (!ARCANA_PROMPT_COMMANDS.has(command)) return
+
+  return {
+    command,
+    arguments: firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : ""),
+  }
 }
 
 let stashed: { prompt: PromptInfo; cursor: number } | undefined
@@ -1039,6 +1056,7 @@ export function Prompt(props: PromptProps) {
             },
           ]
         : []
+    const arcanaPromptCommand = parseArcanaPromptCommand(inputText)
 
     if (store.mode === "shell") {
       move.startSubmit()
@@ -1052,6 +1070,44 @@ export function Prompt(props: PromptProps) {
         command: inputText,
       })
       setStore("mode", "normal")
+    } else if (arcanaPromptCommand) {
+      const task = arcanaPromptCommand.arguments.trim()
+      if (!task) {
+        toast.show({
+          title: `/${arcanaPromptCommand.command}`,
+          message: `Add a task after /${arcanaPromptCommand.command}.`,
+          variant: "warning",
+        })
+        return false
+      }
+
+      move.startSubmit()
+      sdk.client.session
+        .prompt(
+          {
+            sessionID,
+            ...selectedModel,
+            agent: agent.name,
+            model: selectedModel,
+            variant,
+            parts: [
+              ...editorParts,
+              {
+                type: "text",
+                text: task,
+              },
+              ...nonTextParts,
+            ],
+          },
+          { throwOnError: true },
+        )
+        .catch((error) => {
+          toast.show({
+            title: `Failed to send /${arcanaPromptCommand.command}`,
+            message: errorMessage(error),
+            variant: "error",
+          })
+        })
     } else if (
       inputText.startsWith("/") &&
       sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
