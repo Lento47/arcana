@@ -101,6 +101,19 @@ export type AgentConfig = {
       skipped?: number
       duration_ms?: number
     }): Promise<void>
+    recordConsensus?(input: {
+      council_id?: string
+      prompt: string
+      models: string[]
+      rounds: number
+      vote_mode: string
+      status: "completed" | "failed"
+      winner_model?: string
+      vote_tally?: Record<string, number>
+      cost_tokens?: { input: number; output: number }
+      errored?: string[]
+      transcript?: string
+    }): Promise<void>
     recordMlSignal?(input: {
       kind: "turn" | "tool"
       signal: unknown

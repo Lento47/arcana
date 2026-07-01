@@ -136,6 +136,19 @@ export type ProofRuntime = {
     skipped?: number
     duration_ms?: number
   }): Promise<void>
+  recordConsensus(input: {
+    council_id?: string
+    prompt: string
+    models: string[]
+    rounds: number
+    vote_mode: string
+    status: "completed" | "failed"
+    winner_model?: string
+    vote_tally?: Record<string, number>
+    cost_tokens?: { input: number; output: number }
+    errored?: string[]
+    transcript?: string
+  }): Promise<void>
   recordAgentTurn(input: {
     input_summary: string
     output_summary: string
@@ -470,6 +483,35 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
         failed: input.failed,
         skipped: input.skipped,
         duration_ms: input.duration_ms,
+      })
+      await saveSnapshot()
+    },
+
+    async recordConsensus(input) {
+      if (!manager) return
+      manager.recordEvent({
+        type: "consensus.recorded",
+        actor: "agent",
+        summary:
+          input.status === "completed"
+            ? `Consensus completed${input.winner_model ? ` with winner ${input.winner_model}` : ""}.`
+            : "Consensus failed before reaching a reliable result.",
+        status: input.status === "completed" ? manager.proof.lifecycle.status : "failed",
+        refs: {
+          ...(input.council_id ? { council_id: input.council_id } : {}),
+          ...(input.winner_model ? { winner_model: input.winner_model } : {}),
+        },
+        data: {
+          prompt: input.prompt,
+          models: input.models,
+          rounds: input.rounds,
+          vote_mode: input.vote_mode,
+          status: input.status,
+          vote_tally: input.vote_tally ?? {},
+          cost_tokens: input.cost_tokens ?? { input: 0, output: 0 },
+          errored: input.errored ?? [],
+          transcript: input.transcript,
+        },
       })
       await saveSnapshot()
     },
