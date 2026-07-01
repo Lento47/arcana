@@ -12,6 +12,7 @@ import { stripPromptPartIDs as strip } from "../../prompt/part"
 import { Glyph } from "../../branding"
 import { DoubleBorder } from "../../ui/chrome"
 import { TextAttributes } from "@opentui/core"
+import { promptTextFromPart } from "./arcana-task"
 
 type Act = {
   key: string
@@ -56,7 +57,7 @@ export function DialogMessage(props: {
           const parts = sync.data.part[msg.id]
           const promptInfo = parts.reduce(
             (agg, part) => {
-              if (part.type === "text" && !part.synthetic) agg.input += part.text
+              if (part.type === "text") agg.input += promptTextFromPart(part)
               if (part.type === "file") agg.parts.push(strip(part))
               return agg
             },
@@ -77,7 +78,7 @@ export function DialogMessage(props: {
         const prompt = msg
           ? sync.data.part[msg.id].reduce(
               (agg, part) => {
-                if (part.type === "text" && !part.synthetic) agg.input += part.text
+                if (part.type === "text") agg.input += promptTextFromPart(part)
                 if (part.type === "file") agg.parts.push(part)
                 return agg
               },
@@ -97,7 +98,7 @@ export function DialogMessage(props: {
         if (!msg) return
         const parts = sync.data.part[msg.id]
         const text = parts.reduce((agg, part) => {
-          if (part.type === "text" && !part.synthetic) agg += part.text
+          if (part.type === "text") agg += promptTextFromPart(part)
           return agg
         }, "")
         await clipboard.write?.(text)
@@ -114,7 +115,7 @@ export function DialogMessage(props: {
         const parts = sync.data.part[msg.id]
         const promptInfo = parts.reduce(
           (agg, part) => {
-            if (part.type === "text" && !part.synthetic) agg.input += part.text
+            if (part.type === "text") agg.input += promptTextFromPart(part)
             if (part.type === "file") agg.parts.push(strip(part))
             return agg
           },

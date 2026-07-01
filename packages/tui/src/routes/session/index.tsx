@@ -89,6 +89,7 @@ import { ARCANA_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } 
 import { PathFormatterProvider, usePathFormatter } from "../../context/path-format"
 import { ArtifactViewer } from "./artifact-viewer"
 import { getArtifact } from "../../util/artifacts"
+import { arcanaCommandFromPart, promptTextFromPart } from "./arcana-task"
 
 addDefaultParsers(parsers.parsers)
 
@@ -729,7 +730,7 @@ export function Session() {
           parts.reduce(
             (agg, part) => {
               if (part.type === "text") {
-                if (!part.synthetic) agg.input += part.text
+                agg.input += promptTextFromPart(part)
               }
               if (part.type === "file") agg.parts.push(part)
               return agg
@@ -1471,16 +1472,6 @@ const MIME_BADGE: Record<string, string> = {
   "image/webp": "img",
   "application/pdf": "pdf",
   "application/x-directory": "dir",
-}
-
-function arcanaCommandFromPart(part: Part) {
-  if (part.type !== "text") return
-  const metadata = part.metadata
-  if (!metadata || typeof metadata !== "object") return
-  const arcana = metadata.arcana
-  if (!arcana || typeof arcana !== "object") return
-  const command = (arcana as { command?: unknown }).command
-  return typeof command === "string" ? command : undefined
 }
 
 function UserMessage(props: {
