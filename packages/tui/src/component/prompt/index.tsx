@@ -57,7 +57,7 @@ import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
-import { assessArcanaTaskRisk, parseArcanaPromptCommand } from "../../arcana/task"
+import { arcanaTaskInstruction, assessArcanaTaskRisk, parseArcanaPromptCommand } from "../../arcana/task"
 
 export type PromptProps = {
   sessionID?: string
@@ -1067,6 +1067,7 @@ export function Prompt(props: PromptProps) {
       }
 
       const risk = assessArcanaTaskRisk(task)
+      const approvalStatus = risk.approval_required ? "approved" : "not_required"
       if (risk.approval_required) {
         const approved = await DialogConfirm.show(
           dialog,
@@ -1077,6 +1078,11 @@ export function Prompt(props: PromptProps) {
         if (!approved) return false
       }
 
+      const instruction = arcanaTaskInstruction({
+        command: arcanaPromptCommand.command,
+        risk,
+        approval_status: approvalStatus,
+      })
       move.startSubmit()
       sdk.client.session
         .prompt(
@@ -1088,6 +1094,21 @@ export function Prompt(props: PromptProps) {
             variant,
             parts: [
               ...editorParts,
+              ...(instruction
+                ? [
+                    {
+                      type: "text" as const,
+                      text: instruction,
+                      synthetic: true,
+                      metadata: {
+                        arcana: {
+                          command: arcanaPromptCommand.command,
+                          instruction: true,
+                        },
+                      },
+                    },
+                  ]
+                : []),
               {
                 type: "text",
                 text: task,
@@ -1096,7 +1117,7 @@ export function Prompt(props: PromptProps) {
                     command: arcanaPromptCommand.command,
                     risk: risk.level,
                     approval_required: risk.approval_required,
-                    approval_status: risk.approval_required ? "approved" : "not_required",
+                    approval_status: approvalStatus,
                     risk_reasons: risk.reasons,
                   },
                 },

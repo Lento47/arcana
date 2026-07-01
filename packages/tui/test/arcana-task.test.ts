@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test"
 import {
+  arcanaTaskInstruction,
+  arcanaTaskObjective,
   assessArcanaTaskRisk,
   arcanaRiskForTask,
   arcanaTaskFromPart,
@@ -18,6 +20,32 @@ test("parses Arcana slash task prefixes without treating unknown slash commands 
   })
   expect(parseArcanaPromptCommand("/unknown do work")).toBeUndefined()
   expect(parseArcanaPromptCommand("plain task")).toBeUndefined()
+})
+
+test("defines distinct objectives for Arcana slash task prefixes", () => {
+  expect(arcanaTaskObjective("contract")).toContain("execution contract")
+  expect(arcanaTaskObjective("actions")).toContain("action timeline")
+  expect(arcanaTaskObjective("diffgate")).toContain("gated mutations")
+  expect(arcanaTaskObjective("verify")).toContain("verification")
+  expect(arcanaTaskObjective("sovereignty")).toContain("provider and model accountability")
+  expect(arcanaTaskObjective("unknown")).toBeUndefined()
+})
+
+test("builds a compact synthetic Arcana task contract for model execution", () => {
+  expect(
+    arcanaTaskInstruction({
+      command: "contract",
+      risk: assessArcanaTaskRisk("upgrade auth dependency"),
+      approval_status: "approved",
+    }),
+  ).toContain("Command: /contract")
+  expect(
+    arcanaTaskInstruction({
+      command: "contract",
+      risk: assessArcanaTaskRisk("upgrade auth dependency"),
+      approval_status: "approved",
+    }),
+  ).toContain("Approval: approved")
 })
 
 test("classifies Arcana slash task risk from task text", () => {
