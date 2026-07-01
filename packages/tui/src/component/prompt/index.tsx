@@ -56,10 +56,7 @@ import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
-
-const ARCANA_PROMPT_COMMANDS = new Set(["contract", "actions", "diffgate", "verify", "sovereignty"])
-const ARCANA_HIGH_RISK_PATTERN = /\b(auth|security|permission|dependency|install|upgrade|lockfile|package|token|secret|credential|payment|billing|database|migration|deploy|production|prod)\b/i
-const ARCANA_CRITICAL_RISK_PATTERN = /\b(rm\s+-rf|delete|drop|truncate|destroy|wipe|reset\s+--hard|force-push|revoke|rotate\s+secret|prod(?:uction)?\s+deploy)\b/i
+import { arcanaRiskForTask, parseArcanaPromptCommand } from "../../arcana/task"
 
 export type PromptProps = {
   sessionID?: string
@@ -140,27 +137,6 @@ function formatEditorContext(selection: EditorSelection) {
   })
 
   return `<system-reminder>${ranges.join("\n")} This may or may not be relevant to the current task.</system-reminder>\n`
-}
-
-function parseArcanaPromptCommand(input: string): { command: string; arguments: string } | undefined {
-  if (!input.startsWith("/")) return
-  const firstLineEnd = input.indexOf("\n")
-  const firstLine = firstLineEnd === -1 ? input : input.slice(0, firstLineEnd)
-  const restOfInput = firstLineEnd === -1 ? "" : input.slice(firstLineEnd + 1)
-  const [head = "", ...firstLineArgs] = firstLine.split(" ")
-  const command = head.slice(1)
-  if (!ARCANA_PROMPT_COMMANDS.has(command)) return
-
-  return {
-    command,
-    arguments: firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : ""),
-  }
-}
-
-function arcanaRiskForTask(task: string) {
-  if (ARCANA_CRITICAL_RISK_PATTERN.test(task)) return "critical"
-  if (ARCANA_HIGH_RISK_PATTERN.test(task)) return "high"
-  return "medium"
 }
 
 let stashed: { prompt: PromptInfo; cursor: number } | undefined

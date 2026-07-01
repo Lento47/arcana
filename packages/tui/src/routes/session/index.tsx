@@ -89,7 +89,7 @@ import { ARCANA_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } 
 import { PathFormatterProvider, usePathFormatter } from "../../context/path-format"
 import { ArtifactViewer } from "./artifact-viewer"
 import { getArtifact } from "../../util/artifacts"
-import { arcanaTaskFromPart, promptTextFromPart } from "./arcana-task"
+import { arcanaTaskFromPart, promptTextFromPart } from "../../arcana/task"
 
 addDefaultParsers(parsers.parsers)
 
