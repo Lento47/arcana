@@ -408,7 +408,9 @@ export const RunCommand: CommandModule = {
 
     if (args.prompt) {
       try {
-        const reply = await runTurn(String(args.prompt))
+        const oneShotPrompt = String(args.prompt)
+        await proofRuntime.recordUserCommand(oneShotPrompt, "One-shot user turn accepted.")
+        const reply = await runTurn(oneShotPrompt)
         process.stdout.write(reply + "\n")
 
         await proofRuntime.finalizeCompleted(
