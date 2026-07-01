@@ -13,7 +13,7 @@ const ARCANA_TASK_OBJECTIVES: Record<string, string> = {
   sovereignty:
     "Prioritize provider and model accountability: expose route, model choice, data boundary, fallback behavior, cost, latency, and privacy implications.",
   consensus:
-    "Convene a multi-agent/model council for the task: gather proposals, critiques, votes, consensus, disagreement, and durable evidence in the consensus ledger.",
+    "Prepare a consensus work packet for the task: gather proposals, critiques, votes, agreement, disagreement, and durable evidence when recorded participants are available.",
 }
 const ARCANA_TASK_OBJECTIVE_LABELS: Record<string, string> = {
   contract: "execution contract",
@@ -21,7 +21,7 @@ const ARCANA_TASK_OBJECTIVE_LABELS: Record<string, string> = {
   diffgate: "diff gate",
   verify: "verification",
   sovereignty: "model route",
-  consensus: "multi-agent consensus",
+  consensus: "consensus evidence",
 }
 const ARCANA_HIGH_RISK_PATTERN =
   /\b(auth|security|permission|dependency|install|upgrade|lockfile|package|token|secret|credential|payment|billing|database|migration|deploy|production|prod)\b/i

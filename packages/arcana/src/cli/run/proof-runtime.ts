@@ -24,7 +24,7 @@ const ARCANA_SLASH_OBJECTIVES: Record<string, string> = {
   sovereignty:
     "Prioritize provider and model accountability: expose route, model choice, data boundary, fallback behavior, cost, latency, and privacy implications.",
   consensus:
-    "Convene a multi-agent/model council for the task: gather proposals, critiques, votes, consensus, disagreement, and durable evidence in the consensus ledger.",
+    "Prepare a consensus work packet for the task: gather proposals, critiques, votes, agreement, disagreement, and durable evidence when recorded participants are available.",
 }
 
 export type ProofRuntimeOptions = {
