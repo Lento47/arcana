@@ -26,6 +26,7 @@ import {
   Show,
   on,
   For,
+  type JSX,
 } from "solid-js"
 import { TuiPathsProvider, TuiStartupProvider, TuiTerminalEnvironmentProvider, useTuiStartup } from "./context/runtime"
 import { DialogProvider, useDialog } from "./ui/dialog"
@@ -971,6 +972,78 @@ function MLEvidencePanel(props: { evidence: RunProofMLEvidenceView[]; latestOnly
   )
 }
 
+function ArcanaSurface(props: { title: string; path?: string; meta?: string; children: JSX.Element }) {
+  const { theme } = useTheme()
+  const dialog = useDialog()
+  return (
+    <box paddingLeft={1} paddingRight={1} gap={1} paddingBottom={1}>
+      <box gap={0}>
+        <box flexDirection="row" justifyContent="space-between">
+          <text fg={theme.text}>
+            <b>ARCANA / {props.title}</b>
+          </text>
+          <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+            esc
+          </text>
+        </box>
+        <Show when={props.meta}>
+          {(meta) => <text fg={theme.textMuted}>{meta()}</text>}
+        </Show>
+        <Show when={props.path}>
+          {(path) => <text fg={theme.textMuted}>proof {path()}</text>}
+        </Show>
+      </box>
+      {props.children}
+    </box>
+  )
+}
+
+function ArcanaSection(props: { title: string; detail?: string | number; children: JSX.Element }) {
+  const { theme } = useTheme()
+  return (
+    <box gap={0}>
+      <text fg={theme.text}>
+        <b>{props.title}</b>
+        {props.detail === undefined ? "" : ` ${props.detail}`}
+      </text>
+      {props.children}
+    </box>
+  )
+}
+
+function ArcanaMetricLine(props: { items: Array<string | undefined | false> }) {
+  const { theme } = useTheme()
+  const value = () => props.items.filter((item): item is string => typeof item === "string" && item.length > 0).join("  ")
+  return <Show when={value()}>{(line) => <text fg={theme.text}>{line()}</text>}</Show>
+}
+
+function ArcanaTapeItem(props: {
+  time?: string
+  kind: string
+  summary: string
+  detail?: string
+  tone?: "normal" | "muted" | "warning" | "error"
+}) {
+  const { theme } = useTheme()
+  const color = () =>
+    props.tone === "warning"
+      ? theme.warning
+      : props.tone === "error"
+        ? theme.error
+        : props.tone === "muted"
+          ? theme.textMuted
+          : theme.text
+  return (
+    <box gap={0}>
+      <text fg={color()}>
+        {props.time ? `${props.time} ` : ""}
+        {props.kind.padEnd(10)} {props.summary}
+      </text>
+      <Show when={props.detail}>{(detail) => <text fg={theme.textMuted}>  {detail()}</text>}</Show>
+    </box>
+  )
+}
+
 function DialogRunProofContract(props: {
   proof: RunProofView
   path: string
@@ -979,39 +1052,42 @@ function DialogRunProofContract(props: {
   onApproveRollbackRestore?: () => void
 }) {
   const { theme } = useTheme()
-  const dialog = useDialog()
   const contract = () => props.proof.contract
   const rollback = () => props.proof.rollback
   const restoreCommand = () => rollbackRestoreCommandValue(props.proof)
   const mlEvidence = () => props.proof.ml_evidence ?? []
   const latestTurnEvidence = () => mlEvidence().findLast((item) => item.kind === "turn")
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text fg={theme.text}>
-          <b>Execution Contract</b>
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
-      </box>
-      <text fg={theme.textMuted}>{props.path}</text>
+    <ArcanaSurface
+      title="CONTRACT"
+      path={props.path}
+      meta={`run ${compactProofId(props.proof.id)}  state ${props.proof.lifecycle?.status ?? "unknown"}`}
+    >
       <Show when={contract()} fallback={<text fg={theme.warning}>Active RunProof has no execution contract.</text>}>
         {(value) => (
           <box gap={1}>
-            <text fg={theme.text}>Goal: {value().goal ?? props.proof.user_intent ?? "not recorded"}</text>
-            <text fg={theme.text}>Scope: {value().scope ?? "not recorded"}</text>
-            <text fg={theme.text}>Risk: {value().risk_level ?? "not recorded"}</text>
-            <text fg={theme.text}>Status: {value().status ?? "not recorded"}</text>
-            <text fg={theme.text}>Allowed files</text>
-            <FieldList items={value().allowed_files} empty="No file allowlist recorded." />
-            <text fg={theme.text}>Allowed commands</text>
-            <FieldList items={value().allowed_commands} empty="No command allowlist recorded." />
-            <text fg={theme.text}>Required approvals</text>
-            <FieldList items={value().required_approvals} empty="No required approvals recorded." />
-            <text fg={theme.text}>Expected artifacts</text>
-            <FieldList items={value().expected_artifacts} empty="No expected artifacts recorded." />
-            <text fg={theme.text}>Rollback plan: {value().rollback_plan ?? "not recorded"}</text>
+            <ArcanaSection title="Execution Terms">
+              <box gap={0}>
+                <text fg={theme.text}>Goal: {value().goal ?? props.proof.user_intent ?? "not recorded"}</text>
+                <text fg={theme.text}>Scope: {value().scope ?? "not recorded"}</text>
+                <ArcanaMetricLine
+                  items={[`risk=${value().risk_level ?? "not recorded"}`, `status=${value().status ?? "not recorded"}`]}
+                />
+              </box>
+            </ArcanaSection>
+            <ArcanaSection title="Allowed Files">
+              <FieldList items={value().allowed_files} empty="No file allowlist recorded." />
+            </ArcanaSection>
+            <ArcanaSection title="Allowed Commands">
+              <FieldList items={value().allowed_commands} empty="No command allowlist recorded." />
+            </ArcanaSection>
+            <ArcanaSection title="Required Approvals">
+              <FieldList items={value().required_approvals} empty="No required approvals recorded." />
+            </ArcanaSection>
+            <ArcanaSection title="Expected Artifacts">
+              <FieldList items={value().expected_artifacts} empty="No expected artifacts recorded." />
+            </ArcanaSection>
+            <ArcanaTapeItem kind="ROLLBACK" summary={value().rollback_plan ?? "not recorded"} />
             <Show when={rollback()?.strategy && rollback()?.strategy !== "none"}>
               <box gap={0}>
                 <text fg={theme.text}>Rollback checkpoint: {rollbackSummary(props.proof)}</text>
@@ -1045,20 +1121,20 @@ function DialogRunProofContract(props: {
                 </Show>
               </box>
             </Show>
-            <text fg={theme.text}>Verification steps</text>
-            <FieldList items={value().verification_steps} empty="No verification steps recorded." />
+            <ArcanaSection title="Verification Steps">
+              <FieldList items={value().verification_steps} empty="No verification steps recorded." />
+            </ArcanaSection>
           </box>
         )}
       </Show>
       <Show when={latestTurnEvidence()}>
         {(evidence) => (
-          <box gap={0}>
-            <text fg={theme.text}>ML posture</text>
+          <ArcanaSection title="ML Posture">
             <MLEvidencePanel evidence={[evidence()]} />
-          </box>
+          </ArcanaSection>
         )}
       </Show>
-    </box>
+    </ArcanaSurface>
   )
 }
 
@@ -1142,7 +1218,6 @@ function DialogRunProofActions(props: {
   onApproveRollbackRestore?: () => void
 }) {
   const { theme } = useTheme()
-  const dialog = useDialog()
   const events = () => props.proof.events ?? []
   const fileReads = () => props.proof.execution?.file_reads ?? []
   const fileWrites = () => props.proof.execution?.file_writes ?? []
@@ -1153,29 +1228,21 @@ function DialogRunProofActions(props: {
   const tokens = () => props.proof.token_usage
   const restoreCommand = () => rollbackRestoreCommandValue(props.proof)
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text fg={theme.text}>
-          <b>RunProof Tape</b>
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
-      </box>
-      <text fg={theme.textMuted}>{props.path}</text>
-      <box gap={0}>
-        <text fg={theme.text}>
-          Run: {compactProofId(props.proof.id)} State: {status()} Risk: {risk()}
-        </text>
-        <text fg={theme.text}>Intent: {props.proof.user_intent ?? "not recorded"}</text>
+    <ArcanaSurface title="ACTIONS" path={props.path} meta={`run ${compactProofId(props.proof.id)}`}>
+      <ArcanaSection title="Run State">
+        <box gap={0}>
+          <ArcanaMetricLine
+            items={[`state=${status()}`, `risk=${risk()}`, score() === undefined ? undefined : `proof=${score()}/100`]}
+          />
+          <text fg={theme.text}>Intent: {props.proof.user_intent ?? "not recorded"}</text>
+        </box>
+      </ArcanaSection>
+      <ArcanaSection title="Governance">
         <text fg={props.proof.risk?.required_approval ? theme.warning : theme.textMuted}>
           Approval: {props.proof.risk?.required_approval ? "required" : "not required"}
         </text>
         <FieldList items={props.proof.risk?.reasons} empty="No risk reasons recorded." />
-        <text fg={theme.textMuted}>
-          Rollback: {rollbackSummary(props.proof)}
-          {score() === undefined ? "" : `  Proof: ${score()}/100`}
-        </text>
+        <text fg={theme.textMuted}>Rollback: {rollbackSummary(props.proof)}</text>
         <Show when={props.proof.rollback?.restore_command}>
           <box gap={0}>
             <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
@@ -1223,88 +1290,92 @@ function DialogRunProofActions(props: {
           Evidence: {fileReads().length} context read(s) {fileWrites().length} file write(s) {shellCommands().length}{" "}
           shell command(s)
         </text>
-      </box>
+      </ArcanaSection>
       <Show when={fileReads().length > 0 || fileWrites().length > 0 || shellCommands().length > 0}>
-        <box gap={0}>
-          <text fg={theme.text}>Recent evidence</text>
+        <ArcanaSection title="Recent Evidence">
           <For each={fileReads().slice(-3)}>
             {(read) => (
-              <text fg={theme.textMuted}>
-                READ {read.path ?? "unknown path"} {read.exists === false ? "missing" : (read.reason ?? "")}
-              </text>
+              <ArcanaTapeItem
+                kind="READ"
+                summary={read.path ?? "unknown path"}
+                detail={read.exists === false ? "missing" : (read.reason ?? "")}
+                tone="muted"
+              />
             )}
           </For>
           <For each={fileWrites().slice(-3)}>
             {(write) => (
-              <text fg={theme.textMuted}>
-                WRITE {write.mode ?? "unknown"} {write.path ?? "unknown path"} {write.reason ?? ""}
-              </text>
+              <ArcanaTapeItem
+                kind="WRITE"
+                summary={`${write.mode ?? "unknown"} ${write.path ?? "unknown path"}`}
+                detail={write.reason ?? ""}
+                tone="muted"
+              />
             )}
           </For>
           <For each={shellCommands().slice(-3)}>
             {(cmd) => (
-              <text fg={theme.textMuted}>
-                SHELL {cmd.status ?? "unknown"} {cmd.command ?? "unknown command"} {cmd.risk ?? ""}
-              </text>
+              <ArcanaTapeItem
+                kind="SHELL"
+                summary={`${cmd.status ?? "unknown"} ${cmd.command ?? "unknown command"}`}
+                detail={cmd.risk ?? ""}
+                tone="muted"
+              />
             )}
           </For>
-        </box>
+        </ArcanaSection>
       </Show>
-      <box gap={0}>
-        <text fg={theme.text}>
-          Consensus evidence ({props.proof.consensus?.length ?? 0} record
-          {props.proof.consensus?.length === 1 ? "" : "s"})
-        </text>
+      <ArcanaSection
+        title="Consensus Evidence"
+        detail={`${props.proof.consensus?.length ?? 0} record${props.proof.consensus?.length === 1 ? "" : "s"}`}
+      >
         <ConsensusEvidencePanel consensus={props.proof.consensus ?? []} />
-      </box>
-      <box gap={0}>
-        <text fg={theme.text}>
-          ML evidence ({props.proof.ml_evidence?.length ?? 0} signal{props.proof.ml_evidence?.length === 1 ? "" : "s"})
-        </text>
+      </ArcanaSection>
+      <ArcanaSection
+        title="ML Evidence"
+        detail={`${props.proof.ml_evidence?.length ?? 0} signal${props.proof.ml_evidence?.length === 1 ? "" : "s"}`}
+      >
         <MLEvidencePanel evidence={props.proof.ml_evidence ?? []} />
-      </box>
+      </ArcanaSection>
       <Show when={events().length > 0} fallback={<text fg={theme.warning}>No RunProof events recorded.</text>}>
         <For each={events()}>
           {(event) => (
-            <box gap={0}>
-              <text fg={theme.text}>
-                {eventTime(event.timestamp)} {eventLabel(event.type)} {event.actor ?? "unknown"}
-              </text>
-              <text fg={theme.text}>{event.summary ?? "No summary recorded."}</text>
-              <Show when={event.risk || event.status}>
-                <text fg={theme.textMuted}>
-                  {[event.risk ? `risk=${event.risk}` : undefined, event.status ? `status=${event.status}` : undefined]
-                    .filter(Boolean)
-                    .join("  ")}
-                </text>
-              </Show>
-              <Show when={refsText(event.refs)}>{(refs) => <text fg={theme.textMuted}>{refs()}</text>}</Show>
-            </box>
+            <ArcanaTapeItem
+              time={eventTime(event.timestamp)}
+              kind={eventLabel(event.type)}
+              summary={event.summary ?? "No summary recorded."}
+              detail={[
+                event.actor ? `actor=${event.actor}` : undefined,
+                event.risk ? `risk=${event.risk}` : undefined,
+                event.status ? `status=${event.status}` : undefined,
+                refsText(event.refs),
+              ]
+                .filter(Boolean)
+                .join("  ")}
+            />
           )}
         </For>
       </Show>
-    </box>
+    </ArcanaSurface>
   )
 }
 
 function DiffList(props: { title: string; diffs: RunProofDiffView[]; empty: string }) {
   const { theme } = useTheme()
   return (
-    <box gap={0}>
-      <text fg={theme.text}>{props.title}</text>
+    <ArcanaSection title={props.title}>
       <Show when={props.diffs.length > 0} fallback={<text fg={theme.textMuted}>{props.empty}</text>}>
         <For each={props.diffs}>
           {(diff) => (
-            <box gap={0}>
-              <text fg={theme.text}>
-                {diff.path ?? "unknown path"} +{diff.additions ?? 0} -{diff.deletions ?? 0}
-              </text>
-              <text fg={theme.textMuted}>{diff.summary ?? diff.id ?? "No diff summary recorded."}</text>
-            </box>
+            <ArcanaTapeItem
+              kind={diff.status?.toUpperCase() ?? "DIFF"}
+              summary={`${diff.path ?? "unknown path"} +${diff.additions ?? 0} -${diff.deletions ?? 0}`}
+              detail={diff.summary ?? diff.id ?? "No diff summary recorded."}
+            />
           )}
         </For>
       </Show>
-    </box>
+    </ArcanaSection>
   )
 }
 
@@ -1316,7 +1387,6 @@ function DialogRunProofDiffGate(props: {
   onApproveRollbackRestore?: () => void
 }) {
   const { theme } = useTheme()
-  const dialog = useDialog()
   const diffs = () => props.proof.diffs ?? { proposed: [], applied: [], rejected: [] }
   const pending = () => diffs().proposed.length
   const applied = () => diffs().applied.length
@@ -1329,24 +1399,18 @@ function DialogRunProofDiffGate(props: {
       ? "required"
       : "not required"
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text fg={theme.text}>
-          <b>Diff Gate</b>
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
-      </box>
-      <text fg={theme.textMuted}>{props.path}</text>
-      <box gap={0}>
-        <text fg={theme.text}>
-          Pending: {pending()} Applied: {applied()} Rejected: {rejected()}
-        </text>
-        <text fg={theme.text}>Write evidence: {writes().length} file write(s)</text>
-        <text fg={theme.text}>
-          Risk: {risk()} Approval: {approval()}
-        </text>
+    <ArcanaSurface title="DIFF GATE" path={props.path} meta={`run ${compactProofId(props.proof.id)}`}>
+      <ArcanaSection title="Mutation Gate">
+        <ArcanaMetricLine
+          items={[
+            `pending=${pending()}`,
+            `applied=${applied()}`,
+            `rejected=${rejected()}`,
+            `writes=${writes().length}`,
+            `risk=${risk()}`,
+            `approval=${approval()}`,
+          ]}
+        />
         <FieldList items={props.proof.risk?.reasons} empty="No risk reasons recorded." />
         <text fg={theme.textMuted}>Rollback: {rollbackSummary(props.proof)}</text>
         <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
@@ -1376,11 +1440,11 @@ function DialogRunProofDiffGate(props: {
             </box>
           )}
         </Show>
-      </box>
+      </ArcanaSection>
       <DiffList title="Proposed diffs" diffs={diffs().proposed} empty="No proposed diffs." />
       <DiffList title="Applied diffs" diffs={diffs().applied} empty="No applied diffs." />
       <DiffList title="Rejected diffs" diffs={diffs().rejected} empty="No rejected diffs." />
-    </box>
+    </ArcanaSurface>
   )
 }
 
@@ -1399,34 +1463,32 @@ function statusMark(status: string | undefined): string {
 function CheckList(props: { title: string; checks: RunProofCheckView[]; empty: string }) {
   const { theme } = useTheme()
   return (
-    <box gap={0}>
-      <text fg={theme.text}>{props.title}</text>
+    <ArcanaSection title={props.title}>
       <Show when={props.checks.length > 0} fallback={<text fg={theme.textMuted}>{props.empty}</text>}>
         <For each={props.checks}>
           {(check) => (
-            <box gap={0}>
-              <text fg={theme.text}>
-                {statusMark(check.status)} {checkLabel(check)}
-              </text>
-              <Show when={check.summary || check.evidence}>
-                <text fg={theme.textMuted}>{check.summary ?? check.evidence}</text>
-              </Show>
-              <Show when={check.passed !== undefined || check.failed !== undefined || check.skipped !== undefined}>
-                <text fg={theme.textMuted}>
-                  passed={check.passed ?? 0} failed={check.failed ?? 0} skipped={check.skipped ?? 0}
-                </text>
-              </Show>
-            </box>
+            <ArcanaTapeItem
+              kind={statusMark(check.status)}
+              summary={checkLabel(check)}
+              detail={[
+                check.summary ?? check.evidence,
+                check.passed !== undefined || check.failed !== undefined || check.skipped !== undefined
+                  ? `passed=${check.passed ?? 0} failed=${check.failed ?? 0} skipped=${check.skipped ?? 0}`
+                  : undefined,
+              ]
+                .filter(Boolean)
+                .join("  ")}
+              tone={check.status === "failed" ? "error" : check.status === "passed" ? "normal" : "muted"}
+            />
           )}
         </For>
       </Show>
-    </box>
+    </ArcanaSection>
   )
 }
 
 function DialogRunProofVerify(props: { proof: RunProofView; path: string }) {
   const { theme } = useTheme()
-  const dialog = useDialog()
   const verification = () =>
     props.proof.verification ?? {
       diagnostics: [],
@@ -1457,26 +1519,19 @@ function DialogRunProofVerify(props: { proof: RunProofView; path: string }) {
   const pending = () => allChecks().filter((check) => check.status !== "passed" && check.status !== "failed").length
   const score = () => props.proof.final_evidence?.proof_score
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text fg={theme.text}>
-          <b>Verifier Board</b>
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
-      </box>
-      <text fg={theme.textMuted}>{props.path}</text>
-      <box gap={0}>
-        <text fg={theme.text}>
-          Passed: {passed()} Failed: {failed()} Pending: {pending()}
-        </text>
-        <text fg={theme.text}>
-          Final: {props.proof.final_evidence?.completed === true ? "completed" : "open"}
-          {score() === undefined ? "" : `  Proof: ${score()}/100`}
-        </text>
+    <ArcanaSurface title="VERIFY" path={props.path} meta={`run ${compactProofId(props.proof.id)}`}>
+      <ArcanaSection title="Verifier Board">
+        <ArcanaMetricLine
+          items={[
+            `passed=${passed()}`,
+            `failed=${failed()}`,
+            `pending=${pending()}`,
+            `final=${props.proof.final_evidence?.completed === true ? "completed" : "open"}`,
+            score() === undefined ? undefined : `proof=${score()}/100`,
+          ]}
+        />
         <text fg={theme.textMuted}>{props.proof.final_evidence?.summary ?? "No final evidence summary recorded."}</text>
-      </box>
+      </ArcanaSection>
       <CheckList
         title="Required checks"
         checks={fixedChecks()}
@@ -1487,16 +1542,16 @@ function DialogRunProofVerify(props: { proof: RunProofView; path: string }) {
       <CheckList title="Manual checks" checks={verification().manual_checks} empty="No manual checks recorded." />
       <Show when={verification().verifier_review}>
         {(review) => (
-          <box gap={0}>
+          <ArcanaSection title="Verifier Review">
             <text fg={theme.text}>
-              Verifier review: {statusMark(review().status)} {review().model ?? ""}
+              {statusMark(review().status)} {review().model ?? ""}
             </text>
             <text fg={theme.textMuted}>{review().summary ?? "No verifier summary recorded."}</text>
             <FieldList items={review().concerns} empty="No verifier concerns recorded." />
-          </box>
+          </ArcanaSection>
         )}
       </Show>
-    </box>
+    </ArcanaSurface>
   )
 }
 
@@ -1515,26 +1570,16 @@ function latencyLabel(value: number | undefined): string {
 
 function DialogRunProofSovereignty(props: { proof: RunProofView; path: string }) {
   const { theme } = useTheme()
-  const dialog = useDialog()
   const route = () => props.proof.sovereignty
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text fg={theme.text}>
-          <b>Model Sovereignty</b>
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
-      </box>
-      <text fg={theme.textMuted}>{props.path}</text>
+    <ArcanaSurface title="SOVEREIGNTY" path={props.path} meta={`run ${compactProofId(props.proof.id)}`}>
       <Show
         when={route()}
         fallback={<text fg={theme.warning}>No provider/model route evidence recorded in this RunProof.</text>}
       >
         {(value) => (
           <box gap={1}>
-            <box gap={0}>
+            <ArcanaSection title="Provider Route">
               <text fg={theme.text}>Provider: {value().provider ?? "not recorded"}</text>
               <text fg={theme.text}>Model: {value().model ?? "not recorded"}</text>
               <text fg={theme.text}>Route: {value().route ?? "not recorded"}</text>
@@ -1548,31 +1593,22 @@ function DialogRunProofSovereignty(props: { proof: RunProofView; path: string })
               <text fg={theme.textMuted}>
                 Cost: {costLabel(value().estimated_cost_usd)} Latency: {latencyLabel(value().latency_ms)}
               </text>
-            </box>
-            <box gap={0}>
+            </ArcanaSection>
+            <ArcanaSection title="Route Evidence">
               <text fg={theme.textMuted}>Recorded: {eventTime(value().timestamp)}</text>
               <text fg={theme.textMuted}>{value().reason ?? value().summary ?? "No routing reason recorded."}</text>
-            </box>
+            </ArcanaSection>
           </box>
         )}
       </Show>
-    </box>
+    </ArcanaSurface>
   )
 }
 
 function DialogRunProofMissing(props: { result: Extract<ProofLoadResult, { status: "unbound" | "error" }> }) {
   const { theme } = useTheme()
-  const dialog = useDialog()
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text fg={theme.text}>
-          <b>RunProof</b>
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
-        </text>
-      </box>
+    <ArcanaSurface title="RUNPROOF">
       <Show
         when={props.result.status === "unbound" ? props.result : undefined}
         fallback={
@@ -1581,9 +1617,14 @@ function DialogRunProofMissing(props: { result: Extract<ProofLoadResult, { statu
           </text>
         }
       >
-        <text fg={theme.warning}>No active RunProof is bound to this TUI session</text>
+        <ArcanaTapeItem
+          kind="UNBOUND"
+          summary="No active RunProof is bound to this TUI session"
+          detail="Use an Arcana task command with a prompt, for example /contract <task> or /consensus <task>."
+          tone="warning"
+        />
       </Show>
-    </box>
+    </ArcanaSurface>
   )
 }
 
@@ -2207,12 +2248,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       {
         name: "arcana.consensus",
         slashName: "consensus",
-        title: "Run multi-agent consensus task",
-        desc: "Use /consensus <prompt> to gather proposals, critiques, votes, and consensus evidence",
+        title: "Prepare consensus evidence task",
+        desc: "Use /consensus <prompt> to request proposals, critiques, votes, and recorded consensus evidence",
         category: "Arcana",
         run: () => {
           toast.show({
-            message: "Use /consensus <prompt> to submit a multi-agent consensus task",
+            message: "Use /consensus <prompt> to submit a consensus evidence task",
             variant: "info",
           })
           dialog.clear()
