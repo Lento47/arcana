@@ -1,6 +1,18 @@
 import type { Part } from "@arcana/sdk/v2"
 
 const ARCANA_PROMPT_COMMANDS = new Set(["contract", "actions", "diffgate", "verify", "sovereignty"])
+const ARCANA_TASK_OBJECTIVES: Record<string, string> = {
+  contract:
+    "Compile the task into an execution contract first: goal, scope, allowed work, risk, approvals, artifacts, rollback, and verification.",
+  actions:
+    "Execute the task as an auditable action timeline: plan, inspected context, tool requests, decisions, commands, diffs, checks, and evidence.",
+  diffgate:
+    "Treat file changes as gated mutations: identify intended diffs, risk, required review, verification gates, and rollback before accepting changes.",
+  verify:
+    "Prioritize verification: define evidence requirements, run or request checks, report failures, and avoid claiming completion without proof.",
+  sovereignty:
+    "Prioritize provider and model accountability: expose route, model choice, data boundary, fallback behavior, cost, latency, and privacy implications.",
+}
 const ARCANA_HIGH_RISK_PATTERN =
   /\b(auth|security|permission|dependency|install|upgrade|lockfile|package|token|secret|credential|payment|billing|database|migration|deploy|production|prod)\b/i
 const ARCANA_CRITICAL_RISK_PATTERN =
@@ -33,6 +45,29 @@ export function parseArcanaPromptCommand(input: string): { command: string; argu
     command,
     arguments: firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : ""),
   }
+}
+
+export function arcanaTaskObjective(command: string): string | undefined {
+  return ARCANA_TASK_OBJECTIVES[command]
+}
+
+export function arcanaTaskInstruction(input: {
+  command: string
+  risk: ArcanaTaskRisk
+  approval_status: "approved" | "not_required"
+}) {
+  const objective = arcanaTaskObjective(input.command)
+  if (!objective) return undefined
+  return [
+    "<arcana-task>",
+    `Command: /${input.command}`,
+    `Objective: ${objective}`,
+    `Risk: ${input.risk.level}`,
+    `Approval: ${input.approval_status}`,
+    `Risk reasons: ${input.risk.reasons.join(" ")}`,
+    "The next user text part is the task body.",
+    "</arcana-task>",
+  ].join("\n")
 }
 
 export function assessArcanaTaskRisk(task: string): ArcanaTaskRisk {
