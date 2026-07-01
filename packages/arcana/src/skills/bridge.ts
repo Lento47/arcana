@@ -67,12 +67,12 @@ export async function generateBridgeConfig(): Promise<string> {
   const configPath = join(cacheDir, "opencode-config.json")
   await writeFile(configPath, JSON.stringify(config, null, 2), "utf8")
 
-  // Ensure models.dev cache exists — a cold fetch has 10s timeout.
+  // Ensure models.dev cache exists. Keep the warmer short so startup is never held hostage by a slow network.
   // Warm it once in the background so the TUI doesn't block on first run.
   const modelsDevCache = join(homedir(), ".cache", "arcana", "models-dev.json")
   if (!existsSync(modelsDevCache)) {
     // Fire-and-forget: don't block startup on this
-    fetch("https://models.dev/api.json", { signal: AbortSignal.timeout(10000) })
+    fetch("https://models.dev/api.json", { signal: AbortSignal.timeout(3000) })
       .then(async (r) => {
         if (!r.ok) return // don't cache an error page
         const text = await r.text()
