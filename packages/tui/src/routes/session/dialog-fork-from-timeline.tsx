@@ -9,6 +9,7 @@ import { useDialog, type DialogContext } from "../../ui/dialog"
 import type { PromptInfo } from "../../component/prompt/history"
 import { stripPromptPartIDs as strip } from "../../prompt/part"
 import { Glyph } from "../../branding"
+import { promptTextFromPart } from "./arcana-task"
 
 export function DialogForkFromTimeline(props: { sessionID: string; onMove: (messageID?: string) => void }) {
   const sync = useSync()
@@ -54,7 +55,7 @@ export function DialogForkFromTimeline(props: { sessionID: string; onMove: (mess
           const prompt = parts.reduce(
             (agg, part) => {
               if (part.type === "text") {
-                if (!part.synthetic) agg.input += part.text
+                agg.input += promptTextFromPart(part)
               }
               if (part.type === "file") agg.parts.push(strip(part))
               return agg
