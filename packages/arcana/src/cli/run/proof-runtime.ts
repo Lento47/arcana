@@ -23,6 +23,8 @@ const ARCANA_SLASH_OBJECTIVES: Record<string, string> = {
     "Prioritize verification: define evidence requirements, run or request checks, report failures, and avoid claiming completion without proof.",
   sovereignty:
     "Prioritize provider and model accountability: expose route, model choice, data boundary, fallback behavior, cost, latency, and privacy implications.",
+  consensus:
+    "Convene a multi-agent/model council for the task: gather proposals, critiques, votes, consensus, disagreement, and durable evidence in the consensus ledger.",
 }
 
 export type ProofRuntimeOptions = {

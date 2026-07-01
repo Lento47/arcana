@@ -19,6 +19,10 @@ test("parses Arcana slash task prefixes without treating unknown slash commands 
     command: "actions",
     arguments: "inspect timeline\nthen continue",
   })
+  expect(parseArcanaPromptCommand("/consensus compare migration strategies")).toEqual({
+    command: "consensus",
+    arguments: "compare migration strategies",
+  })
   expect(parseArcanaPromptCommand("/unknown do work")).toBeUndefined()
   expect(parseArcanaPromptCommand("plain task")).toBeUndefined()
 })
@@ -29,9 +33,11 @@ test("defines distinct objectives for Arcana slash task prefixes", () => {
   expect(arcanaTaskObjective("diffgate")).toContain("gated mutations")
   expect(arcanaTaskObjective("verify")).toContain("verification")
   expect(arcanaTaskObjective("sovereignty")).toContain("provider and model accountability")
+  expect(arcanaTaskObjective("consensus")).toContain("multi-agent/model council")
   expect(arcanaTaskObjective("unknown")).toBeUndefined()
   expect(arcanaTaskObjectiveLabel("contract")).toBe("execution contract")
   expect(arcanaTaskObjectiveLabel("sovereignty")).toBe("model route")
+  expect(arcanaTaskObjectiveLabel("consensus")).toBe("multi-agent consensus")
   expect(arcanaTaskObjectiveLabel("unknown")).toBeUndefined()
 })
 
