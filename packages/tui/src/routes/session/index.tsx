@@ -1524,8 +1524,13 @@ function UserMessage(props: {
         >
           {/* ❯ glyph prefix — cleaner arcane identity, replacing opencode's left border rail */}
           <box flexDirection="row">
-            <box width={2}>
+            <box width={8} flexDirection="column">
               <text fg={color()}>{Glyph.prompt}</text>
+              <Show when={queued()}>
+                <text fg={queuedFg()}>
+                  <span style={{ bg: color(), fg: queuedFg(), bold: true }}>QUEUED</span>
+                </text>
+              </Show>
             </box>
             <box
               flexGrow={1}
@@ -1542,13 +1547,6 @@ function UserMessage(props: {
             backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
             flexShrink={0}
           >
-            <Show when={queued()}>
-              <box flexDirection="row" paddingBottom={1}>
-                <text fg={theme.textMuted}>
-                  <span style={{ bg: color(), fg: queuedFg(), bold: true }}> QUEUED </span>
-                </text>
-              </box>
-            </Show>
             <Show when={arcanaTask()}>
               {(task) => (
                 <box flexDirection="row" paddingBottom={1}>

@@ -25,6 +25,14 @@ function compactModelName(value: string): string {
   return value.length > 34 ? `${value.slice(0, 31)}...` : value
 }
 
+function tokenStateLabel(percent: number | null, compacting: boolean): string {
+  if (compacting) return "compacting"
+  if (percent === null) return "unbounded"
+  if (percent >= 95) return "critical"
+  if (percent >= 80) return "high"
+  return "healthy"
+}
+
 // Minimal session metrics, rendered in the global app_bottom slot. Off-session
 // (home) it renders nothing. No sidebar — this thin line is the only metrics surface.
 function View(props: { api: TuiPluginApi }) {
@@ -178,12 +186,17 @@ function View(props: { api: TuiPluginApi }) {
         <Show when={usage()}>
           {(value) => (
             <text fg={theme().textMuted}>
+              <span style={{ fg: theme().primary }}>CTX</span>{" "}
               <span style={{ fg: theme().primary }}>{Locale.number(value().tokens)}</span> {Lexicon.Token.label}
               <Show when={value().percent !== null}>
                 <span style={{ fg: theme().secondary }}>
                   {Glyph.meter} {value().percent + "%"}
                 </span>
               </Show>
+              <span style={{ fg: compacting() ? theme().warning : theme().textMuted }}>
+                {" "}
+                {tokenStateLabel(value().percent, compacting())}
+              </span>
             </text>
           )}
         </Show>
