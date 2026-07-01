@@ -12,6 +12,19 @@ import {
   type VerificationStatus,
 } from "../../proof/index.js"
 
+const ARCANA_SLASH_OBJECTIVES: Record<string, string> = {
+  contract:
+    "Compile the task into an execution contract first: goal, scope, allowed work, risk, approvals, artifacts, rollback, and verification.",
+  actions:
+    "Execute the task as an auditable action timeline: plan, inspected context, tool requests, decisions, commands, diffs, checks, and evidence.",
+  diffgate:
+    "Treat file changes as gated mutations: identify intended diffs, risk, required review, verification gates, and rollback before accepting changes.",
+  verify:
+    "Prioritize verification: define evidence requirements, run or request checks, report failures, and avoid claiming completion without proof.",
+  sovereignty:
+    "Prioritize provider and model accountability: expose route, model choice, data boundary, fallback behavior, cost, latency, and privacy implications.",
+}
+
 export type ProofRuntimeOptions = {
   enabled: boolean
   prompt?: string
@@ -23,6 +36,7 @@ export type ProofRuntime = {
   manager?: ProofManager
   enabled: boolean
   activeProofPath(): string | undefined
+  recordArcanaSlashTask(input: ArcanaSlashTask): Promise<void>
   recordModelRoute(input: {
     provider: string
     model: string
@@ -131,8 +145,28 @@ export type ProofRuntime = {
   finalizeFailed(error: unknown): Promise<void>
 }
 
+export type ArcanaSlashTask = {
+  command: string
+  task: string
+  objective: string
+}
+
 function commandForPrompt(prompt: string | undefined): string {
   return prompt ? `arcana run --proof ${JSON.stringify(prompt)}` : "arcana run --proof"
+}
+
+export function parseArcanaSlashTask(input: string): ArcanaSlashTask | undefined {
+  if (!input.startsWith("/")) return
+  const firstLineEnd = input.indexOf("\n")
+  const firstLine = firstLineEnd === -1 ? input : input.slice(0, firstLineEnd)
+  const restOfInput = firstLineEnd === -1 ? "" : input.slice(firstLineEnd + 1)
+  const [head = "", ...firstLineArgs] = firstLine.split(" ")
+  const command = head.slice(1)
+  const objective = ARCANA_SLASH_OBJECTIVES[command]
+  if (!objective) return
+  const task = (firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")).trim()
+  if (!task) return
+  return { command, task, objective }
 }
 
 function tryGit(args: string[], cwd: string): string | undefined {
@@ -205,6 +239,44 @@ function assessInitialRisk(input: { prompt?: string; command: string }): {
   }
 }
 
+function assessArcanaSlashTaskRisk(task: ArcanaSlashTask): {
+  level: RiskLevel
+  reasons: string[]
+  required_approval: boolean
+} {
+  const text = `${task.command} ${task.task}`.toLowerCase()
+  const reasons = [`Arcana /${task.command} task objective: ${task.objective}`]
+
+  if (/\b(rm\s+-rf|delete|drop|truncate|destroy|wipe|reset\s+--hard|force-push|revoke|rotate\s+secret|prod(?:uction)?\s+deploy)\b/.test(text)) {
+    return {
+      level: "critical",
+      reasons: [...reasons, "Task references destructive, production, credential, or irreversible operations."],
+      required_approval: true,
+    }
+  }
+
+  if (/\b(auth|security|permission|dependency|install|upgrade|lockfile|package|token|secret|credential|payment|billing|database|migration|deploy|production|prod)\b/.test(text)) {
+    return {
+      level: "high",
+      reasons: [
+        ...reasons,
+        "Task references security, dependencies, data, deployment, billing, or credential-sensitive work.",
+      ],
+      required_approval: true,
+    }
+  }
+
+  return {
+    level: "medium",
+    reasons: [...reasons, "Arcana slash tasks are governed execution requests and should produce evidence."],
+    required_approval: false,
+  }
+}
+
+function appendUnique(list: string[], value: string): void {
+  if (!list.includes(value)) list.push(value)
+}
+
 async function saveAndPrint(manager: ProofManager): Promise<StoredRunProof> {
   const stored = await manager.save()
   process.stderr.write(`\n${manager.renderTerminal()}\n`)
@@ -240,10 +312,41 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
   }
   await saveSnapshot()
 
+  async function recordArcanaSlashTask(input: ArcanaSlashTask): Promise<void> {
+    if (!manager) return
+    const risk = assessArcanaSlashTaskRisk(input)
+    manager.proof.contract.goal = input.task
+    manager.proof.contract.scope = `Arcana /${input.command} governed task submitted by the operator.`
+    manager.proof.contract.risk_level = risk.level
+    appendUnique(manager.proof.contract.expected_artifacts, "RunProof evidence for Arcana slash task objective")
+    appendUnique(manager.proof.contract.verification_steps, "Record evidence before claiming the Arcana task is complete.")
+    if (risk.required_approval) appendUnique(manager.proof.contract.required_approvals, `Arcana /${input.command} task approval`)
+    manager.updatePlanSummary(`/${input.command}: ${input.objective}`)
+    manager.addPlanStep(input.objective)
+    manager.updateRisk(risk)
+    manager.recordEvent({
+      type: "plan.created",
+      actor: "user",
+      summary: `Arcana /${input.command} task accepted: ${input.objective}`,
+      risk: risk.level,
+      status: risk.required_approval ? "awaiting_approval" : manager.proof.lifecycle.status,
+      refs: { command: `/${input.command}`, contract_id: manager.proof.contract.id },
+      data: {
+        task: input.task,
+        objective: input.objective,
+        required_approval: risk.required_approval,
+        reasons: risk.reasons,
+      },
+    })
+    await saveSnapshot()
+  }
+
   return {
     manager,
     enabled: Boolean(manager),
     activeProofPath: () => activePath,
+
+    recordArcanaSlashTask,
 
     async recordModelRoute(input) {
       if (!manager) return
@@ -281,6 +384,8 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
         reversible: false,
         result_summary: summary,
       })
+      const arcanaTask = parseArcanaSlashTask(command)
+      if (arcanaTask) await recordArcanaSlashTask(arcanaTask)
       await saveSnapshot()
     },
 
