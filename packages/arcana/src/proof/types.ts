@@ -45,6 +45,7 @@ export type RunProofEventType =
   | "rollback.executed"
   | "sovereignty.routed"
   | "token.used"
+  | "consensus.recorded"
   | "ml.signal"
 
 export type ExecutionContract = {

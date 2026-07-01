@@ -179,6 +179,45 @@ describe("ProofRuntime live evidence capture", () => {
     }
   })
 
+  test("persists council consensus evidence to the active proof path", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "arcana-proof-runtime-"))
+    const previousActivePath = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+
+    try {
+      const runtime = await createProofRuntime({
+        enabled: true,
+        cwd,
+        command: "arcana run --proof",
+        prompt: "/consensus compare migration strategies",
+      })
+
+      await runtime.recordConsensus({
+        council_id: "council_1",
+        prompt: "compare migration strategies",
+        models: ["arcana/architect", "arcana/verifier"],
+        rounds: 2,
+        vote_mode: "majority",
+        status: "completed",
+        winner_model: "arcana/architect",
+        vote_tally: { a: 2 },
+        cost_tokens: { input: 120, output: 80 },
+        transcript: "Tally: a=2",
+      })
+
+      const stored = JSON.parse(await readFile(runtime.activeProofPath()!, "utf8"))
+      const proof = stored.proof ?? stored
+      const event = proof.events.find((item: { type: string }) => item.type === "consensus.recorded")
+      expect(event?.refs.council_id).toBe("council_1")
+      expect(event?.refs.winner_model).toBe("arcana/architect")
+      expect(event?.data.vote_tally).toEqual({ a: 2 })
+      expect(event?.data.cost_tokens).toEqual({ input: 120, output: 80 })
+    } finally {
+      if (previousActivePath === undefined) delete process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+      else process.env.ARCANA_ACTIVE_RUNPROOF_PATH = previousActivePath
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
   test("persists verification checks to the active proof path", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "arcana-proof-runtime-"))
     const previousActivePath = process.env.ARCANA_ACTIVE_RUNPROOF_PATH

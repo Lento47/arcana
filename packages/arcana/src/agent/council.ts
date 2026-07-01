@@ -158,12 +158,30 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner, memory?
 
   // 2. Validate args
   const models = args.models?.slice(0, 5) ?? []
-  if (models.length < 2) return "council: needs at least 2 models"
+  if (models.length < 2) {
+    await runner.config.proofGate?.recordConsensus?.({
+      prompt: args.prompt,
+      models,
+      rounds: args.rounds ?? 1,
+      vote_mode: args.vote_mode ?? "majority",
+      status: "failed",
+      errored: ["council needs at least 2 models"],
+    })
+    return "council: needs at least 2 models"
+  }
   const rounds = Math.min(args.rounds ?? 1, 2) as 1 | 2
   const voteMode: VoteMode = args.vote_mode ?? "majority"
   const judgeModel = args.judge_model ?? models[0]!
 
   if (voteMode === "judge" && !models.includes(judgeModel)) {
+    await runner.config.proofGate?.recordConsensus?.({
+      prompt: args.prompt,
+      models,
+      rounds,
+      vote_mode: voteMode,
+      status: "failed",
+      errored: [`judge_model "${judgeModel}" must be in the models list`],
+    })
     return `council: judge_model "${judgeModel}" must be in the models list`
   }
 
@@ -214,6 +232,16 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner, memory?
   })
   if (proposals.length < 2) {
     if (ledger && councilStore) councilStore.finalizeCouncilSession(ledger.id, { status: "failed" })
+    await runner.config.proofGate?.recordConsensus?.({
+      council_id: ledger?.id,
+      prompt: args.prompt,
+      models,
+      rounds,
+      vote_mode: voteMode,
+      status: "failed",
+      errored,
+      cost_tokens: { input: totalInput, output: totalOutput },
+    })
     return `council: need ≥2 successful proposals; got ${proposals.length}\nErrors:\n${errored.join("\n")}`
   }
 
@@ -363,6 +391,19 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner, memory?
     models_used: proposals.map((p) => p.spec),
     errored,
   }
+  await runner.config.proofGate?.recordConsensus?.({
+    council_id: result.council_id,
+    prompt: args.prompt,
+    models: result.models_used,
+    rounds: result.rounds,
+    vote_mode: voteMode,
+    status: "completed",
+    winner_model: result.winner_model,
+    vote_tally: result.vote_tally,
+    cost_tokens: result.cost_tokens,
+    errored: result.errored,
+    transcript: result.transcript,
+  })
   return formatResult(result)
 }
 
