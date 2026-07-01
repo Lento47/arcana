@@ -67,6 +67,42 @@ export type Feedback = {
   created_at: string
 }
 
+export type AgentCouncilSession = {
+  id: string
+  prompt: string
+  context?: string
+  vote_mode: string
+  rounds: number
+  judge_model?: string
+  winner_model?: string
+  winner?: string
+  status: "running" | "completed" | "failed"
+  created_at: string
+  updated_at: string
+}
+
+export type AgentCouncilMessage = {
+  id: string
+  council_id: string
+  agent_model: string
+  phase: "proposal" | "critique" | "vote" | "judge" | "error"
+  content?: string
+  input_tokens: number
+  output_tokens: number
+  error?: string
+  created_at: string
+}
+
+export type AgentCouncilVote = {
+  id: string
+  council_id: string
+  agent_model: string
+  vote?: string
+  justification?: string
+  raw: string
+  created_at: string
+}
+
 export type SearchResult = {
   type: "session" | "message" | "user_fact"
   id: string
@@ -560,6 +596,124 @@ export class MemoryStore {
       .prepare(`SELECT COUNT(*) AS total, SUM(CASE WHEN rating = 'up' THEN 1 ELSE 0 END) AS up, SUM(CASE WHEN rating = 'down' THEN 1 ELSE 0 END) AS down FROM feedback`)
       .get() as { total: number; up: number | null; down: number | null }
     return { total: row.total ?? 0, up: row.up ?? 0, down: row.down ?? 0 }
+  }
+
+  createCouncilSession(opts: {
+    prompt: string
+    context?: string
+    vote_mode: string
+    rounds: number
+    judge_model?: string
+  }): AgentCouncilSession {
+    const session: AgentCouncilSession = {
+      id: randomUUID(),
+      prompt: opts.prompt,
+      context: opts.context,
+      vote_mode: opts.vote_mode,
+      rounds: opts.rounds,
+      judge_model: opts.judge_model,
+      status: "running",
+      created_at: now(),
+      updated_at: now(),
+    }
+    this.db
+      .prepare(`INSERT INTO agent_council_sessions (id, prompt, context, vote_mode, rounds, judge_model, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        session.id,
+        session.prompt,
+        session.context ?? null,
+        session.vote_mode,
+        session.rounds,
+        session.judge_model ?? null,
+        session.status,
+        session.created_at,
+        session.updated_at,
+      )
+    return session
+  }
+
+  recordCouncilMessage(opts: {
+    council_id: string
+    agent_model: string
+    phase: AgentCouncilMessage["phase"]
+    content?: string
+    input_tokens?: number
+    output_tokens?: number
+    error?: string
+  }): AgentCouncilMessage {
+    const message: AgentCouncilMessage = {
+      id: randomUUID(),
+      council_id: opts.council_id,
+      agent_model: opts.agent_model,
+      phase: opts.phase,
+      content: opts.content,
+      input_tokens: opts.input_tokens ?? 0,
+      output_tokens: opts.output_tokens ?? 0,
+      error: opts.error,
+      created_at: now(),
+    }
+    this.db
+      .prepare(`INSERT INTO agent_council_messages (id, council_id, agent_model, phase, content, input_tokens, output_tokens, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        message.id,
+        message.council_id,
+        message.agent_model,
+        message.phase,
+        message.content ?? null,
+        message.input_tokens,
+        message.output_tokens,
+        message.error ?? null,
+        message.created_at,
+      )
+    return message
+  }
+
+  recordCouncilVote(opts: {
+    council_id: string
+    agent_model: string
+    vote?: string
+    justification?: string
+    raw: string
+  }): AgentCouncilVote {
+    const vote: AgentCouncilVote = {
+      id: randomUUID(),
+      council_id: opts.council_id,
+      agent_model: opts.agent_model,
+      vote: opts.vote,
+      justification: opts.justification,
+      raw: opts.raw,
+      created_at: now(),
+    }
+    this.db
+      .prepare(`INSERT INTO agent_council_votes (id, council_id, agent_model, vote, justification, raw, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(vote.id, vote.council_id, vote.agent_model, vote.vote ?? null, vote.justification ?? null, vote.raw, vote.created_at)
+    return vote
+  }
+
+  finalizeCouncilSession(id: string, opts: {
+    status: AgentCouncilSession["status"]
+    winner_model?: string
+    winner?: string
+  }): void {
+    this.db
+      .prepare(`UPDATE agent_council_sessions SET status = ?, winner_model = ?, winner = ?, updated_at = ? WHERE id = ?`)
+      .run(opts.status, opts.winner_model ?? null, opts.winner ?? null, now(), id)
+  }
+
+  getCouncilSession(id: string): AgentCouncilSession | null {
+    return (this.db.prepare(`SELECT * FROM agent_council_sessions WHERE id = ?`).get(id) as AgentCouncilSession | undefined) ?? null
+  }
+
+  listCouncilMessages(councilId: string): AgentCouncilMessage[] {
+    return this.db
+      .prepare(`SELECT * FROM agent_council_messages WHERE council_id = ? ORDER BY created_at ASC`)
+      .all(councilId) as AgentCouncilMessage[]
+  }
+
+  listCouncilVotes(councilId: string): AgentCouncilVote[] {
+    return this.db
+      .prepare(`SELECT * FROM agent_council_votes WHERE council_id = ? ORDER BY created_at ASC`)
+      .all(councilId) as AgentCouncilVote[]
   }
 
   /**

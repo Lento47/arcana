@@ -12,6 +12,9 @@ export type {
   Message,
   UserFact,
   SkillObservation,
+  AgentCouncilSession,
+  AgentCouncilMessage,
+  AgentCouncilVote,
   SearchResult,
 } from "./store.js"
 export {

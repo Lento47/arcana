@@ -17,6 +17,53 @@ function freshStore(): { store: MemoryStore; dir: string } {
   return { store: new MemoryStore(db), dir }
 }
 
+describe("agent council ledger", () => {
+  test("persists a multi-agent consensus session with messages and votes", () => {
+    const { store } = freshStore()
+    const session = store.createCouncilSession({
+      prompt: "Choose the safer migration plan",
+      context: "Database migration review",
+      vote_mode: "majority",
+      rounds: 2,
+    })
+
+    store.recordCouncilMessage({
+      council_id: session.id,
+      agent_model: "arcana/architect",
+      phase: "proposal",
+      content: "Use a forward-only migration with a rollback script.",
+      input_tokens: 10,
+      output_tokens: 20,
+    })
+    store.recordCouncilMessage({
+      council_id: session.id,
+      agent_model: "arcana/verifier",
+      phase: "critique",
+      content: "Add a preflight backup check before execution.",
+      input_tokens: 8,
+      output_tokens: 12,
+    })
+    store.recordCouncilVote({
+      council_id: session.id,
+      agent_model: "arcana/verifier",
+      vote: "a",
+      justification: "It has the clearer rollback story.",
+      raw: "VOTE: A\nIt has the clearer rollback story.",
+    })
+    store.finalizeCouncilSession(session.id, {
+      status: "completed",
+      winner_model: "arcana/architect",
+      winner: "Use a forward-only migration with backup and rollback.",
+    })
+
+    const saved = store.getCouncilSession(session.id)
+    expect(saved?.status).toBe("completed")
+    expect(saved?.winner_model).toBe("arcana/architect")
+    expect(store.listCouncilMessages(session.id).map((item) => item.phase)).toEqual(["proposal", "critique"])
+    expect(store.listCouncilVotes(session.id)[0]?.vote).toBe("a")
+  })
+})
+
 describe("dedup helpers", () => {
   test("normalize collapses case/whitespace/punctuation", () => {
     expect(normalize("  User Lives   in BERLIN!!! ")).toBe("user lives in berlin")
