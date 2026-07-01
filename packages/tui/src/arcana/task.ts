@@ -10,6 +10,7 @@ export type ArcanaTaskMetadata = {
   command: string
   risk?: string
   approval_required?: boolean
+  approval_status?: "approved" | "not_required"
   risk_reasons?: string[]
 }
 
@@ -71,12 +72,14 @@ export function arcanaTaskFromPart(part: Part): ArcanaTaskMetadata | undefined {
   const command = (arcana as { command?: unknown; risk?: unknown }).command
   const risk = (arcana as { command?: unknown; risk?: unknown }).risk
   const approval = (arcana as { approval_required?: unknown }).approval_required
+  const approvalStatus = (arcana as { approval_status?: unknown }).approval_status
   const reasons = (arcana as { risk_reasons?: unknown }).risk_reasons
   if (typeof command !== "string") return
   return {
     command,
     ...(typeof risk === "string" ? { risk } : {}),
     ...(typeof approval === "boolean" ? { approval_required: approval } : {}),
+    ...(approvalStatus === "approved" || approvalStatus === "not_required" ? { approval_status: approvalStatus } : {}),
     ...(Array.isArray(reasons)
       ? { risk_reasons: reasons.filter((reason): reason is string => typeof reason === "string") }
       : {}),

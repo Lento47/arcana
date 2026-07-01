@@ -45,6 +45,7 @@ import { formatDuration } from "../../util/format"
 import { useDialog } from "../../ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
+import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
@@ -1066,6 +1067,16 @@ export function Prompt(props: PromptProps) {
       }
 
       const risk = assessArcanaTaskRisk(task)
+      if (risk.approval_required) {
+        const approved = await DialogConfirm.show(
+          dialog,
+          `Approve /${arcanaPromptCommand.command}`,
+          `${risk.level.toUpperCase()} risk Arcana task. ${risk.reasons.join(" ")}`,
+          "keep editing",
+        )
+        if (!approved) return false
+      }
+
       move.startSubmit()
       sdk.client.session
         .prompt(
@@ -1085,6 +1096,7 @@ export function Prompt(props: PromptProps) {
                     command: arcanaPromptCommand.command,
                     risk: risk.level,
                     approval_required: risk.approval_required,
+                    approval_status: risk.approval_required ? "approved" : "not_required",
                     risk_reasons: risk.reasons,
                   },
                 },

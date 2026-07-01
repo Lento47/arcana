@@ -1561,7 +1561,7 @@ function UserMessage(props: {
                       {(risk) => <span> {Glyph.sep} risk:{risk()}</span>}
                     </Show>
                     <Show when={task().approval_required}>
-                      <span> {Glyph.sep} approval required</span>
+                      <span> {Glyph.sep} {task().approval_status === "approved" ? "approval:approved" : "approval required"}</span>
                     </Show>
                   </text>
                 </box>
