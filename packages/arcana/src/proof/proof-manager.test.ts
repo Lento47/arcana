@@ -90,6 +90,53 @@ describe("RunProof execution governance", () => {
     )
   })
 
+  test("renders consensus evidence in terminal and markdown proof exports", () => {
+    const manager = ProofManager.create({
+      user_intent: "Compare migration strategies",
+      cwd: process.cwd(),
+    })
+
+    manager.recordEvent({
+      type: "consensus.recorded",
+      actor: "agent",
+      summary: "Consensus completed with winner arcana/architect.",
+      refs: {
+        council_id: "council_1",
+        winner_model: "arcana/architect",
+      },
+      data: {
+        prompt: "compare migration strategies",
+        models: ["arcana/architect", "arcana/verifier"],
+        rounds: 2,
+        vote_mode: "majority",
+        status: "completed",
+        vote_tally: {
+          "arcana/architect": 2,
+          "arcana/verifier": 1,
+        },
+        cost_tokens: {
+          input: 120,
+          output: 80,
+        },
+        errored: [],
+      },
+    })
+
+    const terminal = manager.renderTerminal()
+    const markdown = manager.renderMarkdown()
+
+    expect(terminal).toContain("Consensus Evidence")
+    expect(terminal).toContain("ledger=council_1")
+    expect(terminal).toContain("winner=arcana/architect")
+    expect(terminal).toContain("votes=arcana/architect:2, arcana/verifier:1")
+    expect(terminal).toContain("tokens=120 in / 80 out")
+    expect(markdown).toContain("## Consensus Evidence")
+    expect(markdown).toContain("Ledger: council_1")
+    expect(markdown).toContain("Winner: arcana/architect")
+    expect(markdown).toContain("Votes: arcana/architect:2, arcana/verifier:1")
+    expect(markdown).toContain("Tokens: 120 in / 80 out")
+  })
+
   test("stages rollback restore behind explicit approval", () => {
     const manager = ProofManager.create({
       user_intent: "Stage rollback without executing it",

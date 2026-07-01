@@ -46,6 +46,42 @@ function policyGateEvents(proof: RunProof) {
   )
 }
 
+function consensusEvents(proof: RunProof) {
+  return proof.events.filter((event) => event.type === "consensus.recorded")
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
+function formatVoteTally(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "no valid votes"
+  const entries = Object.entries(value)
+    .filter(([, count]) => typeof count === "number" && Number.isFinite(count))
+    .map(([model, count]) => `${model}:${count}`)
+  return entries.length ? entries.join(", ") : "no valid votes"
+}
+
+function formatConsensusCost(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "0 in / 0 out"
+  const record = value as Record<string, unknown>
+  const input = numberValue(record.input) ?? 0
+  const output = numberValue(record.output) ?? 0
+  return `${input} in / ${output} out`
+}
+
+function consensusErrorCount(value: unknown): number {
+  return stringList(value).length
+}
+
 export function renderRunProofTerminal(proof: RunProof): string {
   proof = normalizeRunProof(proof)
   const out: string[] = []
@@ -120,6 +156,29 @@ export function renderRunProofTerminal(proof: RunProof): string {
   out.push("Timeline")
   if (proof.events.length === 0) out.push("  no events recorded")
   for (const event of proof.events) out.push(`  [${event.type}] ${event.summary}`)
+  out.push("")
+
+  const consensus = consensusEvents(proof)
+  out.push("Consensus Evidence")
+  if (consensus.length === 0) out.push("  no consensus evidence recorded")
+  for (const event of consensus) {
+    const data = event.data ?? {}
+    const refs = event.refs ?? {}
+    const status = stringValue(data.status) ?? event.status ?? "unknown"
+    const models = stringList(data.models)
+    const prompt = stringValue(data.prompt)
+    const rounds = numberValue(data.rounds)
+    const voteMode = stringValue(data.vote_mode) ?? "unknown"
+    out.push(`  ${status}${refs.winner_model ? `  winner=${refs.winner_model}` : ""}`)
+    if (refs.council_id) out.push(`    ledger=${refs.council_id}`)
+    if (prompt) out.push(`    prompt=${prompt}`)
+    out.push(`    models=${models.length ? models.join(", ") : "not recorded"} rounds=${rounds ?? "?"} vote=${voteMode}`)
+    out.push(
+      `    votes=${formatVoteTally(data.vote_tally)} tokens=${formatConsensusCost(
+        data.cost_tokens,
+      )} errors=${consensusErrorCount(data.errored)}`,
+    )
+  }
   out.push("")
 
   const gates = policyGateEvents(proof)
@@ -235,6 +294,30 @@ export function renderRunProofMarkdown(proof: RunProof): string {
   if (proof.events.length === 0) lines.push("No timeline events recorded.")
   for (const event of proof.events) {
     lines.push(`- ${event.timestamp} — **${event.type}** — ${event.summary}`)
+  }
+  lines.push("")
+
+  const consensus = consensusEvents(proof)
+  lines.push("## Consensus Evidence")
+  if (consensus.length === 0) lines.push("No consensus evidence recorded.")
+  for (const event of consensus) {
+    const data = event.data ?? {}
+    const refs = event.refs ?? {}
+    const status = stringValue(data.status) ?? event.status ?? "unknown"
+    const models = stringList(data.models)
+    const prompt = stringValue(data.prompt)
+    const rounds = numberValue(data.rounds)
+    const voteMode = stringValue(data.vote_mode) ?? "unknown"
+    lines.push(`- Status: ${status}`)
+    if (refs.council_id) lines.push(`  - Ledger: ${refs.council_id}`)
+    if (refs.winner_model) lines.push(`  - Winner: ${refs.winner_model}`)
+    if (prompt) lines.push(`  - Prompt: ${prompt}`)
+    lines.push(`  - Models: ${models.length ? models.join(", ") : "not recorded"}`)
+    lines.push(`  - Rounds: ${rounds ?? "?"}`)
+    lines.push(`  - Vote mode: ${voteMode}`)
+    lines.push(`  - Votes: ${formatVoteTally(data.vote_tally)}`)
+    lines.push(`  - Tokens: ${formatConsensusCost(data.cost_tokens)}`)
+    lines.push(`  - Errors: ${consensusErrorCount(data.errored)}`)
   }
   lines.push("")
 
