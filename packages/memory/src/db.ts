@@ -96,6 +96,42 @@ CREATE TABLE IF NOT EXISTS artifacts (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS agent_council_sessions (
+  id TEXT PRIMARY KEY,
+  prompt TEXT NOT NULL,
+  context TEXT,
+  vote_mode TEXT NOT NULL,
+  rounds INTEGER NOT NULL,
+  judge_model TEXT,
+  winner_model TEXT,
+  winner TEXT,
+  status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS agent_council_messages (
+  id TEXT PRIMARY KEY,
+  council_id TEXT NOT NULL REFERENCES agent_council_sessions(id) ON DELETE CASCADE,
+  agent_model TEXT NOT NULL,
+  phase TEXT NOT NULL CHECK(phase IN ('proposal', 'critique', 'vote', 'judge', 'error')),
+  content TEXT,
+  input_tokens INTEGER DEFAULT 0,
+  output_tokens INTEGER DEFAULT 0,
+  error TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS agent_council_votes (
+  id TEXT PRIMARY KEY,
+  council_id TEXT NOT NULL REFERENCES agent_council_sessions(id) ON DELETE CASCADE,
+  agent_model TEXT NOT NULL,
+  vote TEXT,
+  justification TEXT,
+  raw TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS artifact_fts USING fts5(
   id UNINDEXED,
   title,

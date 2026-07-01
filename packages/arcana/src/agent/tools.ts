@@ -1759,7 +1759,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         vote_mode: args.vote_mode as "majority" | "ranked" | "judge" | undefined,
         judge_model: args.judge_model as string | undefined,
         context: args.context as string | undefined,
-      }, runner)
+      }, runner, memory)
     },
   )
 }
