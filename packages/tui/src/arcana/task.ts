@@ -13,6 +13,13 @@ const ARCANA_TASK_OBJECTIVES: Record<string, string> = {
   sovereignty:
     "Prioritize provider and model accountability: expose route, model choice, data boundary, fallback behavior, cost, latency, and privacy implications.",
 }
+const ARCANA_TASK_OBJECTIVE_LABELS: Record<string, string> = {
+  contract: "execution contract",
+  actions: "action timeline",
+  diffgate: "diff gate",
+  verify: "verification",
+  sovereignty: "model route",
+}
 const ARCANA_HIGH_RISK_PATTERN =
   /\b(auth|security|permission|dependency|install|upgrade|lockfile|package|token|secret|credential|payment|billing|database|migration|deploy|production|prod)\b/i
 const ARCANA_CRITICAL_RISK_PATTERN =
@@ -20,6 +27,8 @@ const ARCANA_CRITICAL_RISK_PATTERN =
 
 export type ArcanaTaskMetadata = {
   command: string
+  objective?: string
+  objective_label?: string
   risk?: string
   approval_required?: boolean
   approval_status?: "approved" | "not_required"
@@ -49,6 +58,10 @@ export function parseArcanaPromptCommand(input: string): { command: string; argu
 
 export function arcanaTaskObjective(command: string): string | undefined {
   return ARCANA_TASK_OBJECTIVES[command]
+}
+
+export function arcanaTaskObjectiveLabel(command: string): string | undefined {
+  return ARCANA_TASK_OBJECTIVE_LABELS[command]
 }
 
 export function arcanaTaskInstruction(input: {
@@ -112,6 +125,8 @@ export function arcanaTaskFromPart(part: Part): ArcanaTaskMetadata | undefined {
   if (typeof command !== "string") return
   return {
     command,
+    ...(arcanaTaskObjective(command) ? { objective: arcanaTaskObjective(command) } : {}),
+    ...(arcanaTaskObjectiveLabel(command) ? { objective_label: arcanaTaskObjectiveLabel(command) } : {}),
     ...(typeof risk === "string" ? { risk } : {}),
     ...(typeof approval === "boolean" ? { approval_required: approval } : {}),
     ...(approvalStatus === "approved" || approvalStatus === "not_required" ? { approval_status: approvalStatus } : {}),
