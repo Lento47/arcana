@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import {
+  assessArcanaTaskRisk,
   arcanaRiskForTask,
   arcanaTaskFromPart,
   parseArcanaPromptCommand,
@@ -23,6 +24,11 @@ test("classifies Arcana slash task risk from task text", () => {
   expect(arcanaRiskForTask("rename local variables")).toBe("medium")
   expect(arcanaRiskForTask("upgrade auth dependency lockfile")).toBe("high")
   expect(arcanaRiskForTask("run rm -rf dist before production deploy")).toBe("critical")
+  expect(assessArcanaTaskRisk("upgrade auth dependency lockfile")).toEqual({
+    level: "high",
+    approval_required: true,
+    reasons: ["Task references security, dependencies, data, deployment, billing, or credential-sensitive work."],
+  })
 })
 
 test("round-trips Arcana text part metadata back into prompt text", () => {
@@ -33,11 +39,18 @@ test("round-trips Arcana text part metadata back into prompt text", () => {
       arcana: {
         command: "contract",
         risk: "high",
+        approval_required: true,
+        risk_reasons: ["Task references security-sensitive work."],
       },
     },
   } as never
 
-  expect(arcanaTaskFromPart(part)).toEqual({ command: "contract", risk: "high" })
+  expect(arcanaTaskFromPart(part)).toEqual({
+    command: "contract",
+    risk: "high",
+    approval_required: true,
+    risk_reasons: ["Task references security-sensitive work."],
+  })
   expect(promptTextFromPart(part)).toBe("/contract refactor auth middleware")
 })
 

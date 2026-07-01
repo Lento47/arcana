@@ -56,7 +56,7 @@ import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
-import { arcanaRiskForTask, parseArcanaPromptCommand } from "../../arcana/task"
+import { assessArcanaTaskRisk, parseArcanaPromptCommand } from "../../arcana/task"
 
 export type PromptProps = {
   sessionID?: string
@@ -1065,6 +1065,7 @@ export function Prompt(props: PromptProps) {
         return false
       }
 
+      const risk = assessArcanaTaskRisk(task)
       move.startSubmit()
       sdk.client.session
         .prompt(
@@ -1082,7 +1083,9 @@ export function Prompt(props: PromptProps) {
                 metadata: {
                   arcana: {
                     command: arcanaPromptCommand.command,
-                    risk: arcanaRiskForTask(task),
+                    risk: risk.level,
+                    approval_required: risk.approval_required,
+                    risk_reasons: risk.reasons,
                   },
                 },
               },

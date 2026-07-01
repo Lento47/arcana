@@ -9,6 +9,14 @@ const ARCANA_CRITICAL_RISK_PATTERN =
 export type ArcanaTaskMetadata = {
   command: string
   risk?: string
+  approval_required?: boolean
+  risk_reasons?: string[]
+}
+
+export type ArcanaTaskRisk = {
+  level: "medium" | "high" | "critical"
+  approval_required: boolean
+  reasons: string[]
 }
 
 export function parseArcanaPromptCommand(input: string): { command: string; arguments: string } | undefined {
@@ -26,10 +34,32 @@ export function parseArcanaPromptCommand(input: string): { command: string; argu
   }
 }
 
+export function assessArcanaTaskRisk(task: string): ArcanaTaskRisk {
+  if (ARCANA_CRITICAL_RISK_PATTERN.test(task)) {
+    return {
+      level: "critical",
+      approval_required: true,
+      reasons: ["Task references destructive, production, credential, or irreversible operations."],
+    }
+  }
+
+  if (ARCANA_HIGH_RISK_PATTERN.test(task)) {
+    return {
+      level: "high",
+      approval_required: true,
+      reasons: ["Task references security, dependencies, data, deployment, billing, or credential-sensitive work."],
+    }
+  }
+
+  return {
+    level: "medium",
+    approval_required: false,
+    reasons: ["Arcana slash tasks are governed execution requests and should produce evidence."],
+  }
+}
+
 export function arcanaRiskForTask(task: string) {
-  if (ARCANA_CRITICAL_RISK_PATTERN.test(task)) return "critical"
-  if (ARCANA_HIGH_RISK_PATTERN.test(task)) return "high"
-  return "medium"
+  return assessArcanaTaskRisk(task).level
 }
 
 export function arcanaTaskFromPart(part: Part): ArcanaTaskMetadata | undefined {
@@ -40,10 +70,16 @@ export function arcanaTaskFromPart(part: Part): ArcanaTaskMetadata | undefined {
   if (!arcana || typeof arcana !== "object") return
   const command = (arcana as { command?: unknown; risk?: unknown }).command
   const risk = (arcana as { command?: unknown; risk?: unknown }).risk
+  const approval = (arcana as { approval_required?: unknown }).approval_required
+  const reasons = (arcana as { risk_reasons?: unknown }).risk_reasons
   if (typeof command !== "string") return
   return {
     command,
     ...(typeof risk === "string" ? { risk } : {}),
+    ...(typeof approval === "boolean" ? { approval_required: approval } : {}),
+    ...(Array.isArray(reasons)
+      ? { risk_reasons: reasons.filter((reason): reason is string => typeof reason === "string") }
+      : {}),
   }
 }
 
