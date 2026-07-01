@@ -89,7 +89,7 @@ import { ARCANA_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } 
 import { PathFormatterProvider, usePathFormatter } from "../../context/path-format"
 import { ArtifactViewer } from "./artifact-viewer"
 import { getArtifact } from "../../util/artifacts"
-import { arcanaCommandFromPart, promptTextFromPart } from "./arcana-task"
+import { arcanaTaskFromPart, promptTextFromPart } from "./arcana-task"
 
 addDefaultParsers(parsers.parsers)
 
@@ -1495,10 +1495,10 @@ function UserMessage(props: {
     for (const part of props.parts) if (part.type === "file") result.push(part)
     return result
   })
-  const arcanaCommand = createMemo(() => {
+  const arcanaTask = createMemo(() => {
     for (const part of props.parts) {
-      const command = arcanaCommandFromPart(part)
-      if (command) return command
+      const task = arcanaTaskFromPart(part)
+      if (task) return task
     }
     return undefined
   })
@@ -1549,14 +1549,17 @@ function UserMessage(props: {
                 </text>
               </box>
             </Show>
-            <Show when={arcanaCommand()}>
-              {(command) => (
+            <Show when={arcanaTask()}>
+              {(task) => (
                 <box flexDirection="row" paddingBottom={1}>
                   <text fg={theme.textMuted}>
                     <span style={{ bg: theme.backgroundElement, fg: theme.accent, bold: true }}>
-                      /{command()}
+                      /{task().command}
                     </span>
                     <span> Arcana task</span>
+                    <Show when={task().risk}>
+                      {(risk) => <span> {Glyph.sep} risk:{risk()}</span>}
+                    </Show>
                   </text>
                 </box>
               )}
