@@ -284,6 +284,25 @@ type RunProofTokenUsageView = {
   turns: number
 }
 
+type RunProofConsensusView = {
+  council_id?: string
+  prompt?: string
+  models: string[]
+  rounds?: number
+  vote_mode?: string
+  status?: string
+  winner_model?: string
+  vote_tally: Record<string, number>
+  cost_tokens?: {
+    input: number
+    output: number
+  }
+  errored: string[]
+  transcript?: string
+  timestamp?: string
+  summary?: string
+}
+
 type RunProofMLEvidenceView = {
   kind?: "turn" | "tool"
   timestamp?: string
@@ -326,6 +345,7 @@ type RunProofView = {
   verification?: RunProofVerificationView
   sovereignty?: RunProofSovereigntyView
   token_usage?: RunProofTokenUsageView
+  consensus?: RunProofConsensusView[]
   ml_evidence?: RunProofMLEvidenceView[]
 }
 
@@ -572,6 +592,7 @@ function normalizeProofView(value: unknown): RunProofView {
     },
     sovereignty: sovereigntyFromEvents(normalizedEvents),
     token_usage: tokenUsageFromEvents(normalizedEvents),
+    consensus: consensusFromEvents(normalizedEvents),
     ml_evidence: mlEvidenceFromEvents(normalizedEvents),
     events: normalizedEvents,
   }
@@ -624,6 +645,41 @@ function mlEvidenceFromEvents(events: RunProofEventView[]): RunProofMLEvidenceVi
         decision_posture: proofString(decision?.posture),
         decision_confidence: proofNumber(decision?.confidence),
         decision_reasons: asStringArray(decision?.reasons),
+      }
+    })
+}
+
+function consensusFromEvents(events: RunProofEventView[]): RunProofConsensusView[] {
+  return events
+    .filter((event) => event.type === "consensus.recorded")
+    .map((event) => {
+      const data = event.data ?? {}
+      const cost = asRecord(data.cost_tokens)
+      const tally = asRecord(data.vote_tally)
+      const vote_tally: Record<string, number> = {}
+      for (const [key, value] of Object.entries(tally ?? {})) {
+        const count = proofNumber(value)
+        if (count !== undefined) vote_tally[key] = count
+      }
+      return {
+        council_id: proofString(data.council_id) ?? event.refs?.council_id,
+        prompt: proofString(data.prompt),
+        models: asStringArray(data.models),
+        rounds: proofNumber(data.rounds),
+        vote_mode: proofString(data.vote_mode),
+        status: proofString(data.status) ?? event.status,
+        winner_model: proofString(data.winner_model) ?? event.refs?.winner_model,
+        vote_tally,
+        cost_tokens: cost
+          ? {
+              input: proofNumber(cost.input) ?? 0,
+              output: proofNumber(cost.output) ?? 0,
+            }
+          : undefined,
+        errored: asStringArray(data.errored),
+        transcript: proofString(data.transcript),
+        timestamp: event.timestamp,
+        summary: event.summary,
       }
     })
 }
@@ -1006,6 +1062,54 @@ function DialogRunProofContract(props: {
   )
 }
 
+function voteTallyText(value: Record<string, number> | undefined): string {
+  const entries = Object.entries(value ?? {})
+  if (entries.length === 0) return "no valid votes"
+  return entries.map(([key, count]) => `${key}:${count}`).join("  ")
+}
+
+function ConsensusEvidencePanel(props: { consensus: RunProofConsensusView[]; latestOnly?: boolean }) {
+  const { theme } = useTheme()
+  const items = () => (props.latestOnly ? props.consensus.slice(-1) : props.consensus)
+  return (
+    <Show when={props.consensus.length > 0} fallback={<text fg={theme.textMuted}>No consensus evidence recorded.</text>}>
+      <box gap={0}>
+        <For each={items()}>
+          {(item) => (
+            <box gap={0}>
+              <text fg={theme.text}>
+                {eventTime(item.timestamp)} consensus {item.status ?? "unknown"}
+                {item.winner_model ? ` winner=${item.winner_model}` : ""}
+              </text>
+              <Show when={item.council_id}>
+                {(id) => <text fg={theme.textMuted}>ledger={id()}</text>}
+              </Show>
+              <Show when={item.prompt}>
+                {(prompt) => <text fg={theme.textMuted}>prompt={prompt()}</text>}
+              </Show>
+              <text fg={theme.textMuted}>
+                models={item.models.length ? item.models.join(", ") : "not recorded"} rounds={item.rounds ?? "?"} vote=
+                {item.vote_mode ?? "unknown"}
+              </text>
+              <text fg={theme.textMuted}>votes={voteTallyText(item.vote_tally)}</text>
+              <Show when={item.cost_tokens}>
+                {(cost) => (
+                  <text fg={theme.textMuted}>
+                    tokens={cost().input.toLocaleString()} in {cost().output.toLocaleString()} out
+                  </text>
+                )}
+              </Show>
+              <Show when={item.errored.length > 0}>
+                <text fg={theme.warning}>errors={item.errored.length}</text>
+              </Show>
+            </box>
+          )}
+        </For>
+      </box>
+    </Show>
+  )
+}
+
 function refsText(refs: Record<string, string> | undefined): string | undefined {
   if (!refs || Object.keys(refs).length === 0) return undefined
   return Object.entries(refs)
@@ -1146,6 +1250,13 @@ function DialogRunProofActions(props: {
           </For>
         </box>
       </Show>
+      <box gap={0}>
+        <text fg={theme.text}>
+          Consensus evidence ({props.proof.consensus?.length ?? 0} record
+          {props.proof.consensus?.length === 1 ? "" : "s"})
+        </text>
+        <ConsensusEvidencePanel consensus={props.proof.consensus ?? []} />
+      </box>
       <box gap={0}>
         <text fg={theme.text}>
           ML evidence ({props.proof.ml_evidence?.length ?? 0} signal{props.proof.ml_evidence?.length === 1 ? "" : "s"})
