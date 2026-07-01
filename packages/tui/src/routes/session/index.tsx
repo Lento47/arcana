@@ -1560,6 +1560,9 @@ function UserMessage(props: {
                     <Show when={task().risk}>
                       {(risk) => <span> {Glyph.sep} risk:{risk()}</span>}
                     </Show>
+                    <Show when={task().approval_required}>
+                      <span> {Glyph.sep} approval required</span>
+                    </Show>
                   </text>
                 </box>
               )}
