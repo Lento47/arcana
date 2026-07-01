@@ -90,6 +90,7 @@ import { PathFormatterProvider, usePathFormatter } from "../../context/path-form
 import { ArtifactViewer } from "./artifact-viewer"
 import { getArtifact } from "../../util/artifacts"
 import { arcanaTaskFromPart, promptTextFromPart } from "../../arcana/task"
+import { arcanaDitherPattern, arcanaDitherTick } from "../../ui/arcana"
 
 addDefaultParsers(parsers.parsers)
 
@@ -1522,10 +1523,9 @@ function UserMessage(props: {
           paddingLeft={1}
           marginTop={props.index === 0 ? 0 : 1}
         >
-          {/* ❯ glyph prefix — cleaner arcane identity, replacing opencode's left border rail */}
           <box flexDirection="row">
             <box width={8} flexDirection="column">
-              <text fg={color()}>{Glyph.prompt}</text>
+              <text fg={color()}>{arcanaDitherTick(props.message.id)} USER</text>
               <Show when={queued()}>
                 <text fg={queuedFg()}>
                   <span style={{ bg: color(), fg: queuedFg(), bold: true }}>QUEUED</span>
@@ -1554,7 +1554,7 @@ function UserMessage(props: {
                     <span style={{ bg: theme.backgroundElement, fg: theme.accent, bold: true }}>
                       /{task().command}
                     </span>
-                    <span> Arcana task</span>
+                    <span> {arcanaDitherPattern(task().command, 6)} Arcana task</span>
                     <Show when={task().objective_label}>
                       {(objective) => <span> {Glyph.sep} objective:{objective()}</span>}
                     </Show>
@@ -1649,6 +1649,12 @@ function AssistantMessage(props: {
 
   return (
     <>
+      <box paddingLeft={3} marginTop={props.last ? 0 : 1}>
+        <text fg={theme.textMuted}>
+          {arcanaDitherPattern(props.message.id, 10)} ASSISTANT {model()}
+          {duration() ? ` ${Locale.duration(duration())}` : ""}
+        </text>
+      </box>
       <For each={props.parts}>
         {(part, index) => {
           const Component = PART_MAPPING[part.type as keyof typeof PART_MAPPING]
@@ -2137,7 +2143,7 @@ export function InlineToolRow(props: {
                 fg={props.color}
                 attributes={props.denied ? TextAttributes.STRIKETHROUGH : undefined}
               >
-                {Glyph.sigil} {props.pending}
+                {arcanaDitherTick(props.pending)} {props.pending}
               </text>
             }
             when={props.complete || props.failed}
@@ -2148,7 +2154,7 @@ export function InlineToolRow(props: {
                 fg={props.failed ? props.errorColor : (props.iconColor ?? props.color)}
                 attributes={props.denied ? TextAttributes.STRIKETHROUGH : undefined}
               >
-                {props.icon}
+                {arcanaDitherTick(props.pending)} {props.icon}
               </text>
               <Show
                 when={props.failed && !props.complete && props.failure}
@@ -2215,7 +2221,7 @@ function BlockTool(props: {
         when={props.spinner}
         fallback={
           <text paddingLeft={3} fg={theme.textMuted}>
-            {props.title}
+            {arcanaDitherPattern(props.title, 8)} {props.title}
           </text>
         }
       >
