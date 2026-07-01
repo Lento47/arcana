@@ -7,9 +7,60 @@ import { tmpdir } from "node:os"
 
 import { describe, expect, test } from "bun:test"
 
-import { createProofRuntime } from "./proof-runtime.js"
+import { createProofRuntime, parseArcanaSlashTask } from "./proof-runtime.js"
 
 describe("ProofRuntime live evidence capture", () => {
+  test("parses Arcana slash tasks without treating unknown slash commands as proof tasks", () => {
+    expect(parseArcanaSlashTask("/contract refactor auth middleware")).toEqual({
+      command: "contract",
+      task: "refactor auth middleware",
+      objective:
+        "Compile the task into an execution contract first: goal, scope, allowed work, risk, approvals, artifacts, rollback, and verification.",
+    })
+    expect(parseArcanaSlashTask("/actions inspect timeline\nthen continue")?.task).toBe(
+      "inspect timeline\nthen continue",
+    )
+    expect(parseArcanaSlashTask("/unknown do work")).toBeUndefined()
+    expect(parseArcanaSlashTask("/verify")).toBeUndefined()
+  })
+
+  test("records Arcana slash tasks as RunProof contract and ledger evidence", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "arcana-proof-runtime-"))
+    const previousActivePath = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+
+    try {
+      const runtime = await createProofRuntime({
+        enabled: true,
+        cwd,
+        command: "arcana run --proof",
+        prompt: "Interactive Arcana session",
+      })
+
+      await runtime.recordUserCommand("/contract upgrade auth dependency lockfile", "User turn accepted.")
+
+      const activePath = runtime.activeProofPath()
+      expect(activePath).toBeTruthy()
+      const stored = JSON.parse(await readFile(activePath!, "utf8"))
+      const proof = stored.proof ?? stored
+      expect(proof.contract.goal).toBe("upgrade auth dependency lockfile")
+      expect(proof.contract.scope).toBe("Arcana /contract governed task submitted by the operator.")
+      expect(proof.contract.risk_level).toBe("high")
+      expect(proof.contract.required_approvals).toContain("Arcana /contract task approval")
+      expect(proof.plan.summary).toContain("/contract")
+      expect(proof.events.map((event: { type: string }) => event.type)).toContain("approval.required")
+      const arcanaEvent = proof.events.find(
+        (event: { type: string; refs?: Record<string, string> }) =>
+          event.type === "plan.created" && event.refs?.command === "/contract",
+      )
+      expect(arcanaEvent?.data.task).toBe("upgrade auth dependency lockfile")
+      expect(arcanaEvent?.data.required_approval).toBe(true)
+    } finally {
+      if (previousActivePath === undefined) delete process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+      else process.env.ARCANA_ACTIVE_RUNPROOF_PATH = previousActivePath
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
   test("records agent turns and persists the active proof path", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "arcana-proof-runtime-"))
     const previousActivePath = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
