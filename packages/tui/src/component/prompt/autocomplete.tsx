@@ -14,13 +14,13 @@ import { getScrollAcceleration } from "../../util/scroll"
 import { useTuiPaths } from "../../context/runtime"
 import { useTuiConfig } from "../../config"
 import { useTheme, selectedForeground } from "../../context/theme"
-import { SplitBorder } from "../../ui/border"
 import { useTerminalDimensions } from "@opentui/solid"
 import { Locale } from "../../util/locale"
 import type { PromptInfo } from "../../prompt/history"
 import { useFrecency } from "../../prompt/frecency"
 import { useBindings, useCommandSlashes, useOpencodeModeStack } from "../../keymap"
 import { displayCharAt, mentionTriggerIndex } from "../../prompt/display"
+import { arcanaDitherPattern, arcanaDitherTick } from "../../ui/arcana"
 
 function removeLineRange(input: string) {
   const hashIndex = input.lastIndexOf("#")
@@ -732,9 +732,16 @@ export function Autocomplete(props: {
       left={position().x}
       width={position().width}
       zIndex={100}
-      {...SplitBorder}
-      borderColor={theme.border}
+      backgroundColor={theme.backgroundMenu}
+      paddingLeft={1}
+      paddingRight={1}
     >
+      <box flexDirection="row" justifyContent="space-between">
+        <text fg={theme.textMuted}>
+          {arcanaDitherPattern(store.visible || "complete", 10)} {store.visible === "/" ? "COMMANDS" : "CONTEXT"}
+        </text>
+        <text fg={theme.textMuted}>{options().length} match{options().length === 1 ? "" : "es"}</text>
+      </box>
       <scrollbox
         ref={(r: ScrollBoxRenderable) => (scroll = r)}
         backgroundColor={theme.backgroundMenu}
@@ -752,8 +759,6 @@ export function Autocomplete(props: {
         >
           {(option, index) => (
             <box
-              paddingLeft={1}
-              paddingRight={1}
               backgroundColor={index === store.selected ? theme.primary : undefined}
               flexDirection="row"
               onMouseMove={() => {
@@ -770,7 +775,7 @@ export function Autocomplete(props: {
               onMouseUp={() => select()}
             >
               <text fg={index === store.selected ? selectedForeground(theme) : theme.text} flexShrink={0}>
-                {option().display}
+                {arcanaDitherTick(option().display)} {option().display}
               </text>
               <Show when={option().description}>
                 <text fg={index === store.selected ? selectedForeground(theme) : theme.textMuted} wrapMode="none">
