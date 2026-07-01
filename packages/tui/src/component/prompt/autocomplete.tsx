@@ -70,6 +70,8 @@ export type AutocompleteOption = {
   path?: string
 }
 
+const ARCANA_PROMPT_SLASHES = new Set(["/contract", "/actions", "/diffgate", "/verify", "/sovereignty"])
+
 export function Autocomplete(props: {
   value: string
   sessionID?: string
@@ -435,7 +437,21 @@ export function Autocomplete(props: {
   )
 
   const commands = createMemo((): AutocompleteOption[] => {
-    const results: AutocompleteOption[] = [...slashes()]
+    const results: AutocompleteOption[] = slashes().map((item) => {
+      const slash = item.display.trimEnd()
+      if (!ARCANA_PROMPT_SLASHES.has(slash)) return item
+
+      return {
+        ...item,
+        onSelect: () => {
+          const newText = slash + " "
+          const cursor = props.input().logicalCursor
+          props.input().deleteRange(0, 0, cursor.row, cursor.col)
+          props.input().insertText(newText)
+          props.input().cursorOffset = Bun.stringWidth(newText)
+        },
+      }
+    })
 
     for (const serverCommand of sync.data.command) {
       if (serverCommand.source === "skill") continue
