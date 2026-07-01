@@ -1473,6 +1473,16 @@ const MIME_BADGE: Record<string, string> = {
   "application/x-directory": "dir",
 }
 
+function arcanaCommandFromPart(part: Part) {
+  if (part.type !== "text") return
+  const metadata = part.metadata
+  if (!metadata || typeof metadata !== "object") return
+  const arcana = metadata.arcana
+  if (!arcana || typeof arcana !== "object") return
+  const command = (arcana as { command?: unknown }).command
+  return typeof command === "string" ? command : undefined
+}
+
 function UserMessage(props: {
   message: UserMessage
   parts: Part[]
@@ -1493,6 +1503,13 @@ function UserMessage(props: {
     const result: Extract<Part, { type: "file" }>[] = []
     for (const part of props.parts) if (part.type === "file") result.push(part)
     return result
+  })
+  const arcanaCommand = createMemo(() => {
+    for (const part of props.parts) {
+      const command = arcanaCommandFromPart(part)
+      if (command) return command
+    }
+    return undefined
   })
   const { theme } = useTheme()
   const [hover, setHover] = createSignal(false)
@@ -1540,6 +1557,18 @@ function UserMessage(props: {
                   <span style={{ bg: color(), fg: queuedFg(), bold: true }}> QUEUED </span>
                 </text>
               </box>
+            </Show>
+            <Show when={arcanaCommand()}>
+              {(command) => (
+                <box flexDirection="row" paddingBottom={1}>
+                  <text fg={theme.textMuted}>
+                    <span style={{ bg: theme.backgroundElement, fg: theme.accent, bold: true }}>
+                      /{command()}
+                    </span>
+                    <span> Arcana task</span>
+                  </text>
+                </box>
+              )}
             </Show>
             <text fg={theme.text}>{text()}</text>
             <Show when={files().length}>
