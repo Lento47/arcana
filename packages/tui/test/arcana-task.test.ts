@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import {
   arcanaTaskInstruction,
   arcanaTaskObjective,
+  arcanaTaskObjectiveLabel,
   assessArcanaTaskRisk,
   arcanaRiskForTask,
   arcanaTaskFromPart,
@@ -29,6 +30,9 @@ test("defines distinct objectives for Arcana slash task prefixes", () => {
   expect(arcanaTaskObjective("verify")).toContain("verification")
   expect(arcanaTaskObjective("sovereignty")).toContain("provider and model accountability")
   expect(arcanaTaskObjective("unknown")).toBeUndefined()
+  expect(arcanaTaskObjectiveLabel("contract")).toBe("execution contract")
+  expect(arcanaTaskObjectiveLabel("sovereignty")).toBe("model route")
+  expect(arcanaTaskObjectiveLabel("unknown")).toBeUndefined()
 })
 
 test("builds a compact synthetic Arcana task contract for model execution", () => {
@@ -76,6 +80,9 @@ test("round-trips Arcana text part metadata back into prompt text", () => {
 
   expect(arcanaTaskFromPart(part)).toEqual({
     command: "contract",
+    objective:
+      "Compile the task into an execution contract first: goal, scope, allowed work, risk, approvals, artifacts, rollback, and verification.",
+    objective_label: "execution contract",
     risk: "high",
     approval_required: true,
     approval_status: "approved",

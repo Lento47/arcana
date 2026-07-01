@@ -1557,6 +1557,9 @@ function UserMessage(props: {
                       /{task().command}
                     </span>
                     <span> Arcana task</span>
+                    <Show when={task().objective_label}>
+                      {(objective) => <span> {Glyph.sep} objective:{objective()}</span>}
+                    </Show>
                     <Show when={task().risk}>
                       {(risk) => <span> {Glyph.sep} risk:{risk()}</span>}
                     </Show>
