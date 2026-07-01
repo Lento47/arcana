@@ -1,6 +1,6 @@
 import type { Part } from "@arcana/sdk/v2"
 
-const ARCANA_PROMPT_COMMANDS = new Set(["contract", "actions", "diffgate", "verify", "sovereignty"])
+const ARCANA_PROMPT_COMMANDS = new Set(["contract", "actions", "diffgate", "verify", "sovereignty", "consensus"])
 const ARCANA_TASK_OBJECTIVES: Record<string, string> = {
   contract:
     "Compile the task into an execution contract first: goal, scope, allowed work, risk, approvals, artifacts, rollback, and verification.",
@@ -12,6 +12,8 @@ const ARCANA_TASK_OBJECTIVES: Record<string, string> = {
     "Prioritize verification: define evidence requirements, run or request checks, report failures, and avoid claiming completion without proof.",
   sovereignty:
     "Prioritize provider and model accountability: expose route, model choice, data boundary, fallback behavior, cost, latency, and privacy implications.",
+  consensus:
+    "Convene a multi-agent/model council for the task: gather proposals, critiques, votes, consensus, disagreement, and durable evidence in the consensus ledger.",
 }
 const ARCANA_TASK_OBJECTIVE_LABELS: Record<string, string> = {
   contract: "execution contract",
@@ -19,6 +21,7 @@ const ARCANA_TASK_OBJECTIVE_LABELS: Record<string, string> = {
   diffgate: "diff gate",
   verify: "verification",
   sovereignty: "model route",
+  consensus: "multi-agent consensus",
 }
 const ARCANA_HIGH_RISK_PATTERN =
   /\b(auth|security|permission|dependency|install|upgrade|lockfile|package|token|secret|credential|payment|billing|database|migration|deploy|production|prod)\b/i

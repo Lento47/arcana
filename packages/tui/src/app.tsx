@@ -2094,6 +2094,20 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         run: () => void showRunProofSurface("sovereignty").catch(toast.error),
       },
       {
+        name: "arcana.consensus",
+        slashName: "consensus",
+        title: "Run multi-agent consensus task",
+        desc: "Use /consensus <prompt> to gather proposals, critiques, votes, and consensus evidence",
+        category: "Arcana",
+        run: () => {
+          toast.show({
+            message: "Use /consensus <prompt> to submit a multi-agent consensus task",
+            variant: "info",
+          })
+          dialog.clear()
+        },
+      },
+      {
         name: "workspace.copy_path",
         title: "Copy worktree path",
         category: "Workspace",

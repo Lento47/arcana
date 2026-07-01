@@ -20,6 +20,9 @@ describe("ProofRuntime live evidence capture", () => {
     expect(parseArcanaSlashTask("/actions inspect timeline\nthen continue")?.task).toBe(
       "inspect timeline\nthen continue",
     )
+    expect(parseArcanaSlashTask("/consensus compare migration strategies")?.objective).toContain(
+      "multi-agent/model council",
+    )
     expect(parseArcanaSlashTask("/unknown do work")).toBeUndefined()
     expect(parseArcanaSlashTask("/verify")).toBeUndefined()
   })
