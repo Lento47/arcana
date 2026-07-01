@@ -1686,15 +1686,16 @@ function AssistantMessage(props: {
       <Show when={props.message.error && props.message.error.name !== "MessageAbortedError"}>
         <box
           id={`assistant-error-${props.message.id}`}
-          border={["left"]}
           paddingTop={1}
           paddingBottom={1}
-          paddingLeft={2}
+          paddingLeft={3}
           marginTop={1}
           backgroundColor={theme.backgroundPanel}
-          customBorderChars={SplitBorder.customBorderChars}
-          borderColor={theme.error}
+          gap={0}
         >
+          <text fg={theme.error}>
+            {arcanaDitherPattern(`error-${props.message.id}`, 10)} ERROR
+          </text>
           <Scramble error text={(props.message.error?.data as { message?: string } | undefined)?.message ?? "Unknown error"} fg={theme.error} />
         </box>
       </Show>

@@ -7,6 +7,7 @@ import { InstallationVersion } from "@arcana/core/installation/version"
 import { useExit } from "../context/exit"
 import { BUG_URL } from "../branding"
 import { selectedForeground, ThemeContext, type Theme } from "../context/theme"
+import { arcanaDitherPattern } from "../ui/arcana"
 
 function emergencyPalette(theme: Theme | undefined, mode?: "dark" | "light") {
   if (theme) {
@@ -66,9 +67,10 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
 
   return (
     <box flexDirection="column" gap={1} backgroundColor={colors.bg}>
+      <text fg={colors.muted}>{arcanaDitherPattern("fatal-error", 48)} FATAL</text>
       <box flexDirection="row" gap={1} alignItems="center">
         <text attributes={TextAttributes.BOLD} fg={colors.text}>
-          Please report an issue.
+          Arcana execution surface failed.
         </text>
         <box onMouseUp={copyIssueURL} backgroundColor={colors.primary} padding={1}>
           <text attributes={TextAttributes.BOLD} fg={colors.primaryText}>
