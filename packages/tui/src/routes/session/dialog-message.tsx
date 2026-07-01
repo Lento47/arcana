@@ -12,7 +12,7 @@ import { stripPromptPartIDs as strip } from "../../prompt/part"
 import { Glyph } from "../../branding"
 import { DoubleBorder } from "../../ui/chrome"
 import { TextAttributes } from "@opentui/core"
-import { promptTextFromPart } from "./arcana-task"
+import { promptTextFromPart } from "../../arcana/task"
 
 type Act = {
   key: string

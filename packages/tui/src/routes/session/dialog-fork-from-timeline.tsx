@@ -9,7 +9,7 @@ import { useDialog, type DialogContext } from "../../ui/dialog"
 import type { PromptInfo } from "../../component/prompt/history"
 import { stripPromptPartIDs as strip } from "../../prompt/part"
 import { Glyph } from "../../branding"
-import { promptTextFromPart } from "./arcana-task"
+import { promptTextFromPart } from "../../arcana/task"
 
 export function DialogForkFromTimeline(props: { sessionID: string; onMove: (messageID?: string) => void }) {
   const sync = useSync()
