@@ -40,6 +40,7 @@ test("round-trips Arcana text part metadata back into prompt text", () => {
         command: "contract",
         risk: "high",
         approval_required: true,
+        approval_status: "approved",
         risk_reasons: ["Task references security-sensitive work."],
       },
     },
@@ -49,6 +50,7 @@ test("round-trips Arcana text part metadata back into prompt text", () => {
     command: "contract",
     risk: "high",
     approval_required: true,
+    approval_status: "approved",
     risk_reasons: ["Task references security-sensitive work."],
   })
   expect(promptTextFromPart(part)).toBe("/contract refactor auth middleware")
