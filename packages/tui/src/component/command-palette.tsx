@@ -9,7 +9,7 @@ import {
   useOpencodeKeymap,
 } from "../keymap"
 import { useTuiConfig } from "../config"
-import { Glyph } from "../branding"
+import { arcanaDitherPattern } from "../ui/arcana"
 
 type PaletteCommandEntry = ReturnType<OpenTuiKeymap["getCommandEntries"]>[number]
 
@@ -80,5 +80,5 @@ export function CommandPaletteDialog() {
     return result
   })
 
-  return <DialogSelect ref={setRef} title={`${Glyph.sigil} commands`} options={list()} />
+  return <DialogSelect ref={setRef} title={`ARCANA ${arcanaDitherPattern("commands", 12)} commands`} options={list()} />
 }
