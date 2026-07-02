@@ -1525,7 +1525,10 @@ function UserMessage(props: {
         >
           <box flexDirection="row">
             <box width={8} flexDirection="column">
-              <text fg={color()}>{arcanaDitherTick(props.message.id)} USER</text>
+              <text>
+                <span style={{ fg: theme.textMuted }}>{arcanaDitherTick(props.message.id)}</span>
+                <span style={{ fg: theme.text, bold: true }}> USER</span>
+              </text>
               <Show when={queued()}>
                 <text fg={queuedFg()}>
                   <span style={{ bg: color(), fg: queuedFg(), bold: true }}>QUEUED</span>
