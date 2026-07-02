@@ -69,7 +69,7 @@ jobs:
           const pem = Buffer.from(process.env.ARCANA_SIGNING_PRIVATE_KEY, "base64").toString("utf8")
           const key = createPrivateKey({ key: pem, format: "pem", type: "pkcs8" })
           const file = process.argv[2]
-          const data = readFileSync(file)
+          const data = readFileSync(file, "utf8").trim()
           const sig = sign(null, data, key)
           writeFileSync(file + ".sig", sig.toString("hex"))
           console.log("signed: " + file)
