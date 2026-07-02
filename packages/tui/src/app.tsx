@@ -1135,7 +1135,42 @@ function eventTime(value: string | undefined): string {
 }
 
 function eventLabel(value: string | undefined): string {
-  return (value ?? "event").replace(/[._-]+/g, " ").toUpperCase()
+  const labels: Record<string, string> = {
+    "plan.created": "PLAN",
+    "context.accessed": "READ",
+    "tool.requested": "TOOL",
+    "risk.evaluated": "RISK",
+    "approval.required": "APPROVAL",
+    "command.executed": "EXEC",
+    "file.written": "WRITE",
+    "diff.created": "DIFF",
+    "verification.started": "VERIFY",
+    "verification.passed": "PASS",
+    "verification.failed": "FAIL",
+    "rollback.available": "ROLLBACK",
+    "rollback.staged": "RESTORE",
+    "rollback.approved": "APPROVE",
+    "rollback.executed": "RESTORE",
+    "sovereignty.routed": "ROUTE",
+    "token.used": "TOKENS",
+    "consensus.recorded": "CONSENSUS",
+    "ml.signal": "ML",
+  }
+  return labels[value ?? ""] ?? (value ?? "event").replace(/[._-]+/g, " ").toUpperCase()
+}
+
+function eventTone(event: RunProofEventView): "normal" | "muted" | "warning" | "error" {
+  if (event.type === "verification.failed" || event.status === "failed" || event.risk === "critical") return "error"
+  if (
+    event.type === "approval.required" ||
+    event.type === "rollback.staged" ||
+    event.risk === "high" ||
+    event.risk === "medium"
+  ) {
+    return "warning"
+  }
+  if (event.type === "context.accessed" || event.type === "token.used" || event.type === "ml.signal") return "muted"
+  return "normal"
 }
 
 function DialogRunProofActions(props: {
@@ -1265,25 +1300,28 @@ function DialogRunProofActions(props: {
       >
         <MLEvidencePanel evidence={props.proof.ml_evidence ?? []} />
       </ArcanaSection>
-      <Show when={events().length > 0} fallback={<text fg={theme.warning}>No RunProof events recorded.</text>}>
-        <For each={events()}>
-          {(event) => (
-            <ArcanaTapeItem
-              time={eventTime(event.timestamp)}
-              kind={eventLabel(event.type)}
-              summary={event.summary ?? "No summary recorded."}
-              detail={[
-                event.actor ? `actor=${event.actor}` : undefined,
-                event.risk ? `risk=${event.risk}` : undefined,
-                event.status ? `status=${event.status}` : undefined,
-                refsText(event.refs),
-              ]
-                .filter(Boolean)
-                .join("  ")}
-            />
-          )}
-        </For>
-      </Show>
+      <ArcanaSection title="Proof Tape" detail={`${events().length} event${events().length === 1 ? "" : "s"}`}>
+        <Show when={events().length > 0} fallback={<text fg={theme.warning}>No RunProof events recorded.</text>}>
+          <For each={events()}>
+            {(event) => (
+              <ArcanaTapeItem
+                time={eventTime(event.timestamp)}
+                kind={eventLabel(event.type)}
+                summary={event.summary ?? "No summary recorded."}
+                tone={eventTone(event)}
+                detail={[
+                  event.actor ? `actor=${event.actor}` : undefined,
+                  event.risk ? `risk=${event.risk}` : undefined,
+                  event.status ? `status=${event.status}` : undefined,
+                  refsText(event.refs),
+                ]
+                  .filter(Boolean)
+                  .join("  ")}
+              />
+            )}
+          </For>
+        </Show>
+      </ArcanaSection>
     </ArcanaSurface>
   )
 }
