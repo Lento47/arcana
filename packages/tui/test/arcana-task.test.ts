@@ -33,11 +33,11 @@ test("defines distinct objectives for Arcana slash task prefixes", () => {
   expect(arcanaTaskObjective("diffgate")).toContain("gated mutations")
   expect(arcanaTaskObjective("verify")).toContain("verification")
   expect(arcanaTaskObjective("sovereignty")).toContain("provider and model accountability")
-  expect(arcanaTaskObjective("consensus")).toContain("multi-agent/model council")
+  expect(arcanaTaskObjective("consensus")).toContain("consensus work packet")
   expect(arcanaTaskObjective("unknown")).toBeUndefined()
   expect(arcanaTaskObjectiveLabel("contract")).toBe("execution contract")
   expect(arcanaTaskObjectiveLabel("sovereignty")).toBe("model route")
-  expect(arcanaTaskObjectiveLabel("consensus")).toBe("multi-agent consensus")
+  expect(arcanaTaskObjectiveLabel("consensus")).toBe("consensus evidence")
   expect(arcanaTaskObjectiveLabel("unknown")).toBeUndefined()
 })
 

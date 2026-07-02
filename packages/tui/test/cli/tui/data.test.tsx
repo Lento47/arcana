@@ -146,6 +146,8 @@ test("refreshes integrations after integration updates", async () => {
 
   try {
     await mounted
+    // Trigger initial data load (no longer automatic — moved to sync layer)
+    emitEvent(events, { id: "evt_integration_init", type: "integration.updated", properties: {} })
     await wait(() => data.location.integration.list() !== undefined)
     expect(data.location.integration.list()).toEqual([])
     const before = { ...requests }
@@ -186,6 +188,8 @@ test("refreshes effective catalog data after catalog updates", async () => {
   ))
 
   try {
+    // Trigger initial data load (no longer automatic — moved to sync layer)
+    emitEvent(events, { id: "evt_catalog_init", type: "catalog.updated", properties: {} })
     await wait(() => requests.model > 0 && requests.provider > 0)
     const before = { ...requests }
     emitEvent(events, { id: "evt_catalog", type: "catalog.updated", properties: {} })
