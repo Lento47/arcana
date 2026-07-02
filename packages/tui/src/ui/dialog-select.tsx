@@ -10,17 +10,21 @@ import type { Binding } from "@opentui/keymap"
 import { useTheme, selectedForeground } from "../context/theme"
 import { COPY, Glyph } from "../branding"
 import { DoubleBorder } from "./chrome"
-import { entries, filter, flatMap, groupBy, pipe } from "remeda"
+import { isDeepEqual } from "remeda"
 import { batch, createEffect, createMemo, createSignal, For, Show, type JSX, on } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useTerminalDimensions } from "@opentui/solid"
 import * as fuzzysort from "fuzzysort"
-import { isDeepEqual } from "remeda"
 import { useDialog, type DialogContext } from "./dialog"
 import { Locale } from "../util/locale"
 import { getScrollAcceleration } from "../util/scroll"
 import { useTuiConfig } from "../config"
 import { formatKeyBindings, useBindings, useKeymapSelector } from "../keymap"
+
+function fastEqual<T>(a: T, b: T): boolean {
+  if (a === b) return true
+  return isDeepEqual(a, b)
+}
 
 export interface DialogSelectProps<T> {
   title: string
@@ -88,6 +92,10 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   const tuiConfig = useTuiConfig()
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
 
+  // Dialog body may be transparent in system/transparent themes; default inactive
+  // rows to an opaque surface so text remains readable over the terminal.
+  const inactiveBg = createMemo(() => (theme.background.a < 1 ? theme.backgroundPanel : theme.background))
+
   const [store, setStore] = createStore({
     selected: 0,
     filter: "",
@@ -101,10 +109,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
       () => props.current,
       (current) => {
         if (current) {
-          const currentIndex = flat().findIndex((opt) => isDeepEqual(opt.value, current))
-          if (currentIndex >= 0) {
-            setStore("selected", currentIndex)
-          }
+          const index = currentIndex()
+          if (index >= 0) setStore("selected", index)
         }
       },
     ),
@@ -151,10 +157,10 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   const filtered = createMemo(() => {
     if (props.skipFilter || props.renderFilter === false) return props.options.filter((x) => x.disabled !== true)
     const needle = store.filter.toLowerCase()
-    const options = pipe(
-      props.options,
-      filter((x) => x.disabled !== true),
-    )
+    const options: DialogSelectOption<T>[] = []
+    for (const option of props.options) {
+      if (option.disabled !== true) options.push(option)
+    }
     if (!needle) return options
 
     // prioritize title matches (weight: 2) over category matches (weight: 1).
@@ -180,30 +186,54 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
 
   const flatten = createMemo(() => props.flat && store.filter.length > 0)
 
+  // Native Map/grouping avoids the overhead of remeda's functional helpers on
+  // large option lists (model/skill pickers).
   const grouped = createMemo<[string, DialogSelectOption<T>[]][]>(() => {
     if (flatten()) return [["", filtered()]]
-    const result = pipe(
-      filtered(),
-      groupBy((x) => x.category ?? ""),
-      // mapValues((x) => x.sort((a, b) => a.title.localeCompare(b.title))),
-      entries(),
-    )
-    return result
+    const map = new Map<string, DialogSelectOption<T>[]>()
+    for (const option of filtered()) {
+      const key = option.category ?? ""
+      const existing = map.get(key)
+      if (existing) existing.push(option)
+      else map.set(key, [option])
+    }
+    return [...map.entries()]
   })
 
   const flat = createMemo(() => {
-    return pipe(
-      grouped(),
-      flatMap(([_, options]) => options),
-    )
+    const result: DialogSelectOption<T>[] = []
+    for (const [, options] of grouped()) result.push(...options)
+    return result
+  })
+
+  const flatIndexByOption = createMemo(() => {
+    const map = new Map<DialogSelectOption<T>, number>()
+    let i = 0
+    for (const option of flat()) map.set(option, i++)
+    return map
+  })
+
+  const currentIndex = createMemo(() => {
+    const value = props.current
+    if (value === undefined) return -1
+    const list = flat()
+    for (let i = 0; i < list.length; i++) {
+      if (fastEqual(list[i].value, value)) return i
+    }
+    return -1
   })
 
   const rows = createMemo(() => {
-    const headers = grouped().reduce((acc, [category], i) => {
-      if (!category) return acc
-      return acc + (i > 0 ? 2 : 1)
-    }, 0)
-    return flat().reduce((acc, option) => acc + 1 + (option.details?.length ?? 0), headers)
+    const groups = grouped()
+    let headers = 0
+    for (let i = 0; i < groups.length; i++) {
+      if (groups[i][0]) headers += i > 0 ? 2 : 1
+    }
+    let rows = headers
+    for (const [, options] of groups) {
+      for (const option of options) rows += 1 + (option.details?.length ?? 0)
+    }
+    return rows
   })
 
   const dimensions = useTerminalDimensions()
@@ -217,10 +247,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         if (filter.length > 0) {
           moveTo(0, true)
         } else if (current) {
-          const currentIndex = flat().findIndex((opt) => isDeepEqual(opt.value, current))
-          if (currentIndex >= 0) {
-            moveTo(currentIndex, true)
-          }
+          const index = currentIndex()
+          if (index >= 0) moveTo(index, true)
         }
       }, 0)
     }),
@@ -422,8 +450,13 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
       return filtered()
     },
     moveTo(value) {
-      const index = flat().findIndex((option) => isDeepEqual(option.value, value))
-      if (index >= 0) moveTo(index, true)
+      const list = flat()
+      for (let i = 0; i < list.length; i++) {
+        if (fastEqual(list[i].value, value)) {
+          moveTo(i, true)
+          return
+        }
+      }
     },
   }
   props.ref?.(ref)
@@ -471,7 +504,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     return (
       <box
         flexDirection="row"
-        backgroundColor={active() ? theme.primary : RGBA.fromInts(0, 0, 0, 0)}
+        backgroundColor={active() ? theme.primary : inactiveBg()}
         onMouseUp={() => triggerAction(item)}
       >
         <text
@@ -581,8 +614,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                   </Show>
                   <For each={options}>
                     {(option) => {
-                      const active = createMemo(() => !props.locked && isDeepEqual(option.value, selected()?.value))
-                      const current = createMemo(() => isDeepEqual(option.value, props.current))
+                      const active = createMemo(() => !props.locked && fastEqual(option.value, selected()?.value))
+                      const current = createMemo(() => fastEqual(option.value, props.current))
                       return (
                         <box
                           flexDirection="column"
@@ -600,14 +633,14 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                           onMouseOver={() => {
                             if (props.locked) return
                             if (store.input !== "mouse") return
-                            const index = flat().findIndex((x) => isDeepEqual(x.value, option.value))
-                            if (index === -1) return
+                            const index = flatIndexByOption().get(option)
+                            if (index === undefined) return
                             moveTo(index)
                           }}
                           onMouseDown={() => {
                             if (props.locked) return
-                            const index = flat().findIndex((x) => isDeepEqual(x.value, option.value))
-                            if (index === -1) return
+                            const index = flatIndexByOption().get(option)
+                            if (index === undefined) return
                             moveTo(index)
                           }}
                         >
@@ -621,7 +654,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                                 ? actionFocused()
                                   ? theme.backgroundElement
                                   : (option.bg ?? theme.primary)
-                                : RGBA.fromInts(0, 0, 0, 0)
+                                : inactiveBg()
                             }
                           >
                             <Show when={!current() && option.margin}>

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
 // Copyright (c) 2026 arcana contributors
 
-export const RUNPROOF_SCHEMA_VERSION = "0.1" as const
+export const RUNPROOF_SCHEMA_VERSION = "0.2" as const
 
 export type RunProofSchemaVersion = typeof RUNPROOF_SCHEMA_VERSION
 
@@ -25,6 +25,76 @@ export type VerificationStatus = "passed" | "failed" | "skipped" | "not_run"
 export type DiffStatus = "proposed" | "applied" | "rejected"
 export type FileWriteMode = "proposed" | "applied" | "rejected"
 export type ToolRisk = RiskLevel | "unknown"
+export type ExecutionContractStatus = "draft" | "active" | "completed" | "cancelled"
+export type PolicyGateAction = "shell_command" | "file_mutation"
+export type RunProofEventType =
+  | "plan.created"
+  | "context.accessed"
+  | "tool.requested"
+  | "risk.evaluated"
+  | "approval.required"
+  | "command.executed"
+  | "file.written"
+  | "diff.created"
+  | "verification.started"
+  | "verification.passed"
+  | "verification.failed"
+  | "rollback.available"
+  | "rollback.staged"
+  | "rollback.approved"
+  | "rollback.executed"
+  | "sovereignty.routed"
+  | "token.used"
+  | "consensus.recorded"
+  | "ml.signal"
+
+export type ExecutionContract = {
+  id: string
+  created_at: string
+  goal: string
+  scope: string
+  allowed_files: string[]
+  allowed_commands: string[]
+  risk_level: RiskLevel
+  required_approvals: string[]
+  expected_artifacts: string[]
+  rollback_plan: string
+  verification_steps: string[]
+  status: ExecutionContractStatus
+}
+
+export type RunProofEvent = {
+  id: string
+  timestamp: string
+  type: RunProofEventType
+  actor: CommandSource
+  summary: string
+  risk?: ToolRisk
+  status?: RunProofStatus | VerificationStatus | "running"
+  refs?: Record<string, string>
+  data?: Record<string, unknown>
+}
+
+export type PolicyGateDecision = {
+  action: PolicyGateAction
+  command?: string
+  path?: string
+  operation?: string
+  risk: RiskLevel
+  required_approval: boolean
+  blocked: boolean
+  reasons: string[]
+}
+
+export type ContextAccessRecord = {
+  tool: "read" | "grep" | "glob"
+  path?: string
+  pattern?: string
+  summary: string
+  exists?: boolean
+  bytes_read?: number
+  result_count?: number
+}
 
 export type RepoSnapshot = {
   path: string
@@ -182,6 +252,14 @@ export type RollbackBlock = {
   strategy: RollbackStrategy
   restore_command?: string
   valid_until?: string
+  restore_status?: "not_staged" | "staged" | "approved" | "executed" | "rejected"
+  staged_at?: string
+  approval_required?: boolean
+  approved_at?: string
+  approved_by?: string
+  executed_at?: string
+  execution_status?: VerificationStatus
+  execution_exit_code?: number
 }
 
 export type FinalEvidence = {
@@ -207,6 +285,8 @@ export type RunProof = {
   }
 
   lifecycle: RunProofLifecycle
+  contract: ExecutionContract
+  events: RunProofEvent[]
   command_history: TUICommandReflection[]
 
   plan: {

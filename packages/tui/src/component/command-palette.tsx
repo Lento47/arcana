@@ -1,4 +1,4 @@
-import { createMemo } from "solid-js"
+import { createMemo, createSignal } from "solid-js"
 import { DialogSelect, type DialogSelectRef } from "../ui/dialog-select"
 import { type DialogContext } from "../ui/dialog"
 import {
@@ -9,7 +9,7 @@ import {
   useOpencodeKeymap,
 } from "../keymap"
 import { useTuiConfig } from "../config"
-import { Glyph } from "../branding"
+import { arcanaDitherPattern } from "../ui/arcana"
 
 type PaletteCommandEntry = ReturnType<OpenTuiKeymap["getCommandEntries"]>[number]
 
@@ -48,9 +48,9 @@ export function CommandPaletteDialog() {
   })
   const options = createMemo(() =>
     entries().map((entry) => ({
-      title: entry.command.title ?? entry.command.name,
-      description: entry.command.desc ?? entry.command.title,
-      category: entry.command.category,
+      title: typeof entry.command.title === "string" ? entry.command.title : entry.command.name,
+      description: typeof entry.command.desc === "string" ? entry.command.desc : undefined,
+      category: typeof entry.command.category === "string" ? entry.command.category : undefined,
       footer: formatKeyBindings(entry.bindings, config),
       value: entry.command.name,
       suggested: isSuggestedPaletteCommand(entry),
@@ -61,20 +61,24 @@ export function CommandPaletteDialog() {
     })),
   )
 
-  let ref: DialogSelectRef<string>
-  const list = () => {
-    if (ref?.filter) return options()
-    return [
-      ...options()
-        .filter((option) => option.suggested)
-        .map((option) => ({
-          ...option,
-          value: `suggested:${option.value}`,
-          category: "Suggested",
-        })),
-      ...options(),
-    ]
-  }
+  // Keep the option list stable between renders. DialogSelect receives a new
+  // `options` array on every render by default, which forces its internal
+  // `filtered` memo to re-evaluate continuously. Reading the dialog ref's filter
+  // getter inside a memo correctly tracks the dialog's reactive filter state.
+  const [ref, setRef] = createSignal<DialogSelectRef<string>>()
+  const list = createMemo(() => {
+    const filter = ref()?.filter ?? ""
+    const base = options()
+    if (filter) return base
+    const result: ReturnType<typeof options> = []
+    for (const option of base) {
+      if (option.suggested) {
+        result.push({ ...option, value: `suggested:${option.value}`, category: "Suggested" })
+      }
+    }
+    for (const option of base) result.push(option)
+    return result
+  })
 
-  return <DialogSelect ref={(value) => (ref = value)} title={`${Glyph.sigil} commands`} options={list()} />
+  return <DialogSelect ref={setRef} title={`ARCANA ${arcanaDitherPattern("commands", 12)} commands`} options={list()} />
 }

@@ -1503,6 +1503,34 @@ describe("session.message-v2.fromError", () => {
     expect(SessionV1.APIError.isInstance(result)).toBe(true)
   })
 
+  test("sanitizes arcana-proxy token-limit payment errors", () => {
+    const result = MessageV2.fromError(
+      new APICallError({
+        message: "Payment Required",
+        url: "https://proxy.arcana.otnelhq.com/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 402,
+        responseHeaders: { "content-type": "application/json" },
+        responseBody: JSON.stringify({
+          error: {
+            message:
+              "Prompt tokens limit exceeded: 138108 > 112446. To increase, visit https://openrouter.ai/settings/credits",
+          },
+        }),
+        isRetryable: false,
+      }),
+      { providerID: ProviderV2.ID.make("arcana-proxy") },
+    )
+
+    expect(SessionV1.APIError.isInstance(result)).toBe(true)
+    const data = (result as SessionV1.APIError).data
+    expect(data.message).toBe(
+      "Arcana proxy token limit exceeded (138108 > 112446). Compact the session or reduce context before retrying.",
+    )
+    expect(data.isRetryable).toBe(false)
+    expect(data.responseBody).not.toContain("openrouter")
+  })
+
   test("serializes unknown inputs", () => {
     const result = MessageV2.fromError(123, { providerID })
 

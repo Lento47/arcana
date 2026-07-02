@@ -21,7 +21,7 @@ async function runJob(job: Job, config: Awaited<ReturnType<typeof loadConfig>>, 
   registerMcpTools(runner).catch(() => {})
 
   runner.setSession(`cron-${job.id.slice(0, 8)}`)
-  const sessionMgr = new SessionManager(memory, config.model, config.provider)
+  const sessionMgr = new SessionManager(memory, config.model ?? "unknown", config.provider ?? "unknown")
 
   let system = CRON_SYSTEM
   if (job.skill) {

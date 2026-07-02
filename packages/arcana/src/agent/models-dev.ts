@@ -11,7 +11,7 @@ import { homedir } from "node:os"
 
 const MODELS_DEV_URL = "https://models.dev/api.json"
 const TTL_MS = 30 * 60 * 1000 // 30min — matches opencode's TTL
-const FETCH_TIMEOUT_MS = 10000
+const FETCH_TIMEOUT_MS = Number(process.env.ARCANA_MODELS_DEV_TIMEOUT_MS ?? "1500")
 
 export type ModelsDevModel = {
   id?: string

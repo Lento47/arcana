@@ -2,6 +2,7 @@ import type { BorderSides, ColorInput } from "@opentui/core"
 import type { JSX } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import { createContext, Show, splitProps, useContext } from "solid-js"
+import { arcanaDitherPattern } from "../../ui/arcana"
 
 export type Axis = "x" | "y"
 export type SeparatorEdge = "edge" | "edge-in" | "edge-out"
@@ -66,11 +67,17 @@ export function Separator(props: { axis?: Axis; color?: ColorInput; start?: Sepa
     return (
       <Show
         when={props.start || props.end}
-        fallback={<box width={1} flexShrink={0} border={["left"]} borderColor={color()} />}
+        fallback={
+          <box width={1} flexShrink={0} flexDirection="column">
+            <text fg={color()}>▒</text>
+            <box flexGrow={1} />
+            <text fg={color()}>░</text>
+          </box>
+        }
       >
         <box width={1} flexShrink={0} flexDirection="column">
           <Show when={props.start}>{(edge) => <text fg={color()}>{verticalEdge(edge(), "start")}</text>}</Show>
-          <box flexGrow={1} border={["left"]} borderColor={color()} />
+          <box flexGrow={1} />
           <Show when={props.end}>{(edge) => <text fg={color()}>{verticalEdge(edge(), "end")}</text>}</Show>
         </box>
       </Show>
@@ -79,11 +86,17 @@ export function Separator(props: { axis?: Axis; color?: ColorInput; start?: Sepa
   return (
     <Show
       when={props.start || props.end}
-      fallback={<box height={1} flexShrink={0} border={["top"]} borderColor={color()} />}
+      fallback={
+        <box height={1} flexShrink={0}>
+          <text fg={color()}>{arcanaDitherPattern("diff-separator", 96)}</text>
+        </box>
+      }
     >
       <box height={1} flexShrink={0} flexDirection="row">
         <Show when={props.start}>{(edge) => <text fg={color()}>{horizontalEdge(edge(), "start")}</text>}</Show>
-        <box flexGrow={1} border={["top"]} borderColor={color()} />
+        <text fg={color()} flexGrow={1}>
+          {arcanaDitherPattern(`diff-${props.start ?? ""}-${props.end ?? ""}`, 96)}
+        </text>
         <Show when={props.end}>{(edge) => <text fg={color()}>{horizontalEdge(edge(), "end")}</text>}</Show>
       </box>
     </Show>

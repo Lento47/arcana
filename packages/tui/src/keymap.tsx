@@ -278,7 +278,12 @@ export function useCommandSlashes(): Accessor<readonly CommandSlashEntry[]> {
       const slashAliases = entry.command.slashAliases
       bySlashName.set(slashName, {
         display: `/${slashName}`,
-        description: entry.command.desc ?? entry.command.title,
+        description:
+          typeof entry.command.desc === "string"
+            ? entry.command.desc
+            : typeof entry.command.title === "string"
+              ? entry.command.title
+              : undefined,
         aliases: Array.isArray(slashAliases)
           ? slashAliases.filter((alias): alias is string => typeof alias === "string").map((alias) => `/${alias}`)
           : undefined,

@@ -288,6 +288,10 @@ export const layer = Layer.effect(
       return yield* loadConfig(text, { path: filepath }, env)
     })
 
+    const loadFilesOrdered = Effect.fnUntraced(function* (files: string[], env?: Record<string, string>) {
+      return yield* Effect.all(files.map((file) => loadFile(file, env)), { concurrency: "unbounded" })
+    })
+
     const loadGlobal = Effect.fnUntraced(function* (env?: Record<string, string>) {
       let result: Info = {}
       // Seed the default global config with the schema for editor completion, but avoid writing when the user
@@ -300,11 +304,12 @@ export const layer = Layer.effect(
             .pipe(Effect.catch(() => Effect.void))
         }
       }
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "config.json"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "opencode.json"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "opencode.jsonc"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "arcana.json"), env))
-      result = mergeConfig(result, yield* loadFile(path.join(Global.Path.config, "arcana.jsonc"), env))
+      const globalFiles = ["config.json", "opencode.json", "opencode.jsonc", "arcana.json", "arcana.jsonc"].map((file) =>
+        path.join(Global.Path.config, file),
+      )
+      for (const config of yield* loadFilesOrdered(globalFiles, env)) {
+        result = mergeConfig(result, config)
+      }
 
       const legacy = path.join(Global.Path.config, "config")
       if (cachedExistsSync(legacy)) {
@@ -564,9 +569,11 @@ export const layer = Layer.effect(
 
         const managedDir = ConfigManaged.managedConfigDir()
         if (cachedExistsSync(managedDir)) {
-          for (const file of ["opencode.json", "opencode.jsonc", "arcana.json", "arcana.jsonc"]) {
-            const source = path.join(managedDir, file)
-            yield* merge(source, yield* loadFile(source), "global")
+          const managedFiles = ["opencode.json", "opencode.jsonc", "arcana.json", "arcana.jsonc"].map((file) =>
+            path.join(managedDir, file),
+          )
+          for (const [index, config] of (yield* loadFilesOrdered(managedFiles)).entries()) {
+            yield* merge(managedFiles[index]!, config, "global")
           }
         }
 

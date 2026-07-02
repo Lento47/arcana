@@ -142,7 +142,7 @@ permission requests
 mutation queue
 verifier verdict
 proof completeness
-rollback readiness
+rollback status
 compat shim usage
 ```
 

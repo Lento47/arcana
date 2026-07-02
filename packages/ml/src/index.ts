@@ -33,7 +33,21 @@ export type {
   ResponsePipelinePreflight,
   ResponsePipelinePreflightInput,
 } from "./response-pipeline.js"
-export type { ContextItem, ContextItemKind, ContextPlan, ContextPlanInput, PlannedContextItem } from "./context.js"
+export type {
+  ContextItem,
+  ContextItemKind,
+  ContextPlan,
+  ContextPlanInput,
+  PlannedContextItem,
+} from "./context.js"
+export type {
+  StepPlan,
+  ThinkingBudget,
+  ThinkingPlan,
+  ThinkingPlanInput,
+  ThinkingStyle,
+} from "./thinking.js"
+export { formatThinkingPlanForAudit, planThinking } from "./thinking.js"
 
 export { analyzeTool, analyzeTurn, createSignalEngine } from "./signals.js"
 export { formatToolSignalForAudit, formatTurnSignalForSystemPrompt } from "./llm.js"

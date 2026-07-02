@@ -175,9 +175,9 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       const key = env["ARCANA_PROXY_KEY"] || process.env["ARCANA_PROXY_KEY"]
       return {
         autoload: !!key,
-        // Discover the proxy's full catalog (OpenRouter-backed) at runtime so the
-        // provider carries models and survives the zero-models drop. Everything
-        // routes through proxy.arcana.otnelhq.com using the license key.
+        // Discover the proxy's full catalog so the provider carries models and
+        // survives the zero-models drop. Use the last real catalog first for fast
+        // startup, then fall back to live discovery when no cache exists.
         async discoverModels(): Promise<Record<string, Model>> {
           if (!key) return {}
           const { readFileSync, writeFileSync, mkdirSync, existsSync } = require("node:fs") as typeof import("node:fs")
@@ -231,31 +231,33 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
             return models
           }
           const bases = ["https://proxy.arcana.otnelhq.com", "https://arcana-proxy.lejzerv.workers.dev"]
-          for (const base of bases) {
-            try {
-              const res = await fetch(`${base}/v1/models`, {
-                headers: { Authorization: `Bearer ${key}` },
-                signal: AbortSignal.timeout(10000),
-              })
-              if (!res.ok) continue
-              const json = (await res.json()) as { data?: any[] }
-              const list = json.data ?? []
-              if (!list.length) continue
-              // Cache the real catalog so a future slow/failed fetch falls back to actual
-              // discovered models — never a hardcoded list.
-              try {
-                mkdirSync(join(home, "cache"), { recursive: true })
-                writeFileSync(cacheFile, JSON.stringify({ base, list }))
-              } catch {}
-              return build(list, base)
-            } catch {}
-          }
-          // All fetches failed — fall back to the last real catalog from disk.
+          const discoveryTimeoutMs = 3_500
           try {
             if (existsSync(cacheFile)) {
               const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as { base?: string; list?: any[] }
               if (cached?.list?.length) return build(cached.list, cached.base ?? bases[0])
             }
+          } catch {}
+          const fetchCatalog = async (base: string) => {
+            const res = await fetch(`${base}/v1/models`, {
+              headers: { Authorization: `Bearer ${key}` },
+              signal: AbortSignal.timeout(discoveryTimeoutMs),
+            })
+            if (!res.ok) throw new Error(`Arcana proxy model discovery failed: ${res.status}`)
+            const json = (await res.json()) as { data?: any[] }
+            const list = json.data ?? []
+            if (!list.length) throw new Error("Arcana proxy model discovery returned no models")
+            return { base, list }
+          }
+          try {
+            const { base, list } = await Promise.any(bases.map(fetchCatalog))
+            // Cache the real catalog so a future slow/failed fetch falls back to actual
+            // discovered models — never a hardcoded list.
+            try {
+              mkdirSync(join(home, "cache"), { recursive: true })
+              writeFileSync(cacheFile, JSON.stringify({ base, list }))
+            } catch {}
+            return build(list, base)
           } catch {}
           return {}
         },

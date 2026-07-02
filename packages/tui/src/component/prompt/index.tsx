@@ -45,6 +45,7 @@ import { formatDuration } from "../../util/format"
 import { useDialog } from "../../ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
+import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
@@ -56,6 +57,7 @@ import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
+import { arcanaTaskInstruction, assessArcanaTaskRisk, parseArcanaPromptCommand } from "../../arcana/task"
 
 export type PromptProps = {
   sessionID?: string
@@ -1039,6 +1041,7 @@ export function Prompt(props: PromptProps) {
             },
           ]
         : []
+    const arcanaPromptCommand = parseArcanaPromptCommand(inputText)
 
     if (store.mode === "shell") {
       move.startSubmit()
@@ -1052,6 +1055,85 @@ export function Prompt(props: PromptProps) {
         command: inputText,
       })
       setStore("mode", "normal")
+    } else if (arcanaPromptCommand) {
+      const task = arcanaPromptCommand.arguments.trim()
+      if (!task) {
+        toast.show({
+          title: `/${arcanaPromptCommand.command}`,
+          message: `Add a task after /${arcanaPromptCommand.command}.`,
+          variant: "warning",
+        })
+        return false
+      }
+
+      const risk = assessArcanaTaskRisk(task)
+      const approvalStatus = risk.approval_required ? "approved" : "not_required"
+      if (risk.approval_required) {
+        const approved = await DialogConfirm.show(
+          dialog,
+          `Approve /${arcanaPromptCommand.command}`,
+          `${risk.level.toUpperCase()} risk Arcana task. ${risk.reasons.join(" ")}`,
+          "keep editing",
+        )
+        if (!approved) return false
+      }
+
+      const instruction = arcanaTaskInstruction({
+        command: arcanaPromptCommand.command,
+        risk,
+        approval_status: approvalStatus,
+      })
+      move.startSubmit()
+      sdk.client.session
+        .prompt(
+          {
+            sessionID,
+            ...selectedModel,
+            agent: agent.name,
+            model: selectedModel,
+            variant,
+            parts: [
+              ...editorParts,
+              ...(instruction
+                ? [
+                    {
+                      type: "text" as const,
+                      text: instruction,
+                      synthetic: true,
+                      metadata: {
+                        arcana: {
+                          command: arcanaPromptCommand.command,
+                          instruction: true,
+                        },
+                      },
+                    },
+                  ]
+                : []),
+              {
+                type: "text",
+                text: task,
+                metadata: {
+                  arcana: {
+                    command: arcanaPromptCommand.command,
+                    risk: risk.level,
+                    approval_required: risk.approval_required,
+                    approval_status: approvalStatus,
+                    risk_reasons: risk.reasons,
+                  },
+                },
+              },
+              ...nonTextParts,
+            ],
+          },
+          { throwOnError: true },
+        )
+        .catch((error) => {
+          toast.show({
+            title: `Failed to send /${arcanaPromptCommand.command}`,
+            message: errorMessage(error),
+            variant: "error",
+          })
+        })
     } else if (
       inputText.startsWith("/") &&
       sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))

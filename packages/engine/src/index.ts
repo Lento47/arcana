@@ -61,8 +61,11 @@ process.on("SIGTERM", () => {
   process.exit(0)
 })
 
+const args = hideBin(process.argv)
+const exitsBeforeRuntime = args.some((arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v")
+
 // Auto-configure proxy auth from stored license key
-if (!process.env.ARCANA_PROXY_KEY) {
+if (!exitsBeforeRuntime && !process.env.ARCANA_PROXY_KEY) {
   try {
     const { readFileSync, existsSync } = require("node:fs") as typeof import("node:fs")
     const { join } = require("node:path") as typeof import("node:path")
@@ -82,8 +85,6 @@ if (!process.env.ARCANA_PROXY_KEY) {
 // ARCANA_PROXY_KEY directly. We deliberately do NOT mirror it into OPENAI_API_KEY:
 // that would point the real `openai` provider (api.openai.com) at the proxy key
 // and 401. Native providers stay key-driven; the proxy serves everything else.
-
-const args = hideBin(process.argv)
 
 function show(out: string) {
   const text = out.trimStart()

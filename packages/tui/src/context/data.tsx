@@ -22,7 +22,7 @@ import type {
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 import { useSDK } from "./sdk"
-import { createSignal, onMount } from "solid-js"
+import { createSignal, onCleanup, onMount } from "solid-js"
 
 type LocationData = {
   agent?: AgentV2Info[]
@@ -574,20 +574,22 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       },
     }
 
+    function logRefreshFailures(label: string, settled: PromiseSettledResult<unknown>[]) {
+      for (const failure of settled.filter((item) => item.status === "rejected"))
+        console.error(`Failed to refresh ${label} location data`, failure.reason)
+    }
+
     onMount(() => {
       void Promise.allSettled([
         result.location.refresh(),
-        result.location.agent.refresh(),
-        result.location.integration.refresh(),
-        result.location.model.refresh(),
-        result.location.provider.refresh(),
-        result.location.reference.refresh(),
-        result.location.command.refresh(),
-        result.location.skill.refresh(),
-      ]).then((settled) => {
-        for (const failure of settled.filter((item) => item.status === "rejected"))
-          console.error("Failed to refresh default location data", failure.reason)
-      })
+      ]).then((settled) => logRefreshFailures("initial", settled))
+
+      const deferred = setTimeout(() => {
+        void Promise.allSettled([
+          result.location.reference.refresh(),
+        ]).then((settled) => logRefreshFailures("deferred", settled))
+      }, 250)
+      onCleanup(() => clearTimeout(deferred))
     })
 
     return result
