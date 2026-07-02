@@ -62,8 +62,14 @@ export const Background = Schema.Struct({
 })
 export type Background = Schema.Schema.Type<typeof Background>
 
+export const Shell = Schema.Literals(["opencode", "command-spine"]).annotate({
+  description: "TUI shell layout: 'opencode' (current chat-style) or 'command-spine' (chronicle layout)",
+})
+export type Shell = Schema.Schema.Type<typeof Shell>
+
 export const Info = Schema.Struct({
   $schema: Schema.optional(Schema.String),
+  shell: Schema.optional(Shell).annotate({ description: "TUI shell layout" }),
   theme: Schema.optional(Schema.String),
   keybinds: Schema.optional(TuiKeybind.KeybindOverrides),
   plugin: Schema.optional(Schema.Array(PluginSpec)),
@@ -79,7 +85,8 @@ export const Info = Schema.Struct({
 })
 export type Info = Schema.Schema.Type<typeof Info>
 
-export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | "mouse"> & {
+export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | "mouse" | "shell"> & {
+  shell: Shell
   attention: {
     enabled: boolean
     notifications: boolean
@@ -120,6 +127,7 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
       sound_pack: input.attention?.sound_pack ?? "arcana.default",
       sounds: input.attention?.sounds ?? {},
     },
+    shell: input.shell ?? "opencode",
     keybinds: createBindingLookup(TuiKeybind.toBindingConfig(TuiKeybind.parse(keybinds)), {
       commandMap: TuiKeybind.CommandMap,
       bindingDefaults: TuiKeybind.bindingDefaults(),

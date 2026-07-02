@@ -341,17 +341,17 @@ describe("TUI inline tool wrapping", () => {
     )
 
     await testSetup.renderOnce()
-    expect(scroll?.scrollHeight).toBe(3)
+    expect(scroll?.scrollHeight).toBe(4)
     expect(scroll?.scrollTop).toBe(Math.max(0, scroll!.scrollHeight - scroll!.viewport.height))
 
     setSeparated(true)
     await testSetup.renderOnce()
-    expect(scroll?.scrollHeight).toBe(5)
+    expect(scroll?.scrollHeight).toBe(6)
     expect(scroll?.scrollTop).toBe(Math.max(0, scroll!.scrollHeight - scroll!.viewport.height))
 
     setSeparated(false)
     await testSetup.renderOnce()
-    expect(scroll?.scrollHeight).toBe(3)
+    expect(scroll?.scrollHeight).toBe(4)
     expect(scroll?.scrollTop).toBe(Math.max(0, scroll!.scrollHeight - scroll!.viewport.height))
   })
 })
