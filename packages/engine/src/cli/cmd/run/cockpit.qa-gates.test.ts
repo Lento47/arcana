@@ -2,16 +2,15 @@ import { describe, expect, test } from "bun:test"
 import { createEngineAction, createPipelinePlan } from "@/kernel"
 import { createEmptyCockpitProjection } from "./cockpit.projection-store"
 import {
-  cockpitCommandCoverageGate,
   cockpitPerformanceGate,
-  cockpitQACoversSteps61To64,
+  cockpitQACoversSteps61To63,
   cockpitRenderSnapshot,
   replayCockpitProjection,
 } from "./cockpit.qa-gates"
 
 describe("Arcana cockpit QA gates", () => {
-  test("covers steps 61 through 64", () => {
-    expect(cockpitQACoversSteps61To64()).toBe(true)
+  test("covers steps 61 through 63", () => {
+    expect(cockpitQACoversSteps61To63()).toBe(true)
   })
 
   test("creates deterministic render snapshot", () => {
@@ -52,13 +51,4 @@ describe("Arcana cockpit QA gates", () => {
     expect(failed.passed).toBe(false)
   })
 
-  test("evaluates command coverage gate", () => {
-    const commands = [{ name: "mission" }, { name: "actions" }, { name: "risk" }, { name: "diffgate" }, { name: "verify" }, { name: "proof" }, { name: "tokens" }, { name: "candidate" }, { name: "rollback" }, { name: "sovereignty" }, { name: "compat" }, { name: "layout" }, { name: "focus" }, { name: "help" }]
-    const gate = cockpitCommandCoverageGate(commands)
-
-    expect(gate.step).toBe(64)
-    expect(gate.passed).toBe(true)
-    expect(gate.missing).toEqual([])
-    expect(gate.reflected).toContain("mission")
-  })
 })

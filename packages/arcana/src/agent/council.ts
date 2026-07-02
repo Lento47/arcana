@@ -24,6 +24,7 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 import type { AgentRunner } from "./runner.js"
 import { resolveProvider } from "./providers.js"
+import type { MemoryStore } from "@arcana/memory"
 
 export type CouncilModelSpec = string // "provider/model"
 export type VoteMode = "majority" | "ranked" | "judge"
@@ -38,6 +39,7 @@ export interface CouncilArgs {
 }
 
 export interface CouncilResult {
+  council_id?: string
   winner: string
   winner_model: string
   vote_tally: Record<string, number>
@@ -134,7 +136,18 @@ function tallyVotes(votes: string[]): Record<string, number> {
   return tally
 }
 
-export async function runCouncil(args: CouncilArgs, runner: AgentRunner): Promise<string> {
+function parseVote(raw: string): { vote?: string; justification?: string } {
+  const match = raw.match(/VOTE:\s*([A-Za-z0-9_-]+)/i)
+  const vote = match?.[1]?.toLowerCase()
+  const justification = raw
+    .split(/\r?\n/)
+    .filter((line) => !/^VOTE:/i.test(line.trim()))
+    .join(" ")
+    .trim()
+  return { vote, justification: justification || undefined }
+}
+
+export async function runCouncil(args: CouncilArgs, runner: AgentRunner, memory?: MemoryStore): Promise<string> {
   // 1. License gate
   if (!runner.config.godlike) {
     const tier = readLicenseTier()
@@ -145,14 +158,41 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner): Promis
 
   // 2. Validate args
   const models = args.models?.slice(0, 5) ?? []
-  if (models.length < 2) return "council: needs at least 2 models"
+  if (models.length < 2) {
+    await runner.config.proofGate?.recordConsensus?.({
+      prompt: args.prompt,
+      models,
+      rounds: args.rounds ?? 1,
+      vote_mode: args.vote_mode ?? "majority",
+      status: "failed",
+      errored: ["council needs at least 2 models"],
+    })
+    return "council: needs at least 2 models"
+  }
   const rounds = Math.min(args.rounds ?? 1, 2) as 1 | 2
   const voteMode: VoteMode = args.vote_mode ?? "majority"
   const judgeModel = args.judge_model ?? models[0]!
 
   if (voteMode === "judge" && !models.includes(judgeModel)) {
+    await runner.config.proofGate?.recordConsensus?.({
+      prompt: args.prompt,
+      models,
+      rounds,
+      vote_mode: voteMode,
+      status: "failed",
+      errored: [`judge_model "${judgeModel}" must be in the models list`],
+    })
     return `council: judge_model "${judgeModel}" must be in the models list`
   }
+
+  const councilStore = memory
+  const ledger = councilStore?.createCouncilSession({
+    prompt: args.prompt,
+    context: args.context,
+    vote_mode: voteMode,
+    rounds,
+    judge_model: voteMode === "judge" ? judgeModel : undefined,
+  })
 
   // 3. Phase 1: initial proposals
   const baseApiKey = runner.config.apiKey
@@ -168,14 +208,40 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner): Promis
   let totalInput = 0
   let totalOutput = 0
   proposalResults.forEach((r, i) => {
-    if ("error" in r) errored.push(`${models[i]}: ${r.error}`)
-    else {
+    const model = models[i]!
+    if ("error" in r) {
+      errored.push(`${model}: ${r.error}`)
+      if (ledger && councilStore) {
+        councilStore.recordCouncilMessage({ council_id: ledger.id, agent_model: model, phase: "error", error: r.error })
+      }
+    } else {
+      if (ledger && councilStore) {
+        councilStore.recordCouncilMessage({
+          council_id: ledger.id,
+          agent_model: model,
+          phase: "proposal",
+          content: r.text,
+          input_tokens: r.input,
+          output_tokens: r.output,
+        })
+      }
       proposals.push({ spec: models[i]!, text: r.text })
       totalInput += r.input
       totalOutput += r.output
     }
   })
   if (proposals.length < 2) {
+    if (ledger && councilStore) councilStore.finalizeCouncilSession(ledger.id, { status: "failed" })
+    await runner.config.proofGate?.recordConsensus?.({
+      council_id: ledger?.id,
+      prompt: args.prompt,
+      models,
+      rounds,
+      vote_mode: voteMode,
+      status: "failed",
+      errored,
+      cost_tokens: { input: totalInput, output: totalOutput },
+    })
     return `council: need ≥2 successful proposals; got ${proposals.length}\nErrors:\n${errored.join("\n")}`
   }
 
@@ -196,9 +262,24 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner): Promis
       ),
     )
     critiqueResults.forEach((r, i) => {
-      if ("error" in r) errored.push(`${proposals[i]!.spec} (critique): ${r.error}`)
-      else {
-        proposals[i] = { spec: proposals[i]!.spec, text: r.text }
+      const model = proposals[i]!.spec
+      if ("error" in r) {
+        errored.push(`${model} (critique): ${r.error}`)
+        if (ledger && councilStore) {
+          councilStore.recordCouncilMessage({ council_id: ledger.id, agent_model: model, phase: "error", error: r.error })
+        }
+      } else {
+        proposals[i] = { spec: model, text: r.text }
+        if (ledger && councilStore) {
+          councilStore.recordCouncilMessage({
+            council_id: ledger.id,
+            agent_model: model,
+            phase: "critique",
+            content: r.text,
+            input_tokens: r.input,
+            output_tokens: r.output,
+          })
+        }
         totalInput += r.input
         totalOutput += r.output
       }
@@ -217,9 +298,32 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner): Promis
   )
   const votes: string[] = []
   voteResults.forEach((r, i) => {
-    if ("error" in r) errored.push(`${proposals[i]!.spec} (vote): ${r.error}`)
-    else {
+    const model = proposals[i]!.spec
+    if ("error" in r) {
+      errored.push(`${model} (vote): ${r.error}`)
+      if (ledger && councilStore) {
+        councilStore.recordCouncilMessage({ council_id: ledger.id, agent_model: model, phase: "error", error: r.error })
+      }
+    } else {
       votes.push(r.text)
+      if (ledger && councilStore) {
+        const parsed = parseVote(r.text)
+        councilStore.recordCouncilMessage({
+          council_id: ledger.id,
+          agent_model: model,
+          phase: "vote",
+          content: r.text,
+          input_tokens: r.input,
+          output_tokens: r.output,
+        })
+        councilStore.recordCouncilVote({
+          council_id: ledger.id,
+          agent_model: model,
+          vote: parsed.vote,
+          justification: parsed.justification,
+          raw: r.text,
+        })
+      }
       totalInput += r.input
       totalOutput += r.output
     }
@@ -243,7 +347,20 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner): Promis
     if ("error" in judgeResult) {
       // Fall back to plurality
       winnerLetter = winnerLetter ?? letters[0] ?? "A"
+      if (ledger && councilStore) {
+        councilStore.recordCouncilMessage({ council_id: ledger.id, agent_model: judgeModel, phase: "error", error: judgeResult.error })
+      }
     } else {
+      if (ledger && councilStore) {
+        councilStore.recordCouncilMessage({
+          council_id: ledger.id,
+          agent_model: judgeModel,
+          phase: "judge",
+          content: judgeResult.text,
+          input_tokens: judgeResult.input,
+          output_tokens: judgeResult.output,
+        })
+      }
       const m = judgeResult.text.match(/WINNER:\s*([A-Za-z0-9_-]+)/i)
       if (m) winnerLetter = m[1]!.toLowerCase()
       totalInput += judgeResult.input
@@ -258,9 +375,13 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner): Promis
   const winnerEntry = proposals[winnerIdx === -1 ? 0 : winnerIdx] ?? proposals[0]!
   winner = winnerEntry.text
   winner_model = winnerEntry.spec
+  if (ledger && councilStore) {
+    councilStore.finalizeCouncilSession(ledger.id, { status: "completed", winner_model, winner })
+  }
 
   // 7. Build result
   const result: CouncilResult = {
+    council_id: ledger?.id,
     winner,
     winner_model,
     vote_tally: tally,
@@ -270,6 +391,19 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner): Promis
     models_used: proposals.map((p) => p.spec),
     errored,
   }
+  await runner.config.proofGate?.recordConsensus?.({
+    council_id: result.council_id,
+    prompt: args.prompt,
+    models: result.models_used,
+    rounds: result.rounds,
+    vote_mode: voteMode,
+    status: "completed",
+    winner_model: result.winner_model,
+    vote_tally: result.vote_tally,
+    cost_tokens: result.cost_tokens,
+    errored: result.errored,
+    transcript: result.transcript,
+  })
   return formatResult(result)
 }
 
@@ -301,6 +435,7 @@ function buildTranscript(
 function formatResult(r: CouncilResult): string {
   const lines: string[] = [
     `◆ Council result (winner: ${r.winner_model})`,
+    r.council_id ? `Ledger: ${r.council_id}` : ``,
     ``,
     r.winner,
     ``,

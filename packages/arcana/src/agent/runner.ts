@@ -8,9 +8,37 @@ import type { AgentConfig, ChatMessage, TurnResult, ToolDef, ToolHandler, ToolRe
 import { redactSecrets, checkDangerousCommand, RateLimiter, auditLog } from "./guard.js"
 import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
-import { applyMlPreflight, buildMlRevisionMessages, evaluateMlFinalResponse, prepareMlRuntime } from "./ml-runtime.js"
+import {
+  applyMlPreflight,
+  buildMlRevisionMessages,
+  evaluateMlFinalResponse,
+  getMlRuntimeModelOverrides,
+  prepareMlRuntime,
+} from "./ml-runtime.js"
 
 const TOOL_RESULT_MAX = 2000  // truncate large tool outputs to this many chars
+type RunProofVerificationKind = "test" | "typecheck" | "lint" | "build"
+type RunProofVerificationStatus = "passed" | "failed" | "skipped" | "not_run"
+
+export function runProofVerificationKindFromShellCommand(command: string): RunProofVerificationKind | undefined {
+  const normalized = command.toLowerCase().replace(/\s+/g, " ").trim()
+  if (!normalized) return undefined
+
+  if (/\b(bun|npm|pnpm|yarn|vitest|jest|mocha|ava|cargo|go|pytest|python|python3)\s+(run\s+)?test\b/.test(normalized)) return "test"
+  if (/\b(test|vitest|jest|mocha|ava|pytest)\b/.test(normalized)) return "test"
+
+  if (/\b(typecheck|tsc|tsgo)\b/.test(normalized)) return "typecheck"
+  if (/\b(lint|eslint|biome|oxlint)\b/.test(normalized)) return "lint"
+  if (/\b(bun|npm|pnpm|yarn|cargo|go)\s+(run\s+)?build\b/.test(normalized)) return "build"
+  if (/\b(vite|tsup|rollup|webpack|next)\s+build\b/.test(normalized)) return "build"
+
+  return undefined
+}
+
+function runProofVerificationSummary(kind: RunProofVerificationKind, command: string, status: RunProofVerificationStatus): string {
+  const label = kind === "test" ? "Test command" : `${kind[0]!.toUpperCase()}${kind.slice(1)} command`
+  return `${label} ${status}: ${command}`
+}
 
 /** Map arcana provider ids to AI SDK language model constructors. */
 async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
@@ -147,6 +175,174 @@ export class AgentRunner {
     return [...this.tools.values()].map((t) => t.def)
   }
 
+  private shellCommandFromTool(toolName: string, input: Record<string, unknown>): string | undefined {
+    if (toolName !== "shell" && !toolName.includes("bash")) return undefined
+    const command = input.command ?? input.cmd
+    return typeof command === "string" && command.trim() ? command : undefined
+  }
+
+  private async runProofShellGate(toolName: string, input: Record<string, unknown>): Promise<string | undefined> {
+    const command = this.shellCommandFromTool(toolName, input)
+    if (!command || !this.config.proofGate) return undefined
+    const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd()
+    const decision = await this.config.proofGate.gateShellCommand(command, {
+      cwd,
+      approved: this.config.godlike === true,
+      sandboxEnabled: Boolean(this.sandbox),
+      userSovereignty: { requireApprovalForWrites: true, requireApprovalForNetwork: true },
+    })
+    if (!decision.blocked) return undefined
+    return [
+      `Blocked by RunProof policy gate: ${command}`,
+      `Risk: ${decision.risk}`,
+      ...decision.reasons.map((reason) => `- ${reason}`),
+    ].join("\n")
+  }
+
+  private filePathFromMutationTool(toolName: string, input: Record<string, unknown>): string | undefined {
+    if (toolName !== "write" && toolName !== "edit" && toolName !== "apply_patch") return undefined
+    const path = input.path ?? input.filePath ?? input.filepath ?? input.file
+    return typeof path === "string" && path.trim() ? path : undefined
+  }
+
+  private async runProofFileGate(toolName: string, input: Record<string, unknown>): Promise<string | undefined> {
+    const path = this.filePathFromMutationTool(toolName, input)
+    if (!path || !this.config.proofGate) return undefined
+    const decision = await this.config.proofGate.gateFileMutation(path, {
+      operation: toolName,
+      approved: this.config.godlike === true,
+      sandboxEnabled: Boolean(this.sandbox),
+      userSovereignty: { requireApprovalForWrites: true, requireApprovalForNetwork: true },
+    })
+    if (!decision.blocked) return undefined
+    return [
+      `Blocked by RunProof file policy gate: ${path}`,
+      `Risk: ${decision.risk}`,
+      ...decision.reasons.map((reason) => `- ${reason}`),
+    ].join("\n")
+  }
+
+  private async recordRunProofContextAccess(
+    toolName: string,
+    input: Record<string, unknown>,
+    result: string,
+  ): Promise<void> {
+    if (!this.config.proofGate) return
+
+    if (toolName === "read") {
+      const path = input.filePath
+      if (typeof path !== "string" || !path.trim()) return
+      const exists = !result.startsWith("File not found:")
+      await this.config.proofGate.recordContextAccess({
+        tool: "read",
+        path,
+        summary: exists ? `Read file context: ${path}` : `Attempted to read missing file: ${path}`,
+        exists,
+        bytes_read: exists ? result.length : undefined,
+      })
+      return
+    }
+
+    if (toolName === "grep") {
+      const pattern = typeof input.pattern === "string" ? input.pattern : undefined
+      const path = typeof input.path === "string" ? input.path : process.cwd()
+      const noMatches = result.startsWith("No matches for")
+      await this.config.proofGate.recordContextAccess({
+        tool: "grep",
+        path,
+        pattern,
+        summary: noMatches ? `Searched context with no matches: ${pattern ?? ""}` : `Searched context: ${pattern ?? ""}`,
+        exists: true,
+        result_count: noMatches ? 0 : result.split("\n").filter((line) => line && !line.startsWith("...")).length,
+      })
+      return
+    }
+
+    if (toolName === "glob") {
+      const pattern = typeof input.pattern === "string" ? input.pattern : undefined
+      const path = typeof input.path === "string" ? input.path : process.cwd()
+      const noMatches = result.startsWith("No files matching")
+      await this.config.proofGate.recordContextAccess({
+        tool: "glob",
+        path,
+        pattern,
+        summary: noMatches ? `Scanned context with no file matches: ${pattern ?? ""}` : `Scanned context files: ${pattern ?? ""}`,
+        exists: true,
+        result_count: noMatches ? 0 : result.split("\n").filter((line) => line.trim()).length,
+      })
+    }
+  }
+
+  private async recordRunProofFileWrite(
+    toolName: string,
+    input: Record<string, unknown>,
+    result: string,
+  ): Promise<void> {
+    if (!this.config.proofGate) return
+    if (toolName !== "write" && toolName !== "edit") return
+
+    const path = input.filePath
+    if (typeof path !== "string" || !path.trim()) return
+    if (result.startsWith("Write error:") || result.startsWith("Edit error:") || result.startsWith("Error:")) return
+    if (!result.startsWith("Written ") && !result.startsWith("Edited ")) return
+
+    const bytesWritten =
+      toolName === "write" && typeof input.content === "string"
+        ? input.content.length
+        : toolName === "edit" && typeof input.newString === "string"
+          ? input.newString.length
+          : undefined
+
+    await this.config.proofGate.recordFileWrite({
+      path,
+      mode: "proposed",
+      reason: toolName === "write" ? `write tool created or overwrote ${path}` : `edit tool modified ${path}`,
+      bytes_written: bytesWritten,
+    })
+  }
+
+  private async recordRunProofShellCommand(
+    toolName: string,
+    input: Record<string, unknown>,
+    result: string,
+  ): Promise<void> {
+    if (!this.config.proofGate) return
+    const command = this.shellCommandFromTool(toolName, input)
+    if (!command) return
+
+    const cwd = typeof input.cwd === "string" && input.cwd.trim() ? input.cwd : process.cwd()
+    const failed =
+      result.startsWith("Tool error:") ||
+      result.startsWith("Shell error:") ||
+      result.startsWith("Bash error:") ||
+      result.startsWith("Error:") ||
+      result.startsWith("error -")
+    const status: RunProofVerificationStatus = failed ? "failed" : "passed"
+
+    if (this.config.proofGate.recordShellCommand) {
+      await this.config.proofGate.recordShellCommand({
+        command,
+        cwd,
+        status,
+        risk: "unknown",
+        exit_code: failed ? 1 : undefined,
+        stdout_summary: failed ? undefined : result.slice(0, 500),
+        stderr_summary: failed ? result.slice(0, 500) : undefined,
+      })
+    }
+
+    const verificationKind = runProofVerificationKindFromShellCommand(command)
+    if (!verificationKind) return
+
+    const summary = runProofVerificationSummary(verificationKind, command, status)
+    if (verificationKind === "test") {
+      await this.config.proofGate.recordTestResult?.({ command, status, summary })
+      return
+    }
+
+    await this.config.proofGate.recordCheck?.({ kind: verificationKind, command, status, summary })
+  }
+
   async run(
     messages: ChatMessage[],
     onChunk?: (text: string) => void,
@@ -182,8 +378,28 @@ export class AgentRunner {
       history = systemMsg ? [systemMsg, ...rest] : rest
     }
 
-    const mlRuntime = prepareMlRuntime(history, this.config, Boolean(this.sandbox))
+    const availableTools = this.getToolDefs().map((tool) => tool.function.name)
+    const mlRuntime = prepareMlRuntime(history, this.config, Boolean(this.sandbox), availableTools)
     history = applyMlPreflight(history, mlRuntime)
+    const mlOverrides = getMlRuntimeModelOverrides(mlRuntime)
+
+    if (this.config.proofGate?.recordMlSignal && mlRuntime.turnSignal) {
+      try {
+        await this.config.proofGate.recordMlSignal({
+          kind: "turn",
+          signal: mlRuntime.turnSignal,
+          summary: `ML turn signal: ${mlRuntime.turnSignal.intent} | risk=${mlRuntime.turnSignal.risk} | posture=${mlRuntime.turnSignal.executionPosture} | route=${mlRuntime.turnSignal.modelRoute.profile}`,
+          refs: {
+            intent: mlRuntime.turnSignal.intent,
+            risk: mlRuntime.turnSignal.risk,
+            posture: mlRuntime.turnSignal.executionPosture,
+            model_route: mlRuntime.turnSignal.modelRoute.profile,
+          },
+        })
+      } catch {
+        // Non-blocking: ML signal recording failures should not break the run.
+      }
+    }
 
     let totalInput = 0
     let totalOutput = 0
@@ -195,10 +411,13 @@ export class AgentRunner {
     // (bash/shell, write, edit, speak, memory_store_fact, ...) would silently skip
     // a real second execution of an identical call within the 5s window.
     const CACHEABLE_TOOLS = new Set(["web_search", "web_fetch", "memory_search", "skill_list"])
-    for (let round = 0; round < (this.config.maxToolRounds ?? 10); round++) {
+    const maxToolRounds = mlOverrides.maxToolRounds ?? this.config.maxToolRounds ?? 10
+    for (let round = 0; round < maxToolRounds; round++) {
       const { model, tools } = await resolveModel(this.config, this.getToolDefs())
       const coreMessages = toCoreMessages(history)
       const hasTools = Object.keys(tools).length > 0
+      const mlMaxTokens = mlOverrides.maxTokens
+      const mlTemperature = mlOverrides.temperature
 
       // Context pack shadow: measure what the context pack WOULD trim
       // without enforcing budgets yet. This is observational — it feeds
@@ -228,8 +447,8 @@ export class AgentRunner {
         const result = await streamText({
           model,
           messages: coreMessages,
-          maxOutputTokens: this.config.maxTokens ?? 4096,
-          temperature: this.config.temperature ?? 0.7,
+          maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 4096,
+          temperature: mlTemperature ?? this.config.temperature ?? 0.7,
           tools: hasTools ? tools : undefined,
         })
         let content = ""
@@ -250,8 +469,8 @@ export class AgentRunner {
       const result = await generateText({
         model,
         messages: coreMessages,
-        maxOutputTokens: this.config.maxTokens ?? 4096,
-        temperature: this.config.temperature ?? 0.7,
+        maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 4096,
+        temperature: mlTemperature ?? this.config.temperature ?? 0.7,
         tools: hasTools ? tools : undefined,
       })
 
@@ -270,8 +489,8 @@ export class AgentRunner {
             const revised = await generateText({
               model,
               messages: toCoreMessages(revisionMessages),
-              maxOutputTokens: this.config.maxTokens ?? 4096,
-              temperature: Math.min(this.config.temperature ?? 0.7, 0.4),
+              maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 4096,
+              temperature: Math.min(mlTemperature ?? this.config.temperature ?? 0.7, 0.4),
             })
             totalInput += revised.usage?.inputTokens ?? 0
             totalOutput += revised.usage?.outputTokens ?? 0
@@ -348,6 +567,22 @@ export class AgentRunner {
               if (warn) resultStr = warn
             }
 
+            const policyBlocked = await this.runProofShellGate(tc.toolName, tc.input as Record<string, unknown>)
+            if (policyBlocked) {
+              resultStr = policyBlocked
+              auditLog({ tool: tc.toolName, args: tc.input, result: policyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+              history.push({ role: "tool", tool_call_id: tc.toolCallId, content: policyBlocked, toolName: tc.toolName } as any)
+              continue
+            }
+
+            const filePolicyBlocked = await this.runProofFileGate(tc.toolName, tc.input as Record<string, unknown>)
+            if (filePolicyBlocked) {
+              resultStr = filePolicyBlocked
+              auditLog({ tool: tc.toolName, args: tc.input, result: filePolicyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+              history.push({ role: "tool", tool_call_id: tc.toolCallId, content: filePolicyBlocked, toolName: tc.toolName } as any)
+              continue
+            }
+
               // Guard: dangerous command check (skip in godlike mode)
             if (!this.config.godlike && (tc.toolName === "shell" || tc.toolName.includes("bash"))) {
               const args = tc.input as Record<string, unknown>
@@ -363,6 +598,7 @@ export class AgentRunner {
               toolResultCache.delete(cacheKey)
               toolResultCache.set(cacheKey, cached)
               resultStr = cached.result
+              await this.recordRunProofContextAccess(tc.toolName, tc.input as Record<string, unknown>, resultStr)
               history.push({ role: "tool", tool_call_id: tc.toolCallId, content: resultStr, toolName: tc.toolName } as any)
               continue
             }
@@ -377,6 +613,16 @@ export class AgentRunner {
                   if (!batchEntry) return `"${batchCall.tool}": unknown tool`
                   // Sub-calls must pass the same guards as top-level calls — otherwise
                   // `batch: [{tool:"bash", command:"rm -rf /"}]` bypasses them entirely.
+                  const filePolicyBlocked = await this.runProofFileGate(batchCall.tool, batchCall.args ?? {})
+                  if (filePolicyBlocked) {
+                    auditLog({ tool: batchCall.tool, args: batchCall.args, result: filePolicyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+                    return `"${batchCall.tool}": ${filePolicyBlocked}`
+                  }
+                  const policyBlocked = await this.runProofShellGate(batchCall.tool, batchCall.args ?? {})
+                  if (policyBlocked) {
+                    auditLog({ tool: batchCall.tool, args: batchCall.args, result: policyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
+                    return `"${batchCall.tool}": ${policyBlocked}`
+                  }
                   if (!this.config.godlike) {
                     try { this.limiter.check(batchCall.tool) } catch (e) {
                       return `"${batchCall.tool}": ${e instanceof Error ? e.message : String(e)}`
@@ -393,9 +639,18 @@ export class AgentRunner {
                   }
                   try {
                     const result = await batchEntry.handler(batchCall.args)
+                    await this.recordRunProofContextAccess(batchCall.tool, batchCall.args ?? {}, result)
+                    await this.recordRunProofFileWrite(batchCall.tool, batchCall.args ?? {}, result)
+                    await this.recordRunProofShellCommand(
+                      batchCall.tool,
+                      batchCall.args ?? {},
+                      this.config.godlike ? result : redactSecrets(result),
+                    )
                     return `"${batchCall.tool}": ${result.slice(0, 500)}`
                   } catch (e) {
-                    return `"${batchCall.tool}": error - ${String(e)}`
+                    const result = `error - ${String(e)}`
+                    await this.recordRunProofShellCommand(batchCall.tool, batchCall.args ?? {}, result)
+                    return `"${batchCall.tool}": ${result}`
                   }
                 }))
                 resultStr = `Parallel results:\n${batchResults.join("\n")}`
@@ -414,7 +669,10 @@ export class AgentRunner {
                 setTimeout(() => reject(new Error(`Tool timed out after ${timeout}ms`)), timeout),
               ),
             ])
+            await this.recordRunProofContextAccess(tc.toolName, tc.input as Record<string, unknown>, resultStr)
+            await this.recordRunProofFileWrite(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             resultStr = this.config.godlike ? resultStr : redactSecrets(resultStr)
+            await this.recordRunProofShellCommand(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             if (cacheable) {
               toolResultCache.set(cacheKey, { result: resultStr, ts: Date.now() })
               if (toolResultCache.size > 50) {
@@ -426,6 +684,7 @@ export class AgentRunner {
             toolHistory.push({ name: tc.toolName, ts: Date.now() })
           } catch (e) {
             resultStr = `Tool error: ${String(e)}`
+            await this.recordRunProofShellCommand(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             auditLog({ tool: tc.toolName, args: tc.input, result: `ERROR: ${e}`, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
           }
         }

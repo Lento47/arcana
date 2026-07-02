@@ -390,6 +390,7 @@ export type TuiState = {
     todo: (sessionID: string) => ReadonlyArray<TuiSidebarTodoItem>
     messages: (sessionID: string) => ReadonlyArray<Message>
     status: (sessionID: string) => SessionStatus | undefined
+    compacting: (sessionID: string) => boolean
     permission: (sessionID: string) => ReadonlyArray<PermissionRequest>
     question: (sessionID: string) => ReadonlyArray<QuestionRequest>
   }

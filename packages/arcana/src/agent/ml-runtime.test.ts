@@ -4,6 +4,7 @@ import {
   buildMlRevisionMessages,
   evaluateMlFinalResponse,
   getLastUserRequest,
+  getMlRuntimeModelOverrides,
   isMlRuntimeEnabled,
   prepareMlRuntime,
 } from "./ml-runtime.js"
@@ -61,5 +62,21 @@ describe("agent ML runtime integration helpers", () => {
     expect(revisionMessages[0]?.role).toBe("system")
     expect(revisionMessages[1]?.role).toBe("user")
     expect(revisionMessages[1]?.content).toContain("Draft answer")
+  })
+
+  test("returns model overrides derived from the thinking plan", () => {
+    const state = prepareMlRuntime(
+      [{ role: "user", content: "thoroughly review this repo and verify each fix" }],
+      config,
+      false,
+      ["read", "grep", "run_test", "edit"],
+    )
+    const overrides = getMlRuntimeModelOverrides(state)
+
+    expect(state.enabled).toBe(true)
+    expect(state.thinkingStyle).toBeDefined()
+    expect(overrides.maxTokens).toBeDefined()
+    expect(overrides.temperature).toBeDefined()
+    expect(overrides.maxToolRounds).toBeDefined()
   })
 })

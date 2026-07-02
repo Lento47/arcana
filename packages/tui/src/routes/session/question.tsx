@@ -376,12 +376,12 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                     >
                       <box flexDirection="row">
                         <box backgroundColor={active() ? theme.backgroundElement : undefined} paddingRight={1}>
-                          <text fg={active() ? tint(theme.textMuted, theme.secondary, 0.6) : theme.textMuted}>
+                          <text fg={active() ? selectedForeground(theme, theme.backgroundElement) : theme.textMuted}>
                             {`${i() + 1}.`}
                           </text>
                         </box>
                         <box backgroundColor={active() ? theme.backgroundElement : undefined}>
-                          <text fg={active() ? theme.secondary : picked() ? theme.success : theme.text}>
+                          <text fg={active() ? selectedForeground(theme, theme.backgroundElement) : picked() ? theme.success : theme.text}>
                             {multi() ? `[${picked() ? "✓" : " "}] ${opt.label}` : opt.label}
                           </text>
                         </box>
@@ -408,12 +408,12 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                 >
                   <box flexDirection="row">
                     <box backgroundColor={other() ? theme.backgroundElement : undefined} paddingRight={1}>
-                      <text fg={other() ? tint(theme.textMuted, theme.secondary, 0.6) : theme.textMuted}>
+                      <text fg={other() ? selectedForeground(theme, theme.backgroundElement) : theme.textMuted}>
                         {`${options().length + 1}.`}
                       </text>
                     </box>
                     <box backgroundColor={other() ? theme.backgroundElement : undefined}>
-                      <text fg={other() ? theme.secondary : customPicked() ? theme.success : theme.text}>
+                      <text fg={other() ? selectedForeground(theme, theme.backgroundElement) : customPicked() ? theme.success : theme.text}>
                         {multi() ? `[${customPicked() ? "✓" : " "}] Type your own answer` : "Type your own answer"}
                       </text>
                     </box>

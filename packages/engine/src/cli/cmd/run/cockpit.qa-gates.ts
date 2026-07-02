@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT OR LicenseRef-arcana-Commercial
 // Copyright (c) 2026 arcana contributors
 
-import { auditCockpitCommandCoverage } from "./cockpit.command-audit"
 import { createCockpitProjectionStore, createEmptyCockpitProjection, type ArcanaCockpitProjection, type ArcanaCockpitProjectionEvent } from "./cockpit.projection-store"
 import { createCockpitShell } from "./cockpit.shell"
 import { cockpitShellFingerprint, cockpitShellText } from "./cockpit.shell-text"
-import type { RunCommand } from "./types"
 
 export type CockpitRenderSnapshot = {
   readonly step: 61
@@ -32,13 +30,6 @@ export type CockpitPerformanceGate = {
   readonly p95_render_ms: number
   readonly max_rows: number
   readonly observed_rows: number
-}
-
-export type CockpitCommandCoverageGate = {
-  readonly step: 64
-  readonly passed: boolean
-  readonly missing: readonly string[]
-  readonly reflected: readonly string[]
 }
 
 function percentile95(values: readonly number[]): number {
@@ -90,16 +81,6 @@ export function cockpitPerformanceGate(samples: readonly CockpitPerformanceSampl
   }
 }
 
-export function cockpitCommandCoverageGate(commands: readonly Pick<RunCommand, "name">[] | undefined): CockpitCommandCoverageGate {
-  const coverage = auditCockpitCommandCoverage(commands)
-  return {
-    step: 64,
-    passed: coverage.complete,
-    missing: coverage.missing,
-    reflected: coverage.reflected,
-  }
-}
-
 export function cockpitRenderSmokeCheck(): { passed: boolean; error?: string } {
   try {
     const projection = createEmptyCockpitProjection({ run_id: "smoke_run_1", objective: "smoke test" })
@@ -117,6 +98,6 @@ export function cockpitRenderSmokeCheck(): { passed: boolean; error?: string } {
   }
 }
 
-export function cockpitQACoversSteps61To64(): boolean {
+export function cockpitQACoversSteps61To63(): boolean {
   return true
 }

@@ -3,7 +3,14 @@
 
 import { randomUUID } from "node:crypto"
 import { execFileSync } from "node:child_process"
-import { RUNPROOF_SCHEMA_VERSION, type RunProof, type RunProofStatus, type TUICommandReflection } from "./types.js"
+import {
+  RUNPROOF_SCHEMA_VERSION,
+  type ExecutionContract,
+  type RunProof,
+  type RunProofEvent,
+  type RunProofStatus,
+  type TUICommandReflection,
+} from "./types.js"
 
 function tryGit(args: string[], cwd: string): string | undefined {
   try {
@@ -26,10 +33,43 @@ function currentRepoSnapshot(cwd: string): RunProof["repo"] {
   }
 }
 
-export function createRunProof(input: { user_intent: string; cwd?: string; command?: string }): RunProof {
+function createExecutionContract(input: {
+  id: string
+  now: string
+  user_intent: string
+  contract?: Partial<Omit<ExecutionContract, "id" | "created_at">>
+}): ExecutionContract {
+  return {
+    id: input.id,
+    created_at: input.now,
+    goal: input.contract?.goal ?? input.user_intent,
+    scope: input.contract?.scope ?? "Current repository and active user request.",
+    allowed_files: input.contract?.allowed_files ?? [],
+    allowed_commands: input.contract?.allowed_commands ?? [],
+    risk_level: input.contract?.risk_level ?? "low",
+    required_approvals: input.contract?.required_approvals ?? [],
+    expected_artifacts: input.contract?.expected_artifacts ?? ["RunProof evidence bundle"],
+    rollback_plan: input.contract?.rollback_plan ?? "No rollback checkpoint has been created yet.",
+    verification_steps: input.contract?.verification_steps ?? ["Capture verification evidence before completion."],
+    status: input.contract?.status ?? "active",
+  }
+}
+
+export function createRunProof(input: {
+  user_intent: string
+  cwd?: string
+  command?: string
+  contract?: Partial<Omit<ExecutionContract, "id" | "created_at">>
+}): RunProof {
   const now = new Date().toISOString()
   const id = `rp_${randomUUID()}`
   const cwd = input.cwd ?? process.cwd()
+  const contract = createExecutionContract({
+    id: `contract_${randomUUID()}`,
+    now,
+    user_intent: input.user_intent,
+    contract: input.contract,
+  })
 
   const proof: RunProof = {
     id,
@@ -48,6 +88,8 @@ export function createRunProof(input: { user_intent: string; cwd?: string; comma
       status: "created",
       started_at: now,
     },
+    contract,
+    events: [],
     command_history: [],
     plan: {
       summary: "RunProof created. Plan capture pending.",
@@ -79,6 +121,8 @@ export function createRunProof(input: { user_intent: string; cwd?: string; comma
     rollback: {
       checkpoint_id: "none",
       strategy: "none",
+      restore_status: "not_staged",
+      approval_required: true,
     },
     unresolved: {
       unverified_assumptions: [],
@@ -95,6 +139,26 @@ export function createRunProof(input: { user_intent: string; cwd?: string; comma
     },
   }
 
+  recordEvent(proof, {
+    type: "plan.created",
+    actor: "system",
+    summary: "Execution contract created before agent/tool execution.",
+    status: "created",
+    risk: contract.risk_level,
+    refs: { contract_id: contract.id },
+  })
+
+  if (contract.required_approvals.length > 0) {
+    recordEvent(proof, {
+      type: "approval.required",
+      actor: "system",
+      summary: `Contract requires approval: ${contract.required_approvals.join(", ")}.`,
+      status: "awaiting_approval",
+      risk: contract.risk_level,
+      refs: { contract_id: contract.id },
+    })
+  }
+
   if (input.command) {
     recordCommand(proof, {
       command: input.command,
@@ -108,6 +172,17 @@ export function createRunProof(input: { user_intent: string; cwd?: string; comma
   }
 
   return proof
+}
+
+export function recordEvent(proof: RunProof, input: Omit<RunProofEvent, "id" | "timestamp">): RunProofEvent {
+  const event: RunProofEvent = {
+    id: `evt_${randomUUID()}`,
+    timestamp: new Date().toISOString(),
+    ...input,
+  }
+
+  proof.events.push(event)
+  return event
 }
 
 export function recordCommand(

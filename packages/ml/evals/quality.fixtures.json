@@ -10,6 +10,16 @@
     "minimumProblems": 1
   },
   {
+    "name": "slop-heavy response fails hard",
+    "request": "summarize the launch strategy",
+    "response": "We will leverage cutting-edge synergy to unlock the power of our turnkey, world-class solution. This comprehensive approach will dramatically streamline the workflow and drive exponential value for our users. Of course, it depends on many factors, but we suggest you explore this innovative direction.",
+    "expectation": {
+      "request": "summarize the launch strategy"
+    },
+    "expectedVerdict": "revise_silently",
+    "minimumProblems": 2
+  },
+  {
     "name": "specific patch answer can pass",
     "request": "avoid generic output and give the exact patch",
     "response": "Patch `packages/ml/src/quality.ts` by adding `buildRevisionPrompt()`, then run `bun --cwd packages/ml test` to validate the quality gate.",

@@ -297,7 +297,6 @@ export function RunFooterView(props: RunFooterViewProps) {
             <box flexDirection="column" paddingTop={1}>
               <text fg={theme().muted}>No active run projection.</text>
               <text fg={theme().muted}>Start a prompt to populate cockpit data.</text>
-              <text fg={theme().muted}>Use /contract /tokens /proof to query state.</text>
             </box>
           )}
       </box>

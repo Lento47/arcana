@@ -44,6 +44,84 @@ export type AgentConfig = {
   mlRuntime?: boolean
   /** Maximum silent quality revisions per final assistant response. Default: 1 when ML runtime is enabled. */
   mlSilentRevisions?: number
+  proofGate?: {
+    gateShellCommand(
+      command: string,
+      options?: { cwd?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean } },
+    ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
+    gateFileMutation(
+      path: string,
+      options?: { operation?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean } },
+    ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
+    recordMlSignal?(input: {
+      kind: "turn" | "tool"
+      signal: unknown
+      decision?: unknown
+      summary?: string
+      refs?: Record<string, string>
+    }): Promise<void>
+    recordContextAccess(input: {
+      tool: "read" | "grep" | "glob"
+      path?: string
+      pattern?: string
+      summary: string
+      exists?: boolean
+      bytes_read?: number
+      result_count?: number
+    }): Promise<void>
+    recordFileWrite(input: {
+      path: string
+      mode: "proposed" | "applied" | "rejected"
+      reason: string
+      diff_id?: string
+      bytes_written?: number
+    }): Promise<void>
+    recordShellCommand?(input: {
+      command: string
+      cwd: string
+      status: "passed" | "failed" | "skipped" | "not_run"
+      risk: "low" | "medium" | "high" | "critical" | "unknown"
+      exit_code?: number
+      stdout_summary?: string
+      stderr_summary?: string
+    }): Promise<void>
+    recordCheck?(input: {
+      kind: "typecheck" | "lint" | "build"
+      command: string
+      status: "passed" | "failed" | "skipped" | "not_run"
+      summary: string
+      duration_ms?: number
+    }): Promise<void>
+    recordTestResult?(input: {
+      command: string
+      status: "passed" | "failed" | "skipped" | "not_run"
+      summary: string
+      passed?: number
+      failed?: number
+      skipped?: number
+      duration_ms?: number
+    }): Promise<void>
+    recordConsensus?(input: {
+      council_id?: string
+      prompt: string
+      models: string[]
+      rounds: number
+      vote_mode: string
+      status: "completed" | "failed"
+      winner_model?: string
+      vote_tally?: Record<string, number>
+      cost_tokens?: { input: number; output: number }
+      errored?: string[]
+      transcript?: string
+    }): Promise<void>
+    recordMlSignal?(input: {
+      kind: "turn" | "tool"
+      signal: unknown
+      decision?: unknown
+      summary?: string
+      refs?: Record<string, string>
+    }): Promise<void>
+  }
 }
 
 export type ToolHandler = (args: Record<string, unknown>) => Promise<string>

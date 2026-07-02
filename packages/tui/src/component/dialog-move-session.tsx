@@ -71,9 +71,10 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
     return loadedProject()
   })
 
-  const [directories, { refetch }] = createResource(
+  const [directories, { refetch }] = createResource<ProjectDirectory[] | undefined, string | undefined>(
     () => (props.initialRemoving ? undefined : props.projectID),
     async (projectID, info): Promise<ProjectDirectory[] | undefined> => {
+      if (!projectID) return props.initialDirectories
       try {
         await sdk.client.v2.projectCopy.refresh(
           { projectID, location: { directory: sdk.directory } },
@@ -87,11 +88,11 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
         // An initial load with no data surfaces the inline error view below. A
         // failed refresh intentionally stays quiet and keeps the already-shown
         // list interactive; reopening the dialog retries the load.
-        return info.value
+        return info.value as ProjectDirectory[] | undefined
       }
     },
   )
-  const directoryData = createMemo(() => directories() ?? props.initialDirectories)
+  const directoryData = createMemo<ProjectDirectory[] | undefined>(() => directories() ?? props.initialDirectories)
   // Show the locked error view only when we have nothing to display. A refresh
   // that fails after the list rendered keeps the list and its actions.
   const showError = createMemo(() => Boolean(loadError()) && !directoryData())

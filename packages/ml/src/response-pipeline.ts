@@ -2,17 +2,22 @@ import { inferExpectationContract, type ExpectationContract, type ExpectationInp
 import { buildRevisionPrompt, evaluateResponseQuality, type QualityGateInput, type QualityGateResult } from "./quality.js"
 import { planTokenBudget, type TokenBudgetPlan } from "./token.js"
 import { planMachineResourceUse, type MachineResourceInput, type MachineResourcePlan } from "./machine.js"
+import { planThinking, type ThinkingPlan } from "./thinking.js"
 
 export type ResponsePipelinePreflightInput = ExpectationInput & {
   maxContextTokens?: number
   reservedOutputTokens?: number
   machine?: MachineResourceInput
+  availableTools?: string[]
+  priorTurnCount?: number
+  hasToolHistory?: boolean
 }
 
 export type ResponsePipelinePreflight = {
   expectation: ExpectationContract
   tokenBudget: TokenBudgetPlan
   machine: MachineResourcePlan
+  thinking: ThinkingPlan
   promptAddendum: string
 }
 
@@ -27,7 +32,6 @@ export type ResponsePipelinePostflight = {
   shouldAskUser: boolean
   revisionPrompt: string | null
 }
-
 export function prepareResponsePreflight(input: ResponsePipelinePreflightInput): ResponsePipelinePreflight {
   const expectation = inferExpectationContract(input)
   const tokenBudget = planTokenBudget({
@@ -36,6 +40,15 @@ export function prepareResponsePreflight(input: ResponsePipelinePreflightInput):
     reservedOutputTokens: input.reservedOutputTokens,
   })
   const machine = planMachineResourceUse(input.machine ?? { operation: "response preflight" })
+  const thinking = planThinking({
+    request: input.request,
+    deliverable: expectation.deliverable,
+    qualityBar: expectation.qualityBar,
+    evidenceNeed: expectation.evidenceNeed,
+    availableTools: input.availableTools,
+    priorTurnCount: input.priorTurnCount,
+    hasToolHistory: input.hasToolHistory,
+  })
   const promptAddendum = [
     "<arcana-response-pipeline>",
     `quality_bar=${expectation.qualityBar}`,
@@ -43,11 +56,12 @@ export function prepareResponsePreflight(input: ResponsePipelinePreflightInput):
     `evidence_need=${expectation.evidenceNeed}`,
     `token_status=${tokenBudget.status}`,
     `machine_posture=${machine.posture}`,
+    thinking.promptAddendum,
     "rules=avoid generic output; preserve user intent; revise silently when quality is low; ask only when ambiguity blocks correctness",
     "</arcana-response-pipeline>",
   ].join("\n")
 
-  return { expectation, tokenBudget, machine, promptAddendum }
+  return { expectation, tokenBudget, machine, thinking, promptAddendum }
 }
 
 export function evaluateResponsePostflight(input: ResponsePipelinePostflightInput): ResponsePipelinePostflight {

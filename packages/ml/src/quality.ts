@@ -20,23 +20,137 @@ export type QualityGateResult = {
   interactionIntervention: "silent" | "nudge" | "confirm"
 }
 
-const GENERIC_PHRASES = [
-  "it depends",
-  "best practices",
-  "robust solution",
-  "scalable solution",
-  "seamless experience",
-  "user-friendly",
-  "cutting-edge",
-  "leverage",
-  "streamline",
-  "unlock the power",
-  "game changer",
-  "comprehensive approach",
-  "tailored solution",
-  "innovative",
-  "synergy",
-]
+// Generic / AI-slop phrase taxonomy. Each category is weighted separately so
+// responses full of performative business/marketing language score worse than
+// a single mild hedge.
+const GENERIC_PHRASES = {
+  // Empty business filler
+  businessFiller: [
+    "best practices",
+    "robust solution",
+    "scalable solution",
+    "seamless experience",
+    "user-friendly",
+    "cutting-edge",
+    "game changer",
+    "comprehensive approach",
+    "tailored solution",
+    "innovative",
+    "synergy",
+    "unlock the power",
+    "next-generation",
+    "future-proof",
+    "world-class",
+    "industry-leading",
+    "mission-critical",
+    "end-to-end",
+    "holistic",
+    "360-degree",
+    "value-added",
+    "best-in-class",
+    "turnkey",
+    "out-of-the-box",
+    "enterprise-grade",
+    "digital transformation",
+    "thought leadership",
+  ],
+  // Weasel words that avoid committing
+  weasel: [
+    "it depends",
+    "might be",
+    "could be",
+    "may want to",
+    "perhaps",
+    "probably",
+    "generally",
+    "often",
+    "usually",
+    "typically",
+    "in many cases",
+    "consider",
+    "explore",
+    "think about",
+    "look into",
+    "would suggest",
+    "you might",
+    "one option is",
+    "there are many ways",
+  ],
+  // Verbs that sound productive but carry no specifics
+  vagueVerbs: [
+    "leverage",
+    "streamline",
+    "optimize",
+    "enhance",
+    "empower",
+    "facilitate",
+    "enable",
+    "drive",
+    "accelerate",
+    "transform",
+    "revolutionize",
+    "maximize",
+    "unleash",
+    "harness",
+    "align",
+    "synergize",
+    "operationalize",
+    "monetize",
+    "capitalize",
+  ],
+  // Puffery / claims without evidence
+  puffery: [
+    "highly",
+    "significantly",
+    "dramatically",
+    "drastically",
+    "exponentially",
+    "substantially",
+    "remarkably",
+    "notably",
+    "exceptionally",
+    "unparalleled",
+    "groundbreaking",
+    "state-of-the-art",
+    "unprecedented",
+    "astonishing",
+  ],
+  // Padding phrases that add no information
+  padding: [
+    "as mentioned above",
+    "as you know",
+    "in summary",
+    "to summarize",
+    "at the end of the day",
+    "the fact that",
+    "it's important to note",
+    "needless to say",
+    "as a result",
+    "with that said",
+    "having said that",
+    "in order to",
+    "due to the fact that",
+    "for what it's worth",
+    "long story short",
+  ],
+  // Over-apologetic or hedging disclaimers
+  hedges: [
+    "i'm not sure",
+    "i cannot guarantee",
+    "without more context",
+    "i don't have enough information",
+    "it is worth noting",
+    "keep in mind",
+    "please note",
+    "as a disclaimer",
+    "to be fair",
+    "of course",
+    "obviously",
+    "needless to say",
+  ],
+}
+
+const GENERIC_PHRASE_FLAT = Object.values(GENERIC_PHRASES).flat()
 
 const ACTION_TERMS = [
   "add",
@@ -60,7 +174,7 @@ function clamp(value: number): number {
 }
 
 function tokenize(text: string): string[] {
-  return [...new Set(text.toLowerCase().match(/[a-z0-9_./-]+/g) ?? [])]
+  return [...new Set(text.toLowerCase().match(/[a-z0-9_.\/-]+/g) ?? [])]
 }
 
 function phraseHits(text: string, phrases: string[]): string[] {
@@ -75,33 +189,156 @@ function overlap(a: string[], b: string[]): number {
 }
 
 function hasConcreteMarkers(response: string): boolean {
-  return /(```|`[^`]+`|\b[A-Za-z0-9_.-]+\.(ts|tsx|js|json|md|sql|py)\b|\b\d+\b|\b[A-Z_]{3,}\b|\b[a-f0-9]{7,40}\b)/.test(response)
+  return /(```|`[^`]+`|\b[A-Za-z0-9_.-]+\.(ts|tsx|js|json|md|sql|py)\b|\b\d+\b|\b[A-Z_]{3,}\b|\b[a-f0-9]{7,40}\b)/.test(
+    response,
+  )
+}
+
+function needsEvidenceForClaims(contract?: ExpectationContract): boolean {
+  if (!contract) return false
+  if (contract.evidenceNeed !== "none") return true
+  return ["code_patch", "repo_review", "debug_plan", "sql_advice"].includes(contract.deliverable)
+}
+
+function hasCompletionClaim(response: string): boolean {
+  const text = response.toLowerCase()
+  if (
+    /\b(not|isn't|wasn't|cannot|can't|didn't|did not)\s+(done|fixed|complete|completed|implemented|verified|passed)\b/.test(
+      text,
+    )
+  )
+    return false
+  return /\b(done|fixed|completed|implemented|verified|validated|passed|tests passed|typecheck passed|build passed|qa passed|committed|pushed)\b/.test(
+    text,
+  )
+}
+
+function hasEvidenceMarkers(response: string): boolean {
+  if (hasConcreteMarkers(response)) return true
+  return /\b(bun|npm|pnpm|git|rg|grep|tsc|pytest|cargo|go test|diff|patch|test|tests|typecheck|build|lint|qa|verified|evidence|commit|changed|failed|passed)\b/i.test(
+    response,
+  )
+}
+
+function repeatedSegments(response: string): string[] {
+  const segments = response
+    .split(/\n+|(?<=[.!?])\s+/)
+    .map((item) => item.trim().replace(/\s+/g, " "))
+    .filter((item) => item.length >= 24)
+
+  const counts = new Map<string, number>()
+  for (const segment of segments) {
+    const normalized = segment.toLowerCase()
+    counts.set(normalized, (counts.get(normalized) ?? 0) + 1)
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count >= 2)
+    .map(([segment]) => segment)
+    .slice(0, 5)
 }
 
 function actionability(response: string): number {
   const tokens = tokenize(response)
   const hits = ACTION_TERMS.filter((term) => tokens.includes(term)).length
-  const commandLike = /\b(bun|npm|pnpm|git|node|python|cargo|go test|pytest|sql|EXPLAIN|ANALYZE)\b/i.test(response) ? 0.25 : 0
+  const commandLike = /\b(bun|npm|pnpm|git|node|python|cargo|go test|pytest|sql|EXPLAIN|ANALYZE)\b/i.test(response)
+    ? 0.25
+    : 0
   return clamp(hits / 8 + commandLike)
 }
 
 function constraintFit(response: string, contract?: ExpectationContract): number {
   if (!contract?.constraints.length) return 1
   const text = response.toLowerCase()
-  const hits = contract.constraints.filter((constraint) => tokenize(constraint).some((token) => text.includes(token))).length
+  const hits = contract.constraints.filter((constraint) =>
+    tokenize(constraint).some((token) => text.includes(token)),
+  ).length
   return clamp(hits / contract.constraints.length)
+}
+
+// Deduplicated slop categories used for revision hints.
+const SLOP_CATEGORY_NAMES: Record<keyof typeof GENERIC_PHRASES, string> = {
+  businessFiller: "business filler",
+  weasel: "weasel words",
+  vagueVerbs: "vague verbs",
+  puffery: "puffery",
+  padding: "padding",
+  hedges: "hedges",
+}
+
+export type AvoidSlopScore = {
+  value: number
+  hits: string[]
+  categoryHits: Partial<Record<keyof typeof GENERIC_PHRASES, string[]>>
+  revisionHints: string[]
+}
+
+/**
+ * Dedicated AI-slop / generic-filler detector.
+ * Returns a 0..1 score where 0 means clean and 1 means heavy slop.
+ * Category weights:
+ *   business filler 1.0, vague verbs 0.7, puffery 0.8, padding 0.4,
+ *   weasel 0.6, hedges 0.3.
+ * The score saturates so a single mild hedge does not tank an otherwise
+ * concrete response, but a pile of marketing language does.
+ */
+export function avoidSlopScore(response: string): AvoidSlopScore {
+  const hits: string[] = []
+  const categoryHits: Partial<Record<keyof typeof GENERIC_PHRASES, string[]>> = {}
+  let weighted = 0
+  const weights: Record<keyof typeof GENERIC_PHRASES, number> = {
+    businessFiller: 1.0,
+    vagueVerbs: 0.7,
+    puffery: 0.8,
+    padding: 0.4,
+    weasel: 0.6,
+    hedges: 0.3,
+  }
+
+  for (const [category, phrases] of Object.entries(GENERIC_PHRASES) as Array<
+    [keyof typeof GENERIC_PHRASES, string[]]
+  >) {
+    const found = phraseHits(response, phrases)
+    if (found.length) {
+      categoryHits[category] = found
+      hits.push(...found)
+      weighted += found.length * weights[category]
+    }
+  }
+
+  const value = clamp(weighted / 5)
+  const revisionHints: string[] = []
+  if (value >= 0.2) {
+    for (const [category, found] of Object.entries(categoryHits) as Array<[keyof typeof GENERIC_PHRASES, string[]]>) {
+      if (found.length) {
+        revisionHints.push(
+          `Remove ${SLOP_CATEGORY_NAMES[category]} (${found.slice(0, 3).join(", ")}${found.length > 3 ? "..." : ""}) and replace with concrete specifics.`,
+        )
+      }
+    }
+  }
+
+  return { value, hits: [...new Set(hits)], categoryHits, revisionHints: [...new Set(revisionHints)] }
 }
 
 export function evaluateResponseQuality(input: QualityGateInput): QualityGateResult {
   const requestTokens = tokenize(input.request)
   const responseTokens = tokenize(input.response)
-  const genericHits = phraseHits(input.response, GENERIC_PHRASES)
+  const slop = avoidSlopScore(input.response)
+  const genericHits = slop.hits
+  const repeats = repeatedSegments(input.response)
+  const unsupportedCompletionClaim =
+    needsEvidenceForClaims(input.expectation) &&
+    hasCompletionClaim(input.response) &&
+    !hasEvidenceMarkers(input.response)
   const problems: string[] = []
   const revisionHints: string[] = []
   const strict = input.expectation?.qualityBar === "strict"
 
-  const genericityScore = clamp(genericHits.length / 5)
-  const specificityScore = clamp(overlap(requestTokens, responseTokens) * 0.6 + (hasConcreteMarkers(input.response) ? 0.4 : 0))
+  const genericityScore = clamp(slop.value)
+  const specificityScore = clamp(
+    overlap(requestTokens, responseTokens) * 0.6 + (hasConcreteMarkers(input.response) ? 0.4 : 0),
+  )
   const actionabilityScore = actionability(input.response)
   const constraintFitScore = constraintFit(input.response, input.expectation)
 
@@ -110,8 +347,24 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
     revisionHints.push("Provide a concrete response aligned with the user's request.")
   }
   if (genericHits.length) {
-    problems.push(`Generic phrases detected: ${genericHits.join(", ")}`)
-    revisionHints.push("Replace generic phrases with concrete decisions, constraints, file names, commands, or measurable outcomes.")
+    problems.push(
+      `Generic phrases detected: ${genericHits.slice(0, 5).join(", ")}${genericHits.length > 5 ? "..." : ""}`,
+    )
+    revisionHints.push(...slop.revisionHints)
+  }
+  if (repeats.length) {
+    problems.push(
+      `Repeated response segments detected: ${repeats.slice(0, 3).join(" | ")}${repeats.length > 3 ? "..." : ""}`,
+    )
+    revisionHints.push(
+      "Remove repeated sentences or lines; keep one clear statement and continue with new evidence or next steps.",
+    )
+  }
+  if (unsupportedCompletionClaim) {
+    problems.push("Completion claim is not backed by evidence.")
+    revisionHints.push(
+      "Do not claim work is done, fixed, verified, or passed without a file, command, diff, test result, metric, or explicit caveat.",
+    )
   }
   if (specificityScore < 0.35) {
     problems.push("Response has weak lexical connection to the user's request.")
@@ -131,10 +384,7 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   }
 
   const score = clamp(
-    specificityScore * 0.34 +
-      actionabilityScore * 0.28 +
-      constraintFitScore * 0.24 +
-      (1 - genericityScore) * 0.14,
+    specificityScore * 0.34 + actionabilityScore * 0.28 + constraintFitScore * 0.24 + (1 - genericityScore) * 0.14,
   )
 
   let verdict: QualityGateVerdict = "pass"
@@ -144,7 +394,12 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   // strict threshold (see fixture `quality/specific patch answer can pass`).
   const isCodePatch = input.expectation?.deliverable === "code_patch"
   const threshold = strict ? (isCodePatch ? 0.72 : 0.78) : 0.64
-  const hardFail = input.response.trim().length === 0 || (strict && problems.length > 0) || (strict && genericHits.length > 0)
+  const hardFail =
+    input.response.trim().length === 0 ||
+    repeats.length > 0 ||
+    unsupportedCompletionClaim ||
+    (strict && problems.length > 0) ||
+    (strict && genericHits.length > 0)
   if (score < 0.45 && input.expectation?.interactionIntervention === "confirm") verdict = "ask_user"
   else if (hardFail || score < threshold) verdict = "revise_silently"
 
@@ -165,7 +420,9 @@ export function buildRevisionPrompt(result: QualityGateResult): string {
   if (result.verdict === "pass") return ""
 
   const problems = result.problems.length ? result.problems : ["The response did not meet the expected quality bar."]
-  const hints = result.revisionHints.length ? result.revisionHints : ["Revise the answer to be more specific, actionable, and aligned with the user's request."]
+  const hints = result.revisionHints.length
+    ? result.revisionHints
+    : ["Revise the answer to be more specific, actionable, and aligned with the user's request."]
 
   return [
     "Revise the previous answer before showing it to the user.",
