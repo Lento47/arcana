@@ -127,7 +127,7 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
       sound_pack: input.attention?.sound_pack ?? "arcana.default",
       sounds: input.attention?.sounds ?? {},
     },
-    shell: input.shell ?? "opencode",
+    shell: input.shell ?? "command-spine",
     keybinds: createBindingLookup(TuiKeybind.toBindingConfig(TuiKeybind.parse(keybinds)), {
       commandMap: TuiKeybind.CommandMap,
       bindingDefaults: TuiKeybind.bindingDefaults(),
