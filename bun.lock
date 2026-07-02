@@ -17,7 +17,7 @@
     },
     "packages/arcana": {
       "name": "@arcana/arcana",
-      "version": "0.3.2",
+      "version": "0.3.3",
       "bin": {
         "arcana": "./bin/arcana",
       },
