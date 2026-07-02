@@ -285,6 +285,19 @@ type RunProofTokenUsageView = {
   turns: number
 }
 
+type RunProofContextBudgetView = {
+  estimated_tokens: number
+  system_tokens: number
+  tool_tokens: number
+  message_count: number
+  threshold: number
+  action: string
+  risk?: string
+  status?: string
+  summary?: string
+  timestamp?: string
+}
+
 type RunProofConsensusView = {
   council_id?: string
   prompt?: string
@@ -701,6 +714,27 @@ function tokenUsageFromEvents(events: RunProofEventView[]): RunProofTokenUsageVi
     },
     { input_tokens: 0, output_tokens: 0, total_tokens: 0, tool_calls: 0, turns: 0 },
   )
+}
+
+function contextBudgetsFromEvents(events: RunProofEventView[]): RunProofContextBudgetView[] {
+  return events.flatMap((event): RunProofContextBudgetView[] => {
+    if (event.type !== "context.budgeted") return []
+    const data = event.data ?? {}
+    return [
+      {
+        estimated_tokens: proofNumber(data.estimated_tokens) ?? 0,
+        system_tokens: proofNumber(data.system_tokens) ?? 0,
+        tool_tokens: proofNumber(data.tool_tokens) ?? 0,
+        message_count: proofNumber(data.message_count) ?? 0,
+        threshold: proofNumber(data.threshold) ?? 0,
+        action: proofString(data.action) ?? "observe",
+        risk: event.risk,
+        status: event.status,
+        summary: event.summary,
+        timestamp: event.timestamp,
+      },
+    ]
+  })
 }
 
 function activeProofPath(): string | undefined {
@@ -1197,6 +1231,8 @@ function DialogRunProofActions(props: {
   const risk = () => props.proof.risk?.level ?? props.proof.contract?.risk_level ?? "unknown"
   const score = () => props.proof.final_evidence?.proof_score
   const tokens = () => props.proof.token_usage
+  const contextBudgets = () => contextBudgetsFromEvents(events())
+  const latestContextBudget = () => contextBudgets().at(-1)
   const restoreCommand = () => rollbackRestoreCommandValue(props.proof)
   return (
     <ArcanaSurface title="ACTIONS" path={props.path} meta={`run ${compactProofId(props.proof.id)}`}>
@@ -1261,6 +1297,34 @@ function DialogRunProofActions(props: {
           Evidence: {fileReads().length} context read(s) {fileWrites().length} file write(s) {shellCommands().length}{" "}
           shell command(s)
         </text>
+      </ArcanaSection>
+      <ArcanaSection
+        title="Token OS"
+        detail={`${contextBudgets().length} budget event${contextBudgets().length === 1 ? "" : "s"}`}
+      >
+        <Show
+          when={latestContextBudget()}
+          fallback={<text fg={theme.textMuted}>No context budget pressure recorded.</text>}
+        >
+          {(budget) => (
+            <box gap={0}>
+              <ArcanaMetricLine
+                items={[
+                  `estimated=${budget().estimated_tokens.toLocaleString()}`,
+                  budget().threshold ? `threshold=${budget().threshold.toLocaleString()}` : undefined,
+                  `messages=${budget().message_count}`,
+                  `action=${budget().action}`,
+                  budget().risk ? `risk=${budget().risk}` : undefined,
+                ]}
+              />
+              <text fg={theme.textMuted}>
+                System: {budget().system_tokens.toLocaleString()} Tool: {budget().tool_tokens.toLocaleString()}
+                {budget().timestamp ? ` Recorded: ${eventTime(budget().timestamp)}` : ""}
+              </text>
+              <text fg={theme.textMuted}>{budget().summary ?? "Context pressure recorded as RunProof evidence."}</text>
+            </box>
+          )}
+        </Show>
       </ArcanaSection>
       <Show when={fileReads().length > 0 || fileWrites().length > 0 || shellCommands().length > 0}>
         <ArcanaSection title="Recent Evidence">
