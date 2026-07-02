@@ -444,6 +444,27 @@ export class ProofManager {
     })
   }
 
+  recordContextBudget(input: {
+    estimated_tokens: number
+    system_tokens: number
+    tool_tokens: number
+    message_count: number
+    threshold: number
+    action: "observe" | "compact" | "block"
+    summary?: string
+  }): RunProofEvent {
+    return this.recordEvent({
+      type: "context.budgeted",
+      actor: "system",
+      summary:
+        input.summary ??
+        `Context pressure observed: ${input.estimated_tokens} estimated tokens across ${input.message_count} messages.`,
+      risk: input.estimated_tokens >= input.threshold * 1.5 ? "medium" : "low",
+      status: this.proof.lifecycle.status,
+      data: input,
+    })
+  }
+
   updateRollback(rollback: Partial<RollbackBlock> & Pick<RollbackBlock, "strategy">): RollbackBlock {
     this.proof.rollback = {
       ...this.proof.rollback,

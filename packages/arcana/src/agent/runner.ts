@@ -412,6 +412,7 @@ export class AgentRunner {
     // a real second execution of an identical call within the 5s window.
     const CACHEABLE_TOOLS = new Set(["web_search", "web_fetch", "memory_search", "skill_list"])
     const maxToolRounds = mlOverrides.maxToolRounds ?? this.config.maxToolRounds ?? 10
+    let contextBudgetRecorded = false
     for (let round = 0; round < maxToolRounds; round++) {
       const { model, tools } = await resolveModel(this.config, this.getToolDefs())
       const coreMessages = toCoreMessages(history)
@@ -438,6 +439,17 @@ export class AgentRunner {
           console.error(
             `[arcana] context-pack shadow: ${estimatedTotal} est tokens, ${systemTokens} system, ${toolTokens} tool, ${history.length} messages`,
           )
+          if (!contextBudgetRecorded) {
+            contextBudgetRecorded = true
+            await this.config.proofGate?.recordContextBudget?.({
+              estimated_tokens: estimatedTotal,
+              system_tokens: systemTokens,
+              tool_tokens: toolTokens,
+              message_count: history.length,
+              threshold: 8000,
+              action: "observe",
+            })
+          }
         }
       }
 
