@@ -95,6 +95,15 @@ export type ProofRuntime = {
     summary?: string
     refs?: Record<string, string>
   }): Promise<void>
+  recordContextBudget(input: {
+    estimated_tokens: number
+    system_tokens: number
+    tool_tokens: number
+    message_count: number
+    threshold: number
+    action: "observe" | "compact" | "block"
+    summary?: string
+  }): Promise<void>
   recordContextAccess(input: {
     tool: "read" | "grep" | "glob"
     path?: string
@@ -433,6 +442,12 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
     async recordMlSignal(input) {
       if (!manager) return
       manager.recordMlSignal(input)
+      await saveSnapshot()
+    },
+
+    async recordContextBudget(input) {
+      if (!manager) return
+      manager.recordContextBudget(input)
       await saveSnapshot()
     },
 

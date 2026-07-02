@@ -588,4 +588,26 @@ describe("RunProof execution governance", () => {
     expect(signalEvent?.data?.kind).toBe("turn")
     expect(signalEvent?.refs?.intent).toBe("code_edit")
   })
+
+  test("records context budget pressure as Token OS evidence", () => {
+    const manager = ProofManager.create({
+      user_intent: "Track context pressure",
+      cwd: process.cwd(),
+    })
+
+    manager.recordContextBudget({
+      estimated_tokens: 12000,
+      system_tokens: 2000,
+      tool_tokens: 3500,
+      message_count: 18,
+      threshold: 8000,
+      action: "observe",
+    })
+
+    const event = manager.proof.events.find((item) => item.type === "context.budgeted")
+    expect(event?.summary).toContain("12000 estimated tokens")
+    expect(event?.data?.system_tokens).toBe(2000)
+    expect(event?.data?.tool_tokens).toBe(3500)
+    expect(event?.data?.action).toBe("observe")
+  })
 })

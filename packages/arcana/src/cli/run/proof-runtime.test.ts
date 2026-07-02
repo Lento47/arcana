@@ -302,4 +302,39 @@ describe("ProofRuntime live evidence capture", () => {
       await rm(cwd, { recursive: true, force: true })
     }
   })
+
+  test("persists context budget pressure to the active proof path", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "arcana-proof-runtime-"))
+    const previousActivePath = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+
+    try {
+      const runtime = await createProofRuntime({
+        enabled: true,
+        cwd,
+        command: "arcana run --proof",
+        prompt: "Keep context under control",
+      })
+
+      await runtime.recordContextBudget({
+        estimated_tokens: 12000,
+        system_tokens: 2000,
+        tool_tokens: 3500,
+        message_count: 18,
+        threshold: 8000,
+        action: "observe",
+      })
+
+      const activePath = runtime.activeProofPath()
+      expect(activePath).toBeTruthy()
+      const stored = JSON.parse(await readFile(activePath!, "utf8"))
+      const proof = stored.proof ?? stored
+      const event = proof.events.find((item: { type: string }) => item.type === "context.budgeted")
+      expect(event.data.estimated_tokens).toBe(12000)
+      expect(event.data.action).toBe("observe")
+    } finally {
+      if (previousActivePath === undefined) delete process.env.ARCANA_ACTIVE_RUNPROOF_PATH
+      else process.env.ARCANA_ACTIVE_RUNPROOF_PATH = previousActivePath
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
 })

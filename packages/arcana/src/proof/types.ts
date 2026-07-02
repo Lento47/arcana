@@ -29,6 +29,7 @@ export type ExecutionContractStatus = "draft" | "active" | "completed" | "cancel
 export type PolicyGateAction = "shell_command" | "file_mutation"
 export type RunProofEventType =
   | "plan.created"
+  | "context.budgeted"
   | "context.accessed"
   | "tool.requested"
   | "risk.evaluated"

@@ -1137,6 +1137,7 @@ function eventTime(value: string | undefined): string {
 function eventLabel(value: string | undefined): string {
   const labels: Record<string, string> = {
     "plan.created": "PLAN",
+    "context.budgeted": "BUDGET",
     "context.accessed": "READ",
     "tool.requested": "TOOL",
     "risk.evaluated": "RISK",
@@ -1169,7 +1170,14 @@ function eventTone(event: RunProofEventView): "normal" | "muted" | "warning" | "
   ) {
     return "warning"
   }
-  if (event.type === "context.accessed" || event.type === "token.used" || event.type === "ml.signal") return "muted"
+  if (
+    event.type === "context.accessed" ||
+    event.type === "context.budgeted" ||
+    event.type === "token.used" ||
+    event.type === "ml.signal"
+  ) {
+    return "muted"
+  }
   return "normal"
 }
 
