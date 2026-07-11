@@ -5,7 +5,7 @@ import { getScrollAcceleration } from "../util/scroll"
 import { useClipboard } from "../context/clipboard"
 import { InstallationVersion } from "@arcana/core/installation/version"
 import { useExit } from "../context/exit"
-import { BUG_URL } from "../branding"
+import { APP_NAME, BUG_URL } from "../branding"
 import { selectedForeground, ThemeContext, type Theme } from "../context/theme"
 import { arcanaDitherPattern } from "../ui/arcana"
 
@@ -47,7 +47,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
   const issueURL = new URL(BUG_URL)
 
   if (props.error.message) {
-    issueURL.searchParams.set("title", `opentui: fatal: ${props.error.message}`)
+    issueURL.searchParams.set("title", `${APP_NAME}: fatal: ${props.error.message}`)
   }
 
   if (props.error.stack) {
@@ -70,7 +70,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
       <text fg={colors.muted}>{arcanaDitherPattern("fatal-error", 48)} FATAL</text>
       <box flexDirection="row" gap={1} alignItems="center">
         <text attributes={TextAttributes.BOLD} fg={colors.text}>
-          Arcana execution surface failed.
+          Arcana encountered a fatal error and needs to restart.
         </text>
         <box onMouseUp={copyIssueURL} backgroundColor={colors.primary} padding={1}>
           <text attributes={TextAttributes.BOLD} fg={colors.primaryText}>
@@ -88,7 +88,8 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
           <text fg={colors.primaryText}>Exit</text>
         </box>
       </box>
-      <scrollbox height={Math.floor(term().height * 0.7)} scrollAcceleration={getScrollAcceleration()}>
+      <text fg={colors.muted} attributes={TextAttributes.BOLD}>Technical details (for bug reports):</text>
+      <scrollbox height={Math.floor(term().height * 0.4)} scrollAcceleration={getScrollAcceleration()}>
         <text fg={colors.muted}>{props.error.stack}</text>
       </scrollbox>
       <text fg={colors.text}>{props.error.message}</text>

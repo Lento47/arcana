@@ -14,6 +14,12 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_CLIENT from "./prompt/client.txt"
+import PROMPT_REVIEWER from "./prompt/reviewer.txt"
+import PROMPT_ARCHITECT from "./prompt/architect.txt"
+import PROMPT_TESTER from "./prompt/tester.txt"
+import PROMPT_QA from "./prompt/qa.txt"
+import PROMPT_ANTI_AI_SLOP from "./prompt/anti-ai-slop.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@arcana/core/global"
@@ -284,6 +290,180 @@ export const layer = Layer.effect(
               user,
             ),
             prompt: PROMPT_SUMMARY,
+          },
+          client: {
+            name: "client",
+            description:
+              "Project inception agent — helps define the project contract: requirements, tech choices, components, and constraints before any code is written.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                edit: {
+                  "*": "deny",
+                  "*.md": "allow",
+                  "*.json": "allow",
+                  "*.jsonc": "allow",
+                  "*.yaml": "allow",
+                  "*.yml": "allow",
+                  ".opencode/**": "allow",
+                  ".vault/**": "allow",
+                },
+                write: {
+                  "*": "deny",
+                  "*.md": "allow",
+                  "*.json": "allow",
+                  "*.jsonc": "allow",
+                  "*.yaml": "allow",
+                  "*.yml": "allow",
+                  ".opencode/**": "allow",
+                  ".vault/**": "allow",
+                },
+              }),
+              user,
+            ),
+            mode: "all",
+            native: true,
+            steps: 25,
+            color: "#3B82F6",
+            prompt: PROMPT_CLIENT,
+          },
+          reviewer: {
+            name: "reviewer",
+            description:
+              "Code review specialist — analyzes code quality, security, and architecture without modifying any files.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                edit: "deny",
+                write: "deny",
+                apply_patch: "deny",
+              }),
+              user,
+            ),
+            mode: "all",
+            native: true,
+            steps: 15,
+            color: "#10B981",
+            prompt: PROMPT_REVIEWER,
+          },
+          architect: {
+            name: "architect",
+            description:
+              "Software architect — designs system structure, writes ADRs, maps component boundaries, and ensures architectural consistency.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                edit: {
+                  "*": "deny",
+                  "*.md": "allow",
+                  ".opencode/**": "allow",
+                },
+                write: {
+                  "*": "deny",
+                  "*.md": "allow",
+                  ".opencode/**": "allow",
+                },
+              }),
+              user,
+            ),
+            mode: "all",
+            native: true,
+            steps: 25,
+            color: "#8B5CF6",
+            prompt: PROMPT_ARCHITECT,
+          },
+          tester: {
+            name: "tester",
+            description:
+              "Test specialist — writes and runs tests. Never modifies source code.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                edit: {
+                  "*": "deny",
+                  "**/*.test.*": "allow",
+                  "**/*.spec.*": "allow",
+                  "**/*.test-d.*": "allow",
+                  "**/test/**": "allow",
+                  "**/tests/**": "allow",
+                  "**/__tests__/**": "allow",
+                },
+                write: {
+                  "*": "deny",
+                  "**/*.test.*": "allow",
+                  "**/*.spec.*": "allow",
+                  "**/*.test-d.*": "allow",
+                  "**/test/**": "allow",
+                  "**/tests/**": "allow",
+                  "**/__tests__/**": "allow",
+                },
+              }),
+              user,
+            ),
+            mode: "all",
+            native: true,
+            steps: 30,
+            color: "#F59E0B",
+            prompt: PROMPT_TESTER,
+          },
+          qa: {
+            name: "qa",
+            description:
+              "Quality assurance — finds bugs, edge cases, and regression risks. Reports issues, never fixes them.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                edit: "deny",
+                write: "deny",
+                apply_patch: "deny",
+              }),
+              user,
+            ),
+            mode: "subagent",
+            native: true,
+            steps: 15,
+            color: "#EF4444",
+            prompt: PROMPT_QA,
+            routing: {
+              keywords: ["bug", "edge case", "regression", "quality assurance", "qa", "defect", "bug hunt"],
+              capabilities: ["quality_assurance", "bug_detection"],
+              priority: 1,
+            },
+          },
+          "anti-ai-slop": {
+            name: "anti-ai-slop",
+            description:
+              "Code quality gate — detects AI-generated anti-patterns, overengineering, and low-quality code.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                edit: "deny",
+                write: "deny",
+                apply_patch: "deny",
+              }),
+              user,
+            ),
+            mode: "subagent",
+            native: true,
+            steps: 15,
+            color: "#EC4899",
+            prompt: PROMPT_ANTI_AI_SLOP,
+            routing: {
+              keywords: ["anti-slop", "ai slop", "overengineering", "code quality gate", "anti-pattern"],
+              capabilities: ["code_review", "quality_assurance"],
+              priority: 1,
+            },
           },
         }
 

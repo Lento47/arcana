@@ -6,7 +6,6 @@ import type { TextareaRenderable } from "@opentui/core"
 import { useTheme, selectedForeground } from "../../context/theme"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { useSDK } from "../../context/sdk"
-import { SplitBorder } from "../../ui/border"
 import { useSync } from "../../context/sync"
 import { useProject } from "../../context/project"
 import { filetype } from "../../util/filetype"
@@ -16,6 +15,9 @@ import { getScrollAcceleration } from "../../util/scroll"
 import { useTuiConfig } from "../../config"
 import { ARCANA_BASE_MODE, useBindings, useCommandShortcut } from "../../keymap"
 import { usePathFormatter } from "../../context/path-format"
+import { getSpineLayout } from "../../shell/command-spine/spine-types"
+import { SpineGutterSpacer, spineLeadMetrics } from "../../shell/command-spine/spine-lead"
+import { SpineRail } from "../../shell/command-spine/spine-rail"
 
 type PermissionStage = "permission" | "always" | "reject"
 
@@ -45,7 +47,7 @@ function EditBody(props: { request: PermissionRequest }) {
   const scrollAcceleration = createMemo(() => getScrollAcceleration(config))
 
   return (
-    <box flexDirection="column" gap={1}>
+    <box flexDirection="column" gap={1} minWidth={0}>
       <Show when={diff()}>
         <scrollbox
           height="100%"
@@ -91,17 +93,17 @@ function TextBody(props: { title: string; description?: string; icon?: string })
   const { theme } = useTheme()
   return (
     <>
-      <box flexDirection="row" gap={1} paddingLeft={1}>
+      <box flexDirection="row" gap={1} paddingLeft={1} minWidth={0}>
         <Show when={props.icon}>
           <text fg={theme.textMuted} flexShrink={0}>
             {props.icon}
           </text>
         </Show>
-        <text fg={theme.textMuted}>{props.title}</text>
+        <text fg={theme.textMuted} wrapMode="word">{props.title}</text>
       </box>
       <Show when={props.description}>
         <box paddingLeft={1}>
-          <text fg={theme.text}>{props.description}</text>
+          <text fg={theme.text} wrapMode="word">{props.description}</text>
         </box>
       </Show>
     </>
@@ -345,11 +347,11 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
 
               return {
                 icon: "←",
-                title: `Access external directory ${dir}`,
+                title: `External directory ${dir}`,
                 body: (
                   <Show when={patterns.length > 0}>
                     <box paddingLeft={1} gap={1}>
-                      <text fg={theme.textMuted}>Patterns</text>
+                      <text fg={theme.textMuted}>Scope</text>
                       <box>
                         <For each={patterns}>{(p) => <text fg={theme.text}>{"- " + p}</text>}</For>
                       </box>
@@ -385,23 +387,23 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
           const current = info()
 
           const header = () => (
-            <box flexDirection="column" gap={0}>
-              <box flexDirection="row" gap={1} flexShrink={0}>
-                <text fg={theme.warning}>{"△"}</text>
-                <text fg={theme.text}>Permission required</text>
+            <box flexDirection="column" gap={0} minWidth={0}>
+              <box flexDirection="row" gap={1} flexShrink={0} minWidth={0}>
+                <text fg={theme.warning} flexShrink={0}>{"△"}</text>
+                <text fg={theme.text} wrapMode="word">ACTION GATE</text>
               </box>
-              <box flexDirection="row" gap={1} paddingLeft={2} flexShrink={0}>
+              <box flexDirection="row" gap={1} paddingLeft={2} flexShrink={0} minWidth={0}>
                 <text fg={theme.textMuted} flexShrink={0}>
                   {current.icon}
                 </text>
-                <text fg={theme.text}>{current.title}</text>
+                <text fg={theme.text} wrapMode="word">{current.title}</text>
               </box>
             </box>
           )
 
           const body = (
             <Prompt
-              title="Permission required"
+              title="Action gate"
               header={header()}
               body={current.body}
               options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
@@ -442,6 +444,78 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   )
 }
 
+function GateFrame(props: {
+  header: JSX.Element
+  body: JSX.Element
+  footer?: JSX.Element
+  expanded?: boolean
+  glyph?: string
+  color?: unknown
+}) {
+  const { theme } = useTheme()
+  const dimensions = useTerminalDimensions()
+  let _prevLayoutP: string | undefined
+  const layout = createMemo(() => {
+    const l = getSpineLayout(dimensions().width, _prevLayoutP as any)
+    _prevLayoutP = l
+    return l
+  })
+  const metrics = createMemo(() => spineLeadMetrics(layout()))
+  const glyph = createMemo(() => props.glyph ?? "△")
+  const color = createMemo(() => props.color ?? theme.spineFix)
+
+  function GateRow(row: { children: JSX.Element; rail?: "node" | "line"; marginTop?: number }) {
+    return (
+      <box
+        flexDirection="row"
+        flexShrink={0}
+        flexGrow={1}
+        minWidth={0}
+        alignItems="flex-start"
+        width="100%"
+        paddingLeft={metrics().pad}
+        paddingRight={metrics().pad}
+        marginTop={row.marginTop}
+      >
+        <SpineGutterSpacer layout={layout()} />
+        <Show
+          when={row.rail === "node"}
+          fallback={<SpineRail layout={layout()} glyph="│" color={theme.spineRail as any} />}
+        >
+          <SpineRail layout={layout()} glyph={glyph()} color={color()} active />
+        </Show>
+        <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
+          {row.children}
+        </box>
+      </box>
+    )
+  }
+
+  const shell = () => (
+    <box
+      flexDirection="column"
+      flexShrink={0}
+      width="100%"
+      paddingTop={1}
+      paddingBottom={1}
+      {...(props.expanded
+        ? { top: 1, bottom: 1, left: 0, right: 0, position: "absolute", zIndex: 20, backgroundColor: theme.background }
+        : {})}
+    >
+      <GateRow rail="node">{props.header}</GateRow>
+      <GateRow rail="line" marginTop={1}>{props.body}</GateRow>
+      <Show when={props.footer}>
+        {(footer) => <GateRow rail="line" marginTop={1}>{footer()}</GateRow>}
+      </Show>
+    </box>
+  )
+
+  return (
+    <Show when={!props.expanded} fallback={<Portal>{shell()}</Portal>}>
+      {shell()}
+    </Show>
+  )
+}
 function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: () => void }) {
   let input: TextareaRenderable
   const { theme } = useTheme()
@@ -473,53 +547,49 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
   }))
 
   return (
-    <box
-      backgroundColor={theme.backgroundPanel}
-      border={["left"]}
-      borderColor={theme.error}
-      customBorderChars={SplitBorder.customBorderChars}
-    >
-      <box gap={1} paddingLeft={1} paddingRight={3} paddingTop={1} paddingBottom={1}>
-        <box flexDirection="row" gap={1} paddingLeft={1}>
-          <text fg={theme.error}>{"△"}</text>
-          <text fg={theme.text}>Reject permission</text>
+    <GateFrame
+      glyph="×"
+      color={theme.spineFail}
+      header={
+        <box flexDirection="column" gap={0} minWidth={0}>
+          <box flexDirection="row" gap={1} minWidth={0}>
+            <text fg={theme.spineFail as any} flexShrink={0}>{"×"}</text>
+            <text fg={theme.spineFail as any} wrapMode="word">REJECT PERMISSION</text>
+          </box>
+          <text fg={theme.text} wrapMode="word">Tell arcana what to do differently</text>
         </box>
-        <box paddingLeft={1}>
-          <text fg={theme.textMuted}>Tell arcana what to do differently</text>
+      }
+      body={
+        <box
+          flexDirection={narrow() ? "column" : "row"}
+          flexShrink={0}
+          paddingTop={1}
+          paddingLeft={1}
+          paddingRight={2}
+          paddingBottom={1}
+          backgroundColor={theme.backgroundElement}
+          justifyContent={narrow() ? "flex-start" : "space-between"}
+          alignItems={narrow() ? "flex-start" : "center"}
+          gap={1}
+        >
+          <textarea
+            width="100%"
+            ref={(val: TextareaRenderable) => {
+              input = val
+              val.traits = { status: "REJECT" }
+            }}
+            focused
+            textColor={theme.text}
+            focusedTextColor={theme.text}
+            cursorColor={theme.primary}
+          />
+          <box flexDirection={narrow() ? "column" : "row"} gap={narrow() ? 0 : 2} flexShrink={0} minWidth={0}>
+            <text fg={theme.text}>enter <span style={{ fg: theme.spineContext as any }}>confirm</span></text>
+            <text fg={theme.text}>esc <span style={{ fg: theme.spineContext as any }}>cancel</span></text>
+          </box>
         </box>
-      </box>
-      <box
-        flexDirection={narrow() ? "column" : "row"}
-        flexShrink={0}
-        paddingTop={1}
-        paddingLeft={2}
-        paddingRight={3}
-        paddingBottom={1}
-        backgroundColor={theme.backgroundElement}
-        justifyContent={narrow() ? "flex-start" : "space-between"}
-        alignItems={narrow() ? "flex-start" : "center"}
-        gap={1}
-      >
-        <textarea
-          ref={(val: TextareaRenderable) => {
-            input = val
-            val.traits = { status: "REJECT" }
-          }}
-          focused
-          textColor={theme.text}
-          focusedTextColor={theme.text}
-          cursorColor={theme.primary}
-        />
-        <box flexDirection="row" gap={2} flexShrink={0}>
-          <text fg={theme.text}>
-            enter <span style={{ fg: theme.textMuted }}>confirm</span>
-          </text>
-          <text fg={theme.text}>
-            esc <span style={{ fg: theme.textMuted }}>cancel</span>
-          </text>
-        </box>
-      </box>
-    </box>
+      }
+    />
   )
 }
 
@@ -630,91 +700,64 @@ function Prompt<const T extends Record<string, string>>(props: {
   const hint = createMemo(() => (store.expanded ? "minimize" : "fullscreen"))
   useRenderer()
 
-  const content = () => (
-    <box
-      backgroundColor={theme.backgroundPanel}
-      border={["left"]}
-      borderColor={theme.warning}
-      customBorderChars={SplitBorder.customBorderChars}
-      {...(store.expanded
-        ? { top: dimensions().height * -1 + 1, bottom: 1, left: 2, right: 2, position: "absolute" }
-        : {
-            top: 0,
-            maxHeight: 15,
-            bottom: 0,
-            left: 0,
-            right: 0,
-            position: "relative",
-          })}
-    >
-      <box gap={1} paddingLeft={1} paddingRight={3} paddingTop={1} paddingBottom={1} flexGrow={1}>
-        <Show
-          when={props.header}
-          fallback={
-            <box flexDirection="row" gap={1} paddingLeft={1} flexShrink={0}>
-              <text fg={theme.warning}>{"△"}</text>
-              <text fg={theme.text}>{props.title}</text>
-            </box>
-          }
-        >
-          <box paddingLeft={1} flexShrink={0}>
-            {props.header}
-          </box>
-        </Show>
-        {props.body}
+  const defaultHeader = (
+    <box flexDirection="column" gap={0} minWidth={0}>
+      <box flexDirection="row" gap={1} minWidth={0}>
+        <text fg={theme.spineFix as any} flexShrink={0}>{"△"}</text>
+        <text fg={theme.spineFix as any} wrapMode="word">{props.title.toUpperCase()}</text>
       </box>
-      <box
-        flexDirection={narrow() ? "column" : "row"}
-        flexShrink={0}
-        gap={1}
-        paddingTop={1}
-        paddingLeft={2}
-        paddingRight={3}
-        paddingBottom={1}
-        backgroundColor={theme.backgroundElement}
-        justifyContent={narrow() ? "flex-start" : "space-between"}
-        alignItems={narrow() ? "flex-start" : "center"}
-      >
-        <box flexDirection="row" gap={1} flexShrink={0}>
+    </box>
+  )
+
+  const footer = (
+    <box flexDirection="column" gap={1} minWidth={0}>
+      <box flexDirection={narrow() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
+        <text fg={theme.spineContext as any} flexShrink={0}>Decision</text>
+        <box flexDirection={narrow() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
           <For each={keys}>
-            {(option) => (
-              <box
-                paddingLeft={1}
-                paddingRight={1}
-                backgroundColor={option === store.selected ? theme.warning : theme.backgroundMenu}
-                onMouseOver={() => setStore("selected", option)}
-                onMouseUp={() => {
-                  setStore("selected", option)
-                  props.onSelect(option)
-                }}
-              >
-                <text fg={option === store.selected ? selectedForeground(theme, theme.warning) : theme.textMuted}>
-                  {props.options[option]}
-                </text>
-              </box>
-            )}
+            {(option) => {
+              const selected = createMemo(() => option === store.selected)
+              const reject = createMemo(() => String(option) === "reject" || props.options[option].toLowerCase().includes("reject"))
+              const color = createMemo(() => reject() ? theme.spineFail : theme.spineFix)
+              return (
+                <box
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={selected() ? color() : theme.backgroundMenu}
+                  onMouseOver={() => setStore("selected", option)}
+                  onMouseUp={() => {
+                    setStore("selected", option)
+                    props.onSelect(option)
+                  }}
+                >
+                  <text fg={selected() ? selectedForeground(theme, color()) : theme.text} wrapMode="word">
+                    {selected() ? "▸ " : "  "}{props.options[option]}
+                  </text>
+                </box>
+              )
+            }}
           </For>
         </box>
-        <box flexDirection="row" gap={2} flexShrink={0}>
-          <Show when={props.fullscreen}>
-            <text fg={theme.text}>
-              {fullscreenHint()} <span style={{ fg: theme.textMuted }}>{hint()}</span>
-            </text>
-          </Show>
-          <text fg={theme.text}>
-            {"⇆"} <span style={{ fg: theme.textMuted }}>select</span>
-          </text>
-          <text fg={theme.text}>
-            enter <span style={{ fg: theme.textMuted }}>confirm</span>
-          </text>
-        </box>
+      </box>
+      <box flexDirection={narrow() ? "column" : "row"} gap={narrow() ? 0 : 2} flexShrink={0} minWidth={0}>
+        <text fg={theme.spineContext as any}>←/→ select</text>
+        <text fg={theme.spineContext as any}>enter confirm</text>
+        <Show when={props.escapeKey}>
+          <text fg={theme.spineContext as any}>esc reject</text>
+        </Show>
+        <Show when={props.fullscreen}>
+          <text fg={theme.spineContext as any}>{fullscreenHint()} {hint()}</text>
+        </Show>
       </box>
     </box>
   )
 
   return (
-    <Show when={!store.expanded} fallback={<Portal>{content()}</Portal>}>
-      {content()}
-    </Show>
+    <GateFrame
+      header={props.header ?? defaultHeader}
+      body={props.body}
+      footer={footer}
+      expanded={store.expanded}
+    />
   )
 }

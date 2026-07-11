@@ -1,19 +1,31 @@
 import { useTheme } from "../../context/theme"
-import { spineTone, type SpineKind, type SpineLayout } from "./spine-types"
+import { spineRailWidth, spineTone, type SpineKind, type SpineLayout } from "./spine-types"
 
-export function SpineRail(props: { kind: SpineKind; glyph: string; layout: SpineLayout }) {
+export function SpineRail(props: {
+  layout: SpineLayout
+  kind?: SpineKind
+  glyph?: string
+  color?: unknown
+  active?: boolean
+}) {
   const { theme: themeObj } = useTheme()
   const t = themeObj as Record<string, unknown>
+  const width = spineRailWidth(props.layout)
+  const symbol = props.glyph ?? "│"
+  const color =
+    props.color
+    ?? (props.glyph && props.kind
+      ? spineTone(props.kind, t)
+      : props.active
+        ? t.spineRailActive
+        : t.spineRail)
 
-  if (props.layout === "minimal") {
-    return <text width={2}>{""}</text>
-  }
+  // Single glyph + trailing space keeps the rail to 2 cells and aligns content.
+  const cell = (symbol + " ").slice(0, width).padEnd(width)
 
   return (
-    <box flexDirection="row" width={4}>
-      <text fg={t.borderSubtle as any}>│</text>
-      <text width={1} />
-      <text fg={spineTone(props.kind, t)}>{props.glyph}</text>
+    <box width={width} flexShrink={0}>
+      <text fg={color as any}>{cell}</text>
     </box>
   )
 }

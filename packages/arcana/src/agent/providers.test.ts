@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { expect, test } from "bun:test"
+import { currentDir } from "../util/path.js"
 
-const providersPath = join(import.meta.dir, "../..", "providers.opencode.json")
+const providersPath = join(currentDir(import.meta), "../..", "providers.arcana.json")
 
 test("Cloudflare provider metadata routes through Arcana Proxy", async () => {
   const config = JSON.parse(await readFile(providersPath, "utf8")) as {

@@ -189,7 +189,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         memory.recordSkillObservation(skillId, "error: skill not found")
         return `Skill not found: ${skillId}. Use skill_list to see available skills.`
       }
-      const fullBody = await loadSkillBody(skill.id, skillDirs)
+      const _fullBody = await loadSkillBody(skill.id, skillDirs)
       memory.recordSkillObservation(skillId, `success: activated ${skill.name}`)
       return `Activated: ${skill.name}. Instructions injected into context.`
     },
@@ -415,7 +415,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       ok("Memory DB", existsSync(dbPath), existsSync(dbPath) ? `exists (${Math.round((Bun.file(dbPath).size ?? 0) / 1024)}KB)` : "missing — created on first session")
 
       // 6. Bridge config
-      const bridge = join(homedir(), ".arcana", "cache", "opencode-config.json")
+      const bridge = join(homedir(), ".arcana", "cache", "bridge-config.json")
       ok("Bridge config", existsSync(bridge), existsSync(bridge) ? "exists" : "missing — TUI may not find skills")
 
       // 7. Network connectivity
@@ -845,7 +845,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
           const diffStat = execSync("git diff --stat", { cwd, encoding: "utf8", maxBuffer: 1024 * 100 }).trim()
           const filesChanged = diffStat ? diffStat.split("\n").length : 0
           const branch = execSync("git branch --show-current", { cwd, encoding: "utf8" }).trim()
-          const added = execSync("git diff --cached --name-only 2>nul || true", { cwd, encoding: "utf8" }).trim()
+          const _added = execSync("git diff --cached --name-only 2>nul || true", { cwd, encoding: "utf8" }).trim()
           msg = `feat: update ${filesChanged > 0 ? filesChanged + " files" : "working state"} (${branch})`
         }
         execSync(`git add -A`, { cwd, encoding: "utf8" })
@@ -949,7 +949,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       memory.recordUserFact("active.goal.scope", scope, "goal_set")
       memory.recordUserFact("active.goal.priority", priority, "goal_set")
       const sessionId = `goal-${Date.now()}`
-      const board = initBoard(sessionId, goal, scope)
+      const _board = initBoard(sessionId, goal, scope)
       return `Goal recorded: "${goal}"\nScope: ${scope}\nPriority: ${priority}\nKanban board initialized.\nThis goal is now active — all actions MUST align with it.`
     },
   )
@@ -1275,7 +1275,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         undefined,
         args.tags ? (args.tags as string[]).map(String) : [],
       )
-      const { writeFileSync, mkdirSync, existsSync, readFileSync } = await import("node:fs")
+      const { writeFileSync, mkdirSync, existsSync: _existsSync, readFileSync: _readFileSync } = await import("node:fs")
       const { join } = await import("node:path")
       const { homedir } = await import("node:os")
       const dir = join(homedir(), ".arcana", "artifacts")
@@ -1456,7 +1456,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      const { join } = await import("node:path")
+      const { join: _join } = await import("node:path")
       const cwd = args.path ? String(args.path) : process.cwd()
       try {
         const { Glob } = await import("bun")

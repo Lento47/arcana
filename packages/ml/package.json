@@ -23,7 +23,7 @@
     "./evals": "./src/evals.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun test src --only-failures",
     "test:all": "bun test src",
     "eval": "bun src/evals.ts",
@@ -32,7 +32,6 @@
   "devDependencies": {
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "typescript": "catalog:"
   }
 }

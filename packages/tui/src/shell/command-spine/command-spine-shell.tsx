@@ -1,11 +1,12 @@
-import { For, Show, createMemo } from "solid-js"
+import { For, Show, createMemo, createSignal } from "solid-js"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
+import { useThinkingMode } from "../../context/thinking"
 import type { ShellProps } from "../types"
 import { getSpineLayout } from "./spine-types"
 import { SAMPLE_ENTRIES } from "./sample-entries"
-import { messagesToSpineEntries } from "./spine-mapper"
+import { messagesToSpineEntriesCached } from "./spine-mapper"
 import { SpineHeader } from "./spine-header"
 import { SpineEntry } from "./spine-entry"
 import { SpinePrompt } from "./spine-prompt"
@@ -18,22 +19,45 @@ const USE_SAMPLE_SPINE = false
 export function CommandSpineShell(props: ShellProps) {
   const { theme: themeObj } = useTheme()
   const t = themeObj as Record<string, unknown>
+  const thinking = useThinkingMode()
   const dims = useTerminalDimensions()
   const layout = createMemo(() => getSpineLayout(dims().width))
 
+  let cache: ReturnType<typeof messagesToSpineEntriesCached>["cache"] | undefined
+  let previousEntries: ReturnType<typeof messagesToSpineEntriesCached>["entries"] | undefined
+  let cacheSessionID = props.sessionID
+
   const entries = createMemo(() => {
     if (USE_SAMPLE_SPINE) return SAMPLE_ENTRIES
-    return messagesToSpineEntries({
+    if (cacheSessionID !== props.sessionID) {
+      cacheSessionID = props.sessionID
+      cache = undefined
+      previousEntries = undefined
+    }
+    const result = messagesToSpineEntriesCached({
       messages: props.messages(),
       getParts: props.getParts,
       assistantDuration: props.assistantDuration(),
+      cache,
+      previousEntries,
+      expandThinking: thinking.mode() === "show",
     })
+    cache = result.cache
+    previousEntries = result.entries
+    return result.entries
   })
+
+  const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
+  const toggleEntry = (entry: { id: string; collapsible?: boolean }) => {
+    setExpandedEntries((prev) => ({ ...prev, [entry.id]: !(prev[entry.id] ?? entry.collapsible === false) }))
+  }
+  const entryExpanded = (entry: { id: string; expandedByDefault?: boolean; collapsible?: boolean }) =>
+    expandedEntries()[entry.id] ?? entry.expandedByDefault ?? !entry.collapsible
 
   return (
     <Show when={props.session()}>
       <box flexDirection="column" flexGrow={1} minHeight={0}>
-        <SpineHeader session={props.session} />
+        <SpineHeader session={props.session} layout={layout()} segments={[] as any} />
         <scrollbox
           ref={(r) => props.scrollRef(r as ScrollBoxRenderable)}
           viewportOptions={{
@@ -47,13 +71,21 @@ export function CommandSpineShell(props: ShellProps) {
               foregroundColor: t.border as any,
             },
           }}
+          viewportCulling={false}
           stickyScroll={true}
           stickyStart="bottom"
           flexGrow={1}
           scrollAcceleration={props.scrollAcceleration}
         >
           <For each={entries()}>
-            {(entry) => <SpineEntry entry={entry} layout={layout()} />}
+            {(entry) => (
+              <SpineEntry
+                entry={entry}
+                layout={layout()}
+                expanded={entryExpanded(entry)}
+                onToggle={() => toggleEntry(entry)}
+              />
+            )}
           </For>
         </scrollbox>
         <Show when={props.permissions().length > 0}>
@@ -65,7 +97,7 @@ export function CommandSpineShell(props: ShellProps) {
         <Show when={props.session()?.parentID}>
           <SubagentFooter />
         </Show>
-        <SpinePrompt bind={props.bind} disabled={props.disabled} visible={props.visible} sessionID={props.sessionID} toBottom={props.toBottom} />
+        <SpinePrompt bind={props.bind} disabled={props.disabled} visible={props.visible} sessionID={props.sessionID} toBottom={props.toBottom as any} layout={layout as any} state={(() => "idle") as any} />
       </box>
     </Show>
   )

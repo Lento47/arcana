@@ -4752,6 +4752,7 @@ export type EventMessagePartDelta = {
     sessionID: string
     messageID: string
     partID: string
+    partType?: "text" | "subtask" | "reasoning" | "file" | "tool" | "step-start" | "step-finish" | "snapshot" | "patch" | "agent" | "retry" | "compaction"
     field: string
     delta: string
   }
@@ -7827,7 +7828,7 @@ export type SessionMessagesError = SessionMessagesErrors[keyof SessionMessagesEr
 
 export type SessionMessagesResponses = {
   /**
-   * List of messages
+   * List of messages with optional pagination cursor
    */
   200: Array<{
     info: Message

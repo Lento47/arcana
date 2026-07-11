@@ -39,7 +39,6 @@ import { SessionID, MessageID, PartID } from "./schema"
 import { acquireLock } from "./session-lock"
 
 import type { Provider } from "@/provider/provider"
-import { Permission } from "@/permission"
 import { Global } from "@arcana/core/global"
 import { Effect, Layer, Option, Context, Schema, Types } from "effect"
 import { NonNegativeInt, optionalOmitUndefined } from "@arcana/core/schema"
@@ -288,6 +287,7 @@ export const SetRevertInput = Schema.Struct({
 export const MessagesInput = Schema.Struct({
   sessionID: SessionID,
   limit: Schema.optional(NonNegativeInt),
+  before: Schema.optional(MessageID),
 })
 export type ListInput = {
   directory?: string
@@ -310,7 +310,7 @@ export type GlobalListInput = {
   archived?: boolean
 }
 
-const CreatedEventSchema = Schema.Struct({
+const _CreatedEventSchema = Schema.Struct({
   sessionID: SessionID,
   info: Info,
 })
@@ -348,7 +348,7 @@ const UpdatedInfo = Schema.Struct({
   revert: Schema.optional(Schema.NullOr(Revert)),
 })
 
-const UpdatedEventSchema = Schema.Struct({
+const _UpdatedEventSchema = Schema.Struct({
   sessionID: SessionID,
   info: UpdatedInfo,
 })
@@ -488,7 +488,11 @@ export interface Interface {
   readonly setShare: (input: { sessionID: SessionID; share: Info["share"] }) => Effect.Effect<void>
   readonly setWorkspace: (input: { sessionID: SessionID; workspaceID: Info["workspaceID"] }) => Effect.Effect<void>
   readonly diff: (sessionID: SessionID) => Effect.Effect<Snapshot.FileDiff[]>
-  readonly messages: (input: { sessionID: SessionID; limit?: number }) => Effect.Effect<SessionV1.WithParts[], NotFound>
+  readonly messages: (input: {
+    sessionID: SessionID
+    limit?: number
+    before?: MessageID
+  }) => Effect.Effect<SessionV1.WithParts[], NotFound>
   readonly children: (parentID: SessionID) => Effect.Effect<Info[]>
   readonly remove: (sessionID: SessionID) => Effect.Effect<void, NotFound>
   readonly updateMessage: <T extends SessionV1.Info>(msg: T) => Effect.Effect<T>
@@ -500,10 +504,11 @@ export interface Interface {
     partID: PartID
   }) => Effect.Effect<SessionV1.Part | undefined>
   readonly updatePart: <T extends SessionV1.Part>(part: T) => Effect.Effect<T>
-  readonly updatePartDelta: (input: {
+  readonly emitPartDelta: (input: {
     sessionID: SessionID
     messageID: MessageID
     partID: PartID
+    partType: "text" | "subtask" | "reasoning" | "file" | "tool" | "step-start" | "step-finish" | "snapshot" | "patch" | "agent" | "retry" | "compaction"
     field: string
     delta: string
   }) => Effect.Effect<void>
@@ -720,9 +725,12 @@ export const layer: Layer.Layer<
       const workspace = yield* InstanceState.workspaceID
 
       // Acquire concurrent session lock (failure mode #13)
-      yield* Effect.sync(() => {
-        acquireLock(ctx.directory)
-      })
+      const lockResult = yield* Effect.sync(() => acquireLock(ctx.directory))
+      if (lockResult === "warn_active") {
+        yield* Effect.logWarning("Concurrent session detected — another session may be active in this directory", {
+          directory: ctx.directory,
+        })
+      }
 
       return yield* createNext({
         parentID: input?.parentID,
@@ -863,7 +871,11 @@ export const layer: Layer.Layer<
 
     const messages: Interface["messages"] = Effect.fn("Session.messages")(function* (input) {
       if (input.limit) {
-        return (yield* MessageV2.page({ sessionID: input.sessionID, limit: input.limit }).pipe(
+        return (yield* MessageV2.page({
+          sessionID: input.sessionID,
+          limit: input.limit,
+          before: input.before,
+        }).pipe(
           Effect.provideService(Database.Service, database),
         )).items
       }
@@ -910,10 +922,11 @@ export const layer: Layer.Layer<
       return input.partID
     })
 
-    const updatePartDelta = Effect.fnUntraced(function* (input: {
+    const emitPartDelta = Effect.fnUntraced(function* (input: {
       sessionID: SessionID
       messageID: MessageID
       partID: PartID
+      partType: "text" | "subtask" | "reasoning" | "file" | "tool" | "step-start" | "step-finish" | "snapshot" | "patch" | "agent" | "retry" | "compaction"
       field: string
       delta: string
     }) {
@@ -964,7 +977,7 @@ export const layer: Layer.Layer<
       removePart,
       updatePart,
       getPart,
-      updatePartDelta,
+      emitPartDelta,
       findMessage,
     })
   }),

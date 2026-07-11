@@ -316,15 +316,20 @@ function cmd(shell: string, command: string, cwd: string, env: NodeJS.ProcessEnv
 }
 /** Strip sensitive environment variables before passing to child processes. */
 function filterEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
-  const blockedWords = ["KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "AUTH", "LICENSE"]
+  // High-confidence words: substring match catches concatenation bypasses (MYAPITOKEN, SUPERSECRET).
+  const substringBlocked = ["TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "LICENSE", "BEARER", "JWT"]
+  // Ambiguous short words: require underscore/start boundary to avoid false positives
+  // (e.g., AUTH in AUTHOR, KEY in DONKEY).
+  const boundaryBlocked = ["KEY", "AUTH", "SSH", "CERTIFICATE", "PASSPHRASE", "PRIVATE_KEY"]
   const isSensitive = (key: string): boolean => {
     const upper = key.toUpperCase()
-    return blockedWords.some((word) => {
+    // Substring match for high-confidence words — catches MYAPITOKEN, TOKENID, etc.
+    if (substringBlocked.some((word) => upper.includes(word))) return true
+    // Boundary match for ambiguous words — prevents matching AUTHOR or DONKEY
+    return boundaryBlocked.some((word) => {
       const idx = upper.indexOf(word)
       if (idx === -1) return false
-      // Must be at the start or preceded by underscore
       if (idx > 0 && upper[idx - 1] !== "_") return false
-      // Must be at the end or followed by underscore
       const end = idx + word.length
       if (end < upper.length && upper[end] !== "_") return false
       return true

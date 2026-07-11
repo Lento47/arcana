@@ -6,9 +6,19 @@
     "module": "nodenext",
     "declaration": true,
     "moduleResolution": "nodenext",
-    "lib": ["es2022", "dom", "dom.iterable"],
+    "lib": [
+      "es2022",
+      "dom",
+      "dom.iterable"
+    ],
     "composite": true,
-    "rootDir": "src"
+    "rootDir": "src",
+    "types": [
+      "bun"
+    ],
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.tsbuildinfo"
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

@@ -20,7 +20,6 @@ import { For, createEffect, createMemo, createSignal } from "solid-js"
 import type { ColorInput } from "@opentui/core"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { permissionInfo } from "./permission.shared"
-import { footerWidthPolicy } from "./footer.width"
 import { transparent, type RunFooterTheme } from "./theme"
 
 type RiskLevel = "safe" | "write" | "mutate" | "danger"

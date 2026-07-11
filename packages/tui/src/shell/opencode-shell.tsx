@@ -44,6 +44,7 @@ export function OpencodeShell(props: ShellProps) {
             foregroundColor: t.border as any,
           },
         }}
+        viewportCulling={false}
         stickyScroll={true}
         stickyStart="bottom"
         flexGrow={1}

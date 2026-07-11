@@ -1,35 +1,10 @@
 import { describe, expect } from "bun:test"
-import { Effect, Layer } from "effect"
-import { Credential } from "@arcana/core/credential"
-import { Integration } from "@arcana/core/integration"
-import { Database } from "@arcana/core/database/database"
+import { Effect } from "effect"
 import { Catalog } from "@arcana/core/catalog"
-import { EventV2 } from "@arcana/core/event"
-import { Location } from "@arcana/core/location"
 import { PluginV2 } from "@arcana/core/plugin"
 import { AzurePlugin } from "@arcana/core/plugin/provider/azure"
 import { ProviderV2 } from "@arcana/core/provider"
-import { AbsolutePath } from "@arcana/core/schema"
-import { location } from "../fixture/location"
-import { testEffect } from "../lib/effect"
-import { fakeSelectorSdk, it, model, npmLayer, provider, withEnv } from "./provider-helper"
-
-const database = Database.layerFromPath(":memory:").pipe(Layer.fresh)
-const preferences = Credential.layer.pipe(Layer.provide(database))
-const accounts = Layer.merge(
-  Credential.layer.pipe(Layer.provide(database), Layer.provide(preferences), Layer.provide(EventV2.defaultLayer)),
-  preferences,
-)
-const itWithAccount = testEffect(
-  Catalog.locationLayer.pipe(
-    Layer.provideMerge(accounts),
-    Layer.provideMerge(EventV2.defaultLayer),
-    Layer.provideMerge(
-      Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make("test") }))),
-    ),
-    Layer.provideMerge(npmLayer),
-  ),
-)
+import { fakeSelectorSdk, it, model, provider, withEnv } from "./provider-helper"
 
 describe("AzurePlugin", () => {
   it.effect("resolves resourceName from env", () =>

@@ -11,10 +11,16 @@
     "allowJs": true,
     "noEmit": true,
     "strict": true,
-    "types": ["@cloudflare/workers-types", "vite/client", "bun"],
+    "types": [
+      "@cloudflare/workers-types",
+      "vite/client",
+      "bun"
+    ],
     "isolatedModules": true,
     "paths": {
-      "~/*": ["./src/*"]
+      "~/*": [
+        "./src/*"
+      ]
     }
   }
 }

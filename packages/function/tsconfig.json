@@ -4,6 +4,10 @@
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["@cloudflare/workers-types", "node"]
+    "types": [
+      "bun",
+      "@cloudflare/workers-types",
+      "node"
+    ]
   }
 }

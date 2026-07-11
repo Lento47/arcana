@@ -2,7 +2,7 @@ import yargs from "yargs"
 import { TuiThreadCommand } from "./cli/cmd/tui"
 import { InstallationVersion } from "@arcana/core/installation/version"
 import { hideBin } from "yargs/helpers"
-const cli = yargs(hideBin(process.argv))
+const _cli = yargs(hideBin(process.argv))
   .parserConfiguration({ "populate--": true })
   .scriptName("arcana")
   .wrap(100)

@@ -1,47 +1,14 @@
-import { mark, flush, flushSync } from "./cli/profile"
+import { mark, measure, flushSync } from "./cli/profile"
 mark("cli-import-start")
-import yargs from "yargs"
-import { hideBin } from "yargs/helpers"
-import { RunCommand } from "./cli/cmd/run"
-import { GenerateCommand } from "./cli/cmd/generate"
-import { ConsoleCommand } from "./cli/cmd/account"
-import { ProvidersCommand } from "./cli/cmd/providers"
-import { AgentCommand } from "./cli/cmd/agent"
-import { UpgradeCommand } from "./cli/cmd/upgrade"
-import { UninstallCommand } from "./cli/cmd/uninstall"
-import { ModelsCommand } from "./cli/cmd/models"
+import type { CommandModule } from "yargs"
 import { UI } from "./cli/ui"
 import { InstallationVersion } from "@arcana/core/installation/version"
 import { FormatError } from "./cli/error"
-import { ServeCommand } from "./cli/cmd/serve"
-import { DebugCommand } from "./cli/cmd/debug"
-import { StatsCommand } from "./cli/cmd/stats"
-import { McpCommand } from "./cli/cmd/mcp"
-import { GithubCommand } from "./cli/cmd/github"
-import { ExportCommand } from "./cli/cmd/export"
-import { ImportCommand } from "./cli/cmd/import"
-import { AttachCommand } from "./cli/cmd/attach"
 import { TuiThreadCommand } from "./cli/cmd/tui"
-import { AcpCommand } from "./cli/cmd/acp"
 import { EOL } from "os"
-import { WebCommand } from "./cli/cmd/web"
-import { PrCommand } from "./cli/cmd/pr"
-import { SessionCommand } from "./cli/cmd/session"
-import { DbCommand } from "./cli/cmd/db"
 import { errorMessage } from "./util/error"
-import { PluginCommand } from "./cli/cmd/plug"
-import { PluginStoreCommand } from "./cli/cmd/plugin-store"
-import { ProxyCommand } from "./cli/cmd/proxy"
 import { Heap } from "./cli/heap"
-import { LicenseCommand } from "./cli/cmd/license"
-// NOTE: doctor/memory/history/learn/cron/gateway/skills/config/theme are intentionally
-// NOT imported/registered here. They are in the arcana CLI's SUBCOMMANDS, so `arcana`
-// handles them in-process and never spawns the engine for them (see packages/arcana/src/index.ts).
-// Importing them eagerly pulled the whole @arcana/arcana command tree into every engine
-// cold start for nothing. (ThemeCommand was imported but never even registered.)
-import { AuditCommand } from "./cli/cmd/audit"
-import { TeamCommand } from "./cli/cmd/team"
-import { createKernelContract, type ArcanaKernelContract } from "./kernel/kernel"
+import { createKernelContract } from "./kernel/kernel"
 mark("cli-import-end")
 
 // Catch unhandled rejections and exceptions so the process doesn't silently
@@ -61,8 +28,64 @@ process.on("SIGTERM", () => {
   process.exit(0)
 })
 
-const args = hideBin(process.argv)
+const args = process.argv.slice(2)
 const exitsBeforeRuntime = args.some((arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v")
+
+async function prepareRuntime(opts: {
+  printLogs?: boolean
+  logLevel?: string
+  pure?: boolean
+  compatOpencodeEnv?: boolean
+  tui?: boolean
+}) {
+  if (opts.printLogs) process.env.ARCANA_PRINT_LOGS = "1"
+  if (opts.logLevel) process.env.ARCANA_LOG_LEVEL = opts.logLevel
+  if (opts.pure) {
+    process.env.ARCANA_PURE = "1"
+  }
+
+  Heap.start()
+
+  process.env.ARCANA_ENGINE = "1"
+  process.env.ARCANA_RUNTIME = "engine"
+  process.env.ARCANA_PID = String(process.pid)
+
+  // Arcana should not identify as its fork lineage by default. Keep the old
+  // env flag available only as an explicit compatibility shim for legacy
+  // plugins or scripts that still check OPENCODE.
+  if (opts.compatOpencodeEnv || process.env.ARCANA_COMPAT_OPENCODE === "1") {
+    process.env.OPENCODE = "1"
+  }
+
+  // Create and expose the Arcana kernel contract. Telemetry, RunProof, and
+  // the TUI cockpit read this contract at runtime to know which authorities
+  // own which decisions.
+  const kernelSurface = opts.tui ? "tui" as const : "cli" as const
+  const kernelContract = createKernelContract(kernelSurface)
+  process.env.ARCANA_KERNEL_CONTRACT = JSON.stringify(kernelContract)
+  if (process.env.ARCANA_PRINT_LOGS === "1") {
+    process.stderr.write(
+      `[arcana] kernel contract: identity=${kernelContract.identity.surface} authorities=${kernelContract.authorities.length}\n`,
+    )
+  }
+}
+
+function defaultTuiArgs() {
+  return {
+    project: undefined,
+    model: undefined,
+    continue: false,
+    session: undefined,
+    fork: false,
+    prompt: undefined,
+    agent: undefined,
+    port: 0,
+    hostname: "127.0.0.1",
+    mdns: false,
+    "mdns-domain": "arcana.local",
+    cors: [] as string[],
+  }
+}
 
 // Auto-configure proxy auth from stored license key
 if (!exitsBeforeRuntime && !process.env.ARCANA_PROXY_KEY) {
@@ -73,7 +96,7 @@ if (!exitsBeforeRuntime && !process.env.ARCANA_PROXY_KEY) {
     const keyFile = join(home, "proxy_key")
     if (existsSync(keyFile)) {
       process.env.ARCANA_PROXY_KEY = readFileSync(keyFile, "utf8").trim()
-      // Silent by default — this fired on every command (incl. --help and piped
+      // Silent by default - this fired on every command (incl. --help and piped
       // usage), leaking the local key path. Only surface it under --print-logs.
       if (process.argv.includes("--print-logs") || process.env.ARCANA_PRINT_LOGS === "1") {
         process.stderr.write(`[arcana] proxy key loaded from ${keyFile}\n`)
@@ -89,7 +112,7 @@ if (!exitsBeforeRuntime && !process.env.ARCANA_PROXY_KEY) {
 function show(out: string) {
   const text = out.trimStart()
   // CLI was rebranded to `arcana` (scriptName above), so subcommand help now
-  // starts with "arcana …"; the stale "opencode " check never matched and the
+  // starts with "arcana ..."; the stale "opencode " check never matched and the
   // logo banner was being prepended to every subcommand's --help output.
   if (!text.startsWith("arcana ")) {
     process.stderr.write(UI.logo() + EOL + EOL)
@@ -98,6 +121,83 @@ function show(out: string) {
   }
   process.stderr.write(out)
 }
+
+async function runDirectTui() {
+  mark("zero-arg-tui-dispatch-start")
+  await prepareRuntime({ tui: true })
+  mark("zero-arg-tui-dispatch-end")
+  measure("cli-import-start", "zero-arg-tui-dispatch-end", "zero-arg-tui-dispatch")
+  await TuiThreadCommand.handler(defaultTuiArgs() as never)
+}
+
+if (args.length === 0) {
+  try {
+    await runDirectTui()
+  } catch (e) {
+    const formatted = FormatError(e)
+    if (formatted) UI.error(formatted)
+    if (formatted === undefined) {
+      UI.error("Unexpected error" + EOL)
+      process.stderr.write(errorMessage(e) + EOL)
+    }
+    process.exitCode = 1
+  } finally {
+    flushSync()
+    process.exit()
+  }
+}
+
+mark("yargs-import-start")
+const { default: yargs } = await import("yargs")
+mark("yargs-import-end")
+measure("yargs-import-start", "yargs-import-end", "yargs-import")
+
+const commandLoaders = {
+  acp: () => import("./cli/cmd/acp").then((m) => m.AcpCommand),
+  mcp: () => import("./cli/cmd/mcp").then((m) => m.McpCommand),
+  attach: () => import("./cli/cmd/attach").then((m) => m.AttachCommand),
+  run: () => import("./cli/cmd/run").then((m) => m.RunCommand),
+  generate: () => import("./cli/cmd/generate").then((m) => m.GenerateCommand),
+  debug: () => import("./cli/cmd/debug").then((m) => m.DebugCommand),
+  console: () => import("./cli/cmd/account").then((m) => m.ConsoleCommand),
+  providers: () => import("./cli/cmd/providers").then((m) => m.ProvidersCommand),
+  agent: () => import("./cli/cmd/agent").then((m) => m.AgentCommand),
+  upgrade: () => import("./cli/cmd/upgrade").then((m) => m.UpgradeCommand),
+  uninstall: () => import("./cli/cmd/uninstall").then((m) => m.UninstallCommand),
+  serve: () => import("./cli/cmd/serve").then((m) => m.ServeCommand),
+  web: () => import("./cli/cmd/web").then((m) => m.WebCommand),
+  models: () => import("./cli/cmd/models").then((m) => m.ModelsCommand),
+  stats: () => import("./cli/cmd/stats").then((m) => m.StatsCommand),
+  export: () => import("./cli/cmd/export").then((m) => m.ExportCommand),
+  import: () => import("./cli/cmd/import").then((m) => m.ImportCommand),
+  github: () => import("./cli/cmd/github").then((m) => m.GithubCommand),
+  pr: () => import("./cli/cmd/pr").then((m) => m.PrCommand),
+  session: () => import("./cli/cmd/session").then((m) => m.SessionCommand),
+  plugin: () => import("./cli/cmd/plug").then((m) => m.PluginCommand),
+  "plugin-store": () => import("./cli/cmd/plugin-store").then((m) => m.PluginStoreCommand),
+  db: () => import("./cli/cmd/db").then((m) => m.DbCommand),
+  license: () => import("./cli/cmd/license").then((m) => m.LicenseCommand),
+  proxy: () => import("./cli/cmd/proxy").then((m) => m.ProxyCommand),
+  team: () => import("./cli/cmd/team").then((m) => m.TeamCommand),
+  audit: () => import("./cli/cmd/audit").then((m) => m.AuditCommand),
+}
+
+async function loadCommandsFor(firstArg: string | undefined): Promise<CommandModule[]> {
+  const loader = firstArg && !firstArg.startsWith("-")
+    ? commandLoaders[firstArg as keyof typeof commandLoaders]
+    : undefined
+  if (loader) return [(await loader()) as CommandModule]
+  if (args.includes("--help") || args.includes("-h")) {
+    return Promise.all(Object.values(commandLoaders).map(async (load) => (await load()) as CommandModule))
+  }
+  if (firstArg && !firstArg.startsWith("-")) return Promise.all(Object.values(commandLoaders).map(async (load) => (await load()) as CommandModule))
+  return []
+}
+
+mark("command-load-start")
+const cmds = await loadCommandsFor(args[0])
+mark("command-load-end")
+measure("command-load-start", "command-load-end", "command-load")
 
 mark("yargs-parse-start")
 const cli = yargs(args)
@@ -126,67 +226,17 @@ const cli = yargs(args)
     type: "boolean",
   })
   .middleware(async (opts) => {
-    if (opts.printLogs) process.env.ARCANA_PRINT_LOGS = "1"
-    if (opts.logLevel) process.env.ARCANA_LOG_LEVEL = opts.logLevel
-    if (opts.pure) {
-      process.env.ARCANA_PURE = "1"
-    }
-
-    Heap.start()
-
-    process.env.ARCANA_ENGINE = "1"
-    process.env.ARCANA_RUNTIME = "engine"
-    process.env.ARCANA_PID = String(process.pid)
-
-    // Arcana should not identify as its fork lineage by default. Keep the old
-    // env flag available only as an explicit compatibility shim for legacy
-    // plugins or scripts that still check OPENCODE.
-    if (opts.compatOpencodeEnv || process.env.ARCANA_COMPAT_OPENCODE === "1") {
-      process.env.OPENCODE = "1"
-    }
-
-    // Create and expose the Arcana kernel contract. Telemetry, RunProof, and
-    // the TUI cockpit read this contract at runtime to know which authorities
-    // own which decisions.
-    const kernelSurface = opts.tui ? "tui" as const : "cli" as const
-    const kernelContract = createKernelContract(kernelSurface)
-    process.env.ARCANA_KERNEL_CONTRACT = JSON.stringify(kernelContract)
-    if (process.env.ARCANA_PRINT_LOGS === "1") {
-      process.stderr.write(
-        `[arcana] kernel contract: identity=${kernelContract.identity.surface} authorities=${kernelContract.authorities.length}\n`,
-      )
-    }
+    await prepareRuntime({
+      printLogs: !!opts.printLogs,
+      logLevel: opts.logLevel as string | undefined,
+      pure: !!opts.pure,
+      compatOpencodeEnv: !!opts.compatOpencodeEnv,
+      tui: !!opts.tui,
+    })
   })
   .usage("")
   .completion("completion", "generate shell completion script")
-  .command(AcpCommand)
-  .command(McpCommand)
   .command(TuiThreadCommand)
-  .command(AttachCommand)
-  .command(RunCommand)
-  .command(GenerateCommand)
-  .command(DebugCommand)
-  .command(ConsoleCommand)
-  .command(ProvidersCommand)
-  .command(AgentCommand)
-  .command(UpgradeCommand)
-  .command(UninstallCommand)
-  .command(ServeCommand)
-  .command(WebCommand)
-  .command(ModelsCommand)
-  .command(StatsCommand)
-  .command(ExportCommand)
-  .command(ImportCommand)
-  .command(GithubCommand)
-  .command(PrCommand)
-  .command(SessionCommand)
-  .command(PluginCommand)
-  .command(PluginStoreCommand)
-  .command(DbCommand)
-  .command(LicenseCommand)
-  .command(ProxyCommand)
-  .command(TeamCommand)
-  .command(AuditCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
@@ -200,6 +250,8 @@ const cli = yargs(args)
     process.exit(1)
   })
   .strict()
+
+for (const cmd of cmds) cli.command(cmd)
 
 try {
   mark("yargs-parse-end")

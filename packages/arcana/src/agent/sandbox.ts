@@ -12,7 +12,7 @@
  * For untrusted code, use real OS-level isolation. See vault note [[sandbox]].
  */
 import { mkdirSync, existsSync, realpathSync } from "node:fs"
-import { join, resolve, isAbsolute, sep } from "node:path"
+import { dirname, join, resolve, sep } from "node:path"
 import { tmpdir } from "node:os"
 import { randomUUID } from "node:crypto"
 
@@ -51,10 +51,26 @@ export function isInSandbox(sandbox: SandboxConfig, filepath: string): boolean {
   try {
     return contains(root, realpathSync(resolve(filepath)))
   } catch {
-    // Path doesn't exist yet — resolve absolute and check containment.
-    // NOTE: a non-existent path whose parent is a symlink out of the sandbox is
-    // not caught here (realpath only resolves existing components) — see vault.
-    return contains(root, resolve(filepath))
+    // Path doesn't exist yet — walk the ORIGINAL path component by
+    // component (preserving symlinks in the parent chain that resolve()
+    // would have stripped via string-normalization of `..`).
+    const parts = filepath.replace(/\\/g, "/").split("/").filter(Boolean)
+    let cumulative = ""
+    // Find the deepest existing prefix, walking component by component.
+    for (let i = 0; i < parts.length; i++) {
+      const candidate = cumulative + "/" + parts[i]!
+      if (existsSync(candidate)) {
+        cumulative = candidate
+      } else {
+        // First non-existent component found. Resolve the existing prefix
+        // through symlinks, then append the remaining tail as-is.
+        const realPrefix = realpathSync(cumulative || "/")
+        const tail = "/" + parts.slice(i).join("/")
+        return contains(root, realPrefix + tail)
+      }
+    }
+    // All components exist — unlikely since realpathSync threw, but handle.
+    return contains(root, realpathSync(filepath))
   }
 }
 

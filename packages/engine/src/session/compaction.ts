@@ -759,6 +759,25 @@ export function compactWithBudget(
     result = result.slice(Math.ceil(result.length * 0.1))
   }
 
+  // Fallback: if still over budget at the 10-message floor, truncate each
+  // message's text content proportionally to fit within the remaining budget.
+  if (estimateSessionTokens(result) > budget && result.length > 0) {
+    const perMessage = Math.max(50, Math.floor((budget * 0.9) / result.length))
+    result = result.map((msg) => {
+      const textParts = msg.parts.filter((p) => p.type === "text") as { type: "text"; text: string }[]
+      const nonTextParts = msg.parts.filter((p) => p.type !== "text")
+      if (textParts.length === 0) return msg
+      const totalLen = textParts.reduce((sum, p) => sum + p.text.length, 0)
+      if (totalLen <= perMessage) return msg
+      const ratio = perMessage / totalLen
+      const truncated = textParts.map((p) => ({
+        ...p,
+        text: p.text.slice(0, Math.max(50, Math.floor(p.text.length * ratio))) + "...",
+      }))
+      return { ...msg, parts: [...truncated, ...nonTextParts] as typeof msg.parts }
+    })
+  }
+
   return result
 }
 

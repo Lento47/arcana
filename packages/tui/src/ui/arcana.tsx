@@ -2,7 +2,7 @@ import { Show, type JSX } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useDialog } from "./dialog"
 
-const ARCANA_DITHER_CELLS = ["░", "▒", "░", "·", "▒", "░"] as const
+const ARCANA_DITHER_CELLS = ["·", "–", "·", "·", "–", "·"] as const
 
 export function arcanaDitherPattern(seed: string, length: number): string {
   const offset = [...seed].reduce((sum, char) => sum + char.charCodeAt(0), 0) % ARCANA_DITHER_CELLS.length

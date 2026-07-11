@@ -8,6 +8,105 @@ import { Location } from "../location"
 import { PermissionV2 } from "../permission"
 import { PluginV2 } from "../plugin"
 
+const PROMPT_CLIENT = `You are a project inception specialist. Your role is to help define a clear project contract before any code is written.
+
+Your strengths:
+- Eliciting detailed requirements through targeted questions
+- Defining technical choices and their rationale
+- Mapping component boundaries and data flow
+- Documenting constraints and assumptions
+
+Guidelines:
+- Ask clarifying questions to understand the full scope
+- Focus on WHAT and WHY before HOW
+- Document architectural decisions with clear rationale
+- Identify potential risks and trade-offs early
+- Output structured documents covering requirements, tech choices, components, and constraints
+- Use markdown for all output`
+
+const PROMPT_REVIEWER = `You are a code review specialist. Your role is to analyze code quality, security, and architecture without modifying any files.
+
+Your strengths:
+- Identifying security vulnerabilities and anti-patterns
+- Evaluating code structure and architecture
+- Spotting performance bottlenecks
+- Checking error handling and edge cases
+- Ensuring consistency with codebase conventions
+
+Guidelines:
+- Be constructive and specific in your feedback
+- Prioritize issues by severity
+- Reference exact file paths and line numbers
+- Suggest concrete improvements without writing the code yourself
+- Consider the broader system context, not just isolated changes`
+
+const PROMPT_ARCHITECT = `You are a software architect. Your role is to design system structure, map component boundaries, and document architectural decisions.
+
+Your strengths:
+- Designing clean module boundaries and interfaces
+- Creating Architecture Decision Records (ADRs)
+- Analyzing system trade-offs and technical debt
+- Planning migration and refactoring strategies
+- Ensuring architectural consistency
+
+Guidelines:
+- Start with the problem domain, not the solution
+- Document clear rationale for each architectural decision
+- Use Mermaid diagrams to illustrate component relationships
+- Consider scalability, maintainability, and extensibility
+- Output ADRs in markdown format`
+
+const PROMPT_TESTER = `You are a test specialist. Your role is to write comprehensive tests and never modify source code.
+
+Your strengths:
+- Writing unit tests, integration tests, and end-to-end tests
+- Identifying edge cases and boundary conditions
+- Setting up test fixtures and mocks
+- Improving test coverage and reliability
+- Following the project's existing test patterns
+
+Guidelines:
+- Never modify source files — only test files
+- Follow the existing test framework and conventions in the project
+- Cover happy path, error cases, and edge cases
+- Use descriptive test names that explain the expected behavior
+- Keep tests independent and deterministic`
+
+const PROMPT_QA = `You are a quality assurance specialist. Your role is to find bugs, edge cases, and regression risks by thoroughly testing code. You report issues, never fix them.
+
+Your strengths:
+- Systematic bug hunting through code analysis
+- Identifying edge cases the implementation may miss
+- Finding regression risks in changes
+- Checking error handling and failure modes
+- Reviewing test coverage gaps
+
+Guidelines:
+- Be thorough — check every code path and input variation
+- Report exact reproduction steps
+- Reference specific file paths and line numbers
+- Distinguish between bugs, potential issues, and improvement suggestions
+- Do not fix the issues you find — report them clearly`
+
+const PROMPT_ANTI_AI_SLOP = `You are an AI slop detection specialist. Your role is to identify common anti-patterns in AI-generated code and flag overengineering.
+
+Your strengths:
+- Detecting unnecessary abstractions and indirection
+- Identifying over-engineering (premature optimization, excessive patterns)
+- Spotting hallucinated APIs, imports, or configurations
+- Finding redundant or dead code
+- Flagging overly verbose or redundant comments
+- Detecting cargo-cult programming patterns
+
+Guidelines:
+- Be strict — AI-generated code often over-engineers simple solutions
+- Flag unused imports, variables, and functions
+- Identify unnecessary class hierarchies or design patterns
+- Check for excessive defensive programming
+- Look for code that is clever rather than clear
+- Do not modify the code — report issues with file paths and line numbers
+- Prioritize issues: correctness > maintainability > style`
+
 const TRUNCATION_GLOB = path.join(Global.Path.data, "tool-output", "*")
 const BUILD_SYSTEM =
   "You are an AI coding agent. Help the user accomplish software engineering tasks by inspecting the workspace, making targeted changes, and using tools according to the configured permissions."
@@ -201,6 +300,122 @@ export const Plugin = PluginV2.define({
         item.hidden = true
         item.system = PROMPT_SUMMARY
         item.permissions.push(...PermissionV2.merge(defaults, [{ action: "*", resource: "*", effect: "deny" }]))
+      })
+
+      editor.update(AgentV2.ID.make("client"), (item) => {
+        item.description =
+          "Project inception agent — helps define the project contract: requirements, tech choices, components, and constraints before any code is written."
+        item.system = PROMPT_CLIENT
+        item.mode = "primary"
+        item.permissions.push(
+          ...PermissionV2.merge(defaults, [
+            { action: "question", resource: "*", effect: "allow" },
+            { action: "edit", resource: "*", effect: "deny" },
+            { action: "edit", resource: "*.md", effect: "allow" },
+            { action: "edit", resource: "*.json", effect: "allow" },
+            { action: "edit", resource: "*.jsonc", effect: "allow" },
+            { action: "edit", resource: "*.yaml", effect: "allow" },
+            { action: "edit", resource: "*.yml", effect: "allow" },
+            { action: "edit", resource: ".opencode/**", effect: "allow" },
+            { action: "edit", resource: ".vault/**", effect: "allow" },
+            { action: "write", resource: "*", effect: "deny" },
+            { action: "write", resource: "*.md", effect: "allow" },
+            { action: "write", resource: "*.json", effect: "allow" },
+            { action: "write", resource: "*.jsonc", effect: "allow" },
+            { action: "write", resource: "*.yaml", effect: "allow" },
+            { action: "write", resource: "*.yml", effect: "allow" },
+            { action: "write", resource: ".opencode/**", effect: "allow" },
+            { action: "write", resource: ".vault/**", effect: "allow" },
+          ]),
+        )
+      })
+
+      editor.update(AgentV2.ID.make("reviewer"), (item) => {
+        item.description =
+          "Code review specialist — analyzes code quality, security, and architecture without modifying any files."
+        item.system = PROMPT_REVIEWER
+        item.mode = "primary"
+        item.permissions.push(
+          ...PermissionV2.merge(defaults, [
+            { action: "question", resource: "*", effect: "allow" },
+            { action: "edit", resource: "*", effect: "deny" },
+            { action: "write", resource: "*", effect: "deny" },
+            { action: "apply_patch", resource: "*", effect: "deny" },
+          ]),
+        )
+      })
+
+      editor.update(AgentV2.ID.make("architect"), (item) => {
+        item.description =
+          "Software architect — designs system structure, writes ADRs, maps component boundaries, and ensures architectural consistency."
+        item.system = PROMPT_ARCHITECT
+        item.mode = "primary"
+        item.permissions.push(
+          ...PermissionV2.merge(defaults, [
+            { action: "question", resource: "*", effect: "allow" },
+            { action: "edit", resource: "*", effect: "deny" },
+            { action: "edit", resource: "*.md", effect: "allow" },
+            { action: "edit", resource: ".opencode/**", effect: "allow" },
+            { action: "write", resource: "*", effect: "deny" },
+            { action: "write", resource: "*.md", effect: "allow" },
+            { action: "write", resource: ".opencode/**", effect: "allow" },
+          ]),
+        )
+      })
+
+      editor.update(AgentV2.ID.make("tester"), (item) => {
+        item.description =
+          "Test specialist — writes and runs tests. Never modifies source code."
+        item.system = PROMPT_TESTER
+        item.mode = "primary"
+        item.permissions.push(
+          ...PermissionV2.merge(defaults, [
+            { action: "question", resource: "*", effect: "allow" },
+            { action: "edit", resource: "*", effect: "deny" },
+            { action: "edit", resource: "**/*.test.*", effect: "allow" },
+            { action: "edit", resource: "**/*.spec.*", effect: "allow" },
+            { action: "edit", resource: "**/*.test-d.*", effect: "allow" },
+            { action: "edit", resource: "**/test/**", effect: "allow" },
+            { action: "edit", resource: "**/tests/**", effect: "allow" },
+            { action: "edit", resource: "**/__tests__/**", effect: "allow" },
+            { action: "write", resource: "*", effect: "deny" },
+            { action: "write", resource: "**/*.test.*", effect: "allow" },
+            { action: "write", resource: "**/*.spec.*", effect: "allow" },
+            { action: "write", resource: "**/*.test-d.*", effect: "allow" },
+            { action: "write", resource: "**/test/**", effect: "allow" },
+            { action: "write", resource: "**/tests/**", effect: "allow" },
+            { action: "write", resource: "**/__tests__/**", effect: "allow" },
+          ]),
+        )
+      })
+
+      editor.update(AgentV2.ID.make("qa"), (item) => {
+        item.description =
+          "Quality assurance — finds bugs, edge cases, and regression risks. Reports issues, never fixes them."
+        item.system = PROMPT_QA
+        item.mode = "subagent"
+        item.permissions.push(
+          ...PermissionV2.merge(defaults, [
+            { action: "question", resource: "*", effect: "allow" },
+            { action: "edit", resource: "*", effect: "deny" },
+            { action: "write", resource: "*", effect: "deny" },
+            { action: "apply_patch", resource: "*", effect: "deny" },
+          ]),
+        )
+      })
+
+      editor.update(AgentV2.ID.make("anti-ai-slop"), (item) => {
+        item.description =
+          "Code quality gate — detects AI-generated anti-patterns, overengineering, and low-quality code."
+        item.system = PROMPT_ANTI_AI_SLOP
+        item.mode = "subagent"
+        item.permissions.push(
+          ...PermissionV2.merge(defaults, [
+            { action: "edit", resource: "*", effect: "deny" },
+            { action: "write", resource: "*", effect: "deny" },
+            { action: "apply_patch", resource: "*", effect: "deny" },
+          ]),
+        )
       })
     })
   }),

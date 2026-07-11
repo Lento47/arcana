@@ -1,5 +1,5 @@
 import type { Hooks, PluginInput } from "@arcana/plugin"
-import { InstallationVersion } from "@arcana/core/installation/version"
+import { InstallationVersion, USER_AGENT } from "@arcana/core/installation/version"
 import { OAUTH_DUMMY_KEY } from "../../auth"
 import os from "os"
 import { setTimeout as sleep } from "node:timers/promises"
@@ -625,7 +625,7 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
     "chat.headers": async (input, output) => {
       if (input.model.providerID !== "openai") return
       output.headers.originator = "arcana"
-      output.headers["User-Agent"] = `opencode/${InstallationVersion} (${os.platform()} ${os.release()}; ${os.arch()})`
+      output.headers["User-Agent"] = `${USER_AGENT} (${os.platform()} ${os.release()}; ${os.arch()})`
       output.headers["session-id"] = input.sessionID
       // Temporary fetch-layer hack: title generation currently shares the conversation
       // session ID, so the OpenAI plugin marks it for HTTP fallback until transport

@@ -11,7 +11,7 @@ import { formatMachineResourcePlan, planMachineResourceUse } from "./machine.js"
 import { formatExpectationContractForPrompt, inferExpectationContract } from "./expectation.js"
 import { buildRevisionPrompt, evaluateResponseQuality } from "./quality.js"
 import { evaluateResponsePostflight, prepareResponsePreflight } from "./response-pipeline.js"
-import { formatContextPlanForAudit, planContextPack } from "./context.js"
+import { planContextPack } from "./context.js"
 
 describe("Arcana Signal Engine", () => {
   test("routes code-fix prompts toward sandboxed code posture", () => {

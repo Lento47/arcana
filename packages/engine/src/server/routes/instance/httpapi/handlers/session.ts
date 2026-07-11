@@ -114,8 +114,14 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
         })
       }
       yield* requireSession(ctx.params.sessionID)
+
+      // Return cursor alongside items so the client can paginate without
+      // parsing response headers (SDK strips headers from typed responses).
       if (ctx.query.limit === undefined || ctx.query.limit === 0) {
-        return yield* SessionError.mapStorageNotFound(session.messages({ sessionID: ctx.params.sessionID }))
+        const items = yield* SessionError.mapStorageNotFound(
+          session.messages({ sessionID: ctx.params.sessionID }),
+        )
+        return { items, cursor: undefined }
       }
 
       const page = yield* SessionError.mapStorageNotFound(
@@ -125,7 +131,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
           before: ctx.query.before,
         }),
       )
-      if (!page.cursor) return page.items
+      if (!page.cursor) return { items: page.items, cursor: undefined }
 
       const request = yield* HttpServerRequest.HttpServerRequest
       // toURL() honors the Host + x-forwarded-proto headers, so the Link
@@ -133,13 +139,16 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       const url = Option.getOrElse(HttpServerRequest.toURL(request), () => new URL(request.url, "http://localhost"))
       url.searchParams.set("limit", ctx.query.limit.toString())
       url.searchParams.set("before", page.cursor)
-      return HttpServerResponse.jsonUnsafe(page.items, {
-        headers: {
-          "Access-Control-Expose-Headers": "Link, X-Next-Cursor",
-          Link: `<${url.toString()}>; rel="next"`,
-          "X-Next-Cursor": page.cursor,
+      return HttpServerResponse.jsonUnsafe(
+        { items: page.items, cursor: page.cursor },
+        {
+          headers: {
+            "Access-Control-Expose-Headers": "Link, X-Next-Cursor",
+            Link: `<${url.toString()}>; rel="next"`,
+            "X-Next-Cursor": page.cursor,
+          },
         },
-      })
+      )
     })
 
     const message = Effect.fn("SessionHttpApi.message")(function* (ctx: {

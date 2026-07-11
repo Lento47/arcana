@@ -1,13 +1,17 @@
 import { createStore } from "solid-js/store"
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
-import { useRenderer } from "@opentui/solid"
+import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import type { TextareaRenderable } from "@opentui/core"
-import { selectedForeground, tint, useTheme } from "../../context/theme"
+import { selectedForeground, useTheme } from "../../context/theme"
 import type { QuestionAnswer, QuestionRequest } from "@arcana/sdk/v2"
 import { useSDK } from "../../context/sdk"
-import { SplitBorder } from "../../ui/border"
 import { useTuiConfig } from "../../config"
 import { useBindings, useOpencodeModeStack } from "../../keymap"
+import { useToast } from "../../ui/toast"
+import { errorMessage } from "../../util/error"
+import { getSpineLayout } from "../../shell/command-spine/spine-types"
+import { SpineGutterSpacer, spineLeadMetrics } from "../../shell/command-spine/spine-lead"
+import { SpineRail } from "../../shell/command-spine/spine-rail"
 
 const QUESTION_MODE = "question"
 
@@ -15,12 +19,20 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   const sdk = useSDK()
   const { theme } = useTheme()
   const renderer = useRenderer()
+  // Only block clicks during an actual drag-selection (multi-char), not
+  // after a simple click that creates a 1x1 selection footprint.
+  function hasMeaningfulSelection(): boolean {
+    const text = renderer.getSelection()?.getSelectedText()
+    return text !== undefined && text.trim().length > 1
+  }
+  const dimensions = useTerminalDimensions()
   const tuiConfig = useTuiConfig()
   const modeStack = useOpencodeModeStack()
+  const toast = useToast()
 
-  const questions = createMemo(() => props.request.questions)
+  const questions = createMemo(() => props.request.questions ?? [])
   const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
-  const tabs = createMemo(() => (single() ? 1 : questions().length + 1)) // questions + confirm tab (no confirm for single select)
+  const tabs = createMemo(() => (single() ? 1 : questions().length + 1)) // questions + confirm tab
   const [tabHover, setTabHover] = createSignal<number | "confirm" | null>(null)
   const [store, setStore] = createStore({
     tab: 0,
@@ -28,6 +40,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     custom: [] as string[],
     selected: 0,
     editing: false,
+    busy: false,
   })
 
   let textarea: TextareaRenderable | undefined
@@ -45,37 +58,133 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     return store.answers[store.tab]?.includes(value) ?? false
   })
 
-  function submit() {
-    const answers = questions().map((_, i) => store.answers[i] ?? [])
-    void sdk.client.question.reply({
-      requestID: props.request.id,
-      directory: props.directory,
-      answers,
-    })
+  // Same lead metrics as SpinePrompt / SpineEntry so columns never drift.
+  let _prevLayoutQ: string | undefined
+  const layout = createMemo(() => {
+    const l = getSpineLayout(dimensions().width, _prevLayoutQ as any)
+    _prevLayoutQ = l
+    return l
+  })
+  const metrics = createMemo(() => spineLeadMetrics(layout()))
+  const narrow = createMemo(() => dimensions().width < 88)
+  const optionIndexWidth = createMemo(() => Math.max(4, String(options().length + (custom() ? 1 : 0)).length + 3))
+
+  function GateRow(props: { glyph?: string; color?: unknown; children: JSX.Element; marginTop?: number }) {
+    return (
+      <box
+        flexDirection="row"
+        flexShrink={0}
+        flexGrow={1}
+        minWidth={0}
+        alignItems="flex-start"
+        width="100%"
+        paddingLeft={metrics().pad}
+        paddingRight={metrics().pad}
+        marginTop={props.marginTop}
+      >
+        <SpineGutterSpacer layout={layout()} />
+        <SpineRail
+          layout={layout()}
+          glyph={props.glyph}
+          color={props.color}
+          kind={props.glyph === "?" ? "inspect" : undefined}
+        />
+        <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
+          {props.children}
+        </box>
+      </box>
+    )
   }
 
-  function reject() {
-    void sdk.client.question.reject({
-      requestID: props.request.id,
-      directory: props.directory,
-    })
+  function GateFrame(frame: { header: JSX.Element; body: JSX.Element; footer: JSX.Element }) {
+    return (
+      <box
+        flexDirection="column"
+        flexShrink={0}
+        width="100%"
+        paddingTop={1}
+        paddingBottom={1}
+      >
+        <GateRow glyph="?" color={theme.spineInspect}>
+          {frame.header}
+        </GateRow>
+        <GateRow marginTop={1}>
+          {frame.body}
+        </GateRow>
+        <GateRow marginTop={1}>
+          {frame.footer}
+        </GateRow>
+      </box>
+    )
   }
 
-  function pick(answer: string, custom: boolean = false) {
+  async function submit() {
+    if (store.busy) return
+    setStore("busy", true)
+    try {
+      const answers = questions().map((_, i) => store.answers[i] ?? [])
+      await sdk.client.question.reply({
+        requestID: props.request.id,
+        directory: props.directory,
+        answers,
+      })
+    } catch (error) {
+      toast.show({
+        title: "Question reply failed",
+        message: errorMessage(error),
+        variant: "error",
+      })
+    } finally {
+      setStore("busy", false)
+    }
+  }
+
+  async function reject() {
+    if (store.busy) return
+    setStore("busy", true)
+    try {
+      await sdk.client.question.reject({
+        requestID: props.request.id,
+        directory: props.directory,
+      })
+    } catch (error) {
+      toast.show({
+        title: "Question dismiss failed",
+        message: errorMessage(error),
+        variant: "error",
+      })
+    } finally {
+      setStore("busy", false)
+    }
+  }
+
+  async function pick(answer: string, isCustom: boolean = false) {
+    if (store.busy) return
     const answers = [...store.answers]
     answers[store.tab] = [answer]
     setStore("answers", answers)
-    if (custom) {
+    if (isCustom) {
       const inputs = [...store.custom]
       inputs[store.tab] = answer
       setStore("custom", inputs)
     }
     if (single()) {
-      void sdk.client.question.reply({
-        requestID: props.request.id,
-        directory: props.directory,
-        answers: [[answer]],
-      })
+      setStore("busy", true)
+      try {
+        await sdk.client.question.reply({
+          requestID: props.request.id,
+          directory: props.directory,
+          answers: [[answer]],
+        })
+      } catch (error) {
+        toast.show({
+          title: "Question reply failed",
+          message: errorMessage(error),
+          variant: "error",
+        })
+      } finally {
+        setStore("busy", false)
+      }
       return
     }
     setStore("tab", store.tab + 1)
@@ -103,6 +212,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   }
 
   function selectOption() {
+    if (store.busy) return
     if (other()) {
       if (!multi()) {
         setStore("editing", true)
@@ -122,7 +232,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
       toggle(opt.label)
       return
     }
-    pick(opt.label)
+    void pick(opt.label)
   }
 
   onMount(() => {
@@ -132,7 +242,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
 
   useBindings(() => ({
     mode: QUESTION_MODE,
-    enabled: store.editing && !confirm(),
+    enabled: store.editing && !confirm() && !store.busy,
     commands: [
       {
         name: "prompt.clear",
@@ -199,7 +309,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
             return
           }
 
-          pick(text, true)
+          void pick(text, true)
           setStore("editing", false)
         },
       },
@@ -213,14 +323,14 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
 
     return {
       mode: QUESTION_MODE,
-      enabled: !store.editing,
+      enabled: !store.editing && !store.busy,
       commands: [
         {
           name: "app.exit",
           title: "Reject question",
           category: "Question",
           run() {
-            reject()
+            void reject()
           },
         },
       ],
@@ -249,8 +359,8 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
         },
         ...(confirm()
           ? [
-              { key: "return", desc: "Submit answer", group: "Question", cmd: () => submit() },
-              { key: "escape", desc: "Reject question", group: "Question", cmd: () => reject() },
+              { key: "return", desc: "Submit answer", group: "Question", cmd: () => void submit() },
+              { key: "escape", desc: "Reject question", group: "Question", cmd: () => void reject() },
               ...tuiConfig.keybinds.get("app.exit"),
             ]
           : [
@@ -278,195 +388,241 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
               { key: "down", desc: "Next answer", group: "Question", cmd: () => moveTo((store.selected + 1) % total) },
               { key: "j", desc: "Next answer", group: "Question", cmd: () => moveTo((store.selected + 1) % total) },
               { key: "return", desc: "Select answer", group: "Question", cmd: () => selectOption() },
-              { key: "escape", desc: "Reject question", group: "Question", cmd: () => reject() },
+              { key: "space", desc: "Select answer", group: "Question", cmd: () => selectOption() },
+              { key: "escape", desc: "Reject question", group: "Question", cmd: () => void reject() },
               ...tuiConfig.keybinds.get("app.exit"),
             ]),
       ],
     }
   })
 
-  return (
-    <box
-      backgroundColor={theme.backgroundPanel}
-      border={["left"]}
-      borderColor={theme.accent}
-      customBorderChars={SplitBorder.customBorderChars}
-    >
-      <box gap={1} paddingLeft={1} paddingRight={3} paddingTop={1} paddingBottom={1}>
+  const header = (
+    <box flexDirection="column" minWidth={0}>
+      <box flexDirection="row" minWidth={0} alignItems="center">
+        <text fg={theme.spineInspect as any} flexShrink={0}>QUESTION</text>
         <Show when={!single()}>
-          <box flexDirection="row" gap={1} paddingLeft={1}>
-            <For each={questions()}>
-              {(q, index) => {
-                const isActive = () => index() === store.tab
-                const isAnswered = () => {
-                  return (store.answers[index()]?.length ?? 0) > 0
-                }
+          <text fg={theme.textMuted as any} flexShrink={0}>
+            {"  "}
+            {confirm() ? "review" : `${store.tab + 1}/${questions().length}`}
+          </text>
+        </Show>
+        <Show when={store.busy}>
+          <text fg={theme.textMuted as any} flexShrink={0}>{"  ·  submitting…"}</text>
+        </Show>
+      </box>
+      <Show when={!single()}>
+        <box flexDirection={narrow() ? "column" : "row"} marginTop={1} gap={narrow() ? 0 : 1} minWidth={0}>
+          <For each={questions()}>
+            {(q, index) => {
+              const isActive = () => index() === store.tab
+              const isAnswered = () => (store.answers[index()]?.length ?? 0) > 0
+              return (
+                <box
+                  paddingLeft={1}
+                  paddingRight={1}
+                  marginRight={narrow() ? 0 : 1}
+                  marginBottom={narrow() ? 1 : 0}
+                  minWidth={0}
+                  backgroundColor={
+                    isActive()
+                      ? theme.accent
+                      : tabHover() === index()
+                        ? theme.backgroundElement
+                        : theme.backgroundMenu
+                  }
+                  onMouseOver={() => setTabHover(index())}
+                  onMouseOut={() => setTabHover(null)}
+                  onMouseUp={() => {
+                    if (hasMeaningfulSelection()) return
+                    selectTab(index())
+                  }}
+                >
+                  <text
+                    fg={
+                      isActive()
+                        ? selectedForeground(theme, theme.accent)
+                        : isAnswered()
+                          ? theme.text
+                          : theme.textMuted
+                    }
+                    wrapMode="word"
+                  >
+                    {q.header || `Q${index() + 1}`}
+                  </text>
+                </box>
+              )
+            }}
+          </For>
+          <box
+            paddingLeft={1}
+            paddingRight={1}
+            minWidth={0}
+            backgroundColor={
+              confirm() ? theme.accent : tabHover() === "confirm" ? theme.backgroundElement : theme.backgroundMenu
+            }
+            onMouseOver={() => setTabHover("confirm")}
+            onMouseOut={() => setTabHover(null)}
+            onMouseUp={() => {
+              if (hasMeaningfulSelection()) return
+              selectTab(questions().length)
+            }}
+          >
+            <text fg={confirm() ? selectedForeground(theme, theme.accent) : theme.textMuted}>Review</text>
+          </box>
+        </box>
+      </Show>
+    </box>
+  )
+
+  const body = (
+    <box flexDirection="column" minWidth={0}>
+      <Show when={!confirm()}>
+        <box flexDirection="column" minWidth={0}>
+          <text fg={theme.text} wrapMode="word">
+            {question()?.question ?? "Choose an option"}
+            {multi() ? " (select all that apply)" : ""}
+          </text>
+          <box flexDirection="column" marginTop={1} minWidth={0}>
+            <For each={options()}>
+              {(opt, i) => {
+                const active = () => i() === store.selected
+                const picked = () => store.answers[store.tab]?.includes(opt.label) ?? false
                 return (
                   <box
-                    paddingLeft={1}
-                    paddingRight={1}
-                    backgroundColor={
-                      isActive()
-                        ? theme.accent
-                        : tabHover() === index()
-                          ? theme.backgroundElement
-                          : theme.backgroundPanel
-                    }
-                    onMouseOver={() => setTabHover(index())}
-                    onMouseOut={() => setTabHover(null)}
+                    marginBottom={1}
+                    minWidth={0}
+                    onMouseOver={() => moveTo(i())}
+                    onMouseDown={() => moveTo(i())}
                     onMouseUp={() => {
-                      if (renderer.getSelection()?.getSelectedText()) return
-                      selectTab(index())
+                      if (hasMeaningfulSelection()) return
+                      selectOption()
                     }}
                   >
-                    <text
-                      fg={
-                        isActive()
-                          ? selectedForeground(theme, theme.accent)
-                          : isAnswered()
-                            ? theme.text
-                            : theme.textMuted
-                      }
-                    >
-                      {q.header}
-                    </text>
+                    <box flexDirection="row" minWidth={0}>
+                      <box
+                        backgroundColor={active() ? theme.backgroundElement : undefined}
+                        paddingRight={1}
+                        width={optionIndexWidth()}
+                        flexShrink={0}
+                      >
+                        <text fg={active() ? selectedForeground(theme, theme.backgroundElement) : (theme.spineContext as any)}>
+                          {`${i() + 1}.`}
+                        </text>
+                      </box>
+                      <box backgroundColor={active() ? theme.backgroundElement : undefined} flexGrow={1} minWidth={0} flexShrink={1}>
+                        <text
+                          fg={
+                            active()
+                              ? selectedForeground(theme, theme.backgroundElement)
+                              : picked()
+                                ? theme.success
+                                : theme.text
+                          }
+                          wrapMode="word"
+                        >
+                          {multi() ? `[${picked() ? "✓" : " "}] ${opt.label}` : opt.label}
+                        </text>
+                      </box>
+                      <Show when={!multi()}>
+                        <text fg={theme.success} flexShrink={0}>{picked() ? " ✓" : ""}</text>
+                      </Show>
+                    </box>
+                    <Show when={opt.description}>
+                      <box paddingLeft={optionIndexWidth()} minWidth={0}>
+                        <text fg={theme.spineContext as any} wrapMode="word">
+                          {opt.description}
+                        </text>
+                      </box>
+                    </Show>
                   </box>
                 )
               }}
             </For>
-            <box
-              paddingLeft={1}
-              paddingRight={1}
-              backgroundColor={
-                confirm() ? theme.accent : tabHover() === "confirm" ? theme.backgroundElement : theme.backgroundPanel
-              }
-              onMouseOver={() => setTabHover("confirm")}
-              onMouseOut={() => setTabHover(null)}
-              onMouseUp={() => {
-                if (renderer.getSelection()?.getSelectedText()) return
-                selectTab(questions().length)
-              }}
-            >
-              <text fg={confirm() ? selectedForeground(theme, theme.accent) : theme.textMuted}>Confirm</text>
-            </box>
-          </box>
-        </Show>
-
-        <Show when={!confirm()}>
-          <box paddingLeft={1} gap={1}>
-            <box>
-              <text fg={theme.text}>
-                {question()?.question}
-                {multi() ? " (select all that apply)" : ""}
-              </text>
-            </box>
-            <box>
-              <For each={options()}>
-                {(opt, i) => {
-                  const active = () => i() === store.selected
-                  const picked = () => store.answers[store.tab]?.includes(opt.label) ?? false
-                  return (
-                    <box
-                      onMouseOver={() => moveTo(i())}
-                      onMouseDown={() => moveTo(i())}
-                      onMouseUp={() => {
-                        if (renderer.getSelection()?.getSelectedText()) return
-                        selectOption()
-                      }}
-                    >
-                      <box flexDirection="row">
-                        <box backgroundColor={active() ? theme.backgroundElement : undefined} paddingRight={1}>
-                          <text fg={active() ? selectedForeground(theme, theme.backgroundElement) : theme.textMuted}>
-                            {`${i() + 1}.`}
-                          </text>
-                        </box>
-                        <box backgroundColor={active() ? theme.backgroundElement : undefined}>
-                          <text fg={active() ? selectedForeground(theme, theme.backgroundElement) : picked() ? theme.success : theme.text}>
-                            {multi() ? `[${picked() ? "✓" : " "}] ${opt.label}` : opt.label}
-                          </text>
-                        </box>
-                        <Show when={!multi()}>
-                          <text fg={theme.success}>{picked() ? " ✓" : ""}</text>
-                        </Show>
-                      </box>
-
-                      <box paddingLeft={3}>
-                        <text fg={theme.textMuted}>{opt.description}</text>
-                      </box>
-                    </box>
-                  )
+            <Show when={custom()}>
+              <box
+                minWidth={0}
+                onMouseOver={() => moveTo(options().length)}
+                onMouseDown={() => moveTo(options().length)}
+                onMouseUp={() => {
+                  if (hasMeaningfulSelection()) return
+                  selectOption()
                 }}
-              </For>
-              <Show when={custom()}>
-                <box
-                  onMouseOver={() => moveTo(options().length)}
-                  onMouseDown={() => moveTo(options().length)}
-                  onMouseUp={() => {
-                    if (renderer.getSelection()?.getSelectedText()) return
-                    selectOption()
-                  }}
-                >
-                  <box flexDirection="row">
-                    <box backgroundColor={other() ? theme.backgroundElement : undefined} paddingRight={1}>
-                      <text fg={other() ? selectedForeground(theme, theme.backgroundElement) : theme.textMuted}>
-                        {`${options().length + 1}.`}
-                      </text>
-                    </box>
-                    <box backgroundColor={other() ? theme.backgroundElement : undefined}>
-                      <text fg={other() ? selectedForeground(theme, theme.backgroundElement) : customPicked() ? theme.success : theme.text}>
-                        {multi() ? `[${customPicked() ? "✓" : " "}] Type your own answer` : "Type your own answer"}
-                      </text>
-                    </box>
-
-                    <Show when={!multi()}>
-                      <text fg={theme.success}>{customPicked() ? " ✓" : ""}</text>
-                    </Show>
+              >
+                <box flexDirection="row" minWidth={0}>
+                  <box
+                    backgroundColor={other() ? theme.backgroundElement : undefined}
+                    paddingRight={1}
+                    width={optionIndexWidth()}
+                    flexShrink={0}
+                  >
+                    <text fg={other() ? selectedForeground(theme, theme.backgroundElement) : (theme.spineContext as any)}>
+                      {`${options().length + 1}.`}
+                    </text>
                   </box>
-                  <Show when={store.editing}>
-                    <box paddingLeft={3}>
-                      <textarea
-                        ref={(val: TextareaRenderable) => {
-                          textarea = val
-                          val.traits = { status: "ANSWER" }
-                          queueMicrotask(() => {
-                            val.focus()
-                            val.gotoLineEnd()
-                          })
-                        }}
-                        initialValue={input()}
-                        placeholder="Type your own answer"
-                        placeholderColor={theme.textMuted}
-                        minHeight={1}
-                        maxHeight={6}
-                        textColor={theme.text}
-                        focusedTextColor={theme.text}
-                        cursorColor={theme.primary}
-                      />
-                    </box>
-                  </Show>
-                  <Show when={!store.editing && input()}>
-                    <box paddingLeft={3}>
-                      <text fg={theme.textMuted}>{input()}</text>
-                    </box>
+                  <box backgroundColor={other() ? theme.backgroundElement : undefined} flexGrow={1} minWidth={0} flexShrink={1}>
+                    <text
+                      fg={
+                        other()
+                          ? selectedForeground(theme, theme.backgroundElement)
+                          : customPicked()
+                            ? theme.success
+                            : theme.text
+                      }
+                    >
+                      {multi() ? `[${customPicked() ? "✓" : " "}] Type your own answer` : "Type your own answer"}
+                    </text>
+                  </box>
+                  <Show when={!multi()}>
+                    <text fg={theme.success} flexShrink={0}>{customPicked() ? " ✓" : ""}</text>
                   </Show>
                 </box>
-              </Show>
-            </box>
+                <Show when={store.editing}>
+                  <box paddingLeft={optionIndexWidth()} marginTop={1} minWidth={0}>
+                    <textarea
+                      ref={(val: TextareaRenderable) => {
+                        textarea = val
+                        val.traits = { status: "ANSWER" }
+                        queueMicrotask(() => {
+                          if (val.isDestroyed) return
+                          val.focus()
+                          val.gotoLineEnd()
+                        })
+                      }}
+                      initialValue={input()}
+                      placeholder="Type your own answer"
+                      placeholderColor={theme.spineContext as any}
+                      width="100%"
+                      minHeight={1}
+                      maxHeight={6}
+                      textColor={theme.text}
+                      focusedTextColor={theme.text}
+                      cursorColor={theme.primary}
+                      focusedBackgroundColor={theme.background as any}
+                    />
+                  </box>
+                </Show>
+                <Show when={!store.editing && input()}>
+                  <box paddingLeft={optionIndexWidth()} minWidth={0}>
+                    <text fg={theme.spineContext as any} wrapMode="word">{input()}</text>
+                  </box>
+                </Show>
+              </box>
+            </Show>
           </box>
-        </Show>
+        </box>
+      </Show>
 
-        <Show when={confirm() && !single()}>
-          <box paddingLeft={1}>
-            <text fg={theme.text}>Review</text>
-          </box>
+      <Show when={confirm() && !single()}>
+        <box flexDirection="column" minWidth={0}>
+          <text fg={theme.text}>Review your answers</text>
           <For each={questions()}>
             {(q, index) => {
               const value = () => store.answers[index()]?.join(", ") ?? ""
               const answered = () => Boolean(value())
               return (
-                <box paddingLeft={1}>
-                  <text>
-                    <span style={{ fg: theme.textMuted }}>{q.header}:</span>{" "}
+                <box marginTop={1} minWidth={0}>
+                  <text wrapMode="word">
+                    <span style={{ fg: theme.spineContext as any }}>{q.header || `Q${index() + 1}`}:</span>{" "}
                     <span style={{ fg: answered() ? theme.text : theme.error }}>
                       {answered() ? value() : "(not answered)"}
                     </span>
@@ -475,40 +631,29 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
               )
             }}
           </For>
+        </box>
+      </Show>
+    </box>
+  )
+
+  const footer = (
+    <box flexDirection={narrow() ? "column" : "row"} flexShrink={0} gap={narrow() ? 0 : 2} minWidth={0}>
+      <box flexDirection="row" gap={2} flexShrink={0}>
+        <Show when={!single()}>
+          <text fg={theme.spineContext as any}>tab steps</text>
+        </Show>
+        <Show when={!confirm()}>
+          <text fg={theme.spineContext as any}>↑↓ select</text>
         </Show>
       </box>
-      <box
-        flexDirection="row"
-        flexShrink={0}
-        gap={1}
-        paddingLeft={2}
-        paddingRight={3}
-        paddingBottom={1}
-        justifyContent="space-between"
-      >
-        <box flexDirection="row" gap={2}>
-          <Show when={!single()}>
-            <text fg={theme.text}>
-              {"⇆"} <span style={{ fg: theme.textMuted }}>tab</span>
-            </text>
-          </Show>
-          <Show when={!confirm()}>
-            <text fg={theme.text}>
-              {"↑↓"} <span style={{ fg: theme.textMuted }}>select</span>
-            </text>
-          </Show>
-          <text fg={theme.text}>
-            enter{" "}
-            <span style={{ fg: theme.textMuted }}>
-              {confirm() ? "submit" : multi() ? "toggle" : single() ? "submit" : "confirm"}
-            </span>
-          </text>
-
-          <text fg={theme.text}>
-            esc <span style={{ fg: theme.textMuted }}>dismiss</span>
-          </text>
-        </box>
+      <box flexDirection="row" gap={2} flexShrink={0}>
+        <text fg={theme.spineContext as any}>
+          enter {confirm() ? "submit" : multi() ? "toggle" : single() ? "submit" : "next"}
+        </text>
+        <text fg={theme.spineContext as any}>esc dismiss</text>
       </box>
     </box>
   )
+
+  return <GateFrame header={header} body={body} footer={footer} />
 }

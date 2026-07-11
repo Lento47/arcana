@@ -21,7 +21,10 @@ type McpServerConfig = {
 }
 
 function loadMcpConfig(): Record<string, McpServerConfig> {
+  // Canonical names first, legacy opencode- branded filenames for backward compat.
   const paths = [
+    join(homedir(), ".config", "arcana", "arcana.json"),
+    join(homedir(), ".config", "arcana", "arcana.jsonc"),
     join(homedir(), ".config", "arcana", "opencode.json"),
     join(homedir(), ".config", "arcana", "opencode.jsonc"),
   ]

@@ -1,7 +1,6 @@
 import type { Session as SDKSession, Message, Part } from "@arcana/sdk/v2"
 import { SessionV1 } from "@arcana/core/v1/session"
 import { Session } from "@/session/session"
-import { MessageV2 } from "../../session/message-v2"
 import { CliError, effectCmd } from "../effect-cmd"
 import { Database } from "@arcana/core/database/database"
 import { SessionTable, MessageTable, PartTable } from "@arcana/core/session/sql"

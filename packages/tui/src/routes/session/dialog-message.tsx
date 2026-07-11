@@ -6,7 +6,7 @@ import { useClipboard } from "../../context/clipboard"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
 import { useTuiConfig } from "../../config"
-import { useBindings, useKeymapSelector } from "../../keymap"
+import { useBindings } from "../../keymap"
 import type { PromptInfo } from "../../component/prompt/history"
 import { stripPromptPartIDs as strip } from "../../prompt/part"
 import { Glyph } from "../../branding"
@@ -192,7 +192,7 @@ export function DialogMessage(props: {
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>acts</text>
         <text fg={theme.textMuted}>scry…_</text>
         <box flexGrow={1} />
-        <text fg={theme.textMuted} onMouseUp={clear}>{Glyph.sigil}</text>
+        <text fg={theme.textMuted} onMouseUp={clear}>[esc] close</text>
       </box>
 
       {/* Body: compact rail timeline */}
@@ -246,7 +246,7 @@ export function DialogMessage(props: {
       >
         <box flexDirection="row" gap={1}>
           <text fg={theme.accent} attributes={TextAttributes.BOLD}>{active().label.toUpperCase()}</text>
-          <text fg={theme.textMuted}>{active().desc} · source trace immutable.</text>
+          <text fg={theme.textMuted}>{active().desc} · message details below.</text>
         </box>
         <box flexDirection="row" gap={1} paddingTop={1}>
           <text fg={theme.primary}>enter</text>

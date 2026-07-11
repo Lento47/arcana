@@ -83,7 +83,7 @@ export function createEngineAction(input: {
 }): ArcanaEngineAction {
   const securityContext = deriveSecurityContext({
     action_kind: input.kind,
-    ...(input.security ?? {}),
+    ...(input.security),
   })
 
   return {

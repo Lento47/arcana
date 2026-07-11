@@ -1,6 +1,6 @@
 export * as AgentV2 from "./agent"
 
-import { Array, Context, Effect, Layer, Schema, Scope } from "effect"
+import { Array, Context, Effect, Layer, Schema } from "effect"
 import { castDraft, enableMapSet, type Draft } from "immer"
 import { ModelV2 } from "./model"
 import { PermissionSchema } from "./permission/schema"

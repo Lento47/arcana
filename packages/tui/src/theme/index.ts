@@ -11,6 +11,7 @@ export type Theme = {
   readonly primary: RGBA
   readonly secondary: RGBA
   readonly accent: RGBA
+  readonly highlight: RGBA
   readonly error: RGBA
   readonly warning: RGBA
   readonly success: RGBA
@@ -62,6 +63,27 @@ export type Theme = {
   readonly syntaxType: RGBA
   readonly syntaxOperator: RGBA
   readonly syntaxPunctuation: RGBA
+  readonly spineBrand: RGBA
+  readonly spineContext: RGBA
+  readonly spineRail: RGBA
+  readonly spineRailActive: RGBA
+  readonly spineActor: RGBA
+  readonly spineAsk: RGBA
+  readonly spineThink: RGBA
+  readonly spineInspect: RGBA
+  readonly spinePlan: RGBA
+  readonly spinePatch: RGBA
+  readonly spineRun: RGBA
+  readonly spineFail: RGBA
+  readonly spineFix: RGBA
+  readonly spineOk: RGBA
+  readonly spinePrompt: RGBA
+  readonly spineDiffAdd: RGBA
+  readonly spineDiffRemove: RGBA
+  readonly spineDiffMuted: RGBA
+  readonly spineGutterElapsed: RGBA
+  readonly spineGutterTimestamp: RGBA
+  readonly spineSubagent: RGBA
   readonly thinkingOpacity: number
   _hasSelectedListItemText: boolean
 }
@@ -103,11 +125,32 @@ type ColorValue = HexColor | RefName | Variant | RGBA
 export type ThemeJson = {
   $schema?: string
   defs?: Record<string, HexColor | RefName>
-  theme: Omit<Record<ThemeColor, ColorValue>, "selectedListItemText" | "backgroundMenu" | "borderThinking" | "surfaceAlt"> & {
+  theme: Omit<Record<ThemeColor, ColorValue>, "selectedListItemText" | "backgroundMenu" | "borderThinking" | "surfaceAlt" | "spineBrand" | "spineContext" | "spineRail" | "spineRailActive" | "spineActor" | "spineAsk" | "spineThink" | "spineInspect" | "spinePlan" | "spinePatch" | "spineRun" | "spineFail" | "spineFix" | "spineOk" | "spinePrompt" | "spineDiffAdd" | "spineDiffRemove" | "spineDiffMuted" | "spineGutterElapsed" | "spineGutterTimestamp" | "spineSubagent"> & {
     selectedListItemText?: ColorValue
     backgroundMenu?: ColorValue
     borderThinking?: ColorValue
     surfaceAlt?: ColorValue
+    spineBrand?: ColorValue
+    spineContext?: ColorValue
+    spineRail?: ColorValue
+    spineRailActive?: ColorValue
+    spineActor?: ColorValue
+    spineAsk?: ColorValue
+    spineThink?: ColorValue
+    spineInspect?: ColorValue
+    spinePlan?: ColorValue
+    spinePatch?: ColorValue
+    spineRun?: ColorValue
+    spineFail?: ColorValue
+    spineFix?: ColorValue
+    spineOk?: ColorValue
+    spinePrompt?: ColorValue
+    spineDiffAdd?: ColorValue
+    spineDiffRemove?: ColorValue
+    spineDiffMuted?: ColorValue
+    spineGutterElapsed?: ColorValue
+    spineGutterTimestamp?: ColorValue
+    spineSubagent?: ColorValue
     thinkingOpacity?: number
   }
 }
@@ -262,6 +305,34 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
     resolved.surfaceAlt = resolved.backgroundPanel
   }
 
+  // Spine command-spine tokens — fallback-safe
+  const spineFB = <T>(key: string, fallback: T) => {
+    const val = (theme.theme as any)[key]
+    return val !== undefined ? resolveColor(val) : (fallback as any)
+  }
+  resolved.spineBrand = spineFB("spineBrand", resolved.text)
+  resolved.spineContext = spineFB("spineContext", resolved.textMuted)
+  resolved.spineRail = spineFB("spineRail", resolved.borderSubtle)
+  resolved.spineRailActive = spineFB("spineRailActive", resolved.border)
+  resolved.spineActor = spineFB("spineActor", resolved.textMuted)
+  resolved.spineAsk = spineFB("spineAsk", resolved.accent)
+  resolved.spineThink = spineFB("spineThink", resolved.textMuted)
+  resolved.spineInspect = spineFB("spineInspect", resolved.info)
+  resolved.spinePlan = spineFB("spinePlan", resolved.secondary)
+  resolved.spinePatch = spineFB("spinePatch", resolved.secondary)
+  resolved.spineRun = spineFB("spineRun", resolved.accent)
+  resolved.spineFail = spineFB("spineFail", resolved.error)
+  resolved.spineFix = spineFB("spineFix", resolved.warning)
+  resolved.spineOk = spineFB("spineOk", resolved.success)
+  resolved.spinePrompt = spineFB("spinePrompt", resolved.accent)
+  resolved.spineDiffAdd = spineFB("spineDiffAdd", resolved.diffAdded)
+  resolved.spineDiffRemove = spineFB("spineDiffRemove", resolved.diffRemoved)
+  resolved.spineDiffMuted = spineFB("spineDiffMuted", resolved.textMuted)
+  resolved.spineGutterElapsed = spineFB("spineGutterElapsed", resolved.textMuted)
+  resolved.spineGutterTimestamp = spineFB("spineGutterTimestamp", resolved.textMuted)
+  resolved.spineSubagent = spineFB("spineSubagent", resolved.info)
+  applyReadabilityFloor(resolved)
+
   return {
     ...resolved,
     _hasSelectedListItemText: hasSelectedListItemText,
@@ -321,6 +392,101 @@ export function tint(base: RGBA, overlay: RGBA, alpha: number): RGBA {
   return RGBA.fromInts(Math.round(r * 255), Math.round(g * 255), Math.round(b * 255))
 }
 
+function linearChannel(value: number) {
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+}
+
+function relativeLuminance(color: RGBA) {
+  return 0.2126 * linearChannel(color.r) + 0.7152 * linearChannel(color.g) + 0.0722 * linearChannel(color.b)
+}
+
+function contrastRatio(foreground: RGBA, background: RGBA) {
+  const lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background))
+  const darker = Math.min(relativeLuminance(foreground), relativeLuminance(background))
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
+function mixColor(base: RGBA, target: RGBA, amount: number) {
+  const clamped = Math.max(0, Math.min(1, amount))
+  return RGBA.fromInts(
+    Math.round((base.r + (target.r - base.r) * clamped) * 255),
+    Math.round((base.g + (target.g - base.g) * clamped) * 255),
+    Math.round((base.b + (target.b - base.b) * clamped) * 255),
+    Math.round((base.a + (target.a - base.a) * clamped) * 255),
+  )
+}
+
+function ensureMinContrast(foreground: RGBA, background: RGBA, minRatio: number) {
+  if (contrastRatio(foreground, background) >= minRatio) return foreground
+
+  const target = relativeLuminance(background) > 0.5
+    ? RGBA.fromInts(0, 0, 0, Math.round(foreground.a * 255))
+    : RGBA.fromInts(255, 255, 255, Math.round(foreground.a * 255))
+
+  let low = 0
+  let high = 1
+  let best = target
+  for (let i = 0; i < 12; i++) {
+    const mid = (low + high) / 2
+    const candidate = mixColor(foreground, target, mid)
+    if (contrastRatio(candidate, background) >= minRatio) {
+      best = candidate
+      high = mid
+    } else {
+      low = mid
+    }
+  }
+  return best
+}
+
+function applyReadabilityFloor(theme: Partial<Record<ThemeColor, RGBA>>) {
+  const baseSurface = theme.background && theme.background.a === 0
+    ? (theme.backgroundPanel ?? theme.background)
+    : theme.background
+  if (!baseSurface) return
+
+  const lift = (value: RGBA | undefined, minRatio: number) => value ? ensureMinContrast(value, baseSurface, minRatio) : value
+  const panel = theme.backgroundPanel ?? baseSurface
+
+  theme.text = lift(theme.text, 7)
+  theme.textMuted = lift(theme.textMuted, 4.7)
+  theme.secondary = lift(theme.secondary, 3.8)
+  theme.accent = lift(theme.accent, 3.8)
+  theme.info = lift(theme.info, 3.8)
+  theme.success = lift(theme.success, 3.8)
+  theme.warning = lift(theme.warning, 3.8)
+  theme.error = lift(theme.error, 4.2)
+  theme.borderSubtle = lift(theme.borderSubtle, 2.2)
+  theme.border = lift(theme.border, 2.8)
+  theme.diffContext = lift(theme.diffContext, 3.8)
+  theme.diffHunkHeader = lift(theme.diffHunkHeader, 3.8)
+  theme.diffLineNumber = lift(theme.diffLineNumber, 3.6)
+  theme.syntaxComment = lift(theme.syntaxComment, 3.8)
+  theme.markdownHorizontalRule = lift(theme.markdownHorizontalRule, 3.8)
+
+  theme.spineBrand = lift(theme.spineBrand, 7)
+  theme.spineContext = lift(theme.spineContext, 4.7)
+  theme.spineActor = lift(theme.spineActor, 4.5)
+  theme.spineThink = lift(theme.spineThink, 4.5)
+  theme.spineDiffMuted = lift(theme.spineDiffMuted, 4.5)
+  theme.spineGutterElapsed = lift(theme.spineGutterElapsed, 4.5)
+  theme.spineGutterTimestamp = lift(theme.spineGutterTimestamp, 4.5)
+  theme.spineSubagent = lift(theme.spineSubagent, 4.5)
+  theme.spineAsk = lift(theme.spineAsk, 4.5)
+  theme.spinePlan = lift(theme.spinePlan, 4.5)
+  theme.spineInspect = lift(theme.spineInspect, 4.5)
+  theme.spinePatch = lift(theme.spinePatch, 4.5)
+  theme.spineRun = lift(theme.spineRun, 4.5)
+  theme.spineFail = lift(theme.spineFail, 4.8)
+  theme.spineFix = lift(theme.spineFix, 4.5)
+  theme.spineOk = lift(theme.spineOk, 4.5)
+  theme.spinePrompt = lift(theme.spinePrompt, 4.8)
+  theme.spineDiffAdd = lift(theme.spineDiffAdd, 4.2)
+  theme.spineDiffRemove = lift(theme.spineDiffRemove, 4.2)
+  theme.spineRail = theme.spineRail ? ensureMinContrast(theme.spineRail, panel, 2.4) : theme.spineRail
+  theme.spineRailActive = theme.spineRailActive ? ensureMinContrast(theme.spineRailActive, panel, 3.2) : theme.spineRailActive
+}
+
 export function terminalMode(colors: TerminalColors): "dark" | "light" | undefined {
   const bg = colors.defaultBackground
   if (!bg) return
@@ -372,6 +538,7 @@ export function generateSystem(colors: TerminalColors, mode: "dark" | "light"): 
       primary: ansiColors.cyan,
       secondary: ansiColors.magenta,
       accent: ansiColors.cyan,
+      highlight: ansiColors.cyan,
 
       // Status colors using ANSI
       error: ansiColors.red,
@@ -428,6 +595,28 @@ export function generateSystem(colors: TerminalColors, mode: "dark" | "light"): 
       // Arcane DNA tokens
       borderThinking: grays[5],
       surfaceAlt: grays[2],
+
+      // Spine command-spine tokens — softened for premium feel
+      spineBrand: fg,
+      spineContext: textMuted,
+      spineRail: grays[5],
+      spineRailActive: grays[7],
+      spineActor: textMuted,
+      spineAsk: ansiColors.magenta,
+      spineThink: textMuted,
+      spineInspect: ansiColors.blue,
+      spinePlan: ansiColors.magenta,
+      spinePatch: ansiColors.magenta,
+      spineRun: ansiColors.magenta,
+      spineFail: RGBA.fromHex("#C47A7A"),
+      spineFix: ansiColors.yellow,
+      spineOk: RGBA.fromHex("#8AB07A"),
+      spinePrompt: ansiColors.magenta,
+      spineDiffAdd: RGBA.fromHex("#7AA07A"),
+      spineDiffRemove: RGBA.fromHex("#B87A7A"),
+      spineDiffMuted: textMuted,
+      spineGutterElapsed: textMuted,
+      spineGutterTimestamp: textMuted,
 
       // Syntax colors
       syntaxComment: textMuted,
@@ -1062,3 +1251,4 @@ function getSyntaxRules(theme: Theme) {
     },
   ]
 }
+

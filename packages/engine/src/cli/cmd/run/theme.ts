@@ -680,13 +680,13 @@ export async function resolveRunTheme(renderer: CliRenderer): Promise<RunTheme> 
       borderThinking: (scrollbackTheme as any).borderThinking ?? scrollbackTheme.borderSubtle,
       surfaceAlt: (scrollbackTheme as any).surfaceAlt ?? scrollbackTheme.backgroundPanel,
     }
-    const syntax = shared.generateSyntax(syntaxTheme)
+    const syntax = shared.generateSyntax(syntaxTheme as any)
     return map(
       footerTheme,
       scrollbackTheme,
       splashTheme(scrollbackTheme, indexed),
       syntax,
-      shared.generateSubtleSyntax(syntaxTheme),
+      shared.generateSubtleSyntax(syntaxTheme as any),
     )
   } catch {
     return RUN_THEME_FALLBACK

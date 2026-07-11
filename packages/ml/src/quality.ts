@@ -150,7 +150,7 @@ const GENERIC_PHRASES = {
   ],
 }
 
-const GENERIC_PHRASE_FLAT = Object.values(GENERIC_PHRASES).flat()
+const _GENERIC_PHRASE_FLAT = Object.values(GENERIC_PHRASES).flat()
 
 const ACTION_TERMS = [
   "add",
@@ -174,7 +174,7 @@ function clamp(value: number): number {
 }
 
 function tokenize(text: string): string[] {
-  return [...new Set(text.toLowerCase().match(/[a-z0-9_.\/-]+/g) ?? [])]
+  return [...new Set(text.toLowerCase().match(/[a-z0-9_./-]+/g) ?? [])]
 }
 
 function phraseHits(text: string, phrases: string[]): string[] {

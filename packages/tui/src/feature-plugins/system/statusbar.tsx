@@ -3,26 +3,44 @@ import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { Locale } from "../../util/locale"
 import { Lexicon, Glyph } from "../../branding"
-import { selectedForeground, useTheme } from "../../context/theme"
-import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
+import { ShimmerText } from "../../component/shimmer-text"
+import { selectedForeground } from "../../context/theme"
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 
 const id = "internal:statusbar"
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 
-function renderBar(pct: number): string {
+interface BarSegment { filled: boolean }
+
+function renderBar(pct: number): BarSegment[] {
   const clamped = Math.max(0, Math.min(100, pct))
   const filled = Math.round(clamped / 10)
   const empty = 10 - filled
-  return "▰".repeat(Math.max(0, filled)) + "▱".repeat(Math.max(0, empty))
+  const segments: BarSegment[] = []
+  for (let i = 0; i < Math.max(0, filled); i++) segments.push({ filled: true })
+  for (let i = 0; i < Math.max(0, empty); i++) segments.push({ filled: false })
+  return segments
 }
 
 function clampPercent(pct: number): number {
   return Math.max(0, Math.min(100, pct))
 }
 
+/**
+ * Compact model name for statusbar display. Preserves trailing date suffix
+ * (e.g. YYYYMMDD) so model versions remain distinguishable at a glance.
+ */
 function compactModelName(value: string): string {
-  return value.length > 34 ? `${value.slice(0, 31)}...` : value
+  if (value.length <= 50) return value
+  // Try to preserve a trailing date suffix: ...20260514
+  const dateMatch = value.match(/[-_](\d{8}|\d{4}-\d{2}-\d{2})$/)
+  if (dateMatch) {
+    const suffix = dateMatch[0] // e.g. "-20260514"
+    const prefixMax = 50 - suffix.length - 3 // 3 for "..."
+    return value.slice(0, prefixMax) + "..." + suffix
+  }
+  return `${value.slice(0, 47)}...`
 }
 
 function tokenStateLabel(percent: number | null, compacting: boolean): string {
@@ -38,6 +56,8 @@ function tokenStateLabel(percent: number | null, compacting: boolean): string {
 function View(props: { api: TuiPluginApi }) {
   const api = props.api
   const theme = () => api.theme.current
+
+  const shell = () => (api.tuiConfig as Record<string, unknown>).shell as string | undefined
 
   const sessionID = createMemo(() => {
     const route = api.route.current
@@ -104,20 +124,14 @@ function View(props: { api: TuiPluginApi }) {
     return undefined
   })
 
-  // Abstract diamond "charge" — pulses ◇→◈→◆→◈ only while the model generates.
-  const PULSE = ["◇", "◈", "◆", "◈"]
-  const [frame, setFrame] = createSignal(0)
-  createEffect(() => {
-    if (!busy()) {
-      setFrame(0)
-      return
-    }
-    const timer = setInterval(() => setFrame((f) => (f + 1) % PULSE.length), 140)
-    onCleanup(() => clearInterval(timer))
+  const busyVerb = createMemo(() => {
+    if (!busy()) return ""
+    if (compacting()) return "Compacting…"
+    return "Thinking…"
   })
 
   return (
-    <Show when={sessionID() && (busy() || compacting() || model() || usage())}>
+    <Show when={sessionID() && (shell() === "command-spine" ? (compacting() || contextPressure()) : (busy() || compacting() || model() || usage()))}>
       <box
         width="100%"
         flexDirection="row"
@@ -130,8 +144,8 @@ function View(props: { api: TuiPluginApi }) {
         border={["top"]}
         borderColor={theme().borderSubtle}
       >
-        <Show when={busy()}>
-          <text fg={theme().accent}>{PULSE[frame()]}</text>
+        <Show when={busyVerb()}>
+          <ShimmerText text={busyVerb()} active={true} background={theme().background as any} />
         </Show>
         <Show when={compacting()}>
           <box backgroundColor={theme().warning} paddingLeft={1} paddingRight={1}>
@@ -171,13 +185,12 @@ function View(props: { api: TuiPluginApi }) {
             <Show when={u().percent !== null}>
               <text fg={theme().textMuted}>|</text>
               <text fg={theme().primary}>
-                <span
-                  style={{
-                    fg: u().percent! > 95 ? theme().error : u().percent! > 80 ? theme().warning : theme().primary,
+                <For each={renderBar(u().percent!)}>
+                  {(seg) => {
+                    const fillColor = u().percent! > 95 ? theme().error : u().percent! > 80 ? theme().warning : theme().primary
+                    return <span style={{ fg: seg.filled ? fillColor : theme().textMuted }}>{seg.filled ? "▰" : "▱"}</span>
                   }}
-                >
-                  {renderBar(u().percent!)}
-                </span>
+                </For>
               </text>
             </Show>
           )}

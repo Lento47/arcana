@@ -3,6 +3,7 @@ import { useDialog } from "../ui/dialog"
 import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { useProject } from "../context/project"
 import { useRoute } from "../context/route"
+import { Spinner } from "./spinner"
 import { useSync } from "../context/sync"
 import { useTheme } from "../context/theme"
 import { Glyph } from "../branding"
@@ -47,7 +48,12 @@ export function DialogWorkspaceList() {
           value: { workspace },
           footer: workspace.type,
           details: expanded[workspace.id] && workspace.directory ? [workspace.directory] : undefined,
-          gutter: () => <text fg={status === "connected" ? theme.success : theme.error}>●</text>,
+          gutter: () =>
+            removing() === workspace.id ? (
+              <Spinner />
+            ) : (
+              <text fg={status === "connected" ? theme.success : theme.error}>●</text>
+            ),
         }
       }),
   )
@@ -97,7 +103,7 @@ export function DialogWorkspaceList() {
     <DialogSelect
       title={`${Glyph.sigil} Workspaces`}
       options={options()}
-      onMove={(option) => {
+      onMove={(_option) => {
         setDeleting(undefined)
       }}
       onSelect={(option) => showDetails(option.value.workspace)}

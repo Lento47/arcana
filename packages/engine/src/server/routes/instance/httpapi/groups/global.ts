@@ -1,4 +1,3 @@
-import { Config } from "@/config/config"
 import { ConfigV1 } from "@arcana/core/v1/config/config"
 import { EventV2 } from "@arcana/core/event"
 import { InstanceDisposed } from "@/server/event"

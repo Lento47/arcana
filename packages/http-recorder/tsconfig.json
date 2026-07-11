@@ -8,15 +8,27 @@
     "moduleResolution": "nodenext",
     "declaration": true,
     "stripInternal": true,
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "noUncheckedIndexedAccess": false,
     "plugins": [
       {
         "name": "@effect/language-service",
         "transform": "@effect/language-service/transform",
-        "namespaceImportPackages": ["effect", "@effect/*"]
+        "namespaceImportPackages": [
+          "effect",
+          "@effect/*"
+        ]
       }
+    ],
+    "types": [
+      "bun"
     ]
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

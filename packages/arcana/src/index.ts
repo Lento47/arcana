@@ -4,7 +4,8 @@
 // Bare `arcana` → fast-path: spawn opencode TUI directly. Imports yargs + commands
 // ONLY for subcommands, saving ~9s of bun JIT on the 90% TUI case.
 import path from "node:path"
-import { existsSync } from "node:fs"
+import { createRequire } from "node:module"
+import { currentDir } from "./util/path.js"
 
 const PROFILE = !!process.env["ARCANA_PROFILE_STARTUP"]
 const PROFILE_PID = process.pid
@@ -34,12 +35,12 @@ if (!isArcanaSubcommand) {
   profileEmit("bridge_config_done", performance.now())
   profileEmit("bridge_config_ms", Math.round(performance.now() - t0))
 
-  const engineDir = path.join(import.meta.dir, "../../engine")
+  const engineDir = path.join(currentDir(import.meta), "../../engine")
   const engineEntry = path.join(engineDir, "src/index.ts")
 
   const tSpawn = performance.now()
   const child = Bun.spawn({
-    cmd: ["bun", "run", "--conditions=browser", engineEntry, ...args],
+    cmd: ["bun", "--conditions=browser", engineEntry, ...args],
     stdio: ["inherit", "inherit", "inherit"],
     cwd: engineDir,
     env: {
@@ -50,7 +51,8 @@ if (!isArcanaSubcommand) {
   })
   profileEmit("engine_spawn_done", performance.now())
   profileEmit("engine_spawn_ms", Math.round(performance.now() - tSpawn))
-  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  const signals: NodeJS.Signals[] = process.platform === "win32" ? ["SIGINT", "SIGTERM"] : ["SIGINT", "SIGTERM", "SIGHUP"]
+  for (const sig of signals) {
     process.on(sig, () => {
       try { child.kill(sig) } catch { /* already exited */ }
     })
@@ -60,10 +62,11 @@ if (!isArcanaSubcommand) {
 }
 
 // === Subcommand path (lazy — only loaded when needed) ===
-const [{ default: yargs }, { hideBin }] = await Promise.all([
-  import("yargs"),
-  import("yargs/helpers"),
-])
+profileEmit("subcommand_path_enter", performance.now())
+const yargsImportStart = performance.now()
+const { default: yargs } = await import("yargs")
+profileEmit("subcommand_yargs_import_done", performance.now())
+profileEmit("subcommand_yargs_import_ms", Math.round(performance.now() - yargsImportStart))
 
 const LOGO = `
   ╔═══════════════════════════════╗
@@ -78,41 +81,35 @@ function show(out: string) {
   process.stderr.write(text + "\n")
 }
 
-const VERSION = "0.3.4"
+const _require = createRequire(import.meta.url)
+const VERSION: string = _require("../../../package.json").version
 
-// Lazy-load commands — each is only needed for its own subcommand
-async function loadCommands() {
-  const [
-    { RunCommand },
-    { SkillsCommand },
-    { CronCommand },
-    { MemoryCommand },
-    { GatewayCommand },
-    { ConfigCommand },
-    { LearnCommand },
-    { DoctorCommand },
-    { HistoryCommand },
-    { ThemeCommand },
-    { FeedbackCommand },
-    { WebCommand },
-  ] = await Promise.all([
-    import("./cli/cmd/run.js"),
-    import("./cli/cmd/skills.js"),
-    import("./cli/cmd/cron.js"),
-    import("./cli/cmd/memory.js"),
-    import("./cli/cmd/gateway.js"),
-    import("./cli/cmd/config.js"),
-    import("./cli/cmd/learn.js"),
-    import("./cli/cmd/doctor.js"),
-    import("./cli/cmd/history.js"),
-    import("./cli/cmd/theme.js"),
-    import("./cli/cmd/feedback.js"),
-    import("./cli/cmd/web.js"),
-  ])
-  return { RunCommand, SkillsCommand, CronCommand, MemoryCommand, GatewayCommand, ConfigCommand, LearnCommand, DoctorCommand, HistoryCommand, ThemeCommand, FeedbackCommand, WebCommand }
+const commandLoaders = {
+  run: () => import("./cli/cmd/run.js").then((m) => m.RunCommand),
+  skills: () => import("./cli/cmd/skills.js").then((m) => m.SkillsCommand),
+  cron: () => import("./cli/cmd/cron.js").then((m) => m.CronCommand),
+  memory: () => import("./cli/cmd/memory.js").then((m) => m.MemoryCommand),
+  gateway: () => import("./cli/cmd/gateway.js").then((m) => m.GatewayCommand),
+  config: () => import("./cli/cmd/config.js").then((m) => m.ConfigCommand),
+  learn: () => import("./cli/cmd/learn.js").then((m) => m.LearnCommand),
+  doctor: () => import("./cli/cmd/doctor.js").then((m) => m.DoctorCommand),
+  history: () => import("./cli/cmd/history.js").then((m) => m.HistoryCommand),
+  theme: () => import("./cli/cmd/theme.js").then((m) => m.ThemeCommand),
+  feedback: () => import("./cli/cmd/feedback.js").then((m) => m.FeedbackCommand),
+  web: () => import("./cli/cmd/web.js").then((m) => m.WebCommand),
 }
 
-const cmds = await loadCommands()
+async function loadCommandsFor(arg: string | undefined) {
+  if (arg === "completion") return []
+  if (arg && HELP_FLAGS.has(arg)) return Promise.all(Object.values(commandLoaders).map((load) => load()))
+  const loader = arg ? commandLoaders[arg as keyof typeof commandLoaders] : undefined
+  return loader ? [await loader()] : []
+}
+
+const commandLoadStart = performance.now()
+const cmds = await loadCommandsFor(firstArg)
+profileEmit("subcommand_commands_loaded", performance.now())
+profileEmit("subcommand_command_load_ms", Math.round(performance.now() - commandLoadStart))
 
 const cli = yargs(args)
   .parserConfiguration({ "populate--": true })
@@ -132,18 +129,6 @@ const cli = yargs(args)
     process.env.ARCANA = "1"
     process.env.ARCANA_PID = String(process.pid)
   })
-  .command(cmds.RunCommand)
-  .command(cmds.SkillsCommand)
-  .command(cmds.CronCommand)
-  .command(cmds.MemoryCommand)
-  .command(cmds.GatewayCommand)
-  .command(cmds.ConfigCommand)
-  .command(cmds.LearnCommand)
-  .command(cmds.DoctorCommand)
-  .command(cmds.HistoryCommand)
-  .command(cmds.ThemeCommand)
-  .command(cmds.FeedbackCommand)
-  .command(cmds.WebCommand)
   .usage("")
   .completion("completion", "generate shell completion script")
   .fail((msg, err) => {
@@ -161,6 +146,7 @@ const cli = yargs(args)
   .demandCommand(1, "")
   .strict(false)
 
+for (const cmd of cmds) cli.command(cmd)
 try {
   if (args.includes("-h") || args.includes("--help")) {
     await cli.parse(args, (err: Error | undefined, _argv: unknown, out: string) => {

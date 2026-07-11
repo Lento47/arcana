@@ -34,7 +34,14 @@ function dir(input: ParseSource) {
 export async function substitute(input: SubstituteInput) {
   const missing = input.missing ?? "error"
   let text = input.text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
-    return (input.env?.[varName] ?? process.env[varName]) || ""
+    const value = input.env?.[varName] ?? process.env[varName]
+    if (value === undefined) {
+      if (missing === "error") {
+        throw new InvalidError({ path: source(input), message: `Environment variable ${varName} is not set` })
+      }
+      return ""
+    }
+    return value
   })
 
   const fileMatches = Array.from(text.matchAll(/\{file:[^}]+\}/g))

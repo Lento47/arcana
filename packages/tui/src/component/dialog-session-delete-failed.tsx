@@ -10,12 +10,14 @@ export function DialogSessionDeleteFailed(props: {
   workspace: string
   onDelete?: () => boolean | void | Promise<boolean | void>
   onRestore?: () => boolean | void | Promise<boolean | void>
+  onForceDelete?: () => boolean | void | Promise<boolean | void>
+  onDismiss?: () => void
   onDone?: () => void
 }) {
   const dialog = useDialog()
   const { theme } = useTheme()
   const [store, setStore] = createStore({
-    active: "delete" as "delete" | "restore",
+    active: "delete" as "delete" | "force-delete" | "restore" | "dismiss",
   })
 
   const options = [
@@ -26,10 +28,22 @@ export function DialogSessionDeleteFailed(props: {
       run: props.onDelete,
     },
     {
+      id: "force-delete" as const,
+      title: "Force delete session",
+      description: "Delete only the session record, leaving the workspace unchanged.",
+      run: props.onForceDelete,
+    },
+    {
       id: "restore" as const,
       title: "Restore to new workspace",
       description: "Try to restore this session into a new workspace.",
       run: props.onRestore,
+    },
+    {
+      id: "dismiss" as const,
+      title: "Dismiss",
+      description: "Close this dialog and return to home without deleting anything.",
+      run: props.onDismiss ? () => { props.onDismiss!(); return true } : undefined,
     },
   ]
 
@@ -40,13 +54,39 @@ export function DialogSessionDeleteFailed(props: {
     if (!props.onDone) dialog.clear()
   }
 
+  function dismiss() {
+    props.onDismiss?.()
+    dialog.clear()
+  }
+
   useBindings(() => ({
     bindings: [
       { key: "return", desc: "Confirm recovery option", group: "Dialog", cmd: () => void confirm() },
-      { key: "left", desc: "Delete broken session", group: "Dialog", cmd: () => setStore("active", "delete") },
-      { key: "up", desc: "Delete broken session", group: "Dialog", cmd: () => setStore("active", "delete") },
-      { key: "right", desc: "Restore broken session", group: "Dialog", cmd: () => setStore("active", "restore") },
-      { key: "down", desc: "Restore broken session", group: "Dialog", cmd: () => setStore("active", "restore") },
+      { key: "escape", desc: "Dismiss", group: "Dialog", cmd: dismiss },
+      { key: "left", desc: "Previous option", group: "Dialog",
+        cmd: () => setStore("active", (prev) => {
+          const ids = options.map((o) => o.id)
+          return ids[(ids.indexOf(prev) - 1 + ids.length) % ids.length]!
+        }),
+      },
+      { key: "up", desc: "Previous option", group: "Dialog",
+        cmd: () => setStore("active", (prev) => {
+          const ids = options.map((o) => o.id)
+          return ids[(ids.indexOf(prev) - 1 + ids.length) % ids.length]!
+        }),
+      },
+      { key: "right", desc: "Next option", group: "Dialog",
+        cmd: () => setStore("active", (prev) => {
+          const ids = options.map((o) => o.id)
+          return ids[(ids.indexOf(prev) + 1) % ids.length]!
+        }),
+      },
+      { key: "down", desc: "Next option", group: "Dialog",
+        cmd: () => setStore("active", (prev) => {
+          const ids = options.map((o) => o.id)
+          return ids[(ids.indexOf(prev) + 1) % ids.length]!
+        }),
+      },
     ],
   }))
 
@@ -56,8 +96,8 @@ export function DialogSessionDeleteFailed(props: {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           Failed to Delete Session
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
+        <text fg={theme.textMuted} onMouseUp={dismiss}>
+          [esc] dismiss
         </text>
       </box>
       <text fg={theme.textMuted} wrapMode="word">

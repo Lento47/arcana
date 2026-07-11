@@ -5,7 +5,7 @@
  */
 import { readFile, readdir } from "node:fs/promises"
 import { existsSync, readFileSync, statSync } from "node:fs"
-import { join, basename, dirname, relative } from "node:path"
+import { join, dirname, relative } from "node:path"
 import { homedir } from "node:os"
 import { createHash } from "node:crypto"
 import matter from "gray-matter"
@@ -52,7 +52,9 @@ async function scanDir(dir: string): Promise<SkillInfo[]> {
             category,
           })
         }
-      } catch { /* skip bad files */ }
+      } catch (e) {
+        console.warn(`[arcana] Failed to parse SKILL.md in ${full}:`, e instanceof Error ? e.message : String(e))
+      }
     }
   }
   return results
@@ -79,7 +81,7 @@ export async function loadSkills(skillDirs: string[]): Promise<SkillCatalog[]> {
         }
         return result
       }
-    } catch { /* cache stale/corrupt — scan directly */ }
+    } catch { console.debug("[arcana] Skills cache stale or missing — scanning filesystem") }
   }
 
   // Fallback: scan filesystem (slow on cold start, rare)
@@ -116,7 +118,7 @@ export async function loadSkillBody(skillId: string, skillDirs: string[]): Promi
         }
       }
     }
-  } catch { /* cache stale/corrupt — fall back to scan */ }
+  } catch { console.debug("[arcana] Skills body cache stale — falling back to scan") }
 
   // Fallback: recursive filesystem scan (cold cache / cache miss).
   for (const dir of skillDirs.filter(d => existsSync(d))) {
@@ -140,7 +142,7 @@ async function findSkillBodyFile(dir: string, skillId: string): Promise<string |
         const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
         if (id === skillId) return parsed.content.trim()
       }
-    } catch { /* skip */ }
+    } catch (e) { console.warn(`[arcana] Failed to read skill body ${mdPath}:`, e instanceof Error ? e.message : String(e)) }
     const sub = await findSkillBodyFile(full, skillId)
     if (sub !== null) return sub
   }

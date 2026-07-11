@@ -28,10 +28,6 @@ export type CockpitPanelView = {
   readonly empty: boolean
 }
 
-function row(value: string | undefined): string[] {
-  return value ? [value] : []
-}
-
 export function missionHeaderView(projection: ArcanaCockpitProjection): CockpitPanelView {
   const contract = projection.contract
   const proofPct = Math.round((projection.proof?.completeness ?? projection.kernel?.proof_completeness ?? 0) * 100)

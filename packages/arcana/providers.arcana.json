@@ -2,6 +2,7 @@
   "$schema": "https://arcana.otnelhq.com/schema/config.json",
   "provider": {
     "arcana-proxy": {
+      "_comment": "Stripped at runtime by bridge.ts — the engine seed injects arcana-proxy with models when ARCANA_PROXY_KEY is set. This entry documents the provider shape for developer reference only.",
       "name": "Arcana Proxy",
       "npm": "@ai-sdk/openai-compatible",
       "api": "https://proxy.arcana.otnelhq.com/v1",

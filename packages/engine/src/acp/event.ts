@@ -156,6 +156,10 @@ export class Subscription {
     const session = await Effect.runPromise(this.input.session.tryGet(props.sessionID))
     if (!session) return
 
+    // partType is passed inline from the event — no need to fetch from metadata
+    const partType = props.partType
+
+    // Only role and ignored still need metadata lookup
     const known = await Effect.runPromise(
       this.input.session.tryGetPartMetadata({
         sessionId: session.id,
@@ -163,12 +167,11 @@ export class Subscription {
         partId: props.partID,
       }),
     )
-    const metadata =
-      known?.role && known.partType
-        ? known
-        : await this.fetchPartMetadata(session.id, session.cwd, props.messageID, props.partID)
+    const metadata = known?.role
+      ? known
+      : await this.fetchPartMetadata(session.id, session.cwd, props.messageID, props.partID)
     if (metadata?.role !== "assistant") return
-    if (metadata.partType === "text" && props.field === "text" && metadata.ignored !== true) {
+    if (partType === "text" && props.field === "text" && metadata?.ignored !== true) {
       await this.input.connection.sessionUpdate({
         sessionId: session.id,
         update: {
@@ -183,7 +186,7 @@ export class Subscription {
       return
     }
 
-    if (metadata.partType === "reasoning" && props.field === "text") {
+    if (partType === "reasoning" && props.field === "text") {
       await this.input.connection.sessionUpdate({
         sessionId: session.id,
         update: {

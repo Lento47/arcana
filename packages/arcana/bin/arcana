@@ -5,7 +5,14 @@ set -e
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
 REPO_ROOT="$(CDPATH='' cd -- "$SCRIPT_DIR/../.." && pwd -P)"
 ARCANA_HOME="${ARCANA_HOME:-$HOME/.arcana}"
-CONFIG="$ARCANA_HOME/cache/opencode-config.json"
+# bridge-config.json is the canonical name (was opencode-config.json).
+CONFIG="$ARCANA_HOME/cache/bridge-config.json"
+LEGACY_CONFIG="$ARCANA_HOME/cache/opencode-config.json"
+
+# Backward compat: if bridge-config doesn't exist but the legacy name does, use it.
+if [ ! -f "$CONFIG" ] && [ -f "$LEGACY_CONFIG" ]; then
+  CONFIG="$LEGACY_CONFIG"
+fi
 
 # Generate bridge config once if missing (sub-50ms)
 if [ ! -f "$CONFIG" ]; then

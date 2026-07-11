@@ -1,26 +1,12 @@
 import { describe, expect, mock } from "bun:test"
-import { Effect, Layer } from "effect"
-import { Credential } from "@arcana/core/credential"
-import { Integration } from "@arcana/core/integration"
-import { Database } from "@arcana/core/database/database"
+import { Effect } from "effect"
 import { Catalog } from "@arcana/core/catalog"
-import { EventV2 } from "@arcana/core/event"
-import { Location } from "@arcana/core/location"
 import { PluginV2 } from "@arcana/core/plugin"
 import { GitLabPlugin } from "@arcana/core/plugin/provider/gitlab"
 import { ProviderV2 } from "@arcana/core/provider"
-import { AbsolutePath } from "@arcana/core/schema"
-import { location } from "../fixture/location"
-import { testEffect } from "../lib/effect"
-import { it, model, npmLayer, withEnv } from "./provider-helper"
+import { it, model, withEnv } from "./provider-helper"
 
 const gitlabSDKOptions: Record<string, unknown>[] = []
-const database = Database.layerFromPath(":memory:").pipe(Layer.fresh)
-const preferences = Credential.layer.pipe(Layer.provide(database))
-const accounts = Layer.merge(
-  Credential.layer.pipe(Layer.provide(database), Layer.provide(preferences), Layer.provide(EventV2.defaultLayer)),
-  preferences,
-)
 
 void mock.module("gitlab-ai-provider", () => ({
   VERSION: "test-version",
@@ -34,17 +20,6 @@ void mock.module("gitlab-ai-provider", () => ({
   discoverWorkflowModels: async () => ({ models: [], project: undefined }),
   isWorkflowModel: (id: string) => id === "duo-workflow" || id === "duo-workflow-exact",
 }))
-
-const itWithAccount = testEffect(
-  Catalog.locationLayer.pipe(
-    Layer.provideMerge(accounts),
-    Layer.provideMerge(EventV2.defaultLayer),
-    Layer.provideMerge(
-      Layer.succeed(Location.Service, Location.Service.of(location({ directory: AbsolutePath.make("/") }))),
-    ),
-    Layer.provideMerge(npmLayer),
-  ),
-)
 
 describe("GitLabPlugin", () => {
   it.effect("creates SDKs with legacy default instance URL, token env, headers, and feature flags", () =>

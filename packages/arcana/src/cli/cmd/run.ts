@@ -9,7 +9,7 @@ import { registerBuiltinTools, TOOL_SELECTION_GUIDE } from "../../agent/tools.js
 import { registerMcpTools } from "../../agent/mcp.js"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
 import { loadSkills, loadSkillBody, type SkillCatalog } from "../../skills/loader.js"
-import { EXTRACTION_PROMPT, extractAndMerge, type LearningExtraction, type MergeResult } from "../../learning.js"
+import { EXTRACTION_PROMPT, extractAndMerge, type LearningExtraction } from "../../learning.js"
 import { maybeEvolve, incrementSessionCount, getActivePrompt } from "../../agent/evolve.js"
 import { detectInjection, auditLog } from "../../agent/guard.js"
 import { createSandbox } from "../../agent/sandbox.js"
@@ -52,6 +52,7 @@ const c = {
 
 const STARTUP_MCP_TIMEOUT_MS = Number(process.env.ARCANA_STARTUP_MCP_TIMEOUT_MS ?? "1200")
 const SHARED_MEMORY_TIMEOUT_MS = Number(process.env.ARCANA_SHARED_MEMORY_TIMEOUT_MS ?? "1200")
+const SHARED_MEMORY_BASE_URL = process.env.ARCANA_SHARED_MEMORY_URL ?? "https://api.arcana.otnelhq.com"
 const EVOLVE_ON_STARTUP = process.env.ARCANA_EVOLVE_ON_STARTUP === "1"
 
 async function withStartupTimeout<T>(label: string, task: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
@@ -230,9 +231,9 @@ export const RunCommand: CommandModule = {
 
     // Pipeline shadow: create a lightweight plan from the objective
     // if one was provided. The pipeline drives cockpit stage rendering.
-    let pipelinePlan: string | undefined
+    let _pipelinePlan: string | undefined
     if (args.prompt) {
-      pipelinePlan = `pipeline: intent→plan→action→verify (objective: ${String(args.prompt).slice(0, 80)})`
+      _pipelinePlan = `pipeline: intent→plan→action→verify (objective: ${String(args.prompt).slice(0, 80)})`
     }
 
     const sessionMgr = memory ? new SessionManager(memory, model, provider) : null
@@ -350,7 +351,7 @@ export const RunCommand: CommandModule = {
       if (process.env.ARCANA_LICENSE_TIER && process.env.ARCANA_LICENSE_TIER !== "free") {
         try {
           const orgId = process.env.ARCANA_ORG_ID ?? "default"
-          const response = await fetch(`https://api.arcana.otnelhq.com/api/team/${orgId}/memory/facts`, {
+          const response = await fetch(`${SHARED_MEMORY_BASE_URL}/api/team/${orgId}/memory/facts`, {
             signal: AbortSignal.timeout(SHARED_MEMORY_TIMEOUT_MS),
           })
           if (response.ok) {
@@ -521,7 +522,7 @@ export const RunCommand: CommandModule = {
                 }))
                 if (facts.length > 0) {
                   const orgId = process.env.ARCANA_ORG_ID ?? "default"
-                  fetch(`https://api.arcana.otnelhq.com/api/team/${orgId}/memory/sync`, {
+                  fetch(`${SHARED_MEMORY_BASE_URL}/api/team/${orgId}/memory/sync`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ facts }),

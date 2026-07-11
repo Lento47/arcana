@@ -12,11 +12,9 @@ import {
   Info,
   OutputLengthError,
   Part,
-  StructuredOutputError,
   SubtaskPart,
   User,
   WithParts,
-  type ToolPart,
 } from "@arcana/core/v1/session"
 
 import { NamedError } from "@arcana/core/util/error"
@@ -74,6 +72,7 @@ export const Event = {
       sessionID: SessionID,
       messageID: MessageID,
       partID: PartID,
+      partType: Schema.String,
       field: Schema.String,
       delta: Schema.String,
     },

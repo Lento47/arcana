@@ -28,7 +28,7 @@
     "./v2/styles/*": "./src/v2/styles/*"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun test src --only-failures",
     "dev": "vite",
     "generate:tailwind": "bun run script/tailwind.ts",
@@ -40,7 +40,6 @@
     "@types/bun": "catalog:",
     "@types/katex": "0.16.7",
     "@types/luxon": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

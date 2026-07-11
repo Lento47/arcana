@@ -462,16 +462,18 @@ function ready(data: SessionData, partID: string): boolean {
 
 function syncText(data: SessionData, partID: string, next: string) {
   const prev = data.text.get(partID) ?? ""
-  if (!next) {
-    return prev
-  }
+  if (!next) return prev
+  if (!prev) { data.text.set(partID, next); return next }
 
-  if (!prev || next.length >= prev.length) {
-    data.text.set(partID, next)
-    return next
-  }
-
-  return prev
+  // Prefix-based guard: detect echo-stripping (truncation) vs genuine edits.
+  // - If prev starts with next → next is a truncation (echo strip) → REJECT
+  // - If next starts with prev → next is an append → ACCEPT
+  // - Neither is a prefix → mutation/edit → ACCEPT regardless of length
+  if (prev.startsWith(next)) return prev   // echo strip guard
+  if (next.startsWith(prev)) { data.text.set(partID, next); return next } // append
+  // mutation (edit) — accept regardless of length
+  data.text.set(partID, next)
+  return next
 }
 
 // Records bash tool output for echo stripping. Some models echo bash output
@@ -506,22 +508,23 @@ function stashEcho(data: SessionData, part: ToolPart) {
 }
 
 function stripEcho(data: SessionData, msg: string | undefined, chunk: string): string {
-  if (!msg) {
-    return chunk
-  }
+  if (!msg) return chunk
 
   const set = data.echo.get(msg)
-  if (!set || set.size === 0) {
-    return chunk
-  }
+  if (!set || set.size === 0) return chunk
 
   data.echo.delete(msg)
   const list = [...set].sort((a, b) => b.length - a.length)
   for (const item of list) {
-    if (!item || !chunk.startsWith(item)) {
-      continue
-    }
+    if (!item || !chunk.startsWith(item)) continue
+    // Safety: don't strip if the match consumes more than half the chunk
+    if (item.length > chunk.length * 0.5) continue
+    // Safety: require minimum match length to avoid false positives on short overlaps
+    if (item.length < 10) continue
 
+    if (process.env.DEBUG_ECHO_STRIP) {
+      console.error(`[echo-strip] removed ${item.length} chars from chunk (${chunk.length} total)`)
+    }
     return chunk.slice(item.length).replace(/^\n+/, "")
   }
 

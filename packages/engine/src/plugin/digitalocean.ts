@@ -1,6 +1,6 @@
 import type { Hooks, PluginInput } from "@arcana/plugin"
 import type { Model } from "@arcana/sdk/v2"
-import { InstallationVersion } from "@arcana/core/installation/version"
+import { InstallationVersion, USER_AGENT } from "@arcana/core/installation/version"
 import { createServer } from "http"
 import open from "open"
 
@@ -229,7 +229,7 @@ async function listRouters(
     headers: {
       Authorization: `Bearer ${bearer}`,
       Accept: "application/json",
-      "User-Agent": `opencode/${InstallationVersion}`,
+      "User-Agent": USER_AGENT,
     },
     signal: AbortSignal.timeout(10_000),
   }).catch(() => undefined)
@@ -364,7 +364,7 @@ export async function DigitalOceanAuthPlugin(input: PluginInput): Promise<Hooks>
                       routers_fetched_at: String(Date.now()),
                     },
                   }
-                } catch (err) {
+                } catch (_err) {
                   return { type: "failed" as const }
                 } finally {
                   stopOAuthServer()

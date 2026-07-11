@@ -324,11 +324,15 @@ export const layer = Layer.effect(
       }
     })
 
+    /** Variables explicitly allowed through the sensitive-env filter. */
+    const ENV_ALLOWLIST = new Set(["ARCANA_CONSOLE_TOKEN"])
+
     /** Strip sensitive environment variables before passing to child processes. */
     function filterEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
       const blocked = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH/i
       const filtered: Record<string, string | undefined> = {}
       for (const [k, v] of Object.entries(env)) {
+        if (ENV_ALLOWLIST.has(k)) { filtered[k] = v; continue }
         if (!blocked.test(k)) filtered[k] = v
       }
       return filtered

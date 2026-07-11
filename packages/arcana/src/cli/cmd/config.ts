@@ -1,6 +1,6 @@
 import type { CommandModule } from "yargs"
 import { loadConfig, getArcanaHome, type ArcanaConfig } from "../../config.js"
-import { readFile, writeFile } from "node:fs/promises"
+import { writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 

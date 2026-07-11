@@ -43,7 +43,7 @@ const model = (api: Api, variants: ModelV2.Info["variants"] = []) =>
     limit: { context: 100, output: 20 },
   })
 
-const provider = (api: ProviderV2.Info["api"]) =>
+const _provider = (api: ProviderV2.Info["api"]) =>
   new ProviderV2.Info({
     id: ProviderV2.ID.make("test-provider"),
     name: "Test provider",

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { unlinkSync, existsSync, mkdirSync, rmSync } from "node:fs"
+import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir as osTmpdir } from "node:os"
 import { openMemoryDB } from "../src/db.js"

@@ -69,8 +69,9 @@ function isProcessAlive(pid: number, lockPpid?: number): boolean {
 
   // PID is alive according to signal-0. Guard against PID reuse:
   if (typeof lockPpid === "number") {
-    if (lockPpid === 1) {
+    if (process.platform !== "win32" && lockPpid === 1) {
       // Orphan — parent already reaped. PID may have been recycled.
+      // On Windows, PID 1 is not special; skip this check.
       return false
     }
     try {
@@ -318,10 +319,75 @@ export function isOwnLock(lock: SessionLockData): boolean {
  * - `"warn_active"` — lock is held by an active process; lock is NOT acquired,
  *   the caller should warn the user but may still proceed
  */
+/**
+ * Atomic lock creation via O_EXCL — single kernel operation that guarantees
+ * no other process can create the same lock file between check and write.
+ * Falls back to the PID heuristic on EACCES/EPERM or filesystems without O_EXCL.
+ */
+function tryAtomicLock(projectRoot: string, data: SessionLockData): boolean {
+  ensureLockDir(projectRoot)
+  const lockPath = lockFilePath(projectRoot)
+  let fd: number | undefined
+  try {
+    fd = fs.openSync(lockPath, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL)
+    fs.writeSync(fd, JSON.stringify(data, null, 2), 0, "utf-8")
+    fs.closeSync(fd)
+    return true
+  } catch (e: any) {
+    if (fd !== undefined) try { fs.closeSync(fd) } catch { /* ignore close errors */ }
+    if (e?.code === "EEXIST") return false
+    // EACCES, EPERM, EROFS, ENOSPC — fall back to PID heuristic
+    throw e
+  }
+}
+
 export type AcquireResult = "acquired" | "stale_cleaned" | "warn_active"
 
 /**
- * Try to acquire the session lock. Cleans up stale locks automatically.
+ * PID-heuristic fallback for when atomic O_EXCL locking is unavailable
+ * (EEXIST from a race, EACCES/EPERM, or filesystems without O_EXCL).
+ * Uses the existing check-then-write pattern with process-alive detection.
+ */
+function acquireLockFallback(
+  projectRoot: string,
+  lockPath: string,
+  status: ReturnType<typeof checkLock>,
+  lockData: SessionLockData,
+): AcquireResult {
+  switch (status.type) {
+    case "free": {
+      writeLock(projectRoot, lockData)
+      trackLock(lockPath)
+      return "acquired"
+    }
+    case "stale_dead":
+    case "stale_old": {
+      deleteLock(projectRoot)
+      writeLock(projectRoot, lockData)
+      trackLock(lockPath)
+      return "stale_cleaned"
+    }
+    case "active": {
+      if (isOwnLock({ pid: status.pid, timestamp: status.timestamp })) {
+        writeLock(projectRoot, lockData)
+        trackLock(lockPath)
+        return "acquired"
+      }
+      console.warn(
+        `[arcana] Another arcana session is active (PID ${status.pid}). Concurrent sessions may conflict.`,
+      )
+      writeLock(projectRoot, lockData)
+      trackLock(lockPath)
+      return "warn_active"
+    }
+    default:
+      return "acquired"
+  }
+}
+
+/**
+ * Try to acquire the session lock using atomic O_EXCL creation as the primary
+ * path, with the PID heuristic as fallback for filesystems without O_EXCL.
  * If an active lock exists, logs a warning but returns `"warn_active"`.
  */
 export function acquireLock(
@@ -332,78 +398,56 @@ export function acquireLock(
   const lockPath = lockFilePath(projectRoot)
   const status = checkLock(projectRoot)
 
+  const lockData = {
+    pid: process.pid,
+    ppid: process.ppid,
+    timestamp: Date.now(),
+    sessionId,
+  }
+
   switch (status.type) {
     case "free": {
-      writeLock(projectRoot, {
-        pid: process.pid,
-        ppid: process.ppid,
-        timestamp: Date.now(),
-        sessionId,
-      })
-      trackLock(lockPath)
-      return "acquired"
-    }
-
-    case "stale_dead": {
-      console.warn(
-        `[arcana] Stale session lock found (PID ${status.pid} is dead). Cleaning up.`,
-      )
-      deleteLock(projectRoot)
-      writeLock(projectRoot, {
-        pid: process.pid,
-        ppid: process.ppid,
-        timestamp: Date.now(),
-        sessionId,
-      })
-      trackLock(lockPath)
-      return "stale_cleaned"
-    }
-
-    case "stale_old": {
-      console.warn(
-        `[arcana] Stale session lock found (${status.ageHours}h old, PID ${status.pid}). Cleaning up.`,
-      )
-      deleteLock(projectRoot)
-      writeLock(projectRoot, {
-        pid: process.pid,
-        ppid: process.ppid,
-        timestamp: Date.now(),
-        sessionId,
-      })
-      trackLock(lockPath)
-      return "stale_cleaned"
-    }
-
-    case "active": {
-      // The lock is held by an active process. If that process is US, the
-      // caller is just creating another session in the same arcana
-      // invocation — refresh the lock (so the timestamp stays current for
-      // the PID-recycle grace check) and return success silently.
-      if (isOwnLock({
-        pid: status.pid,
-        timestamp: status.timestamp,
-      })) {
-        writeLock(projectRoot, {
-          pid: process.pid,
-          ppid: process.ppid,
-          timestamp: Date.now(),
-          sessionId,
-        })
+      // Primary path: atomic O_EXCL create — no TOCTOU window.
+      if (tryAtomicLock(projectRoot, lockData)) {
         trackLock(lockPath)
         return "acquired"
       }
-      console.warn(
-        `[arcana] Another arcana session is active (PID ${status.pid}). Concurrent sessions may conflict.`,
-      )
-      // Still write our lock — caller decides whether to proceed
-      writeLock(projectRoot, {
-        pid: process.pid,
-        ppid: process.ppid,
-        timestamp: Date.now(),
-        sessionId,
-      })
-      trackLock(lockPath)
-      return "warn_active"
+      // EEXIST: another process raced us. Re-read and re-evaluate.
+      const retry = checkLock(projectRoot)
+      if (retry.type === "free") {
+        // Shouldn't happen (we got EEXIST), but handle gracefully.
+        writeLock(projectRoot, lockData)
+        trackLock(lockPath)
+        return "acquired"
+      }
+      // Another process now holds it. Fall through to PID heuristic below.
+      return acquireLockFallback(projectRoot, lockPath, retry, lockData)
+    }
+
+    case "stale_dead":
+    case "stale_old": {
+      deleteLock(projectRoot)
+      if (tryAtomicLock(projectRoot, lockData)) {
+        trackLock(lockPath)
+        return "stale_cleaned"
+      }
+      // EEXIST: another process cleaned it up first. Re-evaluate.
+      const retry = checkLock(projectRoot)
+      if (retry.type === "free") {
+        // Other process cleaned it and released — try atomic once more.
+        if (tryAtomicLock(projectRoot, lockData)) {
+          trackLock(lockPath)
+          return "stale_cleaned"
+        }
+        writeLock(projectRoot, lockData)
+        trackLock(lockPath)
+        return "stale_cleaned"
+      }
+      return acquireLockFallback(projectRoot, lockPath, retry, lockData)
+    }
+
+    case "active": {
+      return acquireLockFallback(projectRoot, lockPath, status, lockData)
     }
 
     default:

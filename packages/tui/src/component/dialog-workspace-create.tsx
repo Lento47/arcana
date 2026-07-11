@@ -8,6 +8,8 @@ import { createMemo, createSignal, onMount } from "solid-js"
 import { errorMessage } from "../util/error"
 import { useSDK } from "../context/sdk"
 import { useToast } from "../ui/toast"
+import { Spinner } from "./spinner"
+import { useTheme } from "../context/theme"
 import { Glyph } from "../branding"
 import { DialogAlert } from "../ui/dialog-alert"
 import { DialogWorkspaceFileChanges } from "./dialog-workspace-file-changes"
@@ -79,10 +81,15 @@ export async function openWorkspaceSelect(input: {
   onSelect: (selection: WorkspaceSelection) => Promise<void> | void
 }) {
   input.dialog.clear()
+  // Show loading state during async workspace discovery
+  input.dialog.replace(() => <DialogWorkspaceLoading />)
   await input.sdk.client.experimental.workspace.syncList().catch(() => undefined)
   await input.project.workspace.sync().catch(() => undefined)
   const adapters = await loadWorkspaceAdapters(input)
-  if (!adapters) return
+  if (!adapters) {
+    input.dialog.replace(() => <DialogWorkspaceError onRetry={() => openWorkspaceSelect(input)} />)
+    return
+  }
   input.dialog.replace(() => <DialogWorkspaceSelect adapters={adapters} onSelect={input.onSelect} />)
 }
 
@@ -305,5 +312,33 @@ function DialogExistingWorkspaceSelect(props: {
         })
       }}
     />
+  )
+}
+
+// Loading placeholder shown during workspace discovery.
+function DialogWorkspaceLoading() {
+  const { theme } = useTheme()
+  return (
+    <box padding={3} flexDirection="row" gap={1} alignItems="center">
+      <Spinner />
+      <text fg={theme.textMuted}>Loading workspace adapters…</text>
+    </box>
+  )
+}
+
+// Error state shown when workspace adapter loading fails.
+function DialogWorkspaceError(props: { onRetry: () => void }) {
+  const { theme } = useTheme()
+  const dialog = useDialog()
+  return (
+    <box padding={3} gap={1}>
+      <text fg={theme.error}>Failed to load workspace adapters.</text>
+      <box flexDirection="row" gap={2} paddingTop={1}>
+        <box backgroundColor={theme.primary} paddingLeft={3} paddingRight={3} onMouseUp={props.onRetry}>
+          <text fg={theme.selectedListItemText}>Retry</text>
+        </box>
+        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>Cancel</text>
+      </box>
+    </box>
   )
 }
