@@ -217,9 +217,7 @@ export const layer = Layer.effectDiscard(
                         livecrawl: input.livecrawl || "fallback",
                         contextMaxCharacters: input.contextMaxCharacters,
                       },
-                      {
-                        ...(config.exaApiKey ? { Authorization: `Bearer ${config.exaApiKey}` } : {}),
-                      },
+                      config.exaApiKey ? { Authorization: `Bearer ${config.exaApiKey}` } : undefined,
                     )
                   : yield* callMcp(
                       http,

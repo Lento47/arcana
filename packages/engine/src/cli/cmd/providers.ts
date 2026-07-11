@@ -194,7 +194,7 @@ const handlePluginAuth = Effect.fn("Cli.providers.pluginAuth")(function* (
     }
     if (result.type === "success") {
       const saveProvider = result.provider ?? provider
-      const merged = { ...(metadata.metadata ?? {}), ...(result.metadata ?? {}) }
+      const merged = { ...(metadata.metadata), ...(result.metadata) }
       yield* put(saveProvider, {
         type: "api",
         key: result.key ?? apiKey,

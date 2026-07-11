@@ -1,6 +1,12 @@
 #!/usr/bin/env bun
+/**
+ * Lightweight import tracer for engine source.
+ *
+ * TypeScript 7 no longer ships the classic `typescript` compiler API on the
+ * package root (only version metadata). This script uses a small regex-based
+ * scanner instead of the old AST helpers.
+ */
 import * as path from "path"
-import * as ts from "typescript"
 
 const BASE_DIR = "/home/thdxr/dev/projects/anomalyco/opencode/packages/opencode"
 
@@ -42,10 +48,8 @@ async function tryExtensions(filePath: string): Promise<string | null> {
       return null
     }
 
-    // It's a file
     return filePath
   } catch {
-    // Path doesn't exist, try adding extensions
     for (const ext of extensions) {
       const withExt = filePath + ext
       const extFile = Bun.file(withExt)
@@ -55,40 +59,41 @@ async function tryExtensions(filePath: string): Promise<string | null> {
   }
 }
 
-function extractImports(sourceFile: ts.SourceFile): string[] {
+/** Extract module specifiers from static/dynamic import and re-export statements. */
+function extractImports(source: string): string[] {
   const imports: string[] = []
+  const seen = new Set<string>()
 
-  function visit(node: ts.Node) {
-    // import x from "path" or import { x } from "path"
-    if (ts.isImportDeclaration(node)) {
-      // Skip type-only imports
-      if (node.importClause?.isTypeOnly) return
+  // Strip block comments and line comments roughly so they don't produce false hits.
+  const cleaned = source
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1")
 
-      const moduleSpec = node.moduleSpecifier
-      if (ts.isStringLiteral(moduleSpec)) {
-        imports.push(moduleSpec.text)
-      }
+  const patterns = [
+    // import ... from "path"  |  import "path"
+    /\bimport\s+(?:type\s+)?(?:[\s\S]*?\sfrom\s*)?["']([^"']+)["']/g,
+    // export ... from "path"
+    /\bexport\s+(?:type\s+)?[\s\S]*?\sfrom\s*["']([^"']+)["']/g,
+    // dynamic import("path")
+    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+  ]
+
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(cleaned))) {
+      const spec = match[1]
+      if (!spec || seen.has(spec)) continue
+      // Skip pure type-only imports already filtered by not capturing "import type { x } from"
+      // when the whole statement is `import type ...` — patterns above still match; drop them.
+      const start = Math.max(0, match.index - 12)
+      const prefix = cleaned.slice(start, match.index)
+      if (/\bimport\s+type\s*$/.test(prefix) || /\bexport\s+type\s*$/.test(prefix)) continue
+      seen.add(spec)
+      imports.push(spec)
     }
-
-    // export { x } from "path"
-    if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
-      if (ts.isStringLiteral(node.moduleSpecifier)) {
-        imports.push(node.moduleSpecifier.text)
-      }
-    }
-
-    // Dynamic import: import("path")
-    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-      const arg = node.arguments[0]
-      if (arg && ts.isStringLiteral(arg)) {
-        imports.push(arg.text)
-      }
-    }
-
-    ts.forEachChild(node, visit)
   }
 
-  visit(sourceFile)
   return imports
 }
 
@@ -99,7 +104,6 @@ async function traceFile(filePath: string, depth = 0): Promise<void> {
     return
   }
 
-  // Only trace TypeScript/JavaScript files
   if (!filePath.match(/\.(ts|tsx|js|jsx)$/)) {
     return
   }
@@ -114,13 +118,10 @@ async function traceFile(filePath: string, depth = 0): Promise<void> {
     return
   }
 
-  const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true)
-
-  const imports = extractImports(sourceFile)
+  const imports = extractImports(content)
   const internalImports = imports.filter(isInternalImport)
   const externalImports = imports.filter((imp) => !isInternalImport(imp))
 
-  // Print external imports
   for (const imp of externalImports) {
     console.log("\t".repeat(depth + 1) + `[ext] ${imp}`)
   }
@@ -139,7 +140,6 @@ async function traceFile(filePath: string, depth = 0): Promise<void> {
 async function main() {
   const entryPath = path.join(BASE_DIR, ENTRY_FILE)
 
-  // Check if file exists
   const file = Bun.file(entryPath)
   if (!(await file.exists())) {
     console.error(`File not found: ${ENTRY_FILE}`)

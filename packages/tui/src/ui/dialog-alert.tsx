@@ -33,7 +33,7 @@ export function DialogAlert(props: DialogAlertProps) {
           {props.title}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
+          [esc] dismiss
         </text>
       </box>
       <box paddingBottom={1}>

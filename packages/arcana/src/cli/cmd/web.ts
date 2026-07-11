@@ -1,6 +1,7 @@
 import type { CommandModule } from "yargs"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
+import { currentDir } from "../../util/path.js"
 
 type WebArgs = {
   host?: unknown
@@ -10,7 +11,7 @@ type WebArgs = {
 }
 
 function enterpriseDir(): string {
-  return join(import.meta.dir, "..", "..", "..", "..", "enterprise")
+  return join(currentDir(import.meta), "..", "..", "..", "..", "enterprise")
 }
 
 function buildArgs(args: WebArgs): string[] {

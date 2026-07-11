@@ -27,7 +27,7 @@ export function SigilSpinner(props: {
 
   createEffect(() => {
     if (!animate()) return
-    const timer = setInterval(() => setI((v) => (v + 1) % frames().length), props.interval ?? 150)
+    const timer = setInterval(() => setI((v) => (v + 1) % frames().length), props.interval ?? 80)
     onCleanup(() => clearInterval(timer))
   })
 

@@ -1,6 +1,6 @@
 import type { Hooks, PluginInput } from "@arcana/plugin"
 import { OAUTH_DUMMY_KEY } from "../auth"
-import { InstallationVersion } from "@arcana/core/installation/version"
+import { InstallationVersion, USER_AGENT } from "@arcana/core/installation/version"
 import { createServer } from "http"
 import open from "open"
 
@@ -79,7 +79,7 @@ function authHeaders() {
   return {
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
-    "User-Agent": `opencode/${InstallationVersion}`,
+    "User-Agent": USER_AGENT,
   }
 }
 
@@ -402,7 +402,7 @@ export async function SnowflakeCortexAuthPlugin(_input: PluginInput): Promise<Ho
                 }
               }
               headers.set("authorization", `Bearer ${currentOauth.access}`)
-              headers.set("User-Agent", `opencode/${InstallationVersion}`)
+              headers.set("User-Agent", USER_AGENT)
 
               let body = init?.body
               if (body && typeof body === "string") {

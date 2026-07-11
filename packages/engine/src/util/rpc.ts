@@ -13,7 +13,7 @@ export function listen(rpc: Definition) {
 }
 
 export function emit(event: string, data: unknown) {
-  postMessage(JSON.stringify({ type: "rpc.event", event, data }))
+  try { postMessage(JSON.stringify({ type: "rpc.event", event, data })) } catch {}
 }
 
 export function client<T extends Definition>(target: {
@@ -44,9 +44,14 @@ export function client<T extends Definition>(target: {
   return {
     call<Method extends keyof T>(method: Method, input: Parameters<T[Method]>[0]): Promise<ReturnType<T[Method]>> {
       const requestId = id++
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         pending.set(requestId, resolve)
-        target.postMessage(JSON.stringify({ type: "rpc.request", method, input, id: requestId }))
+        try {
+          target.postMessage(JSON.stringify({ type: "rpc.request", method, input, id: requestId }))
+        } catch {
+          pending.delete(requestId)
+          reject(new Error("Worker terminated"))
+        }
       })
     },
     on<Data>(event: string, handler: (data: Data) => void) {

@@ -49,19 +49,25 @@ export function provider(model: Provider.Model) {
 
 let _memoryDb: Database | null = null
 let _memoryStmt: ReturnType<Database["prepare"]> | null = null
+let _memoryDbMtime: number | null = null
 
-/** Lazily open one shared readonly handle + prepared statement; reuse across turns. */
+/** Lazily open one shared readonly handle + prepared statement; invalidates on db file mtime change. */
 function getMemoryStmt() {
-  if (_memoryStmt) return _memoryStmt
   try {
     const dbPath = join(homedir(), ".arcana", "data", "memory.db")
+    const mtime = statSync(dbPath).mtimeMs
+    if (_memoryStmt && _memoryDbMtime === mtime) return _memoryStmt
+    // File changed or first open — reconnect.
+    resetMemoryDb()
     _memoryDb = new Database(dbPath, { readonly: true })
+    _memoryDbMtime = mtime
     _memoryStmt = _memoryDb.prepare(
       "SELECT key, value, confidence FROM user_facts WHERE confidence >= 0.5 ORDER BY confidence DESC, updated_at DESC LIMIT 5",
     )
   } catch {
     _memoryDb = null
     _memoryStmt = null
+    _memoryDbMtime = null
   }
   return _memoryStmt
 }

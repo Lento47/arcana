@@ -53,6 +53,10 @@
       "dark": "darkAccent",
       "light": "lightAccent"
     },
+    "highlight": {
+      "dark": "darkAccent",
+      "light": "lightAccent"
+    },
     "error": {
       "dark": "darkRed",
       "light": "lightRed"

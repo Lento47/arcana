@@ -8,7 +8,9 @@ const shellRegistry: Record<string, ShellComponent> = {
 }
 
 export function resolveShell(name: string): ShellComponent {
-  return shellRegistry[name] ?? shellRegistry["opencode"]
+  const resolved = shellRegistry[name]
+  if (!resolved) console.warn(`[arcana] Unknown shell "${name}" — falling back to "opencode"`)
+  return resolved ?? shellRegistry["opencode"]!
 }
 
 export function getRegisteredShells(): string[] {

@@ -68,22 +68,32 @@ declare module "@opentui/solid" {
 
 extend({ go_upsell_art: GoUpsellArtRenderable })
 
+// Track active BgPulse instances to prevent permanent FPS cap when multiple
+// instances mount/unmount concurrently (the second instance would otherwise
+// save the already-capped 30fps as the "original" value).
+let _bgPulseCount = 0
+let _savedFps: { targetFps: number; maxFps: number } | null = null
+
 export function BgPulse() {
   const { theme } = useTheme()
   const renderer = useRenderer()
-  let targetFps = renderer.targetFps
-  let maxFps = renderer.maxFps
 
   onMount(() => {
-    targetFps = renderer.targetFps
-    maxFps = renderer.maxFps
-    renderer.targetFps = 30
-    renderer.maxFps = 30
+    if (_bgPulseCount === 0) {
+      _savedFps = { targetFps: renderer.targetFps, maxFps: renderer.maxFps }
+      renderer.targetFps = 30
+      renderer.maxFps = 30
+    }
+    _bgPulseCount++
   })
 
   onCleanup(() => {
-    renderer.targetFps = targetFps
-    renderer.maxFps = maxFps
+    _bgPulseCount--
+    if (_bgPulseCount === 0 && _savedFps) {
+      renderer.targetFps = _savedFps.targetFps
+      renderer.maxFps = _savedFps.maxFps
+      _savedFps = null
+    }
   })
 
   return (

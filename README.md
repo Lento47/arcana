@@ -323,6 +323,22 @@ Set a custom full-screen background image (truecolor terminals — Kitty, iTerm2
 
 ## Thanks
 
+## Recent Changes
+
+**v0.3.4 (2026-07-11)** — 101 QA fixes across all severity levels, plus significant UX improvements:
+
+- **Security:** Atomic session locking (O_EXCL), token-level rm -rf guard, entropy-based secret redaction, hybrid env-var filter, MCP token allowlist
+- **Reliability:** Streaming + compaction timeouts, rate-limiter side-channel, session busy-state safety net, retry improvements, edit semaphore cleanup
+- **Rebrand:** Centralized `USER_AGENT`, LLM header renaming, config file migrations, branding string fixes across ~60 files
+- **Spine UX:** Inline outcome summaries, grouping by operation, unified timestamps, file dedup, think→tool merge, arcana ShimmerText on verbs, auto-expand output
+- **Layout:** Overflow fixes (minWidth, maxWidth, flex), breakpoint hysteresis, glow border stabilization
+- **UX:** Toast stacking + dismiss, which-key enabled by default, error formatting, session rename validation, search loading, help dialog
+- **Engine:** RPC crash guards, background plugin install optimization, sync pagination fix, per-chunk timeout rewrite
+
+See [`docs/qa-fixes-2026-07-10.md`](docs/qa-fixes-2026-07-10.md) for complete change log.
+
+---
+
 Arcana builds on incredible open-source work:
 
 - **[OpenCode](https://github.com/anomalyco/opencode)** — the TUI engine (SolidJS + OpenTUI), provider system, tools, and CLI architecture. Arcana began as a fork and would not exist without it.

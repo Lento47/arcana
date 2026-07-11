@@ -283,7 +283,7 @@ export function RunFooterView(props: RunFooterViewProps) {
     const view = active()
     return view.type === "question" ? view : undefined
   })
-  function CockpitView(_props: { theme: Accessor<RunFooterTheme>; state: Accessor<FooterState> }) {
+  function _CockpitView(_props: { theme: Accessor<RunFooterTheme>; state: Accessor<FooterState> }) {
     const summary = _props.state().cockpit_summary
     return (
       <box width="100%" flexDirection="column" paddingLeft={2} paddingRight={2}>

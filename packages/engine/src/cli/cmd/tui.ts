@@ -203,7 +203,7 @@ export const TuiThreadCommand = cmd({
 
       setTimeout(async () => {
         try {
-          const { existsSync, readFileSync } = await import("node:fs")
+          const { existsSync, readFileSync: _readFileSync } = await import("node:fs")
           const { join } = await import("node:path")
           const { homedir } = await import("node:os")
           const dbPath = join(homedir(), ".arcana", "data", "arcana.db")

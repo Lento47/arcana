@@ -5,7 +5,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { resolveProvider } from "./providers.js"
 import type { AgentConfig, ChatMessage, TurnResult, ToolDef, ToolHandler, ToolRegistry } from "./types.js"
-import { redactSecrets, checkDangerousCommand, RateLimiter, auditLog } from "./guard.js"
+import { redactSecrets, checkDangerousCommand, RateLimiter, auditLog, detectInjection } from "./guard.js"
 import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
 import {
@@ -17,6 +17,9 @@ import {
 } from "./ml-runtime.js"
 
 const TOOL_RESULT_MAX = 2000  // truncate large tool outputs to this many chars
+const LLM_STREAM_TIMEOUT_MS = 120_000   // total timeout for streaming LLM calls
+const LLM_CHUNK_TIMEOUT_MS = 30_000     // per-chunk inactivity timeout
+const LLM_COMPACTION_TIMEOUT_MS = 30_000 // timeout for compaction LLM calls
 type RunProofVerificationKind = "test" | "typecheck" | "lint" | "build"
 type RunProofVerificationStatus = "passed" | "failed" | "skipped" | "not_run"
 
@@ -368,9 +371,17 @@ export class AgentRunner {
           { role: "system", content: summaryPrompt },
           { role: "user", content: dropped.filter((m) => m.role !== "tool").map((m) => `${m.role}: ${(m.content ?? "").slice(0, 300)}`).join("\n") },
         ]
-        const compacted = await generateText({ model, messages: toCoreMessages(summaryMsgs), maxOutputTokens: 200, temperature: 0.3 })
+        const compacted = await generateText({
+          model,
+          messages: toCoreMessages(summaryMsgs),
+          maxOutputTokens: 200,
+          temperature: 0.3,
+          abortSignal: AbortSignal.timeout(LLM_COMPACTION_TIMEOUT_MS),
+        })
         compactionNote = compacted.text
-      } catch {}
+      } catch (e) {
+        console.debug("[arcana] Compaction LLM call failed:", e instanceof Error ? e.message : String(e))
+      }
       history = systemMsg
         ? [systemMsg, { role: "system", content: `[Earlier context: ${compactionNote || "prior conversation omitted"}]` }, ...kept]
         : [{ role: "system", content: `[Earlier context: ${compactionNote || "prior conversation omitted"}]` }, ...kept]
@@ -456,22 +467,46 @@ export class AgentRunner {
       if (onChunk && !hasTools) {
         // Streaming path: no tools → stream tokens directly. ML preflight still
         // applies, but postflight cannot silently revise already-emitted tokens.
+        const streamController = new AbortController()
         const result = await streamText({
           model,
           messages: coreMessages,
           maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 4096,
           temperature: mlTemperature ?? this.config.temperature ?? 0.7,
           tools: hasTools ? tools : undefined,
+          abortSignal: streamController.signal,
         })
         let content = ""
-        for await (const chunk of result.textStream) {
-          content += chunk
-          onChunk(chunk)
+        try {
+          const iterator = result.textStream[Symbol.asyncIterator]()
+          while (true) {
+            const chunkResult = await Promise.race([
+              iterator.next(),
+              new Promise<{ done: true; value: undefined }>((_, reject) =>
+                setTimeout(() => reject(new DOMException("", "AbortError")), LLM_CHUNK_TIMEOUT_MS)
+              ),
+            ])
+            if (chunkResult.done) break
+            content += chunkResult.value
+            onChunk(chunkResult.value)
+          }
+        } catch (e) {
+          if (e instanceof Error && e.name === "AbortError") {
+            content += "\n[stream timed out]"
+          } else {
+            throw e
+          }
         }
-        await result.finishReason // consume stream
-        const usage = await result.usage
-        totalInput += usage?.inputTokens ?? 0
-        totalOutput += usage?.outputTokens ?? 0
+        // Overall stream timeout via race
+        const streamTimeout = setTimeout(() => streamController.abort(), LLM_STREAM_TIMEOUT_MS)
+        try {
+          await result.finishReason // consume stream
+          const usage = await result.usage
+          totalInput += usage?.inputTokens ?? 0
+          totalOutput += usage?.outputTokens ?? 0
+        } finally {
+          clearTimeout(streamTimeout)
+        }
         finalContent = content
         history.push({ role: "assistant", content })
         break
@@ -536,6 +571,7 @@ export class AgentRunner {
 
       const WRITE_TOOLS = new Set(["write", "edit", "apply_patch", "delete", "rename", "env_write", "env_install", "env_clean", "skill_create"])
 
+      const softWarnings: string[] = []
       for (const tc of toolRequests) {
         let resultStr: string
         if (this.config.safeMode && WRITE_TOOLS.has(tc.toolName)) {
@@ -573,10 +609,11 @@ export class AgentRunner {
               }
             }
 
-            // Guard: rate limit (skip in godlike mode)
+            // Guard: rate limit soft warning — side-channeled to avoid
+            // being overwritten by the tool result.
             if (!this.config.godlike) {
               const warn = this.limiter.check(tc.toolName)
-              if (warn) resultStr = warn
+              if (warn) softWarnings.push(warn)
             }
 
             const policyBlocked = await this.runProofShellGate(tc.toolName, tc.input as Record<string, unknown>)
@@ -672,7 +709,7 @@ export class AgentRunner {
             }
 
             // Execute (redact secrets only if not godlike)
-            const rawArgs = JSON.stringify(tc.input)
+            const _rawArgs = JSON.stringify(tc.input)
             const timeout = this.config.toolTimeout ?? 30000
             const resultPromise = entry.handler(tc.input as Record<string, unknown>)
             resultStr = await Promise.race([
@@ -684,6 +721,8 @@ export class AgentRunner {
             await this.recordRunProofContextAccess(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             await this.recordRunProofFileWrite(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             resultStr = this.config.godlike ? resultStr : redactSecrets(resultStr)
+            const injection = this.config.godlike ? null : detectInjection(resultStr)
+            if (injection) resultStr = `[INJECTION WARN] ${injection}\n\n${resultStr}`
             await this.recordRunProofShellCommand(tc.toolName, tc.input as Record<string, unknown>, resultStr)
             if (cacheable) {
               toolResultCache.set(cacheKey, { result: resultStr, ts: Date.now() })
@@ -700,10 +739,13 @@ export class AgentRunner {
             auditLog({ tool: tc.toolName, args: tc.input, result: `ERROR: ${e}`, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
           }
         }
+        // Prepend accumulated rate-limit soft warnings so the LLM sees them
+        const warningPrefix = softWarnings.length > 0 ? softWarnings.join("\n") + "\n" : ""
+        softWarnings.length = 0
         // Truncate large tool results to keep context manageable
-        const truncated = resultStr.length > TOOL_RESULT_MAX
-          ? resultStr.slice(0, TOOL_RESULT_MAX) + `\n...(truncated ${resultStr.length - TOOL_RESULT_MAX} chars)`
-          : resultStr
+        const truncated = (warningPrefix + resultStr).length > TOOL_RESULT_MAX
+          ? (warningPrefix + resultStr).slice(0, TOOL_RESULT_MAX) + `\n...(truncated ${(warningPrefix + resultStr).length - TOOL_RESULT_MAX} chars)`
+          : warningPrefix + resultStr
         history.push({ role: "tool", tool_call_id: tc.toolCallId, content: truncated, toolName: tc.toolName } as any)
       }
     }

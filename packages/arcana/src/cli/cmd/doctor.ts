@@ -4,6 +4,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { createRequire } from "node:module"
 import { loadConfig } from "../../config.js"
+import { currentDir } from "../../util/path.js"
 
 const require = createRequire(import.meta.url)
 
@@ -17,11 +18,13 @@ async function runBaseChecks(): Promise<Check[]> {
   const checks: Check[] = []
 
   // Bun version
-  const bunVer = (Bun as any).version ?? process.versions.bun ?? "?"
+  const bunVer = typeof (globalThis as any).Bun !== "undefined"
+    ? (Bun as any).version ?? process.versions.bun ?? "?"
+    : process.versions.bun ?? "?"
   checks.push({ label: "Bun runtime", ok: !!bunVer, detail: `v${bunVer}` })
 
   // node_modules
-  const nm = [join(import.meta.dir, "..", "..", "..", "..", "..", "node_modules"), join(import.meta.dir, "..", "..", "..", "..", "node_modules")].find(existsSync)
+  const nm = [join(currentDir(import.meta), "..", "..", "..", "..", "..", "node_modules"), join(currentDir(import.meta), "..", "..", "..", "..", "node_modules")].find(existsSync)
   checks.push({ label: "node_modules", ok: !!nm, detail: nm ? `found` : "missing — run bun install" })
 
   // Config
@@ -44,7 +47,7 @@ async function runBaseChecks(): Promise<Check[]> {
   checks.push({ label: "Skills cache", ok: skillCacheOk, detail: skillCacheOk ? `${skillCache}` : "not yet populated — will build on first startup" })
 
   // Bridge config
-  const bridgeConfig = join(homedir(), ".arcana", "cache", "opencode-config.json")
+  const bridgeConfig = join(homedir(), ".arcana", "cache", "bridge-config.json")
   const bridgeOk = existsSync(bridgeConfig)
   checks.push({ label: "Bridge config", ok: bridgeOk, detail: bridgeOk ? `${bridgeConfig}` : "missing — TUI may not find skills" })
 
@@ -58,7 +61,7 @@ async function runBaseChecks(): Promise<Check[]> {
 function runWebChecks(): Check[] {
   const checks: Check[] = []
   // repoRoot = packages/arcana/src/cli/cmd/doctor.ts → ../../../..
-  const repoRoot = join(import.meta.dir, "..", "..", "..", "..", "..")
+  const repoRoot = join(currentDir(import.meta), "..", "..", "..", "..", "..")
   const enterpriseDir = join(repoRoot, "packages", "enterprise")
 
   const pkgPath = join(enterpriseDir, "package.json")

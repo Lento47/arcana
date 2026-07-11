@@ -70,12 +70,17 @@ export type AutocompleteOption = {
   path?: string
 }
 
-const ARCANA_PROMPT_SLASHES = new Set(["/contract", "/actions", "/diffgate", "/verify", "/sovereignty"])
+const ARCANA_PROMPT_SLASHES = new Set(["/contract", "/actions", "/diffgate", "/verify", "/sovereignty", "/consensus"])
+
+export function shouldClearSlashOnHide(text: string): boolean {
+  return /^\/\S*$/.test(text) && !text.endsWith(" ")
+}
 
 export function Autocomplete(props: {
   value: string
   sessionID?: string
   setPrompt: (input: (prompt: PromptInfo) => void) => void
+  clearPrompt?: () => void
   setExtmark: (partIndex: number, extmarkId: number) => void
   anchor: () => BoxRenderable
   input: () => TextareaRenderable
@@ -83,6 +88,7 @@ export function Autocomplete(props: {
   fileStyleId: number
   agentStyleId: number
   promptPartTypeId: () => number
+  variant?: "default" | "command-spine"
 }) {
   const editor = useEditorContext()
   const sdk = useSDK()
@@ -92,6 +98,8 @@ export function Autocomplete(props: {
   const slashes = useCommandSlashes()
   const modeStack = useOpencodeModeStack()
   const { theme } = useTheme()
+  const t = theme as Record<string, unknown>
+  const isCommandSpine = createMemo(() => props.variant === "command-spine")
   const dimensions = useTerminalDimensions()
   const frecency = useFrecency()
   const tuiConfig = useTuiConfig()
@@ -120,14 +128,14 @@ export function Autocomplete(props: {
           lastPos = { x: anchor.x, y: anchor.y, width: anchor.width }
           setPositionTick((t) => t + 1)
         }
-      }, 50)
+      }, 100) // Polled at 10fps — anchor position changes only on type/resize events.
 
       onCleanup(() => clearInterval(interval))
     }
   })
 
   const position = createMemo(() => {
-    if (!store.visible) return { x: 0, y: 0, width: 0 }
+    if (!store.visible) return { x: 0, y: 0, width: 0, height: 0 }
     dimensions()
     positionTick()
     const anchor = props.anchor()
@@ -139,6 +147,7 @@ export function Autocomplete(props: {
       x: anchor.x - parentX,
       y: anchor.y - parentY,
       width: anchor.width,
+      height: anchor.height,
     }
   })
 
@@ -333,7 +342,7 @@ export function Autocomplete(props: {
         const width = props.anchor().width - 4
         options.push(
           ...result.data.data.map((item): AutocompleteOption => {
-            const { filename, url, part } = createFilePart(item.path, lineRange)
+            const { filename, url: _url, part } = createFilePart(item.path, lineRange)
             return {
               display: Locale.truncateMiddle(filename, width),
               value: filename,
@@ -439,7 +448,15 @@ export function Autocomplete(props: {
   const commands = createMemo((): AutocompleteOption[] => {
     const results: AutocompleteOption[] = slashes().map((item) => {
       const slash = item.display.trimEnd()
-      if (!ARCANA_PROMPT_SLASHES.has(slash)) return item
+      if (!ARCANA_PROMPT_SLASHES.has(slash)) {
+        return {
+          ...item,
+          onSelect: () => {
+            item.onSelect?.()
+            props.clearPrompt?.()
+          },
+        }
+      }
 
       return {
         ...item,
@@ -558,8 +575,8 @@ export function Autocomplete(props: {
   function select() {
     const selected = options()[store.selected]
     if (!selected) return
-    hide()
     selected.onSelect?.()
+    setStore("visible", false)
   }
 
   function expandDirectory() {
@@ -654,7 +671,7 @@ export function Autocomplete(props: {
 
   function hide() {
     const text = props.input().plainText
-    if (store.visible === "/" && !text.endsWith(" ") && text.startsWith("/")) {
+    if (store.visible === "/" && shouldClearSlashOnHide(text)) {
       const cursor = props.input().logicalCursor
       props.input().deleteRange(0, 0, cursor.row, cursor.col)
       // Sync the prompt store immediately since onContentChange is async
@@ -723,29 +740,50 @@ export function Autocomplete(props: {
 
   let scroll: ScrollBoxRenderable
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
+  const panelHeight = createMemo(() => height() + 1)
+  const panelTop = createMemo(() => {
+    const below = position().y + position().height
+    // Don't overflow terminal — cap to 3 rows from bottom
+    return Math.min(below, Math.max(0, dimensions().height - panelHeight() - 3))
+  })
+  const rowWidth = createMemo(() => Math.max(1, position().width - 2))
+  const optionDisplayWidth = createMemo(() =>
+    Math.min(rowWidth(), Math.max(10, Math.floor(rowWidth() * (store.visible === "/" ? 0.42 : 0.55)))),
+  )
+  const optionDescriptionWidth = createMemo(() => Math.max(0, rowWidth() - optionDisplayWidth() - 1))
 
   return (
     <box
       visible={store.visible !== false}
       position="absolute"
-      top={position().y - height()}
+      top={panelTop()}
       left={position().x}
       width={position().width}
+      height={panelHeight()}
       zIndex={100}
       backgroundColor={theme.backgroundMenu}
       paddingLeft={1}
       paddingRight={1}
+      overflow="hidden"
     >
-      <box flexDirection="row" justifyContent="space-between">
-        <text fg={theme.textMuted}>
-          {arcanaDitherPattern(store.visible || "complete", 10)} {store.visible === "/" ? "COMMANDS" : "CONTEXT"}
+      <box flexDirection="row" justifyContent="space-between" height={1} flexShrink={0} overflow="hidden">
+        <text fg={theme.textMuted} wrapMode="none" truncate>
+          {arcanaDitherPattern(store.visible || "complete", isCommandSpine() ? 8 : 10)}{" "}
+          {store.visible === "/" ? (isCommandSpine() ? "SPINE COMMANDS" : "COMMANDS") : "CONTEXT"}
         </text>
-        <text fg={theme.textMuted}>{options().length} match{options().length === 1 ? "" : "es"}</text>
+        <text
+          fg={(isCommandSpine() ? (t.spineContext ?? theme.textMuted) : theme.textMuted) as any}
+          wrapMode="none"
+          flexShrink={0}
+        >
+          {options().length} match{options().length === 1 ? "" : "es"}
+        </text>
       </box>
       <scrollbox
         ref={(r: ScrollBoxRenderable) => (scroll = r)}
-        backgroundColor={theme.backgroundMenu}
+        backgroundColor={(isCommandSpine() ? (t.spinePanel ?? theme.backgroundMenu) : theme.backgroundMenu) as any}
         height={height()}
+        flexShrink={0}
         scrollbarOptions={{ visible: false }}
         scrollAcceleration={scrollAcceleration()}
       >
@@ -759,8 +797,16 @@ export function Autocomplete(props: {
         >
           {(option, index) => (
             <box
-              backgroundColor={index === store.selected ? theme.primary : undefined}
+              backgroundColor={
+                index === store.selected
+                  ? ((isCommandSpine() ? (t.spinePrompt ?? theme.primary) : theme.primary) as any)
+                  : undefined
+              }
               flexDirection="row"
+              height={1}
+              flexShrink={0}
+              width="100%"
+              overflow="hidden"
               onMouseMove={() => {
                 setStore("input", "mouse")
               }}
@@ -774,11 +820,32 @@ export function Autocomplete(props: {
               }}
               onMouseUp={() => select()}
             >
-              <text fg={index === store.selected ? selectedForeground(theme) : theme.text} flexShrink={0}>
-                {arcanaDitherTick(option().display)} {option().display}
+              <text
+                fg={
+                  index === store.selected
+                    ? selectedForeground(theme)
+                    : ((isCommandSpine() ? (t.spinePrompt ?? theme.text) : theme.text) as any)
+                }
+                width={optionDisplayWidth()}
+                flexShrink={0}
+                overflow="hidden"
+                wrapMode="none"
+                truncate
+              >
+                {arcanaDitherTick(option().display)} {option().display.trimEnd()}
               </text>
-              <Show when={option().description}>
-                <text fg={index === store.selected ? selectedForeground(theme) : theme.textMuted} wrapMode="none">
+              <Show when={option().description && optionDescriptionWidth() > 0}>
+                <text
+                  fg={
+                    index === store.selected
+                      ? selectedForeground(theme)
+                      : ((isCommandSpine() ? (t.spineContext ?? theme.textMuted) : theme.textMuted) as any)
+                  }
+                  width={optionDescriptionWidth()}
+                  overflow="hidden"
+                  wrapMode="none"
+                  truncate
+                >
                   {option().description}
                 </text>
               </Show>

@@ -5,8 +5,6 @@ import path from "path"
 import { Agent } from "../../src/agent/agent"
 import { CrossSpawnSpawner } from "@arcana/core/cross-spawn-spawner"
 import { FSUtil } from "@arcana/core/fs-util"
-import { Global } from "@arcana/core/global"
-import { Config } from "@/config/config"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Ripgrep } from "@arcana/core/ripgrep"
 import { LSP } from "@/lsp/lsp"
@@ -43,7 +41,7 @@ const ctx = {
   ask: () => Effect.void,
 }
 
-const readLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
+const readLayer = (_flags: Partial<RuntimeFlags.Info> = {}) =>
   Layer.mergeAll(
     Agent.defaultLayer,
     FSUtil.defaultLayer,
@@ -93,7 +91,7 @@ const fail = Effect.fn("ReadToolTest.fail")(function* (
 const full = (p: string) => (process.platform === "win32" ? Filesystem.normalizePath(p) : p)
 const glob = (p: string) =>
   process.platform === "win32" ? Filesystem.normalizePathPattern(p) : p.replaceAll("\\", "/")
-const githubBase = <A, E, R>(url: string, self: Effect.Effect<A, E, R>) =>
+const _githubBase = <A, E, R>(url: string, self: Effect.Effect<A, E, R>) =>
   Effect.acquireUseRelease(
     Effect.sync(() => {
       const previous = process.env.ARCANA_REPO_CLONE_GITHUB_BASE_URL
@@ -107,7 +105,7 @@ const githubBase = <A, E, R>(url: string, self: Effect.Effect<A, E, R>) =>
         else delete process.env.ARCANA_REPO_CLONE_GITHUB_BASE_URL
       }),
   )
-const git = Effect.fn("ReadToolTest.git")(function* (cwd: string, args: string[]) {
+const _git = Effect.fn("ReadToolTest.git")(function* (cwd: string, args: string[]) {
   return yield* Effect.promise(async () => {
     const proc = Bun.spawn(["git", ...args], {
       cwd,

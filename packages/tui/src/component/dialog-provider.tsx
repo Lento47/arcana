@@ -13,6 +13,7 @@ import { DialogModel } from "./dialog-model"
 import { useToast } from "../ui/toast"
 import { isConsoleManagedProvider } from "../util/provider-origin"
 import { useConnected } from "./use-connected"
+import { errorMessage } from "../util/error"
 import { useBindings } from "../keymap"
 import { useClipboard } from "../context/clipboard"
 import { COPY, Glyph } from "../branding"
@@ -93,25 +94,26 @@ export function createDialogProviderOptions() {
   const onboarded = useConnected()
 
   async function promptCustomProviderID(): Promise<string | undefined> {
-    const value = await DialogPrompt.show(dialog, "Other", {
-      placeholder: "Provider id",
-      description: () => (
-        <text fg={theme.textMuted}>
-          This only stores a credential. Configure the provider in arcana.json to use it.
-        </text>
-      ),
-    })
-    if (value === null) return
+    while (true) {
+      const value = await DialogPrompt.show(dialog, "Other", {
+        placeholder: "Provider id",
+        description: () => (
+          <text fg={theme.textMuted}>
+            This only stores a credential. Configure the provider in arcana.json to use it. Press escape to cancel.
+          </text>
+        ),
+      })
+      if (value === null) return undefined
 
-    const providerID = normalizeCustomProviderID(value)
-    if (providerID) return providerID
+      const providerID = normalizeCustomProviderID(value)
+      if (providerID) return providerID
 
-    toast.show({
-      variant: "error",
-      message:
-        "Provider ids must start with a lowercase letter or number and only use lowercase letters, numbers, hyphens, and underscores",
-    })
-    return promptCustomProviderID()
+      toast.show({
+        variant: "error",
+        message:
+          "Provider ids must start with a lowercase letter or number and only use lowercase letters, numbers, hyphens, and underscores. Press escape to cancel.",
+      })
+    }
   }
 
   const options = createMemo(() => {
@@ -196,7 +198,7 @@ export function createDialogProviderOptions() {
               if (result.error) {
                 toast.show({
                   variant: "error",
-                  message: JSON.stringify(result.error),
+                  message: errorMessage(result.error),
                 })
                 dialog.clear()
                 return
@@ -279,7 +281,7 @@ function AutoMethod(props: AutoMethodProps) {
         message:
           "name" in result.error && result.error.name === "ProviderAuthOauthCallbackFailed"
             ? "OAuth authorization failed. Try /connect again."
-            : JSON.stringify(result.error),
+            : errorMessage(result.error),
       })
       dialog.clear()
       return
@@ -377,11 +379,10 @@ function ApiMethod(props: ApiMethodProps) {
           arcana: (
             <box gap={1}>
               <text fg={theme.textMuted}>
-                OpenCode Zen gives you access to all the best coding models at the cheapest prices with a single API
-                key.
+                Arcana Proxy gives you access to multiple LLM providers through a single API key — no per-provider setup required.
               </text>
               <text fg={theme.text}>
-                Go to <span style={{ fg: theme.primary }}>https://opencode.ai/zen</span> to get a key
+                Go to <span style={{ fg: theme.primary }}>https://arcana.otnelhq.com</span> to get a key
               </text>
             </box>
           ),
@@ -392,7 +393,7 @@ function ApiMethod(props: ApiMethodProps) {
                 with generous usage limits.
               </text>
               <text fg={theme.text}>
-                Go to <span style={{ fg: theme.primary }}>https://opencode.ai/go</span> and enable OpenCode Go
+                Go to <span style={{ fg: theme.primary }}>https://arcana.otnelhq.com/go</span> and enable OpenCode Go
               </text>
             </box>
           ),
@@ -410,7 +411,7 @@ function ApiMethod(props: ApiMethodProps) {
             },
           })
           if (error) {
-            toast.show({ variant: "error", message: `Failed to save key: ${JSON.stringify(error)}` })
+            toast.show({ variant: "error", message: `Failed to save key: ${errorMessage(error)}` })
             return
           }
           await sdk.client.instance.dispose()

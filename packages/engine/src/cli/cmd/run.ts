@@ -761,7 +761,7 @@ export const RunCommand = effectCmd({
 
         await share(client, sessionID)
 
-        const warmup = (async () => {
+        const _warmup = (async () => {
           try {
             await client.provider.list().catch(() => {})
             await client.command.list().catch(() => {})

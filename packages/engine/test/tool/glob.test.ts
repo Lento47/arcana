@@ -7,19 +7,16 @@ import { SessionID, MessageID } from "../../src/session/schema"
 import { CrossSpawnSpawner } from "@arcana/core/cross-spawn-spawner"
 import { Ripgrep } from "@arcana/core/ripgrep"
 import { FSUtil } from "@arcana/core/fs-util"
-import { Global } from "@arcana/core/global"
 import { Truncate } from "@/tool/truncate"
 import { Agent } from "../../src/agent/agent"
-import { TestInstance, tmpdirScoped } from "../fixture/fixture"
+import { TestInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
-import { Config } from "@/config/config"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Git } from "@/git"
 import { Filesystem } from "@/util/filesystem"
-import { Permission } from "../../src/permission"
 import type * as Tool from "../../src/tool/tool"
 
-const toolLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
+const toolLayer = (_flags: Partial<RuntimeFlags.Info> = {}) =>
   Layer.mergeAll(
     CrossSpawnSpawner.defaultLayer,
     FSUtil.defaultLayer,
@@ -30,7 +27,7 @@ const toolLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
   )
 
 const it = testEffect(toolLayer())
-const full = (p: string) => (process.platform === "win32" ? Filesystem.normalizePath(p) : p)
+const _full = (p: string) => (process.platform === "win32" ? Filesystem.normalizePath(p) : p)
 
 const ctx = {
   sessionID: SessionID.make("ses_test"),
@@ -43,7 +40,7 @@ const ctx = {
   ask: () => Effect.void,
 }
 
-const asks = () => {
+const _asks = () => {
   const items: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
   return {
     items,
@@ -57,7 +54,7 @@ const asks = () => {
   }
 }
 
-const githubBase = <A, E, R>(url: string, self: Effect.Effect<A, E, R>) =>
+const _githubBase = <A, E, R>(url: string, self: Effect.Effect<A, E, R>) =>
   Effect.acquireUseRelease(
     Effect.sync(() => {
       const previous = process.env.ARCANA_REPO_CLONE_GITHUB_BASE_URL
@@ -72,7 +69,7 @@ const githubBase = <A, E, R>(url: string, self: Effect.Effect<A, E, R>) =>
       }),
   )
 
-const git = Effect.fn("GlobToolTest.git")(function* (cwd: string, args: string[]) {
+const _git = Effect.fn("GlobToolTest.git")(function* (cwd: string, args: string[]) {
   return yield* Effect.promise(async () => {
     const proc = Bun.spawn(["git", ...args], {
       cwd,

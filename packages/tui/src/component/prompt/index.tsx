@@ -68,6 +68,7 @@ export type PromptProps = {
   hint?: JSX.Element
   right?: JSX.Element
   showPlaceholder?: boolean
+  variant?: "default" | "command-spine"
   placeholders?: {
     normal?: string[]
     shell?: string[]
@@ -254,10 +255,12 @@ export function Prompt(props: PromptProps) {
     }, 0)
   })
 
+  const isCommandSpine = createMemo(() => props.variant === "command-spine")
+
   createEffect(() => {
     if (!input || input.isDestroyed) return
-    if (props.disabled) input.cursorColor = theme.backgroundElement
-    if (!props.disabled) input.cursorColor = theme.text
+    if (props.disabled) input.cursorColor = isCommandSpine() ? theme.spineDiffMuted : theme.backgroundElement
+    if (!props.disabled) input.cursorColor = isCommandSpine() ? theme.spinePrompt : theme.text
   })
 
   const lastUserMessage = createMemo(() => {
@@ -942,7 +945,6 @@ export function Prompt(props: PromptProps) {
     }
     if (props.disabled) return false
     if (workspace.creating() || move.creating()) return false
-    if (auto()?.visible) return false
     if (!store.prompt.input) return false
     const agent = local.agent.current()
     if (!agent) return false
@@ -1063,6 +1065,7 @@ export function Prompt(props: PromptProps) {
           message: `Add a task after /${arcanaPromptCommand.command}.`,
           variant: "warning",
         })
+        clearPrompt()
         return false
       }
 
@@ -1376,6 +1379,14 @@ export function Prompt(props: PromptProps) {
 
   const placeholderText = createMemo(() => {
     if (props.showPlaceholder === false) return undefined
+    if (isCommandSpine()) {
+      if (store.mode === "shell") {
+        if (!shell().length) return "shell command"
+        return `shell · ${shell()[store.placeholder % shell().length]}`
+      }
+      if (!list().length) return "state the next objective"
+      return `objective · ${list()[store.placeholder % list().length]}`
+    }
     if (store.mode === "shell") {
       if (!shell().length) return undefined
       const example = shell()[store.placeholder % shell().length]
@@ -1390,23 +1401,29 @@ export function Prompt(props: PromptProps) {
 
   return (
     <>
-      <box ref={(r: BoxRenderable) => (anchor = r)} visible={props.visible !== false} width="100%" border={["top", "bottom"]} borderColor={borderHighlight()}>
+      <box
+        ref={(r: BoxRenderable) => (anchor = r)}
+        visible={props.visible !== false}
+        width="100%"
+        border={isCommandSpine() ? [] : ["top", "bottom"]}
+        borderColor={isCommandSpine() ? theme.spineRail : borderHighlight()}
+      >
         <box width="100%">
           <box
-            paddingLeft={2}
-            paddingRight={2}
-            paddingTop={1}
+            paddingLeft={isCommandSpine() ? 0 : 2}
+            paddingRight={isCommandSpine() ? 1 : 2}
+            paddingTop={isCommandSpine() ? 0 : 1}
             flexShrink={0}
-            backgroundColor={theme.backgroundElement}
+            backgroundColor={isCommandSpine() ? theme.background : theme.backgroundElement}
             flexGrow={1}
             width="100%"
           >
             <textarea
               width="100%"
-              placeholder={placeholderText()}
-              placeholderColor={theme.textMuted}
-              textColor={leader() ? theme.textMuted : theme.text}
-              focusedTextColor={leader() ? theme.textMuted : theme.text}
+              placeholder={placeholderText() || "Speak your intent…"}
+              placeholderColor={isCommandSpine() ? theme.spineDiffMuted : theme.textMuted}
+              textColor={leader() ? theme.textMuted : isCommandSpine() ? theme.spineBrand : theme.text}
+              focusedTextColor={leader() ? theme.textMuted : isCommandSpine() ? theme.spineBrand : theme.text}
               minHeight={1}
               maxHeight={maxHeight()}
               onContentChange={() => {
@@ -1474,28 +1491,42 @@ export function Prompt(props: PromptProps) {
                 setTimeout(() => {
                   // setTimeout is a workaround and needs to be addressed properly
                   if (!input || input.isDestroyed) return
-                  input.cursorColor = theme.text
+                  input.cursorColor = isCommandSpine() ? theme.spinePrompt : theme.text
                 }, 0)
               }}
               onMouseDown={(r: MouseEvent) => r.target?.focus()}
-              focusedBackgroundColor={theme.backgroundElement}
-              cursorColor={props.disabled ? theme.backgroundElement : theme.text}
+              focusedBackgroundColor={isCommandSpine() ? theme.background : theme.backgroundElement}
+              cursorColor={
+                props.disabled
+                  ? isCommandSpine()
+                    ? theme.spineDiffMuted
+                    : theme.backgroundElement
+                  : isCommandSpine()
+                    ? theme.spinePrompt
+                    : theme.text
+              }
               syntaxStyle={syntax()}
             />
-            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
+            <box flexDirection="row" flexShrink={0} paddingTop={isCommandSpine() ? 0 : 1} gap={1} justifyContent="space-between">
               <box flexDirection="row" gap={1}>
                 <Show when={local.agent.current()} fallback={<box height={1} />}>
                   {(agent) => (
                     <>
-                      <text fg={fadeColor(theme.accent, agentMetaAlpha())}>
-                        {Glyph.sigil} {store.mode === "shell" ? "shell" : agent().name.toLowerCase()}
+                      <text fg={fadeColor(isCommandSpine() ? theme.spinePrompt : theme.accent, agentMetaAlpha())}>
+                        {isCommandSpine()
+                          ? store.mode === "shell"
+                            ? "shell"
+                            : "intent"
+                          : `${Glyph.sigil} ${store.mode === "shell" ? "shell" : agent().name.toLowerCase()}`}
                       </text>
                       <Show when={store.mode === "normal"}>
                         <box flexDirection="row" gap={1}>
-                          <text fg={fadeColor(theme.accent, modelMetaAlpha())}>◆</text>
+                          <text fg={fadeColor(isCommandSpine() ? theme.spineRailActive : theme.accent, modelMetaAlpha())}>
+                            {isCommandSpine() ? "·" : "◆"}
+                          </text>
                           <text
                             flexShrink={0}
-                            fg={fadeColor(leader() ? theme.textMuted : theme.text, modelMetaAlpha())}
+                            fg={fadeColor(leader() ? theme.textMuted : isCommandSpine() ? theme.spineBrand : theme.text, modelMetaAlpha())}
                           >
                             {local.model.parsed().modelID.toLowerCase()}
                           </text>
@@ -1695,6 +1726,7 @@ export function Prompt(props: PromptProps) {
         }}
         anchor={() => anchor}
         input={() => input}
+        clearPrompt={clearPrompt}
         setPrompt={(cb) => {
           setStore("prompt", produce(cb))
         }}
@@ -1709,6 +1741,7 @@ export function Prompt(props: PromptProps) {
         fileStyleId={fileStyleId}
         agentStyleId={agentStyleId}
         promptPartTypeId={() => promptPartTypeId}
+        variant={props.variant}
       />
     </>
   )

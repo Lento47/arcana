@@ -19,9 +19,9 @@ export const TeamCommand = cmd({
         command: "sessions [org]",
         describe: "list shared team sessions",
         builder: (y) => y.positional("org", { describe: "org ID (defaults to active)", type: "string" }),
-        async handler(args: any) {
+        async handler(_args: any) {
           try {
-            const { readFileSync, existsSync } = await import("node:fs")
+            const { readFileSync: _readFileSync, existsSync } = await import("node:fs")
             const { join } = await import("node:path")
             const { homedir } = await import("node:os")
             const dbPath = join(homedir(), ".arcana", "data", "arcana.db")

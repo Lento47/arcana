@@ -1,4 +1,4 @@
-import type { ExpectedDeliverable, ExpectationContract } from "./expectation.js"
+import type { ExpectedDeliverable } from "./expectation.js"
 
 export type ThinkingStyle = "quick" | "balanced" | "deep" | "staged"
 

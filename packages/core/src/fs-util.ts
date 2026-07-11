@@ -245,8 +245,15 @@ export namespace FSUtil {
     return contains(a, b) || contains(b, a)
   }
 
+  /** Normalize case on case-insensitive filesystems to prevent false rejections. */
+  function normalizeCase(p: string): string {
+    return process.platform === "darwin" || process.platform === "win32"
+      ? p.toLowerCase()
+      : p
+  }
+
   export function contains(parent: string, child: string) {
-    const result = relative(parent, child)
+    const result = relative(normalizeCase(parent), normalizeCase(child))
     return result === "" || (!isAbsolute(result) && result !== ".." && !result.startsWith(`..${sep}`))
   }
 }

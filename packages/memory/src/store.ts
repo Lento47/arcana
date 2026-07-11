@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { randomUUID } from "node:crypto"
-import { exactHash, isNearDuplicate, normalize, JACCARD_DEDUP_THRESHOLD } from "./dedup.js"
+import { exactHash, isNearDuplicate, normalize } from "./dedup.js"
 
 function now(): string {
   return new Date().toISOString()

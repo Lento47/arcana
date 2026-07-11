@@ -6,6 +6,7 @@ import { useTheme } from "../context/theme"
 import { Glyph } from "../branding"
 import { usePromptStash, type StashEntry } from "./prompt/stash"
 import { useCommandShortcut } from "../keymap"
+import { useToast } from "../ui/toast"
 
 function getRelativeTime(timestamp: number): string {
   const now = Date.now()
@@ -30,6 +31,7 @@ function getStashPreview(input: string, maxLength: number = 50): string {
 export function DialogStash(props: { onSelect: (entry: StashEntry) => void }) {
   const dialog = useDialog()
   const stash = usePromptStash()
+  const toast = useToast()
   const { theme } = useTheme()
 
   const [toDelete, setToDelete] = createSignal<number>()
@@ -66,6 +68,7 @@ export function DialogStash(props: { onSelect: (entry: StashEntry) => void }) {
         if (entry) {
           stash.remove(option.value)
           props.onSelect(entry)
+          toast.show({ message: "Stash entry applied.", variant: "info" })
         }
         dialog.clear()
       }}

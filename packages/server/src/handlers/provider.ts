@@ -1,6 +1,5 @@
 import { Catalog } from "@arcana/core/catalog"
 import { PluginBoot } from "@arcana/core/plugin/boot"
-import { ProviderV2 } from "@arcana/core/provider"
 import { Effect } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { Api } from "../api"

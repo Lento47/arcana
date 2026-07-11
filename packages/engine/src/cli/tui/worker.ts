@@ -86,3 +86,9 @@ export const rpc = {
 }
 
 Rpc.listen(rpc)
+
+// Pre-warm the Effect service layer while the main process loads TUI modules.
+// Server.Default() is lazy — first call builds 55+ services (3-8s on cold start).
+// Triggering it here lets the build overlap with the main process's config loading,
+// renderer init, and Solid tree mount instead of blocking the first API call.
+Server.Default()

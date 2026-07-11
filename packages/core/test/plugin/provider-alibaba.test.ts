@@ -13,7 +13,7 @@ describe("AlibabaPlugin", () => {
       yield* plugin.add(AlibabaPlugin)
       const result = yield* plugin.trigger(
         "aisdk.sdk",
-        { model: model("alibaba", "qwen"), package: "@ai-sdk/alibaba", options: { name: "alibaba" } },
+        { model: model("alibaba", "qwen"), package: "@ai-sdk/alibaba", options: {} },
         {},
       )
       expect(result.sdk).toBeDefined()
@@ -26,14 +26,14 @@ describe("AlibabaPlugin", () => {
       yield* plugin.add(AlibabaPlugin)
       const result = yield* plugin.trigger(
         "aisdk.sdk",
-        { model: model("alibaba", "qwen"), package: "@ai-sdk/openai-compatible", options: { name: "alibaba" } },
+        { model: model("alibaba", "qwen"), package: "@ai-sdk/openai-compatible", options: {} },
         {},
       )
       expect(result.sdk).toBeUndefined()
     }),
   )
 
-  it.effect("matches the old bundled Alibaba SDK provider naming", () =>
+  it.effect("uses the Alibaba chat provider id from @ai-sdk/alibaba", () =>
     Effect.gen(function* () {
       const plugin = yield* PluginV2.Service
       yield* plugin.add(AlibabaPlugin)
@@ -42,13 +42,15 @@ describe("AlibabaPlugin", () => {
         {
           model: model("custom-alibaba", "qwen"),
           package: "@ai-sdk/alibaba",
-          options: { name: "custom-alibaba", apiKey: "test" },
+          options: { apiKey: "test" },
         },
         {},
       )
-      const expected = createAlibaba({ apiKey: "test", ...{ name: "custom-alibaba" } }).languageModel("qwen")
+      // @ai-sdk/alibaba hardcodes provider to "alibaba.chat" (no custom `name` setting).
+      const expected = createAlibaba({ apiKey: "test" }).languageModel("qwen")
       const actual = result.sdk?.languageModel("qwen")
       expect(actual?.provider).toBe(expected.provider)
+      expect(actual?.provider).toBe("alibaba.chat")
       expect(actual?.modelId).toBe(expected.modelId)
     }),
   )

@@ -10,9 +10,8 @@
     "migration": "bun run script/migration.ts",
     "fix-node-pty": "bun run script/fix-node-pty.ts",
     "test": "bun test --only-failures",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   },
-
   "exports": {
     "./artifact/schema": "./src/artifact/schema.ts",
     "./public": "./src/public/index.ts",
@@ -48,7 +47,6 @@
     "@types/semver": "catalog:",
     "@types/turndown": "5.0.5",
     "@types/which": "3.0.4",
-    "@typescript/native-preview": "catalog:",
     "@parcel/watcher-darwin-arm64": "2.5.1",
     "@parcel/watcher-darwin-x64": "2.5.1",
     "@parcel/watcher-linux-arm64-glibc": "2.5.1",
@@ -58,7 +56,8 @@
     "@parcel/watcher-win32-arm64": "2.5.1",
     "@parcel/watcher-win32-x64": "2.5.1",
     "@arcana/http-recorder": "workspace:*",
-    "drizzle-kit": "catalog:"
+    "drizzle-kit": "catalog:",
+    "typescript": "catalog:"
   },
   "dependencies": {
     "@ai-sdk/alibaba": "1.0.17",

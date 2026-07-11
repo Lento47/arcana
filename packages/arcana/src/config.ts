@@ -1,7 +1,8 @@
-import { readFile, mkdir } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { existsSync } from "node:fs"
+import { currentDir } from "./util/path.js"
 
 export type ArcanaConfig = {
   provider?: string
@@ -30,11 +31,16 @@ export function getDataDir(config: ArcanaConfig): string {
 }
 
 function defaults(): ArcanaConfig {
+  const envDirs = process.env.ARCANA_SKILLS_DIRS
+    ? process.env.ARCANA_SKILLS_DIRS.split(";").map((s) => s.trim()).filter(Boolean)
+    : []
   return {
-    skillsDirs: [
-      join(getArcanaHome(), "skills"),
-      join(import.meta.dir, "..", "..", "..", "skills"),
-    ],
+    skillsDirs: envDirs.length > 0
+      ? envDirs
+      : [
+          join(getArcanaHome(), "skills"),
+          join(currentDir(import.meta), "..", "..", "..", "skills"),
+        ],
     memory: { enabled: true, maxSessions: 1000 },
     cron: { enabled: true, intervalSeconds: 60 },
   }
@@ -81,7 +87,7 @@ export async function loadConfig(): Promise<ArcanaConfig> {
         file.provider = detected.provider
         if (!file.model) file.model = detected.model ?? file.model
       }
-    } catch (e) { console.error("[arcana] auto-detect provider failed:", e instanceof Error ? e.message : String(e)) }
+    } catch (e) { console.debug("[arcana] auto-detect provider skipped (no local provider found):", e instanceof Error ? e.message : String(e)) }
   }
 
   const base = defaults()

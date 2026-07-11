@@ -1,6 +1,5 @@
 import { Location } from "@arcana/core/location"
 import { LocationServiceMap } from "@arcana/core/location-layer"
-import { FileSystem } from "@arcana/core/filesystem"
 import { AbsolutePath } from "@arcana/core/schema"
 import { WorkspaceV2 } from "@arcana/core/workspace"
 import { Effect, Layer, Schema } from "effect"

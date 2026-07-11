@@ -30,7 +30,7 @@ import { ModelV2 } from "@arcana/core/model"
 import { ProviderV2 } from "@arcana/core/provider"
 import * as DateTime from "effect/DateTime"
 import { RuntimeFlags } from "@/effect/runtime-flags"
-import { ToolOutput, Usage, type LLMEvent } from "@arcana/llm"
+import { Usage, type LLMEvent } from "@arcana/llm"
 import {
   prepareResponsePreflight,
   evaluateResponsePostflight,
@@ -438,10 +438,11 @@ export const layer = Layer.effect(
                 timestamp: DateTime.makeUnsafe(Date.now()),
               })
             }
-            yield* session.updatePartDelta({
+            yield* session.emitPartDelta({
               sessionID: ctx.reasoningMap[value.id].sessionID,
               messageID: ctx.reasoningMap[value.id].messageID,
               partID: ctx.reasoningMap[value.id].id,
+              partType: "reasoning",
               field: "text",
               delta: value.text,
             })
@@ -818,7 +819,7 @@ export const layer = Layer.effect(
             ctx.currentText.text += value.text
             if (value.providerMetadata) {
               ctx.currentText.metadata = {
-                ...(ctx.currentText.metadata ?? {}),
+                ...(ctx.currentText.metadata),
                 ...value.providerMetadata,
               }
             }
@@ -831,10 +832,11 @@ export const layer = Layer.effect(
                 timestamp: DateTime.makeUnsafe(Date.now()),
               })
             }
-            yield* session.updatePartDelta({
+            yield* session.emitPartDelta({
               sessionID: ctx.currentText.sessionID,
               messageID: ctx.currentText.messageID,
               partID: ctx.currentText.id,
+              partType: "text",
               field: "text",
               delta: value.text,
             })
@@ -885,7 +887,7 @@ export const layer = Layer.effect(
               }).pipe(Effect.orElseSucceed(() => null))
               if (postflight) {
                 ctx.currentText.metadata = {
-                  ...(ctx.currentText.metadata ?? {}),
+                  ...(ctx.currentText.metadata),
                   "arcana.ml": {
                     verdict: postflight.quality.verdict,
                     score: postflight.quality.score,
@@ -897,7 +899,18 @@ export const layer = Layer.effect(
                 if (postflight.shouldRevise && ctx.mlRevisionsUsed === 0) {
                   ctx.mlRevisionsUsed += 1
                   const reasons = postflight.quality.problems.join("; ") || "low specificity"
-                  ctx.currentText.text = `${ctx.currentText.text}\n\n<arcana-ml>quality=${postflight.quality.verdict} score=${postflight.quality.score.toFixed(2)} reasons=${reasons}</arcana-ml>`
+                  const annotation = `\n\n<arcana-ml>quality=${postflight.quality.verdict} score=${postflight.quality.score.toFixed(2)} reasons=${reasons}</arcana-ml>`
+                  ctx.currentText.text = `${ctx.currentText.text}${annotation}`
+                  // Publish synthetic delta so streaming clients receive the annotation
+                  if (mirrorAssistant && ctx.currentText.id) {
+                    yield* events.publish(SessionEvent.Text.Delta, {
+                      sessionID: ctx.sessionID,
+                      assistantMessageID: yield* currentV2AssistantMessage(),
+                      textID: ctx.currentText.id,
+                      delta: annotation,
+                      timestamp: DateTime.makeUnsafe(Date.now()),
+                    })
+                  }
                   yield* Effect.logWarning("arcana.ml postflight revise", {
                     sessionID: ctx.sessionID,
                     messageID: ctx.assistantMessage.id,
@@ -931,7 +944,7 @@ export const layer = Layer.effect(
             }
             if (value.providerMetadata) {
               ctx.currentText.metadata = {
-                ...(ctx.currentText.metadata ?? {}),
+                ...(ctx.currentText.metadata),
                 ...value.providerMetadata,
               }
             }
@@ -1014,6 +1027,9 @@ export const layer = Layer.effect(
         ctx.toolcalls = {}
         ctx.assistantMessage.time.completed = Date.now()
         yield* session.updateMessage(ctx.assistantMessage)
+        // Safety net: ensure session transitions to idle on all exit paths.
+        // Runner.onIdle is the primary path; this in Ensuing guarantees cleanup.
+        yield* status.set(ctx.sessionID, { type: "idle" })
       })
 
       const halt = Effect.fn("SessionProcessor.halt")(function* (e: unknown) {

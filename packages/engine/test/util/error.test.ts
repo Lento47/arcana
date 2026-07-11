@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import { Schema } from "effect"
 import { MessageError } from "../../src/session/message-error"
 
 describe("util.error", () => {

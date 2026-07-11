@@ -1,7 +1,6 @@
 import { describe, expect } from "bun:test"
 import { DateTime, Effect, Layer, Option } from "effect"
 import { Catalog } from "@arcana/core/catalog"
-import { Credential } from "@arcana/core/credential"
 import { EventV2 } from "@arcana/core/event"
 import { Integration } from "@arcana/core/integration"
 import { Location } from "@arcana/core/location"

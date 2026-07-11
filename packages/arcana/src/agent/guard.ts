@@ -14,18 +14,42 @@ const SECRET_PATTERNS: Array<[string, RegExp]> = [
   ["GitHub", /github_pat_[a-zA-Z0-9_]{36,}/g],
   ["Slack", /xox[bp]-[a-zA-Z0-9-]{10,}/g],
   ["AWS", /AKIA[0-9A-Z]{16}/g],
-  ["Generic", /[a-zA-Z0-9+/]{40,}={0,2}/g],
-  ["Bearer", /bearer [a-zA-Z0-9._\-]{20,}/gi],
+  ["Generic", /[a-zA-Z0-9+/]{60,}={0,2}/g],
+  ["Bearer", /bearer [a-zA-Z0-9._-]{20,}/gi],
   ["Password", /(password|passwd|pwd)\s*[:=]\s*\S+/gi],
 ]
 
 const REDACTED = "`***REDACTED***`"
+const GENERIC_IDX = SECRET_PATTERNS.findIndex(([name]) => name === "Generic")
+
+/** Shannon entropy — low for predictable strings (hex SHAs ~3.0), high for random keys. */
+function entropy(s: string): number {
+  const freq = new Map<string, number>()
+  for (const ch of s) freq.set(ch, (freq.get(ch) ?? 0) + 1)
+  let h = 0
+  for (const count of freq.values()) {
+    const p = count / s.length
+    h -= p * Math.log2(p)
+  }
+  return h
+}
 
 /** Strip secrets from text before sending to external APIs or logging to LLM context. */
 export function redactSecrets(text: string): string {
   let result = text
-  for (const [, pattern] of SECRET_PATTERNS) {
-    result = result.replace(pattern, REDACTED)
+  for (let i = 0; i < SECRET_PATTERNS.length; i++) {
+    const [name, pattern] = SECRET_PATTERNS[i]!
+    if (i === GENERIC_IDX) {
+      // Generic pattern: only redact high-entropy matches to avoid
+      // corrupting git SHAs, JWT segments, and other non-secret hex strings.
+      result = result.replace(pattern, (match) => {
+        if (/^[0-9a-fA-F]+$/.test(match)) return match // pure hex → skip
+        if (entropy(match) <= 3.5) return match         // low entropy → skip
+        return REDACTED
+      })
+    } else {
+      result = result.replace(pattern, REDACTED)
+    }
   }
   return result
 }
@@ -66,7 +90,56 @@ const BLOCKED_COMMANDS = [
   /\bgit\s+push\s+--force\b.*\bmain\b/i,
 ]
 
+const DESTRUCTIVE_TARGETS = /^(\/|~|~\/\*|[A-Za-z]:\\)/
+
+/** Token-level rm/Remove-Item guard — catches separate flags and PowerShell. */
+function checkRmRf(cmd: string): string | null {
+  const tokens = cmd.trim().split(/\s+/)
+  const cmd0 = tokens[0]?.toLowerCase()
+  if (!cmd0) return null
+
+  if (cmd0 === "rm" || cmd0.endsWith("/rm") || cmd0.endsWith("\\rm")) {
+    let hasRecursive = false
+    let hasForce = false
+    let target = ""
+    for (let i = 1; i < tokens.length; i++) {
+      const t = tokens[i]!
+      if (t === "-r" || t === "-R" || t === "--recursive") { hasRecursive = true; continue }
+      if (t === "-f" || t === "--force") { hasForce = true; continue }
+      // Combined flags: -rf, -fr, -Rfv, etc.
+      if (/^-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*$/i.test(t)) return `Blocked dangerous command: rm -rf ${target || "(root)"}`
+      if (/^-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*$/i.test(t)) return `Blocked dangerous command: rm -rf ${target || "(root)"}`
+      if (!t.startsWith("-")) { target = t; break }
+    }
+    if (hasRecursive && hasForce && DESTRUCTIVE_TARGETS.test(target)) {
+      return `Blocked dangerous command: rm -rf ${target}`
+    }
+  }
+
+  // PowerShell: Remove-Item -Recurse -Force <destructive target>
+  if (cmd0 === "remove-item") {
+    let hasRecurse = false
+    let hasForce = false
+    let target = ""
+    for (let i = 1; i < tokens.length; i++) {
+      const t = tokens[i]!
+      if (t.toLowerCase() === "-recurse") { hasRecurse = true; continue }
+      if (t.toLowerCase() === "-force") { hasForce = true; continue }
+      if (!t.startsWith("-")) { target = t; break }
+    }
+    if (hasRecurse && hasForce && DESTRUCTIVE_TARGETS.test(target)) {
+      return `Blocked dangerous command: Remove-Item -Recurse -Force ${target}`
+    }
+  }
+
+  return null
+}
+
 export function checkDangerousCommand(cmd: string): string | null {
+  // Token-level rm/Remove-Item guard — catches separate flags and PowerShell
+  const rmRf = checkRmRf(cmd)
+  if (rmRf) return rmRf
+
   // Shell injection patterns — block metacharacters outside quoted strings
   if (/[;&|`$]/.test(cmd) && !/^["'].*["']$/.test(cmd.trim())) {
     return `Blocked: shell metacharacters detected in command`

@@ -371,7 +371,7 @@ export function extractAndMerge(
     const qDir = quarantineRunDir(projectRoot, runId)
     ensureDir(qDir)
 
-    for (const { entry, category } of allEntries) {
+    for (const { entry, category: _category } of allEntries) {
       const filepath = createWikiFileInDir(qDir, entry, sourceSession)
       result.wikiFilesCreated.push(filepath)
     }

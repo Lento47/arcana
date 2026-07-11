@@ -1,4 +1,3 @@
-import { FileSystem } from "@arcana/core/filesystem"
 import { NonNegativeInt } from "@arcana/core/schema"
 import { LSP } from "@/lsp/lsp"
 import { Schema } from "effect"

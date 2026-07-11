@@ -1,5 +1,6 @@
 import {
   InputRenderable,
+  type MouseEvent,
   RGBA,
   ScrollBoxRenderable,
   TextAttributes,
@@ -9,7 +10,7 @@ import {
 import type { Binding } from "@opentui/keymap"
 import { useTheme, selectedForeground } from "../context/theme"
 import { COPY, Glyph } from "../branding"
-import { DoubleBorder } from "./chrome"
+import { RoundBorder } from "./chrome"
 import { isDeepEqual } from "remeda"
 import { batch, createEffect, createMemo, createSignal, For, Show, type JSX, on } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -269,34 +270,18 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     const option = selected()
     if (option) props.onMove?.(option)
     if (!scroll) return
-    let remaining = store.selected
-    let index = 0
-    // Locate the row by position because a unique renderable ID cannot currently be ensured.
-    for (const [category, options] of grouped()) {
-      if (category) index++
-      if (remaining < options.length) {
-        index += remaining
-        break
-      }
-      index += options.length
-      remaining -= options.length
-    }
-    const target = scroll.getChildren()[index]
-    if (!target) return
-    const y = target.y - scroll.y
+    const id = `ds-opt-${store.selected}`
+    // Keep the selected row in view using the scrollbox's own child-tracking
+    // API instead of manual y-math, which drifted from the highlight.
     if (center) {
-      const centerOffset = Math.floor(scroll.height / 2)
-      scroll.scrollBy(y - centerOffset)
+      const child = scroll.getChildren().find((c) => c.id === id)
+      if (child) {
+        const y = child.y - scroll.y
+        const centerOffset = Math.floor(scroll.height / 2)
+        scroll.scrollBy(y - centerOffset)
+      }
     } else {
-      if (y >= scroll.height) {
-        scroll.scrollBy(y - scroll.height + 1)
-      }
-      if (y < 0) {
-        scroll.scrollBy(y)
-        if (isDeepEqual(flat()[0].value, selected()?.value)) {
-          scroll.scrollTo(0)
-        }
-      }
+      scroll.scrollChildIntoView(id)
     }
   }
 
@@ -481,6 +466,18 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     return typeof item.disabled === "function" ? item.disabled(selected()) : item.disabled
   }
 
+  function handleMouseScroll(event: MouseEvent) {
+    if (!scroll) return
+    const direction = event.scroll?.direction
+    if (!direction) return
+    event.stopPropagation()
+    const delta = Math.max(1, event.scroll?.delta ?? 1)
+    if (direction === "up") scroll.scrollBy(-delta)
+    else if (direction === "down") scroll.scrollBy(delta)
+    else if (direction === "left") scroll.scrollBy({ x: -delta, y: 0 })
+    else if (direction === "right") scroll.scrollBy({ x: delta, y: 0 })
+  }
+
   function isActionFocused(item: VisibleAction) {
     if (props.locked) return false
     if (!isActionItem(item)) return false
@@ -522,7 +519,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     <box
       flexGrow={1}
       border={["top", "bottom", "left", "right"]}
-      customBorderChars={DoubleBorder}
+      customBorderChars={RoundBorder}
       borderColor={theme.accent}
       backgroundColor={theme.background}
     >
@@ -543,7 +540,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
             </text>
           )}
           <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-            {Glyph.sigil}
+            [esc] close
           </text>
         </box>
       </box>
@@ -590,10 +587,11 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           <scrollbox
             paddingLeft={1}
             paddingRight={1}
-            scrollbarOptions={{ visible: false }}
+            scrollbarOptions={{ visible: true }}
             scrollAcceleration={scrollAcceleration()}
             ref={(r: ScrollBoxRenderable) => (scroll = r)}
             maxHeight={height()}
+            onMouseScroll={handleMouseScroll}
           >
             <For each={grouped()}>
               {([category, options], index) => (
@@ -616,8 +614,10 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                     {(option) => {
                       const active = createMemo(() => !props.locked && fastEqual(option.value, selected()?.value))
                       const current = createMemo(() => fastEqual(option.value, props.current))
+                      const optIndex = createMemo(() => flatIndexByOption().get(option) ?? -1)
                       return (
                         <box
+                          id={optIndex() >= 0 ? `ds-opt-${optIndex()}` : undefined}
                           flexDirection="column"
                           position="relative"
                           onMouseMove={() => {

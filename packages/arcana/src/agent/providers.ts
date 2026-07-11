@@ -7,6 +7,7 @@
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { fetchModelsDev, type ModelsDevProvider } from "./models-dev.js"
+import { currentDir } from "../util/path.js"
 
 export type ProviderProfile = {
   baseURL?: string   // only needed for unknown OpenAI-compatible providers
@@ -22,7 +23,7 @@ const ALIASES: Record<string, string> = {
   qwen: "alibaba",
 }
 
-const LOCAL_EXTRAS_PATH = join(import.meta.dir, "../..", "providers.opencode.json")
+const LOCAL_EXTRAS_PATH = join(currentDir(import.meta), "../..", "providers.arcana.json")
 let localExtrasCache: Record<string, ModelsDevProvider> | null = null
 
 async function loadLocalExtras(): Promise<Record<string, ModelsDevProvider>> {
@@ -39,7 +40,7 @@ export async function resolveProvider(provider: string): Promise<ProviderProfile
   const [all, localExtras] = await Promise.all([fetchModelsDev(), loadLocalExtras()])
   const md = all[alias] ?? localExtras[provider]
 
-  if (!md) throw new Error(`Unknown provider "${provider}". Check models.dev or providers.opencode.json.`)
+  if (!md) throw new Error(`Unknown provider "${provider}". Check models.dev or providers.arcana.json.`)
 
   const envKey = md.env?.[0]
   const defaultModel = md.models ? Object.keys(md.models)[0] : undefined
@@ -64,7 +65,9 @@ export async function autoDetectProvider(): Promise<{ provider?: string; model?:
     for (const [envKey, envVal] of Object.entries(process.env)) {
       if (!envKey.endsWith("_BASE_URL") || !envVal) continue
       const prefix = envKey.replace(/_BASE_URL$/i, "").toLowerCase()
-      if (id.toLowerCase().startsWith(prefix)) return makeResult(id, md)
+      // Exact match first (ANTHROPIC_BASE_URL → anthropic), then prefix
+      // match for aliased IDs (ANTHROPIC_BASE_URL → anthropic-beta).
+      if (id.toLowerCase() === prefix || id.toLowerCase().startsWith(prefix + "-")) return makeResult(id, md)
     }
   }
 

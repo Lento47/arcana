@@ -2399,11 +2399,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "agent.cycle",
-        title: "Agent cycle",
+        title: "Open agent picker",
         category: "Agent",
         hidden: true,
         run: () => {
-          local.agent.move(1)
+          dialog.replace(() => <DialogAgent />)
         },
       },
       {
@@ -2433,11 +2433,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "agent.cycle.reverse",
-        title: "Agent cycle reverse",
+        title: "Open agent picker",
         category: "Agent",
         hidden: true,
         run: () => {
-          local.agent.move(-1)
+          dialog.replace(() => <DialogAgent />)
         },
       },
       {

@@ -86,7 +86,7 @@ export const AmazonBedrockPlugin = PluginV2.define({
           process.env.AWS_BEARER_TOKEN_BEDROCK ??
           (typeof options.bearerToken === "string" ? options.bearerToken : undefined)
         if (bearerToken && !process.env.AWS_BEARER_TOKEN_BEDROCK) process.env.AWS_BEARER_TOKEN_BEDROCK = bearerToken
-        const containerCreds = Boolean(
+        const _containerCreds = Boolean(
           process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI || process.env.AWS_CONTAINER_CREDENTIALS_FULL_URI,
         )
 

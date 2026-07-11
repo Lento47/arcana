@@ -40,7 +40,7 @@ import { withTransientReadRetry } from "@/util/effect-http-client"
 const fileCache = new Map<string, { data: any; ts: number }>()
 const CACHE_TTL = 5000
 
-function cachedReadFileSync(path: string, encoding: BufferEncoding): string | null {
+function _cachedReadFileSync(path: string, encoding: BufferEncoding): string | null {
   const now = Date.now()
   const cached = fileCache.get(path)
   if (cached && (now - cached.ts) < CACHE_TTL) {
@@ -275,7 +275,10 @@ export const layer = Layer.effect(
       yield* Effect.promise(() => resolveLoadedPlugins(data, options.path))
       if (!data.$schema) {
         data.$schema = "https://arcana.ai/config.json"
-        const updated = text.replace(/^\s*\{/, '{\n  "$schema": "https://arcana.ai/config.json",')
+        // Strip BOM before regex — \s doesn't match ﻿, so a BOM-prefixed
+        // file would silently fail injection and leave the user's file unmodified.
+        const cleaned = text.replace(/^﻿/, "")
+        const updated = cleaned.replace(/^\s*\{/, '{\n  "$schema": "https://arcana.ai/config.json",')
         yield* fs.writeFileString(options.path, updated).pipe(Effect.catch(() => Effect.void))
       }
       return data
@@ -313,10 +316,13 @@ export const layer = Layer.effect(
 
       const legacy = path.join(Global.Path.config, "config")
       if (cachedExistsSync(legacy)) {
-        yield* Effect.promise(() =>
-          import(pathToFileURL(legacy).href, { with: { type: "toml" } })
-            .then(async (mod) => {
-              const { provider, model, ...rest } = mod.default
+        // TOML import assertions are Bun-specific; skip silently on other runtimes.
+        const isBun = typeof (globalThis as any).Bun !== "undefined"
+        if (isBun) {
+          yield* Effect.promise(() =>
+            import(pathToFileURL(legacy).href, { with: { type: "toml" } })
+              .then(async (mod) => {
+                const { provider, model, ...rest } = mod.default
               if (provider && model) result.model = `${provider}/${model}`
               result["$schema"] = "https://arcana.ai/config.json"
               result = mergeConfig(result, rest)
@@ -325,6 +331,7 @@ export const layer = Layer.effect(
             })
             .catch(() => {}),
         )
+        }
       }
 
       return result
@@ -369,7 +376,7 @@ export const layer = Layer.effect(
         let result: Info = {}
         const authEnv: Record<string, string> = {}
         const consoleManagedProviders = new Set<string>()
-        let activeOrgName: string | undefined
+        let _activeOrgName: string | undefined
 
         const pluginScopeForSource = Effect.fnUntraced(function* (source: string) {
           if (source.startsWith("http://") || source.startsWith("https://")) return "global"
@@ -489,26 +496,29 @@ export const layer = Layer.effect(
 
           yield* ensureGitignore(dir).pipe(Effect.orDie)
 
-          const dep = yield* npmSvc
-            .install(dir, {
-              add: [
-                {
-                  name: "@arcana/plugin",
-                  version: InstallationLocal ? undefined : InstallationVersion,
-                },
-              ],
-            })
-            .pipe(
-              Effect.exit,
-              Effect.tap((exit) =>
-                Exit.isFailure(exit)
-                  ? Effect.logWarning("background dependency install failed", { dir, error: String(exit.cause) })
-                  : Effect.void,
-              ),
-              Effect.asVoid,
-              Effect.forkDetach,
-            )
-          deps.push(dep)
+          // Skip npm install in dev — @arcana/plugin is a workspace package.
+          if (!InstallationLocal) {
+            const dep = yield* npmSvc
+              .install(dir, {
+                add: [
+                  {
+                    name: "@arcana/plugin",
+                    version: InstallationVersion,
+                  },
+                ],
+              })
+              .pipe(
+                Effect.exit,
+                Effect.tap((exit) =>
+                  Exit.isFailure(exit)
+                    ? Effect.logWarning("background dependency install failed", { dir, error: String(exit.cause) })
+                    : Effect.void,
+                ),
+                Effect.asVoid,
+                Effect.forkDetach,
+              )
+            deps.push(dep)
+          }
 
           result.command = mergeDeep(result.command ?? {}, yield* Effect.promise(() => ConfigCommand.load(dir)))
           result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.load(dir)))
@@ -645,7 +655,7 @@ export const layer = Layer.effect(
           deps,
           consoleState: {
             consoleManagedProviders: Array.from(consoleManagedProviders),
-            activeOrgName,
+            _activeOrgName,
             switchableOrgCount: 0,
           },
         }

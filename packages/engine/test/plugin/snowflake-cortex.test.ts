@@ -79,7 +79,7 @@ describe("plugin.snowflake-cortex", () => {
   })
 
   test("loader refreshes expired token with single-flight and persists refreshed oauth", async () => {
-    const { input, getAuth, setCalls } = makeInput()
+    const { input, getAuth: _getAuth, setCalls } = makeInput()
     let refreshCalls = 0
     const apiAuthHeaders: string[] = []
 
@@ -137,7 +137,7 @@ describe("plugin.snowflake-cortex", () => {
   })
 
   test("loader retries once after 401 by refreshing token", async () => {
-    const { input, getAuth, setCalls } = makeInput()
+    const { input, getAuth: _getAuth, setCalls } = makeInput()
     const hooks = await SnowflakeCortexAuthPlugin(input)
     const options = await hooks.auth!.loader!(
       async () =>

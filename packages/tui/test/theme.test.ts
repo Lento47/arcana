@@ -82,6 +82,20 @@ test("custom theme precedence follows directory order", async () => {
 
 const BRAND_THEMES: string[] = ["arcana", "bloodmoon", "coven", "crypt", "dragon", "lich", "wraith"]
 
+function linearChannel(value: number) {
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+}
+
+function relativeLuminance(color: { r: number; g: number; b: number }) {
+  return 0.2126 * linearChannel(color.r) + 0.7152 * linearChannel(color.g) + 0.0722 * linearChannel(color.b)
+}
+
+function contrastRatio(foreground: { r: number; g: number; b: number }, background: { r: number; g: number; b: number }) {
+  const lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background))
+  const darker = Math.min(relativeLuminance(foreground), relativeLuminance(background))
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
 test.each(BRAND_THEMES)("%s theme defines a brand-surface accent token", (name: string) => {
   const json = DEFAULT_THEMES[name]
   expect(json).toBeDefined()
@@ -109,4 +123,22 @@ test("brand themes all share the same accent token name (sigils stay theme-corre
     const json = DEFAULT_THEMES[name]!
     expect(json.theme.accent).toBeDefined()
   }
+})
+
+test.each(BRAND_THEMES)("%s theme keeps critical text readable in dark mode", (name: string) => {
+  const resolved = resolveTheme(structuredClone(DEFAULT_THEMES[name]!), "dark")
+  expect(contrastRatio(resolved.text, resolved.background)).toBeGreaterThanOrEqual(7)
+  expect(contrastRatio(resolved.textMuted, resolved.background)).toBeGreaterThanOrEqual(4.5)
+  expect(contrastRatio(resolved.spineContext, resolved.background)).toBeGreaterThanOrEqual(4.5)
+  expect(contrastRatio(resolved.diffLineNumber, resolved.background)).toBeGreaterThanOrEqual(3.5)
+  expect(contrastRatio(resolved.syntaxComment, resolved.background)).toBeGreaterThanOrEqual(3.5)
+})
+
+test.each(BRAND_THEMES)("%s theme keeps critical text readable in light mode", (name: string) => {
+  const resolved = resolveTheme(structuredClone(DEFAULT_THEMES[name]!), "light")
+  expect(contrastRatio(resolved.text, resolved.background)).toBeGreaterThanOrEqual(7)
+  expect(contrastRatio(resolved.textMuted, resolved.background)).toBeGreaterThanOrEqual(4.5)
+  expect(contrastRatio(resolved.spineContext, resolved.background)).toBeGreaterThanOrEqual(4.5)
+  expect(contrastRatio(resolved.diffLineNumber, resolved.background)).toBeGreaterThanOrEqual(3.5)
+  expect(contrastRatio(resolved.syntaxComment, resolved.background)).toBeGreaterThanOrEqual(3.5)
 })

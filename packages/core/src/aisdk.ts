@@ -69,7 +69,7 @@ function prepareOptions(model: ModelV2.Info, pkg: string) {
   const chunkTimeout = options.chunkTimeout
   delete options.chunkTimeout
   options.fetch = async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-    const opts = { ...(init ?? {}) }
+    const opts = { ...init }
     const signals = [
       opts.signal,
       typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined,

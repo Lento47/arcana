@@ -68,14 +68,31 @@ describe("user messages", () => {
     expect(result[0]!.id).toBe("u1:ask")
     expect(result[0]!.summary).toContain("Hello")
     expect(result[0]!.glyph).toBe("◆")
+    expect(result[0]!.body).toBeUndefined()
   })
 
-  test("user message truncated at 120 chars", () => {
+  test("multi-line user prompt keeps remainder as expanded body", () => {
+    const text = `Please inspect the auth flow.
+Do not change public behavior.
+Report test impact.`
+    const { messages, parts } = makeUserMessage("u3", text)
+    const result = messagesToSpineEntries({ messages, getParts: partsLookup(parts), assistantDuration: new Map() })
+
+    expect(result[0]!.summary).toBe("Please inspect the auth flow.")
+    expect(result[0]!.body).toBe("Do not change public behavior.\nReport test impact.")
+    expect(result[0]!.collapsible).toBe(true)
+    expect(result[0]!.expandedByDefault).toBe(true)
+    expect(result[0]!.source).toEqual({ messageID: "u3", partID: "u3-text-0", kind: "text" })
+  })
+
+  test("long single-line user message is not ellipsis-truncated", () => {
     const long = "x".repeat(200)
     const { messages, parts } = makeUserMessage("u2", long)
     const result = messagesToSpineEntries({ messages, getParts: partsLookup(parts), assistantDuration: new Map() })
 
-    expect(result[0]!.summary).toBe("x".repeat(120) + "…")
+    expect(result[0]!.summary).toBe(long)
+    expect(result[0]!.summary.endsWith("…")).toBe(false)
+    expect(result[0]!.body).toBeUndefined()
   })
 })
 
@@ -86,20 +103,41 @@ describe("assistant text becomes plan/ok correctly", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a1")
     const msg = msgs[0]!
     parts.push({
-      id: "p-text", sessionID: "sess-1", messageID: msg.id,
-      type: "text", text: "Let me check the file",
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msg.id,
+      type: "text",
+      text: "Let me check the file",
     } as Part)
     parts.push({
-      id: "p-tool", sessionID: "sess-1", messageID: msg.id,
-      type: "tool", callID: "c1", tool: "read",
-      state: { status: "completed", input: { filePath: "foo.rs" }, output: "fn main() {}", title: "read", metadata: {}, time: { start: 1000, end: 2000 } },
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msg.id,
+      type: "tool",
+      callID: "c1",
+      tool: "read",
+      state: {
+        status: "completed",
+        input: { filePath: "foo.rs" },
+        output: "fn main() {}",
+        title: "read",
+        metadata: {},
+        time: { start: 1000, end: 2000 },
+      },
     } as Part)
     parts.push({
-      id: "p-text2", sessionID: "sess-1", messageID: msg.id,
-      type: "text", text: "I found the issue",
+      id: "p-text2",
+      sessionID: "sess-1",
+      messageID: msg.id,
+      type: "text",
+      text: "I found the issue",
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
 
     expect(result).toHaveLength(3)
     expect(result[0]!.kind).toBe("plan")
@@ -112,89 +150,337 @@ describe("assistant text becomes plan/ok correctly", () => {
   test("only text without tools returns plan entry only (no ok)", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a2")
     parts.push({
-      id: "p-text", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "text", text: "Here is a summary",
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Here is a summary",
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
 
     expect(result).toHaveLength(1)
     expect(result[0]!.kind).toBe("plan")
   })
+  test("inline ?think text is separated from assistant response", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a2-inline-think", { completed: 2000 })
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "?thinkThe user wants the renderer fixed.\n\nResponse: The renderer now keeps reasoning separate.",
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    expect(result).toHaveLength(2)
+    expect(result[0]!.kind).toBe("think")
+    expect(result[0]!.body).toContain("renderer fixed")
+    expect(result[0]!.bodyLabel).toBe("reasoning")
+    expect(result[1]!.kind).toBe("plan")
+    expect(result[1]!.summary).toBe("The renderer now keeps reasoning separate.")
+    expect(result[1]!.summary).not.toContain("?think")
+  })
+
 
   test("trailing ok added when tool succeeds and no text after tool", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a3")
     parts.push({
-      id: "p-tool", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "tool", callID: "c1", tool: "bash",
-      state: { status: "completed", input: { command: "echo hi" }, output: "hi", title: "bash", metadata: {}, time: { start: 1000, end: 1500 } },
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "echo hi" },
+        output: "hi",
+        title: "bash",
+        metadata: {},
+        time: { start: 1000, end: 1500 },
+      },
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
 
     expect(result).toHaveLength(2)
     expect(result[0]!.kind).toBe("run")
     expect(result[1]!.kind).toBe("ok")
     expect(result[1]!.id).toContain("ok")
-    expect(result[1]!.summary).toBe("")
+    expect(result[1]!.summary).toBe("complete")
   })
 
   test("no trailing ok when no tools existed", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a4")
     parts.push({
-      id: "p-text", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "text", text: "Just some text",
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Just some text",
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
 
     const okEntries = result.filter((e) => e.kind === "ok")
     expect(okEntries).toHaveLength(0)
+  })
+  test("assistant text keeps multi-line remainder expanded (never ellipsis-cuts prose)", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a5")
+    const full = `Plan:
+1. Inspect the auth path
+2. Keep behavior stable
+3. Verify tests`
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: full,
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.kind).toBe("plan")
+    expect(result[0]!.label).toBe("assistant")
+    expect(result[0]!.summary).toBe("Plan:")
+    expect(result[0]!.body).toBe("1. Inspect the auth path\n2. Keep behavior stable\n3. Verify tests")
+    expect(result[0]!.expandedByDefault).toBe(true)
+  })
+
+  test("assistant text label reflects the selected primary agent", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a5-agent")
+    ;(msgs[0] as Message).agent = "reviewer"
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Reviewing the diff for regressions.",
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.kind).toBe("plan")
+    expect(result[0]!.label).toBe("reviewer")
+    expect(result[0]!.summary).toBe("Reviewing the diff for regressions.")
+  })
+  test("long single-line assistant reply is fully visible without ellipsis", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a6")
+    const long =
+      "Yes — I can read PDFs directly with my Read tool, no pdf2text needed. " +
+      "I didn't see any .pdf files in the project though. What did you want me to check next?"
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: long,
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.summary).toBe(long)
+    expect(result[0]!.summary.includes("…")).toBe(false)
+    expect(result[0]!.body).toBeUndefined()
   })
 })
 
 // ---------- visual check 3: inspect ----------
 
 describe("inspect entries", () => {
-  test.each(["read", "glob", "grep", "search", "web_search", "web_fetch"])(
-    "%s tool produces inspect kind",
-    (tool) => {
-      const { messages: msgs, parts } = makeAssistantMessage("i1")
-      parts.push({
-        id: `p-${tool}`, sessionID: "sess-1", messageID: msgs[0]!.id,
-        type: "tool", callID: "c1", tool,
-        state: { status: "completed", input: { [tool === "read" ? "filePath" : "pattern"]: "test.txt" }, output: "content", title: tool, metadata: {}, time: { start: 1000, end: 1500 } },
-      } as Part)
+  test.each(["read", "glob", "grep", "search", "web_search", "web_fetch"])("%s tool produces inspect kind", (tool) => {
+    const { messages: msgs, parts } = makeAssistantMessage("i1")
+    parts.push({
+      id: `p-${tool}`,
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool,
+      state: {
+        status: "completed",
+        input: { [tool === "read" ? "filePath" : "pattern"]: "test.txt" },
+        output: "content",
+        title: tool,
+        metadata: {},
+        time: { start: 1000, end: 1500 },
+      },
+    } as Part)
 
-      const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
-      const entry = result.find((e) => e.id.endsWith(`:inspect`))
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    const entry = result.find((e) => e.id.endsWith(`:inspect`))
 
-      expect(entry).toBeDefined()
-      expect(entry!.kind).toBe("inspect")
-      expect(entry!.glyph).toBe("◈")
-      expect(entry!.receipt?.status).toBe("ok")
-    },
-  )
+    expect(entry).toBeDefined()
+    expect(entry!.kind).toBe("inspect")
+    expect(entry!.glyph).toBe("◈")
+    expect(entry!.receipt?.status).toBe("ok")
+  })
 })
 
-// ---------- visual check 4: think / hidden ----------
+// ---------- visual check 4: thinking / collapsible ----------
 
-describe("hidden think entries", () => {
-  test("reasoning part produces think entry with hidden: true", () => {
+describe("collapsible think entries", () => {
+  test("reasoning part produces visible collapsed think entry", () => {
     const { messages: msgs, parts } = makeAssistantMessage("t1")
     parts.push({
-      id: "p-reason", sessionID: "sess-1", messageID: msgs[0]!.id,
+      id: "p-reason",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
       type: "reasoning",
-      text: "I need to think step by step...",
+      text: "I need to think step by step...\nMore detail here.",
       time: { start: 100 },
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
 
     expect(result).toHaveLength(1)
     expect(result[0]!.kind).toBe("think")
-    expect(result[0]!.hidden).toBe(true)
+    expect(result[0]!.hidden).toBe(false)
+    expect(result[0]!.collapsible).toBe(true)
+    // Incomplete assistant → auto-expand so thinking is visible while streaming.
+    expect(result[0]!.expandedByDefault).toBe(true)
+    expect(result[0]!.label).toBe("")
+    // Summary is now a VerbPool slug (seeded on part ID) — not the raw first line.
+    expect(result[0]!.summary).toBeTruthy()
+    expect(result[0]!.summary.length).toBeLessThan(20)
+    // Full reasoning text is always in body for expand/collapse.
+    expect(result[0]!.body).toContain("I need to think step by step...")
+    expect(result[0]!.body).toContain("More detail here")
     expect(result[0]!.id).toContain(":think")
+  })
+
+  test("expandThinking option expands think entries by default", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("t2", { completed: 2000 })
+    parts.push({
+      id: "p-reason",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "reasoning",
+      text: "**Planning**\n\nStep one then step two.",
+      time: { start: 100 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      expandThinking: true,
+    })
+
+    expect(result[0]!.kind).toBe("think")
+    expect(result[0]!.summary).toBe("Planning")
+    expect(result[0]!.body).toContain("Step one")
+    expect(result[0]!.expandedByDefault).toBe(true)
+  })
+
+  test("reasoning summary keeps the operational idea, not model meta-language", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("t2b", { completed: 2000 })
+    parts.push({
+      id: "p-reason",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "reasoning",
+      text: "The user wants a better banana ASCII art in banana.html.\nThey want the full shape preserved.",
+      time: { start: 100 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    expect(result[0]!.kind).toBe("think")
+    // Summary uses VerbPool slug seeded on part ID — not the raw first line.
+    expect(result[0]!.summary).toBeTruthy()
+    expect(result[0]!.summary.length).toBeLessThan(20)
+    expect(result[0]!.body).toContain("The user wants a better banana ASCII art")
+  })
+  test("streaming assistant without visible output does not create fake spine rows", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("t3")
+    // incomplete assistant with no parts yet
+    ;(msgs[0] as { time: { created: number; completed?: number } }).time = { created: 1000 }
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result).toHaveLength(0)
+  })
+
+  test("empty reasoning chunks render placeholder think entries so the spine shows thinking activity immediately", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("t4")
+    parts.push({
+      id: "p-empty-reason-1",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "reasoning",
+      text: "",
+      time: { start: 100 },
+    } as Part)
+    parts.push({
+      id: "p-empty-reason-2",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "reasoning",
+      text: "   ",
+      time: { start: 120 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    // Empty reasoning parts now create placeholder think entries so the
+    // spine shows activity immediately during reasoning-start, before
+    // the first delta arrives.
+    expect(result.length).toBeGreaterThanOrEqual(1)
+    expect(result.every((e) => e.kind === "think")).toBe(true)
+    expect(result.every((e) => e.expandedByDefault)).toBe(false)
   })
 })
 
@@ -204,17 +490,34 @@ describe("failed tools become fail entries", () => {
   test("tool with error state gets receipt status fail", () => {
     const { messages: msgs, parts } = makeAssistantMessage("f1")
     parts.push({
-      id: "p-fail", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "tool", callID: "c1", tool: "bash",
-      state: { status: "error", input: { command: "cargo build" }, error: "error[E0308] mismatched types", metadata: {}, time: { start: 1000, end: 1500 } },
+      id: "p-fail",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "bash",
+      state: {
+        status: "error",
+        input: { command: "cargo build" },
+        error: "error[E0308] mismatched types",
+        metadata: {},
+        time: { start: 1000, end: 1500 },
+      },
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
 
     expect(result).toHaveLength(1)
-    expect(result[0]!.kind).toBe("run")
+    expect(result[0]!.kind).toBe("fail")
+    expect(result[0]!.label).toBe("fail")
+    expect(result[0]!.glyph).toBe("×")
+    expect(result[0]!.summary).toContain("error[E0308]")
     expect(result[0]!.receipt?.status).toBe("fail")
-    expect(result[0]!.receipt?.command).toContain("error[E0308]")
+    expect(result[0]!.receipt?.command).toContain("cargo build")
   })
 })
 
@@ -224,16 +527,33 @@ describe("no trailing ok after failed tools", () => {
   test("trailing ok suppressed when tool failed", () => {
     const { messages: msgs, parts } = makeAssistantMessage("nf1", { finish: "stop" })
     parts.push({
-      id: "p-fail", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "tool", callID: "c1", tool: "bash",
-      state: { status: "error", input: { command: "cargo build" }, error: "error[E0308]", metadata: {}, time: { start: 1000, end: 1500 } },
+      id: "p-fail",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "bash",
+      state: {
+        status: "error",
+        input: { command: "cargo build" },
+        error: "error[E0308]",
+        metadata: {},
+        time: { start: 1000, end: 1500 },
+      },
     } as Part)
     parts.push({
-      id: "p-text", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "text", text: "There was an error",
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "There was an error",
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
 
     const okEntries = result.filter((e) => e.kind === "ok")
     expect(okEntries).toHaveLength(1)
@@ -245,12 +565,27 @@ describe("no trailing ok after failed tools", () => {
   test("trailing ok suppressed when finish is error", () => {
     const { messages: msgs, parts } = makeAssistantMessage("nf2", { finish: "error" })
     parts.push({
-      id: "p-tool", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "tool", callID: "c1", tool: "read",
-      state: { status: "completed", input: { filePath: "test.txt" }, output: "content", title: "read", metadata: {}, time: { start: 1000, end: 1500 } },
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "read",
+      state: {
+        status: "completed",
+        input: { filePath: "test.txt" },
+        output: "content",
+        title: "read",
+        metadata: {},
+        time: { start: 1000, end: 1500 },
+      },
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
 
     const okEntries = result.filter((e) => e.kind === "ok")
     expect(okEntries).toHaveLength(0)
@@ -259,12 +594,27 @@ describe("no trailing ok after failed tools", () => {
   test("trailing ok suppressed when finish is content-filter", () => {
     const { messages: msgs, parts } = makeAssistantMessage("nf3", { finish: "content-filter" })
     parts.push({
-      id: "p-tool", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "tool", callID: "c1", tool: "bash",
-      state: { status: "completed", input: { command: "echo hi" }, output: "hi", title: "bash", metadata: {}, time: { start: 1000, end: 1500 } },
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "echo hi" },
+        output: "hi",
+        title: "bash",
+        metadata: {},
+        time: { start: 1000, end: 1500 },
+      },
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
 
     const okEntries = result.filter((e) => e.kind === "ok")
     expect(okEntries).toHaveLength(0)
@@ -286,23 +636,46 @@ describe("edge cases", () => {
   test("unknown tool name safely degrades to inspect", () => {
     const { messages: msgs, parts } = makeAssistantMessage("e1")
     parts.push({
-      id: "p-tool", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "tool", callID: "c1", tool: "custom_fetch_data",
-      state: { status: "completed", input: { url: "https://example.com" }, output: "data", title: "fetch", metadata: {}, time: { start: 1000, end: 1500 } },
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "custom_fetch_data",
+      state: {
+        status: "completed",
+        input: { url: "https://example.com" },
+        output: "data",
+        title: "fetch",
+        metadata: {},
+        time: { start: 1000, end: 1500 },
+      },
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
     expect(result[0]!.kind).toBe("inspect")
   })
 
   test("ignored text part does not create a plan entry", () => {
     const { messages: msgs, parts } = makeAssistantMessage("e2")
     parts.push({
-      id: "p-ignored", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "text", text: "internal thought", ignored: true,
+      id: "p-ignored",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "internal thought",
+      ignored: true,
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
 
     const planEntries = result.filter((e) => e.kind === "plan")
     expect(planEntries).toHaveLength(0)
@@ -311,81 +684,314 @@ describe("edge cases", () => {
   test("synthetic text part does not create a plan entry", () => {
     const { messages: msgs, parts } = makeAssistantMessage("e3")
     parts.push({
-      id: "p-synth", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "text", text: "Tool completed successfully", synthetic: true,
+      id: "p-synth",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Tool completed successfully",
+      synthetic: true,
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
 
     const planEntries = result.filter((e) => e.kind === "plan")
     expect(planEntries).toHaveLength(0)
   })
 
   test("empty text part does not create a plan entry", () => {
-    const { messages: msgs, parts } = makeAssistantMessage("e4")
+    const { messages: msgs, parts } = makeAssistantMessage("e4", { completed: 2000 })
     parts.push({
-      id: "p-empty", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "text", text: "   ",
+      id: "p-empty",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "   ",
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
     expect(result).toHaveLength(0)
   })
 
   test("patch part produces patch entry with file info", () => {
     const { messages: msgs, parts } = makeAssistantMessage("e5")
     parts.push({
-      id: "p-patch", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "patch", hash: "abc123", files: ["src/main.rs", "src/lib.rs"],
+      id: "p-patch",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "patch",
+      hash: "abc123",
+      files: ["src/main.rs", "src/lib.rs"],
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
     expect(result[0]!.kind).toBe("patch")
-    expect(result[0]!.summary).toContain("src/main.rs")
+    expect(result[0]!.summary).toBe("files changed 2")
+    expect(result[0]!.receipt?.files).toHaveLength(2)
     expect(result[0]!.diff?.files).toContain("src/main.rs")
+  })
+
+  test("patch tool output with unified diff renders as a diff artifact", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("e5b")
+    parts.push({
+      id: "p-tool-patch",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "edit",
+      state: {
+        status: "completed",
+        input: { filePath: "src/main.rs" },
+        output: "Edit applied successfully",
+        title: "edit",
+        metadata: {
+          diff: "--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-old\n+new",
+        },
+        time: { start: 1000, end: 1500 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("patch")
+    expect(result[0]!.summary).toBe("src/main.rs")
+    expect(result[0]!.diff?.files).toBe("src/main.rs")
+    expect(result[0]!.diff?.body).toContain("@@")
+    expect(result[0]!.collapsible).toBe(true)
+    expect(result[0]!.expandedByDefault).toBe(true)
+    expect(result[0]!.body).toBeUndefined()
+    expect(result[0]!.source).toEqual({ messageID: "e5b", partID: "p-tool-patch", kind: "tool" })
+  })
+
+  test("write tool preserves the actual written content body", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("e5c")
+    const content = `export const x = 1
+
+  keep indentation
+`
+    parts.push({
+      id: "p-tool-write",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "write",
+      state: {
+        status: "completed",
+        input: { filePath: "src/file.ts", content },
+        output: "Wrote file successfully.",
+        title: "write",
+        metadata: {},
+        time: { start: 1000, end: 1500 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("patch")
+    expect(result[0]!.summary).toBe("src/file.ts")
+    expect(result[0]!.body).toBe(content)
+    expect(result[0]!.bodyLabel).toBe("written content")
   })
 
   test("subtask part produces plan entry", () => {
     const { messages: msgs, parts } = makeAssistantMessage("e6")
     parts.push({
-      id: "p-subtask", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "subtask", prompt: "fix the bug", description: "Debug the issue",
+      id: "p-subtask",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "subtask",
+      prompt: "fix the bug",
+      description: "Debug the issue",
       agent: "debugger",
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
-    expect(result[0]!.kind).toBe("plan")
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("agent")
     expect(result[0]!.summary).toContain("Debug the issue")
   })
 
   test("agent part produces plan entry", () => {
     const { messages: msgs, parts } = makeAssistantMessage("e7")
     parts.push({
-      id: "p-agent", sessionID: "sess-1", messageID: msgs[0]!.id,
-      type: "agent", name: "reviewer",
+      id: "p-agent",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "agent",
+      name: "reviewer",
     } as Part)
 
-    const result = messagesToSpineEntries({ messages: msgs, getParts: partsLookup(parts), assistantDuration: new Map() })
-    expect(result[0]!.kind).toBe("plan")
-    expect(result[0]!.summary).toBe("agent: reviewer")
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("agent")
+    expect(result[0]!.summary).toBe("subagent: reviewer")
   })
 
   test("indexes start at 1 and are sequential", () => {
     const { messages: msgs1, parts: parts1 } = makeUserMessage("idx1", "Hello")
     const { messages: msgs2, parts: parts2 } = makeAssistantMessage("idx2")
     parts2.push({
-      id: "p-tool", sessionID: "sess-1", messageID: msgs2[0]!.id,
-      type: "tool", callID: "c1", tool: "bash",
-      state: { status: "completed", input: { command: "ls" }, output: "src", title: "bash", metadata: {}, time: { start: 1000, end: 1500 } },
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs2[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "ls" },
+        output: "src",
+        title: "bash",
+        metadata: {},
+        time: { start: 1000, end: 1500 },
+      },
     } as Part)
 
     const allParts = [...parts1, ...parts2]
     const allMsgs: Message[] = [...msgs1, ...msgs2]
-    const result = messagesToSpineEntries({ messages: allMsgs, getParts: partsLookup(allParts), assistantDuration: new Map() })
+    const result = messagesToSpineEntries({
+      messages: allMsgs,
+      getParts: partsLookup(allParts),
+      assistantDuration: new Map(),
+    })
 
     expect(result).toHaveLength(3) // ask + run + ok
     expect(result[0]!.index).toBe(1)
     expect(result[1]!.index).toBe(2)
     expect(result[2]!.index).toBe(3)
+  })
+
+  test("multiple assistant text parts before tools merge into one plan body", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("merge1")
+    parts.push({
+      id: "p-text-a",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "First thought.",
+    } as Part)
+    parts.push({
+      id: "p-text-b",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Second thought.",
+    } as Part)
+    parts.push({
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "read",
+      state: {
+        status: "completed",
+        input: { filePath: "a.ts" },
+        output: "x",
+        title: "read",
+        metadata: {},
+        time: { start: 1000, end: 1500 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    const plan = result.find((e) => e.kind === "plan")
+    expect(plan).toBeDefined()
+    expect(plan!.summary).toBe("First thought.")
+    // Parts are joined with a blank line; remainder is the expanded body.
+    expect(plan!.body).toContain("Second thought.")
+    expect(plan!.summary.includes("…")).toBe(false)
+  })
+
+  test("tool elapsed uses +prefix and user ask has actor you", () => {
+    const { messages: userMsgs, parts: userParts } = makeUserMessage("u-elapsed", "hi")
+    const { messages: asstMsgs, parts: asstParts } = makeAssistantMessage("a-elapsed")
+    asstParts.push({
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: asstMsgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "echo hi" },
+        output: "hi",
+        title: "bash",
+        metadata: {},
+        time: { start: 1000, end: 2500 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: [...userMsgs, ...asstMsgs],
+      getParts: partsLookup([...userParts, ...asstParts]),
+      assistantDuration: new Map(),
+    })
+
+    expect(result[0]!.actor).toBe("you")
+    expect(result[0]!.kind).toBe("ask")
+    const run = result.find((e) => e.kind === "run")
+    expect(run!.elapsed).toBe("+1.5s")
+  })
+
+  test("bash test output is parsed into receipt stats", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("stats1")
+    parts.push({
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "cargo test" },
+        output: "test result: ok. 12 passed; 0 failed; 1 ignored; finished in 2.40s",
+        title: "bash",
+        metadata: {},
+        time: { start: 1000, end: 3400 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    const run = result.find((e) => e.kind === "run")
+    expect(run!.receipt?.stats?.passed).toBe(12)
+    expect(run!.receipt?.stats?.failed).toBe(0)
+    expect(run!.receipt?.stats?.ignored).toBe(1)
+    expect(run!.receipt?.stats?.duration).toBe("2.40s")
   })
 })

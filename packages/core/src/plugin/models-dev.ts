@@ -45,7 +45,7 @@ function variants(model: ModelsDev.Model, packageName?: string) {
     const request = ModelRequest.normalizeAiSdkOptions(packageName, item.provider?.body ?? {})
     return {
       id: ModelV2.VariantID.make(id),
-      headers: { ...(item.provider?.headers ?? {}) },
+      headers: { ...item.provider?.headers },
       ...request,
     }
   })
@@ -58,7 +58,7 @@ export const ModelsDevPlugin = PluginV2.define({
     const integrations = yield* Integration.Service
     const modelsDev = yield* ModelsDev.Service
     const events = yield* EventV2.Service
-    const scope = yield* Scope.Scope
+    const _scope = yield* Scope.Scope
     const transform = yield* catalog.transform()
     const integrationTransform = yield* integrations.transform()
     const refresh = Effect.fn("ModelsDevPlugin.refresh")(function* () {

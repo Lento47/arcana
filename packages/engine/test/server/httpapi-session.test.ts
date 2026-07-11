@@ -23,7 +23,6 @@ import * as HttpSessionError from "../../src/server/routes/instance/httpapi/hand
 import { SessionPaths } from "../../src/server/routes/instance/httpapi/groups/session"
 import { Session } from "@/session/session"
 import { MessageID, PartID, SessionID, type SessionID as SessionIDType } from "../../src/session/schema"
-import { MessageV2 } from "../../src/session/message-v2"
 import { Database } from "@arcana/core/database/database"
 import { SessionInputTable, SessionMessageTable, SessionTable } from "@arcana/core/session/sql"
 import { SessionMessage } from "@arcana/core/session/message"

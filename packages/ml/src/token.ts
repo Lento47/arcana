@@ -68,7 +68,7 @@ function looksStructured(text: string): boolean {
   const lineCount = text.split("\n").filter(Boolean).length
   if (lineCount < 2) return false
   const structuredMarkers =
-    (/^\s*[\{\[]/.test(text) && /[\}\]]/.test(text)) ||
+    (/^\s*[{[]/.test(text) && /[}\]]/.test(text)) ||
     /^\s*\w+\s*[|:]/.test(text) ||
     /^\s*at\s+/.test(text) ||
     /^\s*\d{4}-\d{2}-\d{2}T/.test(text)

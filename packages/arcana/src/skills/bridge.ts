@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { homedir } from "node:os"
 import { getArcanaHome } from "../config.js"
+import { currentDir } from "../util/path.js"
 
 let cachedPath: string | null = null
 
@@ -11,7 +12,7 @@ let cachedPath: string | null = null
  * the opencode TUI. It carries two things:
  *
  *   1. `provider` extras (nous-portal, mimo — not on models.dev) from the
- *      committed `providers.opencode.json` (single source of truth; also read by
+ *      committed `providers.arcana.json` (single source of truth; also read by
  *      `arcana run`'s `loadLocalExtras`).
  *   2. `skills.paths` — arcana's canonical skills dirs, ABSOLUTE. opencode's
  *      `ConfigSkillPlugin` resolves relative paths against the user's cwd, so an
@@ -35,12 +36,12 @@ export async function generateBridgeConfig(): Promise<string> {
   // arcana canonical skills dirs — mirror arcana `run`'s SkillRegistry defaults.
   // Absolute; existing dirs only (skip ~/.arcana/skills if the user hasn't made one).
   const skillsDirs = [
-    join(import.meta.dir, "..", "..", "..", "..", "skills"), // repo skills/ (arcana canonical store)
+    join(currentDir(import.meta), "..", "..", "..", "..", "skills"), // repo skills/ (arcana canonical store)
     join(home, "skills"), // ~/.arcana/skills (user-added)
   ].filter((d) => existsSync(d))
 
   // Provider extras from the committed file (nous-portal, mimo).
-  const providersPath = join(import.meta.dir, "..", "..", "providers.opencode.json")
+  const providersPath = join(currentDir(import.meta), "..", "..", "providers.arcana.json")
   let provider: Record<string, unknown> = {}
   try {
     const raw = JSON.parse(await readFile(providersPath, "utf8")) as {
@@ -64,7 +65,7 @@ export async function generateBridgeConfig(): Promise<string> {
 
   const cacheDir = join(home, "cache")
   await mkdir(cacheDir, { recursive: true })
-  const configPath = join(cacheDir, "opencode-config.json")
+  const configPath = join(cacheDir, "bridge-config.json")
   await writeFile(configPath, JSON.stringify(config, null, 2), "utf8")
 
   // Ensure models.dev cache exists. Keep the warmer short so startup is never held hostage by a slow network.

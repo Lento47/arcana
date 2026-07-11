@@ -140,6 +140,9 @@ export const {
     const fullSyncedSessions = new Set<string>()
     const syncingSessions = new Map<string, Promise<void>>()
     const hydratingSessions = new Map<string, { messages: Set<string>; parts: Set<string> }>()
+    const olderCursors = new Map<string, string | undefined>()
+    const loadingOlderSessions = new Set<string>()
+    const exhaustedOlderSessions = new Set<string>()
     const touchMessage = (sessionID: string, messageID: string) => {
       hydratingSessions.get(sessionID)?.messages.add(messageID)
     }
@@ -443,22 +446,23 @@ export const {
       const fatal = input.fatal ?? true
       const workspace = project.workspace.current()
       const projectPromise = project.sync()
-      const sessionListPromise = projectPromise.then(() => listSessions())
 
-      // blocking - include session.list when continuing a session
+      // Fire session list in parallel with project sync — before project.sync
+      // the path filter falls back to { scope: "project" }, which is functionally
+      // correct (just broader). This saves ~1 RTT of sequential wait on bootstrap.
+      const sessionListPromise = listSessions()
+
+      // blocking — only the essentials needed before first paint.
+      // agents and config are deferred to startupTasks (non-blocking before "complete").
       const providersPromise = sdk.client.config.providers({ workspace }, { throwOnError: true })
       const providerListPromise = sdk.client.provider.list({ workspace }, { throwOnError: true })
       const consoleStatePromise = sdk.client.experimental.console
         .get({ workspace }, { throwOnError: true })
         .then((x) => x.data)
         .catch(() => emptyConsoleState)
-      const agentsPromise = sdk.client.app.agents({ workspace }, { throwOnError: true })
-      const configPromise = sdk.client.config.get({ workspace }, { throwOnError: true })
       await Promise.all([
         providersPromise,
         providerListPromise,
-        agentsPromise,
-        configPromise,
         projectPromise,
         ...(args.continue ? [sessionListPromise] : []),
       ])
@@ -466,32 +470,24 @@ export const {
           const providersResponse = providersPromise.then((x) => x.data!)
           const providerListResponse = providerListPromise.then((x) => x.data!)
           const consoleStateResponse = consoleStatePromise
-          const agentsResponse = agentsPromise.then((x) => x.data ?? [])
-          const configResponse = configPromise.then((x) => x.data!)
           const sessionListResponse = args.continue ? sessionListPromise : undefined
 
           return Promise.all([
             providersResponse,
             providerListResponse,
             consoleStateResponse,
-            agentsResponse,
-            configResponse,
             ...(sessionListResponse ? [sessionListResponse] : []),
           ]).then((responses) => {
             const providers = responses[0]
             const providerList = responses[1]
             const consoleState = responses[2]
-            const agents = responses[3]
-            const config = responses[4]
-            const sessions = responses[5]
+            const sessions = responses[3]
 
             batch(() => {
               setStore("provider", reconcile(providers.providers))
               setStore("provider_default", reconcile(providers.default))
               setStore("provider_next", reconcile(providerList))
               setStore("console_state", reconcile(consoleState))
-              setStore("agent", reconcile(agents))
-              setStore("config", reconcile(config))
               if (sessions !== undefined) setStore("session", reconcile(sessions))
             })
           })
@@ -504,6 +500,8 @@ export const {
           const startupTasks = [
             ...(args.continue ? [] : [sessionListPromise.then((sessions) => setStore("session", reconcile(sessions)))]),
             consoleStatePromise.then((consoleState) => setStore("console_state", reconcile(consoleState))),
+            sdk.client.app.agents({ workspace }).then((x) => setStore("agent", reconcile(x.data ?? []))),
+            sdk.client.config.get({ workspace }).then((x) => setStore("config", reconcile(x.data!))),
             sdk.client.command.list({ workspace }).then((x) => setStore("command", reconcile(x.data ?? []))),
             sdk.client.session.status({ workspace }).then((x) => {
               setStore("session_status", reconcile(x.data ?? {}))
@@ -590,10 +588,16 @@ export const {
           const task = (async () => {
             const [session, messages, todo, diff] = await Promise.all([
               sdk.client.session.get({ sessionID }, { throwOnError: true }),
-              sdk.client.session.messages({ sessionID, limit: 100 }),
+              sdk.client.session.messages({ sessionID, limit: 25 }),
               sdk.client.session.todo({ sessionID }),
               sdk.client.session.diff({ sessionID }),
             ])
+
+            // Store cursor for lazy-loading older messages
+            const responseData = (messages as any).data?.items ?? (messages as any).data ?? []
+            const oldest = responseData[responseData.length - 1]
+            olderCursors.set(sessionID, oldest?.info?.id ?? undefined)
+
             setStore(
               produce((draft) => {
                 const match = search(draft.session, sessionID, (s) => s.id)
@@ -601,26 +605,26 @@ export const {
                 if (!match.found) draft.session.splice(match.index, 0, session.data!)
                 draft.todo[sessionID] = todo.data ?? []
                 const currentMessages = draft.message[sessionID] ?? []
-                const infos = (messages.data ?? []).flatMap((message) => {
+                const infos = responseData.flatMap((message: any) => {
                   if (!tracker.messages.has(message.info.id)) return [message.info]
                   const current = currentMessages.find((item) => item.id === message.info.id)
                   return current ? [current] : []
                 })
                 infos.push(
                   ...currentMessages.filter(
-                    (message) => tracker.messages.has(message.id) && !infos.some((item) => item.id === message.id),
+                    (message: any) => tracker.messages.has(message.id) && !infos.some((item: any) => item.id === message.id),
                   ),
                 )
                 const removed = infos.slice(0, -100)
-                const visible = infos.slice(-100)
-                const visibleIDs = new Set(visible.map((message) => message.id))
-                for (const message of messages.data ?? []) {
+                const visible: any[] = infos.slice(-100)
+                const visibleIDs = new Set(visible.map((message: any) => message.id))
+                for (const message of responseData) {
                   if (!visibleIDs.has(message.info.id)) {
                     delete draft.part[message.info.id]
                     continue
                   }
                   const currentParts = draft.part[message.info.id] ?? []
-                  const parts = message.parts.flatMap((part) => {
+                  const parts = message.parts.flatMap((part: any) => {
                     const current = currentParts.find((item) => item.id === part.id)
                     if (tracker.parts.has(part.id)) return current ? [current] : []
                     if (
@@ -636,7 +640,7 @@ export const {
                   })
                   parts.push(
                     ...currentParts.filter(
-                      (part) => tracker.parts.has(part.id) && !parts.some((item) => item.id === part.id),
+                      (part: any) => tracker.parts.has(part.id) && !parts.some((item: any) => item.id === part.id),
                     ),
                   )
                   draft.part[message.info.id] = parts
@@ -653,6 +657,71 @@ export const {
           })
           syncingSessions.set(sessionID, task)
           return task
+        },
+        async loadOlder(sessionID: string) {
+          const messages = store.message[sessionID]
+          if (!messages || messages.length === 0) return false
+
+          // No more pages to load
+          if (exhaustedOlderSessions.has(sessionID)) return false
+
+          // Get the cursor for pagination — the oldest message ID
+          const cursor = olderCursors.get(sessionID)
+          if (cursor === undefined) {
+            exhaustedOlderSessions.add(sessionID)
+            return false
+          }
+
+          // Prevent concurrent loads
+          if (loadingOlderSessions.has(sessionID)) return false
+          loadingOlderSessions.add(sessionID)
+
+          const count = await sdk.client.session
+            .messages({ sessionID, limit: 25, before: cursor }, { throwOnError: true })
+            .then((res) => {
+              const data: any[] = (res as any).data ?? []
+              if (data.length === 0) {
+                exhaustedOlderSessions.add(sessionID)
+                return 0
+              }
+
+              // Update cursor: oldest msg ID from this page becomes the new cursor
+              const oldest = data[data.length - 1]
+              olderCursors.set(sessionID, oldest?.info?.id ?? undefined)
+
+              setStore(
+                produce((draft) => {
+                  const existing = draft.message[sessionID] ?? []
+                  const existingIDs = new Set(existing.map((m) => m.id))
+
+                  // Only prepend messages we don't already have
+                  const newInfos: any[] = []
+                  const newParts: { messageID: string; parts: any[] }[] = []
+                  for (const item of data) {
+                    if (!existingIDs.has(item.info.id)) {
+                      newInfos.push(item.info)
+                      newParts.push({ messageID: item.info.id, parts: item.parts ?? [] })
+                    }
+                  }
+
+                  if (newInfos.length > 0) {
+                    // Prepend older messages
+                    draft.message[sessionID] = [...newInfos, ...existing]
+
+                    // Add parts for new messages
+                    for (const { messageID, parts } of newParts) {
+                      draft.part[messageID] = parts
+                    }
+                  }
+                }),
+              )
+
+              return data.length
+            })
+            .catch(() => 0)
+
+          loadingOlderSessions.delete(sessionID)
+          return count >= 25
         },
       },
       bootstrap,

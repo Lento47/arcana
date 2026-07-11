@@ -1,9 +1,7 @@
 import { PermissionV1 } from "@arcana/core/v1/permission"
-import { Permission } from "@/permission"
 import { SessionV1 } from "@arcana/core/v1/session"
 
 import { Session } from "@/session/session"
-import { MessageV2 } from "@/session/message-v2"
 import { SessionPrompt } from "@/session/prompt"
 import { SessionRevert } from "@/session/revert"
 import { SessionStatus } from "@/session/status"
@@ -45,6 +43,11 @@ export const MessagesQuery = Schema.Struct({
   limit: Schema.optional(Schema.NumberFromString.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))),
   before: Schema.optional(Schema.String),
 })
+const MessagesResponse = Schema.Struct({
+  items: Schema.Array(SessionV1.WithParts),
+  cursor: Schema.optional(Schema.String),
+})
+
 export const StatusMap = Schema.Record(Schema.String, SessionStatus.Info)
 export const UpdatePayload = Schema.Struct({
   title: Schema.optional(Schema.String),
@@ -179,7 +182,7 @@ export const SessionApi = HttpApi.make("session")
         HttpApiEndpoint.get("messages", SessionPaths.messages, {
           params: { sessionID: SessionID },
           query: MessagesQuery,
-          success: described(Schema.Array(SessionV1.WithParts), "List of messages"),
+          success: described(MessagesResponse, "List of messages"),
           error: [HttpApiError.BadRequest, ApiNotFoundError],
         }).annotateMerge(
           OpenApi.annotations({

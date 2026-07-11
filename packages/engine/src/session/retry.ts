@@ -1,7 +1,6 @@
 import type { NamedError } from "@arcana/core/util/error"
 import { SessionV1 } from "@arcana/core/v1/session"
 import { Cause, Clock, Duration, Effect, Schedule } from "effect"
-import { MessageV2 } from "./message-v2"
 import { iife } from "@/util/iife"
 import { isRecord } from "@/util/record"
 
@@ -72,7 +71,7 @@ export function retryable(error: Err, provider: string) {
     const status = error.data.statusCode
     // 5xx errors are transient server failures and should always be retried,
     // even when the provider SDK doesn't explicitly mark them as retryable.
-    if (!error.data.isRetryable && !(status !== undefined && status >= 500)) return undefined
+    if (!error.data.isRetryable && !(status !== undefined && (status >= 500 || status === 429))) return undefined
     if (error.data.responseBody?.includes("FreeUsageLimitError")) {
       return {
         message: GO_UPSELL_MESSAGE,
@@ -135,7 +134,10 @@ export function retryable(error: Err, provider: string) {
     }
   }
 
-  const json = parseJSON(msg)
+  // Prefer raw response body for structured rate-limit detection; fall back to
+  // the error message string for providers that embed JSON error details there.
+  const body = (isRecord(error.data) ? error.data.responseBody : undefined) ?? msg
+  const json = parseJSON(body)
   if (!json || typeof json !== "object") return undefined
   const code = typeof json.code === "string" ? json.code : ""
 

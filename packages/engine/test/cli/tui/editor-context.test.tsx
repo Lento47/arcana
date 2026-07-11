@@ -33,7 +33,7 @@ function mountEditorContext(WebSocketImpl?: typeof WebSocket) {
       return null
     }
 
-    const value = process.env.CLAUDE_CODE_SSE_PORT || process.env.ARCANA_EDITOR_SSE_PORT
+    const _value = process.env.CLAUDE_CODE_SSE_PORT || process.env.ARCANA_EDITOR_SSE_PORT
     return (
       <TestTuiContexts cwd={process.cwd()} paths={{ home: os.homedir() }}>
         <EditorContextProvider integration={editorService} WebSocketImpl={WebSocketImpl}>

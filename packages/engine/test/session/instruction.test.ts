@@ -8,7 +8,6 @@ import { CrossSpawnSpawner } from "@arcana/core/cross-spawn-spawner"
 import { FSUtil } from "@arcana/core/fs-util"
 
 import { Instruction } from "../../src/session/instruction"
-import type { MessageV2 } from "../../src/session/message-v2"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { Global } from "@arcana/core/global"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"

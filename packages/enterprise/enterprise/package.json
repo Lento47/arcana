@@ -5,7 +5,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "dev": "vite dev",
     "build": "vite build",
     "build:cloudflare": "ARCANA_DEPLOYMENT_TARGET=cloudflare vite build",
@@ -32,7 +32,6 @@
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@tailwindcss/vite": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "@types/bun": "catalog:",
     "@types/luxon": "catalog:",
     "tailwindcss": "catalog:",

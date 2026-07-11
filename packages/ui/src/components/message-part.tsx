@@ -304,7 +304,7 @@ function getDirectory(path: string | undefined) {
 }
 
 import type { IconProps } from "./icon"
-import { normalize, resolveFileDiff } from "./session-diff"
+import { resolveFileDiff } from "./session-diff"
 
 export type ToolInfo = {
   icon: IconProps["name"]

@@ -2,7 +2,7 @@ import { useDialog } from "../ui/dialog"
 import { DialogSelect } from "../ui/dialog-select"
 import { useRoute } from "../context/route"
 import { useSync } from "../context/sync"
-import { createMemo, createResource, createSignal, onMount } from "solid-js"
+import { createMemo, createResource, createSignal, onMount, Show } from "solid-js"
 import path from "path"
 import { Locale } from "../util/locale"
 import { useProject } from "../context/project"
@@ -128,6 +128,28 @@ export function DialogSessionList() {
           })
           return false
         }}
+        onForceDelete={async () => {
+          const current = currentSessionID()
+          const info = current ? sync.data.session.find((item) => item.id === current) : undefined
+          const result = await sdk.client.session.delete({ sessionID: session.id })
+          if (result.error) {
+            toast.show({
+              variant: "error",
+              title: "Failed to force delete session",
+              message: errorMessage(result.error),
+            })
+            return false
+          }
+          await sync.session.refresh()
+          if (search()) await refetch()
+          if (info?.workspaceID === session.workspaceID) {
+            route.navigate({ type: "home" })
+          }
+          return true
+        }}
+        onDismiss={() => {
+          route.navigate({ type: "home" })
+        }}
       />
     ))
   }
@@ -220,9 +242,16 @@ export function DialogSessionList() {
       options={options()}
       skipFilter={true}
       emptyView={
-        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
-          <text fg={theme.textMuted}>{COPY.chronicleEmpty}</text>
-        </box>
+        <Show when={searchResults.loading} fallback={
+          <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+            <text fg={theme.textMuted}>{COPY.chronicleEmpty}</text>
+          </box>
+        }>
+          <box paddingLeft={4} paddingRight={4} paddingTop={1} flexDirection="row" gap={1}>
+            <Spinner />
+            <text fg={theme.textMuted}>Searching...</text>
+          </box>
+        </Show>
       }
       current={currentSessionID()}
       onFilter={setSearch}

@@ -6,7 +6,7 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "exports": {
     ".": "./src/index.ts"
@@ -14,7 +14,8 @@
   "devDependencies": {
     "@tsconfig/bun": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:"
+    "typescript": "catalog:",
+    "@types/bun": "catalog:"
   },
   "dependencies": {
     "effect": "catalog:"
