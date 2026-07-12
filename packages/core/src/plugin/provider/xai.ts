@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { PluginV2 } from "../../plugin"
+import { importSdk } from "./import-provider"
 import { ProviderV2 } from "../../provider"
 
 export const XAIPlugin = PluginV2.define({
@@ -8,7 +9,7 @@ export const XAIPlugin = PluginV2.define({
     return {
       "aisdk.sdk": Effect.fn(function* (evt) {
         if (evt.package !== "@ai-sdk/xai") return
-        const mod = yield* Effect.promise(() => import("@ai-sdk/xai"))
+        const mod = yield* importSdk("@ai-sdk/xai")
         evt.sdk = mod.createXai(evt.options)
       }),
       "aisdk.language": Effect.fn(function* (evt) {

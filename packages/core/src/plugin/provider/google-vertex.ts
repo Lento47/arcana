@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { PluginV2 } from "../../plugin"
+import { importPackage, importSdk } from "./import-provider"
 import { ProviderV2 } from "../../provider"
 
 function resolveProject(options: Record<string, any>) {
@@ -42,7 +43,7 @@ function authFetch(fetchWithRuntimeOptions?: unknown) {
   // Native Vertex SDKs handle ADC internally. OpenAI-compatible Vertex endpoints
   // do not, so inject a Google access token into their fetch path.
   return async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-    const { GoogleAuth } = await import("google-auth-library")
+    const { GoogleAuth } = await importPackage("google-auth-library")
     const auth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/cloud-platform"] })
     const client = await auth.getClient()
     const token = await client.getAccessToken()
@@ -89,7 +90,7 @@ export const GoogleVertexPlugin = PluginV2.define({
           return
         }
         if (evt.package !== "@ai-sdk/google-vertex") return
-        const mod = yield* Effect.promise(() => import("@ai-sdk/google-vertex"))
+        const mod = yield* importSdk("@ai-sdk/google-vertex")
         const project = resolveProject(evt.options)
         const location = resolveLocation(evt.options)
         const options = { ...evt.options }
@@ -134,7 +135,7 @@ export const GoogleVertexAnthropicPlugin = PluginV2.define({
       }),
       "aisdk.sdk": Effect.fn(function* (evt) {
         if (evt.package !== "@ai-sdk/google-vertex/anthropic") return
-        const mod = yield* Effect.promise(() => import("@ai-sdk/google-vertex/anthropic"))
+        const mod = yield* importSdk("@ai-sdk/google-vertex/anthropic")
         const project =
           typeof evt.options.project === "string"
             ? evt.options.project

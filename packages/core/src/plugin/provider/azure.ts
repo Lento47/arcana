@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { PluginV2 } from "../../plugin"
+import { importSdk } from "./import-provider"
 import { ProviderV2 } from "../../provider"
 
 function selectLanguage(sdk: any, modelID: string, useChat: boolean) {
@@ -40,7 +41,7 @@ export const AzurePlugin = PluginV2.define({
             )
           }
         }
-        const mod = yield* Effect.promise(() => import("@ai-sdk/azure"))
+        const mod = yield* importSdk("@ai-sdk/azure")
         evt.sdk = mod.createAzure(evt.options)
       }),
       "aisdk.language": Effect.fn(function* (evt) {

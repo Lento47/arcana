@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { PluginV2 } from "../../plugin"
+import { importSdk } from "./import-provider"
 
 export const AnthropicPlugin = PluginV2.define({
   id: PluginV2.ID.make("anthropic"),
@@ -17,7 +18,7 @@ export const AnthropicPlugin = PluginV2.define({
       }),
       "aisdk.sdk": Effect.fn(function* (evt) {
         if (evt.package !== "@ai-sdk/anthropic") return
-        const mod = yield* Effect.promise(() => import("@ai-sdk/anthropic"))
+        const mod = yield* importSdk("@ai-sdk/anthropic")
         evt.sdk = mod.createAnthropic(evt.options)
       }),
     }

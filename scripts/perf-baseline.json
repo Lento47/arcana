@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "description": "Performance thresholds for CI regression checks. Update after intentional optimizations or major feature additions.",
+  "binary": {
+    "max_size_mb": 200,
+    "description": "Maximum compiled binary size in MB. If this is exceeded, check for accidentally bundled dependencies."
+  },
+  "startup": {
+    "max_p50_ms": 2500,
+    "max_p90_ms": 3500,
+    "runs": 3,
+    "args": ["serve", "--help"],
+    "description": "Maximum startup time for `arcana serve --help` (cold cache). Measured via bench-startup.ts."
+  },
+  "updated_at": "2026-07-11",
+  "updated_by": "Phase 4 perf baseline init"
+}

@@ -9,6 +9,7 @@ import { Truncate } from "@/tool/truncate"
 import { Auth } from "../auth"
 import { ProviderTransform } from "@/provider/transform"
 
+import PROMPT_BUILD from "./prompt/build.txt"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
@@ -156,7 +157,14 @@ export const layer = Layer.effect(
         const agents: Record<string, Info> = {
           build: {
             name: "build",
-            description: "The default agent. Executes tools based on configured permissions.",
+            description:
+              "The default agent. Executes tools based on configured permissions. " +
+              "Use the `task` tool to delegate complex or subdirectory-local work to `general` " +
+              "subagents when a task has many steps (>10 tool calls) or touches independent files. " +
+              "Use the `workflow` tool for multi-step tasks with parallel steps or conditional branching. " +
+              "Each subagent has its own step budget, so delegating spreads work across multiple agents " +
+              "instead of exhausting this agent's step limit.",
+            prompt: PROMPT_BUILD,
             options: {},
             permission: Permission.merge(
               defaults,

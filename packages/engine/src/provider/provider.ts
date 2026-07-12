@@ -1863,16 +1863,32 @@ export const layer = Layer.effect(
         }
 
         const bundledLoader = BUNDLED_PROVIDERS[model.api.npm]
+
+        // Try the bundled provider first. If the package has been externalized from
+        // the compiled binary (see script/build.ts EXTERNAL_PROVIDERS) and is not
+        // available in node_modules, the dynamic import() inside the bundled loader
+        // will fail with a module resolution error. Fall through to Npm.add() for
+        // on-demand package installation.
         if (bundledLoader) {
-          const factory = await bundledLoader()
-          const loaded = factory({
-            name: model.providerID,
-            ...options,
-          })
-          s.sdk.set(key, loaded)
-          return loaded as SDK
+          let factory: ((opts: any) => BundledSDK) | undefined
+          try {
+            factory = await bundledLoader()
+          } catch {
+            // import() failed — module not resolved. Will try Npm.add() below.
+          }
+          if (factory) {
+            const loaded = factory({
+              name: model.providerID,
+              ...options,
+            })
+            s.sdk.set(key, loaded)
+            return loaded as SDK
+          }
         }
 
+        // On-demand installation path for packages not bundled into the binary.
+        // Npm.add() installs the package to a local cache and returns its entrypoint,
+        // which we then dynamically import to create the provider SDK.
         const installedPath = await (async () => {
           if (model.api.npm.startsWith("file://")) {
             return model.api.npm

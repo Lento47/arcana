@@ -768,8 +768,8 @@ export function Autocomplete(props: {
     >
       <box flexDirection="row" justifyContent="space-between" height={1} flexShrink={0} overflow="hidden">
         <text fg={theme.textMuted} wrapMode="none" truncate>
-          {arcanaDitherPattern(store.visible || "complete", isCommandSpine() ? 8 : 10)}{" "}
-          {store.visible === "/" ? (isCommandSpine() ? "SPINE COMMANDS" : "COMMANDS") : "CONTEXT"}
+          <Show when={!isCommandSpine()}>{arcanaDitherPattern(store.visible || "complete", 10)}{" "}</Show>
+          {store.visible === "/" ? "commands" : "context"}
         </text>
         <text
           fg={(isCommandSpine() ? (t.spineContext ?? theme.textMuted) : theme.textMuted) as any}
@@ -832,7 +832,7 @@ export function Autocomplete(props: {
                 wrapMode="none"
                 truncate
               >
-                {arcanaDitherTick(option().display)} {option().display.trimEnd()}
+                {isCommandSpine() ? option().display.trimEnd() : `${arcanaDitherTick(option().display)} ${option().display.trimEnd()}`}
               </text>
               <Show when={option().description && optionDescriptionWidth() > 0}>
                 <text

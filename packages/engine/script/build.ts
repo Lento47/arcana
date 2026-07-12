@@ -137,6 +137,38 @@ const targets = singleFlag
 await $`rm -rf dist`
 
 const binaries: Record<string, string> = {}
+
+// Packages in optionalDependencies that are loaded via dynamic import() at runtime.
+// Externalizing them from the compiled binary keeps the binary lean and defers
+// provider installation to first use. At runtime, Bun resolves them from
+// node_modules (installed) or through the Npm.add() fallback in provider.ts.
+const EXTERNAL_PROVIDERS = [
+  "@ai-sdk/alibaba",
+  "@ai-sdk/amazon-bedrock",
+  "@ai-sdk/anthropic",
+  "@ai-sdk/azure",
+  "@ai-sdk/cerebras",
+  "@ai-sdk/cohere",
+  "@ai-sdk/deepinfra",
+  "@ai-sdk/gateway",
+  "@ai-sdk/google",
+  "@ai-sdk/google-vertex",
+  "@ai-sdk/groq",
+  "@ai-sdk/mistral",
+  "@ai-sdk/openai",
+  "@ai-sdk/openai-compatible",
+  "@ai-sdk/perplexity",
+  "@ai-sdk/togetherai",
+  "@ai-sdk/vercel",
+  "@ai-sdk/xai",
+  "@openrouter/ai-sdk-provider",
+  "venice-ai-sdk-provider",
+  "gitlab-ai-provider",
+  "ai-gateway-provider",
+  "@aws-sdk/credential-providers",
+  "google-auth-library",
+]
+
 if (!skipInstall) {
   await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`
   await $`bun install --os="*" --cpu="*" @parcel/watcher@${pkg.dependencies["@parcel/watcher"]}`
@@ -169,7 +201,7 @@ for (const item of targets) {
     conditions: ["bun", "node"],
     tsconfig: "./tsconfig.json",
     plugins: [plugin],
-    external: ["node-gyp"],
+    external: ["node-gyp", ...EXTERNAL_PROVIDERS],
     format: "esm",
     minify: true,
     sourcemap: sourcemapsFlag ? "linked" : "none",

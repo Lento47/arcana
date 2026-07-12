@@ -2,6 +2,7 @@ import os from "os"
 import { InstallationVersion } from "../../installation/version"
 import { Effect } from "effect"
 import { PluginV2 } from "../../plugin"
+import { importSdk } from "./import-provider"
 import { ProviderV2 } from "../../provider"
 
 export const GitLabPlugin = PluginV2.define({
@@ -10,7 +11,7 @@ export const GitLabPlugin = PluginV2.define({
     return {
       "aisdk.sdk": Effect.fn(function* (evt) {
         if (evt.package !== "gitlab-ai-provider") return
-        const mod = yield* Effect.promise(() => import("gitlab-ai-provider"))
+        const mod = yield* importSdk("gitlab-ai-provider")
         evt.sdk = mod.createGitLab({
           ...evt.options,
           instanceUrl:
@@ -35,7 +36,7 @@ export const GitLabPlugin = PluginV2.define({
         const featureFlags =
           typeof evt.options.featureFlags === "object" && evt.options.featureFlags ? evt.options.featureFlags : {}
         if (evt.model.api.id.startsWith("duo-workflow-")) {
-          const gitlab = yield* Effect.promise(() => import("gitlab-ai-provider")).pipe(Effect.orDie)
+          const gitlab = yield* importSdk("gitlab-ai-provider").pipe(Effect.orDie)
           const workflowRef =
             typeof evt.model.request.body.workflowRef === "string" ? evt.model.request.body.workflowRef : undefined
           const workflowDefinition =

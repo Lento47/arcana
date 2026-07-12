@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { PluginV2 } from "../../plugin"
+import { importSdk } from "./import-provider"
 
 export const PerplexityPlugin = PluginV2.define({
   id: PluginV2.ID.make("perplexity"),
@@ -7,7 +8,7 @@ export const PerplexityPlugin = PluginV2.define({
     return {
       "aisdk.sdk": Effect.fn(function* (evt) {
         if (evt.package !== "@ai-sdk/perplexity") return
-        const mod = yield* Effect.promise(() => import("@ai-sdk/perplexity"))
+        const mod = yield* importSdk("@ai-sdk/perplexity")
         evt.sdk = mod.createPerplexity(evt.options)
       }),
     }

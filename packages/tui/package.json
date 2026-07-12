@@ -58,12 +58,14 @@
     "diff": "catalog:",
     "effect": "catalog:",
     "fuzzysort": "catalog:",
-    "jimp": "1.6.0",
     "open": "10.1.2",
     "opentui-spinner": "catalog:",
     "remeda": "catalog:",
     "strip-ansi": "7.1.2",
     "solid-js": "catalog:"
+  },
+  "optionalDependencies": {
+    "jimp": "1.6.0"
   },
   "devDependencies": {
     "@tsconfig/bun": "catalog:",

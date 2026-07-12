@@ -2,6 +2,7 @@ import os from "os"
 import { InstallationVersion } from "../../installation/version"
 import { Effect } from "effect"
 import { PluginV2 } from "../../plugin"
+import { importSdk } from "./import-provider"
 import { ProviderV2 } from "../../provider"
 
 const providerID = ProviderV2.ID.make("cloudflare-workers-ai")
@@ -26,7 +27,7 @@ export const CloudflareWorkersAIPlugin = PluginV2.define({
 
         const accountId = resolveAccountId(evt.options)
         if (!hasWorkersEndpoint(evt.model.api) && !accountId) return
-        const mod = yield* Effect.promise(() => import("@ai-sdk/openai-compatible"))
+        const mod = yield* importSdk("@ai-sdk/openai-compatible")
         evt.sdk = mod.createOpenAICompatible(
           sdkOptions({
             ...evt.options,

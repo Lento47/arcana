@@ -69,6 +69,7 @@ export function SpineEntry(props: {
   }
   const headerToggleable = () =>
     (isThink && hasThinkBody()) || (hasDiff() && !!e.diff?.body?.trim())
+  const headerGlyph = () => (isChatProse || isThink ? "" : e.glyph)
 
   const padLeft = spineOuterPadding(props.layout)
 
@@ -118,6 +119,12 @@ export function SpineEntry(props: {
     handleToggle(event)
   }
 
+  const handleHeaderMouseUp = (event: MouseEvent) => {
+    if (!headerToggleable()) return
+    if (event.button !== undefined && event.button !== MouseButton.LEFT) return
+    handleToggle(event)
+  }
+
   return (
     <box
       ref={props.nodeRef}
@@ -143,8 +150,9 @@ export function SpineEntry(props: {
           alignItems="flex-start"
           backgroundColor={props.focused ? (t.backgroundElement as any) : undefined}
           onMouseDown={headerToggleable() ? handleHeaderMouseDown : undefined}
+          onMouseUp={headerToggleable() ? handleHeaderMouseUp : undefined}
         >
-          <SpineRail layout={props.layout} kind={e.kind} glyph={e.glyph} active={props.focused} />
+          <SpineRail layout={props.layout} kind={e.kind} glyph={headerGlyph()} active={props.focused} />
           <SpineNode
             kind={e.kind}
             label={e.label}
@@ -154,7 +162,6 @@ export function SpineEntry(props: {
             focused={props.focused}
             disclosure={headerDisclosure()}
             streaming={e.streaming}
-            thinking={e.thinking}
           />
         </box>
 
