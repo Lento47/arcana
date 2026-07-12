@@ -14,11 +14,14 @@ import { pendingGateEntries } from "./spine-gates"
 import { PermissionPrompt } from "../../routes/session/permission"
 import { QuestionPrompt } from "../../routes/session/question"
 import { SubagentFooter } from "../../routes/session/subagent-footer"
+import { DialogMessage } from "../../routes/session/dialog-message"
 import { ARCANA_BASE_MODE, useBindings } from "../../keymap"
 import { useClipboard } from "../../context/clipboard"
 import { useToast } from "../../ui/toast"
+import { useDialog } from "../../ui/dialog"
 import { canToggleSpineEntry, nextSpineFocusID, navigableSpineEntries } from "./spine-navigation"
 import { spineEntryCopyText } from "./spine-clipboard"
+import { spineEntryDetailMessageID } from "./spine-details"
 
 const USE_SAMPLE_SPINE = false
 
@@ -29,6 +32,7 @@ export function CommandSpineShell(props: ShellProps) {
   const renderer = useRenderer()
   const clipboard = useClipboard()
   const toast = useToast()
+  const dialog = useDialog()
   const dims = useTerminalDimensions()
   const layout = createMemo(() => getSpineLayout(dims().width))
 
@@ -117,6 +121,19 @@ export function CommandSpineShell(props: ShellProps) {
       .then(() => toast.show({ message: "Spine entry copied", variant: "success" }))
       .catch(() => toast.show({ message: "Failed to copy spine entry", variant: "error" }))
   }
+  const openFocusedEntryDetails = () => {
+    const focused = focusedEntryID()
+    const entry = focused ? visibleEntries().find((item) => item.id === focused) : undefined
+    const messageID = spineEntryDetailMessageID(entry)
+    if (!messageID) {
+      const first = navigableEntries()[0]
+      if (!entry && first) focusEntry(first, true)
+      toast.show({ message: "No detail view is attached to this spine entry", variant: "info" })
+      return
+    }
+
+    dialog.replace(() => <DialogMessage messageID={messageID} sessionID={props.sessionID} setPrompt={props.setPrompt} />)
+  }
 
   createEffect(() => {
     const focused = focusedEntryID()
@@ -133,6 +150,7 @@ export function CommandSpineShell(props: ShellProps) {
       { key: "k,up,shift+tab", desc: "Focus previous spine entry", group: "Command Spine", cmd: () => focusRelativeEntry(-1) },
       { key: "return,space", desc: "Expand or collapse spine entry", group: "Command Spine", cmd: toggleFocusedEntry },
       { key: "y", desc: "Copy focused spine entry", group: "Command Spine", cmd: copyFocusedEntry },
+      { key: "o", desc: "Open spine entry details", group: "Command Spine", cmd: openFocusedEntryDetails },
     ],
   }))
 
