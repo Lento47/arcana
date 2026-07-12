@@ -10,6 +10,7 @@ import { messagesToSpineEntriesCached } from "./spine-mapper"
 import { SpineHeader } from "./spine-header"
 import { SpineEntry } from "./spine-entry"
 import { SpinePrompt } from "./spine-prompt"
+import { pendingGateEntries } from "./spine-gates"
 import { PermissionPrompt } from "../../routes/session/permission"
 import { QuestionPrompt } from "../../routes/session/question"
 import { SubagentFooter } from "../../routes/session/subagent-footer"
@@ -46,6 +47,11 @@ export function CommandSpineShell(props: ShellProps) {
     previousEntries = result.entries
     return result.entries
   })
+
+  const gateEntries = createMemo(() =>
+    pendingGateEntries({ permissions: props.permissions(), questions: props.questions() }),
+  )
+  const runState = createMemo(() => (gateEntries().length ? "stop" : props.pending() ? "working" : "idle"))
 
   const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
   const toggleEntry = (entry: { id: string; collapsible?: boolean }) => {
@@ -87,6 +93,16 @@ export function CommandSpineShell(props: ShellProps) {
               />
             )}
           </For>
+          <For each={gateEntries()}>
+            {(entry) => (
+              <SpineEntry
+                entry={entry}
+                layout={layout()}
+                expanded={entryExpanded(entry)}
+                onToggle={() => toggleEntry(entry)}
+              />
+            )}
+          </For>
         </scrollbox>
         <Show when={props.permissions().length > 0}>
           <PermissionPrompt request={props.permissions()[0] as any} />
@@ -97,7 +113,15 @@ export function CommandSpineShell(props: ShellProps) {
         <Show when={props.session()?.parentID}>
           <SubagentFooter />
         </Show>
-        <SpinePrompt bind={props.bind} disabled={props.disabled} visible={props.visible} sessionID={props.sessionID} toBottom={props.toBottom as any} layout={layout as any} state={(() => "idle") as any} />
+        <SpinePrompt
+          bind={props.bind}
+          disabled={props.disabled}
+          visible={props.visible}
+          sessionID={props.sessionID}
+          toBottom={props.toBottom as any}
+          layout={layout as any}
+          state={runState as any}
+        />
       </box>
     </Show>
   )

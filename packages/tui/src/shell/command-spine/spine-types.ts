@@ -1,17 +1,21 @@
-export type SpineKind = "ask" | "plan" | "inspect" | "patch" | "run" | "fail" | "fix" | "ok" | "think" | "agent" | "report"
+export type SpineKind =
+  | "ask"
+  | "plan"
+  | "think"
+  | "inspect"
+  | "patch"
+  | "run"
+  | "fail"
+  | "fix"
+  | "approve"
+  | "question"
+  | "agent"
+  | "ok"
+  | "report"
 
 export type SpineLayout = "wide" | "compact" | "narrow" | "minimal"
 
-export type StatusTone =
-  | "brand"
-  | "success"
-  | "accent"
-  | "secondary"
-  | "info"
-  | "warning"
-  | "error"
-  | "text"
-  | "muted"
+export type StatusTone = "brand" | "success" | "accent" | "secondary" | "info" | "warning" | "error" | "text" | "muted"
 
 export type StatusSegment = {
   key: string
@@ -80,7 +84,7 @@ export type SpineSourceRef = {
   partID?: string
   /** Child subsession ID for agent/subtask entries — enables click-to-navigate. */
   sessionID?: string
-  kind: "message" | "text" | "tool" | "patch" | "reasoning" | "subtask" | "agent"
+  kind: "message" | "text" | "tool" | "patch" | "reasoning" | "subtask" | "agent" | "approve" | "question"
 }
 
 export type SpineEntry = {
@@ -194,6 +198,10 @@ export function spineTone(kind: SpineKind, theme: Record<string, unknown>) {
       return theme.spineFail as any
     case "fix":
       return theme.spineFix as any
+    case "approve":
+      return (theme.warning ?? theme.spineFix) as any
+    case "question":
+      return (theme.spineAsk ?? theme.accent) as any
     case "ok":
       return theme.spineOk as any
     case "think":
@@ -215,6 +223,8 @@ export const SPINE_GLYPH: Record<SpineKind, string> = {
   run: "▸",
   fail: "×",
   fix: "▸",
+  approve: "◇",
+  question: "?",
   ok: "◎",
   think: "◇",
   agent: "⤷",
