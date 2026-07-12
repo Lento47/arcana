@@ -852,6 +852,37 @@ describe("edge cases", () => {
     expect(result[0]!.summary).toBe("subagent: reviewer")
   })
 
+  test("task tool row reflects launched subagent name", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("e8")
+    parts.push({
+      id: "p-tool-task",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "task-1",
+      tool: "task",
+      state: {
+        status: "running",
+        input: {
+          subagent_type: "architect",
+          description: "Design arcana-site dashboard architecture",
+          prompt: "Think through the site architecture.",
+        },
+        title: "Working",
+        metadata: {},
+        time: { start: 1000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("agent")
+    expect(result[0]!.label).toBe("architect")
+    expect(result[0]!.summary).toBe("Design arcana-site dashboard architecture")
+  })
   test("indexes start at 1 and are sequential", () => {
     const { messages: msgs1, parts: parts1 } = makeUserMessage("idx1", "Hello")
     const { messages: msgs2, parts: parts2 } = makeAssistantMessage("idx2")
