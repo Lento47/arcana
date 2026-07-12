@@ -5,6 +5,7 @@ import type { SpineDiffExcerpt, SpineLayout } from "./spine-types"
 type PreviewLine = {
   kind: "add" | "remove"
   text: string
+  line?: number
 }
 
 type PreviewFile = {
@@ -39,6 +40,8 @@ function parseDiffPreview(body: string, fallbackFiles: string[]): PreviewFile[] 
   const byName = new Map<string, PreviewFile>()
   let current: PreviewFile | undefined
   let inHunk = false
+  let oldLine = 0
+  let newLine = 0
 
   const ensure = (file: string | undefined) => {
     const name = cleanFileName(file) || fallbackFiles[0] || "file"
@@ -77,6 +80,8 @@ function parseDiffPreview(body: string, fallbackFiles: string[]): PreviewFile[] 
       const newCount = hunk[4] !== undefined ? Number(hunk[4]) : undefined
       const oldCount = hunk[2] !== undefined ? Number(hunk[2]) : undefined
       target.ranges.push(formatRange(newCount === 0 ? oldStart : newStart, newCount === 0 ? oldCount : newCount))
+      oldLine = oldStart
+      newLine = newStart
       inHunk = true
       continue
     }
@@ -84,9 +89,14 @@ function parseDiffPreview(body: string, fallbackFiles: string[]): PreviewFile[] 
     if (!inHunk) continue
     const target = ensure(current?.file)
     if (line.startsWith("+") && !line.startsWith("+++")) {
-      target.lines.push({ kind: "add", text: line.slice(1) })
+      target.lines.push({ kind: "add", text: line.slice(1), line: newLine })
+      newLine++
     } else if (line.startsWith("-") && !line.startsWith("---")) {
-      target.lines.push({ kind: "remove", text: line.slice(1) })
+      target.lines.push({ kind: "remove", text: line.slice(1), line: oldLine })
+      oldLine++
+    } else if (line.startsWith(" ")) {
+      oldLine++
+      newLine++
     }
   }
 
@@ -105,6 +115,11 @@ function rangeText(file: PreviewFile) {
   if (!file.ranges.length) return "line range unavailable"
   if (file.ranges.length <= 3) return file.ranges.join(", ")
   return `${file.ranges.slice(0, 3).join(", ")} · ${file.ranges.length} regions`
+}
+
+function formatLineNumber(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) return "     "
+  return String(value).padStart(5).slice(-5)
 }
 
 function takePreviewLines(files: PreviewFile[], limit: number) {
@@ -163,8 +178,12 @@ export function SpineDiff(props: {
       <Show when={props.expanded !== false}>
         <For each={changed().lines}>
           {(line) => (
-            <text fg={(line.kind === "add" ? theme.spineDiffAdd : theme.spineDiffRemove) as any} wrapMode="word">
-              {line.kind === "add" ? "+ " : "- "}{line.text || " "}
+            <text wrapMode="word">
+              <span style={{ fg: theme.spineDiffMuted as any }}>{formatLineNumber(line.line)}</span>
+              <span style={{ fg: theme.spineDiffMuted as any }}> │ </span>
+              <span style={{ fg: (line.kind === "add" ? theme.spineDiffAdd : theme.spineDiffRemove) as any }}>
+                {line.kind === "add" ? "+ " : "- "}{line.text || " "}
+              </span>
             </text>
           )}
         </For>

@@ -204,4 +204,7 @@ test("command-spine full composition with prompt at 120 cols", async () => {
   console.log(frame)
   console.log("=== END ===")
   expect(frame).toContain("✶ arcana ›")
+  expect(frame).toContain("2 │ -")
+  expect(frame).toContain("2 │ +")
+  expect(frame).not.toContain("@@")
 })
