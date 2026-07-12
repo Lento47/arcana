@@ -15,7 +15,10 @@ import { PermissionPrompt } from "../../routes/session/permission"
 import { QuestionPrompt } from "../../routes/session/question"
 import { SubagentFooter } from "../../routes/session/subagent-footer"
 import { ARCANA_BASE_MODE, useBindings } from "../../keymap"
+import { useClipboard } from "../../context/clipboard"
+import { useToast } from "../../ui/toast"
 import { canToggleSpineEntry, nextSpineFocusID, navigableSpineEntries } from "./spine-navigation"
+import { spineEntryCopyText } from "./spine-clipboard"
 
 const USE_SAMPLE_SPINE = false
 
@@ -24,6 +27,8 @@ export function CommandSpineShell(props: ShellProps) {
   const t = themeObj as Record<string, unknown>
   const thinking = useThinkingMode()
   const renderer = useRenderer()
+  const clipboard = useClipboard()
+  const toast = useToast()
   const dims = useTerminalDimensions()
   const layout = createMemo(() => getSpineLayout(dims().width))
 
@@ -96,6 +101,22 @@ export function CommandSpineShell(props: ShellProps) {
     if (!entry || !canToggleSpineEntry(entry)) return
     toggleEntry(entry)
   }
+  const copyFocusedEntry = () => {
+    const focused = focusedEntryID()
+    const entry = focused ? visibleEntries().find((item) => item.id === focused) : undefined
+    if (!entry) {
+      const first = navigableEntries()[0]
+      if (first) focusEntry(first, true)
+      toast.show({ message: "Focus a spine entry before copying", variant: "info" })
+      return
+    }
+
+    const text = spineEntryCopyText(entry)
+    if (!text || !clipboard.write) return
+    clipboard.write(text)
+      .then(() => toast.show({ message: "Spine entry copied", variant: "success" }))
+      .catch(() => toast.show({ message: "Failed to copy spine entry", variant: "error" }))
+  }
 
   createEffect(() => {
     const focused = focusedEntryID()
@@ -111,6 +132,7 @@ export function CommandSpineShell(props: ShellProps) {
       { key: "j,down,tab", desc: "Focus next spine entry", group: "Command Spine", cmd: () => focusRelativeEntry(1) },
       { key: "k,up,shift+tab", desc: "Focus previous spine entry", group: "Command Spine", cmd: () => focusRelativeEntry(-1) },
       { key: "return,space", desc: "Expand or collapse spine entry", group: "Command Spine", cmd: toggleFocusedEntry },
+      { key: "y", desc: "Copy focused spine entry", group: "Command Spine", cmd: copyFocusedEntry },
     ],
   }))
 
