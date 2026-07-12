@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { SpineEntry } from "../src/shell/command-spine/spine-types"
-import { spineEntryDetailMessageID } from "../src/shell/command-spine/spine-details"
+import { spineEntryDetailMessageID, spineEntryDiffMessageID } from "../src/shell/command-spine/spine-details"
 
 function entry(overrides: Partial<SpineEntry> = {}): SpineEntry {
   return {
@@ -22,5 +22,12 @@ describe("command-spine details", () => {
   test("returns undefined when no message source exists", () => {
     expect(spineEntryDetailMessageID(entry())).toBeUndefined()
     expect(spineEntryDetailMessageID(undefined)).toBeUndefined()
+  })
+
+  test("diff detail requires both a diff artifact and message source", () => {
+    const diff = { files: "src/app.tsx", stats: "+1 -1", body: "diff --git" }
+    expect(spineEntryDiffMessageID(entry({ diff, source: { kind: "patch", messageID: "msg_diff" } }))).toBe("msg_diff")
+    expect(spineEntryDiffMessageID(entry({ source: { kind: "patch", messageID: "msg_no_diff" } }))).toBeUndefined()
+    expect(spineEntryDiffMessageID(entry({ diff }))).toBeUndefined()
   })
 })
