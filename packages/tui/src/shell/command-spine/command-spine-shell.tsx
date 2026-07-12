@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
@@ -51,14 +51,24 @@ export function CommandSpineShell(props: ShellProps) {
   const gateEntries = createMemo(() =>
     pendingGateEntries({ permissions: props.permissions(), questions: props.questions() }),
   )
+  const visibleEntries = createMemo(() => [...entries(), ...gateEntries()])
   const runState = createMemo(() => (gateEntries().length ? "stop" : props.pending() ? "working" : "idle"))
 
   const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
+  const [focusedEntryID, setFocusedEntryID] = createSignal<string | undefined>()
   const toggleEntry = (entry: { id: string; collapsible?: boolean }) => {
     setExpandedEntries((prev) => ({ ...prev, [entry.id]: !(prev[entry.id] ?? entry.collapsible === false) }))
   }
   const entryExpanded = (entry: { id: string; expandedByDefault?: boolean; collapsible?: boolean }) =>
     expandedEntries()[entry.id] ?? entry.expandedByDefault ?? !entry.collapsible
+  const focusEntry = (entry: { id: string }) => setFocusedEntryID(entry.id)
+  const entryFocused = (entry: { id: string }) => focusedEntryID() === entry.id
+
+  createEffect(() => {
+    const focused = focusedEntryID()
+    if (!focused) return
+    if (!visibleEntries().some((entry) => entry.id === focused)) setFocusedEntryID(undefined)
+  })
 
   return (
     <Show when={props.session()}>
@@ -83,23 +93,16 @@ export function CommandSpineShell(props: ShellProps) {
           flexGrow={1}
           scrollAcceleration={props.scrollAcceleration}
         >
-          <For each={entries()}>
+          <For each={visibleEntries()}>
             {(entry) => (
               <SpineEntry
                 entry={entry}
                 layout={layout()}
                 expanded={entryExpanded(entry)}
+                focused={entryFocused(entry)}
                 onToggle={() => toggleEntry(entry)}
-              />
-            )}
-          </For>
-          <For each={gateEntries()}>
-            {(entry) => (
-              <SpineEntry
-                entry={entry}
-                layout={layout()}
-                expanded={entryExpanded(entry)}
-                onToggle={() => toggleEntry(entry)}
+                onFocus={() => focusEntry(entry)}
+                onHover={() => focusEntry(entry)}
               />
             )}
           </For>
