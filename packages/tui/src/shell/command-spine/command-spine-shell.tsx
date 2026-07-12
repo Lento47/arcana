@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
-import type { ScrollBoxRenderable } from "@opentui/core"
-import { useTerminalDimensions } from "@opentui/solid"
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core"
+import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import { useThinkingMode } from "../../context/thinking"
 import type { ShellProps } from "../types"
@@ -14,6 +14,8 @@ import { pendingGateEntries } from "./spine-gates"
 import { PermissionPrompt } from "../../routes/session/permission"
 import { QuestionPrompt } from "../../routes/session/question"
 import { SubagentFooter } from "../../routes/session/subagent-footer"
+import { ARCANA_BASE_MODE, useBindings } from "../../keymap"
+import { canToggleSpineEntry, nextSpineFocusID, navigableSpineEntries } from "./spine-navigation"
 
 const USE_SAMPLE_SPINE = false
 
@@ -21,12 +23,15 @@ export function CommandSpineShell(props: ShellProps) {
   const { theme: themeObj } = useTheme()
   const t = themeObj as Record<string, unknown>
   const thinking = useThinkingMode()
+  const renderer = useRenderer()
   const dims = useTerminalDimensions()
   const layout = createMemo(() => getSpineLayout(dims().width))
 
   let cache: ReturnType<typeof messagesToSpineEntriesCached>["cache"] | undefined
   let previousEntries: ReturnType<typeof messagesToSpineEntriesCached>["entries"] | undefined
   let cacheSessionID = props.sessionID
+  let scroll: ScrollBoxRenderable | undefined
+  const entryNodes = new Map<string, BoxRenderable>()
 
   const entries = createMemo(() => {
     if (USE_SAMPLE_SPINE) return SAMPLE_ENTRIES
@@ -52,6 +57,7 @@ export function CommandSpineShell(props: ShellProps) {
     pendingGateEntries({ permissions: props.permissions(), questions: props.questions() }),
   )
   const visibleEntries = createMemo(() => [...entries(), ...gateEntries()])
+  const navigableEntries = createMemo(() => navigableSpineEntries(visibleEntries()))
   const runState = createMemo(() => (gateEntries().length ? "stop" : props.pending() ? "working" : "idle"))
 
   const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
@@ -61,21 +67,62 @@ export function CommandSpineShell(props: ShellProps) {
   }
   const entryExpanded = (entry: { id: string; expandedByDefault?: boolean; collapsible?: boolean }) =>
     expandedEntries()[entry.id] ?? entry.expandedByDefault ?? !entry.collapsible
-  const focusEntry = (entry: { id: string }) => setFocusedEntryID(entry.id)
+  const scrollEntryIntoView = (entryID: string) => {
+    queueMicrotask(() => {
+      const node = entryNodes.get(entryID)
+      if (!node || !scroll || scroll.isDestroyed) return
+
+      const top = node.y - scroll.y
+      const bottom = top + node.height
+      const padding = 1
+      if (top < padding) scroll.scrollBy(top - padding)
+      else if (bottom > scroll.height - padding) scroll.scrollBy(bottom - scroll.height + padding)
+    })
+  }
+
+  const focusEntryID = (entryID: string, scrollIntoView = false) => {
+    setFocusedEntryID(entryID)
+    if (scrollIntoView) scrollEntryIntoView(entryID)
+  }
+  const focusEntry = (entry: { id: string }, scrollIntoView = false) => focusEntryID(entry.id, scrollIntoView)
   const entryFocused = (entry: { id: string }) => focusedEntryID() === entry.id
+  const focusRelativeEntry = (direction: -1 | 1) => {
+    const nextID = nextSpineFocusID(visibleEntries(), focusedEntryID(), direction)
+    if (nextID) focusEntryID(nextID, true)
+  }
+  const toggleFocusedEntry = () => {
+    const focused = focusedEntryID()
+    const entry = focused ? visibleEntries().find((item) => item.id === focused) : undefined
+    if (!entry || !canToggleSpineEntry(entry)) return
+    toggleEntry(entry)
+  }
 
   createEffect(() => {
     const focused = focusedEntryID()
     if (!focused) return
-    if (!visibleEntries().some((entry) => entry.id === focused)) setFocusedEntryID(undefined)
+    if (!navigableEntries().some((entry) => entry.id === focused)) setFocusedEntryID(undefined)
   })
+
+  useBindings(() => ({
+    mode: ARCANA_BASE_MODE,
+    enabled: () => renderer.currentFocusedEditor === null && navigableEntries().length > 0,
+    priority: 1,
+    bindings: [
+      { key: "j,down,tab", desc: "Focus next spine entry", group: "Command Spine", cmd: () => focusRelativeEntry(1) },
+      { key: "k,up,shift+tab", desc: "Focus previous spine entry", group: "Command Spine", cmd: () => focusRelativeEntry(-1) },
+      { key: "return,space", desc: "Expand or collapse spine entry", group: "Command Spine", cmd: toggleFocusedEntry },
+    ],
+  }))
 
   return (
     <Show when={props.session()}>
       <box flexDirection="column" flexGrow={1} minHeight={0}>
         <SpineHeader session={props.session} layout={layout()} segments={[] as any} />
         <scrollbox
-          ref={(r) => props.scrollRef(r as ScrollBoxRenderable)}
+          ref={(r) => {
+            scroll = r as ScrollBoxRenderable
+            props.scrollRef(r as ScrollBoxRenderable)
+          }}
           viewportOptions={{
             paddingRight: props.showScrollbar() ? 1 : 0,
           }}
@@ -103,6 +150,10 @@ export function CommandSpineShell(props: ShellProps) {
                 onToggle={() => toggleEntry(entry)}
                 onFocus={() => focusEntry(entry)}
                 onHover={() => focusEntry(entry)}
+                nodeRef={(node) => {
+                  if (node) entryNodes.set(entry.id, node)
+                  else entryNodes.delete(entry.id)
+                }}
               />
             )}
           </For>
