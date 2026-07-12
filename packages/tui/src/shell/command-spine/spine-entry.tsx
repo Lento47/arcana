@@ -184,7 +184,7 @@ export function SpineEntry(props: {
         </Show>
 
         {/* Report body — scorecard + concern callouts, always visible when expanded */}
-        <Show when={e.kind === "report" && e.report}>
+        <Show when={e.report}>
           {(r) => (
             <Show when={expanded()}>
               <box flexDirection="row" flexShrink={0} alignItems="flex-start">

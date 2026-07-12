@@ -690,6 +690,16 @@ function taskToolSummary(part: ToolPart): string {
   if ("title" in part.state && typeof part.state.title === "string" && part.state.title.trim()) return part.state.title.trim()
   return part.tool
 }
+function taskToolSessionID(part: ToolPart): string | undefined {
+  if (part.tool !== "task" && part.tool !== "subtask") return undefined
+  if (part.state.status !== "completed") return undefined
+  const meta = (part.state.metadata ?? {}) as Record<string, unknown>
+  for (const key of ["sessionId", "sessionID", "session_id"]) {
+    const value = meta[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  return undefined
+}
 function toolOutputBody(part: ToolPart): { body: string; label: string; reminders: string[]; report?: SpineReportData; table?: { headers: string[]; rows: string[][] } } {
   const state = part.state
   if (state.status === "error") {
@@ -775,10 +785,11 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
 
   const renderedOutput = toolOutputBody(part)
   const body = renderedOutput.body
-  const finalKind: SpineKind = renderedOutput.report ? "report" : kind
-  const finalGlyph = renderedOutput.report ? SPINE_GLYPH.report : glyph
+  const finalKind: SpineKind = renderedOutput.report && !agentName ? "report" : kind
+  const finalGlyph = renderedOutput.report && !agentName ? SPINE_GLYPH.report : glyph
+  const taskSessionID = taskToolSessionID(part)
   if (renderedOutput.report) {
-    summary = `Divination: ${renderedOutput.report.title}`
+    summary = agentName ? renderedOutput.report.title : `Divination: ${renderedOutput.report.title}`
   }
   if (kind === "fail" && part.state.status === "error") {
     // Prefer the error on the spine line (design: "fail  error[E0308]: …").
@@ -808,8 +819,9 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
       elapsed,
       timestamp: formatTimestamp(message.time.created),
       kind: finalKind,
-      label: finalKind === "fail" ? "fail" : agentName ?? (finalKind === "report" ? "report" : kindLabel(kind)),
+      label: finalKind === "fail" ? "fail" : agentName ? "agent" : finalKind === "report" ? "report" : kindLabel(kind),
       glyph: finalGlyph,
+      actor: agentName,
       summary,
       body: body && !diff && !renderedOutput.report ? body : undefined,
       bodyLabel: renderedOutput.report ? "divination" : renderedOutput.label,
@@ -820,7 +832,7 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
       reminders: renderedOutput.reminders.length ? renderedOutput.reminders : undefined,
       report: renderedOutput.report,
       table: renderedOutput.table,
-      source: { messageID: message.id, partID: part.id, kind: "tool" },
+      source: { messageID: message.id, partID: part.id, kind: agentName ? "subtask" : "tool", sessionID: taskSessionID },
     },
   ]
 }

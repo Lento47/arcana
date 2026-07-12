@@ -880,8 +880,54 @@ describe("edge cases", () => {
       assistantDuration: new Map(),
     })
     expect(result[0]!.kind).toBe("agent")
-    expect(result[0]!.label).toBe("architect")
+    expect(result[0]!.label).toBe("agent")
+    expect(result[0]!.actor).toBe("architect")
     expect(result[0]!.summary).toBe("Design arcana-site dashboard architecture")
+    expect(result[0]!.source?.kind).toBe("subtask")
+  })
+  test("completed task tool report stays on agent row", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("e9")
+    parts.push({
+      id: "p-tool-task-report",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "task-2",
+      tool: "task",
+      state: {
+        status: "completed",
+        input: {
+          subagent_type: "reviewer",
+          description: "Review command spine interaction bugs",
+        },
+        output: `# Review Result
+
+## Summary
+The command spine interaction path is usable.
+
+## Scorecard
+- Mouse interaction: pass
+
+## Major Concerns
+### [LOW] Follow-up polish
+Diff excerpts can be improved later.`,
+        title: "Done",
+        metadata: { sessionId: "child-reviewer-1" },
+        time: { start: 1000, end: 2400 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("agent")
+    expect(result[0]!.label).toBe("agent")
+    expect(result[0]!.actor).toBe("reviewer")
+    expect(result[0]!.summary).toBe("Review Result")
+    expect(result[0]!.report?.summary).toContain("usable")
+    expect(result[0]!.source).toMatchObject({ kind: "subtask", sessionID: "child-reviewer-1" })
   })
   test("indexes start at 1 and are sequential", () => {
     const { messages: msgs1, parts: parts1 } = makeUserMessage("idx1", "Hello")

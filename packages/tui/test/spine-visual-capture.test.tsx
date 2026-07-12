@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { testRender, type JSX } from "@opentui/solid"
-import { test } from "bun:test"
+import { expect, test } from "bun:test"
 import { For, Show, createMemo, createSignal } from "solid-js"
 import { ThemeProvider } from "../src/context/theme"
 import { TuiConfigProvider } from "../src/config"
@@ -164,7 +164,7 @@ test("command-spine full composition with prompt at 120 cols", async () => {
               const isWide = layout() === "wide"
               const gutterWidth = isWide || layout() === "compact" ? 9 : layout() === "narrow" ? 7 : 3
               const padLeft = isWide ? 2 : layout() === "minimal" ? 0 : 1
-              const labelWidth = "✶ > ".length
+              const labelWidth = "✶ arcana › ".length
               return (
                 <box flexDirection="column" flexShrink={0}>
                   <box flexDirection="row" paddingLeft={padLeft}>
@@ -175,7 +175,7 @@ test("command-spine full composition with prompt at 120 cols", async () => {
                     <text width={gutterWidth} />
                     <text fg={t.spinePrompt as any}>{"\u2736"}</text>
                     <text width={1} />
-                    <text fg={t.spinePrompt as any}>{">"}</text>
+                    <text fg={t.spinePrompt as any}>arcana ›</text>
                     <text fg={t.spineContext as any}> </text>
                     <box
                       width={Math.max(1, dims().width - padLeft - gutterWidth - labelWidth)}
@@ -203,4 +203,5 @@ test("command-spine full composition with prompt at 120 cols", async () => {
   console.log("=== COMMAND-SPINE FULL COMPOSITION (120 cols) ===")
   console.log(frame)
   console.log("=== END ===")
+  expect(frame).toContain("✶ arcana ›")
 })

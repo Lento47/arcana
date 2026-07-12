@@ -63,7 +63,7 @@ export function SpinePrompt(props: {
         <SpineGutterSpacer layout={layout()} />
         <SpineRail layout={layout()} glyph={"✶"} color={t.spinePrompt} active />
         <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
-          <text fg={markerColor()}>{">"}</text>
+          <text fg={markerColor()}>arcana ›</text>
           <text fg={t.spineContext as any}> </text>
           <box flexGrow={1} minWidth={0} flexShrink={1}>
             <Prompt
