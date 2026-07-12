@@ -290,7 +290,7 @@ describe("assistant text becomes plan/ok correctly", () => {
 
     expect(result).toHaveLength(1)
     expect(result[0]!.kind).toBe("plan")
-    expect(result[0]!.label).toBe("reviewer")
+    expect(result[0]!.label).toBe("assistant · reviewer")
     expect(result[0]!.summary).toBe("Reviewing the diff for regressions.")
   })
   test("long single-line assistant reply is fully visible without ellipsis", () => {
@@ -350,7 +350,7 @@ describe("inspect entries", () => {
 
     expect(entry).toBeDefined()
     expect(entry!.kind).toBe("inspect")
-    expect(entry!.glyph).toBe("◈")
+    expect(entry!.glyph).toBe("▸")
     expect(entry!.receipt?.status).toBe("ok")
   })
 })
@@ -737,8 +737,8 @@ describe("edge cases", () => {
       assistantDuration: new Map(),
     })
     expect(result[0]!.kind).toBe("patch")
-    expect(result[0]!.summary).toBe("files changed 2")
-    expect(result[0]!.receipt?.files).toHaveLength(2)
+    expect(result[0]!.summary).toBe("2 files · file-list only")
+    expect(result[0]!.receipt).toBeUndefined()
     expect(result[0]!.diff?.files).toContain("src/main.rs")
   })
 
@@ -769,7 +769,7 @@ describe("edge cases", () => {
       assistantDuration: new Map(),
     })
     expect(result[0]!.kind).toBe("patch")
-    expect(result[0]!.summary).toBe("src/main.rs")
+    expect(result[0]!.summary).toBe("1 file · +1 -1 · diff")
     expect(result[0]!.diff?.files).toBe("src/main.rs")
     expect(result[0]!.diff?.body).toContain("@@")
     expect(result[0]!.collapsible).toBe(true)
@@ -883,7 +883,7 @@ describe("edge cases", () => {
     expect(result).toHaveLength(3) // ask + run + ok
     expect(result[0]!.index).toBe(1)
     expect(result[1]!.index).toBe(2)
-    expect(result[2]!.index).toBe(3)
+    expect(result[2]!.index).toBe(0)
   })
 
   test("multiple assistant text parts before tools merge into one plan body", () => {
@@ -958,10 +958,11 @@ describe("edge cases", () => {
       assistantDuration: new Map(),
     })
 
-    expect(result[0]!.actor).toBe("you")
+    expect(result[0]!.actor).toBeUndefined()
+    expect(result[0]!.label).toBe("you")
     expect(result[0]!.kind).toBe("ask")
     const run = result.find((e) => e.kind === "run")
-    expect(run!.elapsed).toBe("+1.5s")
+    expect(run!.elapsed).toBe("+2s")
   })
 
   test("bash test output is parsed into receipt stats", () => {

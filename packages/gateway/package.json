@@ -18,15 +18,17 @@
   },
   "dependencies": {
     "@arcana/memory": "workspace:*",
-    "node-telegram-bot-api": "catalog:",
-    "@types/node-telegram-bot-api": "catalog:",
-    "discord.js": "catalog:",
-    "@slack/bolt": "catalog:",
     "zod": "catalog:"
+  },
+  "optionalDependencies": {
+    "@slack/bolt": "catalog:",
+    "discord.js": "catalog:",
+    "node-telegram-bot-api": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
+    "@types/node-telegram-bot-api": "catalog:",
     "typescript": "catalog:"
   }
 }

@@ -69,7 +69,7 @@ test("command-spine layout at 120 cols with sample entries", async () => {
         return (
           <>
             <SpineHeader layout={layout()} session={() => undefined} segments={sampleSegments} />
-            <box flexDirection="column">
+            <box flexDirection="column" flexGrow={1} minWidth={0}>
               <For each={SAMPLE_ENTRIES}>{(entry) => <SpineEntry entry={entry} layout={layout()} />}</For>
             </box>
           </>
@@ -94,7 +94,7 @@ test("command-spine layout at 100 cols", async () => {
         return (
           <>
             <SpineHeader layout={layout()} session={() => undefined} segments={sampleSegments} />
-            <box flexDirection="column">
+            <box flexDirection="column" flexGrow={1} minWidth={0}>
               <For each={SAMPLE_ENTRIES}>{(entry) => <SpineEntry entry={entry} layout={layout()} />}</For>
             </box>
           </>
@@ -119,7 +119,7 @@ test("command-spine layout at 80 cols", async () => {
         return (
           <>
             <SpineHeader layout={layout()} session={() => undefined} segments={sampleSegments} />
-            <box flexDirection="column">
+            <box flexDirection="column" flexGrow={1} minWidth={0}>
               <For each={SAMPLE_ENTRIES}>{(entry) => <SpineEntry entry={entry} layout={layout()} />}</For>
             </box>
           </>

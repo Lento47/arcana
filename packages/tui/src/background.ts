@@ -1,6 +1,5 @@
 import { RGBA } from "@opentui/core"
 import type { OptimizedBuffer } from "@opentui/core"
-import { Jimp } from "jimp"
 
 /**
  * Custom TUI background image (Phase 1).
@@ -22,6 +21,7 @@ export interface DecodedImage {
 
 export async function decodeImage(filePath: string): Promise<DecodedImage | undefined> {
   try {
+    const { Jimp } = await import("jimp")
     const img = await Jimp.read(filePath)
     return {
       width: img.bitmap.width,

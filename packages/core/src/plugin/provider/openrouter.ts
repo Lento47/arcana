@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { ModelV2 } from "../../model"
 import { PluginV2 } from "../../plugin"
+import { importSdk } from "./import-provider"
 
 export const OpenRouterPlugin = PluginV2.define({
   id: PluginV2.ID.make("openrouter"),
@@ -26,7 +27,7 @@ export const OpenRouterPlugin = PluginV2.define({
       }),
       "aisdk.sdk": Effect.fn(function* (evt) {
         if (evt.package !== "@openrouter/ai-sdk-provider") return
-        const mod = yield* Effect.promise(() => import("@openrouter/ai-sdk-provider"))
+        const mod = yield* importSdk("@openrouter/ai-sdk-provider")
         evt.sdk = mod.createOpenRouter(evt.options)
       }),
     }

@@ -1236,6 +1236,11 @@ export const layer = Layer.effect(
           }
           const maxSteps = agent.steps ?? Infinity
           const isLastStep = step >= maxSteps
+          // Persist a metadata flag so the next runLoop can detect this was a max-steps stop.
+          if (isLastStep) {
+            session.metadata = { ...session.metadata, __arcana_max_steps_hit: true }
+            yield* sessions.setMetadata({ sessionID, metadata: session.metadata })
+          }
           msgs = yield* SessionReminders.apply({ messages: msgs, agent, session }).pipe(
             Effect.provideService(RuntimeFlags.Service, flags),
             Effect.provideService(FSUtil.Service, fsys),
@@ -1338,6 +1343,26 @@ export const layer = Layer.effect(
               sys.memory(),
             ])
             const system = [...env, ...instructions, ...(skills ? [skills] : []), ...(memory ? [memory] : [])]
+
+            // Detect step-limit continuation: check for the metadata flag set when max steps was hit.
+            if (step === 1 && lastAssistant?.finish && !["tool-calls"].includes(lastAssistant.finish)) {
+              const maxStepsHit = (session.metadata as Record<string, unknown> | undefined)?.["__arcana_max_steps_hit"]
+              if (maxStepsHit) {
+                // Clear the one-shot flag
+                const cleaned = { ...session.metadata }
+                delete cleaned["__arcana_max_steps_hit"]
+                session.metadata = cleaned
+                yield* sessions.setMetadata({ sessionID, metadata: cleaned })
+                system.push(
+                  "<system-reminder>\n" +
+                  "The previous turn ended because the maximum step limit was reached. " +
+                  "Tools are now re-enabled. Review the continuation document below to understand " +
+                  "what was accomplished and what remains, then continue working. " +
+                  "Pick up where you left off — do NOT restart from scratch.\n" +
+                  "</system-reminder>",
+                )
+              }
+            }
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             const result = yield* handle.process({

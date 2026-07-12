@@ -105,7 +105,7 @@ function kindLabel(kind: SpineKind, fallback?: string): string {
     case "patch": return "transmutation"
     case "report": return "divination"
     case "fail": return "omen"
-    case "ask": return "prompt"
+    case "ask": return "you"
     case "plan": return "insight"
     case "ok": return "coda"
     case "think": return ""
@@ -370,6 +370,39 @@ function splitDiffBody(body: string): { left: string; right: string } {
   return { left: left.join("\n"), right: right.join("\n") }
 }
 
+function diffFilesFromBody(body: string, fallback: string): string[] {
+  const files: string[] = []
+  const seen = new Set<string>()
+  const add = (value: string) => {
+    const file = value.replace(/^[ab]\//, "").trim()
+    if (!file || file === "/dev/null" || seen.has(file)) return
+    seen.add(file)
+    files.push(file)
+  }
+
+  for (const line of cleanText(body).split("\n")) {
+    const git = line.match(/^diff --git\s+a\/(.*?)\s+b\/(.*)$/)
+    if (git?.[2]) add(git[2])
+    if (line.startsWith("+++ ")) add(line.replace(/^\+\+\+\s+/, ""))
+    else if (line.startsWith("--- ")) add(line.replace(/^---\s+/, ""))
+  }
+
+  if (files.length) return files
+  return fallback
+    .split(",")
+    .map((file) => file.trim())
+    .filter(Boolean)
+}
+
+function formatPatchHeadline(fileCount: number, stats: { added?: number; removed?: number } | undefined, hasDiff: boolean) {
+  const scope = fileCount > 0 ? `${fileCount} file${fileCount === 1 ? "" : "s"}` : "file path unavailable"
+  const parts = [scope]
+  if (hasDiff && (stats?.added !== undefined || stats?.removed !== undefined)) {
+    parts.push(`+${stats.added ?? 0} -${stats.removed ?? 0}`)
+  }
+  parts.push(hasDiff ? "diff" : fileCount > 0 ? "file-list only" : "evidence incomplete")
+  return parts.join(" · ")
+}
 /** Detect CLI table output (PowerShell/bash columnar tables).
  *  Returns headers + data rows, or null if not a table. */
 function parseTableOutput(text: string): { headers: string[]; rows: string[][] } | null {
@@ -610,9 +643,8 @@ function userMessageToEntries(
       index: 0,
       elapsed,
       timestamp: formatTimestamp(message.time.created),
-      actor: "you",
       kind: "ask",
-      label: kindLabel("ask"),
+      label: "you",
       glyph: SPINE_GLYPH.ask,
       summary: view.summary || "…",
       body: view.body,
@@ -691,7 +723,7 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
   const kind: SpineKind = part.state.status === "error" ? "fail" : toolKind
   const glyph = SPINE_GLYPH[kind] ?? SPINE_GLYPH.inspect
   const elapsed = computeElapsed(undefined, message, part)
-  const receipt = toolStateToReceipt(part.tool, part.state)
+  let receipt = toolStateToReceipt(part.tool, part.state)
   const baseId = `${message.id}:${part.id || `tool-${partIndex}`}`
 
   let summary = ""
@@ -733,14 +765,16 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
   ) {
     const added = (body.match(/^\+[^+]/gm) ?? []).length
     const removed = (body.match(/^-[^-]/gm) ?? []).length
+    const files = diffFilesFromBody(body, summary || part.tool)
+    summary = formatPatchHeadline(files.length, { added, removed }, true)
+    receipt = undefined
     diff = {
-      files: diffTitleFromBody(body, summary || part.tool),
+      files: files.join(", ") || diffTitleFromBody(body, summary || part.tool),
       stats: added || removed ? `+${added} -${removed}` : "",
       body: preserveBodyText(body),
       splitBody: splitDiffBody(body),
     }
   }
-
   return [
     {
       id: `${baseId}:${finalKind}`,
@@ -776,14 +810,9 @@ function patchPartToEntry(message: Message, part: PatchPart): SpineEntry {
     kind: "patch",
     label: "patch",
     glyph: SPINE_GLYPH.patch,
-    summary: fileCount ? `files changed ${fileCount}` : "patch",
-    receipt: fileCount
-      ? {
-          label: "patch",
-          status: "ok",
-          files: part.files.map((path) => ({ path, added: -1, removed: -1 })),
-        }
-      : undefined,
+    summary: formatPatchHeadline(fileCount, undefined, false),
+    collapsible: fileCount > 0,
+    expandedByDefault: true,
     diff: {
       files: files || `${part.files.length} files`,
       stats: "",
@@ -791,7 +820,6 @@ function patchPartToEntry(message: Message, part: PatchPart): SpineEntry {
     source: { messageID: message.id, partID: part.id, kind: "patch" },
   }
 }
-
 function messageTimestamp(message: Message): number {
   const time = message.time as { created: number; completed?: number }
   return time.completed ?? time.created
@@ -953,10 +981,9 @@ function makeTextEntry(
   }
 }
 
-function assistantTextLabel(message: Message, kind: "plan" | "ok") {
-  if (kind === "ok") return "done"
+function assistantTextLabel(message: Message, _kind: "plan" | "ok") {
   const agent = typeof message.agent === "string" ? message.agent.trim() : ""
-  return agent && agent !== "default" ? agent : "assistant"
+  return agent && agent !== "default" ? `assistant · ${agent}` : "assistant"
 }
 function shouldAddTrailingOk(entries: SpineEntry[], message: Message): boolean {
   const messageEntries = entries.filter((e) => e.id.startsWith(message.id))
@@ -1075,25 +1102,16 @@ function assistantMessagePartsToEntries(
   const okEntry = makeTextEntry(message, textAfterTool, "ok", assistantDuration)
 
   if (!sawTool && planEntry && !okEntry) {
-    return [planEntry]
+    const thinkEntries = entries.filter((entry) => entry.kind === "think")
+    return [...thinkEntries, planEntry]
   }
 
   const merged: SpineEntry[] = []
 
-  // Merge think→tool: when a think entry immediately precedes a tool/action,
-  // embed the think verb into the tool row instead of showing a separate line.
-  const consumedThinks = new Set<string>()
-  for (let i = 0; i < entries.length - 1; i++) {
-    const a = entries[i]!, b = entries[i + 1]!
-    if (a.kind === "think" && !a.body && b.kind !== "think") {
-      b.thinking = a.summary
-      consumedThinks.add(a.id)
-    }
-  }
-
-  // Thinking first, then plan prose, then tools/actions, then post-tool summary.
+  // Reasoning is a first-class row. Keep it separate from assistant prose and
+  // tool rows so expanding/collapsing thinking never rewrites the response.
   for (const entry of entries) {
-    if (entry.kind === "think" && !consumedThinks.has(entry.id)) merged.push(entry)
+    if (entry.kind === "think") merged.push(entry)
   }
   if (planEntry) merged.push(planEntry)
   for (const entry of entries) {
@@ -1157,7 +1175,6 @@ function groupConsecutiveTools(entries: SpineEntry[]): SpineEntry[] {
       result.push(run[0]!)
     } else {
       const first = run[0]!
-      const last = run[run.length - 1]!
       const parseElapsedMs = (s: string) => (parseFloat(s.replace(/^\+/, "").replace(/[a-z]+$/i, "")) || 0) * (s.endsWith("ms") ? 1 : 1000)
       const totalMs = run.reduce((sum, e) => sum + parseElapsedMs(e.elapsed), 0)
       result.push({
@@ -1172,6 +1189,12 @@ function groupConsecutiveTools(entries: SpineEntry[]): SpineEntry[] {
   }
 
   for (const entry of entries) {
+    // Reasoning rows are separate from tools. They remain visible while not
+    // participating in same-target tool grouping.
+    if (entry.kind === "think") {
+      result.push(entry)
+      continue
+    }
     if (entry.kind !== "run" && entry.kind !== "inspect" && entry.kind !== "patch") {
       flush()
       result.push(entry)
@@ -1197,7 +1220,12 @@ function assignIndexes(entries: SpineEntry[], startIndex: number): SpineEntry[] 
   })
 }
 
-/** Preserve Solid list identity when entry content is unchanged — critical for scroll/render perf. */
+/**
+ * Preserve Solid list identity when entry content is unchanged — critical for
+ * scroll/render perf. Changed entries return a NEW object so <For> detects the
+ * reference shift and re-renders the child. Mutating in place would leave stale
+ * DOM because Solid can't track plain-object property writes.
+ */
 function stabilizeEntries(next: SpineEntry[], previous: SpineEntry[] | undefined): SpineEntry[] {
   if (!previous?.length) return next
   const prevById = new Map(previous.map((e) => [e.id, e]))
@@ -1217,8 +1245,6 @@ function stabilizeEntries(next: SpineEntry[], previous: SpineEntry[] | undefined
       prev.expandedByDefault === entry.expandedByDefault &&
       prev.streaming === entry.streaming &&
       prev.hidden === entry.hidden &&
-      prev.receipt === entry.receipt &&
-      prev.diff === entry.diff &&
       prev.actor === entry.actor &&
       prev.bodyLabel === entry.bodyLabel &&
       prev.thinking === entry.thinking &&
@@ -1227,37 +1253,14 @@ function stabilizeEntries(next: SpineEntry[], previous: SpineEntry[] | undefined
       prev.diff === entry.diff &&
       prev.reminders === entry.reminders &&
       prev.report === entry.report &&
-      prev.table === entry.table &&
-      prev.reminders === entry.reminders &&
-      prev.report === entry.report &&
       prev.table === entry.table
     ) {
       return prev
     }
-    // Properties changed — update all fields on old reference so Solid
-    // keeps the DOM mounted. Assign references for objects (shallow — avoids
-    // deep copies while letting the new value render).
-    prev.body = entry.body
-    prev.summary = entry.summary
-    prev.elapsed = entry.elapsed
-    prev.index = entry.index
-    prev.timestamp = entry.timestamp
-    prev.label = entry.label
-    prev.glyph = entry.glyph
-    prev.collapsible = entry.collapsible
-    prev.expandedByDefault = entry.expandedByDefault
-    prev.streaming = entry.streaming
-    prev.hidden = entry.hidden
-    prev.actor = entry.actor
-    prev.bodyLabel = entry.bodyLabel
-    prev.thinking = entry.thinking
-    prev.children = entry.children
-    prev.receipt = entry.receipt
-    prev.diff = entry.diff
-    prev.reminders = entry.reminders
-    prev.report = entry.report
-    prev.table = entry.table
-    return prev
+    // Properties changed — return a NEW object so Solid <For> detects the
+    // reference shift and re-renders the SpineEntry child. The old object
+    // is discarded; GC handles cleanup.
+    return { ...entry }
   })
 }
 

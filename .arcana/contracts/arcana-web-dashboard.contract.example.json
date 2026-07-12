@@ -1,0 +1,161 @@
+{
+  "name": "arcana-web-dashboard",
+  "version": "0.3.0",
+  "mode": "enforce",
+  "goal": "Build the remaining dashboard pages for Arcana SaaS site (arcana.otnelhq.com) — session browser, billing, settings, proxy config. The site already has: marketing, auth (Supabase), basic workspace dashboard, status page, and PayPal credit purchasing. This completes the disabled nav items into working reports and settings UI. arcana CLI uses license keys only — no API key management needed.",
+  "budget": {
+    "totalUSD": 1000,
+    "allocation": [
+      { "item": "Proxy API integration and new endpoints (sessions, purchases, profile)", "amount": 350 },
+      { "item": "Sessions page — search/filter agent session history from proxy", "amount": 250 },
+      { "item": "Billing page — transaction history, subscription status, invoices", "amount": 150 },
+      { "item": "Settings page — profile, theme, preferences", "amount": 150 },
+      { "item": "Proxy Config page — balance, daily caps display", "amount": 50 },
+      { "item": "Polish, auth edge cases, deployment dry-run", "amount": 50 }
+    ],
+    "currency": "USD",
+    "contingency": 0,
+    "note": "Fixed-price. All amounts in USD. Any unspent balance returned."
+  },
+  "scope": {
+    "existingEcosystem": {
+      "arcana_site": "Cloudflare Pages site — vanilla HTML/CSS/JS, Pages Functions for SSR/API. Has: marketing homepage, auth (Supabase JWT), workspace dashboard (balance/credits/usage), status page, credit purchasing, sub creation. 6 nav items disabled (Sessions, Memory, API Keys, Proxy, Billing, Settings). API Keys item will remain disabled — not needed.",
+      "arcana_proxy": "Cloudflare Worker at proxy.arcana.otnelhq.com — LLM proxy, PayPal payments, KV store for licenses/balances/usage. Auth via Supabase JWT or license keys. Has /v1/balance, /v1/usage, /v1/models endpoints. No session history API yet.",
+      "arcana_license_server": "Cloudflare Worker at api.arcana.otnelhq.com — license validation/activation/machine binding. 4 tiers: free/pro/team/enterprise. KV + Durable Objects. Admin endpoints for key management."
+    },
+    "leveraging": [
+      "arcana-site existing Pages Functions pattern (credits.tsx, api/status.ts, etc.)",
+      "arcana-proxy existing /v1/balance, /v1/usage endpoints and JWT auth flow",
+      "arcana-license-server /api/license/* endpoints for license display (read-only)",
+      "Supabase auth session already working (JWT in Authorization header)",
+      "Existing workspace HTML/CSS structure and design system"
+    ],
+    "read": ["L:/PROJECTS/arcana-site/**", "L:/PROJECTS/arcana-proxy/src/**", "L:/PROJECTS/arcana-license-server/src/**"],
+    "write": ["L:/PROJECTS/arcana-site/public/workspace/**", "L:/PROJECTS/arcana-site/functions/**", "L:/PROJECTS/arcana-proxy/src/index.ts"],
+    "proxyChanges": {
+      "allowed": ["add new endpoints (GET /v1/sessions, GET /v1/sessions/:id, GET /v1/purchases, GET /v1/profile, PUT /v1/profile)"],
+      "forbidden": ["modify payment flow", "modify auth chain", "modify rate limiting", "modify provider proxy logic"]
+    },
+    "noChangesTo": [
+      "arcana-license-server/**",
+      "arcana-proxy auth section",
+      "arcana-proxy payment section",
+      "arcana-proxy provider proxy section",
+      "arcana-site/public/js/supabase.js",
+      "arcana-site/public/js/auth.js",
+      "arcana-site/functions/credits.tsx payment flow"
+    ]
+  },
+  "deliverables": {
+    "pages": [
+      {
+        "route": "/workspace (enhanced)",
+        "label": "Dashboard Overview",
+        "description": "Add daily cost/token sparklines, model usage breakdown, recent sessions list with links to session detail. Keep existing balance/credits/usage cards."
+      },
+      {
+        "route": "/workspace/sessions",
+        "label": "Session Browser",
+        "description": "Searchable, filterable agent session list from proxy KV. Expand rows to see tokens, cost, model used, duration. Replaces the disabled Sessions nav item."
+      },
+      {
+        "route": "/workspace/proxy",
+        "label": "Proxy Config",
+        "description": "View credit balance, daily usage caps remaining, provider priority list. Read-only display. Replaces disabled Proxy nav item."
+      },
+      {
+        "route": "/workspace/billing",
+        "label": "Billing",
+        "description": "Transaction history (PayPal purchases), subscription status (tier, renewal date), invoices. Replaces disabled Billing nav item."
+      },
+      {
+        "route": "/workspace/settings",
+        "label": "Settings",
+        "description": "Account profile, email display, theme toggle (dark/light), notification preferences. Replaces disabled Settings nav item."
+      }
+    ],
+    "proxyEndpointsNeeded": [
+      { "method": "GET", "path": "/v1/sessions", "description": "Paginated session list for a user (needs new KV prefix and logging)" },
+      { "method": "GET", "path": "/v1/sessions/:id", "description": "Single session details (messages, tokens, cost)" },
+      { "method": "GET", "path": "/v1/purchases", "description": "Purchase/transaction history" },
+      { "method": "GET", "path": "/v1/profile", "description": "User profile settings" },
+      { "method": "PUT", "path": "/v1/profile", "description": "Update profile settings" }
+    ],
+    "pagesFunctions": [
+      { "path": "/functions/api/sessions.ts", "description": "SSR proxy for /v1/sessions, adds auth headers" },
+      { "path": "/functions/api/billing.ts", "description": "SSR proxy for /v1/purchases" },
+      { "path": "/functions/api/profile.ts", "description": "SSR proxy for /v1/profile" }
+    ]
+  },
+  "allowed": [
+    "read_files",
+    "edit_html_css_js",
+    "create_pages_functions",
+    "create_proxy_endpoints",
+    "edit_proxy_endpoints",
+    "run_dev_server",
+    "commit_changes",
+    "run_typecheck"
+  ],
+  "forbidden": [
+    "modify_payment_flow",
+    "modify_auth_chain",
+    "modify_rate_limiting",
+    "modify_provider_proxy",
+    "modify_license_server",
+    "add_external_analytics_sdk",
+    "add_paid_dependency",
+    "deploy_to_production",
+    "delete_existing_features"
+  ],
+  "success": [
+    "workspace_shows_live_cost_token_sparklines",
+    "sessions_page_lists_and_searches_agent_sessions",
+    "billing_page_shows_transaction_history",
+    "settings_page_updates_user_profile",
+    "proxy_config_displays_balance_and_limits",
+    "all_corresponding_disabled_nav_items_replaced_with_working_pages",
+    "API_Keys_nav_item_remains_disabled_unmodified",
+    "proxy_typecheck_passes",
+    "site_loads_without_errors"
+  ],
+  "verification": {
+    "requiredForProvenSuccess": true,
+    "commands": [
+      "cd L:/PROJECTS/arcana-proxy && npx tsc --noEmit",
+      "cd L:/PROJECTS/arcana-site && npx wrangler pages deploy public --dry-run"
+    ],
+    "manualReview": [
+      "Open /workspace — dashboard shows cost/token trend data",
+      "Open /workspace/sessions — lists past agent sessions",
+      "Open /workspace/billing — shows credit purchase history",
+      "Open /workspace/settings — update profile, verify persisted",
+      "Open /workspace/proxy — shows balance and daily caps"
+    ]
+  },
+  "risk": {
+    "default": "medium",
+    "escalateOn": [
+      "paypal_api_change",
+      "supabase_auth_breaking_change",
+      "production_deploy",
+      "kv_schema_change"
+    ],
+    "mitigations": [
+      "All new proxy endpoints follow existing auth/rate-limit patterns",
+      "All new pages follow existing vanilla HTML/CSS/JS pattern",
+      "No changes to payment flow, auth chain, or provider proxy",
+      "KV data for sessions uses existing prefix conventions",
+      "Reuse existing workspace CSS design system"
+    ]
+  },
+  "receipt": {
+    "issued": "2026-07-11",
+    "payer": "User (lejze)",
+    "recipient": "Arcana development budget",
+    "amount": 1000,
+    "status": "pending",
+    "deliveryEstimate": "10-15 business days",
+    "terms": "1000 USD fixed price for scope defined above. Any scope change requires new contract. Payment upon successful delivery and verification."
+  }
+}

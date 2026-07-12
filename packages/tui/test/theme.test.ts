@@ -2,7 +2,16 @@ import { expect, test } from "bun:test"
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { TerminalColors } from "@opentui/core"
-import { DEFAULT_THEMES, addTheme, allThemes, hasTheme, resolveTheme, terminalMode } from "../src/theme"
+import {
+  DEFAULT_THEMES,
+  addTheme,
+  allThemes,
+  hasTheme,
+  resolveTheme,
+  selectedForeground,
+  terminalMode,
+  type Theme,
+} from "../src/theme"
 import { discoverThemes } from "../src/context/theme"
 import { tmpdir } from "./fixture/fixture"
 
@@ -90,12 +99,93 @@ function relativeLuminance(color: { r: number; g: number; b: number }) {
   return 0.2126 * linearChannel(color.r) + 0.7152 * linearChannel(color.g) + 0.0722 * linearChannel(color.b)
 }
 
-function contrastRatio(foreground: { r: number; g: number; b: number }, background: { r: number; g: number; b: number }) {
+function contrastRatio(
+  foreground: { r: number; g: number; b: number },
+  background: { r: number; g: number; b: number },
+) {
   const lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background))
   const darker = Math.min(relativeLuminance(foreground), relativeLuminance(background))
   return (lighter + 0.05) / (darker + 0.05)
 }
 
+const THEME_MODES = ["dark", "light"] as const
+const BRAND_THEME_MODES = BRAND_THEMES.flatMap((name) => THEME_MODES.map((mode) => [name, mode] as const))
+
+const SURFACE_TEXT_TOKENS: Array<[keyof Theme, number]> = [
+  ["primary", 4.5],
+  ["secondary", 4.5],
+  ["accent", 4.5],
+  ["highlight", 4.5],
+  ["info", 4.5],
+  ["success", 4.5],
+  ["warning", 4.5],
+  ["error", 4.8],
+  ["diffAdded", 4.5],
+  ["diffRemoved", 4.5],
+  ["diffContext", 4.5],
+  ["diffHunkHeader", 4.5],
+  ["diffHighlightAdded", 4.5],
+  ["diffHighlightRemoved", 4.5],
+  ["diffLineNumber", 3.8],
+  ["markdownText", 7],
+  ["markdownHeading", 4.8],
+  ["markdownLink", 4.5],
+  ["markdownLinkText", 4.5],
+  ["markdownCode", 4.5],
+  ["markdownBlockQuote", 4.5],
+  ["markdownEmph", 4.5],
+  ["markdownStrong", 4.8],
+  ["markdownHorizontalRule", 3.8],
+  ["markdownListItem", 4.5],
+  ["markdownListEnumeration", 4.5],
+  ["markdownImage", 4.5],
+  ["markdownImageText", 4.5],
+  ["markdownCodeBlock", 7],
+  ["syntaxComment", 3.8],
+  ["syntaxKeyword", 4.5],
+  ["syntaxFunction", 4.5],
+  ["syntaxVariable", 7],
+  ["syntaxString", 4.5],
+  ["syntaxNumber", 4.5],
+  ["syntaxType", 4.5],
+  ["syntaxOperator", 4.5],
+  ["syntaxPunctuation", 7],
+  ["spineBrand", 7],
+  ["spineContext", 4.7],
+  ["spineActor", 4.5],
+  ["spineAsk", 4.5],
+  ["spineThink", 4.5],
+  ["spineInspect", 4.5],
+  ["spinePlan", 4.5],
+  ["spinePatch", 4.5],
+  ["spineRun", 4.5],
+  ["spineFail", 4.8],
+  ["spineFix", 4.5],
+  ["spineOk", 4.5],
+  ["spinePrompt", 4.8],
+  ["spineDiffAdd", 4.5],
+  ["spineDiffRemove", 4.5],
+  ["spineDiffMuted", 4.5],
+  ["spineGutterElapsed", 4.5],
+  ["spineGutterTimestamp", 4.5],
+  ["spineSubagent", 4.5],
+]
+
+function readableSurface(theme: Theme) {
+  return theme.background.a === 0 ? theme.backgroundPanel : theme.background
+}
+
+function assertContrast(
+  theme: Theme,
+  token: keyof Theme,
+  surface: { r: number; g: number; b: number },
+  minRatio: number,
+) {
+  const value = theme[token]
+  if (typeof value === "number" || typeof value === "boolean") throw new Error(`${String(token)} is not a color token`)
+  const ratio = contrastRatio(value, surface)
+  if (ratio < minRatio) throw new Error(`${String(token)} contrast ${ratio.toFixed(2)} < ${minRatio}`)
+}
 test.each(BRAND_THEMES)("%s theme defines a brand-surface accent token", (name: string) => {
   const json = DEFAULT_THEMES[name]
   expect(json).toBeDefined()
@@ -142,3 +232,27 @@ test.each(BRAND_THEMES)("%s theme keeps critical text readable in light mode", (
   expect(contrastRatio(resolved.diffLineNumber, resolved.background)).toBeGreaterThanOrEqual(3.5)
   expect(contrastRatio(resolved.syntaxComment, resolved.background)).toBeGreaterThanOrEqual(3.5)
 })
+test.each(BRAND_THEME_MODES)(
+  "%s theme keeps TUI surface tokens readable in %s mode",
+  (name: string, mode: "dark" | "light") => {
+    const resolved = resolveTheme(structuredClone(DEFAULT_THEMES[name]!), mode)
+    const surface = readableSurface(resolved)
+    for (const [token, minRatio] of SURFACE_TEXT_TOKENS) {
+      assertContrast(resolved, token, surface, minRatio)
+    }
+    assertContrast(resolved, "spineRail", resolved.backgroundPanel, 2.4)
+    assertContrast(resolved, "spineRailActive", resolved.backgroundPanel, 3.2)
+    assertContrast(resolved, "spinePrompt", resolved.backgroundMenu, 4.5)
+    expect(contrastRatio(selectedForeground(resolved, resolved.primary), resolved.primary)).toBeGreaterThanOrEqual(4.5)
+  },
+)
+
+test.each(BRAND_THEME_MODES)(
+  "%s theme keeps native diff renderer tokens readable in %s mode",
+  (name: string, mode: "dark" | "light") => {
+    const resolved = resolveTheme(structuredClone(DEFAULT_THEMES[name]!), mode)
+    expect(contrastRatio(resolved.diffHighlightAdded, resolved.diffAddedBg)).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio(resolved.diffHighlightRemoved, resolved.diffRemovedBg)).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio(resolved.diffLineNumber, resolved.diffContextBg)).toBeGreaterThanOrEqual(3.8)
+  },
+)

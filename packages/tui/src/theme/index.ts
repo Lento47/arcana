@@ -125,7 +125,34 @@ type ColorValue = HexColor | RefName | Variant | RGBA
 export type ThemeJson = {
   $schema?: string
   defs?: Record<string, HexColor | RefName>
-  theme: Omit<Record<ThemeColor, ColorValue>, "selectedListItemText" | "backgroundMenu" | "borderThinking" | "surfaceAlt" | "spineBrand" | "spineContext" | "spineRail" | "spineRailActive" | "spineActor" | "spineAsk" | "spineThink" | "spineInspect" | "spinePlan" | "spinePatch" | "spineRun" | "spineFail" | "spineFix" | "spineOk" | "spinePrompt" | "spineDiffAdd" | "spineDiffRemove" | "spineDiffMuted" | "spineGutterElapsed" | "spineGutterTimestamp" | "spineSubagent"> & {
+  theme: Omit<
+    Record<ThemeColor, ColorValue>,
+    | "selectedListItemText"
+    | "backgroundMenu"
+    | "borderThinking"
+    | "surfaceAlt"
+    | "spineBrand"
+    | "spineContext"
+    | "spineRail"
+    | "spineRailActive"
+    | "spineActor"
+    | "spineAsk"
+    | "spineThink"
+    | "spineInspect"
+    | "spinePlan"
+    | "spinePatch"
+    | "spineRun"
+    | "spineFail"
+    | "spineFix"
+    | "spineOk"
+    | "spinePrompt"
+    | "spineDiffAdd"
+    | "spineDiffRemove"
+    | "spineDiffMuted"
+    | "spineGutterElapsed"
+    | "spineGutterTimestamp"
+    | "spineSubagent"
+  > & {
     selectedListItemText?: ColorValue
     backgroundMenu?: ColorValue
     borderThinking?: ColorValue
@@ -419,9 +446,10 @@ function mixColor(base: RGBA, target: RGBA, amount: number) {
 function ensureMinContrast(foreground: RGBA, background: RGBA, minRatio: number) {
   if (contrastRatio(foreground, background) >= minRatio) return foreground
 
-  const target = relativeLuminance(background) > 0.5
-    ? RGBA.fromInts(0, 0, 0, Math.round(foreground.a * 255))
-    : RGBA.fromInts(255, 255, 255, Math.round(foreground.a * 255))
+  const target =
+    relativeLuminance(background) > 0.5
+      ? RGBA.fromInts(0, 0, 0, Math.round(foreground.a * 255))
+      : RGBA.fromInts(255, 255, 255, Math.round(foreground.a * 255))
 
   let low = 0
   let high = 1
@@ -440,29 +468,64 @@ function ensureMinContrast(foreground: RGBA, background: RGBA, minRatio: number)
 }
 
 function applyReadabilityFloor(theme: Partial<Record<ThemeColor, RGBA>>) {
-  const baseSurface = theme.background && theme.background.a === 0
-    ? (theme.backgroundPanel ?? theme.background)
-    : theme.background
+  const baseSurface =
+    theme.background && theme.background.a === 0 ? (theme.backgroundPanel ?? theme.background) : theme.background
   if (!baseSurface) return
 
-  const lift = (value: RGBA | undefined, minRatio: number) => value ? ensureMinContrast(value, baseSurface, minRatio) : value
   const panel = theme.backgroundPanel ?? baseSurface
+  const menu = theme.backgroundMenu ?? panel
+  const liftOn = (surface: RGBA, value: RGBA | undefined, minRatio: number) =>
+    value ? ensureMinContrast(value, surface, minRatio) : value
+  const lift = (value: RGBA | undefined, minRatio: number) => liftOn(baseSurface, value, minRatio)
 
   theme.text = lift(theme.text, 7)
   theme.textMuted = lift(theme.textMuted, 4.7)
-  theme.secondary = lift(theme.secondary, 3.8)
-  theme.accent = lift(theme.accent, 3.8)
-  theme.info = lift(theme.info, 3.8)
-  theme.success = lift(theme.success, 3.8)
-  theme.warning = lift(theme.warning, 3.8)
-  theme.error = lift(theme.error, 4.2)
+  theme.primary = lift(theme.primary, 4.5)
+  theme.secondary = lift(theme.secondary, 4.5)
+  theme.accent = lift(theme.accent, 4.5)
+  theme.highlight = lift(theme.highlight, 4.5)
+  theme.info = lift(theme.info, 4.5)
+  theme.success = lift(theme.success, 4.5)
+  theme.warning = lift(theme.warning, 4.5)
+  theme.error = lift(theme.error, 4.8)
   theme.borderSubtle = lift(theme.borderSubtle, 2.2)
   theme.border = lift(theme.border, 2.8)
-  theme.diffContext = lift(theme.diffContext, 3.8)
-  theme.diffHunkHeader = lift(theme.diffHunkHeader, 3.8)
-  theme.diffLineNumber = lift(theme.diffLineNumber, 3.6)
-  theme.syntaxComment = lift(theme.syntaxComment, 3.8)
+
+  theme.diffAdded = lift(theme.diffAdded, 4.5)
+  theme.diffRemoved = lift(theme.diffRemoved, 4.5)
+  theme.diffContext = lift(theme.diffContext, 4.5)
+  theme.diffHunkHeader = lift(theme.diffHunkHeader, 4.5)
+  theme.diffHighlightAdded = lift(theme.diffHighlightAdded, 4.5)
+  theme.diffHighlightRemoved = lift(theme.diffHighlightRemoved, 4.5)
+  theme.diffLineNumber = lift(theme.diffLineNumber, 3.8)
+  theme.diffHighlightAdded = liftOn(theme.diffAddedBg ?? baseSurface, theme.diffHighlightAdded, 4.5)
+  theme.diffHighlightRemoved = liftOn(theme.diffRemovedBg ?? baseSurface, theme.diffHighlightRemoved, 4.5)
+  theme.diffLineNumber = liftOn(theme.diffContextBg ?? baseSurface, theme.diffLineNumber, 3.8)
+
+  theme.markdownText = lift(theme.markdownText, 7)
+  theme.markdownHeading = lift(theme.markdownHeading, 4.8)
+  theme.markdownLink = lift(theme.markdownLink, 4.5)
+  theme.markdownLinkText = lift(theme.markdownLinkText, 4.5)
+  theme.markdownCode = lift(theme.markdownCode, 4.5)
+  theme.markdownBlockQuote = lift(theme.markdownBlockQuote, 4.5)
+  theme.markdownEmph = lift(theme.markdownEmph, 4.5)
+  theme.markdownStrong = lift(theme.markdownStrong, 4.8)
   theme.markdownHorizontalRule = lift(theme.markdownHorizontalRule, 3.8)
+  theme.markdownListItem = lift(theme.markdownListItem, 4.5)
+  theme.markdownListEnumeration = lift(theme.markdownListEnumeration, 4.5)
+  theme.markdownImage = lift(theme.markdownImage, 4.5)
+  theme.markdownImageText = lift(theme.markdownImageText, 4.5)
+  theme.markdownCodeBlock = lift(theme.markdownCodeBlock, 7)
+
+  theme.syntaxComment = lift(theme.syntaxComment, 3.8)
+  theme.syntaxKeyword = lift(theme.syntaxKeyword, 4.5)
+  theme.syntaxFunction = lift(theme.syntaxFunction, 4.5)
+  theme.syntaxVariable = lift(theme.syntaxVariable, 7)
+  theme.syntaxString = lift(theme.syntaxString, 4.5)
+  theme.syntaxNumber = lift(theme.syntaxNumber, 4.5)
+  theme.syntaxType = lift(theme.syntaxType, 4.5)
+  theme.syntaxOperator = lift(theme.syntaxOperator, 4.5)
+  theme.syntaxPunctuation = lift(theme.syntaxPunctuation, 7)
 
   theme.spineBrand = lift(theme.spineBrand, 7)
   theme.spineContext = lift(theme.spineContext, 4.7)
@@ -481,10 +544,15 @@ function applyReadabilityFloor(theme: Partial<Record<ThemeColor, RGBA>>) {
   theme.spineFix = lift(theme.spineFix, 4.5)
   theme.spineOk = lift(theme.spineOk, 4.5)
   theme.spinePrompt = lift(theme.spinePrompt, 4.8)
-  theme.spineDiffAdd = lift(theme.spineDiffAdd, 4.2)
-  theme.spineDiffRemove = lift(theme.spineDiffRemove, 4.2)
-  theme.spineRail = theme.spineRail ? ensureMinContrast(theme.spineRail, panel, 2.4) : theme.spineRail
-  theme.spineRailActive = theme.spineRailActive ? ensureMinContrast(theme.spineRailActive, panel, 3.2) : theme.spineRailActive
+  theme.spineDiffAdd = lift(theme.spineDiffAdd, 4.5)
+  theme.spineDiffRemove = lift(theme.spineDiffRemove, 4.5)
+  theme.spineRail = liftOn(panel, theme.spineRail, 2.4)
+  theme.spineRailActive = liftOn(panel, theme.spineRailActive, 3.2)
+
+  if (theme.selectedListItemText && theme.primary) {
+    theme.selectedListItemText = ensureMinContrast(theme.selectedListItemText, theme.primary, 4.5)
+  }
+  theme.spinePrompt = liftOn(menu, theme.spinePrompt, 4.5)
 }
 
 export function terminalMode(colors: TerminalColors): "dark" | "light" | undefined {
@@ -1251,4 +1319,3 @@ function getSyntaxRules(theme: Theme) {
     },
   ]
 }
-

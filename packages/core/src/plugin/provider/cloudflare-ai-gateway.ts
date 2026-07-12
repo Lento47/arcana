@@ -2,6 +2,7 @@ import os from "os"
 import { InstallationVersion } from "../../installation/version"
 import { Effect, Option, Schema } from "effect"
 import { PluginV2 } from "../../plugin"
+import { importSdk } from "./import-provider"
 
 export const CloudflareAIGatewayPlugin = PluginV2.define({
   id: PluginV2.ID.make("cloudflare-ai-gateway"),
@@ -14,8 +15,8 @@ export const CloudflareAIGatewayPlugin = PluginV2.define({
         const config = gatewayConfig(evt.options)
         if (!config) return
         const metadata = gatewayMetadata(evt.options)
-        const { createAiGateway } = yield* Effect.promise(() => import("ai-gateway-provider")).pipe(Effect.orDie)
-        const { createUnified } = yield* Effect.promise(() => import("ai-gateway-provider/providers/unified")).pipe(
+        const { createAiGateway } = yield* importSdk("ai-gateway-provider").pipe(Effect.orDie)
+        const { createUnified } = yield* importSdk("ai-gateway-provider/providers/unified").pipe(
           Effect.orDie,
         )
         const gateway = createAiGateway({

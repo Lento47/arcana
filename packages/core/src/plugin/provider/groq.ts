@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { PluginV2 } from "../../plugin"
+import { importSdk } from "./import-provider"
 
 export const GroqPlugin = PluginV2.define({
   id: PluginV2.ID.make("groq"),
@@ -7,7 +8,7 @@ export const GroqPlugin = PluginV2.define({
     return {
       "aisdk.sdk": Effect.fn(function* (evt) {
         if (evt.package !== "@ai-sdk/groq") return
-        const mod = yield* Effect.promise(() => import("@ai-sdk/groq"))
+        const mod = yield* importSdk("@ai-sdk/groq")
         evt.sdk = mod.createGroq(evt.options)
       }),
     }

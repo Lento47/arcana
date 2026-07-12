@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { PluginV2 } from "../../plugin"
+import { importSdk } from "./import-provider"
 import { ProviderV2 } from "../../provider"
 
 type FetchLike = (url: string | URL | Request, init?: RequestInit) => Promise<Response>
@@ -77,7 +78,7 @@ export const SnowflakeCortexPlugin = PluginV2.define({
           (typeof evt.options.apiKey === "string" ? evt.options.apiKey : undefined)
         const upstream = typeof evt.options.fetch === "function" ? (evt.options.fetch as FetchLike) : undefined
         if (evt.options.includeUsage !== false) evt.options.includeUsage = true
-        const mod = yield* Effect.promise(() => import("@ai-sdk/openai-compatible"))
+        const mod = yield* importSdk("@ai-sdk/openai-compatible")
         evt.sdk = mod.createOpenAICompatible({
           ...evt.options,
           ...(token ? { apiKey: token } : {}),

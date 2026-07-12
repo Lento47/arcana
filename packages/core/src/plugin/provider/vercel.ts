@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { PluginV2 } from "../../plugin"
+import { importSdk } from "./import-provider"
 
 export const VercelPlugin = PluginV2.define({
   id: PluginV2.ID.make("vercel"),
@@ -17,7 +18,7 @@ export const VercelPlugin = PluginV2.define({
       }),
       "aisdk.sdk": Effect.fn(function* (evt) {
         if (evt.package !== "@ai-sdk/vercel") return
-        const mod = yield* Effect.promise(() => import("@ai-sdk/vercel"))
+        const mod = yield* importSdk("@ai-sdk/vercel")
         evt.sdk = mod.createVercel(evt.options)
       }),
     }

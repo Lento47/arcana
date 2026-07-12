@@ -1,200 +1,176 @@
-import { Show, createMemo } from "solid-js"
+import { For, Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
-import { useTuiConfig } from "../../config"
-import { filetype } from "../../util/filetype"
 import type { SpineDiffExcerpt, SpineLayout } from "./spine-types"
 
-function diffSummary(diff: SpineDiffExcerpt) {
-  if (diff.stats) return `${diff.files} (${diff.stats})`
-  return diff.files || "patch"
+type PreviewLine = {
+  kind: "add" | "remove"
+  text: string
 }
 
-/** Infer language from the first path in a multi-file summary string. */
-function filetypeFromSummary(files: string | undefined): string | undefined {
-  if (!files?.trim()) return undefined
-  const first = files.split(/[,\s]/).map((s) => s.trim()).find(Boolean)
-  if (!first) return undefined
-  return filetype(first)
+type PreviewFile = {
+  file: string
+  ranges: string[]
+  lines: PreviewLine[]
 }
 
-/**
- * Cap extremely long patches so the transcript stays scannable.
- * Full patch remains available via entry details (o / open).
- */
-function truncateDiff(body: string, maxLines: number): { text: string; truncated: boolean } {
-  const lines = body.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
-  if (lines.length <= maxLines) return { text: body, truncated: false }
-  return {
-    text: lines.slice(0, maxLines).join("\n") + `\n… (${lines.length - maxLines} more lines)`,
-    truncated: true,
+function splitFiles(files: string | undefined): string[] {
+  return (files ?? "")
+    .split(",")
+    .map((file) => file.trim())
+    .filter(Boolean)
+}
+
+function cleanFileName(value: string | undefined): string {
+  return (value ?? "")
+    .replace(/^[ab]\//, "")
+    .replace(/^\+\+\+\s+/, "")
+    .replace(/^---\s+/, "")
+    .trim()
+}
+
+function formatRange(start: number, count: number | undefined) {
+  const width = Math.max(1, count ?? 1)
+  const end = start + width - 1
+  return start === end ? `line ${start}` : `lines ${start}-${end}`
+}
+
+function parseDiffPreview(body: string, fallbackFiles: string[]): PreviewFile[] {
+  const files: PreviewFile[] = []
+  const byName = new Map<string, PreviewFile>()
+  let current: PreviewFile | undefined
+  let inHunk = false
+
+  const ensure = (file: string | undefined) => {
+    const name = cleanFileName(file) || fallbackFiles[0] || "file"
+    const existing = byName.get(name)
+    if (existing) {
+      current = existing
+      return existing
+    }
+    const next = { file: name, ranges: [], lines: [] }
+    byName.set(name, next)
+    files.push(next)
+    current = next
+    return next
   }
-}
 
-/**
- * OpenTUI's DiffRenderable is strict about hunk headers (old/new counts must
- * match the following lines). Streaming patches and sample excerpts often lie.
- * Rewrite each `@@ -l,s +l,s @@` from the actual +/-/context lines that follow.
- */
-export function normalizeUnifiedDiff(body: string): string {
   const lines = body.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
-  const out: string[] = []
-  let i = 0
-
-  while (i < lines.length) {
-    const line = lines[i]!
-    const hunk = line.match(/^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s*@@(.*)$/)
-    if (!hunk) {
-      out.push(line)
-      i += 1
+  for (const line of lines) {
+    const git = line.match(/^diff --git\s+a\/(.*?)\s+b\/(.*)$/)
+    if (git?.[2]) {
+      ensure(git[2])
+      inHunk = false
       continue
     }
 
-    const oldStart = Number(hunk[1])
-    const newStart = Number(hunk[2])
-    const trailer = hunk[3] ?? ""
-    i += 1
-
-    const chunk: string[] = []
-    let oldCount = 0
-    let newCount = 0
-
-    while (i < lines.length) {
-      const cur = lines[i]!
-      if (cur.startsWith("@@ ") || cur.startsWith("diff --git")) break
-      // File headers belonging to the next file
-      if (
-        (cur.startsWith("--- ") || cur.startsWith("+++ "))
-        && chunk.length > 0
-      ) break
-
-      chunk.push(cur)
-      if (cur.startsWith("-") && !cur.startsWith("---")) {
-        oldCount += 1
-      } else if (cur.startsWith("+") && !cur.startsWith("+++")) {
-        newCount += 1
-      } else if (!cur.startsWith("\\")) {
-        // context (leading space or bare)
-        oldCount += 1
-        newCount += 1
-      }
-      i += 1
+    if (line.startsWith("+++ ")) {
+      const name = cleanFileName(line.replace(/^\+\+\+\s+/, ""))
+      if (name && name !== "/dev/null") ensure(name)
+      continue
     }
 
-    const oldSpec = oldCount === 1 ? `${oldStart}` : `${oldStart},${oldCount}`
-    const newSpec = newCount === 1 ? `${newStart}` : `${newStart},${newCount}`
-    out.push(`@@ -${oldSpec} +${newSpec} @@${trailer}`)
-    out.push(...chunk)
+    const hunk = line.match(/^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s*@@/)
+    if (hunk) {
+      const target = ensure(current?.file)
+      const newStart = Number(hunk[3])
+      const oldStart = Number(hunk[1])
+      const newCount = hunk[4] !== undefined ? Number(hunk[4]) : undefined
+      const oldCount = hunk[2] !== undefined ? Number(hunk[2]) : undefined
+      target.ranges.push(formatRange(newCount === 0 ? oldStart : newStart, newCount === 0 ? oldCount : newCount))
+      inHunk = true
+      continue
+    }
+
+    if (!inHunk) continue
+    const target = ensure(current?.file)
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      target.lines.push({ kind: "add", text: line.slice(1) })
+    } else if (line.startsWith("-") && !line.startsWith("---")) {
+      target.lines.push({ kind: "remove", text: line.slice(1) })
+    }
   }
 
-  return out.join("\n")
+  if (files.length) return files
+  return fallbackFiles.length ? fallbackFiles.map((file) => ({ file, ranges: [], lines: [] })) : []
 }
 
-/**
- * Ensure a minimal unified-diff envelope so OpenTUI can parse bare hunks.
- */
-function ensureDiffEnvelope(body: string, files: string | undefined): string {
-  const text = body.trim()
-  if (!text) return text
-  if (text.startsWith("diff --git") || text.startsWith("--- ") || text.startsWith("+++ ")) {
-    return text
+function lineLimit(layout: SpineLayout) {
+  if (layout === "wide") return 18
+  if (layout === "compact") return 14
+  if (layout === "narrow") return 10
+  return 0
+}
+
+function rangeText(file: PreviewFile) {
+  if (!file.ranges.length) return "line range unavailable"
+  if (file.ranges.length <= 3) return file.ranges.join(", ")
+  return `${file.ranges.slice(0, 3).join(", ")} · ${file.ranges.length} regions`
+}
+
+function takePreviewLines(files: PreviewFile[], limit: number) {
+  if (limit <= 0) return { lines: [] as Array<PreviewLine & { file: string }>, truncated: false }
+  const lines: Array<PreviewLine & { file: string }> = []
+  let total = 0
+  for (const file of files) {
+    for (const line of file.lines) {
+      total++
+      if (lines.length < limit) lines.push({ ...line, file: file.file })
+    }
   }
-  // Bare hunk or raw +/- lines from edit tools
-  const name = files?.split(/[,\s]/)[0]?.trim() || "file"
-  const hasHunk = /^@@ /m.test(text)
-  const bodyLines = hasHunk
-    ? text
-    : [
-        `@@ -1,${Math.max(1, text.split("\n").filter((l) => l.startsWith("-") || l.startsWith(" ")).length)} +1,${Math.max(1, text.split("\n").filter((l) => l.startsWith("+") || l.startsWith(" ")).length)} @@`,
-        ...text.split("\n").map((l) => (l.startsWith("+") || l.startsWith("-") || l.startsWith(" ") ? l : ` ${l}`)),
-      ].join("\n")
-
-  return [`--- a/${name}`, `+++ b/${name}`, bodyLines].join("\n")
+  return { lines, truncated: total > lines.length }
 }
 
-/**
- * Command-spine patch body using OpenTUI's native `<diff>` (Tree-sitter +
- * split/unified views). Per opentui skill docs/components/diff.mdx.
- */
 export function SpineDiff(props: {
   diff: SpineDiffExcerpt
   layout: SpineLayout
   expanded?: boolean
 }) {
-  const { theme, syntax } = useTheme()
-  const tui = useTuiConfig()
-  const showExpanded = () => props.expanded ?? true
-  const summary = createMemo(() => diffSummary(props.diff))
+  const { theme } = useTheme()
   const body = createMemo(() => props.diff.body?.trim() ?? "")
-
-  const maxLines = createMemo(() => {
-    if (props.layout === "wide") return 48
-    if (props.layout === "compact") return 32
-    if (props.layout === "narrow") return 20
-    return 0
-  })
-
-  const prepared = createMemo(() => {
-    const raw = body()
-    if (!raw) return { text: "", truncated: false }
-    const enveloped = ensureDiffEnvelope(raw, props.diff.files)
-    const normalized = normalizeUnifiedDiff(enveloped)
-    return truncateDiff(normalized, maxLines())
-  })
-
-  const view = createMemo<"unified" | "split">(() => {
-    if (tui.diff_style === "stacked") return "unified"
-    // Split only when there is real horizontal room (OpenTUI split needs ~120).
-    if (props.layout === "wide") return "split"
-    return "unified"
-  })
-
-  const ft = createMemo(() => filetypeFromSummary(props.diff.files))
+  const files = createMemo(() => splitFiles(props.diff.files))
+  const preview = createMemo(() => parseDiffPreview(body(), files()))
+  const changed = createMemo(() => takePreviewLines(preview(), lineLimit(props.layout)))
 
   if (props.layout === "minimal") {
-    return (
-      <text fg={theme.spineDiffMuted as any} wrapMode="word">
-        {summary()}
-      </text>
-    )
+    return <text fg={theme.spineDiffMuted as any}>{files()[0] ?? "patch"}</text>
   }
 
-  if (!showExpanded() || !body()) {
+  if (!body()) {
     return (
-      <text fg={theme.spineDiffMuted as any} wrapMode="word">
-        {body() ? summary() : summary()}
-      </text>
+      <box flexDirection="column" minWidth={0} flexGrow={1} flexShrink={1} width="100%">
+        <For each={files().length ? files() : ["file path unavailable"]}>
+          {(file) => (
+            <text wrapMode="word">
+              <span style={{ fg: theme.spineContext as any }}>{file}</span>
+              <span style={{ fg: theme.warning as any }}> · line diff unavailable</span>
+            </text>
+          )}
+        </For>
+      </box>
     )
   }
 
   return (
     <box flexDirection="column" minWidth={0} flexGrow={1} flexShrink={1} width="100%">
-      <text fg={theme.spineDiffMuted as any} wrapMode="word">
-        {summary()}
-      </text>
-      <box minWidth={0} flexGrow={1} flexShrink={1} width="100%" marginTop={0}>
-        <diff
-          diff={prepared().text}
-          view={view()}
-          filetype={ft()}
-          syntaxStyle={syntax()}
-          showLineNumbers={props.layout !== "narrow"}
-          width="100%"
-          wrapMode="word"
-          syncScroll={view() === "split"}
-          fg={theme.text}
-          addedBg={theme.diffAddedBg}
-          removedBg={theme.diffRemovedBg}
-          contextBg={theme.diffContextBg}
-          addedSignColor={theme.diffHighlightAdded}
-          removedSignColor={theme.diffHighlightRemoved}
-          lineNumberFg={theme.diffLineNumber}
-          lineNumberBg={theme.diffContextBg}
-          addedLineNumberBg={theme.diffAddedLineNumberBg}
-          removedLineNumberBg={theme.diffRemovedLineNumberBg}
-        />
-      </box>
-      <Show when={prepared().truncated}>
-        <text fg={theme.spineDiffMuted as any}>o · open full diff</text>
+      <For each={preview()}>
+        {(file) => (
+          <text wrapMode="word">
+            <span style={{ fg: theme.spineContext as any }}>{file.file}</span>
+            <span style={{ fg: theme.spineDiffMuted as any }}> · {rangeText(file)}</span>
+          </text>
+        )}
+      </For>
+      <Show when={props.expanded !== false}>
+        <For each={changed().lines}>
+          {(line) => (
+            <text fg={(line.kind === "add" ? theme.spineDiffAdd : theme.spineDiffRemove) as any} wrapMode="word">
+              {line.kind === "add" ? "+ " : "- "}{line.text || " "}
+            </text>
+          )}
+        </For>
+        <Show when={changed().truncated}>
+          <text fg={theme.spineDiffMuted as any}>o · open full diff for remaining changes</text>
+        </Show>
       </Show>
     </box>
   )
