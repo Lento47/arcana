@@ -665,6 +665,31 @@ function toolInputText(part: ToolPart, key: string): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined
 }
 
+function taskToolAgent(part: ToolPart): string | undefined {
+  if (part.tool !== "task" && part.tool !== "subtask") return undefined
+  const input =
+    "input" in part.state && part.state.input && typeof part.state.input === "object"
+      ? (part.state.input as Record<string, unknown>)
+      : undefined
+  for (const key of ["subagent_type", "subagentType", "agent", "name"]) {
+    const value = input?.[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  return undefined
+}
+
+function taskToolSummary(part: ToolPart): string {
+  const input =
+    "input" in part.state && part.state.input && typeof part.state.input === "object"
+      ? (part.state.input as Record<string, unknown>)
+      : undefined
+  for (const key of ["description", "prompt", "command"]) {
+    const value = input?.[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  if ("title" in part.state && typeof part.state.title === "string" && part.state.title.trim()) return part.state.title.trim()
+  return part.tool
+}
 function toolOutputBody(part: ToolPart): { body: string; label: string; reminders: string[]; report?: SpineReportData; table?: { headers: string[]; rows: string[][] } } {
   const state = part.state
   if (state.status === "error") {
@@ -720,7 +745,8 @@ function toolOutputBody(part: ToolPart): { body: string; label: string; reminder
 
 function toolPartToEntries(message: Message, part: ToolPart, partIndex: number): SpineEntry[] {
   const toolKind = toolToSpineKind(part.tool)
-  const kind: SpineKind = part.state.status === "error" ? "fail" : toolKind
+  const agentName = taskToolAgent(part)
+  const kind: SpineKind = part.state.status === "error" ? "fail" : agentName ? "agent" : toolKind
   const glyph = SPINE_GLYPH[kind] ?? SPINE_GLYPH.inspect
   const elapsed = computeElapsed(undefined, message, part)
   let receipt = toolStateToReceipt(part.tool, part.state)
@@ -744,7 +770,7 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
   }
 
   if (toolKind === "inspect") {
-    summary = getInspectSummary(part)
+    summary = agentName ? taskToolSummary(part) : getInspectSummary(part)
   }
 
   const renderedOutput = toolOutputBody(part)
@@ -782,7 +808,7 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
       elapsed,
       timestamp: formatTimestamp(message.time.created),
       kind: finalKind,
-      label: finalKind === "fail" ? "fail" : finalKind === "report" ? "report" : kindLabel(kind),
+      label: finalKind === "fail" ? "fail" : agentName ?? (finalKind === "report" ? "report" : kindLabel(kind)),
       glyph: finalGlyph,
       summary,
       body: body && !diff && !renderedOutput.report ? body : undefined,
