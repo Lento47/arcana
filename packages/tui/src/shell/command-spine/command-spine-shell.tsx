@@ -22,7 +22,7 @@ import { useDialog } from "../../ui/dialog"
 import { useRoute } from "../../context/route"
 import { canToggleSpineEntry, nextSpineFocusID, navigableSpineEntries } from "./spine-navigation"
 import { spineEntryCopyText } from "./spine-clipboard"
-import { spineEntryDetailMessageID, spineEntryDiffMessageID } from "./spine-details"
+import { spineEntryDetailMessageID, spineEntryDiffMessageID, spineEntrySessionID } from "./spine-details"
 
 const USE_SAMPLE_SPINE = false
 
@@ -159,6 +159,20 @@ export function CommandSpineShell(props: ShellProps) {
       },
     })
   }
+  const openFocusedEntrySession = () => {
+    const focused = focusedEntryID()
+    const entry = focused ? visibleEntries().find((item) => item.id === focused) : undefined
+    const sessionID = spineEntrySessionID(entry)
+    if (!sessionID) {
+      const first = navigableEntries()[0]
+      if (!entry && first) focusEntry(first, true)
+      toast.show({ message: "No related session is attached to this spine entry", variant: "info" })
+      return
+    }
+
+    dialog.clear()
+    route.navigate({ type: "session", sessionID })
+  }
 
   createEffect(() => {
     const focused = focusedEntryID()
@@ -177,6 +191,7 @@ export function CommandSpineShell(props: ShellProps) {
       { key: "y", desc: "Copy focused spine entry", group: "Command Spine", cmd: copyFocusedEntry },
       { key: "o", desc: "Open spine entry details", group: "Command Spine", cmd: openFocusedEntryDetails },
       { key: "d", desc: "Open focused spine diff", group: "Command Spine", cmd: openFocusedEntryDiff },
+      { key: "g", desc: "Go to related spine session", group: "Command Spine", cmd: openFocusedEntrySession },
     ],
   }))
 
