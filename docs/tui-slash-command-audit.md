@@ -2,7 +2,7 @@
 
 This document records the current undesired and transitional code paths found during the Arcana slash-command cleanup.
 
-The intended direction is OpenCode-style TUI commands. Slash autocomplete, command palette, keybinds, and execution should all come from the same command definitions. Slash rows should be executable TUI actions or intentionally open real TUI surfaces. Arcana-specific commands should use stable `arcana.*` IDs and explicit `title`, `desc`, and `category` fields.
+The intended direction is executable TUI commands. Slash autocomplete, command palette, keybinds, and execution should all come from the same command definitions. Slash rows should be executable TUI actions or intentionally open real TUI surfaces. Arcana-specific commands should use stable `arcana.*` IDs and explicit `title`, `desc`, and `category` fields.
 
 ## Desired Arcana command set
 
