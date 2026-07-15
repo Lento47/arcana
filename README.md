@@ -299,12 +299,12 @@ bun packages/arcana/src/index.ts run "hello"
 
 ## Themes
 
-7 arcane themes. `⛧ themes` in the TUI or set in `~/.config/arcana/tui.json`:
+7 arcane themes. Press `⛧ themes` in the TUI or set in `~/.config/arcana/tui.json`:
 ```json
 { "theme": "dragon" }
 ```
 
-Themes: arcana (default), bloodmoon, coven, crypt, dragon, lich, wraith.
+Themes: `arcana` (default), `bloodmoon`, `coven`, `crypt`, `dragon`, `lich`, `wraith`.
 
 ### Background image
 
@@ -321,21 +321,12 @@ Set a custom full-screen background image (truecolor terminals — Kitty, iTerm2
 ```
 `opacity` (0–1) dims the image so text stays readable. PNG/JPEG. Shows on the home screen and empty areas; falls back to the theme color where unsupported.
 
-## Thanks
-
 ## Recent Changes
 
-**v0.3.4 (2026-07-11)** — 101 QA fixes across all severity levels, plus significant UX improvements:
+See the [v0.3.4 QA report](docs/qa-fixes-2026-07-10.md) and repository history for details. Highlights:
 
-- **Security:** Atomic session locking (O_EXCL), token-level rm -rf guard, entropy-based secret redaction, hybrid env-var filter, MCP token allowlist
-- **Reliability:** Streaming + compaction timeouts, rate-limiter side-channel, session busy-state safety net, retry improvements, edit semaphore cleanup
-- **Rebrand:** Centralized `USER_AGENT`, LLM header renaming, config file migrations, branding string fixes across ~60 files
-- **Spine UX:** Inline outcome summaries, grouping by operation, unified timestamps, file dedup, think→tool merge, arcana ShimmerText on verbs, auto-expand output
-- **Layout:** Overflow fixes (minWidth, maxWidth, flex), breakpoint hysteresis, glow border stabilization
-- **UX:** Toast stacking + dismiss, which-key enabled by default, error formatting, session rename validation, search loading, help dialog
-- **Engine:** RPC crash guards, background plugin install optimization, sync pagination fix, per-chunk timeout rewrite
-
-See [`docs/qa-fixes-2026-07-10.md`](docs/qa-fixes-2026-07-10.md) for complete change log.
+- **v0.3.4** — 101 QA fixes: atomic session locking, secret redaction, streaming timeouts, command-spine UX, toast stacking, and branding rebrand across ~60 files.
+- **v0.3.0** — Command Spine shell, OpenTUI 0.3.4 pin, plugin system (30+ hooks), cron daemon, web dashboard.
 
 ---
 
