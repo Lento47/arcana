@@ -193,7 +193,14 @@ END;
 CREATE TRIGGER IF NOT EXISTS user_facts_fts_delete AFTER DELETE ON user_facts BEGIN
   INSERT INTO user_facts_fts(user_facts_fts, rowid, id, key, value) VALUES ('delete', old.rowid, old.id, old.key, old.value);
 END;
+`
 
+// Indexes that reference columns added by COLUMN_MIGRATIONS must be created
+// *after* those columns exist. Putting them in SCHEMA broke older DBs:
+// CREATE TABLE IF NOT EXISTS left the pre-dedup user_facts table alone, then
+// CREATE INDEX ... (content_hash) threw "no such column: content_hash" and
+// aborted open before applyColumnMigrations could run.
+const POST_MIGRATION_INDEXES = `
 CREATE INDEX IF NOT EXISTS idx_user_facts_hash ON user_facts(content_hash);
 CREATE INDEX IF NOT EXISTS idx_user_facts_last_accessed ON user_facts(last_accessed_at);
 `
@@ -207,8 +214,16 @@ const COLUMN_MIGRATIONS: Array<{ table: string; column: string; type: string }> 
   { table: "user_facts", column: "value_normalized", type: "TEXT" },
 ]
 
+function tableExists(db: Database, table: string): boolean {
+  const row = db
+    .prepare(`SELECT 1 AS ok FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?`)
+    .get(table) as { ok: number } | null
+  return !!row
+}
+
 function applyColumnMigrations(db: Database): void {
   for (const { table, column, type } of COLUMN_MIGRATIONS) {
+    if (!tableExists(db, table)) continue
     const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
     if (!cols.some((c) => c.name === column)) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
@@ -237,6 +252,8 @@ export function openMemoryDB(dataDir: string): Database {
   // PRAGMA table_info checks internally. We don't memoize them because
   // some edge cases (e.g. a previous process crashed mid-migration) need
   // to be retried on next open.
+  // Order matters: migrate columns *before* indexes that reference them.
   applyColumnMigrations(db)
+  db.exec(POST_MIGRATION_INDEXES)
   return db
 }
