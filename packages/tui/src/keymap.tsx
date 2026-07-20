@@ -259,9 +259,12 @@ export function useCommandShortcut(command: string): Accessor<string> {
 
 export function useCommandSlashes(): Accessor<readonly CommandSlashEntry[]> {
   const keymap = useOpencodeKeymap()
+  // Use "registered" not "reachable": slash menu / Enter must list all palette
+  // commands even when no keybind is active for the current focus/mode.
+  // "reachable" was empty or incomplete in the prompt, so /new and friends never ran.
   const entries = useKeymapSelector((keymap: OpenTuiKeymap) =>
     keymap.getCommandEntries({
-      visibility: "reachable",
+      visibility: "registered",
       namespace: "palette",
       filter: isVisiblePaletteCommand,
     }),
@@ -293,4 +296,32 @@ export function useCommandSlashes(): Accessor<readonly CommandSlashEntry[]> {
 
     return Array.from(bySlashName.values())
   })
+}
+
+/**
+ * Resolve a typed slash token (e.g. "new", "sessions") to a registered palette
+ * command name. Used on Enter so fire-and-forget TUI slashes never hit the model.
+ */
+export function resolvePaletteSlashCommand(
+  keymap: OpenTuiKeymap,
+  token: string,
+): string | undefined {
+  const name = token.replace(/^\//, "").toLowerCase().trim()
+  if (!name) return undefined
+  const entries = keymap.getCommandEntries({
+    visibility: "registered",
+    namespace: "palette",
+    filter: isVisiblePaletteCommand,
+  })
+  for (const entry of entries) {
+    const sn = entry.command.slashName
+    if (typeof sn === "string" && sn.toLowerCase() === name) return entry.command.name
+    const aliases = entry.command.slashAliases
+    if (Array.isArray(aliases)) {
+      for (const alias of aliases) {
+        if (typeof alias === "string" && alias.toLowerCase() === name) return entry.command.name
+      }
+    }
+  }
+  return undefined
 }
