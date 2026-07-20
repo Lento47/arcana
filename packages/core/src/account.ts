@@ -83,6 +83,11 @@ export class Login extends Schema.Class<Login>("Login")({
 
 export class PollSuccess extends Schema.TaggedClass<PollSuccess>()("PollSuccess", {
   email: Schema.String,
+  // Populated on success so the TUI can hand the access token to the
+  // license-server bind endpoint without an extra round trip to the engine.
+  accessToken: Schema.optional(Schema.String),
+  refreshToken: Schema.optional(Schema.String),
+  server: Schema.optional(Schema.String),
 }) {}
 
 export class PollPending extends Schema.TaggedClass<PollPending>()("PollPending", {}) {}

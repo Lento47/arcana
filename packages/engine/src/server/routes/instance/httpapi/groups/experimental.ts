@@ -87,6 +87,10 @@ export const ExperimentalPaths = {
   console: "/experimental/console",
   consoleOrgs: "/experimental/console/orgs",
   consoleSwitch: "/experimental/console/switch",
+  consoleLogin: "/experimental/console/login",
+  consoleLoginPoll: "/experimental/console/login/poll",
+  consoleLoginComplete: "/experimental/console/login/complete",
+  consoleProxyKeyPresent: "/experimental/console/proxy-key-present",
   tool: "/experimental/tool",
   toolIDs: "/experimental/tool/ids",
   worktree: "/experimental/worktree",
@@ -95,6 +99,58 @@ export const ExperimentalPaths = {
   sessionBackground: "/experimental/session/:sessionID/background",
   resource: "/experimental/resource",
 } as const
+
+// Request/response shapes for the OAuth device-code login flow. Mirrors the
+// CLI `arcana console login` flow so the TUI can show the same UX.
+const ConsoleLoginRequest = Schema.Struct({
+  server: Schema.optional(Schema.String),
+}).annotate({ identifier: "ConsoleLoginRequest" })
+
+const ConsoleLoginResponse = Schema.Struct({
+  code: Schema.String,
+  user: Schema.String,
+  url: Schema.String,
+  server: Schema.String,
+  expirySeconds: Schema.Number,
+  intervalSeconds: Schema.Number,
+}).annotate({ identifier: "ConsoleLoginResponse" })
+
+const ConsoleLoginPollRequest = Schema.Struct({
+  code: Schema.String,
+  server: Schema.String,
+}).annotate({ identifier: "ConsoleLoginPollRequest" })
+
+const ConsoleLoginPollResponse = Schema.Struct({
+  status: Schema.Union([
+    Schema.Literal("pending"),
+    Schema.Literal("slow_down"),
+    Schema.Literal("expired"),
+    Schema.Literal("denied"),
+    Schema.Literal("success"),
+  ]),
+  accessToken: Schema.optional(Schema.String),
+  refreshToken: Schema.optional(Schema.String),
+  expiresInSeconds: Schema.optional(Schema.Number),
+  email: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.String),
+}).annotate({ identifier: "ConsoleLoginPollResponse" })
+
+const ConsoleLoginCompleteRequest = Schema.Struct({
+  accessToken: Schema.String,
+  server: Schema.String,
+  email: Schema.optional(Schema.String),
+}).annotate({ identifier: "ConsoleLoginCompleteRequest" })
+
+const ConsoleLoginCompleteResponse = Schema.Struct({
+  ok: Schema.Boolean,
+  proxyKey: Schema.optional(Schema.String),
+  tier: Schema.optional(Schema.String),
+  error: Schema.optional(Schema.String),
+}).annotate({ identifier: "ConsoleLoginCompleteResponse" })
+
+const ConsoleProxyKeyPresentResponse = Schema.Struct({
+  present: Schema.Boolean,
+}).annotate({ identifier: "ConsoleProxyKeyPresentResponse" })
 
 export const ExperimentalApi = HttpApi.make("experimental")
   .add(
@@ -132,6 +188,53 @@ export const ExperimentalApi = HttpApi.make("experimental")
             identifier: "experimental.console.switchOrg",
             summary: "Switch active Console org",
             description: "Persist a new active Console account/org selection for the current local OpenCode state.",
+          }),
+        ),
+        HttpApiEndpoint.post("consoleLogin", ExperimentalPaths.consoleLogin, {
+          payload: ConsoleLoginRequest,
+          success: described(ConsoleLoginResponse, "Device code + verification URL"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.console.login",
+            summary: "Start OAuth device-code login",
+            description:
+              "Start the Arcana console OAuth device-code flow. Returns the user_code, verification URL, and polling interval. The TUI shows this to the user; the browser confirm is the standard device-code UX.",
+          }),
+        ),
+        HttpApiEndpoint.post("consoleLoginPoll", ExperimentalPaths.consoleLoginPoll, {
+          payload: ConsoleLoginPollRequest,
+          success: described(ConsoleLoginPollResponse, "Poll result"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.console.loginPoll",
+            summary: "Poll OAuth device-code status",
+            description:
+              "Poll the Arcana console for the device-code result. Returns 'pending' while waiting, 'success' with tokens once the user confirms in the browser, or a terminal error.",
+          }),
+        ),
+        HttpApiEndpoint.post("consoleLoginComplete", ExperimentalPaths.consoleLoginComplete, {
+          payload: ConsoleLoginCompleteRequest,
+          success: described(ConsoleLoginCompleteResponse, "Login complete + proxy key"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.console.loginComplete",
+            summary: "Complete login + mint proxy key",
+            description:
+              "On a successful device-code login, mint a proxy_key by binding the OAuth access_token to a license on the Arcana license server. Writes proxy_key to ~/.arcana/proxy_key, writes .license-cache.json, and sets ARCANA_PROXY_KEY in the current process so the catalog refresh sees the new entitlement.",
+          }),
+        ),
+        HttpApiEndpoint.get("consoleProxyKeyPresent", ExperimentalPaths.consoleProxyKeyPresent, {
+          success: described(ConsoleProxyKeyPresentResponse, "Whether a proxy key is on disk"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.console.proxyKeyPresent",
+            summary: "Is a proxy key present on disk?",
+            description:
+              "Returns { present: boolean } for whether ~/.arcana/proxy_key (or $ARCANA_PROXY_KEY) is set. The TUI uses this to decide whether to show the 'Sign in with arcana' option in /connect.",
           }),
         ),
         HttpApiEndpoint.get("tool", ExperimentalPaths.tool, {
