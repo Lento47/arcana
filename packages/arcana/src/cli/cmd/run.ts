@@ -158,12 +158,22 @@ export const RunCommand: CommandModule = {
         modelRouteSource = "autodetect"
       }
     }
-    if (!provider || !model) {
-      throw new Error("No provider/model configured and autodetect did not find one.")
+    // arcana-proxy discovers models from GET /v1/models at runner time — model
+    // may be empty here. Other providers need an explicit model id.
+    if (!provider) {
+      throw new Error(
+        "No provider configured and autodetect did not find one. " +
+          "Run `arcana console login`, set a provider key, or pass --provider / --model.",
+      )
+    }
+    if (!model && provider !== "arcana-proxy") {
+      throw new Error(
+        `No model configured for provider "${provider}". Pass --model or set model in ~/.arcana/config.json.`,
+      )
     }
     await proofRuntime.recordModelRoute({
       provider,
-      model,
+      model: model ?? "(proxy-catalog)",
       route: provider === "local" ? "local" : "cloud",
       reason: "Active model route selected before agent execution.",
       data_left_local: provider !== "local",

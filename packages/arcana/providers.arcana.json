@@ -2,10 +2,10 @@
   "$schema": "https://arcana.otnelhq.com/schema/config.json",
   "provider": {
     "arcana-proxy": {
-      "_comment": "Stripped at runtime by bridge.ts — the engine seed injects arcana-proxy with models when ARCANA_PROXY_KEY is set. This entry documents the provider shape for developer reference only.",
+      "_comment": "Licensed Arcana Proxy. workers.dev is the stable origin; custom domain proxy.arcana.otnelhq.com may lag DNS/SSL.",
       "name": "Arcana Proxy",
       "npm": "@ai-sdk/openai-compatible",
-      "api": "https://proxy.arcana.otnelhq.com/v1",
+      "api": "https://arcana-proxy.lejzerv.workers.dev/v1",
       "env": ["ARCANA_PROXY_KEY"]
     },
     "nous-portal": {
@@ -35,30 +35,18 @@
       }
     },
     "cloudflare-ai-gateway": {
+      "_comment": "Direct Cloudflare AI Gateway — requires CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY. Prefer arcana-proxy for licensed Arcana routing.",
       "name": "Cloudflare AI Gateway",
       "npm": "@ai-sdk/openai-compatible",
-      "api": "https://proxy.arcana.otnelhq.com/v1",
-      "env": ["ARCANA_PROXY_KEY"],
-      "models": {
-        "workers-ai/@cf/meta/llama-3.1-8b-instruct": {
-          "name": "Workers AI Llama 3.1 8B via AI Gateway",
-          "tool_call": true,
-          "limit": { "context": 32768, "output": 4096 }
-        }
-      }
+      "api": "https://gateway.ai.cloudflare.com/v1",
+      "env": ["CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID"]
     },
     "cloudflare-workers-ai": {
+      "_comment": "Direct Workers AI — requires CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY. Licensed users should use arcana-proxy (auto when ~/.arcana/proxy_key exists).",
       "name": "Cloudflare Workers AI",
       "npm": "@ai-sdk/openai-compatible",
-      "api": "https://proxy.arcana.otnelhq.com/v1",
-      "env": ["ARCANA_PROXY_KEY"],
-      "models": {
-        "@cf/meta/llama-3.1-8b-instruct": {
-          "name": "Workers AI Llama 3.1 8B",
-          "tool_call": true,
-          "limit": { "context": 32768, "output": 4096 }
-        }
-      }
+      "api": "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+      "env": ["CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID"]
     }
   }
 }
