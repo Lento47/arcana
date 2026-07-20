@@ -24,6 +24,11 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.WORKFLOW_TOKEN }}
 
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Bump version and tag
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
