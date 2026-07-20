@@ -1,15 +1,16 @@
 import type { CommandModule } from "yargs"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
 import { loadConfig, getDataDir, getArcanaHome } from "../../config.js"
-import { mkdir, readFile } from "node:fs/promises"
+import { mkdir } from "node:fs/promises"
 import { existsSync } from "node:fs"
-import { join } from "node:path"
-
-const PROXY_BASES = [
-  process.env.ARCANA_PROXY_URL?.replace(/\/$/, ""),
-  "https://proxy.arcana.otnelhq.com",
-  "https://arcana-proxy.lejzerv.workers.dev",
-].filter(Boolean) as string[]
+import {
+  compileFacts,
+  writeFactsMd,
+  readFactsMdFile,
+  resolveFactsMdPath,
+  factsForCloud,
+} from "../../facts-md.js"
+import { proxyFetch, resolveProxyKey } from "../../proxy-client.js"
 
 type CloudFact = {
   id?: string
@@ -23,73 +24,23 @@ type CloudFact = {
   updated_at?: string
 }
 
-async function resolveProxyKey(): Promise<string | null> {
-  if (process.env.ARCANA_PROXY_KEY?.trim()) return process.env.ARCANA_PROXY_KEY.trim()
-  try {
-    const keyPath = join(getArcanaHome(), "proxy_key")
-    if (existsSync(keyPath)) {
-      const key = (await readFile(keyPath, "utf8")).trim()
-      if (key) return key
-    }
-  } catch {}
-  return null
-}
-
-async function proxyMemoryFetch(
-  path: string,
-  opts: { method?: string; body?: unknown } = {},
-): Promise<{ ok: boolean; status: number; data: any; base: string }> {
-  const key = await resolveProxyKey()
-  if (!key) {
-    return { ok: false, status: 0, data: { error: "no_proxy_key" }, base: "" }
-  }
-  let last: { ok: boolean; status: number; data: any; base: string } = {
-    ok: false,
-    status: 0,
-    data: { error: "unreachable" },
-    base: PROXY_BASES[0] ?? "",
-  }
-  for (const base of PROXY_BASES) {
-    try {
-      const res = await fetch(`${base}${path}`, {
-        method: opts.method ?? "GET",
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "Content-Type": "application/json",
-        },
-        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-        signal: AbortSignal.timeout(15000),
-      })
-      const text = await res.text()
-      let data: any = {}
-      try {
-        data = text ? JSON.parse(text) : {}
-      } catch {
-        data = { raw: text.slice(0, 200) }
-      }
-      last = { ok: res.ok, status: res.status, data, base }
-      // Don't fall through on auth errors — key is wrong, not the host
-      if (res.status === 401 || res.status === 403) return last
-      if (res.ok || res.status < 500) return last
-    } catch (e) {
-      last = {
-        ok: false,
-        status: 0,
-        data: { error: "network", message: String(e) },
-        base,
-      }
-    }
-  }
-  return last
-}
-
 export const MemoryCommand: CommandModule = {
   command: "memory <action>",
-  describe: "search and inspect arcana memory",
+  describe: "search, compile FACTS.md, and sync arcana memory",
   builder: (yargs) =>
     yargs
       .positional("action", {
-        choices: ["search", "sessions", "facts", "stats", "artifacts", "push", "pull", "sync"] as const,
+        choices: [
+          "search",
+          "sessions",
+          "facts",
+          "stats",
+          "artifacts",
+          "compile",
+          "push",
+          "pull",
+          "sync",
+        ] as const,
         demandOption: true,
       })
       .option("query", {
@@ -102,6 +53,20 @@ export const MemoryCommand: CommandModule = {
         type: "number",
         default: 10,
         describe: "max results",
+      })
+      .option("min-confidence", {
+        type: "number",
+        default: 0,
+        describe: "min confidence when compiling user_facts into FACTS.md",
+      })
+      .option("global", {
+        type: "boolean",
+        default: false,
+        describe: "write/read FACTS.md under ~/.arcana instead of project .arcana/",
+      })
+      .option("path", {
+        type: "string",
+        describe: "explicit path to FACTS.md (overrides default location)",
       }),
   async handler(args) {
     const config = await loadConfig()
@@ -110,6 +75,10 @@ export const MemoryCommand: CommandModule = {
     const db = openMemoryDB(dataDir)
     const store = new MemoryStore(db)
     const action = String(args.action)
+    const projectRoot = process.cwd()
+    const factsPath =
+      (args.path as string | undefined)?.trim() ||
+      resolveFactsMdPath({ projectRoot, global: args.global === true })
 
     if (action === "sessions") {
       const sessions = store.listSessions(Number(args.limit))
@@ -126,7 +95,8 @@ export const MemoryCommand: CommandModule = {
     if (action === "facts") {
       const facts = store.getUserFacts()
       if (!facts.length) {
-        console.log("No user facts stored.")
+        console.log("No user facts stored in memory.db.")
+        console.log(`Compile sheet: arcana memory compile  →  ${factsPath}`)
         return
       }
       for (const f of facts) {
@@ -143,6 +113,8 @@ export const MemoryCommand: CommandModule = {
       const skillStats = store.getRecentSkillStats(10)
       console.log(`Sessions: ${sessions.length}`)
       console.log(`User facts: ${facts.length} (${facts.filter((f) => f.confidence >= 0.5).length} high-confidence)`)
+      if (existsSync(factsPath)) console.log(`FACTS.md: ${factsPath}`)
+      else console.log(`FACTS.md: (not compiled — run arcana memory compile)`)
       if (topFacts.length) {
         console.log("\nTop facts:")
         for (const f of topFacts) console.log(`  ${f.key}: ${f.value} (${Math.round(f.confidence * 100)}%)`)
@@ -156,7 +128,10 @@ export const MemoryCommand: CommandModule = {
 
     if (action === "artifacts") {
       const artifacts = store.listArtifacts(Number(args.limit))
-      if (!artifacts.length) { console.log("No artifacts saved."); return }
+      if (!artifacts.length) {
+        console.log("No artifacts saved.")
+        return
+      }
       for (const a of artifacts) {
         console.log(`[${a.id.slice(0, 8)}] ${a.title}${a.tags ? ` (${a.tags})` : ""}  ${a.created_at.slice(0, 10)}`)
       }
@@ -176,7 +151,10 @@ export const MemoryCommand: CommandModule = {
         return
       }
       for (const r of results) {
-        const label = r.type === "session" ? `session:${r.id.slice(0, 8)}` : `msg:${r.id.slice(0, 8)} [${r.session_id?.slice(0, 6)}…]`
+        const label =
+          r.type === "session"
+            ? `session:${r.id.slice(0, 8)}`
+            : `msg:${r.id.slice(0, 8)} [${r.session_id?.slice(0, 6)}…]`
         console.log(`[${label}] ${r.snippet}`)
       }
       if (artifacts.length) {
@@ -186,7 +164,24 @@ export const MemoryCommand: CommandModule = {
       return
     }
 
-    // --- Cloud sync (proxy /v1/memory) ---
+    // --- Compile FACTS.md from user_facts + LEARNED.md + learned/*.md ---
+    if (action === "compile") {
+      const compiled = compileFacts({
+        store,
+        projectRoot,
+        minConfidence: Number(args["min-confidence"] ?? 0),
+      })
+      writeFactsMd(factsPath, compiled, { projectRoot })
+      const nDb = compiled.filter((f) => f.origin === "user_facts").length
+      const nLearned = compiled.length - nDb
+      console.log(`Wrote ${compiled.length} fact(s) → ${factsPath}`)
+      console.log(`  user_facts: ${nDb}`)
+      console.log(`  LEARNED / learned/*: ${nLearned}`)
+      console.log(`Push to cloud: arcana memory push`)
+      return
+    }
+
+    // --- Cloud sync via FACTS.md (proxy /v1/memory) ---
     if (action === "push" || action === "pull" || action === "sync") {
       const key = await resolveProxyKey()
       if (!key) {
@@ -195,35 +190,43 @@ export const MemoryCommand: CommandModule = {
       }
 
       if (action === "push" || action === "sync") {
-        const local = store.getUserFacts()
-        if (!local.length && action === "push") {
-          console.log("No local facts to push.")
+        // Always recompile so FACTS.md is fresh from the three sources
+        const compiled = compileFacts({
+          store,
+          projectRoot,
+          minConfidence: Number(args["min-confidence"] ?? 0),
+        })
+        writeFactsMd(factsPath, compiled, { projectRoot })
+        console.log(`Compiled ${compiled.length} fact(s) → ${factsPath}`)
+
+        const fromFile = existsSync(factsPath) ? readFactsMdFile(factsPath) : compiled
+        const payload = { facts: factsForCloud(fromFile) }
+        if (!payload.facts.length) {
+          console.log("No facts in FACTS.md to push.")
           if (action === "push") return
-        } else if (local.length) {
-          const payload = {
-            facts: local.map((f) => ({
-              id: f.id,
-              key: f.key,
-              value: f.value,
-              source: f.source ?? "cli",
-              confidence: f.confidence,
-              createdAt: f.created_at,
-              updatedAt: f.updated_at,
-            })),
-          }
-          const res = await proxyMemoryFetch("/v1/memory", { method: "PUT", body: payload })
+        } else {
+          const res = await proxyFetch("/v1/memory", { method: "PUT", body: payload })
           if (!res.ok) {
-            console.error(`Push failed (${res.status || "network"}) via ${res.base || "proxy"}:`, res.data?.message || res.data?.error || res.data)
+            console.error(
+              `Push failed (${res.status || "network"}) via ${res.base || "proxy"}:`,
+              res.data?.message || res.data?.error || res.data,
+            )
             process.exit(1)
           }
-          console.log(`Pushed ${payload.facts.length} local fact(s) → cloud (merged ${res.data?.merged ?? "?"} · total ${res.data?.total ?? "?"}) via ${res.base}`)
+          console.log(
+            `Pushed ${payload.facts.length} fact(s) from FACTS.md → cloud (merged ${res.data?.merged ?? "?"} · total ${res.data?.total ?? "?"}) via ${res.base}`,
+          )
+          console.log("Web: workspace → Memory")
         }
       }
 
       if (action === "pull" || action === "sync") {
-        const res = await proxyMemoryFetch("/v1/memory?limit=200")
+        const res = await proxyFetch("/v1/memory?limit=200")
         if (!res.ok) {
-          console.error(`Pull failed (${res.status || "network"}) via ${res.base || "proxy"}:`, res.data?.message || res.data?.error || res.data)
+          console.error(
+            `Pull failed (${res.status || "network"}) via ${res.base || "proxy"}:`,
+            res.data?.message || res.data?.error || res.data,
+          )
           process.exit(1)
         }
         const remote = (res.data?.facts ?? []) as CloudFact[]
@@ -234,11 +237,19 @@ export const MemoryCommand: CommandModule = {
         let merged = 0
         for (const f of remote) {
           if (!f.key || !f.value) continue
-          store.recordUserFact(f.key, f.value, f.source ?? "cloud", typeof f.confidence === "number" ? f.confidence : 1)
+          store.recordUserFact(
+            f.key,
+            f.value,
+            f.source ?? "cloud",
+            typeof f.confidence === "number" ? f.confidence : 1,
+          )
           merged++
         }
-        console.log(`Pulled ${merged} cloud fact(s) into local memory (from ${res.base})`)
-        console.log("View on web: workspace → Memory")
+        // Refresh FACTS.md after pull so sheet includes cloud+local
+        const compiled = compileFacts({ store, projectRoot })
+        writeFactsMd(factsPath, compiled, { projectRoot })
+        console.log(`Pulled ${merged} cloud fact(s) into memory.db (from ${res.base})`)
+        console.log(`Updated ${factsPath}`)
       }
       return
     }
