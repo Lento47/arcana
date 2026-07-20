@@ -109,10 +109,11 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
     // Probe provider base URL, then Workers.dev fallback (custom domain may refuse connect)
     if (profile.baseURL && key) {
       const bases = [...new Set([
-        // Prefer workers.dev; skip broken custom domain unless explicitly set as profile.baseURL
+        // Rewrite multi-level broken host; prefer branded first-level + workers.dev fallback
         profile.baseURL?.includes("proxy.arcana.otnelhq.com")
-          ? "https://arcana-proxy.lejzerv.workers.dev/v1"
+          ? "https://proxy-arcana.otnelhq.com/v1"
           : profile.baseURL,
+        "https://proxy-arcana.otnelhq.com/v1",
         "https://arcana-proxy.lejzerv.workers.dev/v1",
       ].filter(Boolean))]
       for (const base of bases) {

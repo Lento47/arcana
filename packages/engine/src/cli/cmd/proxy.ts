@@ -1,9 +1,9 @@
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 
-// workers.dev is primary — custom domain proxy.arcana.otnelhq.com has TLS failures
-const PROXY_URL = "https://arcana-proxy.lejzerv.workers.dev"
-const FALLBACK = "https://proxy.arcana.otnelhq.com"
+// Branded first-level host (Universal SSL). Multi-level proxy.arcana… needs Advanced Cert.
+const PROXY_URL = "https://proxy-arcana.otnelhq.com"
+const FALLBACK = "https://arcana-proxy.lejzerv.workers.dev"
 
 function getProxyKey(): string | undefined {
   if (process.env.ARCANA_PROXY_KEY) return process.env.ARCANA_PROXY_KEY

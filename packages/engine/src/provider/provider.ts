@@ -230,9 +230,13 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
             }
             return models
           }
-          // Prefer workers.dev first — custom domain proxy.arcana.otnelhq.com has
-          // had TLS handshake failures (SEC_E_ILLEGAL_MESSAGE) while workers.dev works.
-          const bases = ["https://arcana-proxy.lejzerv.workers.dev", "https://proxy.arcana.otnelhq.com"]
+          // proxy-arcana.otnelhq.com is the branded Workers custom domain (Universal SSL).
+          // proxy.arcana.otnelhq.com is multi-level and fails TLS without Advanced Cert.
+          // workers.dev remains a fallback.
+          const bases = [
+            "https://proxy-arcana.otnelhq.com",
+            "https://arcana-proxy.lejzerv.workers.dev",
+          ]
           const discoveryTimeoutMs = 3_500
           const healthyBase = (b?: string) =>
             b && !/proxy\.arcana\.otnelhq\.com/i.test(b) ? b : bases[0]
@@ -1457,8 +1461,8 @@ export const layer = Layer.effect(
               {
                 name: "Arcana Proxy",
                 npm: "@ai-sdk/openai-compatible",
-                // workers.dev is the stable origin (custom domain may fail TLS)
-                api: "https://arcana-proxy.lejzerv.workers.dev/v1",
+                // Branded Workers custom domain (Universal SSL on first-level host)
+                api: "https://proxy-arcana.otnelhq.com/v1",
                 env: ["ARCANA_PROXY_KEY"],
               },
             ] as (typeof configProviders)[number])
@@ -1818,7 +1822,7 @@ export const layer = Layer.effect(
           // Prefer workers.dev; rewrite known-broken custom domain if present
           const broken = typeof options["baseURL"] === "string" && /proxy\.arcana\.otnelhq\.com/i.test(options["baseURL"])
           if (!options["baseURL"] || broken) {
-            options["baseURL"] = "https://arcana-proxy.lejzerv.workers.dev/v1"
+            options["baseURL"] = "https://proxy-arcana.otnelhq.com/v1"
           }
         }
 

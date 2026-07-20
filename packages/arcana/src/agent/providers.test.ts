@@ -30,7 +30,7 @@ test("arcana-proxy is the licensed route; Cloudflare direct needs CF credentials
 
   const proxy = providers["arcana-proxy"]
   expect(proxy).toBeDefined()
-  expect(proxy?.api).toMatch(/arcana-proxy\.lejzerv\.workers\.dev\/v1|proxy\.arcana\.otnelhq\.com\/v1/)
+  expect(proxy?.api).toMatch(/proxy-arcana\.otnelhq\.com\/v1|arcana-proxy\.lejzerv\.workers\.dev\/v1/)
   expect(proxy?.env).toEqual(["ARCANA_PROXY_KEY"])
 
   for (const id of ["cloudflare-ai-gateway", "cloudflare-workers-ai"]) {
@@ -58,7 +58,7 @@ test("resolveProvider uses local arcana-proxy api, not models.dev CF url", async
   setEnv("CLOUDFLARE_ACCOUNT_ID", undefined)
 
   const profile = await resolveProvider("arcana-proxy")
-  expect(profile.baseURL).toMatch(/arcana-proxy\.lejzerv\.workers\.dev\/v1|proxy\.arcana\.otnelhq\.com\/v1/)
+  expect(profile.baseURL).toMatch(/proxy-arcana\.otnelhq\.com\/v1|arcana-proxy\.lejzerv\.workers\.dev\/v1/)
   expect(profile.envKey).toBe("ARCANA_PROXY_KEY")
 })
 
