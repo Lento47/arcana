@@ -11,11 +11,19 @@ import type { SessionID } from "@/session/schema"
 import { ToolJsonSchema } from "@/tool/json-schema"
 import { ToolRegistry } from "@/tool/registry"
 import { Worktree } from "@/worktree"
-import { Effect, Option } from "effect"
+import { Duration, Effect, Option } from "effect"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
-import { ConsoleSwitchPayload, SessionListQuery, ToolListQuery, WorktreeApiError } from "../groups/experimental"
+import {
+  ConsoleSwitchPayload,
+  SessionListQuery,
+  ToolListQuery,
+  WorktreeApiError,
+} from "../groups/experimental"
+import { bindAccessToken, proxyKeyPresent, writeLicenseCache, writeProxyKey } from "@/account/license-bind"
+
+const DEFAULT_CONSOLE_URL = process.env.ARCANA_CONSOLE_URL?.trim() || "https://arcana.otnelhq.com"
 
 function mapWorktreeError<A, R>(self: Effect.Effect<A, Worktree.Error, R>) {
   return self.pipe(
@@ -85,6 +93,73 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
         .use(ctx.payload.accountID, Option.some(ctx.payload.orgID))
         .pipe(Effect.catch(() => Effect.fail(new HttpApiError.BadRequest({}))))
       return true
+    })
+
+    const consoleLogin = Effect.fn("ExperimentalHttpApi.consoleLogin")(function* (ctx: {
+      payload: { server?: string }
+    }) {
+      const server = ctx.payload.server || DEFAULT_CONSOLE_URL
+      const login = yield* account.login(server).pipe(
+        Effect.catch(() => Effect.fail(new HttpApiError.InternalServerError({}))),
+      )
+      return {
+        code: login.code,
+        user: login.user,
+        url: login.url,
+        server: login.server,
+        expirySeconds: Duration.toSeconds(login.expiry),
+        intervalSeconds: Duration.toSeconds(login.interval),
+      }
+    })
+
+    const consoleLoginPoll = Effect.fn("ExperimentalHttpApi.consoleLoginPoll")(function* (ctx: {
+      payload: { code: string; server: string }
+    }) {
+      const result = yield* account
+        .poll({
+          code: ctx.payload.code as never,
+          user: "" as never,
+          url: "",
+          server: ctx.payload.server,
+          expiry: Duration.seconds(60),
+          interval: Duration.seconds(2),
+        })
+        .pipe(Effect.catch(() => Effect.fail(new HttpApiError.InternalServerError({}))))
+      switch (result._tag) {
+        case "PollPending":
+          return { status: "pending" as const }
+        case "PollSlow":
+          return { status: "slow_down" as const }
+        case "PollExpired":
+          return { status: "expired" as const }
+        case "PollDenied":
+          return { status: "denied" as const }
+        case "PollError":
+          return { status: "denied" as const, error: String(result.cause) }
+        case "PollSuccess":
+          return {
+            status: "success" as const,
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+            email: result.email,
+          }
+      }
+    })
+
+    const consoleLoginComplete = Effect.fn("ExperimentalHttpApi.consoleLoginComplete")(function* (ctx: {
+      payload: { accessToken: string; server: string; email?: string }
+    }) {
+      const bind = yield* bindAccessToken(ctx.payload.accessToken, ctx.payload.email, ctx.payload.server)
+      if (!bind.ok) {
+        return { ok: false, error: bind.error }
+      }
+      writeProxyKey(bind.proxyKey)
+      writeLicenseCache({ tier: bind.tier, source: "oauth-bind", server: ctx.payload.server })
+      return { ok: true, proxyKey: bind.proxyKey, tier: bind.tier }
+    })
+
+    const consoleProxyKeyPresent = Effect.fn("ExperimentalHttpApi.consoleProxyKeyPresent")(function* () {
+      return { present: proxyKeyPresent() }
     })
 
     const tool = Effect.fn("ExperimentalHttpApi.tool")(function* (ctx: { query: typeof ToolListQuery.Type }) {
@@ -174,6 +249,10 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       .handle("console", getConsole)
       .handle("consoleOrgs", listConsoleOrgs)
       .handle("consoleSwitch", switchConsole)
+      .handle("consoleLogin", consoleLogin)
+      .handle("consoleLoginPoll", consoleLoginPoll)
+      .handle("consoleLoginComplete", consoleLoginComplete)
+      .handle("consoleProxyKeyPresent", consoleProxyKeyPresent)
       .handle("tool", tool)
       .handle("toolIDs", toolIDs)
       .handle("worktree", worktree)

@@ -463,7 +463,12 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
         orgID: firstOrgID,
       })
 
-      return new PollSuccess({ email: account.email })
+      return new PollSuccess({
+        email: account.email,
+        accessToken,
+        refreshToken,
+        server: input.server,
+      })
     })
 
     return Service.of({
