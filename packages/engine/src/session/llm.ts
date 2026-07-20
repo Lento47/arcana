@@ -10,7 +10,13 @@ import { streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
 import type { LLMEvent } from "@arcana/llm"
 import { LLMClient, RequestExecutor, WebSocketExecutor } from "@arcana/llm/route"
 import type { LLMClientService } from "@arcana/llm/route"
-import { GitLabWorkflowLanguageModel } from "gitlab-ai-provider"
+let _GitLabWorkflowLanguageModel: any
+async function getGitLabWorkflowLanguageModel() {
+  if (!_GitLabWorkflowLanguageModel) {
+    _GitLabWorkflowLanguageModel = (await import("gitlab-ai-provider")).GitLabWorkflowLanguageModel
+  }
+  return _GitLabWorkflowLanguageModel
+}
 import { ProviderTransform } from "@/provider/transform"
 import { Config } from "@/config/config"
 import type { Agent } from "@/agent/agent"
@@ -101,7 +107,8 @@ const live: Layer.Layer<
         { concurrency: "unbounded" },
       )
 
-      const isWorkflow = language instanceof GitLabWorkflowLanguageModel
+      const GitLabWorkflowLM = yield* Effect.promise(() => getGitLabWorkflowLanguageModel())
+      const isWorkflow = language instanceof GitLabWorkflowLM
       const prepared = yield* LLMRequestPrep.prepare({
         ...input,
         provider: item,
@@ -115,7 +122,7 @@ const live: Layer.Layer<
       // from the workflow service are executed via opencode's tool system
       // and results sent back over the WebSocket.
       const bridge = yield* EffectBridge.make()
-      if (language instanceof GitLabWorkflowLanguageModel) {
+      if (language instanceof GitLabWorkflowLM) {
         const workflowModel = language as GitLabWorkflowLanguageModel & {
           sessionID?: string
           sessionPreapprovedTools?: string[]
