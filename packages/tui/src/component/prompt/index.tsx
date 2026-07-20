@@ -60,6 +60,7 @@ import {
   useCommandSlashes,
   useLeaderActive,
   useOpencodeKeymap,
+  resolvePaletteSlashCommand,
 } from "../../keymap"
 import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
@@ -978,6 +979,41 @@ export function Prompt(props: PromptProps) {
       void exit()
       return true
     }
+
+    // ── TUI slash commands (before model/session gates) ─────────────────
+    // /new, /sessions, /models, /help, /exit, etc. must never require a model
+    // or create a session, and must never be sent as chat text.
+    if (trimmed.startsWith("/")) {
+      const firstLine = trimmed.split("\n")[0]!.trim()
+      const firstToken = firstLine.split(/\s+/)[0]!.toLowerCase()
+      const slashName = firstToken.slice(1)
+      const isArcanaPrompt = ARCANA_PROMPT_SLASHES.has(firstToken)
+      const isLocalGoal = slashName === "goal" || slashName === "loop"
+      const isServerCommand = sync.data.command.some((x) => x.name === slashName)
+
+      if (!isArcanaPrompt && !isLocalGoal && !isServerCommand) {
+        const resolved = resolvePaletteSlashCommand(keymap, slashName)
+        if (resolved) {
+          clearPrompt()
+          // Defer so prompt clear paints before dialogs/navigation
+          queueMicrotask(() => {
+            keymap.dispatchCommand(resolved)
+          })
+          return true
+        }
+
+        // Unknown /command — toast instead of sending garbage to the model
+        toast.show({
+          title: "Unknown command",
+          message: `/${slashName} is not a registered command. Open the command palette for the full list.`,
+          variant: "warning",
+          duration: 5000,
+        })
+        clearPrompt()
+        return true
+      }
+    }
+
     const selectedModel = local.model.current()
     if (!selectedModel) {
       void promptModelWarning()
@@ -1069,31 +1105,6 @@ export function Prompt(props: PromptProps) {
           ]
         : []
     const arcanaPromptCommand = parseArcanaPromptCommand(inputText)
-
-    // Fire-and-forget TUI slash commands (e.g. /new, /sessions, /exit).
-    // Without this, typing "/new" + Enter falls through to a normal prompt
-    // and the model sees the slash text instead of the command running.
-    if (inputText.startsWith("/") && !arcanaPromptCommand) {
-      const firstToken = inputText.split("\n")[0]!.trim().split(/\s+/)[0]!.toLowerCase()
-      if (!ARCANA_PROMPT_SLASHES.has(firstToken)) {
-        const serverCmd = firstToken.slice(1)
-        const isServerCommand = sync.data.command.some((x) => x.name === serverCmd)
-        // goal/loop handled below with local stores
-        const isLocalGoal = serverCmd === "goal" || serverCmd === "loop"
-        if (!isServerCommand && !isLocalGoal) {
-          const entry = commandSlashes().find((item) => {
-            const display = item.display.trimEnd().toLowerCase()
-            if (display === firstToken) return true
-            return item.aliases?.some((alias) => alias.toLowerCase() === firstToken) ?? false
-          })
-          if (entry) {
-            entry.onSelect?.()
-            clearPrompt()
-            return true
-          }
-        }
-      }
-    }
 
     if (store.mode === "shell") {
       move.startSubmit()

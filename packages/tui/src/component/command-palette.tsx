@@ -28,20 +28,19 @@ export function CommandPaletteDialog() {
   const config = useTuiConfig()
   const keymap = useOpencodeKeymap()
   const entries = useKeymapSelector((keymap: OpenTuiKeymap) => {
-    const query = {
+    // "registered" lists all palette commands; "reachable" was mode/focus gated
+    // and often dropped slash commands from the palette and / menu.
+    const registered = keymap.getCommandEntries({
       namespace: "palette",
-    }
-    const reachable = keymap.getCommandEntries({
-      ...query,
-      visibility: "reachable",
+      visibility: "registered",
       filter: isVisiblePaletteCommand,
     })
     const registeredBindings = keymap.getCommandBindings({
       visibility: "registered",
-      commands: reachable.map((entry) => entry.command.name),
+      commands: registered.map((entry) => entry.command.name),
     })
 
-    return reachable.map((entry) => ({
+    return registered.map((entry) => ({
       ...entry,
       bindings: registeredBindings.get(entry.command.name) ?? entry.bindings,
     }))
