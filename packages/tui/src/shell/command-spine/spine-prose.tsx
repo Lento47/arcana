@@ -176,7 +176,9 @@ export function SpineProse(props: {
         <Match when={mode() === "markdown"}>
           <markdown
             syntaxStyle={style()}
-            streaming={props.streaming ?? true}
+            // Default false: finalized markdown. Callers must pass true only
+            // while tokens are still appending (see OpenTUI MarkdownOptions.streaming).
+            streaming={props.streaming === true}
             internalBlockMode="top-level"
             content={markdownContent()}
             tableOptions={{ style: "grid" }}

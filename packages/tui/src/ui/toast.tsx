@@ -16,6 +16,9 @@ export type ToastOptions = {
 type ToastInput = Omit<ToastOptions, "id" | "duration"> & { duration?: number }
 
 const MAX_VISIBLE = 3
+/** Default auto-dismiss. Errors stay longer so decrypt + reading can finish. */
+const DEFAULT_DURATION_MS = 5000
+const DEFAULT_ERROR_DURATION_MS = 14_000
 let _nextId = 0
 
 export function Toast() {
@@ -92,7 +95,9 @@ function init() {
       const item: ToastOptions = {
         id,
         ...options,
-        duration: options.duration ?? 5000,
+        duration:
+          options.duration
+          ?? (options.variant === "error" ? DEFAULT_ERROR_DURATION_MS : DEFAULT_DURATION_MS),
       }
       setStore("toasts", (prev) => [...prev.slice(-MAX_VISIBLE), item])
 
@@ -108,9 +113,13 @@ function init() {
       setStore("toasts", (prev) => prev.filter((t) => t.id !== id))
     },
     error: (err: any) => {
-      if (err instanceof Error)
-        return toast.show({ variant: "error", message: err.message })
-      toast.show({ variant: "error", message: "An unknown error has occurred" })
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string" && err.trim()
+            ? err.trim()
+            : "An unknown error has occurred"
+      toast.show({ variant: "error", message, duration: DEFAULT_ERROR_DURATION_MS })
     },
     get toasts(): readonly ToastOptions[] {
       return store.toasts

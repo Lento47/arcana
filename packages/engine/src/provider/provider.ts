@@ -191,18 +191,24 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
               const id = m?.id as string | undefined
               if (!id || input.models[id]) continue
               const inMod: string[] = m.architecture?.input_modalities ?? []
+              const outMod: string[] = m.architecture?.output_modalities ?? []
               const params: string[] = m.supported_parameters ?? []
               const ctx = m.context_length ?? m.top_provider?.context_length ?? 0
               const out = m.top_provider?.max_completion_tokens ?? 0
+              // Catalog honesty: honor upstream image output (was hardcoded false).
+              const outImage =
+                outMod.includes("image")
+                || /image|flux|dall-e|imagen|seedream|gpt-image|muse-spark|stable-diffusion/i.test(id)
+              const outText = outMod.length === 0 || outMod.includes("text") || !outImage
               models[id] = {
                 id: ModelV2.ID.make(id),
                 providerID: ProviderV2.ID.make("arcana-proxy"),
                 name: m.name ?? id,
-                family: "",
+                family: outImage ? "image" : "",
                 api: { id, url: `${base}/v1`, npm: "@ai-sdk/openai-compatible" },
                 status: "active",
                 headers: {},
-                options: {},
+                options: outImage ? { imageGeneration: true } : {},
                 cost: {
                   input: price(m.pricing?.prompt),
                   output: price(m.pricing?.completion),
@@ -221,7 +227,13 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
                     video: inMod.includes("video"),
                     pdf: inMod.includes("file") || inMod.includes("pdf"),
                   },
-                  output: { text: true, audio: false, image: false, video: false, pdf: false },
+                  output: {
+                    text: outText,
+                    audio: outMod.includes("audio"),
+                    image: outImage,
+                    video: outMod.includes("video"),
+                    pdf: outMod.includes("pdf"),
+                  },
                   interleaved: false,
                 },
                 release_date: "",

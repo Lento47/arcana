@@ -71,6 +71,14 @@ export function CommandSpineShell(props: ShellProps) {
     pendingGateEntries({ permissions: props.permissions(), questions: props.questions() }),
   )
   const visibleEntries = createMemo(() => [...entries(), ...gateEntries()])
+  // Key the list by stable entry.id so Solid <For> does NOT remount markdown
+  // on every streaming token (object identity changes each mapper recompute).
+  const visibleEntryIds = createMemo(() => visibleEntries().map((entry) => entry.id))
+  const visibleEntryById = createMemo(() => {
+    const map = new Map<string, ReturnType<typeof visibleEntries>[number]>()
+    for (const entry of visibleEntries()) map.set(entry.id, entry)
+    return map
+  })
   const navigableEntries = createMemo(() => navigableSpineEntries(visibleEntries()))
   const runState = createMemo(() => (gateEntries().length ? "stop" : props.pending() ? "working" : "idle"))
   /** Process-local tool admission / batch wave hint (engine or agent). */
@@ -243,22 +251,25 @@ export function CommandSpineShell(props: ShellProps) {
           flexGrow={1}
           scrollAcceleration={props.scrollAcceleration}
         >
-          <For each={visibleEntries()}>
-            {(entry) => (
-              <SpineEntry
-                entry={entry}
-                layout={layout()}
-                expanded={entryExpanded(entry)}
-                focused={entryFocused(entry)}
-                onToggle={() => toggleEntry(entry)}
-                onFocus={() => focusEntry(entry)}
-                onHover={() => focusEntry(entry)}
-                nodeRef={(node) => {
-                  if (node) entryNodes.set(entry.id, node)
-                  else entryNodes.delete(entry.id)
-                }}
-              />
-            )}
+          <For each={visibleEntryIds()}>
+            {(id) => {
+              const entry = () => visibleEntryById().get(id)!
+              return (
+                <SpineEntry
+                  entry={entry()}
+                  layout={layout()}
+                  expanded={entryExpanded(entry())}
+                  focused={entryFocused(entry())}
+                  onToggle={() => toggleEntry(entry())}
+                  onFocus={() => focusEntry(entry())}
+                  onHover={() => focusEntry(entry())}
+                  nodeRef={(node) => {
+                    if (node) entryNodes.set(id, node)
+                    else entryNodes.delete(id)
+                  }}
+                />
+              )
+            }}
           </For>
         </scrollbox>
         <Show when={props.permissions().length > 0}>

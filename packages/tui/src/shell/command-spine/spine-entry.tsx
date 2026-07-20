@@ -41,29 +41,44 @@ export function SpineEntry(props: {
   onHover?: () => void
   nodeRef?: (node: BoxRenderable | undefined) => void
 }) {
-  const e = props.entry
+  // Always read through props.entry inside reactive scopes. Solid components
+  // run once — capturing `const e = props.entry` freezes the first object and
+  // breaks streaming updates when the shell reuses a stable For key by id.
+  const entry = () => props.entry
   const { theme: themeObj } = useTheme()
   const t = themeObj as Record<string, unknown>
-  if (e.hidden) return null
 
-  const isWide = props.layout === "wide"
-  const [localExpanded, setLocalExpanded] = createSignal(e.expandedByDefault ?? !e.collapsible)
+  const [localExpanded, setLocalExpanded] = createSignal(
+    props.entry.expandedByDefault ?? !props.entry.collapsible,
+  )
   const expanded = () => props.expanded ?? localExpanded()
-  const isChatProse = e.kind === "ask" || e.kind === "plan" || e.kind === "ok"
-  const isThink = e.kind === "think"
-  const proseText = createMemo(() => joinSpineProse(e.summary, e.body))
+  const kind = createMemo(() => entry().kind)
+  const isChatProse = createMemo(() => {
+    const k = kind()
+    return k === "ask" || k === "plan" || k === "ok"
+  })
+  const isThink = createMemo(() => kind() === "think")
+  const proseText = createMemo(() => {
+    const e = entry()
+    return joinSpineProse(e.summary, e.body)
+  })
   const hasProse = createMemo(() => !!proseText().trim())
-  const hasDiff = createMemo(() => !!e.diff)
-  const hasListing = createMemo(() => !!e.listing?.length)
-  const hasToolBody = createMemo(() => !isChatProse && !isThink && (!!e.body?.trim() || hasListing()))
-  const hasThinkBody = createMemo(() => isThink && !!e.body?.trim())
-  const hasReceipt = createMemo(() => receiptHasContent(e))
-  const canToggle = createMemo(() => !!props.onToggle || isThink || hasDiff() || hasListing() || hasToolBody())
-  const bodyExpanded = () => (isChatProse ? true : expanded())
+  const hasDiff = createMemo(() => !!entry().diff)
+  const hasListing = createMemo(() => !!entry().listing?.length)
+  const hasToolBody = createMemo(() => {
+    if (isChatProse() || isThink()) return false
+    return !!entry().body?.trim() || hasListing()
+  })
+  const hasThinkBody = createMemo(() => isThink() && !!entry().body?.trim())
+  const hasReceipt = createMemo(() => receiptHasContent(entry()))
+  const canToggle = createMemo(() => !!props.onToggle || isThink() || hasDiff() || hasListing() || hasToolBody())
+  const bodyExpanded = () => (isChatProse() ? true : expanded())
+  const streaming = createMemo(() => entry().streaming === true)
 
   // Tools keep an explicit toggle row. Think/diff use an inline chevron on the header.
-  const showToggleRow = createMemo(() => canToggle() && !isThink && !hasDiff() && hasToolBody())
+  const showToggleRow = createMemo(() => canToggle() && !isThink() && !hasDiff() && hasToolBody())
   const toggleLabel = () => {
+    const e = entry()
     const what =
       e.bodyLabel === "listing" ? "listing"
       : e.bodyLabel === "file" ? "file"
@@ -72,19 +87,19 @@ export function SpineEntry(props: {
     return `${expanded() ? "▾ hide" : "▸ show"} ${what}`
   }
   const headerDisclosure = () => {
-    if (isThink && hasThinkBody()) return expanded() ? ("▾" as const) : ("▸" as const)
-    if (hasDiff() && e.diff?.body?.trim()) return expanded() ? ("▾" as const) : ("▸" as const)
+    if (isThink() && hasThinkBody()) return expanded() ? ("▾" as const) : ("▸" as const)
+    if (hasDiff() && entry().diff?.body?.trim()) return expanded() ? ("▾" as const) : ("▸" as const)
     return "" as const
   }
   const headerToggleable = () =>
-    (isThink && hasThinkBody()) || (hasDiff() && !!e.diff?.body?.trim())
-  const headerGlyph = () => (isChatProse || isThink ? "" : e.glyph)
+    (isThink() && hasThinkBody()) || (hasDiff() && !!entry().diff?.body?.trim())
+  const headerGlyph = () => (isChatProse() || isThink() ? "" : entry().glyph)
 
-  const padLeft = spineOuterPadding(props.layout)
+  const padLeft = () => spineOuterPadding(props.layout)
 
   const nodeSummary = () => {
-    if (isChatProse) return ""
-    return e.summary
+    if (isChatProse()) return ""
+    return entry().summary
   }
 
   let suppressNextFocusMouseUp = false
@@ -135,205 +150,210 @@ export function SpineEntry(props: {
   }
 
   return (
-    <box
-      ref={props.nodeRef}
-      flexDirection="row"
-      flexShrink={0}
-      width="100%"
-      paddingLeft={padLeft}
-      onMouseOver={handleHover}
-      onMouseDown={handleFocus}
-      onMouseUp={handleFocus}
-    >
-      <SpineGutter
-        index={props.index ?? e.index}
-        layout={props.layout}
-        active={props.focused}
-      />
-      <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
-        <box
-          flexDirection="row"
-          flexShrink={0}
-          alignItems="flex-start"
-          backgroundColor={props.focused ? (t.backgroundElement as any) : undefined}
-          onMouseDown={headerToggleable() ? handleHeaderMouseDown : undefined}
-          onMouseUp={headerToggleable() ? handleHeaderMouseUp : undefined}
-        >
-          <SpineRail layout={props.layout} kind={e.kind} glyph={headerGlyph()} active={props.focused} />
-          <SpineNode
-            kind={e.kind}
-            label={e.label}
-            summary={nodeSummary()}
-            actor={e.actor}
-            layout={props.layout}
-            focused={props.focused}
-            elapsed={e.elapsed}
-            disclosure={headerDisclosure()}
-            streaming={e.streaming}
-          />
-        </box>
-
-        {/* Chat prose — always visible markdown */}
-        <Show when={isChatProse && hasProse()}>
-          <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-            <SpineRail layout={props.layout} active={props.focused} />
-            <box flexGrow={1} minWidth={0} flexShrink={1}>
-              <SpineProse
-                kind={e.kind}
-                text={proseText()}
-                bodyLabel={e.bodyLabel}
-                hint={e.summary}
-                streaming={true}
-                focused={props.focused}
-                reminders={e.reminders}
-              />
-            </box>
+    <Show when={!entry().hidden}>
+      <box
+        ref={props.nodeRef}
+        flexDirection="row"
+        flexShrink={0}
+        width="100%"
+        paddingLeft={padLeft()}
+        onMouseOver={handleHover}
+        onMouseDown={handleFocus}
+        onMouseUp={handleFocus}
+      >
+        <SpineGutter
+          index={props.index ?? entry().index}
+          layout={props.layout}
+          active={props.focused}
+        />
+        <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
+          <box
+            flexDirection="row"
+            flexShrink={0}
+            alignItems="flex-start"
+            backgroundColor={props.focused ? (t.backgroundElement as any) : undefined}
+            onMouseDown={headerToggleable() ? handleHeaderMouseDown : undefined}
+            onMouseUp={headerToggleable() ? handleHeaderMouseUp : undefined}
+          >
+            <SpineRail layout={props.layout} kind={kind()} glyph={headerGlyph()} active={props.focused} />
+            <SpineNode
+              kind={kind()}
+              label={entry().label}
+              summary={nodeSummary()}
+              actor={entry().actor}
+              layout={props.layout}
+              focused={props.focused}
+              elapsed={entry().elapsed}
+              disclosure={headerDisclosure()}
+              streaming={streaming()}
+            />
           </box>
-        </Show>
 
-        {/* Report body — scorecard + concern callouts, always visible when expanded */}
-        <Show when={e.report}>
-          {(r) => (
-            <Show when={expanded()}>
-              <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-                <SpineRail layout={props.layout} active={props.focused} />
-                <box flexGrow={1} minWidth={0} flexShrink={1}>
-                  <SpineReport report={r()} expanded={expanded()} focused={props.focused} />
-                </box>
+          {/* Chat prose — always visible markdown.
+              OpenTUI MarkdownRenderable keeps the trailing block "unstable" while
+              streaming=true; it MUST flip false when the assistant finishes or
+              incomplete bold/code/fences never finalize and the body looks glitchy. */}
+          <Show when={isChatProse() && hasProse()}>
+            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0} flexShrink={1}>
+                <SpineProse
+                  kind={kind()}
+                  text={proseText()}
+                  bodyLabel={entry().bodyLabel}
+                  hint={entry().summary}
+                  streaming={streaming()}
+                  focused={props.focused}
+                  reminders={entry().reminders}
+                />
               </box>
-            </Show>
-          )}
-        </Show>
-
-        <Show when={hasReceipt()}>
-          <box flexDirection="row" flexShrink={0}>
-            <SpineRail layout={props.layout} active={props.focused} />
-            <box flexGrow={1} minWidth={0}>
-              <SpineReceipt kind={e.kind} receipt={e.receipt!} layout={props.layout} />
             </box>
-          </box>
-        </Show>
+          </Show>
 
-        <Show when={showToggleRow()}>
-          <box flexDirection="row" flexShrink={0}>
-            <SpineRail layout={props.layout} active={props.focused} />
-            <text
-              fg={(props.focused ? t.text : t.spineDiffMuted) as any}
-              onMouseUp={handleToggle}
-            >
-              {toggleLabel()}
-            </text>
-          </box>
-        </Show>
-
-        {/* Thinking body — full reasoning when expanded (click header / space / enter) */}
-        <Show when={isThink && hasThinkBody() && bodyExpanded()}>
-          <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-            <SpineRail layout={props.layout} active={props.focused} />
-            <box flexGrow={1} minWidth={0} flexShrink={1}>
-              <SpineProse
-                kind="think"
-                text={e.body!}
-                bodyLabel="reasoning"
-                streaming={true}
-                focused={props.focused}
-                reminders={e.reminders}
-              />
-            </box>
-          </box>
-        </Show>
-
-        {/* Incantation row — compact command text before output */}
-        <Show when={(e.kind === "run" || e.kind === "inspect") && e.receipt?.command && bodyExpanded()}>
-          <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-            <SpineRail layout={props.layout} active={props.focused} />
-            <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
-              <text fg={(t.spineContext ?? t.textMuted) as any}>{e.receipt!.command}</text>
-            </box>
-          </box>
-        </Show>
-
-        {/* Table artifact — stacked key/value rows instead of raw CLI table */}
-        <Show when={e.table && bodyExpanded()}>
-          <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-            <SpineRail layout={props.layout} active={props.focused} />
-            <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
-              <SpineListArtifact
-                headers={e.table!.headers}
-                rows={e.table!.rows}
-                focused={props.focused}
-              />
-            </box>
-          </box>
-        </Show>
-
-        {/* Directory / glob listing — plain names, no XML tags */}
-        <Show when={hasListing() && bodyExpanded()}>
-          <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-            <SpineRail layout={props.layout} active={props.focused} />
-            <box flexGrow={1} minWidth={0} flexShrink={1}>
-              <SpineListing
-                entries={e.listing!}
-                note={e.bodyNote}
-                focused={props.focused}
-              />
-            </box>
-          </box>
-        </Show>
-
-        <Show when={hasToolBody() && bodyExpanded() && !e.table && !hasListing()}>
-          <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-            <SpineRail layout={props.layout} active={props.focused} />
-            <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
-              <SpineProse
-                kind={e.kind}
-                text={e.body!}
-                bodyLabel={e.bodyLabel}
-                hint={e.bodyHint || e.summary}
-                note={e.bodyNote}
-                streaming={false}
-                focused={props.focused}
-                reminders={e.reminders}
-              />
-            </box>
-          </box>
-        </Show>
-
-        <Show when={e.diff}>
-          {(d) => (
-            <Show when={expanded()}>
-              <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-                <SpineRail layout={props.layout} active={props.focused} />
-                <box flexGrow={1} minWidth={0} flexShrink={1}>
-                  <SpineDiff diff={d()} layout={props.layout} expanded={expanded()} />
+          {/* Report body — scorecard + concern callouts, always visible when expanded */}
+          <Show when={entry().report}>
+            {(r) => (
+              <Show when={expanded()}>
+                <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+                  <SpineRail layout={props.layout} active={props.focused} />
+                  <box flexGrow={1} minWidth={0} flexShrink={1}>
+                    <SpineReport report={r()} expanded={expanded()} focused={props.focused} />
+                  </box>
                 </box>
-              </box>
-            </Show>
-          )}
-        </Show>
-
-        <Show when={isWide}>
-          <box flexDirection="row" height={1} flexShrink={0}>
-            <SpineRail layout={props.layout} active={props.focused} />
-            <box flexGrow={1} minWidth={0} />
-          </box>
-        </Show>
-
-        <Show when={e.children && expanded()}>
-          <For each={e.children!}>
-            {(child) => (
-              <box flexDirection="row" flexShrink={0} paddingLeft={2}>
-                <SpineRail layout={props.layout} kind={child.kind} glyph={child.glyph} active={false} />
-                <box flexGrow={1} minWidth={0}>
-                  <text fg={t.spineDiffMuted as any}>
-                    {child.receipt?.summary || child.receipt?.label || ""} · {child.elapsed}
-                  </text>
-                </box>
-              </box>
+              </Show>
             )}
-          </For>
-        </Show>
+          </Show>
+
+          <Show when={hasReceipt()}>
+            <box flexDirection="row" flexShrink={0}>
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0}>
+                <SpineReceipt kind={kind()} receipt={entry().receipt!} layout={props.layout} />
+              </box>
+            </box>
+          </Show>
+
+          <Show when={showToggleRow()}>
+            <box flexDirection="row" flexShrink={0}>
+              <SpineRail layout={props.layout} active={props.focused} />
+              <text
+                fg={(props.focused ? t.text : t.spineDiffMuted) as any}
+                onMouseUp={handleToggle}
+              >
+                {toggleLabel()}
+              </text>
+            </box>
+          </Show>
+
+          {/* Thinking body — full reasoning when expanded (click header / space / enter) */}
+          <Show when={isThink() && hasThinkBody() && bodyExpanded()}>
+            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0} flexShrink={1}>
+                <SpineProse
+                  kind="think"
+                  text={entry().body!}
+                  bodyLabel="reasoning"
+                  streaming={streaming()}
+                  focused={props.focused}
+                  reminders={entry().reminders}
+                />
+              </box>
+            </box>
+          </Show>
+
+          {/* Incantation row — compact command text before output */}
+          <Show when={(kind() === "run" || kind() === "inspect") && entry().receipt?.command && bodyExpanded()}>
+            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
+                <text fg={(t.spineContext ?? t.textMuted) as any}>{entry().receipt!.command}</text>
+              </box>
+            </box>
+          </Show>
+
+          {/* Table artifact — stacked key/value rows instead of raw CLI table */}
+          <Show when={entry().table && bodyExpanded()}>
+            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
+                <SpineListArtifact
+                  headers={entry().table!.headers}
+                  rows={entry().table!.rows}
+                  focused={props.focused}
+                />
+              </box>
+            </box>
+          </Show>
+
+          {/* Directory / glob listing — plain names, no XML tags */}
+          <Show when={hasListing() && bodyExpanded()}>
+            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0} flexShrink={1}>
+                <SpineListing
+                  entries={entry().listing!}
+                  note={entry().bodyNote}
+                  focused={props.focused}
+                />
+              </box>
+            </box>
+          </Show>
+
+          <Show when={hasToolBody() && bodyExpanded() && !entry().table && !hasListing()}>
+            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
+                <SpineProse
+                  kind={kind()}
+                  text={entry().body!}
+                  bodyLabel={entry().bodyLabel}
+                  hint={entry().bodyHint || entry().summary}
+                  note={entry().bodyNote}
+                  streaming={false}
+                  focused={props.focused}
+                  reminders={entry().reminders}
+                />
+              </box>
+            </box>
+          </Show>
+
+          <Show when={entry().diff}>
+            {(d) => (
+              <Show when={expanded()}>
+                <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+                  <SpineRail layout={props.layout} active={props.focused} />
+                  <box flexGrow={1} minWidth={0} flexShrink={1}>
+                    <SpineDiff diff={d()} layout={props.layout} expanded={expanded()} />
+                  </box>
+                </box>
+              </Show>
+            )}
+          </Show>
+
+          <Show when={props.layout === "wide"}>
+            <box flexDirection="row" height={1} flexShrink={0}>
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0} />
+            </box>
+          </Show>
+
+          <Show when={entry().children && expanded()}>
+            <For each={entry().children!}>
+              {(child) => (
+                <box flexDirection="row" flexShrink={0} paddingLeft={2}>
+                  <SpineRail layout={props.layout} kind={child.kind} glyph={child.glyph} active={false} />
+                  <box flexGrow={1} minWidth={0}>
+                    <text fg={t.spineDiffMuted as any}>
+                      {child.receipt?.summary || child.receipt?.label || ""} · {child.elapsed}
+                    </text>
+                  </box>
+                </box>
+              )}
+            </For>
+          </Show>
+        </box>
       </box>
-    </box>
+    </Show>
   )
 }

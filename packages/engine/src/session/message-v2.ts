@@ -29,6 +29,7 @@ import { lt } from "drizzle-orm"
 import { or } from "drizzle-orm"
 import { MessageTable, PartTable, SessionTable } from "@arcana/core/session/sql"
 import { ProviderError } from "@/provider/error"
+import { mapUpstreamToArcanaError, formatUserFacing } from "@/error"
 import { iife } from "@/util/iife"
 import { errorMessage } from "@/util/error"
 import { isMedia } from "@/util/media"
@@ -694,70 +695,67 @@ export function fromError(
         { cause: e },
       ).toObject()
     case APICallError.isInstance(e): {
-      // Arcana proxy credit enforcement: the proxy pre-deducts from the account
-      // balance and returns 402 insufficient_balance (out of credits) or 429
-      // daily_limit_reached (per-tier daily cap) before provider execution.
-      // These are terminal, not retryable — surface a friendly "buy credits"
-      // message and let the run stop. isRetryable:false also prevents the
-      // SessionRetry policy from retrying the 429 variant.
+      // Prefer Arcana taxonomy for proxy + any body that maps cleanly.
+      // User message is Arcana voice; provider/tid detail stays in metadata.
       const status = (e as APICallError).statusCode
       const raw = (e as APICallError).responseBody
       const body = typeof raw === "string" ? raw : ""
-      const arcanaProxy = String(ctx.providerID) === "arcana-proxy"
-      if (arcanaProxy && status === 402) {
-        const upstreamMessage = parseErrorMessage(body) ?? (e as APICallError).message
-        const limitMatch = upstreamMessage.match(/prompt tokens limit exceeded:\s*([0-9,]+)\s*>\s*([0-9,]+)/i)
-        if (limitMatch) {
-          const used = limitMatch[1]
-          const limit = limitMatch[2]
-          return new APIError(
-            {
-              message: `Arcana proxy token limit exceeded (${used} > ${limit}). Compact the session or reduce context before retrying.`,
-              statusCode: 402,
-              isRetryable: false,
-              responseBody: JSON.stringify({
-                error: {
-                  code: "arcana_proxy_token_limit_exceeded",
-                  message: `Prompt token limit exceeded (${used} > ${limit}).`,
+      const arcanaProxy =
+        String(ctx.providerID) === "arcana-proxy"
+        || String(ctx.providerID).includes("proxy")
+        || body.includes("ARC_")
+        || body.includes("upstream_error")
+        || body.includes("insufficient_balance")
+
+      if (arcanaProxy || body.includes("requested operation is unsupported") || body.includes("aihubmix")) {
+        const mapped = mapUpstreamToArcanaError({
+          status,
+          bodyText: body || (e as APICallError).message,
+          provider: String(ctx.providerID),
+          source: arcanaProxy ? "arcana-proxy" : "provider",
+        })
+        // Token-limit special case (still Arcana voice)
+        if (status === 402) {
+          const upstreamMessage = parseErrorMessage(body) ?? (e as APICallError).message
+          const limitMatch = upstreamMessage.match(/prompt tokens limit exceeded:\s*([0-9,]+)\s*>\s*([0-9,]+)/i)
+          if (limitMatch) {
+            return new APIError(
+              {
+                message: `This session is over the proxy token limit (${limitMatch[1]} > ${limitMatch[2]}). Compact or start a new session.`,
+                statusCode: 402,
+                isRetryable: false,
+                responseBody: body,
+                metadata: {
+                  arcanaCode: "ARC_REQUEST_INVALID",
+                  proxyError: "token_limit_exceeded",
+                  usedTokens: limitMatch[1] ?? "",
+                  limitTokens: limitMatch[2] ?? "",
                 },
-              }),
-              metadata: { proxyError: "token_limit_exceeded", usedTokens: used ?? "", limitTokens: limit ?? "" },
-            },
+              },
+              { cause: e },
+            ).toObject()
+          }
+        }
+        if (mapped.code === "ARC_CONTEXT_OVERFLOW") {
+          return new ContextOverflowError(
+            { message: mapped.message, responseBody: body },
             { cause: e },
           ).toObject()
         }
-      }
-      if (status === 402 && body.includes("insufficient_balance")) {
-        const data = iife(() => {
-          try { return JSON.parse(body) as { balance?: number; required?: number } } catch { return {} }
-        })
-        const detail =
-          typeof data.balance === "number" && typeof data.required === "number"
-            ? ` (have ${data.balance}, need ${data.required})`
-            : ""
         return new APIError(
           {
-            message: `No credits remaining${detail}. Run \`arcana proxy buy\` to add credits.`,
-            statusCode: 402,
-            isRetryable: false,
+            message: formatUserFacing(mapped),
+            statusCode: mapped.httpStatus || status,
+            isRetryable: mapped.retryable,
             responseBody: body,
             metadata: {
-              proxyError: "insufficient_balance",
-              balance: String(data.balance ?? ""),
-              required: String(data.required ?? ""),
+              arcanaCode: mapped.code,
+              arcanaType: mapped.type,
+              provider: mapped.internal?.provider ?? "",
+              model: mapped.internal?.model ?? "",
+              tid: mapped.internal?.tid ?? "",
+              upstreamMessage: (mapped.internal?.upstreamMessage ?? "").slice(0, 240),
             },
-          },
-          { cause: e },
-        ).toObject()
-      }
-      if (status === 429 && body.includes("daily_limit_reached")) {
-        return new APIError(
-          {
-            message: "Daily limit reached. Upgrade your plan for more capacity.",
-            statusCode: 429,
-            isRetryable: false,
-            responseBody: body,
-            metadata: { proxyError: "daily_limit_reached" },
           },
           { cause: e },
         ).toObject()
@@ -772,6 +770,31 @@ export function fromError(
           {
             message: parsed.message,
             responseBody: parsed.responseBody,
+          },
+          { cause: e },
+        ).toObject()
+      }
+
+      // Map remaining provider noise through Arcana taxonomy when possible
+      const mapped = mapUpstreamToArcanaError({
+        status: parsed.statusCode,
+        bodyText: parsed.responseBody ?? parsed.message,
+        provider: String(ctx.providerID),
+        source: "provider",
+      })
+      if (mapped.code !== "ARC_INTERNAL" && mapped.code !== "ARC_REQUEST_INVALID") {
+        return new APIError(
+          {
+            message: formatUserFacing(mapped),
+            statusCode: parsed.statusCode,
+            isRetryable: mapped.retryable,
+            responseHeaders: parsed.responseHeaders,
+            responseBody: parsed.responseBody,
+            metadata: {
+              ...parsed.metadata,
+              arcanaCode: mapped.code,
+              arcanaType: mapped.type,
+            },
           },
           { cause: e },
         ).toObject()
