@@ -60,7 +60,7 @@
     "typescript": "catalog:"
   },
   "dependencies": {
-    "@ai-sdk/provider": "3.0.8",
+    "@ai-sdk/provider": "4.0.3",
     "@ai-sdk/provider-utils": "4.0.23",
     "@arcana/effect-drizzle-sqlite": "workspace:*",
     "@arcana/effect-sqlite-node": "workspace:*",

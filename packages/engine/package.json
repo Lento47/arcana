@@ -48,7 +48,7 @@
     "@actions/core": "1.11.1",
     "@actions/github": "6.0.1",
     "@agentclientprotocol/sdk": "0.21.0",
-    "@ai-sdk/provider": "3.0.8",
+    "@ai-sdk/provider": "4.0.3",
     "@arcana/arcana": "workspace:*",
     "@arcana/llm": "workspace:*",
     "@arcana/ml": "workspace:*",
