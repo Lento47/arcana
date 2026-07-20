@@ -1709,8 +1709,8 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
           >
             <code
               filetype="markdown"
-              drawUnstyledText={false}
-              streaming={true}
+              drawUnstyledText={!isDone()}
+              streaming={!isDone()}
               syntaxStyle={syntax()}
               content={summary().body}
               conceal={ctx.conceal()}
@@ -1770,14 +1770,20 @@ function ReasoningHeader(props: {
 function TextPart(props: { last: boolean; part: TextPart; message: AssistantMessage }) {
   const ctx = use()
   const { theme, syntax } = useTheme()
+  // Keep streaming true only while the assistant message is open. OpenTUI
+  // finalizes trailing markdown tokens (bold, fences, lists) when this flips false.
+  const streaming = createMemo(() => !props.message.time.completed)
+  // Don't trim the live stream — trailing whitespace/newlines matter for layout
+  // and incomplete markdown structures. Empty check still uses trim.
+  const content = createMemo(() => props.part.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"))
   return (
-    <Show when={props.part.text.trim()}>
-      <box id={`text-${props.part.messageID}-${props.part.id}`} paddingLeft={3} marginTop={1} flexShrink={0}>
+    <Show when={content().trim()}>
+      <box id={`text-${props.part.messageID}-${props.part.id}`} paddingLeft={3} marginTop={1} flexShrink={0} minWidth={0}>
         <markdown
           syntaxStyle={syntax()}
-          streaming={true}
+          streaming={streaming()}
           internalBlockMode="top-level"
-          content={props.part.text.trim()}
+          content={content()}
           tableOptions={{ style: "grid" }}
           conceal={ctx.conceal()}
           fg={theme.markdownText}

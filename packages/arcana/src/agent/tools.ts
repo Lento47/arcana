@@ -11,6 +11,7 @@ import { mkdirSync, writeFileSync, existsSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import { initBoard, loadBoard, saveBoard, addCard, moveCard, archiveDone, formatBoard, type KanbanCard } from "./kanban.js"
 import { fetchAccountSnapshot, formatAccountSnapshot } from "../proxy-client.js"
+import { generateAndSaveImages, formatImageGenerateResult } from "./image-generate.js"
 
 /**
  * Resolve a sandbox script path from a model-provided filename (ARC-SEC-I05).
@@ -151,11 +152,13 @@ Map user intent to exactly one tool. Don't combine unless the user explicitly as
 - "diagnose system health"          → diagnose()
 - "my account / balance / tier / credits / license" → account_status()
 - "save / list artifacts"           → artifact_save / artifact_search / artifact_get
+- "generate an image / illustration / mockup" → image_generate(prompt=..., aspect_ratio=...)
 - "multi-model debate + vote"       → council(prompt=..., models=[...], rounds=1|2)
 - "estimate call cost"              → cost_estimate(estimated_input_tokens=...)
 
 When unsure: read before write, list before activate, search before fetch.
 For account/billing/license questions ALWAYS call account_status — do not invent from memory.
+For image generation use image_generate (not shell/curl). Files save under ~/.arcana/artifacts/images/.
 </tool-selection>`
 
 // ── web_search helpers ───────────────────────────────────────
@@ -214,6 +217,64 @@ export function registerAccountTools(runner: AgentRunner): void {
         return formatAccountSnapshot(snap)
       } catch (e) {
         return `Failed to load account status: ${e instanceof Error ? e.message : String(e)}`
+      }
+    },
+  )
+
+  runner.registerTool(
+    "image_generate",
+    {
+      type: "function",
+      function: {
+        name: "image_generate",
+        description:
+          "Generate an image from a text prompt via Arcana Proxy (OpenRouter / Aihubmix). Saves PNG/JPEG under ~/.arcana/artifacts/images/ and returns local file paths. Use for illustrations, mockups, concept art, logos, and UI comps. Requires proxy login (arcana console login). Billable tiers spend credits.",
+        parameters: {
+          type: "object",
+          properties: {
+            prompt: {
+              type: "string",
+              description: "Detailed visual description. Do not put UI chrome text unless the user wants text-in-image.",
+            },
+            aspect_ratio: {
+              type: "string",
+              description:
+                "landscape | portrait | square, or explicit ratio like 16:9, 9:16, 1:1, 4:3",
+            },
+            model: {
+              type: "string",
+              description: 'Image model slug (default "openai/gpt-5-image"). Use catalog models with output image.',
+            },
+            n: {
+              type: "number",
+              description: "Number of images 1–4 (default 1)",
+            },
+            size: {
+              type: "string",
+              description: 'Optional size shorthand e.g. "1024x1024" or "2K"',
+            },
+            quality: {
+              type: "string",
+              description: "auto | low | medium | high (when supported)",
+            },
+          },
+          required: ["prompt"],
+        },
+      },
+    },
+    async (args) => {
+      try {
+        const result = await generateAndSaveImages({
+          prompt: String(args.prompt ?? ""),
+          model: args.model != null ? String(args.model) : undefined,
+          aspect_ratio: args.aspect_ratio != null ? String(args.aspect_ratio) : undefined,
+          n: args.n != null ? Number(args.n) : undefined,
+          size: args.size != null ? String(args.size) : undefined,
+          quality: args.quality != null ? String(args.quality) : undefined,
+        })
+        return formatImageGenerateResult(result)
+      } catch (e) {
+        return `Image generation error: ${e instanceof Error ? e.message : String(e)}`
       }
     },
   )

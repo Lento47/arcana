@@ -90,7 +90,7 @@ export function Home() {
           <Scramble text={WORDMARK_TAGLINE} fg={theme.textMuted} />
         </box>
         <box flexShrink={0} paddingTop={1} alignItems="center">
-          <Scramble text={epigram()} fg={theme.textMuted} speed={40} />
+          <Scramble text={epigram()} fg={theme.textMuted} speed={14} />
         </box>
         <box height={1} minHeight={0} flexShrink={1} />
         <box width="100%" maxWidth={promptMaxWidth()} zIndex={1000} paddingTop={1} flexShrink={0}>

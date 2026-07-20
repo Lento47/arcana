@@ -1619,9 +1619,10 @@ function stabilizeEntries(next: SpineEntry[], previous: SpineEntry[] | undefined
     ) {
       return prev
     }
-    // Properties changed — return a NEW object so Solid <For> detects the
-    // reference shift and re-renders the SpineEntry child. The old object
-    // is discarded; GC handles cleanup.
+    // Properties changed — return a NEW object so reactive prop bindings
+    // (keyed by entry.id in CommandSpineShell) pick up summary/body/streaming
+    // updates without remounting the whole row. Remounting on every stream
+    // token was tearing down <markdown> and causing rich-text glitching.
     return { ...entry }
   })
 }
