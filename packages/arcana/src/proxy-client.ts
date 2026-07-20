@@ -3,11 +3,11 @@ import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { getArcanaHome } from "./config.js"
 
-/** Prefer working origins first — custom domain has TLS handshake failures in the field. */
+/** Prefer working origins first. Multi-level proxy.arcana.otnelhq.com fails TLS (no advanced cert). */
 export const PROXY_BASES = [
   process.env.ARCANA_PROXY_URL?.replace(/\/$/, ""),
+  "https://proxy-arcana.otnelhq.com",
   "https://arcana-proxy.lejzerv.workers.dev",
-  "https://proxy.arcana.otnelhq.com", // secondary only; often fails TLS on Windows/schannel
 ].filter(Boolean) as string[]
 
 export async function resolveProxyKey(): Promise<string | null> {

@@ -5,7 +5,7 @@
       "_comment": "Licensed Arcana Proxy. workers.dev is the stable origin; custom domain proxy.arcana.otnelhq.com may lag DNS/SSL.",
       "name": "Arcana Proxy",
       "npm": "@ai-sdk/openai-compatible",
-      "api": "https://arcana-proxy.lejzerv.workers.dev/v1",
+      "api": "https://proxy-arcana.otnelhq.com/v1",
       "env": ["ARCANA_PROXY_KEY"]
     },
     "nous-portal": {
