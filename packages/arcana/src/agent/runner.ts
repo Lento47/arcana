@@ -51,6 +51,22 @@ function runProofVerificationSummary(kind: RunProofVerificationKind, command: st
   return `${label} ${status}: ${command}`
 }
 
+/** Prefer free / small catalog models when auto-picking from proxy /models. */
+function pickProxyDefaultModel(list: Array<{ id?: string }>): string | undefined {
+  const ids = list.map((m) => m.id).filter((id): id is string => typeof id === "string" && id.length > 0)
+  if (!ids.length) return undefined
+  const prefer = [
+    (id: string) => /:free$/i.test(id),
+    (id: string) => /\bfree\b/i.test(id),
+    (id: string) => /gemma|llama-3\.[12]-8b|llama-3\.2|qwen.*7b|phi-3|nemotron.*nano/i.test(id),
+  ]
+  for (const pred of prefer) {
+    const hit = ids.find(pred)
+    if (hit) return hit
+  }
+  return ids[0]
+}
+
 /** Map arcana provider ids to AI SDK language model constructors. */
 async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
   if (!config.provider) {
@@ -68,32 +84,52 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
 
   let modelId = config.model || profile.defaultModel
   let proxyURL = profile.baseURL // may be overridden by fallback during discovery
+  const isProxyProvider =
+    config.provider === "arcana-proxy"
+    || (typeof profile.baseURL === "string" && /arcana-proxy|proxy\.arcana/i.test(profile.baseURL))
   // arcana-proxy discovers models at runtime — try the proxy catalog cache first,
   // then fetch live from the proxy. Avoids "No model configured" on first run.
-  if (!modelId && config.provider) {
+  // Always probe bases for licensed proxy so a dead custom domain falls back to workers.dev.
+  if (isProxyProvider || (!modelId && config.provider)) {
     const { readFileSync, existsSync } = await import("node:fs")
     const { join } = await import("node:path")
     const home = process.env.ARCANA_HOME ?? join(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".arcana")
     const cacheFile = join(home, "cache", "proxy-models.json")
-    // Try cached proxy models first
-    try {
-      if (existsSync(cacheFile)) {
-        const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as { list?: Array<{ id?: string }> }
-        if (cached.list?.length) {
-          modelId = cached.list[0].id
+    // Try cached proxy models first (only for model id — base URL still needs a live probe)
+    if (!modelId) {
+      try {
+        if (existsSync(cacheFile)) {
+          const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as { list?: Array<{ id?: string }> }
+          if (cached.list?.length) {
+            modelId = pickProxyDefaultModel(cached.list)
+          }
         }
-      }
-    } catch {}
-    // Fallback: fetch from provider base URL, then Workers.dev fallback
-    if (!modelId && profile.baseURL && key) {
-      const bases = [profile.baseURL, "https://arcana-proxy.lejzerv.workers.dev/v1"]
+      } catch {}
+    }
+    // Probe provider base URL, then Workers.dev fallback (custom domain may refuse connect)
+    if (profile.baseURL && key) {
+      const bases = [...new Set([
+        profile.baseURL,
+        "https://arcana-proxy.lejzerv.workers.dev/v1",
+        "https://proxy.arcana.otnelhq.com/v1",
+      ].filter(Boolean))]
       for (const base of bases) {
         try {
           const url = (base.endsWith("/") ? base.slice(0, -1) : base) + "/models"
           const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(5000) })
           if (res.ok) {
             const data = await res.json() as { data?: Array<{ id?: string }> }
-            if (data.data?.length) { modelId = data.data[0].id; proxyURL = base; break }
+            if (data.data?.length) {
+              if (!modelId) modelId = pickProxyDefaultModel(data.data)
+              proxyURL = base
+              // Refresh cache for next cold start
+              try {
+                const { mkdirSync, writeFileSync } = await import("node:fs")
+                mkdirSync(join(home, "cache"), { recursive: true })
+                writeFileSync(cacheFile, JSON.stringify({ list: data.data, at: Date.now() }))
+              } catch {}
+              break
+            }
           }
         } catch { continue }
       }
@@ -127,9 +163,16 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
     return { model: google(modelId), tools: aiTools }
   }
   // OpenAI-compatible fallback — covers DeepSeek, Groq, Together, xAI, Mistral, etc.
+  const baseURL = proxyURL ?? profile.baseURL ?? `https://api.${config.provider}.com/v1`
+  if (baseURL.includes("${CLOUDFLARE_ACCOUNT_ID}")) {
+    throw new Error(
+      `Provider "${config.provider}" URL still has \${CLOUDFLARE_ACCOUNT_ID}. ` +
+        `Set CLOUDFLARE_ACCOUNT_ID, or switch to arcana-proxy (proxy_key / ARCANA_PROXY_KEY).`,
+    )
+  }
   const compat = createOpenAICompatible({
     apiKey: key,
-    baseURL: proxyURL ?? profile.baseURL ?? `https://api.${config.provider}.com/v1`,
+    baseURL,
     name: config.provider,
   })
   return { model: compat(modelId), tools: aiTools }

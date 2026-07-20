@@ -38,26 +38,46 @@ async function loadLocalExtras(): Promise<Record<string, ModelsDevProvider>> {
 export async function resolveProvider(provider: string): Promise<ProviderProfile> {
   const alias = ALIASES[provider] ?? provider
   const [all, localExtras] = await Promise.all([fetchModelsDev(), loadLocalExtras()])
-  const md = all[alias] ?? localExtras[provider]
+  // Local extras win — providers.arcana.json routes arcana-proxy / licensed
+  // Cloud paths. Preferring models.dev first made "cloudflare-workers-ai" resolve
+  // to api.cloudflare.com with an unsubstituted ${CLOUDFLARE_ACCOUNT_ID}.
+  const md = localExtras[provider] ?? all[alias] ?? all[provider]
 
   if (!md) throw new Error(`Unknown provider "${provider}". Check models.dev or providers.arcana.json.`)
 
   const envKey = md.env?.[0]
   const defaultModel = md.models ? Object.keys(md.models)[0] : undefined
-  return { baseURL: md.api, envKey, defaultModel }
+  const baseURL = md.api
+  if (typeof baseURL === "string" && baseURL.includes("${CLOUDFLARE_ACCOUNT_ID}") && !process.env.CLOUDFLARE_ACCOUNT_ID) {
+    throw new Error(
+      `Provider "${provider}" needs CLOUDFLARE_ACCOUNT_ID (Workers AI). ` +
+        `Or use Arcana Proxy: ensure ~/.arcana/proxy_key exists and set provider to "arcana-proxy".`,
+    )
+  }
+  return { baseURL, envKey, defaultModel }
 }
 
 /** Auto-detect which provider is configured via env vars. Reads models.dev to
-  * find providers whose env key or BASE_URL is set. Priority: *_BASE_URL first
-  * (explicit user intent), then exact env key matches. No hardcoded names. */
+  * find providers whose env key or BASE_URL is set. Priority: Arcana Proxy when
+  * licensed, then *_BASE_URL (explicit user intent), then exact env key matches. */
 export async function autoDetectProvider(): Promise<{ provider?: string; model?: string }> {
   const [all, localExtras] = await Promise.all([fetchModelsDev(), loadLocalExtras()])
+  // Local extras override models.dev so licensed proxy catalog wins on name clash.
   const merged = { ...all, ...localExtras }
 
   const makeResult = (id: string, md: ModelsDevProvider) => ({
     provider: id,
     model: md.models ? Object.keys(md.models)[0] : undefined,
   })
+
+  // Priority 0: licensed Arcana Proxy. providers.arcana.json used to attach
+  // ARCANA_PROXY_KEY to cloudflare-* aliases; without this gate auto-detect
+  // picked cloudflare-workers-ai and then models.dev resolved a raw CF URL.
+  if (process.env.ARCANA_PROXY_KEY?.trim()) {
+    const proxy = localExtras["arcana-proxy"] ?? merged["arcana-proxy"]
+    if (proxy) return makeResult("arcana-proxy", proxy)
+    return { provider: "arcana-proxy", model: undefined }
+  }
 
   // Priority 1: *_BASE_URL signals explicit user intent. ANTHROPIC_BASE_URL
   // → anthropic regardless of what other env keys happen to be set.
@@ -72,9 +92,15 @@ export async function autoDetectProvider(): Promise<{ provider?: string; model?:
   }
 
   // Priority 2: exact env-key match (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY).
+  // Skip cloudflare-workers-ai unless CLOUDFLARE_ACCOUNT_ID is also present —
+  // models.dev lists CLOUDFLARE_ACCOUNT_ID first; a lone API key is not enough.
   for (const [id, md] of Object.entries(merged)) {
     for (const envKey of md.env ?? []) {
-      if (process.env[envKey]) return makeResult(id, md)
+      if (!process.env[envKey]) continue
+      if (id === "cloudflare-workers-ai" || id === "cloudflare-ai-gateway") {
+        if (!process.env.CLOUDFLARE_ACCOUNT_ID?.trim()) continue
+      }
+      return makeResult(id, md)
     }
   }
 
