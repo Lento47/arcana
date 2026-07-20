@@ -37,7 +37,7 @@ import { computePromptTraits } from "../../prompt/traits"
 import { expandPastedTextPlaceholders, expandTrackedPastedText } from "../../prompt/part"
 import { usePromptStash } from "../../prompt/stash"
 import { DialogStash } from "../dialog-stash"
-import { type AutocompleteRef, Autocomplete } from "./autocomplete"
+import { type AutocompleteRef, Autocomplete, ARCANA_PROMPT_SLASHES } from "./autocomplete"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import type { FilePart, UserMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
@@ -53,7 +53,14 @@ import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { useArgs } from "../../context/args"
-import { ARCANA_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
+import {
+  ARCANA_BASE_MODE,
+  useBindings,
+  useCommandShortcut,
+  useCommandSlashes,
+  useLeaderActive,
+  useOpencodeKeymap,
+} from "../../keymap"
 import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
@@ -167,6 +174,7 @@ export function Prompt(props: PromptProps) {
   const history = usePromptHistory()
   const stash = usePromptStash()
   const keymap = useOpencodeKeymap()
+  const commandSlashes = useCommandSlashes()
   const agentShortcut = useCommandShortcut("agent.cycle")
   const paletteShortcut = useCommandShortcut("command.palette.show")
   const renderer = useRenderer()
@@ -1061,6 +1069,31 @@ export function Prompt(props: PromptProps) {
           ]
         : []
     const arcanaPromptCommand = parseArcanaPromptCommand(inputText)
+
+    // Fire-and-forget TUI slash commands (e.g. /new, /sessions, /exit).
+    // Without this, typing "/new" + Enter falls through to a normal prompt
+    // and the model sees the slash text instead of the command running.
+    if (inputText.startsWith("/") && !arcanaPromptCommand) {
+      const firstToken = inputText.split("\n")[0]!.trim().split(/\s+/)[0]!.toLowerCase()
+      if (!ARCANA_PROMPT_SLASHES.has(firstToken)) {
+        const serverCmd = firstToken.slice(1)
+        const isServerCommand = sync.data.command.some((x) => x.name === serverCmd)
+        // goal/loop handled below with local stores
+        const isLocalGoal = serverCmd === "goal" || serverCmd === "loop"
+        if (!isServerCommand && !isLocalGoal) {
+          const entry = commandSlashes().find((item) => {
+            const display = item.display.trimEnd().toLowerCase()
+            if (display === firstToken) return true
+            return item.aliases?.some((alias) => alias.toLowerCase() === firstToken) ?? false
+          })
+          if (entry) {
+            entry.onSelect?.()
+            clearPrompt()
+            return true
+          }
+        }
+      }
+    }
 
     if (store.mode === "shell") {
       move.startSubmit()

@@ -71,7 +71,15 @@ export type AutocompleteOption = {
   path?: string
 }
 
-const ARCANA_PROMPT_SLASHES = new Set(["/contract", "/actions", "/diffgate", "/verify", "/sovereignty", "/consensus"])
+/** Slash commands that insert a prompt prefix (need args) — not fire-and-forget. */
+export const ARCANA_PROMPT_SLASHES = new Set([
+  "/contract",
+  "/actions",
+  "/diffgate",
+  "/verify",
+  "/sovereignty",
+  "/consensus",
+])
 
 export function shouldClearSlashOnHide(text: string): boolean {
   return /^\/\S*$/.test(text) && !text.endsWith(" ")
