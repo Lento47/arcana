@@ -13,10 +13,12 @@ import { DialogModel } from "./dialog-model"
 import { useToast } from "../ui/toast"
 import { isConsoleManagedProvider } from "../util/provider-origin"
 import { useConnected } from "./use-connected"
+import { useHasProxyKey } from "./use-has-proxy-key"
 import { errorMessage } from "../util/error"
 import { useBindings } from "../keymap"
 import { useClipboard } from "../context/clipboard"
 import { COPY, Glyph } from "../branding"
+import { ArcanaOAuthMethod } from "./dialog-arcana-oauth"
 
 const PROVIDER_PRIORITY: Record<string, number> = {
   opencode: 0,
@@ -45,30 +47,49 @@ type ProviderOption =
   | (ProviderOptionBase & {
       type: "custom"
     })
+  | (ProviderOptionBase & {
+      type: "arcana-oauth"
+    })
 
-export function providerOptions(list: { id: string; name: string }[]): ProviderOption[] {
-  return [
-    ...pipe(
-      list,
-      sortBy(
-        (x) => PROVIDER_PRIORITY[x.id] ?? 99,
-        (x) => x.name.toLowerCase(),
-        (x) => x.id,
-      ),
-      map((provider) => ({
-        type: "provider" as const,
-        title: provider.name,
-        value: provider.id,
-        providerID: provider.id,
-        description: {
-          arcana: "(Recommended)",
-          anthropic: "(API key)",
-          openai: "(ChatGPT Plus/Pro or API key)",
-          "opencode-go": "Low cost subscription for everyone",
-        }[provider.id],
-        category: provider.id in PROVIDER_PRIORITY ? "Popular" : "Providers",
-      })),
+export function providerOptions(
+  list: { id: string; name: string }[],
+  opts: { showArcanaOauth?: boolean } = {},
+): ProviderOption[] {
+  const base: ProviderOption[] = pipe(
+    list,
+    sortBy(
+      (x) => PROVIDER_PRIORITY[x.id] ?? 99,
+      (x) => x.name.toLowerCase(),
+      (x) => x.id,
     ),
+    map((provider) => ({
+      type: "provider" as const,
+      title: provider.name,
+      value: provider.id,
+      providerID: provider.id,
+      description: {
+        arcana: "(Recommended)",
+        anthropic: "(API key)",
+        openai: "(ChatGPT Plus/Pro or API key)",
+        "opencode-go": "Low cost subscription for everyone",
+      }[provider.id],
+      category: provider.id in PROVIDER_PRIORITY ? "Popular" : "Providers",
+    })),
+  )
+  const oauth: ProviderOption[] = opts.showArcanaOauth
+    ? [
+        {
+          type: "arcana-oauth" as const,
+          title: "Sign in with arcana",
+          value: "__ARCANA_oauth__",
+          description: "Free account · unlock more models",
+          category: "Popular",
+        },
+      ]
+    : []
+  return [
+    ...oauth,
+    ...base,
     {
       type: "custom",
       title: "Other",
@@ -92,6 +113,7 @@ export function createDialogProviderOptions() {
   const toast = useToast()
   const { theme } = useTheme()
   const onboarded = useConnected()
+  const proxyKey = useHasProxyKey()
 
   async function promptCustomProviderID(): Promise<string | undefined> {
     while (true) {
@@ -117,9 +139,35 @@ export function createDialogProviderOptions() {
   }
 
   const options = createMemo(() => {
+    // Show the OAuth option until we know the proxy key is present.
+    // `loading` is true on the first paint — better to err on the side of
+    // showing the option (a logged-in user can simply ignore it) than to
+    // hide it during the brief gap before the resource resolves.
+    const showArcanaOauth = !proxyKey.present()
     return pipe(
-      providerOptions(sync.data.provider_next.all),
+      providerOptions(sync.data.provider_next.all, { showArcanaOauth }),
       map((provider) => {
+        if (provider.type === "arcana-oauth") {
+          return {
+            title: provider.title,
+            value: provider.value,
+            description: provider.description,
+            category: provider.category,
+            async onSelect() {
+              await proxyKey.refetch()
+              if (proxyKey.present()) {
+                // User already has a key — refresh catalog in case it's stale
+                // and jump straight to the model picker.
+                await sdk.client.instance.dispose()
+                await sync.bootstrap()
+                dialog.replace(() => <DialogModel providerID="arcana" />)
+                return
+              }
+              dialog.replace(() => <ArcanaOAuthMethod />)
+            },
+          }
+        }
+
         if (provider.type === "custom") {
           return {
             title: provider.title,
@@ -381,8 +429,9 @@ function ApiMethod(props: ApiMethodProps) {
               <text fg={theme.textMuted}>
                 Arcana Proxy gives you access to multiple LLM providers through a single API key — no per-provider setup required.
               </text>
-              <text fg={theme.text}>
-                Go to <span style={{ fg: theme.primary }}>https://arcana.otnelhq.com</span> to get a key
+              <text fg={theme.textMuted}>
+                Already have an Arcana key? Paste it here. Or pick <span style={{ fg: theme.primary }}>Sign in with arcana</span>{" "}
+                above to log in with a free account.
               </text>
             </box>
           ),
