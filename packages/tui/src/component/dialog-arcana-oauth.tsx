@@ -7,7 +7,6 @@ import { useToast } from "../ui/toast"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../keymap"
 import { useClipboard } from "../context/clipboard"
-import { Link } from "../ui/link"
 import { DialogModel } from "./dialog-model"
 import { COPY, Glyph } from "../branding"
 import { errorMessage } from "../util/error"
@@ -18,6 +17,19 @@ type PollStatus = "pending" | "slow_down" | "expired" | "denied" | "success"
 
 interface ArcanaOAuthMethodProps {
   onSuccess?: () => void
+}
+
+// Strip the `?code=...` query from a verification URL so we can show the
+// host in the TUI without leaking the device code into terminal scrollback,
+// screen recordings, or the paste buffer. The full URL is only ever copied
+// to the clipboard (on `c`) or sent to the engine (on Enter → openUrl).
+function urlHost(raw: string): string {
+  try {
+    const u = new URL(raw)
+    return `${u.protocol}//${u.host}${u.pathname}`.replace(/\/$/, "")
+  } catch {
+    return raw
+  }
 }
 
 /**
@@ -49,19 +61,44 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
   let cancelled = false
   let pollTimer: ReturnType<typeof setTimeout> | undefined
 
+  // Open the verification URL in the OS default browser via the engine.
+  // Going server-side avoids terminal-side OSC 8 click handlers that can
+  // mangle the `?code=` query (Warp, tmux, some Windows shells).
+  async function openInBrowser() {
+    const target = url()
+    if (!target) return
+    const result = await sdk.client.experimental.console.openUrl({ url: target })
+    if (result.error || !result.data?.ok) {
+      toast.show({
+        variant: "info",
+        message: "Couldn't open your browser. Press c to copy the link and paste it in a browser yourself.",
+      })
+    }
+  }
+
   useBindings(() => ({
     bindings: [
       {
         key: "c",
-        desc: "Copy code",
+        desc: "Copy link",
         group: "Dialog",
         cmd: () => {
-          const value = user() || url()
+          // Copy the FULL URL (with code) so the user can paste into a
+          // browser themselves. The TUI never echoes it back to the screen.
+          const value = url()
           if (!value) return
           clipboard
             .write?.(value)
             .then(() => toast.show({ message: COPY.inscribedToClipboard, variant: "info" }))
             .catch(toast.error)
+        },
+      },
+      {
+        key: "return",
+        desc: "Open link",
+        group: "Dialog",
+        cmd: () => {
+          void openInBrowser()
         },
       },
     ],
@@ -232,7 +269,8 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       <Show when={phase() === "waiting" || phase() === "binding" || phase() === "success"}>
         <box gap={1}>
           <text fg={theme.textMuted}>
-            Visit <span style={{ fg: theme.primary, attributes: TextAttributes.UNDERLINE }}>{url()}</span>{" "}
+            Visit{" "}
+            <span style={{ fg: theme.primary, attributes: TextAttributes.UNDERLINE }}>{urlHost(url())}</span>{" "}
             and enter this code:
           </text>
           <text attributes={TextAttributes.BOLD} fg={theme.primary}>
@@ -250,10 +288,12 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
             </text>
           </Show>
         </box>
-        <Link href={url()} fg={theme.primary} />
         <box flexDirection="row" gap={2}>
           <text fg={theme.text}>
-            c <span style={{ fg: theme.textMuted }}>copy code</span>
+            enter <span style={{ fg: theme.textMuted }}>open link</span>
+          </text>
+          <text fg={theme.text}>
+            c <span style={{ fg: theme.textMuted }}>copy link</span>
           </text>
         </box>
       </Show>

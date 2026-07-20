@@ -5794,6 +5794,28 @@ export type ExperimentalConsoleProxyKeyPresentResponses = {
 export type ExperimentalConsoleProxyKeyPresentResponse =
   ExperimentalConsoleProxyKeyPresentResponses[keyof ExperimentalConsoleProxyKeyPresentResponses]
 
+export type ExperimentalConsoleOpenUrlErrors = {
+  /**
+   * BadRequest
+   */
+  400: EffectHttpApiErrorBadRequest
+}
+
+export type ExperimentalConsoleOpenUrlError =
+  ExperimentalConsoleOpenUrlErrors[keyof ExperimentalConsoleOpenUrlErrors]
+
+export type ExperimentalConsoleOpenUrlResponses = {
+  /**
+   * Whether the browser was opened
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type ExperimentalConsoleOpenUrlResponse =
+  ExperimentalConsoleOpenUrlResponses[keyof ExperimentalConsoleOpenUrlResponses]
+
 export type ToolListData = {
   body?: never
   path?: never

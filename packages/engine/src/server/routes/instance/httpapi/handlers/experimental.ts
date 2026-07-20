@@ -12,6 +12,7 @@ import { ToolJsonSchema } from "@/tool/json-schema"
 import { ToolRegistry } from "@/tool/registry"
 import { Worktree } from "@/worktree"
 import { Duration, Effect, Option } from "effect"
+import open from "open"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
@@ -167,6 +168,26 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       return { present: proxyKeyPresent() }
     })
 
+    // Open a URL in the OS default browser. Used by the TUI to launch the
+    // device-code verification page without rendering a clickable link in
+    // the terminal (which can mangle the `?code=` query and fail in
+    // tmux/Warp/etc).
+    const consoleOpenUrl = Effect.fn("ExperimentalHttpApi.consoleOpenUrl")(function* (ctx: {
+      payload: { url: string }
+    }) {
+      const target = ctx.payload.url
+      // Only allow http(s) URLs; reject anything that could spawn another
+      // protocol handler (file://, javascript:, etc).
+      if (!/^https?:\/\//i.test(target)) {
+        return yield* Effect.fail(new HttpApiError.BadRequest({}))
+      }
+      const ok = yield* Effect.tryPromise({
+        try: () => open(target),
+        catch: () => false as const,
+      }).pipe(Effect.orElseSucceed(() => false as const))
+      return { ok: ok !== false }
+    })
+
     const tool = Effect.fn("ExperimentalHttpApi.tool")(function* (ctx: { query: typeof ToolListQuery.Type }) {
       const list = yield* registry.tools({
         providerID: ctx.query.provider,
@@ -258,6 +279,7 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       .handle("consoleLoginPoll", consoleLoginPoll)
       .handle("consoleLoginComplete", consoleLoginComplete)
       .handle("consoleProxyKeyPresent", consoleProxyKeyPresent)
+      .handle("consoleOpenUrl", consoleOpenUrl)
       .handle("tool", tool)
       .handle("toolIDs", toolIDs)
       .handle("worktree", worktree)

@@ -530,6 +530,16 @@ const scenarios: Scenario[] = [
   http.protected
     .get("/experimental/console/proxy-key-present", "experimental.console.proxyKeyPresent")
     .json(),
+  // `console.openUrl` rejects non-http(s) schemes. Browser-spawn itself
+  // isn't exercised (would launch a real browser on CI).
+  http.protected
+    .post("/experimental/console/open-url", "experimental.console.openUrl")
+    .at((ctx) => ({
+      path: "/experimental/console/open-url",
+      headers: ctx.headers(),
+      body: { url: "file:///etc/passwd" },
+    }))
+    .status(400, undefined, "none"),
   http.protected.get("/experimental/workspace/adapter", "experimental.workspace.adapter.list").json(200, array),
   http.protected.get("/experimental/workspace", "experimental.workspace.list").json(200, array),
   http.protected.get("/experimental/workspace/status", "experimental.workspace.status").json(200, array),
