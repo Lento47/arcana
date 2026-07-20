@@ -39,6 +39,8 @@ import type {
   ExperimentalConsoleLoginPollErrors,
   ExperimentalConsoleLoginPollResponses,
   ExperimentalConsoleLoginResponses,
+  ExperimentalConsoleOpenUrlErrors,
+  ExperimentalConsoleOpenUrlResponses,
   ExperimentalConsoleProxyKeyPresentErrors,
   ExperimentalConsoleProxyKeyPresentResponses,
   ExperimentalConsoleSwitchOrgResponses,
@@ -857,6 +859,43 @@ export class Console extends HeyApiClient {
     >({
       url: "/experimental/console/proxy-key-present",
       ...options,
+    })
+  }
+
+  /**
+   * Open a URL in the system browser
+   *
+   * Spawn the OS default browser to open the given URL. Used by the TUI to
+   * launch the device-code verification page without rendering the URL (and
+   * embedded code) as a click target in the terminal.
+   */
+  public openUrl<ThrowOnError extends boolean = false>(
+    parameters?: {
+      url?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [{ in: "body", key: "url" }],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ExperimentalConsoleOpenUrlResponses,
+      ExperimentalConsoleOpenUrlErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/console/open-url",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }

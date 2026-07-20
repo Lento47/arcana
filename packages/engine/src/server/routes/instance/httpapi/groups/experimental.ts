@@ -91,6 +91,7 @@ export const ExperimentalPaths = {
   consoleLoginPoll: "/experimental/console/login/poll",
   consoleLoginComplete: "/experimental/console/login/complete",
   consoleProxyKeyPresent: "/experimental/console/proxy-key-present",
+  consoleOpenUrl: "/experimental/console/open-url",
   tool: "/experimental/tool",
   toolIDs: "/experimental/tool/ids",
   worktree: "/experimental/worktree",
@@ -162,6 +163,14 @@ const ConsoleLoginCompleteResponse = Schema.Struct({
 const ConsoleProxyKeyPresentResponse = Schema.Struct({
   present: Schema.Boolean,
 }).annotate({ identifier: "ConsoleProxyKeyPresentResponse" })
+
+const ConsoleOpenUrlRequest = Schema.Struct({
+  url: Schema.String,
+}).annotate({ identifier: "ConsoleOpenUrlRequest" })
+
+const ConsoleOpenUrlResponse = Schema.Struct({
+  ok: Schema.Boolean,
+}).annotate({ identifier: "ConsoleOpenUrlResponse" })
 
 export const ExperimentalApi = HttpApi.make("experimental")
   .add(
@@ -250,6 +259,18 @@ export const ExperimentalApi = HttpApi.make("experimental")
             summary: "Is a proxy key present on disk?",
             description:
               "Returns { present: boolean } for whether ~/.arcana/proxy_key (or $ARCANA_PROXY_KEY) is set. The TUI uses this to decide whether to show the 'Sign in with arcana' option in /connect.",
+          }),
+        ),
+        HttpApiEndpoint.post("consoleOpenUrl", ExperimentalPaths.consoleOpenUrl, {
+          payload: ConsoleOpenUrlRequest,
+          success: described(ConsoleOpenUrlResponse, "Whether the browser was opened"),
+          error: HttpApiError.BadRequest,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.console.openUrl",
+            summary: "Open a URL in the system browser",
+            description:
+              "Spawn the OS default browser to open the given URL. Used by the TUI to launch the device-code verification page without rendering the URL (and embedded code) as a click target in the terminal.",
           }),
         ),
         HttpApiEndpoint.get("tool", ExperimentalPaths.tool, {
