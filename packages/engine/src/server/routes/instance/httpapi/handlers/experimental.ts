@@ -101,15 +101,11 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       payload: { server?: string } | null | undefined
     }) {
       const server = ctx.payload?.server?.trim() || DEFAULT_CONSOLE_URL
+      // Don't surface the upstream error message — it can leak the backend
+      // host, error refs, and stack frames. The error middleware logs the
+      // full cause server-side; the TUI only needs to know it failed.
       const login = yield* account.login(server).pipe(
-        Effect.catch((err) =>
-          Effect.fail(
-            new HttpApiError.InternalServerError({
-              // Surface a short message in API error when possible
-              message: err instanceof Error ? err.message : String(err),
-            } as any),
-          ),
-        ),
+        Effect.catch(() => Effect.fail(new HttpApiError.InternalServerError({}))),
       )
       return {
         code: login.code,

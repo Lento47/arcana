@@ -12,6 +12,7 @@ import { DialogModel } from "./dialog-model"
 import { COPY, Glyph } from "../branding"
 import { errorMessage } from "../util/error"
 import { Locale } from "../util/locale"
+import { isRecord } from "../util/record"
 
 type PollStatus = "pending" | "slow_down" | "expired" | "denied" | "success"
 
@@ -66,6 +67,28 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
     ],
   }))
 
+  // Map raw errors to user-safe messages. Never expose upstream URLs,
+  // stack traces, bundle paths, or error refs to the user. The engine
+  // logs the full cause; we only surface actionable guidance here.
+  function friendlyError(e: unknown, fallback: string): string {
+    if (isRecord(e) && typeof e.message === "string" && e.message) {
+      const lower = e.message.toLowerCase()
+      if (lower.includes("connection refused") || lower.includes("unable to connect")) {
+        return "Can't reach the Arcana sign-in server. Check your network and try again."
+      }
+      if (lower.includes("timeout") || lower.includes("timed out")) {
+        return "The sign-in server took too long to respond. Try again."
+      }
+      if (lower.includes("invalid") || lower.includes("bad request") || lower.includes("400")) {
+        return "The sign-in request was rejected. Please retry."
+      }
+      if (lower.includes("500") || lower.includes("server error")) {
+        return "Sign-in service hit an error. Please retry in a moment."
+      }
+    }
+    return fallback
+  }
+
   async function start() {
     try {
       // Must send a non-empty body: the SDK strips `body: {}` when every field is
@@ -77,7 +100,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       const result = await sdk.client.experimental.console.login({ server })
       if (cancelled) return
       if (result.error || !result.data) {
-        setError(errorMessage(result.error))
+        setError(friendlyError(result.error, "Couldn't start sign-in. Please try again."))
         setPhase("error")
         return
       }
@@ -89,7 +112,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       scheduleNext(result.data.intervalSeconds * 1000)
     } catch (e) {
       if (cancelled) return
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e, "Couldn't start sign-in. Please try again."))
       setPhase("error")
     }
   }
@@ -108,7 +131,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       const result = await sdk.client.experimental.console.loginPoll({ code: c, server: s })
       if (cancelled) return
       if (result.error || !result.data) {
-        setError(errorMessage(result.error))
+        setError(friendlyError(result.error, "Lost the connection while waiting for confirmation. Please try again."))
         setPhase("error")
         return
       }
@@ -136,7 +159,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       }
     } catch (e) {
       if (cancelled) return
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e, "Lost the connection while waiting for confirmation. Please try again."))
       setPhase("error")
     }
   }
@@ -180,7 +203,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       dialog.replace(() => <DialogModel providerID="arcana" />)
     } catch (e) {
       if (cancelled) return
-      setError(e instanceof Error ? e.message : String(e))
+      setError(friendlyError(e, "Couldn't finish signing in. Please try again."))
       setPhase("error")
     }
   }
