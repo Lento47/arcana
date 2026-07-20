@@ -13,11 +13,17 @@ Arcana will offer each eligible free user one free-usage session per rolling sev
 | Sessions per reset period | 1 |
 | Session duration | 60 minutes |
 | Turn allowance | 10 turns |
+| Per-turn input cap | 16,384 raw input tokens |
+| Per-turn output cap | 2,048 output tokens |
+| Per-turn provider calls | 1 (idempotent retries reuse the same `turn_id`) |
+| Burst limit (IP) | 20 req/min |
+| Burst limit (user) | 8 req/min |
+| Weekly token aggregate | 200,000 combined in+out tokens per subject-key |
 | Weekly reset | 7 days after session activation |
 | Activation | First admitted free turn |
-| Early exhaustion | Session closes after the tenth admitted turn |
+| Early exhaustion | Session closes after the tenth admitted turn, the weekly token cap, or the 60-minute window — whichever comes first |
 | Unused turns | Expire when the 60-minute session ends |
-| Carryover | None |
+| Carryover | None (turns, output, and tokens) |
 
 Example: a session activated Monday at 10:00 remains usable until Monday at 11:00 or until its tenth turn, whichever happens first. The next free session becomes available the following Monday at 10:00. Using all ten turns early does not move the reset forward.
 
@@ -76,6 +82,8 @@ EXHAUSTED or EXPIRED
   | wait until reset_at
   v
 ELIGIBLE
+
+The session is also EXHAUSTED when `tokensUsed >= FREE_WEEKLY_TOKEN_AGGREGATE (200,000)`, even if turns remain and the hour has not elapsed. The weekly token cap is the cost-control ceiling; it does not reset early on turn exhaustion.
 ```
 
 The weekly boundary is anchored to `activated_at`, not to the time the tenth turn is used and not to the one-hour expiration time.
@@ -115,6 +123,7 @@ activated_at
 expires_at
 reset_at
 turns_used
+tokens_used         (combined in+out, settled on completed turns only; hard-capped at FREE_WEEKLY_TOKEN_AGGREGATE)
 turn reservations:
   turn_id
   admitted_at
@@ -125,6 +134,7 @@ turn reservations:
 ```
 
 `turns_remaining` is derived as `max(0, 10 - turns_used)`.
+`tokens_remaining` is derived as `max(0, FREE_WEEKLY_TOKEN_AGGREGATE - tokens_used)`.
 
 ## Cloudflare design
 
@@ -179,6 +189,9 @@ X-Arcana-Free-Limit: 10
 X-Arcana-Free-Remaining: 7
 X-Arcana-Free-Expires-At: <timestamp>
 X-Arcana-Free-Reset-At: <timestamp>
+X-Arcana-Free-Tokens-Used: <integer>
+X-Arcana-Free-Tokens-Limit: 200000
+X-Arcana-Free-Tokens-Remaining: <integer>
 ```
 
 ### Rejections
@@ -191,9 +204,10 @@ Use HTTP `429` with a stable error code and `Retry-After` where applicable.
 | `free_session_expired` | The one-hour active window ended. |
 | `free_weekly_cooldown` | The user is waiting for `reset_at`. |
 | `free_session_conversation_mismatch` | Another conversation tried to use the active allowance. |
-| `free_turn_budget_reached` | One turn exceeded its internal provider-call or token ceiling. |
+| `free_turn_budget_reached` | One turn exceeded its per-turn provider-call, input, or output ceiling. |
+| `free_weekly_token_limit_reached` | The user's weekly combined in+out token allowance is used up. |
 
-The response body must include `resetAt`, `expiresAt`, `used`, `remaining`, and a user-facing message.
+The response body must include `resetAt`, `expiresAt`, `used`, `remaining`, `tokensUsed`, `tokensLimit`, `tokensRemaining`, and a user-facing message.
 
 ## Arcana integration points
 
