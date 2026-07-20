@@ -1,6 +1,7 @@
 import { createSignal, onCleanup, onMount } from "solid-js"
 import type { PromptRef } from "../../component/prompt"
 import { Prompt } from "../../component/prompt"
+import { PLACEHOLDER } from "../../branding"
 import { useTheme } from "../../context/theme"
 import { type SpineLayout } from "./spine-types"
 import { SpineGutterSpacer, spineLeadMetrics } from "./spine-lead"
@@ -44,38 +45,33 @@ export function SpinePrompt(props: {
     return (t.spinePrompt ?? t.primary) as any
   }
 
+  // Grok-like composer on the spine: ✶ is the rail terminal (no extra pad / rail-only row).
+  // Brand lives in the header; box uses ❯ / ! + model meta (see Prompt).
   return (
-    <box flexDirection="column" flexShrink={0} flexGrow={0} width="100%" paddingTop={1}>
-      {/* Continuity rail — same columns as entries / gates */}
-      <box flexDirection="row" paddingLeft={metrics().pad} flexShrink={0} width="100%">
-        <SpineGutterSpacer layout={layout()} />
-        <SpineRail layout={layout()} />
-        <box flexGrow={1} minWidth={0} />
-      </box>
+    <box flexDirection="column" flexShrink={0} flexGrow={0} width="100%" paddingTop={0} paddingBottom={0}>
       <box
         flexDirection="row"
         paddingLeft={metrics().pad}
-        paddingBottom={layout() === "minimal" ? 0 : 1}
         flexShrink={0}
         alignItems="flex-start"
         width="100%"
       >
         <SpineGutterSpacer layout={layout()} />
-        <SpineRail layout={layout()} glyph={"✶"} color={t.spinePrompt} active />
-        <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
-          <text fg={markerColor()}>arcana ›</text>
-          <text fg={t.spineContext as any}> </text>
-          <box flexGrow={1} minWidth={0} flexShrink={1}>
-            <Prompt
-              ref={props.bind}
-              disabled={props.disabled()}
-              visible={props.visible()}
-              onSubmit={props.toBottom}
-              sessionID={props.sessionID}
-              variant="command-spine"
-              placeholders={{ normal: ["Speak your intent…"], shell: ["Inscribe a command…"] }}
-            />
-          </box>
+        <SpineRail layout={layout()} glyph={"✶"} color={markerColor()} active />
+        {/*
+          Positioning host for the slash/@ panel.
+          Prompt may render autocomplete inline above the composer.
+        */}
+        <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={0} overflow="visible" position="relative">
+          <Prompt
+            ref={props.bind}
+            disabled={props.disabled()}
+            visible={props.visible()}
+            onSubmit={props.toBottom}
+            sessionID={props.sessionID}
+            variant="command-spine"
+            placeholders={PLACEHOLDER}
+          />
         </box>
       </box>
     </box>

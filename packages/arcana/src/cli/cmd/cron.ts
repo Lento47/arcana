@@ -2,25 +2,34 @@ import type { CommandModule } from "yargs"
 import { JobStore, Scheduler } from "@arcana/cron"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
 import { loadSkills, loadSkillBody, type SkillCatalog } from "../../skills/loader.js"
-import { AgentRunner } from "../../agent/runner.js"
 import { SessionManager } from "../../agent/session.js"
-import { registerBuiltinTools } from "../../agent/tools.js"
+import { createDelegatedRunner } from "../../agent/delegated.js"
 import { loadConfig, getDataDir } from "../../config.js"
-import { registerMcpTools } from "../../agent/mcp.js"
 import { mkdir } from "node:fs/promises"
 import type { Job } from "@arcana/cron"
 
-const CRON_SYSTEM = `You are Arcana running a scheduled job. Complete the task described in the user message, then stop. Be concise.`
+const CRON_SYSTEM = `You are Arcana running a scheduled job. Complete the task described in the user message, then stop. Be concise. Prefer read-only tools; avoid destructive shell or writes unless the job prompt explicitly requires them.`
 
 async function runJob(job: Job, config: Awaited<ReturnType<typeof loadConfig>>, memory: MemoryStore, skills: SkillCatalog[]): Promise<string> {
   const apiKey = config.apiKey
   if (!apiKey) throw new Error("No API key configured")
 
-  const runner = new AgentRunner({ provider: config.provider, model: config.model, apiKey, utilityModel: config.utilityModel })
-  registerBuiltinTools(runner, memory, config.skillsDirs)
-  registerMcpTools(runner).catch(() => {})
+  // Single path: createDelegatedRunner → AgentRunner.executeAuthorizedTool (M4).
+  const { runner } = await createDelegatedRunner({
+    kind: "cron",
+    config: {
+      provider: config.provider,
+      model: config.model,
+      apiKey,
+      utilityModel: config.utilityModel,
+      // Unattended: default safeMode unless config explicitly sets false.
+      safeMode: true,
+    },
+    memory,
+    skillsDirs: config.skillsDirs,
+    sessionId: `cron-${job.id.slice(0, 8)}`,
+  })
 
-  runner.setSession(`cron-${job.id.slice(0, 8)}`)
   const sessionMgr = new SessionManager(memory, config.model ?? "unknown", config.provider ?? "unknown")
 
   let system = CRON_SYSTEM

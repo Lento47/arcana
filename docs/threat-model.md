@@ -262,7 +262,7 @@ Use [Arcana Independent Security Audit](./independent-security-audit-2026-07-14.
 | M1 | Default-deny shell, process, network, credential, persistence, and publish capabilities | Prompt injection impact and confused deputy | High |
 | M2 | Add untrusted-workspace mode before config, tool, plugin, install, or MCP execution | Repository-open compromise | High |
 | M3 | Replace Git shell strings with fixed argv and separate push approval | Command injection | Low to Medium |
-| M4 | Route direct and nested calls through one recursive authorization service | Batch and wrapper bypasses | High |
+| M4 | Route direct and nested calls through one recursive authorization service | Batch and wrapper bypasses | High — **done for agent batch, executeAuthorizedTool, cron/gateway `createDelegatedRunner`, MCP invoke path (ADR 0002)** |
 | M5 | Canonicalize env_write and all mutation paths through one safe file service | Path traversal | Medium |
 | M6 | Fail closed for gateway allowlists, WhatsApp signatures, and unauthenticated non-loopback binds | Remote compromise | Medium |
 | M7 | Remove cross-origin API-key fallback and bind secrets to allowed origins | Credential disclosure | Low |
@@ -276,7 +276,7 @@ Use [Arcana Independent Security Audit](./independent-security-audit-2026-07-14.
 | M10 | Make memory opt-in with proposal, provenance, TTL, review, and purge | Persistent poisoning and privacy | Medium |
 | M11 | Pin and verify plugins, provider packages, LSPs, actions, and every update path | Supply-chain compromise | High |
 | M12 | Enforce one private, atomic, portable data root | Secret and context exposure | Medium |
-| M13 | Bound PTY and event queues, batch fan-out, connections, and per-user cost | Denial of service | Medium |
+| M13 | Bound PTY and event queues, batch fan-out, connections, and per-user cost | Denial of service | Medium — **batch fan-out bounded (size/pool/timeout/total budget); PTY/queues still open** |
 | M14 | Give cron and gateways minimal capability profiles | Unattended and remote authority | Medium |
 
 ### P2 — Planned

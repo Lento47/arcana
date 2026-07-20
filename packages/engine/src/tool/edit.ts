@@ -4,7 +4,7 @@
 // https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-26-25.ts
 
 import * as path from "path"
-import { Effect, Option, Schema, Semaphore } from "effect"
+import { Effect, Option, Schema } from "effect"
 import * as Tool from "./tool"
 import { LSP } from "@/lsp/lsp"
 import { createTwoFilesPatch, diffLines } from "diff"
@@ -32,17 +32,9 @@ function convertToLineEnding(text: string, ending: "\n" | "\r\n"): string {
   return text.replaceAll("\n", "\r\n")
 }
 
-const locks = new Map<string, Semaphore.Semaphore>()
-
-function lock(filePath: string) {
-  const resolvedFilePath = FSUtil.resolve(filePath)
-  const hit = locks.get(resolvedFilePath)
-  if (hit) return hit
-
-  const next = Semaphore.makeUnsafe(1)
-  locks.set(resolvedFilePath, next)
-  return next
-}
+// Path exclusivity for multi-tool turns is enforced by tool/batch admission
+// (withPathLocks). Do not nest a second per-path semaphore here — same-key
+// re-entry would deadlock under SessionTools.resolve.
 
 export const Parameters = Schema.Struct({
   filePath: Schema.String.annotate({ description: "The absolute path to the file to modify" }),
@@ -86,68 +78,20 @@ export const EditTool = Tool.define(
           let contentOld = ""
           let contentNew = ""
           let stale = false
-          yield* lock(filePath).withPermits(1)(
-            Effect.gen(function* () {
-              if (params.oldString === "") {
-                const existed = yield* afs.existsSafe(filePath)
-                if (existed) {
-                  throw new Error(
-                    "oldString cannot be empty when editing an existing file. Provide the exact text to replace, or use write for an intentional full-file replacement.",
-                  )
-                }
-                const next = Bom.split(params.newString)
-                const desiredBom = next.bom
-                contentOld = ""
-                contentNew = next.text
-                diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
-                yield* ctx.ask({
-                  permission: "edit",
-                  patterns: [path.relative(instance.worktree, filePath)],
-                  always: ["*"],
-                  metadata: {
-                    filepath: filePath,
-                    diff,
-                  },
-                })
-                yield* afs.writeWithDirs(filePath, Bom.join(contentNew, desiredBom))
-                if (yield* format.file(filePath)) {
-                  contentNew = yield* Bom.syncFile(afs, filePath, desiredBom)
-                }
-                yield* events.publish(FileSystem.Event.Edited, { file: filePath })
-                yield* events.publish(Watcher.Event.Updated, {
-                  file: filePath,
-                  event: "add",
-                })
-                return
+          // Path exclusivity: withToolAdmission(+path locks) at SessionTools boundary.
+          yield* Effect.gen(function* () {
+            if (params.oldString === "") {
+              const existed = yield* afs.existsSafe(filePath)
+              if (existed) {
+                throw new Error(
+                  "oldString cannot be empty when editing an existing file. Provide the exact text to replace, or use write for an intentional full-file replacement.",
+                )
               }
-
-              const info = yield* afs.stat(filePath).pipe(Effect.catch(() => Effect.succeed(undefined)))
-              if (!info) throw new Error(`File ${filePath} not found`)
-              if (info.type === "Directory") throw new Error(`Path is a directory, not a file: ${filePath}`)
-              // Check repo drift: file modified externally since session started
-              const mtimeMs = Option.getOrElse(info.mtime, () => new Date(0)).getTime()
-              if (mtimeMs > instance.startedAt) {
-                stale = true
-              }
-              const source = yield* Bom.readFile(afs, filePath)
-              contentOld = source.text
-
-              const ending = detectLineEnding(contentOld)
-              const old = convertToLineEnding(normalizeLineEndings(params.oldString), ending)
-              const replacement = convertToLineEnding(normalizeLineEndings(params.newString), ending)
-
-              const next = Bom.split(replace(contentOld, old, replacement, params.replaceAll))
-              const desiredBom = source.bom || next.bom
+              const next = Bom.split(params.newString)
+              const desiredBom = next.bom
+              contentOld = ""
               contentNew = next.text
-
-              diff = trimDiff(
-                createTwoFilesPatch(
-                  filePath,
-                  filePath,
-                  normalizeLineEndings(contentOld),
-                  normalizeLineEndings(contentNew),
-                ),
-              )
+              diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
               yield* ctx.ask({
                 permission: "edit",
                 patterns: [path.relative(instance.worktree, filePath)],
@@ -157,7 +101,6 @@ export const EditTool = Tool.define(
                   diff,
                 },
               })
-
               yield* afs.writeWithDirs(filePath, Bom.join(contentNew, desiredBom))
               if (yield* format.file(filePath)) {
                 contentNew = yield* Bom.syncFile(afs, filePath, desiredBom)
@@ -165,18 +108,66 @@ export const EditTool = Tool.define(
               yield* events.publish(FileSystem.Event.Edited, { file: filePath })
               yield* events.publish(Watcher.Event.Updated, {
                 file: filePath,
-                event: "change",
+                event: "add",
               })
-              diff = trimDiff(
-                createTwoFilesPatch(
-                  filePath,
-                  filePath,
-                  normalizeLineEndings(contentOld),
-                  normalizeLineEndings(contentNew),
-                ),
-              )
-            }).pipe(Effect.orDie),
-          )
+              return
+            }
+
+            const info = yield* afs.stat(filePath).pipe(Effect.catch(() => Effect.succeed(undefined)))
+            if (!info) throw new Error(`File ${filePath} not found`)
+            if (info.type === "Directory") throw new Error(`Path is a directory, not a file: ${filePath}`)
+            // Check repo drift: file modified externally since session started
+            const mtimeMs = Option.getOrElse(info.mtime, () => new Date(0)).getTime()
+            if (mtimeMs > instance.startedAt) {
+              stale = true
+            }
+            const source = yield* Bom.readFile(afs, filePath)
+            contentOld = source.text
+
+            const ending = detectLineEnding(contentOld)
+            const old = convertToLineEnding(normalizeLineEndings(params.oldString), ending)
+            const replacement = convertToLineEnding(normalizeLineEndings(params.newString), ending)
+
+            const next = Bom.split(replace(contentOld, old, replacement, params.replaceAll))
+            const desiredBom = source.bom || next.bom
+            contentNew = next.text
+
+            diff = trimDiff(
+              createTwoFilesPatch(
+                filePath,
+                filePath,
+                normalizeLineEndings(contentOld),
+                normalizeLineEndings(contentNew),
+              ),
+            )
+            yield* ctx.ask({
+              permission: "edit",
+              patterns: [path.relative(instance.worktree, filePath)],
+              always: ["*"],
+              metadata: {
+                filepath: filePath,
+                diff,
+              },
+            })
+
+            yield* afs.writeWithDirs(filePath, Bom.join(contentNew, desiredBom))
+            if (yield* format.file(filePath)) {
+              contentNew = yield* Bom.syncFile(afs, filePath, desiredBom)
+            }
+            yield* events.publish(FileSystem.Event.Edited, { file: filePath })
+            yield* events.publish(Watcher.Event.Updated, {
+              file: filePath,
+              event: "change",
+            })
+            diff = trimDiff(
+              createTwoFilesPatch(
+                filePath,
+                filePath,
+                normalizeLineEndings(contentOld),
+                normalizeLineEndings(contentNew),
+              ),
+            )
+          }).pipe(Effect.orDie)
           // Cleanup: remove the semaphore from the lock map after the edit completes
           // to prevent unbounded memory growth across distinct file paths.
           locks.delete(FSUtil.resolve(filePath))

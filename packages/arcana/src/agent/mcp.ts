@@ -80,6 +80,9 @@ export async function registerMcpTools(runner: AgentRunner, serverFilter?: strin
             parameters: tool.inputSchema as Record<string, unknown>,
           },
         }
+        // Handler is only the MCP transport. Policy (safeMode, rate limit, timeout,
+        // redact, injection scan) still runs in AgentRunner.executeAuthorizedTool
+        // when the model invokes this tool — never call the handler raw from cron/gateway.
         runner.registerTool(toolName, toolDef, async (args) => {
           const result = await client.callTool({ name: tool.name, arguments: args as Record<string, unknown> })
           const content = result.content as Array<{ text?: string; [key: string]: unknown }>

@@ -172,6 +172,8 @@ export function nativeTools(tools: Record<string, Tool>, input: Pick<StreamInput
       name,
       // Tool execution remains opencode-owned. The native runtime only adapts
       // the @arcana/llm tool call back into the AI SDK Tool.execute shape.
+      // Admission is applied in SessionTools.resolve (AI SDK path) and in
+      // ToolRuntime.dispatch callers via FiberSet — see withToolAdmission.
       NativeTool.make({
         description: item.description ?? "",
         jsonSchema: nativeSchema(item.inputSchema),

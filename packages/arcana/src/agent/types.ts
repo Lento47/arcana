@@ -130,6 +130,19 @@ export type AgentConfig = {
       summary?: string
       refs?: Record<string, string>
     }): Promise<void>
+    /** Phase 3: segmented tool batch plan + settlement (proof tape / ledger). */
+    recordToolBatch?(input: {
+      run_id: string
+      plan_summary: string
+      waves: number
+      calls: number
+      ok: number
+      failed: number
+      cancelled: number
+      max_active: number
+      duration_ms: number
+      summary?: string
+    }): Promise<void>
   }
 }
 

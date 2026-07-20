@@ -17,6 +17,7 @@ import { useLocal } from "../../context/local"
 import { PROMPT_FRAME, Glyph, AgentSigil, Lexicon } from "../../branding"
 import { Flag } from "@arcana/core/flag/flag"
 import { tint, useTheme } from "../../context/theme"
+import { RoundBorder } from "../../ui/chrome"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { useClipboard } from "../../context/clipboard"
 import { Spinner } from "../spinner"
@@ -215,9 +216,18 @@ export function Prompt(props: PromptProps) {
   const currentProviderLabel = createMemo(() => {
     const p = local.model.parsed()
     const pid = p.providerID.toLowerCase()
-    // Hide the provider when the model id already carries it (deepseek/kimi/qwen);
-    // keep it for distinct brands (gpt/claude/etc).
-    return !pid || p.modelID.toLowerCase().includes(pid) ? "" : pid
+    // Host product provider is brand chrome, not a user choice — hide it.
+    // Also hide when the model id already carries the provider (deepseek/kimi/qwen);
+    // keep external brands (openai/anthropic/etc).
+    if (!pid || pid === "arcana") return ""
+    return p.modelID.toLowerCase().includes(pid) ? "" : pid
+  })
+  /** True when the active primary agent is not the list default (usually build). */
+  const isNonDefaultAgent = createMemo(() => {
+    const agent = local.agent.current()
+    if (!agent) return false
+    const defaultName = local.agent.list().at(0)?.name
+    return !!defaultName && agent.name !== defaultName
   })
   const hasRightContent = createMemo(() => Boolean(props.right))
 
@@ -257,12 +267,6 @@ export function Prompt(props: PromptProps) {
 
   const isCommandSpine = createMemo(() => props.variant === "command-spine")
 
-  createEffect(() => {
-    if (!input || input.isDestroyed) return
-    if (props.disabled) input.cursorColor = isCommandSpine() ? theme.spineDiffMuted : theme.backgroundElement
-    if (!props.disabled) input.cursorColor = isCommandSpine() ? theme.spinePrompt : theme.text
-  })
-
   const lastUserMessage = createMemo(() => {
     if (!props.sessionID) return undefined
     const messages = sync.data.message[props.sessionID]
@@ -286,6 +290,19 @@ export function Prompt(props: PromptProps) {
     mode: "normal",
     extmarkToPartIndex: new Map(),
     interrupt: 0,
+  })
+
+  createEffect(() => {
+    if (!input || input.isDestroyed) return
+    if (props.disabled) {
+      input.cursorColor = isCommandSpine() ? theme.spineDiffMuted : theme.backgroundElement
+      return
+    }
+    if (isCommandSpine()) {
+      input.cursorColor = store.mode === "shell" ? theme.primary : theme.spinePrompt
+      return
+    }
+    input.cursorColor = theme.text
   })
 
   createEffect(
@@ -1352,6 +1369,9 @@ export function Prompt(props: PromptProps) {
       parts: [],
     })
     setStore("extmarkToPartIndex", new Map())
+    // Fresh invitation after each send / clear so the expanded pool is felt in-session.
+    const pool = store.mode === "shell" ? shell() : list()
+    if (pool.length > 0) setStore("placeholder", randomIndex(pool.length))
   }
 
   const highlight = createMemo(() => {
@@ -1380,12 +1400,13 @@ export function Prompt(props: PromptProps) {
   const placeholderText = createMemo(() => {
     if (props.showPlaceholder === false) return undefined
     if (isCommandSpine()) {
+      // Invitation only — no mode/objective prefix (meta row owns mode when non-default).
       if (store.mode === "shell") {
-        if (!shell().length) return "shell command"
-        return `shell · ${shell()[store.placeholder % shell().length]}`
+        if (!shell().length) return PROMPT_FRAME.shell
+        return shell()[store.placeholder % shell().length]
       }
-      if (!list().length) return "state the next objective"
-      return `objective · ${list()[store.placeholder % list().length]}`
+      if (!list().length) return PROMPT_FRAME.normal
+      return list()[store.placeholder % list().length]
     }
     if (store.mode === "shell") {
       if (!shell().length) return undefined
@@ -1399,134 +1420,218 @@ export function Prompt(props: PromptProps) {
   const maxHeight = createMemo(() => tuiConfig.prompt?.max_height ?? Math.max(6, Math.floor(dimensions().height / 3)))
   const moveLabelWidth = createMemo(() => Math.max(12, Math.min(44, dimensions().width - 48)))
 
+  // Grok-like composer: mode changes the lead glyph (❯ vs !), not a permanent "intent" label.
+  const spineShell = createMemo(() => isCommandSpine() && store.mode === "shell")
+  const spinePrefix = createMemo(() => (spineShell() ? "! " : `${Glyph.prompt} `))
+  const spinePrefixColor = createMemo(() => {
+    if (props.disabled) return theme.spineDiffMuted
+    if (spineShell()) return theme.primary
+    if (leader()) return theme.textMuted
+    return theme.spinePrompt
+  })
+  const spineBorderColor = createMemo(() => {
+    if (props.disabled) return theme.spineRail
+    if (spineShell()) return theme.primary
+    if (leader()) return theme.spineRail
+    return theme.spinePrompt
+  })
+
+  function AutocompleteSlot(slotProps: { layout: "inline" | "overlay" }) {
+    return (
+      <Autocomplete
+        sessionID={props.sessionID}
+        ref={(r) => {
+          setAuto(() => r)
+        }}
+        anchor={() => anchor}
+        input={() => input}
+        clearPrompt={clearPrompt}
+        setPrompt={(cb) => {
+          setStore("prompt", produce(cb))
+        }}
+        setExtmark={(partIndex, extmarkId) => {
+          setStore("extmarkToPartIndex", (map: Map<number, number>) => {
+            const newMap = new Map(map)
+            newMap.set(extmarkId, partIndex)
+            return newMap
+          })
+        }}
+        value={store.prompt.input}
+        fileStyleId={fileStyleId}
+        agentStyleId={agentStyleId}
+        promptPartTypeId={() => promptPartTypeId}
+        variant={props.variant}
+        layout={slotProps.layout}
+      />
+    )
+  }
+
   return (
     <>
+      {/* Command-spine: commands panel sits in-flow ABOVE the composer (no absolute clip). */}
+      <Show when={isCommandSpine()}>
+        <AutocompleteSlot layout="inline" />
+      </Show>
       <box
         ref={(r: BoxRenderable) => (anchor = r)}
         visible={props.visible !== false}
         width="100%"
-        border={isCommandSpine() ? [] : ["top", "bottom"]}
-        borderColor={isCommandSpine() ? theme.spineRail : borderHighlight()}
+        border={isCommandSpine() ? ["top", "bottom", "left", "right"] : ["top", "bottom"]}
+        customBorderChars={isCommandSpine() ? RoundBorder : undefined}
+        borderColor={isCommandSpine() ? spineBorderColor() : borderHighlight()}
+        backgroundColor={isCommandSpine() ? theme.background : undefined}
       >
         <box width="100%">
           <box
-            paddingLeft={isCommandSpine() ? 0 : 2}
+            paddingLeft={isCommandSpine() ? 1 : 2}
             paddingRight={isCommandSpine() ? 1 : 2}
             paddingTop={isCommandSpine() ? 0 : 1}
+            paddingBottom={isCommandSpine() ? 0 : 0}
             flexShrink={0}
             backgroundColor={isCommandSpine() ? theme.background : theme.backgroundElement}
             flexGrow={1}
             width="100%"
           >
-            <textarea
-              width="100%"
-              placeholder={placeholderText() || "Speak your intent…"}
-              placeholderColor={isCommandSpine() ? theme.spineDiffMuted : theme.textMuted}
-              textColor={leader() ? theme.textMuted : isCommandSpine() ? theme.spineBrand : theme.text}
-              focusedTextColor={leader() ? theme.textMuted : isCommandSpine() ? theme.spineBrand : theme.text}
-              minHeight={1}
-              maxHeight={maxHeight()}
-              onContentChange={() => {
-                const value = input.plainText
-                setStore("prompt", "input", value)
-                auto()?.onInput(value)
-                syncExtmarksWithPromptParts()
-                setCursorVersion((value) => value + 1)
-                // Force scroll-to-cursor after newline insert
-                // Workaround for opentui textarea not auto-scrolling on Shift+Enter
-                const co = input.cursorOffset
-                if (co > 0) {
-                  // Toggle offset briefly to trigger re-render of scroll position
-                  input.cursorOffset = co - 1
-                  input.cursorOffset = co
-                }
-              }}
-              onCursorChange={() => setCursorVersion((value) => value + 1)}
-              onKeyDown={(e: { preventDefault(): void }) => {
-                if (props.disabled) {
-                  e.preventDefault()
-                  return
-                }
-              }}
-              onSubmit={() => {
-                // IME: double-defer so the last composed character (e.g. Korean
-                // hangul) is flushed to plainText before we read it for submission.
-                setTimeout(() => setTimeout(() => submit(), 0), 0)
-              }}
-              onPaste={async (event: PasteEvent) => {
-                if (props.disabled) {
-                  event.preventDefault()
-                  return
-                }
+            {/* Input row: Grok-style prefix + textarea; Arcana colors / shell bang. */}
+            <box flexDirection="row" width="100%" alignItems="flex-start">
+              <Show when={isCommandSpine()}>
+                <text fg={spinePrefixColor()}>{spinePrefix()}</text>
+              </Show>
+              <box flexGrow={1} minWidth={0} flexShrink={1}>
+                <textarea
+                  width="100%"
+                  placeholder={placeholderText() || "Speak your intent…"}
+                  placeholderColor={isCommandSpine() ? theme.spineDiffMuted : theme.textMuted}
+                  textColor={leader() ? theme.textMuted : isCommandSpine() ? theme.spineBrand : theme.text}
+                  focusedTextColor={leader() ? theme.textMuted : isCommandSpine() ? theme.spineBrand : theme.text}
+                  minHeight={1}
+                  maxHeight={maxHeight()}
+                  onContentChange={() => {
+                    const value = input.plainText
+                    setStore("prompt", "input", value)
+                    auto()?.onInput(value)
+                    syncExtmarksWithPromptParts()
+                    setCursorVersion((value) => value + 1)
+                    // Force scroll-to-cursor after newline insert
+                    // Workaround for opentui textarea not auto-scrolling on Shift+Enter
+                    const co = input.cursorOffset
+                    if (co > 0) {
+                      // Toggle offset briefly to trigger re-render of scroll position
+                      input.cursorOffset = co - 1
+                      input.cursorOffset = co
+                    }
+                  }}
+                  onCursorChange={() => setCursorVersion((value) => value + 1)}
+                  onKeyDown={(e: { preventDefault(): void }) => {
+                    if (props.disabled) {
+                      e.preventDefault()
+                      return
+                    }
+                  }}
+                  onSubmit={() => {
+                    // IME: double-defer so the last composed character (e.g. Korean
+                    // hangul) is flushed to plainText before we read it for submission.
+                    setTimeout(() => setTimeout(() => submit(), 0), 0)
+                  }}
+                  onPaste={async (event: PasteEvent) => {
+                    if (props.disabled) {
+                      event.preventDefault()
+                      return
+                    }
 
-                // Normalize line endings at the boundary
-                // Windows ConPTY/Terminal often sends CR-only newlines in bracketed paste
-                // Replace CRLF first, then any remaining CR
-                const normalizedText = sanitizeInput(decodePasteBytes(event.bytes)).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
-                const pastedContent = normalizedText.trim()
+                    // Normalize line endings at the boundary
+                    // Windows ConPTY/Terminal often sends CR-only newlines in bracketed paste
+                    // Replace CRLF first, then any remaining CR
+                    const normalizedText = sanitizeInput(decodePasteBytes(event.bytes)).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+                    const pastedContent = normalizedText.trim()
 
-                // Windows Terminal <1.25 can surface image-only clipboard as an
-                // empty bracketed paste. Windows Terminal 1.25+ does not.
-                if (!pastedContent) {
-                  keymap.dispatchCommand("prompt.paste")
-                  return
-                }
+                    // Windows Terminal <1.25 can surface image-only clipboard as an
+                    // empty bracketed paste. Windows Terminal 1.25+ does not.
+                    if (!pastedContent) {
+                      keymap.dispatchCommand("prompt.paste")
+                      return
+                    }
 
-                // Once we cross an async boundary below, the terminal may perform its
-                // default paste unless we suppress it first and handle insertion ourselves.
-                event.preventDefault()
+                    // Once we cross an async boundary below, the terminal may perform its
+                    // default paste unless we suppress it first and handle insertion ourselves.
+                    event.preventDefault()
 
-                await pasteInputText(normalizedText)
-              }}
-              ref={(r: TextareaRenderable) => {
-                input = r
-                Object.assign(r, {
-                  getClipboardText: (text: string) => expandPastedTextPlaceholders(text, store.prompt.parts),
-                })
-                setInputTarget(r)
-                if (promptPartTypeId === 0) {
-                  promptPartTypeId = input.extmarks.registerType("prompt-part")
-                }
-                props.ref?.(ref)
-                setTimeout(() => {
-                  // setTimeout is a workaround and needs to be addressed properly
-                  if (!input || input.isDestroyed) return
-                  input.cursorColor = isCommandSpine() ? theme.spinePrompt : theme.text
-                }, 0)
-              }}
-              onMouseDown={(r: MouseEvent) => r.target?.focus()}
-              focusedBackgroundColor={isCommandSpine() ? theme.background : theme.backgroundElement}
-              cursorColor={
-                props.disabled
-                  ? isCommandSpine()
-                    ? theme.spineDiffMuted
-                    : theme.backgroundElement
-                  : isCommandSpine()
-                    ? theme.spinePrompt
-                    : theme.text
-              }
-              syntaxStyle={syntax()}
-            />
-            <box flexDirection="row" flexShrink={0} paddingTop={isCommandSpine() ? 0 : 1} gap={1} justifyContent="space-between">
+                    await pasteInputText(normalizedText)
+                  }}
+                  ref={(r: TextareaRenderable) => {
+                    input = r
+                    Object.assign(r, {
+                      getClipboardText: (text: string) => expandPastedTextPlaceholders(text, store.prompt.parts),
+                    })
+                    setInputTarget(r)
+                    if (promptPartTypeId === 0) {
+                      promptPartTypeId = input.extmarks.registerType("prompt-part")
+                    }
+                    props.ref?.(ref)
+                    setTimeout(() => {
+                      // setTimeout is a workaround and needs to be addressed properly
+                      if (!input || input.isDestroyed) return
+                      input.cursorColor = isCommandSpine()
+                        ? spineShell()
+                          ? theme.primary
+                          : theme.spinePrompt
+                        : theme.text
+                    }, 0)
+                  }}
+                  onMouseDown={(r: MouseEvent) => r.target?.focus()}
+                  focusedBackgroundColor={isCommandSpine() ? theme.background : theme.backgroundElement}
+                  cursorColor={
+                    props.disabled
+                      ? isCommandSpine()
+                        ? theme.spineDiffMuted
+                        : theme.backgroundElement
+                      : isCommandSpine()
+                        ? spineShell()
+                          ? theme.primary
+                          : theme.spinePrompt
+                        : theme.text
+                  }
+                  syntaxStyle={syntax()}
+                />
+              </box>
+            </box>
+            {/* Info line — Grok model · flags; Arcana: no brand, no default "intent". */}
+            <box flexDirection="row" flexShrink={0} paddingTop={0} gap={1} justifyContent="space-between">
               <box flexDirection="row" gap={1}>
                 <Show when={local.agent.current()} fallback={<box height={1} />}>
                   {(agent) => (
                     <>
-                      <text fg={fadeColor(isCommandSpine() ? theme.spinePrompt : theme.accent, agentMetaAlpha())}>
-                        {isCommandSpine()
-                          ? store.mode === "shell"
-                            ? "shell"
-                            : "intent"
-                          : `${Glyph.sigil} ${store.mode === "shell" ? "shell" : agent().name.toLowerCase()}`}
-                      </text>
+                      <Show when={!isCommandSpine()}>
+                        <text fg={fadeColor(theme.accent, agentMetaAlpha())}>
+                          {`${Glyph.sigil} ${store.mode === "shell" ? "shell" : agent().name.toLowerCase()}`}
+                        </text>
+                      </Show>
+                      {/* Command-spine shell: single mode caption (Grok "Run shell command"). */}
+                      <Show when={isCommandSpine() && store.mode === "shell"}>
+                        <text fg={fadeColor(theme.primary, agentMetaAlpha())}>shell</text>
+                      </Show>
+                      {/* Command-spine normal: model first; agent only when non-default. */}
                       <Show when={store.mode === "normal"}>
                         <box flexDirection="row" gap={1}>
-                          <text fg={fadeColor(isCommandSpine() ? theme.spineRailActive : theme.accent, modelMetaAlpha())}>
-                            {isCommandSpine() ? "·" : "◆"}
-                          </text>
+                          <Show when={isCommandSpine() && isNonDefaultAgent()}>
+                            <text fg={fadeColor(theme.spinePrompt, agentMetaAlpha())}>
+                              {agent().name.toLowerCase()}
+                            </text>
+                            <text fg={fadeColor(theme.spineRailActive, modelMetaAlpha())}>·</text>
+                          </Show>
+                          <Show when={!isCommandSpine()}>
+                            <text fg={fadeColor(theme.accent, modelMetaAlpha())}>◆</text>
+                          </Show>
                           <text
                             flexShrink={0}
-                            fg={fadeColor(leader() ? theme.textMuted : isCommandSpine() ? theme.spineBrand : theme.text, modelMetaAlpha())}
+                            fg={fadeColor(
+                              leader()
+                                ? theme.textMuted
+                                : isCommandSpine()
+                                  ? theme.spineBrand
+                                  : theme.text,
+                              modelMetaAlpha(),
+                            )}
                           >
                             {local.model.parsed().modelID.toLowerCase()}
                           </text>
@@ -1719,30 +1824,10 @@ export function Prompt(props: PromptProps) {
             </box>
           </Show>
       </box>
-      <Autocomplete
-        sessionID={props.sessionID}
-        ref={(r) => {
-          setAuto(() => r)
-        }}
-        anchor={() => anchor}
-        input={() => input}
-        clearPrompt={clearPrompt}
-        setPrompt={(cb) => {
-          setStore("prompt", produce(cb))
-        }}
-        setExtmark={(partIndex, extmarkId) => {
-          setStore("extmarkToPartIndex", (map: Map<number, number>) => {
-            const newMap = new Map(map)
-            newMap.set(extmarkId, partIndex)
-            return newMap
-          })
-        }}
-        value={store.prompt.input}
-        fileStyleId={fileStyleId}
-        agentStyleId={agentStyleId}
-        promptPartTypeId={() => promptPartTypeId}
-        variant={props.variant}
-      />
+      {/* Default shell: absolute overlay relative to prompt parent. */}
+      <Show when={!isCommandSpine()}>
+        <AutocompleteSlot layout="overlay" />
+      </Show>
     </>
   )
 }

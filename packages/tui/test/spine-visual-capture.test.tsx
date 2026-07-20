@@ -149,6 +149,37 @@ test("command-spine full composition with prompt at 120 cols", async () => {
             <box flexDirection="column" flexGrow={1}>
               <For each={SAMPLE_ENTRIES}>{(entry) => <SpineEntry entry={entry} layout={layout()} />}</For>
             </box>
+            {/* Prompt first, then status/hints bar under it (Grok order) */}
+            {(() => {
+              // Keep in sync with spineGutterWidth / spineOuterPadding
+              const isWide = layout() === "wide"
+              const gutterWidth = isWide || layout() === "compact" ? 9 : layout() === "narrow" ? 7 : 3
+              const padLeft = isWide ? 2 : layout() === "minimal" ? 0 : 1
+              const railWidth = 2 // "✶ "
+              const boxWidth = Math.max(12, dims().width - padLeft - gutterWidth - railWidth)
+              // Tight prompt: no rail-only stem row / no extra pad (matches spine-prompt.tsx)
+              return (
+                <box flexDirection="column" flexShrink={0}>
+                  <box flexDirection="row" paddingLeft={padLeft} alignItems="flex-start">
+                    <text width={gutterWidth} />
+                    <text fg={t.spinePrompt as any}>{"\u2736"}</text>
+                    <text> </text>
+                    <box
+                      width={boxWidth}
+                      border={["top", "bottom", "left", "right"]}
+                      borderColor={t.spinePrompt as any}
+                      backgroundColor={t.background as any}
+                      paddingLeft={1}
+                      paddingRight={1}
+                      flexDirection="column"
+                    >
+                      <text fg={t.spinePrompt as any}>{"❯ Speak your intent…"}</text>
+                      <text fg={t.spineBrand as any}>deepseek-v4-flash-free</text>
+                    </box>
+                  </box>
+                </box>
+              )
+            })()}
             <SpineFooterHints
               layout={layout()}
               entries={SAMPLE_ENTRIES.length}
@@ -157,38 +188,16 @@ test("command-spine full composition with prompt at 120 cols", async () => {
               pending="streaming"
               viewingArtifact={true}
               state="thinking"
+              selected={{
+                label: "spine",
+                hints: [
+                  { keys: "j/k", label: "focus" },
+                  { keys: "tab", label: "next" },
+                  { keys: "enter", label: "toggle" },
+                  { keys: "y", label: "copy" },
+                ],
+              }}
             />
-            {/* Prompt area: rail continuation + prefix + textarea */}
-            {(() => {
-              // Keep in sync with spineGutterWidth / spineOuterPadding
-              const isWide = layout() === "wide"
-              const gutterWidth = isWide || layout() === "compact" ? 9 : layout() === "narrow" ? 7 : 3
-              const padLeft = isWide ? 2 : layout() === "minimal" ? 0 : 1
-              const labelWidth = "✶ arcana › ".length
-              return (
-                <box flexDirection="column" flexShrink={0}>
-                  <box flexDirection="row" paddingLeft={padLeft}>
-                    <text>{" ".repeat(gutterWidth)}</text>
-                    <text fg={t.spineRail as any}>{"\u2502"}</text>
-                  </box>
-                  <box flexDirection="row" paddingLeft={padLeft}>
-                    <text width={gutterWidth} />
-                    <text fg={t.spinePrompt as any}>{"\u2736"}</text>
-                    <text width={1} />
-                    <text fg={t.spinePrompt as any}>arcana ›</text>
-                    <text fg={t.spineContext as any}> </text>
-                    <box
-                      width={Math.max(1, dims().width - padLeft - gutterWidth - labelWidth)}
-                      height={1}
-                      backgroundColor={t.background as any}
-                      paddingLeft={1}
-                    >
-                      <text fg={t.textMuted as any}>type a message or / for commands</text>
-                    </box>
-                  </box>
-                </box>
-              )
-            })()}
             {/* Statusbar suppression check — should NOT show statusbar */}
             <Show when={false}>
               <text>statusbar should not render</text>
@@ -203,7 +212,11 @@ test("command-spine full composition with prompt at 120 cols", async () => {
   console.log("=== COMMAND-SPINE FULL COMPOSITION (120 cols) ===")
   console.log(frame)
   console.log("=== END ===")
-  expect(frame).toContain("✶ arcana ›")
+  expect(frame).toContain("✶")
+  expect(frame).toContain("❯")
+  expect(frame).toContain("Speak your intent…")
+  expect(frame).toContain("deepseek-v4-flash-free")
+  expect(frame).not.toContain("arcana ›")
   expect(frame).toContain("2 │ -")
   expect(frame).toContain("2 │ +")
   expect(frame).not.toContain("@@")

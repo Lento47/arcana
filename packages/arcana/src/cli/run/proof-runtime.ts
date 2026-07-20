@@ -113,6 +113,18 @@ export type ProofRuntime = {
     bytes_read?: number
     result_count?: number
   }): Promise<void>
+  recordToolBatch?(input: {
+    run_id: string
+    plan_summary: string
+    waves: number
+    calls: number
+    ok: number
+    failed: number
+    cancelled: number
+    max_active: number
+    duration_ms: number
+    summary?: string
+  }): Promise<void>
   recordFileWrite(input: {
     path: string
     mode: "proposed" | "applied" | "rejected"
@@ -454,6 +466,12 @@ export async function createProofRuntime(options: ProofRuntimeOptions): Promise<
     async recordContextAccess(input) {
       if (!manager) return
       manager.recordContextAccess(input)
+      await saveSnapshot()
+    },
+
+    async recordToolBatch(input) {
+      if (!manager) return
+      manager.recordToolBatch(input)
       await saveSnapshot()
     },
 

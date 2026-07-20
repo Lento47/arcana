@@ -511,10 +511,27 @@ AI SDK's default 20-step agent limit is a useful safety precedent, but Arcana mu
 
 ### Phase 3: add bounded parallel scheduling
 
-- Replace dynamic unbounded fan-out with resource-specific pools.
-- Add work DAGs, parent budgets, cancellation, and durable status.
-- Keep writes behind one merge/commit gate.
+**Status (2026-07):** **Partial — agent/engine tool batch shipped; session-level durable parallelism still open.**
+
+See [ADR 0002 — Tool Batch Scheduler](../adr/0002-tool-batch-scheduler.md) and [performance foundation — shipped surfaces](./arcana-performance-optimization-foundation.md).
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Replace dynamic unbounded tool fan-out with resource-specific pools | **Done** | Engine `withToolAdmission`; agent batch `mapPool` by capability |
+| Path-aware work DAG + path locks for concurrent writes | **Done** | Same-path serial; independent paths up to write concurrency |
+| Parent budgets (size, timeout, output, total wall, synthesis) | **Done** | Defaults in ADR 0002 Phase 3 table |
+| Cancellation fan-out to children | **Done** | Parent `AbortSignal` + WorkItem cancelled status |
+| Recursive authorization on nested batch tools (I04) | **Done** | Sole path `executeAuthorizedTool`; nested batch denied |
+| RunProof `tool.batch` + TUI activity hint | **Done** | Proof bridge + `@arcana/core/tool/activity-hint` |
+| Keep session writes behind one merge/commit gate | **Open** | Still durable-execution doctrine; not replaced by tool path locks |
+| Detached-run recovery after durable status + reconnect | **Open** | Requires Phase 1–2 continuity guarantees |
+| Session-global capacity limits across activities | **Partial** | Coordinator isolates keys; product-wide caps still expand |
+
+Checklist retained for residual work:
+
+- Keep writes behind one merge/commit gate (session mutation lane).
 - Add detached-run recovery only after durable status and reconnect semantics exist.
+- Expand global session capacity limits without breaking per-session serial mutation.
 
 ### Phase 4: introduce consented Memory Receipts
 

@@ -21,6 +21,7 @@ import { useFrecency } from "../../prompt/frecency"
 import { useBindings, useCommandSlashes, useOpencodeModeStack } from "../../keymap"
 import { displayCharAt, mentionTriggerIndex } from "../../prompt/display"
 import { arcanaDitherPattern, arcanaDitherTick } from "../../ui/arcana"
+import { RoundBorder } from "../../ui/chrome"
 
 function removeLineRange(input: string) {
   const hashIndex = input.lastIndexOf("#")
@@ -76,6 +77,75 @@ export function shouldClearSlashOnHide(text: string): boolean {
   return /^\/\S*$/.test(text) && !text.endsWith(" ")
 }
 
+/**
+ * Pure layout for the slash/@ panel — unit-tested.
+ *
+ * `anchorY` / `anchorHeight` / return `top` are **screen-absolute** row
+ * coordinates (renderer space). Callers that position with OpenTUI
+ * `position="absolute"` must convert `top` to the parent-local row:
+ * `localTop = top - parentY`.
+ *
+ * Mixing parent-local `y` with `termHeight` is what crushed the panel when the
+ * composer is the only content of a short parent (relative y ≈ 0).
+ */
+export function computeAutocompletePlacement(input: {
+  /** Absolute screen Y of the prompt anchor. */
+  anchorY: number
+  anchorHeight: number
+  termHeight: number
+  optionCount: number
+  commandSpine: boolean
+  maxList?: number
+}): { side: "above" | "below"; listHeight: number; panelHeight: number; top: number } {
+  const maxList = Math.min(input.maxList ?? 10, Math.max(1, input.optionCount || 1))
+  const titleRows = 1
+  // Border rows only when we draw a rounded frame (spine).
+  const borderRows = input.commandSpine ? 2 : 0
+  const chrome = titleRows + borderRows
+  const spaceAbove = Math.max(0, input.anchorY - 1)
+  const spaceBelow = Math.max(0, input.termHeight - (input.anchorY + input.anchorHeight) - 1)
+  // Spine: composer is at the bottom with a footer under it — always open above.
+  // Default shell: pick the roomier side.
+  const preferAbove = input.commandSpine || spaceAbove >= spaceBelow
+  const room = preferAbove ? spaceAbove : spaceBelow
+  const listHeight = Math.min(maxList, Math.max(1, room - chrome))
+  const panelHeight = listHeight + chrome
+  const top = preferAbove
+    ? Math.max(0, input.anchorY - panelHeight)
+    : Math.min(input.anchorY + input.anchorHeight, Math.max(0, input.termHeight - panelHeight - 1))
+  return {
+    side: preferAbove ? "above" : "below",
+    listHeight,
+    panelHeight,
+    top,
+  }
+}
+
+/** Convert screen-absolute panel top to parent-local absolute positioning. */
+export function toParentLocalTop(absoluteTop: number, parentY: number): number {
+  return absoluteTop - parentY
+}
+
+/**
+ * Inline (in-flow) height for command-spine — sits above the composer in the
+ * layout column so it cannot be clipped by absolute/negative-top bugs.
+ */
+export function computeInlineAutocompleteHeight(input: {
+  optionCount: number
+  termHeight: number
+  commandSpine: boolean
+  maxList?: number
+}): { listHeight: number; panelHeight: number } {
+  const titleRows = 1
+  const borderRows = input.commandSpine ? 2 : 0
+  const chrome = titleRows + borderRows
+  // Use a slice of the terminal so the spine scroll region keeps room.
+  const budget = Math.max(4, Math.floor(input.termHeight * 0.4) - chrome)
+  const cap = Math.min(input.maxList ?? 10, budget)
+  const listHeight = Math.min(cap, Math.max(1, input.optionCount || 1))
+  return { listHeight, panelHeight: listHeight + chrome }
+}
+
 export function Autocomplete(props: {
   value: string
   sessionID?: string
@@ -89,6 +159,11 @@ export function Autocomplete(props: {
   agentStyleId: number
   promptPartTypeId: () => number
   variant?: "default" | "command-spine"
+  /**
+   * `overlay` — absolute panel (default shell).
+   * `inline` — in-flow above composer (command-spine; reliable layout).
+   */
+  layout?: "overlay" | "inline"
 }) {
   const editor = useEditorContext()
   const sdk = useSDK()
@@ -100,6 +175,8 @@ export function Autocomplete(props: {
   const { theme } = useTheme()
   const t = theme as Record<string, unknown>
   const isCommandSpine = createMemo(() => props.variant === "command-spine")
+  /** Spine uses in-flow panel so absolute/clip bugs cannot crush the list. */
+  const isInline = createMemo(() => props.layout === "inline" || isCommandSpine())
   const dimensions = useTerminalDimensions()
   const frecency = useFrecency()
   const tuiConfig = useTuiConfig()
@@ -121,11 +198,17 @@ export function Autocomplete(props: {
 
   createEffect(() => {
     if (store.visible) {
-      let lastPos = { x: 0, y: 0, width: 0 }
+      let lastPos = { x: 0, y: 0, width: 0, height: 0 }
       const interval = setInterval(() => {
         const anchor = props.anchor()
-        if (anchor.x !== lastPos.x || anchor.y !== lastPos.y || anchor.width !== lastPos.width) {
-          lastPos = { x: anchor.x, y: anchor.y, width: anchor.width }
+        if (!anchor || (anchor as { isDestroyed?: boolean }).isDestroyed) return
+        if (
+          anchor.x !== lastPos.x ||
+          anchor.y !== lastPos.y ||
+          anchor.width !== lastPos.width ||
+          anchor.height !== lastPos.height
+        ) {
+          lastPos = { x: anchor.x, y: anchor.y, width: anchor.width, height: anchor.height }
           setPositionTick((t) => t + 1)
         }
       }, 100) // Polled at 10fps — anchor position changes only on type/resize events.
@@ -135,19 +218,30 @@ export function Autocomplete(props: {
   })
 
   const position = createMemo(() => {
-    if (!store.visible) return { x: 0, y: 0, width: 0, height: 0 }
+    if (!store.visible) {
+      return { x: 0, y: 0, width: 0, height: 0, absX: 0, absY: 0, parentX: 0, parentY: 0 }
+    }
     dimensions()
     positionTick()
     const anchor = props.anchor()
+    if (!anchor || (anchor as { isDestroyed?: boolean }).isDestroyed) {
+      return { x: 0, y: 0, width: 0, height: 0, absX: 0, absY: 0, parentX: 0, parentY: 0 }
+    }
     const parent = anchor.parent
     const parentX = parent?.x ?? 0
     const parentY = parent?.y ?? 0
 
     return {
+      // Parent-local (for left/width on the absolute box)
       x: anchor.x - parentX,
       y: anchor.y - parentY,
-      width: anchor.width,
-      height: anchor.height,
+      width: Math.max(1, anchor.width),
+      height: Math.max(1, anchor.height),
+      // Screen-absolute (for space / placement math)
+      absX: anchor.x,
+      absY: anchor.y,
+      parentX,
+      parentY,
     }
   })
 
@@ -731,22 +825,52 @@ export function Autocomplete(props: {
     })
   })
 
-  const height = createMemo(() => {
-    const count = options().length || 1
-    if (!store.visible) return Math.min(10, count)
+  /**
+   * Overlay: screen-absolute geometry → parent-local top.
+   * Inline (spine): fixed in-flow height from terminal budget — no absolute math.
+   */
+  const placement = createMemo(() => {
+    if (!store.visible) {
+      return { side: "above" as const, listHeight: 1, panelHeight: 2, top: 0, localTop: 0 }
+    }
     positionTick()
-    return Math.min(10, count, Math.max(1, props.anchor().y))
+    if (isInline()) {
+      const inline = computeInlineAutocompleteHeight({
+        optionCount: options().length || 1,
+        termHeight: dimensions().height,
+        commandSpine: isCommandSpine(),
+      })
+      return { side: "above" as const, ...inline, top: 0, localTop: 0 }
+    }
+    const pos = position()
+    const abs = computeAutocompletePlacement({
+      anchorY: pos.absY,
+      anchorHeight: pos.height,
+      termHeight: dimensions().height,
+      optionCount: options().length || 1,
+      commandSpine: isCommandSpine(),
+    })
+    return {
+      ...abs,
+      localTop: toParentLocalTop(abs.top, pos.parentY),
+    }
   })
+
+  const height = createMemo(() => placement().listHeight)
 
   let scroll: ScrollBoxRenderable
   const scrollAcceleration = createMemo(() => getScrollAcceleration(tuiConfig))
-  const panelHeight = createMemo(() => height() + 1)
-  const panelTop = createMemo(() => {
-    const below = position().y + position().height
-    // Don't overflow terminal — cap to 3 rows from bottom
-    return Math.min(below, Math.max(0, dimensions().height - panelHeight() - 3))
+  const panelHeight = createMemo(() => placement().panelHeight)
+  const panelTop = createMemo(() => placement().localTop)
+  // Inline: use full width of parent. Overlay: match anchor width.
+  const panelWidth = createMemo(() => {
+    if (isInline()) return "100%" as const
+    return Math.max(1, position().width)
   })
-  const rowWidth = createMemo(() => Math.max(1, position().width - 2))
+  const rowWidth = createMemo(() => {
+    if (isInline()) return Math.max(1, dimensions().width - (isCommandSpine() ? 12 : 6))
+    return Math.max(1, position().width - (isCommandSpine() ? 4 : 2))
+  })
   const optionDisplayWidth = createMemo(() =>
     Math.min(rowWidth(), Math.max(10, Math.floor(rowWidth() * (store.visible === "/" ? 0.42 : 0.55)))),
   )
@@ -755,19 +879,29 @@ export function Autocomplete(props: {
   return (
     <box
       visible={store.visible !== false}
-      position="absolute"
-      top={panelTop()}
-      left={position().x}
-      width={position().width}
-      height={panelHeight()}
-      zIndex={100}
-      backgroundColor={theme.backgroundMenu}
+      position={isInline() ? "relative" : "absolute"}
+      top={isInline() ? undefined : panelTop()}
+      left={isInline() ? undefined : position().x}
+      width={panelWidth()}
+      height={store.visible === false ? 0 : panelHeight()}
+      flexShrink={0}
+      zIndex={isInline() ? undefined : 200}
+      flexDirection="column"
+      backgroundColor={(isCommandSpine() ? (t.spinePanel ?? theme.backgroundMenu) : theme.backgroundMenu) as any}
+      border={isCommandSpine() ? ["top", "bottom", "left", "right"] : []}
+      customBorderChars={isCommandSpine() ? RoundBorder : undefined}
+      borderColor={(isCommandSpine() ? (t.spinePrompt ?? theme.border) : theme.border) as any}
       paddingLeft={1}
       paddingRight={1}
+      marginBottom={isInline() && store.visible !== false ? 0 : 0}
       overflow="hidden"
     >
       <box flexDirection="row" justifyContent="space-between" height={1} flexShrink={0} overflow="hidden">
-        <text fg={theme.textMuted} wrapMode="none" truncate>
+        <text
+          fg={(isCommandSpine() ? (t.spineContext ?? theme.textMuted) : theme.textMuted) as any}
+          wrapMode="none"
+          truncate
+        >
           <Show when={!isCommandSpine()}>{arcanaDitherPattern(store.visible || "complete", 10)}{" "}</Show>
           {store.visible === "/" ? "commands" : "context"}
         </text>
@@ -782,8 +916,12 @@ export function Autocomplete(props: {
       <scrollbox
         ref={(r: ScrollBoxRenderable) => (scroll = r)}
         backgroundColor={(isCommandSpine() ? (t.spinePanel ?? theme.backgroundMenu) : theme.backgroundMenu) as any}
+        // Prefer flexGrow so borders/title eat chrome without clipping the list.
+        // Fallback fixed height keeps non-flex parents honest.
+        flexGrow={1}
+        flexShrink={1}
+        minHeight={1}
         height={height()}
-        flexShrink={0}
         scrollbarOptions={{ visible: false }}
         scrollAcceleration={scrollAcceleration()}
       >

@@ -13,7 +13,8 @@ import { SAMPLE_ENTRIES } from "../src/shell/command-spine/sample-entries"
 import { SpineHeader } from "../src/shell/command-spine/spine-header"
 import { SpineEntry } from "../src/shell/command-spine/spine-entry"
 import { SpineFooterHints } from "../src/shell/command-spine/spine-footer-hints"
-import { SpinePrompt } from "../src/shell/command-spine/spine-prompt"
+import { SpineRail } from "../src/shell/command-spine/spine-rail"
+import { SpineGutterSpacer } from "../src/shell/command-spine/spine-lead"
 import { useTheme } from "../src/context/theme"
 import type { SpineRunState } from "../src/shell/command-spine/spine-footer-hints"
 
@@ -208,21 +209,24 @@ describe("spine state transitions", () => {
           const layout = createMemo(() => getSpineLayout(dims().width))
           const { theme } = useTheme()
           const t = theme as Record<string, unknown>
+          // Marker-only stand-in (full SpinePrompt mounts Prompt + keymap; out of scope here).
+          const markerColor = () => {
+            if (state() === "stop") return (t.spineFail ?? t.error ?? t.spinePrompt) as any
+            if (state() === "thinking") return (t.spineThink ?? t.spinePrompt) as any
+            if (state() === "working") return (t.spineRun ?? t.spinePrompt) as any
+            return (t.spinePrompt ?? t.primary) as any
+          }
           return (
             <box flexDirection="column" height="100%">
               <SpineHeader layout={layout()} session={() => undefined} segments={sampleSegments} />
               <box flexDirection="column" flexGrow={1}>
                 <For each={SAMPLE_ENTRIES}>{(entry) => <SpineEntry entry={entry} layout={layout()} />}</For>
               </box>
-              <SpinePrompt
-                bind={() => {}}
-                disabled={() => false}
-                visible={() => true}
-                sessionID="test"
-                toBottom={() => {}}
-                layout={layout}
-                state={state}
-              />
+              <box flexDirection="row">
+                <SpineGutterSpacer layout={layout()} />
+                <SpineRail layout={layout()} glyph={"✶"} color={markerColor()} active />
+                <text fg={markerColor() as any}>{state()}</text>
+              </box>
             </box>
           )
         }),

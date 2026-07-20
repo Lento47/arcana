@@ -3,6 +3,15 @@
 Branch: `architecture/arcana-tui-cockpit`
 Base: `architecture/token-kernel-missions`
 
+> **Status (2026-07):** **Aspirational multi-panel cockpit plan.**  
+> The **default product shell** today is **command-spine** (timeline + composer + status), not a full multi-panel kernel HUD.
+>
+> - Living surface: [command-spine-ui.md](./command-spine-ui.md)
+> - Visual target / migration notes: [TUI-DESIRED.md](../../TUI-DESIRED.md)
+> - Tool activity on proof tape: [ADR 0002](../adr/0002-tool-batch-scheduler.md)
+>
+> Treat the 64 steps below as a **mission backlog**. Some early missions (command inventory, spine shell, permission gates, compact receipts) are partially or fully served by the current spine. Do **not** read this file as "shipped cockpit chrome." Prefer command-spine for day-to-day TUI work; keep this plan for future panels (token meters, multi-column kernel boards, explicit verifier surfaces) once kernel projections exist.
+
 ## North Star
 
 Arcana TUI must stop being a chat-first fork-shaped interface and become a kernel cockpit.

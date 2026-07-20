@@ -18,6 +18,7 @@ import { SessionProcessor } from "./processor"
 import { PartID } from "./schema"
 import { EffectBridge } from "@/effect/bridge"
 import { ModelV2 } from "@arcana/core/model"
+import { withToolAdmission } from "@/tool/batch"
 
 export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   agent: Agent.Info
@@ -86,34 +87,40 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       description: item.description,
       inputSchema: jsonSchema(schema),
       execute(args, options) {
+        // Phase 1: tier admission — AI SDK fans out tools eagerly; pools bound
+        // concurrent read/network/write/shell so multi-tool turns cannot stampede.
         return run.promise(
-          Effect.gen(function* () {
-            const ctx = context(args, options)
-            yield* plugin.trigger(
-              "tool.execute.before",
-              { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
-              { args },
-            )
-            const result = yield* item.execute(args, ctx)
-            const output = {
-              ...result,
-              attachments: result.attachments?.map((attachment) => ({
-                ...attachment,
-                id: PartID.ascending(),
-                sessionID: ctx.sessionID,
-                messageID: input.processor.message.id,
-              })),
-            }
-            yield* plugin.trigger(
-              "tool.execute.after",
-              { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID, args },
-              output,
-            )
-            if (options.abortSignal?.aborted) {
-              yield* input.processor.completeToolCall(options.toolCallId, output)
-            }
-            return output
-          }),
+          withToolAdmission(
+            item.id,
+            Effect.gen(function* () {
+              const ctx = context(args, options)
+              yield* plugin.trigger(
+                "tool.execute.before",
+                { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
+                { args },
+              )
+              const result = yield* item.execute(args, ctx)
+              const output = {
+                ...result,
+                attachments: result.attachments?.map((attachment) => ({
+                  ...attachment,
+                  id: PartID.ascending(),
+                  sessionID: ctx.sessionID,
+                  messageID: input.processor.message.id,
+                })),
+              }
+              yield* plugin.trigger(
+                "tool.execute.after",
+                { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID, args },
+                output,
+              )
+              if (options.abortSignal?.aborted) {
+                yield* input.processor.completeToolCall(options.toolCallId, output)
+              }
+              return output
+            }),
+            { input: args },
+          ),
         )
       },
     })
