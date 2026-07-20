@@ -2217,10 +2217,42 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashName: "new",
         slashAliases: ["clear"],
         run: () => {
-          route.navigate({
-            type: "home",
-          })
           dialog.clear()
+          const agent = local.agent.current()
+          const model = local.model.current()
+          // No model yet — home composer; first send creates the session.
+          if (!model) {
+            route.navigate({ type: "home" })
+            toast.show({
+              message: "New session — pick a model, then send a message",
+              variant: "info",
+            })
+            return
+          }
+          void sdk.client.session
+            .create({
+              agent: agent?.name,
+              model: {
+                providerID: model.providerID,
+                id: model.modelID,
+                variant: local.model.variant.current(),
+              },
+            })
+            .then((res) => {
+              if (res.error || !res.data?.id) {
+                route.navigate({ type: "home" })
+                toast.show({
+                  message: "Could not create session — start from home",
+                  variant: "warning",
+                })
+                return
+              }
+              route.navigate({ type: "session", sessionID: res.data.id })
+            })
+            .catch(() => {
+              route.navigate({ type: "home" })
+              toast.show({ message: "Could not create session", variant: "error" })
+            })
         },
       },
       {
