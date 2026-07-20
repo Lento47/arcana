@@ -2,6 +2,7 @@ import type { Message, Part, ToolPart, TextPart, PatchPart, ReasoningPart } from
 import type { SpineEntry, SpineKind, SpineReportData, SpineConcernSeverity, SpineReceipt } from "./spine-types"
 import { SPINE_GLYPH } from "./spine-types"
 import { reasoningSummary } from "../../context/thinking"
+import { APP_NAME } from "../../branding"
 
 const INSPECT_TOOLS = new Set([
   "read",
@@ -97,19 +98,29 @@ function isTextRelevant(part: TextPart): boolean {
   return true
 }
 
-function kindLabel(kind: SpineKind, fallback?: string): string {
+/** Short tool-facing labels — never "codex" (reads as another AI voice). */
+function kindLabel(kind: SpineKind, fallback?: string, tool?: string): string {
   if (fallback) return fallback
+  if (kind === "inspect" && tool) {
+    const t = tool.toLowerCase()
+    if (t === "grep" || t === "ripgrep") return "search"
+    if (t === "read") return "read"
+    if (t === "glob" || t === "list" || t === "list_files" || t === "directory_list" || t === "file_search") return "list"
+    if (t === "web_search" || t === "search") return "search"
+    if (t === "web_fetch" || t === "fetch") return "fetch"
+    return "tool"
+  }
   switch (kind) {
-    case "run": return "incantation"
-    case "inspect": return "codex"
-    case "patch": return "transmutation"
-    case "report": return "divination"
-    case "fail": return "omen"
+    case "run": return "run"
+    case "inspect": return "tool"
+    case "patch": return "edit"
+    case "report": return "report"
+    case "fail": return "fail"
     case "ask": return "you"
-    case "plan": return "insight"
-    case "ok": return "coda"
+    case "plan": return APP_NAME
+    case "ok": return APP_NAME
     case "think": return ""
-    case "agent": return "familiar"
+    case "agent": return "agent"
     default: return kind
   }
 }
@@ -221,8 +232,12 @@ function stripTaskXml(output: string): string {
     .trim()
 }
 
-/** Default line budget before inspect bodies collapse by default. */
-const INSPECT_PREVIEW_LINES = 20
+/**
+ * Inspect/search bodies stay collapsed by default — only auto-open tiny
+ * single-line receipts. Grep dumps and multi-file reads are toggle-only
+ * (reduces spine noise vs assistant prose).
+ */
+const INSPECT_AUTO_EXPAND_MAX_LINES = 2
 
 /** Engine boilerplate reminder — for the model, not a useful TUI callout. */
 function isBoilerplateReminder(text: string): boolean {
@@ -921,12 +936,23 @@ function toolOutputBody(part: ToolPart): ToolOutputBody {
     if (content) return { body: preserveBodyText(content), label: "written content", reminders: [] }
   }
 
-  if (part.tool === "edit") {
-    const diff =
-      state.metadata && typeof state.metadata === "object"
-        ? (state.metadata as Record<string, unknown>).diff
-        : undefined
-    if (typeof diff === "string" && diff.trim()) return { body: preserveBodyText(diff), label: "diff", reminders: [] }
+  // Unified diffs live on edit / apply_patch / similar tool metadata — not only "edit".
+  if (
+    (PATCH_TOOLS.has(part.tool) || toolToSpineKind(part.tool) === "patch")
+    && state.metadata
+    && typeof state.metadata === "object"
+  ) {
+    const meta = state.metadata as Record<string, unknown>
+    if (typeof meta.diff === "string" && meta.diff.trim()) {
+      return { body: preserveBodyText(meta.diff), label: "diff", reminders: [] }
+    }
+    const filediff = meta.filediff
+    if (filediff && typeof filediff === "object") {
+      const patch = (filediff as Record<string, unknown>).patch
+      if (typeof patch === "string" && patch.trim()) {
+        return { body: preserveBodyText(patch), label: "diff", reminders: [] }
+      }
+    }
   }
 
   // Subagent task output — parse as structured report if markdown headings detected.
@@ -1123,15 +1149,39 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
 
   const lineCount = body ? body.split("\n").length : 0
   const listingCount = listing?.length ?? 0
-  const previewLimit = toolKind === "inspect" ? INSPECT_PREVIEW_LINES : 10
+  const isGrep = part.tool === "grep" || part.tool === "ripgrep"
+  // Tools: collapse by default. Failures + true one-liners may auto-open.
+  // Grep/search never auto-expand (match dumps drown assistant replies).
   const expandDefault =
     !!diff
     || !!renderedOutput.report
     || (kind === "fail" && !!body)
-    || (!!body && lineCount > 0 && lineCount <= previewLimit)
-    || (isListing && listingCount > 0 && listingCount <= previewLimit)
+    || (
+      toolKind !== "inspect"
+      && !isGrep
+      && !!body
+      && lineCount > 0
+      && lineCount <= 10
+    )
+    || (
+      toolKind === "inspect"
+      && !isGrep
+      && !isListing
+      && !!body
+      && lineCount > 0
+      && lineCount <= INSPECT_AUTO_EXPAND_MAX_LINES
+    )
 
   const hasExpandableBody = (!!body && !diff) || isListing
+
+  // Cap expanded body size so opening "show matches" stays scannable
+  let displayBody = body && !diff && !renderedOutput.report && !isListing ? body : undefined
+  if (displayBody && isGrep) {
+    const lines = displayBody.split("\n")
+    if (lines.length > 24) {
+      displayBody = lines.slice(0, 24).join("\n") + `\n… (${lines.length - 24} more — refine the query)`
+    }
+  }
 
   return [
     {
@@ -1140,12 +1190,19 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
       elapsed,
       timestamp: formatTimestamp(message.time.created),
       kind: finalKind,
-      label: finalKind === "fail" ? "fail" : agentName ? "agent" : finalKind === "report" ? "report" : kindLabel(kind),
+      label:
+        finalKind === "fail"
+          ? "fail"
+          : agentName
+            ? "agent"
+            : finalKind === "report"
+              ? "report"
+              : kindLabel(kind, undefined, part.tool),
       glyph: finalGlyph,
       actor: agentName,
       summary,
-      body: body && !diff && !renderedOutput.report && !isListing ? body : undefined,
-      bodyLabel: renderedOutput.report ? "divination" : renderedOutput.label,
+      body: displayBody,
+      bodyLabel: renderedOutput.report ? "report" : renderedOutput.label,
       bodyHint: renderedOutput.bodyHint || (part.tool === "read" ? filePath : undefined),
       bodyNote: renderedOutput.bodyNote,
       collapsible: !!diff || !!renderedOutput.report || hasExpandableBody,
@@ -1161,23 +1218,180 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
   ]
 }
 
-function patchPartToEntry(message: Message, part: PatchPart): SpineEntry {
-  const files = part.files.join(", ")
-  const fileCount = part.files.length
+/** Normalize paths for patch/tool matching (Windows/posix, a/b prefixes). */
+function normalizeSpinePath(file: string): string {
+  return file
+    .replace(/\\/g, "/")
+    .replace(/^[ab]\//, "")
+    .replace(/^\.\//, "")
+    .trim()
+}
+
+function pathKey(file: string): string {
+  return normalizeSpinePath(file).toLowerCase()
+}
+
+function pathsMatch(a: string, b: string): boolean {
+  const na = pathKey(a)
+  const nb = pathKey(b)
+  if (!na || !nb) return false
+  if (na === nb) return true
+  // Absolute vs relative: longer path ends with shorter
+  return na.endsWith("/" + nb) || nb.endsWith("/" + na)
+}
+
+function setHasPath(keys: Iterable<string>, file: string): boolean {
+  const target = pathKey(file)
+  if (!target) return false
+  for (const key of keys) {
+    if (pathsMatch(key, target)) return true
+  }
+  return false
+}
+
+type SiblingPatchEvidence = {
+  /** Path keys of files touched by edit/write/apply_patch tools in this message. */
+  touchedKeys: string[]
+  /** Unified diff bodies that cover at least one of the listed files. */
+  bodies: string[]
+}
+
+/**
+ * Collect line-level diffs + touched files from sibling patch tools so snapshot
+ * PatchPart rows can be hydrated or suppressed (they only store hash + files).
+ */
+function collectSiblingPatchEvidence(parts: Part[]): SiblingPatchEvidence {
+  const touchedKeys = new Set<string>()
+  const bodies: string[] = []
+  const seenBody = new Set<string>()
+
+  const touch = (file: string | undefined) => {
+    if (!file || typeof file !== "string") return
+    const key = pathKey(file)
+    if (key) touchedKeys.add(key)
+  }
+
+  const pushBody = (body: string | undefined) => {
+    if (!body || !body.trim()) return
+    const normalized = preserveBodyText(body)
+    if (seenBody.has(normalized)) return
+    seenBody.add(normalized)
+    bodies.push(normalized)
+  }
+
+  for (const part of parts) {
+    if (part.type !== "tool") continue
+    if (!PATCH_TOOLS.has(part.tool) && toolToSpineKind(part.tool) !== "patch") continue
+    const state = part.state
+    if (state.status !== "completed" && state.status !== "error") continue
+
+    const input = (state.input && typeof state.input === "object" ? state.input : {}) as Record<string, unknown>
+    const meta =
+      "metadata" in state && state.metadata && typeof state.metadata === "object"
+        ? (state.metadata as Record<string, unknown>)
+        : {}
+
+    touch(typeof input.filePath === "string" ? input.filePath : undefined)
+    touch(typeof input.path === "string" ? input.path : undefined)
+    touch(typeof input.file === "string" ? input.file : undefined)
+    touch(typeof meta.filepath === "string" ? meta.filepath : undefined)
+
+    const filediff = meta.filediff
+    if (filediff && typeof filediff === "object") {
+      const fd = filediff as Record<string, unknown>
+      touch(typeof fd.file === "string" ? fd.file : undefined)
+      pushBody(typeof fd.patch === "string" ? fd.patch : undefined)
+    }
+
+    const filesMeta = meta.files
+    if (Array.isArray(filesMeta)) {
+      for (const item of filesMeta) {
+        if (typeof item === "string") {
+          touch(item)
+          continue
+        }
+        if (!item || typeof item !== "object") continue
+        const row = item as Record<string, unknown>
+        touch(typeof row.filePath === "string" ? row.filePath : undefined)
+        touch(typeof row.relativePath === "string" ? row.relativePath : undefined)
+        touch(typeof row.file === "string" ? row.file : undefined)
+        pushBody(typeof row.patch === "string" ? row.patch : undefined)
+      }
+    }
+
+    pushBody(typeof meta.diff === "string" ? meta.diff : undefined)
+
+    // Paths implied by a multi-file unified diff body
+    if (typeof meta.diff === "string" && meta.diff.trim()) {
+      for (const file of diffFilesFromBody(meta.diff, "")) touch(file)
+    }
+  }
+
+  return { touchedKeys: [...touchedKeys], bodies }
+}
+
+/**
+ * Snapshot PatchPart is { hash, files } only. Prefer sibling edit tool diffs;
+ * hide the rollup entirely when tools already cover every listed file.
+ */
+function patchPartToEntry(
+  message: Message,
+  part: PatchPart,
+  siblings: SiblingPatchEvidence,
+): SpineEntry | null {
+  const fileList = part.files.filter((f) => typeof f === "string" && f.trim())
+  const fileCount = fileList.length
+
+  // Tool rows already show these files — skip the redundant file-list rollup.
+  if (
+    fileCount > 0
+    && fileList.every((file) => setHasPath(siblings.touchedKeys, file))
+  ) {
+    return null
+  }
+
+  // Hydrate only bodies whose paths match the snapshot file list (strict).
+  const matchingBodies = siblings.bodies.filter((body) => {
+    if (fileCount === 0) return true
+    const bodyFiles = diffFilesFromBody(body, "")
+    if (bodyFiles.length === 0) return false
+    return bodyFiles.some((bf) => fileList.some((pf) => pathsMatch(bf, pf)))
+  })
+
+  const body = matchingBodies.length ? matchingBodies.join("\n") : undefined
+  const hasDiff = !!body?.trim()
+  let added: number | undefined
+  let removed: number | undefined
+  if (hasDiff && body) {
+    added = (body.match(/^\+[^+]/gm) ?? []).length
+    removed = (body.match(/^-[^-]/gm) ?? []).length
+  }
+
+  const filesLabel =
+    fileList.join(", ")
+    || (hasDiff && body ? diffFilesFromBody(body, "").join(", ") : "")
+    || `${fileCount} files`
+
   return {
     id: `${message.id}:${part.id}:patch`,
     index: 0,
     elapsed: "",
     timestamp: formatTimestamp(message.time.created),
     kind: "patch",
-    label: "patch",
+    label: "edit",
     glyph: SPINE_GLYPH.patch,
-    summary: formatPatchHeadline(fileCount, undefined, false),
-    collapsible: fileCount > 0,
-    expandedByDefault: true,
+    summary: formatPatchHeadline(
+      fileCount || (hasDiff && body ? diffFilesFromBody(body, "").length : 0),
+      hasDiff ? { added, removed } : undefined,
+      hasDiff,
+    ),
+    collapsible: fileCount > 0 || hasDiff,
+    expandedByDefault: hasDiff,
     diff: {
-      files: files || `${part.files.length} files`,
-      stats: "",
+      files: filesLabel,
+      stats: hasDiff && (added !== undefined || removed !== undefined) ? `+${added ?? 0} -${removed ?? 0}` : "",
+      body: hasDiff ? body : undefined,
+      splitBody: hasDiff && body ? splitDiffBody(body) : undefined,
     },
     source: { messageID: message.id, partID: part.id, kind: "patch" },
   }
@@ -1335,7 +1549,7 @@ function makeTextEntry(
     glyph: SPINE_GLYPH[kind],
     summary: view.summary,
     body: view.body,
-    bodyLabel: "assistant",
+    bodyLabel: APP_NAME,
     collapsible: view.collapsible,
     expandedByDefault: view.expandedByDefault,
     streaming: message.role === "assistant" && !message.time.completed,
@@ -1343,9 +1557,9 @@ function makeTextEntry(
   }
 }
 
-function assistantTextLabel(message: Message, _kind: "plan" | "ok") {
-  const agent = typeof message.agent === "string" ? message.agent.trim() : ""
-  return agent && agent !== "default" ? `assistant · ${agent}` : "assistant"
+function assistantTextLabel(_message: Message, _kind: "plan" | "ok") {
+  // Product voice (Grok-style) — never tool verbs or "assistant · build".
+  return APP_NAME
 }
 function shouldAddTrailingOk(entries: SpineEntry[], message: Message): boolean {
   const messageEntries = entries.filter((e) => e.id.startsWith(message.id))
@@ -1393,6 +1607,9 @@ function assistantMessagePartsToEntries(
     }
   }
 
+  // Snapshot patch parts only store {hash, files}; hydrate/suppress using tool diffs.
+  const siblingPatchEvidence = collectSiblingPatchEvidence(parts)
+
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]
 
@@ -1421,7 +1638,8 @@ function assistantMessagePartsToEntries(
 
     if (part.type === "patch") {
       sawTool = true
-      entries.push(patchPartToEntry(message, part))
+      const patchEntry = patchPartToEntry(message, part, siblingPatchEvidence)
+      if (patchEntry) entries.push(patchEntry)
       continue
     }
 
@@ -1485,10 +1703,9 @@ function assistantMessagePartsToEntries(
     merged.push(makeOkEntry(message))
   }
 
-  // Group consecutive tool entries with same label + target into parent rows.
-  const grouped = groupConsecutiveTools(merged)
-  const deduped = dedupeFilePaths(grouped)
-  return deduped
+  // Path ditto only — burst grouping runs once at session level so consecutive
+  // shell tools across assistant steps still collapse into one expandable row.
+  return dedupeFilePaths(merged)
 }
 
 /**
@@ -1516,44 +1733,166 @@ function dedupeFilePaths(entries: SpineEntry[]): SpineEntry[] {
   return entries
 }
 
-/** Collapse consecutive same-target tool entries into parent rows. */
+/** Stable target key for grouping consecutive same-file edit/read rows. */
+function toolTargetKey(entry: SpineEntry): string | undefined {
+  // Prefer explicit path fields — patch summaries are often "1 file · +N -M · diff"
+  // and must NOT group distinct files together.
+  const candidates = [
+    entry.bodyHint,
+    entry.diff?.files?.split(",")[0],
+    entry.summary,
+  ]
+  for (const raw of candidates) {
+    if (!raw || typeof raw !== "string") continue
+    // Drop range/meta after " · " (e.g. "src/foo.ts · L1–40")
+    const pathPart = raw.split(/\s·\s/)[0]?.trim() ?? ""
+    if (!pathPart || pathPart.length < 3) continue
+    // Skip generic patch headlines without a path
+    if (/^\d+\s+files?\b/i.test(pathPart)) continue
+    if (/^(diff|file-list only|evidence incomplete)$/i.test(pathPart)) continue
+    // Shell commands are not file targets — never use full command lines here
+    if (/\s/.test(pathPart) && !/[\\/]/.test(pathPart) && !pathPart.includes(".")) continue
+    return pathKey(pathPart)
+  }
+  return undefined
+}
+
+/** First argv token of a shell command (`rg`, `git`, `bun`, …). */
+function commandFamily(summary: string | undefined): string | undefined {
+  if (!summary) return undefined
+  const token = summary.trim().split(/\s+/)[0]
+  if (!token) return undefined
+  // strip path prefix: /usr/bin/rg → rg
+  const base = token.replace(/^.*[\\/]/, "").replace(/\.exe$/i, "")
+  return base || undefined
+}
+
+function groupToolSummary(entries: SpineEntry[]): string {
+  const n = entries.length
+  const kind = entries[0]?.kind
+  if (kind === "run") {
+    const families = entries.map((e) => commandFamily(e.summary ?? e.receipt?.command))
+    const shared = families[0]
+    if (shared && families.every((f) => f === shared)) {
+      return `${n}× ${shared}`
+    }
+    return `${n} commands`
+  }
+  if (kind === "inspect") {
+    const label = (entries[0]?.label || "tool").trim() || "tool"
+    return `${n}× ${label}`
+  }
+  const first = entries[0]!
+  return `${first.summary} · ${n} actions`
+}
+
+/**
+ * Collapse consecutive tool bursts into one parent row.
+ * - run: any consecutive shell commands (different rg/git cmds still group)
+ * - inspect: consecutive same-verb tools (search/read/list)
+ * - patch: only the same file target (never merge unrelated edits)
+ */
 function groupConsecutiveTools(entries: SpineEntry[]): SpineEntry[] {
   const result: SpineEntry[] = []
-  let run: SpineEntry[] = []
+  let burst: SpineEntry[] = []
+  /** Hidden rows (e.g. trailing ok) must not split a tool burst across steps. */
+  let deferredHidden: SpineEntry[] = []
 
-  function sameTarget(a: SpineEntry, b: SpineEntry): boolean {
-    // Must be same tool glyph and not an error
-    if (a.glyph !== b.glyph || a.kind === "fail" || b.kind === "fail") return false
-    // Extract file path from summary (e.g. "src/foo.ts" from "codex · src/foo.ts")
-    const aFile = a.summary?.replace(/^[^:]*:\s*/, "").trim()
-    const bFile = b.summary?.replace(/^[^:]*:\s*/, "").trim()
-    if (!aFile || !bFile || aFile.length < 3) return false
-    return aFile === bFile
+  function shouldGroup(a: SpineEntry, b: SpineEntry): boolean {
+    if (a.kind !== b.kind || a.kind === "fail" || b.kind === "fail") return false
+    // Snapshot PatchPart rows must not merge into edit tool rows
+    if ((a.source?.kind ?? "tool") !== (b.source?.kind ?? "tool")) return false
+
+    if (a.kind === "run") {
+      // Shell bursts always collapse — commands differ by design
+      return true
+    }
+
+    if (a.kind === "inspect") {
+      // Prefer same verb (search+search), else still group consecutive inspects
+      const aLabel = (a.label ?? "").toLowerCase()
+      const bLabel = (b.label ?? "").toLowerCase()
+      if (aLabel && bLabel) return aLabel === bLabel
+      return true
+    }
+
+    if (a.kind === "patch") {
+      const aKey = toolTargetKey(a)
+      const bKey = toolTargetKey(b)
+      if (!aKey || !bKey) return false
+      return aKey === bKey
+    }
+
+    return false
+  }
+
+  function flushHidden() {
+    if (deferredHidden.length) {
+      result.push(...deferredHidden)
+      deferredHidden = []
+    }
   }
 
   function flush() {
-    if (run.length === 0) return
-    if (run.length === 1) {
-      result.push(run[0]!)
+    if (burst.length === 0) {
+      flushHidden()
+      return
+    }
+    if (burst.length === 1) {
+      result.push(burst[0]!)
     } else {
-      const first = run[0]!
-      const parseElapsedMs = (s: string) => (parseFloat(s.replace(/^\+/, "").replace(/[a-z]+$/i, "")) || 0) * (s.endsWith("ms") ? 1 : 1000)
-      const totalMs = run.reduce((sum, e) => sum + parseElapsedMs(e.elapsed), 0)
+      const first = burst[0]!
+      const parseElapsedMs = (s: string) =>
+        (parseFloat(s.replace(/^\+/, "").replace(/[a-z]+$/i, "")) || 0) * (s.endsWith("ms") ? 1 : 1000)
+      const totalMs = burst.reduce((sum, e) => sum + parseElapsedMs(e.elapsed), 0)
+      // Aggregate match/output stats when present on receipts
+      let matchHits = 0
+      let hasMatchStats = false
+      for (const e of burst) {
+        const s = e.receipt?.summary ?? ""
+        const m = s.match(/^(\d+)\s+match/i)
+        if (m) {
+          hasMatchStats = true
+          matchHits += Number(m[1]) || 0
+        }
+      }
       result.push({
         ...first,
         elapsed: totalMs > 0 ? formatElapsed(totalMs) : first.elapsed,
-        summary: `${first.summary} · ${run.length} actions`,
+        summary: groupToolSummary(burst),
+        // Parent is a folder of actions — don't pin first tool's output body
+        body: undefined,
+        bodyLabel: undefined,
+        receipt: {
+          label: first.receipt?.label ?? first.label ?? first.kind,
+          status: burst.some((e) => e.receipt?.status === "fail")
+            ? "fail"
+            : burst.some((e) => e.receipt?.status === "pending")
+              ? "pending"
+              : "ok",
+          summary: hasMatchStats
+            ? `${matchHits} match${matchHits === 1 ? "" : "es"} · ${burst.length} runs`
+            : `${burst.length} actions`,
+          command: undefined,
+        },
+        collapsible: true,
         expandedByDefault: false,
-        children: [...run],
+        children: [...burst],
       })
     }
-    run = []
+    burst = []
+    flushHidden()
   }
 
   for (const entry of entries) {
-    // Reasoning rows are separate from tools. They remain visible while not
-    // participating in same-target tool grouping.
+    // Synthetic/hidden rows (trailing ok) sit between steps — don't break bursts.
+    if (entry.hidden) {
+      deferredHidden.push(entry)
+      continue
+    }
+    // Reasoning rows stay visible and never join tool bursts.
     if (entry.kind === "think") {
+      flush()
       result.push(entry)
       continue
     }
@@ -1562,11 +1901,11 @@ function groupConsecutiveTools(entries: SpineEntry[]): SpineEntry[] {
       result.push(entry)
       continue
     }
-    if (run.length === 0 || sameTarget(run[0]!, entry)) {
-      run.push(entry)
+    if (burst.length === 0 || shouldGroup(burst[0]!, entry)) {
+      burst.push(entry)
     } else {
       flush()
-      run = [entry]
+      burst = [entry]
     }
   }
   flush()
@@ -1580,6 +1919,25 @@ function assignIndexes(entries: SpineEntry[], startIndex: number): SpineEntry[] 
     const next = idx++
     return e.index === next ? e : { ...e, index: next }
   })
+}
+
+function childrenStable(a: SpineEntry[] | undefined, b: SpineEntry[] | undefined): boolean {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!
+    const y = b[i]!
+    if (
+      x.id !== y.id
+      || x.summary !== y.summary
+      || x.body !== y.body
+      || x.elapsed !== y.elapsed
+      || x.receipt?.summary !== y.receipt?.summary
+    ) {
+      return false
+    }
+  }
+  return true
 }
 
 /**
@@ -1610,7 +1968,7 @@ function stabilizeEntries(next: SpineEntry[], previous: SpineEntry[] | undefined
       prev.actor === entry.actor &&
       prev.bodyLabel === entry.bodyLabel &&
       prev.thinking === entry.thinking &&
-      prev.children === entry.children &&
+      childrenStable(prev.children, entry.children) &&
       prev.receipt === entry.receipt &&
       prev.diff === entry.diff &&
       prev.reminders === entry.reminders &&
@@ -1684,7 +2042,10 @@ export function messagesToSpineEntriesCached(input: {
     allEntries.push(...entries)
   }
 
-  const indexed = assignIndexes(allEntries, 1)
+  // Group consecutive run/inspect bursts across the whole session timeline
+  // (not only within one assistant message), then re-index.
+  const grouped = groupConsecutiveTools(allEntries)
+  const indexed = assignIndexes(grouped, 1)
   return { entries: stabilizeEntries(indexed, previousEntries), cache: nextCache }
 }
 

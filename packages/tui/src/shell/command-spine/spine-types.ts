@@ -238,7 +238,8 @@ export function spineTone(kind: SpineKind, theme: Record<string, unknown>) {
 
 export const SPINE_GLYPH: Record<SpineKind, string> = {
   ask: "◆",
-  plan: "▸",
+  // Chat voice uses brand marks in SpineChatCard; tools keep ▸
+  plan: "✦",
   inspect: "▸",
   patch: "▸",
   run: "▸",
@@ -246,7 +247,7 @@ export const SPINE_GLYPH: Record<SpineKind, string> = {
   fix: "▸",
   approve: "◇",
   question: "?",
-  ok: "◎",
+  ok: "✦",
   think: "◇",
   agent: "⤷",
   report: "◆",
