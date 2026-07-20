@@ -962,19 +962,20 @@ export function Prompt(props: PromptProps) {
   async function submitInner() {
     workspace.clearNotice()
 
-    // IME: double-defer may fire before onContentChange flushes the last
-    // composed character (e.g. Korean hangul) to the store, so read
-    // plainText directly and sync before any downstream reads.
-    if (input && !input.isDestroyed && input.plainText !== store.prompt.input) {
-      setStore("prompt", "input", input.plainText)
+    // Authoritative text: read the live editor buffer first. Store lags one
+    // paint behind keystrokes; waiting on setStore-only caused "press Enter
+    // twice" when the first submit saw an empty store.
+    const liveText = input && !input.isDestroyed ? input.plainText : store.prompt.input
+    if (liveText !== store.prompt.input) {
+      setStore("prompt", "input", liveText)
       syncExtmarksWithPromptParts()
     }
     if (props.disabled) return false
     if (workspace.creating() || move.creating()) return false
-    if (!store.prompt.input) return false
+    if (!liveText.trim()) return false
     const agent = local.agent.current()
     if (!agent) return false
-    const trimmed = store.prompt.input.trim()
+    const trimmed = liveText.trim()
     if (trimmed === "exit" || trimmed === "quit" || trimmed === ":q") {
       void exit()
       return true
@@ -1021,9 +1022,9 @@ export function Prompt(props: PromptProps) {
     }
 
     const workspaceSession = props.sessionID ? sync.session.get(props.sessionID) : undefined
-    const workspaceID = workspaceSession?.workspaceID
-    const workspaceStatus = workspaceID ? (project.workspace.status(workspaceID) ?? "error") : undefined
-    if (props.sessionID && workspaceID && workspaceStatus !== "connected") {
+    const workspaceIDCheck = workspaceSession?.workspaceID
+    const workspaceStatus = workspaceIDCheck ? (project.workspace.status(workspaceIDCheck) ?? "error") : undefined
+    if (props.sessionID && workspaceIDCheck && workspaceStatus !== "connected") {
       dialog.replace(() => (
         <DialogWorkspaceUnavailable
           onRestore={() => {
@@ -1035,45 +1036,17 @@ export function Prompt(props: PromptProps) {
       return false
     }
 
+    // Snapshot everything that must not race session.create / clearPrompt.
+    // Previously we awaited session.create while the composer still showed the
+    // message — felt like Enter did nothing; a second Enter hit the submit guard.
     const variant = local.model.variant.current()
-    let sessionID = props.sessionID
-    let finishMoveProgress = false
-    if (sessionID == null) {
-      const selectedWorkspace = workspace.selection()
-      const workspaceID = selectedWorkspace?.type === "existing" ? selectedWorkspace.workspaceID : undefined
-
-      const directory = await move.getDirectory(store.prompt.input)
-      if (move.pending() && !directory) return false
-      finishMoveProgress = Boolean(move.progress())
-
-      const res = await sdk.client.session.create({
-        directory,
-        workspace: workspaceID,
-        agent: agent.name,
-        model: {
-          providerID: selectedModel.providerID,
-          id: selectedModel.modelID,
-          variant,
-        },
-      })
-
-      if (res.error) {
-        if (finishMoveProgress) move.finishSubmit()
-        console.log("Creating a session failed:", res.error)
-
-        toast.show({
-          message: "Creating a session failed. Open console for more details.",
-          variant: "error",
-        })
-
-        return true
-      }
-
-      sessionID = res.data.id
+    const currentMode = store.mode
+    const promptSnapshot = {
+      input: liveText,
+      parts: store.prompt.parts.slice(),
     }
-
     const inputText = expandTrackedPastedText(
-      store.prompt.input,
+      liveText,
       input.extmarks.getAllForTypeId(promptPartTypeId).flatMap((extmark) => {
         const partIndex = store.extmarkToPartIndex.get(extmark.id)
         const part = partIndex === undefined ? undefined : store.prompt.parts[partIndex]
@@ -1081,12 +1054,7 @@ export function Prompt(props: PromptProps) {
         return [{ start: extmark.start, end: extmark.end, text: part.text }]
       }),
     )
-
-    // Filter out text parts (pasted content) since they're now expanded inline
-    const nonTextParts = store.prompt.parts.filter((part) => part.type !== "text")
-
-    // Capture mode before it gets reset
-    const currentMode = store.mode
+    const nonTextParts = promptSnapshot.parts.filter((part) => part.type !== "text")
     const editorSelection = editorContext()
     const editorParts =
       editorSelection && editor.labelState() === "pending"
@@ -1106,6 +1074,58 @@ export function Prompt(props: PromptProps) {
         : []
     const arcanaPromptCommand = parseArcanaPromptCommand(inputText)
 
+    // Optimistic clear — composer empties on the first Enter, not after network.
+    history.append({
+      ...promptSnapshot,
+      mode: currentMode,
+    })
+    input.extmarks.clear()
+    setStore("prompt", { input: "", parts: [] })
+    setStore("extmarkToPartIndex", new Map())
+    input.clear()
+    props.onSubmit?.()
+
+    let sessionID = props.sessionID
+    let finishMoveProgress = false
+    if (sessionID == null) {
+      const selectedWorkspace = workspace.selection()
+      const workspaceID = selectedWorkspace?.type === "existing" ? selectedWorkspace.workspaceID : undefined
+
+      const directory = await move.getDirectory(inputText)
+      if (move.pending() && !directory) {
+        // Restore composer so the user can retry
+        setStore("prompt", { input: inputText, parts: nonTextParts })
+        input.setText(inputText)
+        return false
+      }
+      finishMoveProgress = Boolean(move.progress())
+
+      const res = await sdk.client.session.create({
+        directory,
+        workspace: workspaceID,
+        agent: agent.name,
+        model: {
+          providerID: selectedModel.providerID,
+          id: selectedModel.modelID,
+          variant,
+        },
+      })
+
+      if (res.error) {
+        if (finishMoveProgress) move.finishSubmit()
+        console.log("Creating a session failed:", res.error)
+        setStore("prompt", { input: inputText, parts: nonTextParts })
+        input.setText(inputText)
+        toast.show({
+          message: "Creating a session failed. Open console for more details.",
+          variant: "error",
+        })
+        return true
+      }
+
+      sessionID = res.data.id
+    }
+
     if (store.mode === "shell") {
       move.startSubmit()
       void sdk.client.session.shell({
@@ -1121,13 +1141,15 @@ export function Prompt(props: PromptProps) {
     } else if (arcanaPromptCommand) {
       const task = arcanaPromptCommand.arguments.trim()
       if (!task) {
+        // Composer already cleared optimistically — restore so user can finish the command
+        setStore("prompt", { input: inputText, parts: [] })
+        input.setText(inputText)
         toast.show({
           title: `/${arcanaPromptCommand.command}`,
           message: `Add a task after /${arcanaPromptCommand.command}.`,
           variant: "warning",
         })
-        clearPrompt()
-        return false
+        return true
       }
 
       const risk = assessArcanaTaskRisk(task)
@@ -1338,29 +1360,15 @@ export function Prompt(props: PromptProps) {
         })
       if (editorParts.length > 0) editor.markSelectionSent()
     }
-    history.append({
-      ...store.prompt,
-      mode: currentMode,
-    })
-    input.extmarks.clear()
-    setStore("prompt", {
-      input: "",
-      parts: [],
-    })
-    setStore("extmarkToPartIndex", new Map())
-    props.onSubmit?.()
 
-    // temporary hack to make sure the message is sent
+    // Navigate to new session immediately (prompt already cleared)
     if (!props.sessionID) {
       if (editorParts.length > 0) editor.preserveSelectionFromNewSession()
-      setTimeout(() => {
-        route.navigate({
-          type: "session",
-          sessionID,
-        })
-      }, 50)
+      route.navigate({
+        type: "session",
+        sessionID,
+      })
     }
-    input.clear()
     if (finishMoveProgress) move.finishSubmit()
     return true
   }
@@ -1662,9 +1670,11 @@ export function Prompt(props: PromptProps) {
                     }
                   }}
                   onSubmit={() => {
-                    // IME: double-defer so the last composed character (e.g. Korean
-                    // hangul) is flushed to plainText before we read it for submission.
-                    setTimeout(() => setTimeout(() => submit(), 0), 0)
+                    // One microtask is enough for IME commit; nested setTimeouts
+                    // made Enter feel laggy / like a double-press on Windows.
+                    queueMicrotask(() => {
+                      void submit()
+                    })
                   }}
                   onPaste={async (event: PasteEvent) => {
                     if (props.disabled) {

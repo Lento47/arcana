@@ -675,8 +675,18 @@ export function Autocomplete(props: {
   }
 
   function select() {
+    // If slash panel is open but the buffer is plain text (not a /command),
+    // don't swallow Enter — close the panel so the composer can submit.
+    const text = props.input().plainText
+    if (store.visible === "/" && !text.trimStart().startsWith("/")) {
+      setStore("visible", false)
+      return
+    }
     const selected = options()[store.selected]
-    if (!selected) return
+    if (!selected) {
+      setStore("visible", false)
+      return
+    }
     selected.onSelect?.()
     setStore("visible", false)
   }
