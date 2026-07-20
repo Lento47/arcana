@@ -66,7 +66,7 @@ export const Plugin = PluginV2.define({
       // When Arcana Proxy is configured with an API key, redirect all
       // OpenAI-compatible providers through the proxy automatically.
       const proxyURL = process.env.ARCANA_PROXY_KEY
-        ? "https://proxy.arcana.otnelhq.com/v1"
+        ? "https://arcana-proxy.lejzerv.workers.dev/v1"
         : undefined
 
       for (const file of files) {

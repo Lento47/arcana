@@ -109,9 +109,11 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
     // Probe provider base URL, then Workers.dev fallback (custom domain may refuse connect)
     if (profile.baseURL && key) {
       const bases = [...new Set([
-        profile.baseURL,
+        // Prefer workers.dev; skip broken custom domain unless explicitly set as profile.baseURL
+        profile.baseURL?.includes("proxy.arcana.otnelhq.com")
+          ? "https://arcana-proxy.lejzerv.workers.dev/v1"
+          : profile.baseURL,
         "https://arcana-proxy.lejzerv.workers.dev/v1",
-        "https://proxy.arcana.otnelhq.com/v1",
       ].filter(Boolean))]
       for (const base of bases) {
         try {

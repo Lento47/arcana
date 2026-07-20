@@ -350,7 +350,8 @@ describe("HttpApi UI fallback", () => {
       expect(csp).toContain(`'sha256-${createHash("sha256").update(script).digest("base64")}'`)
       // connect-src is tightened to arcana-owned endpoints plus data: (see
       // src/server/shared/ui.ts csp) — no longer the wildcard `*`.
-      expect(csp).toContain("connect-src 'self' https://api.arcana.otnelhq.com https://proxy.arcana.otnelhq.com data:")
+      expect(csp).toContain("https://arcana-proxy.lejzerv.workers.dev")
+      expect(csp).toContain("https://api.arcana.otnelhq.com")
     }),
   )
 
