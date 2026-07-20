@@ -36,6 +36,12 @@ import { ConfigPlugin } from "./plugin"
 import { ConfigVariable } from "./variable"
 import { Npm } from "@arcana/core/npm"
 import { withTransientReadRetry } from "@/util/effect-http-client"
+import {
+  allowsExecutableConfigDir,
+  evaluateWorkspaceTrust,
+  stripExecutableConfig,
+  type TrustDecision,
+} from "@arcana/core/workspace/trust"
 
 const fileCache = new Map<string, { data: any; ts: number }>()
 const CACHE_TTL = 5000
@@ -461,12 +467,30 @@ export const layer = Layer.effect(
           yield* Effect.logDebug("loaded custom config", { path: Flag.ARCANA_CONFIG })
         }
 
+        // ARC-SEC-I02: project plugins/tools/agents/MCP/npm require workspace trust.
+        const workspaceTrust: TrustDecision = evaluateWorkspaceTrust(ctx.worktree)
+        if (!workspaceTrust.allowsExecutable) {
+          yield* Effect.logWarning("workspace trust gate", {
+            status: workspaceTrust.status,
+            worktree: workspaceTrust.worktree,
+            reason: workspaceTrust.reason,
+          })
+        }
+
+        const sanitizeLocal = (next: Info, file: string): Info => {
+          const scopeDir = path.dirname(file)
+          if (allowsExecutableConfigDir(scopeDir, ctx.worktree, workspaceTrust)) return next
+          return stripExecutableConfig(next as Record<string, unknown>) as Info
+        }
+
         if (!Flag.ARCANA_DISABLE_PROJECT_CONFIG) {
           for (const file of yield* ConfigPaths.files("opencode", ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
-            yield* merge(file, yield* loadFile(file, authEnv), "local")
+            const next = sanitizeLocal(yield* loadFile(file, authEnv), file)
+            yield* merge(file, next, "local")
           }
           for (const file of yield* ConfigPaths.files("arcana", ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
-            yield* merge(file, yield* loadFile(file, authEnv), "local")
+            const next = sanitizeLocal(yield* loadFile(file, authEnv), file)
+            yield* merge(file, next, "local")
           }
         }
 
@@ -483,11 +507,15 @@ export const layer = Layer.effect(
         const deps: Fiber.Fiber<void>[] = []
 
         for (const dir of directories) {
+          const dirExecutable = allowsExecutableConfigDir(dir, ctx.worktree, workspaceTrust)
+
           if (dir.endsWith(".opencode") || dir.endsWith(".arcana") || dir === Flag.ARCANA_CONFIG_DIR) {
             for (const file of ["opencode.json", "opencode.jsonc", "arcana.json", "arcana.jsonc"]) {
               const source = path.join(dir, file)
               yield* Effect.logDebug(`loading config from ${source}`)
-              yield* merge(source, yield* loadFile(source, authEnv))
+              let loaded = yield* loadFile(source, authEnv)
+              if (!dirExecutable) loaded = stripExecutableConfig(loaded as Record<string, unknown>) as Info
+              yield* merge(source, loaded)
               result.agent ??= {}
               result.mode ??= {}
               result.plugin ??= []
@@ -495,6 +523,9 @@ export const layer = Layer.effect(
           }
 
           yield* ensureGitignore(dir).pipe(Effect.orDie)
+
+          // Untrusted project dirs: no npm install, no agents/commands/plugins from disk.
+          if (!dirExecutable) continue
 
           // Skip npm install in dev — @arcana/plugin is a workspace package.
           if (!InstallationLocal) {

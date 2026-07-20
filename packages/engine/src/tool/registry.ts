@@ -48,6 +48,7 @@ import { FSUtil } from "@arcana/core/fs-util"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Agent } from "../agent/agent"
 import { Skill } from "../skill"
+import { allowsExecutableConfigDir, evaluateWorkspaceTrust } from "@arcana/core/workspace/trust"
 import { Permission } from "@/permission"
 import { BackgroundJob } from "@/background/job"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -174,9 +175,18 @@ export const layer = Layer.effect(
         }
 
         const dirs = yield* config.directories()
-        const matches = dirs.flatMap((dir) =>
-          Glob.scanSync("{tool,tools}/*.{js,ts}", { cwd: dir, absolute: true, dot: true, symlink: true }),
-        )
+        // ARC-SEC-I02: do not dynamic-import project tools until the workspace is trusted.
+        const trust = evaluateWorkspaceTrust(ctx.worktree)
+        const matches = dirs.flatMap((dir) => {
+          if (!allowsExecutableConfigDir(dir, ctx.worktree, trust)) return []
+          // Prefer not following symlinks for project tool discovery when possible.
+          return Glob.scanSync("{tool,tools}/*.{js,ts}", {
+            cwd: dir,
+            absolute: true,
+            dot: true,
+            symlink: false,
+          })
+        })
         if (matches.length) yield* config.waitForDependencies()
         for (const match of matches) {
           const namespace = path.basename(match, path.extname(match))

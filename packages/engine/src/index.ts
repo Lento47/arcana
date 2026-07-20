@@ -180,6 +180,7 @@ const commandLoaders = {
   proxy: () => import("./cli/cmd/proxy").then((m) => m.ProxyCommand),
   team: () => import("./cli/cmd/team").then((m) => m.TeamCommand),
   audit: () => import("./cli/cmd/audit").then((m) => m.AuditCommand),
+  trust: () => import("./cli/cmd/trust").then((m) => m.TrustCommand),
 }
 
 async function loadCommandsFor(firstArg: string | undefined): Promise<CommandModule[]> {

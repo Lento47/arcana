@@ -102,7 +102,8 @@ class DeviceTokenSuccess extends Schema.Class<DeviceTokenSuccess>("DeviceTokenSu
 
 class DeviceTokenError extends Schema.Class<DeviceTokenError>("DeviceTokenError")({
   error: Schema.String,
-  error_description: Schema.String,
+  // Some servers omit description; keep polling resilient.
+  error_description: Schema.optional(Schema.String),
 }) {
   toPollResult(): PollResult {
     if (this.error === "authorization_pending") return new PollPending()
@@ -410,17 +411,40 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
         ),
       )
 
+      // Guard against HTML/SPA fallbacks (Pages serving index.html as 200).
+      const contentType = response.headers["content-type"] ?? response.headers["Content-Type"] ?? ""
+      if (typeof contentType === "string" && contentType.includes("text/html")) {
+        return yield* Effect.fail(
+          new AccountServiceError({
+            message:
+              "Device token endpoint returned HTML instead of JSON. Check that /auth/device/token is a Pages Function, not a static rewrite.",
+          }),
+        )
+      }
+
       const parsed = yield* HttpClientResponse.schemaBodyJson(DeviceToken)(response).pipe(
-        mapAccountServiceError("Failed to decode response"),
+        mapAccountServiceError("Failed to decode device token response"),
       )
 
       if (parsed instanceof DeviceTokenError) return parsed.toPollResult()
       const accessToken = parsed.access_token
 
-      const user = fetchUser(input.server, accessToken)
-      const orgs = fetchOrgs(input.server, accessToken)
-
-      const [account, remoteOrgs] = yield* Effect.all([user, orgs], { concurrency: 2 })
+      // After token success, resolve identity. Arcana site must expose /api/user
+      // (+ optional /api/orgs). Fall back to a synthetic account if orgs are empty
+      // or the identity endpoint is briefly unavailable after mint.
+      const account = yield* fetchUser(input.server, accessToken).pipe(
+        Effect.catch(() =>
+          Effect.succeed(
+            new User({
+              id: AccountID.make(`user_${String(accessToken).slice(0, 12)}`),
+              email: `device-${input.user.toLowerCase()}@arcana.local`,
+            }),
+          ),
+        ),
+      )
+      const remoteOrgs = yield* fetchOrgs(input.server, accessToken).pipe(
+        Effect.catch(() => Effect.succeed([] as readonly Org[])),
+      )
 
       // TODO: When there are multiple orgs, let the user choose
       const firstOrgID = remoteOrgs.length > 0 ? Option.some(remoteOrgs[0].id) : Option.none<OrgID>()
