@@ -15,19 +15,17 @@ Arcana began as an OpenCode fork. It's now faster, leaner, and more capable.
 
 ```sh
 arcana doctor            # check system health
-arcana doctor --web      # + checks for the web app
-arcana run "query"       # one-shot agent session
-arcana skills list       # browse available skills
-arcana memory sessions   # view past sessions
-arcana history list      # browse past sessions (alias)
-arcana cron list         # list scheduled jobs
-arcana gateway           # start chat bots (Telegram, Discord, Slack, WhatsApp)
-arcana learn list        # view accumulated knowledge
-arcana theme set dragon  # switch TUI theme
-arcana feedback "..."    # send feedback
-arcana web               # start the optional web app (packages/enterprise)
-arcana web --build       # build the web app instead of starting dev mode
+arcana run "query"       # agent session / TUI
+arcana console login     # pair with Arcana account (device flow)
+arcana trust             # trust this workspace for project plugins/tools
+arcana models            # list models
+arcana providers         # manage provider credentials
+arcana session list      # past sessions
+arcana stats             # usage stats
+arcana serve             # local headless server (loopback by default)
 ```
+
+**Docs:** [arcana.otnelhq.com/docs](https://arcana.otnelhq.com/docs) · in-repo index: [docs/README.md](docs/README.md)
 
 ## Install
 
@@ -45,29 +43,24 @@ bun install
 bun link                 # from packages/arcana/ — creates global `arcana` bin
 ```
 
-Single binary distribution; source build requires Node.js/Bun dependencies.
+Package name is **`arcana-ai`**; the binary is always **`arcana`**.
 
 ## Quick start
 
 ```sh
-# Set a provider key — works with any supported vendor
+# 1) Provider key (BYOK) — any supported vendor
 export OPENAI_API_KEY=sk-...        # or ANTHROPIC_API_KEY, GEMINI_API_KEY, etc.
 
-# Verify everything is ready
+# 2) Optional: pair with Arcana console + proxy license
+arcana console login                # https://arcana.otnelhq.com (device seal)
+
+# 3) Optional: trust this repo if it has project plugins/tools/MCP
+arcana trust
+
+# 4) Run
 arcana doctor
-
-# Launch the terminal UI
-arcana
-
-# Or use the CLI
 arcana run "explain this codebase"
-
-# Browse and resume past sessions
-arcana history list
-arcana history resume --id <session-id>
-
-# Search memory
-arcana memory search --query "deployment config"
+# or: arcana
 ```
 
 ### Gateway (chat bots)
@@ -323,10 +316,11 @@ Set a custom full-screen background image (truecolor terminals — Kitty, iTerm2
 
 ## Recent Changes
 
-See the [v0.3.4 QA report](docs/qa-fixes-2026-07-10.md) and repository history for details. Highlights:
+- **v0.3.5** — Workspace trust (`arcana trust`), console login ceremony + device-flow resilience, security hardenings (gateway allowlists, WhatsApp signatures, non-loopback serve auth, env_write sandbox), command-spine + theme polish, goals MVP. Public docs: https://arcana.otnelhq.com/docs
+- **v0.3.4** — QA fixes: session locking, secret redaction, streaming timeouts, command-spine UX. See [docs/qa-fixes-2026-07-10.md](docs/qa-fixes-2026-07-10.md).
+- **v0.3.0** — Command Spine shell, OpenTUI pin, plugin system, cron daemon, web dashboard.
 
-- **v0.3.4** — 101 QA fixes: atomic session locking, secret redaction, streaming timeouts, command-spine UX, toast stacking, and branding rebrand across ~60 files.
-- **v0.3.0** — Command Spine shell, OpenTUI 0.3.4 pin, plugin system (30+ hooks), cron daemon, web dashboard.
+Security remediation status: [docs/security-posture-2026-07-20.md](docs/security-posture-2026-07-20.md).
 
 ---
 
