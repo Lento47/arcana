@@ -102,9 +102,20 @@ export const ExperimentalPaths = {
 
 // Request/response shapes for the OAuth device-code login flow. Mirrors the
 // CLI `arcana console login` flow so the TUI can show the same UX.
-const ConsoleLoginRequest = Schema.Struct({
+//
+// Payload must tolerate a missing body: the generated SDK's buildClientParams
+// stripEmptySlots() drops `body: {}` when every field is optional/undefined,
+// so POST /experimental/console/login often arrives with payload === undefined
+// (error: "Expected ConsoleLoginRequest, got undefined"). Accept undefined/null
+// and treat them as {}.
+const ConsoleLoginRequestFields = Schema.Struct({
   server: Schema.optional(Schema.String),
-}).annotate({ identifier: "ConsoleLoginRequest" })
+})
+const ConsoleLoginRequest = Schema.Union([
+  ConsoleLoginRequestFields,
+  Schema.Undefined,
+  Schema.Null,
+]).annotate({ identifier: "ConsoleLoginRequest" })
 
 const ConsoleLoginResponse = Schema.Struct({
   code: Schema.String,
@@ -191,7 +202,11 @@ export const ExperimentalApi = HttpApi.make("experimental")
           }),
         ),
         HttpApiEndpoint.post("consoleLogin", ExperimentalPaths.consoleLogin, {
-          payload: ConsoleLoginRequest,
+          // Accept an empty/no body: the generated SDK strips `body: {}` when
+          // every field is optional, so a bare `.login({})` arrives with
+          // payload === undefined. HttpApiSchema.NoContent lets the engine
+          // treat that as a no-input POST (the default console URL applies).
+          payload: [HttpApiSchema.NoContent, ConsoleLoginRequest],
           success: described(ConsoleLoginResponse, "Device code + verification URL"),
           error: HttpApiError.InternalServerError,
         }).annotateMerge(
