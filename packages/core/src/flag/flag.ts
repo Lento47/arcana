@@ -55,6 +55,14 @@ export const Flag = {
   get ARCANA_DISABLE_PROJECT_CONFIG() {
     return truthy("ARCANA_DISABLE_PROJECT_CONFIG")
   },
+  /** Skip workspace trust checks (legacy open mode — ARC-SEC-I02 escape hatch). */
+  get ARCANA_DISABLE_WORKSPACE_TRUST() {
+    return truthy("ARCANA_DISABLE_WORKSPACE_TRUST")
+  },
+  /** Force-trust workspaces for this process (CI / scripted). Prefer `arcana trust` for interactive use. */
+  get ARCANA_TRUST_WORKSPACE() {
+    return truthy("ARCANA_TRUST_WORKSPACE")
+  },
   get ARCANA_EXPERIMENTAL_REFERENCES() {
     return enabledByExperimental("ARCANA_EXPERIMENTAL_REFERENCES")
   },

@@ -12,9 +12,21 @@ node_modules/
 .claude/scheduled_tasks.lock
 .arcana/.session-lock
 
-# Private keys
+# Private keys / signing material
 *-private.pem
 arcana-signing-private.pem
+*.pem
+!**/public/**/*.pem
+
+# Secrets and local credential dumps (never commit)
+tmp_admin*.txt
+tmp_*key*.txt
+tmp_*secret*.txt
+*secret*.txt
+*credentials*.txt
+*.key
+!*.key.ts
+!*.key.tsx
 
 # Build output
 dist/
@@ -28,13 +40,18 @@ gen/
 .env
 .env.*
 !.env.example
+!.env.*.example
 
-# Logs
+# Logs / local debug
 *.log
 *.log.*
+mouse-debug.log
+stdin-debug.log
+tui-boot*.log
 
 # IDE / Editor
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
@@ -42,6 +59,7 @@ gen/
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # Packages (tarballs, tgz)
 *.tgz
@@ -49,8 +67,18 @@ Thumbs.db
 # Temporary / Research
 temporary-*.md
 research/
+tmp/
+temp/
+*.tmp
+*.bak
 
+# Cloudflare / Workers local state
 .wrangler/
+.dev.vars
+.dev.vars.*
 
 # Local project memory (Claude session notes, not uploaded)
 .memory/
+
+# Claude local worktrees / session junk
+.claude/worktrees/
