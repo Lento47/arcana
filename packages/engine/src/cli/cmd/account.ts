@@ -12,10 +12,29 @@ const openBrowser = (url: string) => Effect.promise(() => open(url).catch(() => 
 const println = (msg: string) => Effect.sync(() => UI.println(msg))
 
 const dim = (value: string) => UI.Style.TEXT_DIM + value + UI.Style.TEXT_NORMAL
+const hi = (value: string) => UI.Style.TEXT_HIGHLIGHT + value + UI.Style.TEXT_NORMAL
+const bold = (value: string) => UI.Style.TEXT_HIGHLIGHT_BOLD + value + UI.Style.TEXT_NORMAL
+const ok = (value: string) => UI.Style.TEXT_SUCCESS + value + UI.Style.TEXT_NORMAL
+const bad = (value: string) => UI.Style.TEXT_DANGER + value + UI.Style.TEXT_NORMAL
+const warn = (value: string) => UI.Style.TEXT_WARNING + value + UI.Style.TEXT_NORMAL
 
 const activeSuffix = (isActive: boolean) => (isActive ? dim(" (active)") : "")
 
-export const defaultConsoleUrl = "https://console.opencode.ai"
+/**
+ * Product origin for Arcana web auth (site serves sign-in at /auth).
+ * CLI device flow: POST {origin}/auth/device/code · poll /auth/device/token.
+ * Override with ARCANA_CONSOLE_URL when needed.
+ */
+export const ARCANA_CONSOLE_DEFAULT = "https://arcana.otnelhq.com"
+
+/** Default console URL for login. Override with env `ARCANA_CONSOLE_URL`. */
+export function getDefaultConsoleUrl(): string {
+  const fromEnv = process.env.ARCANA_CONSOLE_URL?.trim()
+  return fromEnv || ARCANA_CONSOLE_DEFAULT
+}
+
+/** @deprecated Prefer getDefaultConsoleUrl() — kept for tests/imports. */
+export const defaultConsoleUrl = ARCANA_CONSOLE_DEFAULT
 
 export const formatAccountLabel = (account: { email: string; url: string }, isActive: boolean) =>
   `${account.email} ${dim(account.url)}${activeSuffix(isActive)}`
@@ -38,18 +57,94 @@ const isActiveOrgChoice = (
   choice: { accountID: AccountID; orgID: OrgID },
 ) => Option.isSome(active) && active.value.id === choice.accountID && active.value.active_org_id === choice.orgID
 
+const blank = () => println("")
+
+/** Horizontal rule used under the banner / around the seal card. */
+const rule = (width: number) => "─".repeat(Math.max(width, 8))
+
+/**
+ * Center `text` inside a field of `width` (pad left/right with spaces).
+ * Width is measured in string length (ANSI-free content only).
+ */
+const center = (text: string, width: number) => {
+  const pad = Math.max(0, width - text.length)
+  const left = Math.floor(pad / 2)
+  const right = pad - left
+  return " ".repeat(left) + text + " ".repeat(right)
+}
+
+/** Banner for device-flow login — Arcana voice, not generic clack. */
+export function formatLoginBanner(): string[] {
+  return [
+    "",
+    bold("  ⛧  ARCANA"),
+    dim("     open the seal"),
+    "",
+  ]
+}
+
+/**
+ * Ritual steps: seal is the hero (boxed code), gate is the link.
+ * Pure string lines so tests can assert voice + URL hygiene without a TTY.
+ *
+ * Box math: interior is exactly `inner` cells wide.
+ * Top border content is `─ seal ` (7) + remaining dashes (inner - 7).
+ */
+export function formatLoginSteps(input: { url: string; code: string }): string[] {
+  const code = input.code.trim()
+  const inner = Math.max(code.length + 6, 20)
+  // "┌─ seal " then dashes then "┐" — label sits in the top border.
+  // Leading "─ " (2) + "seal" (4) + " " (1) = 7 cells before remaining dashes.
+  const rest = Math.max(0, inner - 7)
+  const top = dim("  ┌─ ") + hi("seal") + dim(" " + rule(rest) + "┐")
+  const mid = dim("  │") + bold(center(code, inner)) + dim("│")
+  const empty = dim("  │" + " ".repeat(inner) + "│")
+  const bot = dim("  └" + rule(inner) + "┘")
+
+  return [
+    top,
+    empty,
+    mid,
+    empty,
+    bot,
+    "",
+    dim("  ◆  gate"),
+    "     " + hi(input.url),
+    "",
+    dim("  ·  speak the seal on the page if the browser stays dark"),
+    "",
+  ]
+}
+
+/** Closing lines after a successful bind. */
+export function formatLoginSuccess(email: string): string[] {
+  return [
+    "",
+    ok("  ⛧  bound") + dim("  ·  ") + bold(email),
+    dim("     welcome back. the seal holds."),
+    "",
+  ]
+}
+
 const loginEffect = Effect.fn("login")(function* (url: string) {
   const service = yield* Account.Service
 
-  yield* Prompt.intro("Log in")
+  for (const line of formatLoginBanner()) yield* println(line)
+
   const login = yield* service.login(url)
 
-  yield* Prompt.log.info("Go to: " + login.url)
-  yield* Prompt.log.info("Enter code: " + login.user)
+  for (const line of formatLoginSteps({ url: login.url, code: login.user })) {
+    yield* println(line)
+  }
+
   yield* openBrowser(login.url)
 
-  const s = Prompt.spinner()
-  yield* s.start("Waiting for authorization...")
+  // Braille dots (same family as the TUI spinner) — not clack's circle.
+  const s = Prompt.spinner({
+    frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+    delay: 80,
+  })
+  yield* s.start(dim("awaiting the seal…"))
 
   const poll = (wait: Duration.Duration): Effect.Effect<PollResult, AccountError> =>
     Effect.gen(function* () {
@@ -68,14 +163,16 @@ const loginEffect = Effect.fn("login")(function* (url: string) {
   yield* Match.valueTags(result, {
     PollSuccess: (r) =>
       Effect.gen(function* () {
-        yield* s.stop("Logged in as " + r.email)
-        yield* Prompt.outro("Done")
+        // Clear spinner with a quiet tick; the real welcome is formatLoginSuccess.
+        yield* s.stop(ok("✦") + dim("  seal accepted"))
+        for (const line of formatLoginSuccess(r.email)) yield* println(line)
       }),
-    PollExpired: () => s.stop("Device code expired", 1),
-    PollDenied: () => s.stop("Authorization denied", 1),
-    PollError: (r) => s.stop("Error: " + String(r.cause), 1),
-    PollPending: () => s.stop("Unexpected state", 1),
-    PollSlow: () => s.stop("Unexpected state", 1),
+    PollExpired: () =>
+      s.stop(bad("◌  the seal faded") + dim("  — run ") + hi("arcana console login") + dim(" again"), 1),
+    PollDenied: () => s.stop(bad("⊘  refused") + dim("  — the gate stayed shut"), 1),
+    PollError: (r) => s.stop(bad("⊘  binding failed") + dim(`  — ${String(r.cause)}`), 1),
+    PollPending: () => s.stop(warn("◌  unexpected pending state"), 1),
+    PollSlow: () => s.stop(warn("◌  unexpected slow state"), 1),
   })
 })
 
@@ -185,7 +282,7 @@ export const LoginCommand = effectCmd({
     }),
   handler: Effect.fn("Cli.account.login")(function* (args) {
     UI.empty()
-    yield* Effect.orDie(loginEffect(args.url ?? defaultConsoleUrl))
+    yield* Effect.orDie(loginEffect(args.url ?? getDefaultConsoleUrl()))
   }),
 })
 

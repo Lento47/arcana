@@ -411,9 +411,36 @@ export const RunCommand: CommandModule = {
     async function runTurn(userInput: string): Promise<string> {
       sessionMgr?.addUser(userInput)
 
-      const baseMessages = [{ role: "system" as const, content: systemPrompt }]
+      // Inject active goal every turn (CLI path).
+      let turnSystem = systemPrompt
+      try {
+        const { formatActiveGoalBlock } = await import("@arcana/core/session/goal")
+        const sid =
+          sessionMgr?.id()
+          || (typeof process.env.ARCANA_SESSION_ID === "string" ? process.env.ARCANA_SESSION_ID : "")
+          || `cli-${process.cwd().replace(/[^a-zA-Z0-9]+/g, "_").slice(-48)}`
+        if (!process.env.ARCANA_SESSION_ID) process.env.ARCANA_SESSION_ID = sid
+        turnSystem =
+          systemPrompt
+          + "\n\n"
+          + formatActiveGoalBlock({
+            sessionID: sid,
+            sessionAgent: "build",
+            actorAgent: "build",
+            actorRole: "primary",
+          })
+      } catch {
+        /* optional */
+      }
+
+      const baseMessages = [{ role: "system" as const, content: turnSystem }]
       const history = sessionMgr
-        ? sessionMgr.getHistory()
+        ? (() => {
+            const h = sessionMgr!.getHistory()
+            // Refresh first system message with current goal block
+            if (h[0]?.role === "system") return [{ role: "system" as const, content: turnSystem }, ...h.slice(1)]
+            return [{ role: "system" as const, content: turnSystem }, ...h]
+          })()
         : [...baseMessages, { role: "user" as const, content: userInput }]
 
       // Stream tokens in REPL mode (async iterable not available; use callback)

@@ -186,6 +186,48 @@ function assertContrast(
   const ratio = contrastRatio(value, surface)
   if (ratio < minRatio) throw new Error(`${String(token)} contrast ${ratio.toFixed(2)} < ${minRatio}`)
 }
+/** RGB distance so spine kinds don't all collapse to the same fallback color. */
+function colorDistance(
+  a: { r: number; g: number; b: number },
+  b: { r: number; g: number; b: number },
+) {
+  const dr = (a.r - b.r) * 255
+  const dg = (a.g - b.g) * 255
+  const db = (a.b - b.b) * 255
+  return Math.sqrt(dr * dr + dg * dg + db * db)
+}
+
+test.each(BRAND_THEMES)("%s dark spine kinds stay visually distinct", (name: string) => {
+  const theme = resolveTheme(DEFAULT_THEMES[name]!, "dark")
+  // These pairs used to share one fallback (ask/run/prompt → accent, plan/patch → secondary).
+  const pairs: Array<[keyof Theme, keyof Theme]> = [
+    ["spineAsk", "spineRun"],
+    ["spineAsk", "spinePrompt"],
+    ["spineRun", "spinePrompt"],
+    ["spinePlan", "spinePatch"],
+    ["spineBrand", "spineAsk"],
+    ["spineInspect", "spinePatch"],
+  ]
+  for (const [left, right] of pairs) {
+    const a = theme[left] as { r: number; g: number; b: number }
+    const b = theme[right] as { r: number; g: number; b: number }
+    const d = colorDistance(a, b)
+    expect(d, `${name}: ${String(left)} vs ${String(right)} distance ${d.toFixed(1)}`).toBeGreaterThan(25)
+  }
+})
+
+test("spine fallbacks do not collapse ask/run/prompt when tokens omitted", () => {
+  const bare = structuredClone(DEFAULT_THEMES.arcana!)
+  // Strip all optional spine* keys so resolveTheme uses fallbacks only.
+  for (const key of Object.keys(bare.theme)) {
+    if (key.startsWith("spine")) delete (bare.theme as Record<string, unknown>)[key]
+  }
+  const theme = resolveTheme(bare, "dark")
+  expect(colorDistance(theme.spineAsk, theme.spineRun)).toBeGreaterThan(20)
+  expect(colorDistance(theme.spinePlan, theme.spinePatch)).toBeGreaterThan(20)
+  expect(colorDistance(theme.spineBrand, theme.text)).toBeGreaterThan(15)
+})
+
 test.each(BRAND_THEMES)("%s theme defines a brand-surface accent token", (name: string) => {
   const json = DEFAULT_THEMES[name]
   expect(json).toBeDefined()

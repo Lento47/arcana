@@ -15,6 +15,7 @@ import { Effect, Exit, Schema, Scope } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@arcana/core/database/database"
+import { getSessionGoal, setSessionGoal } from "@arcana/core/session/goal"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>
@@ -218,6 +219,26 @@ export const TaskTool = Tool.define(
             ),
           ],
         }))
+
+      // Inherit parent session goal so subagent turns see the same active goal
+      // and mutation gates align with the parent objective.
+      yield* Effect.sync(() => {
+        const parentGoal = getSessionGoal(ctx.sessionID)
+        if (parentGoal.status === "unset") return
+        setSessionGoal(nextSession.id, {
+          goal: parentGoal.goal,
+          scope: parentGoal.scope,
+          priority: parentGoal.priority,
+          status:
+            parentGoal.status === "complete" || parentGoal.status === "complete_unverified"
+              ? parentGoal.status
+              : "in_progress",
+          boardSessionID: parentGoal.boardSessionID,
+          openCards: parentGoal.openCards,
+          doneCards: parentGoal.doneCards,
+          blockedCards: parentGoal.blockedCards,
+        })
+      })
 
       const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID }).pipe(
         Effect.provideService(Database.Service, database),

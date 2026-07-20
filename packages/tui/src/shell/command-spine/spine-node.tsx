@@ -2,7 +2,13 @@ import { For, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { SigilSpinner } from "../../component/sigil-spinner"
 import { ShimmerText } from "../../component/shimmer-text"
-import { spineTone, type SpineKind, type SpineLayout } from "./spine-types"
+import {
+  compactSpineElapsed,
+  spineElapsedMax,
+  spineTone,
+  type SpineKind,
+  type SpineLayout,
+} from "./spine-types"
 
 /** Max characters for the tool/actor label column. */
 const LABEL_WIDTH = 8
@@ -48,6 +54,8 @@ export function SpineNode(props: {
   actor?: string
   layout: SpineLayout
   focused?: boolean
+  /** Optional duration from the entry — shown muted after the label/summary. */
+  elapsed?: string
   /** Optional disclosure chevron for collapsible rows (e.g. thinking). */
   disclosure?: "▸" | "▾" | ""
   /** True while reasoning content is still streaming — shows animated sigil spinner. */
@@ -63,6 +71,7 @@ export function SpineNode(props: {
   const summary = props.summary?.trim() ?? ""
   const actor = props.actor?.trim()
   const showActor = !!actor && (props.kind === "agent" || actor === "you")
+  const elapsedText = compactSpineElapsed(props.elapsed, spineElapsedMax(props.layout))
   const summaryColor = () => {
     if (props.kind === "fail") return t.spineFail as any
     if (props.kind === "think") return t.spineThink as any
@@ -71,13 +80,16 @@ export function SpineNode(props: {
   const isThinkStreaming = () => props.kind === "think" && props.streaming === true
   const disclosure = props.disclosure ?? ""
 
-  // Think / label-less rows: summary fills the line (+ optional chevron).
+  // Think / label-less rows: summary fills the line (+ optional chevron + elapsed).
   if (!showLabel) {
     const summaryBody = (
       <box flexGrow={1} minWidth={0} flexShrink={1}>
         <text fg={summaryColor()} wrapMode="word">
           {summary || " "}
           {disclosure ? ` ${disclosure}` : ""}
+          {elapsedText ? (
+            <span style={{ fg: t.spineGutterElapsed as any }}>{` · ${elapsedText}`}</span>
+          ) : null}
         </text>
       </box>
     )
@@ -96,8 +108,16 @@ export function SpineNode(props: {
             <text fg={t.spineDiffMuted as any}>·</text>
           </box>
         </Show>
-        <Show when={isThinkStreaming()} fallback={summaryBody}>
-          <ShimmerText text={summary || "Thinking"} active={true} background={t.backgroundPanel as any} />
+        <Show
+          when={isThinkStreaming()}
+          fallback={summaryBody}
+        >
+          <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
+            <ShimmerText text={summary || "Thinking"} active={true} background={t.backgroundPanel as any} />
+            <Show when={elapsedText}>
+              <text fg={t.spineGutterElapsed as any} wrapMode="none">{` · ${elapsedText}`}</text>
+            </Show>
+          </box>
         </Show>
       </box>
     )
@@ -110,6 +130,9 @@ export function SpineNode(props: {
         <box flexShrink={0}>
           <text fg={tone as any} wrapMode="none">{label}</text>
         </box>
+        <Show when={elapsedText}>
+          <text fg={t.spineGutterElapsed as any} wrapMode="none">{` · ${elapsedText}`}</text>
+        </Show>
         <Show when={showActor}>
           <box flexShrink={0} width={props.kind === "agent" ? 12 : 5}>
             <text fg={t.spineActor as any}>
@@ -168,6 +191,11 @@ export function SpineNode(props: {
           <PatchSummaryText summary={summary} disclosure={disclosure} theme={t} />
         </Show>
       </box>
+      <Show when={elapsedText}>
+        <box flexShrink={0}>
+          <text fg={t.spineGutterElapsed as any} wrapMode="none">{` · ${elapsedText}`}</text>
+        </box>
+      </Show>
     </box>
   )
 }

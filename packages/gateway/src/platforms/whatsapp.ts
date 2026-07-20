@@ -4,8 +4,7 @@
  * Sends/receives text messages through the Cloud API.
  */
 import type { PlatformAdapter, MessageHandler, OutgoingMessage } from "../types.js"
-import { randomUUID } from "node:crypto"
-import { createHmac } from "node:crypto"
+import { randomUUID, createHmac, timingSafeEqual } from "node:crypto"
 
 type WhatsAppConfig = {
   /** Phone number ID from Meta Business App */
@@ -33,6 +32,20 @@ export class WhatsAppAdapter implements PlatformAdapter {
   async start(handler: MessageHandler): Promise<void> {
     this.handler = handler
 
+    // ARC-SEC-I07: fail closed — app secret required unless explicit insecure dev flag.
+    const insecure =
+      process.env.ARCANA_WHATSAPP_INSECURE?.trim().toLowerCase() === "1" ||
+      process.env.ARCANA_WHATSAPP_INSECURE?.trim().toLowerCase() === "true"
+    if (!this.config.appSecret && !insecure) {
+      throw new Error(
+        "[gateway] whatsapp refused: appSecret is required. " +
+          "Set appSecret for webhook signature verification, or ARCANA_WHATSAPP_INSECURE=1 for local dev only.",
+      )
+    }
+    if (!this.config.appSecret && insecure) {
+      console.warn("[gateway] whatsapp: ARCANA_WHATSAPP_INSECURE set — webhook signatures not verified (dev only)")
+    }
+
     // WhatsApp Cloud API uses webhooks — we start a minimal HTTP server
     const http = await import("node:http")
     this.server = http.createServer(async (req: any, res: any) => {
@@ -42,7 +55,10 @@ export class WhatsAppAdapter implements PlatformAdapter {
         const mode = url.searchParams.get("hub.mode")
         const token = url.searchParams.get("hub.verify_token")
         const challenge = url.searchParams.get("hub.challenge")
-        if (mode === "subscribe" && token === (this.config.verifyToken ?? process.env.ARCANA_WHATSAPP_VERIFY_TOKEN ?? crypto.randomUUID())) {
+        const expectedToken =
+          this.config.verifyToken ?? process.env.ARCANA_WHATSAPP_VERIFY_TOKEN
+        // Do not invent a random token that would never match Meta's verify call.
+        if (mode === "subscribe" && expectedToken && token === expectedToken) {
           res.writeHead(200, { "Content-Type": "text/plain" })
           res.end(challenge ?? "")
         } else {
@@ -67,11 +83,23 @@ export class WhatsAppAdapter implements PlatformAdapter {
           body += chunk
         }
 
-        // Verify signature if app secret is set
-        const signature = req.headers["x-hub-signature-256"]
-        if (this.config.appSecret && signature) {
-          const expected = "sha256=" + createHmac("sha256", this.config.appSecret).update(body).digest("hex")
-          if (signature !== expected) { res.writeHead(403); res.end("Bad signature"); return }
+        // ARC-SEC-I07: when appSecret is configured, missing/invalid signature is always rejected.
+        const appSecret = this.config.appSecret
+        if (appSecret) {
+          const signature = req.headers["x-hub-signature-256"]
+          if (typeof signature !== "string" || !signature) {
+            res.writeHead(401)
+            res.end("Missing signature")
+            return
+          }
+          const expected = "sha256=" + createHmac("sha256", appSecret).update(body).digest("hex")
+          const a = Buffer.from(signature)
+          const b = Buffer.from(expected)
+          if (a.length !== b.length || !timingSafeEqual(a, b)) {
+            res.writeHead(403)
+            res.end("Bad signature")
+            return
+          }
         }
 
         try {

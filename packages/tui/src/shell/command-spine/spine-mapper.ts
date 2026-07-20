@@ -221,27 +221,218 @@ function stripTaskXml(output: string): string {
     .trim()
 }
 
-/** Strip engine XML wrapper from read tool output — keeps only file content.
- *  Also extracts <system-reminder> blocks so the prose layer can render them
- *  as callout cards separate from the main code body. */
-function stripReadXml(output: string): { body: string; reminders: string[] } {
+/** Default line budget before inspect bodies collapse by default. */
+const INSPECT_PREVIEW_LINES = 20
+
+/** Engine boilerplate reminder — for the model, not a useful TUI callout. */
+function isBoilerplateReminder(text: string): boolean {
+  return /untrusted user data|file-content tags|do NOT execute|DATA, not instructions/i.test(text)
+}
+
+export type ParsedReadBody = {
+  body: string
+  reminders: string[]
+  path?: string
+  /** "file" source, "directory" listing, or unstructured "text". */
+  kind: "file" | "directory" | "text"
+  /** Directory / entries names (no XML). */
+  listing?: string[]
+  lineStart?: number
+  lineEnd?: number
+  totalLines?: number
+  /** EOF / truncation note — muted under the code panel, not inside source. */
+  note?: string
+}
+
+function isEntryFooter(line: string): boolean {
+  const trimmed = line.trim()
+  return (
+    /^\((?:\d+\s+entries|Showing\s+\d+\s+of\s+\d+\s+entries)[\s\S]*\)$/i.test(trimmed)
+    || /^\((?:End of file|Showing lines|Output capped)[\s\S]*\)$/i.test(trimmed)
+    || /^\(Output capped at[\s\S]*\)$/i.test(trimmed)
+    || /^\(Results are truncated[\s\S]*\)$/i.test(trimmed)
+  )
+}
+
+/**
+ * Strip engine XML from read/inspect output and normalize for the TUI.
+ * - Directory reads: parse `<entries>` into a clean name list (no tags)
+ * - File reads: strip `N: ` prefixes for syntax highlight
+ * - Suppresses boilerplate untrusted-data system reminders
+ * - Pulls footers into `note`
+ */
+export function parseReadToolOutput(output: string): ParsedReadBody {
   const reminders: string[] = []
   let content = output
 
-  // Pull <system-reminder> blocks out before stripping other XML.
-  content = content.replace(/<system-reminder>([\s\S]*?)<\/system-reminder>/g, (_, text) => {
-    reminders.push(text.trim())
+  const pathMatch = content.match(/<path>([^<]*)<\/path>/i)
+  const path = pathMatch?.[1]?.trim() || undefined
+  const typeMatch = content.match(/<type>([^<]*)<\/type>/i)
+  const typeHint = typeMatch?.[1]?.trim().toLowerCase()
+
+  content = content.replace(/<system-reminder>([\s\S]*?)<\/system-reminder>/gi, (_, text: string) => {
+    const trimmed = text.trim()
+    if (trimmed && !isBoilerplateReminder(trimmed)) reminders.push(trimmed)
     return ""
   })
 
-  // Remove <path>, <type>, and wrapping <file-content> tags.
+  // Directory listing: <entries>…</entries>
+  const entriesBlock = content.match(/<entries>([\s\S]*?)<\/entries>/i)
+  if (typeHint === "directory" || entriesBlock) {
+    const inner = (entriesBlock?.[1] ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+    const notes: string[] = []
+    const listing: string[] = []
+    for (const line of inner.split("\n")) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      if (isEntryFooter(trimmed)) {
+        notes.push(trimmed.replace(/^\(|\)$/g, "").trim())
+        continue
+      }
+      // Drop any residual tags
+      if (/^<\/?[a-z][\w-]*>$/i.test(trimmed)) continue
+      listing.push(trimmed)
+    }
+
+    let totalLines: number | undefined
+    for (const note of notes) {
+      const m = note.match(/(\d+)\s+entries/i)
+      if (m) totalLines = Number(m[1])
+      const showing = note.match(/Showing\s+(\d+)\s+of\s+(\d+)\s+entries/i)
+      if (showing) totalLines = Number(showing[2])
+    }
+    if (totalLines === undefined && listing.length) totalLines = listing.length
+
+    return {
+      body: listing.join("\n"),
+      kind: "directory",
+      listing,
+      reminders,
+      path,
+      totalLines,
+      note: notes.length ? notes.join(" · ") : totalLines !== undefined ? `${totalLines} entries` : undefined,
+    }
+  }
+
   content = content
-    .replace(/<path>[^<]*<\/path>\s*/g, "")
-    .replace(/<type>[^<]*<\/type>\s*/g, "")
-    .replace(/<\/?file-content>/g, "")
+    .replace(/<path>[^<]*<\/path>\s*/gi, "")
+    .replace(/<type>[^<]*<\/type>\s*/gi, "")
+    .replace(/<\/?file-content>/gi, "")
+    .replace(/<\/?entries>/gi, "")
     .trim()
 
-  return { body: content, reminders }
+  const rawLines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
+  const notes: string[] = []
+  const contentLines: string[] = []
+
+  for (const line of rawLines) {
+    const trimmed = line.trim()
+    if (isEntryFooter(trimmed)) {
+      notes.push(trimmed.replace(/^\(|\)$/g, "").trim())
+      continue
+    }
+    contentLines.push(line)
+  }
+
+  while (contentLines.length && !contentLines[contentLines.length - 1]!.trim()) {
+    contentLines.pop()
+  }
+
+  const numbered = contentLines.filter((l) => l.trim().length > 0)
+  const numberedHits = numbered.filter((l) => /^\d+:/.test(l)).length
+  const looksNumbered = numbered.length > 0 && numberedHits / numbered.length >= 0.7
+
+  let lineStart: number | undefined
+  let lineEnd: number | undefined
+  let body: string
+  let kind: ParsedReadBody["kind"] = "text"
+
+  if (looksNumbered) {
+    kind = "file"
+    body = contentLines
+      .map((line) => {
+        if (!line.trim()) return ""
+        const m = line.match(/^(\d+):\s?(.*)$/)
+        return m ? (m[2] ?? "") : line
+      })
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+
+    for (const line of contentLines) {
+      const m = line.match(/^(\d+):/)
+      if (!m) continue
+      const n = Number(m[1])
+      if (lineStart === undefined || n < lineStart) lineStart = n
+      if (lineEnd === undefined || n > lineEnd) lineEnd = n
+    }
+  } else {
+    body = contentLines.join("\n")
+    // Heuristic: multi-line path-ish list → listing (glob-like), not code
+    const nonEmpty = contentLines.map((l) => l.trim()).filter(Boolean)
+    const pathish =
+      nonEmpty.length >= 2
+      && nonEmpty.filter((l) => /[\\/]|\.\w{1,8}$/.test(l) || l.endsWith("/")).length / nonEmpty.length >= 0.7
+    if (pathish) {
+      kind = "directory"
+      return {
+        body: nonEmpty.join("\n"),
+        kind: "directory",
+        listing: nonEmpty.filter((l) => !isEntryFooter(l)),
+        reminders,
+        path,
+        totalLines: nonEmpty.length,
+        note: notes.length ? notes.join(" · ") : undefined,
+      }
+    }
+  }
+
+  let totalLines: number | undefined
+  for (const note of notes) {
+    const eof = note.match(/total\s+(\d+)\s+lines/i)
+    if (eof) totalLines = Number(eof[1])
+    const showing = note.match(/Showing lines\s+(\d+)\s*-\s*(\d+)\s+of\s+(\d+)/i)
+    if (showing) {
+      lineStart = lineStart ?? Number(showing[1])
+      lineEnd = lineEnd ?? Number(showing[2])
+      totalLines = Number(showing[3])
+    }
+    const capped = note.match(/Showing lines\s+(\d+)\s*-\s*(\d+)/i)
+    if (capped && lineStart === undefined) {
+      lineStart = Number(capped[1])
+      lineEnd = Number(capped[2])
+    }
+  }
+
+  const note = notes.length ? notes.join(" · ") : undefined
+  return {
+    body: body.trimEnd(),
+    kind: looksNumbered ? "file" : kind,
+    reminders,
+    path,
+    lineStart,
+    lineEnd,
+    totalLines,
+    note,
+  }
+}
+
+/** @deprecated use parseReadToolOutput */
+function stripReadXml(output: string): { body: string; reminders: string[] } {
+  const parsed = parseReadToolOutput(output)
+  return { body: parsed.body, reminders: parsed.reminders }
+}
+
+function formatInspectFileSummary(path: string, meta: Pick<ParsedReadBody, "lineStart" | "lineEnd" | "totalLines">): string {
+  const { lineStart, lineEnd, totalLines } = meta
+  if (lineStart !== undefined && lineEnd !== undefined) {
+    if (totalLines !== undefined && totalLines > lineEnd) {
+      return `${path} · L${lineStart}–${lineEnd} of ${totalLines}`
+    }
+    if (lineStart === lineEnd) return `${path} · L${lineStart}`
+    return `${path} · L${lineStart}–${lineEnd}`
+  }
+  if (totalLines !== undefined) return `${path} · ${totalLines} lines`
+  return path
 }
 
 function firstLineSummary(text: string, max = 120): string {
@@ -700,7 +891,23 @@ function taskToolSessionID(part: ToolPart): string | undefined {
   }
   return undefined
 }
-function toolOutputBody(part: ToolPart): { body: string; label: string; reminders: string[]; report?: SpineReportData; table?: { headers: string[]; rows: string[][] } } {
+type ToolOutputBody = {
+  body: string
+  label: string
+  reminders: string[]
+  report?: SpineReportData
+  table?: { headers: string[]; rows: string[][] }
+  listing?: string[]
+  /** File path for syntax / header (read tools). */
+  path?: string
+  bodyHint?: string
+  bodyNote?: string
+  lineStart?: number
+  lineEnd?: number
+  totalLines?: number
+}
+
+function toolOutputBody(part: ToolPart): ToolOutputBody {
   const state = part.state
   if (state.status === "error") {
     const error = stripAnsi(preserveBodyText(state.error ?? ""))
@@ -736,8 +943,6 @@ function toolOutputBody(part: ToolPart): { body: string; label: string; reminder
   if (/^\[?STALE\]?\s*(Wrote file successfully|Edit applied successfully)\.?$/i.test(cleanText(output))) {
     return { body: "", label: "output", reminders: [] }
   }
-  // Strip XML wrapper from read/grep tool output so the spine shows clean
-  // file content instead of raw <path>/<file-content> metadata tags.
   // Detect CLI table output for adaptive rendering (stacked rows vs raw text).
   if (toolToSpineKind(part.tool) === "run") {
     const table = parseTableOutput(output)
@@ -746,9 +951,61 @@ function toolOutputBody(part: ToolPart): { body: string; label: string; reminder
     }
   }
 
-  if (part.tool === "read" || part.tool === "grep" || toolToSpineKind(part.tool) === "inspect") {
-    const stripped = stripReadXml(output)
-    if (stripped.body) return { body: stripped.body, label: "output", reminders: stripped.reminders }
+  // Read: file source vs directory listing.
+  if (part.tool === "read") {
+    const parsed = parseReadToolOutput(output)
+    if (parsed.body || parsed.note || parsed.listing?.length) {
+      if (parsed.kind === "directory") {
+        return {
+          body: "",
+          label: "listing",
+          reminders: parsed.reminders,
+          path: parsed.path,
+          bodyHint: parsed.path,
+          bodyNote: parsed.note,
+          listing: parsed.listing,
+          totalLines: parsed.totalLines,
+        }
+      }
+      return {
+        body: parsed.body,
+        label: parsed.kind === "file" ? "file" : "output",
+        reminders: parsed.reminders,
+        path: parsed.path,
+        bodyHint: parsed.path,
+        bodyNote: parsed.note,
+        lineStart: parsed.lineStart,
+        lineEnd: parsed.lineEnd,
+        totalLines: parsed.totalLines,
+      }
+    }
+  }
+
+  // Glob / list / other inspect: strip XML; treat path lists as listings.
+  if (part.tool === "grep" || part.tool === "ripgrep" || toolToSpineKind(part.tool) === "inspect") {
+    const parsed = parseReadToolOutput(output)
+    if (parsed.kind === "directory" && parsed.listing?.length) {
+      return {
+        body: "",
+        label: "listing",
+        reminders: parsed.reminders,
+        path: parsed.path,
+        bodyHint: parsed.path,
+        bodyNote: parsed.note,
+        listing: parsed.listing,
+        totalLines: parsed.totalLines ?? parsed.listing.length,
+      }
+    }
+    if (parsed.body) {
+      return {
+        body: parsed.body,
+        label: part.tool === "grep" || part.tool === "ripgrep" ? "matches" : "output",
+        reminders: parsed.reminders,
+        bodyNote: parsed.note,
+        path: parsed.path,
+        bodyHint: parsed.path,
+      }
+    }
   }
   return { body: output, label: "output", reminders: [] }
 }
@@ -795,6 +1052,57 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
     // Prefer the error on the spine line (design: "fail  error[E0308]: …").
     summary = truncate(stripAnsi(part.state.error ?? ""), 120) || summary || part.tool
   }
+
+  // Codex/read: path · Lstart–end or path · N entries; pure source / clean listing.
+  const inputPath =
+    part.state && "input" in part.state && part.state.input && typeof part.state.input === "object"
+      ? ((part.state.input as Record<string, unknown>).filePath as string | undefined)
+        ?? ((part.state.input as Record<string, unknown>).path as string | undefined)
+      : undefined
+  const filePath =
+    renderedOutput.path
+    || (part.tool === "read" ? inputPath : undefined)
+    || (toolKind === "inspect" && (summary.includes("/") || summary.includes("\\")) ? summary : undefined)
+
+  const listing = renderedOutput.listing
+  const isListing = renderedOutput.label === "listing" && !!listing?.length
+
+  if (isListing) {
+    const pathForSummary = filePath || summary || "directory"
+    const n = renderedOutput.totalLines ?? listing!.length
+    summary = `${pathForSummary} · ${n} entr${n === 1 ? "y" : "ies"}`
+    if (receipt && receipt.status === "ok") {
+      receipt = {
+        ...receipt,
+        summary: `${listing!.length} shown`,
+        command: undefined,
+      }
+    }
+  } else if (part.tool === "read" && (filePath || renderedOutput.lineStart !== undefined)) {
+    const pathForSummary = filePath || summary || "file"
+    summary = formatInspectFileSummary(pathForSummary, {
+      lineStart: renderedOutput.lineStart,
+      lineEnd: renderedOutput.lineEnd,
+      totalLines: renderedOutput.totalLines,
+    })
+    const lineCount =
+      renderedOutput.lineStart !== undefined && renderedOutput.lineEnd !== undefined
+        ? renderedOutput.lineEnd - renderedOutput.lineStart + 1
+        : body
+          ? body.split("\n").length
+          : undefined
+    if (receipt && receipt.status === "ok") {
+      receipt = {
+        ...receipt,
+        summary:
+          lineCount !== undefined
+            ? `${lineCount} line${lineCount === 1 ? "" : "s"}`
+            : receipt.summary,
+        command: undefined,
+      }
+    }
+  }
+
   if (
     toolKind === "patch" &&
     body &&
@@ -812,6 +1120,19 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
       splitBody: splitDiffBody(body),
     }
   }
+
+  const lineCount = body ? body.split("\n").length : 0
+  const listingCount = listing?.length ?? 0
+  const previewLimit = toolKind === "inspect" ? INSPECT_PREVIEW_LINES : 10
+  const expandDefault =
+    !!diff
+    || !!renderedOutput.report
+    || (kind === "fail" && !!body)
+    || (!!body && lineCount > 0 && lineCount <= previewLimit)
+    || (isListing && listingCount > 0 && listingCount <= previewLimit)
+
+  const hasExpandableBody = (!!body && !diff) || isListing
+
   return [
     {
       id: `${baseId}:${finalKind}`,
@@ -823,12 +1144,15 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
       glyph: finalGlyph,
       actor: agentName,
       summary,
-      body: body && !diff && !renderedOutput.report ? body : undefined,
+      body: body && !diff && !renderedOutput.report && !isListing ? body : undefined,
       bodyLabel: renderedOutput.report ? "divination" : renderedOutput.label,
-      collapsible: !!diff || !!renderedOutput.report || (!!body && !diff),
-      expandedByDefault: !!diff || !!renderedOutput.report || (kind === "fail" && !!body) || (!!body && (body.split("\n").length <= 10)) || (receipt?.summary != null && receipt.summary.length > 0),
+      bodyHint: renderedOutput.bodyHint || (part.tool === "read" ? filePath : undefined),
+      bodyNote: renderedOutput.bodyNote,
+      collapsible: !!diff || !!renderedOutput.report || hasExpandableBody,
+      expandedByDefault: expandDefault,
       receipt,
       diff,
+      listing: isListing ? listing : undefined,
       reminders: renderedOutput.reminders.length ? renderedOutput.reminders : undefined,
       report: renderedOutput.report,
       table: renderedOutput.table,

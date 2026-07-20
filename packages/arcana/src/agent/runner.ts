@@ -275,6 +275,25 @@ export class AgentRunner {
       }
     }
 
+    // Goal awareness: Tier B mutation gate + freeze after complete.
+    try {
+      const { checkGoalToolGate } = await import("@arcana/core/session/goal")
+      const sessionKey =
+        this.sessionId
+        || (typeof process.env.ARCANA_SESSION_ID === "string" ? process.env.ARCANA_SESSION_ID : "")
+        || `cli-${process.cwd().replace(/[^a-zA-Z0-9]+/g, "_").slice(-48)}`
+      const gate = checkGoalToolGate({
+        sessionID: sessionKey,
+        agentName: "build",
+        toolName,
+      })
+      if (!gate.allow) {
+        return { result: `[GOAL] ${gate.message}` }
+      }
+    } catch {
+      /* goal module unavailable */
+    }
+
     const allowedTools = this.config.allowedTools ?? process.env.ARCANA_ALLOWED_TOOLS
     if (allowedTools && !this.config.godlike) {
       const allowed = new Set(allowedTools.split(","))
@@ -294,11 +313,17 @@ export class AgentRunner {
     if (!entry && toolName !== "batch") return { result: `Unknown tool: ${toolName}` }
 
     if (this.sandbox) {
-      const path = input.path ?? input.filePath ?? input.filepath ?? input.file
+      const path = input.path ?? input.filePath ?? input.filepath ?? input.file ?? input.filename
       if (
         path &&
-        (toolName === "write" || toolName === "edit" || toolName === "read" || toolName === "apply_patch")
+        (toolName === "write" ||
+          toolName === "edit" ||
+          toolName === "read" ||
+          toolName === "apply_patch" ||
+          toolName === "env_write")
       ) {
+        // env_write only accepts basenames under ~/.arcana/sandbox — still run
+        // path check when a sandbox profile is active so absolute escapes die here too.
         const blocked = checkSandboxPath(this.sandbox, String(path), toolName)
         if (blocked) return { result: blocked }
       }

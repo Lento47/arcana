@@ -18,6 +18,7 @@ export function nextSpineFocusID(entries: readonly SpineEntry[], currentID: stri
 export function canToggleSpineEntry(entry: SpineEntry) {
   if (entry.collapsible === false) return false
   if (entry.body?.trim()) return true
+  if (entry.listing?.length) return true
   if (entry.diff) return true
   if (entry.report) return true
   if (entry.table) return true

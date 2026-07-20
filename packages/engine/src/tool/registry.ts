@@ -12,6 +12,7 @@ import { ReadTool } from "./read"
 import { TaskTool } from "./task"
 import { Database } from "@arcana/core/database/database"
 import { TodoWriteTool } from "./todo"
+import { GoalCheckTool, GoalSetTool } from "./goal"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
@@ -94,6 +95,8 @@ export const layer = Layer.effect(
     const read = yield* ReadTool
     const question = yield* QuestionTool
     const todo = yield* TodoWriteTool
+    const goalSet = yield* GoalSetTool
+    const goalCheck = yield* GoalCheckTool
     const lsptool = yield* LspTool
     const plan = yield* PlanExitTool
     const webfetch = yield* WebFetchTool
@@ -207,6 +210,8 @@ export const layer = Layer.effect(
           task: Tool.init(task),
           fetch: Tool.init(webfetch),
           todo: Tool.init(todo),
+          goal_set: Tool.init(goalSet),
+          goal_check: Tool.init(goalCheck),
           search: Tool.init(websearch),
           skill: Tool.init(skilltool),
           workflow: Tool.init(workflowtool),
@@ -230,6 +235,8 @@ export const layer = Layer.effect(
             tool.task,
             tool.fetch,
             tool.todo,
+            tool.goal_set,
+            tool.goal_check,
             tool.search,
             tool.skill,
             tool.workflow,

@@ -55,6 +55,7 @@ import { SessionMessage } from "@arcana/core/session/message"
 import { ModelV2 } from "@arcana/core/model"
 import { ProviderV2 } from "@arcana/core/provider"
 import { AgentAttachment, FileAttachment, Prompt, Source } from "@arcana/core/session/prompt"
+import { formatActiveGoalBlock } from "@arcana/core/session/goal"
 import * as DateTime from "effect/DateTime"
 import { eq } from "drizzle-orm"
 import { SessionTable } from "@arcana/core/session/sql"
@@ -1342,7 +1343,20 @@ export const layer = Layer.effect(
               MessageV2.toModelMessagesEffect(msgs, model),
               sys.memory(),
             ])
-            const system = [...env, ...instructions, ...(skills ? [skills] : []), ...(memory ? [memory] : [])]
+            // Active goal inject (every turn) — session + actor agent labels.
+            const goalBlock = formatActiveGoalBlock({
+              sessionID,
+              sessionAgent: lastUser.agent,
+              actorAgent: agent.name,
+              actorRole: agent.mode === "subagent" ? "subagent" : "primary",
+            })
+            const system = [
+              ...env,
+              ...instructions,
+              ...(skills ? [skills] : []),
+              ...(memory ? [memory] : []),
+              goalBlock,
+            ]
 
             // Detect step-limit continuation: check for the metadata flag set when max steps was hit.
             if (step === 1 && lastAssistant?.finish && !["tool-calls"].includes(lastAssistant.finish)) {
