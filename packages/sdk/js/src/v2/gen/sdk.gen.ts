@@ -33,6 +33,14 @@ import type {
   ExperimentalConsoleGetResponses,
   ExperimentalConsoleListOrgsErrors,
   ExperimentalConsoleListOrgsResponses,
+  ExperimentalConsoleLoginCompleteErrors,
+  ExperimentalConsoleLoginCompleteResponses,
+  ExperimentalConsoleLoginErrors,
+  ExperimentalConsoleLoginPollErrors,
+  ExperimentalConsoleLoginPollResponses,
+  ExperimentalConsoleLoginResponses,
+  ExperimentalConsoleProxyKeyPresentErrors,
+  ExperimentalConsoleProxyKeyPresentResponses,
   ExperimentalConsoleSwitchOrgResponses,
   ExperimentalControlPlaneMoveSessionErrors,
   ExperimentalControlPlaneMoveSessionResponses,
@@ -732,6 +740,123 @@ export class Console extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Start OAuth device-code login
+   *
+   * Start the Arcana console OAuth device-code flow. Returns the user_code, verification URL, and polling interval.
+   */
+  public login<ThrowOnError extends boolean = false>(
+    parameters?: {
+      server?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [{ in: "body", key: "server" }],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ExperimentalConsoleLoginResponses, unknown, ThrowOnError>({
+      url: "/experimental/console/login",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Poll OAuth device-code status
+   *
+   * Poll the Arcana console for the device-code result.
+   */
+  public loginPoll<ThrowOnError extends boolean = false>(
+    parameters?: {
+      code?: string
+      server?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "code" },
+            { in: "body", key: "server" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ExperimentalConsoleLoginPollResponses, unknown, ThrowOnError>({
+      url: "/experimental/console/login/poll",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Complete login + mint proxy key
+   *
+   * Mint a proxy_key by binding the OAuth access_token to a license on the Arcana license server.
+   */
+  public loginComplete<ThrowOnError extends boolean = false>(
+    parameters?: {
+      accessToken?: string
+      server?: string
+      email?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "accessToken" },
+            { in: "body", key: "server" },
+            { in: "body", key: "email" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ExperimentalConsoleLoginCompleteResponses, unknown, ThrowOnError>({
+      url: "/experimental/console/login/complete",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Is a proxy key present on disk?
+   */
+  public proxyKeyPresent<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      ExperimentalConsoleProxyKeyPresentResponses,
+      ExperimentalConsoleProxyKeyPresentErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/console/proxy-key-present",
+      ...options,
     })
   }
 }

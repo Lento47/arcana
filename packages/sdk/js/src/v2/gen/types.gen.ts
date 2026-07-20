@@ -5657,6 +5657,143 @@ export type ExperimentalConsoleSwitchOrgResponses = {
 export type ExperimentalConsoleSwitchOrgResponse =
   ExperimentalConsoleSwitchOrgResponses[keyof ExperimentalConsoleSwitchOrgResponses]
 
+export type ExperimentalConsoleLoginData = {
+  body?: {
+    server?: string
+  }
+  path?: never
+  query?: never
+  url: "/experimental/console/login"
+}
+
+export type ExperimentalConsoleLoginErrors = {
+  /**
+   * InternalServerError
+   */
+  500: EffectHttpApiErrorInternalServerError
+}
+
+export type ExperimentalConsoleLoginError = ExperimentalConsoleLoginErrors[keyof ExperimentalConsoleLoginErrors]
+
+export type ExperimentalConsoleLoginResponses = {
+  /**
+   * Device code + verification URL
+   */
+  200: {
+    code: string
+    user: string
+    url: string
+    server: string
+    expirySeconds: number
+    intervalSeconds: number
+  }
+}
+
+export type ExperimentalConsoleLoginResponse =
+  ExperimentalConsoleLoginResponses[keyof ExperimentalConsoleLoginResponses]
+
+export type ExperimentalConsoleLoginPollData = {
+  body?: {
+    code: string
+    server: string
+  }
+  path?: never
+  query?: never
+  url: "/experimental/console/login/poll"
+}
+
+export type ExperimentalConsoleLoginPollErrors = {
+  /**
+   * InternalServerError
+   */
+  500: EffectHttpApiErrorInternalServerError
+}
+
+export type ExperimentalConsoleLoginPollError =
+  ExperimentalConsoleLoginPollErrors[keyof ExperimentalConsoleLoginPollErrors]
+
+export type ExperimentalConsoleLoginPollResponses = {
+  /**
+   * Poll result
+   */
+  200: {
+    status: "pending" | "slow_down" | "expired" | "denied" | "success"
+    accessToken?: string
+    refreshToken?: string
+    expiresInSeconds?: number
+    email?: string
+    error?: string
+  }
+}
+
+export type ExperimentalConsoleLoginPollResponse =
+  ExperimentalConsoleLoginPollResponses[keyof ExperimentalConsoleLoginPollResponses]
+
+export type ExperimentalConsoleLoginCompleteData = {
+  body?: {
+    accessToken: string
+    server: string
+    email?: string
+  }
+  path?: never
+  query?: never
+  url: "/experimental/console/login/complete"
+}
+
+export type ExperimentalConsoleLoginCompleteErrors = {
+  /**
+   * InternalServerError
+   */
+  500: EffectHttpApiErrorInternalServerError
+}
+
+export type ExperimentalConsoleLoginCompleteError =
+  ExperimentalConsoleLoginCompleteErrors[keyof ExperimentalConsoleLoginCompleteErrors]
+
+export type ExperimentalConsoleLoginCompleteResponses = {
+  /**
+   * Login complete + proxy key
+   */
+  200: {
+    ok: boolean
+    proxyKey?: string
+    tier?: string
+    error?: string
+  }
+}
+
+export type ExperimentalConsoleLoginCompleteResponse =
+  ExperimentalConsoleLoginCompleteResponses[keyof ExperimentalConsoleLoginCompleteResponses]
+
+export type ExperimentalConsoleProxyKeyPresentData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/experimental/console/proxy-key-present"
+}
+
+export type ExperimentalConsoleProxyKeyPresentErrors = {
+  /**
+   * InternalServerError
+   */
+  500: EffectHttpApiErrorInternalServerError
+}
+
+export type ExperimentalConsoleProxyKeyPresentError =
+  ExperimentalConsoleProxyKeyPresentErrors[keyof ExperimentalConsoleProxyKeyPresentErrors]
+
+export type ExperimentalConsoleProxyKeyPresentResponses = {
+  /**
+   * Whether a proxy key is on disk
+   */
+  200: {
+    present: boolean
+  }
+}
+
+export type ExperimentalConsoleProxyKeyPresentResponse =
+  ExperimentalConsoleProxyKeyPresentResponses[keyof ExperimentalConsoleProxyKeyPresentResponses]
+
 export type ToolListData = {
   body?: never
   path?: never
