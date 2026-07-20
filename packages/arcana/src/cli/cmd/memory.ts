@@ -1,7 +1,87 @@
 import type { CommandModule } from "yargs"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
-import { loadConfig, getDataDir } from "../../config.js"
-import { mkdir } from "node:fs/promises"
+import { loadConfig, getDataDir, getArcanaHome } from "../../config.js"
+import { mkdir, readFile } from "node:fs/promises"
+import { existsSync } from "node:fs"
+import { join } from "node:path"
+
+const PROXY_BASES = [
+  process.env.ARCANA_PROXY_URL?.replace(/\/$/, ""),
+  "https://proxy.arcana.otnelhq.com",
+  "https://arcana-proxy.lejzerv.workers.dev",
+].filter(Boolean) as string[]
+
+type CloudFact = {
+  id?: string
+  key: string
+  value: string
+  source?: string
+  confidence: number
+  createdAt?: string
+  updatedAt?: string
+  created_at?: string
+  updated_at?: string
+}
+
+async function resolveProxyKey(): Promise<string | null> {
+  if (process.env.ARCANA_PROXY_KEY?.trim()) return process.env.ARCANA_PROXY_KEY.trim()
+  try {
+    const keyPath = join(getArcanaHome(), "proxy_key")
+    if (existsSync(keyPath)) {
+      const key = (await readFile(keyPath, "utf8")).trim()
+      if (key) return key
+    }
+  } catch {}
+  return null
+}
+
+async function proxyMemoryFetch(
+  path: string,
+  opts: { method?: string; body?: unknown } = {},
+): Promise<{ ok: boolean; status: number; data: any; base: string }> {
+  const key = await resolveProxyKey()
+  if (!key) {
+    return { ok: false, status: 0, data: { error: "no_proxy_key" }, base: "" }
+  }
+  let last: { ok: boolean; status: number; data: any; base: string } = {
+    ok: false,
+    status: 0,
+    data: { error: "unreachable" },
+    base: PROXY_BASES[0] ?? "",
+  }
+  for (const base of PROXY_BASES) {
+    try {
+      const res = await fetch(`${base}${path}`, {
+        method: opts.method ?? "GET",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+        },
+        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+        signal: AbortSignal.timeout(15000),
+      })
+      const text = await res.text()
+      let data: any = {}
+      try {
+        data = text ? JSON.parse(text) : {}
+      } catch {
+        data = { raw: text.slice(0, 200) }
+      }
+      last = { ok: res.ok, status: res.status, data, base }
+      // Don't fall through on auth errors — key is wrong, not the host
+      if (res.status === 401 || res.status === 403) return last
+      if (res.ok || res.status < 500) return last
+    } catch (e) {
+      last = {
+        ok: false,
+        status: 0,
+        data: { error: "network", message: String(e) },
+        base,
+      }
+    }
+  }
+  return last
+}
 
 export const MemoryCommand: CommandModule = {
   command: "memory <action>",
@@ -9,7 +89,7 @@ export const MemoryCommand: CommandModule = {
   builder: (yargs) =>
     yargs
       .positional("action", {
-        choices: ["search", "sessions", "facts", "stats", "artifacts"] as const,
+        choices: ["search", "sessions", "facts", "stats", "artifacts", "push", "pull", "sync"] as const,
         demandOption: true,
       })
       .option("query", {
@@ -102,6 +182,63 @@ export const MemoryCommand: CommandModule = {
       if (artifacts.length) {
         console.log("\nArtifacts:")
         for (const a of artifacts) console.log(`  [artifact:${a.id.slice(0, 8)}] ${a.title}`)
+      }
+      return
+    }
+
+    // --- Cloud sync (proxy /v1/memory) ---
+    if (action === "push" || action === "pull" || action === "sync") {
+      const key = await resolveProxyKey()
+      if (!key) {
+        console.error("No proxy key found. Run: arcana console login  (or set ARCANA_PROXY_KEY / ~/.arcana/proxy_key)")
+        process.exit(1)
+      }
+
+      if (action === "push" || action === "sync") {
+        const local = store.getUserFacts()
+        if (!local.length && action === "push") {
+          console.log("No local facts to push.")
+          if (action === "push") return
+        } else if (local.length) {
+          const payload = {
+            facts: local.map((f) => ({
+              id: f.id,
+              key: f.key,
+              value: f.value,
+              source: f.source ?? "cli",
+              confidence: f.confidence,
+              createdAt: f.created_at,
+              updatedAt: f.updated_at,
+            })),
+          }
+          const res = await proxyMemoryFetch("/v1/memory", { method: "PUT", body: payload })
+          if (!res.ok) {
+            console.error(`Push failed (${res.status || "network"}) via ${res.base || "proxy"}:`, res.data?.message || res.data?.error || res.data)
+            process.exit(1)
+          }
+          console.log(`Pushed ${payload.facts.length} local fact(s) → cloud (merged ${res.data?.merged ?? "?"} · total ${res.data?.total ?? "?"}) via ${res.base}`)
+        }
+      }
+
+      if (action === "pull" || action === "sync") {
+        const res = await proxyMemoryFetch("/v1/memory?limit=200")
+        if (!res.ok) {
+          console.error(`Pull failed (${res.status || "network"}) via ${res.base || "proxy"}:`, res.data?.message || res.data?.error || res.data)
+          process.exit(1)
+        }
+        const remote = (res.data?.facts ?? []) as CloudFact[]
+        if (!remote.length) {
+          console.log("No cloud facts to pull.")
+          return
+        }
+        let merged = 0
+        for (const f of remote) {
+          if (!f.key || !f.value) continue
+          store.recordUserFact(f.key, f.value, f.source ?? "cloud", typeof f.confidence === "number" ? f.confidence : 1)
+          merged++
+        }
+        console.log(`Pulled ${merged} cloud fact(s) into local memory (from ${res.base})`)
+        console.log("View on web: workspace → Memory")
       }
       return
     }
