@@ -59,6 +59,10 @@ export type BindResult =
  * Bind an Arcana console OAuth access_token to a fresh license on the
  * license-server Worker. Returns the proxy_key the engine should write
  * to `~/.arcana/proxy_key`. Falls through both license-server bases.
+ *
+ * The returned `error` is intentionally generic — never include the
+ * upstream URL, HTTP status, or fetch error message, since the TUI
+ * surfaces it to the user. Full cause is logged server-side.
  */
 export const bindAccessToken = (
   accessToken: string,
@@ -66,36 +70,35 @@ export const bindAccessToken = (
   server: string,
 ): Effect.Effect<BindResult> =>
   Effect.gen(function* () {
-    let lastError = "all license servers unreachable"
     for (const base of LICENSE_SERVER_BASES) {
-      try {
-        const res = yield* Effect.promise(() =>
-          fetch(`${base}/api/oauth/bind`, {
+      // tryPromise converts fetch rejections into typed failures so the
+      // Effect.gen catch below sees them. Effect.promise would die, which
+      // surfaces upstream wording through the error middleware.
+      const result = yield* Effect.tryPromise(() =>
+        (async () => {
+          const res = await fetch(`${base}/api/oauth/bind`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ accessToken, server, email }),
             signal: AbortSignal.timeout(10_000),
-          }),
-        )
-        const text = yield* Effect.promise(() => res.text())
-        let json: { ok?: boolean; proxyKey?: string; tier?: string; error?: string } | null = null
-        try {
-          json = text ? JSON.parse(text) : null
-        } catch {
-          lastError = `${base} returned non-JSON (HTTP ${res.status})`
-          continue
-        }
-        if (json?.ok && json.proxyKey) {
-          return {
-            ok: true as const,
-            proxyKey: json.proxyKey,
-            tier: json.tier ?? "free",
+          })
+          const text = await res.text()
+          let json: { ok?: boolean; proxyKey?: string; tier?: string; error?: string } | null = null
+          try {
+            json = text ? JSON.parse(text) : null
+          } catch {
+            return null
           }
+          return json
+        })(),
+      ).pipe(Effect.catch(() => Effect.succeed(null)))
+      if (result?.ok && result.proxyKey) {
+        return {
+          ok: true as const,
+          proxyKey: result.proxyKey,
+          tier: result.tier ?? "free",
         }
-        lastError = json?.error ?? `${base} returned ${res.status}`
-      } catch (e) {
-        lastError = e instanceof Error ? e.message : String(e)
       }
     }
-    return { ok: false as const, error: lastError }
+    return { ok: false as const, error: "Couldn't bind your sign-in to a license. Please try again." }
   })
