@@ -10,6 +10,7 @@ import { basename, join, dirname, resolve, sep } from "node:path"
 import { mkdirSync, writeFileSync, existsSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import { initBoard, loadBoard, saveBoard, addCard, moveCard, archiveDone, formatBoard, type KanbanCard } from "./kanban.js"
+import { fetchAccountSnapshot, formatAccountSnapshot } from "../proxy-client.js"
 
 /**
  * Resolve a sandbox script path from a model-provided filename (ARC-SEC-I05).
@@ -148,11 +149,13 @@ Map user intent to exactly one tool. Don't combine unless the user explicitly as
 - "run independent ops in parallel" → batch(calls=[{tool, args}, ...])
 - "git status / diff / commit"      → git_status / git_diff / git_commit
 - "diagnose system health"          → diagnose()
+- "my account / balance / tier / credits / license" → account_status()
 - "save / list artifacts"           → artifact_save / artifact_search / artifact_get
 - "multi-model debate + vote"       → council(prompt=..., models=[...], rounds=1|2)
 - "estimate call cost"              → cost_estimate(estimated_input_tokens=...)
 
 When unsure: read before write, list before activate, search before fetch.
+For account/billing/license questions ALWAYS call account_status — do not invent from memory.
 </tool-selection>`
 
 // ── web_search helpers ───────────────────────────────────────
@@ -192,9 +195,35 @@ function extractRealUrl(href: string): string {
   return h
 }
 
+/** Account / license tools that do not require local memory.db. */
+export function registerAccountTools(runner: AgentRunner): void {
+  runner.registerTool(
+    "account_status",
+    {
+      type: "function",
+      function: {
+        name: "account_status",
+        description:
+          "Look up THIS machine's licensed Arcana account from Arcana Proxy: user id, tier, credit balance, daily usage, and profile. Use whenever the user asks about their account, plan, credits, billing balance, license, or subscription — do not guess from local memory.",
+        parameters: { type: "object", properties: {} },
+      },
+    },
+    async () => {
+      try {
+        const snap = await fetchAccountSnapshot()
+        return formatAccountSnapshot(snap)
+      } catch (e) {
+        return `Failed to load account status: ${e instanceof Error ? e.message : String(e)}`
+      }
+    },
+  )
+}
+
 export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, skillDirs: string[]): void {
   let skills: SkillCatalog[] = []
   const catalogPromise = loadSkills(skillDirs).then((s) => { skills = s; return s })
+
+  registerAccountTools(runner)
 
   runner.registerTool(
     "memory_search",
@@ -471,14 +500,30 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const lines: string[] = []
       const ok = (label: string, pass: boolean, detail: string) => lines.push(`${pass ? "✅" : "❌"} ${label}: ${detail}`)
 
+      // 0. Licensed Arcana account (proxy)
+      try {
+        const snap = await fetchAccountSnapshot()
+        if (snap.licensed) {
+          ok(
+            "Arcana account",
+            true,
+            `tier=${snap.tier} user=${snap.userId} credits=${Number.isFinite(snap.credits) ? Math.round(snap.credits!) : "—"}`,
+          )
+        } else {
+          ok("Arcana account", false, snap.error ?? "not licensed")
+        }
+      } catch (e) {
+        ok("Arcana account", false, e instanceof Error ? e.message : String(e))
+      }
+
       // 1. Config file
       const configPath = join(homedir(), ".arcana", "config.json")
       ok("Config file", existsSync(configPath), existsSync(configPath) ? "exists" : "missing — run arcana config init")
 
       // 2. API key
       try {
-        const envKey = process.env.ARCANA_API_KEY ?? process.env.OPENAI_API_KEY
-        ok("API key", !!envKey, envKey ? `set (…${envKey.slice(-4)})` : "not set — export ARCANA_API_KEY")
+        const envKey = process.env.ARCANA_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.ARCANA_PROXY_KEY
+        ok("API key", !!envKey, envKey ? `set (…${envKey.slice(-4)})` : "not set — export ARCANA_API_KEY or login for ARCANA_PROXY_KEY")
       } catch { ok("API key", false, "error reading") }
 
       // 3. Models cache

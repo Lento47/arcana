@@ -18,6 +18,7 @@ import { createProofRuntime } from "../run/proof-runtime.js"
 const SYSTEM_PROMPT = `You are Arcana, a self-improving AI agent. You have access to:
 - memory_search: search past sessions and conversations
 - memory_store_fact: store persistent facts about the user
+- account_status: live licensed account (tier, credits, usage) from Arcana Proxy
 - skill_activate: load a specialized skill's instructions into context
 - skill_list: list available skills
 - web_fetch: fetch content from a URL
@@ -26,6 +27,7 @@ const SYSTEM_PROMPT = `You are Arcana, a self-improving AI agent. You have acces
 - kanban: manage goal tasks — init, add, move, view, archive
 
 When you learn something important about the user, store it with memory_store_fact.
+When the user asks about their Arcana account, plan, credits, balance, license, or subscription: call account_status (or use the <arcana-account> block if present). Do not invent account details from empty memory.
 When asked to use a specific workflow, check skill_list and activate the relevant skill.
 Be concise and direct. Format code in markdown blocks.
 
@@ -234,7 +236,14 @@ export const RunCommand: CommandModule = {
       },
       sandbox,
     )
-    if (memory) registerBuiltinTools(runner, memory, config.skillsDirs)
+    if (memory) {
+      registerBuiltinTools(runner, memory, config.skillsDirs)
+    } else {
+      // Memory open failed — still register account_status so license/billing
+      // questions work without local memory.db.
+      const { registerAccountTools } = await import("../../agent/tools.js")
+      registerAccountTools(runner)
+    }
 
     const mcpServers = await withStartupTimeout("MCP", registerMcpTools(runner), [], STARTUP_MCP_TIMEOUT_MS)
     if (mcpServers.length) process.stderr.write(c.dim(`  MCP: ${mcpServers.join(", ")}\n`))
@@ -264,6 +273,23 @@ export const RunCommand: CommandModule = {
     incrementSessionCount()
     if (EVOLVE_ON_STARTUP) {
       systemPrompt = await maybeEvolve(runner, systemPrompt)
+    }
+
+    // Inject live licensed-account snapshot so "what's my account?" works
+    // without relying on local memory facts.
+    try {
+      const { fetchAccountSnapshot, formatAccountSnapshot } = await import("../../proxy-client.js")
+      const snap = await fetchAccountSnapshot()
+      systemPrompt += `\n\n<arcana-account>\n${formatAccountSnapshot(snap)}\n</arcana-account>`
+      if (snap.licensed) {
+        process.stderr.write(
+          c.dim(
+            `  Account: ${snap.tier} · ${snap.userId} · ${Number.isFinite(snap.credits) ? Math.round(snap.credits!) : "—"} credits\n`,
+          ),
+        )
+      }
+    } catch {
+      /* account injection is best-effort */
     }
 
     // Load agent contracts from .arcana/contracts/ if available.
