@@ -230,12 +230,16 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
             }
             return models
           }
-          const bases = ["https://proxy.arcana.otnelhq.com", "https://arcana-proxy.lejzerv.workers.dev"]
+          // Prefer workers.dev first — custom domain proxy.arcana.otnelhq.com has
+          // had TLS handshake failures (SEC_E_ILLEGAL_MESSAGE) while workers.dev works.
+          const bases = ["https://arcana-proxy.lejzerv.workers.dev", "https://proxy.arcana.otnelhq.com"]
           const discoveryTimeoutMs = 3_500
+          const healthyBase = (b?: string) =>
+            b && !/proxy\.arcana\.otnelhq\.com/i.test(b) ? b : bases[0]
           try {
             if (existsSync(cacheFile)) {
               const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as { base?: string; list?: any[] }
-              if (cached?.list?.length) return build(cached.list, cached.base ?? bases[0])
+              if (cached?.list?.length) return build(cached.list, healthyBase(cached.base) ?? bases[0]!)
             }
           } catch {}
           const fetchCatalog = async (base: string) => {
@@ -1453,7 +1457,8 @@ export const layer = Layer.effect(
               {
                 name: "Arcana Proxy",
                 npm: "@ai-sdk/openai-compatible",
-                api: "https://proxy.arcana.otnelhq.com/v1",
+                // workers.dev is the stable origin (custom domain may fail TLS)
+                api: "https://arcana-proxy.lejzerv.workers.dev/v1",
                 env: ["ARCANA_PROXY_KEY"],
               },
             ] as (typeof configProviders)[number])
@@ -1810,7 +1815,11 @@ export const layer = Layer.effect(
         const proxyKey = envs["ARCANA_PROXY_KEY"]
         if (proxyKey && model.api.npm === "@ai-sdk/openai-compatible") {
           options["apiKey"] ??= proxyKey
-          options["baseURL"] ??= "https://proxy.arcana.otnelhq.com/v1"
+          // Prefer workers.dev; rewrite known-broken custom domain if present
+          const broken = typeof options["baseURL"] === "string" && /proxy\.arcana\.otnelhq\.com/i.test(options["baseURL"])
+          if (!options["baseURL"] || broken) {
+            options["baseURL"] = "https://arcana-proxy.lejzerv.workers.dev/v1"
+          }
         }
 
         if (model.headers)
