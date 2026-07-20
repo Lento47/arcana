@@ -96,11 +96,20 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     })
 
     const consoleLogin = Effect.fn("ExperimentalHttpApi.consoleLogin")(function* (ctx: {
-      payload: { server?: string }
+      // SDK may omit the JSON body entirely when all fields are optional (see
+      // ConsoleLoginRequest note). Treat nullish payload as {}.
+      payload: { server?: string } | null | undefined
     }) {
-      const server = ctx.payload.server || DEFAULT_CONSOLE_URL
+      const server = ctx.payload?.server?.trim() || DEFAULT_CONSOLE_URL
       const login = yield* account.login(server).pipe(
-        Effect.catch(() => Effect.fail(new HttpApiError.InternalServerError({}))),
+        Effect.catch((err) =>
+          Effect.fail(
+            new HttpApiError.InternalServerError({
+              // Surface a short message in API error when possible
+              message: err instanceof Error ? err.message : String(err),
+            } as any),
+          ),
+        ),
       )
       return {
         code: login.code,
