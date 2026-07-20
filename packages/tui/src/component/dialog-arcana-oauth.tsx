@@ -19,19 +19,6 @@ interface ArcanaOAuthMethodProps {
   onSuccess?: () => void
 }
 
-// Strip the `?code=...` query from a verification URL so we can show the
-// host in the TUI without leaking the device code into terminal scrollback,
-// screen recordings, or the paste buffer. The full URL is only ever copied
-// to the clipboard (on `c`) or sent to the engine (on Enter → openUrl).
-function urlHost(raw: string): string {
-  try {
-    const u = new URL(raw)
-    return `${u.protocol}//${u.host}${u.pathname}`.replace(/\/$/, "")
-  } catch {
-    return raw
-  }
-}
-
 /**
  * TUI-side device-code OAuth flow for the Arcana console. Mirrors the existing
  * `AutoMethod` (line 247 of dialog-provider.tsx) but is wired to the engine's
@@ -270,7 +257,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
         <box gap={1}>
           <text fg={theme.textMuted}>
             Visit{" "}
-            <span style={{ fg: theme.primary, attributes: TextAttributes.UNDERLINE }}>{urlHost(url())}</span>{" "}
+            <span style={{ fg: theme.primary, attributes: TextAttributes.UNDERLINE }}>{url()}</span>{" "}
             and enter this code:
           </text>
           <text attributes={TextAttributes.BOLD} fg={theme.primary}>
