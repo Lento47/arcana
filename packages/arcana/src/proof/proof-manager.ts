@@ -739,6 +739,40 @@ export class ProofManager {
     })
   }
 
+  /** Phase 3: segmented tool batch settlement for proof tape / ledger. */
+  recordToolBatch(input: {
+    run_id: string
+    plan_summary: string
+    waves: number
+    calls: number
+    ok: number
+    failed: number
+    cancelled: number
+    max_active: number
+    duration_ms: number
+    summary?: string
+  }): RunProofEvent {
+    return this.recordEvent({
+      type: "tool.batch",
+      actor: "agent",
+      summary:
+        input.summary ??
+        `Tool batch ${input.ok} ok / ${input.failed} failed · ${input.plan_summary}`,
+      status: input.failed > 0 ? "failed" : this.proof.lifecycle.status,
+      refs: { run_id: input.run_id },
+      data: {
+        plan_summary: input.plan_summary,
+        waves: input.waves,
+        calls: input.calls,
+        ok: input.ok,
+        failed: input.failed,
+        cancelled: input.cancelled,
+        max_active: input.max_active,
+        duration_ms: input.duration_ms,
+      },
+    })
+  }
+
   recordFileWrite(input: FileWriteInput): FileWriteRecord {
     if (input.mode === "applied" && !input.diff_id) {
       throw new Error("Applied file writes must reference an approved diff_id in proof mode.")

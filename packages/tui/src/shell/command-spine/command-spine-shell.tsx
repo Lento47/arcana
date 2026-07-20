@@ -1,6 +1,7 @@
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { getToolActivityHint } from "@arcana/core/tool/activity-hint"
 import { useTheme } from "../../context/theme"
 import { useThinkingMode } from "../../context/thinking"
 import type { ShellProps } from "../types"
@@ -72,6 +73,18 @@ export function CommandSpineShell(props: ShellProps) {
   const visibleEntries = createMemo(() => [...entries(), ...gateEntries()])
   const navigableEntries = createMemo(() => navigableSpineEntries(visibleEntries()))
   const runState = createMemo(() => (gateEntries().length ? "stop" : props.pending() ? "working" : "idle"))
+  /** Process-local tool admission / batch wave hint (engine or agent). */
+  const [activityHint, setActivityHint] = createSignal<string | undefined>()
+  onMount(() => {
+    const timer = setInterval(() => setActivityHint(getToolActivityHint()), 220)
+    onCleanup(() => clearInterval(timer))
+  })
+  const footerPending = createMemo(() => {
+    const sessionPending = props.pending()?.trim()
+    const tools = activityHint()?.trim()
+    if (sessionPending && tools) return `${sessionPending} · ${tools}`
+    return sessionPending || tools || undefined
+  })
   const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
   const [focusedEntryID, setFocusedEntryID] = createSignal<string | undefined>()
   const focusedEntry = createMemo(() => {
@@ -254,16 +267,7 @@ export function CommandSpineShell(props: ShellProps) {
         <Show when={props.session()?.parentID}>
           <SubagentFooter />
         </Show>
-        <SpineFooterHints
-          layout={layout()}
-          entries={visibleEntries().length}
-          pending={props.pending()}
-          permissions={props.permissions().length}
-          questions={props.questions().length}
-          viewingArtifact={props.viewingArtifact() !== null}
-          state={runState()}
-          selected={footerSelection()}
-        />
+        {/* Composer first (Grok order); status + shortcuts bar sits under it. */}
         <SpinePrompt
           bind={props.bind}
           disabled={props.disabled}
@@ -272,6 +276,16 @@ export function CommandSpineShell(props: ShellProps) {
           toBottom={props.toBottom as any}
           layout={layout as any}
           state={runState as any}
+        />
+        <SpineFooterHints
+          layout={layout()}
+          entries={visibleEntries().length}
+          pending={footerPending()}
+          permissions={props.permissions().length}
+          questions={props.questions().length}
+          viewingArtifact={props.viewingArtifact() !== null}
+          state={runState()}
+          selected={footerSelection()}
         />
       </box>
     </Show>

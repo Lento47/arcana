@@ -640,6 +640,17 @@ No source path in those reports changes the critical TUI dialog/mouse conclusion
 - The architecture documents now state that `batch` has only a descriptive read-only restriction and must receive recursive authorization before parallel execution expands.
 - No critical runtime authorization, sandbox, gateway, server, webhook, path, update, or supply-chain finding is fixed by these documentation and prompt corrections. Those findings remain open until code and dynamic tests satisfy the acceptance gates above.
 
+### Post-audit code progress (pointer, not a re-audit)
+
+As of tool-batch Phases 0–3 ([ADR 0002](./adr/0002-tool-batch-scheduler.md)):
+
+| Finding | Snapshot claim | Later code note |
+|---------|----------------|-----------------|
+| **ARC-SEC-I04** | Batch bypasses top-level authorization | Agent path: nested tools go through `executeAuthorizedTool`; nested batch denied. Confirm with tests before closing as release-gate. |
+| **ARC-SEC-I20** | Unbounded batch fan-out | Agent batch: maxCalls, capability pools, timeouts, synthesis caps; engine multi-tool admission + path locks. Queue/session global caps may still be incomplete. |
+
+This table is a **navigation pointer**. It does not re-grade the independent audit or claim stop-ship clearance. Re-verify acceptance gates in the finding bodies before treating I04/I20 as closed for a release.
+
 ### Unified remediation baseline
 
 The audits are reconciled around five non-negotiable principles:

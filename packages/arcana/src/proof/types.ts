@@ -48,6 +48,7 @@ export type RunProofEventType =
   | "token.used"
   | "consensus.recorded"
   | "ml.signal"
+  | "tool.batch"
 
 export type ExecutionContract = {
   id: string

@@ -8,6 +8,7 @@ export const toolHistory: Array<{ name: string; ts: number }> = []
 import { homedir } from "node:os"
 import { join, dirname } from "node:path"
 import { mkdirSync, writeFileSync, existsSync } from "node:fs"
+import { execFileSync } from "node:child_process"
 import { initBoard, loadBoard, saveBoard, addCard, moveCard, archiveDone, formatBoard, type KanbanCard } from "./kanban.js"
 
 // ── Artifact schema (inlined — originally from @arcana/core/artifact/schema;
@@ -41,6 +42,49 @@ function addVersion(artifact: ArtifactInfo, content: string, session_id?: string
 function getArtifactVersion(artifact: ArtifactInfo, version?: number) {
   if (version === undefined) return artifact.versions.find((v) => v.version === artifact.current_version)
   return artifact.versions.find((v) => v.version === version)
+}
+
+type GitRunOptions = {
+  cwd: string
+  maxBuffer?: number
+  ignoreErrors?: boolean
+}
+
+function runGit(args: string[], options: GitRunOptions): string {
+  try {
+    return execFileSync("git", args, {
+      cwd: options.cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: options.maxBuffer ?? 1024 * 1024,
+    }).trim()
+  } catch (error) {
+    if (options.ignoreErrors) return ""
+    throw error
+  }
+}
+
+function parseGitFiles(input: unknown): string[] {
+  if (Array.isArray(input)) return input.map(String).map((file) => file.trim()).filter(Boolean)
+  const raw = input === undefined || input === null ? "" : String(input).trim()
+  if (!raw) return []
+  return raw.split(/\s+/).filter(Boolean)
+}
+
+export function gitDiffArgs(input: { staged?: unknown; file?: unknown }): string[] {
+  const args = ["diff"]
+  if (input.staged) args.push("--staged")
+  if (input.file) args.push("--", String(input.file))
+  return args
+}
+
+export function gitAddArgs(files: unknown): string[] {
+  const parsed = parseGitFiles(files)
+  return parsed.length ? ["add", "--", ...parsed] : ["add", "--", "."]
+}
+
+export function gitCommitArgs(message: unknown): string[] {
+  return ["commit", "-m", String(message)]
 }
 
 /**
@@ -733,11 +777,10 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     async (args) => {
       const cwd = args.path ? String(args.path) : process.cwd()
       try {
-        const { execSync } = await import("node:child_process")
-        const branch = execSync("git branch --show-current", { cwd, encoding: "utf8", stdio: "pipe" }).trim()
-        const status = execSync("git status --short", { cwd, encoding: "utf8", stdio: "pipe" }).trim()
-        const ahead = execSync("git rev-list --count @{upstream}..HEAD 2>nul || echo 0", { cwd, encoding: "utf8", stdio: "pipe" }).trim()
-        const behind = execSync("git rev-list --count HEAD..@{upstream} 2>nul || echo 0", { cwd, encoding: "utf8", stdio: "pipe" }).trim()
+        const branch = runGit(["branch", "--show-current"], { cwd })
+        const status = runGit(["status", "--short"], { cwd })
+        const ahead = runGit(["rev-list", "--count", "@{upstream}..HEAD"], { cwd, ignoreErrors: true }) || "0"
+        const behind = runGit(["rev-list", "--count", "HEAD..@{upstream}"], { cwd, ignoreErrors: true }) || "0"
         const lines = [`Branch: ${branch}`]
         if (ahead !== "0") lines.push(`Ahead: ${ahead} commits`)
         if (behind !== "0") lines.push(`Behind: ${behind} commits`)
@@ -771,10 +814,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     async (args) => {
       const cwd = args.path ? String(args.path) : process.cwd()
       try {
-        const { execSync } = await import("node:child_process")
-        const staged = args.staged ? "--staged" : ""
-        const file = args.file ? ` -- "${String(args.file)}"` : ""
-        const diff = execSync(`git diff ${staged}${file}`, { cwd, encoding: "utf8", stdio: "pipe", maxBuffer: 1024 * 1024 }).trim()
+        const diff = runGit(gitDiffArgs({ staged: args.staged, file: args.file }), { cwd, maxBuffer: 1024 * 1024 })
         if (!diff) return "No changes to show."
         return diff.length > 3000 ? diff.slice(0, 3000) + `\n...(truncated, ${diff.length} chars)` : diff
       } catch (e: any) {
@@ -805,11 +845,9 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     async (args) => {
       const cwd = args.path ? String(args.path) : process.cwd()
       try {
-        const { execSync } = await import("node:child_process")
-        const files = args.files ? String(args.files) : "."
-        execSync(`git add ${files}`, { cwd, encoding: "utf8", stdio: "pipe" })
-        execSync(`git commit -m "${String(args.message).replace(/"/g, '\\"')}"`, { cwd, encoding: "utf8", stdio: "pipe" })
-        const hash = execSync("git rev-parse HEAD", { cwd, encoding: "utf8", stdio: "pipe" }).trim().slice(0, 8)
+        runGit(gitAddArgs(args.files), { cwd })
+        runGit(gitCommitArgs(args.message), { cwd })
+        const hash = runGit(["rev-parse", "HEAD"], { cwd }).slice(0, 8)
         return `Committed: ${hash} — ${String(args.message)}`
       } catch (e: any) {
         if (e.message?.includes("not a git repository")) return "Not a git repository."
@@ -839,21 +877,20 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     async (args) => {
       const cwd = args.path ? String(args.path) : process.cwd()
       try {
-        const { execSync } = await import("node:child_process")
         let msg = args.message ? String(args.message) : ""
         if (!msg) {
-          const diffStat = execSync("git diff --stat", { cwd, encoding: "utf8", maxBuffer: 1024 * 100 }).trim()
+          const diffStat = runGit(["diff", "--stat"], { cwd, maxBuffer: 1024 * 100 })
           const filesChanged = diffStat ? diffStat.split("\n").length : 0
-          const branch = execSync("git branch --show-current", { cwd, encoding: "utf8" }).trim()
-          const _added = execSync("git diff --cached --name-only 2>nul || true", { cwd, encoding: "utf8" }).trim()
+          const branch = runGit(["branch", "--show-current"], { cwd })
+          const _added = runGit(["diff", "--cached", "--name-only"], { cwd, ignoreErrors: true })
           msg = `feat: update ${filesChanged > 0 ? filesChanged + " files" : "working state"} (${branch})`
         }
-        execSync(`git add -A`, { cwd, encoding: "utf8" })
-        execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd, encoding: "utf8" })
-        const hash = execSync("git rev-parse HEAD", { cwd, encoding: "utf8" }).trim().slice(0, 8)
+        runGit(["add", "-A"], { cwd })
+        runGit(gitCommitArgs(msg), { cwd })
+        const hash = runGit(["rev-parse", "HEAD"], { cwd }).slice(0, 8)
         let result = `✅ Committed ${hash}: ${msg}`
         if (args.push) {
-          execSync("git push", { cwd, encoding: "utf8" })
+          runGit(["push"], { cwd })
           result += `\n📤 Pushed to origin`
         }
         return result
@@ -1425,10 +1462,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const cwd = args.path ? String(args.path) : process.cwd()
       const staged = args.staged !== false
       try {
-        const { execSync } = await import("node:child_process")
-        const stagedFlag = staged ? "--staged" : ""
-        const fileFilter = args.file ? ` -- "${String(args.file)}"` : ""
-        const diff = execSync(`git diff ${stagedFlag}${fileFilter}`, { cwd, encoding: "utf8", maxBuffer: 1024 * 1024 })
+        const diff = runGit(gitDiffArgs({ staged, file: args.file }), { cwd, maxBuffer: 1024 * 1024 })
         if (!diff.trim()) return "No changes to review."
         return `## Code Review\n\n\`\`\`diff\n${diff.slice(0, 4000)}\`\`\`\n\nReview the changes above. Focus on:\n1. Logic errors or bugs\n2. Security vulnerabilities\n3. Style inconsistencies\n4. Missing edge cases\n5. Performance concerns\n\nRate severity: 🔴 critical / 🟡 warning / 🟢 info`
       } catch (e: any) {
@@ -1636,21 +1670,41 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       type: "function",
       function: {
         name: "batch",
-        description: "Execute multiple INDEPENDENT tool calls in parallel to save round-trips. Use ONLY for genuinely independent reads (e.g. reading several files, multiple grep patterns). DO NOT batch when later calls depend on earlier results. Sub-calls re-run through rate-limit and dangerous-command guards. Supported sub-tools: glob, grep, read, web_fetch, web_search, git_status, git_diff, env_probe, artifact_get, memory_search.",
+        description:
+          "Execute multiple INDEPENDENT read/network tool calls in parallel (bounded). " +
+          "Use ONLY for independent reads (files, greps, status). DO NOT batch dependent calls. " +
+          "Server allowlist (enforced): glob, grep, read, web_fetch, web_search, git_status, git_diff, env_probe, artifact_get, memory_search. " +
+          "Writes/shell are rejected. Max 16 calls; sub-calls re-run full auth/sandbox/timeout.",
         parameters: {
           type: "object",
           properties: {
             calls: {
               type: "array",
+              maxItems: 16,
               items: {
                 type: "object",
                 properties: {
-                  tool: { type: "string", description: "Tool name to call" },
+                  tool: {
+                    type: "string",
+                    description: "Allowlisted tool name (reads/network only)",
+                    enum: [
+                      "glob",
+                      "grep",
+                      "read",
+                      "web_fetch",
+                      "web_search",
+                      "git_status",
+                      "git_diff",
+                      "env_probe",
+                      "artifact_get",
+                      "memory_search",
+                    ],
+                  },
                   args: { type: "object", description: "Arguments for the tool" },
                 },
                 required: ["tool", "args"],
               },
-              description: "Array of independent tool calls to execute in parallel",
+              description: "Independent allowlisted tool calls (max 16)",
             },
           },
           required: ["calls"],
@@ -1658,19 +1712,11 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      // The real executor lives in AgentRunner.run() — it intercepts toolName === "batch"
-      // before this handler ever runs, applies rate-limit + dangerous-command guards to
-      // every sub-call, and runs them via Promise.all. This handler only fires when the
-      // tool is invoked outside the agent loop (e.g., from a unit test). Return a useful
-      // no-op instead of a misleading "will execute" stub.
+      // AgentRunner intercepts "batch" and runs validateAndPlanBatch + runBatchWaves.
+      // This stub is only for out-of-loop invocation (tests / direct registry).
       const calls = args.calls as Array<{ tool: string; args: Record<string, unknown> }> | undefined
       if (!calls?.length) return "No calls provided"
-      const known = new Set(runner.getToolDefs().map((t) => t.function.name))
-      const unknown = calls.filter((c) => !known.has(c.tool)).map((c) => c.tool)
-      const summary = unknown.length
-        ? `Batch of ${calls.length} calls; ${unknown.length} unknown sub-tool(s): ${unknown.join(", ")}. Known sub-tools will execute in parallel via the agent loop.`
-        : `Batch of ${calls.length} calls will execute in parallel via the agent loop (sub-tools: ${[...new Set(calls.map((c) => c.tool))].join(", ")}).`
-      return summary
+      return `Batch of ${calls.length} call(s) will run via the agent loop under the nested allowlist and bounded scheduler.`
     },
   )
 

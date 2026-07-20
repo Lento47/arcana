@@ -4,6 +4,16 @@ The image is not really “Grimoire.” It is closer to **Style B Chronicle**, b
 
 # Arcana Command Spine
 
+> **Current product surface (2026-07):** Command-spine is the **default** shell. Live chrome is documented in [`docs/architecture/command-spine-ui.md`](docs/architecture/command-spine-ui.md). Summary vs the original image notes below:
+>
+> - Prompt lead is **`✶` + rounded box with `❯` / `!`** — **not** `arcana ›` on the lead.
+> - Brand wordmark lives in the **header**, not the composer.
+> - Footer sits **under** the box (content-offset aligned): status left + `key:label` hints.
+> - Slash/@ autocomplete is **inline above** the composer.
+> - Tight spacing: no rail-only blank stem; 0 blank between box and status.
+>
+> Prefer the living surface doc for day-to-day work; keep this file as migration intent + historical target.
+
 So the migration should be:
 
 ```txt
@@ -125,7 +135,7 @@ Concrete mapping:
 | diff excerpt                                              | `SpineDiff`          |
 | compiler error                                            | `SpineError`         |
 | final summary                                             | `SpineSummary`       |
-| `arcana ›` bottom prompt                                  | `SpinePrompt`        |
+| `✶` + box (`❯` / `!`) bottom prompt                       | `SpinePrompt`        |
 
 ---
 
@@ -448,17 +458,17 @@ Do not render giant diff blocks by default. Default should be compact. Expand on
 
 Keep `component/prompt/index.tsx` core, but replace the shell around it.
 
-In the image, prompt belongs to the final node:
+**Shipped target (supersedes image-era `✶ arcana ›`):**
 
 ```txt
-✶ arcana ›
+✶   ┌──────────────────────────────┐
+    │ ❯  <input>            model  │
+    └──────────────────────────────┘
 ```
 
-So create:
-
-```txt
-spine-prompt.tsx
-```
+- Rail terminal: `✶` (state-colored).
+- Box lead: `❯` / shell `!` — no brand string on the lead.
+- Implementation: `spine-prompt.tsx` + `Prompt` with `variant="command-spine"`.
 
 It wraps the existing prompt input core but renders it as the final spine node.
 
@@ -466,13 +476,15 @@ It wraps the existing prompt input core but renders it as the final spine node.
 
 ## Phase 6 — Status/header/footer cleanup
 
-Replace the opencode footer/statusbar with the small image-style context line.
+Replace the opencode footer/statusbar with a minimal line **under the composer**.
 
 ```txt
-proj ~/work/arcana + branch main + mode build + model gpt-4.1
+status / pending…          enter:send  …key:label
 ```
 
-No dashboard bar. No token HUD. No crowded footer.
+Optional context chips (project, branch, mode, model) belong in the **header** or sparse status — not a dashboard bar.
+
+No token HUD. No crowded footer. No permanent "proof tape" brand word except on wide layouts while active (see command-spine-ui).
 
 ---
 
@@ -605,7 +617,7 @@ ARCANA wordmark                      compact context row
 07  time       ▷ run        retest result
 08  time       ◎ ok         final summary
 
-               ✶ arcana ›
+               ✶  [ ❯  … ]
 What we are building
 
 Call it:
@@ -631,7 +643,7 @@ These parts should be treated as non-negotiable:
 8. Inline diff excerpt, not giant panel
 9. Compact test receipt
 10. Compact error receipt
-11. Bottom arcana prompt attached to the spine
+11. Bottom spine prompt (`✶` + box `❯`/`!`) attached to the spine
 12. No chat bubbles
 13. No dashboard sidebar
 14. No opencode-style cards

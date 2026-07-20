@@ -18,7 +18,12 @@ describe("command-spine action hints", () => {
   test("shows base navigation actions when no entry is focused", () => {
     expect(spineFooterSelection(undefined)).toEqual({
       label: "spine",
-      actions: ["j/k focus", "tab next", "enter toggle", "y copy"],
+      hints: [
+        { keys: "j/k", label: "focus" },
+        { keys: "tab", label: "next" },
+        { keys: "enter", label: "toggle" },
+        { keys: "y", label: "copy" },
+      ],
     })
   })
 
@@ -29,7 +34,12 @@ describe("command-spine action hints", () => {
     }))
 
     expect(selected.label).toBe("03 patch")
-    expect(selected.actions).toEqual(["enter toggle", "d diff", "o details", "y copy"])
+    expect(selected.hints).toEqual([
+      { keys: "enter", label: "toggle" },
+      { keys: "d", label: "diff" },
+      { keys: "o", label: "details" },
+      { keys: "y", label: "copy" },
+    ])
   })
 
   test("adds related session action for agent rows", () => {
@@ -40,6 +50,6 @@ describe("command-spine action hints", () => {
     }))
 
     expect(selected.label).toBe("12 agent")
-    expect(selected.actions).toContain("g session")
+    expect(selected.hints.some((h) => h.keys === "g" && h.label === "session")).toBe(true)
   })
 })

@@ -96,9 +96,11 @@ export function SpineHeader(props: {
     </Show>
   )
 
+  // Tight header: no blank row above brand; one separator only when context rows exist.
+  const hasContext = createMemo(() => segments().length > 0 || showPath())
+
   return (
     <box flexDirection="column" flexShrink={0}>
-      <box height={1} />
       <Show
         when={isWide()}
         fallback={
@@ -107,7 +109,6 @@ export function SpineHeader(props: {
               <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()}>
                 <text fg={t.spineBrand as any}>A R C A N A</text>
               </box>
-              <box height={1} />
             </Show>
             <Show when={segments().length > 0}>
               <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()}>
@@ -127,7 +128,9 @@ export function SpineHeader(props: {
         </box>
         <PathLine />
       </Show>
-      <box height={1} />
+      <Show when={hasContext() || showBrand()}>
+        <box height={1} />
+      </Show>
     </box>
   )
 }

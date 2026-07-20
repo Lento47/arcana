@@ -15,6 +15,14 @@ import {
   getMlRuntimeModelOverrides,
   prepareMlRuntime,
 } from "./ml-runtime.js"
+import {
+  BatchSizeError,
+  BatchToolDeniedError,
+  DEFAULT_BATCH_CONFIG,
+  runBatchWaves,
+  validateAndPlanBatch,
+} from "./tool-batch/index.js"
+import { publishBatchActivity } from "./tool-batch/activity-bridge.js"
 
 const TOOL_RESULT_MAX = 2000  // truncate large tool outputs to this many chars
 const LLM_STREAM_TIMEOUT_MS = 120_000   // total timeout for streaming LLM calls
@@ -225,6 +233,256 @@ export class AgentRunner {
     ].join("\n")
   }
 
+  /**
+   * Sole tool execution path for top-level and nested (batch) calls.
+   *
+   * Order (must stay stable — see docs/adr/0002-tool-batch-scheduler.md):
+   *   safeMode → allowlist → registry → sandbox → rate limit → proof gates →
+   *   dangerous-cmd → result cache → (batch special) or execute+timeout →
+   *   proof record → redact → injection scan → audit → tool history
+   *
+   * Corruption guards:
+   * - Cache only read-only tools; store post-redact output only.
+   * - Rate limit counted once per call (not again for nested batch parent).
+   * - Batch never re-enters batch (allowlist + capability deny).
+   */
+  private async executeAuthorizedTool(
+    toolName: string,
+    input: Record<string, unknown>,
+    options: {
+      resultCache?: Map<string, { result: string; ts: number }>
+      /** When true, skip rate-limit soft warning collection (hard limit still applies). */
+      nested?: boolean
+    } = {},
+  ): Promise<{ result: string; softWarning?: string }> {
+    const WRITE_TOOLS = new Set([
+      "write",
+      "edit",
+      "apply_patch",
+      "delete",
+      "rename",
+      "env_write",
+      "env_install",
+      "env_clean",
+      "skill_create",
+    ])
+    // Only idempotent reads — never cache write/shell/batch results.
+    const CACHEABLE = new Set(["web_search", "web_fetch", "memory_search", "skill_list"])
+
+    if (this.config.safeMode && WRITE_TOOLS.has(toolName)) {
+      return {
+        result: `[SAFE MODE] Tool "${toolName}" is disabled in safe mode. Use --safe=false to enable write tools.`,
+      }
+    }
+
+    const allowedTools = this.config.allowedTools ?? process.env.ARCANA_ALLOWED_TOOLS
+    if (allowedTools && !this.config.godlike) {
+      const allowed = new Set(allowedTools.split(","))
+      if (!allowed.has("*") && !allowed.has(toolName)) {
+        return {
+          result: `[LICENSE] Tool "${toolName}" is not available on your plan. Upgrade at https://arcana.otnelhq.com`,
+        }
+      }
+    }
+
+    // Nested batch: outer tool is "batch"; sub-tools must never be "batch" again.
+    if (options.nested && toolName === "batch") {
+      return { result: `Batch sub-tool "batch" denied: nested batch is not allowed` }
+    }
+
+    const entry = this.tools.get(toolName)
+    if (!entry && toolName !== "batch") return { result: `Unknown tool: ${toolName}` }
+
+    if (this.sandbox) {
+      const path = input.path ?? input.filePath ?? input.filepath ?? input.file
+      if (
+        path &&
+        (toolName === "write" || toolName === "edit" || toolName === "read" || toolName === "apply_patch")
+      ) {
+        const blocked = checkSandboxPath(this.sandbox, String(path), toolName)
+        if (blocked) return { result: blocked }
+      }
+      const url = input.url as string | undefined
+      if (url && (toolName === "web_fetch" || toolName === "web_search")) {
+        const blocked = checkSandboxNetwork(this.sandbox, url)
+        if (blocked) return { result: blocked }
+      }
+    }
+
+    let softWarning: string | undefined
+    if (!this.config.godlike) {
+      try {
+        const warn = this.limiter.check(toolName)
+        if (warn) softWarning = warn
+      } catch (error) {
+        return { result: error instanceof Error ? error.message : String(error) }
+      }
+    }
+
+    const policyBlocked = await this.runProofShellGate(toolName, input)
+    if (policyBlocked) {
+      auditLog({
+        tool: toolName,
+        args: input,
+        result: policyBlocked,
+        session: this.sessionId ?? undefined,
+        ts: new Date().toISOString(),
+      })
+      return { result: policyBlocked, softWarning }
+    }
+
+    const filePolicyBlocked = await this.runProofFileGate(toolName, input)
+    if (filePolicyBlocked) {
+      auditLog({
+        tool: toolName,
+        args: input,
+        result: filePolicyBlocked,
+        session: this.sessionId ?? undefined,
+        ts: new Date().toISOString(),
+      })
+      return { result: filePolicyBlocked, softWarning }
+    }
+
+    if (!this.config.godlike && (toolName === "shell" || toolName.includes("bash"))) {
+      const cmd = String(input.command ?? input.cmd ?? "")
+      const blocked = checkDangerousCommand(cmd)
+      if (blocked) {
+        auditLog({
+          tool: toolName,
+          args: input,
+          result: blocked,
+          session: this.sessionId ?? undefined,
+          ts: new Date().toISOString(),
+        })
+        return { result: blocked, softWarning }
+      }
+    }
+
+    // Segmented batch (parent call only — never nested). Phase 3: budgets, cancel, synthesis.
+    if (toolName === "batch" && !options.nested) {
+      const batchCalls = (input as { calls?: Array<{ tool: string; args?: Record<string, unknown> }> }).calls
+      if (!batchCalls?.length) return { result: "No calls provided", softWarning }
+      try {
+        const planned = validateAndPlanBatch(batchCalls, {
+          defaultTimeoutMs: this.config.toolTimeout ?? DEFAULT_BATCH_CONFIG.defaultTimeoutMs,
+        })
+        const report = await runBatchWaves({
+          waves: planned.waves,
+          config: planned.config,
+          timeoutMs: planned.config.defaultTimeoutMs,
+          parentId: toolName,
+          onEvent: (event) => {
+            if (event.type === "run.start") {
+              publishBatchActivity(event.planSummary)
+            } else if (event.type === "wave.start") {
+              publishBatchActivity(
+                `wave ${event.waveIndex + 1}${event.capability ? ` · ${event.size} ${event.capability}` : ""}`,
+              )
+            } else if (event.type === "run.end") {
+              publishBatchActivity(undefined)
+            }
+          },
+          execute: async (call) => {
+            const nested = await this.executeAuthorizedTool(call.name, call.input, {
+              resultCache: options.resultCache,
+              nested: true,
+            })
+            return nested.result
+          },
+        })
+        await this.config.proofGate?.recordToolBatch?.({
+          run_id: report.runId,
+          plan_summary: report.planSummary,
+          waves: report.waves,
+          calls: report.calls,
+          ok: report.ok,
+          failed: report.failed,
+          cancelled: report.cancelled,
+          max_active: report.maxActive,
+          duration_ms: report.durationMs,
+          summary: report.synthesis.slice(0, 500),
+        })
+        publishBatchActivity(undefined)
+        // Parent model sees focused synthesis, not raw worker dumps.
+        return { result: report.synthesis, softWarning }
+      } catch (error) {
+        if (error instanceof BatchSizeError || error instanceof BatchToolDeniedError) {
+          auditLog({
+            tool: "batch",
+            args: input,
+            result: error.message,
+            session: this.sessionId ?? undefined,
+            ts: new Date().toISOString(),
+          })
+          return { result: error.message, softWarning }
+        }
+        return {
+          result: `Batch error: ${error instanceof Error ? error.message : String(error)}`,
+          softWarning,
+        }
+      }
+    }
+
+    if (!entry) return { result: `Unknown tool: ${toolName}`, softWarning }
+
+    const cacheKey = `${toolName}:${JSON.stringify(input)}`
+    const cacheable = CACHEABLE.has(toolName) && options.resultCache
+    const cached = cacheable ? options.resultCache!.get(cacheKey) : undefined
+    if (cached && Date.now() - cached.ts < 5000) {
+      // LRU touch
+      options.resultCache!.delete(cacheKey)
+      options.resultCache!.set(cacheKey, cached)
+      await this.recordRunProofContextAccess(toolName, input, cached.result)
+      return { result: cached.result, softWarning }
+    }
+
+    const timeout = this.config.toolTimeout ?? 30_000
+    try {
+      const resultPromise = entry.handler(input)
+      let resultStr = await Promise.race([
+        resultPromise,
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error(`Tool timed out after ${timeout}ms`)), timeout),
+        ),
+      ])
+      await this.recordRunProofContextAccess(toolName, input, resultStr)
+      await this.recordRunProofFileWrite(toolName, input, resultStr)
+      resultStr = this.config.godlike ? resultStr : redactSecrets(resultStr)
+      const injection = this.config.godlike ? null : detectInjection(resultStr)
+      if (injection) resultStr = `[INJECTION WARN] ${injection}\n\n${resultStr}`
+      await this.recordRunProofShellCommand(toolName, input, resultStr)
+      if (cacheable && options.resultCache) {
+        options.resultCache.set(cacheKey, { result: resultStr, ts: Date.now() })
+        if (options.resultCache.size > 50) {
+          const oldest = options.resultCache.keys().next().value
+          if (oldest) options.resultCache.delete(oldest)
+        }
+      }
+      if (!this.config.godlike) {
+        auditLog({
+          tool: toolName,
+          args: input,
+          result: resultStr.slice(0, 200),
+          session: this.sessionId ?? undefined,
+          ts: new Date().toISOString(),
+        })
+      }
+      toolHistory.push({ name: toolName, ts: Date.now() })
+      return { result: resultStr, softWarning }
+    } catch (error) {
+      const resultStr = `Tool error: ${String(error)}`
+      await this.recordRunProofShellCommand(toolName, input, resultStr)
+      auditLog({
+        tool: toolName,
+        args: input,
+        result: `ERROR: ${error}`,
+        session: this.sessionId ?? undefined,
+        ts: new Date().toISOString(),
+      })
+      return { result: resultStr, softWarning }
+    }
+  }
+
   private async recordRunProofContextAccess(
     toolName: string,
     input: Record<string, unknown>,
@@ -417,11 +675,8 @@ export class AgentRunner {
     let toolCalls = 0
     let finalContent = ""
 
+    // Shared across the turn so read-only tools can reuse results (post-redact only).
     const toolResultCache = new Map<string, { result: string; ts: number }>()
-    // Only read-only/idempotent tools may be cached. Caching side-effectful tools
-    // (bash/shell, write, edit, speak, memory_store_fact, ...) would silently skip
-    // a real second execution of an identical call within the 5s window.
-    const CACHEABLE_TOOLS = new Set(["web_search", "web_fetch", "memory_search", "skill_list"])
     const maxToolRounds = mlOverrides.maxToolRounds ?? this.config.maxToolRounds ?? 10
     let contextBudgetRecorded = false
     for (let round = 0; round < maxToolRounds; round++) {
@@ -569,184 +824,25 @@ export class AgentRunner {
       history.push({ role: "assistant", content: text || null, tool_calls: toolCallsList as any })
       toolCalls += toolRequests.length
 
-      const WRITE_TOOLS = new Set(["write", "edit", "apply_patch", "delete", "rename", "env_write", "env_install", "env_clean", "skill_create"])
-
-      const softWarnings: string[] = []
+      // Single authorized path for every top-level tool (and nested batch sub-calls).
       for (const tc of toolRequests) {
-        let resultStr: string
-        if (this.config.safeMode && WRITE_TOOLS.has(tc.toolName)) {
-          resultStr = `[SAFE MODE] Tool "${tc.toolName}" is disabled in safe mode. Use --safe=false to enable write tools.`
-          history.push({ role: "tool", tool_call_id: tc.toolCallId, content: resultStr, toolName: tc.toolName } as any)
-          continue
-        }
-        const allowedTools = this.config.allowedTools ?? process.env.ARCANA_ALLOWED_TOOLS
-        if (allowedTools && !this.config.godlike) {
-          const allowed = new Set(allowedTools.split(","))
-          if (!allowed.has("*") && !allowed.has(tc.toolName)) {
-            resultStr = `[LICENSE] Tool "${tc.toolName}" is not available on your plan. Upgrade at https://arcana.otnelhq.com`
-            history.push({ role: "tool", tool_call_id: tc.toolCallId, content: resultStr, toolName: tc.toolName } as any)
-            continue
-          }
-        }
-        const entry = this.tools.get(tc.toolName)
-        if (!entry) {
-          resultStr = `Unknown tool: ${tc.toolName}`
-        } else {
-          try {
-            // Sandbox: path jail for file tools
-            if (this.sandbox) {
-              const args = tc.input as Record<string, unknown>
-              const path = args.path ?? args.filePath ?? args.filepath ?? args.file
-              if (path && (tc.toolName === "write" || tc.toolName === "edit" || tc.toolName === "read" || tc.toolName === "apply_patch")) {
-                const blocked = checkSandboxPath(this.sandbox, String(path), tc.toolName)
-                if (blocked) { resultStr = blocked; history.push({ role: "tool", tool_call_id: tc.toolCallId, content: blocked, toolName: tc.toolName } as any); continue }
-              }
-              // Sandbox: network jail
-              const url = args.url as string
-              if (url && (tc.toolName === "web_fetch" || tc.toolName === "web_search")) {
-                const blocked = checkSandboxNetwork(this.sandbox, url)
-                if (blocked) { resultStr = blocked; history.push({ role: "tool", tool_call_id: tc.toolCallId, content: blocked, toolName: tc.toolName } as any); continue }
-              }
-            }
-
-            // Guard: rate limit soft warning — side-channeled to avoid
-            // being overwritten by the tool result.
-            if (!this.config.godlike) {
-              const warn = this.limiter.check(tc.toolName)
-              if (warn) softWarnings.push(warn)
-            }
-
-            const policyBlocked = await this.runProofShellGate(tc.toolName, tc.input as Record<string, unknown>)
-            if (policyBlocked) {
-              resultStr = policyBlocked
-              auditLog({ tool: tc.toolName, args: tc.input, result: policyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
-              history.push({ role: "tool", tool_call_id: tc.toolCallId, content: policyBlocked, toolName: tc.toolName } as any)
-              continue
-            }
-
-            const filePolicyBlocked = await this.runProofFileGate(tc.toolName, tc.input as Record<string, unknown>)
-            if (filePolicyBlocked) {
-              resultStr = filePolicyBlocked
-              auditLog({ tool: tc.toolName, args: tc.input, result: filePolicyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
-              history.push({ role: "tool", tool_call_id: tc.toolCallId, content: filePolicyBlocked, toolName: tc.toolName } as any)
-              continue
-            }
-
-              // Guard: dangerous command check (skip in godlike mode)
-            if (!this.config.godlike && (tc.toolName === "shell" || tc.toolName.includes("bash"))) {
-              const args = tc.input as Record<string, unknown>
-              const cmd = String(args.command ?? args.cmd ?? "")
-              const blocked = checkDangerousCommand(cmd)
-              if (blocked) { resultStr = blocked; auditLog({ tool: tc.toolName, args: tc.input, result: blocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() }); history.push({ role: "tool", tool_call_id: tc.toolCallId, content: blocked, toolName: tc.toolName } as any); continue }
-            }
-
-            const cacheKey = `${tc.toolName}:${JSON.stringify(tc.input)}`
-            const cacheable = CACHEABLE_TOOLS.has(tc.toolName)
-            const cached = cacheable ? toolResultCache.get(cacheKey) : undefined
-            if (cached && (Date.now() - cached.ts) < 5000) {
-              toolResultCache.delete(cacheKey)
-              toolResultCache.set(cacheKey, cached)
-              resultStr = cached.result
-              await this.recordRunProofContextAccess(tc.toolName, tc.input as Record<string, unknown>, resultStr)
-              history.push({ role: "tool", tool_call_id: tc.toolCallId, content: resultStr, toolName: tc.toolName } as any)
-              continue
-            }
-
-            // Parallel execution for batch tool
-            if (tc.toolName === "batch") {
-              const batchArgs = tc.input as any
-              const batchCalls = batchArgs?.calls as Array<{ tool: string; args: Record<string, unknown> }> | undefined
-              if (batchCalls?.length) {
-                const batchResults = await Promise.all(batchCalls.map(async (batchCall) => {
-                  const batchEntry = this.tools.get(batchCall.tool)
-                  if (!batchEntry) return `"${batchCall.tool}": unknown tool`
-                  // Sub-calls must pass the same guards as top-level calls — otherwise
-                  // `batch: [{tool:"bash", command:"rm -rf /"}]` bypasses them entirely.
-                  const filePolicyBlocked = await this.runProofFileGate(batchCall.tool, batchCall.args ?? {})
-                  if (filePolicyBlocked) {
-                    auditLog({ tool: batchCall.tool, args: batchCall.args, result: filePolicyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
-                    return `"${batchCall.tool}": ${filePolicyBlocked}`
-                  }
-                  const policyBlocked = await this.runProofShellGate(batchCall.tool, batchCall.args ?? {})
-                  if (policyBlocked) {
-                    auditLog({ tool: batchCall.tool, args: batchCall.args, result: policyBlocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
-                    return `"${batchCall.tool}": ${policyBlocked}`
-                  }
-                  if (!this.config.godlike) {
-                    try { this.limiter.check(batchCall.tool) } catch (e) {
-                      return `"${batchCall.tool}": ${e instanceof Error ? e.message : String(e)}`
-                    }
-                    if (batchCall.tool === "shell" || batchCall.tool.includes("bash")) {
-                      const a = (batchCall.args ?? {}) as Record<string, unknown>
-                      const cmd = String(a.command ?? a.cmd ?? "")
-                      const blocked = checkDangerousCommand(cmd)
-                      if (blocked) {
-                        auditLog({ tool: batchCall.tool, args: batchCall.args, result: blocked, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
-                        return `"${batchCall.tool}": ${blocked}`
-                      }
-                    }
-                  }
-                  try {
-                    const result = await batchEntry.handler(batchCall.args)
-                    await this.recordRunProofContextAccess(batchCall.tool, batchCall.args ?? {}, result)
-                    await this.recordRunProofFileWrite(batchCall.tool, batchCall.args ?? {}, result)
-                    await this.recordRunProofShellCommand(
-                      batchCall.tool,
-                      batchCall.args ?? {},
-                      this.config.godlike ? result : redactSecrets(result),
-                    )
-                    return `"${batchCall.tool}": ${result.slice(0, 500)}`
-                  } catch (e) {
-                    const result = `error - ${String(e)}`
-                    await this.recordRunProofShellCommand(batchCall.tool, batchCall.args ?? {}, result)
-                    return `"${batchCall.tool}": ${result}`
-                  }
-                }))
-                resultStr = `Parallel results:\n${batchResults.join("\n")}`
-                history.push({ role: "tool", tool_call_id: tc.toolCallId, content: resultStr, toolName: tc.toolName } as any)
-                continue
-              }
-            }
-
-            // Execute (redact secrets only if not godlike)
-            const _rawArgs = JSON.stringify(tc.input)
-            const timeout = this.config.toolTimeout ?? 30000
-            const resultPromise = entry.handler(tc.input as Record<string, unknown>)
-            resultStr = await Promise.race([
-              resultPromise,
-              new Promise<string>((_, reject) =>
-                setTimeout(() => reject(new Error(`Tool timed out after ${timeout}ms`)), timeout),
-              ),
-            ])
-            await this.recordRunProofContextAccess(tc.toolName, tc.input as Record<string, unknown>, resultStr)
-            await this.recordRunProofFileWrite(tc.toolName, tc.input as Record<string, unknown>, resultStr)
-            resultStr = this.config.godlike ? resultStr : redactSecrets(resultStr)
-            const injection = this.config.godlike ? null : detectInjection(resultStr)
-            if (injection) resultStr = `[INJECTION WARN] ${injection}\n\n${resultStr}`
-            await this.recordRunProofShellCommand(tc.toolName, tc.input as Record<string, unknown>, resultStr)
-            if (cacheable) {
-              toolResultCache.set(cacheKey, { result: resultStr, ts: Date.now() })
-              if (toolResultCache.size > 50) {
-                const oldest = toolResultCache.keys().next().value
-                if (oldest) toolResultCache.delete(oldest)
-              }
-            }
-            if (!this.config.godlike) auditLog({ tool: tc.toolName, args: tc.input, result: resultStr.slice(0, 200), session: this.sessionId ?? undefined, ts: new Date().toISOString() })
-            toolHistory.push({ name: tc.toolName, ts: Date.now() })
-          } catch (e) {
-            resultStr = `Tool error: ${String(e)}`
-            await this.recordRunProofShellCommand(tc.toolName, tc.input as Record<string, unknown>, resultStr)
-            auditLog({ tool: tc.toolName, args: tc.input, result: `ERROR: ${e}`, session: this.sessionId ?? undefined, ts: new Date().toISOString() })
-          }
-        }
-        // Prepend accumulated rate-limit soft warnings so the LLM sees them
-        const warningPrefix = softWarnings.length > 0 ? softWarnings.join("\n") + "\n" : ""
-        softWarnings.length = 0
-        // Truncate large tool results to keep context manageable
-        const truncated = (warningPrefix + resultStr).length > TOOL_RESULT_MAX
-          ? (warningPrefix + resultStr).slice(0, TOOL_RESULT_MAX) + `\n...(truncated ${(warningPrefix + resultStr).length - TOOL_RESULT_MAX} chars)`
-          : warningPrefix + resultStr
-        history.push({ role: "tool", tool_call_id: tc.toolCallId, content: truncated, toolName: tc.toolName } as any)
+        const { result, softWarning } = await this.executeAuthorizedTool(
+          tc.toolName,
+          tc.input as Record<string, unknown>,
+          { resultCache: toolResultCache },
+        )
+        const warningPrefix = softWarning ? `${softWarning}\n` : ""
+        const combined = warningPrefix + result
+        const truncated =
+          combined.length > TOOL_RESULT_MAX
+            ? combined.slice(0, TOOL_RESULT_MAX) + `\n...(truncated ${combined.length - TOOL_RESULT_MAX} chars)`
+            : combined
+        history.push({
+          role: "tool",
+          tool_call_id: tc.toolCallId,
+          content: truncated,
+          toolName: tc.toolName,
+        } as any)
       }
     }
 

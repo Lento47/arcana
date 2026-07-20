@@ -43,6 +43,8 @@ The TUI is a cockpit, not the authority.
 
 The TUI must render kernel, policy, mutation, verification, rollback, and proof state. It must not invent state.
 
+Current default presentation: [command-spine-ui.md](./command-spine-ui.md). Performance work that only polishes chrome without stable projections is also out of scope — see [arcana-performance-optimization-foundation.md](./arcana-performance-optimization-foundation.md).
+
 ### Direct Ungoverned Mutation
 
 Long term, file writes should not be owned by tools directly.

@@ -2,7 +2,9 @@
 
 Arcana should classify tool use by risk class instead of treating all tools equally.
 
-This document is a design guide for future policy work. It does not define runtime enforcement.
+This document is primarily a **design guide** for policy matrices (observe / advise / ask / enforce / locked).
+
+**Partial runtime (2026-07):** capability-tier classification and concurrency already run on product paths — engine `withToolAdmission` (read/network/write/shell pools + path locks) and agent tool batch (allowlist, waves, budgets). Nested tools re-authorize via `executeAuthorizedTool`. See [ADR 0002](./adr/0002-tool-batch-scheduler.md). The full risk-class → approval matrix in this doc is **not** yet a single policy engine; treat unlisted classes and modes as design until wired.
 
 ## One-line definition
 

@@ -98,17 +98,54 @@ export const BOOT_PHRASES = [
   "waking familiars…",
 ] as const
 
-/** Home prompt placeholder pools (rotating examples). */
+/**
+ * Prompt placeholder pools (rotating examples).
+ * Shared by home + command-spine — pick one at random per session / mode switch.
+ * Keep lines short (≤ ~48 chars) so they fit narrow terminals.
+ */
 export const PLACEHOLDER = {
   normal: [
     "Speak your intent…",
     "What secrets does this codebase hold?",
     "Inscribe a change…",
+    "Name the next objective…",
+    "What should we forge next?",
+    "Trace a bug to its source…",
+    "Refactor something that frets you…",
+    "Ask the chronicle a question…",
+    "Ship a small, verifiable change…",
+    "Explain this module like a spell…",
+    "Draft a plan before we cast…",
+    "Find the smell in this tree…",
+    "Wire up the missing piece…",
+    "Review the last patch with care…",
+    "Open a path through this maze…",
+    "Turn this idea into a commit…",
+    "Summon help on a stuck rite…",
+    "Decrypt what this function does…",
+    "Align types until they hum…",
+    "Carve a cleaner API surface…",
+    "Test the edge cases that lurk…",
+    "Document the unwritten rule…",
+    "Cull the dead code gently…",
+    "Lift a todo into a real fix…",
   ],
   shell: [
+    "Inscribe a command…",
     "invoke a rite…",
     "cat /dev/arcana",
     "echo $SECRETS",
+    "git status",
+    "git diff --stat",
+    "rg -n 'TODO|FIXME'",
+    "ls -la",
+    "pwd",
+    "bun test",
+    "bun run typecheck",
+    "which arcana",
+    "env | sort",
+    "head -n 40 README.md",
+    "find . -name '*.ts' | head",
   ],
 }
 
