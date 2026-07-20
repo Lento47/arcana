@@ -26,6 +26,7 @@ describe("bindAccessToken — error safety", () => {
       expect(result.error).not.toContain("lejzerv.workers.dev")
       expect(result.error).not.toMatch(/https?:\/\//)
       expect(result.error).not.toMatch(/ECONN|ENOTFOUND|ETIMEDOUT|ConnectionRefused/i)
+      expect(result.error).not.toMatch(/license/i)
     }
   })
 

@@ -100,5 +100,5 @@ export const bindAccessToken = (
         }
       }
     }
-    return { ok: false as const, error: "Couldn't bind your sign-in to a license. Please try again." }
+    return { ok: false as const, error: "Couldn't finish setting up your free account. Please try again." }
   })
