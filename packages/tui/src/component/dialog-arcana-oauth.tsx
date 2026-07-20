@@ -11,6 +11,7 @@ import { Link } from "../ui/link"
 import { DialogModel } from "./dialog-model"
 import { COPY, Glyph } from "../branding"
 import { errorMessage } from "../util/error"
+import { Locale } from "../util/locale"
 
 type PollStatus = "pending" | "slow_down" | "expired" | "denied" | "success"
 
@@ -67,7 +68,13 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
 
   async function start() {
     try {
-      const result = await sdk.client.experimental.console.login({})
+      // Must send a non-empty body: the SDK strips `body: {}` when every field is
+      // optional/undefined, and the server then sees payload === undefined
+      // ("Expected ConsoleLoginRequest, got undefined").
+      const server =
+        (typeof process !== "undefined" && process.env?.ARCANA_CONSOLE_URL?.trim())
+        || "https://arcana.otnelhq.com"
+      const result = await sdk.client.experimental.console.login({ server })
       if (cancelled) return
       if (result.error || !result.data) {
         setError(errorMessage(result.error))
@@ -230,7 +237,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       <Show when={phase() === "error"}>
         <box gap={1}>
           <text fg={theme.error}>Sign-in failed</text>
-          <text fg={theme.textMuted}>{error()}</text>
+          <text fg={theme.textMuted}>{Locale.truncate(error() ?? "", 120)}</text>
           <text fg={theme.textMuted}>Press esc to close and try again.</text>
         </box>
       </Show>
