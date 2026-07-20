@@ -10,6 +10,7 @@ import { messagesToSpineEntriesCached } from "./spine-mapper"
 import { SpineHeader } from "./spine-header"
 import { SpineEntry } from "./spine-entry"
 import { SpinePrompt } from "./spine-prompt"
+import { SpineFooterHints } from "./spine-footer-hints"
 import { pendingGateEntries } from "./spine-gates"
 import { PermissionPrompt } from "../../routes/session/permission"
 import { QuestionPrompt } from "../../routes/session/question"
@@ -22,6 +23,7 @@ import { useDialog } from "../../ui/dialog"
 import { useRoute } from "../../context/route"
 import { canToggleSpineEntry, nextSpineFocusID, navigableSpineEntries } from "./spine-navigation"
 import { spineEntryCopyText } from "./spine-clipboard"
+import { spineFooterSelection } from "./spine-actions"
 import { spineEntryDetailMessageID, spineEntryDiffMessageID, spineEntrySessionID } from "./spine-details"
 
 const USE_SAMPLE_SPINE = false
@@ -70,9 +72,13 @@ export function CommandSpineShell(props: ShellProps) {
   const visibleEntries = createMemo(() => [...entries(), ...gateEntries()])
   const navigableEntries = createMemo(() => navigableSpineEntries(visibleEntries()))
   const runState = createMemo(() => (gateEntries().length ? "stop" : props.pending() ? "working" : "idle"))
-
   const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
   const [focusedEntryID, setFocusedEntryID] = createSignal<string | undefined>()
+  const focusedEntry = createMemo(() => {
+    const focused = focusedEntryID()
+    return focused ? visibleEntries().find((entry) => entry.id === focused) : undefined
+  })
+  const footerSelection = createMemo(() => spineFooterSelection(focusedEntry()))
   const toggleEntry = (entry: { id: string; collapsible?: boolean }) => {
     setExpandedEntries((prev) => ({ ...prev, [entry.id]: !(prev[entry.id] ?? entry.collapsible === false) }))
   }
@@ -248,6 +254,16 @@ export function CommandSpineShell(props: ShellProps) {
         <Show when={props.session()?.parentID}>
           <SubagentFooter />
         </Show>
+        <SpineFooterHints
+          layout={layout()}
+          entries={visibleEntries().length}
+          pending={props.pending()}
+          permissions={props.permissions().length}
+          questions={props.questions().length}
+          viewingArtifact={props.viewingArtifact() !== null}
+          state={runState()}
+          selected={footerSelection()}
+        />
         <SpinePrompt
           bind={props.bind}
           disabled={props.disabled}
