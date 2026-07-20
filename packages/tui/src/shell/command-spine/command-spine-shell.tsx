@@ -100,11 +100,18 @@ export function CommandSpineShell(props: ShellProps) {
     return focused ? visibleEntries().find((entry) => entry.id === focused) : undefined
   })
   const footerSelection = createMemo(() => spineFooterSelection(focusedEntry()))
-  const toggleEntry = (entry: { id: string; collapsible?: boolean }) => {
-    setExpandedEntries((prev) => ({ ...prev, [entry.id]: !(prev[entry.id] ?? entry.collapsible === false) }))
-  }
   const entryExpanded = (entry: { id: string; expandedByDefault?: boolean; collapsible?: boolean }) =>
-    expandedEntries()[entry.id] ?? entry.expandedByDefault ?? !entry.collapsible
+    expandedEntries()[entry.id] ?? entry.expandedByDefault ?? entry.collapsible !== true
+  const toggleEntry = (entry: {
+    id: string
+    collapsible?: boolean
+    expandedByDefault?: boolean
+  }) => {
+    setExpandedEntries((prev) => {
+      const current = prev[entry.id] ?? entry.expandedByDefault ?? entry.collapsible !== true
+      return { ...prev, [entry.id]: !current }
+    })
+  }
   const scrollEntryIntoView = (entryID: string) => {
     queueMicrotask(() => {
       const node = entryNodes.get(entryID)
@@ -253,6 +260,7 @@ export function CommandSpineShell(props: ShellProps) {
         >
           <For each={visibleEntryIds()}>
             {(id) => {
+              // Read from the live map each render so expand + streaming updates stick.
               const entry = () => visibleEntryById().get(id)!
               return (
                 <SpineEntry
@@ -260,9 +268,18 @@ export function CommandSpineShell(props: ShellProps) {
                   layout={layout()}
                   expanded={entryExpanded(entry())}
                   focused={entryFocused(entry())}
-                  onToggle={() => toggleEntry(entry())}
-                  onFocus={() => focusEntry(entry())}
-                  onHover={() => focusEntry(entry())}
+                  onToggle={() => {
+                    const e = entry()
+                    if (e) toggleEntry(e)
+                  }}
+                  onFocus={() => {
+                    const e = entry()
+                    if (e) focusEntry(e)
+                  }}
+                  onHover={() => {
+                    const e = entry()
+                    if (e) focusEntry(e)
+                  }}
                   nodeRef={(node) => {
                     if (node) entryNodes.set(id, node)
                     else entryNodes.delete(id)

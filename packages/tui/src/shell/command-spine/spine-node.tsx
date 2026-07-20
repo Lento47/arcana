@@ -10,8 +10,10 @@ import {
   type SpineLayout,
 } from "./spine-types"
 
-/** Max characters for the tool/actor label column. */
-const LABEL_WIDTH = 8
+/** Max characters for the tool label column (short verbs: search, read, run). */
+const TOOL_LABEL_WIDTH = 7
+/** Wider column for chat voice so "assistant" / "you" are not truncated. */
+const CHAT_LABEL_WIDTH = 10
 
 function patchSummaryColor(part: string, index: number, theme: Record<string, unknown>) {
   if (part.startsWith("+")) return theme.spineDiffAdd as any
@@ -67,6 +69,15 @@ export function SpineNode(props: {
   const t = themeObj as Record<string, unknown>
   const tone = spineTone(props.kind, t)
   const label = (props.label ?? props.kind).trim()
+  const isChat =
+    props.kind === "ask" || props.kind === "plan" || props.kind === "ok"
+  const isTool =
+    props.kind === "inspect"
+    || props.kind === "run"
+    || props.kind === "patch"
+    || props.kind === "fail"
+    || props.kind === "agent"
+  const labelWidth = isChat ? CHAT_LABEL_WIDTH : TOOL_LABEL_WIDTH
   const showLabel = !!label && props.layout !== "minimal" && props.kind !== "think"
   const summary = props.summary?.trim() ?? ""
   const actor = props.actor?.trim()
@@ -75,7 +86,18 @@ export function SpineNode(props: {
   const summaryColor = () => {
     if (props.kind === "fail") return t.spineFail as any
     if (props.kind === "think") return t.spineThink as any
+    // Assistant prose summary stays muted — full reply is in the body below
+    if (isChat) return t.spineDiffMuted as any
+    // Tool summaries stay readable but secondary to assistant voice
+    if (isTool) return t.spineContext as any
     return t.text as any
+  }
+  const labelColor = () => {
+    // Chat labels rarely render here (chat uses SpineChatCard); tools stay muted verbs.
+    if (isChat) return (t.spineBrand ?? t.spineOk ?? t.accent ?? tone) as any
+    // Tool verbs secondary so they never compete with the arcana card
+    if (isTool) return (t.spineContext ?? t.textMuted ?? tone) as any
+    return tone as any
   }
   const isThinkStreaming = () => props.kind === "think" && props.streaming === true
   const disclosure = props.disclosure ?? ""
@@ -127,8 +149,8 @@ export function SpineNode(props: {
   if (!summary) {
     return (
       <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
-        <box flexShrink={0}>
-          <text fg={tone as any} wrapMode="none">{label}</text>
+        <box flexShrink={0} width={isChat ? labelWidth : undefined}>
+          <text fg={labelColor()} wrapMode="none">{isChat ? label.padEnd(labelWidth) : label}</text>
         </box>
         <Show when={elapsedText}>
           <text fg={t.spineGutterElapsed as any} wrapMode="none">{` · ${elapsedText}`}</text>
@@ -148,7 +170,8 @@ export function SpineNode(props: {
   if (props.layout === "minimal") {
     return (
       <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
-        <text fg={summaryColor()} wrapMode="word">
+        <text fg={isChat ? (t.spineOk as any) : summaryColor()} wrapMode="word">
+          {isChat ? `${label}  ` : ""}
           {summary}
           {disclosure ? ` ${disclosure}` : ""}
         </text>
@@ -156,16 +179,15 @@ export function SpineNode(props: {
     )
   }
 
-  // Truncate long labels (e.g. "incantation") with ellipsis so they don't
-  // overflow into the summary column.
-  const truncatedLabel = label.length > LABEL_WIDTH
-    ? label.slice(0, LABEL_WIDTH - 1) + "…"
-    : label.padEnd(LABEL_WIDTH)
+  // Truncate long tool labels so they don't steal space from the path/summary.
+  const truncatedLabel = label.length > labelWidth
+    ? label.slice(0, labelWidth - 1) + "…"
+    : label.padEnd(labelWidth)
 
   return (
     <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
-      <box flexShrink={0} width={LABEL_WIDTH}>
-        <text fg={tone as any}>{truncatedLabel}</text>
+      <box flexShrink={0} width={labelWidth}>
+        <text fg={labelColor()}>{truncatedLabel}</text>
       </box>
       <Show when={showActor}>
         <box flexShrink={0} width={props.kind === "agent" ? 12 : 5}>

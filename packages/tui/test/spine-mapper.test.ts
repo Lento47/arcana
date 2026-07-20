@@ -224,6 +224,95 @@ describe("assistant text becomes plan/ok correctly", () => {
     expect(result[1]!.summary).toBe("complete")
   })
 
+  test("consecutive shell runs group into one expandable burst", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-rg-burst", { completed: 5000 })
+    const cmds = [
+      "rg -n 'Could not create session' .",
+      "rg -n 'New session' packages/tui/src/app.tsx",
+      "rg -n 'workspace' packages/tui/src/app.tsx",
+    ]
+    cmds.forEach((command, i) => {
+      parts.push({
+        id: `p-rg-${i}`,
+        sessionID: "sess-1",
+        messageID: msgs[0]!.id,
+        type: "tool",
+        callID: `c-rg-${i}`,
+        tool: "bash",
+        state: {
+          status: "completed",
+          input: { command },
+          output: `${(i + 1) * 2} matches`,
+          title: "bash",
+          metadata: {},
+          time: { start: 1000 + i * 100, end: 1050 + i * 100 },
+        },
+      } as Part)
+    })
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    const runs = result.filter((e) => e.kind === "run")
+    expect(runs).toHaveLength(1)
+    expect(runs[0]!.summary).toBe("3× rg")
+    expect(runs[0]!.children).toHaveLength(3)
+    expect(runs[0]!.children!.map((c) => c.summary)).toEqual(cmds)
+    expect(runs[0]!.collapsible).toBe(true)
+    expect(runs[0]!.expandedByDefault).toBe(false)
+  })
+
+  test("consecutive shell runs across assistant steps still group", () => {
+    const a1 = makeAssistantMessage("step-1", { completed: 2000 })
+    const a2 = makeAssistantMessage("step-2", { completed: 3000 })
+    a1.parts.push({
+      id: "p1",
+      sessionID: "sess-1",
+      messageID: "step-1",
+      type: "tool",
+      callID: "c1",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "rg -n foo ." },
+        output: "1 match",
+        title: "bash",
+        metadata: {},
+        time: { start: 1000, end: 1100 },
+      },
+    } as Part)
+    a2.parts.push({
+      id: "p2",
+      sessionID: "sess-1",
+      messageID: "step-2",
+      type: "tool",
+      callID: "c2",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "rg -n bar ." },
+        output: "2 matches",
+        title: "bash",
+        metadata: {},
+        time: { start: 2000, end: 2100 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: [...a1.messages, ...a2.messages],
+      getParts: partsLookup([...a1.parts, ...a2.parts]),
+      assistantDuration: new Map(),
+    })
+
+    const runs = result.filter((e) => e.kind === "run")
+    expect(runs).toHaveLength(1)
+    expect(runs[0]!.summary).toBe("2× rg")
+    expect(runs[0]!.children).toHaveLength(2)
+  })
+
   test("no trailing ok when no tools existed", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a4")
     parts.push({
@@ -265,13 +354,13 @@ describe("assistant text becomes plan/ok correctly", () => {
 
     expect(result).toHaveLength(1)
     expect(result[0]!.kind).toBe("plan")
-    expect(result[0]!.label).toBe("assistant")
+    expect(result[0]!.label).toBe("arcana")
     expect(result[0]!.summary).toBe("Plan:")
     expect(result[0]!.body).toBe("1. Inspect the auth path\n2. Keep behavior stable\n3. Verify tests")
     expect(result[0]!.expandedByDefault).toBe(true)
   })
 
-  test("assistant text label reflects the selected primary agent", () => {
+  test("assistant text label stays a single chat voice (not agent · mode)", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a5-agent")
     ;(msgs[0] as Message).agent = "reviewer"
     parts.push({
@@ -290,7 +379,7 @@ describe("assistant text becomes plan/ok correctly", () => {
 
     expect(result).toHaveLength(1)
     expect(result[0]!.kind).toBe("plan")
-    expect(result[0]!.label).toBe("assistant · reviewer")
+    expect(result[0]!.label).toBe("arcana")
     expect(result[0]!.summary).toBe("Reviewing the diff for regressions.")
   })
   test("long single-line assistant reply is fully visible without ellipsis", () => {
@@ -322,7 +411,14 @@ describe("assistant text becomes plan/ok correctly", () => {
 // ---------- visual check 3: inspect ----------
 
 describe("inspect entries", () => {
-  test.each(["read", "glob", "grep", "search", "web_search", "web_fetch"])("%s tool produces inspect kind", (tool) => {
+  test.each([
+    ["read", "read"],
+    ["glob", "list"],
+    ["grep", "search"],
+    ["search", "search"],
+    ["web_search", "search"],
+    ["web_fetch", "fetch"],
+  ] as const)("%s tool produces inspect kind with %s label", (tool, label) => {
     const { messages: msgs, parts } = makeAssistantMessage("i1")
     parts.push({
       id: `p-${tool}`,
@@ -350,6 +446,7 @@ describe("inspect entries", () => {
 
     expect(entry).toBeDefined()
     expect(entry!.kind).toBe("inspect")
+    expect(entry!.label).toBe(label)
     expect(entry!.glyph).toBe("▸")
     expect(entry!.receipt?.status).toBe("ok")
   })
@@ -406,7 +503,9 @@ describe("inspect entries", () => {
     expect(entry!.body).not.toMatch(/^\d+:/m)
     expect(entry!.bodyNote).toMatch(/End of file/i)
     expect(entry!.reminders).toBeUndefined()
-    expect(entry!.expandedByDefault).toBe(true)
+    // Multi-line file bodies stay collapsed so they don't drown assistant prose
+    expect(entry!.expandedByDefault).toBe(false)
+    expect(entry!.label).toBe("read")
     expect(entry!.receipt?.summary).toMatch(/3 lines/)
   })
 
@@ -456,7 +555,8 @@ describe("inspect entries", () => {
     expect(entry!.summary).toContain("arcana-proxy")
     expect(entry!.bodyNote).toMatch(/4 entries/)
     expect(JSON.stringify(entry!.listing)).not.toContain("<entries>")
-    expect(entry!.expandedByDefault).toBe(true)
+    // Listings stay collapsed by default (toggle to expand)
+    expect(entry!.expandedByDefault).toBe(false)
   })
 
   test("long read collapses by default and keeps full body for expand", () => {
@@ -888,6 +988,115 @@ describe("edge cases", () => {
     expect(result[0]!.summary).toBe("2 files · file-list only")
     expect(result[0]!.receipt).toBeUndefined()
     expect(result[0]!.diff?.files).toContain("src/main.rs")
+    expect(result[0]!.diff?.body).toBeUndefined()
+  })
+
+  test("patch part is suppressed when sibling edit tools already cover the files", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("e5-suppress")
+    parts.push({
+      id: "p-edit-1",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "edit",
+      state: {
+        status: "completed",
+        input: { filePath: "L:\\PROJECTS\\arcana\\packages\\tui\\src\\a.tsx" },
+        output: "Edit applied successfully",
+        title: "edit",
+        metadata: {
+          diff: "--- a/packages/tui/src/a.tsx\n+++ b/packages/tui/src/a.tsx\n@@ -1 +1 @@\n-old\n+new",
+        },
+        time: { start: 1000, end: 1100 },
+      },
+    } as Part)
+    parts.push({
+      id: "p-edit-2",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c2",
+      tool: "edit",
+      state: {
+        status: "completed",
+        input: { filePath: "packages/tui/src/b.ts" },
+        output: "Edit applied successfully",
+        title: "edit",
+        metadata: {
+          diff: "--- a/packages/tui/src/b.ts\n+++ b/packages/tui/src/b.ts\n@@ -1 +1 @@\n-x\n+y",
+        },
+        time: { start: 1100, end: 1200 },
+      },
+    } as Part)
+    parts.push({
+      id: "p-patch-rollup",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "patch",
+      hash: "snap1",
+      files: [
+        "L:\\PROJECTS\\arcana\\packages\\tui\\src\\a.tsx",
+        "L:/PROJECTS/arcana/packages/tui/src/b.ts",
+      ],
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    const patchRows = result.filter((e) => e.source?.kind === "patch")
+    expect(patchRows).toHaveLength(0)
+    // Distinct files stay separate rows (not collapsed into "2 actions").
+    const toolPatches = result.filter((e) => e.kind === "patch" && e.source?.kind === "tool")
+    expect(toolPatches).toHaveLength(2)
+    expect(toolPatches.every((e) => e.diff?.body?.includes("@@"))).toBe(true)
+    expect(toolPatches.every((e) => !e.summary.includes("actions"))).toBe(true)
+  })
+
+  test("patch part hydrates line diffs from sibling tools when not fully covered", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("e5-hydrate")
+    parts.push({
+      id: "p-edit-partial",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "edit",
+      state: {
+        status: "completed",
+        input: { filePath: "src/covered.ts" },
+        output: "Edit applied successfully",
+        title: "edit",
+        metadata: {
+          diff: "--- a/src/covered.ts\n+++ b/src/covered.ts\n@@ -1 +1 @@\n-a\n+b",
+        },
+        time: { start: 1000, end: 1100 },
+      },
+    } as Part)
+    parts.push({
+      id: "p-patch-partial",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "patch",
+      hash: "snap2",
+      // Extra file not present on any tool — rollup stays, hydrated with matching body
+      files: ["src/covered.ts", "src/external-only.ts"],
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    const rollup = result.find((e) => e.source?.kind === "patch")
+    expect(rollup).toBeDefined()
+    expect(rollup!.summary).toMatch(/diff/)
+    expect(rollup!.diff?.body).toContain("covered.ts")
+    expect(rollup!.diff?.body).toContain("@@")
   })
 
   test("patch tool output with unified diff renders as a diff artifact", () => {

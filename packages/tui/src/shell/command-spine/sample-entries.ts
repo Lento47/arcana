@@ -17,7 +17,7 @@ export const SAMPLE_ENTRIES: SpineEntry[] = [
     elapsed: "+7.2s",
     timestamp: "10:12:48",
     kind: "plan",
-    label: "assistant · build",
+    label: "arcana",
     glyph: "\u251C",
     summary: "I will add a new ScrollCommand struct and wire it into the command registry.",
   },

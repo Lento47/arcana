@@ -113,6 +113,11 @@ export function SpineProse(props: {
   focused?: boolean
   /** System-reminder blocks extracted from read tool output. */
   reminders?: string[]
+  /**
+   * Chat voice (you / arcana): full-contrast markdown on card surface.
+   * Tools omit this and stay secondary/code-chrome.
+   */
+  chatVoice?: boolean
 }) {
   const { theme, syntax, subtleSyntax } = useTheme()
   const text = createMemo(() => props.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"))
@@ -124,10 +129,19 @@ export function SpineProse(props: {
   const fg = createMemo(() => {
     if (props.kind === "think") return theme.textMuted
     if (props.kind === "fail" || props.bodyLabel === "error") return theme.error
+    // Chat voice reads as primary content (Grok-style agent message).
+    if (props.chatVoice) return theme.markdownText ?? theme.text
     return theme.markdownText ?? theme.text
   })
+  const mdBg = createMemo(() => {
+    // Match soft card panel so markdown doesn't flash the page background.
+    if (props.chatVoice && (props.kind === "plan" || props.kind === "ok")) {
+      return (theme.backgroundPanel ?? theme.background) as any
+    }
+    return theme.background as any
+  })
   const style = () => (props.kind === "think" || props.kind === "fail" ? subtleSyntax() : syntax())
-  // File reads: slightly tighter chrome so codex panels don't dominate the timeline.
+  // File reads: slightly tighter chrome so tool panels don't dominate the timeline.
   const codePad = () => (props.bodyLabel === "file" ? 1 : 2)
   const codePadY = () => (props.bodyLabel === "file" ? 0 : 1)
 
@@ -184,7 +198,7 @@ export function SpineProse(props: {
             tableOptions={{ style: "grid" }}
             conceal={true}
             fg={fg() as any}
-            bg={theme.background as any}
+            bg={mdBg() as any}
           />
           {bodyNote()}
         </Match>
