@@ -28,10 +28,19 @@ export const text = (opts: Parameters<typeof prompts.text>[0]) =>
 export const password = (opts: Parameters<typeof prompts.password>[0]) =>
   Effect.promise(() => prompts.password(opts)).pipe(Effect.map((result) => optional(result)))
 
-export const spinner = () => {
-  const s = prompts.spinner()
+export type SpinnerOptions = {
+  /** Custom animation frames. Clack default is the rotating circle (◑◐◒◓). */
+  frames?: string[]
+  /** Ms between frames (clack default ~80). */
+  delay?: number
+  indicator?: "dots" | "timer"
+}
+
+export const spinner = (opts: SpinnerOptions = {}) => {
+  const s = prompts.spinner(opts)
   return {
     start: (msg: string) => Effect.sync(() => s.start(msg)),
     stop: (msg: string, code?: number) => Effect.sync(() => s.stop(msg, code)),
+    message: (msg: string) => Effect.sync(() => s.message(msg)),
   }
 }

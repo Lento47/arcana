@@ -2389,6 +2389,59 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         },
       },
       {
+        name: "goal.set",
+        title: "Set session goal",
+        category: "Session",
+        slashName: "goal",
+        run: () => {
+          const sessionID = route.data.type === "session" ? route.data.sessionID : undefined
+          if (!sessionID) {
+            toast.show({ message: "Open a session first", variant: "warning" })
+            return
+          }
+          toast.show({
+            title: "Set goal",
+            message: "Type /goal <description> in the prompt to bind the session goal",
+            variant: "info",
+          })
+          dialog.clear()
+        },
+      },
+      {
+        name: "goal.loop",
+        title: "Check goal progress",
+        category: "Session",
+        slashName: "loop",
+        run: () => {
+          const sessionID = route.data.type === "session" ? route.data.sessionID : undefined
+          if (!sessionID) {
+            toast.show({ message: "Open a session first", variant: "warning" })
+            return
+          }
+          void import("@arcana/core/session/goal")
+            .then(({ getSessionGoal, formatActiveGoalBlock }) => {
+              const snap = getSessionGoal(sessionID)
+              if (snap.status === "unset") {
+                toast.show({ message: "No active goal — use /goal <description>", variant: "warning" })
+                return
+              }
+              toast.show({
+                title: "Goal",
+                message: formatActiveGoalBlock({
+                  sessionID,
+                  sessionAgent: local.agent.current()?.name,
+                })
+                  .replace(/<\/?active-goal>/g, "")
+                  .trim(),
+                variant: "info",
+                duration: 8000,
+              })
+            })
+            .catch((error) => toast.error(error))
+          dialog.clear()
+        },
+      },
+      {
         name: "mcp.list",
         title: "Toggle MCPs",
         category: "Agent",

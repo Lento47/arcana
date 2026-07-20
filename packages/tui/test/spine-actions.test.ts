@@ -20,8 +20,8 @@ describe("command-spine action hints", () => {
       label: "spine",
       hints: [
         { keys: "j/k", label: "focus" },
-        { keys: "tab", label: "next" },
         { keys: "enter", label: "toggle" },
+        { keys: "o", label: "details" },
         { keys: "y", label: "copy" },
       ],
     })

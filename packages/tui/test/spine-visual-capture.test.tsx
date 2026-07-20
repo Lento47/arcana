@@ -151,10 +151,10 @@ test("command-spine full composition with prompt at 120 cols", async () => {
             </box>
             {/* Prompt first, then status/hints bar under it (Grok order) */}
             {(() => {
-              // Keep in sync with spineGutterWidth / spineOuterPadding
+              // Keep in sync with spineGutterWidth / spineOuterPadding (index-only gutter)
               const isWide = layout() === "wide"
-              const gutterWidth = isWide || layout() === "compact" ? 9 : layout() === "narrow" ? 7 : 3
-              const padLeft = isWide ? 2 : layout() === "minimal" ? 0 : 1
+              const gutterWidth = 2
+              const padLeft = layout() === "minimal" ? 0 : 1
               const railWidth = 2 // "✶ "
               const boxWidth = Math.max(12, dims().width - padLeft - gutterWidth - railWidth)
               // Tight prompt: no rail-only stem row / no extra pad (matches spine-prompt.tsx)

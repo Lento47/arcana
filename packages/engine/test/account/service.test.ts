@@ -97,6 +97,30 @@ it.live("login normalizes trailing slashes in the provided server URL", () =>
   }),
 )
 
+it.live("login uses absolute verification_uri_complete without re-prefixing origin", () =>
+  Effect.gen(function* () {
+    const client = HttpClient.make((req) =>
+      Effect.gen(function* () {
+        if (req.url === "https://arcana.otnelhq.com/auth/device/code") {
+          return json(req, {
+            device_code: "device-code",
+            user_code: "GJ6S-6J8V",
+            verification_uri_complete: "https://arcana.otnelhq.com/auth/device?code=GJ6S-6J8V",
+            expires_in: 600,
+            interval: 5,
+          })
+        }
+        return json(req, {}, 404)
+      }),
+    )
+
+    const result = yield* Account.use.login("https://arcana.otnelhq.com").pipe(Effect.provide(live(client)))
+
+    expect(result.url).toBe("https://arcana.otnelhq.com/auth/device?code=GJ6S-6J8V")
+    expect(result.url).not.toContain("otnelhq.comhttps")
+  }),
+)
+
 it.live("login maps transport failures to account transport errors", () =>
   Effect.gen(function* () {
     const client = HttpClient.make((req) =>

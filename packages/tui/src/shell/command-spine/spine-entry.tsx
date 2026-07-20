@@ -11,6 +11,7 @@ import { SpineRail } from "./spine-rail"
 import { SpineProse, joinSpineProse } from "./spine-prose"
 import { SpineReport } from "./spine-report"
 import { SpineListArtifact } from "./spine-list-artifact"
+import { SpineListing } from "./spine-listing"
 
 
 function receiptHasContent(entry: SpineEntryType): boolean {
@@ -53,15 +54,23 @@ export function SpineEntry(props: {
   const proseText = createMemo(() => joinSpineProse(e.summary, e.body))
   const hasProse = createMemo(() => !!proseText().trim())
   const hasDiff = createMemo(() => !!e.diff)
-  const hasToolBody = createMemo(() => !isChatProse && !isThink && !!e.body?.trim())
+  const hasListing = createMemo(() => !!e.listing?.length)
+  const hasToolBody = createMemo(() => !isChatProse && !isThink && (!!e.body?.trim() || hasListing()))
   const hasThinkBody = createMemo(() => isThink && !!e.body?.trim())
   const hasReceipt = createMemo(() => receiptHasContent(e))
-  const canToggle = createMemo(() => !!props.onToggle || isThink || hasDiff())
+  const canToggle = createMemo(() => !!props.onToggle || isThink || hasDiff() || hasListing() || hasToolBody())
   const bodyExpanded = () => (isChatProse ? true : expanded())
 
   // Tools keep an explicit toggle row. Think/diff use an inline chevron on the header.
   const showToggleRow = createMemo(() => canToggle() && !isThink && !hasDiff() && hasToolBody())
-  const toggleLabel = () => `${expanded() ? "▾ hide" : "▸ show"} ${e.bodyLabel ?? "details"}`
+  const toggleLabel = () => {
+    const what =
+      e.bodyLabel === "listing" ? "listing"
+      : e.bodyLabel === "file" ? "file"
+      : e.bodyLabel === "matches" ? "matches"
+      : e.bodyLabel ?? "details"
+    return `${expanded() ? "▾ hide" : "▸ show"} ${what}`
+  }
   const headerDisclosure = () => {
     if (isThink && hasThinkBody()) return expanded() ? ("▾" as const) : ("▸" as const)
     if (hasDiff() && e.diff?.body?.trim()) return expanded() ? ("▾" as const) : ("▸" as const)
@@ -138,8 +147,6 @@ export function SpineEntry(props: {
     >
       <SpineGutter
         index={props.index ?? e.index}
-        elapsed={e.elapsed}
-        timestamp={e.timestamp}
         layout={props.layout}
         active={props.focused}
       />
@@ -160,6 +167,7 @@ export function SpineEntry(props: {
             actor={e.actor}
             layout={props.layout}
             focused={props.focused}
+            elapsed={e.elapsed}
             disclosure={headerDisclosure()}
             streaming={e.streaming}
           />
@@ -259,7 +267,21 @@ export function SpineEntry(props: {
           </box>
         </Show>
 
-        <Show when={hasToolBody() && bodyExpanded() && !e.table}>
+        {/* Directory / glob listing — plain names, no XML tags */}
+        <Show when={hasListing() && bodyExpanded()}>
+          <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+            <SpineRail layout={props.layout} active={props.focused} />
+            <box flexGrow={1} minWidth={0} flexShrink={1}>
+              <SpineListing
+                entries={e.listing!}
+                note={e.bodyNote}
+                focused={props.focused}
+              />
+            </box>
+          </box>
+        </Show>
+
+        <Show when={hasToolBody() && bodyExpanded() && !e.table && !hasListing()}>
           <box flexDirection="row" flexShrink={0} alignItems="flex-start">
             <SpineRail layout={props.layout} active={props.focused} />
             <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
@@ -267,7 +289,8 @@ export function SpineEntry(props: {
                 kind={e.kind}
                 text={e.body!}
                 bodyLabel={e.bodyLabel}
-                hint={e.summary}
+                hint={e.bodyHint || e.summary}
+                note={e.bodyNote}
                 streaming={false}
                 focused={props.focused}
                 reminders={e.reminders}

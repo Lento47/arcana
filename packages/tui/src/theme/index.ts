@@ -332,32 +332,34 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
     resolved.surfaceAlt = resolved.backgroundPanel
   }
 
-  // Spine command-spine tokens — fallback-safe
-  const spineFB = <T>(key: string, fallback: T) => {
-    const val = (theme.theme as any)[key]
-    return val !== undefined ? resolveColor(val) : (fallback as any)
+  // Spine command-spine tokens — fallback-safe.
+  // Do NOT collapse multiple kinds onto the same role (ask/run/prompt all → accent
+  // and plan/patch both → secondary made every theme feel identical on the spine).
+  const spineFB = (key: string, fallback: RGBA) => {
+    const val = (theme.theme as Record<string, ColorValue | undefined>)[key]
+    return val !== undefined ? resolveColor(val) : fallback
   }
-  resolved.spineBrand = spineFB("spineBrand", resolved.text)
+  resolved.spineBrand = spineFB("spineBrand", resolved.primary)
   resolved.spineContext = spineFB("spineContext", resolved.textMuted)
   resolved.spineRail = spineFB("spineRail", resolved.borderSubtle)
-  resolved.spineRailActive = spineFB("spineRailActive", resolved.border)
+  resolved.spineRailActive = spineFB("spineRailActive", resolved.borderActive ?? resolved.border)
   resolved.spineActor = spineFB("spineActor", resolved.textMuted)
   resolved.spineAsk = spineFB("spineAsk", resolved.accent)
-  resolved.spineThink = spineFB("spineThink", resolved.textMuted)
+  resolved.spineThink = spineFB("spineThink", resolved.info)
   resolved.spineInspect = spineFB("spineInspect", resolved.info)
   resolved.spinePlan = spineFB("spinePlan", resolved.secondary)
-  resolved.spinePatch = spineFB("spinePatch", resolved.secondary)
-  resolved.spineRun = spineFB("spineRun", resolved.accent)
+  resolved.spinePatch = spineFB("spinePatch", resolved.warning)
+  resolved.spineRun = spineFB("spineRun", resolved.primary)
   resolved.spineFail = spineFB("spineFail", resolved.error)
   resolved.spineFix = spineFB("spineFix", resolved.warning)
   resolved.spineOk = spineFB("spineOk", resolved.success)
-  resolved.spinePrompt = spineFB("spinePrompt", resolved.accent)
+  resolved.spinePrompt = spineFB("spinePrompt", resolved.highlight ?? resolved.primary)
   resolved.spineDiffAdd = spineFB("spineDiffAdd", resolved.diffAdded)
   resolved.spineDiffRemove = spineFB("spineDiffRemove", resolved.diffRemoved)
   resolved.spineDiffMuted = spineFB("spineDiffMuted", resolved.textMuted)
   resolved.spineGutterElapsed = spineFB("spineGutterElapsed", resolved.textMuted)
   resolved.spineGutterTimestamp = spineFB("spineGutterTimestamp", resolved.textMuted)
-  resolved.spineSubagent = spineFB("spineSubagent", resolved.info)
+  resolved.spineSubagent = spineFB("spineSubagent", resolved.accent)
   applyReadabilityFloor(resolved)
 
   return {

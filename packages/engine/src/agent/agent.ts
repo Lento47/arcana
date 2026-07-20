@@ -133,8 +133,11 @@ export const layer = Layer.effect(
           ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
         } satisfies Record<string, "allow" | "ask" | "deny">
 
+        // ARC-SEC-I01: shell is ask-by-default (not covered by the "*" allow).
+        // Users who want silent shell can set permission.bash = "allow" in config.
         const defaults = Permission.fromConfig({
           "*": "allow",
+          bash: "ask",
           doom_loop: "ask",
           external_directory: {
             "*": "ask",

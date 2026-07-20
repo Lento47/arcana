@@ -1156,6 +1156,63 @@ export function Prompt(props: PromptProps) {
         })
     } else if (
       inputText.startsWith("/") &&
+      (() => {
+        const cmd = inputText.split("\n")[0].split(" ")[0].slice(1).toLowerCase()
+        return cmd === "goal" || cmd === "loop"
+      })()
+    ) {
+      // Local goal commands (session-scoped store) — do not require server slash handlers.
+      move.startSubmit()
+      const firstLineEnd = inputText.indexOf("\n")
+      const firstLine = firstLineEnd === -1 ? inputText : inputText.slice(0, firstLineEnd)
+      const [command, ...firstLineArgs] = firstLine.split(" ")
+      const restOfInput = firstLineEnd === -1 ? "" : inputText.slice(firstLineEnd + 1)
+      const args = (firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")).trim()
+      const name = command.slice(1).toLowerCase()
+      void import("@arcana/core/session/goal")
+        .then(({ setSessionGoal, getSessionGoal, formatActiveGoalBlock }) => {
+          if (name === "goal") {
+            if (!args) {
+              toast.show({
+                title: "Goal",
+                message: "Usage: /goal <description of what you want done>",
+                variant: "info",
+              })
+              return
+            }
+            setSessionGoal(sessionID, { goal: args, status: "in_progress" })
+            toast.show({
+              title: "Goal set",
+              message: args.length > 120 ? args.slice(0, 117) + "…" : args,
+              variant: "success",
+            })
+            return
+          }
+          const snap = getSessionGoal(sessionID)
+          if (snap.status === "unset") {
+            toast.show({
+              title: "No active goal",
+              message: "Set one with /goal <description>",
+              variant: "warning",
+            })
+            return
+          }
+          toast.show({
+            title: "Goal status",
+            message: formatActiveGoalBlock({
+              sessionID,
+              sessionAgent: agent.name,
+              actorAgent: agent.name,
+            }).replace(/<\/?active-goal>/g, "").trim(),
+            variant: "info",
+            duration: 8000,
+          })
+        })
+        .catch((error) => {
+          toast.show({ title: "Goal command failed", message: errorMessage(error), variant: "error" })
+        })
+    } else if (
+      inputText.startsWith("/") &&
       sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
     ) {
       move.startSubmit()
@@ -1177,6 +1234,38 @@ export function Prompt(props: PromptProps) {
       })
     } else {
       move.startSubmit()
+      // Suggest session agent + delegation tip (full roster), never auto-switch.
+      void import("@arcana/core/session/goal")
+        .then(({ suggestAgents }) => {
+          const agents = sync.data.agent ?? []
+          const suggestion = suggestAgents({
+            prompt: inputText,
+            currentSessionAgent: agent.name,
+            sessionAgents: agents.map((a) => ({
+              name: a.name,
+              mode: a.mode,
+              hidden: a.hidden,
+              description: a.description,
+              routing: (a as { routing?: { keywords?: string[]; priority?: number } }).routing,
+            })),
+          })
+          const bits: string[] = []
+          if (suggestion.sessionAgent && suggestion.sessionAgent.confidence >= 0.35) {
+            bits.push(`Session: ${suggestion.sessionAgent.name} (${suggestion.sessionAgent.reason})`)
+          }
+          if (suggestion.delegation && suggestion.delegation.confidence >= 0.35) {
+            bits.push(`Delegate: task → ${suggestion.delegation.name}`)
+          }
+          if (bits.length) {
+            toast.show({
+              title: "Agent suggestion",
+              message: bits.join(" · ") + " · Tab to switch session agent",
+              variant: "info",
+              duration: 5000,
+            })
+          }
+        })
+        .catch(() => {})
       sdk.client.session
         .prompt(
           {

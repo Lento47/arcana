@@ -6,10 +6,45 @@ import { loadSkills, loadSkillBody } from "../skills/loader.js"
 export const toolHistory: Array<{ name: string; ts: number }> = []
 
 import { homedir } from "node:os"
-import { join, dirname } from "node:path"
+import { basename, join, dirname, resolve, sep } from "node:path"
 import { mkdirSync, writeFileSync, existsSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import { initBoard, loadBoard, saveBoard, addCard, moveCard, archiveDone, formatBoard, type KanbanCard } from "./kanban.js"
+
+/**
+ * Resolve a sandbox script path from a model-provided filename (ARC-SEC-I05).
+ * Only the basename is used; absolute paths, `..`, and null bytes are rejected.
+ */
+export function resolveSandboxScriptPath(sandboxDir: string, filename: unknown): string {
+  const raw = String(filename ?? "").trim()
+  if (!raw) throw new Error("filename is required")
+  if (raw.includes("\0")) throw new Error("invalid filename")
+
+  const normalized = raw.replace(/\\/g, "/")
+  if (normalized.startsWith("/") || /^[a-zA-Z]:/.test(normalized)) {
+    throw new Error("absolute paths are not allowed in env_write")
+  }
+  if (normalized.split("/").some((part) => part === "..")) {
+    throw new Error("path traversal is not allowed in env_write")
+  }
+
+  const name = basename(normalized)
+  if (!name || name === "." || name === "..") {
+    throw new Error("invalid filename")
+  }
+
+  const root = resolve(sandboxDir)
+  const target = resolve(root, name)
+  const rootPrefix = root.endsWith(sep) ? root : root + sep
+  const inside =
+    process.platform === "win32"
+      ? target.toLowerCase() === root.toLowerCase() || target.toLowerCase().startsWith(rootPrefix.toLowerCase())
+      : target === root || target.startsWith(rootPrefix)
+  if (!inside) {
+    throw new Error("path escapes sandbox")
+  }
+  return target
+}
 
 // ── Artifact schema (inlined — originally from @arcana/core/artifact/schema;
 //     the dynamic import violated this package's tsconfig rootDir, and the
@@ -734,11 +769,19 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     },
     async (args) => {
       const dir = join(homedir(), ".arcana", "sandbox")
-      mkdirSync(dir, { recursive: true })
-      const fp = join(dir, String(args.filename))
-      writeFileSync(fp, String(args.content), "utf8")
-      try { Bun.spawnSync({ cmd: ["chmod", "+x", fp] }) } catch {}
-      return `Script written: ${fp}`
+      try {
+        mkdirSync(dir, { recursive: true })
+        const fp = resolveSandboxScriptPath(dir, args.filename)
+        writeFileSync(fp, String(args.content), { encoding: "utf8", mode: 0o600 })
+        try {
+          Bun.spawnSync({ cmd: ["chmod", "+x", fp] })
+        } catch {
+          /* Windows / no chmod */
+        }
+        return `Script written: ${fp}`
+      } catch (e) {
+        return `env_write rejected: ${e instanceof Error ? e.message : String(e)}`
+      }
     },
   )
 
@@ -981,13 +1024,29 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     async (args) => {
       const goal = String(args.goal)
       const scope = args.scope ? String(args.scope) : "not specified"
-      const priority = String(args.priority ?? "medium")
+      const priority = String(args.priority ?? "medium") as "high" | "medium" | "low"
       memory.recordUserFact("active.goal", goal, "goal_set")
       memory.recordUserFact("active.goal.scope", scope, "goal_set")
       memory.recordUserFact("active.goal.priority", priority, "goal_set")
-      const sessionId = `goal-${Date.now()}`
+      const sessionId =
+        (typeof process.env.ARCANA_SESSION_ID === "string" && process.env.ARCANA_SESSION_ID.trim()
+          ? process.env.ARCANA_SESSION_ID.trim()
+          : "")
+        || `cli-${process.cwd().replace(/[^a-zA-Z0-9]+/g, "_").slice(-48)}`
+      try {
+        const { setSessionGoal } = await import("@arcana/core/session/goal")
+        setSessionGoal(sessionId, {
+          goal,
+          scope,
+          priority,
+          status: "in_progress",
+          boardSessionID: sessionId,
+        })
+      } catch {
+        /* core store optional if path unavailable */
+      }
       const _board = initBoard(sessionId, goal, scope)
-      return `Goal recorded: "${goal}"\nScope: ${scope}\nPriority: ${priority}\nKanban board initialized.\nThis goal is now active — all actions MUST align with it.`
+      return `Goal recorded: "${goal}"\nScope: ${scope}\nPriority: ${priority}\nSession: ${sessionId}\nKanban board initialized.\nThis goal is now active — all actions MUST align with it.`
     },
   )
 
@@ -1016,9 +1075,34 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const pending = args.pending ? String(args.pending) : "unknown"
       const blocked = args.blocked ? String(args.blocked) : "none"
 
-      // Look up the active goal
-      const goalResults = memory.search("active.goal")
-      const goalLine = goalResults.length > 0 ? goalResults[0]!.snippet : "No active goal set. Call goal_set first."
+      const sessionId =
+        (typeof process.env.ARCANA_SESSION_ID === "string" && process.env.ARCANA_SESSION_ID.trim()
+          ? process.env.ARCANA_SESSION_ID.trim()
+          : "")
+        || `cli-${process.cwd().replace(/[^a-zA-Z0-9]+/g, "_").slice(-48)}`
+
+      // Prefer session goal store, fall back to memory facts
+      let goalLine = "No active goal set. Call goal_set first."
+      try {
+        const { getSessionGoal, patchSessionGoal } = await import("@arcana/core/session/goal")
+        const snap = getSessionGoal(sessionId)
+        if (snap.status !== "unset") {
+          goalLine = snap.goal
+          if (status === "complete") {
+            // Soft hard-stop: freeze mutations without full verifier (unverified complete).
+            patchSessionGoal(sessionId, { status: "complete_unverified" })
+          } else if (status === "blocked") {
+            patchSessionGoal(sessionId, { status: "blocked" })
+          } else if (status === "stale") {
+            patchSessionGoal(sessionId, { status: "stale" })
+          } else {
+            patchSessionGoal(sessionId, { status: "in_progress" })
+          }
+        }
+      } catch {
+        const goalResults = memory.search("active.goal")
+        if (goalResults.length > 0) goalLine = goalResults[0]!.snippet
+      }
 
       // Record the check-in
       const checkId = `check-${Date.now()}`
@@ -1042,7 +1126,11 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       if (blocked !== "none") lines.push(`**Blocked:** ${blocked}`)
 
       if (status === "complete") {
-        lines.push("", "🎯 GOAL ACHIEVED. You should stop working and report completion to the user.")
+        lines.push(
+          "",
+          "🎯 GOAL ACHIEVED (complete_unverified). Mutation tools are now frozen for this session.",
+          "Summarize for the user. Set a new goal with goal_set or /goal to continue work.",
+        )
       } else if (status === "blocked") {
         lines.push("", "⛔ Blocked. Consider asking the user for help or changing approach.")
       } else if (status === "stale") {

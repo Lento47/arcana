@@ -66,12 +66,54 @@ Rules:
 
 | Layout | Width (nominal) | Behavior sketch |
 |--------|-----------------|-----------------|
-| `wide` | ≥ 120 | Full gutter, more footer hints, optional "proof tape" word when active |
+| `wide` | ≥ 120 | More footer hints, optional "proof tape" word when active |
 | `compact` | ≥ 100 | Reduced columns / hints |
 | `narrow` | ≥ 80 | Fewer hints; tighter diffs |
 | `minimal` | &lt; 80 | Minimal chrome |
 
 Hysteresis (±5 cols) avoids thrash at boundaries when resizing.
+
+### Theming (command-spine colors)
+
+Spine tokens (`spineBrand`, `spineAsk`, `spinePlan`, `spineInspect`, `spinePatch`, `spineRun`, …) live on each built-in theme JSON under `packages/tui/src/theme/assets/`.
+
+Built-in surface palettes (dark bases):
+
+| Theme | Inspiration | Base feel |
+|-------|-------------|-----------|
+| **arcana** | Catppuccin Mocha + gold | soft violet cake |
+| **bloodmoon** | GitHub Dark Dimmed | cool slate + crimson |
+| **coven** | Rosé Pine | mauve ritual |
+| **crypt** | GitHub Dark Default | true git UI neutrals + blue/green |
+| **dragon** | Gruvbox | warm earth / fire |
+| **lich** | Tokyo Night | ice navy |
+| **wraith** | VS Code Dark+ | neutral charcoal |
+
+- **Do not** leave spine tokens unset if you want a distinct look.
+- Fallbacks in `resolveTheme` spread kinds across primary / accent / warning / info when tokens are omitted.
+- Prefer **soft stepped surfaces** (bg → panel → element) over pure black with a harsh purple cast.
+
+### Left lead (index + rail)
+
+```txt
+[pad 0–1][index 2][rail 2]  content…
+```
+
+- **Gutter is step index only** (`01`…`99`) — no wall-clock, no duration column.
+- **Duration** (`+1.2s`) rides the **node header** as muted ` · +1.2s` when present.
+- Prompt/gates use the same empty index spacer so the rail stays aligned (`spineContentOffset`).
+
+### Codex / read output
+
+Inspect label **`codex`** (tool `read` and kin):
+
+- **File reads:** engine `N: line` prefixes stripped; header `path · L1–40`; syntax highlight.
+- **Directory reads:** `<entries>` XML stripped → plain **listing** (names only); header `path · N entries`; toggle says “listing” not “file”.
+- **Glob / path lists:** same listing treatment when multi-line path-ish output.
+- Boilerplate “untrusted user data” system-reminders are **not** shown as yellow callouts.
+- EOF / truncation footers render as muted **`bodyNote`**.
+- Bodies longer than ~20 lines are **collapsed by default**.
+- Markdown prose escapes `_underscore_` emphasis so snake_case / `_private` do not render as italics (`*asterisks*` still work).
 
 ---
 
@@ -114,3 +156,12 @@ See [performance foundation](./arcana-performance-optimization-foundation.md):
 - **Slash commands** are the local command catalog (prompt autocomplete + execute path).
 - **Skills** are catalog + LLM `skill` tool — not a hard server match from the prompt box alone.
 - Do not reintroduce a second hardcoded label map that drifts from runtime command definitions (see slash-command audit).
+
+### Goals and agents (awareness MVP)
+
+- **`/goal <description>`** — bind a session goal (stored under `~/.arcana/goals/`).
+- **`/loop`** — show active goal status.
+- Engine tools **`goal_set`** / **`goal_check`** (registered in `ToolRegistry`) — model can bind and check goals during the session.
+- Every engine turn injects an `<active-goal>` system block (`@arcana/core/session/goal`).
+- **build** / **general** / **tester** mutations are gated until a goal is set; after `goal_check(complete)` mutations freeze until a new goal.
+- On each user prompt, a toast may **suggest** a session agent (full roster) and a **delegation** tip (`task → explore|general|qa|…`). Tab still switches session agents manually.

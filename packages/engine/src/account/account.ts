@@ -12,7 +12,7 @@ import {
 
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { AccountRepo, type AccountRow } from "./repo"
-import { normalizeServerUrl } from "./url"
+import { normalizeServerUrl, resolveVerificationUrl } from "./url"
 import {
   type AccountError,
   AccessToken,
@@ -134,7 +134,8 @@ class TokenRefreshRequest extends Schema.Class<TokenRefreshRequest>("TokenRefres
   client_id: Schema.String,
 }) {}
 
-const clientId = "opencode-cli"
+/** OAuth device-flow client id presented to the console. */
+const clientId = "arcana-cli"
 const eagerRefreshThreshold = Duration.minutes(5)
 const eagerRefreshThresholdMs = Duration.toMillis(eagerRefreshThreshold)
 
@@ -387,7 +388,8 @@ export const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient
       return new Login({
         code: parsed.device_code,
         user: parsed.user_code,
-        url: `${normalizedServer}${parsed.verification_uri_complete}`,
+        // Absolute verification_uri_complete from Arcana site must not be re-prefixed.
+        url: resolveVerificationUrl(normalizedServer, parsed.verification_uri_complete),
         server: normalizedServer,
         expiry: parsed.expires_in,
         interval: parsed.interval,

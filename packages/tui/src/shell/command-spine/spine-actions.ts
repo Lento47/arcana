@@ -8,13 +8,16 @@ function hint(keys: string, label: string): SpineFooterHint {
 }
 
 export function spineFooterSelection(entry: SpineEntry | undefined): SpineFooterSelection {
+  // Spine keys fire only when the prompt is NOT focused
+  // (command-spine-shell: enabled when currentFocusedEditor === null).
+  // With the prompt focused, Tab opens the agent picker instead.
   if (!entry) {
     return {
       label: "spine",
       hints: [
         hint("j/k", "focus"),
-        hint("tab", "next"),
         hint("enter", "toggle"),
+        hint("o", "details"),
         hint("y", "copy"),
       ],
     }

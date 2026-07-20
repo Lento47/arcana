@@ -10,10 +10,33 @@ function looksLikeMarkdown(text: string): boolean {
   if (/^#{1,6}\s/m.test(text)) return true
   if (/^\s*[-*+]\s+\S/m.test(text)) return true
   if (/^\s*\d+\.\s+\S/m.test(text)) return true
+  // Bold / code / links only — do NOT treat single _underscore_ as markdown signal
+  // (snake_case and _private identifiers are common in agent + tool text).
   if (/\*\*[^*]+\*\*|__[^_]+__|`[^`]+`/.test(text)) return true
   if (/^\s*>\s+\S/m.test(text)) return true
   if (/\[.+\]\(.+\)/.test(text)) return true
   return false
+}
+
+/**
+ * Disable underscore emphasis in markdown so `_text_`, snake_case, and
+ * `_private` do not render as italics. Asterisk emphasis (`*italic*`) still works.
+ * Leaves fenced blocks and inline `code` alone.
+ */
+export function escapeMarkdownUnderscoreEmphasis(text: string): string {
+  const parts = text.split(/(```[\s\S]*?```)/)
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 1) return part
+      return part
+        .split(/(`[^`\n]+`)/)
+        .map((seg, j) => {
+          if (j % 2 === 1) return seg
+          return seg.replace(/_/g, "\\_")
+        })
+        .join("")
+    })
+    .join("")
 }
 
 function looksLikeDiff(text: string): boolean {
@@ -37,17 +60,28 @@ export function resolveProseMode(input: {
   if (input.kind === "think") return "markdown"
   if (label === "diff" || looksLikeDiff(input.text)) return "code"
   if (label === "error" || input.kind === "fail") return "code"
-  if (label === "written content" || label === "output") return "code"
+  if (label === "written content" || label === "output" || label === "file") return "code"
+  if (label === "matches" || label === "listing") return "plain"
+  // Tool / inspect bodies never auto-upgrade to markdown (avoids italic paths).
+  if (input.kind === "inspect" || input.kind === "run" || input.kind === "patch") return "code"
   if (looksLikeMarkdown(input.text)) return "markdown"
   return "code"
 }
 
-function resolveFiletype(bodyLabel: string | undefined, summary: string | undefined, text: string): string | undefined {
+function resolveFiletype(
+  bodyLabel: string | undefined,
+  summary: string | undefined,
+  text: string,
+  hint?: string,
+): string | undefined {
   const label = bodyLabel?.toLowerCase() ?? ""
   if (label === "diff" || looksLikeDiff(text)) return "diff"
   if (label === "error") return undefined
-  if (summary) {
-    const ft = filetype(summary)
+  // Prefer explicit path hint (summary may include " · L1–40").
+  for (const candidate of [hint, summary]) {
+    if (!candidate) continue
+    const pathOnly = candidate.split(/\s·\s/)[0]?.trim() || candidate
+    const ft = filetype(pathOnly)
     if (ft) return ft
   }
   // Fence language hint: ```ts
@@ -73,6 +107,8 @@ export function SpineProse(props: {
   bodyLabel?: string
   /** Optional path or title used for filetype detection (e.g. write/edit summary). */
   hint?: string
+  /** Muted note under the body (EOF / truncation) — not part of source. */
+  note?: string
   streaming?: boolean
   focused?: boolean
   /** System-reminder blocks extracted from read tool output. */
@@ -81,13 +117,19 @@ export function SpineProse(props: {
   const { theme, syntax, subtleSyntax } = useTheme()
   const text = createMemo(() => props.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"))
   const mode = createMemo(() => resolveProseMode({ kind: props.kind, bodyLabel: props.bodyLabel, text: text() }))
-  const ft = createMemo(() => resolveFiletype(props.bodyLabel, props.hint, text()))
+  const markdownContent = createMemo(() =>
+    mode() === "markdown" ? escapeMarkdownUnderscoreEmphasis(text()) : text(),
+  )
+  const ft = createMemo(() => resolveFiletype(props.bodyLabel, props.hint, text(), props.hint))
   const fg = createMemo(() => {
     if (props.kind === "think") return theme.textMuted
     if (props.kind === "fail" || props.bodyLabel === "error") return theme.error
     return theme.markdownText ?? theme.text
   })
   const style = () => (props.kind === "think" || props.kind === "fail" ? subtleSyntax() : syntax())
+  // File reads: slightly tighter chrome so codex panels don't dominate the timeline.
+  const codePad = () => (props.bodyLabel === "file" ? 1 : 2)
+  const codePadY = () => (props.bodyLabel === "file" ? 0 : 1)
 
   const reminderCallouts = () => (
     <Show when={props.reminders && props.reminders.length > 0}>
@@ -106,7 +148,7 @@ export function SpineProse(props: {
           >
             <text fg={theme.warning as any}>system reminder</text>
             <markdown
-              content={reminder}
+              content={escapeMarkdownUnderscoreEmphasis(reminder)}
               syntaxStyle={subtleSyntax()}
               streaming={false}
               conceal={true}
@@ -119,6 +161,14 @@ export function SpineProse(props: {
     </Show>
   )
 
+  const bodyNote = () => (
+    <Show when={props.note?.trim()}>
+      <text fg={(theme.spineDiffMuted ?? theme.textMuted) as any} wrapMode="word">
+        {props.note!.trim()}
+      </text>
+    </Show>
+  )
+
   return (
     <box flexGrow={1} minWidth={0} flexShrink={1} flexDirection="column">
       {reminderCallouts()}
@@ -128,24 +178,25 @@ export function SpineProse(props: {
             syntaxStyle={style()}
             streaming={props.streaming ?? true}
             internalBlockMode="top-level"
-            content={text()}
+            content={markdownContent()}
             tableOptions={{ style: "grid" }}
             conceal={true}
             fg={fg() as any}
             bg={theme.background as any}
           />
+          {bodyNote()}
         </Match>
         <Match when={mode() === "code"}>
           <box
             flexShrink={0}
             minWidth={0}
             backgroundColor={props.focused ? (theme.backgroundElement as any) : (theme.backgroundPanel as any)}
-            paddingLeft={2}
-            paddingRight={2}
-            paddingTop={1}
-            paddingBottom={1}
+            paddingLeft={codePad()}
+            paddingRight={codePad()}
+            paddingTop={codePadY()}
+            paddingBottom={codePadY()}
             border={["left"]}
-            borderColor={fg() as any}
+            borderColor={(props.bodyLabel === "file" ? (theme.spineInspect ?? fg()) : fg()) as any}
           >
             <code
               filetype={ft()}
@@ -157,11 +208,13 @@ export function SpineProse(props: {
               fg={fg() as any}
             />
           </box>
+          {bodyNote()}
         </Match>
         <Match when={true}>
           <text fg={fg() as any} wrapMode="word">
             {text()}
           </text>
+          {bodyNote()}
         </Match>
       </Switch>
     </box>

@@ -120,19 +120,24 @@ export function CommandSpineShell(props: ShellProps) {
     const nextID = nextSpineFocusID(visibleEntries(), focusedEntryID(), direction)
     if (nextID) focusEntryID(nextID, true)
   }
-  const toggleFocusedEntry = () => {
+  const resolveFocusedEntry = (preferToggleable = false) => {
     const focused = focusedEntryID()
-    const entry = focused ? visibleEntries().find((item) => item.id === focused) : undefined
+    let entry = focused ? visibleEntries().find((item) => item.id === focused) : undefined
+    if (entry) return entry
+    const pool = navigableEntries()
+    const pick = preferToggleable ? pool.find((item) => canToggleSpineEntry(item)) ?? pool[0] : pool[0]
+    if (pick) focusEntry(pick, true)
+    return pick
+  }
+  const toggleFocusedEntry = () => {
+    const entry = resolveFocusedEntry(true)
     if (!entry || !canToggleSpineEntry(entry)) return
     toggleEntry(entry)
   }
   const copyFocusedEntry = () => {
-    const focused = focusedEntryID()
-    const entry = focused ? visibleEntries().find((item) => item.id === focused) : undefined
+    const entry = resolveFocusedEntry()
     if (!entry) {
-      const first = navigableEntries()[0]
-      if (first) focusEntry(first, true)
-      toast.show({ message: "Focus a spine entry before copying", variant: "info" })
+      toast.show({ message: "No spine entry to copy", variant: "info" })
       return
     }
 
@@ -143,12 +148,9 @@ export function CommandSpineShell(props: ShellProps) {
       .catch(() => toast.show({ message: "Failed to copy spine entry", variant: "error" }))
   }
   const openFocusedEntryDetails = () => {
-    const focused = focusedEntryID()
-    const entry = focused ? visibleEntries().find((item) => item.id === focused) : undefined
+    const entry = resolveFocusedEntry()
     const messageID = spineEntryDetailMessageID(entry)
     if (!messageID) {
-      const first = navigableEntries()[0]
-      if (!entry && first) focusEntry(first, true)
       toast.show({ message: "No detail view is attached to this spine entry", variant: "info" })
       return
     }
@@ -204,8 +206,9 @@ export function CommandSpineShell(props: ShellProps) {
     enabled: () => renderer.currentFocusedEditor === null && navigableEntries().length > 0,
     priority: 1,
     bindings: [
-      { key: "j,down,tab", desc: "Focus next spine entry", group: "Command Spine", cmd: () => focusRelativeEntry(1) },
-      { key: "k,up,shift+tab", desc: "Focus previous spine entry", group: "Command Spine", cmd: () => focusRelativeEntry(-1) },
+      // Prefer j/k / arrows for spine focus — Tab in the prompt is agent.cycle.
+      { key: "j,down", desc: "Focus next spine entry", group: "Command Spine", cmd: () => focusRelativeEntry(1) },
+      { key: "k,up", desc: "Focus previous spine entry", group: "Command Spine", cmd: () => focusRelativeEntry(-1) },
       { key: "return,space", desc: "Expand or collapse spine entry", group: "Command Spine", cmd: toggleFocusedEntry },
       { key: "y", desc: "Copy focused spine entry", group: "Command Spine", cmd: copyFocusedEntry },
       { key: "o", desc: "Open spine entry details", group: "Command Spine", cmd: openFocusedEntryDetails },

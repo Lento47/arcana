@@ -19,6 +19,7 @@ import { PartID } from "./schema"
 import { EffectBridge } from "@/effect/bridge"
 import { ModelV2 } from "@arcana/core/model"
 import { withToolAdmission } from "@/tool/batch"
+import { checkGoalToolGate } from "@arcana/core/session/goal"
 
 export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   agent: Agent.Info
@@ -94,6 +95,19 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             item.id,
             Effect.gen(function* () {
               const ctx = context(args, options)
+              // Goal awareness: Tier B mutation gate + freeze after goal complete.
+              const gate = checkGoalToolGate({
+                sessionID: ctx.sessionID,
+                agentName: input.agent.name,
+                toolName: item.id,
+              })
+              if (!gate.allow) {
+                return {
+                  title: gate.reason,
+                  output: gate.message,
+                  metadata: { goal_gate: gate.reason },
+                }
+              }
               yield* plugin.trigger(
                 "tool.execute.before",
                 { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },

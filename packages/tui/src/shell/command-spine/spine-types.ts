@@ -99,6 +99,13 @@ export type SpineEntry = {
   summary: string
   body?: string
   bodyLabel?: string
+  /**
+   * Path or language hint for syntax highlighting when `summary` includes
+   * range meta (e.g. "src/foo.ts · L1–40").
+   */
+  bodyHint?: string
+  /** Muted note under code/prose (EOF, truncation, line range). */
+  bodyNote?: string
   collapsible?: boolean
   expandedByDefault?: boolean
   receipt?: SpineReceipt
@@ -117,6 +124,11 @@ export type SpineEntry = {
   report?: SpineReportData
   /** Parsed CLI table data — rendered as stacked rows instead of raw text. */
   table?: { headers: string[]; rows: string[][] }
+  /**
+   * Directory / glob path listing — plain names, no code fence or XML.
+   * Prefer this over stuffing entries into `body` as "file" source.
+   */
+  listing?: string[]
 }
 
 export type SpineConcernSeverity = "HIGH" | "MEDIUM" | "LOW"
@@ -146,40 +158,49 @@ export function getSpineLayout(width: number, current?: SpineLayout): SpineLayou
 
 /**
  * Outer left inset. Keep small so chat content owns the width.
- * (Previously 6/2 — wasted a full word of horizontal space on every row.)
+ * Wide previously used 2; 1 is enough separation from the terminal edge.
  */
 export function spineOuterPadding(layout: SpineLayout) {
-  if (layout === "wide") return 2
   if (layout === "minimal") return 0
   return 1
 }
 
 /**
- * Left meta column: step index + optional compact elapsed.
- * Prefer a single short row over the old two-line "index + HH:MM:SS" block
- * that consumed ~20 columns on wide layouts.
+ * Left meta column: step index only.
+ * Duration lives on the node header (not a fixed gutter tax).
+ * Wall-clock is not shown on the spine row.
  *
- *   wide/compact  →  "01 +1.2s"   (9)
- *   narrow        →  "01 +1s"     (7)
- *   minimal       →  "01"         (3)
+ *   all layouts → "01" (2) + optional trailing space handled by rail align
  */
-export function spineGutterWidth(layout: SpineLayout) {
-  if (layout === "wide" || layout === "compact") return 9
-  if (layout === "narrow") return 7
-  return 3
-}
-
-/** Glyph column — single cell + breathing room. */
-export function spineRailWidth(layout: SpineLayout) {
-  if (layout === "minimal") return 2
+export function spineGutterWidth(_layout: SpineLayout) {
   return 2
 }
 
-/** Max characters for the elapsed fragment inside the gutter. */
+/** Glyph column — single cell + trailing space. */
+export function spineRailWidth(_layout: SpineLayout) {
+  return 2
+}
+
+/**
+ * Max characters for elapsed shown on the node header (not gutter).
+ * minimal hides duration to save horizontal room on tiny terminals.
+ */
 export function spineElapsedMax(layout: SpineLayout) {
-  if (layout === "wide" || layout === "compact") return 6 // "+12.1s"
-  if (layout === "narrow") return 4 // "+1s"
-  return 0
+  if (layout === "minimal") return 0
+  if (layout === "narrow") return 5 // "+12s"
+  return 7 // "+12.1s"
+}
+
+/** Compact "+1.2s" / "+12s" for node meta. Empty when max is 0 or value blank. */
+export function compactSpineElapsed(elapsed: string | undefined, max: number): string {
+  if (!elapsed || max <= 0) return ""
+  const value = elapsed.trim()
+  if (!value) return ""
+  if (value.length <= max) return value
+  const stripped = value.replace(/^\+/, "").replace(/(\d+)\.(\d+)s/, "$1s")
+  const withPlus = stripped.startsWith("+") ? stripped : `+${stripped}`
+  if (withPlus.length <= max) return withPlus
+  return withPlus.slice(0, max - 1) + "…"
 }
 
 export function spineTone(kind: SpineKind, theme: Record<string, unknown>) {
