@@ -490,6 +490,46 @@ const scenarios: Scenario[] = [
       body: { accountID: "httpapi-account", orgID: "httpapi-org" },
     }))
     .status(400, undefined, "none"),
+  // `console.login` is a no-arg pass-through to Account.Service.login — it
+  // always calls the upstream device-code endpoint and returns 200. Verify
+  // the response shape (code + user + url) so future schema drift is caught.
+  http.protected
+    .post("/experimental/console/login", "experimental.console.login")
+    .at((ctx) => ({ path: "/experimental/console/login", headers: ctx.headers(), body: {} }))
+    .json(200, (body) => {
+      const data = body as { code?: unknown; user?: unknown; url?: unknown }
+      if (typeof data.code !== "string" || !data.code) throw new Error("login: missing code")
+      if (typeof data.user !== "string" || !data.user) throw new Error("login: missing user")
+      if (typeof data.url !== "string" || !data.url.startsWith("http")) throw new Error("login: bad url")
+    }),
+  // `console.loginPoll` may return either:
+  //  - 200 with a PollPending (the engine forwards to upstream, which the
+  //    license server accepts for any well-formed device code, even if
+  //    never confirmed),
+  //  - 5xx if the upstream errors (network, malformed response, etc.).
+  // We just want to prove the route decodes and forwards.
+  http.protected
+    .post("/experimental/console/login/poll", "experimental.console.loginPoll")
+    .at((ctx) => ({
+      path: "/experimental/console/login/poll",
+      headers: ctx.headers(),
+      body: { code: "00000000-0000-0000-0000-000000000000", server: "https://arcana.otnelhq.com" },
+    }))
+    .ok(200, "none"),
+  // `console.loginComplete` with a fake token hits the upstream /api/oauth/bind
+  // which returns 4xx, surfaced as 5xx. We just verify the route decodes and
+  // forwards — actual bind success is covered by the license-server test.
+  http.protected
+    .post("/experimental/console/login/complete", "experimental.console.loginComplete")
+    .at((ctx) => ({
+      path: "/experimental/console/login/complete",
+      headers: ctx.headers(),
+      body: { accessToken: "fake-token", server: "https://arcana.otnelhq.com" },
+    }))
+    .status(500, undefined, "none"),
+  http.protected
+    .get("/experimental/console/proxy-key-present", "experimental.console.proxyKeyPresent")
+    .json(),
   http.protected.get("/experimental/workspace/adapter", "experimental.workspace.adapter.list").json(200, array),
   http.protected.get("/experimental/workspace", "experimental.workspace.list").json(200, array),
   http.protected.get("/experimental/workspace/status", "experimental.workspace.status").json(200, array),
