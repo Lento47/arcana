@@ -33,7 +33,8 @@ This is a living status, not a claim that Arcana is fully hardened.
 
 - **Local CLI + own API keys:** improved posture; still not a sandboxed multi-tenant runtime.
 - **Gateways / `arcana serve` on LAN:** require allowlists + password; still treat as experimental.
-- **Untrusted repos:** I02 remains open — do not open untrusted projects with plugins/MCP/auto-install until trust gates land.
+- **Untrusted repos:** use `arcana trust` before loading project plugins/tools/MCP. Without trust, executable project config stays disabled (I02 MVP). Do not open hostile repos with `ARCANA_DISABLE_WORKSPACE_TRUST=1`.
+- **User docs:** https://arcana.otnelhq.com/docs
 
 ## Next priority
 
