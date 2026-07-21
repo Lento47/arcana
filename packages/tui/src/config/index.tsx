@@ -48,6 +48,9 @@ export const Prompt = Schema.Struct({
   max_width: Schema.optional(Schema.Union([PromptSize, Schema.Literal("auto")])).annotate({
     description: "Home prompt max width: a positive integer for a fixed cap, or 'auto' to scale with terminal width",
   }),
+  metrics_bar: Schema.optional(Schema.Boolean).annotate({
+    description: "Show the session metrics bar below the input prompt (elapsed, tokens, cost, context pressure). Default: true",
+  }),
 }).annotate({ description: "Prompt size settings" })
 
 export const Background = Schema.Struct({
