@@ -245,9 +245,9 @@ export const ExperimentalApi = HttpApi.make("experimental")
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "experimental.console.loginComplete",
-            summary: "Complete login + mint proxy key",
+            summary: "Complete login + persist proxy key",
             description:
-              "On a successful device-code login, mint a proxy_key by binding the OAuth access_token to a license on the Arcana license server. Writes proxy_key to ~/.arcana/proxy_key, writes .license-cache.json, and sets ARCANA_PROXY_KEY in the current process so the catalog refresh sees the new entitlement.",
+              "On a successful device-code login, the Arcana console hands us a freshly-minted proxy license key as the OAuth access_token (see arcana-site/functions/auth/device/token.ts). No bind roundtrip is needed — the engine writes the access_token directly to ~/.arcana/proxy_key, writes .license-cache.json, and sets ARCANA_PROXY_KEY in the current process so the catalog refresh sees the new entitlement.",
           }),
         ),
         HttpApiEndpoint.get("consoleProxyKeyPresent", ExperimentalPaths.consoleProxyKeyPresent, {

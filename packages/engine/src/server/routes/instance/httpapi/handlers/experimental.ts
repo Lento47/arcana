@@ -22,7 +22,7 @@ import {
   ToolListQuery,
   WorktreeApiError,
 } from "../groups/experimental"
-import { bindAccessToken, proxyKeyPresent, writeLicenseCache, writeProxyKey } from "@/account/license-bind"
+import { proxyKeyPresent, writeLicenseCache, writeProxyKey } from "@/account/license-bind"
 
 const DEFAULT_CONSOLE_URL = process.env.ARCANA_CONSOLE_URL?.trim() || "https://arcana.otnelhq.com"
 
@@ -155,13 +155,15 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     const consoleLoginComplete = Effect.fn("ExperimentalHttpApi.consoleLoginComplete")(function* (ctx: {
       payload: { accessToken: string; server: string; email?: string }
     }) {
-      const bind = yield* bindAccessToken(ctx.payload.accessToken, ctx.payload.email, ctx.payload.server)
-      if (!bind.ok) {
-        return { ok: false, error: bind.error }
-      }
-      writeProxyKey(bind.proxyKey)
-      writeLicenseCache({ tier: bind.tier, source: "oauth-bind", server: ctx.payload.server })
-      return { ok: true, proxyKey: bind.proxyKey, tier: bind.tier }
+      // The Arcana device-flow hands us a freshly-minted proxy license key
+      // as the access_token (see arcana-site/functions/auth/device/token.ts).
+      // No separate bind step is needed — write the key directly to disk and
+      // refresh the catalog. The previous bind roundtrip to the license-server
+      // Worker always 401'd because the Arcana console's /api/user doesn't
+      // accept bearer tokens from the device-code flow.
+      writeProxyKey(ctx.payload.accessToken)
+      writeLicenseCache({ tier: "free", source: "device-flow", server: ctx.payload.server })
+      return { ok: true, proxyKey: ctx.payload.accessToken, tier: "free" }
     })
 
     const consoleProxyKeyPresent = Effect.fn("ExperimentalHttpApi.consoleProxyKeyPresent")(function* () {
