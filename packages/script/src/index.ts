@@ -17,31 +17,46 @@ if (!semver.satisfies(process.versions.bun, expectedBunVersionRange)) {
   throw new Error(`This script requires bun@${expectedBunVersionRange}, but you are using bun@${process.versions.bun}`)
 }
 
+// Dual-read: prefer ARCANA_* (canonical post-rebrand), fall back to OPENCODE_*
+// for any external tooling that still emits the old names. A one-time warning
+// surfaces the legacy env vars in CI logs so they can be cleaned up.
+const readEnv = (canonical: string, legacy: string): string | undefined => {
+  const arcana = process.env[canonical]
+  const opencode = process.env[legacy]
+  if (arcana && opencode && arcana !== opencode) {
+    console.warn(`[script] ${canonical} and ${legacy} both set; using ${canonical}`)
+  } else if (opencode && !arcana) {
+    console.warn(`[script] ${legacy} is deprecated; set ${canonical} instead`)
+    return opencode
+  }
+  return arcana ?? opencode
+}
+
 const env = {
-  OPENCODE_CHANNEL: process.env["OPENCODE_CHANNEL"],
-  OPENCODE_BUMP: process.env["OPENCODE_BUMP"],
-  OPENCODE_VERSION: process.env["OPENCODE_VERSION"],
-  OPENCODE_RELEASE: process.env["OPENCODE_RELEASE"],
+  ARCANA_CHANNEL: readEnv("ARCANA_CHANNEL", "OPENCODE_CHANNEL"),
+  ARCANA_BUMP: readEnv("ARCANA_BUMP", "OPENCODE_BUMP"),
+  ARCANA_VERSION: readEnv("ARCANA_VERSION", "OPENCODE_VERSION"),
+  ARCANA_RELEASE: readEnv("ARCANA_RELEASE", "OPENCODE_RELEASE"),
 }
 const CHANNEL = await (async () => {
-  if (env.OPENCODE_CHANNEL) return env.OPENCODE_CHANNEL
-  if (env.OPENCODE_BUMP) return "latest"
-  if (env.OPENCODE_VERSION && !env.OPENCODE_VERSION.startsWith("0.0.0-")) return "latest"
+  if (env.ARCANA_CHANNEL) return env.ARCANA_CHANNEL
+  if (env.ARCANA_BUMP) return "latest"
+  if (env.ARCANA_VERSION && !env.ARCANA_VERSION.startsWith("0.0.0-")) return "latest"
   return await $`git branch --show-current`.text().then((x) => x.trim())
 })()
 const IS_PREVIEW = CHANNEL !== "latest"
 
 const VERSION = await (async () => {
-  if (env.OPENCODE_VERSION) return env.OPENCODE_VERSION
+  if (env.ARCANA_VERSION) return env.ARCANA_VERSION
   if (IS_PREVIEW) return `0.0.0-${CHANNEL}-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`
-  const version = await fetch("https://registry.npmjs.org/opencode-ai/latest")
+  const version = await fetch("https://registry.npmjs.org/arcana-ai/latest")
     .then((res) => {
       if (!res.ok) throw new Error(res.statusText)
       return res.json()
     })
     .then((data: any) => data.version)
   const [major, minor, patch] = version.split(".").map((x: string) => Number(x) || 0)
-  const t = env.OPENCODE_BUMP?.toLowerCase()
+  const t = env.ARCANA_BUMP?.toLowerCase()
   if (t === "major") return `${major + 1}.0.0`
   if (t === "minor") return `${major}.${minor + 1}.0`
   return `${major}.${minor}.${patch + 1}`
@@ -68,7 +83,7 @@ export const Script = {
     return IS_PREVIEW
   },
   get release(): boolean {
-    return !!env.OPENCODE_RELEASE
+    return !!env.ARCANA_RELEASE
   },
   get team() {
     return team

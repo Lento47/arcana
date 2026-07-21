@@ -6,8 +6,24 @@ import { isRecord } from "@/util/record"
 
 export type Err = ReturnType<NamedError["toObject"]>
 
-export const GO_UPSELL_MESSAGE = "Free usage exceeded, subscribe to Go"
-export const GO_UPSELL_URL = "https://opencode.ai/go"
+/**
+ * Mirrors `BRAND_TIERS.go` in `packages/tui/src/branding.ts` (which is the
+ * TUI's canonical source). Kept in sync to avoid the
+ * `@arcana/engine ← @arcana/tui` circular import. When the copy changes,
+ * update both files in the same PR.
+ */
+const BRAND_TIERS = {
+  go: {
+    name: "Arcana Pro",
+    price: "$10/month",
+    url: "https://arcana.otnelhq.com/pro",
+    limitReachedMessage:
+      "Subscribe to Arcana Pro for reliable access to the best open-source models, starting at $10/month.",
+  },
+} as const
+
+export const GO_UPSELL_MESSAGE = "Free usage exceeded, subscribe to Arcana Pro"
+export const GO_UPSELL_URL = BRAND_TIERS.go.url
 export type RetryReason = "free_tier_limit" | "account_rate_limit" | (string & {})
 
 export type Retryable = {
@@ -57,7 +73,12 @@ export function delay(attempt: number, error?: SessionV1.APIError) {
         }
       }
 
-      return cap(RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1))
+      return cap(
+        Math.min(
+          RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1),
+          RETRY_MAX_DELAY_NO_HEADERS,
+        ),
+      )
     }
   }
 
@@ -79,7 +100,7 @@ export function retryable(error: Err, provider: string) {
           reason: "free_tier_limit",
           provider,
           title: "Free limit reached",
-          message: "Subscribe to OpenCode Go for reliable access to the best open-source models, starting at $5/month.",
+          message: BRAND_TIERS.go.limitReachedMessage,
           label: "subscribe",
           link: GO_UPSELL_URL,
         },
@@ -105,7 +126,7 @@ export function retryable(error: Err, provider: string) {
 
       const message = `${limitName ? `${limitName} usage limit` : "Usage limit"} reached. It will reset in ${resetIn}. To continue using this model now, enable usage from your available balance`
 
-      const link = `https://opencode.ai/workspace/${workspace}/go`
+      const link = `${BRAND_TIERS.go.url}/workspace/${workspace}`
       return {
         message: `${message} - ${link}`,
         action: {

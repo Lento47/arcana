@@ -91,6 +91,8 @@ export type SpineEntry = {
   id: string
   index: number
   elapsed: string
+  /** Numeric elapsed in ms (parallel to `elapsed`). Use for sums; avoids re-parsing "+1h"→"+1s" bug. */
+  elapsedMs?: number
   timestamp?: string
   actor?: string
   label?: string

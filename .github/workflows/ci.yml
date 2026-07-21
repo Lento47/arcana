@@ -54,6 +54,34 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Verify version files agree
+        # The release pipeline bakes version into the 4 publication files.
+        # packages/engine has its own internal version (1.x) — not part of
+        # the user-facing release. Drift between the 4 user-facing files
+        # would cause broken upgrades; fail loud here before the release
+        # step can ship mismatched artifacts.
+        run: |
+          ROOT=$(node -p "require('./package.json').version")
+          ARCANA=$(node -p "require('./packages/arcana/package.json').version")
+          NPM=$(node -p "require('./packages/arcana/npm/package.json').version")
+          BIN=$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' packages/arcana/npm/bin/arcana.js | head -n1 | tr -d 'v')
+          echo "root=$ROOT arcana=$ARCANA npm=$NPM bin=$BIN"
+          if [ "$ROOT" != "$ARCANA" ] || [ "$ROOT" != "$NPM" ] || [ "$ROOT" != "$BIN" ]; then
+            echo "::error::Version files disagree (root=$ROOT, arcana=$ARCANA, npm=$NPM, bin=$BIN)" >&2
+            exit 1
+          fi
+
+      - name: Repo URL guard
+        # Private Lento47/arcana must never appear in published artifacts —
+        # the wrapper package would auto-correct its `repository` field and
+        # leak the private URL to npm. Only Lento47/arcana-community is allowed.
+        run: |
+          if grep -RPl "Lento47/arcana\b(?!-)" packages/arcana/npm/ 2>/dev/null \
+            | grep -v "Lento47/arcana-community"; then
+            echo "::error::Found private repo URL 'Lento47/arcana' in packages/arcana/npm/" >&2
+            exit 1
+          fi
+
       - name: Performance regression check
         run: bun run scripts/perf-check.ts --skip-startup
         continue-on-error: true

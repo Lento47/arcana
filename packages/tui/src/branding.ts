@@ -230,3 +230,24 @@ export const SIGIL_STEP_MS = 200
  * Engine callers pass a resolved Theme; chrome.ts holds the type guard.
  */
 export const SIGIL_TOKEN = "accent" as const
+
+/**
+ * Single source of truth for brand-tier copy (Arcana Pro / free, etc).
+ * Mirrored inside `packages/engine/src/session/retry.ts` to avoid the
+ * `@arcana/engine ← @arcana/tui` circular import — keep both in sync.
+ */
+export const BRAND_TIERS = {
+  go: {
+    name: "Arcana Pro",
+    price: "$10/month",
+    url: "https://arcana.otnelhq.com/pro",
+    shortDescription:
+      "Reliable access to popular open coding models with generous usage limits.",
+    longDescription:
+      "Arcana Pro is a $10 per month subscription that provides reliable access to popular open coding models with generous usage limits.",
+    limitReachedTitle: "Free limit reached",
+    limitReachedMessage:
+      "Subscribe to Arcana Pro for reliable access to the best open-source models, starting at $10/month.",
+    cta: "Upgrade",
+  },
+} as const

@@ -3,7 +3,6 @@ import stripAnsi from "strip-ansi"
 
 import {
   ARCANA_CONSOLE_DEFAULT,
-  defaultConsoleUrl,
   formatAccountLabel,
   formatLoginBanner,
   formatLoginSteps,
@@ -15,7 +14,6 @@ import {
 describe("console account display", () => {
   test("uses Arcana console as the default login URL (not OpenCode)", () => {
     expect(ARCANA_CONSOLE_DEFAULT).toBe("https://arcana.otnelhq.com")
-    expect(defaultConsoleUrl).toBe(ARCANA_CONSOLE_DEFAULT)
     expect(ARCANA_CONSOLE_DEFAULT).not.toContain("opencode.ai")
     const prev = process.env.ARCANA_CONSOLE_URL
     delete process.env.ARCANA_CONSOLE_URL

@@ -207,8 +207,9 @@ export function Session() {
   const promptRef = usePromptRef()
   const session = createMemo(() => sync.session.get(route.sessionID))
 
-  // Border pulse on session transition — flash accent, then fade to subt
-  const [transBorder, setTransBorder] = createSignal(theme.accent)
+  // Border pulse on session transition — flash accent, then fade to subtle.
+  // Resting color is `borderSubtle`; pulse to `accent` on every sessionID change.
+  const [transBorder, setTransBorder] = createSignal(theme.borderSubtle)
   createEffect(() => {
     // Trigger pulse when sessionID changes
     void route.sessionID
@@ -248,7 +249,8 @@ export function Session() {
     const userMessageIDs = new Set<string>()
     let lastAssistant: Message | undefined
     let pending: string | undefined
-    let completedID: string | undefined
+    // Reverse-scan: most recent assistant message that has NOT yet completed
+    // is the one actively streaming. Anything older is either done or queued.
     for (let i = list.length - 1; i >= 0; i--) {
       const message = list[i]
       if (message.role === "user") {
@@ -257,10 +259,9 @@ export function Session() {
       }
       if (message.role !== "assistant") continue
       if (!lastAssistant) lastAssistant = message
-      if (message.time.completed) {
-        if (!completedID) completedID = message.id
-      } else if (!completedID || message.id > completedID) {
-        if (!pending) pending = message.id
+      if (!message.time.completed) {
+        pending = message.id
+        break
       }
     }
     return { userMessageIDs, lastAssistant, pending }
@@ -271,22 +272,16 @@ export function Session() {
 
   // Precompute assistant durations from the parent user message in one pass.
   // Each AssistantMessage used to rerun this scan individually.
-  // Returned Map is content-stable — we mutate the same instance in place so
-  // downstream consumers (spine mapper outer fast-path, which compares by
-  // reference) keep hitting instead of busting on every re-run.
-  let cachedDurationMap: Map<string, number> = new Map()
-  let cachedDurationKey: unknown = undefined
+  //
+  // Returns a fresh Map on every memo re-run. The memo's deep-property tracking
+  // (reads of message.time.completed, parent.time.created) only re-runs the
+  // body when relevant data changes, so the rebuild is bounded to actual
+  // mutations. An earlier identity-key short-circuit on the messages array ref
+  // was a correctness bug: produce() mutates the array in place, so the ref
+  // check hit even when time.completed had just flipped and a new entry needed
+  // to be added.
   const assistantDuration = createMemo<Map<string, number>>(() => {
     const list = messages()
-    // Cheap identity key: messages array ref + session id. When the underlying
-    // message list ref is stable across re-runs (the Solid store doesn't reassign
-    // the array), the key matches and we mutate-in-place. A new array ref forces
-    // a full rebuild but still returns a single shared Map.
-    const key = list
-    if (key === cachedDurationKey) {
-      return cachedDurationMap
-    }
-    cachedDurationKey = key
     const next = new Map<string, number>()
     for (const message of list) {
       if (message.role !== "assistant" || !message.time.completed || !message.finish) continue
@@ -296,7 +291,6 @@ export function Session() {
         next.set(message.id, message.time.completed - parent.time.created)
       }
     }
-    cachedDurationMap = next
     return next
   })
 
@@ -404,6 +398,30 @@ export function Session() {
   })
 
   let lastSwitch: string | undefined = undefined
+  let seeded = false
+  let scroll: ScrollBoxRenderable
+  let prompt: PromptRef | undefined
+  let scrollInterval: ReturnType<typeof setInterval> | undefined
+  let scrollExhausted = false
+
+  // Reset per-session state when the route changes — `lastSwitch`, `seeded`
+  // and the scroll-loading poll must not leak across sessions.
+  createEffect(
+    on(
+      () => route.sessionID,
+      (id, prev) => {
+        if (id === prev) return
+        lastSwitch = undefined
+        seeded = false
+        scrollExhausted = false
+        if (scrollInterval) {
+          clearInterval(scrollInterval)
+          scrollInterval = undefined
+        }
+      },
+    ),
+  )
+
   event.on("message.part.updated", (evt) => {
     const part = evt.properties.part
     if (part.type !== "tool") return
@@ -420,24 +438,22 @@ export function Session() {
     }
   })
 
-  let seeded = false
-  let scroll: ScrollBoxRenderable
-  let prompt: PromptRef | undefined
-  let scrollInterval: ReturnType<typeof setInterval> | undefined
-
   // Periodically check if the user has scrolled to the top and load older messages
   onMount(() => {
     scrollInterval = setInterval(async () => {
       if (!scroll || scroll.isDestroyed) return
+      if (scrollExhausted) return
       // Trigger when within 3 rows of the top
       if (scroll.y > 3) return
       const prevHeight = scroll.scrollHeight
       const loaded = await sync.session.loadOlder(route.sessionID)
-      if (loaded) {
-        // Compensate scroll position by the added content height so the
-        // user stays at the same viewport position.
-        scroll.scrollBy(scroll.scrollHeight - prevHeight)
+      if (!loaded) {
+        scrollExhausted = true
+        return
       }
+      // Compensate scroll position by the added content height so the
+      // user stays at the same viewport position.
+      scroll.scrollBy(scroll.scrollHeight - prevHeight)
     }, 500)
   })
   onCleanup(() => clearInterval(scrollInterval))
@@ -475,19 +491,29 @@ export function Session() {
   // Helper: Find next visible message boundary in direction.
   // Build a single Set of message IDs with valid text parts so we do not
   // perform an O(n) find + per-child parts scan for every renderable child.
-  const findNextVisibleMessage = (direction: "next" | "prev"): string | null => {
-    const children = scroll.getChildren()
+  // The visibleIDs Set is memoized against (messages.length, children.length)
+  // — n/p keystrokes in the same scene do not pay the parts-scan cost twice.
+  let visibleIDsCache: { key: string; ids: Set<string> } | undefined
+  const computeVisibleIDs = (childrenCount: number): Set<string> => {
     const messagesList = messages()
-    const scrollTop = scroll.y
-
-    const visibleIDs = new Set<string>()
+    const key = `${messagesList.length}:${childrenCount}`
+    if (visibleIDsCache && visibleIDsCache.key === key) return visibleIDsCache.ids
+    const ids = new Set<string>()
     for (const message of messagesList) {
       const parts = sync.data.part[message.id]
       if (!parts || !Array.isArray(parts)) continue
       if (parts.some((part) => part && part.type === "text" && !part.synthetic && !part.ignored)) {
-        visibleIDs.add(message.id)
+        ids.add(message.id)
       }
     }
+    visibleIDsCache = { key, ids }
+    return ids
+  }
+
+  const findNextVisibleMessage = (direction: "next" | "prev"): string | null => {
+    const children = scroll.getChildren()
+    const scrollTop = scroll.y
+    const visibleIDs = computeVisibleIDs(children.length)
 
     const visibleMessages = children
       .filter((c) => c.id !== undefined && visibleIDs.has(c.id))

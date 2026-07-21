@@ -99,7 +99,7 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     const consoleLogin = Effect.fn("ExperimentalHttpApi.consoleLogin")(function* (ctx: {
       // SDK may omit the JSON body entirely when all fields are optional (see
       // ConsoleLoginRequest note). Treat nullish payload as {}.
-      payload: { server?: string } | null | undefined
+      payload: void | { server?: string } | null | undefined
     }) {
       const server = ctx.payload?.server?.trim() || DEFAULT_CONSOLE_URL
       // Don't surface the upstream error message — it can leak the backend

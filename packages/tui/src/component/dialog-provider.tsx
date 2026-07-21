@@ -13,6 +13,7 @@ import { DialogModel } from "./dialog-model"
 import { useToast } from "../ui/toast"
 import { isConsoleManagedProvider } from "../util/provider-origin"
 import { useConnected } from "./use-connected"
+import { BRAND_TIERS } from "../branding"
 import { useHasProxyKey } from "./use-has-proxy-key"
 import { errorMessage } from "../util/error"
 import { useBindings } from "../keymap"
@@ -438,11 +439,10 @@ function ApiMethod(props: ApiMethodProps) {
           "opencode-go": (
             <box gap={1}>
               <text fg={theme.textMuted}>
-                OpenCode Go is a $10 per month subscription that provides reliable access to popular open coding models
-                with generous usage limits.
+                {BRAND_TIERS.go.longDescription}
               </text>
               <text fg={theme.text}>
-                Go to <span style={{ fg: theme.primary }}>https://arcana.otnelhq.com/go</span> and enable OpenCode Go
+                Go to <span style={{ fg: theme.primary }}>{BRAND_TIERS.go.url}</span> and enable {BRAND_TIERS.go.name}
               </text>
             </box>
           ),

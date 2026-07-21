@@ -45,7 +45,7 @@ type CheckMetadata = {
   goal?: string
 }
 
-export const GoalSetTool = Tool.define<typeof SetParams, SetMetadata>("goal_set", Effect.succeed({
+export const GoalSetTool = Tool.define<typeof SetParams, SetMetadata, never>("goal_set", Effect.succeed({
   description: DESCRIPTION_SET,
   parameters: SetParams,
   execute: (params: Schema.Schema.Type<typeof SetParams>, ctx: Tool.Context<SetMetadata>) =>
@@ -78,7 +78,7 @@ export const GoalSetTool = Tool.define<typeof SetParams, SetMetadata>("goal_set"
     }),
 }))
 
-export const GoalCheckTool = Tool.define<typeof CheckParams, CheckMetadata>("goal_check", Effect.succeed({
+export const GoalCheckTool = Tool.define<typeof CheckParams, CheckMetadata, never>("goal_check", Effect.succeed({
   description: DESCRIPTION_CHECK,
   parameters: CheckParams,
   execute: (params: Schema.Schema.Type<typeof CheckParams>, ctx: Tool.Context<CheckMetadata>) =>
@@ -131,7 +131,7 @@ export const GoalCheckTool = Tool.define<typeof CheckParams, CheckMetadata>("goa
         output: lines.join("\n"),
         metadata: {
           status: params.status,
-          goal: cur.status !== "unset" ? cur.goal : undefined,
+          goal: cur.goal,
         },
       }
     }),

@@ -41,8 +41,8 @@ jobs:
 
       - name: Build arcana binaries
         env:
-          OPENCODE_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
-          OPENCODE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0' }}
+          ARCANA_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
+          ARCANA_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0' }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: "Lento47/arcana"
         run: bun run --cwd packages/engine script/build.ts --skip-embed-web-ui
@@ -54,6 +54,13 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ARCANA_SIGNING_PRIVATE_KEY: ${{ secrets.ARCANA_SIGNING_PRIVATE_KEY }}
         run: |
+          # Fail loud: tag pushes without a signing key would ship unsigned
+          # binaries that the launcher would refuse. Detect and abort before
+          # doing any work.
+          if [ -z "$ARCANA_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::ARCANA_SIGNING_PRIVATE_KEY is required for tag pushes" >&2
+            exit 1
+          fi
           npm install -g wrangler
           V="${{ github.ref_name }}"
           for f in packages/engine/dist/arcana-*.zip packages/engine/dist/arcana-*.tar.gz; do
@@ -67,8 +74,8 @@ jobs:
           # Sign checksums with Ed25519 private key. The public key is embedded
           # in bin/arcana.js. Uses Node.js crypto.sign for portability — same
           # API as the launcher's crypto.verify, avoiding OpenSSL version skew.
-          if [ -n "$ARCANA_SIGNING_PRIVATE_KEY" ]; then
-            cat > /tmp/sign-checksums.mjs << 'ENDSCRIPT'
+          # Key presence is checked at the top of the step; here we always sign.
+          cat > /tmp/sign-checksums.mjs << 'ENDSCRIPT'
           import { sign, createPrivateKey } from "node:crypto"
           import { readFileSync, writeFileSync } from "node:fs"
           const pem = Buffer.from(process.env.ARCANA_SIGNING_PRIVATE_KEY, "base64").toString("utf8")
@@ -84,7 +91,6 @@ jobs:
               node /tmp/sign-checksums.mjs "$f"
               wrangler r2 object put "arcana-releases/arcana/$V/$(basename ${f}.sig)" --file "${f}.sig" --remote
             done
-          fi
           # Write latest version pointer — upgrade command reads this
           echo "$V" > /tmp/latest.txt
           wrangler r2 object put "arcana-releases/arcana/latest.txt" --file /tmp/latest.txt --remote

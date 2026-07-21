@@ -272,7 +272,8 @@ describe("session.retry.retryable", () => {
         reason: "free_tier_limit",
         provider: "arcana",
         title: "Free limit reached",
-        message: "Subscribe to OpenCode Go for reliable access to the best open-source models, starting at $5/month.",
+        message:
+          "Subscribe to Arcana Pro for reliable access to the best open-source models, starting at $10/month.",
         label: "subscribe",
         link: SessionRetry.GO_UPSELL_URL,
       },
@@ -304,7 +305,7 @@ describe("session.retry.retryable", () => {
 
     expect(SessionRetry.retryable(error, "opencode-go")).toEqual({
       message:
-        "5 hour usage limit reached. It will reset in 5 hours 23 minutes. To continue using this model now, enable usage from your available balance - https://opencode.ai/workspace/wrk_01K6XGM22R6FM8JVABE9XDQXGH/go",
+        "5 hour usage limit reached. It will reset in 5 hours 23 minutes. To continue using this model now, enable usage from your available balance - https://arcana.otnelhq.com/pro/workspace/wrk_01K6XGM22R6FM8JVABE9XDQXGH",
       action: {
         reason: "account_rate_limit",
         provider: "opencode-go",
@@ -312,7 +313,7 @@ describe("session.retry.retryable", () => {
         message:
           "5 hour usage limit reached. It will reset in 5 hours 23 minutes. To continue using this model now, enable usage from your available balance",
         label: "open settings",
-        link: "https://opencode.ai/workspace/wrk_01K6XGM22R6FM8JVABE9XDQXGH/go",
+        link: "https://arcana.otnelhq.com/pro/workspace/wrk_01K6XGM22R6FM8JVABE9XDQXGH",
       },
     })
   })

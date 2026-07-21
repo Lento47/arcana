@@ -16,7 +16,7 @@ describe("bindAccessToken — error safety", () => {
   test("connection-refused error message is NOT surfaced", async () => {
     // All license-server bases reject — simulates the user's reported
     // `ConnectionRefused` from `https://api.arcana.otnelhq.com/...`.
-    globalThis.fetch = (() => Promise.reject(new Error("Unable to connect. Is the computer able to access the url?"))) as typeof fetch
+    globalThis.fetch = (() => Promise.reject(new Error("Unable to connect. Is the computer able to access the url?"))) as unknown as typeof fetch
 
     const result = await run(bindAccessToken("fake-token", "u@example.com", "https://arcana.otnelhq.com"))
     expect(result.ok).toBe(false)
@@ -34,7 +34,7 @@ describe("bindAccessToken — error safety", () => {
     globalThis.fetch = (() =>
       Promise.resolve(
         new Response("502 Bad Gateway", { status: 502, headers: { "content-type": "text/plain" } }),
-      )) as typeof fetch
+      )) as unknown as typeof fetch
 
     const result = await run(bindAccessToken("fake-token", undefined, "https://arcana.otnelhq.com"))
     expect(result.ok).toBe(false)
@@ -52,7 +52,7 @@ describe("bindAccessToken — error safety", () => {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
-      )) as typeof fetch
+      )) as unknown as typeof fetch
 
     const result = await run(bindAccessToken("fake-token", undefined, "https://arcana.otnelhq.com"))
     expect(result.ok).toBe(false)
@@ -69,7 +69,7 @@ describe("bindAccessToken — error safety", () => {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
-      )) as typeof fetch
+      )) as unknown as typeof fetch
 
     const result = await run(bindAccessToken("fake-token", "u@example.com", "https://arcana.otnelhq.com"))
     expect(result.ok).toBe(true)

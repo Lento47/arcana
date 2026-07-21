@@ -2,6 +2,7 @@ import { cmd } from "./cmd"
 import { Duration, Effect, Match, Option } from "effect"
 import { UI } from "../ui"
 import { Account } from "@/account/account"
+import { writeLicenseCache, writeProxyKey } from "@/account/license-bind"
 import { AccountID, OrgID, PollExpired, type PollResult, type AccountError } from "@/account/schema"
 import { effectCmd } from "../effect-cmd"
 import * as Prompt from "../effect/prompt"
@@ -32,9 +33,6 @@ export function getDefaultConsoleUrl(): string {
   const fromEnv = process.env.ARCANA_CONSOLE_URL?.trim()
   return fromEnv || ARCANA_CONSOLE_DEFAULT
 }
-
-/** @deprecated Prefer getDefaultConsoleUrl() — kept for tests/imports. */
-export const defaultConsoleUrl = ARCANA_CONSOLE_DEFAULT
 
 export const formatAccountLabel = (account: { email: string; url: string }, isActive: boolean) =>
   `${account.email} ${dim(account.url)}${activeSuffix(isActive)}`
@@ -163,6 +161,12 @@ const loginEffect = Effect.fn("login")(function* (url: string) {
   yield* Match.valueTags(result, {
     PollSuccess: (r) =>
       Effect.gen(function* () {
+        if (r.accessToken) {
+          yield* Effect.sync(() => {
+            writeProxyKey(r.accessToken!)
+            writeLicenseCache({ tier: "free", source: "device-flow", server: r.server })
+          })
+        }
         // Clear spinner with a quiet tick; the real welcome is formatLoginSuccess.
         yield* s.stop(ok("✦") + dim("  seal accepted"))
         for (const line of formatLoginSuccess(r.email)) yield* println(line)

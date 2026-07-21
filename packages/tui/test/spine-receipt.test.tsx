@@ -147,7 +147,7 @@ test("run + pending receipt shows running indicator", async () => {
       120,
     ),
   )
-  expect(frame).toContain("running")
+  expect(frame).toContain("Working")
 })
 
 // ---------- patch ----------
