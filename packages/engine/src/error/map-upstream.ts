@@ -56,6 +56,15 @@ function classify(status: number | undefined, text: string, body: any): ArcanaEr
   if (status === 402 || msg.includes("no credits") || (msg.includes("insufficient") && msg.includes("credit"))) {
     return "ARC_CREDITS_EXHAUSTED"
   }
+  // Free-tier rejects: trust explicit wire codes only, BEFORE the 429 /
+  // rate-limit branch (which would otherwise reclassify them as
+  // ARC_RATE_LIMITED and swallow the specific cause). The old substring
+  // match (`free` + `exhaust`/`weekly session`) was producing false
+  // positives on upstream 5xx bodies that happened to mention those words.
+  if (code === "arc_free_exhausted") return "ARC_FREE_EXHAUSTED"
+  if (code === "arc_free_session_expired") return "ARC_FREE_SESSION_EXPIRED"
+  if (code === "arc_free_conversation_mismatch") return "ARC_FREE_CONVERSATION_MISMATCH"
+  if (code === "arc_free_turn_budget_reached") return "ARC_FREE_TURN_BUDGET_REACHED"
   // Upstream vendor balance (aihubmix/azure) — not the user's Arcana credit ledger
   if (
     msg.includes("recharge your account")
@@ -98,9 +107,6 @@ function classify(status: number | undefined, text: string, body: any): ArcanaEr
     return "ARC_CONTEXT_OVERFLOW"
   }
   if (msg.includes("image_generation") || msg.includes("empty_image")) return "ARC_IMAGE_FAILED"
-  if (code === "arc_free_exhausted" || (msg.includes("free") && (msg.includes("exhaust") || msg.includes("weekly session")))) {
-    return "ARC_FREE_EXHAUSTED"
-  }
   if (code === "arc_free_model_only" || msg.includes("free models only") || msg.includes("community free")) {
     return "ARC_FREE_MODEL_ONLY"
   }

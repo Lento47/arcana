@@ -37,7 +37,7 @@ function contextPressure(percent: number | null | undefined): "compact now" | "c
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
 
-export function SessionMetricsBar(props: { sessionID?: string }): JSX.Element {
+export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { state?: string; expiresAt?: string } | null }): JSX.Element {
   const { theme } = useTheme()
   const sync = useSync()
   const tuiConfig = useTuiConfig()
@@ -96,6 +96,22 @@ export function SessionMetricsBar(props: { sessionID?: string }): JSX.Element {
 
   const pressure = createMemo(() => contextPressure(percent()))
 
+  // Free-tier remaining time from the proxy's /v1/free/usage snapshot.
+  // Only show when the user is on the free tier (state: "active" or
+  // "expired"), not when licensed or eligible. Updates when the parent
+  // passes a new freeUsage prop.
+  const freeRemaining = createMemo(() => {
+    const f = props.freeUsage
+    if (!f) return undefined
+    if (f.state !== "active") return undefined
+    if (!f.expiresAt) return undefined
+    const ms = Date.parse(f.expiresAt)
+    if (!Number.isFinite(ms)) return undefined
+    const mins = Math.max(0, Math.round((ms - Date.now()) / 60_000))
+    if (mins <= 0) return undefined
+    return `${mins}m of 60m`
+  })
+
   const showAny = createMemo(() => {
     if (!enabled()) return false
     if (!props.sessionID) return false
@@ -146,6 +162,13 @@ export function SessionMetricsBar(props: { sessionID?: string }): JSX.Element {
             {(label) => (
               <span style={{ fg: label() === "compact now" ? theme.error : theme.warning }}>
                 {"  ·  "}{label()}
+              </span>
+            )}
+          </Show>
+          <Show when={freeRemaining()}>
+            {(mins) => (
+              <span style={{ fg: theme.accent }}>
+                {"  ·  "}free {mins()}
               </span>
             )}
           </Show>

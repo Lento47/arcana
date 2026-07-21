@@ -99,3 +99,69 @@ describe("mapUpstreamToArcanaError", () => {
     }
   })
 })
+
+describe("free-tier error codes (regression: 'weekly session' false positive)", () => {
+  // Bug fixed 2026-07-20: the old classifier
+  //   msg.includes("free") && (msg.includes("exhaust") || msg.includes("weekly session"))
+  // would flip any upstream body containing those substrings to ARC_FREE_EXHAUSTED,
+  // producing a "free weekly session used up" toast on real upstream 5xx.
+  // The fix trusts explicit wire codes only.
+  test("explicit arc_free_session_expired maps to ARC_FREE_SESSION_EXPIRED", () => {
+    const body = JSON.stringify({
+      error: { code: "arc_free_session_expired", message: "60-min window elapsed" },
+    })
+    expect(mapUpstreamToArcanaError({ status: 429, bodyText: body }).code).toBe("ARC_FREE_SESSION_EXPIRED")
+  })
+
+  test("explicit arc_free_conversation_mismatch maps to ARC_FREE_CONVERSATION_MISMATCH", () => {
+    const body = JSON.stringify({
+      error: { code: "arc_free_conversation_mismatch", message: "different conversation" },
+    })
+    expect(mapUpstreamToArcanaError({ status: 429, bodyText: body }).code).toBe("ARC_FREE_CONVERSATION_MISMATCH")
+  })
+
+  test("explicit arc_free_turn_budget_reached maps to ARC_FREE_TURN_BUDGET_REACHED", () => {
+    const body = JSON.stringify({
+      error: { code: "arc_free_turn_budget_reached", message: "2-call cap hit" },
+    })
+    expect(mapUpstreamToArcanaError({ status: 429, bodyText: body }).code).toBe("ARC_FREE_TURN_BUDGET_REACHED")
+  })
+
+  test("explicit arc_free_exhausted still maps to ARC_FREE_EXHAUSTED (legacy backstop)", () => {
+    const body = JSON.stringify({
+      error: { code: "arc_free_exhausted", message: "fallback" },
+    })
+    expect(mapUpstreamToArcanaError({ status: 429, bodyText: body }).code).toBe("ARC_FREE_EXHAUSTED")
+  })
+
+  test("substring 'free' + 'weekly session' (no code) no longer maps to ARC_FREE_EXHAUSTED", () => {
+    // Pre-fix this would map to ARC_FREE_EXHAUSTED. Post-fix it should NOT —
+    // the classifier trusts explicit wire codes only.
+    const body = JSON.stringify({
+      error: { message: "Your free weekly session has been rate-limited upstream" },
+    })
+    const code = mapUpstreamToArcanaError({ status: 503, bodyText: body }).code
+    expect(code).not.toBe("ARC_FREE_EXHAUSTED")
+    expect(code).not.toMatch(/^ARC_FREE_/)
+  })
+
+  test("substring 'free trial exhausted' (no code) no longer maps to ARC_FREE_EXHAUSTED", () => {
+    const body = JSON.stringify({
+      error: { message: "Your free trial is exhausted; please upgrade" },
+    })
+    const code = mapUpstreamToArcanaError({ status: 402, bodyText: body }).code
+    // Should be ARC_CREDITS_EXHAUSTED (matches 402 + insufficient-credit branch)
+    // — NOT ARC_FREE_EXHAUSTED.
+    expect(code).toBe("ARC_CREDITS_EXHAUSTED")
+  })
+
+  test("catalog entries exist for the 3 new free-tier codes", () => {
+    expect(ARCANA_ERROR_CATALOG.ARC_FREE_SESSION_EXPIRED).toBeDefined()
+    expect(ARCANA_ERROR_CATALOG.ARC_FREE_CONVERSATION_MISMATCH).toBeDefined()
+    expect(ARCANA_ERROR_CATALOG.ARC_FREE_TURN_BUDGET_REACHED).toBeDefined()
+    expect(ARCANA_ERROR_CATALOG.ARC_FREE_SESSION_EXPIRED.message).toContain("60-minute")
+    expect(ARCANA_ERROR_CATALOG.ARC_FREE_CONVERSATION_MISMATCH.retryable).toBe(false)
+    expect(ARCANA_ERROR_CATALOG.ARC_FREE_TURN_BUDGET_REACHED.retryable).toBe(true)
+    expect(ARCANA_ERROR_CATALOG.ARC_FREE_SESSION_EXPIRED.httpStatus).toBe(429)
+  })
+})
