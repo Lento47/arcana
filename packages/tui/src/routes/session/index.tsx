@@ -271,24 +271,33 @@ export function Session() {
 
   // Precompute assistant durations from the parent user message in one pass.
   // Each AssistantMessage used to rerun this scan individually.
-  const assistantDuration = createMemo(() => {
+  // Returned Map is content-stable — we mutate the same instance in place so
+  // downstream consumers (spine mapper outer fast-path, which compares by
+  // reference) keep hitting instead of busting on every re-run.
+  let cachedDurationMap: Map<string, number> = new Map()
+  let cachedDurationKey: unknown = undefined
+  const assistantDuration = createMemo<Map<string, number>>(() => {
     const list = messages()
-    const userTimes = new Map<string, number>()
-    for (const message of list) {
-      if (message.role === "user" && message.time) {
-        userTimes.set(message.id, message.time.created)
-      }
+    // Cheap identity key: messages array ref + session id. When the underlying
+    // message list ref is stable across re-runs (the Solid store doesn't reassign
+    // the array), the key matches and we mutate-in-place. A new array ref forces
+    // a full rebuild but still returns a single shared Map.
+    const key = list
+    if (key === cachedDurationKey) {
+      return cachedDurationMap
     }
-    const durations = new Map<string, number>()
+    cachedDurationKey = key
+    const next = new Map<string, number>()
     for (const message of list) {
       if (message.role !== "assistant" || !message.time.completed || !message.finish) continue
       if (["tool-calls", "unknown"].includes(message.finish)) continue
-      const created = userTimes.get(message.parentID)
-      if (created !== undefined) {
-        durations.set(message.id, message.time.completed - created)
+      const parent = list.find((m) => m.id === message.parentID)
+      if (parent?.role === "user" && parent.time) {
+        next.set(message.id, message.time.completed - parent.time.created)
       }
     }
-    return durations
+    cachedDurationMap = next
+    return next
   })
 
   const permissions = createMemo(() => {

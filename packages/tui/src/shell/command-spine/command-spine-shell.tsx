@@ -6,9 +6,10 @@ import { useThinkingMode } from "../../context/thinking"
 import type { ShellProps } from "../types"
 import { getSpineLayout } from "./spine-types"
 import { SAMPLE_ENTRIES } from "./sample-entries"
-import { messagesToSpineEntriesCached } from "./spine-mapper"
+import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
+import type { SpineEntry } from "./spine-types"
 import { SpineHeader } from "./spine-header"
-import { SpineEntry } from "./spine-entry"
+import { SpineEntry as SpineEntryView } from "./spine-entry"
 import { SpinePrompt } from "./spine-prompt"
 import { pendingGateEntries } from "./spine-gates"
 import { PermissionPrompt } from "../../routes/session/permission"
@@ -26,6 +27,31 @@ import { spineEntryDetailMessageID, spineEntryDiffMessageID, spineEntrySessionID
 
 const USE_SAMPLE_SPINE = false
 
+// Cross-session cache: keyed by sessionID so back-switching to a session
+// reuses the already-computed entries + per-message cache instead of
+// re-walking the full message list. The previous per-component `let cache`
+// was wiped on every session switch and forced a full re-mapper pass.
+const SESSION_CACHE_LIMIT = 16
+const sessionCaches = new Map<string, { cache: SpineEntriesCache; previousEntries: SpineEntry[] }>()
+
+function getSessionCache(sessionID: string) {
+  let entry = sessionCaches.get(sessionID)
+  if (!entry) {
+    entry = { cache: undefined as unknown as SpineEntriesCache, previousEntries: [] }
+    sessionCaches.set(sessionID, entry)
+    if (sessionCaches.size > SESSION_CACHE_LIMIT) {
+      // Drop the oldest entry (insertion order = access order in Map).
+      const oldest = sessionCaches.keys().next().value
+      if (oldest && oldest !== sessionID) sessionCaches.delete(oldest)
+    }
+  } else {
+    // LRU-ish: re-insert to mark recent.
+    sessionCaches.delete(sessionID)
+    sessionCaches.set(sessionID, entry)
+  }
+  return entry
+}
+
 export function CommandSpineShell(props: ShellProps) {
   const { theme: themeObj } = useTheme()
   const t = themeObj as Record<string, unknown>
@@ -38,19 +64,14 @@ export function CommandSpineShell(props: ShellProps) {
   const dims = useTerminalDimensions()
   const layout = createMemo(() => getSpineLayout(dims().width))
 
-  let cache: ReturnType<typeof messagesToSpineEntriesCached>["cache"] | undefined
-  let previousEntries: ReturnType<typeof messagesToSpineEntriesCached>["entries"] | undefined
-  let cacheSessionID = props.sessionID
+  const sessionState = getSessionCache(props.sessionID)
+  let cache: SpineEntriesCache = sessionState.cache
+  let previousEntries: SpineEntry[] = sessionState.previousEntries
   let scroll: ScrollBoxRenderable | undefined
   const entryNodes = new Map<string, BoxRenderable>()
 
   const entries = createMemo(() => {
     if (USE_SAMPLE_SPINE) return SAMPLE_ENTRIES
-    if (cacheSessionID !== props.sessionID) {
-      cacheSessionID = props.sessionID
-      cache = undefined
-      previousEntries = undefined
-    }
     const result = messagesToSpineEntriesCached({
       messages: props.messages(),
       getParts: props.getParts,
@@ -61,6 +82,9 @@ export function CommandSpineShell(props: ShellProps) {
     })
     cache = result.cache
     previousEntries = result.entries
+    // Persist back to the cross-session slot so a future back-switch reuses it.
+    sessionState.cache = result.cache
+    sessionState.previousEntries = result.entries
     return result.entries
   })
 
@@ -68,14 +92,6 @@ export function CommandSpineShell(props: ShellProps) {
     pendingGateEntries({ permissions: props.permissions(), questions: props.questions() }),
   )
   const visibleEntries = createMemo(() => [...entries(), ...gateEntries()])
-  // Key the list by stable entry.id so Solid <For> does NOT remount markdown
-  // on every streaming token (object identity changes each mapper recompute).
-  const visibleEntryIds = createMemo(() => visibleEntries().map((entry) => entry.id))
-  const visibleEntryById = createMemo(() => {
-    const map = new Map<string, ReturnType<typeof visibleEntries>[number]>()
-    for (const entry of visibleEntries()) map.set(entry.id, entry)
-    return map
-  })
   const navigableEntries = createMemo(() => navigableSpineEntries(visibleEntries()))
   const runState = createMemo(() => (gateEntries().length ? "stop" : props.pending() ? "working" : "idle"))
   const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
@@ -238,31 +254,23 @@ export function CommandSpineShell(props: ShellProps) {
           flexGrow={1}
           scrollAcceleration={props.scrollAcceleration}
         >
-          <For each={visibleEntryIds()}>
-            {(id) => {
-              // Read from the live map each render so expand + streaming updates stick.
-              const entry = () => visibleEntryById().get(id)!
+          <For each={visibleEntries()}>
+            {(entry) => {
+              // Pass the entry object directly. <For> uses referential identity
+              // and stabilizeEntries reuses the previous object ref when nothing
+              // changed, so the row does not remount on every reactive update.
               return (
-                <SpineEntry
-                  entry={entry()}
+                <SpineEntryView
+                  entry={entry}
                   layout={layout()}
-                  expanded={entryExpanded(entry())}
-                  focused={entryFocused(entry())}
-                  onToggle={() => {
-                    const e = entry()
-                    if (e) toggleEntry(e)
-                  }}
-                  onFocus={() => {
-                    const e = entry()
-                    if (e) focusEntry(e)
-                  }}
-                  onHover={() => {
-                    const e = entry()
-                    if (e) focusEntry(e)
-                  }}
+                  expanded={entryExpanded(entry)}
+                  focused={entryFocused(entry)}
+                  onToggle={() => toggleEntry(entry)}
+                  onFocus={() => focusEntry(entry)}
+                  onHover={() => focusEntry(entry)}
                   nodeRef={(node) => {
-                    if (node) entryNodes.set(id, node)
-                    else entryNodes.delete(id)
+                    if (node) entryNodes.set(entry.id, node)
+                    else entryNodes.delete(entry.id)
                   }}
                 />
               )

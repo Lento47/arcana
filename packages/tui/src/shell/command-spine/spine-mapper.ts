@@ -276,7 +276,27 @@ function isEntryFooter(line: string): boolean {
  * - Suppresses boilerplate untrusted-data system reminders
  * - Pulls footers into `note`
  */
+const readParseTextCache = new Map<string, ParsedReadBody>()
+const READ_PARSE_TEXT_CACHE_LIMIT = 512
+let readParseLastInput: string | undefined
+let readParseLastResult: ParsedReadBody | undefined
+
+/**
+ * Memoize parseReadToolOutput on output identity. The parser runs 4 regex
+ * passes per call; during streaming the same `output` string is fed in 3+
+ * times per token (toolOutputBody, summary call sites, etc.). A single-slot
+ * "last" cache catches the streaming burst; a small LRU Map keyed on the
+ * output string catches rescans of completed tool outputs. Limit 512 covers a
+ * busy session's worth of unique tool outputs without unbounded growth.
+ */
 export function parseReadToolOutput(output: string): ParsedReadBody {
+  if (output === readParseLastInput && readParseLastResult) return readParseLastResult
+  const cached = readParseTextCache.get(output)
+  if (cached) {
+    readParseLastInput = output
+    readParseLastResult = cached
+    return cached
+  }
   const reminders: string[] = []
   let content = output
 
@@ -318,7 +338,7 @@ export function parseReadToolOutput(output: string): ParsedReadBody {
     }
     if (totalLines === undefined && listing.length) totalLines = listing.length
 
-    return {
+    const result: ParsedReadBody = {
       body: listing.join("\n"),
       kind: "directory",
       listing,
@@ -327,6 +347,8 @@ export function parseReadToolOutput(output: string): ParsedReadBody {
       totalLines,
       note: notes.length ? notes.join(" · ") : totalLines !== undefined ? `${totalLines} entries` : undefined,
     }
+    cacheReadOutput(output, result)
+    return result
   }
 
   content = content
@@ -389,7 +411,7 @@ export function parseReadToolOutput(output: string): ParsedReadBody {
       && nonEmpty.filter((l) => /[\\/]|\.\w{1,8}$/.test(l) || l.endsWith("/")).length / nonEmpty.length >= 0.7
     if (pathish) {
       kind = "directory"
-      return {
+      const result: ParsedReadBody = {
         body: nonEmpty.join("\n"),
         kind: "directory",
         listing: nonEmpty.filter((l) => !isEntryFooter(l)),
@@ -398,6 +420,8 @@ export function parseReadToolOutput(output: string): ParsedReadBody {
         totalLines: nonEmpty.length,
         note: notes.length ? notes.join(" · ") : undefined,
       }
+      cacheReadOutput(output, result)
+      return result
     }
   }
 
@@ -419,7 +443,7 @@ export function parseReadToolOutput(output: string): ParsedReadBody {
   }
 
   const note = notes.length ? notes.join(" · ") : undefined
-  return {
+  const result: ParsedReadBody = {
     body: body.trimEnd(),
     kind: looksNumbered ? "file" : kind,
     reminders,
@@ -429,6 +453,19 @@ export function parseReadToolOutput(output: string): ParsedReadBody {
     totalLines,
     note,
   }
+  cacheReadOutput(output, result)
+  return result
+}
+
+function cacheReadOutput(output: string, result: ParsedReadBody) {
+  readParseLastInput = output
+  readParseLastResult = result
+  if (readParseTextCache.size >= READ_PARSE_TEXT_CACHE_LIMIT) {
+    // LRU: drop the oldest insertion. Map iteration order = insertion order.
+    const firstKey = readParseTextCache.keys().next().value
+    if (firstKey !== undefined) readParseTextCache.delete(firstKey)
+  }
+  readParseTextCache.set(output, result)
 }
 
 /** @deprecated use parseReadToolOutput */
@@ -2005,18 +2042,41 @@ export type SpineMessageCacheEntry = {
   entries: SpineEntry[]
 }
 
+// Marker carried on the cache Map itself so the next call can short-circuit
+// when the message list, durations, and thinking toggle are all identical.
+// The Map type is augmented via intersection to keep the rest of the API typed.
+type OuterVersion = { __messages: Message[]; __assistantDuration: ReadonlyMap<string, number>; __expandThinking: boolean }
+export type SpineEntriesCache = Map<string, SpineMessageCacheEntry> & Partial<OuterVersion>
+
 export function messagesToSpineEntriesCached(input: {
   messages: Message[]
   getParts: (messageId: string) => Part[]
   assistantDuration: ReadonlyMap<string, number>
   expandThinking?: boolean
-  cache?: Map<string, SpineMessageCacheEntry>
+  cache?: SpineEntriesCache
   previousEntries?: SpineEntry[]
-}): { entries: SpineEntry[]; cache: Map<string, SpineMessageCacheEntry> } {
+}): { entries: SpineEntry[]; cache: SpineEntriesCache } {
   const { messages, getParts, assistantDuration, cache, previousEntries } = input
   const expandThinking = input.expandThinking === true
+
+  // Fast path: same messages array + same duration map + same thinking toggle
+  // as the previous call. `previousEntries` carries the stabilized list — we can
+  // hand it back verbatim and skip the per-message walk, groupConsecutiveTools,
+  // assignIndexes, and stabilizeEntries entirely. This is the hot path for
+  // back-switching to a session, re-renders from unrelated store deltas, and
+  // every prop change that doesn't actually touch the message timeline.
+  if (
+    cache &&
+    previousEntries &&
+    cache.__messages === messages &&
+    cache.__assistantDuration === assistantDuration &&
+    cache.__expandThinking === expandThinking
+  ) {
+    return { entries: previousEntries, cache }
+  }
+
   const allEntries: SpineEntry[] = []
-  const nextCache = new Map<string, SpineMessageCacheEntry>()
+  const nextCache: SpineEntriesCache = new Map() as SpineEntriesCache
 
   for (const message of messages) {
     const parts = getParts(message.id) ?? EMPTY_PARTS
@@ -2029,13 +2089,11 @@ export function messagesToSpineEntriesCached(input: {
     // Force cache miss for the active assistant message, then one more recompute
     // after completion so entries flip out of streaming mode before caching.
     const activeAssistant = message.role === "assistant" && !message.time.completed
-    const cachedWasStreaming = cached?.entries.some((entry) => entry.streaming) === true
-    const hasStreamingParts = activeAssistant || cachedWasStreaming
 
     let entries: SpineEntry[]
     if (
       cached &&
-      !hasStreamingParts &&
+      !activeAssistant &&
       cached.message === message &&
       cached.parts === parts &&
       cached.duration === duration &&
@@ -2058,7 +2116,14 @@ export function messagesToSpineEntriesCached(input: {
   // (not only within one assistant message), then re-index.
   const grouped = groupConsecutiveTools(allEntries)
   const indexed = assignIndexes(grouped, 1)
-  return { entries: stabilizeEntries(indexed, previousEntries), cache: nextCache }
+  const stabilized = stabilizeEntries(indexed, previousEntries)
+
+  // Stamp outer-version refs for the next call's fast-path compare.
+  nextCache.__messages = messages
+  nextCache.__assistantDuration = assistantDuration
+  nextCache.__expandThinking = expandThinking
+
+  return { entries: stabilized, cache: nextCache }
 }
 
 export function messagesToSpineEntries(input: {

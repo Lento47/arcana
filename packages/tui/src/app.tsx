@@ -2861,8 +2861,14 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
               <Home />
             </Match>
             <Match when={route.data.type === "session"}>
-              <Show when={route.data.type === "session" ? route.data.sessionID : undefined} keyed>
-                {(_) => <Session />}
+              {/* No `keyed` — <Session /> subscribes to route.sessionID directly
+                  (createEffect at routes/session/index.tsx:337 + :1330) and
+                  should persist across session switches. Re-mounting on every
+                  switch destroys scroll ref, PathFormatterProvider, all 5
+                  useBindings, the scrollInterval, and CommandSpineShell's
+                  per-session cache. */}
+              <Show when={route.data.type === "session"}>
+                <Session />
               </Show>
             </Match>
           </Switch>
