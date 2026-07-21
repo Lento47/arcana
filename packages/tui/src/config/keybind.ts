@@ -55,7 +55,7 @@ export const Definitions = {
   app_toggle_paste_summary: keybind("none", "Toggle paste summary"),
   app_toggle_session_directory_filter: keybind("none", "Toggle session directory filtering"),
   command_list: keybind("ctrl+p", "List available commands"),
-  help_show: keybind("?", "Open help dialog"),
+  help_show: keybind("none", "Open help dialog"),
   docs_open: keybind("none", "Open documentation"),
   diff_close: keybind("escape,q", "Close diff viewer"),
   diff_toggle: keybind("enter,space", "Toggle diff viewer item"),
@@ -71,7 +71,7 @@ export const Definitions = {
   diff_single_patch: keybind("s", "Toggle single patch view"),
   diff_switch_source: keybind("d", "Switch diff viewer source"),
   diff_toggle_view: keybind("v", "Toggle diff viewer split or unified view"),
-  diff_help: keybind("?", "Show more diff viewer shortcuts"),
+  diff_help: keybind("none", "Show more diff viewer shortcuts"),
 
   editor_open: keybind("<leader>e", "Open external editor"),
   theme_list: keybind("<leader>t", "List available themes"),
