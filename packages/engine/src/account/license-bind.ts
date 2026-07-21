@@ -89,14 +89,27 @@ export const bindAccessToken = (
           } catch {
             return null
           }
-          return json
+          return { status: res.status, json }
         })(),
-      ).pipe(Effect.catch(() => Effect.succeed(null)))
-      if (result?.ok && result.proxyKey) {
+      ).pipe(
+        Effect.tapError((e) =>
+          // Network errors (DNS, connection refused, timeout) — log so the
+          // operator can see which base failed and why, without leaking
+          // the detail to the TUI.
+          Effect.logWarning("oauth-bind: network error", {
+            base,
+            error: e instanceof Error ? e.message : String(e),
+          }),
+        ),
+        Effect.catch(() => Effect.succeed(null)),
+      )
+      if (!result) continue
+      yield* Effect.logDebug("oauth-bind: response", { base, status: result.status, error: result.json?.error })
+      if (result.json?.ok && result.json.proxyKey) {
         return {
           ok: true as const,
-          proxyKey: result.proxyKey,
-          tier: result.tier ?? "free",
+          proxyKey: result.json.proxyKey,
+          tier: result.json.tier ?? "free",
         }
       }
     }
