@@ -147,8 +147,18 @@ function init() {
 
   return {
     clear() {
-      for (const item of store.stack) {
-        if (item.onClose) item.onClose()
+      // Snapshot the existing stack so a throwing onClose cannot leave the
+      // dialog stuck in a torn state. Each close runs independently — one
+      // failure does not skip the rest, and the stack is always emptied.
+      const previous = store.stack.slice()
+      for (const item of previous) {
+        if (item.onClose) {
+          try {
+            item.onClose()
+          } catch (err) {
+            console.error("dialog.onClose threw during clear:", err)
+          }
+        }
       }
       batch(() => {
         setStore("size", "medium")
