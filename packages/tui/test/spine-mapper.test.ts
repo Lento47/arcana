@@ -1169,6 +1169,91 @@ describe("edge cases", () => {
     expect(result[0]!.bodyLabel).toBe("written content")
   })
 
+  test("pending write tool surfaces filePath as the summary (not just 'Working')", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("e5c-pend")
+    parts.push({
+      id: "p-tool-write-pend",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "write",
+      state: {
+        status: "running",
+        input: { filePath: "L:\\PROJECTS\\arcana\\src\\auth.ts", content: "export const x = 1\n" },
+        title: "Working",
+        metadata: {},
+        time: { start: 1000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("patch")
+    expect(result[0]!.summary).toBe("L:\\PROJECTS\\arcana\\src\\auth.ts")
+    expect(result[0]!.receipt?.status).toBe("pending")
+  })
+
+  test("pending goal_set tool surfaces the goal text as the summary", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("e5c-goal")
+    parts.push({
+      id: "p-tool-goal-pend",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "goal_set",
+      state: {
+        status: "running",
+        input: { goal: "Wire OAuth device flow into the TUI bootstrap path without breaking the existing auto-login method." },
+        title: "Working",
+        metadata: {},
+        time: { start: 1000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("inspect")
+    expect(result[0]!.summary).toContain("Wire OAuth device flow")
+    // Truncated, not the full body — keeps the spine row scannable.
+    expect(result[0]!.summary!.length).toBeLessThan(100)
+    expect(result[0]!.receipt?.status).toBe("pending")
+  })
+
+  test("pending webfetch tool surfaces the URL as the summary", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("e5c-fetch")
+    parts.push({
+      id: "p-tool-fetch-pend",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "webfetch",
+      state: {
+        status: "running",
+        input: { url: "https://example.com/docs/api" },
+        title: "Working",
+        metadata: {},
+        time: { start: 1000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("inspect")
+    expect(result[0]!.summary).toBe("https://example.com/docs/api")
+  })
+
   test("subtask part produces plan entry", () => {
     const { messages: msgs, parts } = makeAssistantMessage("e6")
     parts.push({

@@ -645,15 +645,27 @@ function getPatchSummary(part: ToolPart): string {
   const input = part.state.input as Record<string, unknown>
   const filePath = (input.filePath as string) ?? (input.path as string) ?? (input.file as string) ?? ""
   const filePattern = (input.pattern as string) ?? ""
-  return filePath || filePattern || ""
+  if (filePath) return filePath
+  if (filePattern) return filePattern
+  if (part.state.status === "running" && part.state.title) return part.state.title
+  if (part.state.status === "completed" && part.state.title) return part.state.title
+  return part.tool
 }
 
 function getInspectSummary(part: ToolPart): string {
   const input = part.state.input as Record<string, unknown>
   const filePath = (input.filePath as string) ?? (input.path as string) ?? (input.file as string) ?? ""
   const pattern = (input.pattern as string) ?? (input.query as string) ?? (input.glob as string) ?? ""
+  // Tool-specific primary inputs that aren't paths/patterns. Surfaced here so the
+  // spine row shows the *what* during pending instead of just a "Working" shimmer.
+  const goal = (input.goal as string) ?? (input.objective as string) ?? ""
+  const url = (input.url as string) ?? (input.uri as string) ?? ""
+  const text = (input.content as string) ?? (input.text as string) ?? ""
   if (filePath) return filePath
   if (pattern) return pattern
+  if (url) return url
+  if (goal) return firstLineSummary(goal, 80)
+  if (text) return firstLineSummary(text, 80)
   if (part.state.status === "running" && part.state.title) return part.state.title
   if (part.state.status === "completed" && part.state.title) return part.state.title
   return part.tool
