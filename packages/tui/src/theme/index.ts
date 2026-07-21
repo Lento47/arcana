@@ -335,9 +335,22 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
   // Spine command-spine tokens — fallback-safe.
   // Do NOT collapse multiple kinds onto the same role (ask/run/prompt all → accent
   // and plan/patch both → secondary made every theme feel identical on the spine).
-  const spineFB = (key: string, fallback: RGBA) => {
-    const val = (theme.theme as Record<string, ColorValue | undefined>)[key]
-    return val !== undefined ? resolveColor(val) : fallback
+  // theme.theme is mostly ColorValue but mixes in `thinkingOpacity: number`; index
+  // the raw record and treat anything that isn't a ColorValue as missing. Fallback
+  // can be Partial (resolved is Partial<Record<ThemeColor, RGBA>>); we narrow with !.
+  // Accepts strings/numbers (refs+ANSI) and objects (dark/light variants). RGBA
+  // instances pass through; anything else falls back.
+  const spineFB = (key: string, fallback: RGBA | undefined): RGBA => {
+    const raw = (theme.theme as unknown as Record<string, unknown>)[key]
+    if (raw === undefined || raw === null) return fallback!
+    if (typeof raw === "object" || typeof raw === "string" || typeof raw === "number") {
+      try {
+        return resolveColor(raw as ColorValue)
+      } catch {
+        return fallback!
+      }
+    }
+    return fallback!
   }
   resolved.spineBrand = spineFB("spineBrand", resolved.primary)
   resolved.spineContext = spineFB("spineContext", resolved.textMuted)
