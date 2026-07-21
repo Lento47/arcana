@@ -64,14 +64,22 @@ export function CommandSpineShell(props: ShellProps) {
   const dims = useTerminalDimensions()
   const layout = createMemo(() => getSpineLayout(dims().width))
 
-  const sessionState = getSessionCache(props.sessionID)
-  let cache: SpineEntriesCache = sessionState.cache
-  let previousEntries: SpineEntry[] = sessionState.previousEntries
+  // Cross-session cache slot for the CURRENT session. This must be a memo,
+  // not a const, because <Session /> no longer remounts on session switch —
+  // a const would pin sessionState to the first session viewed, and the slow
+  // path would write the new session's cache into the old session's slot,
+  // corrupting the LRU. The memo re-derives on props.sessionID change.
+  const sessionState = createMemo(() => getSessionCache(props.sessionID))
   let scroll: ScrollBoxRenderable | undefined
   const entryNodes = new Map<string, BoxRenderable>()
 
   const entries = createMemo(() => {
     if (USE_SAMPLE_SPINE) return SAMPLE_ENTRIES
+    const state = sessionState()
+    // Per-memo working state: cache and previousEntries are scoped to this
+    // memo body so they re-bind on every re-run (including session switches).
+    let cache: SpineEntriesCache = state.cache
+    let previousEntries: SpineEntry[] = state.previousEntries
     const result = messagesToSpineEntriesCached({
       messages: props.messages(),
       getParts: props.getParts,
@@ -80,11 +88,9 @@ export function CommandSpineShell(props: ShellProps) {
       previousEntries,
       expandThinking: thinking.mode() === "show",
     })
-    cache = result.cache
-    previousEntries = result.entries
     // Persist back to the cross-session slot so a future back-switch reuses it.
-    sessionState.cache = result.cache
-    sessionState.previousEntries = result.entries
+    state.cache = result.cache
+    state.previousEntries = result.entries
     return result.entries
   })
 

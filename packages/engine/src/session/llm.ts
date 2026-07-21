@@ -11,7 +11,7 @@ import type { LLMEvent } from "@arcana/llm"
 import { LLMClient, RequestExecutor, WebSocketExecutor } from "@arcana/llm/route"
 import type { LLMClientService } from "@arcana/llm/route"
 let _GitLabWorkflowLanguageModel: any
-async function getGitLabWorkflowLanguageModel() {
+async function getGitLabWorkflowLanguageModel(): Promise<any> {
   if (!_GitLabWorkflowLanguageModel) {
     _GitLabWorkflowLanguageModel = (await import("gitlab-ai-provider")).GitLabWorkflowLanguageModel
   }
@@ -123,14 +123,22 @@ const live: Layer.Layer<
       // and results sent back over the WebSocket.
       const bridge = yield* EffectBridge.make()
       if (language instanceof GitLabWorkflowLM) {
-        const workflowModel = language as GitLabWorkflowLanguageModel & {
+        type ApprovalTool = { name: string; args: string }
+        type WorkflowModelShape = {
           sessionID?: string
+          systemPrompt?: string
           sessionPreapprovedTools?: string[]
-          approvalHandler?: (approvalTools: { name: string; args: string }[]) => Promise<{ approved: boolean }>
+          toolExecutor?: (
+            toolName: string,
+            argsJson: string,
+            requestID: string,
+          ) => Promise<{ result: string; error?: string; metadata?: unknown; title?: string }>
+          approvalHandler?: (approvalTools: ApprovalTool[]) => Promise<{ approved: boolean }>
         }
+        const workflowModel = language as any as WorkflowModelShape
         workflowModel.sessionID = input.sessionID
         workflowModel.systemPrompt = prepared.system.join("\n")
-        workflowModel.toolExecutor = async (toolName, argsJson, _requestID) => {
+        workflowModel.toolExecutor = async (toolName: string, argsJson: string, _requestID: string) => {
           const t = prepared.tools[toolName]
           if (!t || !t.execute) {
             return { result: "", error: `Unknown tool: ${toolName}` }
@@ -159,7 +167,7 @@ const live: Layer.Layer<
         })
 
         const approvedToolsForSession = new Set<string>()
-        workflowModel.approvalHandler = bridge.bind(async (approvalTools) => {
+        workflowModel.approvalHandler = bridge.bind(async (approvalTools: Array<{ name: string; args: string }>) => {
           const uniqueNames = [...new Set(approvalTools.map((t: { name: string }) => t.name))] as string[]
           // Auto-approve tools that were already approved in this session
           // (prevents infinite approval loops for server-side MCP tools)

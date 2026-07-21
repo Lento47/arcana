@@ -168,9 +168,6 @@ export const EditTool = Tool.define(
               ),
             )
           }).pipe(Effect.orDie)
-          // Cleanup: remove the semaphore from the lock map after the edit completes
-          // to prevent unbounded memory growth across distinct file paths.
-          locks.delete(FSUtil.resolve(filePath))
 
           let additions = 0
           let deletions = 0

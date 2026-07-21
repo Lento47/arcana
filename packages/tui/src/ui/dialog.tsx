@@ -161,8 +161,20 @@ function init() {
         focus = renderer.currentFocusedRenderable
         focus?.blur()
       }
-      for (const item of store.stack) {
-        if (item.onClose) item.onClose()
+      // Snapshot the existing stack so a throwing onClose cannot leave the
+      // dialog stuck in a torn state. Each close runs independently — one
+      // failure does not skip the rest.
+      const previous = store.stack.slice()
+      for (const item of previous) {
+        if (item.onClose) {
+          try {
+            item.onClose()
+          } catch (err) {
+            // Surface but never propagate — replace() must always push the
+            // new dialog so callers awaiting onSelect() can resolve.
+            console.error("dialog.onClose threw:", err)
+          }
+        }
       }
       setStore("size", "medium")
       setStore("stack", [

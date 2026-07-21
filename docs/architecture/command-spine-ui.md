@@ -24,7 +24,7 @@ For historical design intent and migration boundaries see:
 │ gates           permission / question       │
 ├─────────────────────────────────────────────┤
 │ composer        ✶ + rounded box (❯ / !)     │
-│ status + hints  status left · key:label     │
+│ metrics         elapsed · tokens · cost     │
 └─────────────────────────────────────────────┘
 ```
 
@@ -34,7 +34,7 @@ For historical design intent and migration boundaries see:
 | Timeline | `spine-entry.tsx`, `spine-rail.tsx`, … | Mapped session messages / tool receipts |
 | Gates | shared permission/question dialogs | Not a second authority |
 | Composer | `spine-prompt.tsx` + `component/prompt` | `variant="command-spine"` |
-| Status + hints | `spine-footer-hints.tsx` | Under box; content-offset aligned |
+| Metrics | `component/prompt/metrics-bar.tsx` | Single status line below the prompt; the v0.3.18 footer was retired |
 
 Shell entry: `packages/tui/src/shell/command-spine/command-spine-shell.tsx`.
 

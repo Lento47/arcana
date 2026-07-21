@@ -276,22 +276,42 @@ function isEntryFooter(line: string): boolean {
  * - Suppresses boilerplate untrusted-data system reminders
  * - Pulls footers into `note`
  */
+// Cache: keyed on a length+hash of the output (FNV-1a, strided over the body)
+// instead of the full output string. Full-string keys doubled memory (Map keeps
+// keys alive for its lifetime) and bloated V8 hidden classes for 100KB tool
+// outputs. The LRU is byte-aware: a single 100KB read can co-exist with
+// hundreds of small outputs, all under the 8MB cap.
 const readParseTextCache = new Map<string, ParsedReadBody>()
-const READ_PARSE_TEXT_CACHE_LIMIT = 512
+const readParseTextCacheSizes = new Map<string, number>()
+const READ_PARSE_TEXT_CACHE_BYTES = 8 * 1024 * 1024 // 8MB
+let readParseBytes = 0
 let readParseLastInput: string | undefined
 let readParseLastResult: ParsedReadBody | undefined
+
+/** FNV-1a hash, strided so 100KB strings hash in O(1/128) time. ~50ns. */
+function hashReadOutput(s: string): string {
+  let h = 0x811c9dc5
+  const n = s.length
+  const step = Math.max(1, Math.floor(n / 128))
+  for (let i = 0; i < n; i += step) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return `${n}:${h.toString(16)}`
+}
 
 /**
  * Memoize parseReadToolOutput on output identity. The parser runs 4 regex
  * passes per call; during streaming the same `output` string is fed in 3+
  * times per token (toolOutputBody, summary call sites, etc.). A single-slot
- * "last" cache catches the streaming burst; a small LRU Map keyed on the
- * output string catches rescans of completed tool outputs. Limit 512 covers a
- * busy session's worth of unique tool outputs without unbounded growth.
+ * "last" cache catches the streaming burst; a small LRU Map catches rescans
+ * of completed tool outputs. 8MB byte cap covers a busy session's worth of
+ * unique tool outputs without unbounded growth.
  */
 export function parseReadToolOutput(output: string): ParsedReadBody {
   if (output === readParseLastInput && readParseLastResult) return readParseLastResult
-  const cached = readParseTextCache.get(output)
+  const key = hashReadOutput(output)
+  const cached = readParseTextCache.get(key)
   if (cached) {
     readParseLastInput = output
     readParseLastResult = cached
@@ -347,7 +367,7 @@ export function parseReadToolOutput(output: string): ParsedReadBody {
       totalLines,
       note: notes.length ? notes.join(" · ") : totalLines !== undefined ? `${totalLines} entries` : undefined,
     }
-    cacheReadOutput(output, result)
+    cacheReadOutput(key, output, result)
     return result
   }
 
@@ -420,7 +440,7 @@ export function parseReadToolOutput(output: string): ParsedReadBody {
         totalLines: nonEmpty.length,
         note: notes.length ? notes.join(" · ") : undefined,
       }
-      cacheReadOutput(output, result)
+      cacheReadOutput(key, output, result)
       return result
     }
   }
@@ -453,19 +473,26 @@ export function parseReadToolOutput(output: string): ParsedReadBody {
     totalLines,
     note,
   }
-  cacheReadOutput(output, result)
+  cacheReadOutput(key, output, result)
   return result
 }
 
-function cacheReadOutput(output: string, result: ParsedReadBody) {
+function cacheReadOutput(key: string, output: string, result: ParsedReadBody) {
   readParseLastInput = output
   readParseLastResult = result
-  if (readParseTextCache.size >= READ_PARSE_TEXT_CACHE_LIMIT) {
-    // LRU: drop the oldest insertion. Map iteration order = insertion order.
-    const firstKey = readParseTextCache.keys().next().value
-    if (firstKey !== undefined) readParseTextCache.delete(firstKey)
+  // Byte-aware LRU: track input size; evict oldest until under cap.
+  const size = output.length * 2 // UTF-16
+  while (readParseBytes + size > READ_PARSE_TEXT_CACHE_BYTES && readParseTextCache.size > 0) {
+    const oldest = readParseTextCache.keys().next().value
+    if (oldest === undefined) break
+    const oldSize = readParseTextCacheSizes.get(oldest) ?? 0
+    readParseTextCache.delete(oldest)
+    readParseTextCacheSizes.delete(oldest)
+    readParseBytes -= oldSize
   }
-  readParseTextCache.set(output, result)
+  readParseTextCache.set(key, result)
+  readParseTextCacheSizes.set(key, size)
+  readParseBytes += size
 }
 
 /** @deprecated use parseReadToolOutput */
@@ -712,23 +739,25 @@ function computeElapsed(
   assistantDuration: ReadonlyMap<string, number> | undefined,
   message: Message,
   toolPart?: ToolPart,
-): string {
+): { ms: number | undefined; str: string } {
   if (toolPart) {
     const state = toolPart.state
     if ("time" in state && state.time && "end" in state.time && state.time.end && "start" in state.time) {
-      return formatElapsed(state.time.end - state.time.start)
+      const ms = state.time.end - state.time.start
+      return { ms, str: formatElapsed(ms) }
     }
   }
 
   if (message.role === "assistant") {
     const dur = assistantDuration?.get(message.id)
-    if (dur !== undefined) return formatElapsed(dur)
+    if (dur !== undefined) return { ms: dur, str: formatElapsed(dur) }
     if (message.time.completed) {
-      return formatElapsed(message.time.completed - message.time.created)
+      const ms = message.time.completed - message.time.created
+      return { ms, str: formatElapsed(ms) }
     }
   }
 
-  return ""
+  return { ms: undefined, str: "" }
 }
 
 function parseTestStats(
@@ -896,7 +925,8 @@ function userMessageToEntries(
     {
       id: `${message.id}:ask`,
       index: 0,
-      elapsed,
+      elapsed: elapsed.str,
+      elapsedMs: elapsed.ms,
       timestamp: formatTimestamp(message.time.created),
       kind: "ask",
       label: "you",
@@ -1236,7 +1266,8 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
     {
       id: `${baseId}:${finalKind}`,
       index: 0,
-      elapsed,
+      elapsed: elapsed.str,
+      elapsedMs: elapsed.ms,
       timestamp: formatTimestamp(message.time.created),
       kind: finalKind,
       label:
@@ -1588,10 +1619,12 @@ function makeTextEntry(
   if (!joined.trim()) return undefined
   const view = chatTextView(joined)
   const primary = parts[0]!
+  const elapsed = computeElapsed(assistantDuration, message)
   return {
     id: `${message.id}:${primary.id}:${kind}`,
     index: 0,
-    elapsed: computeElapsed(assistantDuration, message),
+    elapsed: elapsed.str,
+    elapsedMs: elapsed.ms,
     timestamp: formatTimestamp(message.time.created),
     kind,
     label: assistantTextLabel(message, kind),
@@ -1891,9 +1924,7 @@ function groupConsecutiveTools(entries: SpineEntry[]): SpineEntry[] {
       result.push(burst[0]!)
     } else {
       const first = burst[0]!
-      const parseElapsedMs = (s: string) =>
-        (parseFloat(s.replace(/^\+/, "").replace(/[a-z]+$/i, "")) || 0) * (s.endsWith("ms") ? 1 : 1000)
-      const totalMs = burst.reduce((sum, e) => sum + parseElapsedMs(e.elapsed), 0)
+      const totalMs = burst.reduce((sum, e) => sum + (e.elapsedMs ?? 0), 0)
       // Aggregate match/output stats when present on receipts
       let matchHits = 0
       let hasMatchStats = false
@@ -1908,6 +1939,7 @@ function groupConsecutiveTools(entries: SpineEntry[]): SpineEntry[] {
       result.push({
         ...first,
         elapsed: totalMs > 0 ? formatElapsed(totalMs) : first.elapsed,
+        elapsedMs: totalMs > 0 ? totalMs : first.elapsedMs,
         summary: groupToolSummary(burst),
         // Parent is a folder of actions — don't pin first tool's output body
         body: undefined,
@@ -1976,12 +2008,16 @@ function childrenStable(a: SpineEntry[] | undefined, b: SpineEntry[] | undefined
   for (let i = 0; i < a.length; i++) {
     const x = a[i]!
     const y = b[i]!
+    // `receipt?.status` is the field that drives spinner/checkmark rendering.
+    // Without it, a pending → ok transition reuses the old entry object and
+    // the spinner keeps spinning on the finished tool.
     if (
       x.id !== y.id
       || x.summary !== y.summary
       || x.body !== y.body
       || x.elapsed !== y.elapsed
       || x.receipt?.summary !== y.receipt?.summary
+      || x.receipt?.status !== y.receipt?.status
     ) {
       return false
     }
@@ -2039,13 +2075,22 @@ export type SpineMessageCacheEntry = {
   parts: Part[]
   duration: number | undefined
   expandThinking: boolean
+  // Tracks `message.time.completed` so the per-message cache detects the
+  // streaming → completed transition (proxy ref is stable across the flip).
+  completed: number | undefined
   entries: SpineEntry[]
 }
 
 // Marker carried on the cache Map itself so the next call can short-circuit
 // when the message list, durations, and thinking toggle are all identical.
 // The Map type is augmented via intersection to keep the rest of the API typed.
-type OuterVersion = { __messages: Message[]; __assistantDuration: ReadonlyMap<string, number>; __expandThinking: boolean }
+type OuterVersion = { __messages: Message[]; __expandThinking: boolean }
+// Note: `__assistantDuration` was intentionally removed from the outer fast-path
+// key. After the v0.3.19 perf-batch fix to Bug A, the assistantDuration memo
+// always returns a fresh Map, so an identity compare would defeat the fast path
+// on every assistant turn. The per-message cache (D1) below still detects
+// per-entry duration changes via value compare, and the slow path is O(n) ID/
+// ref ops with no DOM.
 export type SpineEntriesCache = Map<string, SpineMessageCacheEntry> & Partial<OuterVersion>
 
 export function messagesToSpineEntriesCached(input: {
@@ -2059,17 +2104,16 @@ export function messagesToSpineEntriesCached(input: {
   const { messages, getParts, assistantDuration, cache, previousEntries } = input
   const expandThinking = input.expandThinking === true
 
-  // Fast path: same messages array + same duration map + same thinking toggle
-  // as the previous call. `previousEntries` carries the stabilized list — we can
-  // hand it back verbatim and skip the per-message walk, groupConsecutiveTools,
-  // assignIndexes, and stabilizeEntries entirely. This is the hot path for
-  // back-switching to a session, re-renders from unrelated store deltas, and
-  // every prop change that doesn't actually touch the message timeline.
+  // Fast path: same messages array + same thinking toggle as the previous
+  // call. `previousEntries` carries the stabilized list — we can hand it back
+  // verbatim and skip the per-message walk, groupConsecutiveTools, assignIndexes,
+  // and stabilizeEntries entirely. This is the hot path for back-switching to
+  // a session, re-renders from unrelated store deltas, and every prop change
+  // that doesn't actually touch the message timeline.
   if (
     cache &&
     previousEntries &&
     cache.__messages === messages &&
-    cache.__assistantDuration === assistantDuration &&
     cache.__expandThinking === expandThinking
   ) {
     return { entries: previousEntries, cache }
@@ -2088,6 +2132,10 @@ export function messagesToSpineEntriesCached(input: {
     // on parts identity would return stale entries with old prose/reasoning text.
     // Force cache miss for the active assistant message, then one more recompute
     // after completion so entries flip out of streaming mode before caching.
+    // D1: also force a miss when `time.completed` flips — the proxy ref is stable
+    // across the transition but the streaming field on the cached entries is now
+    // stale. `activeAssistant` already catches the streaming→streaming case; this
+    // catches the streaming→completed transition.
     const activeAssistant = message.role === "assistant" && !message.time.completed
 
     let entries: SpineEntry[]
@@ -2097,7 +2145,8 @@ export function messagesToSpineEntriesCached(input: {
       cached.message === message &&
       cached.parts === parts &&
       cached.duration === duration &&
-      cached.expandThinking === expandThinking
+      cached.expandThinking === expandThinking &&
+      cached.completed === (message.role === "assistant" ? message.time.completed : undefined)
     ) {
       entries = cached.entries
     } else if (message.role === "user") {
@@ -2108,7 +2157,14 @@ export function messagesToSpineEntriesCached(input: {
       entries = []
     }
 
-    nextCache.set(message.id, { message, parts, duration, expandThinking, entries })
+    nextCache.set(message.id, {
+      message,
+      parts,
+      duration,
+      expandThinking,
+      completed: message.role === "assistant" ? message.time.completed : undefined,
+      entries,
+    })
     allEntries.push(...entries)
   }
 
@@ -2119,8 +2175,8 @@ export function messagesToSpineEntriesCached(input: {
   const stabilized = stabilizeEntries(indexed, previousEntries)
 
   // Stamp outer-version refs for the next call's fast-path compare.
+  // `__assistantDuration` intentionally omitted (see D3 note on OuterVersion).
   nextCache.__messages = messages
-  nextCache.__assistantDuration = assistantDuration
   nextCache.__expandThinking = expandThinking
 
   return { entries: stabilized, cache: nextCache }

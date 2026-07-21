@@ -44,6 +44,11 @@ jobs:
           retention-days: 90
 
       - name: Run npm audit
+        # Fail-loud on master pushes and the weekly schedule so high/critical
+        # advisories block the pipeline. PRs are softer — we don't want a
+        # WIP contributor to be blocked by an upstream advisory, but we do
+        # want the warning visible in the step summary.
+        id: audit
         run: |
           echo "## Dependency Audit" >> $GITHUB_STEP_SUMMARY
           bun audit --json 2>/dev/null || true
@@ -51,10 +56,40 @@ jobs:
           VULNS=$(npm audit --json 2>/dev/null | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');try{const j=JSON.parse(d);const c=(j.metadata?.vulnerabilities?.critical||0)+(j.metadata?.vulnerabilities?.high||0);console.log(c)}catch(e){console.log(0)}")
           echo "High+Critical vulns: $VULNS"
           echo "- High+Critical advisories: $VULNS" >> $GITHUB_STEP_SUMMARY
+          echo "vulns=$VULNS" >> "$GITHUB_OUTPUT"
           if [ "$VULNS" -gt 0 ]; then
             echo "::warning::Found $VULNS high/critical vulnerabilities. Review in Security tab."
+            # Block the build on master pushes and the weekly schedule; allow
+            # PRs to proceed with a soft warning so contributors aren't blocked
+            # by upstream advisories.
+            if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+              echo "::error::Failing build: $VULNS high/critical vulnerabilities on master/schedule" >&2
+              exit 1
+            fi
           fi
-        continue-on-error: true
+
+      - name: Open issue on high/critical advisories
+        if: failure() && (github.event_name == 'push' || github.event_name == 'schedule')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Dedupe: only one open issue per day per vuln set.
+            const today = new Date().toISOString().slice(0, 10);
+            const title = `[security-audit] High/critical advisories — ${today}`;
+            const existing = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} is:open is:issue in:title "[security-audit]"`
+            });
+            if (existing.data.total_count > 0) {
+              core.info("Open security-audit issue already exists; skipping");
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body: "Automated report from the security-audit workflow. See the failed run for details.\n\nRun: ${{ github.run_id }}",
+              labels: ["security", "automated"]
+            });
 
       - name: Check OSSF Scorecard
         # Skipped — requires public repo. Enable when repo visibility changes.

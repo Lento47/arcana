@@ -153,9 +153,17 @@ DialogRetryAction.show = (
   props: Pick<DialogRetryActionProps, "title" | "message" | "label" | "link">,
 ) => {
   return new Promise<boolean>((resolve) => {
-    dialog.replace(
-      () => <DialogRetryAction {...props} onClose={(dontShow) => resolve(dontShow ?? false)} />,
-      () => resolve(false),
-    )
+    // Render and replace are wrapped in try/catch so a thrown render never
+    // strands the awaiting Promise unresolved. Without this, a faulty
+    // dialog could block retry policy for the rest of the session.
+    try {
+      dialog.replace(
+        () => <DialogRetryAction {...props} onClose={(dontShow) => resolve(dontShow ?? false)} />,
+        () => resolve(false),
+      )
+    } catch (err) {
+      console.error("DialogRetryAction.show render failed:", err)
+      resolve(false)
+    }
   })
 }

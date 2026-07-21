@@ -76,7 +76,8 @@ jobs:
           node -p "const p=require('./packages/arcana/package.json');p.version='$NEW_VERSION';JSON.stringify(p,null,2)" > /tmp/arcana-pkg.json
           cat /tmp/arcana-pkg.json > packages/arcana/package.json
           sed -i "s/const VERSION = \"[^\"]*\"/const VERSION = \"v$NEW_VERSION\"/" packages/arcana/npm/bin/arcana.js
-          sed -i "s/const VERSION = \"[^\"]*\"/const VERSION = \"$NEW_VERSION\"/" packages/arcana/src/index.ts
+          # Note: packages/arcana/src/index.ts reads VERSION from package.json
+          # at runtime via createRequire, so no edit needed there.
 
           TAG="v$NEW_VERSION"
 
