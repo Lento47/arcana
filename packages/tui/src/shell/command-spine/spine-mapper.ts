@@ -2081,17 +2081,13 @@ export type SpineMessageCacheEntry = {
   entries: SpineEntry[]
 }
 
-// Marker carried on the cache Map itself so the next call can short-circuit
-// when the message list, durations, and thinking toggle are all identical.
-// The Map type is augmented via intersection to keep the rest of the API typed.
-type OuterVersion = { __messages: Message[]; __expandThinking: boolean }
-// Note: `__assistantDuration` was intentionally removed from the outer fast-path
-// key. After the v0.3.19 perf-batch fix to Bug A, the assistantDuration memo
-// always returns a fresh Map, so an identity compare would defeat the fast path
-// on every assistant turn. The per-message cache (D1) below still detects
-// per-entry duration changes via value compare, and the slow path is O(n) ID/
-// ref ops with no DOM.
-export type SpineEntriesCache = Map<string, SpineMessageCacheEntry> & Partial<OuterVersion>
+// L2 per-message cache. The outer fast path (which compared `messages`
+// array identity) was removed in v0.3.20.1 because SolidJS store proxies
+// survive `produce()` mutations, so the array ref is stable when messages
+// are appended — the fast path returned stale `previousEntries` and newly-
+// sent messages were invisible. The L2 cache still keys on per-message
+// identity (`cached.message === message`) for streaming rescan bursts.
+export type SpineEntriesCache = Map<string, SpineMessageCacheEntry>
 
 export function messagesToSpineEntriesCached(input: {
   messages: Message[]
@@ -2104,20 +2100,13 @@ export function messagesToSpineEntriesCached(input: {
   const { messages, getParts, assistantDuration, cache, previousEntries } = input
   const expandThinking = input.expandThinking === true
 
-  // Fast path: same messages array + same thinking toggle as the previous
-  // call. `previousEntries` carries the stabilized list — we can hand it back
-  // verbatim and skip the per-message walk, groupConsecutiveTools, assignIndexes,
-  // and stabilizeEntries entirely. This is the hot path for back-switching to
-  // a session, re-renders from unrelated store deltas, and every prop change
-  // that doesn't actually touch the message timeline.
-  if (
-    cache &&
-    previousEntries &&
-    cache.__messages === messages &&
-    cache.__expandThinking === expandThinking
-  ) {
-    return { entries: previousEntries, cache }
-  }
+  // Outer fast path REMOVED for v0.3.20.1. It keyed on `messages` array
+  // identity, but SolidJS store proxies survive `produce()` mutations — the
+  // array ref is stable when messages are appended, so the fast path
+  // returned stale `previousEntries` and newly-sent messages were invisible
+  // until the user restarted the app. The L2 per-message cache (below)
+  // still catches streaming rescan bursts via `cached.message === message`,
+  // and the slow path is O(n) ID/ref ops over ≤100 visible messages.
 
   const allEntries: SpineEntry[] = []
   const nextCache: SpineEntriesCache = new Map() as SpineEntriesCache
@@ -2173,11 +2162,6 @@ export function messagesToSpineEntriesCached(input: {
   const grouped = groupConsecutiveTools(allEntries)
   const indexed = assignIndexes(grouped, 1)
   const stabilized = stabilizeEntries(indexed, previousEntries)
-
-  // Stamp outer-version refs for the next call's fast-path compare.
-  // `__assistantDuration` intentionally omitted (see D3 note on OuterVersion).
-  nextCache.__messages = messages
-  nextCache.__expandThinking = expandThinking
 
   return { entries: stabilized, cache: nextCache }
 }
