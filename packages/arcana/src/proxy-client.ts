@@ -176,3 +176,40 @@ export function formatAccountSnapshot(snap: AccountSnapshot): string {
   )
   return lines.filter((l) => l !== undefined).join("\n")
 }
+
+/** Free-tier usage snapshot. Returned by `GET /v1/free/usage` on Arcana Proxy.
+ * Shape is whatever the proxy writes — we only assert the fields we consume. */
+export type FreeUsageSnapshot = {
+  state?: "eligible" | "active" | "expired" | "licensed"
+  freeSessionId?: string
+  activatedAt?: string
+  expiresAt?: string
+  resetAt?: string
+  used?: number
+  remaining?: number
+  limit?: number
+  tokensUsed?: number
+  tokensLimit?: number
+  tokensRemaining?: number
+}
+
+/** Live free-tier usage snapshot from Arcana Proxy. Returns `null` on any
+ * failure (no key, network down, non-free tier, etc.) — callers should
+ * treat `null` as "no free-usage display this turn". */
+export async function fetchFreeUsage(): Promise<FreeUsageSnapshot | null> {
+  const res = await proxyFetch("/v1/free/usage")
+  if (!res.ok || !res.data || typeof res.data !== "object") return null
+  return res.data as FreeUsageSnapshot
+}
+
+/** Format minutes remaining from a free-usage snapshot for display. */
+export function formatFreeUsageRemaining(snap: FreeUsageSnapshot | null | undefined): string | undefined {
+  if (!snap) return undefined
+  if (snap.state === "licensed" || snap.state === "eligible") return undefined
+  if (!snap.expiresAt) return undefined
+  const expiresMs = Date.parse(snap.expiresAt)
+  if (!Number.isFinite(expiresMs)) return undefined
+  const minsLeft = Math.max(0, Math.round((expiresMs - Date.now()) / 60_000))
+  if (minsLeft <= 0) return undefined
+  return `${minsLeft}m of 60m`
+}

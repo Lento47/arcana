@@ -24,6 +24,9 @@ export const ARCANA_ERROR_CODES = [
   "ARC_IMAGE_FAILED",
   "ARC_FREE_MODEL_ONLY",
   "ARC_FREE_EXHAUSTED",
+  "ARC_FREE_SESSION_EXPIRED",
+  "ARC_FREE_CONVERSATION_MISMATCH",
+  "ARC_FREE_TURN_BUDGET_REACHED",
   "ARC_INTERNAL",
 ] as const
 
@@ -114,6 +117,9 @@ export function codeToType(code: ArcanaErrorCode): ArcanaErrorType {
     case "ARC_FREE_MODEL_ONLY":
       return "model"
     case "ARC_FREE_EXHAUSTED":
+    case "ARC_FREE_SESSION_EXPIRED":
+    case "ARC_FREE_CONVERSATION_MISMATCH":
+    case "ARC_FREE_TURN_BUDGET_REACHED":
       return "quota"
     case "ARC_INTERNAL":
     default:
@@ -224,9 +230,30 @@ export const ARCANA_ERROR_CATALOG: Record<
     httpStatus: 400,
   },
   ARC_FREE_EXHAUSTED: {
-    message: "Your free weekly session is used up (turns, time window, or token allowance).",
-    recovery: ["Wait until free reset", "Upgrade to Pro for more capacity"],
+    message: "Free-tier capacity check failed. Pick a free model or upgrade for more.",
+    recovery: [
+      "Use openrouter/free or any model id ending in :free",
+      "Upgrade to Pro for the full catalog",
+    ],
     retryable: false,
+    httpStatus: 429,
+  },
+  ARC_FREE_SESSION_EXPIRED: {
+    message: "Your 60-minute free session has ended. Start a new one or upgrade for unlimited access.",
+    recovery: ["Wait until next week's reset", "Upgrade to Pro for unlimited sessions"],
+    retryable: false,
+    httpStatus: 429,
+  },
+  ARC_FREE_CONVERSATION_MISMATCH: {
+    message: "This free session is bound to a different conversation. Start a new chat to continue.",
+    recovery: ["Open a new conversation", "Upgrade to Pro for concurrent sessions"],
+    retryable: false,
+    httpStatus: 429,
+  },
+  ARC_FREE_TURN_BUDGET_REACHED: {
+    message: "This free turn couldn't reach a stable provider after 2 tries. Try again or pick a different model.",
+    recovery: ["Retry", "Switch to a free model that isn't saturated"],
+    retryable: true,
     httpStatus: 429,
   },
   ARC_INTERNAL: {

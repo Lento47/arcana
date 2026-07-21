@@ -1968,7 +1968,7 @@ export function Prompt(props: PromptProps) {
             </box>
           </Show>
       </box>
-      <SessionMetricsBar sessionID={props.sessionID} />
+      <SessionMetricsBar sessionID={props.sessionID} freeUsage={null} />
       {/* Default shell: absolute overlay relative to prompt parent. */}
       <Show when={!isCommandSpine()}>
         <AutocompleteSlot layout="overlay" />
