@@ -54,12 +54,19 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
   async function openInBrowser() {
     const target = url()
     if (!target) return
-    const result = await sdk.client.experimental.console.openUrl({ url: target })
-    if (result.error || !result.data?.ok) {
-      toast.show({
-        variant: "info",
-        message: "Couldn't open your browser. Press c to copy the link and paste it in a browser yourself.",
-      })
+    try {
+      const result = await sdk.client.experimental.console.openUrl({ url: target })
+      if (result.error || !result.data?.ok) {
+        toast.show({
+          variant: "info",
+          message: "Couldn't open your browser. Press c to copy the link and paste it in a browser yourself.",
+        })
+      }
+    } catch (e) {
+      // ANY throw here would propagate as an unhandled rejection and the
+      // engine's process.on("unhandledRejection") handler exits the TUI.
+      // Map to a toast and let the user fall back to the copy-link path.
+      toast.error(friendlyError(e, "Couldn't open your browser. Press c to copy the link."))
     }
   }
 
