@@ -2217,8 +2217,54 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashName: "new",
         slashAliases: ["clear"],
         run: () => {
-          dialog.clear()
-          route.navigate({ type: "home" })
+          const agent = local.agent.current()
+          const model = local.model.current()
+          if (!agent || !model) {
+            route.navigate({ type: "home" })
+            return
+          }
+
+          const currentSession = route.data.type === "session" ? sync.session.get(route.data.sessionID) : undefined
+          const directory = currentSession?.directory ?? project.instance.directory()
+          const workspaceID = currentSession?.workspaceID ?? project.workspace.current()
+          const variant = local.model.variant.current()
+
+          void sdk.client.session
+            .create({
+              directory,
+              workspace: workspaceID,
+              agent: agent.name,
+              model: {
+                providerID: model.providerID,
+                id: model.modelID,
+                variant,
+              },
+            })
+            .then((res) => {
+              if (res.error) {
+                console.error("session.new create returned error:", res.error)
+                toast.show({
+                  message: `Creating session failed: ${errorMessage(res.error)}`,
+                  variant: "error",
+                  duration: 5000,
+                })
+                route.navigate({ type: "home" })
+                return
+              }
+              route.navigate({
+                type: "session",
+                sessionID: res.data.id,
+              })
+            })
+            .catch((error) => {
+              console.error("session.new create threw:", error)
+              toast.show({
+                message: `Creating session failed: ${errorMessage(error)}`,
+                variant: "error",
+                duration: 5000,
+              })
+              route.navigate({ type: "home" })
+            })
         },
       },
       {
