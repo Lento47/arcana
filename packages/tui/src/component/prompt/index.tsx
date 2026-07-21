@@ -52,6 +52,7 @@ import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
+import { SessionMetricsBar } from "./metrics-bar"
 import { useArgs } from "../../context/args"
 import {
   ARCANA_BASE_MODE,
@@ -1967,6 +1968,7 @@ export function Prompt(props: PromptProps) {
             </box>
           </Show>
       </box>
+      <SessionMetricsBar sessionID={props.sessionID} />
       {/* Default shell: absolute overlay relative to prompt parent. */}
       <Show when={!isCommandSpine()}>
         <AutocompleteSlot layout="overlay" />
