@@ -57,7 +57,6 @@ import { useArgs } from "../../context/args"
 import {
   ARCANA_BASE_MODE,
   useBindings,
-  useCommandShortcut,
   useCommandSlashes,
   useLeaderActive,
   useOpencodeKeymap,
@@ -177,8 +176,6 @@ export function Prompt(props: PromptProps) {
   const stash = usePromptStash()
   const keymap = useOpencodeKeymap()
   const commandSlashes = useCommandSlashes()
-  const agentShortcut = useCommandShortcut("agent.cycle")
-  const paletteShortcut = useCommandShortcut("command.palette.show")
   const renderer = useRenderer()
   const exit = useExit()
   const dimensions = useTerminalDimensions()
@@ -1939,34 +1936,10 @@ export function Prompt(props: PromptProps) {
             </Match>
             <Match when={true}>{props.hint ?? <text />}</Match>
           </Switch>
-          <Show when={status().type !== "retry"}>
-            <box gap={2} flexDirection="row">
-              <Show when={editorContextLabelState() !== "none" ? editorFileLabelDisplay() : undefined}>
-                {(file) => (
-                  <text fg={editorContextLabelState() === "pending" ? theme.secondary : theme.textMuted}>{file()}</text>
-                )}
-              </Show>
-              <Switch>
-                <Match when={store.mode === "normal"}>
-                  <Switch>
-                    <Match when={true}>
-                      <text fg={theme.text}>
-                        {agentShortcut()} <span style={{ fg: theme.textMuted }}>agents</span>
-                      </text>
-                    </Match>
-                  </Switch>
-                  <text fg={theme.text}>
-                    {paletteShortcut()} <span style={{ fg: theme.textMuted }}>commands</span>
-                  </text>
-                </Match>
-                <Match when={store.mode === "shell"}>
-                  <text fg={theme.text}>
-                    esc <span style={{ fg: theme.textMuted }}>exit shell mode</span>
-                  </text>
-                </Match>
-              </Switch>
-            </box>
-          </Show>
+          {/* Keybind hint row removed for v0.3.18 — was "tab agents / ctrl+p commands" plus
+              the file-context label. The footer is now just the SessionMetricsBar
+              (elapsed · tokens · cost · context pressure · free-usage). The keybinds
+              are still discoverable via `?` (help.show) and the command palette. */}
       </box>
       <SessionMetricsBar sessionID={props.sessionID} freeUsage={null} />
       {/* Default shell: absolute overlay relative to prompt parent. */}
