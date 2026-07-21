@@ -272,16 +272,24 @@ export function Session() {
 
   // Precompute assistant durations from the parent user message in one pass.
   // Each AssistantMessage used to rerun this scan individually.
-  //
-  // Returns a fresh Map on every memo re-run. The memo's deep-property tracking
-  // (reads of message.time.completed, parent.time.created) only re-runs the
-  // body when relevant data changes, so the rebuild is bounded to actual
-  // mutations. An earlier identity-key short-circuit on the messages array ref
-  // was a correctness bug: produce() mutates the array in place, so the ref
-  // check hit even when time.completed had just flipped and a new entry needed
-  // to be added.
+  // Precompute assistant durations from the parent user message in one pass.
+  // Each AssistantMessage used to rerun this scan individually.
+  // Returned Map is content-stable — we mutate the same instance in place so
+  // downstream consumers (spine mapper memo) keep a stable ref and don't
+  // re-run on every re-render. The messages array ref check is the key:
+  // when the store replaces the array, the key changes and we rebuild.
+  // (The previous "produce() mutates in place" correctness concern was about
+  // a stale cache for time.completed flips — those always come with a sync
+  // that REPLACES the array, so the key change forces a rebuild here too.)
+  let cachedDurationMap: Map<string, number> = new Map()
+  let cachedDurationKey: unknown = undefined
   const assistantDuration = createMemo<Map<string, number>>(() => {
     const list = messages()
+    const key = list
+    if (key === cachedDurationKey) {
+      return cachedDurationMap
+    }
+    cachedDurationKey = key
     const next = new Map<string, number>()
     for (const message of list) {
       if (message.role !== "assistant" || !message.time.completed || !message.finish) continue
@@ -291,6 +299,7 @@ export function Session() {
         next.set(message.id, message.time.completed - parent.time.created)
       }
     }
+    cachedDurationMap = next
     return next
   })
 
