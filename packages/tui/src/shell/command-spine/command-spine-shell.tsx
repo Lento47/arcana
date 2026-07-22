@@ -76,8 +76,6 @@ export function CommandSpineShell(props: ShellProps) {
   const entries = createMemo(() => {
     if (USE_SAMPLE_SPINE) return SAMPLE_ENTRIES
     const state = sessionState()
-    // Per-memo working state: cache and previousEntries are scoped to this
-    // memo body so they re-bind on every re-run (including session switches).
     let cache: SpineEntriesCache = state.cache
     let previousEntries: SpineEntry[] = state.previousEntries
     const result = messagesToSpineEntriesCached({
@@ -88,10 +86,9 @@ export function CommandSpineShell(props: ShellProps) {
       previousEntries,
       expandThinking: thinking.mode() === "show",
     })
-    // Persist back to the cross-session slot so a future back-switch reuses it.
     state.cache = result.cache
     state.previousEntries = result.entries
-    return result.entries
+    return [...result.entries]
   })
 
   const gateEntries = createMemo(() =>
@@ -262,9 +259,6 @@ export function CommandSpineShell(props: ShellProps) {
         >
           <For each={visibleEntries()}>
             {(entry) => {
-              // Pass the entry object directly. <For> uses referential identity
-              // and stabilizeEntries reuses the previous object ref when nothing
-              // changed, so the row does not remount on every reactive update.
               return (
                 <SpineEntryView
                   entry={entry}
