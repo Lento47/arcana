@@ -1,4 +1,4 @@
-import { SyntaxStyle, RGBA, type TerminalColors } from "@opentui/core"
+import { SyntaxStyle, RGBA, type TerminalColors, defaultTheme } from "@opentui/core"
 import arcana from "./assets/arcana.json" with { type: "json" }
 import bloodmoon from "./assets/bloodmoon.json" with { type: "json" }
 import coven from "./assets/coven.json" with { type: "json" }
@@ -268,7 +268,15 @@ export function upsertTheme(name: string, theme: unknown) {
 }
 
 export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
-  const defs = theme.defs ?? {}
+  // OpenTUI 0.4.x added new theme keys that arcana's theme JSON may not
+  // define. Merge OpenTUI's defaults underneath our overrides so missing
+  // keys get populated with valid hex strings instead of undefined.
+  // Without this, the renderer calls .startsWith("#") on undefined and
+  // crashes with "$.startsWith is not a function".
+  const defaults = (defaultTheme as any)?.theme ?? {}
+  const merged = { ...defaults, ...theme.theme }
+  const themeWithDefaults: ThemeJson = { ...theme, theme: merged }
+  const defs = themeWithDefaults.defs ?? {}
   function resolveColor(c: ColorValue, chain: string[] = []): RGBA {
     if (c instanceof RGBA) return c
     if (typeof c === "string") {
@@ -280,7 +288,7 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
         throw new Error(`Circular color reference: ${[...chain, c].join(" -> ")}`)
       }
 
-      const next = defs[c] ?? theme.theme[c as ThemeColor]
+      const next = defs[c] ?? merged[c as ThemeColor]
       if (next === undefined) {
         throw new Error(`Color reference "${c}" not found in defs or theme`)
       }
@@ -289,11 +297,19 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
     if (typeof c === "number") {
       return ansiToRgba(c)
     }
-    return resolveColor(c[mode], chain)
+    // Object with dark/light sub-keys — pick the active mode.
+    // Guard: OpenTUI 0.4.x may ship flat hex strings for new keys.
+    const variant = (c as Record<string, ColorValue>)[mode]
+    if (variant !== undefined) return resolveColor(variant, chain)
+    // Fallback: try the other mode, then black.
+    const fallbackMode = mode === "dark" ? "light" : "dark"
+    const fb = (c as Record<string, ColorValue>)[fallbackMode]
+    if (fb !== undefined) return resolveColor(fb, chain)
+    return RGBA.fromInts(0, 0, 0)
   }
 
   const resolved = Object.fromEntries(
-    Object.entries(theme.theme)
+    Object.entries(merged)
       .filter(([key]) => key !== "selectedListItemText" && key !== "backgroundMenu" && key !== "thinkingOpacity")
       .map(([key, value]) => {
         return [key, resolveColor(value as ColorValue)]
@@ -301,9 +317,9 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
   ) as Partial<Record<ThemeColor, RGBA>>
 
   // Handle selectedListItemText separately since it's optional
-  const hasSelectedListItemText = theme.theme.selectedListItemText !== undefined
+  const hasSelectedListItemText = merged.selectedListItemText !== undefined
   if (hasSelectedListItemText) {
-    resolved.selectedListItemText = resolveColor(theme.theme.selectedListItemText!)
+    resolved.selectedListItemText = resolveColor(merged.selectedListItemText!)
   } else {
     // Backward compatibility: if selectedListItemText is not defined, use background color
     // This preserves the current behavior for all existing themes
@@ -311,23 +327,23 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
   }
 
   // Handle backgroundMenu - optional with fallback to backgroundElement
-  if (theme.theme.backgroundMenu !== undefined) {
-    resolved.backgroundMenu = resolveColor(theme.theme.backgroundMenu)
+  if (merged.backgroundMenu !== undefined) {
+    resolved.backgroundMenu = resolveColor(merged.backgroundMenu)
   } else {
     resolved.backgroundMenu = resolved.backgroundElement
   }
 
   // Handle thinkingOpacity - optional with default of 0.6
-  const thinkingOpacity = theme.theme.thinkingOpacity ?? 0.6
+  const thinkingOpacity = merged.thinkingOpacity ?? 0.6
 
   // New tokens — fallback to existing colors if not defined in theme JSON
-  if (theme.theme.borderThinking !== undefined) {
-    resolved.borderThinking = resolveColor(theme.theme.borderThinking)
+  if (merged.borderThinking !== undefined) {
+    resolved.borderThinking = resolveColor(merged.borderThinking)
   } else {
     resolved.borderThinking = resolved.borderSubtle
   }
-  if (theme.theme.surfaceAlt !== undefined) {
-    resolved.surfaceAlt = resolveColor(theme.theme.surfaceAlt)
+  if (merged.surfaceAlt !== undefined) {
+    resolved.surfaceAlt = resolveColor(merged.surfaceAlt)
   } else {
     resolved.surfaceAlt = resolved.backgroundPanel
   }
