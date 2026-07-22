@@ -123,7 +123,13 @@ function init() {
             renderer.clearSelection()
           }
           const current = store.stack.at(-1)
-          current?.onClose?.()
+          // Match the hardened pattern in clear()/replace(): a throwing
+          // onClose must not prevent stack update + refocus (torn state).
+          if (current?.onClose) {
+            try { current.onClose() } catch (err) {
+              console.error("dialog.onClose threw during escape:", err)
+            }
+          }
           setStore("stack", store.stack.slice(0, -1))
           refocus()
         },
@@ -137,7 +143,11 @@ function init() {
             renderer.clearSelection()
           }
           const current = store.stack.at(-1)
-          current?.onClose?.()
+          if (current?.onClose) {
+            try { current.onClose() } catch (err) {
+              console.error("dialog.onClose threw during ctrl+c:", err)
+            }
+          }
           setStore("stack", store.stack.slice(0, -1))
           refocus()
         },

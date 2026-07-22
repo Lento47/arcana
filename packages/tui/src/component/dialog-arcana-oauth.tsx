@@ -66,7 +66,13 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       // ANY throw here would propagate as an unhandled rejection and the
       // engine's process.on("unhandledRejection") handler exits the TUI.
       // Map to a toast and let the user fall back to the copy-link path.
-      toast.error(friendlyError(e, "Couldn't open your browser. Press c to copy the link."))
+      // Defensive: toast.error() itself must not re-throw — a double fault
+      // here bypasses the catch and kills the Worker via unhandled rejection.
+      try {
+        toast.error(friendlyError(e, "Couldn't open your browser. Press c to copy the link."))
+      } catch (doubleFault) {
+        console.error("openInBrowser: toast.error threw:", doubleFault)
+      }
     }
   }
 
