@@ -28,6 +28,14 @@ if (!process.env["ARCANA_PROXY_KEY"]) {
   } catch {}
 }
 
+// Log unhandled rejections in the Worker so they are debuggable. Unlike the
+// main process (index.ts), we do NOT call process.exit() here — the Effect
+// runtime detects the failure and tears down cleanly. A silent Worker kill
+// makes "TUI window just closes" bugs almost impossible to diagnose.
+process.on("unhandledRejection", (reason) => {
+  console.error("[arcana] Worker unhandled rejection:", reason)
+})
+
 Heap.start()
 
 // Subscribe to global events and forward them via RPC
