@@ -2062,11 +2062,22 @@ function stabilizeEntries(next: SpineEntry[], previous: SpineEntry[] | undefined
     ) {
       return prev
     }
-    // Properties changed — return a NEW object so reactive prop bindings
-    // (keyed by entry.id in CommandSpineShell) pick up summary/body/streaming
-    // updates without remounting the whole row. Remounting on every stream
-    // token was tearing down <markdown> and causing rich-text glitching.
-    return { ...entry }
+    // Streaming-only fields (body, summary, elapsed, streaming) change on
+    // every token delta. Mutate prev in place so <For> keeps the same
+    // referential identity — no DOM remount, no flicker.
+    // Structural fields (kind, glyph, id, etc.) are stable during streaming;
+    // if those change, return a fresh object so <For> picks up the new row.
+    prev.body = entry.body
+    prev.summary = entry.summary
+    prev.elapsed = entry.elapsed
+    prev.elapsedMs = entry.elapsedMs
+    prev.streaming = entry.streaming
+    prev.thinking = entry.thinking
+    prev.index = entry.index
+    prev.timestamp = entry.timestamp
+    prev.children = entry.children
+    prev.receipt = entry.receipt
+    return prev
   })
 }
 
