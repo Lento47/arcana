@@ -1,6 +1,6 @@
 {
   "name": "@arcana/arcana",
-  "version": "0.3.35",
+  "version": "0.3.36",
   "type": "module",
   "bin": {
     "arcana": "./bin/arcana"
