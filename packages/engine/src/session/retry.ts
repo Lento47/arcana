@@ -92,7 +92,11 @@ export function retryable(error: Err, provider: string) {
     const status = error.data.statusCode
     // 5xx errors are transient server failures and should always be retried,
     // even when the provider SDK doesn't explicitly mark them as retryable.
-    if (!error.data.isRetryable && !(status !== undefined && (status >= 500 || status === 429))) return undefined
+    // 429 (rate-limit) is NOT unconditionally retried — the proxy returns
+    // retryable:false for non-transient 429s like conversation mismatch and
+    // session expiry, which would never succeed on retry. Only retry 429
+    // when the upstream explicitly sets retryable:true (e.g. turn budget).
+    if (!error.data.isRetryable && !(status !== undefined && status >= 500)) return undefined
     if (error.data.responseBody?.includes("FreeUsageLimitError")) {
       return {
         message: GO_UPSELL_MESSAGE,
