@@ -1,4 +1,4 @@
-import { SyntaxStyle, RGBA, type TerminalColors, defaultTheme } from "@opentui/core"
+import { SyntaxStyle, RGBA, type TerminalColors } from "@opentui/core"
 import arcana from "./assets/arcana.json" with { type: "json" }
 import bloodmoon from "./assets/bloodmoon.json" with { type: "json" }
 import coven from "./assets/coven.json" with { type: "json" }
@@ -268,15 +268,11 @@ export function upsertTheme(name: string, theme: unknown) {
 }
 
 export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
-  // OpenTUI 0.4.x added new theme keys that arcana's theme JSON may not
-  // define. Merge OpenTUI's defaults underneath our overrides so missing
-  // keys get populated with valid hex strings instead of undefined.
-  // Without this, the renderer calls .startsWith("#") on undefined and
-  // crashes with "$.startsWith is not a function".
-  const defaults = (defaultTheme as any)?.theme ?? {}
-  const merged = { ...defaults, ...theme.theme }
-  const themeWithDefaults: ThemeJson = { ...theme, theme: merged }
-  const defs = themeWithDefaults.defs ?? {}
+  // OpenTUI 0.4.x may ship new theme keys not present in arcana's JSON.
+  // resolveColor is now null-guarded — missing keys return black instead
+  // of crashing with .startsWith(undefined).
+  const merged = { ...theme.theme }
+  const defs = theme.defs ?? {}
   function resolveColor(c: ColorValue, chain: string[] = []): RGBA {
     if (c instanceof RGBA) return c
     if (typeof c === "string") {
