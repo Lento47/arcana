@@ -190,9 +190,13 @@ export function SpineProse(props: {
         <Match when={mode() === "markdown"}>
           <markdown
             syntaxStyle={style()}
-            // Default false: finalized markdown. Callers must pass true only
-            // while tokens are still appending (see OpenTUI MarkdownOptions.streaming).
-            streaming={props.streaming === true}
+            // Force finalized render mode even during streaming. Default
+            // streaming=true keeps trailing blocks unstable in OpenTUI's
+            // MarkdownRenderable, causing visible text flicker/disappear
+            // on every token. Finalized mode re-parses fully each render
+            // but produces stable output — acceptable trade for short
+            // streaming responses.
+            streaming={false}
             internalBlockMode="top-level"
             content={markdownContent()}
             tableOptions={{ style: "grid" }}
@@ -216,8 +220,8 @@ export function SpineProse(props: {
           >
             <code
               filetype={ft()}
-              drawUnstyledText={props.streaming ?? false}
-              streaming={props.streaming ?? false}
+              drawUnstyledText={false}
+              streaming={false}
               syntaxStyle={style()}
               content={text()}
               conceal={false}
