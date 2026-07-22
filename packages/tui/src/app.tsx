@@ -2221,18 +2221,16 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           const model = local.model.current()
           if (!agent || !model || !model.providerID || !model.modelID) {
             dialog.clear()
-            // Defer navigation so SolidJS processes dialog cleanup effects
-            // before the view tree is destroyed (node.cleanups[i] is null).
             queueMicrotask(() => route.navigate({ type: "home" }))
             return
           }
-
-          dialog.clear()
 
           const currentSession = route.data.type === "session" ? sync.session.get(route.data.sessionID) : undefined
           const directory = currentSession?.directory ?? project.instance.directory()
           const workspaceID = currentSession?.workspaceID ?? project.workspace.current()
           const variant = local.model.variant.current()
+
+          dialog.clear()
 
           void sdk.client.session
             .create({
@@ -2248,13 +2246,10 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             .then((res) => {
               if (res.error) {
                 console.error("session.new create returned error:", res.error)
-                toast.show({
-                  message: `Creating session failed: ${errorMessage(res.error)}`,
-                  variant: "error",
-                  duration: 5000,
-                })
-                dialog.clear()
-                queueMicrotask(() => route.navigate({ type: "home" }))
+                // Do NOT call toast.show() or any SolidJS-reactive API here —
+                // the owning component was destroyed by dialog.clear() above
+                // and the async callback fires after navigation.
+                route.navigate({ type: "home" })
                 return
               }
               route.navigate({
@@ -2264,13 +2259,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
             })
             .catch((error) => {
               console.error("session.new create threw:", error)
-              toast.show({
-                message: `Creating session failed: ${errorMessage(error)}`,
-                variant: "error",
-                duration: 5000,
-              })
-              dialog.clear()
-              queueMicrotask(() => route.navigate({ type: "home" }))
+              route.navigate({ type: "home" })
             })
         },
       },
