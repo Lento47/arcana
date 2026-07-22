@@ -78,6 +78,8 @@ export function CommandSpineShell(props: ShellProps) {
     const state = sessionState()
     let cache: SpineEntriesCache = state.cache
     let previousEntries: SpineEntry[] = state.previousEntries
+    // Read session status inside this memo so session.status → idle invalidates spine.
+    const sessionStatusType = props.sessionStatus?.()?.type
     const result = messagesToSpineEntriesCached({
       messages: props.messages(),
       getParts: props.getParts,
@@ -85,6 +87,7 @@ export function CommandSpineShell(props: ShellProps) {
       cache,
       previousEntries,
       expandThinking: thinking.mode() === "show",
+      sessionStatusType,
     })
     state.cache = result.cache
     state.previousEntries = result.entries
@@ -95,6 +98,15 @@ export function CommandSpineShell(props: ShellProps) {
     pendingGateEntries({ permissions: props.permissions(), questions: props.questions() }),
   )
   const visibleEntries = createMemo(() => [...entries(), ...gateEntries()])
+  // Key For by stable string ids so new entry object identity (token/streaming
+  // updates) updates props without remounting rows. Grok-style: content
+  // refreshes; DOM chrome stays put.
+  const visibleEntryIDs = createMemo(() => visibleEntries().map((e) => e.id))
+  const visibleEntryByID = createMemo(() => {
+    const map = new Map<string, SpineEntry>()
+    for (const e of visibleEntries()) map.set(e.id, e)
+    return map
+  })
   const navigableEntries = createMemo(() => navigableSpineEntries(visibleEntries()))
   const runState = createMemo(() => (gateEntries().length ? "stop" : props.pending() ? "working" : "idle"))
   const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
@@ -257,20 +269,23 @@ export function CommandSpineShell(props: ShellProps) {
           flexGrow={1}
           scrollAcceleration={props.scrollAcceleration}
         >
-          <For each={visibleEntries()}>
-            {(entry) => {
+          <For each={visibleEntryIDs()}>
+            {(id) => {
+              // Stable string key keeps the row mounted; lookup pulls the latest
+              // entry object so body/streaming props refresh each turn delta.
+              const entry = () => visibleEntryByID().get(id)!
               return (
                 <SpineEntryView
-                  entry={entry}
+                  entry={entry()}
                   layout={layout()}
-                  expanded={entryExpanded(entry)}
-                  focused={entryFocused(entry)}
-                  onToggle={() => toggleEntry(entry)}
-                  onFocus={() => focusEntry(entry)}
-                  onHover={() => focusEntry(entry)}
+                  expanded={entryExpanded(entry())}
+                  focused={entryFocused(entry())}
+                  onToggle={() => toggleEntry(entry())}
+                  onFocus={() => focusEntry(entry())}
+                  onHover={() => focusEntry(entry())}
                   nodeRef={(node) => {
-                    if (node) entryNodes.set(entry.id, node)
-                    else entryNodes.delete(entry.id)
+                    if (node) entryNodes.set(id, node)
+                    else entryNodes.delete(id)
                   }}
                 />
               )

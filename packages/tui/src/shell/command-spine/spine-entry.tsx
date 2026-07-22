@@ -52,6 +52,7 @@ export function SpineEntry(props: {
   const [localExpanded, setLocalExpanded] = createSignal(
     props.entry.expandedByDefault ?? !props.entry.collapsible,
   )
+  // Prefer controlled expanded from shell; fall back to local toggle state.
   const expanded = () => props.expanded ?? localExpanded()
   const kind = createMemo(() => entry().kind)
   const isChatProse = createMemo(() => {
@@ -78,7 +79,16 @@ export function SpineEntry(props: {
     () => !!props.onToggle || isThink() || hasDiff() || hasListing() || hasToolBody() || hasChildren(),
   )
   const bodyExpanded = () => (isChatProse() ? true : expanded())
+  // Dedicated memo so chat/think chrome always re-evaluates when the mapper
+  // flips streaming false (idle / finish / completed / missing status).
   const streaming = createMemo(() => entry().streaming === true)
+  const elapsed = createMemo(() => entry().elapsed)
+  const timestamp = createMemo(() => entry().timestamp)
+  const entryLabel = createMemo(() => entry().label)
+  const entrySummary = createMemo(() => entry().summary)
+  const entryActor = createMemo(() => entry().actor)
+  const entryReminders = createMemo(() => entry().reminders)
+  const entryBodyLabel = createMemo(() => entry().bodyLabel)
 
   // Explicit toggle row for tool bodies AND grouped bursts (same click target as
   // "show output" — header-only expand was easy to miss / hard to hit).
@@ -201,12 +211,12 @@ export function SpineEntry(props: {
               <SpineRail layout={props.layout} kind={kind()} glyph={headerGlyph()} active={props.focused} />
               <SpineNode
                 kind={kind()}
-                label={entry().label}
+                label={entryLabel()}
                 summary={nodeSummary()}
-                actor={entry().actor}
+                actor={entryActor()}
                 layout={props.layout}
                 focused={props.focused}
-                elapsed={entry().elapsed}
+                elapsed={elapsed()}
                 disclosure={headerDisclosure()}
                 streaming={streaming()}
               />
@@ -220,14 +230,15 @@ export function SpineEntry(props: {
           <Show when={isChatProse() && hasProse()}>
             <SpineChatCard
               kind={kind()}
-              label={entry().label}
+              label={entryLabel()}
               text={proseText()}
               layout={props.layout}
-              elapsed={entry().elapsed}
+              elapsed={elapsed()}
+              timestamp={timestamp()}
               streaming={streaming()}
               focused={props.focused}
-              reminders={entry().reminders}
-              bodyLabel={entry().bodyLabel}
+              reminders={entryReminders()}
+              bodyLabel={entryBodyLabel()}
             />
           </Show>
 
@@ -277,7 +288,7 @@ export function SpineEntry(props: {
                   bodyLabel="reasoning"
                   streaming={streaming()}
                   focused={props.focused}
-                  reminders={entry().reminders}
+                  reminders={entryReminders()}
                 />
               </box>
             </box>

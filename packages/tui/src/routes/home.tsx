@@ -15,6 +15,7 @@ import { useTuiConfig } from "../config"
 import { useTheme } from "../context/theme"
 import { WORDMARK_TAGLINE, PLACEHOLDER, IDLE_PHRASES } from "../branding"
 import { HomeSessionDestinationProvider } from "./home/session-destination"
+import { useSessionPrewarm } from "./home/prewarm-session"
 
 let once = false
 
@@ -46,8 +47,12 @@ export function Home() {
   }, 12000)
   onCleanup(() => clearInterval(epigramTimer))
 
+  const prewarm = useSessionPrewarm()
+
   onMount(() => {
     editor.clearSelection()
+    // Nudge prewarm on Home paint (app-level may already have a ready session).
+    prewarm?.ensure()
   })
 
   const bind = (r: PromptRef | undefined) => {

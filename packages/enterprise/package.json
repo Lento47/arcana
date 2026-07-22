@@ -7,7 +7,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "bun ./script/build.ts",
+    "build:force": "vite build",
     "build:cloudflare": "ARCANA_DEPLOYMENT_TARGET=cloudflare vite build",
     "start": "vite start",
     "shell-prod": "sst shell --target Teams --stage production"

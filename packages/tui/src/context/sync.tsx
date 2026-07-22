@@ -562,6 +562,20 @@ export const {
           if (match.found) return store.session[match.index]
           return undefined
         },
+        /**
+         * Insert or replace a session in the local store without a network round-trip.
+         * Used after session.create / Home prewarm so navigate does not flash "not found".
+         */
+        upsert(info: Session) {
+          setStore(
+            "session",
+            produce((draft) => {
+              const match = search(draft, info.id, (s) => s.id)
+              if (match.found) draft[match.index] = info
+              else draft.splice(match.index, 0, info)
+            }),
+          )
+        },
         query() {
           return sessionListQuery()
         },

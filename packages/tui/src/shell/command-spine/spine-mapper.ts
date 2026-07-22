@@ -3,6 +3,11 @@ import type { SpineEntry, SpineKind, SpineReportData, SpineConcernSeverity, Spin
 import { SPINE_GLYPH } from "./spine-types"
 import { reasoningSummary } from "../../context/thinking"
 import { APP_NAME } from "../../branding"
+import {
+  buildTurnLifecycle,
+  isAssistantSegmentStreaming,
+  isSessionTurnActive,
+} from "./turn-lifecycle"
 
 const INSPECT_TOOLS = new Set([
   "read",
@@ -83,12 +88,20 @@ function formatTimestamp(ms: number | undefined): string | undefined {
   if (ms === undefined || !Number.isFinite(ms) || ms <= 0) return undefined
   const date = new Date(ms)
   if (Number.isNaN(date.getTime())) return undefined
-  // HH:MM only — seconds bloated the left gutter without adding scan value.
-  return date.toLocaleTimeString("en-GB", {
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  })
+  // Grok-style short wall clock on chat headers: "2:18 PM" (12h locales).
+  // Locale default keeps 24h where that's the system preference.
+  try {
+    return date.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    })
+  } catch {
+    return date.toLocaleTimeString("en-GB", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
 }
 
 function isTextRelevant(part: TextPart): boolean {
@@ -818,6 +831,61 @@ function summarizeOutput(output: string): string {
   return `${matchCount} matches`
 }
 
+/**
+ * Solid store mutates tool parts in place. If the assistant turn already
+ * finished (or later parts arrived) while a tool stayed `running`/`pending`,
+ * the spine would shimmer "Working" forever. Coerce unfinished tools for display.
+ */
+function resolveToolState(part: ToolPart, message: Message, allParts: Part[]): ToolPart["state"] {
+  const state = part.state
+  if (state.status !== "pending" && state.status !== "running") return state
+
+  const turnDone = message.role === "assistant" && !!message.time.completed
+  const idx = allParts.findIndex((p) => p.id === part.id)
+  // Later text/reasoning/tools after this one ⇒ this tool is no longer the active step
+  let superseded = false
+  if (idx >= 0) {
+    for (let i = idx + 1; i < allParts.length; i++) {
+      const p = allParts[i]!
+      if (p.type === "tool" || p.type === "text" || p.type === "reasoning" || p.type === "step-finish" || p.type === "patch") {
+        superseded = true
+        break
+      }
+    }
+  }
+
+  if (!turnDone && !superseded) return state
+
+  const end = message.time.completed ?? Date.now()
+  if (state.status === "running") {
+    const output =
+      "output" in state && typeof (state as { output?: string }).output === "string"
+        ? (state as { output: string }).output
+        : ""
+    return {
+      status: "completed",
+      input: state.input ?? {},
+      output,
+      title: state.title ?? part.tool,
+      metadata: state.metadata ?? {},
+      time: {
+        start: state.time?.start ?? message.time.created,
+        end,
+      },
+    }
+  }
+
+  return {
+    status: "error",
+    input: state.input ?? {},
+    error: "Tool did not finish",
+    time: {
+      start: message.time.created,
+      end,
+    },
+  }
+}
+
 function toolStateToReceipt(tool: string, state: ToolPart["state"]): SpineReceipt | undefined {
   if (state.status === "pending" || state.status === "running") {
     return { label: tool, status: "pending" }
@@ -914,10 +982,22 @@ function userMessageToEntries(
   if (message.role !== "user") return []
 
   const textParts = parts.filter((p): p is TextPart => p.type === "text" && isTextRelevant(p))
-  const joined = joinTextBodies(textParts)
-  const view = joined
-    ? chatTextView(joined)
-    : { summary: message.summary?.title ?? "…", body: undefined, collapsible: false, expandedByDefault: false }
+  let joined = joinTextBodies(textParts)
+  // Defense: optimistic proxies may carry `text` when parts are still empty
+  // (SSE message row before part.updated). Never fall through to permanent "…".
+  if (!joined.trim()) {
+    const fallback =
+      typeof (message as { text?: unknown }).text === "string"
+        ? ((message as { text: string }).text)
+        : typeof message.summary?.title === "string"
+          ? message.summary.title
+          : ""
+    if (fallback.trim()) joined = fallback
+  }
+  // Still nothing — omit the row rather than paint "you …" forever.
+  if (!joined.trim()) return []
+
+  const view = chatTextView(joined)
   const elapsed = computeElapsed(assistantDuration, message)
   const textPart = textParts[0]
 
@@ -931,7 +1011,7 @@ function userMessageToEntries(
       kind: "ask",
       label: "you",
       glyph: SPINE_GLYPH.ask,
-      summary: view.summary || "…",
+      summary: view.summary || joined.trim(),
       body: view.body,
       bodyLabel: "prompt",
       collapsible: view.collapsible,
@@ -1115,58 +1195,60 @@ function toolOutputBody(part: ToolPart): ToolOutputBody {
   return { body: output, label: "output", reminders: [] }
 }
 
-function toolPartToEntries(message: Message, part: ToolPart, partIndex: number): SpineEntry[] {
-  const toolKind = toolToSpineKind(part.tool)
-  const agentName = taskToolAgent(part)
-  const kind: SpineKind = part.state.status === "error" ? "fail" : agentName ? "agent" : toolKind
+function toolPartToEntries(message: Message, part: ToolPart, partIndex: number, allParts: Part[]): SpineEntry[] {
+  const state = resolveToolState(part, message, allParts)
+  const resolved: ToolPart = state === part.state ? part : { ...part, state }
+  const toolKind = toolToSpineKind(resolved.tool)
+  const agentName = taskToolAgent(resolved)
+  const kind: SpineKind = state.status === "error" ? "fail" : agentName ? "agent" : toolKind
   const glyph = SPINE_GLYPH[kind] ?? SPINE_GLYPH.inspect
-  const elapsed = computeElapsed(undefined, message, part)
-  let receipt = toolStateToReceipt(part.tool, part.state)
-  const baseId = `${message.id}:${part.id || `tool-${partIndex}`}`
+  const elapsed = computeElapsed(undefined, message, resolved)
+  let receipt = toolStateToReceipt(resolved.tool, state)
+  const baseId = `${message.id}:${resolved.id || `tool-${partIndex}`}`
 
   let summary = ""
   let diff = undefined as SpineEntry["diff"]
 
   if (toolKind === "run") {
-    summary = getRunSummary(part)
+    summary = getRunSummary(resolved)
     if (!summary) {
-      if (part.state.status === "completed") summary = truncate(stripAnsi(part.state.output ?? ""), 120)
-      else if (part.state.status === "error") summary = truncate(stripAnsi(part.state.error ?? ""), 80)
-      else summary = part.tool
+      if (state.status === "completed") summary = truncate(stripAnsi(state.output ?? ""), 120)
+      else if (state.status === "error") summary = truncate(stripAnsi(state.error ?? ""), 80)
+      else summary = resolved.tool
     }
   }
 
   if (toolKind === "patch") {
-    summary = getPatchSummary(part)
-    if (!summary) summary = part.tool
+    summary = getPatchSummary(resolved)
+    if (!summary) summary = resolved.tool
   }
 
   if (toolKind === "inspect") {
-    summary = agentName ? taskToolSummary(part) : getInspectSummary(part)
+    summary = agentName ? taskToolSummary(resolved) : getInspectSummary(resolved)
   }
 
-  const renderedOutput = toolOutputBody(part)
+  const renderedOutput = toolOutputBody(resolved)
   const body = renderedOutput.body
   const finalKind: SpineKind = renderedOutput.report && !agentName ? "report" : kind
   const finalGlyph = renderedOutput.report && !agentName ? SPINE_GLYPH.report : glyph
-  const taskSessionID = taskToolSessionID(part)
+  const taskSessionID = taskToolSessionID(resolved)
   if (renderedOutput.report) {
     summary = agentName ? renderedOutput.report.title : `Divination: ${renderedOutput.report.title}`
   }
-  if (kind === "fail" && part.state.status === "error") {
+  if (kind === "fail" && state.status === "error") {
     // Prefer the error on the spine line (design: "fail  error[E0308]: …").
-    summary = truncate(stripAnsi(part.state.error ?? ""), 120) || summary || part.tool
+    summary = truncate(stripAnsi(state.error ?? ""), 120) || summary || resolved.tool
   }
 
   // Codex/read: path · Lstart–end or path · N entries; pure source / clean listing.
   const inputPath =
-    part.state && "input" in part.state && part.state.input && typeof part.state.input === "object"
-      ? ((part.state.input as Record<string, unknown>).filePath as string | undefined)
-        ?? ((part.state.input as Record<string, unknown>).path as string | undefined)
+    state && "input" in state && state.input && typeof state.input === "object"
+      ? ((state.input as Record<string, unknown>).filePath as string | undefined)
+        ?? ((state.input as Record<string, unknown>).path as string | undefined)
       : undefined
   const filePath =
     renderedOutput.path
-    || (part.tool === "read" ? inputPath : undefined)
+    || (resolved.tool === "read" ? inputPath : undefined)
     || (toolKind === "inspect" && (summary.includes("/") || summary.includes("\\")) ? summary : undefined)
 
   const listing = renderedOutput.listing
@@ -1183,7 +1265,7 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
         command: undefined,
       }
     }
-  } else if (part.tool === "read" && (filePath || renderedOutput.lineStart !== undefined)) {
+  } else if (resolved.tool === "read" && (filePath || renderedOutput.lineStart !== undefined)) {
     const pathForSummary = filePath || summary || "file"
     summary = formatInspectFileSummary(pathForSummary, {
       lineStart: renderedOutput.lineStart,
@@ -1215,11 +1297,11 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
   ) {
     const added = (body.match(/^\+[^+]/gm) ?? []).length
     const removed = (body.match(/^-[^-]/gm) ?? []).length
-    const files = diffFilesFromBody(body, summary || part.tool)
+    const files = diffFilesFromBody(body, summary || resolved.tool)
     summary = formatPatchHeadline(files.length, { added, removed }, true)
     receipt = undefined
     diff = {
-      files: files.join(", ") || diffTitleFromBody(body, summary || part.tool),
+      files: files.join(", ") || diffTitleFromBody(body, summary || resolved.tool),
       stats: added || removed ? `+${added} -${removed}` : "",
       body: preserveBodyText(body),
       splitBody: splitDiffBody(body),
@@ -1228,7 +1310,7 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
 
   const lineCount = body ? body.split("\n").length : 0
   const listingCount = listing?.length ?? 0
-  const isGrep = part.tool === "grep" || part.tool === "ripgrep"
+  const isGrep = resolved.tool === "grep" || resolved.tool === "ripgrep"
   // Tools: collapse by default. Failures + true one-liners may auto-open.
   // Grep/search never auto-expand (match dumps drown assistant replies).
   const expandDefault =
@@ -1277,13 +1359,13 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
             ? "agent"
             : finalKind === "report"
               ? "report"
-              : kindLabel(kind, undefined, part.tool),
+              : kindLabel(kind, undefined, resolved.tool),
       glyph: finalGlyph,
       actor: agentName,
       summary,
       body: displayBody,
       bodyLabel: renderedOutput.report ? "report" : renderedOutput.label,
-      bodyHint: renderedOutput.bodyHint || (part.tool === "read" ? filePath : undefined),
+      bodyHint: renderedOutput.bodyHint || (resolved.tool === "read" ? filePath : undefined),
       bodyNote: renderedOutput.bodyNote,
       collapsible: !!diff || !!renderedOutput.report || hasExpandableBody,
       expandedByDefault: expandDefault,
@@ -1293,7 +1375,7 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number):
       reminders: renderedOutput.reminders.length ? renderedOutput.reminders : undefined,
       report: renderedOutput.report,
       table: renderedOutput.table,
-      source: { messageID: message.id, partID: part.id, kind: agentName ? "subtask" : "tool", sessionID: taskSessionID },
+      source: { messageID: message.id, partID: resolved.id, kind: agentName ? "subtask" : "tool", sessionID: taskSessionID },
     },
   ]
 }
@@ -1539,15 +1621,50 @@ function splitInlineThinkingText(part: TextPart): { thinking?: string; text?: Te
   }
 }
 
+/** True when a later part means this step is finished (even if timestamps lag). */
+function hasLaterContentPart(allParts: Part[], partId: string): boolean {
+  const idx = allParts.findIndex((p) => p.id === partId)
+  if (idx < 0) return false
+  for (let i = idx + 1; i < allParts.length; i++) {
+    const p = allParts[i]!
+    if (
+      p.type === "tool"
+      || p.type === "text"
+      || p.type === "reasoning"
+      || p.type === "step-finish"
+      || p.type === "patch"
+      || p.type === "step-start"
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+type StreamingCtx = {
+  isLatestAssistant: boolean
+  sessionStatusType?: string
+}
+
 function makeInlineThinkEntry(
   message: Message,
   part: TextPart,
   text: string,
   options?: { expandThinking?: boolean },
+  allParts: Part[] = [],
+  streamingCtx: StreamingCtx = { isLatestAssistant: true },
 ): SpineEntry {
   const raw = preserveBodyText(text.replace("[REDACTED]", ""))
   const hasText = !!raw.trim()
-  const streaming = message.role === "assistant" && !message.time.completed
+  const life = buildTurnLifecycle({
+    message,
+    part: undefined,
+    segmentSuperseded: hasLaterContentPart(allParts, part.id),
+    isLatestAssistant: streamingCtx.isLatestAssistant,
+    sessionStatusType: streamingCtx.sessionStatusType,
+  })
+  const streaming =
+    message.role === "assistant" && isAssistantSegmentStreaming("think", life)
   const { body: titleStrippedBody } = reasoningSummary(raw)
   const summary = thinkingSummary(raw, `${part.id}:inline`)
   return {
@@ -1568,18 +1685,25 @@ function makeInlineThinkEntry(
     source: { messageID: message.id, partID: part.id, kind: "reasoning" },
   }
 }
-function makeThinkEntry(message: Message, part: ReasoningPart, options?: { expandThinking?: boolean }): SpineEntry {
+function makeThinkEntry(
+  message: Message,
+  part: ReasoningPart,
+  options?: { expandThinking?: boolean },
+  allParts: Part[] = [],
+  streamingCtx: StreamingCtx = { isLatestAssistant: true },
+): SpineEntry {
   // Strip OpenRouter encrypted-reasoning placeholder (matches legacy session route).
   const raw = preserveBodyText((part.text ?? "").replace("[REDACTED]", ""))
   const hasText = !!raw.trim()
-  // Streaming tracks the reasoning PART finalizing (part.time.end), not just the
-  // whole message completing — so the thinking spinner stops as soon as reasoning
-  // is done even while tools keep running. Matches runState's "thinking" detection
-  // and the legacy ReasoningPart (isDone = part.time.end). The message-completed
-  // check is kept as a fallback for parts that never receive an end timestamp.
-  const partDone = !!(part.time && part.time.end)
-  const messageDone = !!(message.time && "completed" in message.time && message.time.completed)
-  const streaming = message.role === "assistant" && !partDone && !messageDone
+  const life = buildTurnLifecycle({
+    message,
+    part,
+    segmentSuperseded: hasLaterContentPart(allParts, part.id),
+    isLatestAssistant: streamingCtx.isLatestAssistant,
+    sessionStatusType: streamingCtx.sessionStatusType,
+  })
+  const streaming =
+    message.role === "assistant" && isAssistantSegmentStreaming("think", life)
   // Split OpenAI-style **Title** disclosure so the title lives only in the spine
   // header summary, not duplicated at the top of the body (matches legacy reasoningSummary).
   const { body: titleStrippedBody } = reasoningSummary(raw)
@@ -1613,6 +1737,9 @@ function makeTextEntry(
   parts: TextPart[],
   kind: "plan" | "ok",
   assistantDuration: ReadonlyMap<string, number>,
+  /** When true, tools already ran after this text — segment superseded. */
+  toolsAlreadyRan = false,
+  streamingCtx: StreamingCtx = { isLatestAssistant: true },
 ): SpineEntry | undefined {
   if (!parts.length) return undefined
   const joined = joinTextBodies(parts)
@@ -1620,6 +1747,17 @@ function makeTextEntry(
   const view = chatTextView(joined)
   const primary = parts[0]!
   const elapsed = computeElapsed(assistantDuration, message)
+  // Part end on the primary text part if the engine sets it
+  const partWithTime = primary as TextPart & { time?: { end?: number } }
+  const life = buildTurnLifecycle({
+    message,
+    part: partWithTime.time ? partWithTime : undefined,
+    segmentSuperseded: toolsAlreadyRan,
+    isLatestAssistant: streamingCtx.isLatestAssistant,
+    sessionStatusType: streamingCtx.sessionStatusType,
+  })
+  const streaming =
+    message.role === "assistant" && isAssistantSegmentStreaming(kind, life)
   return {
     id: `${message.id}:${primary.id}:${kind}`,
     index: 0,
@@ -1634,7 +1772,7 @@ function makeTextEntry(
     bodyLabel: APP_NAME,
     collapsible: view.collapsible,
     expandedByDefault: view.expandedByDefault,
-    streaming: message.role === "assistant" && !message.time.completed,
+    streaming,
     source: { messageID: message.id, partID: primary.id, kind: "text" },
   }
 }
@@ -1670,9 +1808,13 @@ function assistantMessagePartsToEntries(
   message: Message,
   parts: Part[],
   assistantDuration: ReadonlyMap<string, number>,
-  options?: { expandThinking?: boolean },
+  options?: { expandThinking?: boolean } & StreamingCtx,
 ): SpineEntry[] {
   const entries: SpineEntry[] = []
+  const streamingCtx: StreamingCtx = {
+    isLatestAssistant: options?.isLatestAssistant !== false,
+    sessionStatusType: options?.sessionStatusType,
+  }
 
   let sawTool = false
   const textBeforeTool: TextPart[] = []
@@ -1698,13 +1840,15 @@ function assistantMessagePartsToEntries(
     if (part.type === "reasoning") {
       // Always create a think entry — even empty-text reasoning-start
       // gets a placeholder summary. makeThinkEntry handles empty text.
-      entries.push(makeThinkEntry(message, part, options))
+      entries.push(makeThinkEntry(message, part, options, parts, streamingCtx))
       continue
     }
 
     if (part.type === "text" && isTextRelevant(part)) {
       const split = splitInlineThinkingText(part)
-      if (split.thinking) entries.push(makeInlineThinkEntry(message, part, split.thinking, options))
+      if (split.thinking) {
+        entries.push(makeInlineThinkEntry(message, part, split.thinking, options, parts, streamingCtx))
+      }
       if (split.text) {
         if (!sawTool) textBeforeTool.push(split.text)
         else textAfterTool.push(split.text)
@@ -1714,7 +1858,7 @@ function assistantMessagePartsToEntries(
 
     if (part.type === "tool") {
       sawTool = true
-      entries.push(...toolPartToEntries(message, part, i))
+      entries.push(...toolPartToEntries(message, part, i, parts))
       continue
     }
 
@@ -1760,8 +1904,9 @@ function assistantMessagePartsToEntries(
     }
   }
 
-  const planEntry = makeTextEntry(message, textBeforeTool, "plan", assistantDuration)
-  const okEntry = makeTextEntry(message, textAfterTool, "ok", assistantDuration)
+  // plan stops writing once tools ran; ok/plan use full turn lifecycle (idle/finish/completed)
+  const planEntry = makeTextEntry(message, textBeforeTool, "plan", assistantDuration, sawTool, streamingCtx)
+  const okEntry = makeTextEntry(message, textAfterTool, "ok", assistantDuration, false, streamingCtx)
 
   if (!sawTool && planEntry && !okEntry) {
     const thinkEntries = entries.filter((entry) => entry.kind === "think")
@@ -2062,22 +2207,12 @@ function stabilizeEntries(next: SpineEntry[], previous: SpineEntry[] | undefined
     ) {
       return prev
     }
-    // Streaming-only fields (body, summary, elapsed, streaming) change on
-    // every token delta. Mutate prev in place so <For> keeps the same
-    // referential identity — no DOM remount, no flicker.
-    // Structural fields (kind, glyph, id, etc.) are stable during streaming;
-    // if those change, return a fresh object so <For> picks up the new row.
-    prev.body = entry.body
-    prev.summary = entry.summary
-    prev.elapsed = entry.elapsed
-    prev.elapsedMs = entry.elapsedMs
-    prev.streaming = entry.streaming
-    prev.thinking = entry.thinking
-    prev.index = entry.index
-    prev.timestamp = entry.timestamp
-    prev.children = entry.children
-    prev.receipt = entry.receipt
-    return prev
+    // Content changed — return a NEW object so Solid <For> updates props.
+    // In-place mutation is invisible to Solid (plain objects are not stores),
+    // which left "writing" chrome stuck after streaming flipped false and
+    // could freeze body text mid-token. Markdown uses streaming={false}
+    // (finalized re-parse), so a new object per delta is acceptable.
+    return entry
   })
 }
 
@@ -2089,6 +2224,9 @@ export type SpineMessageCacheEntry = {
   // Tracks `message.time.completed` so the per-message cache detects the
   // streaming → completed transition (proxy ref is stable across the flip).
   completed: number | undefined
+  finish: string | undefined
+  sessionStatusType: string | undefined
+  isLatestAssistant: boolean
   entries: SpineEntry[]
 }
 
@@ -2105,19 +2243,23 @@ export function messagesToSpineEntriesCached(input: {
   getParts: (messageId: string) => Part[]
   assistantDuration: ReadonlyMap<string, number>
   expandThinking?: boolean
+  /** Session turn status (idle/busy/…) — Grok-style authority to stop writing chrome. */
+  sessionStatusType?: string
   cache?: SpineEntriesCache
   previousEntries?: SpineEntry[]
 }): { entries: SpineEntry[]; cache: SpineEntriesCache } {
   const { messages, getParts, assistantDuration, cache, previousEntries } = input
   const expandThinking = input.expandThinking === true
+  const sessionStatusType = input.sessionStatusType
 
-  // Outer fast path REMOVED for v0.3.20.1. It keyed on `messages` array
-  // identity, but SolidJS store proxies survive `produce()` mutations — the
-  // array ref is stable when messages are appended, so the fast path
-  // returned stale `previousEntries` and newly-sent messages were invisible
-  // until the user restarted the app. The L2 per-message cache (below)
-  // still catches streaming rescan bursts via `cached.message === message`,
-  // and the slow path is O(n) ID/ref ops over ≤100 visible messages.
+  // Latest assistant in this batch (visible session messages order).
+  let latestAssistantID: string | undefined
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === "assistant") {
+      latestAssistantID = messages[i]!.id
+      break
+    }
+  }
 
   const allEntries: SpineEntry[] = []
   const nextCache: SpineEntriesCache = new Map() as SpineEntriesCache
@@ -2126,33 +2268,45 @@ export function messagesToSpineEntriesCached(input: {
     const parts = getParts(message.id) ?? EMPTY_PARTS
     const duration = assistantDuration.get(message.id)
     const cached = cache?.get(message.id)
+    const completed = message.role === "assistant" ? message.time.completed : undefined
+    const finish =
+      message.role === "assistant" && "finish" in message && typeof message.finish === "string"
+        ? message.finish
+        : undefined
+    const isLatestAssistant = message.role === "assistant" && message.id === latestAssistantID
 
-    // SolidJS store proxies survive produce() mutations — the proxy reference
-    // is stable even when part text changes during assistant streaming. Cache hit
-    // on parts identity would return stale entries with old prose/reasoning text.
-    // Force cache miss for the active assistant message, then one more recompute
-    // after completion so entries flip out of streaming mode before caching.
-    // D1: also force a miss when `time.completed` flips — the proxy ref is stable
-    // across the transition but the streaming field on the cached entries is now
-    // stale. `activeAssistant` already catches the streaming→streaming case; this
-    // catches the streaming→completed transition.
-    const activeAssistant = message.role === "assistant" && !message.time.completed
+    // While the turn is still "open" for chrome purposes, always remap so
+    // streaming can flip false when idle/finish/completed/parts change.
+    // Closed once completed, finish, or session is not busy/retry (engine default idle;
+    // missing status after poll must not keep the turn open forever).
+    const turnOpenForChrome =
+      message.role === "assistant"
+      && !completed
+      && !finish
+      && !(isLatestAssistant && !isSessionTurnActive(sessionStatusType))
 
     let entries: SpineEntry[]
     if (
-      cached &&
-      !activeAssistant &&
-      cached.message === message &&
-      cached.parts === parts &&
-      cached.duration === duration &&
-      cached.expandThinking === expandThinking &&
-      cached.completed === (message.role === "assistant" ? message.time.completed : undefined)
+      cached
+      && !turnOpenForChrome
+      && cached.message === message
+      && cached.parts === parts
+      && cached.duration === duration
+      && cached.expandThinking === expandThinking
+      && cached.completed === completed
+      && cached.finish === finish
+      && cached.sessionStatusType === sessionStatusType
+      && cached.isLatestAssistant === isLatestAssistant
     ) {
       entries = cached.entries
     } else if (message.role === "user") {
       entries = userMessageToEntries(message, parts, assistantDuration)
     } else if (message.role === "assistant") {
-      entries = assistantMessagePartsToEntries(message, parts, assistantDuration, { expandThinking })
+      entries = assistantMessagePartsToEntries(message, parts, assistantDuration, {
+        expandThinking,
+        isLatestAssistant,
+        sessionStatusType,
+      })
     } else {
       entries = []
     }
@@ -2162,7 +2316,10 @@ export function messagesToSpineEntriesCached(input: {
       parts,
       duration,
       expandThinking,
-      completed: message.role === "assistant" ? message.time.completed : undefined,
+      completed,
+      finish,
+      sessionStatusType,
+      isLatestAssistant,
       entries,
     })
     allEntries.push(...entries)
@@ -2182,6 +2339,7 @@ export function messagesToSpineEntries(input: {
   getParts: (messageId: string) => Part[]
   assistantDuration: ReadonlyMap<string, number>
   expandThinking?: boolean
+  sessionStatusType?: string
 }): SpineEntry[] {
   return messagesToSpineEntriesCached(input).entries
 }
