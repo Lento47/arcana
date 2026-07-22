@@ -32,12 +32,32 @@ function rewrite(request: Request, directory?: string) {
   return next
 }
 
-export function createOpencodeClient(config?: Config & { directory?: string }) {
+export function createOpencodeClient(config?: Config & { directory?: string; timeoutMs?: number }) {
+  const timeoutMs = config?.timeoutMs ?? 30_000
   if (!config?.fetch) {
-    const customFetch: any = (req: any) => {
+    const customFetch: any = (req: any, init?: any) => {
+      const method = (req as any)?.method ?? "GET"
+      // Only timeout mutating requests (POST/PATCH/PUT/DELETE).
+      // GET/HEAD include SSE streaming and health checks — never time out.
+      if (timeoutMs > 0 && method !== "GET" && method !== "HEAD") {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs)
+        const existingSignal: AbortSignal | undefined = init?.signal ?? (req as any)?.signal
+        if (existingSignal) {
+          if (existingSignal.aborted) {
+            clearTimeout(timer)
+          } else {
+            existingSignal.addEventListener("abort", () => {
+              clearTimeout(timer)
+              controller.abort(existingSignal.reason)
+            }, { once: true })
+          }
+        }
+        return fetch(req, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer))
+      }
       // @ts-ignore
       req.timeout = false
-      return fetch(req)
+      return fetch(req, init)
     }
     config = {
       ...config,
