@@ -2221,13 +2221,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           const model = local.model.current()
           if (!agent || !model || !model.providerID || !model.modelID) {
             dialog.clear()
-            route.navigate({ type: "home" })
+            // Defer navigation so SolidJS processes dialog cleanup effects
+            // before the view tree is destroyed (node.cleanups[i] is null).
+            queueMicrotask(() => route.navigate({ type: "home" }))
             return
           }
 
-          // Close any open dialogs before navigation — leaving a dialog
-          // mounted while route.navigate() swaps the view causes SolidJS
-          // cleanup races (t.cleanups[e] is null).
           dialog.clear()
 
           const currentSession = route.data.type === "session" ? sync.session.get(route.data.sessionID) : undefined
@@ -2255,7 +2254,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
                   duration: 5000,
                 })
                 dialog.clear()
-                route.navigate({ type: "home" })
+                queueMicrotask(() => route.navigate({ type: "home" }))
                 return
               }
               route.navigate({
@@ -2271,7 +2270,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
                 duration: 5000,
               })
               dialog.clear()
-              route.navigate({ type: "home" })
+              queueMicrotask(() => route.navigate({ type: "home" }))
             })
         },
       },
