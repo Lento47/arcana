@@ -722,6 +722,16 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
             return
           }
 
+          // Log full error before formatUnknownError strips the stack.
+          // "Unexpected error" + minified "$.startsWith" is undebuggable
+          // without this — the global uncaughtException never fires because
+          // the Effect runtime catches everything.
+          if (error instanceof Error) {
+            process.stderr.write(`[arcana] runtime error: ${error.message}\n${error.stack ?? ""}\n`)
+          } else {
+            process.stderr.write(`[arcana] runtime error: ${String(error)}\n`)
+          }
+
           const text =
             (await state.stream?.then((item) => item.mod).catch(() => undefined))?.formatUnknownError(error) ??
             (error instanceof Error ? error.message : String(error))
