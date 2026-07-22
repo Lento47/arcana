@@ -134,7 +134,15 @@ const targets = singleFlag
     })
   : allTargets
 
-await $`rm -rf dist`
+// Cross-platform dist wipe. Bun's `rm -rf` fails on Windows when dist has
+// nested node_modules junctions ("Directory not empty").
+function rmrf(target: string) {
+  const abs = path.resolve(dir, target)
+  if (!fs.existsSync(abs)) return
+  fs.rmSync(abs, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+}
+
+rmrf("dist")
 
 const binaries: Record<string, string> = {}
 
@@ -241,7 +249,7 @@ for (const item of targets) {
     }
   }
 
-  await $`rm -rf ./dist/${name}/bin/tui`
+  rmrf(`dist/${name}/bin/tui`)
   await Bun.file(`dist/${name}/package.json`).write(
     JSON.stringify(
       {

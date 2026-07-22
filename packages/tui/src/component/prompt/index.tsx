@@ -68,6 +68,7 @@ import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
 import { addOptimisticMessage } from "./optimistic"
 import { arcanaTaskInstruction, assessArcanaTaskRisk, parseArcanaPromptCommand } from "../../arcana/task"
+import { useSessionPrewarm } from "../../routes/home/prewarm-session"
 
 export type PromptProps = {
   sessionID?: string
@@ -220,6 +221,14 @@ export function Prompt(props: PromptProps) {
   const [auto, setAuto] = createSignal<AutocompleteRef>()
   const workspace = usePromptWorkspace(props.sessionID)
   const move = usePromptMove({ projectID: project.project, sessionID: () => props.sessionID })
+  /** App-level prewarm (Grok NewAuto) — first Home send skips await session.create. */
+  const sessionPrewarm = useSessionPrewarm()
+  // First keystroke on Home: ensure prewarm has started (covers failed/slow boot).
+  createEffect(() => {
+    if (props.sessionID) return
+    if (!store.prompt.input.trim()) return
+    sessionPrewarm?.ensure()
+  })
   const [cursorVersion, setCursorVersion] = createSignal(0)
   const currentProviderLabel = createMemo(() => {
     const p = local.model.parsed()
@@ -958,7 +967,18 @@ export function Prompt(props: PromptProps) {
     }
   }
 
+  /** Debug: ARCANA_DEBUG_SUBMIT_TIMING=1 logs T0–T4 submit stages (Home latency). */
+  function submitTimingEnabled() {
+    return typeof process !== "undefined" && process.env?.ARCANA_DEBUG_SUBMIT_TIMING === "1"
+  }
+  function markSubmit(label: string, t0: number, extra?: Record<string, unknown>) {
+    if (!submitTimingEnabled()) return
+    const ms = Math.round(performance.now() - t0)
+    console.log(`[submit-timing] ${label} +${ms}ms`, extra ?? "")
+  }
+
   async function submitInner() {
+    const t0 = performance.now()
     workspace.clearNotice()
 
     // Authoritative text: read the live editor buffer first. Store lags one
@@ -1095,6 +1115,7 @@ export function Prompt(props: PromptProps) {
     setStore("extmarkToPartIndex", new Map())
     input.clear()
     props.onSubmit?.()
+    markSubmit("T1 clear", t0)
 
     let sessionID = props.sessionID
     let finishMoveProgress = false
@@ -1102,39 +1123,99 @@ export function Prompt(props: PromptProps) {
       const selectedWorkspace = workspace.selection()
       const workspaceID = selectedWorkspace?.type === "existing" ? selectedWorkspace.workspaceID : undefined
 
-      const directory = await move.getDirectory(inputText)
-      if (move.pending() && !directory) {
-        // Restore composer so the user can retry
-        setStore("prompt", { input: inputText, parts: nonTextParts })
-        input.setText(inputText)
-        return false
+      // Prefer prewarmed session (app-level) so Enter is not blocked on create.
+      // Skip prewarm when user selected a custom destination (worktree/directory).
+      const needsDestination = Boolean(move.pending())
+      let prewarmed: string | undefined
+      if (!needsDestination && sessionPrewarm) {
+        prewarmed = sessionPrewarm.consume()
+        if (!prewarmed) {
+          // Creating or idle — waitAndConsume kicks create if needed (no double create).
+          prewarmed = await sessionPrewarm.waitAndConsume()
+        }
       }
-      finishMoveProgress = Boolean(move.progress())
+      if (prewarmed) {
+        sessionID = prewarmed
+        markSubmit("T3 prewarm hit", t0, { sessionID })
+      } else {
+        const directory = await move.getDirectory(inputText)
+        markSubmit("T2 getDirectory", t0)
+        if (move.pending() && !directory) {
+          // Restore composer so the user can retry
+          setStore("prompt", { input: inputText, parts: nonTextParts })
+          input.setText(inputText)
+          return false
+        }
+        finishMoveProgress = Boolean(move.progress())
 
-      const res = await sdk.client.session.create({
-        directory,
-        workspace: workspaceID,
-        agent: agent.name,
-        model: {
-          providerID: selectedModel.providerID,
-          id: selectedModel.modelID,
-          variant,
-        },
-      })
-
-      if (res.error) {
-        if (finishMoveProgress) move.finishSubmit()
-        console.log("Creating a session failed:", res.error)
-        setStore("prompt", { input: inputText, parts: nonTextParts })
-        input.setText(inputText)
-        toast.show({
-          message: "Creating a session failed. Open console for more details.",
-          variant: "error",
+        const res = await sdk.client.session.create({
+          directory,
+          workspace: workspaceID,
+          agent: agent.name,
+          model: {
+            providerID: selectedModel.providerID,
+            id: selectedModel.modelID,
+            variant,
+          },
         })
-        return true
-      }
+        markSubmit("T3 session.create", t0, { error: Boolean(res.error) })
 
-      sessionID = res.data.id
+        if (res.error) {
+          if (finishMoveProgress) move.finishSubmit()
+          console.log("Creating a session failed:", res.error)
+          setStore("prompt", { input: inputText, parts: nonTextParts })
+          input.setText(inputText)
+          toast.show({
+            message: "Creating a session failed. Open console for more details.",
+            variant: "error",
+          })
+          return true
+        }
+
+        sessionID = res.data.id
+        // Seed local store so session view has metadata before SSE.
+        if (res.data) sync.session.upsert(res.data as any)
+      }
+    }
+
+    // Grok order: optimistic user bubble *before* navigate so the session view
+    // mounts with content already present (no empty flash).
+    const isHomeSend = !props.sessionID && !!sessionID
+    if (isHomeSend && store.mode !== "shell" && !arcanaPromptCommand) {
+      const isGoalCmd =
+        inputText.startsWith("/")
+        && (() => {
+          const cmd = inputText.split("\n")[0].split(" ")[0].slice(1).toLowerCase()
+          return cmd === "goal" || cmd === "loop"
+        })()
+      const isServerSlash =
+        inputText.startsWith("/")
+        && sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
+      if (!isGoalCmd && !isServerSlash) {
+        addOptimisticMessage({
+          id: `optimistic-${crypto.randomUUID()}`,
+          sessionID,
+          text: inputText,
+          timestamp: Date.now(),
+          agent: agent.name,
+          model: {
+            providerID: selectedModel.providerID,
+            modelID: selectedModel.modelID,
+            variant,
+          },
+        })
+        markSubmit("T3.4 optimistic", t0)
+      }
+    }
+
+    // From Home: navigate as soon as we have an id (bubble already queued).
+    if (isHomeSend) {
+      if (editorParts.length > 0) editor.preserveSelectionFromNewSession()
+      route.navigate({
+        type: "session",
+        sessionID,
+      })
+      markSubmit("T3.5 early navigate", t0, { sessionID })
     }
 
     if (store.mode === "shell") {
@@ -1181,13 +1262,16 @@ export function Prompt(props: PromptProps) {
         approval_status: approvalStatus,
       })
       move.startSubmit()
-      sdk.client.session
-        .prompt(
+      // promptAsync returns immediately; agent loop runs server-side (SSE updates).
+      void sdk.client.session
+        .promptAsync(
           {
             sessionID,
-            ...selectedModel,
             agent: agent.name,
-            model: selectedModel,
+            model: {
+              providerID: selectedModel.providerID,
+              modelID: selectedModel.modelID,
+            },
             variant,
             parts: [
               ...editorParts,
@@ -1323,7 +1407,53 @@ export function Prompt(props: PromptProps) {
       })
     } else {
       move.startSubmit()
-      // Suggest session agent + delegation tip (full roster), never auto-switch.
+      // Home path already added optimistic before navigate; in-session still needs it here.
+      if (!isHomeSend) {
+        addOptimisticMessage({
+          id: `optimistic-${crypto.randomUUID()}`,
+          sessionID,
+          text: inputText,
+          timestamp: Date.now(),
+          agent: agent.name,
+          model: {
+            providerID: selectedModel.providerID,
+            modelID: selectedModel.modelID,
+            variant,
+          },
+        })
+      }
+      // promptAsync: 204 + forked agent loop (same as workspace move path).
+      // Avoids holding HTTP open for the full turn (session.prompt waits on loop).
+      void sdk.client.session
+        .promptAsync(
+          {
+            sessionID,
+            agent: agent.name,
+            model: {
+              providerID: selectedModel.providerID,
+              modelID: selectedModel.modelID,
+            },
+            variant,
+            parts: [
+              ...editorParts,
+              {
+                type: "text",
+                text: inputText,
+              },
+              ...nonTextParts,
+            ],
+          },
+          { throwOnError: true },
+        )
+        .catch((error) => {
+          toast.show({
+            title: "Failed to send prompt",
+            message: errorMessage(error),
+            variant: "error",
+          })
+        })
+      if (editorParts.length > 0) editor.markSelectionSent()
+      // Agent tip is non-blocking UX chrome — never delay the send path.
       void import("@arcana/core/session/goal")
         .then(({ suggestAgents }) => {
           const agents = sync.data.agent ?? []
@@ -1355,58 +1485,13 @@ export function Prompt(props: PromptProps) {
           }
         })
         .catch(() => {})
-      sdk.client.session
-        .prompt(
-          {
-            sessionID,
-            ...selectedModel,
-            agent: agent.name,
-            model: selectedModel,
-            variant,
-            parts: [
-              ...editorParts,
-              {
-                type: "text",
-                text: inputText,
-              },
-              ...nonTextParts,
-            ],
-          },
-          { throwOnError: true },
-        )
-        .catch((error) => {
-          toast.show({
-            title: "Failed to send prompt",
-            message: errorMessage(error),
-            variant: "error",
-          })
-        })
-      // Optimistic: push user message to the session view immediately so
-      // it appears before the SSE message.updated round-trip. The session
-      // view deduplicates when the real message arrives (matched by text).
-      addOptimisticMessage({
-        id: `optimistic-${crypto.randomUUID()}`,
-        sessionID,
-        text: inputText,
-        timestamp: Date.now(),
-        agent: agent.name,
-        model: {
-          providerID: selectedModel.providerID,
-          modelID: selectedModel.modelID,
-          variant,
-        },
-      })
-      if (editorParts.length > 0) editor.markSelectionSent()
     }
 
-    // Navigate to new session immediately (prompt already cleared)
-    if (!props.sessionID) {
-      if (editorParts.length > 0) editor.preserveSelectionFromNewSession()
-      route.navigate({
-        type: "session",
-        sessionID,
-      })
-    }
+    markSubmit("T4 prompt+optimistic done", t0, {
+      sessionID,
+      fromHome: isHomeSend,
+      prewarm: Boolean(sessionPrewarm),
+    })
     if (finishMoveProgress) move.finishSubmit()
     return true
   }

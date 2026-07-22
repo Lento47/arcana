@@ -68,7 +68,12 @@ import { Toast, useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv.tsx"
 import stripAnsi from "strip-ansi"
 import { usePromptRef } from "../../context/prompt"
-import { allOptimisticMessages } from "../../component/prompt/optimistic"
+import {
+  allOptimisticMessages,
+  clearOptimisticMessages,
+  filterCoveredOptimistics,
+  realUserMessageHasText,
+} from "../../component/prompt/optimistic"
 import { useEpilogue } from "../../context/epilogue"
 import { normalizePath } from "../../util/path"
 import { PermissionPrompt } from "./permission"
@@ -235,24 +240,41 @@ export function Session() {
     const allOpt = allOptimisticMessages()
     const opt = allOpt.filter((m) => m.sessionID === route.sessionID)
     if (opt.length === 0) return stored
-    // Once ANY real user message arrives via SSE for this session, drop ALL
-    // optimistic entries — the event stream has delivered authoritative data.
-    // This is intentionally simple: a rapid double-send before the first SSE
-    // response means the second message waits for its own SSE event (existing
-    // behaviour, no worse than before).
-    const hasRealUserMessage = stored.some(
-      (m) => m.role === "user" && !m.id.startsWith("optimistic-"),
-    )
-    if (hasRealUserMessage) return stored
-    // No real messages yet — render optimistic entries as minimal UserMessage
-    // proxies so the spine mapper can produce ask entries.
-    const optMessages: any[] = opt.map((o) => ({
+
+    // Grok-style: keep local user echo until real TEXT parts exist.
+    // SSE often creates the user Message before any TextPart — dropping on
+    // bare role:user produces spine "you …" with empty body.
+    const realUserTexts: string[] = []
+    for (const m of stored) {
+      if (m.role !== "user" || m.id.startsWith("optimistic-")) continue
+      const parts = sync.data.part[m.id] ?? []
+      if (!realUserMessageHasText(m, parts)) continue
+      for (const p of parts) {
+        if (p.type === "text" && typeof (p as TextPart).text === "string" && (p as TextPart).text.trim()) {
+          realUserTexts.push((p as TextPart).text)
+        }
+      }
+    }
+
+    const remaining = filterCoveredOptimistics(opt, realUserTexts)
+    // GC: when everything is covered, clear optimistics for this session
+    if (remaining.length === 0 && opt.length > 0) {
+      // Defer so we don't setState during this memo's pure computation.
+      queueMicrotask(() => clearOptimisticMessages(route.sessionID))
+      return stored
+    }
+    if (remaining.length === 0) return stored
+
+    // Proxies carry `text` so mapper/getParts can render even without parts.
+    const optMessages: any[] = remaining.map((o) => ({
       id: o.id,
       sessionID: o.sessionID,
       role: "user" as const,
       time: { created: o.timestamp },
       agent: o.agent,
       model: o.model,
+      // Defense for mapper if getParts is empty
+      text: o.text,
     }))
     return [...optMessages, ...stored]
   })
@@ -1399,6 +1421,7 @@ export function Session() {
         permissions,
         questions,
         session,
+        sessionStatus: () => sync.data.session_status[route.sessionID],
         visible,
         disabled,
         sessionID: route.sessionID,

@@ -26,6 +26,8 @@ export interface ShellProps {
   permissions: Accessor<unknown[]>
   questions: Accessor<unknown[]>
   session: Accessor<{ id: string; parentID?: string; title?: string } | undefined>
+  /** Session turn status (idle/busy/retry/…) — stops assistant "writing" chrome. */
+  sessionStatus?: Accessor<{ type: string } | undefined>
   visible: Accessor<boolean>
   disabled: Accessor<boolean>
   sessionID: string

@@ -54,10 +54,16 @@ export function resolveProseMode(input: {
   text: string
 }): SpineProseMode {
   const label = input.bodyLabel?.toLowerCase() ?? ""
+  // Chat voice: only use <markdown> when the text actually has markdown.
+  // Plain replies ("Hi, what would you…") use word-wrapped <text> so OpenTUI
+  // never collapses width to ~1 cell (one-word-per-line artifact).
   if (input.kind === "ask" || input.kind === "plan" || input.kind === "ok") {
-    return looksLikeMarkdown(input.text) || input.text.includes("\n") ? "markdown" : "markdown"
+    return looksLikeMarkdown(input.text) ? "markdown" : "plain"
   }
-  if (input.kind === "think") return "markdown"
+  // Reasoning is usually prose; prefer plain wrap unless real markdown markers.
+  if (input.kind === "think") {
+    return looksLikeMarkdown(input.text) ? "markdown" : "plain"
+  }
   if (label === "diff" || looksLikeDiff(input.text)) return "code"
   if (label === "error" || input.kind === "fail") return "code"
   if (label === "written content" || label === "output" || label === "file") return "code"
@@ -120,30 +126,37 @@ export function SpineProse(props: {
   chatVoice?: boolean
 }) {
   const { theme, syntax, subtleSyntax } = useTheme()
-  const text = createMemo(() => props.text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"))
-  const mode = createMemo(() => resolveProseMode({ kind: props.kind, bodyLabel: props.bodyLabel, text: text() }))
+  // All prop reads are memoized so token deltas and turn-end flips re-render
+  // without remounting the parent spine row.
+  const kind = () => props.kind
+  const bodyLabel = () => props.bodyLabel
+  const hint = () => props.hint
+  const chatVoice = () => props.chatVoice === true
+  const focused = () => props.focused === true
+  const text = createMemo(() => (props.text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"))
+  const mode = createMemo(() => resolveProseMode({ kind: kind(), bodyLabel: bodyLabel(), text: text() }))
   const markdownContent = createMemo(() =>
     mode() === "markdown" ? escapeMarkdownUnderscoreEmphasis(text()) : text(),
   )
-  const ft = createMemo(() => resolveFiletype(props.bodyLabel, props.hint, text(), props.hint))
+  const ft = createMemo(() => resolveFiletype(bodyLabel(), hint(), text(), hint()))
   const fg = createMemo(() => {
-    if (props.kind === "think") return theme.textMuted
-    if (props.kind === "fail" || props.bodyLabel === "error") return theme.error
+    if (kind() === "think") return theme.textMuted
+    if (kind() === "fail" || bodyLabel() === "error") return theme.error
     // Chat voice reads as primary content (Grok-style agent message).
-    if (props.chatVoice) return theme.markdownText ?? theme.text
+    if (chatVoice()) return theme.markdownText ?? theme.text
     return theme.markdownText ?? theme.text
   })
   const mdBg = createMemo(() => {
     // Match soft card panel so markdown doesn't flash the page background.
-    if (props.chatVoice && (props.kind === "plan" || props.kind === "ok")) {
+    if (chatVoice() && (kind() === "plan" || kind() === "ok")) {
       return (theme.backgroundPanel ?? theme.background) as any
     }
     return theme.background as any
   })
-  const style = () => (props.kind === "think" || props.kind === "fail" ? subtleSyntax() : syntax())
+  const style = () => (kind() === "think" || kind() === "fail" ? subtleSyntax() : syntax())
   // File reads: slightly tighter chrome so tool panels don't dominate the timeline.
-  const codePad = () => (props.bodyLabel === "file" ? 1 : 2)
-  const codePadY = () => (props.bodyLabel === "file" ? 0 : 1)
+  const codePad = () => (bodyLabel() === "file" ? 1 : 2)
+  const codePadY = () => (bodyLabel() === "file" ? 0 : 1)
 
   const reminderCallouts = () => (
     <Show when={props.reminders && props.reminders.length > 0}>
@@ -184,39 +197,42 @@ export function SpineProse(props: {
   )
 
   return (
-    <box flexGrow={1} minWidth={0} flexShrink={1} flexDirection="column">
+    <box flexGrow={1} minWidth={0} flexShrink={1} flexDirection="column" width="100%">
       {reminderCallouts()}
       <Switch>
         <Match when={mode() === "markdown"}>
-          <markdown
-            syntaxStyle={style()}
-            // Force finalized render mode even during streaming. Default
-            // streaming=true keeps trailing blocks unstable in OpenTUI's
-            // MarkdownRenderable, causing visible text flicker/disappear
-            // on every token. Finalized mode re-parses fully each render
-            // but produces stable output — acceptable trade for short
-            // streaming responses.
-            streaming={false}
-            internalBlockMode="top-level"
-            content={markdownContent()}
-            tableOptions={{ style: "grid" }}
-            conceal={true}
-            fg={fg() as any}
-            bg={mdBg() as any}
-          />
+          <box width="100%" minWidth={0} flexShrink={1}>
+            <markdown
+              syntaxStyle={style()}
+              // Force finalized render mode even during streaming. Default
+              // streaming=true keeps trailing blocks unstable in OpenTUI's
+              // MarkdownRenderable, causing visible text flicker/disappear
+              // on every token. Finalized mode re-parses fully each render
+              // but produces stable output — acceptable trade for short
+              // streaming responses.
+              streaming={false}
+              internalBlockMode="top-level"
+              content={markdownContent()}
+              tableOptions={{ style: "grid" }}
+              conceal={true}
+              fg={fg() as any}
+              bg={mdBg() as any}
+            />
+          </box>
           {bodyNote()}
         </Match>
         <Match when={mode() === "code"}>
           <box
             flexShrink={0}
             minWidth={0}
-            backgroundColor={props.focused ? (theme.backgroundElement as any) : (theme.backgroundPanel as any)}
+            width="100%"
+            backgroundColor={focused() ? (theme.backgroundElement as any) : (theme.backgroundPanel as any)}
             paddingLeft={codePad()}
             paddingRight={codePad()}
             paddingTop={codePadY()}
             paddingBottom={codePadY()}
             border={["left"]}
-            borderColor={(props.bodyLabel === "file" ? (theme.spineInspect ?? fg()) : fg()) as any}
+            borderColor={(bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : fg()) as any}
           >
             <code
               filetype={ft()}
@@ -231,7 +247,7 @@ export function SpineProse(props: {
           {bodyNote()}
         </Match>
         <Match when={true}>
-          <text fg={fg() as any} wrapMode="word">
+          <text fg={fg() as any} wrapMode="word" width="100%">
             {text()}
           </text>
           {bodyNote()}

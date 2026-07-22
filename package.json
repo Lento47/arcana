@@ -8,9 +8,10 @@
   "packageManager": "bun@1.3.14",
   "scripts": {
     "dev": "bun packages/arcana/src/index.ts",
-    "dev:tui": "bun --cwd packages/tui dev",
-    "dev:web": "bun --cwd packages/enterprise dev",
-    "web:build": "bun --cwd packages/enterprise build",
+    "dev:tui": "bun run --cwd packages/engine dev",
+    "dev:web": "bun run --cwd packages/enterprise dev",
+    "web:build": "bun run --cwd packages/enterprise build",
+    "build:engine": "bun run --cwd packages/engine script/build.ts --skip-embed-web-ui --single --skip-install",
     "lint": "oxlint",
     "typecheck": "bun turbo typecheck",
     "build": "bun turbo build",

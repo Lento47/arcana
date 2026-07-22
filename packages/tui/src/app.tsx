@@ -53,6 +53,7 @@ import { DialogWorkspaceList } from "./component/dialog-workspace-list"
 import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
+import { SessionPrewarmProvider } from "./routes/home/prewarm-session"
 import { Session } from "./routes/session"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
@@ -1845,22 +1846,25 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                               <DataProvider>
                                                 <ThemeProvider mode={mode}>
                                                   <LocalProvider>
-                                                    <PromptStashProvider>
-                                                      <DialogProvider>
-                                                        <FrecencyProvider>
-                                                          <PromptHistoryProvider>
-                                                            <PromptRefProvider>
-                                                              <EditorContextProvider>
-                                                                <App
-                                                                  onSnapshot={input.onSnapshot}
-                                                                  pluginHost={input.pluginHost}
-                                                                />
-                                                              </EditorContextProvider>
-                                                            </PromptRefProvider>
-                                                          </PromptHistoryProvider>
-                                                        </FrecencyProvider>
-                                                      </DialogProvider>
-                                                    </PromptStashProvider>
+                                                    {/* Grok NewAuto-style: one spare session ready before first Home Enter. */}
+                                                    <SessionPrewarmProvider>
+                                                      <PromptStashProvider>
+                                                        <DialogProvider>
+                                                          <FrecencyProvider>
+                                                            <PromptHistoryProvider>
+                                                              <PromptRefProvider>
+                                                                <EditorContextProvider>
+                                                                  <App
+                                                                    onSnapshot={input.onSnapshot}
+                                                                    pluginHost={input.pluginHost}
+                                                                  />
+                                                                </EditorContextProvider>
+                                                              </PromptRefProvider>
+                                                            </PromptHistoryProvider>
+                                                          </FrecencyProvider>
+                                                        </DialogProvider>
+                                                      </PromptStashProvider>
+                                                    </SessionPrewarmProvider>
                                                   </LocalProvider>
                                                 </ThemeProvider>
                                               </DataProvider>

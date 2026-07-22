@@ -621,6 +621,8 @@ describe("collapsible think entries", () => {
       messages: msgs,
       getParts: partsLookup(parts),
       assistantDuration: new Map(),
+      // Mid-turn: busy so think auto-expands while streaming (missing status = idle).
+      sessionStatusType: "busy",
     })
 
     expect(result).toHaveLength(1)
@@ -629,6 +631,7 @@ describe("collapsible think entries", () => {
     expect(result[0]!.collapsible).toBe(true)
     // Incomplete assistant → auto-expand so thinking is visible while streaming.
     expect(result[0]!.expandedByDefault).toBe(true)
+    expect(result[0]!.streaming).toBe(true)
     expect(result[0]!.label).toBe("")
     // Summary is now a VerbPool slug (seeded on part ID) — not the raw first line.
     expect(result[0]!.summary).toBeTruthy()
@@ -1513,5 +1516,272 @@ Diff excerpts can be improved later.`,
     expect(run!.receipt?.stats?.failed).toBe(0)
     expect(run!.receipt?.stats?.ignored).toBe(1)
     expect(run!.receipt?.stats?.duration).toBe("2.40s")
+  })
+
+  test("thinking shimmer stops once a later tool part exists", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-think-stop")
+    parts.push({
+      id: "p-reason",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "reasoning",
+      text: "I should load a skill",
+      time: { start: 1000 },
+    } as Part)
+    parts.push({
+      id: "p-skill",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-skill",
+      tool: "skill",
+      state: {
+        status: "running",
+        input: { name: "higgsfield-game-generation" },
+        title: "skill",
+        metadata: {},
+        time: { start: 1100 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    const think = result.find((e) => e.kind === "think")
+    expect(think).toBeDefined()
+    expect(think!.streaming).toBe(false)
+  })
+
+  test("plan text stops writing shimmer once tools have run", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-plan-stop")
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Hey.",
+    } as Part)
+    parts.push({
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "echo hi" },
+        output: "hi",
+        title: "bash",
+        metadata: {},
+        time: { start: 1000, end: 1100 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    const plan = result.find((e) => e.kind === "plan")
+    expect(plan).toBeDefined()
+    expect(plan!.streaming).toBe(false)
+  })
+
+  test("running skill superseded by later text does not leave Working forever", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-skill-stop")
+    parts.push({
+      id: "p-skill",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-skill",
+      tool: "skill",
+      state: {
+        status: "running",
+        input: { name: "game" },
+        title: "skill",
+        metadata: {},
+        time: { start: 1000 },
+      },
+    } as Part)
+    parts.push({
+      id: "p-after",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "I can help with that.",
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    const skill = result.find((e) => e.source?.kind === "tool")
+    expect(skill).toBeDefined()
+    expect(skill!.receipt?.status).not.toBe("pending")
+  })
+
+  test("running bash on a finished turn does not leave Working forever", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-stuck-bash", { completed: 5000 })
+    parts.push({
+      id: "p-bash",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-bash",
+      tool: "bash",
+      state: {
+        status: "running",
+        input: { command: "echo hi" },
+        title: "bash",
+        metadata: {},
+        time: { start: 1000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    const run = result.find((e) => e.kind === "run")
+    expect(run).toBeDefined()
+    expect(run!.receipt?.status).not.toBe("pending")
+    expect(run!.receipt?.status).toBe("ok")
+  })
+
+  test("simple reply stops writing when session is idle even without time.completed", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-idle-stop")
+    // No completed timestamp — classic promptAsync lag case
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Of course!",
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "idle",
+    })
+
+    const plan = result.find((e) => e.kind === "plan")
+    expect(plan).toBeDefined()
+    expect(plan!.summary).toBe("Of course!")
+    expect(plan!.streaming).toBe(false)
+  })
+
+  test("simple reply stops writing when session status is missing (post-idle poll)", () => {
+    // Engine deletes idle keys from the status map; session.status poll omits them.
+    // Missing status must not leave streaming=true forever after "Of course!".
+    const { messages: msgs, parts } = makeAssistantMessage("a-missing-status-stop")
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Of course!",
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      // undefined = typical after idle + status list reconcile
+      sessionStatusType: undefined,
+    })
+
+    const plan = result.find((e) => e.kind === "plan")
+    expect(plan).toBeDefined()
+    expect(plan!.summary).toBe("Of course!")
+    expect(plan!.body ?? plan!.summary).toContain("Of course!")
+    expect(plan!.streaming).toBe(false)
+  })
+
+  test("simple reply stops writing when message.finish is set without completed", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-finish-stop")
+    ;(msgs[0] as Message & { finish?: string }).finish = "stop"
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Of course!",
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "busy",
+    })
+
+    const plan = result.find((e) => e.kind === "plan")
+    expect(plan!.streaming).toBe(false)
+  })
+
+  test("latest assistant still streams while session is busy", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-busy-stream")
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Of course!",
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "busy",
+    })
+
+    const plan = result.find((e) => e.kind === "plan")
+    expect(plan!.streaming).toBe(true)
+  })
+
+  test("busy→idle flip yields streaming false and keeps full assistant text", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-busy-to-idle")
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Of course! Happy to help with anything.",
+    } as Part)
+
+    const getParts = partsLookup(parts)
+    const busy = messagesToSpineEntries({
+      messages: msgs,
+      getParts,
+      assistantDuration: new Map(),
+      sessionStatusType: "busy",
+    })
+    expect(busy.find((e) => e.kind === "plan")!.streaming).toBe(true)
+
+    const idle = messagesToSpineEntries({
+      messages: msgs,
+      getParts,
+      assistantDuration: new Map(),
+      sessionStatusType: "idle",
+    })
+    const plan = idle.find((e) => e.kind === "plan")!
+    expect(plan.streaming).toBe(false)
+    expect(plan.summary).toContain("Of course!")
+    // Full prose remains (no permanent ellipsis / dropped body)
+    const text = [plan.summary, plan.body].filter(Boolean).join("\n")
+    expect(text).toContain("Happy to help")
   })
 })
