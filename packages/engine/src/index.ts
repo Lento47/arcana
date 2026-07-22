@@ -143,6 +143,13 @@ if (args.length === 0) {
     const formatted = FormatError(e)
     if (formatted) UI.error(formatted)
     if (formatted === undefined) {
+      // Dump full error before the minified "Unexpected error" swallows context.
+      process.stderr.write(`[arcana] TUI bootstrap crashed:\n`)
+      if (e instanceof Error) {
+        process.stderr.write(`  message: ${e.message}\n  stack:\n${e.stack ?? "  (none)"}\n`)
+      } else {
+        process.stderr.write(`  ${String(e)}\n`)
+      }
       UI.error("Unexpected error" + EOL)
       process.stderr.write(errorMessage(e) + EOL)
     }
