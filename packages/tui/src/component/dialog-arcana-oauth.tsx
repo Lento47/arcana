@@ -123,6 +123,12 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
         return "Sign-in service hit an error. Please retry in a moment."
       }
     }
+    // SDK returns { error: {} } (empty object) for empty 500 responses.
+    // Don't show "Lost connection" — that implies a network issue when the
+    // server actually returned a valid HTTP response with no body.
+    if (isRecord(e) && Object.keys(e).length === 0) {
+      return "Sign-in service returned an unexpected error. Try 'arcana console login' in your terminal, or retry."
+    }
     return fallback
   }
 
@@ -149,6 +155,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       scheduleNext(result.data.intervalSeconds * 1000)
     } catch (e) {
       if (cancelled) return
+      console.error("OAuth start failed:", e)
       setError(friendlyError(e, "Couldn't start sign-in. Please try again."))
       setPhase("error")
     }
@@ -196,6 +203,9 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       }
     } catch (e) {
       if (cancelled) return
+      // Log the real error so "CANT CONNECT" reports are debuggable.
+      // The TUI surface keeps Arcana voice — no raw stack traces shown.
+      console.error("OAuth poll failed:", e)
       setError(friendlyError(e, "Lost the connection while waiting for confirmation. Please try again."))
       setPhase("error")
     }

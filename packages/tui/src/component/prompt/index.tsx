@@ -1019,6 +1019,18 @@ export function Prompt(props: PromptProps) {
       void promptModelWarning()
       return false
     }
+    // Defensive: model.current() returns { providerID, modelID } | undefined,
+    // but stored model.json corruption can produce objects with null fields.
+    // Guard so the SDK doesn't serialize null into the request body.
+    if (!selectedModel.providerID || !selectedModel.modelID) {
+      console.error("Model fields missing:", selectedModel)
+      toast.show({
+        message: "Select a model with /models to continue.",
+        variant: "warning",
+        duration: 5000,
+      })
+      return false
+    }
 
     const workspaceSession = props.sessionID ? sync.session.get(props.sessionID) : undefined
     const workspaceIDCheck = workspaceSession?.workspaceID
