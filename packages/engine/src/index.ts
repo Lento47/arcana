@@ -15,6 +15,24 @@ mark("cli-import-end")
 // continue in an indeterminate state. These fire for promise rejections and
 // synchronous throws outside the Effect runtime scope (e.g. fire-and-forget
 // async callbacks, timer handlers, MCP subprocess stderr).
+// Catch .startsWith(undefined) before it becomes a TypeError.
+// Bun-compiled OpenTUI 0.4.x minifies variable names to single letters;
+// "undefined is not an object (evaluating '$.startsWith')" is undebuggable
+// without this shim. It wraps the native method to dump the caller stack
+// when `this` is null/undefined, then throws a clear error.
+{
+  const origStartsWith = String.prototype.startsWith
+  String.prototype.startsWith = function (this: string, ...args: any[]) {
+    if (this == null) {
+      const e = new Error(`.startsWith() called on ${String(this)}`)
+      process.stderr.write(`[arcana] startsWith guard:\n${e.stack}\n`)
+      // Throw a clear error so the TUI bootstrap catch can surface the stack
+      throw new TypeError(`.startsWith() called on ${String(this)} — see stderr for caller stack`)
+    }
+    return origStartsWith.apply(this, args)
+  } as typeof String.prototype.startsWith
+}
+
 process.on("unhandledRejection", (reason) => {
   const stack = reason instanceof Error ? reason.stack : String(reason)
   process.stderr.write(`[arcana] Unhandled rejection:\n${stack}\n`)
@@ -23,7 +41,6 @@ process.on("unhandledRejection", (reason) => {
 process.on("uncaughtException", (err) => {
   const msg = err instanceof Error ? (err.stack ?? err.message) : String(err)
   process.stderr.write(`[arcana] Uncaught exception:\n${msg}\n`)
-  // Log the constructor name and full message before the minified "Unexpected error"
   if (err instanceof TypeError) {
     process.stderr.write(`[arcana] TypeError: ${err.message}\n`)
   }
