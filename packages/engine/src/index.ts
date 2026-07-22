@@ -16,11 +16,17 @@ mark("cli-import-end")
 // synchronous throws outside the Effect runtime scope (e.g. fire-and-forget
 // async callbacks, timer handlers, MCP subprocess stderr).
 process.on("unhandledRejection", (reason) => {
-  process.stderr.write(`[arcana] Unhandled rejection: ${String(reason)}\n`)
+  const stack = reason instanceof Error ? reason.stack : String(reason)
+  process.stderr.write(`[arcana] Unhandled rejection:\n${stack}\n`)
   process.exit(1)
 })
 process.on("uncaughtException", (err) => {
-  process.stderr.write(`[arcana] Uncaught exception: ${err.stack ?? String(err)}\n`)
+  const msg = err instanceof Error ? (err.stack ?? err.message) : String(err)
+  process.stderr.write(`[arcana] Uncaught exception:\n${msg}\n`)
+  // Log the constructor name and full message before the minified "Unexpected error"
+  if (err instanceof TypeError) {
+    process.stderr.write(`[arcana] TypeError: ${err.message}\n`)
+  }
   process.exit(1)
 })
 process.on("SIGTERM", () => {
