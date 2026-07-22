@@ -188,12 +188,23 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
       ...(input.model.providerID.startsWith("arcana")
         ? {
             ...(opencodeProjectID ? { "x-arcana-project": opencodeProjectID } : {}),
+            // Project-stable conversation identifier for free-tier binding.
+            // Must be stable across sessions so the proxy binds all sessions
+            // in the same project to one free conversation per 60-min window.
+            // x-arcana-conversation: semantic long-term header (needs proxy deploy).
+            // x-arcana-session-id: checked by CURRENT proxy at position 2 in
+            // freeConversationId — works immediately without proxy deploy.
+            ...(opencodeProjectID ? { "x-arcana-conversation": opencodeProjectID } : {}),
+            ...(opencodeProjectID ? { "x-arcana-session-id": opencodeProjectID } : {}),
             "x-arcana-session": input.sessionID,
             "x-arcana-request": input.user.id,
             "x-arcana-client": input.flags.client,
             "User-Agent": USER_AGENT,
           }
         : {
+            // Same project-stable conversation ID for non-Arcana providers.
+            ...(opencodeProjectID ? { "x-arcana-conversation": opencodeProjectID } : {}),
+            ...(opencodeProjectID ? { "x-arcana-session-id": opencodeProjectID } : {}),
             "x-session-affinity": input.sessionID,
             "X-Session-Id": input.sessionID,
             ...(input.parentSessionID ? { "x-parent-session-id": input.parentSessionID } : {}),

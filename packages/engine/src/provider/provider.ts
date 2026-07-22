@@ -903,9 +903,27 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         )
       }
 
-      // Use official ai-gateway-provider package (v2.x for AI SDK v5 compatibility)
-      const { createAiGateway } = yield* Effect.promise(() => import("ai-gateway-provider"))
-      const { createUnified } = yield* Effect.promise(() => import("ai-gateway-provider/providers/unified"))
+      // Use official ai-gateway-provider package (v2.x for AI SDK v5 compatibility).
+      // Falls back to Npm.add() when the package is excluded from the compiled
+      // binary (EXTERNAL_PROVIDERS in script/build.ts).
+      const { createAiGateway, createUnified } = yield* Effect.promise(async () => {
+        let modAiGw: any
+        let modUnified: any
+        try {
+          modAiGw = await import("ai-gateway-provider")
+          modUnified = await import("ai-gateway-provider/providers/unified")
+        } catch {
+          const item = await Npm.add("ai-gateway-provider")
+          if (!item.entrypoint) throw new Error("ai-gateway-provider has no import entrypoint")
+          const baseDir = item.entrypoint.replace(/\/[^/]+\.m?js$/, "")
+          modAiGw = await import(item.entrypoint)
+          modUnified = await import(`${baseDir}/providers/unified.mjs`)
+        }
+        return {
+          createAiGateway: modAiGw.createAiGateway,
+          createUnified: modUnified.createUnified,
+        }
+      })
 
       const metadata = iife(() => {
         if (input.options?.metadata) return input.options.metadata

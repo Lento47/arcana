@@ -257,6 +257,41 @@ for (const item of targets) {
     ),
   )
   binaries[name] = Script.version
+
+  // Symlink node_modules into the dist directory so the compiled binary
+  // can resolve external provider packages at runtime. Bun's compile target
+  // excludes packages in the `external` list from the binary bundle — those
+  // must be available on disk in node_modules relative to the binary.
+  if (item.os === process.platform && item.arch === process.arch && !item.abi) {
+    const distNM = path.resolve(dir, `dist/${name}/node_modules`)
+    const engineNM = path.resolve(dir, "node_modules")
+    // Remove existing link. rmdirSync handles Windows junctions without
+    // descending into their contents (which would fail on subdirectories).
+    try { fs.rmdirSync(distNM) } catch {}
+    try { fs.unlinkSync(distNM) } catch {}
+    try { fs.rmSync(distNM, { recursive: true, force: true }) } catch {}
+    try {
+      fs.symlinkSync(engineNM, distNM, process.platform === "win32" ? "junction" : "dir")
+      console.log(`  node_modules linked for ${name}`)
+    } catch (e) {
+      // Fallback: copy individual packages. Symlink can fail on Windows
+      // when the source and destination are on different volumes (junction
+      // limitation). Copy is slower but works everywhere.
+      console.warn(`  Symlink failed for ${name}, copying packages instead:`, (e as Error).message)
+      fs.mkdirSync(distNM, { recursive: true })
+      for (const pkg of EXTERNAL_PROVIDERS) {
+        const localNM = path.resolve(dir, "node_modules", pkg)
+        try {
+          const real = fs.realpathSync(localNM)
+          const dest = path.join(distNM, pkg)
+          fs.rmSync(dest, { recursive: true, force: true })
+          fs.cpSync(real, dest, { recursive: true })
+        } catch {
+          // Package not installed — Npm.add() fallback will install on first use.
+        }
+      }
+    }
+  }
 }
 
 	if (Script.release) {
