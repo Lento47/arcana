@@ -2219,10 +2219,16 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         run: () => {
           const agent = local.agent.current()
           const model = local.model.current()
-          if (!agent || !model) {
+          if (!agent || !model || !model.providerID || !model.modelID) {
+            dialog.clear()
             route.navigate({ type: "home" })
             return
           }
+
+          // Close any open dialogs before navigation — leaving a dialog
+          // mounted while route.navigate() swaps the view causes SolidJS
+          // cleanup races (t.cleanups[e] is null).
+          dialog.clear()
 
           const currentSession = route.data.type === "session" ? sync.session.get(route.data.sessionID) : undefined
           const directory = currentSession?.directory ?? project.instance.directory()
@@ -2248,6 +2254,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
                   variant: "error",
                   duration: 5000,
                 })
+                dialog.clear()
                 route.navigate({ type: "home" })
                 return
               }
@@ -2263,6 +2270,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
                 variant: "error",
                 duration: 5000,
               })
+              dialog.clear()
               route.navigate({ type: "home" })
             })
         },
