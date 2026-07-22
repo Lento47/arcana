@@ -130,7 +130,13 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
           expiry: Duration.seconds(60),
           interval: Duration.seconds(2),
         })
-        .pipe(Effect.catch(() => Effect.fail(new HttpApiError.InternalServerError({}))))
+        .pipe(
+          // Log the real error before the blanket catch discards all context.
+          // Without this, "CANT CONNECT" reports are undebuggable — the TUI
+          // only sees an empty 500 and shows "Lost connection."
+          Effect.tapError((error) => Effect.logError("consoleLoginPoll failed", error)),
+          Effect.catch(() => Effect.fail(new HttpApiError.InternalServerError({}))),
+        )
       switch (result._tag) {
         case "PollPending":
           return { status: "pending" as const }
