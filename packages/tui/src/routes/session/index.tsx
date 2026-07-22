@@ -68,6 +68,7 @@ import { Toast, useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv.tsx"
 import stripAnsi from "strip-ansi"
 import { usePromptRef } from "../../context/prompt"
+import { allOptimisticMessages } from "../../component/prompt/optimistic"
 import { useEpilogue } from "../../context/epilogue"
 import { normalizePath } from "../../util/path"
 import { PermissionPrompt } from "./permission"
@@ -229,7 +230,32 @@ export function Session() {
       .filter((x) => x.parentID === parentID || x.id === parentID)
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
-  const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
+  const messages = createMemo(() => {
+    const stored = sync.data.message[route.sessionID] ?? []
+    const allOpt = allOptimisticMessages()
+    const opt = allOpt.filter((m) => m.sessionID === route.sessionID)
+    if (opt.length === 0) return stored
+    // Once ANY real user message arrives via SSE for this session, drop ALL
+    // optimistic entries — the event stream has delivered authoritative data.
+    // This is intentionally simple: a rapid double-send before the first SSE
+    // response means the second message waits for its own SSE event (existing
+    // behaviour, no worse than before).
+    const hasRealUserMessage = stored.some(
+      (m) => m.role === "user" && !m.id.startsWith("optimistic-"),
+    )
+    if (hasRealUserMessage) return stored
+    // No real messages yet — render optimistic entries as minimal UserMessage
+    // proxies so the spine mapper can produce ask entries.
+    const optMessages: any[] = opt.map((o) => ({
+      id: o.id,
+      sessionID: o.sessionID,
+      role: "user" as const,
+      time: { created: o.timestamp },
+      agent: o.agent,
+      model: o.model,
+    }))
+    return [...optMessages, ...stored]
+  })
   const foregroundTasks = createMemo(() =>
     messages().flatMap((message) =>
       (sync.data.part[message.id] ?? []).filter(
@@ -1343,8 +1369,27 @@ export function Session() {
 
         messages,
         getParts: (messageId: string) => {
+          const stored = sync.data.part[messageId]
+          if (stored) return stored
+          // Synthesize a TextPart for optimistic user messages so the
+          // spine mapper can render the prompt text before the SSE
+          // message.part.updated event arrives.
+          if (messageId.startsWith("optimistic-")) {
+            const opt = allOptimisticMessages().find((m) => m.id === messageId)
+            if (opt) {
+              return [
+                {
+                  id: `${messageId}:text`,
+                  type: "text" as const,
+                  text: opt.text,
+                  sessionID: opt.sessionID,
+                  messageID: messageId,
+                },
+              ] as any
+            }
+          }
           // Stable empty array — a fresh `[]` every call busts the spine message cache.
-          return sync.data.part[messageId] ?? EMPTY_PARTS
+          return EMPTY_PARTS
         },
         revert,
         pending,
