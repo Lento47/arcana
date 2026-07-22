@@ -49,7 +49,11 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     let timer: Timer | undefined
     let last = 0
     const retryDelay = 1000
-    const maxRetryDelay = 30000
+    // Cap reconnect backoff at 5s — engine runs on localhost; if it's
+    // down longer than that, a faster retry won't hurt and the user sees
+    // "Reconnecting…" in the status bar. Previously 30s, which matched
+    // the exact "Enter does nothing for 30s" complaint on Windows.
+    const maxRetryDelay = 5000
 
     const flush = () => {
       if (queue.length === 0) return
