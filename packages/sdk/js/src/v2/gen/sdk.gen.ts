@@ -24,6 +24,10 @@ import type {
   ConfigProvidersResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
+  ConsoleLoginCompleteRequest,
+  ConsoleLoginPollRequest,
+  ConsoleLoginRequest,
+  ConsoleOpenUrlRequest,
   EventSubscribeResponses,
   EventTuiCommandExecute,
   EventTuiPromptAppend,
@@ -748,23 +752,20 @@ export class Console extends HeyApiClient {
   /**
    * Start OAuth device-code login
    *
-   * Start the Arcana console OAuth device-code flow. Returns the user_code, verification URL, and polling interval.
+   * Start the Arcana console OAuth device-code flow. Returns the user_code, verification URL, and polling interval. The TUI shows this to the user; the browser confirm is the standard device-code UX.
    */
   public login<ThrowOnError extends boolean = false>(
     parameters?: {
-      server?: string
+      consoleLoginRequest?: ConsoleLoginRequest
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [{ in: "body", key: "server" }],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ExperimentalConsoleLoginResponses, unknown, ThrowOnError>({
+    const params = buildClientParams([parameters], [{ args: [{ key: "consoleLoginRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      ExperimentalConsoleLoginResponses,
+      ExperimentalConsoleLoginErrors,
+      ThrowOnError
+    >({
       url: "/experimental/console/login",
       ...options,
       ...params,
@@ -779,27 +780,20 @@ export class Console extends HeyApiClient {
   /**
    * Poll OAuth device-code status
    *
-   * Poll the Arcana console for the device-code result.
+   * Poll the Arcana console for the device-code result. Returns 'pending' while waiting, 'success' with tokens once the user confirms in the browser, or a terminal error.
    */
   public loginPoll<ThrowOnError extends boolean = false>(
     parameters?: {
-      code?: string
-      server?: string
+      consoleLoginPollRequest?: ConsoleLoginPollRequest
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "body", key: "code" },
-            { in: "body", key: "server" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ExperimentalConsoleLoginPollResponses, unknown, ThrowOnError>({
+    const params = buildClientParams([parameters], [{ args: [{ key: "consoleLoginPollRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      ExperimentalConsoleLoginPollResponses,
+      ExperimentalConsoleLoginPollErrors,
+      ThrowOnError
+    >({
       url: "/experimental/console/login/poll",
       ...options,
       ...params,
@@ -812,31 +806,22 @@ export class Console extends HeyApiClient {
   }
 
   /**
-   * Complete login + mint proxy key
+   * Complete login + persist proxy key
    *
-   * Mint a proxy_key by binding the OAuth access_token to a license on the Arcana license server.
+   * On a successful device-code login, the Arcana console hands us a freshly-minted proxy license key as the OAuth access_token (see arcana-site/functions/auth/device/token.ts). No bind roundtrip is needed — the engine writes the access_token directly to ~/.arcana/proxy_key, writes .license-cache.json, and sets ARCANA_PROXY_KEY in the current process so the catalog refresh sees the new entitlement.
    */
   public loginComplete<ThrowOnError extends boolean = false>(
     parameters?: {
-      accessToken?: string
-      server?: string
-      email?: string
+      consoleLoginCompleteRequest?: ConsoleLoginCompleteRequest
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "body", key: "accessToken" },
-            { in: "body", key: "server" },
-            { in: "body", key: "email" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ExperimentalConsoleLoginCompleteResponses, unknown, ThrowOnError>({
+    const params = buildClientParams([parameters], [{ args: [{ key: "consoleLoginCompleteRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      ExperimentalConsoleLoginCompleteResponses,
+      ExperimentalConsoleLoginCompleteErrors,
+      ThrowOnError
+    >({
       url: "/experimental/console/login/complete",
       ...options,
       ...params,
@@ -850,39 +835,29 @@ export class Console extends HeyApiClient {
 
   /**
    * Is a proxy key present on disk?
+   *
+   * Returns { present: boolean } for whether ~/.arcana/proxy_key (or $ARCANA_PROXY_KEY) is set. The TUI uses this to decide whether to show the 'Sign in with arcana' option in /connect.
    */
   public proxyKeyPresent<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
       ExperimentalConsoleProxyKeyPresentResponses,
       ExperimentalConsoleProxyKeyPresentErrors,
       ThrowOnError
-    >({
-      url: "/experimental/console/proxy-key-present",
-      ...options,
-    })
+    >({ url: "/experimental/console/proxy-key-present", ...options })
   }
 
   /**
    * Open a URL in the system browser
    *
-   * Spawn the OS default browser to open the given URL. Used by the TUI to
-   * launch the device-code verification page without rendering the URL (and
-   * embedded code) as a click target in the terminal.
+   * Spawn the OS default browser to open the given URL. Used by the TUI to launch the device-code verification page without rendering the URL (and embedded code) as a click target in the terminal.
    */
   public openUrl<ThrowOnError extends boolean = false>(
     parameters?: {
-      url?: string
+      consoleOpenUrlRequest?: ConsoleOpenUrlRequest
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [{ in: "body", key: "url" }],
-        },
-      ],
-    )
+    const params = buildClientParams([parameters], [{ args: [{ key: "consoleOpenUrlRequest", map: "body" }] }])
     return (options?.client ?? this.client).post<
       ExperimentalConsoleOpenUrlResponses,
       ExperimentalConsoleOpenUrlErrors,

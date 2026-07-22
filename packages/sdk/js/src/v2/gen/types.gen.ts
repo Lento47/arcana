@@ -5,17 +5,6 @@ export type ClientOptions = {
 }
 
 export type Event =
-  | EventModelsDevRefreshed
-  | EventPluginAdded
-  | EventIntegrationUpdated
-  | EventCatalogUpdated
-  | EventSessionCreated
-  | EventSessionUpdated
-  | EventSessionDeleted
-  | EventMessageUpdated
-  | EventMessageRemoved
-  | EventMessagePartUpdated
-  | EventMessagePartRemoved
   | EventSessionNextAgentSwitched
   | EventSessionNextModelSwitched
   | EventSessionNextMoved
@@ -47,11 +36,22 @@ export type Event =
   | EventSessionNextCompactionStarted
   | EventSessionNextCompactionDelta
   | EventSessionNextCompactionEnded
+  | EventSessionCreated
+  | EventSessionUpdated
+  | EventSessionDeleted
+  | EventMessageUpdated
+  | EventMessageRemoved
+  | EventMessagePartUpdated
+  | EventMessagePartRemoved
+  | EventPluginAdded
+  | EventIntegrationUpdated
+  | EventCatalogUpdated
   | EventMessagePartDelta
   | EventSessionDiff
   | EventSessionError
-  | EventInstallationUpdated
-  | EventInstallationUpdateAvailable
+  | EventModelsDevRefreshed
+  | EventPermissionAsked
+  | EventPermissionReplied
   | EventPermissionV2Asked
   | EventPermissionV2Replied
   | EventReferenceUpdated
@@ -65,16 +65,12 @@ export type Event =
   | EventQuestionV2Replied
   | EventQuestionV2Rejected
   | EventTodoUpdated
-  | EventLspUpdated
-  | EventPermissionAsked
-  | EventPermissionReplied
   | EventTuiPromptAppend2
   | EventTuiCommandExecute2
   | EventTuiToastShow2
   | EventTuiSessionSelect2
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
-  | EventFileEdited
   | EventCommandExecuted
   | EventProjectUpdated
   | EventSessionStatus
@@ -82,15 +78,19 @@ export type Event =
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
-  | EventSessionCompacted
+  | EventLspUpdated
   | EventVcsBranchUpdated
-  | EventWorkspaceReady
-  | EventWorkspaceFailed
-  | EventWorkspaceStatus
+  | EventInstallationUpdated
+  | EventInstallationUpdateAvailable
   | EventWorktreeReady
   | EventWorktreeFailed
   | EventServerConnected
   | EventGlobalDisposed
+  | EventFileEdited
+  | EventSessionCompacted
+  | EventWorkspaceReady
+  | EventWorkspaceFailed
+  | EventWorkspaceStatus
   | EventServerInstanceDisposed
 
 export type QuestionReplied = {
@@ -145,6 +145,12 @@ export type MoveSessionError = {
   data: {
     message: string
   }
+}
+
+export type Prompt = {
+  text: string
+  files?: Array<PromptFileAttachment>
+  agents?: Array<PromptAgentAttachment>
 }
 
 export type SnapshotFileDiff = {
@@ -636,12 +642,6 @@ export type Part =
   | RetryPart
   | CompactionPart
 
-export type Prompt = {
-  text: string
-  files?: Array<PromptFileAttachment>
-  agents?: Array<PromptAgentAttachment>
-}
-
 export type Pty = {
   id: string
   title: string
@@ -730,92 +730,6 @@ export type GlobalEvent = {
   project?: string
   workspace?: string
   payload:
-    | {
-        id: string
-        type: "models-dev.refreshed"
-        properties: {
-          [key: string]: unknown
-        }
-      }
-    | {
-        id: string
-        type: "plugin.added"
-        properties: {
-          id: string
-        }
-      }
-    | {
-        id: string
-        type: "integration.updated"
-        properties: {
-          [key: string]: unknown
-        }
-      }
-    | {
-        id: string
-        type: "catalog.updated"
-        properties: {
-          [key: string]: unknown
-        }
-      }
-    | {
-        id: string
-        type: "session.created"
-        properties: {
-          sessionID: string
-          info: Session
-        }
-      }
-    | {
-        id: string
-        type: "session.updated"
-        properties: {
-          sessionID: string
-          info: Session
-        }
-      }
-    | {
-        id: string
-        type: "session.deleted"
-        properties: {
-          sessionID: string
-          info: Session
-        }
-      }
-    | {
-        id: string
-        type: "message.updated"
-        properties: {
-          sessionID: string
-          info: Message
-        }
-      }
-    | {
-        id: string
-        type: "message.removed"
-        properties: {
-          sessionID: string
-          messageID: string
-        }
-      }
-    | {
-        id: string
-        type: "message.part.updated"
-        properties: {
-          sessionID: string
-          part: Part
-          time: number
-        }
-      }
-    | {
-        id: string
-        type: "message.part.removed"
-        properties: {
-          sessionID: string
-          messageID: string
-          partID: string
-        }
-      }
     | {
         id: string
         type: "session.next.agent.switched"
@@ -1210,11 +1124,91 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "session.created"
+        properties: {
+          sessionID: string
+          info: Session
+        }
+      }
+    | {
+        id: string
+        type: "session.updated"
+        properties: {
+          sessionID: string
+          info: Session
+        }
+      }
+    | {
+        id: string
+        type: "session.deleted"
+        properties: {
+          sessionID: string
+          info: Session
+        }
+      }
+    | {
+        id: string
+        type: "message.updated"
+        properties: {
+          sessionID: string
+          info: Message
+        }
+      }
+    | {
+        id: string
+        type: "message.removed"
+        properties: {
+          sessionID: string
+          messageID: string
+        }
+      }
+    | {
+        id: string
+        type: "message.part.updated"
+        properties: {
+          sessionID: string
+          part: Part
+          time: number
+        }
+      }
+    | {
+        id: string
+        type: "message.part.removed"
+        properties: {
+          sessionID: string
+          messageID: string
+          partID: string
+        }
+      }
+    | {
+        id: string
+        type: "plugin.added"
+        properties: {
+          id: string
+        }
+      }
+    | {
+        id: string
+        type: "integration.updated"
+        properties: {
+          [key: string]: unknown
+        }
+      }
+    | {
+        id: string
+        type: "catalog.updated"
+        properties: {
+          [key: string]: unknown
+        }
+      }
+    | {
+        id: string
         type: "message.part.delta"
         properties: {
           sessionID: string
           messageID: string
           partID: string
+          partType: string
           field: string
           delta: string
         }
@@ -1245,16 +1239,36 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "installation.updated"
+        type: "models-dev.refreshed"
         properties: {
-          version: string
+          [key: string]: unknown
         }
       }
     | {
         id: string
-        type: "installation.update-available"
+        type: "permission.asked"
         properties: {
-          version: string
+          id: string
+          sessionID: string
+          permission: string
+          patterns: Array<string>
+          metadata: {
+            [key: string]: unknown
+          }
+          always: Array<string>
+          tool?: {
+            messageID: string
+            callID: string
+          }
+        }
+      }
+    | {
+        id: string
+        type: "permission.replied"
+        properties: {
+          sessionID: string
+          requestID: string
+          reply: "once" | "always" | "reject"
         }
       }
     | {
@@ -1372,40 +1386,6 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "lsp.updated"
-        properties: {
-          [key: string]: unknown
-        }
-      }
-    | {
-        id: string
-        type: "permission.asked"
-        properties: {
-          id: string
-          sessionID: string
-          permission: string
-          patterns: Array<string>
-          metadata: {
-            [key: string]: unknown
-          }
-          always: Array<string>
-          tool?: {
-            messageID: string
-            callID: string
-          }
-        }
-      }
-    | {
-        id: string
-        type: "permission.replied"
-        properties: {
-          sessionID: string
-          requestID: string
-          reply: "once" | "always" | "reject"
-        }
-      }
-    | {
-        id: string
         type: "tui.prompt.append"
         properties: {
           text: string
@@ -1468,13 +1448,6 @@ export type GlobalEvent = {
         properties: {
           mcpName: string
           url: string
-        }
-      }
-    | {
-        id: string
-        type: "file.edited"
-        properties: {
-          file: string
         }
       }
     | {
@@ -1561,9 +1534,9 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "session.compacted"
+        type: "lsp.updated"
         properties: {
-          sessionID: string
+          [key: string]: unknown
         }
       }
     | {
@@ -1575,24 +1548,16 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "workspace.ready"
+        type: "installation.updated"
         properties: {
-          name: string
+          version: string
         }
       }
     | {
         id: string
-        type: "workspace.failed"
+        type: "installation.update-available"
         properties: {
-          message: string
-        }
-      }
-    | {
-        id: string
-        type: "workspace.status"
-        properties: {
-          workspaceID: string
-          status: "connected" | "connecting" | "disconnected" | "error"
+          version: string
         }
       }
     | {
@@ -1625,13 +1590,6 @@ export type GlobalEvent = {
         }
       }
     | EventServerInstanceDisposed
-    | SyncEventSessionCreated
-    | SyncEventSessionUpdated
-    | SyncEventSessionDeleted
-    | SyncEventMessageUpdated
-    | SyncEventMessageRemoved
-    | SyncEventMessagePartUpdated
-    | SyncEventMessagePartRemoved
     | SyncEventSessionNextAgentSwitched
     | SyncEventSessionNextModelSwitched
     | SyncEventSessionNextMoved
@@ -1659,6 +1617,13 @@ export type GlobalEvent = {
     | SyncEventSessionNextRetried
     | SyncEventSessionNextCompactionStarted
     | SyncEventSessionNextCompactionEnded
+    | SyncEventSessionCreated
+    | SyncEventSessionUpdated
+    | SyncEventSessionDeleted
+    | SyncEventMessageUpdated
+    | SyncEventMessageRemoved
+    | SyncEventMessagePartUpdated
+    | SyncEventMessagePartRemoved
 }
 
 /**
@@ -1966,6 +1931,12 @@ export type Config = {
     title?: AgentConfig
     summary?: AgentConfig
     compaction?: AgentConfig
+    client?: AgentConfig
+    reviewer?: AgentConfig
+    architect?: AgentConfig
+    tester?: AgentConfig
+    qa?: AgentConfig
+    "anti-ai-slop"?: AgentConfig
     [key: string]: AgentConfig | undefined
   }
   provider?: {
@@ -2046,6 +2017,7 @@ export type Config = {
     mcp_timeout?: number
     policies?: Array<ConfigV2ExperimentalPolicy>
   }
+  mlRuntime?: boolean
 }
 
 export type Model = {
@@ -2154,6 +2126,58 @@ export type ConsoleState = {
 
 export type EffectHttpApiErrorInternalServerError = {
   _tag: "InternalServerError"
+}
+
+export type ConsoleLoginRequest = {
+  server?: string
+}
+
+export type ConsoleLoginResponse = {
+  code: string
+  user: string
+  url: string
+  server: string
+  expirySeconds: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  intervalSeconds: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
+export type ConsoleLoginPollRequest = {
+  code: string
+  server: string
+}
+
+export type ConsoleLoginPollResponse = {
+  status: "pending" | "slow_down" | "expired" | "denied" | "success"
+  accessToken?: string
+  refreshToken?: string
+  expiresInSeconds?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  email?: string
+  error?: string
+}
+
+export type ConsoleLoginCompleteRequest = {
+  accessToken: string
+  server: string
+  email?: string
+}
+
+export type ConsoleLoginCompleteResponse = {
+  ok: boolean
+  proxyKey?: string
+  tier?: string
+  error?: string
+}
+
+export type ConsoleProxyKeyPresentResponse = {
+  present: boolean
+}
+
+export type ConsoleOpenUrlRequest = {
+  url: string
+}
+
+export type ConsoleOpenUrlResponse = {
+  ok: boolean
 }
 
 export type ToolListItem = {
@@ -2950,113 +2974,6 @@ export type EventServerInstanceDisposed = {
   }
 }
 
-export type SyncEventSessionCreated = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "session.created.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      sessionID: string
-      info: Session
-    }
-  }
-}
-
-export type SyncEventSessionUpdated = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "session.updated.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      sessionID: string
-      info: Session
-    }
-  }
-}
-
-export type SyncEventSessionDeleted = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "session.deleted.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      sessionID: string
-      info: Session
-    }
-  }
-}
-
-export type SyncEventMessageUpdated = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "message.updated.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      sessionID: string
-      info: Message
-    }
-  }
-}
-
-export type SyncEventMessageRemoved = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "message.removed.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      sessionID: string
-      messageID: string
-    }
-  }
-}
-
-export type SyncEventMessagePartUpdated = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "message.part.updated.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      sessionID: string
-      part: Part
-      time: number
-    }
-  }
-}
-
-export type SyncEventMessagePartRemoved = {
-  type: "sync"
-  id: string
-  syncEvent: {
-    type: "message.part.removed.1"
-    id: string
-    seq: number
-    aggregateID: string
-    data: {
-      sessionID: string
-      messageID: string
-      partID: string
-    }
-  }
-}
-
 export type SyncEventSessionNextAgentSwitched = {
   type: "sync"
   id: string
@@ -3591,6 +3508,113 @@ export type SyncEventSessionNextCompactionEnded = {
       reason: "auto" | "manual"
       text: string
       recent: string
+    }
+  }
+}
+
+export type SyncEventSessionCreated = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "session.created.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      info: Session
+    }
+  }
+}
+
+export type SyncEventSessionUpdated = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "session.updated.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      info: Session
+    }
+  }
+}
+
+export type SyncEventSessionDeleted = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "session.deleted.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      info: Session
+    }
+  }
+}
+
+export type SyncEventMessageUpdated = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "message.updated.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      info: Message
+    }
+  }
+}
+
+export type SyncEventMessageRemoved = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "message.removed.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      messageID: string
+    }
+  }
+}
+
+export type SyncEventMessagePartUpdated = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "message.part.updated.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      part: Part
+      time: number
+    }
+  }
+}
+
+export type SyncEventMessagePartRemoved = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "message.part.removed.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      sessionID: string
+      messageID: string
+      partID: string
     }
   }
 }
@@ -4225,103 +4249,6 @@ export type ProjectCopyCopy = {
   directory: string
 }
 
-export type EventModelsDevRefreshed = {
-  id: string
-  type: "models-dev.refreshed"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventPluginAdded = {
-  id: string
-  type: "plugin.added"
-  properties: {
-    id: string
-  }
-}
-
-export type EventIntegrationUpdated = {
-  id: string
-  type: "integration.updated"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventCatalogUpdated = {
-  id: string
-  type: "catalog.updated"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventSessionCreated = {
-  id: string
-  type: "session.created"
-  properties: {
-    sessionID: string
-    info: Session
-  }
-}
-
-export type EventSessionUpdated = {
-  id: string
-  type: "session.updated"
-  properties: {
-    sessionID: string
-    info: Session
-  }
-}
-
-export type EventSessionDeleted = {
-  id: string
-  type: "session.deleted"
-  properties: {
-    sessionID: string
-    info: Session
-  }
-}
-
-export type EventMessageUpdated = {
-  id: string
-  type: "message.updated"
-  properties: {
-    sessionID: string
-    info: Message
-  }
-}
-
-export type EventMessageRemoved = {
-  id: string
-  type: "message.removed"
-  properties: {
-    sessionID: string
-    messageID: string
-  }
-}
-
-export type EventMessagePartUpdated = {
-  id: string
-  type: "message.part.updated"
-  properties: {
-    sessionID: string
-    part: Part
-    time: number
-  }
-}
-
-export type EventMessagePartRemoved = {
-  id: string
-  type: "message.part.removed"
-  properties: {
-    sessionID: string
-    messageID: string
-    partID: string
-  }
-}
-
 export type EventSessionNextAgentSwitched = {
   id: string
   type: "session.next.agent.switched"
@@ -4745,6 +4672,95 @@ export type EventSessionNextCompactionEnded = {
   }
 }
 
+export type EventSessionCreated = {
+  id: string
+  type: "session.created"
+  properties: {
+    sessionID: string
+    info: Session
+  }
+}
+
+export type EventSessionUpdated = {
+  id: string
+  type: "session.updated"
+  properties: {
+    sessionID: string
+    info: Session
+  }
+}
+
+export type EventSessionDeleted = {
+  id: string
+  type: "session.deleted"
+  properties: {
+    sessionID: string
+    info: Session
+  }
+}
+
+export type EventMessageUpdated = {
+  id: string
+  type: "message.updated"
+  properties: {
+    sessionID: string
+    info: Message
+  }
+}
+
+export type EventMessageRemoved = {
+  id: string
+  type: "message.removed"
+  properties: {
+    sessionID: string
+    messageID: string
+  }
+}
+
+export type EventMessagePartUpdated = {
+  id: string
+  type: "message.part.updated"
+  properties: {
+    sessionID: string
+    part: Part
+    time: number
+  }
+}
+
+export type EventMessagePartRemoved = {
+  id: string
+  type: "message.part.removed"
+  properties: {
+    sessionID: string
+    messageID: string
+    partID: string
+  }
+}
+
+export type EventPluginAdded = {
+  id: string
+  type: "plugin.added"
+  properties: {
+    id: string
+  }
+}
+
+export type EventIntegrationUpdated = {
+  id: string
+  type: "integration.updated"
+  properties: {
+    [key: string]: unknown
+  }
+}
+
+export type EventCatalogUpdated = {
+  id: string
+  type: "catalog.updated"
+  properties: {
+    [key: string]: unknown
+  }
+}
+
 export type EventMessagePartDelta = {
   id: string
   type: "message.part.delta"
@@ -4752,7 +4768,7 @@ export type EventMessagePartDelta = {
     sessionID: string
     messageID: string
     partID: string
-    partType?: "text" | "subtask" | "reasoning" | "file" | "tool" | "step-start" | "step-finish" | "snapshot" | "patch" | "agent" | "retry" | "compaction"
+    partType: string
     field: string
     delta: string
   }
@@ -4784,19 +4800,40 @@ export type EventSessionError = {
   }
 }
 
-export type EventInstallationUpdated = {
+export type EventModelsDevRefreshed = {
   id: string
-  type: "installation.updated"
+  type: "models-dev.refreshed"
   properties: {
-    version: string
+    [key: string]: unknown
   }
 }
 
-export type EventInstallationUpdateAvailable = {
+export type EventPermissionAsked = {
   id: string
-  type: "installation.update-available"
+  type: "permission.asked"
   properties: {
-    version: string
+    id: string
+    sessionID: string
+    permission: string
+    patterns: Array<string>
+    metadata: {
+      [key: string]: unknown
+    }
+    always: Array<string>
+    tool?: {
+      messageID: string
+      callID: string
+    }
+  }
+}
+
+export type EventPermissionReplied = {
+  id: string
+  type: "permission.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    reply: "once" | "always" | "reject"
   }
 }
 
@@ -4926,43 +4963,6 @@ export type EventTodoUpdated = {
   }
 }
 
-export type EventLspUpdated = {
-  id: string
-  type: "lsp.updated"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventPermissionAsked = {
-  id: string
-  type: "permission.asked"
-  properties: {
-    id: string
-    sessionID: string
-    permission: string
-    patterns: Array<string>
-    metadata: {
-      [key: string]: unknown
-    }
-    always: Array<string>
-    tool?: {
-      messageID: string
-      callID: string
-    }
-  }
-}
-
-export type EventPermissionReplied = {
-  id: string
-  type: "permission.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    reply: "once" | "always" | "reject"
-  }
-}
-
 export type EventMcpToolsChanged = {
   id: string
   type: "mcp.tools.changed"
@@ -4977,14 +4977,6 @@ export type EventMcpBrowserOpenFailed = {
   properties: {
     mcpName: string
     url: string
-  }
-}
-
-export type EventFileEdited = {
-  id: string
-  type: "file.edited"
-  properties: {
-    file: string
   }
 }
 
@@ -5077,11 +5069,11 @@ export type EventQuestionRejected = {
   }
 }
 
-export type EventSessionCompacted = {
+export type EventLspUpdated = {
   id: string
-  type: "session.compacted"
+  type: "lsp.updated"
   properties: {
-    sessionID: string
+    [key: string]: unknown
   }
 }
 
@@ -5093,28 +5085,19 @@ export type EventVcsBranchUpdated = {
   }
 }
 
-export type EventWorkspaceReady = {
+export type EventInstallationUpdated = {
   id: string
-  type: "workspace.ready"
+  type: "installation.updated"
   properties: {
-    name: string
+    version: string
   }
 }
 
-export type EventWorkspaceFailed = {
+export type EventInstallationUpdateAvailable = {
   id: string
-  type: "workspace.failed"
+  type: "installation.update-available"
   properties: {
-    message: string
-  }
-}
-
-export type EventWorkspaceStatus = {
-  id: string
-  type: "workspace.status"
-  properties: {
-    workspaceID: string
-    status: "connected" | "connecting" | "disconnected" | "error"
+    version: string
   }
 }
 
@@ -5148,6 +5131,47 @@ export type EventGlobalDisposed = {
   type: "global.disposed"
   properties: {
     [key: string]: unknown
+  }
+}
+
+export type EventFileEdited = {
+  id: string
+  type: "file.edited"
+  properties: {
+    file: string
+  }
+}
+
+export type EventSessionCompacted = {
+  id: string
+  type: "session.compacted"
+  properties: {
+    sessionID: string
+  }
+}
+
+export type EventWorkspaceReady = {
+  id: string
+  type: "workspace.ready"
+  properties: {
+    name: string
+  }
+}
+
+export type EventWorkspaceFailed = {
+  id: string
+  type: "workspace.failed"
+  properties: {
+    message: string
+  }
+}
+
+export type EventWorkspaceStatus = {
+  id: string
+  type: "workspace.status"
+  properties: {
+    workspaceID: string
+    status: "connected" | "connecting" | "disconnected" | "error"
   }
 }
 
@@ -5658,15 +5682,17 @@ export type ExperimentalConsoleSwitchOrgResponse =
   ExperimentalConsoleSwitchOrgResponses[keyof ExperimentalConsoleSwitchOrgResponses]
 
 export type ExperimentalConsoleLoginData = {
-  body?: {
-    server?: string
-  }
+  body?: ConsoleLoginRequest
   path?: never
   query?: never
   url: "/experimental/console/login"
 }
 
 export type ExperimentalConsoleLoginErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
   /**
    * InternalServerError
    */
@@ -5679,30 +5705,24 @@ export type ExperimentalConsoleLoginResponses = {
   /**
    * Device code + verification URL
    */
-  200: {
-    code: string
-    user: string
-    url: string
-    server: string
-    expirySeconds: number
-    intervalSeconds: number
-  }
+  200: ConsoleLoginResponse
 }
 
 export type ExperimentalConsoleLoginResponse =
   ExperimentalConsoleLoginResponses[keyof ExperimentalConsoleLoginResponses]
 
 export type ExperimentalConsoleLoginPollData = {
-  body?: {
-    code: string
-    server: string
-  }
+  body?: ConsoleLoginPollRequest
   path?: never
   query?: never
   url: "/experimental/console/login/poll"
 }
 
 export type ExperimentalConsoleLoginPollErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
   /**
    * InternalServerError
    */
@@ -5716,31 +5736,24 @@ export type ExperimentalConsoleLoginPollResponses = {
   /**
    * Poll result
    */
-  200: {
-    status: "pending" | "slow_down" | "expired" | "denied" | "success"
-    accessToken?: string
-    refreshToken?: string
-    expiresInSeconds?: number
-    email?: string
-    error?: string
-  }
+  200: ConsoleLoginPollResponse
 }
 
 export type ExperimentalConsoleLoginPollResponse =
   ExperimentalConsoleLoginPollResponses[keyof ExperimentalConsoleLoginPollResponses]
 
 export type ExperimentalConsoleLoginCompleteData = {
-  body?: {
-    accessToken: string
-    server: string
-    email?: string
-  }
+  body?: ConsoleLoginCompleteRequest
   path?: never
   query?: never
   url: "/experimental/console/login/complete"
 }
 
 export type ExperimentalConsoleLoginCompleteErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
   /**
    * InternalServerError
    */
@@ -5754,12 +5767,7 @@ export type ExperimentalConsoleLoginCompleteResponses = {
   /**
    * Login complete + proxy key
    */
-  200: {
-    ok: boolean
-    proxyKey?: string
-    tier?: string
-    error?: string
-  }
+  200: ConsoleLoginCompleteResponse
 }
 
 export type ExperimentalConsoleLoginCompleteResponse =
@@ -5774,6 +5782,10 @@ export type ExperimentalConsoleProxyKeyPresentData = {
 
 export type ExperimentalConsoleProxyKeyPresentErrors = {
   /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
    * InternalServerError
    */
   500: EffectHttpApiErrorInternalServerError
@@ -5786,31 +5798,33 @@ export type ExperimentalConsoleProxyKeyPresentResponses = {
   /**
    * Whether a proxy key is on disk
    */
-  200: {
-    present: boolean
-  }
+  200: ConsoleProxyKeyPresentResponse
 }
 
 export type ExperimentalConsoleProxyKeyPresentResponse =
   ExperimentalConsoleProxyKeyPresentResponses[keyof ExperimentalConsoleProxyKeyPresentResponses]
 
-export type ExperimentalConsoleOpenUrlErrors = {
-  /**
-   * BadRequest
-   */
-  400: EffectHttpApiErrorBadRequest
+export type ExperimentalConsoleOpenUrlData = {
+  body?: ConsoleOpenUrlRequest
+  path?: never
+  query?: never
+  url: "/experimental/console/open-url"
 }
 
-export type ExperimentalConsoleOpenUrlError =
-  ExperimentalConsoleOpenUrlErrors[keyof ExperimentalConsoleOpenUrlErrors]
+export type ExperimentalConsoleOpenUrlErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type ExperimentalConsoleOpenUrlError = ExperimentalConsoleOpenUrlErrors[keyof ExperimentalConsoleOpenUrlErrors]
 
 export type ExperimentalConsoleOpenUrlResponses = {
   /**
    * Whether the browser was opened
    */
-  200: {
-    ok: boolean
-  }
+  200: ConsoleOpenUrlResponse
 }
 
 export type ExperimentalConsoleOpenUrlResponse =
@@ -7987,12 +8001,15 @@ export type SessionMessagesError = SessionMessagesErrors[keyof SessionMessagesEr
 
 export type SessionMessagesResponses = {
   /**
-   * List of messages with optional pagination cursor
+   * List of messages
    */
-  200: Array<{
-    info: Message
-    parts: Array<Part>
-  }>
+  200: {
+    items: Array<{
+      info: Message
+      parts: Array<Part>
+    }>
+    cursor?: string
+  }
 }
 
 export type SessionMessagesResponse2 = SessionMessagesResponses[keyof SessionMessagesResponses]
