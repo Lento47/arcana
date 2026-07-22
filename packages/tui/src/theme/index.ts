@@ -273,7 +273,14 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
   // of crashing with .startsWith(undefined).
   const merged = { ...theme.theme }
   const defs = theme.defs ?? {}
+  // Hard-fallback gray — never return undefined. OpenTUI 0.4.x renderer
+  // calls .startsWith("#") directly on color values; undefined is a crash.
+  const FALLBACK = RGBA.fromInts(127, 127, 127)
+
   function resolveColor(c: ColorValue, chain: string[] = []): RGBA {
+    // Nullish guard — covers missing theme keys, incomplete {dark,light}
+    // objects, and any unexpected shape from a new OpenTUI minor version.
+    if (c == null) return FALLBACK
     if (c instanceof RGBA) return c
     if (typeof c === "string") {
       if (c === "transparent" || c === "none") return RGBA.fromInts(0, 0, 0, 0)
@@ -285,23 +292,20 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light") {
       }
 
       const next = defs[c] ?? merged[c as ThemeColor]
-      if (next === undefined) {
-        throw new Error(`Color reference "${c}" not found in defs or theme`)
-      }
+      if (next == null) return FALLBACK
       return resolveColor(next, [...chain, c])
     }
     if (typeof c === "number") {
       return ansiToRgba(c)
     }
     // Object with dark/light sub-keys — pick the active mode.
-    // Guard: OpenTUI 0.4.x may ship flat hex strings for new keys.
     const variant = (c as Record<string, ColorValue>)[mode]
-    if (variant !== undefined) return resolveColor(variant, chain)
-    // Fallback: try the other mode, then black.
+    if (variant != null) return resolveColor(variant, chain)
+    // Fallback: try the other mode.
     const fallbackMode = mode === "dark" ? "light" : "dark"
     const fb = (c as Record<string, ColorValue>)[fallbackMode]
-    if (fb !== undefined) return resolveColor(fb, chain)
-    return RGBA.fromInts(0, 0, 0)
+    if (fb != null) return resolveColor(fb, chain)
+    return FALLBACK
   }
 
   const resolved = Object.fromEntries(
