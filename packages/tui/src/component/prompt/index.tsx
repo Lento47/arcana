@@ -66,6 +66,7 @@ import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
+import { addOptimisticMessage } from "./optimistic"
 import { arcanaTaskInstruction, assessArcanaTaskRisk, parseArcanaPromptCommand } from "../../arcana/task"
 
 export type PromptProps = {
@@ -1218,6 +1219,18 @@ export function Prompt(props: PromptProps) {
             variant: "error",
           })
         })
+      addOptimisticMessage({
+        id: `optimistic-${crypto.randomUUID()}`,
+        sessionID,
+        text: task,
+        timestamp: Date.now(),
+        agent: agent.name,
+        model: {
+          providerID: selectedModel.providerID,
+          modelID: selectedModel.modelID,
+          variant,
+        },
+      })
     } else if (
       inputText.startsWith("/") &&
       (() => {
@@ -1356,6 +1369,21 @@ export function Prompt(props: PromptProps) {
             variant: "error",
           })
         })
+      // Optimistic: push user message to the session view immediately so
+      // it appears before the SSE message.updated round-trip. The session
+      // view deduplicates when the real message arrives (matched by text).
+      addOptimisticMessage({
+        id: `optimistic-${crypto.randomUUID()}`,
+        sessionID,
+        text: inputText,
+        timestamp: Date.now(),
+        agent: agent.name,
+        model: {
+          providerID: selectedModel.providerID,
+          modelID: selectedModel.modelID,
+          variant,
+        },
+      })
       if (editorParts.length > 0) editor.markSelectionSent()
     }
 
