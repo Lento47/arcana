@@ -11,8 +11,8 @@ export const VercelPlugin = PluginV2.define({
           if (item.provider.api.type !== "aisdk") continue
           if (item.provider.api.package !== "@ai-sdk/vercel") continue
           evt.provider.update(item.provider.id, (provider) => {
-            provider.request.headers["http-referer"] = "https://github.com/Lento47/arcana-community"
-            provider.request.headers["x-title"] = "arcana"
+            provider.request.headers["http-referer"] = "https://arcana.otnelhq.com/"
+            provider.request.headers["x-title"] = "Arcana"
           })
         }
       }),

@@ -36,8 +36,8 @@ describe("NvidiaPlugin", () => {
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.make("nvidia"))).request.headers).toEqual({
         Existing: "value",
-        "HTTP-Referer": "https://github.com/Lento47/arcana-community",
-        "X-Title": "arcana",
+        "HTTP-Referer": "https://arcana.otnelhq.com/",
+        "X-Title": "Arcana",
         "X-BILLING-INVOKE-ORIGIN": "arcana",
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.openrouter)).request.headers).toEqual({})
@@ -62,8 +62,8 @@ describe("NvidiaPlugin", () => {
       })
 
       expect((yield* catalog.provider.get(ProviderV2.ID.make("nvidia"))).request.headers).toEqual({
-        "HTTP-Referer": "https://github.com/Lento47/arcana-community",
-        "X-Title": "arcana",
+        "HTTP-Referer": "https://arcana.otnelhq.com/",
+        "X-Title": "Arcana",
         "X-BILLING-INVOKE-ORIGIN": "arcana",
       })
     }),
@@ -90,8 +90,8 @@ describe("NvidiaPlugin", () => {
       })
 
       expect((yield* catalog.provider.get(ProviderV2.ID.make("nvidia"))).request.headers).toEqual({
-        "HTTP-Referer": "https://github.com/Lento47/arcana-community",
-        "X-Title": "arcana",
+        "HTTP-Referer": "https://arcana.otnelhq.com/",
+        "X-Title": "Arcana",
         "X-BILLING-INVOKE-ORIGIN": "CustomOrigin",
       })
     }),

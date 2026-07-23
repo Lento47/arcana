@@ -49,9 +49,8 @@ const ALLOWLIST = [
   // OAuth client_uri registered with the upstream identity provider. Changing
   // this requires re-registering the OAuth client on the provider side.
   "packages/engine/src/mcp/oauth-provider.ts",
-  // HTTP-Referer header sent to LLM providers. Some providers reject unknown
-  // referers; the upstream URL is the registered app origin.
-  "packages/engine/src/provider/provider.ts",
+  // HTTP-Referer is now https://arcana.otnelhq.com/ (Arcana app attribution).
+  // Keep this path allowlisted only if residual opencode.ai strings remain.
   // Theme JSON schema source — JSONSchema's $schema URL points at the upstream
   // theme spec. Not user-facing.
   "src/theme/assets/",

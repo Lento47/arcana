@@ -38,8 +38,10 @@ describe("OpenRouterPlugin", () => {
 
       expect((yield* catalog.provider.get(ProviderV2.ID.make("openrouter"))).request.headers).toEqual({
         Existing: "value",
-        "HTTP-Referer": "https://github.com/Lento47/arcana-community",
-        "X-Title": "arcana",
+        "HTTP-Referer": "https://arcana.otnelhq.com/",
+        "X-Title": "Arcana",
+        "X-OpenRouter-Title": "Arcana",
+        "X-OpenRouter-Categories": "cli-agent",
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.make("nvidia"))).request.headers).toEqual({})
     }),

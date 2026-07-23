@@ -36,8 +36,8 @@ describe("KiloPlugin", () => {
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.make("kilo"))).request.headers).toEqual({
         Existing: "value",
-        "HTTP-Referer": "https://github.com/Lento47/arcana-community",
-        "X-Title": "arcana",
+        "HTTP-Referer": "https://arcana.otnelhq.com/",
+        "X-Title": "Arcana",
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.openrouter)).request.headers).toEqual({})
     }),
@@ -60,8 +60,8 @@ describe("KiloPlugin", () => {
 
       const result = yield* catalog.provider.get(ProviderV2.ID.make("kilo"))
       expect(result.request.headers).toEqual({
-        "HTTP-Referer": "https://github.com/Lento47/arcana-community",
-        "X-Title": "arcana",
+        "HTTP-Referer": "https://arcana.otnelhq.com/",
+        "X-Title": "Arcana",
       })
       expect(result.request.headers).not.toHaveProperty("http-referer")
       expect(result.request.headers).not.toHaveProperty("x-title")
@@ -91,8 +91,8 @@ describe("KiloPlugin", () => {
       })
 
       expect((yield* catalog.provider.get(ProviderV2.ID.make("kilo"))).request.headers).toEqual({
-        "HTTP-Referer": "https://github.com/Lento47/arcana-community",
-        "X-Title": "arcana",
+        "HTTP-Referer": "https://arcana.otnelhq.com/",
+        "X-Title": "Arcana",
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.make("custom-kilo"))).request.headers).toEqual({})
     }),
