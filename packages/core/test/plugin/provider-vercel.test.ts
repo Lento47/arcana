@@ -25,8 +25,8 @@ describe("VercelPlugin", () => {
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.make("vercel"))).request.headers).toEqual({
         Existing: "1",
-        "http-referer": "https://github.com/Lento47/arcana-community",
-        "x-title": "arcana",
+        "http-referer": "https://arcana.otnelhq.com/",
+        "x-title": "Arcana",
       })
     }),
   )

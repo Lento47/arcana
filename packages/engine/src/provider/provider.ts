@@ -561,8 +561,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://opencode.ai/",
-            "X-Title": "arcana",
+            "HTTP-Referer": "https://arcana.otnelhq.com/",
+            "X-Title": "Arcana",
             "X-Source": "arcana",
           },
         },
@@ -572,8 +572,10 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://opencode.ai/",
-            "X-Title": "arcana",
+            "HTTP-Referer": "https://arcana.otnelhq.com/",
+            "X-Title": "Arcana",
+            "X-OpenRouter-Title": "Arcana",
+            "X-OpenRouter-Categories": "cli-agent",
           },
         },
       }),
@@ -582,8 +584,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: provider.source === "config",
         options: {
           headers: {
-            "HTTP-Referer": "https://opencode.ai/",
-            "X-Title": "arcana",
+            "HTTP-Referer": "https://arcana.otnelhq.com/",
+            "X-Title": "Arcana",
             "X-BILLING-INVOKE-ORIGIN": "arcana",
           },
         },
@@ -593,8 +595,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: false,
         options: {
           headers: {
-            "http-referer": "https://opencode.ai/",
-            "x-title": "arcana",
+            "http-referer": "https://arcana.otnelhq.com/",
+            "x-title": "Arcana",
           },
         },
       }),
@@ -699,8 +701,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://opencode.ai/",
-            "X-Title": "arcana",
+            "HTTP-Referer": "https://arcana.otnelhq.com/",
+            "X-Title": "Arcana",
           },
         },
       }),
@@ -975,8 +977,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://opencode.ai/",
-            "X-Title": "arcana",
+            "HTTP-Referer": "https://arcana.otnelhq.com/",
+            "X-Title": "Arcana",
           },
         },
       }),

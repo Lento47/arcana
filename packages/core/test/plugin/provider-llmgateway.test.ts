@@ -50,8 +50,8 @@ describe("LLMGatewayPlugin", () => {
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.make("llmgateway"))).request.headers).toEqual({
         Existing: "value",
-        "HTTP-Referer": "https://github.com/Lento47/arcana-community",
-        "X-Title": "arcana",
+        "HTTP-Referer": "https://arcana.otnelhq.com/",
+        "X-Title": "Arcana",
         "X-Source": "arcana",
       })
       expect((yield* catalog.provider.get(ProviderV2.ID.openrouter)).request.headers).toEqual({})
