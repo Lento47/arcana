@@ -657,7 +657,11 @@ export function Prompt(props: PromptProps) {
 
   createEffect(() => {
     if (!input || input.isDestroyed) return
-    if (props.visible === false || dialog.stack.length > 0) {
+    // Permission/question gates disable the composer but keep it mounted. If the
+    // textarea stays focused, Enter is swallowed by the managed input.submit /
+    // textarea onSubmit path and never reaches PermissionPrompt (e.g. Always
+    // allow → Confirm). Blur while disabled so gate Decision bindings win.
+    if (props.visible === false || props.disabled || dialog.stack.length > 0) {
       if (input.focused) input.blur()
       return
     }
@@ -1793,6 +1797,9 @@ export function Prompt(props: PromptProps) {
                     }
                   }}
                   onSubmit={() => {
+                    // Gates (permission / question) disable the composer — never
+                    // handle Enter here or Decision confirm never receives it.
+                    if (props.disabled) return
                     // One microtask is enough for IME commit; nested setTimeouts
                     // made Enter feel laggy / like a double-press on Windows.
                     queueMicrotask(() => {
@@ -1844,7 +1851,10 @@ export function Prompt(props: PromptProps) {
                         : theme.text
                     }, 0)
                   }}
-                  onMouseDown={(r: MouseEvent) => r.target?.focus()}
+                  onMouseDown={(r: MouseEvent) => {
+                    if (props.disabled) return
+                    r.target?.focus()
+                  }}
                   focusedBackgroundColor={isCommandSpine() ? theme.background : theme.backgroundElement}
                   cursorColor={
                     props.disabled

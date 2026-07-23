@@ -139,4 +139,42 @@ describe("buildTurnLifecycle", () => {
     expect(life.sessionTurnActive).toBe(true)
     expect(isAssistantSegmentStreaming("plan", life)).toBe(true)
   })
+
+  test("explicit partEnded override wins over primary part.time.end", () => {
+    // Multi-part plan/ok: primary may be closed while a later text part still streams.
+    // Callers pass partEnded=false even when part.time.end is set.
+    const stillOpen = buildTurnLifecycle({
+      message: { role: "assistant", time: {} },
+      part: { time: { end: 50 } },
+      partEnded: false,
+      segmentSuperseded: false,
+      isLatestAssistant: true,
+      sessionStatusType: "busy",
+    })
+    expect(stillOpen.partEnded).toBe(false)
+    expect(isAssistantSegmentStreaming("plan", stillOpen)).toBe(true)
+
+    const allClosed = buildTurnLifecycle({
+      message: { role: "assistant", time: {} },
+      part: { time: { start: 1 } },
+      partEnded: true,
+      segmentSuperseded: false,
+      isLatestAssistant: true,
+      sessionStatusType: "busy",
+    })
+    expect(allClosed.partEnded).toBe(true)
+    expect(isAssistantSegmentStreaming("ok", allClosed)).toBe(false)
+  })
+
+  test("without override, part.time.end still drives partEnded", () => {
+    const fromPart = buildTurnLifecycle({
+      message: { role: "assistant", time: {} },
+      part: { time: { end: 99 } },
+      segmentSuperseded: false,
+      isLatestAssistant: true,
+      sessionStatusType: "busy",
+    })
+    expect(fromPart.partEnded).toBe(true)
+    expect(isAssistantSegmentStreaming("think", fromPart)).toBe(false)
+  })
 })

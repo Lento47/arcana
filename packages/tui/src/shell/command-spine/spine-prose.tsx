@@ -2,21 +2,11 @@ import { For, Match, Show, Switch, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { filetype } from "../../util/filetype"
 import type { SpineKind } from "./spine-types"
+import { looksLikeMarkdown, normalizeChatProse } from "./chat-prose"
 
 export type SpineProseMode = "markdown" | "code" | "plain"
 
-function looksLikeMarkdown(text: string): boolean {
-  if (/```/.test(text)) return true
-  if (/^#{1,6}\s/m.test(text)) return true
-  if (/^\s*[-*+]\s+\S/m.test(text)) return true
-  if (/^\s*\d+\.\s+\S/m.test(text)) return true
-  // Bold / code / links only — do NOT treat single _underscore_ as markdown signal
-  // (snake_case and _private identifiers are common in agent + tool text).
-  if (/\*\*[^*]+\*\*|__[^_]+__|`[^`]+`/.test(text)) return true
-  if (/^\s*>\s+\S/m.test(text)) return true
-  if (/\[.+\]\(.+\)/.test(text)) return true
-  return false
-}
+export { looksLikeMarkdown, normalizeChatProse } from "./chat-prose"
 
 /**
  * Disable underscore emphasis in markdown so `_text_`, snake_case, and
@@ -52,23 +42,18 @@ export function resolveProseMode(input: {
   kind: SpineKind
   bodyLabel?: string
   text: string
+  chatVoice?: boolean
 }): SpineProseMode {
   const label = input.bodyLabel?.toLowerCase() ?? ""
-  // Chat voice: only use <markdown> when the text actually has markdown.
-  // Plain replies ("Hi, what would you…") use word-wrapped <text> so OpenTUI
-  // never collapses width to ~1 cell (one-word-per-line artifact).
-  if (input.kind === "ask" || input.kind === "plan" || input.kind === "ok") {
+  if (input.kind === "plan" || input.kind === "ok") return "markdown"
+  if (input.kind === "ask") {
     return looksLikeMarkdown(input.text) ? "markdown" : "plain"
   }
-  // Reasoning is usually prose; prefer plain wrap unless real markdown markers.
-  if (input.kind === "think") {
-    return looksLikeMarkdown(input.text) ? "markdown" : "plain"
-  }
+  if (input.kind === "think") return "markdown"
   if (label === "diff" || looksLikeDiff(input.text)) return "code"
   if (label === "error" || input.kind === "fail") return "code"
   if (label === "written content" || label === "output" || label === "file") return "code"
   if (label === "matches" || label === "listing") return "plain"
-  // Tool / inspect bodies never auto-upgrade to markdown (avoids italic paths).
   if (input.kind === "inspect" || input.kind === "run" || input.kind === "patch") return "code"
   if (looksLikeMarkdown(input.text)) return "markdown"
   return "code"
@@ -83,14 +68,12 @@ function resolveFiletype(
   const label = bodyLabel?.toLowerCase() ?? ""
   if (label === "diff" || looksLikeDiff(text)) return "diff"
   if (label === "error") return undefined
-  // Prefer explicit path hint (summary may include " · L1–40").
   for (const candidate of [hint, summary]) {
     if (!candidate) continue
     const pathOnly = candidate.split(/\s·\s/)[0]?.trim() || candidate
     const ft = filetype(pathOnly)
     if (ft) return ft
   }
-  // Fence language hint: ```ts
   const fence = text.match(/^```([a-zA-Z0-9_+.-]+)/)
   if (fence?.[1]) {
     const lang = fence[1].toLowerCase()
@@ -104,37 +87,60 @@ function resolveFiletype(
 }
 
 /**
- * Rich chat/tool body using OpenTUI `<markdown>` / `<code>` with theme syntax styles.
- * Flex-safe: parent must provide minWidth={0} flexGrow so word-wrap can compute.
+ * OpenTUI wrap root cause (TextBufferRenderable / Code leaves):
+ *   setWrapWidth(this.width) runs only in the constructor when width > 0,
+ *   and when wrapMode changes. onResize updates viewport but NOT wrap width.
+ *
+ * Structural chat markdown must use <markdown> (marked + GFM tables), not
+ * <code filetype="markdown"> (Tree-sitter highlight only — pipes/$$ stay raw).
+ * <markdown> still creates Code leaves with width:"100%", so a **numeric**
+ * host width at construct time is still required for wrap.
+ *
+ * Dual-mode: plain <text> while streaming; <markdown streaming={false}> once idle.
  */
 export function SpineProse(props: {
   kind: SpineKind
   text: string
   bodyLabel?: string
-  /** Optional path or title used for filetype detection (e.g. write/edit summary). */
   hint?: string
-  /** Muted note under the body (EOF / truncation) — not part of source. */
   note?: string
   streaming?: boolean
   focused?: boolean
-  /** System-reminder blocks extracted from read tool output. */
   reminders?: string[]
-  /**
-   * Chat voice (you / arcana): full-contrast markdown on card surface.
-   * Tools omit this and stay secondary/code-chrome.
-   */
   chatVoice?: boolean
+  contentWidth?: number
 }) {
   const { theme, syntax, subtleSyntax } = useTheme()
-  // All prop reads are memoized so token deltas and turn-end flips re-render
-  // without remounting the parent spine row.
   const kind = () => props.kind
   const bodyLabel = () => props.bodyLabel
   const hint = () => props.hint
   const chatVoice = () => props.chatVoice === true
   const focused = () => props.focused === true
-  const text = createMemo(() => (props.text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"))
-  const mode = createMemo(() => resolveProseMode({ kind: kind(), bodyLabel: bodyLabel(), text: text() }))
+
+  /** Always a real column count so Code leaves under <markdown> wrap correctly. */
+  const wrapCols = createMemo(() => {
+    const w = props.contentWidth
+    if (typeof w === "number" && Number.isFinite(w) && w >= 40) return Math.floor(w)
+    return 80
+  })
+
+  const text = createMemo(() => {
+    const raw = (props.text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+    if (kind() === "plan" || kind() === "ok" || kind() === "ask" || kind() === "think") {
+      return normalizeChatProse(raw)
+    }
+    return raw
+  })
+
+  const mode = createMemo(() =>
+    resolveProseMode({
+      kind: kind(),
+      bodyLabel: bodyLabel(),
+      text: text(),
+      chatVoice: chatVoice(),
+    }),
+  )
+
   const markdownContent = createMemo(() =>
     mode() === "markdown" ? escapeMarkdownUnderscoreEmphasis(text()) : text(),
   )
@@ -142,21 +148,63 @@ export function SpineProse(props: {
   const fg = createMemo(() => {
     if (kind() === "think") return theme.textMuted
     if (kind() === "fail" || bodyLabel() === "error") return theme.error
-    // Chat voice reads as primary content (Grok-style agent message).
-    if (chatVoice()) return theme.markdownText ?? theme.text
     return theme.markdownText ?? theme.text
   })
   const mdBg = createMemo(() => {
-    // Match soft card panel so markdown doesn't flash the page background.
     if (chatVoice() && (kind() === "plan" || kind() === "ok")) {
       return (theme.backgroundPanel ?? theme.background) as any
     }
     return theme.background as any
   })
   const style = () => (kind() === "think" || kind() === "fail" ? subtleSyntax() : syntax())
-  // File reads: slightly tighter chrome so tool panels don't dominate the timeline.
   const codePad = () => (bodyLabel() === "file" ? 1 : 2)
   const codePadY = () => (bodyLabel() === "file" ? 0 : 1)
+
+  const isChatMd = createMemo(
+    () => mode() === "markdown" && (kind() === "plan" || kind() === "ok" || kind() === "ask" || kind() === "think"),
+  )
+  /** Turn still producing — avoid re-parsing incomplete markdown every token. */
+  const liveStreaming = createMemo(() => props.streaming === true)
+
+  const bodyNote = () => (
+    <Show when={props.note?.trim()}>
+      <text fg={(theme.spineDiffMuted ?? theme.textMuted) as any} wrapMode="word">
+        {props.note!.trim()}
+      </text>
+    </Show>
+  )
+
+  /**
+   * Idle chat/think body: real MarkdownRenderable (marked, GFM tables).
+   *
+   * Width: MarkdownRenderable is a column flex host; paragraph/table leaves use
+   * width:"100%" of *this* node. Setting numeric width here (not only on an
+   * outer box) is what gives those leaves a definite parent at construct so
+   * Code's setWrapWidth isn't stuck at 0. Outer box also keeps spine host width.
+   *
+   * Tables: "columns" (not TextPart's "grid") — spine already has card chrome;
+   * boxed grid tables double-border in a narrow pane.
+   */
+  const IdleMarkdown = () => (
+    <box flexShrink={0} minWidth={0} width={wrapCols()}>
+      <markdown
+        id={proseId()}
+        width={wrapCols()}
+        content={markdownContent()}
+        syntaxStyle={style()}
+        streaming={false}
+        internalBlockMode="top-level"
+        tableOptions={{
+          style: "columns",
+          wrapMode: "word",
+          widthMode: "full",
+        }}
+        conceal={true}
+        fg={fg() as any}
+        bg={mdBg() as any}
+      />
+    </box>
+  )
 
   const reminderCallouts = () => (
     <Show when={props.reminders && props.reminders.length > 0}>
@@ -169,16 +217,19 @@ export function SpineProse(props: {
             borderColor={theme.warning as any}
             paddingLeft={2}
             paddingRight={1}
-            paddingTop={0}
-            paddingBottom={0}
             marginBottom={1}
           >
             <text fg={theme.warning as any}>system reminder</text>
-            <markdown
+            {/* Numeric width so wrap is correct at construct */}
+            <code
+              width={wrapCols()}
               content={escapeMarkdownUnderscoreEmphasis(reminder)}
+              filetype="markdown"
               syntaxStyle={subtleSyntax()}
               streaming={false}
               conceal={true}
+              drawUnstyledText={true}
+              wrapMode="word"
               fg={theme.textMuted as any}
               bg={theme.background as any}
             />
@@ -188,44 +239,54 @@ export function SpineProse(props: {
     </Show>
   )
 
-  const bodyNote = () => (
-    <Show when={props.note?.trim()}>
-      <text fg={(theme.spineDiffMuted ?? theme.textMuted) as any} wrapMode="word">
-        {props.note!.trim()}
-      </text>
-    </Show>
-  )
+  // Remount host when columns change so nested Code leaves re-run setWrapWidth
+  // (Markdown onResize does not fix leaf wrap the way a remount does).
+  const proseId = createMemo(() => `spine-prose-${kind()}-${wrapCols()}`)
 
   return (
-    <box flexGrow={1} minWidth={0} flexShrink={1} flexDirection="column" width="100%">
+    <box flexDirection="column" flexShrink={0} minWidth={0} width={wrapCols()}>
       {reminderCallouts()}
       <Switch>
-        <Match when={mode() === "markdown"}>
-          <box width="100%" minWidth={0} flexShrink={1}>
-            <markdown
-              syntaxStyle={style()}
-              // Force finalized render mode even during streaming. Default
-              // streaming=true keeps trailing blocks unstable in OpenTUI's
-              // MarkdownRenderable, causing visible text flicker/disappear
-              // on every token. Finalized mode re-parses fully each render
-              // but produces stable output — acceptable trade for short
-              // streaming responses.
-              streaming={false}
-              internalBlockMode="top-level"
-              content={markdownContent()}
-              tableOptions={{ style: "grid" }}
-              conceal={true}
-              fg={fg() as any}
-              bg={mdBg() as any}
-            />
-          </box>
+        {/*
+          Dual-mode (Grok-class):
+          - streaming: plain text — stable growth, no incomplete ** / list thrash
+          - idle: <markdown> once — marked GFM (tables, lists, headings)
+          Do NOT use keyed <Show> with a callback that calls the when-value —
+          Solid passes the raw number (e.g. 143), so cols() crashes.
+        */}
+        <Match when={isChatMd()}>
+          <Show
+            when={!liveStreaming()}
+            fallback={
+              <text fg={fg() as any} wrapMode="word" width={wrapCols()}>
+                {text()}
+              </text>
+            }
+          >
+            <IdleMarkdown />
+          </Show>
           {bodyNote()}
         </Match>
+
+        <Match when={mode() === "markdown"}>
+          <Show
+            when={!liveStreaming()}
+            fallback={
+              <text fg={fg() as any} wrapMode="word" width={wrapCols()}>
+                {text()}
+              </text>
+            }
+          >
+            <IdleMarkdown />
+          </Show>
+          {bodyNote()}
+        </Match>
+
         <Match when={mode() === "code"}>
           <box
             flexShrink={0}
             minWidth={0}
-            width="100%"
+            width={wrapCols()}
             backgroundColor={focused() ? (theme.backgroundElement as any) : (theme.backgroundPanel as any)}
             paddingLeft={codePad()}
             paddingRight={codePad()}
@@ -235,19 +296,23 @@ export function SpineProse(props: {
             borderColor={(bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : fg()) as any}
           >
             <code
+              id={proseId()}
+              width={wrapCols()}
               filetype={ft()}
               drawUnstyledText={false}
               streaming={false}
               syntaxStyle={style()}
               content={text()}
               conceal={false}
+              wrapMode="word"
               fg={fg() as any}
             />
           </box>
           {bodyNote()}
         </Match>
+
         <Match when={true}>
-          <text fg={fg() as any} wrapMode="word" width="100%">
+          <text fg={fg() as any} wrapMode="word" width={wrapCols()}>
             {text()}
           </text>
           {bodyNote()}
@@ -257,13 +322,14 @@ export function SpineProse(props: {
   )
 }
 
-/** Reconstruct full chat prose from spine summary + optional body remainder. */
 export function joinSpineProse(summary: string | undefined, body: string | undefined): string {
   const s = (summary ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
   const b = (body ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n")
   if (!b.trim()) return s
   if (!s.trim()) return b
-  // Body is usually the remainder after the first summary line.
   if (b.startsWith(s)) return b
+  if (/^(\s*[-*+]|\s*\d+\.|#{1,6}\s)/.test(b.trimStart())) {
+    return `${s}\n\n${b}`
+  }
   return `${s}\n${b}`
 }

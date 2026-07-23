@@ -184,6 +184,37 @@ export function spineRailWidth(_layout: SpineLayout) {
 }
 
 /**
+ * Measured content width for chat/think prose (Grok-class wrap width).
+ *
+ * Terminal columns minus gutter + rail + card padding/border + safety.
+ * Floors at 24 so Yoga never collapses markdown to mid-word wraps.
+ *
+ * @param terminalWidth - full terminal columns
+ * @param layout - current spine layout
+ * @param variant - "chat" includes soft-card padding; "think" is tighter
+ */
+export function spineProseWidth(
+  terminalWidth: number,
+  layout: SpineLayout,
+  variant: "chat" | "think" | "inline" = "chat",
+): number {
+  // Prefer a sane default if dimensions are missing/zero (first paint race).
+  const term =
+    Number.isFinite(terminalWidth) && terminalWidth >= 40
+      ? Math.floor(terminalWidth)
+      : 80
+  // Entry: outer pad + gutter. Chat card: left border + padL + padR.
+  // No separate rail sibling on the body anymore (pad/border only).
+  const chrome =
+    spineOuterPadding(layout)
+    + spineGutterWidth(layout)
+    + (variant === "chat" ? 1 /* border */ + 2 /* padL */ + 1 /* padR */ : variant === "think" ? spineRailWidth(layout) + 1 : 1)
+    + 2 // scrollbar / safety
+  // Floor high enough that word-wrap never collapses to mid-token wraps.
+  return Math.max(40, term - chrome)
+}
+
+/**
  * Max characters for elapsed shown on the node header (not gutter).
  * minimal hides duration to save horizontal room on tiny terminals.
  */

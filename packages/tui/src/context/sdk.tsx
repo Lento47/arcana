@@ -8,6 +8,20 @@ export type EventSource = {
   subscribe: (handler: (event: GlobalEvent) => void) => Promise<() => void>
 }
 
+/** Last SSE/global event type (for ARCANA_DEBUG_STALL_MS watchdog correlation). */
+let lastSseEventType: string | undefined
+let lastSseEventAt = 0
+
+export function getLastSseEventMeta(): { type: string | undefined; at: number } {
+  return { type: lastSseEventType, at: lastSseEventAt }
+}
+
+function noteSseEvent(event: GlobalEvent) {
+  const t = event?.payload?.type
+  lastSseEventType = typeof t === "string" ? t : "unknown"
+  lastSseEventAt = Date.now()
+}
+
 export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
   name: "SDK",
   init: (props: {
@@ -70,6 +84,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     }
 
     const handleEvent = (event: GlobalEvent) => {
+      noteSseEvent(event)
       queue.push(event)
       const elapsed = Date.now() - last
 
