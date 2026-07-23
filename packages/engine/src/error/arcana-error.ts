@@ -32,6 +32,13 @@ export const ARCANA_ERROR_CODES = [
 
 export type ArcanaErrorCode = (typeof ARCANA_ERROR_CODES)[number]
 
+const ARCANA_ERROR_CODE_SET = new Set<string>(ARCANA_ERROR_CODES)
+
+/** True when `code` is a known catalog entry (not merely any ARC_* string). */
+export function isArcanaErrorCode(code: unknown): code is ArcanaErrorCode {
+  return typeof code === "string" && ARCANA_ERROR_CODE_SET.has(code)
+}
+
 export type ArcanaErrorType =
   | "auth"
   | "quota"
@@ -265,18 +272,32 @@ export const ARCANA_ERROR_CATALOG: Record<
 }
 
 export function buildArcanaError(
-  code: ArcanaErrorCode,
+  code: ArcanaErrorCode | string,
   overrides?: Partial<Pick<ArcanaErrorBody, "message" | "recovery" | "retryable" | "httpStatus" | "internal">>,
 ): ArcanaErrorBody {
-  const base = ARCANA_ERROR_CATALOG[code]
+  // Proxy/wire may emit ARC_* codes newer than this engine build, or typos.
+  // Never throw mid-retry — fall back to ARC_INTERNAL and keep diagnostics.
+  const resolved: ArcanaErrorCode = isArcanaErrorCode(code) ? code : "ARC_INTERNAL"
+  const base = ARCANA_ERROR_CATALOG[resolved]
+  const unknownWireCode = !isArcanaErrorCode(code) ? String(code) : undefined
   return {
-    code,
-    type: codeToType(code),
+    code: resolved,
+    type: codeToType(resolved),
     message: overrides?.message ?? base.message,
     recovery: overrides?.recovery ?? base.recovery,
     retryable: overrides?.retryable ?? base.retryable,
     httpStatus: overrides?.httpStatus ?? base.httpStatus,
-    internal: overrides?.internal,
+    internal: {
+      ...overrides?.internal,
+      ...(unknownWireCode
+        ? {
+            upstreamCode: overrides?.internal?.upstreamCode ?? unknownWireCode,
+            raw:
+              overrides?.internal?.raw
+              ?? `unknown Arcana error code from wire: ${unknownWireCode}`,
+          }
+        : {}),
+    },
   }
 }
 
