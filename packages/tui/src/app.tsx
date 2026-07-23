@@ -36,7 +36,8 @@ import { PluginRouteMissing } from "./component/plugin-route-missing"
 import { ProjectProvider, useProject } from "./context/project"
 import { EditorContextProvider } from "./context/editor"
 import { useEvent } from "./context/event"
-import { SDKProvider, useSDK } from "./context/sdk"
+import { SDKProvider, useSDK, getLastSseEventMeta } from "./context/sdk"
+import { parseStallIntervalMs, startStallWatchdog } from "./util/stall-watchdog"
 import { StartupLoading } from "./component/startup-loading"
 import { SyncProvider, useSync } from "./context/sync"
 import { DataProvider } from "./context/data"
@@ -2043,6 +2044,50 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
 
   const args = useArgs()
   onMount(() => {
+    // Opt-in long-session freeze detector: ARCANA_DEBUG_STALL_MS=200
+    const stallInterval = parseStallIntervalMs()
+    if (stallInterval !== undefined) {
+      const stopStall = startStallWatchdog({
+        intervalMs: stallInterval,
+        getSnapshot: () => {
+          const data = route.data
+          const sessionID = data.type === "session" ? data.sessionID : undefined
+          const meta = getLastSseEventMeta()
+          return {
+            sessionID,
+            routeType: data.type,
+            msgCount: sessionID ? (sync.data.message[sessionID]?.length ?? 0) : undefined,
+            compacting: sessionID ? (sync.data.session_compacting[sessionID] ?? false) : undefined,
+            lastEventType: meta.type,
+            lastEventAgeMs: meta.at ? Date.now() - meta.at : undefined,
+          }
+        },
+        getHeavySnapshot: () => {
+          const data = route.data
+          const sessionID = data.type === "session" ? data.sessionID : undefined
+          if (!sessionID) return {}
+          let partApproxBytes = 0
+          const messages = sync.data.message[sessionID] ?? []
+          for (const m of messages) {
+            const parts = sync.data.part[m.id] ?? []
+            for (const p of parts) {
+              if (p.type === "text" && typeof p.text === "string") partApproxBytes += p.text.length
+              if (p.type === "reasoning" && typeof (p as { text?: string }).text === "string") {
+                partApproxBytes += (p as { text: string }).text.length
+              }
+              if (p.type === "tool" && p.state && typeof p.state === "object") {
+                const st = p.state as { output?: string; error?: string }
+                if (typeof st.output === "string") partApproxBytes += st.output.length
+                if (typeof st.error === "string") partApproxBytes += st.error.length
+              }
+            }
+          }
+          return { partApproxBytes }
+        },
+      })
+      onCleanup(stopStall)
+    }
+
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
       if (args.model) {

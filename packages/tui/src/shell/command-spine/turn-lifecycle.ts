@@ -64,6 +64,12 @@ export function buildTurnLifecycle(input: {
   }
   /** Primary part for this segment (text or reasoning), if any */
   part?: { time?: { end?: number } }
+  /**
+   * Explicit segment-level "all text parts closed" signal.
+   * When provided, takes precedence over `part?.time.end` so multi-part plan/ok
+   * entries can require every joined text part to have ended (not only parts[0]).
+   */
+  partEnded?: boolean
   segmentSuperseded: boolean
   isLatestAssistant: boolean
   sessionStatusType?: string
@@ -71,7 +77,7 @@ export function buildTurnLifecycle(input: {
   const { message, part, segmentSuperseded, isLatestAssistant, sessionStatusType } = input
   const messageCompleted = !!(message.time && "completed" in message.time && message.time.completed)
   const messageFinished = typeof message.finish === "string" && message.finish.length > 0
-  const partEnded = !!(part?.time && part.time.end)
+  const partEnded = input.partEnded ?? !!(part?.time && part.time.end)
   const sessionTurnActive = isSessionTurnActive(sessionStatusType)
   const sessionIdle = !sessionTurnActive
 

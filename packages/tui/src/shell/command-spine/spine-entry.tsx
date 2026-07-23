@@ -41,6 +41,10 @@ export function SpineEntry(props: {
   onFocus?: () => void
   onHover?: () => void
   nodeRef?: (node: BoxRenderable | undefined) => void
+  /** Measured markdown wrap width (terminal − gutters). */
+  contentWidth?: number
+  /** Think-body wrap width (slightly different chrome tax). */
+  thinkContentWidth?: number
 }) {
   // Always read through props.entry inside reactive scopes. Solid components
   // run once — capturing `const e = props.entry` freezes the first object and
@@ -60,6 +64,7 @@ export function SpineEntry(props: {
     return k === "ask" || k === "plan" || k === "ok"
   })
   const isThink = createMemo(() => kind() === "think")
+  // Full prose blob for the AI/user card — never summary-only (MD needs whole answer).
   const proseText = createMemo(() => {
     const e = entry()
     return joinSpineProse(e.summary, e.body)
@@ -197,7 +202,11 @@ export function SpineEntry(props: {
           layout={props.layout}
           active={props.focused}
         />
-        <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
+        {/*
+          flexShrink=0: never let the entry content column compress under the
+          gutter. Chat/think markdown need a stable full remaining width.
+        */}
+        <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={0}>
           {/* Tool / think / gate headers — compact row (not used for chat voice). */}
           <Show when={!isChatProse() || !hasProse()}>
             <box
@@ -239,6 +248,7 @@ export function SpineEntry(props: {
               focused={props.focused}
               reminders={entryReminders()}
               bodyLabel={entryBodyLabel()}
+              contentWidth={props.contentWidth}
             />
           </Show>
 
@@ -277,20 +287,24 @@ export function SpineEntry(props: {
             </box>
           </Show>
 
-          {/* Thinking body — full reasoning when expanded (click header / space / enter) */}
+          {/* Thinking body — TextPart-style host (no rail sibling on prose). */}
           <Show when={isThink() && hasThinkBody() && bodyExpanded()}>
-            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-              <SpineRail layout={props.layout} active={props.focused} />
-              <box flexGrow={1} minWidth={0} flexShrink={1}>
-                <SpineProse
-                  kind="think"
-                  text={entry().body!}
-                  bodyLabel="reasoning"
-                  streaming={streaming()}
-                  focused={props.focused}
-                  reminders={entryReminders()}
-                />
-              </box>
+            <box
+              flexShrink={0}
+              minWidth={0}
+              width={props.thinkContentWidth ?? props.contentWidth ?? ("100%" as any)}
+              paddingLeft={3}
+              marginTop={0}
+            >
+              <SpineProse
+                kind="think"
+                text={entry().body!}
+                bodyLabel="reasoning"
+                streaming={streaming()}
+                focused={props.focused}
+                reminders={entryReminders()}
+                contentWidth={props.thinkContentWidth ?? props.contentWidth}
+              />
             </box>
           </Show>
 

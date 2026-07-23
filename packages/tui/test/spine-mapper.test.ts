@@ -1784,4 +1784,175 @@ Diff excerpts can be improved later.`,
     const text = [plan.summary, plan.body].filter(Boolean).join("\n")
     expect(text).toContain("Happy to help")
   })
+
+  test("multi-part plan stays streaming when only the first text part has ended", () => {
+    // Engine: text-start/end → text-start/deltas. Body joins both; partEnded must not
+    // use parts[0] alone or dual-mode flips to markdown while part 2 still grows.
+    const { messages: msgs, parts } = makeAssistantMessage("a-multipart-plan")
+    parts.push({
+      id: "p-text-a",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "First block.",
+      time: { start: 1000, end: 1100 },
+    } as Part)
+    parts.push({
+      id: "p-text-b",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Second block still streaming",
+      time: { start: 1200 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "busy",
+    })
+    const plan = result.find((e) => e.kind === "plan")!
+    expect(plan).toBeDefined()
+    expect(plan.streaming).toBe(true)
+    const text = [plan.summary, plan.body].filter(Boolean).join("\n")
+    expect(text).toContain("First block.")
+    expect(text).toContain("Second block still streaming")
+  })
+
+  test("multi-part plan stops streaming only when every text part has ended", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-multipart-plan-done")
+    parts.push({
+      id: "p-text-a",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "First block.",
+      time: { start: 1000, end: 1100 },
+    } as Part)
+    parts.push({
+      id: "p-text-b",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Second block done.",
+      time: { start: 1200, end: 1300 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "busy",
+    })
+    const plan = result.find((e) => e.kind === "plan")!
+    expect(plan.streaming).toBe(false)
+  })
+
+  test("multi-part ok (textAfterTool) stays streaming when a later post-tool text part is open", () => {
+    // Most likely production multi-part case: tool finishes, model opens more text parts.
+    const { messages: msgs, parts } = makeAssistantMessage("a-multipart-ok")
+    parts.push({
+      id: "p-plan",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Checking the file.",
+      time: { start: 1000, end: 1050 },
+    } as Part)
+    parts.push({
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "read",
+      state: {
+        status: "completed",
+        input: { filePath: "a.ts" },
+        output: "x",
+        title: "read",
+        metadata: {},
+        time: { start: 1100, end: 1200 },
+      },
+    } as Part)
+    parts.push({
+      id: "p-ok-a",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Here is what I found.",
+      time: { start: 1300, end: 1400 },
+    } as Part)
+    parts.push({
+      id: "p-ok-b",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "And more detail still arriving",
+      time: { start: 1500 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "busy",
+    })
+    const plan = result.find((e) => e.kind === "plan")!
+    const ok = result.find((e) => e.kind === "ok")!
+    // Plan bucket is closed + tools already ran → not streaming.
+    expect(plan.streaming).toBe(false)
+    // Ok bucket must stay plain/streaming while any post-tool text part is open.
+    expect(ok).toBeDefined()
+    expect(ok.streaming).toBe(true)
+    const text = [ok.summary, ok.body].filter(Boolean).join("\n")
+    expect(text).toContain("Here is what I found.")
+    expect(text).toContain("And more detail still arriving")
+  })
+
+  test("multi-part ok stops streaming when every post-tool text part has ended", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-multipart-ok-done")
+    parts.push({
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "read",
+      state: {
+        status: "completed",
+        input: { filePath: "a.ts" },
+        output: "x",
+        title: "read",
+        metadata: {},
+        time: { start: 1100, end: 1200 },
+      },
+    } as Part)
+    parts.push({
+      id: "p-ok-a",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Here is what I found.",
+      time: { start: 1300, end: 1400 },
+    } as Part)
+    parts.push({
+      id: "p-ok-b",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "And the rest.",
+      time: { start: 1500, end: 1600 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "busy",
+    })
+    const ok = result.find((e) => e.kind === "ok")!
+    expect(ok.streaming).toBe(false)
+  })
 })

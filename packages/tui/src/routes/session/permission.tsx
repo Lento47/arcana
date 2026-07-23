@@ -524,6 +524,8 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
   const narrow = createMemo(() => dimensions().width < 80)
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
+    // Same as Decision Prompt: outrank command-spine enter:toggle (priority 1).
+    priority: 10,
     commands: [
       {
         name: "app.exit",
@@ -615,6 +617,9 @@ function Prompt<const T extends Record<string, string>>(props: {
 
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
+    // Above command-spine entry toggle (priority 1) so Enter confirms Decision,
+    // including Always allow → Confirm, instead of expand/collapse on a message.
+    priority: 10,
     commands: [
       {
         name: "app.exit",

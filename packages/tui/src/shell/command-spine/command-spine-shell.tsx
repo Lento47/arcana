@@ -4,10 +4,9 @@ import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import { useThinkingMode } from "../../context/thinking"
 import type { ShellProps } from "../types"
-import { getSpineLayout } from "./spine-types"
+import { getSpineLayout, spineProseWidth, type SpineEntry } from "./spine-types"
 import { SAMPLE_ENTRIES } from "./sample-entries"
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
-import type { SpineEntry } from "./spine-types"
 import { SpineHeader } from "./spine-header"
 import { SpineEntry as SpineEntryView } from "./spine-entry"
 import { SpinePrompt } from "./spine-prompt"
@@ -63,6 +62,9 @@ export function CommandSpineShell(props: ShellProps) {
   const route = useRoute()
   const dims = useTerminalDimensions()
   const layout = createMemo(() => getSpineLayout(dims().width))
+  // Grok-class measured wrap width — never rely on Yoga % beside fixed rails.
+  const chatContentWidth = createMemo(() => spineProseWidth(dims().width, layout(), "chat"))
+  const thinkContentWidth = createMemo(() => spineProseWidth(dims().width, layout(), "think"))
 
   // Cross-session cache slot for the CURRENT session. This must be a memo,
   // not a const, because <Session /> no longer remounts on session switch —
@@ -229,7 +231,15 @@ export function CommandSpineShell(props: ShellProps) {
 
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
-    enabled: () => renderer.currentFocusedEditor === null && navigableEntries().length > 0,
+    // When a permission/question gate is open, Enter must go to Decision confirm
+    // (PermissionPrompt), not expand/collapse the focused spine entry. Gates also
+    // disable the composer, so currentFocusedEditor is null and this layer would
+    // otherwise win over gate bindings (priority 1 vs default 0).
+    enabled: () =>
+      renderer.currentFocusedEditor === null
+      && navigableEntries().length > 0
+      && props.permissions().length === 0
+      && props.questions().length === 0,
     priority: 1,
     bindings: [
       // Prefer j/k / arrows for spine focus — Tab in the prompt is agent.cycle.
@@ -278,6 +288,8 @@ export function CommandSpineShell(props: ShellProps) {
                 <SpineEntryView
                   entry={entry()}
                   layout={layout()}
+                  contentWidth={chatContentWidth()}
+                  thinkContentWidth={thinkContentWidth()}
                   expanded={entryExpanded(entry())}
                   focused={entryFocused(entry())}
                   onToggle={() => toggleEntry(entry())}

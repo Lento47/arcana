@@ -1747,11 +1747,15 @@ function makeTextEntry(
   const view = chatTextView(joined)
   const primary = parts[0]!
   const elapsed = computeElapsed(assistantDuration, message)
-  // Part end on the primary text part if the engine sets it
-  const partWithTime = primary as TextPart & { time?: { end?: number } }
+  // Body joins every text part in this plan/ok bucket (joinTextBodies).
+  // partEnded must match that universe: every part closed, not only parts[0].
+  // Prefer every() over at(-1) so a hole (earlier part still open, later closed)
+  // stays streaming rather than flipping dual-mode markdown mid-segment.
+  const partEnded = parts.every((p) => p.time?.end != null)
   const life = buildTurnLifecycle({
     message,
-    part: partWithTime.time ? partWithTime : undefined,
+    part: primary.time ? primary : undefined,
+    partEnded,
     segmentSuperseded: toolsAlreadyRan,
     isLatestAssistant: streamingCtx.isLatestAssistant,
     sessionStatusType: streamingCtx.sessionStatusType,
