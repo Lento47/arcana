@@ -7,6 +7,7 @@ import {
   type ArcanaErrorCode,
   type ArcanaErrorInternal,
   buildArcanaError,
+  isArcanaErrorCode,
 } from "./arcana-error"
 
 export type UpstreamMapInput = {
@@ -124,17 +125,24 @@ function classify(status: number | undefined, text: string, body: any): ArcanaEr
 export function mapUpstreamToArcanaError(input: UpstreamMapInput): ArcanaErrorBody {
   const bodyText = input.bodyText ?? ""
   const body = parseJson(bodyText)
-  // Prefer already-mapped Arcana envelope
+  // Prefer already-mapped Arcana envelope (known codes only — unknown ARC_*
+  // used to crash buildArcanaError → TypeError base.httpStatus mid-retry).
   if (body?.error?.code && String(body.error.code).startsWith("ARC_")) {
-    const code = body.error.code as ArcanaErrorCode
+    const wireCode = String(body.error.code)
+    const code: ArcanaErrorCode = isArcanaErrorCode(wireCode) ? wireCode : "ARC_INTERNAL"
     return buildArcanaError(code, {
       message: typeof body.error.message === "string" ? body.error.message : undefined,
       recovery: Array.isArray(body.error.recovery) ? body.error.recovery.map(String) : undefined,
       retryable: typeof body.error.retryable === "boolean" ? body.error.retryable : undefined,
-      internal: body.internal ?? {
-        provider: input.provider ?? body.provider,
-        model: input.model ?? body.model,
+      internal: {
+        ...(body.internal && typeof body.internal === "object" ? body.internal : {}),
+        provider: input.provider ?? body.provider ?? body.internal?.provider,
+        model: input.model ?? body.model ?? body.internal?.model,
+        upstreamCode: wireCode,
         upstreamMessage: bodyText.slice(0, 500),
+        ...(isArcanaErrorCode(wireCode)
+          ? {}
+          : { raw: `unknown Arcana error code from wire: ${wireCode}` }),
       },
     })
   }

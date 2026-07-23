@@ -78,6 +78,37 @@ describe("mapUpstreamToArcanaError", () => {
     expect(err.message).toContain("Too many requests")
   })
 
+  test("unknown ARC_* wire code does not throw; falls back to ARC_INTERNAL", () => {
+    const body = JSON.stringify({
+      error: {
+        code: "ARC_FUTURE_CODE_NOT_IN_ENGINE",
+        type: "internal",
+        message: "Proxy said something new",
+        retryable: true,
+      },
+      internal: { provider: "arcana-proxy" },
+    })
+    const err = mapUpstreamToArcanaError({
+      status: 500,
+      bodyText: body,
+      provider: "arcana-proxy",
+    })
+    expect(err.code).toBe("ARC_INTERNAL")
+    expect(err.httpStatus).toBe(500)
+    expect(err.message).toContain("Proxy said something new")
+    expect(err.internal?.upstreamCode).toBe("ARC_FUTURE_CODE_NOT_IN_ENGINE")
+  })
+
+  test("buildArcanaError tolerates unknown codes without TypeError", async () => {
+    const { buildArcanaError } = await import("../../src/error/arcana-error")
+    const err = buildArcanaError("ARC_NOT_A_REAL_CODE" as any, {
+      message: "fallback path",
+    })
+    expect(err.code).toBe("ARC_INTERNAL")
+    expect(err.httpStatus).toBeNumber()
+    expect(err.message).toBe("fallback path")
+  })
+
   test("formatUserFacing never includes tid", () => {
     const err = mapUpstreamToArcanaError({
       status: 400,
