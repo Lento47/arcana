@@ -216,7 +216,7 @@ export const layer = Layer.effect(
       if (!heuristic) return
 
       // Re-check default in case of concurrent rename.
-      const current = yield* sessions.get(input.session.id).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+      const current = yield* sessions.get(input.session.id).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (!current || !Session.isDefaultTitle(current.title)) return
 
       yield* sessions
@@ -241,7 +241,7 @@ export const layer = Layer.effect(
     }) {
       if (input.session.parentID) return
       // Fresh read: heuristic may have already named this session.
-      const live = yield* sessions.get(input.session.id).pipe(Effect.catchAll(() => Effect.succeed(input.session)))
+      const live = yield* sessions.get(input.session.id).pipe(Effect.catch(() => Effect.succeed(input.session)))
       if (!Session.isDefaultTitle(live.title)) return
 
       const idx = firstRealUserIndex(input.history)
@@ -294,7 +294,7 @@ export const layer = Layer.effect(
           : cleaned
 
       // Never clobber a non-default title that landed while we streamed.
-      const after = yield* sessions.get(input.session.id).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+      const after = yield* sessions.get(input.session.id).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (!after || !Session.isDefaultTitle(after.title)) return
 
       yield* sessions
