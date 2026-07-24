@@ -118,16 +118,10 @@ export class UpgradeFailedError extends Schema.TaggedErrorClass<UpgradeFailedErr
 }
 
 // Response schemas for external version APIs
-const _GitHubRelease = Schema.Struct({ tag_name: Schema.String })
 const NpmPackage = Schema.Struct({ version: Schema.String })
-const BrewFormula = Schema.Struct({ versions: Schema.Struct({ stable: Schema.String }) })
-const BrewInfoV2 = Schema.Struct({
-  formulae: Schema.Array(Schema.Struct({ versions: Schema.Struct({ stable: Schema.String }) })),
-})
-const ChocoPackage = Schema.Struct({
-  d: Schema.Struct({ results: Schema.Array(Schema.Struct({ Version: Schema.String })) }),
-})
-const ScoopManifest = NpmPackage
+
+/** Public R2 channel for Arcana binaries (Cloudflare). */
+const ARCANA_RELEASES_LATEST_URL = "https://releases.otnelhq.com/arcana/latest.txt"
 
 export interface Interface {
   readonly info: () => Effect.Effect<Info>
@@ -179,14 +173,6 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
       Effect.catch((err) => Effect.succeed({ code: 1, stdout: "", stderr: errorMessage(err) })),
     )
 
-    const getBrewFormula = Effect.fnUntraced(function* () {
-      const tapFormula = yield* text(["brew", "list", "--formula", "anomalyco/tap/opencode"])
-      if (tapFormula.includes("arcana")) return "anomalyco/tap/opencode"
-      const coreFormula = yield* text(["brew", "list", "--formula", "arcana"])
-      if (coreFormula.includes("arcana")) return "arcana"
-      return "arcana"
-    })
-
     const upgradeFailure = (method: Method, result?: { code: number; stdout: string; stderr: string }) => {
       if (method === "choco") return "not running from an elevated command shell"
       if (result) return `Upgrade failed for ${method} (exit code ${result.code}).`
@@ -201,8 +187,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
 
     const upgradeCurl = Effect.fnUntraced(
       function* (target: string) {
-        // Run arcana's own upgrade script (downloads the binary from R2) — NOT the
-        // upstream opencode installer, which installs the wrong product and fails.
+        // Arcana binaries from R2 (releases.otnelhq.com) — never upstream OpenCode installers.
         const bodyBytes = new TextEncoder().encode(ARCANA_UPGRADE_SCRIPT)
         const shell = yield* upgradeScriptShell()
         const result = yield* appProcess.run(
@@ -221,6 +206,35 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
       Effect.mapError(() => new UpgradeFailedError({ stderr: upgradeFailure("curl") })),
     )
 
+    /** Latest from npmjs (`arcana-ai` package). Used for npm/bun/pnpm/yarn installs. */
+    const latestFromNpm = Effect.fnUntraced(function* () {
+      const response = yield* httpOk.execute(
+        HttpClientRequest.get(
+          `${yield* NpmConfig.registry(process.cwd())}/arcana-ai/${InstallationChannel}`,
+        ).pipe(HttpClientRequest.acceptJson),
+      )
+      const data = yield* HttpClientResponse.schemaBodyJson(NpmPackage)(response)
+      return data.version
+    })
+
+    /**
+     * Latest from Cloudflare R2 (`releases.otnelhq.com/arcana/latest.txt`).
+     * Canonical for curl/binary installs and for methods without a published Arcana package.
+     */
+    const latestFromR2 = Effect.fnUntraced(function* () {
+      const response = yield* httpOk.execute(
+        HttpClientRequest.get(ARCANA_RELEASES_LATEST_URL).pipe(
+          HttpClientRequest.setHeaders({ Accept: "text/plain" }),
+        ),
+      )
+      const data = yield* response.text
+      const version = data.trim().replace(/^v/, "")
+      if (!version || !/^\d+\.\d+\.\d+/.test(version)) {
+        return yield* Effect.die(new Error(`Invalid version from Arcana releases: ${data}`))
+      }
+      return version
+    })
+
     const result: Interface = {
       info: Effect.fn("Installation.info")(function* () {
         return {
@@ -238,6 +252,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
           { name: "yarn", command: () => text(["yarn", "global", "list"]) },
           { name: "pnpm", command: () => text(["pnpm", "list", "-g", "--depth=0"]) },
           { name: "bun", command: () => text(["bun", "pm", "ls", "-g"]) },
+          // Prefer detecting real Arcana package names only (never OpenCode legacy formulas).
           { name: "brew", command: () => text(["brew", "list", "--formula", "arcana"]) },
           { name: "scoop", command: () => text(["scoop", "list", "arcana"]) },
           { name: "choco", command: () => text(["choco", "list", "--limit-output", "arcana"]) },
@@ -253,9 +268,8 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
 
         for (const check of checks) {
           const output = yield* check.command()
-          const installedName =
-            check.name === "brew" || check.name === "choco" || check.name === "scoop" ? "arcana" : "arcana"
-          if (output.includes(installedName)) {
+          // npm/yarn/pnpm/bun list may show package as arcana-ai; brew/scoop/choco as arcana
+          if (output.includes("arcana")) {
             return check.name
           }
         }
@@ -265,64 +279,19 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
       latest: Effect.fn("Installation.latest")(function* (installMethod?: Method) {
         const detectedMethod = installMethod || (yield* result.method())
 
-        if (detectedMethod === "brew") {
-          const formula = yield* getBrewFormula()
-          if (formula.includes("/")) {
-            const infoJson = yield* text(["brew", "info", "--json=v2", formula])
-            const info = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BrewInfoV2))(infoJson)
-            return info.formulae[0].versions.stable
-          }
-          const response = yield* httpOk.execute(
-            HttpClientRequest.get("https://formulae.brew.sh/api/formula/opencode.json").pipe(
-              HttpClientRequest.acceptJson,
-            ),
-          )
-          const data = yield* HttpClientResponse.schemaBodyJson(BrewFormula)(response)
-          return data.versions.stable
+        // JS package managers: npm registry is authoritative (published by [bump] release).
+        if (
+          detectedMethod === "npm"
+          || detectedMethod === "bun"
+          || detectedMethod === "pnpm"
+          || detectedMethod === "yarn"
+        ) {
+          return yield* latestFromNpm()
         }
 
-        if (detectedMethod === "npm" || detectedMethod === "bun" || detectedMethod === "pnpm") {
-          const response = yield* httpOk.execute(
-            HttpClientRequest.get(
-              `${yield* NpmConfig.registry(process.cwd())}/arcana-ai/${InstallationChannel}`,
-            ).pipe(HttpClientRequest.acceptJson),
-          )
-          const data = yield* HttpClientResponse.schemaBodyJson(NpmPackage)(response)
-          return data.version
-        }
-
-        if (detectedMethod === "choco") {
-          const response = yield* httpOk.execute(
-            HttpClientRequest.get(
-              "https://community.chocolatey.org/api/v2/Packages?$filter=Id%20eq%20%27opencode%27%20and%20IsLatestVersion&$select=Version",
-            ).pipe(HttpClientRequest.setHeaders({ Accept: "application/json;odata=verbose" })),
-          )
-          const data = yield* HttpClientResponse.schemaBodyJson(ChocoPackage)(response)
-          return data.d.results[0].Version
-        }
-
-        if (detectedMethod === "scoop") {
-          const response = yield* httpOk.execute(
-            HttpClientRequest.get(
-              "https://raw.githubusercontent.com/ScoopInstaller/Main/master/bucket/opencode.json",
-            ).pipe(HttpClientRequest.setHeaders({ Accept: "application/json" })),
-          )
-          const data = yield* HttpClientResponse.schemaBodyJson(ScoopManifest)(response)
-          return data.version
-        }
-
-        // GitHub Releases API requires auth for private repos — use public R2
-        const response = yield* httpOk.execute(
-          HttpClientRequest.get("https://releases.otnelhq.com/arcana/latest.txt").pipe(
-            HttpClientRequest.setHeaders({ Accept: "text/plain" }),
-          ),
-        )
-        const data = yield* response.text
-        const version = data.trim().replace(/^v/, "")
-        if (!version || !/^\d+\.\d+\.\d+/.test(version)) {
-          return yield* Effect.die(new Error(`Invalid version from releases: ${data}`))
-        }
-        return version
+        // curl / brew / scoop / choco / unknown: R2 binary channel (Cloudflare).
+        // Do not query OpenCode brew/choco/scoop feeds — those are a different product.
+        return yield* latestFromR2()
       }, Effect.orDie),
       upgrade: Effect.fn("Installation.upgrade")(function* (m: Method, target: string) {
         let upgradeResult: { code: number; stdout: string; stderr: string } | undefined
@@ -331,6 +300,7 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
             upgradeResult = yield* upgradeCurl(target)
             break
           case "npm":
+          case "yarn":
             upgradeResult = yield* run(["npm", "install", "-g", `arcana-ai@${target}`])
             break
           case "pnpm":
@@ -340,32 +310,28 @@ export const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProce
             upgradeResult = yield* run(["bun", "install", "-g", `arcana-ai@${target}`])
             break
           case "brew": {
-            const formula = yield* getBrewFormula()
-            const env = { HOMEBREW_NO_AUTO_UPDATE: "1" }
-            if (formula.includes("/")) {
-              const tap = yield* run(["brew", "tap", "anomalyco/tap"], { env })
-              if (tap.code !== 0) {
-                upgradeResult = tap
-                break
-              }
-              const repo = yield* text(["brew", "--repo", "anomalyco/tap"])
-              const dir = repo.trim()
-              if (dir) {
-                const pull = yield* run(["git", "pull", "--ff-only"], { cwd: dir, env })
-                if (pull.code !== 0) {
-                  upgradeResult = pull
-                  break
-                }
-              }
+            // Prefer Homebrew formula named arcana when present; otherwise npm global (arcana-ai).
+            const listed = yield* text(["brew", "list", "--formula", "arcana"])
+            if (listed.includes("arcana")) {
+              const env = { HOMEBREW_NO_AUTO_UPDATE: "1" }
+              upgradeResult = yield* run(["brew", "upgrade", "arcana"], { env })
+            } else {
+              upgradeResult = yield* run(["npm", "install", "-g", `arcana-ai@${target}`])
             }
-            upgradeResult = yield* run(["brew", "upgrade", formula], { env })
             break
           }
           case "choco":
+            // Official Chocolatey package is arcana when published; fall back to npm.
             upgradeResult = yield* run(["choco", "upgrade", "arcana", `--version=${target}`, "-y"])
+            if (upgradeResult.code !== 0) {
+              upgradeResult = yield* run(["npm", "install", "-g", `arcana-ai@${target}`])
+            }
             break
           case "scoop":
-            upgradeResult = yield* run(["scoop", "install", `arcana@${target}`])
+            upgradeResult = yield* run(["scoop", "update", "arcana"])
+            if (upgradeResult.code !== 0) {
+              upgradeResult = yield* run(["npm", "install", "-g", `arcana-ai@${target}`])
+            }
             break
           default:
             return yield* new UpgradeFailedError({ stderr: `Unknown installation method: ${m}` })

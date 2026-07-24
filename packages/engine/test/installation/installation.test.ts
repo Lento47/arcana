@@ -66,7 +66,7 @@ function testLayer(
 describe("installation", () => {
   describe("latest", () => {
     testEffect(testLayer(() => textResponse("1.2.3"))).effect(
-      "reads release version from GitHub releases",
+      "reads release version from R2 latest.txt",
       () =>
         Effect.gen(function* () {
           const result = yield* Installation.use.latest("unknown")
@@ -75,7 +75,7 @@ describe("installation", () => {
     )
 
     testEffect(testLayer(() => textResponse("v4.0.0-beta.1"))).effect(
-      "strips v prefix from GitHub release tag",
+      "strips v prefix from R2 release tag",
       () =>
         Effect.gen(function* () {
           const result = yield* Installation.use.latest("curl")
@@ -125,55 +125,46 @@ describe("installation", () => {
       }),
     )
 
-    testEffect(testLayer(() => jsonResponse({ version: "2.3.4" }))).effect("reads scoop manifest versions", () =>
+    const r2Calls: string[] = []
+    testEffect(
+      testLayer((request) => {
+        r2Calls.push(request.url)
+        return textResponse("2.3.4")
+      }),
+    ).effect("reads scoop versions from Arcana R2 (not OpenCode scoop bucket)", () =>
       Effect.gen(function* () {
         const result = yield* Installation.use.latest("scoop")
         expect(result).toBe("2.3.4")
+        expect(r2Calls.some((u) => u.includes("releases.otnelhq.com/arcana/latest.txt"))).toBe(true)
+        expect(r2Calls.some((u) => u.includes("opencode"))).toBe(false)
       }),
     )
 
-    testEffect(testLayer(() => jsonResponse({ d: { results: [{ Version: "3.4.5" }] } }))).effect(
-      "reads chocolatey feed versions",
-      () =>
-        Effect.gen(function* () {
-          const result = yield* Installation.use.latest("choco")
-          expect(result).toBe("3.4.5")
-        }),
+    testEffect(
+      testLayer((request) => {
+        r2Calls.push(request.url)
+        return textResponse("3.4.5")
+      }),
+    ).effect("reads chocolatey versions from Arcana R2 (not OpenCode choco feed)", () =>
+      Effect.gen(function* () {
+        const result = yield* Installation.use.latest("choco")
+        expect(result).toBe("3.4.5")
+        expect(r2Calls.some((u) => u.includes("releases.otnelhq.com/arcana/latest.txt"))).toBe(true)
+        expect(r2Calls.some((u) => u.includes("opencode") || u.includes("chocolatey.org"))).toBe(false)
+      }),
     )
 
     testEffect(
-      testLayer(
-        () => jsonResponse({ versions: { stable: "2.0.0" } }),
-        (cmd, args) => {
-          // getBrewFormula: return core formula (no tap)
-          if (cmd === "brew" && args.includes("--formula") && args.includes("anomalyco/tap/opencode")) return ""
-          if (cmd === "brew" && args.includes("--formula") && args.includes("arcana")) return "arcana"
-          return ""
-        },
-      ),
-    ).effect("reads brew formulae API versions", () =>
+      testLayer((request) => {
+        r2Calls.push(request.url)
+        return textResponse("2.0.0")
+      }),
+    ).effect("reads brew versions from Arcana R2 (not OpenCode brew formula)", () =>
       Effect.gen(function* () {
         const result = yield* Installation.use.latest("brew")
         expect(result).toBe("2.0.0")
-      }),
-    )
-
-    const brewInfoJson = JSON.stringify({
-      formulae: [{ versions: { stable: "2.1.0" } }],
-    })
-    testEffect(
-      testLayer(
-        () => jsonResponse({}), // HTTP not used for tap formula
-        (cmd, args) => {
-          if (cmd === "brew" && args.includes("anomalyco/tap/opencode") && args.includes("--formula")) return "arcana"
-          if (cmd === "brew" && args.includes("--json=v2")) return brewInfoJson
-          return ""
-        },
-      ),
-    ).effect("reads brew tap info JSON via CLI", () =>
-      Effect.gen(function* () {
-        const result = yield* Installation.use.latest("brew")
-        expect(result).toBe("2.1.0")
+        expect(r2Calls.some((u) => u.includes("releases.otnelhq.com/arcana/latest.txt"))).toBe(true)
+        expect(r2Calls.some((u) => u.includes("opencode") || u.includes("formulae.brew.sh"))).toBe(false)
       }),
     )
   })
