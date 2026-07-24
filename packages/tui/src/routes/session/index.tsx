@@ -18,6 +18,8 @@ import { Dynamic } from "solid-js/web"
 import path from "node:path"
 import { mkdir, writeFile } from "node:fs/promises"
 import { recordTuiFeedback } from "../../feedback"
+import { Flag } from "@arcana/core/flag/flag"
+import { isDefaultTitle, titleFromUserText } from "../../util/session"
 import { useRoute, useRouteData } from "../../context/route"
 import { Lexicon, Glyph, AgentSigil, VerbPool } from "../../branding"
 import { useProject } from "../../context/project"
@@ -103,6 +105,9 @@ addDefaultParsers(parsers.parsers)
 
 /** Shared empty parts array so spine mapper cache keys stay stable. */
 const EMPTY_PARTS: Part[] = []
+
+/** Once-per-session attempt to replace ISO default titles when messages load. */
+const titleBackfillAttempted = new Set<string>()
 
 const GO_UPSELL_FREE_TIER_LAST_SEEN_AT = "go_upsell_last_seen_at"
 const GO_UPSELL_FREE_TIER_DONT_SHOW = "go_upsell_dont_show"
@@ -398,17 +403,26 @@ export function Session() {
     const sessionID = route.sessionID
     void (async () => {
       const previousWorkspace = untrack(() => project.workspace.current())
+      const warm = sync.session.isSynced(sessionID)
+      const profile = Flag.ARCANA_PROFILE_SESSION_SWITCH
+      const t0 = profile ? performance.now() : 0
+      if (profile) {
+        performance.mark(`session-switch-start:${sessionID}`)
+      }
 
       // sync.session.sync() fetches session.get, messages, todo, and diff in
       // parallel — no need for a separate blocking session.get call.
+      // Warm sessions (already fullSynced) return immediately without network.
       const syncTask = sync.session.sync(sessionID)
 
       // Optimistic setup: use cached session data (from session list loaded
       // during bootstrap) to fire workspace/bootstrap and editor reconnect
       // in parallel with the sync, rather than waiting for it.
       const cachedSession = sync.session.get(sessionID)
+      let workspaceChanged = false
       if (cachedSession) {
-        if (cachedSession.workspaceID !== previousWorkspace) {
+        workspaceChanged = cachedSession.workspaceID !== previousWorkspace
+        if (workspaceChanged) {
           project.workspace.set(cachedSession.workspaceID)
           try {
             await sync.bootstrap({ fatal: false })
@@ -418,6 +432,7 @@ export function Session() {
       }
 
       await syncTask
+      const tSync = profile ? performance.now() : 0
 
       const session = sync.session.get(sessionID)
       if (!session) {
@@ -433,7 +448,8 @@ export function Session() {
       // If no cached data was available (rare — session not in list), do
       // workspace/editor setup now that we have the fresh sync result.
       if (!cachedSession) {
-        if (session.workspaceID !== previousWorkspace) {
+        workspaceChanged = session.workspaceID !== previousWorkspace
+        if (workspaceChanged) {
           project.workspace.set(session.workspaceID)
           try {
             await sync.bootstrap({ fatal: false })
@@ -443,6 +459,71 @@ export function Session() {
       }
 
       if (route.sessionID === sessionID && scroll) scroll.scrollBy(100_000)
+
+      // Layer D: lazy backfill — old sessions stuck on "New session - <ISO>" get a
+      // name from first user text once messages are in the store. Never clobbers
+      // custom titles (isDefaultTitle gate). Fire-and-forget; one attempt per id.
+      if (
+        route.sessionID === sessionID &&
+        isDefaultTitle(session.title) &&
+        !titleBackfillAttempted.has(sessionID)
+      ) {
+        titleBackfillAttempted.add(sessionID)
+        const messages = sync.data.message[sessionID] ?? []
+        let raw: string | undefined
+        for (const msg of messages) {
+          if (msg.role !== "user") continue
+          const parts = sync.data.part[msg.id] ?? []
+          const chunks: string[] = []
+          for (const part of parts) {
+            if (part.type !== "text" || typeof part.text !== "string") continue
+            if ("synthetic" in part && part.synthetic) continue
+            chunks.push(part.text)
+          }
+          if (chunks.length) {
+            raw = chunks.join("\n")
+            break
+          }
+        }
+        const next = raw ? titleFromUserText(raw) : undefined
+        if (next) {
+          void sdk.client.session
+            .update({ sessionID, title: next })
+            .then(() => {
+              // Keep local list in sync even if the SSE update is delayed.
+              const live = sync.session.get(sessionID)
+              if (live && isDefaultTitle(live.title)) {
+                sync.session.upsert({ ...live, title: next })
+              }
+            })
+            .catch(() => {
+              titleBackfillAttempted.delete(sessionID)
+            })
+        }
+      }
+
+      if (profile && route.sessionID === sessionID) {
+        const tEnd = performance.now()
+        performance.mark(`session-switch-end:${sessionID}`)
+        try {
+          performance.measure(
+            `session-switch:${sessionID}`,
+            `session-switch-start:${sessionID}`,
+            `session-switch-end:${sessionID}`,
+          )
+        } catch {
+          // marks may collide on rapid re-entry; log still has wall times
+        }
+        // stderr so it never pollutes chat transcript
+        console.error("[session-switch]", {
+          sessionID,
+          warm,
+          workspaceChanged,
+          syncMs: Math.round(tSync - t0),
+          totalMs: Math.round(tEnd - t0),
+          msgCount: sync.data.message[sessionID]?.length ?? 0,
+        })
+      }
     })().catch((error) => {
       if (route.sessionID !== sessionID) return
       toast.show({

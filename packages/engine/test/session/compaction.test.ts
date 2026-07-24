@@ -194,9 +194,22 @@ function createCompactionMarker(sessionID: SessionID) {
   )
 }
 
+/** Non-degenerate summary body so P1/N3 quality gates accept successful fakes. */
+const FAKE_SUMMARY_TEXT = `## Goal
+- Compacted session summary for unit coverage of full-replace flow
+
+## Progress
+### Done
+- Prior turns summarized for context budget
+
+## Next Steps
+- Continue from the summary and recent tail
+`
+
 function fake(
   input: Parameters<SessionProcessorModule.SessionProcessor.Interface["create"]>[0],
   result: "continue" | "compact",
+  ssn: SessionNs.Interface,
 ) {
   const msg = input.assistantMessage
   return {
@@ -205,15 +218,37 @@ function fake(
     },
     updateToolCall: Effect.fn("TestSessionProcessor.updateToolCall")(() => Effect.succeed(undefined)),
     completeToolCall: Effect.fn("TestSessionProcessor.completeToolCall")(() => Effect.void),
-    process: Effect.fn("TestSessionProcessor.process")(() => Effect.succeed(result)),
+    process: Effect.fn("TestSessionProcessor.process")(function* () {
+      // N3: empty summaries soft-fail — write a real body on success path.
+      if (result === "continue") {
+        yield* ssn.updatePart({
+          id: PartID.ascending(),
+          messageID: msg.id,
+          sessionID: msg.sessionID,
+          type: "text",
+          text: FAKE_SUMMARY_TEXT,
+          time: { start: Date.now(), end: Date.now() },
+        })
+        Object.assign(msg, {
+          finish: "stop" as const,
+          summary: true,
+          time: { ...msg.time, completed: Date.now() },
+        })
+        yield* ssn.updateMessage(msg)
+      }
+      return result
+    }),
   } satisfies SessionProcessorModule.SessionProcessor.Handle
 }
 
 function layer(result: "continue" | "compact") {
-  return Layer.succeed(
+  return Layer.effect(
     SessionProcessorModule.SessionProcessor.Service,
-    SessionProcessorModule.SessionProcessor.Service.of({
-      create: Effect.fn("TestSessionProcessor.create")((input) => Effect.succeed(fake(input, result))),
+    Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      return SessionProcessorModule.SessionProcessor.Service.of({
+        create: Effect.fn("TestSessionProcessor.create")((input) => Effect.succeed(fake(input, result, ssn))),
+      })
     }),
   )
 }
@@ -227,7 +262,7 @@ function cfg(compaction?: ConfigV1.Info["compaction"]) {
 
 const deps = Layer.mergeAll(
   wide().layer,
-  layer("continue"),
+  layer("continue").pipe(Layer.provide(SessionNs.defaultLayer)),
   Agent.defaultLayer,
   Plugin.defaultLayer,
   EventV2Bridge.defaultLayer,
@@ -277,7 +312,7 @@ function compactionProcessLayer(options?: CompactionProcessOptions) {
         Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
         Layer.provide(status),
       )
-    : layer(options?.result ?? "continue")
+    : layer(options?.result ?? "continue").pipe(Layer.provide(SessionNs.defaultLayer))
   return Layer.mergeAll(SessionCompaction.layer.pipe(Layer.provide(processor)), processor, events, status).pipe(
     Layer.provide(SessionNs.defaultLayer),
     Layer.provide((options?.provider ?? wide()).layer),
@@ -383,11 +418,12 @@ function autocontinue(enabled: boolean) {
 
 describe("session.compaction.isOverflow", () => {
   it.live(
-    "returns true when token count exceeds usable context",
+    "returns true when token count exceeds usable context (hard ceiling)",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
         const model = createModel({ context: 100_000, output: 32_000 })
+        // 80k = 80% < 85% but usable = 68k → hard ceiling
         const tokens = { input: 75_000, output: 5_000, reasoning: 0, cache: { read: 0, write: 0 } }
         expect(yield* compact.isOverflow({ tokens, model })).toBe(true)
       }),
@@ -395,13 +431,26 @@ describe("session.compaction.isOverflow", () => {
   )
 
   it.live(
-    "returns false when token count within usable context",
+    "returns false when below 85% and within usable context",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
         const model = createModel({ context: 200_000, output: 32_000 })
+        // 110k = 55% of context, usable = 168k
         const tokens = { input: 100_000, output: 10_000, reasoning: 0, cache: { read: 0, write: 0 } }
         expect(yield* compact.isOverflow({ tokens, model })).toBe(false)
+      }),
+    ),
+  )
+
+  it.live(
+    "returns true at 85% of context (proactive threshold)",
+    provideTmpdirInstance(() =>
+      Effect.gen(function* () {
+        const compact = yield* SessionCompaction.Service
+        const model = createModel({ context: 200_000, output: 10_000 })
+        const tokens = { input: 170_000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
+        expect(yield* compact.isOverflow({ tokens, model })).toBe(true)
       }),
     ),
   )
@@ -454,82 +503,49 @@ describe("session.compaction.isOverflow", () => {
     ),
   )
 
-  // ─── Bug reproduction tests ───────────────────────────────────────────
-  // These tests demonstrate that when limit.input is set, isOverflow()
-  // does not subtract any headroom for the next model response. This means
-  // compaction only triggers AFTER we've already consumed the full input
-  // budget, leaving zero room for the next API call's output tokens.
-  //
-  // Compare: without limit.input, usable = context - output (reserves space).
-  // With limit.input, usable = limit.input (reserves nothing).
-  //
-  // Related issues: #10634, #8089, #11086, #12621
-  // Open PRs: #6875, #12924
+  // P0 proactive 85% + hard ceiling: high usage triggers even when limit.input
+  // left little headroom under the old usable-only path.
 
   it.live(
-    "BUG: no headroom when limit.input is set — compaction should trigger near boundary but does not",
+    "triggers near input limit when limit.input is set (proactive 85%)",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
-        // Simulate Claude with prompt caching: input limit = 200K, output limit = 32K
         const model = createModel({ context: 200_000, input: 200_000, output: 32_000 })
-
-        // We've used 198K tokens total. Only 2K under the input limit.
-        // On the next turn, the full conversation (198K) becomes input,
-        // plus the model needs room to generate output — this WILL overflow.
+        // count = 198K = 99% of context → proactive threshold
         const tokens = { input: 180_000, output: 15_000, reasoning: 0, cache: { read: 3_000, write: 0 } }
-        // count = 180K + 3K + 15K = 198K
-        // usable = limit.input = 200K (no output subtracted!)
-        // 198K > 200K = false → no compaction triggered
-
-        // WITHOUT limit.input: usable = 200K - 32K = 168K, and 198K > 168K = true ✓
-        // WITH limit.input: usable = 200K, and 198K > 200K = false ✗
-
-        // With 198K used and only 2K headroom, the next turn will overflow.
-        // Compaction MUST trigger here.
         expect(yield* compact.isOverflow({ tokens, model })).toBe(true)
       }),
     ),
   )
 
   it.live(
-    "BUG: without limit.input, same token count correctly triggers compaction",
+    "triggers without limit.input at same high usage",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
-        // Same model but without limit.input — uses context - output instead
         const model = createModel({ context: 200_000, output: 32_000 })
-
-        // Same token usage as above
         const tokens = { input: 180_000, output: 15_000, reasoning: 0, cache: { read: 3_000, write: 0 } }
-        // count = 198K
-        // usable = context - output = 200K - 32K = 168K
-        // 198K > 168K = true → compaction correctly triggered
-
-        const result = yield* compact.isOverflow({ tokens, model })
-        expect(result).toBe(true) // ← Correct: headroom is reserved
+        expect(yield* compact.isOverflow({ tokens, model })).toBe(true)
       }),
     ),
   )
 
   it.live(
-    "BUG: asymmetry — limit.input model allows 30K more usage before compaction than equivalent model without it",
+    "limit.input and no-input models agree at 85% usage",
     provideTmpdirInstance(() =>
       Effect.gen(function* () {
         const compact = yield* SessionCompaction.Service
-        // Two models with identical context/output limits, differing only in limit.input
         const withInputLimit = createModel({ context: 200_000, input: 200_000, output: 32_000 })
         const withoutInputLimit = createModel({ context: 200_000, output: 32_000 })
-
-        // 170K total tokens — well above context-output (168K) but below input limit (200K)
+        // 170K = 85% of 200K
         const tokens = { input: 166_000, output: 10_000, reasoning: 0, cache: { read: 5_000, write: 0 } }
 
         const withLimit = yield* compact.isOverflow({ tokens, model: withInputLimit })
         const withoutLimit = yield* compact.isOverflow({ tokens, model: withoutInputLimit })
 
-        // Both models have identical real capacity — they should agree:
-        expect(withLimit).toBe(true) // should compact (170K leaves no room for 32K output)
-        expect(withoutLimit).toBe(true) // correctly compacts (170K > 168K)
+        expect(withLimit).toBe(true)
+        expect(withoutLimit).toBe(true)
       }),
     ),
   )
@@ -906,6 +922,34 @@ describe("session.compaction.process", () => {
     }).pipe(withCompaction({ result: "compact" })),
   )
 
+  itCompaction.instance(
+    "soft-fails auto compaction on compact result (P1 recoverable)",
+    Effect.gen(function* () {
+      const ssn = yield* SessionNs.Service
+      const session = yield* ssn.create({})
+      const msg = yield* createUserMessage(session.id, "hello")
+      const msgs = yield* ssn.messages({ sessionID: session.id })
+
+      const result = yield* SessionCompaction.use.process({
+        parentID: msg.id,
+        messages: msgs,
+        sessionID: session.id,
+        auto: true,
+      })
+
+      const summary = (yield* ssn.messages({ sessionID: session.id })).find(
+        (msg) => msg.info.role === "assistant" && msg.info.summary,
+      )
+
+      // Auto mode must not kill the session loop
+      expect(result).toBe("continue")
+      expect(summary?.info.role).toBe("assistant")
+      if (summary?.info.role === "assistant") {
+        expect(summary.info.finish).toBe("error")
+      }
+    }).pipe(withCompaction({ result: "compact" })),
+  )
+
   it.instance(
     "adds synthetic continue prompt when auto is enabled",
     Effect.gen(function* () {
@@ -923,6 +967,13 @@ describe("session.compaction.process", () => {
 
       const all = yield* ssn.messages({ sessionID: session.id })
       const last = all.at(-1)
+      const summaryMsg = all.find((m) => m.info.role === "assistant" && m.info.summary)
+      const summaryTextPart = summaryMsg?.parts.find((p) => p.type === "text")
+      // N1: applied summary is framed as a full-replace carrier
+      if (summaryTextPart?.type === "text") {
+        expect(summaryTextPart.text).toContain("## Compaction summary")
+        expect(summaryTextPart.text).toContain("authoritative record")
+      }
 
       expect(result).toBe("continue")
       expect(last?.info.role).toBe("user")
@@ -932,7 +983,7 @@ describe("session.compaction.process", () => {
         metadata: { compaction_continue: true },
       })
       if (last?.parts[0]?.type === "text") {
-        expect(last.parts[0].text).toContain("Continue if you have next steps")
+        expect(last.parts[0].text).toContain("Context was compacted")
       }
     }),
   )
@@ -1129,7 +1180,7 @@ describe("session.compaction.process", () => {
           (msg) =>
             msg.info.role === "user" &&
             msg.parts.some(
-              (part) => part.type === "text" && part.synthetic && part.text.includes("Continue if you have next steps"),
+              (part) => part.type === "text" && part.synthetic && part.text.includes("Context was compacted"),
             ),
         ),
       ).toBe(false)
@@ -1336,8 +1387,10 @@ describe("session.compaction.process", () => {
           (item) => item.info.role === "assistant" && item.info.summary,
         )
         expect(summary?.parts.some((part) => part.type === "reasoning")).toBe(false)
-        // Sanity: the text part still got through.
-        expect(summary?.parts.some((part) => part.type === "text" && part.text === "summary")).toBe(true)
+        // Sanity: text got through and N1 carrier framing was applied on apply.
+        const text = summary?.parts.find((part) => part.type === "text")
+        expect(text?.type === "text" ? text.text : "").toContain("summary")
+        expect(text?.type === "text" ? text.text : "").toContain("## Compaction summary")
       }).pipe(withCompaction({ llm: stub.layer }))
     },
     { git: true },

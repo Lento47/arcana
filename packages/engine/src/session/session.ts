@@ -51,10 +51,32 @@ const runtime = makeRuntime(Database.Service, Database.defaultLayer)
 const parentTitlePrefix = "New session - "
 const childTitlePrefix = "Child session - "
 
+/** Max chars for auto/heuristic session titles (title agent aims ≤50; allow a bit more). */
+export const TITLE_MAX_CHARS = 60
+
 export function isDefaultTitle(title: string) {
   return new RegExp(
     `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
   ).test(title)
+}
+
+/**
+ * Derive a usable session title from the first user message text.
+ * Instant fallback when LLM title generation is rate-limited or skipped.
+ * Returns undefined for empty / whitespace-only input.
+ */
+export function titleFromUserText(text: string, maxChars = TITLE_MAX_CHARS): string | undefined {
+  const collapsed = text
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0)
+  if (!collapsed) return undefined
+  // Drop a single leading markdown heading marker if present
+  const cleaned = collapsed.replace(/^#{1,6}\s+/, "").replace(/\s+/g, " ").trim()
+  if (!cleaned) return undefined
+  if (cleaned.length <= maxChars) return cleaned
+  return cleaned.slice(0, Math.max(1, maxChars - 3)) + "..."
 }
 
 type SessionRow = typeof SessionTable.$inferSelect

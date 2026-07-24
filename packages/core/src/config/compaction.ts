@@ -12,4 +12,6 @@ export class Info extends Schema.Class<Info>("ConfigV2.Compaction")({
   prune: Schema.Boolean.pipe(Schema.optional),
   keep: Keep.pipe(Schema.optional),
   buffer: NonNegativeInt.pipe(Schema.optional),
+  /** Auto-compact at this % of context window (1–100). Default 85 when unset at engine. */
+  threshold_percent: NonNegativeInt.pipe(Schema.optional),
 }) {}

@@ -7,7 +7,7 @@
  *   ⌬   elapsed since session.time.created (1Hz tick)
  *   ↓↑  cumulative input / output tokens
  *   $   session.cost (hidden when zero / free model)
- *   …   context pressure: "compact soon" (≥80%) or "compact now" (≥95%)
+ *   …   context pressure: "compact soon" (≥85%) or "compact now" (≥95%)
  *
  * Gated by tuiConfig.prompt.metrics_bar (default true). Returns null when
  * no session is active or the bar is disabled.
@@ -22,17 +22,11 @@ import { useSync } from "../../context/sync"
 import { useTuiConfig } from "../../config"
 import { Locale } from "../../util/locale"
 import { formatDuration } from "../../util/format"
+import { contextPressure } from "../../util/context-pressure"
 import type { JSX } from "@opentui/solid"
 
 function clampPercent(pct: number): number {
   return Math.max(0, Math.min(100, pct))
-}
-
-function contextPressure(percent: number | null | undefined): "compact now" | "compact soon" | undefined {
-  if (percent == null) return undefined
-  if (percent >= 95) return "compact now"
-  if (percent >= 80) return "compact soon"
-  return undefined
 }
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })

@@ -724,6 +724,7 @@ export function fromError(
                 message: `This session is over the proxy token limit (${limitMatch[1]} > ${limitMatch[2]}). Compact or start a new session.`,
                 statusCode: 402,
                 isRetryable: false,
+                responseHeaders: (e as APICallError).responseHeaders,
                 responseBody: body,
                 metadata: {
                   arcanaCode: "ARC_REQUEST_INVALID",
@@ -747,6 +748,7 @@ export function fromError(
             message: formatUserFacing(mapped),
             statusCode: mapped.httpStatus || status,
             isRetryable: mapped.retryable,
+            responseHeaders: (e as APICallError).responseHeaders,
             responseBody: body,
             metadata: {
               arcanaCode: mapped.code,
