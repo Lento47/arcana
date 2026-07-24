@@ -70,7 +70,7 @@ jobs:
 
       - name: Open issue on high/critical advisories
         if: failure() && (github.event_name == 'push' || github.event_name == 'schedule')
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             // Dedupe: only one open issue per day per vuln set.
