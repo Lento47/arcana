@@ -176,6 +176,63 @@ export const layer = Layer.effect(
       return parts
     })
 
+    const isRealUser = (m: SessionV1.WithParts) =>
+      m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic)
+
+    const firstRealUserIndex = (history: SessionV1.WithParts[]) => history.findIndex(isRealUser)
+
+    const textFromUserParts = (parts: SessionV1.WithParts["parts"]) => {
+      const chunks: string[] = []
+      for (const p of parts) {
+        if (p.type === "text" && !("synthetic" in p && p.synthetic) && typeof p.text === "string") {
+          chunks.push(p.text)
+        }
+        if (p.type === "subtask" && "prompt" in p && typeof p.prompt === "string") {
+          chunks.push(p.prompt)
+        }
+      }
+      return chunks.join("\n")
+    }
+
+    /**
+     * Instant title from first real user text while the session still has a default
+     * "New session - <ISO>" name. Does not call the model (works under rate limits).
+     * Never overwrites a custom or previously set title.
+     */
+    const ensureHeuristicTitle = Effect.fn("SessionPrompt.ensureHeuristicTitle")(function* (input: {
+      session: Session.Info
+      history: SessionV1.WithParts[]
+    }) {
+      if (input.session.parentID) return
+      if (!Session.isDefaultTitle(input.session.title)) return
+
+      const idx = firstRealUserIndex(input.history)
+      if (idx === -1) return
+      const firstUser = input.history[idx]
+      if (!firstUser || firstUser.info.role !== "user") return
+
+      const raw = textFromUserParts(firstUser.parts)
+      const heuristic = Session.titleFromUserText(raw)
+      if (!heuristic) return
+
+      // Re-check default in case of concurrent rename.
+      const current = yield* sessions.get(input.session.id).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+      if (!current || !Session.isDefaultTitle(current.title)) return
+
+      yield* sessions
+        .setTitle({ sessionID: input.session.id, title: heuristic })
+        .pipe(
+          Effect.catchCause((cause) =>
+            Effect.logError("failed to set heuristic title", { error: Cause.squash(cause) }),
+          ),
+        )
+    })
+
+    /**
+     * LLM title polish — only while still default (e.g. image-only first message,
+     * or heuristic produced nothing). Uses the first real user message even if
+     * later user messages already exist (fixes abandoned-forever ISO titles).
+     */
     const title = Effect.fn("SessionPrompt.ensureTitle")(function* (input: {
       session: Session.Info
       history: SessionV1.WithParts[]
@@ -183,13 +240,12 @@ export const layer = Layer.effect(
       modelID: ModelV2.ID
     }) {
       if (input.session.parentID) return
-      if (!Session.isDefaultTitle(input.session.title)) return
+      // Fresh read: heuristic may have already named this session.
+      const live = yield* sessions.get(input.session.id).pipe(Effect.catchAll(() => Effect.succeed(input.session)))
+      if (!Session.isDefaultTitle(live.title)) return
 
-      const real = (m: SessionV1.WithParts) =>
-        m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic)
-      const idx = input.history.findIndex(real)
+      const idx = firstRealUserIndex(input.history)
       if (idx === -1) return
-      if (input.history.filter(real).length !== 1) return
 
       const context = input.history.slice(0, idx + 1)
       const firstUser = context[idx]
@@ -232,7 +288,15 @@ export const layer = Layer.effect(
         .map((line) => line.trim())
         .find((line) => line.length > 0)
       if (!cleaned) return
-      const t = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
+      const t =
+        cleaned.length > Session.TITLE_MAX_CHARS
+          ? cleaned.substring(0, Session.TITLE_MAX_CHARS - 3) + "..."
+          : cleaned
+
+      // Never clobber a non-default title that landed while we streamed.
+      const after = yield* sessions.get(input.session.id).pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+      if (!after || !Session.isDefaultTitle(after.title)) return
+
       yield* sessions
         .setTitle({ sessionID: input.session.id, title: t })
         .pipe(Effect.catchCause((cause) => Effect.logError("failed to generate title", { error: Cause.squash(cause) })))
@@ -1190,13 +1254,38 @@ export const layer = Layer.effect(
           // daily_limit_reached when the account is out of credits. That error is
           // shaped into a friendly non-retryable stop in MessageV2.fromError, which
           // breaks this loop cleanly. See packages/engine/src/session/message-v2.ts.
-          if (step === 1)
+          if (step === 1) {
+            // Instant name from first user text (no model) so the session list
+            // never stays on "New session - <ISO>" under rate limits.
+            yield* ensureHeuristicTitle({ session, history: msgs }).pipe(Effect.ignore)
+            // LLM polish only if still default (e.g. image-only / empty text).
+            // Uses first real user message even when later turns already exist.
             yield* title({
               session,
               modelID: lastUser.model.modelID,
               providerID: lastUser.model.providerID,
               history: msgs,
             }).pipe(Effect.ignore, Effect.forkIn(scope))
+
+            // P3 inter preflight: before first sample of a new user turn, compact if
+            // context is still hot (with hysteresis) so the model never starts over limit.
+            if (lastFinished && lastFinished.summary !== true) {
+              const didInter = yield* compaction
+                .maybeInter({
+                  sessionID,
+                  agent: lastUser.agent,
+                  model: lastUser.model,
+                  tokens: lastFinished.tokens,
+                  reason: "preflight",
+                })
+                .pipe(Effect.catch(() => Effect.succeed(false)))
+              if (didInter) {
+                msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+                  Effect.provideService(Database.Service, database),
+                )
+              }
+            }
+          }
 
           const model = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
           const task = tasks.pop()
@@ -1218,13 +1307,19 @@ export const layer = Layer.effect(
             continue
           }
 
-          if (
-            lastFinished &&
-            lastFinished.summary !== true &&
-            (yield* compaction.isOverflow({ tokens: lastFinished.tokens, model }))
-          ) {
-            yield* compaction.create({ sessionID, agent: lastUser.agent, model: lastUser.model, auto: true })
-            continue
+          // P4 intra: mid multi-step loop compact (gated by steps/tokens/hysteresis).
+          // Still uses create → next iteration process (same user turn).
+          if (lastFinished && lastFinished.summary !== true) {
+            const scheduled = yield* compaction
+              .maybeIntra({
+                sessionID,
+                agent: lastUser.agent,
+                model: lastUser.model,
+                tokens: lastFinished.tokens,
+                step,
+              })
+              .pipe(Effect.catch(() => Effect.succeed(false)))
+            if (scheduled) continue
           }
 
           const agent = yield* agents.get(lastUser.agent)
@@ -1443,6 +1538,24 @@ export const layer = Layer.effect(
         }
 
         yield* compaction.prune({ sessionID }).pipe(Effect.ignore, Effect.forkIn(scope))
+
+        // P3 inter post-turn: after the loop exits, if usage is still hot, compact
+        // before idle so the next user message starts clean.
+        yield* Effect.gen(function* () {
+          const msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+            Effect.provideService(Database.Service, database),
+          )
+          const { user: lastUser, finished: lastFinished } = MessageV2.latest(msgs)
+          if (!lastUser || !lastFinished || lastFinished.summary === true) return
+          yield* compaction.maybeInter({
+            sessionID,
+            agent: lastUser.agent,
+            model: lastUser.model,
+            tokens: lastFinished.tokens,
+            reason: "post_turn",
+          })
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+
         return yield* lastAssistant(sessionID)
       },
     )

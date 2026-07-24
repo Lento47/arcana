@@ -2,6 +2,7 @@ import type { AssistantMessage } from "@arcana/sdk/v2"
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { Locale } from "../../util/locale"
+import { COMPACT_NOW_PERCENT, COMPACT_SOON_PERCENT, contextPressure as pressureFromPercent } from "../../util/context-pressure"
 import { Lexicon, Glyph } from "../../branding"
 import { ShimmerText } from "../../component/shimmer-text"
 import { selectedForeground } from "../../context/theme"
@@ -46,8 +47,8 @@ function compactModelName(value: string): string {
 function tokenStateLabel(percent: number | null, compacting: boolean): string {
   if (compacting) return "compacting"
   if (percent === null) return "unbounded"
-  if (percent >= 95) return "critical"
-  if (percent >= 80) return "high"
+  if (percent >= COMPACT_NOW_PERCENT) return "critical"
+  if (percent >= COMPACT_SOON_PERCENT) return "high"
   return "healthy"
 }
 
@@ -119,14 +120,15 @@ function View(props: { api: TuiPluginApi }) {
   const contextPressure = createMemo(() => {
     const pct = usage()?.percent
     if (pct === null || pct === undefined || compacting()) return undefined
-    if (pct >= 95) return { label: "COMPACT NOW", color: theme().error }
-    if (pct >= 80) return { label: "COMPACT SOON", color: theme().warning }
+    const label = pressureFromPercent(pct)
+    if (label === "compact now") return { label: "COMPACT NOW", color: theme().error }
+    if (label === "compact soon") return { label: "COMPACT SOON", color: theme().warning }
     return undefined
   })
 
   const busyVerb = createMemo(() => {
+    if (compacting()) return "Compacting context…"
     if (!busy()) return ""
-    if (compacting()) return "Compacting…"
     return "Thinking…"
   })
 
@@ -150,7 +152,9 @@ function View(props: { api: TuiPluginApi }) {
         <Show when={compacting()}>
           <box backgroundColor={theme().warning} paddingLeft={1} paddingRight={1}>
             <text fg={selectedForeground(theme(), theme().warning)}>
-              <span style={{ fg: selectedForeground(theme(), theme().warning), bold: true }}>⟳ COMPACT</span>
+              <span style={{ fg: selectedForeground(theme(), theme().warning), bold: true }}>
+                ⟳ COMPACTING
+              </span>
             </text>
           </box>
         </Show>

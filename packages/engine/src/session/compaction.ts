@@ -15,7 +15,8 @@ import { NotFoundError } from "@/storage/storage"
 import { Effect, Layer, Context } from "effect"
 import * as DateTime from "effect/DateTime"
 import { InstanceState } from "@/effect/instance-state"
-import { isOverflow as overflow, usable } from "./overflow"
+import { isOverflow as overflow, tokenCount, thresholdPercent, usable } from "./overflow"
+// usable used for hard-ceiling force path in maybeIntra
 import { serviceUse } from "@arcana/core/effect/service-use"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -27,6 +28,32 @@ import { EventV2 } from "@arcana/core/event"
 import { buildPrompt } from "@arcana/core/session/compaction"
 import { determineLevel, getPlan, type CompactionLevel, type CompactionPlan } from "./compaction-strategy"
 import { estimateTokens, type MessageUsage } from "./context-meter"
+import {
+  classifyCompactionFailure,
+  DEFAULT_MAX_ATTEMPTS,
+  DEFAULT_RETRY_DELAY_MS,
+  estimateTokensFromText,
+  resolveCompactionOutcome,
+} from "./compaction-failure"
+import {
+  buildContinuationText,
+  dropCompleteTurnsFromFront,
+  dropTrailingIncompleteAssistant,
+  formatSummaryCarrier,
+  prepareHeadForSummarization,
+  toolPairSafeTailStart,
+} from "./compaction-assemble"
+import {
+  compactSuccessMetadata,
+  hysteresisTokensFromMessages,
+  META_LAST_COMPACT_AT,
+  META_PENDING_COMPACT_PASS,
+  readLastCompactTokens,
+  shouldInterCompact,
+  usageForHysteresis,
+  type InterCompactPass,
+} from "./compaction-inter"
+import { intraEnabled, shouldIntraCompact } from "./compaction-intra"
 
 export const Event = {
   Compacted: EventV2.define({
@@ -151,6 +178,11 @@ export interface Interface {
     sessionID: SessionID
     auto: boolean
     overflow?: boolean
+    /**
+     * Provider usage total to seed hysteresis on successful apply (M1).
+     * Prefer tokenCount of the assistant that made context hot.
+     */
+    hysteresisTokens?: number
   }) => Effect.Effect<"continue" | "stop">
   readonly create: (input: {
     sessionID: SessionID
@@ -158,7 +190,32 @@ export interface Interface {
     model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
     auto: boolean
     overflow?: boolean
-  }) => Effect.Effect<void>
+    /** Optional pass tag applied when process succeeds (P3/P4). */
+    pass?: InterCompactPass
+  }) => Effect.Effect<{ messageID: MessageID }>
+  /**
+   * P3: between-turn compact when context is still hot after/before a user turn.
+   * Creates + processes a full-replace compact with hysteresis. Returns true if a
+   * compact was attempted and applied.
+   */
+  readonly maybeInter: (input: {
+    sessionID: SessionID
+    agent: string
+    model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
+    tokens: SessionV1.Assistant["tokens"]
+    reason: "preflight" | "post_turn"
+  }) => Effect.Effect<boolean>
+  /**
+   * P4: mid-loop compact decision + schedule (create only). Returns true if a
+   * compaction task was enqueued for the next loop iteration.
+   */
+  readonly maybeIntra: (input: {
+    sessionID: SessionID
+    agent: string
+    model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
+    tokens: SessionV1.Assistant["tokens"]
+    step: number
+  }) => Effect.Effect<boolean>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@arcana/SessionCompaction") {}
@@ -244,9 +301,15 @@ export const layer = Layer.effect(
       }
 
       if (!keep || keep.start === 0) return { head: input.messages, tail_start_id: undefined }
+
+      // P2: tool-pair-safe tail cut (skip incomplete assistants; allow completed split-turn cuts).
+      const safe = toolPairSafeTailStart(input.messages, keep.start)
+      if (!safe || safe.start === 0) return { head: input.messages, tail_start_id: undefined }
+
+      const head = dropTrailingIncompleteAssistant(input.messages.slice(0, safe.start))
       return {
-        head: input.messages.slice(0, keep.start),
-        tail_start_id: keep.id,
+        head,
+        tail_start_id: safe.id,
       }
     })
 
@@ -304,6 +367,7 @@ export const layer = Layer.effect(
       sessionID: SessionID
       auto: boolean
       overflow?: boolean
+      hysteresisTokens?: number
     }) {
       const parent = input.messages.findLast((m) => m.info.id === input.parentID)
       if (!parent || parent.info.role !== "user") {
@@ -312,6 +376,51 @@ export const layer = Layer.effect(
       const userMessage = parent.info
       const compactionPart = parent.parts.find((part): part is SessionV1.CompactionPart => part.type === "compaction")
 
+      // P5 M1: clear TUI compacting on every process exit (success or fail).
+      // Compaction.Ended clears session_compacting; Compacted + hysteresis only on apply.
+      let applied = false
+      let endText = ""
+      let endRecent = ""
+      let tokensBeforeForHyst = 0
+
+      const finishCompactingUi = Effect.gen(function* () {
+        yield* events
+          .publish(SessionEvent.Compaction.Ended, {
+            sessionID: input.sessionID,
+            messageID: SessionMessage.ID.make(input.parentID),
+            timestamp: DateTime.makeUnsafe(Date.now()),
+            reason: input.auto ? "auto" : "manual",
+            text: endText,
+            recent: endRecent,
+          })
+          .pipe(Effect.catch(() => Effect.void))
+
+        if (!applied) return
+
+        yield* events.publish(Event.Compacted, { sessionID: input.sessionID }).pipe(Effect.catch(() => Effect.void))
+        const sess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (!sess) return
+        const meta = (sess.metadata ?? {}) as Record<string, unknown>
+        const pending = meta[META_PENDING_COMPACT_PASS]
+        const pass: InterCompactPass =
+          pending === "inter" || pending === "intra" || pending === "inline" || pending === "manual"
+            ? pending
+            : input.auto
+              ? "inline"
+              : "manual"
+        const seed =
+          typeof input.hysteresisTokens === "number" && Number.isFinite(input.hysteresisTokens)
+            ? input.hysteresisTokens
+            : (hysteresisTokensFromMessages(input.messages) ?? tokensBeforeForHyst)
+        const next = compactSuccessMetadata(meta, { tokens: seed, pass })
+        delete next[META_PENDING_COMPACT_PASS]
+        yield* session.setMetadata({
+          sessionID: input.sessionID,
+          metadata: next,
+        })
+      })
+
+      return yield* Effect.gen(function* () {
       let messages = input.messages
       let replay:
         | {
@@ -357,7 +466,8 @@ export const layer = Layer.effect(
       const contextLimit = model.limit.context
       const reservedTokens = 3_000
       const headBudget = Math.max(2_000, Math.floor(contextLimit * 0.75) - reservedTokens)
-      const cappedHead = compactWithBudget(selected.head, headBudget)
+      // P2 full-replace prep: budget-cap head, drop incomplete trailing tools, truncate tool dumps.
+      let cappedHead = dropTrailingIncompleteAssistant(compactWithBudget(selected.head, headBudget))
       if (cappedHead.length < selected.head.length) {
         yield* Effect.logInfo("compaction head truncated", {
           before: selected.head.length,
@@ -365,6 +475,7 @@ export const layer = Layer.effect(
           budget: headBudget,
         })
       }
+      cappedHead = prepareHeadForSummarization(cappedHead, TOOL_OUTPUT_MAX_CHARS)
 
       // Allow plugins to inject context or replace compaction prompt.
       const compacting = yield* plugin.trigger(
@@ -381,13 +492,28 @@ export const layer = Layer.effect(
       })
 
       // Final safety net: keep JSON payload under ~950KB so it clears ~1MB body limits.
+      // Drop complete turns from the front only (tool-pair safe), not arbitrary slices.
       const MAX_COMPACTION_JSON_CHARS = 950_000
       let safetyPass = 0
-      while (JSON.stringify(modelMessages).length > MAX_COMPACTION_JSON_CHARS && modelMessages.length > 2 && safetyPass < 10) {
+      while (JSON.stringify(modelMessages).length > MAX_COMPACTION_JSON_CHARS && msgs.length > 2 && safetyPass < 10) {
         safetyPass++
-        const dropCount = Math.max(1, Math.ceil(modelMessages.length * 0.1))
-        modelMessages = modelMessages.slice(dropCount)
-        yield* Effect.logInfo("compaction JSON safety truncation", { pass: safetyPass, remaining: modelMessages.length })
+        const dropCount = Math.max(1, Math.ceil(msgs.length * 0.1))
+        const nextMsgs = dropCompleteTurnsFromFront(msgs, dropCount)
+        if (nextMsgs.length >= msgs.length) {
+          // Could not drop a full turn — fall back to dropping one message from the front.
+          msgs.splice(0, 1)
+        } else {
+          msgs.length = 0
+          msgs.push(...nextMsgs)
+        }
+        modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
+          stripMedia: true,
+          toolOutputMaxChars: TOOL_OUTPUT_MAX_CHARS,
+        })
+        yield* Effect.logInfo("compaction JSON safety truncation", {
+          pass: safetyPass,
+          remaining: modelMessages.length,
+        })
       }
       const tailIndex = selected.tail_start_id
         ? history.findIndex((message) => message.info.id === selected.tail_start_id)
@@ -401,6 +527,7 @@ export const layer = Layer.effect(
                 toolOutputMaxChars: TOOL_OUTPUT_MAX_CHARS,
               }),
             )
+      endRecent = recent
       const ctx = yield* InstanceState.context
       const msg: SessionV1.Assistant = {
         id: MessageID.ascending(),
@@ -429,26 +556,91 @@ export const layer = Layer.effect(
         },
       }
       yield* session.updateMessage(msg)
-      const processor = yield* processors.create({
-        assistantMessage: msg,
-        sessionID: input.sessionID,
-        model,
-      })
-      const result = yield* processor.process({
+
+      const processPayload = {
         user: userMessage,
         agent,
         sessionID: input.sessionID,
         tools: {},
-        system: [],
+        system: [] as string[],
         messages: [
           ...modelMessages,
           {
-            role: "user",
-            content: [{ type: "text", text: nextPrompt }],
+            role: "user" as const,
+            content: [{ type: "text" as const, text: nextPrompt }],
           },
         ],
         model,
+      }
+
+      // P1: retry transient compaction LLM failures; never throw out of auto compact.
+      let processor = yield* processors.create({
+        assistantMessage: msg,
+        sessionID: input.sessionID,
+        model,
       })
+      let result: "continue" | "stop" | "compact" = "stop"
+      let lastFailureMessage: string | undefined
+      for (let attempt = 1; attempt <= DEFAULT_MAX_ATTEMPTS; attempt++) {
+        const attemptResult = yield* processor.process(processPayload).pipe(
+          Effect.map((value) => ({ ok: true as const, value })),
+          Effect.catch((cause) =>
+            Effect.succeed({
+              ok: false as const,
+              message: cause instanceof Error ? cause.message : String(cause),
+            }),
+          ),
+        )
+
+        if (!attemptResult.ok) {
+          lastFailureMessage = attemptResult.message
+          const kind = classifyCompactionFailure({ message: lastFailureMessage })
+          yield* Effect.logWarning("compaction process threw", {
+            attempt,
+            kind,
+            message: lastFailureMessage,
+          })
+          if (kind === "transient" && attempt < DEFAULT_MAX_ATTEMPTS) {
+            yield* Effect.sleep(`${DEFAULT_RETRY_DELAY_MS} millis`)
+            // Fresh assistant message for a clean retry surface
+            const retryMsg: SessionV1.Assistant = {
+              ...msg,
+              id: MessageID.ascending(),
+              time: { created: Date.now() },
+              tokens: { output: 0, input: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+              cost: 0,
+              error: undefined,
+              finish: undefined,
+            }
+            yield* session.updateMessage(retryMsg)
+            processor = yield* processors.create({
+              assistantMessage: retryMsg,
+              sessionID: input.sessionID,
+              model,
+            })
+            continue
+          }
+          processor.message.error = new SessionV1.AbortedError({
+            message: lastFailureMessage ?? "compaction failed",
+          }).toObject()
+          processor.message.finish = "error"
+          yield* session.updateMessage(processor.message)
+          result = "stop"
+          break
+        }
+
+        result =
+          attemptResult.value === "compact" || attemptResult.value === "continue" || attemptResult.value === "stop"
+            ? attemptResult.value
+            : "stop"
+
+        // Overflow during summary call — not retryable as same payload
+        if (result === "compact") break
+
+        // Quality check happens once after the loop (no multi-second retry on
+        // degenerate text — only thrown/transient process errors retry above).
+        break
+      }
 
       if (result === "compact") {
         processor.message.error = new SessionV1.ContextOverflowError({
@@ -458,6 +650,19 @@ export const layer = Layer.effect(
         }).toObject()
         processor.message.finish = "error"
         yield* session.updateMessage(processor.message)
+        // Clear pending pass so inter/intra hysteresis is not stuck on a failed attempt
+        const overflowSess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (overflowSess?.metadata && META_PENDING_COMPACT_PASS in (overflowSess.metadata as object)) {
+          const cleared = { ...((overflowSess.metadata ?? {}) as Record<string, unknown>) }
+          delete cleared[META_PENDING_COMPACT_PASS]
+          yield* session.setMetadata({ sessionID: input.sessionID, metadata: cleared })
+        }
+        // P1: auto soft-fail — keep the main agent loop alive
+        // (finishCompactingUi still clears TUI compacting via Compaction.Ended)
+        if (input.auto) {
+          yield* Effect.logWarning("auto compaction soft-failed (overflow during summary)")
+          return "continue"
+        }
         return "stop"
       }
 
@@ -467,6 +672,72 @@ export const layer = Layer.effect(
           tail_start_id: selected.tail_start_id,
         })
       }
+
+      let summary = summaryText(
+        (yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).find(
+          (item) => item.info.id === processor.message.id,
+        ) ?? {
+          info: processor.message,
+          parts: [],
+        },
+      )
+      const tokensBefore = estimateTokensFromText(JSON.stringify(modelMessages))
+      tokensBeforeForHyst = tokensBefore
+      const tokensAfter = estimateTokensFromText(summary ?? "")
+      const outcome = resolveCompactionOutcome({
+        auto: input.auto,
+        hasError: Boolean(processor.message.error),
+        summary,
+        tokensBefore,
+        tokensAfter,
+      })
+
+      if (outcome !== "apply") {
+        if (!processor.message.error) {
+          processor.message.error = new SessionV1.AbortedError({
+            message: lastFailureMessage ?? "compaction summary rejected (degenerate or insufficient reduction)",
+          }).toObject()
+          processor.message.finish = "error"
+          yield* session.updateMessage(processor.message)
+        }
+        // Clear pending pass so hysteresis is not stuck on a failed attempt
+        const failedSess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (failedSess?.metadata && META_PENDING_COMPACT_PASS in (failedSess.metadata as object)) {
+          const cleared = { ...((failedSess.metadata ?? {}) as Record<string, unknown>) }
+          delete cleared[META_PENDING_COMPACT_PASS]
+          yield* session.setMetadata({ sessionID: input.sessionID, metadata: cleared })
+        }
+        yield* Effect.logWarning("compaction not applied", {
+          auto: input.auto,
+          outcome,
+          summaryLength: summary?.length ?? 0,
+        })
+        // Soft-fail auto: session loop continues with uncompacted history
+        // (finishCompactingUi still clears TUI compacting via Compaction.Ended)
+        return input.auto ? "continue" : "stop"
+      }
+
+      // N1: frame the stored summary so the model treats it as a full-replace carrier.
+      if (summary) {
+        const wrapped = formatSummaryCarrier(summary)
+        if (wrapped !== summary) {
+          const summaryMsg = (yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).find(
+            (item) => item.info.id === processor.message.id,
+          )
+          const textParts = summaryMsg?.parts.filter((part): part is SessionV1.TextPart => part.type === "text") ?? []
+          if (textParts.length > 0) {
+            yield* session.updatePart({ ...textParts[0]!, text: wrapped })
+            for (const extra of textParts.slice(1)) {
+              if (extra.text.trim()) {
+                yield* session.updatePart({ ...extra, text: "" })
+              }
+            }
+          }
+          summary = wrapped
+        }
+      }
+      endText = summary ?? ""
+      applied = true
 
       if (result === "continue" && input.auto) {
         if (replay) {
@@ -527,11 +798,15 @@ export const layer = Layer.effect(
               agent: userMessage.agent,
               model: userMessage.model,
             })
-            const text =
-              (input.overflow
-                ? "The previous request exceeded the provider's size limit due to large media attachments. The conversation was compacted and media files were removed from context. If the user was asking about attached images or files, explain that the attachments were too large to process and suggest they try again with smaller or fewer files.\n\n"
-                : "") +
-              "Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed."
+            // P2: structured continuation after full-replace (goal-aware, overflow-aware).
+            const sessionInfo = yield* session.get(input.sessionID).pipe(
+              Effect.catch(() => Effect.succeed(undefined as Session.Info | undefined)),
+            )
+            const focus =
+              sessionInfo && typeof sessionInfo.title === "string" && !Session.isDefaultTitle(sessionInfo.title)
+                ? sessionInfo.title
+                : undefined
+            const text = buildContinuationText({ overflow: input.overflow === true, focus })
             yield* session.updatePart({
               id: PartID.ascending(),
               messageID: continueMsg.id,
@@ -552,30 +827,9 @@ export const layer = Layer.effect(
         }
       }
 
-      if (processor.message.error) return "stop"
-      if (result === "continue") {
-        const summary = summaryText(
-          (yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)).find(
-            (item) => item.info.id === msg.id,
-          ) ?? {
-            info: msg,
-            parts: [],
-          },
-        )
-        if (flags.experimentalEventSystem) {
-          if (summary)
-            yield* events.publish(SessionEvent.Compaction.Ended, {
-              sessionID: input.sessionID,
-              messageID: SessionMessage.ID.make(input.parentID),
-              timestamp: DateTime.makeUnsafe(Date.now()),
-              reason: input.auto ? "auto" : "manual",
-              text: summary ?? "",
-              recent,
-            })
-        }
-        yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
-      }
-      return result
+      // UI clear + hysteresis handled by finishCompactingUi (Effect.ensuring).
+      return result === "continue" ? "continue" : input.auto ? "continue" : "stop"
+      }).pipe(Effect.ensuring(finishCompactingUi))
     })
 
     const create = Effect.fn("SessionCompaction.create")(function* (input: {
@@ -584,7 +838,20 @@ export const layer = Layer.effect(
       model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
       auto: boolean
       overflow?: boolean
+      pass?: InterCompactPass
     }) {
+      if (input.pass) {
+        const sess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (sess) {
+          yield* session.setMetadata({
+            sessionID: input.sessionID,
+            metadata: {
+              ...((sess.metadata ?? {}) as Record<string, unknown>),
+              [META_PENDING_COMPACT_PASS]: input.pass,
+            },
+          })
+        }
+      }
       const msg = yield* session.updateMessage({
         id: MessageID.ascending(),
         role: "user",
@@ -601,14 +868,196 @@ export const layer = Layer.effect(
         auto: input.auto,
         overflow: input.overflow,
       })
-      if (flags.experimentalEventSystem) {
-        yield* events.publish(SessionEvent.Compaction.Started, {
-          sessionID: input.sessionID,
-          messageID: SessionMessage.ID.make(msg.id),
-          timestamp: DateTime.makeUnsafe(Date.now()),
-          reason: input.auto ? "auto" : "manual",
+      // Always emit for TUI compacting indicator (P5); experimental gate no longer required.
+      yield* events.publish(SessionEvent.Compaction.Started, {
+        sessionID: input.sessionID,
+        messageID: SessionMessage.ID.make(msg.id),
+        timestamp: DateTime.makeUnsafe(Date.now()),
+        reason: input.auto ? "auto" : "manual",
+      }).pipe(Effect.catch(() => Effect.void))
+      return { messageID: msg.id }
+    })
+
+    /**
+     * P3 inter-turn: if still hot and hysteresis allows, create+process a full-replace
+     * compact before the next sample or after the turn ends.
+     */
+    const maybeInter = Effect.fn("SessionCompaction.maybeInter")(function* (input: {
+      sessionID: SessionID
+      agent: string
+      model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
+      tokens: SessionV1.Assistant["tokens"]
+      reason: "preflight" | "post_turn"
+    }) {
+      const cfg = yield* config.get()
+      if (cfg.compaction?.auto === false) return false
+
+      const model = yield* provider
+        .getModel(input.model.providerID, input.model.modelID)
+        .pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (!model) return false
+
+      // Same metric for overflow decide + hysteresis store (M1).
+      const count = usageForHysteresis(input.tokens)
+      // isOverflow includes percent-of-context AND usable hard ceiling (M2).
+      if (
+        !overflow({
+          cfg,
+          tokens: input.tokens,
+          model,
+          outputTokenMax: flags.outputTokenMax,
         })
+      ) {
+        return false
       }
+
+      const sess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (!sess) return false
+      const meta = (sess.metadata ?? {}) as Record<string, unknown>
+      const lastTokens = readLastCompactTokens(meta)
+      // alreadyHot: percent gate already satisfied via isOverflow (hard ceiling OK).
+      if (
+        !shouldInterCompact({
+          count,
+          context: model.limit.context,
+          thresholdPercent: thresholdPercent(cfg),
+          lastCompactTokens: lastTokens,
+          alreadyHot: true,
+        })
+      ) {
+        yield* Effect.logInfo("inter compact skipped (hysteresis)", {
+          reason: input.reason,
+          count,
+          lastTokens,
+          sessionID: input.sessionID,
+        })
+        return false
+      }
+
+      yield* Effect.logInfo("inter compact starting", {
+        reason: input.reason,
+        count,
+        context: model.limit.context,
+        sessionID: input.sessionID,
+      })
+
+      const beforeAt = meta[META_LAST_COMPACT_AT]
+      const { messageID } = yield* create({
+        sessionID: input.sessionID,
+        agent: input.agent,
+        model: input.model,
+        auto: true,
+        overflow: false,
+        pass: "inter",
+      })
+
+      const messages = yield* session.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)
+      const result = yield* processCompaction({
+        parentID: messageID,
+        messages,
+        sessionID: input.sessionID,
+        auto: true,
+        overflow: false,
+        hysteresisTokens: count,
+      })
+
+      const after = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      const m = (after?.metadata ?? {}) as Record<string, unknown>
+      const afterAt = m[META_LAST_COMPACT_AT]
+      const applied = result === "continue" && afterAt !== undefined && afterAt !== beforeAt
+      if (applied) {
+        yield* Effect.logInfo("inter compact applied", { reason: input.reason, count })
+        return true
+      }
+      yield* Effect.logWarning("inter compact did not apply", { reason: input.reason, result })
+      return false
+    })
+
+    /**
+     * P4 intra: mid-loop schedule. Creates a compaction task for the next loop
+     * iteration (same user turn) when steps/tokens/threshold/hysteresis allow.
+     */
+    const maybeIntra = Effect.fn("SessionCompaction.maybeIntra")(function* (input: {
+      sessionID: SessionID
+      agent: string
+      model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
+      tokens: SessionV1.Assistant["tokens"]
+      step: number
+    }) {
+      const cfg = yield* config.get()
+      if (!intraEnabled(cfg.compaction)) return false
+
+      const model = yield* provider
+        .getModel(input.model.providerID, input.model.modelID)
+        .pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (!model) return false
+
+      const count = usageForHysteresis(input.tokens)
+      if (
+        !overflow({
+          cfg,
+          tokens: input.tokens,
+          model,
+          outputTokenMax: flags.outputTokenMax,
+        })
+      ) {
+        return false
+      }
+
+      const sess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (!sess) return false
+      const meta = (sess.metadata ?? {}) as Record<string, unknown>
+      const lastTokens = readLastCompactTokens(meta)
+
+      // Hard usable breach: only relaxes min steps (to 2), never hysteresis (P4 M1/M2).
+      const hardBreach =
+        count >=
+        usable({
+          cfg,
+          model,
+          outputTokenMax: flags.outputTokenMax,
+        })
+      // alreadyHot: isOverflow already covered percent OR usable ceiling.
+      const policyOk = shouldIntraCompact({
+        step: input.step,
+        count,
+        context: model.limit.context,
+        thresholdPercent: thresholdPercent(cfg),
+        minSteps: cfg.compaction?.intra_min_steps,
+        minCompactableTokens: cfg.compaction?.intra_min_tokens,
+        lastCompactTokens: lastTokens,
+        hardBreach,
+        alreadyHot: true,
+        enabled: true,
+      })
+      if (!policyOk) {
+        yield* Effect.logInfo("intra compact skipped", {
+          step: input.step,
+          count,
+          lastTokens,
+          hardBreach,
+          sessionID: input.sessionID,
+        })
+        return false
+      }
+
+      yield* Effect.logInfo("intra compact scheduled", {
+        step: input.step,
+        count,
+        context: model.limit.context,
+        hardBreach,
+        sessionID: input.sessionID,
+      })
+
+      yield* create({
+        sessionID: input.sessionID,
+        agent: input.agent,
+        model: input.model,
+        auto: true,
+        overflow: false,
+        pass: "intra",
+      })
+      return true
     })
 
     return Service.of({
@@ -616,6 +1065,8 @@ export const layer = Layer.effect(
       prune,
       process: processCompaction,
       create,
+      maybeInter,
+      maybeIntra,
     })
   }),
 )
@@ -755,11 +1206,18 @@ export function compactWithBudget(
   current = estimateSessionTokens(result)
   if (current <= budget) return result
 
-  while (estimateSessionTokens(result) > budget && result.length > 10) {
-    result = result.slice(Math.ceil(result.length * 0.1))
+  // N2: drop whole user→… turns from the front only (tool-pair safe). Never
+  // raw-slice mid-pair, which can orphan tool_use / tool_result for the summarizer.
+  let budgetPass = 0
+  while (estimateSessionTokens(result) > budget && result.length > 2 && budgetPass < 20) {
+    budgetPass++
+    const dropCount = Math.max(1, Math.ceil(result.length * 0.1))
+    const next = dropCompleteTurnsFromFront(result, dropCount)
+    if (next.length >= result.length) break
+    result = next
   }
 
-  // Fallback: if still over budget at the 10-message floor, truncate each
+  // Fallback: if still over budget after turn-safe drops, truncate each
   // message's text content proportionally to fit within the remaining budget.
   if (estimateSessionTokens(result) > budget && result.length > 0) {
     const perMessage = Math.max(50, Math.floor((budget * 0.9) / result.length))

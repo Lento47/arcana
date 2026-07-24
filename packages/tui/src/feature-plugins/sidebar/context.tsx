@@ -2,6 +2,7 @@ import type { AssistantMessage } from "@arcana/sdk/v2"
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { Lexicon, Glyph } from "../../branding"
+import { contextPressure } from "../../util/context-pressure"
 import { createMemo, Show } from "solid-js"
 
 const id = "internal:sidebar-context"
@@ -13,13 +14,6 @@ const money = new Intl.NumberFormat("en-US", {
 
 function clampPercent(pct: number): number {
   return Math.max(0, Math.min(100, pct))
-}
-
-function contextPressure(percent: number | null): "compact now" | "compact soon" | undefined {
-  if (percent === null) return undefined
-  if (percent >= 95) return "compact now"
-  if (percent >= 80) return "compact soon"
-  return undefined
 }
 
 function View(props: { api: TuiPluginApi; session_id: string }) {

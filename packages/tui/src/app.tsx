@@ -62,7 +62,7 @@ import { PromptStashProvider } from "./component/prompt/stash"
 import { DialogAlert } from "./ui/dialog-alert"
 import { DialogConfirm } from "./ui/dialog-confirm"
 import { ToastProvider, useToast } from "./ui/toast"
-import { isDefaultTitle } from "./util/session"
+import { displaySessionTitle } from "./util/session"
 import { KVProvider, useKV } from "./context/kv"
 import * as Model from "./util/model"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
@@ -2027,12 +2027,16 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
 
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
-      if (!session || isDefaultTitle(session.title)) {
+      if (!session) {
         renderer.setTerminalTitle("⛧ ARCANA")
         return
       }
 
-      const title = session.title.length > 40 ? session.title.slice(0, 37) + "..." : session.title
+      const label = displaySessionTitle({
+        title: session.title,
+        created: session.time?.created,
+      })
+      const title = label.length > 40 ? label.slice(0, 37) + "..." : label
       renderer.setTerminalTitle(`${APP_ABBR} | ${title}`)
       return
     }

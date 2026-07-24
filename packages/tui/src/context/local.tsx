@@ -1,6 +1,7 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 import { batch, createEffect, createMemo } from "solid-js"
+import { Flag } from "@arcana/core/flag/flag"
 import { useSync } from "./sync"
 import { useEvent } from "./event"
 import path from "path"
@@ -471,6 +472,29 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       event.on("session.deleted", (evt) => {
         prune(evt.properties.info.id)
+      })
+
+      // Tier 1: idle-prefetch pinned / quick-switch slots so leader 1–9 is warm.
+      // Reuses sync.session.sync (same race guards). Cap handled inside prefetch queue.
+      // Rollback: ARCANA_DISABLE_SESSION_PREFETCH=1
+      createEffect(() => {
+        if (Flag.ARCANA_DISABLE_SESSION_PREFETCH) return
+        if (!sessionStore.ready) return
+        if (sync.status !== "complete") return
+
+        const hot = slots()
+        if (hot.length === 0) return
+
+        const current = route.data.type === "session" ? route.data.sessionID : undefined
+        // Prefer not to contend with an active stream on the visible session.
+        if (current) {
+          const st = sync.data.session_status[current]
+          if (st && st.type !== "idle") return
+        }
+
+        const targets = hot.filter((id) => id !== current && !sync.session.isSynced(id))
+        if (targets.length === 0) return
+        sync.session.prefetch(targets)
       })
 
       return {

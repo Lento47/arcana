@@ -167,6 +167,20 @@ export const Info = Schema.Struct({
       reserved: Schema.optional(NonNegativeInt).annotate({
         description: "Token buffer for compaction. Leaves enough window to avoid overflow during compaction.",
       }),
+      threshold_percent: Schema.optional(PositiveInt).annotate({
+        description:
+          "Auto-compact when estimated token usage reaches this percent of the model context window (1–100, default: 85). Matches proactive Grok-style compaction.",
+      }),
+      intra: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Enable mid-loop (intra) auto-compact during multi-step tool runs (default: true when auto is on). Set false to only compact between user turns.",
+      }),
+      intra_min_steps: Schema.optional(PositiveInt).annotate({
+        description: "Minimum agent loop steps before mid-loop compact can fire (default: 3).",
+      }),
+      intra_min_tokens: Schema.optional(PositiveInt).annotate({
+        description: "Minimum token usage before mid-loop compact is worth running (default: 5000).",
+      }),
     }),
   ),
   experimental: Schema.optional(

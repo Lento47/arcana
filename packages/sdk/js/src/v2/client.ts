@@ -50,7 +50,9 @@ function rewrite(request: Request, values: { directory?: string; workspace?: str
   return next
 }
 
-export function createOpencodeClient(config?: Config & { directory?: string; experimental_workspaceID?: string; timeoutMs?: number }) {
+export function createOpencodeClient(
+  config?: Config & { directory?: string; experimental_workspaceID?: string; timeoutMs?: number },
+) {
   const timeoutMs = config?.timeoutMs ?? 30_000
   if (!config?.fetch) {
     const customFetch: any = (req: any, init?: any) => {
@@ -65,10 +67,14 @@ export function createOpencodeClient(config?: Config & { directory?: string; exp
           if (existingSignal.aborted) {
             clearTimeout(timer)
           } else {
-            existingSignal.addEventListener("abort", () => {
-              clearTimeout(timer)
-              controller.abort(existingSignal.reason)
-            }, { once: true })
+            existingSignal.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timer)
+                controller.abort(existingSignal.reason)
+              },
+              { once: true },
+            )
           }
         }
         return fetch(req, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer))

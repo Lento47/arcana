@@ -4,17 +4,11 @@ import { useSync } from "../../context/sync"
 import { useTheme } from "../../context/theme"
 import type { AssistantMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
+import { contextPressure } from "../../util/context-pressure"
 import { useCommandShortcut, useOpencodeKeymap } from "../../keymap"
 
 function clampPercent(pct: number): number {
   return Math.max(0, Math.min(100, pct))
-}
-
-function contextPressure(percent: number | undefined): "compact now" | "compact soon" | undefined {
-  if (percent === undefined) return undefined
-  if (percent >= 95) return "compact now"
-  if (percent >= 80) return "compact soon"
-  return undefined
 }
 
 function compactTailText(message: unknown) {

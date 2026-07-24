@@ -1,6 +1,7 @@
 import { useDialog } from "../ui/dialog"
 import { DialogSelect } from "../ui/dialog-select"
 import { useRoute } from "../context/route"
+import { displaySessionTitle } from "../util/session"
 import { useSync } from "../context/sync"
 import { createMemo, createResource, createSignal, onMount, Show } from "solid-js"
 import path from "path"
@@ -189,6 +190,24 @@ export function DialogSessionList() {
     const pinnedSet = new Set(pinned)
     const slotByID = new Map<string, number>(local.session.slots().map((id, i) => [id, i + 1]))
 
+    function firstUserText(sessionID: string): string | undefined {
+      const messages = sync.data.message[sessionID]
+      if (!messages?.length) return undefined
+      for (const msg of messages) {
+        if (msg.role !== "user") continue
+        const parts = sync.data.part[msg.id] ?? []
+        const chunks: string[] = []
+        for (const part of parts) {
+          if (part.type === "text" && "text" in part && typeof part.text === "string") {
+            if ("synthetic" in part && part.synthetic) continue
+            chunks.push(part.text)
+          }
+        }
+        if (chunks.length) return chunks.join("\n")
+      }
+      return undefined
+    }
+
     function buildOption(id: string, category: string) {
       const x = sessionMap.get(id)
       if (!x) return undefined
@@ -209,8 +228,13 @@ export function DialogSessionList() {
         : slot !== undefined
           ? () => <text fg={theme.accent}>{slot}</text>
           : undefined
+      const label = displaySessionTitle({
+        title: x.title,
+        created: x.time?.created,
+        firstUserText: firstUserText(x.id),
+      })
       return {
-        title: isDeleting ? `Press ${deleteHint()} again to confirm` : x.title,
+        title: isDeleting ? `Press ${deleteHint()} again to confirm` : label,
         bg: isDeleting ? theme.error : undefined,
         value: x.id,
         category,

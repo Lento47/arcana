@@ -143,6 +143,9 @@ export const {
     const olderCursors = new Map<string, string | undefined>()
     const loadingOlderSessions = new Set<string>()
     const exhaustedOlderSessions = new Set<string>()
+    /** Serial idle-prefetch queue (concurrency cap 1). */
+    const prefetchQueue: string[] = []
+    let prefetchDraining = false
     const touchMessage = (sessionID: string, messageID: string) => {
       hydratingSessions.get(sessionID)?.messages.add(messageID)
     }
@@ -308,6 +311,12 @@ export const {
         }
 
         case "session.next.compaction.ended": {
+          setStore("session_compacting", event.properties.sessionID, false)
+          break
+        }
+
+        // Always published on successful apply (even without experimental event system)
+        case "session.compacted": {
           setStore("session_compacting", event.properties.sessionID, false)
           break
         }
@@ -543,6 +552,23 @@ export const {
       void bootstrap()
     })
 
+    async function drainPrefetchQueue() {
+      if (prefetchDraining) return
+      prefetchDraining = true
+      try {
+        while (prefetchQueue.length > 0) {
+          const id = prefetchQueue.shift()
+          if (!id) continue
+          if (fullSyncedSessions.has(id)) continue
+          // Reuse sync() so live-hydration race guards stay identical.
+          await result.session.sync(id).catch(() => undefined)
+        }
+      } finally {
+        prefetchDraining = false
+        if (prefetchQueue.length > 0) void drainPrefetchQueue()
+      }
+    }
+
     const result = {
       data: store,
       set: setStore,
@@ -592,6 +618,25 @@ export const {
           if (!last) return "idle"
           if (last.role === "user") return "working"
           return last.time.completed ? "idle" : "working"
+        },
+        /** True after a successful full hydrate (get+messages+todo+diff). Warm switches skip network. */
+        isSynced(sessionID: string) {
+          return fullSyncedSessions.has(sessionID)
+        },
+        /**
+         * Idle prefetch for pinned / quick-switch slots.
+         * Reuses `sync()` (same race guards). Concurrent work is serial (cap 1).
+         * Skips already-synced and in-flight sessions.
+         */
+        prefetch(sessionIDs: string[]) {
+          for (const id of sessionIDs) {
+            if (!id) continue
+            if (fullSyncedSessions.has(id)) continue
+            if (syncingSessions.has(id)) continue
+            if (prefetchQueue.includes(id)) continue
+            prefetchQueue.push(id)
+          }
+          void drainPrefetchQueue()
         },
         async sync(sessionID: string) {
           if (fullSyncedSessions.has(sessionID)) return
