@@ -5,7 +5,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { resolveProvider } from "./providers.js"
 import type { AgentConfig, ChatMessage, TurnResult, ToolDef, ToolHandler, ToolRegistry } from "./types.js"
-import { redactSecrets, checkDangerousCommand, RateLimiter, auditLog, detectInjection } from "./guard.js"
+import { redactSecrets, redactGitEmails, redactPII, redactGitAuthorNames, checkDangerousCommand, RateLimiter, auditLog, detectInjection } from "./guard.js"
 import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
 import {
@@ -52,21 +52,6 @@ function runProofVerificationSummary(kind: RunProofVerificationKind, command: st
 }
 
 /** Prefer free / small catalog models when auto-picking from proxy /models. */
-function pickProxyDefaultModel(list: Array<{ id?: string }>): string | undefined {
-  const ids = list.map((m) => m.id).filter((id): id is string => typeof id === "string" && id.length > 0)
-  if (!ids.length) return undefined
-  const prefer = [
-    (id: string) => /:free$/i.test(id),
-    (id: string) => /\bfree\b/i.test(id),
-    (id: string) => /gemma|llama-3\.[12]-8b|llama-3\.2|qwen.*7b|phi-3|nemotron.*nano/i.test(id),
-  ]
-  for (const pred of prefer) {
-    const hit = ids.find(pred)
-    if (hit) return hit
-  }
-  return ids[0]
-}
-
 /** Map arcana provider ids to AI SDK language model constructors. */
 async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
   if (!config.provider) {
@@ -99,9 +84,9 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
     if (!modelId) {
       try {
         if (existsSync(cacheFile)) {
-          const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as { list?: Array<{ id?: string }> }
+          const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as { list?: Array<{ id?: string }>; default?: string }
           if (cached.list?.length) {
-            modelId = pickProxyDefaultModel(cached.list)
+            modelId = cached.default || "openrouter/free"
           }
         }
       } catch {}
@@ -121,15 +106,15 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
           const url = (base.endsWith("/") ? base.slice(0, -1) : base) + "/models"
           const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(5000) })
           if (res.ok) {
-            const data = await res.json() as { data?: Array<{ id?: string }> }
+            const data = await res.json() as { data?: Array<{ id?: string }>; default?: string }
             if (data.data?.length) {
-              if (!modelId) modelId = pickProxyDefaultModel(data.data)
+              if (!modelId) modelId = data.default || "openrouter/free"
               proxyURL = base
               // Refresh cache for next cold start
               try {
                 const { mkdirSync, writeFileSync } = await import("node:fs")
                 mkdirSync(join(home, "cache"), { recursive: true })
-                writeFileSync(cacheFile, JSON.stringify({ list: data.data, at: Date.now() }))
+                writeFileSync(cacheFile, JSON.stringify({ list: data.data, default: data.default || "openrouter/free", at: Date.now() }))
               } catch {}
               break
             }
@@ -519,6 +504,9 @@ export class AgentRunner {
       await this.recordRunProofContextAccess(toolName, input, resultStr)
       await this.recordRunProofFileWrite(toolName, input, resultStr)
       resultStr = this.config.godlike ? resultStr : redactSecrets(resultStr)
+      resultStr = this.config.godlike ? resultStr : redactGitEmails(resultStr)
+      resultStr = this.config.godlike ? resultStr : redactPII(resultStr)
+      resultStr = this.config.godlike ? resultStr : redactGitAuthorNames(resultStr)
       const injection = this.config.godlike ? null : detectInjection(resultStr)
       if (injection) resultStr = `[INJECTION WARN] ${injection}\n\n${resultStr}`
       await this.recordRunProofShellCommand(toolName, input, resultStr)
