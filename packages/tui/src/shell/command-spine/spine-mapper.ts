@@ -1890,6 +1890,8 @@ function assistantMessagePartsToEntries(
         glyph: SPINE_GLYPH.agent,
         actor: (part.agent as string) || "agent",
         summary: truncate(part.description || part.prompt, 120) || `subagent: ${part.agent ?? "agent"}`,
+        body: part.description || part.prompt || "",
+        collapsible: true,
         source: { messageID: message.id, partID: part.id, kind: "subtask", sessionID: childSessionIDs[0] },
       })
       continue
@@ -1907,6 +1909,8 @@ function assistantMessagePartsToEntries(
         glyph: SPINE_GLYPH.agent,
         actor: part.name || "agent",
         summary: `subagent: ${part.name}`,
+        body: part.description || part.prompt || `subagent: ${part.name}`,
+        collapsible: true,
         source: { messageID: message.id, partID: part.id, kind: "agent", sessionID: childSessionIDs[0] },
       })
       continue
