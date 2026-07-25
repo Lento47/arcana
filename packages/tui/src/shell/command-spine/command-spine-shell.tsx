@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
@@ -74,6 +74,23 @@ export function CommandSpineShell(props: ShellProps) {
   const sessionState = createMemo(() => getSessionCache(props.sessionID))
   let scroll: ScrollBoxRenderable | undefined
   const entryNodes = new Map<string, BoxRenderable>()
+
+  // Scroll-to-bottom button
+  const [showScrollButton, setShowScrollButton] = createSignal(false)
+  let scrollPollInterval: ReturnType<typeof setInterval> | undefined
+
+  onMount(() => {
+    scrollPollInterval = setInterval(() => {
+      const s = scroll
+      if (!s || s.isDestroyed) return
+      const distanceFromBottom = s.scrollHeight - s.y - s.height
+      setShowScrollButton(distanceFromBottom > s.height / 2)
+    }, 250)
+  })
+
+  onCleanup(() => {
+    if (scrollPollInterval) clearInterval(scrollPollInterval)
+  })
 
   const entries = createMemo(() => {
     if (USE_SAMPLE_SPINE) return SAMPLE_ENTRIES
@@ -257,53 +274,70 @@ export function CommandSpineShell(props: ShellProps) {
     <Show when={props.session()}>
       <box flexDirection="column" flexGrow={1} minHeight={0}>
         <SpineHeader session={props.session} layout={layout()} segments={[] as any} />
-        <scrollbox
-          ref={(r) => {
-            scroll = r as ScrollBoxRenderable
-            props.scrollRef(r as ScrollBoxRenderable)
-          }}
-          viewportOptions={{
-            paddingRight: props.showScrollbar() ? 1 : 0,
-          }}
-          verticalScrollbarOptions={{
-            paddingLeft: 1,
-            visible: props.showScrollbar(),
-            trackOptions: {
-              backgroundColor: t.backgroundElement as any,
-              foregroundColor: t.border as any,
-            },
-          }}
-          viewportCulling={false}
-          stickyScroll={true}
-          stickyStart="bottom"
-          flexGrow={1}
-          scrollAcceleration={props.scrollAcceleration}
-        >
-          <For each={visibleEntryIDs()}>
-            {(id) => {
-              // Stable string key keeps the row mounted; lookup pulls the latest
-              // entry object so body/streaming props refresh each turn delta.
-              const entry = () => visibleEntryByID().get(id)!
-              return (
-                <SpineEntryView
-                  entry={entry()}
-                  layout={layout()}
-                  contentWidth={chatContentWidth()}
-                  thinkContentWidth={thinkContentWidth()}
-                  expanded={entryExpanded(entry())}
-                  focused={entryFocused(entry())}
-                  onToggle={() => toggleEntry(entry())}
-                  onFocus={() => focusEntry(entry())}
-                  onHover={() => focusEntry(entry())}
-                  nodeRef={(node) => {
-                    if (node) entryNodes.set(id, node)
-                    else entryNodes.delete(id)
-                  }}
-                />
-              )
+        <box position="relative" flexDirection="column" flexGrow={1}>
+          <scrollbox
+            ref={(r) => {
+              scroll = r as ScrollBoxRenderable
+              props.scrollRef(r as ScrollBoxRenderable)
             }}
-          </For>
-        </scrollbox>
+            viewportOptions={{
+              paddingRight: props.showScrollbar() ? 1 : 0,
+            }}
+            verticalScrollbarOptions={{
+              paddingLeft: 1,
+              visible: props.showScrollbar(),
+              trackOptions: {
+                backgroundColor: t.backgroundElement as any,
+                foregroundColor: t.border as any,
+              },
+            }}
+            viewportCulling={true}
+            stickyScroll={true}
+            stickyStart="bottom"
+            flexGrow={1}
+            scrollAcceleration={props.scrollAcceleration}
+          >
+            <For each={visibleEntryIDs()}>
+              {(id) => {
+                const entry = () => visibleEntryByID().get(id)!
+                return (
+                  <SpineEntryView
+                    entry={entry()}
+                    layout={layout()}
+                    contentWidth={chatContentWidth()}
+                    thinkContentWidth={thinkContentWidth()}
+                    expanded={entryExpanded(entry())}
+                    focused={entryFocused(entry())}
+                    onToggle={() => toggleEntry(entry())}
+                    onFocus={() => focusEntry(entry())}
+                    onHover={() => focusEntry(entry())}
+                    nodeRef={(node) => {
+                      if (node) entryNodes.set(id, node)
+                      else entryNodes.delete(id)
+                    }}
+                  />
+                )
+              }}
+            </For>
+          </scrollbox>
+          <Show when={showScrollButton()}>
+            <box
+              position="absolute"
+              bottom={2}
+              right={4}
+              zIndex={50}
+              width={3}
+              height={1}
+              onMouseUp={() => {
+                if (scroll && !scroll.isDestroyed) {
+                  scroll.scrollTo(scroll.scrollHeight)
+                }
+              }}
+            >
+              <text fg={t.accent as any}>↓</text>
+            </box>
+          </Show>
+        </box>
         <Show when={props.permissions().length > 0}>
           <PermissionPrompt request={props.permissions()[0] as any} />
         </Show>

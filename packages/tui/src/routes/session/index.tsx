@@ -2455,6 +2455,9 @@ function Shell(props: ToolProps) {
   const pathFormatter = usePathFormatter()
   const ctx = use()
   const isRunning = createMemo(() => props.part.state.status === "running")
+  // Explicit reactive tracking — force re-render when tool status changes
+  const status = createMemo(() => props.part.state.status)
+  const isCompleted = createMemo(() => status() === "completed")
   const output = createMemo(() => stripAnsi(stringValue(props.metadata.output)?.trim() ?? ""))
   const [expanded, setExpanded] = createSignal(false)
   const maxLines = 10
@@ -2481,7 +2484,7 @@ function Shell(props: ToolProps) {
 
   return (
     <Switch>
-      <Match when={stringValue(props.metadata.output) !== undefined}>
+      <Match when={status() !== "pending"}>
         <BlockTool
           title={title()}
           part={props.part}
@@ -2490,7 +2493,14 @@ function Shell(props: ToolProps) {
         >
           <box gap={1}>
             <text fg={theme.text}>$ {stringValue(props.input.command)}</text>
-            <Show when={output()}>
+            <Show
+              when={output()}
+              fallback={
+                <Show when={isCompleted()}>
+                  <text fg={theme.textMuted}>(no output)</text>
+                </Show>
+              }
+            >
               <text fg={theme.text}>{limited()}</text>
             </Show>
             <Show when={collapsed().overflow}>
