@@ -157,7 +157,7 @@ export function SpineProse(props: {
     return theme.background as any
   })
   const style = () => (kind() === "think" || kind() === "fail" ? subtleSyntax() : syntax())
-  const codePad = () => (bodyLabel() === "file" ? 1 : 2)
+  const codePad = () => (bodyLabel() === "file" ? 1 : 1)
   const codePadY = () => (bodyLabel() === "file" ? 0 : 1)
 
   const isChatMd = createMemo(
@@ -293,7 +293,7 @@ export function SpineProse(props: {
             paddingTop={codePadY()}
             paddingBottom={codePadY()}
             border={["left"]}
-            borderColor={(bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : fg()) as any}
+            borderColor={(bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : (theme.borderSubtle ?? theme.textMuted)) as any}
           >
             <code
               id={proseId()}

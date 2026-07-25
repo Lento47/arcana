@@ -127,7 +127,16 @@ export function CommandSpineShell(props: ShellProps) {
     return map
   })
   const navigableEntries = createMemo(() => navigableSpineEntries(visibleEntries()))
-  const runState = createMemo(() => (gateEntries().length ? "stop" : props.pending() ? "working" : "idle"))
+  const runState = createMemo(() => {
+    if (gateEntries().length) return "stop"
+    // Only show "working" when both pending AND session is active.
+    // Stale messages without time.completed shouldn't block idle transition.
+    const sessionStatus = props.sessionStatus?.()
+    const statusType = sessionStatus?.type
+    const sessionActive = !statusType || statusType === "running" || statusType === "thinking"
+    if (props.pending() && sessionActive) return "working"
+    return "idle"
+  })
   const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
   const [focusedEntryID, setFocusedEntryID] = createSignal<string | undefined>()
   const entryExpanded = (entry: { id: string; expandedByDefault?: boolean; collapsible?: boolean }) =>
