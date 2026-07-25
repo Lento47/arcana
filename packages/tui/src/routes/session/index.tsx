@@ -2088,12 +2088,28 @@ function GenericTool(props: ToolProps) {
     return collapsed().output
   })
 
+  // Detect todo-like JSON arrays in generic tool output and render them nicely
+  const parsedTodos = createMemo(() => {
+    const raw = output()
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(
+        (item: unknown) => typeof item === "object" && item !== null && "content" in (item as any) && "status" in (item as any)
+      )) {
+        return parseTodos(parsed)
+      }
+    } catch {}
+    return null
+  })
+
+  const todoCount = createMemo(() => parsedTodos()?.length ?? 0)
+
   return (
     <Show
       when={props.output && ctx.showGenericToolOutput()}
       fallback={
         <InlineTool icon="⚙" pending={pickVerb(VerbPool.pending.generic, props.part.sessionID) + "…"} complete={true} part={props.part}>
-          {props.tool} {input(props.input)}
+          {props.tool} {input(props.input)} {todoCount() > 0 ? `${todoCount()} todos` : ""}
         </InlineTool>
       }
     >
@@ -2103,7 +2119,13 @@ function GenericTool(props: ToolProps) {
         onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
       >
         <box gap={1}>
-          <text fg={theme.text}>{limited()}</text>
+          <Show when={parsedTodos()} fallback={
+            <text fg={theme.text}>{limited()}</text>
+          }>
+            <For each={parsedTodos()!}>
+              {(todo) => <TodoItem status={todo.status} content={todo.content} />}
+            </For>
+          </Show>
           <Show when={collapsed().overflow}>
             <text fg={theme.textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
           </Show>
