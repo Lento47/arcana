@@ -82,6 +82,7 @@
     "@standard-schema/spec": "1.0.0",
     "@types/ws": "8.18.1",
     "ai": "catalog:",
+    "ajv": "8.20.0",
     "bonjour-service": "1.3.0",
     "chokidar": "4.0.3",
     "cross-spawn": "catalog:",
