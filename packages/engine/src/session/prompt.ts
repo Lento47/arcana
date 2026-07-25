@@ -203,7 +203,6 @@ export const layer = Layer.effect(
       session: Session.Info
       history: SessionV1.WithParts[]
     }) {
-      if (input.session.parentID) return
       if (!Session.isDefaultTitle(input.session.title)) return
 
       const idx = firstRealUserIndex(input.history)
