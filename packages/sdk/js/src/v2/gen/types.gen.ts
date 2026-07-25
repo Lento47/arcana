@@ -2007,6 +2007,10 @@ export type Config = {
     tail_turns?: number
     preserve_recent_tokens?: number
     reserved?: number
+    threshold_percent?: number
+    intra?: boolean
+    intra_min_steps?: number
+    intra_min_tokens?: number
   }
   experimental?: {
     disable_paste_summary?: boolean

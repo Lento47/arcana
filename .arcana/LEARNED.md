@@ -12,6 +12,19 @@
 - [[run-budgets]] — Per-session safety limits (destructive ops, files, LOC, external calls, duration)
 - [[session-lock]] — `.arcana/.session-lock` PID file prevents concurrent session conflicts
 - [[transactional-engineering-skill]] — Lazy skill: `/prove`, `/brief`, `/recap`, `/anti`, `/contract`, risk labels, evidence log
+- [[session-compaction]] — Auto-compact, hysteresis, multi-pass strategy (P0/P4, inter/intra/manual)
+
+## Arcana Architecture — Engine & Routing
+- [[arcana-native-runtime]] — ARCANA_ENGINE=1, kernel contract, native authorities, explicit compat shim
+- [[command-spine-ui]] — Default TUI shell (timeline + composer + status), layout breakpoints, themes
+- [[free-quality-routing]] — Free-tier model pool, progressive budgets, OpenRouter catalog classification
+- [[arcana-error-taxonomy]] — `ARC_*` error codes, dual-layer (user/internal), mapping rules
+
+## Arcana LLM — Schema-First Provider Adapters
+- [[llm-request-stream]] — `LLM.request()`, `LLMClient.generate/stream`, Effect-based, provider-neutral
+- [[llm-caching]] — Auto cache placement (tools/system/latest-user), granular policy, provider behavior table
+- [[llm-providers]] — OpenAI, Anthropic, Google, Bedrock, Azure, Cloudflare, GitHub Copilot, OpenRouter, xAI, OpenAI-compatible
+- [[llm-generate-object]] — `generateObject` via forced tool call, works on every protocol
 
 ## Arcana Infra — Site + Deploy
 - [[arcana-site-seo-spa]] — Preact SPA, SEO (JSON-LD, OG, Twitter), CSP, changelog, Cloudflare Pages
@@ -19,7 +32,7 @@
 - [[proxy-origin-check]] — PayPal endpoint Origin check, CF Function proxy, client never sees proxy URL
 
 ## Project: arcana
-- [[branding-ts-voice-source]] — branding.ts is the single source for voice/theme/lexicon/glyphs
+- [[branding-ts-voice-source]] — branding.ts is the single source for voice/theme/lexicon/glyphs (packages/tui/src/branding.ts)
 - [[session-slugs-core-util]] — session slugs generated in packages/core/src/util/slug.ts
 - [[scramble-reruns-on-text-change]] — Scramble component re-animates on text prop change
 - [[edit-tool-exact-match]] — Edit tool requires exact string match for old_string
@@ -32,3 +45,4 @@
 
 ## Mistakes
 - [[bun-transpiler-transformSync-not-available]] — Bun.Transpiler.transformSync not in Bun 1.3.11; use `bun build`
+- [[engine-promise-all-batch]] — Batch tool used unbounded Promise.all fan-out; fixed with bounded mapPool + recursive auth

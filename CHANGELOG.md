@@ -60,13 +60,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ## [Unreleased]
 
 ### Added
+- **Git PII Redaction** (`packages/arcana/src/agent/guard.ts`): Complete guard pipeline with `redactGitEmails()` (strips personal emails from git output), `redactPII()` (IP addresses, phone numbers, street addresses), and `redactGitAuthorNames()` (strips personal names from git Author/Committer lines). Tightened regex patterns to reduce false positives. 21+ tests covering redaction, false positives, and edge cases. Applied automatically in the tool execution pipeline alongside existing `redactSecrets()`.
 - **Gateway documentation** (`docs/gateway.md`): Full setup guide for Telegram, Discord, Slack, and WhatsApp adapters with configuration, security, and platform setup instructions.
 - **Cron documentation** (`docs/cron.md`): Scheduled agent jobs documentation covering job management, cron syntax, daemon mode, and configuration.
 - **Skills documentation** (`docs/skills.md`): Skill system documentation covering browsing, activation, categories, custom skill creation, and SKILL.md format.
 - **Configuration reference** (`docs/configuration.md`): Complete config.json reference with all options, environment variables, defaults, and data directory paths.
+- **System architecture documentation** (`docs/architecture/system-architecture.md`): Comprehensive architecture document with 12 expanded ASCII diagrams covering layered package architecture, workspace dependency graph, agent session data flow, LLM provider routing, tool execution pipeline, multi-surface architecture, gateway integration, data persistence, security trust boundaries, kernel runtime law chain, pipeline types, ML signal engine, plugin system, and external integrations.
+- **Quickstart guide** (`docs/quickstart.md`): Step-by-step getting started tutorial with 7 steps (install, API key, health check, first session, core features, workspace trust, optional enhancements), plus troubleshooting and common workflows.
+- **Comprehensive guide** (`docs/arcana-comprehensive-guide.md`): Complete Arcana guide covering architecture, packages, commands, configuration, skills, memory, security, TUI, development, installation, providers, gateway, ML, enterprise, and extensibility.
+- **Arcana updates v0.3.5** (`docs/arcana-updates-v0.3.5.md`): Comprehensive updates document covering v0.3.0–v0.3.5, RunProof architecture, TUI performance, git PII redaction, and security hardening.
+- **Git PII redaction architecture** (`docs/architecture/git-pii-redaction.md`): Architecture document for the PII redaction layer covering threat model, pipeline design, guard functions, extension points, and testing.
+- **Providers comparison** (`docs/providers-comparison.md`): LLM provider comparison covering 33+ providers with pricing tiers, speed rankings, quality assessments, feature matrix, cost optimization guide, and recommended use cases.
+- **Model recommendations** (`docs/model-recommendations.md`): Task-specific model recommendations for coding, writing, analysis, creative, and general use with benchmarks, cost estimates, Arcana-specific guidance, benchmark/cost disclaimers, and `@arcana/ml` signal engine section (env: `ARCANA_ML_RUNTIME`).
+- **Team onboarding** (`docs/onboarding.md`): Step-by-step team onboarding checklist covering install, provider config, workspace trust, shared skills, gateway setup, and a reusable onboarding template.
 
 ### Changed
-- **Docs index update** (`docs/README.md`): Updated with links to the four new documentation files.
+- **Docs index update** (`docs/README.md`): Updated with links to all new documentation files.
+- **README simplification** (`README.md`): Replaced 21-row package table with 6-row layer-based format linking to architecture docs. Replaced Deep Dive section with compact feature table linking to docs. Added doc links to Skills and Configuration sections.
 
 ---
 
