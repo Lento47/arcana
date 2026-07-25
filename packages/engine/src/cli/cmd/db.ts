@@ -35,6 +35,12 @@ const QueryCommand = effectCmd({
       }
       return
     }
+    if (process.platform === "win32") {
+      console.log(`SQLite interactive shell not available on Windows.`)
+      console.log(`Use queries directly:  arcana db "SELECT * FROM ..."`)
+      console.log(`Or open with a GUI:    start ${Database.path()}`)
+      return
+    }
     const child = spawn("sqlite3", [Database.path()], {
       stdio: "inherit",
     })
