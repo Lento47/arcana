@@ -95,6 +95,9 @@ export function SpineEntry(props: {
   const entryReminders = createMemo(() => entry().reminders)
   const entryBodyLabel = createMemo(() => entry().bodyLabel)
 
+  // Agent entries (subagent tasks) — always interactive
+  const isAgentEntry = createMemo(() => kind() === "agent")
+
   // Explicit toggle row for tool bodies AND grouped bursts (same click target as
   // "show output" — header-only expand was easy to miss / hard to hit).
   const showToggleRow = createMemo(
@@ -102,7 +105,7 @@ export function SpineEntry(props: {
       canToggle()
       && !isThink()
       && !hasDiff()
-      && (hasChildren() || hasToolBody()),
+      && (hasChildren() || hasToolBody() || isAgentEntry()),
   )
   const toggleLabel = () => {
     const e = entry()
@@ -127,8 +130,6 @@ export function SpineEntry(props: {
     if (hasToolBody()) return expanded() ? ("▾" as const) : ("▸" as const)
     return "" as const
   }
-  // Agent entries (subagent tasks) — always interactive
-  const isAgentEntry = createMemo(() => kind() === "agent")
   const headerToggleable = () =>
     isAgentEntry()
     || hasChildren()
@@ -317,9 +318,9 @@ export function SpineEntry(props: {
           </Show>
 
           {/* Expandable body for non-chat/non-think entries (agent tools, etc.) */}
-          <Show when={!isThink() && hasToolBody() && bodyExpanded()}>
+          <Show when={!isThink() && (hasToolBody() || isAgentEntry()) && bodyExpanded()}>
             <box paddingLeft={padLeft()} paddingTop={1}>
-              <text fg={t.text as any}>{entry().body}</text>
+              <text fg={t.text as any}>{entry().body || entry().summary}</text>
             </box>
           </Show>
 
