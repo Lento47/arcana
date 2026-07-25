@@ -241,7 +241,17 @@ export function Autocomplete(props: {
       setIntentSuggestion(null)
       return
     }
-    setIntentSuggestion(intentRegistry.classify(value))
+    // Only classify the current word (last token at cursor), not the entire input
+    const cursor = props.input().cursorOffset
+    const textBeforeCursor = value.slice(0, cursor)
+    const currentWord = textBeforeCursor.split(/[\s]+/).pop() ?? ""
+    const suggestion = intentRegistry.classify(currentWord)
+    // Don't show ghost if the current word already matches the suggestion exactly
+    if (suggestion && suggestion.name === currentWord) {
+      setIntentSuggestion(null)
+      return
+    }
+    setIntentSuggestion(suggestion)
   }
 
   const [positionTick, setPositionTick] = createSignal(0)
