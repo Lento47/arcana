@@ -875,15 +875,20 @@ function resolveToolState(part: ToolPart, message: Message, allParts: Part[]): T
     }
   }
 
-  return {
-    status: "error",
-    input: state.input ?? {},
-    error: "Tool did not finish",
-    time: {
-      start: message.time.created,
-      end,
-    },
+  // Tool was "pending" and never started. If superseded by later content,
+  // mark as skipped (not an error). Otherwise leave as pending — the engine
+  // may transition it to running/completed later via SolidJS store reactivity.
+  if (superseded) {
+    return {
+      status: "skipped",
+      input: state.input ?? {},
+      time: {
+        start: message.time.created,
+        end,
+      },
+    }
   }
+  return state
 }
 
 function toolStateToReceipt(tool: string, state: ToolPart["state"]): SpineReceipt | undefined {
