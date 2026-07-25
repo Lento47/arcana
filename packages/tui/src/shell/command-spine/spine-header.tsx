@@ -109,6 +109,7 @@ export function SpineHeader(props: {
               <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()}>
                 <text fg={t.spineBrand as any}>A R C A N A</text>
               </box>
+              <box border={["bottom"]} borderColor={t.spineBrand as any} />
             </Show>
             <Show when={segments().length > 0}>
               <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()}>

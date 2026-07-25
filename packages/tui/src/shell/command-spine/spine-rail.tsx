@@ -8,6 +8,7 @@ export function SpineRail(props: {
   color?: unknown
   active?: boolean
 }) {
+  if (props.kind === "ask" || props.kind === "plan" || props.kind === "ok") return null
   const { theme: themeObj } = useTheme()
   const t = themeObj as Record<string, unknown>
   const width = spineRailWidth(props.layout)

@@ -2161,7 +2161,7 @@ function GenericTool(props: ToolProps) {
         part={props.part}
         onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
       >
-        <box gap={1}>
+        <box gap={1} paddingLeft={3}>
           <Switch>
             <Match when={formattedOutput().type === "todos"}>
               <For each={(formattedOutput() as { type: "todos"; items: any[] }).items}>
@@ -2200,7 +2200,7 @@ function GenericTool(props: ToolProps) {
               </For>
             </Match>
             <Match when={formattedOutput().type === "xml"}>
-              <text fg={theme.textMuted}>{limited()}</text>
+              <text fg={theme.textMuted} wrapMode="word">{limited()}</text>
             </Match>
             <Match when={true}>
               <text fg={theme.text}>{limited()}</text>
