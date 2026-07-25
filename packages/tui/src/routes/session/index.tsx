@@ -2207,6 +2207,23 @@ function GenericTool(props: ToolProps) {
   )
 }
 
+function formatPermissionDenial(error: string): string {
+  // Extract rules JSON from the error message and format as readable list
+  try {
+    const match = error.match(/\[.*\]/s)
+    if (!match) return "Permission denied by user rules."
+    const rules = JSON.parse(match[0]) as Array<{ permission: string; pattern: string; action: string }>
+    if (!Array.isArray(rules)) return "Permission denied by user rules."
+    const denyRules = rules.filter(r => r.action === "deny")
+    if (!denyRules.length) return "Permission denied by user rules."
+    return "Permission denied:\n" + denyRules.map(r =>
+      `  deny ${r.permission || "?"} → ${r.pattern || "*"}`
+    ).join("\n")
+  } catch {
+    return "Permission denied by user rules."
+  }
+}
+
 function InlineTool(props: {
   icon: string
   iconColor?: RGBA
@@ -2272,7 +2289,7 @@ function InlineTool(props: {
       errorColor={theme.error}
       failed={failed()}
       denied={Boolean(denied())}
-      error={error()}
+      error={denied() ? formatPermissionDenial(error() ?? "") : error()}
       errorExpanded={errorExpanded()}
       glowing={glowing()}
       glowColor={theme.accent}
