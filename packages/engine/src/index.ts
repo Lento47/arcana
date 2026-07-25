@@ -208,6 +208,7 @@ const commandLoaders = {
   db: () => import("./cli/cmd/db").then((m) => m.DbCommand),
   license: () => import("./cli/cmd/license").then((m) => m.LicenseCommand),
   proxy: () => import("./cli/cmd/proxy").then((m) => m.ProxyCommand),
+  doctor: () => import("./cli/cmd/doctor").then((m) => m.DoctorCommand),
   team: () => import("./cli/cmd/team").then((m) => m.TeamCommand),
   audit: () => import("./cli/cmd/audit").then((m) => m.AuditCommand),
   trust: () => import("./cli/cmd/trust").then((m) => m.TrustCommand),
