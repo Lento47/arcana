@@ -6,6 +6,7 @@ import { ToolJsonSchema } from "../tool/json-schema"
 import { TaskTool } from "../tool/task"
 import { Provider } from "@/provider/provider"
 import { generateText } from "ai"
+import { validateStepOutput } from "./validate"
 
 const StepArray = Schema.Array(WorkflowStep)
 const decodeSteps = Schema.decodeUnknownEffect(StepArray)
@@ -87,6 +88,9 @@ export const WorkflowTool = Tool.define(
             }
           }
 
+          // Build step lookup map for output_schema validation
+          const stepMap = new Map(steps.map(s => [s.id, s] as const))
+
           const engine = createEngine({
             concurrency: 8,
             runSubagent: (input) =>
@@ -95,7 +99,13 @@ export const WorkflowTool = Tool.define(
                   { description: input.description, prompt: input.prompt, subagent_type: input.subagent_type },
                   ctx,
                 )
-                .pipe(Effect.map((result) => result.output)),
+                .pipe(
+                  Effect.map((result) => {
+                    const step = stepMap.get(input.stepId)
+                    if (!step?.output_schema) return result.output
+                    return validateStepOutput(result.output, step.output_schema, input.stepId)
+                  }),
+                ),
             promptLLM,
             // Live state: push a compact step-status line to the tool-call UI on
             // every transition so the workflow's progress is visible while it runs.
