@@ -52,7 +52,7 @@ jobs:
           echo "Bump level: $BUMP"
 
           # Read current version from npm package
-          VERSION=$(node -p "require('./packages/arcana/npm/package.json').version")
+          VERSION=$(node -p "require('./packages/arcana/package.json').version")
           echo "Current version: $VERSION"
 
           # Split and bump
@@ -68,15 +68,15 @@ jobs:
           echo "New version: $NEW_VERSION"
 
           # Update version in all files
-          cd packages/arcana/npm
-          npm version "$NEW_VERSION" --no-git-tag-version
-          cd ../../..
-          node -p "const p=require('./package.json');p.version='$NEW_VERSION';JSON.stringify(p,null,2)" > /tmp/pkg.json
-          cat /tmp/pkg.json > package.json
           node -p "const p=require('./packages/arcana/package.json');p.version='$NEW_VERSION';JSON.stringify(p,null,2)" > /tmp/arcana-pkg.json
           cat /tmp/arcana-pkg.json > packages/arcana/package.json
-          sed -i "s/const VERSION = \"[^\"]*\"/const VERSION = \"v$NEW_VERSION\"/" packages/arcana/npm/bin/arcana.js
-          # Note: packages/arcana/src/index.ts reads VERSION from package.json
+          node -p "const p=require('./package.json');p.version='$NEW_VERSION';JSON.stringify(p,null,2)" > /tmp/pkg.json
+          cat /tmp/pkg.json > package.json
+          node -p "const p=require('./packages/engine/package.json');p.version='$NEW_VERSION';JSON.stringify(p,null,2)" > /tmp/engine-pkg.json
+          cat /tmp/engine-pkg.json > packages/engine/package.json
+          node -p "const p=require('./packages/tui/package.json');p.version='$NEW_VERSION';JSON.stringify(p,null,2)" > /tmp/tui-pkg.json
+          cat /tmp/tui-pkg.json > packages/tui/package.json
+          # packages/arcana/src/index.ts reads VERSION from package.json
           # at runtime via createRequire, so no edit needed there.
 
           TAG="v$NEW_VERSION"
