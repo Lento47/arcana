@@ -51,6 +51,10 @@ export const Prompt = Schema.Struct({
   metrics_bar: Schema.optional(Schema.Boolean).annotate({
     description: "Show the session metrics bar below the input prompt (elapsed, tokens, cost, context pressure). Default: true",
   }),
+  ai_suggestion: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Show inline ghost-text suggestions for skills, agents, and plugins as you type. Press Tab to accept. Default: false",
+  }),
 }).annotate({ description: "Prompt size settings" })
 
 export const Background = Schema.Struct({
@@ -137,6 +141,10 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
     }),
     leader_timeout: input.leader_timeout ?? LeaderTimeoutDefault,
     mouse: input.mouse ?? true,
+    prompt: {
+      ...input.prompt,
+      ai_suggestion: input.prompt?.ai_suggestion ?? false,
+    },
   }
 }
 
