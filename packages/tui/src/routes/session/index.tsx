@@ -2303,7 +2303,7 @@ function InlineTool(props: {
       onMouseOut={() => setHover(false)}
       onMouseUp={() => {
         if (renderer.getSelection()?.getSelectedText()) return
-        if (failed()) {
+        if (failed() || denied()) {
           setErrorExpanded((value) => !value)
           return
         }
@@ -2409,7 +2409,7 @@ export function InlineToolRow(props: {
           </Show>
         </Match>
       </Switch>
-      <Show when={props.failed && props.errorExpanded}>
+      <Show when={(props.failed || props.denied) && props.errorExpanded}>
         <box paddingLeft={INLINE_TOOL_ICON_WIDTH}>
           <Scramble error text={props.error ?? ""} fg={props.errorColor} />
         </box>

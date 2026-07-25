@@ -91,6 +91,11 @@ export function SpineChatCard(props: {
     return undefined
   })
 
+  const shimmerVerb = createMemo(() => {
+    if (kind() === "plan") return "thinking"
+    return "writing"
+  })
+
   const accentGlyph = createMemo(() => (isUser() ? Glyph.diamond : Glyph.star))
 
   return (
@@ -109,6 +114,10 @@ export function SpineChatCard(props: {
       paddingTop={isAssistant() ? 1 : 0}
       paddingBottom={isAssistant() ? 1 : 0}
     >
+      {/* Turn separator — thin line above user messages */}
+      <Show when={isUser()}>
+        <box border={["bottom"]} borderColor={(t.borderSubtle ?? t.textMuted) as any} width="100%" />
+      </Show>
       {/* Header — single row, no markdown here */}
       <box flexDirection="row" flexShrink={0} alignItems="center" width="100%">
         <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
@@ -120,7 +129,7 @@ export function SpineChatCard(props: {
           </Show>
           <Show when={streaming() && !elapsedText()} keyed>
             <ShimmerText
-              text="writing"
+              text={shimmerVerb()}
               active={true}
               background={(cardBg() ?? t.background) as any}
             />

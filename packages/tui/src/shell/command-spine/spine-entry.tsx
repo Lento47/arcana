@@ -216,6 +216,8 @@ export function SpineEntry(props: {
               flexShrink={0}
               alignItems="flex-start"
               backgroundColor={props.focused ? (t.backgroundElement as any) : undefined}
+              border={props.focused && !isChatProse() ? (["left"] as any) : undefined}
+              borderColor={props.focused && !isChatProse() ? (t.accent as any) : undefined}
               onMouseDown={headerToggleable() ? handleHeaderMouseDown : undefined}
               onMouseUp={headerToggleable() ? handleHeaderMouseUp : undefined}
             >
