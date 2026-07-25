@@ -120,14 +120,18 @@ export function SpineEntry(props: {
     return `${expanded() ? "▾ hide" : "▸ show"} ${what}`
   }
   const headerDisclosure = () => {
+    if (isAgentEntry()) return expanded() ? ("▾" as const) : ("▸" as const)
     if (hasChildren()) return expanded() ? ("▾" as const) : ("▸" as const)
     if (isThink() && hasThinkBody()) return expanded() ? ("▾" as const) : ("▸" as const)
     if (hasDiff() && entry().diff?.body?.trim()) return expanded() ? ("▾" as const) : ("▸" as const)
     if (hasToolBody()) return expanded() ? ("▾" as const) : ("▸" as const)
     return "" as const
   }
+  // Agent entries (subagent tasks) — always interactive
+  const isAgentEntry = createMemo(() => kind() === "agent")
   const headerToggleable = () =>
-    hasChildren()
+    isAgentEntry()
+    || hasChildren()
     || (isThink() && hasThinkBody())
     || (hasDiff() && !!entry().diff?.body?.trim())
     || hasToolBody()

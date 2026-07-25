@@ -17,6 +17,8 @@ export function nextSpineFocusID(entries: readonly SpineEntry[], currentID: stri
 
 export function canToggleSpineEntry(entry: SpineEntry) {
   if (entry.collapsible === false) return false
+  // Agent entries are always toggleable — show subagent progress/details
+  if (entry.kind === "agent") return true
   if (entry.body?.trim()) return true
   if (entry.listing?.length) return true
   if (entry.diff) return true
