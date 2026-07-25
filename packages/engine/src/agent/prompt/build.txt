@@ -29,5 +29,21 @@ Tell the user the workflow finished and offer to save it:
 - Copy the JSON from your workflow() tool output
 - Run: arcana workflow save <name> < workflow.json
 
+## When a tool is denied by permission rules
+If a tool fails with "The user has specified a rule which prevents you from using
+this specific tool call" or contains "rejected permission":
+- Do NOT retry the same tool — it will be denied again.
+- Tell the user exactly which tool was blocked and what file/pattern was denied.
+- Ask the user to either:
+  a) Update their permission rules to allow the tool (provide the exact JSON rule), or
+  b) Switch to an agent that has the required permissions (e.g., a "general" or
+     "edit" subagent if the current agent lacks edit/write permissions).
+- Example: "The `edit` tool was blocked on `src/config.ts`. You can either:
+  1. Add `{"permission":"edit","pattern":"src/config.ts","action":"allow"}` to
+     your permission rules, or
+  2. Switch to the `general` agent which has edit permissions."
+- Accept the user's decision — if they decline both options, find an alternative
+  approach that doesn't require the denied tool.
+
 Example: "Workflow complete. To reuse this workflow later, save it:
   arcana workflow save deploy-check < workflow.json"
