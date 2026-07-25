@@ -123,12 +123,14 @@ export function SpineEntry(props: {
     if (hasChildren()) return expanded() ? ("▾" as const) : ("▸" as const)
     if (isThink() && hasThinkBody()) return expanded() ? ("▾" as const) : ("▸" as const)
     if (hasDiff() && entry().diff?.body?.trim()) return expanded() ? ("▾" as const) : ("▸" as const)
+    if (hasToolBody()) return expanded() ? ("▾" as const) : ("▸" as const)
     return "" as const
   }
   const headerToggleable = () =>
     hasChildren()
     || (isThink() && hasThinkBody())
     || (hasDiff() && !!entry().diff?.body?.trim())
+    || hasToolBody()
   const headerGlyph = () => (isChatProse() || isThink() ? "" : entry().glyph)
 
   const padLeft = () => spineOuterPadding(props.layout)
@@ -305,6 +307,13 @@ export function SpineEntry(props: {
                 reminders={entryReminders()}
                 contentWidth={props.thinkContentWidth ?? props.contentWidth}
               />
+            </box>
+          </Show>
+
+          {/* Expandable body for non-chat/non-think entries (agent tools, etc.) */}
+          <Show when={!isThink() && hasToolBody() && bodyExpanded()}>
+            <box paddingLeft={padLeft()} paddingTop={1}>
+              <text fg={t.text as any}>{entry().body}</text>
             </box>
           </Show>
 
