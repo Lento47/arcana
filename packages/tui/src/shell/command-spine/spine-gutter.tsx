@@ -1,4 +1,3 @@
-import { useTheme } from "../../context/theme"
 import { spineGutterWidth, type SpineLayout } from "./spine-types"
 
 /**
@@ -18,14 +17,5 @@ export function SpineGutter(props: {
   if (width === 0) return null
   const indexColor = () => (props.active ? t.text : t.textMuted) as any
   // 01..99; fall back to raw digits if index ≥ 100 (rare).
-  const padded =
-    props.index >= 0 && props.index < 100
-      ? props.index.toString().padStart(2, "0")
-      : String(props.index)
-
-  return (
-    <box width={width} flexShrink={0}>
-      <text fg={indexColor()}>{padded.slice(0, width).padEnd(width)}</text>
-    </box>
-  )
+  return <box width={width} flexShrink={0} />
 }

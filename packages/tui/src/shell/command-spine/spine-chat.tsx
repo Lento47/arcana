@@ -75,7 +75,7 @@ export function SpineChatCard(props: {
 
   const cardBg = createMemo(() => {
     if (!isAssistant()) return undefined
-    if (focused()) return (t.backgroundElement ?? t.backgroundPanel) as any
+    if (focused()) return (t.spinePrompt ?? t.backgroundElement ?? t.backgroundPanel) as any
     return (t.backgroundPanel ?? t.backgroundElement) as any
   })
 
@@ -109,7 +109,7 @@ export function SpineChatCard(props: {
       backgroundColor={cardBg()}
       border={isAssistant() ? ["left"] : undefined}
       borderColor={isAssistant() ? railColor() : undefined}
-      paddingLeft={isAssistant() ? 2 : 1}
+      paddingLeft={isAssistant() ? 3 : 1}
       paddingRight={1}
       paddingTop={isAssistant() ? 1 : 0}
       paddingBottom={isAssistant() ? 1 : 0}

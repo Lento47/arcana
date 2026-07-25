@@ -111,7 +111,7 @@ export function SpineNode(props: {
     if (kind() === "fail") return t.spineFail as any
     if (kind() === "think") return t.spineThink as any
     if (isChat()) return t.spineDiffMuted as any
-    if (isTool()) return t.spineContext as any
+    if (isTool()) return t.text as any
     return t.text as any
   })
   const labelColor = createMemo(() => {
@@ -124,7 +124,7 @@ export function SpineNode(props: {
     const raw = label()
     const w = labelWidth()
     if (raw.length > w) return raw.slice(0, w - 1) + "…"
-    return raw.padEnd(w)
+    return raw
   })
 
   const summaryBody = () => (
