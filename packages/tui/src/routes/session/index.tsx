@@ -2093,10 +2093,15 @@ function GenericTool(props: ToolProps) {
     | { type: "todos"; items: Array<{ status: string; content: string }> }
     | { type: "table"; columns: string[]; rows: Array<Record<string, string>> }
     | { type: "kv"; entries: Array<[string, string]> }
+    | { type: "xml" }
     | { type: "raw" }
 
   const formattedOutput = createMemo((): FormattedOutput => {
     const raw = output()
+
+    // XML / structured markup: raw text starting with <
+    if (raw.trim().startsWith("<")) return { type: "xml" }
+
     try {
       const parsed = JSON.parse(raw)
 
@@ -2193,6 +2198,9 @@ function GenericTool(props: ToolProps) {
                   </box>
                 )}
               </For>
+            </Match>
+            <Match when={formattedOutput().type === "xml"}>
+              <text fg={theme.textMuted}>{limited()}</text>
             </Match>
             <Match when={true}>
               <text fg={theme.text}>{limited()}</text>
