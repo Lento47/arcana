@@ -114,154 +114,60 @@ The full catalog of supported providers and their env keys is documented in `pac
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| `@arcana/arcana` | CLI entry + agent runner |
-| `@arcana/core` | Effect-based agent runtime, tools, session, database |
-| `@arcana/engine` | Agent/session/tool/provider engine + TUI host (SolidJS + OpenTUI) |
-| `@arcana/tui` | Terminal UI components, branding, theme |
-| `@arcana/ui` | Web UI component library (SolidJS) |
-| `@arcana/llm` | Multi-provider LLM routing (OpenAI, Anthropic, Gemini, Bedrock, etc.) |
-| `@arcana/sdk` | JS SDK — typed API client + server spawner |
-| `@arcana/server` | Hono + Effect HTTP API server |
-| `@arcana/gateway` | Chat platform adapters (Telegram, Discord, Slack) |
-| `@arcana/memory` | SQLite-backed conversation memory + FTS5 search |
-| `@arcana/cron` | Scheduled agent jobs |
-| `@arcana/skills` | Skill catalog (loaded from `skills/` + `~/.arcana/skills/`) |
-| `@arcana/ml` | Signal engine — turn/tool signals, quality gate, ML runtime policy |
-| `@arcana/plugin` | Plugin system (30+ lifecycle hooks) |
-| `@arcana/enterprise` | SolidJS/Start web dashboard |
-| `@arcana/function` | Cloudflare Worker with DurableObjects for share/sync |
-| `@arcana/http-recorder` | VCR-style HTTP cassette recorder for Effect-based testing |
+20+ packages organized in a layered architecture. Full details: [docs/architecture/system-architecture.md](docs/architecture/system-architecture.md) · [docs/arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md)
+
+| Layer | Packages | Purpose |
+|-------|----------|---------|
+| **Entry** | `arcana`, `engine`, `enterprise` | CLI, TUI (SolidJS + OpenTUI), web dashboard |
+| **Presentation** | `tui`, `ui` | Terminal UI (7 themes), web components (20+ locales) |
+| **Service** | `server`, `gateway`, `plugin`, `plugin-legacy`, `sdk` | Hono HTTP API, chat adapters, 30+ plugin hooks, JS client |
+| **Core** | `core`, `memory`, `cron`, `skills`, `ml` | Effect runtime, SQLite+FTS5 memory, scheduler, quality gate |
+| **Foundation** | `llm`, `effect-drizzle-sqlite`, `effect-sqlite-node` | 33+ LLM providers, database bridges |
+| **Infra** | `http-recorder`, `function`, `script` | VCR cassettes, CF Workers, build/release |
 
 ## Deep Dive
 
-Undocumented features that are ready to use:
+Ready-to-use features beyond the basics. Full guide: [docs/arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md)
 
-### `arcana memory` — FTS5-powered session memory
-
-Search past session conversations, extracted facts, artifacts, and skill observations:
-```sh
-arcana memory search "deployment config"
-arcana memory sessions --limit 10
-arcana memory facts
-arcana memory stats
-```
-
-### `arcana history` — browse and resume past sessions
-
-List, inspect, and resume previous agent sessions:
-```sh
-arcana history list
-arcana history show --id <session-id>
-arcana history resume --id <session-id>
-```
-
-### `arcana learn` — self-improving knowledge pipeline
-
-After sessions with 2+ turns, the agent extracts learnings into wiki files and a map of consciousness:
-```sh
-arcana learn list
-arcana learn show --slug kebab-case-slug
-arcana learn moc       # show map of consciousness
-```
-
-### `arcana doctor` — system health diagnostics
-
-Check config, API keys, cache files, and runtime environment:
-```sh
-arcana doctor
-```
-
-### Gateway — Telegram, Discord, Slack, and WhatsApp
-
-Four chat platform adapters with per-chat agent sessions. WhatsApp runs via Cloud API webhook (self-hosted HTTP server on port 3100):
-```sh
-arcana gateway
-```
-
-Configure in `~/.arcana/config.json` (see Gateway section below).
-
-### `@arcana/http-recorder` — VCR-style HTTP cassette testing
-
-Record and replay Effect HTTP client traffic with deterministic cassettes. Secret redaction, request matching, auto record/replay mode detection:
-```ts
-import { HttpRecorder } from "@arcana/http-recorder"
-```
-
-### `@arcana/function` — Cloudflare Worker with DurableObjects
-
-Share/sync server using Cloudflare DurableObjects, GitHub App JWT token exchange, R2 storage, and a Feishu-to-Discord bridge. Deployed via SST.
-
-### Cron daemon — scheduled autonomous agents
-
-The cron scheduler runs as a persistent daemon, evaluating jobs every 60s. Jobs persist to a JSON store and integrate with memory:
-```sh
-arcana cron add --name "daily-review" --schedule "0 9 * * *" --prompt "review today's changes"
-arcana cron list
-arcana cron start     # run daemon (blocking)
-```
-
-### `@arcana/ml` — opt-in ML signal engine (NEW in 0.2.44)
-
-Quality gate + expectation contract + silent revision. Off by default. Enable per session via env var:
-
-```sh
-ARCANA_ML_RUNTIME=1 arcana run "explain this codebase"
-```
-
-The engine detects generic filler (best practices, robust, scalable, …), forces specific output anchored to file/command names, and revises silently up to one round before showing the answer. Verifiable:
-
-```sh
-bun run ml:eval         # 12 eval fixtures, exits non-zero on regression
-```
-
-### `arcana web` — optional SolidJS web app
-
-The web app lives in `packages/enterprise` (Vite + SolidJS Start + Nitro). It is optional — if `packages/enterprise/package.json` is missing, `arcana web` exits cleanly:
-
-```sh
-bun run dev:web         # vite dev on http://localhost:3002
-bun run web:build       # production build
-arcana web --host 127.0.0.1 --port 3000 --open
-arcana web --build
-arcana doctor --web     # checks enterprise pkg + source + build + vite + port
-```
-
-### Plugin lifecycle — 30+ hooks
-
-The plugin system defines hooks for agent, tool, config, auth, chat, permissions, and workspace lifecycle events. Types and examples in `@arcana/plugin`:
-```sh
-arcana skills list          # available skills
-arcana skills search "git"  # search by keyword
-```
+| Feature | Command / Config | Docs |
+|---------|-----------------|------|
+| **Memory** | `arcana memory search "query"` | [session-compaction.md](docs/session-compaction.md) |
+| **History** | `arcana history list` / `arcana history resume --id <id>` | [arcana-updates-v0.3.5.md](docs/arcana-updates-v0.3.5.md) |
+| **Learn** | `arcana learn list` / `arcana learn moc` | [arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md) |
+| **Doctor** | `arcana doctor` | [configuration.md](docs/configuration.md) |
+| **Gateway** | `arcana gateway` (Telegram, Discord, Slack, WhatsApp) | [gateway.md](docs/gateway.md) |
+| **Cron** | `arcana cron add --name ... --schedule ... --prompt ...` | [cron.md](docs/cron.md) |
+| **ML Engine** | `ARCANA_ML_RUNTIME=1 arcana run "..."` | [arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md) |
+| **Web App** | `bun run dev:web` (Vite + SolidJS Start) | [arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md) |
+| **Plugins** | 30+ hooks via `@arcana/plugin` | [arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md) |
+| **HTTP Recorder** | `import { HttpRecorder } from "@arcana/http-recorder"` | [arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md) |
 
 ## Skills
 
-Skills across categories: software-development, devops, security, data-science, blockchain, web-development, creative, productivity, and more.
+174+ skills across 28 categories. Full guide: [docs/skills.md](docs/skills.md)
 
 ```sh
-arcana skills list
-arcana skills search "python testing"
+arcana skills list                    # all skills
+arcana skills list --query "python"   # search
+arcana run --skill git "review changes"  # activate a skill
 ```
 
-Skills live in `skills/` and `~/.arcana/skills/`. Each is a `SKILL.md` with YAML frontmatter — add your own.
+Skills live in `skills/` (in-repo) and `~/.arcana/skills/` (user-local). Each is a `SKILL.md` with YAML frontmatter — add your own.
 
 ## Configuration
 
-`~/.arcana/config.json`:
+`~/.arcana/config.json` — most settings have sensible defaults and can be overridden with env vars. Full reference: [docs/configuration.md](docs/configuration.md)
+
 ```json
 {
   "provider": "openai",
   "model": "gpt-4o",
   "apiKey": "sk-...",
-  "dataDir": "~/.arcana/data",
-  "memory": { "enabled": true, "maxSessions": 1000 },
-  "cron": { "enabled": true, "intervalSeconds": 60 }
+  "memory": { "enabled": true, "maxSessions": 1000 }
 }
 ```
 
-Env overrides: `ARCANA_PROVIDER`, `ARCANA_MODEL`, `ARCANA_API_KEY`, `OPENAI_API_KEY`.
+Env overrides: `ARCANA_PROVIDER`, `ARCANA_MODEL`, `ARCANA_API_KEY`, `OPENAI_API_KEY`. No config file required — just set a key and run.
 
 ## Dev
 

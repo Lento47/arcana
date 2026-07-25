@@ -138,6 +138,7 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
 
   // Map known providers to their native SDKs; fall back to OpenAI-compatible
   const p = config.provider.toLowerCase()
+  console.error("[arcana-resolve] provider=", p, "modelId=", modelId, "proxyURL=", proxyURL, "profile.baseURL=", profile.baseURL)
   if (p === "openai") {
     const openai = createOpenAI({ apiKey: key, baseURL: config.baseURL })
     return { model: openai(modelId), tools: aiTools }

@@ -33,20 +33,6 @@
           "limit": { "context": 32768, "output": 4096 }
         }
       }
-    },
-    "cloudflare-ai-gateway": {
-      "_comment": "Direct Cloudflare AI Gateway — requires CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY. Prefer arcana-proxy for licensed Arcana routing.",
-      "name": "Cloudflare AI Gateway",
-      "npm": "@ai-sdk/openai-compatible",
-      "api": "https://gateway.ai.cloudflare.com/v1",
-      "env": ["CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID"]
-    },
-    "cloudflare-workers-ai": {
-      "_comment": "Direct Workers AI — requires CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY. Licensed users should use arcana-proxy (auto when ~/.arcana/proxy_key exists).",
-      "name": "Cloudflare Workers AI",
-      "npm": "@ai-sdk/openai-compatible",
-      "api": "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1",
-      "env": ["CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID"]
     }
   }
 }
