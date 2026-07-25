@@ -2089,27 +2089,65 @@ function GenericTool(props: ToolProps) {
   })
 
   // Detect todo-like JSON arrays in generic tool output and render them nicely
-  const parsedTodos = createMemo(() => {
+  type FormattedOutput = 
+    | { type: "todos"; items: Array<{ status: string; content: string }> }
+    | { type: "table"; columns: string[]; rows: Array<Record<string, string>> }
+    | { type: "kv"; entries: Array<[string, string]> }
+    | { type: "raw" }
+
+  const formattedOutput = createMemo((): FormattedOutput => {
     const raw = output()
     try {
       const parsed = JSON.parse(raw)
+
+      // Todos: array of objects with content + status
       if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(
-        (item: unknown) => typeof item === "object" && item !== null && "content" in (item as any) && "status" in (item as any)
+        (item: unknown) => typeof item === "object" && item !== null &&
+        "content" in (item as any) && "status" in (item as any)
       )) {
-        return parseTodos(parsed)
+        return { type: "todos", items: parseTodos(parsed) }
+      }
+
+      // Table: array of objects with consistent string keys
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(
+        (item: unknown) => typeof item === "object" && item !== null
+      )) {
+        const keys = Object.keys(parsed[0] as object)
+        if (keys.length >= 2 && keys.length <= 5) {
+          const rows = parsed.map((item: any) => {
+            const row: Record<string, string> = {}
+            for (const k of keys) row[k] = String(item[k] ?? "")
+            return row
+          })
+          return { type: "table", columns: keys, rows }
+        }
+      }
+
+      // Key-value: flat object with string/number/boolean values
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        const entries = Object.entries(parsed as Record<string, unknown>)
+          .filter(([, v]) => typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+          .map(([k, v]) => [k, String(v)] as [string, string])
+        if (entries.length > 0) return { type: "kv", entries }
       }
     } catch {}
-    return null
+    return { type: "raw" }
   })
 
-  const todoCount = createMemo(() => parsedTodos()?.length ?? 0)
+  const badge = createMemo(() => {
+    const fmt = formattedOutput()
+    if (fmt.type === "todos") return `${fmt.items.length} todos`
+    if (fmt.type === "table") return `${fmt.rows.length} rows`
+    if (fmt.type === "kv") return `${fmt.entries.length} fields`
+    return ""
+  })
 
   return (
     <Show
       when={props.output && ctx.showGenericToolOutput()}
       fallback={
         <InlineTool icon="⚙" pending={pickVerb(VerbPool.pending.generic, props.part.sessionID) + "…"} complete={true} part={props.part}>
-          {props.tool} {input(props.input)} {todoCount() > 0 ? `${todoCount()} todos` : ""}
+          {props.tool} {input(props.input)} {badge()}
         </InlineTool>
       }
     >
@@ -2119,13 +2157,47 @@ function GenericTool(props: ToolProps) {
         onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
       >
         <box gap={1}>
-          <Show when={parsedTodos()} fallback={
-            <text fg={theme.text}>{limited()}</text>
-          }>
-            <For each={parsedTodos()!}>
-              {(todo) => <TodoItem status={todo.status} content={todo.content} />}
-            </For>
-          </Show>
+          <Switch>
+            <Match when={formattedOutput().type === "todos"}>
+              <For each={(formattedOutput() as { type: "todos"; items: any[] }).items}>
+                {(todo) => <TodoItem status={todo.status} content={todo.content} />}
+              </For>
+            </Match>
+            <Match when={formattedOutput().type === "table"}>
+              {((): any => {
+                const tbl = formattedOutput() as { type: "table"; columns: string[]; rows: Record<string,string>[] }
+                return (
+                  <box flexDirection="column" gap={0}>
+                    <box flexDirection="row" gap={2}>
+                      <For each={tbl.columns}>{(col) => 
+                        <text fg={theme.textMuted} width={Math.max(8, Math.floor(ctx.width / tbl.columns.length))}><span style={{ bold: true }}>{col}</span></text>
+                      }</For>
+                    </box>
+                    <For each={tbl.rows.slice(0, 20)}>{(row) =>
+                      <box flexDirection="row" gap={2}>
+                        <For each={tbl.columns}>{(col) =>
+                          <text fg={theme.text} width={Math.max(8, Math.floor(ctx.width / tbl.columns.length))}>{row[col]}</text>
+                        }</For>
+                      </box>
+                    }</For>
+                  </box>
+                )
+              })()}
+            </Match>
+            <Match when={formattedOutput().type === "kv"}>
+              <For each={(formattedOutput() as { type: "kv"; entries: [string,string][] }).entries}>
+                {([k, v]) => (
+                  <box flexDirection="row" gap={1}>
+                    <text fg={theme.textMuted}>{k}:</text>
+                    <text fg={theme.text}>{v}</text>
+                  </box>
+                )}
+              </For>
+            </Match>
+            <Match when={true}>
+              <text fg={theme.text}>{limited()}</text>
+            </Match>
+          </Switch>
           <Show when={collapsed().overflow}>
             <text fg={theme.textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
           </Show>
@@ -2800,7 +2872,7 @@ function TodoWrite(props: ToolProps) {
   return (
     <Switch>
       <Match when={parseTodos(props.metadata.todos).length}>
-        <BlockTool title="# Todos" part={props.part}>
+        <BlockTool title={`# Todos (${todos().length})`} part={props.part}>
           <box>
             <For each={todos()}>{(todo) => <TodoItem status={todo.status} content={todo.content} />}</For>
           </box>
@@ -2812,9 +2884,10 @@ function TodoWrite(props: ToolProps) {
           pending={pickVerb(VerbPool.pending.todo, props.part.sessionID) + "…"}
           failure="Todo update failed"
           complete={false}
+          spinner={true}
           part={props.part}
         >
-          Inscribing…
+          {pickVerb(VerbPool.pending.todo, props.part.sessionID)}…
         </InlineTool>
       </Match>
     </Switch>
