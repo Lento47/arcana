@@ -97,7 +97,10 @@ export function SpineNode(props: {
   const isThink = createMemo(() => kind() === "think")
   const isThinkStreaming = createMemo(() => isThink() && streaming())
 
-  const labelWidth = createMemo(() => (isChat() ? CHAT_LABEL_WIDTH : TOOL_LABEL_WIDTH))
+  const labelWidth = createMemo(() => {
+    if (isChat()) return CHAT_LABEL_WIDTH
+    return layout() === "minimal" ? 7 : 10
+  })
   const showLabel = createMemo(
     () => !!label() && layout() !== "minimal" && kind() !== "think",
   )

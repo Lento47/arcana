@@ -130,6 +130,7 @@ export function SpineHeader(props: {
       </Show>
       <Show when={hasContext() || showBrand()}>
         <box height={1} />
+        <box border={["bottom"]} borderColor={t.borderSubtle as any} marginBottom={1} />
       </Show>
     </box>
   )

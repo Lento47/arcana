@@ -14,7 +14,8 @@ export function SpineGutter(props: {
 }) {
   const { theme: themeObj } = useTheme()
   const t = themeObj as Record<string, unknown>
-  const width = spineGutterWidth(props.layout)
+  const width = props.layout === "minimal" ? 0 : spineGutterWidth(props.layout)
+  if (width === 0) return null
   const indexColor = () => (props.active ? t.text : t.textMuted) as any
   // 01..99; fall back to raw digits if index ≥ 100 (rare).
   const padded =
