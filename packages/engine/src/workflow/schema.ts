@@ -17,6 +17,12 @@ export const WorkflowStep = Schema.Struct({
   ifFalse: Schema.optional(Schema.Array(Schema.String)),
   timeout: Schema.optional(Schema.Number),
   background: Schema.optional(Schema.Boolean),
+  output_schema: Schema.optional(Schema.Unknown).annotate({
+    description:
+      "Optional JSON Schema that this step's output must conform to. " +
+      "Example: {\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"]}. " +
+      "Only applies to subagent steps. Omit to skip validation.",
+  }),
 })
 export type WorkflowStep = Schema.Schema.Type<typeof WorkflowStep>
 
