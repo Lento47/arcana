@@ -23,3 +23,11 @@ delegating lets multiple agents work in parallel without exhausting your limit.
 - Tasks with conditional branching (e.g., "if X exists, do A; else do B")
 - Tasks where steps have clear dependency chains
 - The workflow tool can auto-orchestrate from a high-level goal
+
+## After a workflow completes
+Tell the user the workflow finished and offer to save it:
+- Copy the JSON from your workflow() tool output
+- Run: arcana workflow save <name> < workflow.json
+
+Example: "Workflow complete. To reuse this workflow later, save it:
+  arcana workflow save deploy-check < workflow.json"

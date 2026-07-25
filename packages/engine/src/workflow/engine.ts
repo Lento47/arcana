@@ -11,6 +11,7 @@ export interface WorkflowExecutors {
   readonly runSubagent: (input: {
     description: string
     prompt: string
+    stepId: string
     subagent_type: string
   }) => Effect.Effect<string, Error>
   /** Issue a one-shot LLM prompt and return the text response. */
@@ -148,7 +149,7 @@ function runStep(
       return exec.runSubagent({
         description: step.description,
         prompt: resolveTemplate(step.prompt ?? step.description, outputs),
-        // "auto" lets the task tool route to the best subagent (auto-orchestration).
+        stepId: step.id,
         subagent_type: step.subagent_type ?? "auto",
       })
     case "prompt":

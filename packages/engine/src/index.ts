@@ -204,6 +204,7 @@ const commandLoaders = {
   pr: () => import("./cli/cmd/pr").then((m) => m.PrCommand),
   session: () => import("./cli/cmd/session").then((m) => m.SessionCommand),
   plugin: () => import("./cli/cmd/plug").then((m) => m.PluginCommand),
+  workflow: () => import("./cli/cmd/workflow").then((m) => m.WorkflowCommand),
   "plugin-store": () => import("./cli/cmd/plugin-store").then((m) => m.PluginStoreCommand),
   db: () => import("./cli/cmd/db").then((m) => m.DbCommand),
   license: () => import("./cli/cmd/license").then((m) => m.LicenseCommand),
