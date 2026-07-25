@@ -256,6 +256,16 @@ export function Prompt(props: PromptProps) {
     if (!pid || pid === "arcana") return ""
     return p.modelID.toLowerCase().includes(pid) ? "" : pid
   })
+
+  /** Clean up model ID for display — strip internal prefixes, truncate long names. */
+  const displayModelId = createMemo(() => {
+    let id = local.model.parsed().modelID.toLowerCase()
+    // Strip internal routing prefixes
+    id = id.replace(/^cloudflare-ai-gateway\//, "").replace(/^cloudflare\//, "")
+    // Truncate if still very long
+    if (id.length > 36) id = id.slice(0, 33) + "..."
+    return id
+  })
   /** True when the active primary agent is not the list default (usually build). */
   const isNonDefaultAgent = createMemo(() => {
     const agent = local.agent.current()
@@ -1938,7 +1948,7 @@ export function Prompt(props: PromptProps) {
                               modelMetaAlpha(),
                             )}
                           >
-                            {local.model.parsed().modelID.toLowerCase()}
+                            {displayModelId()}
                           </text>
                           <Show when={currentProviderLabel()}>
                             <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>·</text>
