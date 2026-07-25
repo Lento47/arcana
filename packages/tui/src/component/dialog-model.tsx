@@ -42,7 +42,7 @@ export function DialogModel(props: { providerID?: string }) {
             description: provider.name,
             category,
             disabled: provider.id === "arcana" && model.id.includes("-nano"),
-            footer: model.cost?.input === 0 && provider.id === "arcana" ? "Free" : undefined,
+            footer: model.cost?.input === 0 && (provider.id === "arcana" || provider.id === "arcana-proxy") ? "Free" : undefined,
             onSelect: () => {
               onSelect(provider.id, model.id)
             },
@@ -80,7 +80,7 @@ export function DialogModel(props: { providerID?: string }) {
               : undefined,
             category: connected() ? provider.name : undefined,
             disabled: provider.id === "arcana" && model.includes("-nano"),
-            footer: info.cost?.input === 0 && provider.id === "arcana" ? "Free" : undefined,
+            footer: info.cost?.input === 0 && (provider.id === "arcana" || provider.id === "arcana-proxy") ? "Free" : undefined,
             onSelect() {
               onSelect(provider.id, model)
             },
