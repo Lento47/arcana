@@ -2076,9 +2076,31 @@ type ToolProps = {
   part: ToolPart
 }
 function GenericTool(props: ToolProps) {
+  /** Strip MCP browser tool prefix for display. Matches any server name,
+   *  so renaming the MCP server in arcana.json won't break the display. */
+  const BROWSER_TOOL_RE = /^mcp_[a-zA-Z][a-zA-Z0-9-]*_agent_browser_/
+  function browserToolDisplay(tool: string): string {
+    const m = tool.match(BROWSER_TOOL_RE)
+    return m ? tool.slice(m[0].length) : tool
+  }
+
+  /** Sanitize browser tool output for terminal display.
+   *  Screenshots are model-only — the user can't view them. */
+  const SCREENSHOT_PATH_RE = /\/tmp\/screenshot-[a-zA-Z0-9-]+\.(png|jpg|jpeg|webp)/
+  function browserToolOutput(tool: string, output: string): string {
+    if (!BROWSER_TOOL_RE.test(tool)) return output
+    if (tool.includes("agent_browser_screenshot") || SCREENSHOT_PATH_RE.test(output)) {
+      return "[screenshot taken — describe what you see textually]"
+    }
+    return output
+  }
+
   const { theme } = useTheme()
   const ctx = use()
-  const output = createMemo(() => props.output?.trim() ?? "")
+  const output = createMemo(() => {
+    const raw = props.output?.trim() ?? ""
+    return browserToolOutput(props.tool, raw)
+  })
   const [expanded, setExpanded] = createSignal(false)
   const maxLines = 3
   const maxChars = createMemo(() => maxLines * Math.max(20, ctx.width - 6))
@@ -2152,16 +2174,16 @@ function GenericTool(props: ToolProps) {
       when={props.output && ctx.showGenericToolOutput()}
       fallback={
         <InlineTool icon="⚙" pending={pickVerb(VerbPool.pending.generic, props.part.sessionID) + "…"} complete={true} part={props.part}>
-          {props.tool} {input(props.input)} {badge()}
+          {browserToolDisplay(props.tool)} {input(props.input)} {badge()}
         </InlineTool>
       }
     >
       <BlockTool
-        title={`# ${props.tool} ${input(props.input)}`}
+        title={`# ${browserToolDisplay(props.tool)} ${input(props.input)}`}
         part={props.part}
         onClick={collapsed().overflow ? () => setExpanded((prev) => !prev) : undefined}
       >
-        <box gap={1} paddingLeft={3}>
+        <box gap={1} paddingLeft={3} flexGrow={1} minWidth={0}>
           <Switch>
             <Match when={formattedOutput().type === "todos"}>
               <For each={(formattedOutput() as { type: "todos"; items: any[] }).items}>
@@ -2200,7 +2222,28 @@ function GenericTool(props: ToolProps) {
               </For>
             </Match>
             <Match when={formattedOutput().type === "xml"}>
-              <text fg={theme.textMuted} wrapMode="word">{limited()}</text>
+              {((): any => {
+                const raw = limited()
+                const taskResult = raw.match(/<task_result>([\s\S]*?)<\/task_result>/)
+                const activeGoal = raw.match(/<active-goal>([\s\S]*?)<\/active-goal>/)
+                const taskState = raw.match(/<task\s[^>]*state="(\w+)"/)
+                return <box flexDirection="column" gap={0}>
+                  <Show when={taskState}>
+                    <text fg={theme.textMuted}>
+                      {(taskState![1] === "completed" ? "◎" : "◇") + " Task " + taskState![1]}
+                    </text>
+                  </Show>
+                  <Show when={activeGoal}>
+                    <text fg={theme.text} wrapMode="word">{(activeGoal![1] ?? "").trim()}</text>
+                  </Show>
+                  <Show when={taskResult && !activeGoal}>
+                    <text fg={theme.text} wrapMode="word">{(taskResult![1] ?? "").trim()}</text>
+                  </Show>
+                  <Show when={!taskState && !activeGoal && !taskResult}>
+                    <text fg={theme.textMuted} wrapMode="word">{limited()}</text>
+                  </Show>
+                </box>
+              })()}
             </Match>
             <Match when={true}>
               <text fg={theme.text}>{limited()}</text>
