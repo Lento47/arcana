@@ -230,6 +230,23 @@ export function Prompt(props: PromptProps) {
     sessionPrewarm?.ensure()
   })
   const [cursorVersion, setCursorVersion] = createSignal(0)
+
+  // Ghost text intent suggestion — draws inline at cursor position
+  const intentGhost = createMemo(() => {
+    cursorVersion()
+    return auto()?.intentSuggestion?.() ?? null
+  })
+  const intentGhostCol = createMemo(() => {
+    cursorVersion()
+    const vc = input?.visualCursor
+    return vc ? vc.visualCol : 0
+  })
+  const intentGhostRow = createMemo(() => {
+    cursorVersion()
+    const vc = input?.visualCursor
+    return vc ? vc.visualRow : 0
+  })
+
   const currentProviderLabel = createMemo(() => {
     const p = local.model.parsed()
     const pid = p.providerID.toLowerCase()
@@ -1869,6 +1886,18 @@ export function Prompt(props: PromptProps) {
                   }
                   syntaxStyle={syntax()}
                 />
+                <Show when={intentGhost()}>
+                  {(ghost) => (
+                    <text
+                      position="absolute"
+                      top={intentGhostRow()}
+                      left={intentGhostCol()}
+                      fg={theme.textMuted}
+                    >
+                      {ghost().name}
+                    </text>
+                  )}
+                </Show>
               </box>
             </box>
             {/* Info line — Grok model · flags; Arcana: no brand, no default "intent". */}

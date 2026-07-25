@@ -22,6 +22,7 @@ import { useBindings, useCommandSlashes, useOpencodeModeStack } from "../../keym
 import { displayCharAt, mentionTriggerIndex } from "../../prompt/display"
 import { arcanaDitherPattern, arcanaDitherTick } from "../../ui/arcana"
 import { RoundBorder } from "../../ui/chrome"
+import { IntentRegistry, type IntentSuggestion } from "./intent"
 
 function removeLineRange(input: string) {
   const hashIndex = input.lastIndexOf("#")
@@ -58,6 +59,8 @@ function extractLineRange(input: string) {
 export type AutocompleteRef = {
   onInput: (value: string) => void
   visible: false | "@" | "/"
+  /** Reactive accessor for ghost-text intent suggestion. null when hidden. */
+  intentSuggestion: () => IntentSuggestion | null
 }
 
 export type AutocompleteOption = {
@@ -195,6 +198,51 @@ export function Autocomplete(props: {
     visible: false as AutocompleteRef["visible"],
     input: "keyboard" as "keyboard" | "mouse",
   })
+
+  // -- Intent suggestion (ghost text) --
+  const aiEnabled = createMemo(() => tuiConfig.prompt?.ai_suggestion === true)
+  const intentRegistry = new IntentRegistry()
+  const [intentSuggestion, setIntentSuggestion] = createSignal<IntentSuggestion | null>(null)
+
+  // Load skills on demand when AI suggestions are enabled
+  const [skillList] = createResource(
+    () => aiEnabled(),
+    async () => {
+      try {
+        const result = await sdk.client.app.skills()
+        return result.data ?? []
+      } catch {
+        // Skills fetch can fail — degrade gracefully with empty list
+        return []
+      }
+    },
+  )
+
+  // Build intent registry when skills and agents are both loaded
+  createEffect(() => {
+    if (!aiEnabled()) {
+      intentRegistry.clear()
+      setIntentSuggestion(null)
+      return
+    }
+    const skills = skillList()
+    const agents = sync.data.agent
+    // Build when either source has data (skills may arrive before agents or vice versa)
+    const hasSkills = skills !== undefined
+    const hasAgents = agents.length > 0
+    if (hasSkills || hasAgents) {
+      intentRegistry.build({ skills: hasSkills ? skills : undefined, agents: hasAgents ? agents : undefined })
+    }
+  })
+
+  /** Run intent classifier and update the suggestion signal. */
+  function runIntent(value: string) {
+    if (!aiEnabled() || intentRegistry.empty) {
+      setIntentSuggestion(null)
+      return
+    }
+    setIntentSuggestion(intentRegistry.classify(value))
+  }
 
   const [positionTick, setPositionTick] = createSignal(0)
 
@@ -774,6 +822,27 @@ export function Autocomplete(props: {
     ]),
   }))
 
+  // Tab to accept inline intent suggestion (ghost text)
+  useBindings(() => ({
+    target: props.input,
+    enabled: () => !store.visible && !!intentSuggestion(),
+    bindings: [
+      {
+        key: "tab",
+        group: "Prompt",
+        desc: "Accept inline suggestion",
+        cmd: () => {
+          const suggestion = intentSuggestion()
+          if (!suggestion) return false
+          const ta = props.input()
+          ta.insertText(suggestion.name + " ")
+          setIntentSuggestion(null)
+          return true
+        },
+      },
+    ],
+  }))
+
   function show(mode: "@" | "/") {
     setStore({
       visible: mode,
@@ -807,6 +876,9 @@ export function Autocomplete(props: {
       get visible() {
         return store.visible
       },
+      get intentSuggestion() {
+        return intentSuggestion
+      },
       onInput(value) {
         if (store.visible) {
           if (
@@ -824,7 +896,10 @@ export function Autocomplete(props: {
 
         // Check if autocomplete should reopen (e.g., after backspace deleted a space)
         const offset = props.input().cursorOffset
-        if (offset === 0) return
+        if (offset === 0) {
+          runIntent("")
+          return
+        }
 
         // Check for "/" at position 0 - reopen slash commands
         if (value.startsWith("/") && !value.slice(0, offset).match(/\s/)) {
@@ -838,7 +913,11 @@ export function Autocomplete(props: {
         if (idx !== undefined) {
           show("@")
           setStore("index", idx)
+          return
         }
+
+        // No "/" or "@" active — run intent suggestion classifier
+        runIntent(value)
       },
     })
   })
