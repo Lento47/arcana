@@ -845,6 +845,20 @@ export function Autocomplete(props: {
           const suggestion = intentSuggestion()
           if (!suggestion) return false
           const ta = props.input()
+          // Find start of current word and delete it before inserting
+          const cursor = ta.cursorOffset
+          const textBefore = ta.plainText.slice(0, cursor)
+          const lastSpace = Math.max(
+            textBefore.lastIndexOf(" "),
+            textBefore.lastIndexOf("\n"),
+          )
+          const wordStart = lastSpace + 1
+          const wordLen = cursor - wordStart
+          if (wordLen > 0) {
+            // Delete partial word then insert full suggestion
+            ta.cursorOffset = wordStart
+            ta.deleteRight(wordLen)
+          }
           ta.insertText(suggestion.name + " ")
           setIntentSuggestion(null)
           return true
