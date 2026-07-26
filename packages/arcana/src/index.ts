@@ -19,7 +19,7 @@ profileEmit("arcana_entry", performance.now())
 
 const args = process.argv.slice(2)
 const HELP_FLAGS = new Set(["--help", "-h", "--version", "-v"])
-const SUBCOMMANDS = ["run", "skills", "cron", "memory", "gateway", "completion", "config", "learn", "doctor", "history", "theme", "feedback", "web"]
+const SUBCOMMANDS = ["run", "skills", "cron", "memory", "gateway", "completion", "config", "learn", "doctor", "history", "theme", "feedback", "web", "daemon"]
 const firstArg = args[0]
 const DAEMON_FLAG = args.includes("--daemon")
 const isArcanaSubcommand = firstArg && (SUBCOMMANDS.includes(firstArg) || HELP_FLAGS.has(firstArg))
@@ -114,6 +114,7 @@ const commandLoaders = {
   doctor: () => import("./cli/cmd/doctor.js").then((m) => m.DoctorCommand),
   history: () => import("./cli/cmd/history.js").then((m) => m.HistoryCommand),
   theme: () => import("./cli/cmd/theme.js").then((m) => m.ThemeCommand),
+  daemon: () => import("./cli/cmd/daemon.js").then((m) => m.DaemonCommand),
   feedback: () => import("./cli/cmd/feedback.js").then((m) => m.FeedbackCommand),
   web: () => import("./cli/cmd/web.js").then((m) => m.WebCommand),
 }
