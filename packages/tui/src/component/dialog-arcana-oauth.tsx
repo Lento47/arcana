@@ -55,7 +55,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
     const target = url()
     if (!target) return
     try {
-      const result = await sdk.client.experimental.console.openUrl({ url: target })
+      const result = await (sdk.client.experimental.console.openUrl as any)({ url: target })
       if (result.error || !result.data?.ok) {
         toast.show({
           variant: "info",
@@ -140,7 +140,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       const server =
         (typeof process !== "undefined" && process.env?.ARCANA_CONSOLE_URL?.trim())
         || "https://arcana.otnelhq.com"
-      const result = await sdk.client.experimental.console.login({ server })
+      const result = await (sdk.client.experimental.console.login as any)({ server })
       if (cancelled) return
       if (result.error || !result.data) {
         setError(friendlyError(result.error, "Couldn't start sign-in. Please try again."))
@@ -149,7 +149,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
       }
       setUser(result.data.user)
       setUrl(result.data.url)
-      setCode(result.data.code)
+      setCode((result.data as any).code)
       setServer(result.data.server)
       setPhase("waiting")
       scheduleNext(result.data.intervalSeconds * 1000)
@@ -172,7 +172,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
     const s = server()
     if (!c || !s) return
     try {
-      const result = await sdk.client.experimental.console.loginPoll({ code: c, server: s })
+      const result = await (sdk.client.experimental.console.loginPoll as any)({ code: c, server: s })
       if (cancelled) return
       if (result.error || !result.data) {
         setError(friendlyError(result.error, "Lost the connection while waiting for confirmation. Please try again."))
@@ -227,7 +227,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
     setPhase("binding")
     setEmail(emailAddr)
     try {
-      const result = await sdk.client.experimental.console.loginComplete({
+      const result = await (sdk.client.experimental.console.loginComplete as any)({
         accessToken,
         server: s,
         email: emailAddr,

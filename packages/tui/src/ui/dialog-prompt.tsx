@@ -8,7 +8,7 @@ import { useBindings, useCommandShortcut } from "../keymap"
 
 export type DialogPromptProps = {
   title: string
-  description?: () => JSX.Element
+  description?: (() => JSX.Element) | JSX.Element
   placeholder?: string
   value?: string
   busy?: boolean
@@ -83,7 +83,7 @@ export function DialogPrompt(props: DialogPromptProps) {
         </text>
       </box>
       <box gap={1}>
-        {props.description}
+        {typeof props.description === "function" ? props.description() : props.description}
         <textarea
           height={3}
           ref={(val: TextareaRenderable) => {

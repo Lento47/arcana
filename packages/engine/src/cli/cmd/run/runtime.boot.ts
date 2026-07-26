@@ -110,14 +110,25 @@ const layer = Layer.effect(
           .then((item) => item.data?.providers)
           .catch(() => undefined),
       )
-      const providers = yield* Effect.promise(() =>
-        connected
-          ? Promise.resolve(connected)
-          : sdk.provider
-              .list()
-              .then((item) => item.data?.all ?? [])
-              .catch(() => []),
-      )
+      async function loadProviders() {
+        let list: any[]
+        if (connected) {
+          list = connected
+        } else {
+          try {
+            const result = await sdk.provider.list()
+            list = result.data?.all ?? []
+          } catch {
+            list = []
+          }
+        }
+        // Always include Ollama as an available provider
+        if (!list.some((p: any) => p.id === "ollama")) {
+          list.push({ id: "ollama", name: "Ollama (local)", models: {} } as any)
+        }
+        return list
+      }
+      const providers = yield* Effect.promise(() => loadProviders())
       const limits = Object.fromEntries(
         providers.flatMap((provider) =>
           Object.entries(provider.models ?? {}).flatMap(([modelID, info]) => {

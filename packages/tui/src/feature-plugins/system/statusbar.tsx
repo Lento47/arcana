@@ -84,7 +84,7 @@ function View(props: { api: TuiPluginApi }) {
   const model = createMemo(() => {
     const last = latestAssistant()
     if (!last) return undefined
-    const provider = api.state.provider.find((item) => item.id === last.providerID)
+    const provider = api.state?.provider?.find((item) => item.id === last.providerID)
     return compactModelName(provider?.models[last.modelID]?.name ?? last.modelID)
   })
 
@@ -93,7 +93,7 @@ function View(props: { api: TuiPluginApi }) {
     if (!last) return undefined
     const tokens =
       last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
-    const limit = api.state.provider.find((item) => item.id === last.providerID)?.models[last.modelID]?.limit.context
+    const limit = api.state?.provider?.find((item) => item.id === last.providerID)?.models[last.modelID]?.limit?.context
     return { tokens, percent: limit ? clampPercent(Math.round((tokens / limit) * 100)) : null }
   })
 

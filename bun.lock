@@ -18,7 +18,7 @@
     },
     "packages/arcana": {
       "name": "@arcana/arcana",
-      "version": "0.3.48",
+      "version": "0.3.52",
       "bin": {
         "arcana": "./bin/arcana",
       },
@@ -177,7 +177,7 @@
     },
     "packages/engine": {
       "name": "@arcana/engine",
-      "version": "0.3.48",
+      "version": "0.3.52",
       "bin": {
         "arcana": "./bin/arcana",
       },
@@ -518,7 +518,7 @@
     },
     "packages/tui": {
       "name": "@arcana/tui",
-      "version": "0.3.48",
+      "version": "0.3.52",
       "dependencies": {
         "@arcana/core": "workspace:*",
         "@arcana/plugin": "workspace:*",

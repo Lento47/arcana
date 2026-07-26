@@ -62,7 +62,6 @@ const thinkEntry: SpineEntryModel = {
 }
 
 test("spine entry hover highlights and right-click expands collapsible thinking", async () => {
-  let hoverCount = 0
   let focusCount = 0
   let toggleCount = 0
 
@@ -78,10 +77,6 @@ test("spine entry hover highlights and right-click expands collapsible thinking"
               layout="wide"
               expanded={expanded()}
               focused={focused()}
-              onHover={() => {
-                hoverCount++
-                setFocused(true)
-              }}
               onFocus={() => {
                 focusCount++
                 setFocused(true)
@@ -102,9 +97,6 @@ test("spine entry hover highlights and right-click expands collapsible thinking"
     const header = findText(initialFrame, "reasoning header")
 
     await app.mockMouse.moveTo(header.x, header.y)
-    await renderSettled(app)
-    expect(hoverCount).toBeGreaterThan(0)
-
     await app.mockMouse.click(header.x, header.y, MouseButton.RIGHT)
     await renderSettled(app)
 

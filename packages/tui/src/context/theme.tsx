@@ -51,11 +51,15 @@ const themeSource: ThemeSource = {
 
 export async function discoverThemes(directories: string[]) {
   const result: Record<string, unknown> = {}
+  const { existsSync } = require("node:fs") as typeof import("node:fs")
   for (const directory of directories) {
-    const files = await Glob.scan("themes/*.json", { cwd: directory, absolute: true, dot: true, symlink: true })
-    for (const file of files) {
-      result[path.basename(file, ".json")] = JSON.parse(await readFile(file, "utf8")) as unknown
-    }
+    if (!existsSync(directory)) continue
+    try {
+      const files = await Glob.scan("themes/*.json", { cwd: directory, absolute: true, dot: true, symlink: true })
+      for (const file of files) {
+        result[path.basename(file, ".json")] = JSON.parse(await readFile(file, "utf8")) as unknown
+      }
+    } catch {}
   }
   return result
 }

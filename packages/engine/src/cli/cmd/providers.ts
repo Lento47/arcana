@@ -385,6 +385,12 @@ export const ProvidersLoginCommand = effectCmd({
       providerNames: Object.fromEntries(Object.entries(config.provider ?? {}).map(([id, p]) => [id, p.name])),
     })
     const options = [
+      // Ollama local models — always available when running
+      {
+        label: "Ollama (local)",
+        value: "ollama",
+        hint: "local",
+      },
       ...pipe(
         providers,
         values(),

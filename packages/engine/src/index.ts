@@ -213,6 +213,7 @@ const commandLoaders = {
   team: () => import("./cli/cmd/team").then((m) => m.TeamCommand),
   audit: () => import("./cli/cmd/audit").then((m) => m.AuditCommand),
   trust: () => import("./cli/cmd/trust").then((m) => m.TrustCommand),
+  loop: () => import("./cli/cmd/loop").then((m) => m.LoopCommand),
 }
 
 async function loadCommandsFor(firstArg: string | undefined): Promise<CommandModule[]> {

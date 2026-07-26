@@ -4,7 +4,7 @@ import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import { useThinkingMode } from "../../context/thinking"
 import type { ShellProps } from "../types"
-import { getSpineLayout, spineProseWidth, type SpineEntry } from "./spine-types"
+import { getSpineLayout, spineGutterWidth, spineOuterPadding, spineRailWidth, type SpineEntry } from "./spine-types"
 import { SAMPLE_ENTRIES } from "./sample-entries"
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
 import { SpineHeader } from "./spine-header"
@@ -62,9 +62,21 @@ export function CommandSpineShell(props: ShellProps) {
   const route = useRoute()
   const dims = useTerminalDimensions()
   const layout = createMemo(() => getSpineLayout(dims().width))
-  // Grok-class measured wrap width — never rely on Yoga % beside fixed rails.
-  const chatContentWidth = createMemo(() => spineProseWidth(dims().width, layout(), "chat"))
-  const thinkContentWidth = createMemo(() => spineProseWidth(dims().width, layout(), "think"))
+  // Centralized width contract — computed once, passed to all children.
+  // No component should subtract its own padding.
+  const viewportWidth = createMemo(() => dims().width)
+  const entryWidth = createMemo(() => viewportWidth() - spineOuterPadding(layout()) - 2 /* scrollbar */)
+  const gutterWidth = createMemo(() => spineGutterWidth(layout()))
+  const railWidth = createMemo(() => spineRailWidth(layout()))
+  const contentWidth = createMemo(() => entryWidth() - gutterWidth() - railWidth())
+  // proseWidth accounts for SpineChatCard padding + left border
+  const proseWidth = createMemo(() => Math.max(24, contentWidth() - (3/*padL*/ + 1/*padR*/ + 1/*border*/)))
+  // codeWidth: code blocks have pad(1) + left border
+  const codeWidth = createMemo(() => Math.max(24, contentWidth() - 2))
+  // thinkWidth: no extra padding
+  const thinkWidth = createMemo(() => contentWidth())
+  // @deprecated — kept for backward compat with SpineEntry prop
+  const thinkContentWidth = createMemo(() => thinkWidth())
 
   // Cross-session cache slot for the CURRENT session. This must be a memo,
   // not a const, because <Session /> no longer remounts on session switch —
@@ -300,7 +312,7 @@ export function CommandSpineShell(props: ShellProps) {
                 foregroundColor: t.border as any,
               },
             }}
-            viewportCulling={true}
+            viewportCulling={false}
             stickyScroll={true}
             stickyStart="bottom"
             flexGrow={1}
@@ -313,13 +325,16 @@ export function CommandSpineShell(props: ShellProps) {
                   <SpineEntryView
                     entry={entry()}
                     layout={layout()}
-                    contentWidth={chatContentWidth()}
+                    contentWidth={contentWidth()}
+                    proseWidth={proseWidth()}
+                    thinkWidth={thinkWidth()}
                     thinkContentWidth={thinkContentWidth()}
                     expanded={entryExpanded(entry())}
                     focused={entryFocused(entry())}
                     onToggle={() => toggleEntry(entry())}
                     onFocus={() => focusEntry(entry())}
-                    onHover={() => focusEntry(entry())}
+                    onNavigate={(sid) => route.navigate({ type: "session", sessionID: sid })}
+                    sessionID={route.data?.type === "session" ? (route.data as any).sessionID : undefined}
                     nodeRef={(node) => {
                       if (node) entryNodes.set(id, node)
                       else entryNodes.delete(id)

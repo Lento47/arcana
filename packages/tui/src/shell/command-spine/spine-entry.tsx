@@ -3,6 +3,7 @@ import { For, Show, createMemo, createSignal } from "solid-js"
 import type { SpineEntry as SpineEntryType, SpineLayout } from "./spine-types"
 import { spineOuterPadding } from "./spine-types"
 import { useTheme } from "../../context/theme"
+import { useSync } from "../../context/sync"
 import { SpineGutter } from "./spine-gutter"
 import { SpineNode } from "./spine-node"
 import { SpineReceipt } from "./spine-receipt"
@@ -40,6 +41,8 @@ export function SpineEntry(props: {
   onToggle?: () => void
   onFocus?: () => void
   onHover?: () => void
+  onNavigate?: (sessionID: string) => void
+  sessionID?: string  // Parent session ID for child lookup
   nodeRef?: (node: BoxRenderable | undefined) => void
   /** Measured markdown wrap width (terminal − gutters). */
   contentWidth?: number
@@ -52,10 +55,12 @@ export function SpineEntry(props: {
   const entry = () => props.entry
   const { theme: themeObj } = useTheme()
   const t = themeObj as Record<string, unknown>
+  const sync = useSync()
 
   const [localExpanded, setLocalExpanded] = createSignal(
     props.entry.expandedByDefault ?? !props.entry.collapsible,
   )
+  const [openBtnHover, setOpenBtnHover] = createSignal(false)
   // Prefer controlled expanded from shell; fall back to local toggle state.
   const expanded = () => props.expanded ?? localExpanded()
   const kind = createMemo(() => entry().kind)
@@ -97,6 +102,18 @@ export function SpineEntry(props: {
 
   // Agent entries (subagent tasks) — always interactive
   const isAgentEntry = createMemo(() => kind() === "agent")
+
+  // Lookup child sessionID even when source.sessionID isn't set yet (running subagents)
+  const childSessionID = createMemo(() => {
+    const direct = entry().source?.sessionID
+    if (direct) return direct
+    // For running subagents: find the MOST RECENT child session
+    if (!isAgentEntry() || !props.sessionID) return undefined
+    const children = sync.data.session
+      ?.filter((s: any) => s.parentID === props.sessionID)
+      .toSorted((a: any, b: any) => (b.time?.created ?? 0) - (a.time?.created ?? 0))
+    return children?.[0]?.id
+  })
 
   // Explicit toggle row for tool bodies AND grouped bursts (same click target as
   // "show output" — header-only expand was easy to miss / hard to hit).
@@ -320,7 +337,33 @@ export function SpineEntry(props: {
           {/* Expandable body for non-chat/non-think entries (agent tools, etc.) */}
           <Show when={!isThink() && (hasToolBody() || isAgentEntry()) && bodyExpanded()}>
             <box paddingLeft={padLeft()} paddingTop={1}>
-              <text fg={t.text as any}>{entry().body || entry().summary}</text>
+              <SpineProse
+                kind={kind()}
+                text={entry().body || entry().summary}
+                streaming={false}
+                focused={false}
+                contentWidth={props.contentWidth}
+              />
+            </box>
+          </Show>
+
+          {/* Open child session — polished button with rail alignment */}
+          <Show when={(isAgentEntry() || kind() === "agent") && bodyExpanded() && !!childSessionID()}>
+            <box paddingTop={1} flexShrink={0} />
+            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+              <SpineRail layout={props.layout} active={false} />
+              <box
+                flexGrow={1}
+                minWidth={0}
+                flexShrink={1}
+                paddingLeft={1}
+                backgroundColor={openBtnHover() ? (t.backgroundElement as any) : undefined}
+                onMouseOver={() => setOpenBtnHover(true)}
+                onMouseOut={() => setOpenBtnHover(false)}
+                onMouseUp={() => props.onNavigate?.(childSessionID()!)}
+              >
+                <text>{`⤷ Open subagent ${childSessionID()!.slice(0,8)}`}</text>
+              </box>
             </box>
           </Show>
 
@@ -404,6 +447,7 @@ export function SpineEntry(props: {
           <Show when={hasChildren() && expanded()}>
             <For each={entry().children!}>
               {(child, i) => (
+                <Show when={child != null} fallback={<text>…</text>}>
                 <box flexDirection="column" flexShrink={0} minWidth={0}>
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail
@@ -439,6 +483,7 @@ export function SpineEntry(props: {
                     </box>
                   </Show>
                 </box>
+                </Show>
               )}
             </For>
           </Show>

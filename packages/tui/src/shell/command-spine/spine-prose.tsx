@@ -49,7 +49,7 @@ export function resolveProseMode(input: {
   if (input.kind === "ask") {
     return looksLikeMarkdown(input.text) ? "markdown" : "plain"
   }
-  if (input.kind === "think") return "markdown"
+  if (input.kind === "think" || input.kind === "agent") return "markdown"
   if (label === "diff" || looksLikeDiff(input.text)) return "code"
   if (label === "error" || input.kind === "fail") return "code"
   if (label === "written content" || label === "output" || label === "file") return "code"
@@ -141,9 +141,11 @@ export function SpineProse(props: {
     }),
   )
 
-  const markdownContent = createMemo(() =>
-    mode() === "markdown" ? escapeMarkdownUnderscoreEmphasis(text()) : text(),
-  )
+  const markdownContent = createMemo(() => {
+    const raw = mode() === "markdown" ? escapeMarkdownUnderscoreEmphasis(text()) : text()
+    // Strip horizontal rules — OpenTUI renders them as full-width dashes
+    return raw.replace(/^[-─━═]{3,}\s*$/gm, "")
+  })
   const ft = createMemo(() => resolveFiletype(bodyLabel(), hint(), text(), hint()))
   const fg = createMemo(() => {
     if (kind() === "think") return theme.textMuted
@@ -287,7 +289,7 @@ export function SpineProse(props: {
             flexShrink={0}
             minWidth={0}
             width={wrapCols()}
-            backgroundColor={focused() ? (theme.backgroundElement as any) : (theme.backgroundPanel as any)}
+            backgroundColor={focused() ? (theme.backgroundElement as any) : undefined}
             paddingLeft={codePad()}
             paddingRight={codePad()}
             paddingTop={codePadY()}

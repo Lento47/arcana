@@ -215,7 +215,7 @@ export function make(input: {
       () => input.sdk.session.messages({ directory: params.cwd, sessionID: params.sessionId }, { throwOnError: true }),
       "session",
     )
-    const restored = restoreFromMessages(messages.map((item) => item.info))
+    const restored = restoreFromMessages(messages.items.map((item) => item.info))
     const model = restored.model ?? selectDefaultModel(snapshot)
     const state = yield* session.load({
       id: params.sessionId,
@@ -300,7 +300,7 @@ export function make(input: {
         ),
       "session",
     )
-    const restored = restoreFromMessages(messages.map((item) => item.info))
+    const restored = restoreFromMessages(messages.items.map((item) => item.info))
     const model = restored.model ?? selectDefaultModel(snapshot)
     const state = yield* session.load({
       id: params.sessionId,
@@ -369,7 +369,7 @@ export function make(input: {
         input.sdk.session.messages({ directory: params.cwd, sessionID: forked.id, limit: 20 }, { throwOnError: true }),
       "session",
     )
-    const restored = restoreFromMessages(messages.map((item) => item.info))
+    const restored = restoreFromMessages(messages.items.map((item) => item.info))
     const model = restored.model ?? selectDefaultModel(snapshot)
     const state = yield* session.load({
       id: forked.id,

@@ -111,7 +111,7 @@ test("orphan live deltas do not suppress hydrated parts", async () => {
       global({
         id: "evt_delta",
         type: "message.part.delta",
-        properties: { sessionID, messageID, partID, field: "text", delta: "ignored until part exists" },
+        properties: { sessionID, messageID, partID, partType: "text", field: "text", delta: "ignored until part exists" },
       }),
     )
     resolveMessages(
@@ -161,7 +161,7 @@ test("hydration does not clear text streamed before it starts", async () => {
       global({
         id: "evt_delta",
         type: "message.part.delta",
-        properties: { sessionID, messageID, partID, field: "text", delta: "visible streamed content" },
+        properties: { sessionID, messageID, partID, partType: "text", field: "text", delta: "visible streamed content" },
       }),
     )
     await wait(() => sync.data.part[messageID]?.[0]?.type === "text" && sync.data.part[messageID][0].text !== "")

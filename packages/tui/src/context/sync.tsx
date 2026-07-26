@@ -499,6 +499,47 @@ export const {
               setStore("console_state", reconcile(consoleState))
               if (sessions !== undefined) setStore("session", reconcile(sessions))
             })
+
+            const ollamaPort = (typeof process !== "undefined" && process.env?.OLLAMA_PORT) || "11434"
+            const ollamaProvider = {
+              id: "ollama",
+              name: "Ollama (local)",
+              status: "connected" as const,
+              models: {} as Record<string, { id: string; name: string; providerID: string }>,
+            }
+            fetch(`http://localhost:${ollamaPort}/api/tags`)
+              .then((r) => {
+                if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`)
+                return r.json()
+              })
+              .then((data: any) => {
+                const models = data.models ?? []
+                if (models.length === 0) return
+                const modelMap: Record<string, { id: string; name: string; providerID: string }> = {}
+                for (const m of models) modelMap[m.name] = { id: m.name, name: m.name, providerID: "ollama" }
+                ollamaProvider.models = modelMap
+                // Inject into provider_next (new) and provider (legacy)
+                setStore("provider_next", "all", (prev: any[]) => {
+                  const filtered = prev.filter((p: any) => p.id !== "ollama")
+                  return [...filtered, ollamaProvider]
+                })
+                setStore("provider_next", "connected", (prev: string[]) => {
+                  if (prev.includes("ollama")) return prev
+                  return [...prev, "ollama"]
+                })
+                setStore("provider", (prev: any[]) => {
+                  const filtered = prev.filter((p: any) => p.id !== "ollama")
+                  return [...filtered, ollamaProvider] as any
+                })
+              })
+              .catch((err) => {
+                // Still add empty provider so user knows Ollama option exists
+                setStore("provider_next", "all", (prev: any[]) => {
+                  const filtered = prev.filter((p: any) => p.id !== "ollama")
+                  return [...filtered, { ...ollamaProvider, status: "disconnected" as const }] as any
+                })
+                console.log(`[ollama] Failed to fetch models from localhost:${ollamaPort}: ${err.message}`)
+              })
           })
         })
         .then(() => {
@@ -617,7 +658,7 @@ export const {
           const last = messages.at(-1)
           if (!last) return "idle"
           if (last.role === "user") return "working"
-          return last.time.completed ? "idle" : "working"
+          return last.time?.completed ? "idle" : "working"
         },
         /** True after a successful full hydrate (get+messages+todo+diff). Warm switches skip network. */
         isSynced(sessionID: string) {
@@ -782,6 +823,42 @@ export const {
           loadingOlderSessions.delete(sessionID)
           return count >= 25
         },
+      },
+      /**
+       * Load messages for a child session not in the current route.
+       * Used by agent spine entries to show subagent activity inline.
+       */
+      ensureChildMessages(sessionID: string) {
+        if (hydratingSessions.has(sessionID)) return
+        const tracker = { messages: new Set<string>(), parts: new Set<string>() }
+        hydratingSessions.set(sessionID, tracker)
+        sdk.client.session.messages({ sessionID, limit: 25 })
+          .then((result: any) => {
+            const data: any[] = result.data?.items ?? result.data ?? []
+            setStore(
+              produce((draft) => {
+                const existing = draft.message[sessionID] ?? []
+                const newInfos = data.map((m) => m.info).filter((info) => !tracker.messages.has(info.id))
+                const merged = [...existing, ...newInfos].slice(-100)
+                draft.message[sessionID] = merged
+                // Hydrate parts for each message
+                for (const message of data) {
+                  const parts = message.parts ?? []
+                  const currentParts = draft.part[message.info.id] ?? []
+                  const mergedParts = parts.flatMap((part: any) => {
+                    const current = currentParts.find((item) => item.id === part.id)
+                    if (tracker.parts.has(part.id)) return current ? [current] : []
+                    return [part]
+                  })
+                  draft.part[message.info.id] = [...currentParts.filter((p) => tracker.parts.has(p.id)), ...mergedParts]
+                }
+              }),
+            )
+            hydratingSessions.delete(sessionID)
+          })
+          .catch(() => {
+            hydratingSessions.delete(sessionID)
+          })
       },
       bootstrap,
     }

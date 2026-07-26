@@ -764,7 +764,7 @@ function computeElapsed(
   if (message.role === "assistant") {
     const dur = assistantDuration?.get(message.id)
     if (dur !== undefined) return { ms: dur, str: formatElapsed(dur) }
-    if (message.time.completed) {
+    if (message.time?.completed) {
       const ms = message.time.completed - message.time.created
       return { ms, str: formatElapsed(ms) }
     }
@@ -840,7 +840,7 @@ function resolveToolState(part: ToolPart, message: Message, allParts: Part[]): T
   const state = part.state
   if (state.status !== "pending" && state.status !== "running") return state
 
-  const turnDone = message.role === "assistant" && !!message.time.completed
+  const turnDone = message.role === "assistant" && !!message.time?.completed
   const idx = allParts.findIndex((p) => p.id === part.id)
   // Later text/reasoning/tools after this one ⇒ this tool is no longer the active step
   let superseded = false
@@ -856,7 +856,7 @@ function resolveToolState(part: ToolPart, message: Message, allParts: Part[]): T
 
   if (!turnDone && !superseded) return state
 
-  const end = message.time.completed ?? Date.now()
+  const end = message.time?.completed ?? Date.now()
   if (state.status === "running") {
     const output =
       "output" in state && typeof (state as { output?: string }).output === "string"
@@ -869,7 +869,7 @@ function resolveToolState(part: ToolPart, message: Message, allParts: Part[]): T
       title: state.title ?? part.tool,
       metadata: state.metadata ?? {},
       time: {
-        start: state.time?.start ?? message.time.created,
+        start: state.time?.start ?? message.time?.created,
         end,
       },
     }
@@ -883,7 +883,7 @@ function resolveToolState(part: ToolPart, message: Message, allParts: Part[]): T
       status: "skipped",
       input: state.input ?? {},
       time: {
-        start: message.time.created,
+        start: message.time?.created,
         end,
       },
     }
@@ -1012,7 +1012,7 @@ function userMessageToEntries(
       index: 0,
       elapsed: elapsed.str,
       elapsedMs: elapsed.ms,
-      timestamp: formatTimestamp(message.time.created),
+      timestamp: formatTimestamp(message.time?.created),
       kind: "ask",
       label: "you",
       glyph: SPINE_GLYPH.ask,
@@ -1062,7 +1062,7 @@ function taskToolSummary(part: ToolPart): string {
 }
 function taskToolSessionID(part: ToolPart): string | undefined {
   if (part.tool !== "task" && part.tool !== "subtask") return undefined
-  if (part.state.status !== "completed") return undefined
+  // Return sessionID even while running — not just at completion
   const meta = (part.state.metadata ?? {}) as Record<string, unknown>
   for (const key of ["sessionId", "sessionID", "session_id"]) {
     const value = meta[key]
@@ -1355,7 +1355,7 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number, 
       index: 0,
       elapsed: elapsed.str,
       elapsedMs: elapsed.ms,
-      timestamp: formatTimestamp(message.time.created),
+      timestamp: formatTimestamp(message.time?.created),
       kind: finalKind,
       label:
         finalKind === "fail"
@@ -1543,7 +1543,7 @@ function patchPartToEntry(
     id: `${message.id}:${part.id}:patch`,
     index: 0,
     elapsed: "",
-    timestamp: formatTimestamp(message.time.created),
+    timestamp: formatTimestamp(message.time?.created),
     kind: "patch",
     label: "edit",
     glyph: SPINE_GLYPH.patch,
@@ -1676,7 +1676,7 @@ function makeInlineThinkEntry(
     id: `${message.id}:${part.id}:think-inline`,
     index: 0,
     elapsed: "",
-    timestamp: formatTimestamp(message.time.created),
+    timestamp: formatTimestamp(message.time?.created),
     kind: "think",
     label: "",
     glyph: SPINE_GLYPH.think,
@@ -1721,7 +1721,7 @@ function makeThinkEntry(
     id: `${message.id}:${part.id}:think`,
     index: 0,
     elapsed: "",
-    timestamp: formatTimestamp(message.time.created),
+    timestamp: formatTimestamp(message.time?.created),
     kind: "think",
     // Empty label — glyph `?` is enough; avoids redundant thinking labels.
     label: "",
@@ -1772,7 +1772,7 @@ function makeTextEntry(
     index: 0,
     elapsed: elapsed.str,
     elapsedMs: elapsed.ms,
-    timestamp: formatTimestamp(message.time.created),
+    timestamp: formatTimestamp(message.time?.created),
     kind,
     label: assistantTextLabel(message, kind),
     glyph: SPINE_GLYPH[kind],
@@ -1884,7 +1884,7 @@ function assistantMessagePartsToEntries(
         id: `${message.id}:${part.id}:agent`,
         index: 0,
         elapsed: "",
-        timestamp: formatTimestamp(message.time.created),
+        timestamp: formatTimestamp(message.time?.created),
         kind: "agent",
         label: (part.agent as string) || "agent",
         glyph: SPINE_GLYPH.agent,
@@ -1903,7 +1903,7 @@ function assistantMessagePartsToEntries(
         id: `${message.id}:${part.id}:agent`,
         index: 0,
         elapsed: "",
-        timestamp: formatTimestamp(message.time.created),
+        timestamp: formatTimestamp(message.time?.created),
         kind: "agent",
         label: part.name || "agent",
         glyph: SPINE_GLYPH.agent,
@@ -2116,7 +2116,7 @@ function groupConsecutiveTools(entries: SpineEntry[]): SpineEntry[] {
         },
         collapsible: true,
         expandedByDefault: false,
-        children: [...burst],
+        children: [...burst].filter(Boolean),
       })
     }
     burst = []
@@ -2281,7 +2281,7 @@ export function messagesToSpineEntriesCached(input: {
     const parts = getParts(message.id) ?? EMPTY_PARTS
     const duration = assistantDuration.get(message.id)
     const cached = cache?.get(message.id)
-    const completed = message.role === "assistant" ? message.time.completed : undefined
+    const completed = message.role === "assistant" ? message.time?.completed : undefined
     const finish =
       message.role === "assistant" && "finish" in message && typeof message.finish === "string"
         ? message.finish
