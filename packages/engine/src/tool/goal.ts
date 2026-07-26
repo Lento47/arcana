@@ -1,7 +1,6 @@
 import { Effect, Schema } from "effect"
 import * as Tool from "./tool"
 import {
-  formatActiveGoalBlock,
   getSessionGoal,
   patchSessionGoal,
   setSessionGoal,
@@ -98,16 +97,7 @@ export const GoalCheckTool = Tool.define<typeof CheckParams, CheckMetadata, neve
         patchSessionGoal(ctx.sessionID, { status: params.status })
       }
 
-      const block = formatActiveGoalBlock({
-        sessionID: ctx.sessionID,
-        sessionAgent: ctx.agent,
-        actorAgent: ctx.agent,
-        actorRole: "primary",
-      })
-
       const lines = [
-        block,
-        "",
         `**Check status:** ${params.status}`,
         `**Done:** ${params.done?.trim() || "nothing yet"}`,
         `**Pending:** ${params.pending?.trim() || "unknown"}`,

@@ -97,7 +97,7 @@ describe("compaction-assemble.toolPairSafeTailStart", () => {
     ]
     const safe = toolPairSafeTailStart(messages, 1)
     expect(safe?.start).toBe(1)
-    expect(safe?.id).toBe("msg_a1")
+    expect(safe?.id).toBe("msg_a1" as any)
   })
 
   test("skips incomplete assistant at cut", () => {
@@ -108,7 +108,7 @@ describe("compaction-assemble.toolPairSafeTailStart", () => {
     ]
     const safe = toolPairSafeTailStart(messages, 1)
     expect(safe?.start).toBe(2)
-    expect(safe?.id).toBe("msg_u2")
+    expect(safe?.id).toBe("msg_u2" as any)
   })
 
   test("keeps user boundary", () => {

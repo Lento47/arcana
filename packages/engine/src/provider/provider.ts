@@ -1877,7 +1877,7 @@ export const layer = Layer.effect(
 
         if (model.headers)
           options["headers"] = {
-            ...options["headers"],
+            ...(options["headers"] as Record<string, string> | undefined),
             ...model.headers,
           }
 
@@ -1891,9 +1891,9 @@ export const layer = Layer.effect(
         const existing = s.sdk.get(key)
         if (existing) return existing
 
-        const customFetch = options["fetch"]
-        const chunkTimeout = options["chunkTimeout"]
-        const headerTimeout = options["headerTimeout"]
+        const customFetch = options["fetch"] as typeof fetch | undefined
+        const chunkTimeout = options["chunkTimeout"] as number | undefined
+        const headerTimeout = options["headerTimeout"] as number | false | undefined
         delete options["chunkTimeout"]
         delete options["headerTimeout"]
 
@@ -1909,7 +1909,7 @@ export const layer = Layer.effect(
           if (chunkAbortCtl) signals.push(chunkAbortCtl.signal)
           if (headerTimeoutCtl) signals.push(headerTimeoutCtl.signal)
           if (options["timeout"] !== undefined && options["timeout"] !== null && options["timeout"] !== false)
-            signals.push(AbortSignal.timeout(options["timeout"]))
+            signals.push(AbortSignal.timeout(options["timeout"] as number))
 
           const combined = signals.length === 0 ? null : signals.length === 1 ? signals[0] : AbortSignal.any(signals)
           if (combined) opts.signal = combined
@@ -1921,7 +1921,7 @@ export const layer = Layer.effect(
           }).finally(() => headerTimeoutCtl?.clear())
 
           if (!chunkAbortCtl) return res
-          return wrapSSE(res, chunkTimeout, chunkAbortCtl)
+          return wrapSSE(res, chunkTimeout as number, chunkAbortCtl)
         }
 
         const bundledLoader = BUNDLED_PROVIDERS[model.api.npm]

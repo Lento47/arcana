@@ -229,7 +229,7 @@ export function make(input: {
 
     yield* registerMcpServers(input.sdk, registeredMcp, params.cwd, state.id, params.mcpServers)
     yield* sendAvailableCommands(input.connection, state.id, snapshot)
-    yield* replayMessages(events, messages)
+    yield* replayMessages(events, messages.items)
 
     return {
       configOptions: configOptions(snapshot, {
@@ -308,13 +308,13 @@ export function make(input: {
       mcpServers: params.mcpServers ?? [],
       model,
       variant: restored.variant ?? selectVariant(snapshot, model),
-      modeId: restored.modeId ?? (snapshot.availableModes.length > 0 ? snapshot.defaultModeID : undefined),
+      modeId: restored.modeId ?? (snapshot.availableModes.length > 0 ? snapshot.defaultModeID : snapshot.defaultModeID),
     })
     sessionSnapshots.set(state.id, snapshot)
 
     yield* registerMcpServers(input.sdk, registeredMcp, params.cwd, state.id, params.mcpServers ?? [])
     yield* sendAvailableCommands(input.connection, state.id, snapshot)
-    yield* replayMessages(events, messages)
+    yield* replayMessages(events, messages.items)
 
     return {
       configOptions: configOptions(snapshot, {
@@ -383,7 +383,7 @@ export function make(input: {
 
     yield* registerMcpServers(input.sdk, registeredMcp, params.cwd, state.id, params.mcpServers ?? [])
     yield* sendAvailableCommands(input.connection, state.id, snapshot)
-    yield* replayMessages(events, messages)
+    yield* replayMessages(events, messages.items)
 
     return {
       sessionId: state.id,
@@ -624,7 +624,7 @@ function makeUsageService(sdk: OpencodeClient) {
         ),
       "session",
     ).pipe(
-      Effect.map((messages) => messages as readonly UsageService.SessionMessage[]),
+      Effect.map((messages) => messages.items as readonly UsageService.SessionMessage[]),
       Effect.catch((error) =>
         Effect.logError("failed to fetch messages for usage update", { error: error }).pipe(Effect.as(undefined)),
       ),

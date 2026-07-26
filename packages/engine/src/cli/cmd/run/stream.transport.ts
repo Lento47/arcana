@@ -666,10 +666,9 @@ function createLayer(input: StreamInput) {
               ...(typeof limit === "number" ? { limit } : {}),
             }),
           ).pipe(
-            Effect.map((item) => item.data ?? []),
+            Effect.map((item) => item.data?.items ?? []),
             Effect.orElseSucceed(() => []),
           )
-
         const replayMessages = () =>
           Effect.promise(() =>
             input.sdk.session.messages({
@@ -678,7 +677,7 @@ function createLayer(input: StreamInput) {
                 ? {}
                 : { limit: Math.max(input.replayLimit, SUBAGENT_BOOTSTRAP_LIMIT) }),
             }),
-          ).pipe(Effect.flatMap((item) => (item.error ? Effect.fail(item.error) : Effect.succeed(item.data ?? []))))
+          ).pipe(Effect.flatMap((item) => (item.error ? Effect.fail(item.error) : Effect.succeed(item.data?.items ?? []))))
 
         const replayRequests = () =>
           Effect.all(

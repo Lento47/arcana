@@ -12,6 +12,7 @@
     "./cli/cmd/*": "./src/cli/cmd/*.ts"
   },
   "dependencies": {
+    "@arcana/core": "workspace:*",
     "@arcana/memory": "workspace:*",
     "@arcana/cron": "workspace:*",
     "@arcana/gateway": "workspace:*",

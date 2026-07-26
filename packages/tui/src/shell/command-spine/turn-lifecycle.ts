@@ -59,7 +59,7 @@ export function isAssistantSegmentStreaming(
 export function buildTurnLifecycle(input: {
   message: {
     role?: string
-    time?: { completed?: number }
+    time?: { created?: number; completed?: number }
     finish?: string
   }
   /** Primary part for this segment (text or reasoning), if any */

@@ -856,7 +856,7 @@ function resolveToolState(part: ToolPart, message: Message, allParts: Part[]): T
 
   if (!turnDone && !superseded) return state
 
-  const end = message.time?.completed ?? Date.now()
+  const end = (message.role === "assistant" ? message.time?.completed : undefined) ?? Date.now()
   if (state.status === "running") {
     const output =
       "output" in state && typeof (state as { output?: string }).output === "string"
@@ -880,8 +880,11 @@ function resolveToolState(part: ToolPart, message: Message, allParts: Part[]): T
   // may transition it to running/completed later via SolidJS store reactivity.
   if (superseded) {
     return {
-      status: "skipped",
+      status: "completed",
       input: state.input ?? {},
+      output: "",
+      title: part.tool,
+      metadata: {},
       time: {
         start: message.time?.created,
         end,
@@ -993,7 +996,7 @@ function userMessageToEntries(
   if (!joined.trim()) {
     const fallback =
       typeof (message as { text?: unknown }).text === "string"
-        ? ((message as { text: string }).text)
+        ? ((message as unknown as { text: string }).text)
         : typeof message.summary?.title === "string"
           ? message.summary.title
           : ""
@@ -1062,6 +1065,7 @@ function taskToolSummary(part: ToolPart): string {
 }
 function taskToolSessionID(part: ToolPart): string | undefined {
   if (part.tool !== "task" && part.tool !== "subtask") return undefined
+  if (!("metadata" in part.state)) return undefined
   // Return sessionID even while running — not just at completion
   const meta = (part.state.metadata ?? {}) as Record<string, unknown>
   for (const key of ["sessionId", "sessionID", "session_id"]) {
@@ -1909,7 +1913,7 @@ function assistantMessagePartsToEntries(
         glyph: SPINE_GLYPH.agent,
         actor: part.name || "agent",
         summary: `subagent: ${part.name}`,
-        body: part.description || part.prompt || `subagent: ${part.name}`,
+        body: `subagent: ${part.name}`,
         collapsible: true,
         source: { messageID: message.id, partID: part.id, kind: "agent", sessionID: childSessionIDs[0] },
       })

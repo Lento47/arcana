@@ -8,7 +8,7 @@ import type { RunInput, RunPrompt } from "./types"
 
 const LIMIT = 200
 
-export type SessionMessages = NonNullable<Awaited<ReturnType<RunInput["sdk"]["session"]["messages"]>>["data"]>
+export type SessionMessages = NonNullable<Awaited<ReturnType<RunInput["sdk"]["session"]["messages"]>>["data"]>["items"]
 
 type Turn = {
   prompt: RunPrompt
@@ -157,7 +157,7 @@ export async function resolveSession(sdk: RunInput["sdk"], sessionID: string, li
     sessionID,
     limit,
   })
-  return createSession(response.data ?? [])
+  return createSession(response.data?.items ?? [])
 }
 
 export function sessionHistory(session: RunSession, limit = LIMIT): RunPrompt[] {
