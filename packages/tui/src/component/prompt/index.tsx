@@ -1358,63 +1358,122 @@ export function Prompt(props: PromptProps) {
           variant,
         },
       })
-    } else if (
-      inputText.startsWith("/") &&
-      (() => {
-        const cmd = inputText.split("\n")[0].split(" ")[0].slice(1).toLowerCase()
-        return cmd === "goal" || cmd === "loop"
-      })()
-    ) {
-      // Local goal commands (session-scoped store) — do not require server slash handlers.
+    // ── /goal — standalone goal setter (does NOT require /loop) ──
+    } else if (inputText.startsWith("/goal ")) {
       move.startSubmit()
-      const firstLineEnd = inputText.indexOf("\n")
-      const firstLine = firstLineEnd === -1 ? inputText : inputText.slice(0, firstLineEnd)
-      const [command, ...firstLineArgs] = firstLine.split(" ")
-      const restOfInput = firstLineEnd === -1 ? "" : inputText.slice(firstLineEnd + 1)
-      const args = (firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")).trim()
-      const name = command.slice(1).toLowerCase()
+      const args = inputText.slice(6).trim()
+      if (!args) {
+        toast.show({
+          title: "Goal",
+          message: "Usage: /goal <description of what you want done>",
+          variant: "info",
+        })
+        return true
+      }
       void import("@arcana/core/session/goal")
-        .then(({ setSessionGoal, getSessionGoal, formatActiveGoalBlock }) => {
-          if (name === "goal") {
-            if (!args) {
-              toast.show({
-                title: "Goal",
-                message: "Usage: /goal <description of what you want done>",
-                variant: "info",
-              })
-              return
-            }
-            setSessionGoal(sessionID, { goal: args, status: "in_progress" })
-            toast.show({
-              title: "Goal set",
-              message: args.length > 120 ? args.slice(0, 117) + "…" : args,
-              variant: "success",
-            })
-            return
-          }
-          const snap = getSessionGoal(sessionID)
-          if (snap.status === "unset") {
-            toast.show({
-              title: "No active goal",
-              message: "Set one with /goal <description>",
-              variant: "warning",
-            })
-            return
-          }
+        .then(({ setSessionGoal }) => {
+          setSessionGoal(sessionID, { goal: args, status: "in_progress" })
           toast.show({
-            title: "Goal status",
-            message: formatActiveGoalBlock({
-              sessionID,
-              sessionAgent: agent.name,
-              actorAgent: agent.name,
-            }).replace(/<\/?active-goal>/g, "").trim(),
-            variant: "info",
-            duration: 8000,
+            title: "Goal set",
+            message: args.length > 120 ? args.slice(0, 117) + "…" : args,
+            variant: "success",
           })
         })
         .catch((error) => {
           toast.show({ title: "Goal command failed", message: errorMessage(error), variant: "error" })
         })
+
+    // ── /loop — autonomous loop hub (independent of /goal, matches CLI behavior) ──
+    } else if (inputText.startsWith("/loop")) {
+      move.startSubmit()
+      const rest = inputText.slice(5).trim()
+      const firstSpace = rest.indexOf(" ")
+      const subcommand = firstSpace === -1 ? rest : rest.slice(0, firstSpace)
+
+      if (rest === "" || subcommand === "status") {
+        // /loop — show goal + kanban status
+        void import("@arcana/core/session/goal")
+          .then(({ getSessionGoal, formatActiveGoalBlock }) => {
+            const snap = getSessionGoal(sessionID)
+            if (snap.status === "unset") {
+              toast.show({
+                title: "No active goal",
+                message: "Start one with /loop set <description> or just /loop <what to do>",
+                variant: "warning",
+              })
+              return
+            }
+            toast.show({
+              title: "Goal status",
+              message: formatActiveGoalBlock({
+                sessionID,
+                sessionAgent: agent.name,
+                actorAgent: agent.name,
+              }).replace(/<\/?active-goal>/g, "").trim(),
+              variant: "info",
+              duration: 8000,
+            })
+          })
+          .catch((error) => {
+            toast.show({ title: "Loop command failed", message: errorMessage(error), variant: "error" })
+          })
+      } else if (subcommand === "set") {
+        // /loop set <description> — set goal + start loop
+        const description = rest.slice(4).trim()
+        if (!description) {
+          toast.show({ title: "Loop", message: "Usage: /loop set <description>", variant: "warning" })
+          return true
+        }
+        void import("@arcana/core/session/goal")
+          .then(({ setSessionGoal }) => {
+            setSessionGoal(sessionID, { goal: description, status: "in_progress" })
+            toast.show({ title: "Goal set", message: description, variant: "success" })
+          })
+          .catch((error) => {
+            toast.show({ title: "Loop command failed", message: errorMessage(error), variant: "error" })
+          })
+      } else if (subcommand === "done" || subcommand === "blocked" || subcommand === "stale") {
+        // /loop done|blocked|stale — mark goal status
+        void import("@arcana/core/session/goal")
+          .then(({ getSessionGoal, setSessionGoal }) => {
+            const snap = getSessionGoal(sessionID)
+            if (snap.status === "unset") {
+              toast.show({
+                title: "No active goal",
+                message: `No goal to mark ${subcommand}. Set one with /loop set <description>.`,
+                variant: "warning",
+              })
+              return
+            }
+            const mapped: "complete_unverified" | "blocked" | "stale" =
+              subcommand === "done" ? "complete_unverified"
+              : subcommand === "blocked" ? "blocked"
+              : "stale"
+            setSessionGoal(sessionID, { goal: snap.goal, status: mapped })
+            toast.show({ title: "Goal marked", message: mapped, variant: "success" })
+          })
+          .catch((error) => {
+            toast.show({ title: "Loop command failed", message: errorMessage(error), variant: "error" })
+          })
+      } else {
+        // /loop <text> — auto-set goal from text, start loop
+        if (!rest) {
+          toast.show({ title: "Loop", message: "Usage: /loop <what to do>", variant: "warning" })
+          return true
+        }
+        void import("@arcana/core/session/goal")
+          .then(({ getSessionGoal, setSessionGoal }) => {
+            const snap = getSessionGoal(sessionID)
+            if (snap.status === "unset") {
+              const goal = rest.split(/[.,;]/)[0]?.trim() || rest.slice(0, 80)
+              setSessionGoal(sessionID, { goal, status: "in_progress" })
+              toast.show({ title: "Goal auto-set", message: goal, variant: "success" })
+            }
+          })
+          .catch((error) => {
+            toast.show({ title: "Loop command failed", message: errorMessage(error), variant: "error" })
+          })
+      }
     } else if (
       inputText.startsWith("/") &&
       sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
