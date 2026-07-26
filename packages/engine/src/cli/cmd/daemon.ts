@@ -1,5 +1,5 @@
 import { cmd } from "./cmd"
-import { readLock, isLockStale, removeLock } from "../../daemon/lock"
+import { readLock, isLockStale, removeLock, listAllLocks } from "../../daemon/lock"
 import { healthCheck } from "../../daemon/lifecycle"
 
 export const DaemonCommand = cmd({
@@ -13,33 +13,45 @@ export const DaemonCommand = cmd({
     }),
   handler: async (args) => {
     const cwd = process.cwd()
-    const lock = readLock(cwd)
 
     switch (args.action) {
       case "status": {
-        if (!lock) {
-          console.log("Daemon: not running")
+        const locks = listAllLocks()
+        if (locks.length === 0) {
+          console.log("Daemon: not running (no lock files)")
           return
         }
-        const alive = await healthCheck(lock.port)
-        console.log(`Daemon: ${alive ? "running" : "stale lock"}`)
-        if (alive) {
-          console.log(`  Workspace: ${lock.workspace}`)
-          console.log(`  PID: ${lock.pid}`)
-          console.log(`  Port: ${lock.port}`)
-          console.log(`  Started: ${new Date(lock.startedAt).toISOString()}`)
-          console.log(`  Version: ${lock.version}`)
+        let found = false
+        for (const lock of locks) {
+          const alive = await healthCheck(lock.port)
+          if (alive) {
+            console.log(`Daemon: running`)
+            console.log(`  Workspace: ${lock.workspace}`)
+            console.log(`  PID: ${lock.pid}`)
+            console.log(`  Port: ${lock.port}`)
+            console.log(`  Started: ${new Date(lock.startedAt).toISOString()}`)
+            console.log(`  Version: ${lock.version}`)
+            found = true
+          } else {
+            removeLock(lock.workspace)
+          }
         }
+        if (!found) console.log("Daemon: not running (cleaned stale locks)")
         break
       }
       case "stop": {
-        if (lock && !isLockStale(lock)) {
-          process.kill(lock.pid, "SIGTERM")
-          console.log("Daemon: stopping...")
-        } else {
-          removeLock(cwd)
-          console.log("Daemon: not running (cleaned stale lock)")
+        // Try CWD lock first, then fall back to scanning all locks
+        const lock = readLock(cwd)
+        const targets = lock ? [lock] : listAllLocks()
+        let stopped = false
+        for (const l of targets) {
+          if (!isLockStale(l)) {
+            process.kill(l.pid, "SIGTERM")
+            console.log(`Daemon: stopping (pid ${l.pid}, workspace ${l.workspace})...`)
+            stopped = true
+          }
         }
+        if (!stopped) console.log("Daemon: not running")
         break
       }
       case "start": {

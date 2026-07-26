@@ -154,7 +154,9 @@ async function runDirectTui() {
 }
 
 // Daemon mode: skip TUI bootstrap, enter daemon lifecycle
-if (process.env.ARCANA_DAEMON === "1") {
+const isDaemon = process.env.ARCANA_DAEMON === "1" || args.includes("--daemon")
+if (isDaemon) {
+  process.env.ARCANA_DAEMON = "1" // ensure child processes see it
   await import("./daemon/entry")
   // Block forever — daemon runs until SIGTERM/idle timeout kills the process
   await new Promise(() => {})
@@ -221,6 +223,7 @@ const commandLoaders = {
   audit: () => import("./cli/cmd/audit").then((m) => m.AuditCommand),
   trust: () => import("./cli/cmd/trust").then((m) => m.TrustCommand),
   loop: () => import("./cli/cmd/loop").then((m) => m.LoopCommand),
+  daemon: () => import("./cli/cmd/daemon").then((m) => m.DaemonCommand),
 }
 
 async function loadCommandsFor(firstArg: string | undefined): Promise<CommandModule[]> {
