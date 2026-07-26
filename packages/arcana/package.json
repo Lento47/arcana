@@ -1,6 +1,6 @@
 {
   "name": "arcana-ai",
-  "version": "0.3.59",
+  "version": "0.3.60",
   "type": "module",
   "bin": {
     "arcana": "./bin/arcana"
