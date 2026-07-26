@@ -21,7 +21,26 @@ const args = process.argv.slice(2)
 const HELP_FLAGS = new Set(["--help", "-h", "--version", "-v"])
 const SUBCOMMANDS = ["run", "skills", "cron", "memory", "gateway", "completion", "config", "learn", "doctor", "history", "theme", "feedback", "web"]
 const firstArg = args[0]
+const DAEMON_FLAG = args.includes("--daemon")
 const isArcanaSubcommand = firstArg && (SUBCOMMANDS.includes(firstArg) || HELP_FLAGS.has(firstArg))
+
+if (DAEMON_FLAG) {
+  // Spawn daemon detached — CLI exits immediately, daemon persists
+  const engineDir = path.join(currentDir(import.meta), "../../engine")
+  const engineEntry = path.join(engineDir, "src/index.ts")
+  Bun.spawn({
+    cmd: ["bun", "--conditions=browser", engineEntry, ...args.filter(a => a !== "--daemon")],
+    stdio: ["ignore", "inherit", "inherit"],
+    cwd: engineDir,
+    env: {
+      ...process.env,
+      ARCANA_DAEMON: "1",
+      ARCANA_DAEMON_CWD: process.cwd(),
+      PWD: process.cwd(),
+    },
+  }).unref()
+  process.exit(0)
+}
 
 if (!isArcanaSubcommand) {
   // === TUI fast path ===
