@@ -584,7 +584,7 @@ export const layer = Layer.effect(
       for (let attempt = 1; attempt <= DEFAULT_MAX_ATTEMPTS; attempt++) {
         const attemptResult = yield* processor.process(processPayload).pipe(
           Effect.map((value) => ({ ok: true as const, value })),
-          Effect.catch((cause) =>
+          Effect.catch((cause: unknown) =>
             Effect.succeed({
               ok: false as const,
               message: cause instanceof Error ? cause.message : String(cause),

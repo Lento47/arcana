@@ -3,7 +3,7 @@ import { OpencodeClient } from "@arcana/sdk/v2"
 import { runInteractiveMode } from "@/cli/cmd/run/runtime"
 import type { FooterApi, RunProvider } from "@/cli/cmd/run/types"
 
-type SessionMessage = NonNullable<Awaited<ReturnType<OpencodeClient["session"]["messages"]>>["data"]>[number]
+type SessionMessage = NonNullable<Awaited<ReturnType<OpencodeClient["session"]["messages"]>>["data"]>["items"][number]
 
 const provider: RunProvider = {
   id: "openai",
@@ -147,33 +147,35 @@ describe("run interactive runtime", () => {
       return ok({ providers: [provider], default: {} })
     })
     spyOn(sdk.session, "messages").mockImplementation(() =>
-      ok([
-        {
-          info: {
-            id: "msg-user-1",
-            sessionID: "ses-1",
-            role: "user",
-            time: {
-              created: 1,
-            },
-            agent: "build",
-            model: {
-              providerID: "openai",
-              modelID: "gpt-5",
-              variant: undefined,
-            },
-          },
-          parts: [
-            {
-              id: "part-user-1",
+      ok({
+        items: [
+          {
+            info: {
+              id: "msg-user-1",
               sessionID: "ses-1",
-              messageID: "msg-user-1",
-              type: "text",
-              text: "hello",
+              role: "user",
+              time: {
+                created: 1,
+              },
+              agent: "build",
+              model: {
+                providerID: "openai",
+                modelID: "gpt-5",
+                variant: undefined,
+              },
             },
-          ],
-        } satisfies SessionMessage,
-      ]),
+            parts: [
+              {
+                id: "part-user-1",
+                sessionID: "ses-1",
+                messageID: "msg-user-1",
+                type: "text",
+                text: "hello",
+              },
+            ],
+          } satisfies SessionMessage,
+        ],
+      }),
     )
     spyOn(sdk.session, "get").mockRejectedValue(new Error("not needed"))
     spyOn(sdk.app, "agents").mockImplementation(() => ok([]))

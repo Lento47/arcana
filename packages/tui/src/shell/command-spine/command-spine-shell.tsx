@@ -326,8 +326,6 @@ export function CommandSpineShell(props: ShellProps) {
                     entry={entry()}
                     layout={layout()}
                     contentWidth={contentWidth()}
-                    proseWidth={proseWidth()}
-                    thinkWidth={thinkWidth()}
                     thinkContentWidth={thinkContentWidth()}
                     expanded={entryExpanded(entry())}
                     focused={entryFocused(entry())}

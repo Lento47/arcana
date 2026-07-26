@@ -7,7 +7,7 @@ const TOOL_ACTIVITY_HINT_KEY = "arcana:toolActivityHint"
 type Slot = { text: string; expiresAt: number; source?: string }
 
 export function publishBatchActivity(text: string | undefined, ttlMs = 10_000): void {
-  const g = globalThis as Record<string, Slot | undefined>
+  const g = globalThis as unknown as Record<string, Slot | undefined>
   if (!text?.trim()) {
     delete g[TOOL_ACTIVITY_HINT_KEY]
     return

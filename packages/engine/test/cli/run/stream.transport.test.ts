@@ -6,7 +6,7 @@ import type { FooterApi, FooterEvent, LocalReplayRow, RunFilePart, StreamCommit 
 type EventStream = Awaited<ReturnType<OpencodeClient["event"]["subscribe"]>>["stream"]
 type GlobalEventStream = Awaited<ReturnType<OpencodeClient["global"]["event"]>>["stream"]
 type SdkEvent = EventStream extends AsyncGenerator<infer T, unknown, unknown> ? T : never
-type SessionMessage = NonNullable<Awaited<ReturnType<OpencodeClient["session"]["messages"]>>["data"]>[number]
+type SessionMessage = NonNullable<Awaited<ReturnType<OpencodeClient["session"]["messages"]>>["data"]>["items"][number]
 type SessionChild = NonNullable<Awaited<ReturnType<OpencodeClient["session"]["children"]>>["data"]>[number]
 type SessionToolPart = Extract<SessionMessage["parts"][number], { type: "tool" }>
 type SessionStatusMap = NonNullable<Awaited<ReturnType<OpencodeClient["session"]["status"]>>["data"]>
@@ -172,7 +172,7 @@ function globalSse(stream: GlobalEventStream) {
 function wrapGlobalStream(stream: EventStream): GlobalEventStream {
   return (async function* (): GlobalEventStream {
     for await (const event of stream) {
-      yield globalEvent(event)
+      yield globalEvent(event as GlobalEvent["payload"])
     }
     return StreamClosed
   })()
@@ -342,6 +342,7 @@ function textDelta(messageID: string, partID: string, delta: string, sessionID =
       sessionID,
       messageID,
       partID,
+      partType: "text",
       field: "text",
       delta,
     },
@@ -434,7 +435,7 @@ function sdk(
     input.globalEvent ?? (() => globalSse(input.globalStream ?? wrapGlobalStream(input.stream ?? emptyStream())))
   const promptAsync: OpencodeClient["session"]["promptAsync"] = input.promptAsync ?? (() => ok(undefined))
   const status: OpencodeClient["session"]["status"] = input.status ?? (() => ok({}))
-  const messages: OpencodeClient["session"]["messages"] = input.messages ?? (() => ok([]))
+  const messages: OpencodeClient["session"]["messages"] = input.messages ?? (() => ok({ items: [] }))
   const children: OpencodeClient["session"]["children"] = input.children ?? (() => ok([]))
   const permissions: OpencodeClient["permission"]["list"] = input.permissions ?? (() => ok([]))
   const questions: OpencodeClient["question"]["list"] = input.questions ?? (() => ok([]))
@@ -460,7 +461,7 @@ describe("run stream transport", () => {
         stream: src.stream,
         messages: async ({ sessionID }) =>
           sessionID === "session-1"
-            ? ok([
+            ? ok({ items: [
                 assistantMessage({
                   sessionID: "session-1",
                   id: "msg-1",
@@ -474,8 +475,8 @@ describe("run stream transport", () => {
                     },
                   ],
                 }),
-              ])
-            : ok([]),
+              ] })
+            : ok({ items: [] }),
       }),
       sessionID: "session-1",
       thinking: true,
@@ -500,7 +501,7 @@ describe("run stream transport", () => {
         stream: src.stream,
         messages: async ({ sessionID }) =>
           sessionID === "session-1"
-            ? ok([
+            ? ok({ items: [
                 assistantMessage({
                   sessionID: "session-1",
                   id: "msg-1",
@@ -514,8 +515,8 @@ describe("run stream transport", () => {
                     },
                   ],
                 }),
-              ])
-            : ok([]),
+              ] })
+            : ok({ items: [] }),
       }),
       sessionID: "session-1",
       thinking: true,
@@ -540,7 +541,7 @@ describe("run stream transport", () => {
       sdk: sdk({
         stream: src.stream,
         messages: async ({ sessionID }) =>
-          ok(
+          ok({ items:
             sessionID === "session-1"
               ? [
                   assistantMessage({
@@ -571,7 +572,7 @@ describe("run stream transport", () => {
                   }),
                 ]
               : [],
-          ),
+          }),
       }),
       sessionID: "session-1",
       thinking: true,
@@ -604,17 +605,17 @@ describe("run stream transport", () => {
         stream: src.stream,
         messages: async ({ sessionID }) => {
           if (sessionID !== "session-1") {
-            return ok([])
+            return ok({ items: [] })
           }
 
           await gate.promise
-          return ok([
+          return ok({ items: [
             assistantMessage({
               sessionID: "session-1",
               id: "msg-1",
               parts: [textPart("text-1", "msg-1", "Hello")],
             }),
-          ])
+          ] })
         },
       }),
       sessionID: "session-1",
@@ -653,17 +654,17 @@ describe("run stream transport", () => {
         stream: src.stream,
         messages: async ({ sessionID }) => {
           if (sessionID !== "session-1") {
-            return ok([])
+            return ok({ items: [] })
           }
 
           await gate.promise
-          return ok([
+          return ok({ items: [
             assistantMessage({
               sessionID: "session-1",
               id: "msg-1",
               parts: [textPart("text-1", "msg-1", "")],
             }),
-          ])
+          ] })
         },
       }),
       sessionID: "session-1",
@@ -700,7 +701,7 @@ describe("run stream transport", () => {
         stream: src.stream,
         messages: async ({ sessionID }) =>
           sessionID === "session-1"
-            ? ok([
+            ? ok({ items: [
                 assistantMessage({
                   sessionID: "session-1",
                   id: "msg-1",
@@ -717,8 +718,8 @@ describe("run stream transport", () => {
                     }),
                   ],
                 }),
-              ])
-            : ok([]),
+              ] })
+            : ok({ items: [] }),
       }),
       sessionID: "session-1",
       thinking: true,
@@ -755,16 +756,16 @@ describe("run stream transport", () => {
         messages: async () => {
           calls += 1
           if (calls === 1) {
-            return ok([])
+            return ok({ items: [] })
           }
 
-          return ok([
+          return ok({ items: [
             assistantMessage({
               sessionID: "session-1",
               id: "msg-1",
               parts: [textPart("text-1", "msg-1", "Hello")],
             }),
-          ])
+          ] })
         },
       }),
       sessionID: "session-1",
@@ -939,16 +940,16 @@ describe("run stream transport", () => {
         messages: async () => {
           calls += 1
           if (calls === 1) {
-            return ok([])
+            return ok({ items: [] })
           }
 
-          return ok([
+          return ok({ items: [
             assistantMessage({
               sessionID: "session-1",
               id: "msg-live",
               parts: [textPart("text-live", "msg-live", "")],
             }),
-          ])
+          ] })
         },
       }),
       sessionID: "session-1",
@@ -998,16 +999,16 @@ describe("run stream transport", () => {
         messages: async () => {
           calls += 1
           if (calls === 1) {
-            return ok([])
+            return ok({ items: [] })
           }
 
-          return ok([
+          return ok({ items: [
             assistantMessage({
               sessionID: "session-1",
               id: "msg-thinking",
               parts: [reasoningPart("thinking-1", "msg-thinking", "")],
             }),
-          ])
+          ] })
         },
       }),
       sessionID: "session-1",
@@ -1044,10 +1045,10 @@ describe("run stream transport", () => {
         messages: async () => {
           calls += 1
           if (calls === 1) {
-            return ok([])
+            return ok({ items: [] })
           }
 
-          return ok([
+          return ok({ items: [
             assistantMessage({
               sessionID: "session-1",
               id: "msg-finished",
@@ -1058,7 +1059,7 @@ describe("run stream transport", () => {
                 },
               ],
             }),
-          ])
+          ] })
         },
       }),
       sessionID: "session-1",
@@ -1095,7 +1096,7 @@ describe("run stream transport", () => {
         messages: async () => {
           calls += 1
           if (calls === 1) {
-            return ok([])
+            return ok({ items: [] })
           }
 
           throw new Error("snapshot failed")
@@ -1191,10 +1192,10 @@ describe("run stream transport", () => {
         stream: src.stream,
         messages: async ({ sessionID }) => {
           if (sessionID !== "session-1") {
-            return ok([])
+            return ok({ items: [] })
           }
 
-          return ok([
+          return ok({ items: [
             assistantMessage({
               sessionID: "session-1",
               id: "msg-1",
@@ -1215,7 +1216,7 @@ describe("run stream transport", () => {
                 }),
               ],
             }),
-          ])
+          ] })
         },
         children: async () => ok([child("child-1")]),
       }),
@@ -1247,7 +1248,7 @@ describe("run stream transport", () => {
         stream: src.stream,
         messages: async ({ sessionID }) => {
           if (sessionID === "session-1") {
-            return ok([
+            return ok({ items: [
               assistantMessage({
                 sessionID: "session-1",
                 id: "msg-1",
@@ -1268,10 +1269,10 @@ describe("run stream transport", () => {
                   }),
                 ],
               }),
-            ])
+            ] })
           }
 
-          return ok([
+          return ok({ items: [
             assistantMessage({
               sessionID: "child-1",
               id: "msg-child-1",
@@ -1289,7 +1290,7 @@ describe("run stream transport", () => {
                 }),
               ],
             }),
-          ])
+          ] })
         },
         children: async () => ok([child("child-1")]),
         permissions: async () =>
@@ -1404,7 +1405,7 @@ describe("run stream transport", () => {
       sdk: sdk({
         messages: async ({ sessionID }) => {
           if (sessionID === "session-1") {
-            return ok([
+            return ok({ items: [
               assistantMessage({
                 sessionID: "session-1",
                 id: "msg-1",
@@ -1425,18 +1426,18 @@ describe("run stream transport", () => {
                   }),
                 ],
               }),
-            ])
+            ] })
           }
 
           return sessionID === "child-1"
-            ? ok([
+            ? ok({ items: [
                 assistantMessage({
                   sessionID: "child-1",
                   id: "msg-child-1",
                   parts: [textPart("txt-child-1", "msg-child-1", "subagent summary", "child-1")],
                 }),
-              ])
-            : ok([])
+              ] })
+            : ok({ items: [] })
         },
         children: async () => ok([child("child-1")]),
       }),
@@ -1479,7 +1480,7 @@ describe("run stream transport", () => {
   })
 
   test("does not block startup on child history bootstrap", async () => {
-    const pending = defer<Awaited<ReturnType<typeof ok<SessionMessage[]>>>>()
+    const pending = defer<Awaited<ReturnType<typeof ok<{ items: SessionMessage[] }>>>>()
     const ui = footer()
     let transport: Awaited<ReturnType<typeof createSessionTransport>> | undefined
 
@@ -1487,7 +1488,7 @@ describe("run stream transport", () => {
       sdk: sdk({
         messages: async ({ sessionID }) => {
           if (sessionID === "session-1") {
-            return ok([
+            return ok({ items: [
               assistantMessage({
                 sessionID: "session-1",
                 id: "msg-1",
@@ -1508,14 +1509,14 @@ describe("run stream transport", () => {
                   }),
                 ],
               }),
-            ])
+            ] })
           }
 
           if (sessionID === "child-1") {
             return pending.promise
           }
 
-          return ok([])
+          return ok({ items: [] })
         },
         children: async () => ok([child("child-1")]),
       }),
@@ -1545,7 +1546,7 @@ describe("run stream transport", () => {
         questions: [],
       })
     } finally {
-      pending.resolve(ok([]))
+      pending.resolve(ok({ items: [] }))
       await task
       await transport?.close()
     }
@@ -1561,11 +1562,11 @@ describe("run stream transport", () => {
         globalStream: global.stream,
         messages: async ({ sessionID }) => {
           if (sessionID !== "session-1") {
-            return ok([])
+            return ok({ items: [] })
           }
 
           await gate.promise
-          return ok([])
+          return ok({ items: [] })
         },
         children: async () => ok([]),
       }),
@@ -1592,8 +1593,8 @@ describe("run stream transport", () => {
           },
         }),
       )
-      global.push(globalEvent(textUpdated(textPart("txt-child-1", "msg-child-1", "", "child-1"))))
-      global.push(globalEvent(textDelta("msg-child-1", "txt-child-1", "Hello", "child-1")))
+      global.push(globalEvent(textUpdated(textPart("txt-child-1", "msg-child-1", "", "child-1")) as GlobalEvent["payload"]))
+      global.push(globalEvent(textDelta("msg-child-1", "txt-child-1", "Hello", "child-1") as GlobalEvent["payload"]))
       global.push(
         globalEvent(
           toolUpdated(
@@ -1611,7 +1612,7 @@ describe("run stream transport", () => {
                 sessionId: "child-1",
               },
             }),
-          ),
+          ) as GlobalEvent["payload"],
         ),
       )
       gate.resolve()
@@ -1686,7 +1687,7 @@ describe("run stream transport", () => {
                 sessionId: "child-1",
               },
             }),
-          ),
+          ) as GlobalEvent["payload"],
         ),
       )
 
@@ -1713,7 +1714,7 @@ describe("run stream transport", () => {
           },
         }),
       )
-      global.push(globalEvent(textUpdated(textPart("txt-child-1", "msg-child-1", "hello", "child-1"))))
+      global.push(globalEvent(textUpdated(textPart("txt-child-1", "msg-child-1", "hello", "child-1")) as GlobalEvent["payload"]))
 
       expect(
         await waitFor(() => {
@@ -1733,7 +1734,7 @@ describe("run stream transport", () => {
         ],
       })
 
-      global.push(globalEvent(textUpdated(textPart("txt-child-1", "msg-child-1", "hello world", "child-1"))))
+      global.push(globalEvent(textUpdated(textPart("txt-child-1", "msg-child-1", "hello world", "child-1")) as GlobalEvent["payload"]))
 
       expect(
         await waitFor(() => {

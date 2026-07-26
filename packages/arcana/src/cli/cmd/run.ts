@@ -2,10 +2,13 @@ import type { CommandModule } from "yargs"
 import path from "node:path"
 import { createInterface } from "node:readline"
 import { mkdir } from "node:fs/promises"
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs"
+import { homedir } from "node:os"
 import { loadConfig, getDataDir } from "../../config.js"
 import { AgentRunner } from "../../agent/runner.js"
 import { SessionManager } from "../../agent/session.js"
 import { registerBuiltinTools, TOOL_SELECTION_GUIDE } from "../../agent/tools.js"
+import { loadBoard, initBoard, addCard, moveCard, saveBoard, type KanbanBoard } from "../../agent/kanban.js"
 import { registerMcpTools } from "../../agent/mcp.js"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
 import { loadSkills, loadSkillBody, type SkillCatalog } from "../../skills/loader.js"
@@ -255,7 +258,7 @@ export const RunCommand: CommandModule = {
       _pipelinePlan = `pipeline: intent→plan→action→verify (objective: ${String(args.prompt).slice(0, 80)})`
     }
 
-    const sessionMgr = memory ? new SessionManager(memory, model, provider) : null
+    const sessionMgr = memory ? new SessionManager(memory, model ?? "", provider) : null
 
     // Support --resume to continue a previous session
     if (args.resume && sessionMgr) {
@@ -529,9 +532,60 @@ export const RunCommand: CommandModule = {
 
     const memLabel = memory ? c.dim(`  memory:${sessionId?.slice(0, 6) ?? "?"}`) : c.dim("  memory:off")
     process.stdout.write(c.purple(`\n◆ ARCANA`) + c.dim(`  ${model} @ ${provider}`) + memLabel + "\n")
-    process.stdout.write(c.dim("  /skills  /skill <id>  /clear  /history  /exit\n"))
+    process.stdout.write(c.dim("  /loop  /loop set  /skills  /skill <id>  /clear  /history  /exit\n"))
     if (proofRuntime.enabled) process.stdout.write(c.dim("  proof:on  evidence will be saved when the session exits\n"))
     process.stdout.write("\n")
+
+    const resolveSid = (): string =>
+      sessionId
+      || (typeof process.env.ARCANA_SESSION_ID === "string" ? process.env.ARCANA_SESSION_ID : "")
+      || `cli-${process.cwd().replace(/[^a-zA-Z0-9]+/g, "_").slice(-48)}`
+
+    function parseProgressCards(
+      text: string,
+      board: KanbanBoard,
+    ): KanbanBoard["cards"] {
+      const results: KanbanBoard["cards"] = []
+      type CardStatus = KanbanBoard["cards"][number]["status"]
+      const patterns: [RegExp, CardStatus][] = [
+        [/(?:done|finished|completed|fixed|closed|implemented|added|wrote|built|reviewed|created|resolved)\s+(.+?)(?:[,.]|$)/gi, "done"],
+        [/(?:working\s+on|fixing|implementing|adding|creating|writing|building|investigating)\s+(.+?)(?:[,.]|$)/gi, "in_progress"],
+        [/(?:need\s+to|still\s+need|pending|next\s+up|remaining|should|todo|left\s+to)\s+(.+?)(?:[,.]|$)/gi, "backlog"],
+        [/(?:blocked\s+(?:on|by)|stuck\s+(?:on|with)|waiting\s+(?:for|on))\s+(.+?)(?:[,.]|$)/gi, "blocked"],
+      ]
+      for (const [re, status] of patterns) {
+        re.lastIndex = 0
+        let m: RegExpExecArray | null
+        while ((m = re.exec(text)) !== null) {
+          const title = m[1]!.trim()
+          if (!title || title.length < 3) continue
+          const card = board.cards.find(
+            (c: any) =>
+              c.title?.toLowerCase().includes(title.toLowerCase())
+              || title.toLowerCase().includes(c.title?.toLowerCase() ?? ""),
+          )
+          if (card) {
+            if (card.status !== status) {
+              card.status = status
+              card.updated = new Date().toISOString()
+            }
+          } else {
+            board.cards.push({
+              id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              title,
+              description: "",
+              status,
+              priority: "medium",
+              created: new Date().toISOString(),
+              updated: new Date().toISOString(),
+            })
+          }
+          results.push(board.cards[board.cards.length - 1]!)
+        }
+      }
+      if (results.length) saveBoard(board.sessionId, board)
+      return results
+    }
 
     const rl = createInterface({ input: process.stdin, terminal: false })
 
@@ -659,6 +713,128 @@ export const RunCommand: CommandModule = {
         else systemPrompt += injection
         await proofRuntime.recordUserCommand(input, `Loaded skill: ${skill.name}`)
         process.stdout.write(c.purple(`◆ Skill loaded: ${skill.name}\n`))
+        askLine()
+        continue
+      }
+
+      // ── Native /loop commands ──────────────────────────────────────────────
+      if (input === "/loop") {
+        const sid = resolveSid()
+        const { getSessionGoal } = await import("@arcana/core/session/goal")
+        const snap = getSessionGoal(sid)
+        const board = loadBoard(sid)
+
+        if (snap.status === "unset") {
+          process.stdout.write(c.yellow("No active goal. Set one with /loop set <description>.\n"))
+        } else {
+          process.stdout.write(c.purple("◆ Goal: ") + snap.goal + "\n")
+          process.stdout.write(c.dim(`   Status: ${snap.status}  Priority: ${snap.priority}\n`))
+
+          if (board && board.cards.length > 0) {
+            const stats = { backlog: 0, in_progress: 0, done: 0, blocked: 0 }
+            for (const card of board.cards) stats[(card as any).status as keyof typeof stats]++
+            process.stdout.write(c.dim(`   Tasks: ${board.cards.length} cards`))
+            process.stdout.write(`  ✅ ${stats.done}  🔄 ${stats.in_progress}  📋 ${stats.backlog}  ⛔ ${stats.blocked}\n`)
+            const active = [...board.cards].reverse().find((c: any) => c.status === "in_progress")
+            if (active) process.stdout.write(c.dim(`   Active: "${(active as any).title}"\n`))
+          }
+          // Last check-in from reflections
+          try {
+            const refDir = path.join(homedir(), ".arcana", "reflections")
+            if (existsSync(refDir)) {
+              const files = readdirSync(refDir).filter(f => f.startsWith("check-")).sort().reverse().slice(0, 1)
+              if (files.length > 0) {
+                const content = readFileSync(path.join(refDir, files[0]!), "utf8")
+                const age = Math.floor((Date.now() - parseInt(files[0]!.slice(6), 10)) / 60000)
+                process.stdout.write(c.dim(`   Last check-in: ${age}m ago\n`))
+                content.split("\n").filter(l => l.startsWith("**")).forEach(l => {
+                  process.stdout.write("   " + l.replace(/\*\*/g, "").trim() + "\n")
+                })
+              }
+            }
+          } catch { /* best-effort */ }
+        }
+        process.stdout.write("\n")
+        await proofRuntime.recordUserCommand("/loop", "Displayed goal status.")
+        askLine()
+        continue
+      }
+
+      if (input.startsWith("/loop set ")) {
+        const description = input.slice(9).trim()
+        if (!description) {
+          process.stdout.write(c.yellow("Usage: /loop set <description>\n"))
+          askLine()
+          continue
+        }
+        const sid = resolveSid()
+        const { setSessionGoal } = await import("@arcana/core/session/goal")
+        setSessionGoal(sid, { goal: description, status: "in_progress" })
+        initBoard(sid, description, "")
+        process.stdout.write(c.purple("◆ Goal set: ") + description + "\n\n")
+        await proofRuntime.recordUserCommand("/loop set", `Goal set: ${description}`)
+        askLine()
+        continue
+      }
+
+      if (input === "/loop done" || input === "/loop blocked" || input === "/loop stale") {
+        const sid = resolveSid()
+        const status = input.slice(6) as "done" | "blocked" | "stale"
+        const { getSessionGoal, setSessionGoal } = await import("@arcana/core/session/goal")
+        const snap = getSessionGoal(sid)
+        if (snap.status === "unset") {
+          process.stdout.write(c.yellow("No active goal to mark " + status + ".\n"))
+        } else {
+          const mapped: "complete_unverified" | "blocked" | "stale" =
+            status === "done" ? "complete_unverified" : status === "blocked" ? "blocked" : "stale"
+          setSessionGoal(sid, { goal: snap.goal, status: mapped })
+          process.stdout.write(c.purple("◆ Goal marked ") + mapped + "\n")
+          if (mapped === "complete_unverified") {
+            process.stdout.write(c.dim("  Mutations now frozen until a new goal is set.\n"))
+          }
+        }
+        process.stdout.write("\n")
+        await proofRuntime.recordUserCommand(input, `Goal marked ${status}`)
+        askLine()
+        continue
+      }
+
+      if (input.startsWith("/loop ")) {
+        const text = input.slice(6).trim()
+        if (!text) {
+          process.stdout.write(c.yellow("Usage: /loop <progress description>\n"))
+          askLine()
+          continue
+        }
+        const sid = resolveSid()
+        const { getSessionGoal, setSessionGoal } = await import("@arcana/core/session/goal")
+        const snap = getSessionGoal(sid)
+        if (snap.status === "unset") {
+          const goal = text.split(/[.,;]/)[0]?.trim() || text.slice(0, 80)
+          setSessionGoal(sid, { goal, status: "in_progress" })
+          initBoard(sid, goal, "")
+          process.stdout.write(c.purple("◆ Goal auto-set: ") + goal + "\n")
+        }
+        const board = loadBoard(sid)
+        if (board) {
+          const updated = parseProgressCards(text, board)
+          const checkId = `check-${Date.now()}`
+          const refDir = path.join(homedir(), ".arcana", "reflections")
+          mkdirSync(refDir, { recursive: true })
+          const entry = [
+            `# Goal Check: ${checkId}`,
+            `**Done:** ${updated.filter(c => (c as any).status === "done").map(c => (c as any).title).join(", ") || "none"}`,
+            `**Pending:** ${updated.filter(c => (c as any).status === "backlog").map(c => (c as any).title).join(", ") || "none"}`,
+            `**Blocked:** ${updated.filter(c => (c as any).status === "blocked").map(c => (c as any).title).join(", ") || "none"}`,
+          ].join("\n")
+          writeFileSync(path.join(refDir, `${checkId}.md`), entry, "utf8")
+          const done = board.cards.filter((c: any) => c.status === "done").length
+          const prog = board.cards.filter((c: any) => c.status === "in_progress").length
+          const back = board.cards.filter((c: any) => c.status === "backlog").length
+          const blkd = board.cards.filter((c: any) => c.status === "blocked").length
+          process.stdout.write(c.dim(`\n   ✅ ${done} done  🔄 ${prog} in progress  📋 ${back} backlog  ⛔ ${blkd} blocked\n\n`))
+        }
+        await proofRuntime.recordUserCommand(input, `Progress: ${board ? board.cards.length : 0} cards.`)
         askLine()
         continue
       }

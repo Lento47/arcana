@@ -120,6 +120,7 @@ function textDelta(sessionID: string, messageID: string, partID: string, delta: 
       sessionID,
       messageID,
       partID,
+      partType: "text",
       field: "text",
       delta,
     },

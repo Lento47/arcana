@@ -42,7 +42,7 @@ async function loadLocalExtras(): Promise<Record<string, ModelsDevProvider>> {
     localExtrasCache = { ...localExtrasCache, ...userExtras }
   } catch {}
 
-  return localExtrasCache
+  return localExtrasCache ?? {}
 }
 
 export async function resolveProvider(provider: string): Promise<ProviderProfile> {

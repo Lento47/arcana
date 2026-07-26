@@ -29,7 +29,7 @@ mark("cli-import-end")
       // Throw a clear error so the TUI bootstrap catch can surface the stack
       throw new TypeError(`.startsWith() called on ${String(this)} — see stderr for caller stack`)
     }
-    return origStartsWith.apply(this, args)
+    return origStartsWith.apply(this, args as [string, number?])
   } as typeof String.prototype.startsWith
 }
 
