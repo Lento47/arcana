@@ -153,6 +153,13 @@ async function runDirectTui() {
   await TuiThreadCommand.handler(defaultTuiArgs() as never)
 }
 
+// Daemon mode: skip TUI bootstrap, enter daemon lifecycle
+if (process.env.ARCANA_DAEMON === "1") {
+  await import("./daemon/entry")
+  // Block forever — daemon runs until SIGTERM/idle timeout kills the process
+  await new Promise(() => {})
+}
+
 if (args.length === 0) {
   try {
     await runDirectTui()
