@@ -102,7 +102,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          cd packages/arcana
+          cd packages/arcana/npm
           echo "//registry.npmjs.org/:_authToken=$NODE_AUTH_TOKEN" >> .npmrc
           npm publish --access public
 

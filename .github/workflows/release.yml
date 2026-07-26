@@ -76,8 +76,9 @@ jobs:
           cat /tmp/engine-pkg.json > packages/engine/package.json
           node -p "const p=require('./packages/tui/package.json');p.version='$NEW_VERSION';JSON.stringify(p,null,2)" > /tmp/tui-pkg.json
           cat /tmp/tui-pkg.json > packages/tui/package.json
-          # packages/arcana/src/index.ts reads VERSION from package.json
-          # at runtime via createRequire, so no edit needed there.
+          node -p "const p=require('./packages/arcana/npm/package.json');p.version='$NEW_VERSION';JSON.stringify(p,null,2)" > /tmp/npm-pkg.json
+          cat /tmp/npm-pkg.json > packages/arcana/npm/package.json
+          sed -i "s/const VERSION = \"v[^\"]*\"/const VERSION = \"v$NEW_VERSION\"/" packages/arcana/npm/bin/arcana.js
 
           TAG="v$NEW_VERSION"
 
