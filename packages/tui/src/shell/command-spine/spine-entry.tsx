@@ -335,7 +335,7 @@ export function SpineEntry(props: {
           </Show>
 
           {/* Expandable body for non-chat/non-think entries (agent tools, etc.) */}
-          <Show when={!isThink() && (hasToolBody() || isAgentEntry()) && bodyExpanded()}>
+          <Show when={!isThink() && isAgentEntry() && !hasToolBody() && bodyExpanded()}>
             <box paddingLeft={padLeft()} paddingTop={1}>
               <SpineProse
                 kind={kind()}
