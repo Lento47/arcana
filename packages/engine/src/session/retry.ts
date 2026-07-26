@@ -18,11 +18,11 @@ const BRAND_TIERS = {
     price: "$10/month",
     url: "https://arcana.otnelhq.com/pro",
     limitReachedMessage:
-      "Subscribe to Arcana Pro for reliable access to the best open-source models, starting at $10/month.",
+      "OpenCode Go subscription — this tier is being phased out in the near future. Subscribe to Arcana Pro for higher rate limits and more models.",
   },
 } as const
 
-export const GO_UPSELL_MESSAGE = "Free usage exceeded, subscribe to Arcana Pro"
+export const GO_UPSELL_MESSAGE = "OpenCode subscription limit — this tier is being phased out. Use Arcana Pro for higher rate limits."
 export const GO_UPSELL_URL = BRAND_TIERS.go.url
 export type RetryReason = "free_tier_limit" | "account_rate_limit" | (string & {})
 
@@ -136,7 +136,7 @@ export function retryable(error: Err, provider: string) {
         action: {
           reason: "account_rate_limit",
           provider,
-          title: "Go limit reached",
+          title: "OpenCode Go limit reached",
           message,
           label: "open settings",
           link,
