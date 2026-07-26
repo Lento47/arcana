@@ -30,6 +30,11 @@ Source for that page: [Lento47/arcana-site](https://github.com/Lento47/arcana-si
 | [route-decisions.md](./route-decisions.md) | Route decision specification |
 | [quickstart.md](./quickstart.md) | Step-by-step getting started tutorial for new users |
 | [providers-comparison.md](./providers-comparison.md) | LLM provider comparison — cost, speed, quality, and use cases |
+| [providers/openai.md](./providers/openai.md) | OpenAI setup guide — GPT-4o, o1, o3, env vars, pricing |
+| [providers/anthropic.md](./providers/anthropic.md) | Anthropic setup guide — Claude models, caching, thinking |
+| [providers/google.md](./providers/google.md) | Google Gemini setup guide — 1M context, Flash pricing |
+| [providers/xai.md](./providers/xai.md) | xAI Grok setup guide — OpenAI-compatible, Grok-3 |
+| [providers/amazon-bedrock.md](./providers/amazon-bedrock.md) | AWS Bedrock setup guide — IAM auth, region config |
 | [model-recommendations.md](./model-recommendations.md) | Model recommendations by task type — coding, writing, analysis, creative |
 | [onboarding.md](./onboarding.md) | Team onboarding checklist — install, config, trust, skills, gateway |
 | [arcana-comprehensive-guide.md](./arcana-comprehensive-guide.md) | Complete Arcana guide — architecture, packages, commands, configuration, usage |

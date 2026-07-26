@@ -257,7 +257,11 @@ export const layer = Layer.effect(
       const ag = yield* agents.get("title")
       if (!ag) return
       const mdl = ag.model
-        ? yield* provider.getModel(ag.model.providerID, ag.model.modelID)
+        ? yield* provider.getModel(ag.model.providerID, ag.model.modelID).pipe(
+            Effect.catchTag("ProviderModelNotFoundError", () =>
+              provider.getModel(input.providerID, input.modelID)
+            ),
+          )
         : ((yield* provider.getSmallModel(input.providerID)) ??
           (yield* provider.getModel(input.providerID, input.modelID)))
       const msgs = onlySubtasks
@@ -662,6 +666,9 @@ export const layer = Layer.effect(
       modelID: ModelV2.ID,
       sessionID: SessionID,
     ) {
+      // DEBUG
+      const { appendFileSync } = require("node:fs") as typeof import("node:fs")
+      try { appendFileSync("L:/tmp/arcana-ollama.log", `[SessionPrompt.getModel] provider=${String(providerID)} model=${String(modelID)}\n`) } catch {}
       const exit = yield* provider.getModel(providerID, modelID).pipe(Effect.exit)
       if (Exit.isSuccess(exit)) return exit.value
       const err = Cause.squash(exit.cause)

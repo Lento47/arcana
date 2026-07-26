@@ -156,7 +156,7 @@ describe("buildTurnLifecycle", () => {
 
     const allClosed = buildTurnLifecycle({
       message: { role: "assistant", time: {} },
-      part: { time: { start: 1 } },
+      part: { time: { end: 1 } },
       partEnded: true,
       segmentSuperseded: false,
       isLatestAssistant: true,

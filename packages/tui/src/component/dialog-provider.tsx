@@ -418,36 +418,35 @@ function ApiMethod(props: ApiMethodProps) {
   const sync = useSync()
   const toast = useToast()
   const { theme } = useTheme()
+  const description = ({
+    arcana: (
+      <box gap={1}>
+        <text fg={theme.textMuted}>
+          Arcana Proxy gives you access to multiple LLM providers through a single API key — no per-provider setup required.
+        </text>
+        <text fg={theme.textMuted}>
+          Already have an Arcana key? Paste it here. Or pick <span style={{ fg: theme.primary }}>Sign in with arcana</span>{" "}
+          above to log in with a free account.
+        </text>
+      </box>
+    ),
+    "opencode-go": (
+      <box gap={1}>
+        <text fg={theme.textMuted}>
+          {BRAND_TIERS.go.longDescription}
+        </text>
+        <text fg={theme.text}>
+          Go to <span style={{ fg: theme.primary }}>{BRAND_TIERS.go.url}</span> and enable {BRAND_TIERS.go.name}
+        </text>
+      </box>
+    ),
+  } as any)[props.providerID] ?? undefined
 
   return (
     <DialogPrompt
       title={props.title}
       placeholder="API key"
-      description={
-        {
-          arcana: (
-            <box gap={1}>
-              <text fg={theme.textMuted}>
-                Arcana Proxy gives you access to multiple LLM providers through a single API key — no per-provider setup required.
-              </text>
-              <text fg={theme.textMuted}>
-                Already have an Arcana key? Paste it here. Or pick <span style={{ fg: theme.primary }}>Sign in with arcana</span>{" "}
-                above to log in with a free account.
-              </text>
-            </box>
-          ),
-          "opencode-go": (
-            <box gap={1}>
-              <text fg={theme.textMuted}>
-                {BRAND_TIERS.go.longDescription}
-              </text>
-              <text fg={theme.text}>
-                Go to <span style={{ fg: theme.primary }}>{BRAND_TIERS.go.url}</span> and enable {BRAND_TIERS.go.name}
-              </text>
-            </box>
-          ),
-        }[props.providerID] ?? undefined
-      }
+      description={description as any}
       onConfirm={async (value) => {
         if (!value) return
         try {

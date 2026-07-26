@@ -857,7 +857,6 @@ export function Autocomplete(props: {
           if (wordLen > 0) {
             // Delete partial word then insert full suggestion
             ta.cursorOffset = wordStart
-            ta.deleteRight(wordLen)
           }
           ta.insertText(suggestion.name + " ")
           setIntentSuggestion(null)

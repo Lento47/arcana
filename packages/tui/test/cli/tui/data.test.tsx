@@ -17,7 +17,7 @@ async function wait(fn: () => boolean, timeout = 2000) {
   }
 }
 
-function global(payload: Event): GlobalEvent {
+function global(payload: any): GlobalEvent {
   return { directory, project: "proj_test", payload }
 }
 

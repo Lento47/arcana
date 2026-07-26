@@ -1793,12 +1793,29 @@ export const layer = Layer.effect(
       }),
     )
 
-    const list = Effect.fn("Provider.list")(() => InstanceState.use(state, (s) => s.providers))
+    const list = Effect.fn("Provider.list")(function* () {
+      const providers = yield* InstanceState.use(state, (s) => s.providers)
+      return providers
+    })
 
     async function resolveSDK(model: Model, s: State, envs: Record<string, string | undefined>) {
       try {
         const provider = s.providers[model.providerID]
-        const options = { ...provider.options }
+        const options: Record<string, unknown> = provider ? { ...provider.options } : {}
+        // Ollama fallback — all options come from the model descriptor
+        if (String(model.providerID) === "ollama" && typeof model.api.url === "string") {
+          options.baseURL = model.api.url
+          // Strip provider prefix from model ID in request body — Ollama rejects "ollama/llama3.2:3b"
+          const origFetch = options.fetch as typeof fetch
+          options.fetch = async (input: any, init?: any) => {
+            const body = typeof init?.body === "string" ? JSON.parse(init.body) : {}
+            if (typeof body.model === "string" && body.model.startsWith("ollama/")) {
+              body.model = body.model.slice("ollama/".length)
+            }
+            const fn = origFetch ?? fetch
+            return fn(input, { ...init, body: JSON.stringify(body) })
+          }
+        }
 
         if (
           model.providerID === "google-vertex" &&
@@ -1961,13 +1978,51 @@ export const layer = Layer.effect(
     }
 
     const getProvider = Effect.fn("Provider.getProvider")((providerID: ProviderV2.ID) =>
-      InstanceState.use(state, (s) => s.providers[providerID]),
+      InstanceState.use(state, (s) => {
+        const provider = s.providers[providerID]
+        if (provider) return provider
+        // Ollama synthetic provider — all props from model descriptor
+        if (String(providerID) === "ollama") {
+          const port = process.env.OLLAMA_PORT ?? "11434"
+          return {
+            id: "ollama" as ProviderV2.ID,
+            name: "Ollama (local)",
+            api: { type: "aisdk" as const, package: "@ai-sdk/openai-compatible" as const, url: `http://localhost:${port}/v1` } as any,
+            options: { baseURL: `http://localhost:${port}/v1` } as any,
+            models: {},
+            status: "active" as const,
+            enabled: true,
+          } as any
+        }
+        return undefined
+      }),
     )
 
     const getModel = Effect.fn("Provider.getModel")(function* (providerID: ProviderV2.ID, modelID: ModelV2.ID) {
       const s = yield* InstanceState.get(state)
       const provider = s.providers[providerID]
       if (!provider) {
+        // DEBUG
+        const { appendFileSync } = require("node:fs") as typeof import("node:fs")
+        try { appendFileSync("L:/tmp/arcana-ollama.log", `[getModel-no-provider] provider=${String(providerID)} model=${String(modelID)} providerID===ollama=${String(providerID) === "ollama"}\n`) } catch {}
+        // Ollama fallback — models resolved at runtime via API
+        if (String(providerID) === "ollama") {
+          const port = process.env.OLLAMA_PORT ?? "11434"
+          return {
+            id: modelID,
+            name: modelID as string,
+            providerID: "ollama" as ProviderV2.ID,
+            api: { id: `ollama/${modelID}` as any, type: "aisdk" as const, package: "@ai-sdk/openai-compatible" as const, npm: "@ai-sdk/openai-compatible" as string, url: `http://localhost:${port}/v1` },
+            capabilities: { completion: true, tools: true } as any,
+            request: { body: {}, generation: {} },
+            variants: [],
+            time: { released: new Date("2024-01-01") } as any,
+            cost: [] as any,
+            limit: { context: 128000, output: 8192 },
+            status: "active" as const,
+            enabled: true,
+          } as any
+        }
         const catalogProvider = s.catalog[providerID]
         const suggestions = catalogProvider
           ? modelSuggestions(catalogProvider, modelID, runtimeFlags.enableExperimentalModels)
@@ -1979,6 +2034,27 @@ export const layer = Layer.effect(
 
       const info = provider.models[modelID]
       if (!info) {
+        // DEBUG: log providerID for diagnosis
+        const { appendFileSync } = require("node:fs") as typeof import("node:fs")
+        try { appendFileSync("L:/tmp/arcana-ollama.log", `[getModel] provider=${String(providerID)} model=${String(modelID)} provider_exists=${!!provider} providerID===ollama=${String(providerID) === "ollama"}\n`) } catch {}
+        // Ollama fallback — any model name is valid
+        if (String(providerID) === "ollama") {
+          const port = process.env.OLLAMA_PORT ?? "11434"
+          return {
+            id: modelID,
+            name: modelID as string,
+            providerID: "ollama" as ProviderV2.ID,
+            api: { id: `ollama/${modelID}` as any, type: "aisdk" as const, package: "@ai-sdk/openai-compatible" as const, npm: "@ai-sdk/openai-compatible" as string, url: `http://localhost:${port}/v1` },
+            capabilities: { completion: true, tools: true } as any,
+            request: { body: {}, generation: {} },
+            variants: [],
+            time: { released: new Date("2024-01-01") } as any,
+            cost: [] as any,
+            limit: { context: 128000, output: 8192 },
+            status: "active" as const,
+            enabled: true,
+          } as any
+        }
         const current = modelSuggestions(provider, modelID, runtimeFlags.enableExperimentalModels)
         const suggestions = current.length
           ? current

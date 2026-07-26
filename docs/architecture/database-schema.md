@@ -31,16 +31,16 @@ Arcana uses two SQLite databases: a **core database** (Drizzle ORM) for sessions
 │  │  Core Database       │    │  Memory Database     │            │
 │  │  (Drizzle ORM)       │    │  (Raw SQL + FTS5)    │            │
 │  │                      │    │                      │            │
-│  │  ~/.arcana/data/     │    │  ~/.arcana/data/     │            │
-│  │  ├── sessions        │    │  memory.db           │            │
-│  │  ├── projects        │    │  ├── sessions        │            │
-│  │  ├── credentials     │    │  ├── messages        │            │
-│  │  ├── permissions     │    │  ├── user_facts      │            │
-│  │  ├── audit           │    │  ├── skills_memory   │            │
-│  │  ├── events          │    │  ├── artifacts       │            │
-│  │  ├── workspaces      │    │  ├── feedback        │            │
-│  │  └── migrations      │    │  ├── agent_council_* │            │
-│  │                      │    │  └── FTS5 indexes    │            │
+│  │  ~/.arcana/data/     │    │  ~/.arcana/data/     │
+│  │  ├── sessions        │    │  memory.db           │
+│  │  ├── projects        │    │  ├── sessions        │
+│  │  ├── credentials     │    │  ├── messages        │
+│  │  ├── permissions     │    │  ├── user_facts      │
+│  │  ├── audit           │    │  ├── skills_memory   │
+│  │  ├── events          │    │  ├── artifacts       │
+│  │  ├── workspaces      │    │  ├── feedback        │
+│  │  └── migrations      │    │  ├── agent_council_* │
+│  │                      │    │  └── FTS5 indexes    │
 │  └─────────────────────┘    └─────────────────────┘            │
 │                                                                 │
 │  Runtime: Effect + Drizzle    Runtime: Bun SQLite               │
@@ -281,7 +281,7 @@ CREATE TABLE credential (
   id            TEXT PRIMARY KEY,
   integration_id TEXT,
   label         TEXT NOT NULL,
-  value         TEXT NOT NULL,           -- JSON: Credential.Info (encrypted)
+  value         TEXT NOT NULL,           -- JSON (JSON): Credential.Info (encrypted)
   connector_id  TEXT,
   method_id     TEXT,
   active        INTEGER,                 -- boolean
@@ -338,7 +338,7 @@ CREATE TABLE event (
   aggregate_id  TEXT NOT NULL REFERENCES event_sequence(aggregate_id) ON DELETE CASCADE,
   seq           INTEGER NOT NULL,
   type          TEXT NOT NULL,
-  data          TEXT NOT NULL             -- JSON: event payload
+  data          TEXT NOT NULL             -- JSON (JSON): event payload
 );
 
 CREATE UNIQUE INDEX event_aggregate_seq_idx ON event(aggregate_id, seq);
@@ -378,6 +378,19 @@ CREATE TABLE account_state (
 );
 ```
 
+#### `control_account` (Legacy)
+
+Legacy account table with composite primary key. Superseded by `account`.
+
+```sql
+CREATE TABLE control_account (
+  email TEXT NOT NULL,
+  url   TEXT NOT NULL,
+  -- ... legacy columns
+  PRIMARY KEY (email, url)
+);
+```
+
 ### Workspace Tables
 
 **Location:** `packages/core/src/control-plane/workspace.sql.ts`
@@ -393,7 +406,7 @@ CREATE TABLE workspace (
   name       TEXT NOT NULL DEFAULT '',
   branch     TEXT,
   directory  TEXT,
-  extra      TEXT,                        -- JSON
+  extra      TEXT,                        -- JSON (JSON)
   project_id TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
   time_used  INTEGER NOT NULL
 );
@@ -415,9 +428,9 @@ CREATE TABLE audit_event (
   actor       TEXT NOT NULL,              -- who performed the action
   action      TEXT NOT NULL,              -- what was done
   resource    TEXT,                       -- target resource
-  detail      TEXT,                       -- JSON: additional details
+  detail      TEXT,                       -- JSON (JSON): additional details
   tool        TEXT,                       -- tool name
-  tool_args   TEXT,                       -- JSON: tool arguments
+  tool_args   TEXT,                       -- JSON (JSON): tool arguments
   tool_result TEXT,                       -- tool output (truncated)
   duration_ms INTEGER,                    -- execution time
   tokens_used INTEGER,                    -- tokens consumed
@@ -711,7 +724,7 @@ CREATE VIRTUAL TABLE artifact_fts USING fts5(
 **Source:** `artifacts` table
 **Triggers:** Auto-sync on INSERT/UPDATE/DELETE
 
-#### FTS5 Trigger SQL
+### FTS5 Trigger SQL
 
 FTS5 virtual tables are kept in sync via auto-sync triggers. Example pattern:
 
@@ -737,7 +750,7 @@ END;
 
 All four FTS5 tables (`session_fts`, `message_fts`, `user_facts_fts`, `artifact_fts`) follow this same trigger pattern.
 
-## FTS5 Query Patterns
+### FTS5 Query Patterns
 
 The memory system uses `bm25()` for relevance ranking:
 
@@ -766,7 +779,7 @@ LIMIT ?;
 
 ## PRAGMA Configuration
 
-The memory database uses these PRAGMAs on every connection:
+PRAGMAs are applied **on every new connection handle** (in `openMemoryDB`), not once at startup. This matters for connection pooling — each new handle re-applies the full set:
 
 ```sql
 PRAGMA journal_mode = WAL          -- Write-Ahead Logging for concurrency
@@ -774,6 +787,8 @@ PRAGMA synchronous = NORMAL        -- Balanced durability/performance
 PRAGMA foreign_keys = ON           -- Enforce referential integrity
 PRAGMA busy_timeout = 5000         -- 5s wait on lock contention
 ```
+
+**Connection lifecycle:** `openMemoryDB()` opens a SQLite handle, runs the PRAGMAs, then applies forward-only column migrations before returning the handle to callers.
 
 ## Column Migrations
 

@@ -75,7 +75,6 @@ export function SpineChatCard(props: {
 
   const cardBg = createMemo(() => {
     if (!isAssistant()) return undefined
-    if (focused()) return (t.spinePrompt ?? t.backgroundElement ?? t.backgroundPanel) as any
     return (t.backgroundPanel ?? t.backgroundElement) as any
   })
 
@@ -167,12 +166,12 @@ export function SpineChatCard(props: {
         <SpineProse
           kind={kind()}
           text={text()}
+          contentWidth={bodyWidth()}
           bodyLabel={bodyLabel()}
           streaming={streaming()}
           focused={focused()}
           reminders={props.reminders}
           chatVoice
-          contentWidth={bodyWidth()}
         />
       </box>
     </box>

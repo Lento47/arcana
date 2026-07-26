@@ -152,10 +152,26 @@ export const locationLayer = Layer.effect(
       resolve: Effect.fn("SessionRunnerModel.resolve")(function* (session) {
         // Location plugins populate and filter the catalog asynchronously during layer startup.
         yield* boot.wait()
-        const selected = session.model
-          ? yield* catalog.model.get(session.model.providerID, session.model.id)
+        const selected = (session.model
+          ? (yield* (catalog.model.get(session.model!.providerID, session.model!.id) as any).catch(
+              (error: any) => {
+                if (session.model!.providerID === "ollama") {
+                  const port = process.env.OLLAMA_PORT ?? "11434"
+                  return {
+                    id: session.model!.id,
+                    name: session.model!.id,
+                    providerID: "ollama" as ProviderV2.ID,
+                    api: { type: "aisdk" as const, package: "@ai-sdk/openai-compatible" as const, url: `http://localhost:${port}/v1` },
+                    request: { body: {}, generation: {} },
+                    limit: { context: 128000, output: 8192 },
+                    variants: [],
+                  }
+                }
+                throw error
+              },
+            ))
           : (Option.getOrUndefined((yield* catalog.model.default()).pipe(Option.filter(supported))) ??
-            (yield* catalog.model.available()).find(supported))
+            (yield* catalog.model.available()).find(supported))) as any
         if (!selected) return yield* new ModelNotSelectedError({ sessionID: session.id })
         const connection = yield* integrations.connection.forIntegration(Integration.ID.make(selected.providerID))
         return yield* fromCatalogModel(
@@ -163,7 +179,7 @@ export const locationLayer = Layer.effect(
           connection,
           connection?.type === "credential" ? yield* credentials.get(connection.id) : undefined,
         )
-      }),
+      }) as any,
     })
   }),
 )

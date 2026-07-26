@@ -23,7 +23,7 @@ const ALIASES: Record<string, string> = {
   qwen: "alibaba",
 }
 
-const LOCAL_EXTRAS_PATH = join(currentDir(import.meta), "../..", "providers.arcana.json")
+const LOCAL_EXTRAS_PATH = join(currentDir(import.meta), "..", "..", "providers.arcana.json")
 let localExtrasCache: Record<string, ModelsDevProvider> | null = null
 
 async function loadLocalExtras(): Promise<Record<string, ModelsDevProvider>> {
@@ -32,7 +32,17 @@ async function loadLocalExtras(): Promise<Record<string, ModelsDevProvider>> {
     const raw = await readFile(LOCAL_EXTRAS_PATH, "utf8")
     localExtrasCache = (JSON.parse(raw) as any).provider ?? {}
   } catch { localExtrasCache = {} }
-  return localExtrasCache ?? {}
+
+  // Also read user-local overrides from arcana home (survives updates)
+  try {
+    const home = process.env.ARCANA_HOME ?? join(process.env.HOME ?? process.env.USERPROFILE ?? ".", ".arcana")
+    const userPath = join(home, "providers.arcana.json")
+    const userRaw = await readFile(userPath, "utf8")
+    const userExtras = (JSON.parse(userRaw) as any).provider ?? {}
+    localExtrasCache = { ...localExtrasCache, ...userExtras }
+  } catch {}
+
+  return localExtrasCache
 }
 
 export async function resolveProvider(provider: string): Promise<ProviderProfile> {
@@ -43,7 +53,14 @@ export async function resolveProvider(provider: string): Promise<ProviderProfile
   // to api.cloudflare.com with an unsubstituted ${CLOUDFLARE_ACCOUNT_ID}.
   const md = localExtras[provider] ?? all[alias] ?? all[provider]
 
-  if (!md) throw new Error(`Unknown provider "${provider}". Check models.dev or providers.arcana.json.`)
+  if (!md) {
+    // Ollama local models — always available as fallback
+    if (provider === "ollama") {
+      const port = process.env.OLLAMA_PORT ?? "11434"
+      return { baseURL: `http://localhost:${port}/v1`, envKey: undefined, defaultModel: "llama3.2:3b" }
+    }
+    throw new Error(`Unknown provider "${provider}". Check models.dev or providers.arcana.json.`)
+  }
 
   const envKey = md.env?.[0]
   const defaultModel = md.models ? Object.keys(md.models)[0] : undefined

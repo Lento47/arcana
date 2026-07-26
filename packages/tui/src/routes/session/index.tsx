@@ -364,7 +364,7 @@ export function Session() {
     if (session()?.parentID) return []
     return children().flatMap((x) => sync.data.question[x.id] ?? [])
   })
-  const visible = createMemo(() => !session()?.parentID && permissions().length === 0 && questions().length === 0)
+  const visible = createMemo(() => permissions().length === 0 && questions().length === 0)
   const disabled = createMemo(() => permissions().length > 0 || questions().length > 0)
 
   const dimensions = useTerminalDimensions()
@@ -1398,6 +1398,78 @@ export function Session() {
         moveChild(-1)
       }),
     },
+    {
+      title: "View contract",
+      value: "session.contract",
+      category: "Session",
+      slash: { name: "contract" },
+      run: () => {
+        dialog.clear()
+        toast.show({
+          title: "Session Contract",
+          message: `Session: ${route.sessionID.slice(0,8)}…\nType /loop to start a research loop with cockpit verification.\nThe cockpit manages contracts, verifiers, and governance automatically.`,
+          variant: "info",
+          duration: 8000,
+        })
+      },
+    },
+    {
+      title: "Start research loop",
+      value: "session.loop",
+      category: "Session",
+      slash: { name: "loop" },
+      run: () => {
+        dialog.clear()
+        route.navigate({ type: "session", sessionID: route.sessionID })
+        toast.show({
+          title: "Research Loop",
+          message: "Starting loop session with cockpit. Use /contract to view objectives, /verifier to check results.",
+          variant: "info",
+          duration: 5000,
+        })
+      },
+    },
+    {
+      title: "Show verifier status",
+      value: "session.verifier",
+      category: "Session",
+      slash: { name: "verifier" },
+      run: () => {
+        dialog.clear()
+        const status = sync.data.session_status?.[route.sessionID]
+        const verifier = (sync.data as any).verifier?.[route.sessionID]
+        if (!verifier) {
+          toast.show({ message: "No verifier active for this session", variant: "info" })
+          return
+        }
+        toast.show({
+          title: "Verifier Status",
+          message: `${verifier.checks?.map((c: any) => `${c.check}: ${c.status ?? "pending"}`).join("\n") ?? "no checks"}`,
+          variant: "info",
+          duration: 8000,
+        })
+      },
+    },
+    {
+      title: "Show governance actions",
+      value: "session.governance",
+      category: "Session",
+      slash: { name: "governance" },
+      run: () => {
+        dialog.clear()
+        const actions = (sync.data as any).governance?.[route.sessionID] ?? []
+        if (!actions.length) {
+          toast.show({ message: "No pending governance actions", variant: "info" })
+          return
+        }
+        toast.show({
+          title: "Governance Actions",
+          message: actions.map((a: any) => `${a.label}: ${a.reason}`).join("\n"),
+          variant: "info",
+          duration: 8000,
+        })
+      },
+    },
   ])
 
   const sessionCommands = createMemo(() =>
@@ -2096,6 +2168,7 @@ function GenericTool(props: ToolProps) {
   }
 
   const { theme } = useTheme()
+  const style = createSyntaxStyleMemo(() => generateSubtleSyntax(theme))
   const ctx = use()
   const output = createMemo(() => {
     const raw = props.output?.trim() ?? ""
@@ -2246,7 +2319,18 @@ function GenericTool(props: ToolProps) {
               })()}
             </Match>
             <Match when={true}>
-              <text fg={theme.text}>{limited()}</text>
+              <box flexGrow={1} minWidth={0}>
+                <markdown
+                  syntaxStyle={style()}
+                  streaming={false}
+                  internalBlockMode="top-level"
+                  content={output()}
+                  tableOptions={{ style: "columns", wrapMode: "word", widthMode: "full" }}
+                  conceal={true}
+                  fg={theme.markdownText}
+                  bg={theme.background}
+                />
+              </box>
             </Match>
           </Switch>
           <Show when={collapsed().overflow}>

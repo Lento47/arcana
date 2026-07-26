@@ -19,7 +19,7 @@ async function wait(fn: () => boolean, timeout = 2000) {
   }
 }
 
-function event(payload: Event, input: { directory: string; project?: string; workspace?: string }): GlobalEvent {
+function event(payload: any, input: { directory: string; project?: string; workspace?: string }): GlobalEvent {
   return {
     directory: input.directory,
     project: input.project,
