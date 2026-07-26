@@ -66,6 +66,15 @@ export function resetActivity(cwd: string) {
   touchActivity(cwd)
 }
 
+export async function healthCheck(port: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/health`)
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 let lastRespawnAttempt = 0
 
 /** Reactive — no polling. Called on any fetch failure. Debounced to prevent storms. */

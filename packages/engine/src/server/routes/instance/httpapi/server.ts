@@ -178,6 +178,12 @@ const serverRoutes = HttpApiBuilder.layer(Api).pipe(
 // the same Uint8Array instead of re-stringifying the spec.
 const docResponse = lazy(() => HttpServerResponse.jsonUnsafe(OpenApi.fromApi(PublicApi)))
 
+const healthRoute = HttpRouter.use((router) =>
+  router.add("GET", "/health", () =>
+    HttpServerResponse.json({ status: "ok", version: process.env.ARCANA_VERSION || "0.0.0-dev" }),
+  ),
+)
+
 const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effect.succeed(docResponse()))).pipe(
   Layer.provide(authOnlyRouterLayer),
 )
@@ -267,6 +273,7 @@ export function createRoutes(
     ptyConnectApiRoutes,
     instanceRoutes,
     serverRoutes,
+    healthRoute,
     docRoute,
     uiRoute,
   ).pipe(
