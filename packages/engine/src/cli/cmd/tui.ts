@@ -132,30 +132,70 @@ export const TuiThreadCommand = cmd({
       }
       const cwd = Filesystem.resolve(process.cwd())
 
-      mark("worker-create")
-      // bun Workers do NOT inherit process.env — forward it so the engine running
-      // in the worker sees ARCANA_PROXY_KEY / OPENAI_API_KEY etc. (loaded by index.ts
-      // in the main process). Without this the arcana-proxy self-inject never fires
-      // and /connect shows no providers.
-      const worker = new Worker(file, {
-        env: {
-          ...(process.env as Record<string, string>),
-          ...(process.env.ARCANA_PROXY_KEY ? { ARCANA_PROXY_KEY: process.env.ARCANA_PROXY_KEY } : {}),
-        },
-      })
-      const client = Rpc.client<typeof rpc>(worker)
-      const reload = () => {
-        client.call("reload", undefined).catch(() => {})
+      // ── Daemon detection: try existing daemon, auto-spawn if missing ──
+      let daemonUrl: string | null = null
+      try {
+        const { readLock: readDaemonLock, isLockStale: isDaemonLockStale, removeLock: removeDaemonLock } = await import("../../daemon/lock")
+        const { healthCheck } = await import("../../daemon/lifecycle")
+        const lock = readDaemonLock(cwd)
+        if (lock && !isDaemonLockStale(lock) && await healthCheck(lock.port)) {
+          daemonUrl = `http://127.0.0.1:${lock.port}`
+        } else {
+          // No running daemon — spawn one as detached child, wait for ready
+          if (lock) removeDaemonLock(cwd)
+          const daemonProc = Bun.spawn({
+            cmd: [process.execPath, "--conditions=browser", process.argv[1]!, "--daemon"],
+            stdio: ["ignore", "inherit", "inherit"],
+            cwd,
+            env: {
+              ...(process.env as Record<string, string>),
+              ARCANA_DAEMON: "1",
+              ARCANA_DAEMON_CWD: cwd,
+            },
+          })
+          daemonProc.unref()
+          // Wait for daemon to be ready (health check with backoff)
+          for (let attempt = 0; attempt < 30; attempt++) {
+            await new Promise(r => setTimeout(r, 200))
+            const newLock = readDaemonLock(cwd)
+            if (newLock && !isDaemonLockStale(newLock) && await healthCheck(newLock.port)) {
+              daemonUrl = `http://127.0.0.1:${newLock.port}`
+              break
+            }
+          }
+        }
+      } catch {
+        // Daemon unavailable — fall through to Worker path
       }
-      process.on("SIGUSR2", reload)
 
-      let stopped = false
-      const stop = async () => {
-        if (stopped) return
-        stopped = true
-        process.off("SIGUSR2", reload)
-        await withTimeout(client.call("shutdown", undefined), 5000).catch(() => {})
-        worker.terminate()
+      let client: ReturnType<typeof Rpc.client<typeof rpc>> | undefined
+      let worker: Worker | undefined
+      let stop: () => Promise<void> = async () => {}
+
+      if (!daemonUrl) {
+        mark("worker-create")
+        // bun Workers do NOT inherit process.env — forward it so the engine running
+        // in the worker sees ARCANA_PROXY_KEY / OPENAI_API_KEY etc.
+        worker = new Worker(file, {
+          env: {
+            ...(process.env as Record<string, string>),
+            ...(process.env.ARCANA_PROXY_KEY ? { ARCANA_PROXY_KEY: process.env.ARCANA_PROXY_KEY } : {}),
+          },
+        })
+        client = Rpc.client<typeof rpc>(worker)
+        const reload = () => {
+          client!.call("reload", undefined).catch(() => {})
+        }
+        process.on("SIGUSR2", reload)
+
+        let stopped = false
+        stop = async () => {
+          if (stopped) return
+          stopped = true
+          process.off("SIGUSR2", reload)
+          await withTimeout(client!.call("shutdown", undefined), 5000).catch(() => {})
+          worker!.terminate()
+        }
       }
 
       const prompt = await input(args.prompt)
@@ -172,16 +212,18 @@ export const TuiThreadCommand = cmd({
         network.port !== 0 ||
         network.hostname !== "127.0.0.1"
 
-      const transport = external
+      const transport = daemonUrl
+        ? { url: daemonUrl, fetch: undefined, events: undefined }
+        : external
         ? {
-            url: (await client.call("server", network)).url,
+            url: (await client!.call("server", network)).url,
             fetch: undefined,
             events: undefined,
           }
         : {
             url: "http://arcana.internal",
-            fetch: createWorkerFetch(client),
-            events: createEventSource(client),
+            fetch: createWorkerFetch(client!),
+            events: createEventSource(client!),
           }
 
       try {
@@ -197,9 +239,11 @@ export const TuiThreadCommand = cmd({
         return
       }
 
-      setTimeout(() => {
-        client.call("checkUpgrade", { directory: cwd }).catch(() => {})
-      }, 1000).unref?.()
+      if (client) {
+        setTimeout(() => {
+          client.call("checkUpgrade", { directory: cwd }).catch(() => {})
+        }, 1000).unref?.()
+      }
 
       setTimeout(async () => {
         try {
@@ -222,7 +266,7 @@ export const TuiThreadCommand = cmd({
             url: transport.url,
             async onSnapshot() {
               const tui = writeHeapSnapshot("tui.heapsnapshot")
-              const server = await client.call("snapshot", undefined)
+              const server = client ? await client.call("snapshot", undefined) : ""
               return [tui, server]
             },
             config,
