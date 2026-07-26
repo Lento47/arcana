@@ -100,7 +100,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          cd packages/arcana/npm
+          cd packages/arcana
           echo "//registry.npmjs.org/:_authToken=$NODE_AUTH_TOKEN" >> .npmrc
           npm publish --access public
 
@@ -109,7 +109,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
         run: |
-          cd packages/arcana/npm
+          cd packages/arcana
           sed -i 's/"arcana-ai"/"@Lento47\/arcana-ai"/' package.json
           echo "//npm.pkg.github.com/:_authToken=$NODE_AUTH_TOKEN" >> .npmrc
           npm publish --registry https://npm.pkg.github.com --access public
