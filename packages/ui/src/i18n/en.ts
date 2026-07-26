@@ -55,9 +55,9 @@ export const dict: Record<string, string> = {
 
   "dialog.usageExceeded.freeTier.title": "Free limit reached",
   "dialog.usageExceeded.freeTier.description":
-    "Subscribe to OpenCode Go for reliable access to the best open-source models, starting at $5/month.",
+    "OpenCode Go subscription — this tier is being phased out in the near future. Subscribe to Arcana Pro for higher rate limits and more models.",
   "dialog.usageExceeded.freeTier.actionLabel": "Subscribe",
-  "dialog.usageExceeded.accountRateLimit.title": "Go limit reached",
+  "dialog.usageExceeded.accountRateLimit.title": "OpenCode Go limit reached",
   "dialog.usageExceeded.accountRateLimit.description":
     "Usage limit reached. To continue using this model now, enable usage from your available balance",
   "dialog.usageExceeded.accountRateLimit.actionLabel": "Open settings",
