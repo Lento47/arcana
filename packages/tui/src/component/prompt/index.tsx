@@ -1361,7 +1361,22 @@ export function Prompt(props: PromptProps) {
     // ── /goal — standalone goal setter (does NOT require /loop) ──
     } else if (inputText.startsWith("/goal ")) {
       move.startSubmit()
-      const args = inputText.slice(6).trim()
+      // Strip trailing plain-text lines so they don't become part of the goal
+      const firstNewline = inputText.indexOf("\n")
+      const slashLine = firstNewline === -1 ? inputText : inputText.slice(0, firstNewline)
+      const trailingText = firstNewline === -1 ? "" : inputText.slice(firstNewline + 1).trim()
+      const args = slashLine.slice(6).trim()
+
+      // Reject multi-slash: user must submit slash commands separately
+      const otherSlashLines = trailingText.split("\n").filter(l => l.trimStart().startsWith("/"))
+      if (otherSlashLines.length > 0) {
+        toast.show({
+          title: "Multiple commands",
+          message: "Submit each /command separately, not in one message.",
+          variant: "warning",
+        })
+        return true
+      }
       if (!args) {
         toast.show({
           title: "Goal",
@@ -1386,7 +1401,25 @@ export function Prompt(props: PromptProps) {
     // ── /loop — autonomous loop hub (independent of /goal, matches CLI behavior) ──
     } else if (inputText.startsWith("/loop")) {
       move.startSubmit()
-      const rest = inputText.slice(5).trim()
+      // Strip trailing plain-text lines so they don't become part of the goal/command
+      const firstNewline = inputText.indexOf("\n")
+      const slashLine = firstNewline === -1 ? inputText : inputText.slice(0, firstNewline)
+      const trailingText = firstNewline === -1 ? "" : inputText.slice(firstNewline + 1).trim()
+      const rest = slashLine.slice(5).trim()
+
+      // Reject multi-slash: user must submit slash commands separately
+      const otherSlashLines = trailingText.split("\n").filter(l => l.trimStart().startsWith("/"))
+      if (otherSlashLines.length > 0) {
+        toast.show({
+          title: "Multiple commands",
+          message: "Submit each /command separately, not in one message.",
+          variant: "warning",
+        })
+        return true
+      }
+      // Trailing plain text is discarded — only the slash line is processed.
+      // The user can send follow-up context in a separate message.
+
       const firstSpace = rest.indexOf(" ")
       const subcommand = firstSpace === -1 ? rest : rest.slice(0, firstSpace)
 
