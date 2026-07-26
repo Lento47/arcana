@@ -50,9 +50,15 @@ export async function startDaemon(cwd: string, version: string): Promise<{ port:
 
   resetIdleTimer()
 
-  // Signal handlers
-  process.on("SIGTERM", () => stopDaemon(server!, cwd))
-  process.on("SIGINT", () => stopDaemon(server!, cwd))
+  // Signal handlers — clean up and exit so Ctrl+C kills the process
+  process.on("SIGTERM", async () => {
+    await stopDaemon(server!, cwd)
+    process.exit(0)
+  })
+  process.on("SIGINT", async () => {
+    await stopDaemon(server!, cwd)
+    process.exit(0)
+  })
 
   return { port, url: `http://127.0.0.1:${port}` }
 }

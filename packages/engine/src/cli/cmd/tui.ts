@@ -143,9 +143,13 @@ export const TuiThreadCommand = cmd({
         } else {
           // No running daemon — spawn one as detached child, wait for ready
           if (lock) removeDaemonLock(cwd)
+          const isCompiled = typeof Bun !== "undefined" && (Bun as any).isCompiled
+          const daemonCmd = isCompiled
+            ? [process.execPath, "--daemon"]
+            : [process.execPath, "--conditions=browser", process.argv[1] || "", "--daemon"]
           const daemonProc = Bun.spawn({
-            cmd: [process.execPath, "--conditions=browser", process.argv[1]!, "--daemon"],
-            stdio: ["ignore", "inherit", "inherit"],
+            cmd: daemonCmd,
+            stdio: ["ignore", "ignore", "ignore"],
             cwd,
             env: {
               ...(process.env as Record<string, string>),

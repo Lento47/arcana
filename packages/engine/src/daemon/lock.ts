@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { createHash } from "node:crypto"
@@ -79,5 +79,25 @@ export function isLockStale(lock: DaemonLock): boolean {
     return false
   } catch {
     return true
+  }
+}
+
+/** Scan all lock files across workspaces. Use for status/stop commands run from any directory. */
+export function listAllLocks(): DaemonLock[] {
+  try {
+    if (!existsSync(DAEMON_DIR)) return []
+    return readdirSync(DAEMON_DIR)
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => {
+        try {
+          const raw = readFileSync(join(DAEMON_DIR, f), "utf8")
+          return JSON.parse(raw) as DaemonLock
+        } catch {
+          return null
+        }
+      })
+      .filter((l): l is DaemonLock => l !== null)
+  } catch {
+    return []
   }
 }
