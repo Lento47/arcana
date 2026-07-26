@@ -10,7 +10,7 @@ const crypto = require("crypto")
 const os = require("os")
 
 const RELEASES_URL = "https://releases.otnelhq.com/arcana"
-const VERSION = "v0.3.65"
+const VERSION = "v0.3.66"
 
 // Ed25519 public key — hardcoded in the launcher so signature verification
 // works without any env var. The corresponding private key lives in GitHub
