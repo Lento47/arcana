@@ -1420,7 +1420,6 @@ export function Session() {
       slash: { name: "loop" },
       run: () => {
         dialog.clear()
-        route.navigate({ type: "session", sessionID: route.sessionID })
         toast.show({
           title: "Research Loop",
           message: "Starting loop session with cockpit. Use /contract to view objectives, /verifier to check results.",
