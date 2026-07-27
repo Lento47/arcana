@@ -2004,7 +2004,7 @@ export const layer = Layer.effect(
       if (!provider) {
         // DEBUG
         const { appendFileSync } = require("node:fs") as typeof import("node:fs")
-        try { appendFileSync("L:/tmp/arcana-ollama.log", `[getModel-no-provider] provider=${String(providerID)} model=${String(modelID)} providerID===ollama=${String(providerID) === "ollama"}\n`) } catch {}
+        try { appendFileSync("L:/tmp/arcana-ollama.log", `[getModel-no-provider] provider=${String(providerID)} model=${String(modelID)} providerID===ollama=${String(providerID) === "ollama"}\\n`) } catch {}
         // Ollama fallback — models resolved at runtime via API
         if (String(providerID) === "ollama") {
           const port = process.env.OLLAMA_PORT ?? "11434"
@@ -2022,6 +2022,24 @@ export const layer = Layer.effect(
             status: "active" as const,
             enabled: true,
           } as any
+        }
+        // Bare model name (no / in original) — search all providers
+        if (!modelID) {
+          const name = String(providerID)
+          for (const [pid, p] of Object.entries(s.providers)) {
+            // Exact match
+            if (p.models[name]) {
+              return yield* getModel(ProviderV2.ID.make(pid), ModelV2.ID.make(name))
+            }
+          }
+          // Suffix match (e.g. "deepseek-v4-flash" → "aihubmix/deepseek-v4-flash")
+          for (const [pid, p] of Object.entries(s.providers)) {
+            for (const mid of Object.keys(p.models)) {
+              if (mid === name || mid.endsWith("/" + name)) {
+                return yield* getModel(ProviderV2.ID.make(pid), ModelV2.ID.make(mid))
+              }
+            }
+          }
         }
         const catalogProvider = s.catalog[providerID]
         const suggestions = catalogProvider

@@ -237,6 +237,11 @@ export const RunCommand = effectCmd({
         type: "boolean",
         default: false,
         describe: "enable direct interactive demo slash commands; pass one as the message to run it immediately",
+      })
+      .option("timeout", {
+        type: "number",
+        describe: "max seconds before non-interactive run exits (0 = no timeout, default: 120)",
+        default: 120,
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
     const { Agent } = yield* Effect.promise(() => import("@/agent/agent"))
@@ -771,14 +776,31 @@ export const RunCommand = effectCmd({
 
         if (!args.interactive) {
           const events = await client.event.subscribe()
-          const completed = loop(client, events).catch((e) => {
+          let aborted = false
+          const loopPromise = loop(client, events).catch((e) => {
+            if (aborted) return
             console.error(e)
             process.exitCode = 1
           })
+          const timeoutMs = (args.timeout ?? 120) * 1000
+          const completed = timeoutMs > 0
+            ? Promise.race([
+                loopPromise,
+                new Promise<void>((_, reject) =>
+                  setTimeout(() => reject(new Error(`Timed out after ${args.timeout}s`)), timeoutMs)
+                ),
+              ])
+            : loopPromise
           async function finish() {
             if (args.attach) return
-            const error = await completed
-            if (error) process.exitCode = 1
+            try {
+              const error = await completed
+              if (error) process.exitCode = 1
+            } catch (err: any) {
+              UI.error(err?.message ?? String(err))
+              process.exitCode = 1
+            }
+            aborted = true
           }
 
           if (args.command) {
