@@ -643,14 +643,20 @@ export const RunCommand = effectCmd({
             if (
               event.type === "message.updated" &&
               event.properties.sessionID === sessionID &&
-              event.properties.info.role === "assistant" &&
-              args.format !== "json" &&
-              toggles.get("start") !== true
+              event.properties.info.role === "assistant"
             ) {
-              UI.empty()
-              UI.println(`> ${event.properties.info.agent} · ${event.properties.info.modelID}`)
-              UI.empty()
-              toggles.set("start", true)
+              // Detect task completion: finish reason set and not tool-calls
+              const finish = event.properties.info.finish
+              if (finish && finish !== "tool-calls" && finish !== "unknown") {
+                if (args.format !== "json") UI.println(UI.Style.TEXT_SUCCESS + "✓" + UI.Style.TEXT_NORMAL + " done")
+                break
+              }
+              if (args.format !== "json" && toggles.get("start") !== true) {
+                UI.empty()
+                UI.println(`> ${event.properties.info.agent} · ${event.properties.info.modelID}`)
+                UI.empty()
+                toggles.set("start", true)
+              }
             }
 
             if (event.type === "message.part.updated") {
@@ -731,6 +737,8 @@ export const RunCommand = effectCmd({
               event.properties.sessionID === sessionID &&
               event.properties.status.type === "idle"
             ) {
+              if (error) UI.error("Session ended with errors")
+              else if (args.format !== "json") UI.println(UI.Style.TEXT_SUCCESS + "✓" + UI.Style.TEXT_NORMAL + " done")
               break
             }
 
