@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "version": "0.3.66",
+  "version": "0.3.67",
   "name": "@arcana/engine",
   "type": "module",
   "license": "MIT",
