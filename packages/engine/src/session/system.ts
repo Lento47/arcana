@@ -2,7 +2,7 @@ import { LayerNode } from "@arcana/core/effect/layer-node"
 import { Context, Effect, Layer } from "effect"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { readdirSync, readFileSync, statSync } from "node:fs"
+import { readdirSync, readFileSync, statSync, existsSync } from "node:fs"
 import { Database } from "bun:sqlite"
 
 import { InstanceState } from "@/effect/instance-state"
@@ -55,7 +55,16 @@ let _memoryDbMtime: number | null = null
 /** Lazily open one shared readonly handle + prepared statement; invalidates on db file mtime change. */
 function getMemoryStmt() {
   try {
-    const dbPath = join(homedir(), ".arcana", "data", "memory.db")
+    // Respect config.dataDir if set, otherwise default to ~/.arcana/data
+    let dataDir = join(homedir(), ".arcana", "data")
+    const configPath = join(homedir(), ".arcana", "config.json")
+    if (existsSync(configPath)) {
+      try {
+        const cfg = JSON.parse(readFileSync(configPath, "utf8"))
+        if (typeof cfg.dataDir === "string") dataDir = cfg.dataDir
+      } catch {}
+    }
+    const dbPath = join(dataDir, "memory.db")
     const mtime = statSync(dbPath).mtimeMs
     if (_memoryStmt && _memoryDbMtime === mtime) return _memoryStmt
     // File changed or first open — reconnect.
