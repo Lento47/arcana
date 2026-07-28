@@ -193,6 +193,62 @@ END;
 CREATE TRIGGER IF NOT EXISTS user_facts_fts_delete AFTER DELETE ON user_facts BEGIN
   INSERT INTO user_facts_fts(user_facts_fts, rowid, id, key, value) VALUES ('delete', old.rowid, old.id, old.key, old.value);
 END;
+
+-- Epistemic claims — typed, provenance-linked knowledge (Phase A)
+CREATE TABLE IF NOT EXISTS claims (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  proposition TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN (
+    'observed','derived','assumed','predicted','reported',
+    'contradicted','superseded','verified'
+  )),
+  scope_workspace TEXT,
+  scope_branch TEXT,
+  scope_file TEXT,
+  scope_symbol TEXT,
+  confidence REAL DEFAULT 0.5,
+  calibration_domain TEXT,
+  valid_from TEXT,
+  valid_until TEXT,
+  last_verified_at TEXT,
+  created_at TEXT NOT NULL,
+  created_by_event_id TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS claim_evidence (
+  claim_id TEXT NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  event_id TEXT NOT NULL,
+  artifact_digest TEXT,
+  location_file TEXT,
+  location_line_start INTEGER,
+  location_line_end INTEGER,
+  relationship TEXT NOT NULL CHECK(relationship IN (
+    'supports','contradicts','produced_by','observed_in','verified_by'
+  )),
+  PRIMARY KEY (claim_id, event_id, relationship)
+);
+
+CREATE TABLE IF NOT EXISTS claim_dependencies (
+  claim_id TEXT NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  depends_on_claim_id TEXT NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  PRIMARY KEY (claim_id, depends_on_claim_id)
+);
+
+CREATE TABLE IF NOT EXISTS claim_contradictions (
+  claim_id TEXT NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  contradicts_claim_id TEXT NOT NULL REFERENCES claims(id) ON DELETE CASCADE,
+  PRIMARY KEY (claim_id, contradicts_claim_id)
+);
+
+CREATE TABLE IF NOT EXISTS claim_outcomes (
+  claim_id TEXT PRIMARY KEY REFERENCES claims(id) ON DELETE CASCADE,
+  predicted_confidence REAL,
+  final_outcome TEXT NOT NULL CHECK(final_outcome IN (
+    'confirmed','refuted','partially_confirmed','unresolved'
+  )),
+  resolved_at TEXT NOT NULL
+);
 `
 
 // Indexes that reference columns added by COLUMN_MIGRATIONS must be created
