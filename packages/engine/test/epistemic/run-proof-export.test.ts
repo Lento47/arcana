@@ -24,6 +24,13 @@ function makeValidExport(overrides: Record<string, unknown> = {}) {
     traceHealth: "COMPLETE" as TraceHealth,
     integrityStatus: "VALID" as IntegrityStatus,
     proofLevel: "P1" as ProofLevel,
+    assuranceProfile: {
+      trace: "RECORDED" as const,
+      integrity: "VALID" as const,
+      verification: "UNVERIFIED" as const,
+      reproducibility: "NONE" as const,
+      reproducibilityDetail: null,
+    },
     completionMethod: null,
   }
   const eventReferences = [

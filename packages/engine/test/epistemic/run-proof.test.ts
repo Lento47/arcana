@@ -851,6 +851,7 @@ describe("RunProof derivation", () => {
           traceHealth: result.traceHealth,
           integrityStatus: result.integrityStatus,
           proofLevel: result.proofLevel,
+          assuranceProfile: result.assuranceProfile,
           completionMethod: result.completionMethod,
         }
 

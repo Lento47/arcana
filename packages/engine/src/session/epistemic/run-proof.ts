@@ -35,6 +35,33 @@ export type LifecycleStatus = "COMPLETE" | "INCOMPLETE" | "CRASHED" | "CANCELLED
  */
 export type IntegrityStatus = "VALID" | "INVALID" | "UNVERIFIED"
 
+/**
+ * Assurance profile — independent axes, NOT a strict ordinal ladder.
+ *
+ * P3 ⊬ P2 and P2 ⊬ P3:
+ * - A run can be P2 (reproducible) but not P3 (no completion contract).
+ * - A run can be P3 (verified) but not P2 (no deterministic replay).
+ *
+ * P-labels are retained as compatibility badges:
+ *   P0 = trace ≥ RECORDED
+ *   P1 = P0 ∧ integrity = VALID
+ *   P2 = reproducibility ≥ PARTIAL (independent of P3)
+ *   P3 = verification = VERIFIED (independent of P2)
+ */
+export type TraceAssurance = "NONE" | "RECORDED"
+export type IntegrityAssurance = "UNVERIFIED" | "VALID" | "INVALID"
+export type VerificationAssurance = "UNVERIFIED" | "VERIFIED"
+export type ReproducibilityAssurance = "NONE" | "PARTIAL" | "FULL"
+
+export interface AssuranceProfile {
+  readonly trace: TraceAssurance
+  readonly integrity: IntegrityAssurance
+  readonly verification: VerificationAssurance
+  readonly reproducibility: ReproducibilityAssurance
+  /** Human-readable reproducibility detail, e.g. "FULL · 1/1 declared steps" */
+  readonly reproducibilityDetail: string | null
+}
+
 export interface LifecycleCompleteness {
   readonly started: boolean
   readonly hasTerminalEvent: boolean
@@ -57,6 +84,7 @@ export interface ProofHashPayload {
   readonly traceHealth: TraceHealth
   readonly integrityStatus: IntegrityStatus
   readonly proofLevel: ProofLevel
+  readonly assuranceProfile: AssuranceProfile
   readonly completionMethod: string | null
 }
 
@@ -172,17 +200,15 @@ export const layer = Layer.effect(
       // Verify integrity: global chain, runRoot, proofHash
       const integrityStatus = verifyIntegrity(sessionId, rows, events, runRoot)
 
-      // Derive proof level
-      const { proofLevel, gaps } = deriveProofLevel({
+      // Derive assurance profile (independent axes) and proof level badges
+      const { profile: assuranceProfile, proofLevel, gaps } = deriveAssuranceProfile({
         events,
-        lifecycle,
-        lifecycleStatus,
-        traceHealth,
         integrityStatus,
         completionMethod,
-        claimsByStatus,
-        obligationsByStatus,
         contractStatus,
+        obligationsByStatus,
+        lifecycleStatus,
+        traceHealth,
       })
 
       // Extract P3 denial reasons from gaps
@@ -198,6 +224,7 @@ export const layer = Layer.effect(
         traceHealth,
         integrityStatus,
         proofLevel,
+        assuranceProfile,
         completionMethod,
       }
 
@@ -299,7 +326,114 @@ function verifyIntegrity(
   return "VALID"
 }
 
-// ── Proof level derivation ────────────────────────────────────────────
+// ── Assurance profile derivation (independent axes) ────────────────
+
+function deriveAssuranceProfile(ctx: {
+  events: ReadonlyArray<RunProofEvent>
+  integrityStatus: IntegrityStatus
+  completionMethod: string | null
+  contractStatus: string | null
+  obligationsByStatus: Readonly<Record<string, number>>
+  lifecycleStatus: LifecycleStatus
+  traceHealth: TraceHealth
+  replayCoverage?: { declaredReplaySubset: number; successfullyReproduced: number; reproducibility: string } | null
+}): { profile: AssuranceProfile; proofLevel: ProofLevel; gaps: string[] } {
+  const gaps: string[] = []
+
+  // ── Trace (independent) ──
+  const trace: TraceAssurance = ctx.events.length > 0 ? "RECORDED" : "NONE"
+
+  // ── Integrity (independent) ──
+  const integrity: IntegrityAssurance = ctx.integrityStatus
+
+  // ── Verification (independent) ──
+  // VERIFIED = completionMethod=VERIFIED_COMPLETE + lifecycle COMPLETE
+  //            + all required obligations satisfied + contract resolved
+  let verification: VerificationAssurance = "UNVERIFIED"
+  if (ctx.completionMethod === "VERIFIED_COMPLETE"
+      && ctx.lifecycleStatus === "COMPLETE"
+      && ctx.traceHealth === "COMPLETE") {
+    // Check contract
+    const contractOk = ctx.contractStatus === null
+      || ctx.contractStatus === "resolved"
+      || ctx.contractStatus === "accepted"
+    // Check required obligations (not all pending — only required ones)
+    const hasRequiredObligations = ctx.events.some((e) =>
+      e.type === "obligation.created" && (e.payload as Record<string, unknown>)?.required === true
+    )
+    let unresolvedRequired = 0
+    if (hasRequiredObligations) {
+      const createdRequired = ctx.events.filter((e) =>
+        e.type === "obligation.created" && (e.payload as Record<string, unknown>)?.required === true
+      )
+      const resolvedObligations = new Set(
+        ctx.events.filter((e) => e.type === "obligation.resolved")
+          .map((e) => (e.payload as Record<string, unknown>)?.obligationId)
+      )
+      unresolvedRequired = createdRequired.filter((e) =>
+        !resolvedObligations.has((e.payload as Record<string, unknown>)?.obligationId)
+      ).length
+    }
+    if (contractOk && unresolvedRequired === 0) {
+      verification = "VERIFIED"
+    } else {
+      if (!contractOk) gaps.push(`contractStatus is ${ctx.contractStatus} — P3 requires resolved/accepted`)
+      if (unresolvedRequired > 0) gaps.push(`${unresolvedRequired} required obligation(s) unresolved — P3 requires all satisfied`)
+    }
+  } else {
+    if (ctx.completionMethod !== "VERIFIED_COMPLETE") gaps.push(`completionMethod is ${ctx.completionMethod ?? "null"} — P3 requires VERIFIED_COMPLETE`)
+    if (ctx.lifecycleStatus !== "COMPLETE") gaps.push(`lifecycleStatus is ${ctx.lifecycleStatus} — P3 requires COMPLETE`)
+    if (ctx.traceHealth !== "COMPLETE") gaps.push(`traceHealth is ${ctx.traceHealth} — P3 requires COMPLETE`)
+  }
+
+  // ── Reproducibility (independent) ──
+  let reproducibility: ReproducibilityAssurance = "NONE"
+  let reproducibilityDetail: string | null = null
+  if (ctx.replayCoverage) {
+    const rc = ctx.replayCoverage
+    if (rc.reproducibility === "FULL" && rc.declaredReplaySubset > 0) {
+      reproducibility = "FULL"
+      reproducibilityDetail = `FULL · ${rc.successfullyReproduced}/${rc.declaredReplaySubset} declared steps`
+    } else if (rc.reproducibility === "PARTIAL") {
+      reproducibility = "PARTIAL"
+      reproducibilityDetail = `PARTIAL · ${rc.successfullyReproduced}/${rc.declaredReplaySubset} declared steps`
+    } else {
+      reproducibilityDetail = rc.declaredReplaySubset > 0
+        ? `NONE · ${rc.successfullyReproduced}/${rc.declaredReplaySubset} declared steps`
+        : null
+    }
+  }
+
+  // ── P-label badges (from profile, not a ladder) ──
+  let proofLevel: ProofLevel
+  if (trace === "NONE") {
+    proofLevel = "P0"
+    gaps.unshift("no events recorded — P0 requires at least one event")
+  } else if (integrity !== "VALID") {
+    proofLevel = "P0"
+    if (integrity === "INVALID") gaps.unshift("integrity INVALID — global chain or runRoot verification failed")
+    else gaps.unshift("integrity UNVERIFIED — P1 requires VALID")
+  } else {
+    // P1 baseline
+    proofLevel = "P1"
+    // P2 badge: reproducibility ≥ PARTIAL (independent of P3)
+    if (reproducibility === "PARTIAL" || reproducibility === "FULL") {
+      proofLevel = "P2"
+    }
+    // P3 badge: verification = VERIFIED (independent of P2)
+    if (verification === "VERIFIED") {
+      proofLevel = "P3"
+    }
+  }
+
+  return {
+    profile: { trace, integrity, verification, reproducibility, reproducibilityDetail },
+    proofLevel,
+    gaps,
+  }
+}
+
+// ── Proof level derivation (legacy, now delegates to assurance profile) ────
 
 function deriveProofLevel(ctx: {
   events: ReadonlyArray<RunProofEvent>
