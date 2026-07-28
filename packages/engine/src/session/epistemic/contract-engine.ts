@@ -5,6 +5,7 @@ import { Database } from "@arcana/core/database/database"
 import { ContractTable, ContractAcceptanceCriteriaTable, ContractForbiddenOutcomesTable, ContractAssumptionsTable } from "@arcana/core/epistemic/contract-sql"
 import type { CompletionContract, CompletionResolution } from "@arcana/core/epistemic/contract"
 import { SessionID } from "../schema"
+import { EventStore } from "./event-store"
 
 export interface Interface {
   readonly propose: (input: {
@@ -24,6 +25,7 @@ export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const { db } = yield* Database.Service
+    const eventStore = yield* EventStore.Service
 
     const propose = Effect.fn("ContractEngine.propose")(function* (input) {
       const contract: CompletionContract = {
@@ -66,11 +68,25 @@ export const layer = Layer.effect(
         }).pipe(Effect.orDie)
       }
 
+      // Emit epistemic contract.proposed event
+      yield* eventStore.append({
+        sessionId: input.sessionId,
+        actor: { kind: "policy", id: "contract-engine" },
+        type: "contract.proposed",
+        payload: { contractId: contract.id, objective: contract.objective, revision: contract.revision },
+      }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+
       return contract
     })
 
     const activate = Effect.fn("ContractEngine.activate")(function* (contractId: string) {
       yield* db.update(ContractTable).set({ status: "active" }).where(eq(ContractTable.id, contractId)).pipe(Effect.orDie)
+      // Emit epistemic contract.activated event
+      yield* eventStore.append({
+        actor: { kind: "policy", id: "contract-engine" },
+        type: "contract.activated",
+        payload: { contractId },
+      }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
     })
 
     const getActive = Effect.fn("ContractEngine.getActive")(function* (sessionId: SessionID) {
@@ -97,12 +113,22 @@ export const layer = Layer.effect(
     })
 
     const resolve = Effect.fn("ContractEngine.resolve")(function* (contractId: string, resolution: CompletionResolution) {
+      // Look up session for event emission
+      const contractRows = yield* db.select({ session_id: ContractTable.session_id }).from(ContractTable)
+        .where(eq(ContractTable.id, contractId)).limit(1).pipe(Effect.orDie)
       yield* db.update(ContractTable).set({
         status: "satisfied",
         resolved_at: new Date().toISOString(),
         resolution_state: resolution.state,
         resolution_reason: resolution.reason,
       }).where(eq(ContractTable.id, contractId)).pipe(Effect.orDie)
+      // Emit epistemic contract.amended event (resolution)
+      yield* eventStore.append({
+        sessionId: contractRows[0]?.session_id,
+        actor: { kind: "policy", id: "contract-engine" },
+        type: "contract.amended",
+        payload: { contractId, resolution: resolution.state, reason: resolution.reason },
+      }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
     })
 
     return Service.of({ propose, activate, getActive, resolve })

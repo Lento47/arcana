@@ -6,6 +6,7 @@ import { ObligationTable, ObligationTemplateTable } from "@arcana/core/epistemic
 import { BASELINE_TEMPLATES } from "@arcana/core/epistemic/obligation"
 import type { ProofObligation, ObligationStatus } from "@arcana/core/epistemic/obligation"
 import type { EvidenceRef } from "@arcana/core/epistemic/claim"
+import { EventStore } from "./event-store"
 
 export interface Interface {
   readonly createFromClaim: (input: { claimProposition: string; contractId: string }) => Effect.Effect<ProofObligation[]>
@@ -22,6 +23,7 @@ export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const { db } = yield* Database.Service
+    const eventStore = yield* EventStore.Service
 
     const seedTemplates = Effect.fn("ObligationEngine.seedTemplates")(function* () {
       for (const t of BASELINE_TEMPLATES) {
@@ -62,6 +64,12 @@ export const layer = Layer.effect(
           status: "pending",
           created_at: obl.createdAt,
         }).pipe(Effect.orDie)
+        // Emit obligation.created event
+        yield* eventStore.append({
+          actor: { kind: "policy", id: "obligation-engine" },
+          type: "obligation.created",
+          payload: { obligationId: obl.id, contractId: input.contractId, description: obl.description, required: obl.required, source: obl.source },
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
         obligations.push(obl)
       }
       return obligations
@@ -92,6 +100,12 @@ export const layer = Layer.effect(
           status: "pending",
           created_at: obl.createdAt,
         }).pipe(Effect.orDie)
+        // Emit obligation.created event
+        yield* eventStore.append({
+          actor: { kind: "policy", id: "obligation-engine" },
+          type: "obligation.created",
+          payload: { obligationId: obl.id, contractId, description: obl.description, required: true, source: obl.source },
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
         obligations.push(obl)
       }
       return obligations
@@ -110,10 +124,19 @@ export const layer = Layer.effect(
     })
 
     const resolve = Effect.fn("ObligationEngine.resolve")(function* (obligationId: string, status: ObligationStatus, _evidence: EvidenceRef[]) {
+      // Look up obligation for event context
+      const oblRows = yield* db.select({ contract_id: ObligationTable.contract_id }).from(ObligationTable)
+        .where(eq(ObligationTable.id, obligationId)).limit(1).pipe(Effect.orDie)
       yield* db.update(ObligationTable).set({
         status,
         resolved_at: new Date().toISOString(),
       }).where(eq(ObligationTable.id, obligationId)).pipe(Effect.orDie)
+      // Emit obligation.resolved event
+      yield* eventStore.append({
+        actor: { kind: "policy", id: "obligation-engine" },
+        type: "obligation.resolved",
+        payload: { obligationId, contractId: oblRows[0]?.contract_id, status },
+      }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
     })
 
     // Seed on first use

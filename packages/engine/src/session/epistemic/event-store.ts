@@ -3,11 +3,25 @@ import { desc, eq } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { Database } from "@arcana/core/database/database"
 import { EventTable } from "@arcana/core/epistemic/event-sql"
+import { TraceHealthTable } from "@arcana/core/epistemic/trace-health-sql"
 import { computeEventHash } from "@arcana/core/epistemic/event-hash"
 import type { ArcanaEvent } from "@arcana/core/epistemic/event"
 
-/** Trace integrity status. DEGRADED means at least one recording failed. */
+/** Per-session trace integrity status. */
 export type TraceStatus = "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+
+export interface SessionTraceHealth {
+  readonly sessionId: string
+  readonly status: TraceStatus
+  readonly expectedCriticalEvents: number
+  readonly recordedCriticalEvents: number
+  readonly recordingErrors: ReadonlyArray<TraceRecordingError>
+}
+
+export interface TraceRecordingError {
+  readonly timestamp: string
+  readonly error: string
+}
 
 export interface TraceInfo {
   readonly status: TraceStatus
@@ -26,6 +40,7 @@ export interface Interface {
   readonly list: (limit?: number) => Effect.Effect<ArcanaEvent[]>
   readonly verify: () => Effect.Effect<{ valid: boolean; breaksAt?: number }>
   readonly traceInfo: () => Effect.Effect<TraceInfo>
+  readonly sessionTraceHealth: (sessionId: string) => Effect.Effect<SessionTraceHealth>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@arcana/EventStore") {}
@@ -35,7 +50,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const { db } = yield* Database.Service
 
-    // Track recording failures for trace status
+    // In-memory operational counters (not authoritative for proof)
     let errorCount = 0
     let lastError: string | undefined = undefined
 
@@ -71,6 +86,11 @@ export const layer = Layer.effect(
             payload: payloadJson,
           }).pipe(Effect.orDie)
 
+          // Persist per-session trace health on success
+          if (input.sessionId) {
+            yield* incrementRecordedEvents(tx, input.sessionId)
+          }
+
           return {
             id,
             sequence,
@@ -85,17 +105,84 @@ export const layer = Layer.effect(
         }), { behavior: "immediate" })
     })
 
-    // Wrap append to track errors for trace status
-    const originalAppend = append
-    const trackedAppend = Effect.fn("EventStore.append.tracked")(function* (input: Parameters<typeof originalAppend>[0]) {
-      return yield* originalAppend(input).pipe(
+    // Wrap append to track errors and persist degraded trace health
+    const trackedAppend = Effect.fn("EventStore.append.tracked")(function* (input: Parameters<typeof append>[0]) {
+      return yield* append(input).pipe(
         Effect.catch((error) => {
           errorCount++
           lastError = String(error)
+          // Persist degraded trace health for this session
+          if (input.sessionId) {
+            return persistTraceError(input.sessionId, String(error)).pipe(
+              Effect.flatMap(() => Effect.fail(error as any)),
+              Effect.catch(() => Effect.fail(error as any)),
+            )
+          }
           return Effect.fail(error as any)
         }),
       )
     })
+
+    /** Persist a recording error for a session's trace health. */
+    const persistTraceError = (sessionId: string, error: string) =>
+      Effect.gen(function* () {
+        const timestamp = new Date().toISOString()
+        const existing = yield* db.select().from(TraceHealthTable)
+          .where(eq(TraceHealthTable.session_id, sessionId))
+          .limit(1)
+          .pipe(Effect.orDie)
+        if (existing.length > 0) {
+          const row = existing[0]!
+          const prevErrors: TraceRecordingError[] = (() => {
+            try { return JSON.parse(row.last_error ?? "[]") } catch { return [] }
+          })()
+          const errors = [...prevErrors, { timestamp, error }].slice(-20) // keep last 20
+          yield* db.update(TraceHealthTable).set({
+            status: "DEGRADED",
+            error_count: row.error_count + 1,
+            last_error: JSON.stringify(errors),
+            updated_at: timestamp,
+          }).where(eq(TraceHealthTable.session_id, sessionId)).pipe(Effect.orDie)
+        } else {
+          yield* db.insert(TraceHealthTable).values({
+            session_id: sessionId,
+            status: "DEGRADED",
+            error_count: 1,
+            last_error: JSON.stringify([{ timestamp, error }]),
+            recorded_events: 0,
+            updated_at: timestamp,
+          }).pipe(Effect.orDie)
+        }
+      })
+
+    /** Increment recorded event count for a session (called inside transaction). */
+    const incrementRecordedEvents = (tx: any, sessionId: string) =>
+      Effect.gen(function* () {
+        const timestamp = new Date().toISOString()
+        const existing = yield* tx.select().from(TraceHealthTable)
+          .where(eq(TraceHealthTable.session_id, sessionId))
+          .limit(1)
+          .pipe(Effect.orDie)
+        if (existing.length > 0) {
+          const row = existing[0]!
+          // Only update to COMPLETE if not already DEGRADED
+          const newStatus = row.status === "DEGRADED" ? "DEGRADED" : "COMPLETE"
+          yield* tx.update(TraceHealthTable).set({
+            recorded_events: row.recorded_events + 1,
+            status: newStatus,
+            updated_at: timestamp,
+          }).where(eq(TraceHealthTable.session_id, sessionId)).pipe(Effect.orDie)
+        } else {
+          yield* tx.insert(TraceHealthTable).values({
+            session_id: sessionId,
+            status: "COMPLETE",
+            error_count: 0,
+            last_error: null,
+            recorded_events: 1,
+            updated_at: timestamp,
+          }).pipe(Effect.orDie)
+        }
+      })
 
     const list = Effect.fn("EventStore.list")(function* (limit = 20) {
       const rows = yield* db.select().from(EventTable)
@@ -145,7 +232,37 @@ export const layer = Layer.effect(
       return { status, errorCount, lastError, eventCount } satisfies TraceInfo
     })
 
-    return Service.of({ append: trackedAppend, list, verify, traceInfo })
+    const sessionTraceHealth = Effect.fn("EventStore.sessionTraceHealth")(function* (sessionId: string) {
+      const rows = yield* db.select().from(TraceHealthTable)
+        .where(eq(TraceHealthTable.session_id, sessionId))
+        .limit(1)
+        .pipe(Effect.orDie)
+
+      if (rows.length === 0) {
+        return {
+          sessionId,
+          status: "UNAVAILABLE",
+          expectedCriticalEvents: 0,
+          recordedCriticalEvents: 0,
+          recordingErrors: [],
+        } satisfies SessionTraceHealth
+      }
+
+      const row = rows[0]!
+      const errors: TraceRecordingError[] = (() => {
+        try { return JSON.parse(row.last_error ?? "[]") } catch { return [] }
+      })()
+
+      return {
+        sessionId,
+        status: row.status as TraceStatus,
+        expectedCriticalEvents: 0, // to be populated by lifecycle validation
+        recordedCriticalEvents: row.recorded_events,
+        recordingErrors: errors,
+      } satisfies SessionTraceHealth
+    })
+
+    return Service.of({ append: trackedAppend as Interface["append"], list, verify, traceInfo, sessionTraceHealth })
   }),
 )
 

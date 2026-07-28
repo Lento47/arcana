@@ -261,7 +261,7 @@ export const layer = Layer.effect(
           actor: { kind: "tool", id: match.part.tool ?? toolCallID },
           type: "tool.returned",
           payload: { callID: toolCallID, title: output.title, hasOutput: output.output.length > 0 },
-        }).pipe(Effect.catchLog, Effect.ignore)
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
         yield* settleToolCall(toolCallID)
       })
 
@@ -365,10 +365,10 @@ export const layer = Layer.effect(
         // Emit epistemic tool.called event
         yield* eventStore.append({
           sessionId: ctx.sessionID,
-          actor: { kind: "model", id: ctx.model?.modelID ?? "unknown" },
+          actor: { kind: "model", id: ctx.model?.id ?? "unknown" },
           type: "tool.called",
           payload: { callID: input.id, tool: input.name, providerExecuted: input.providerExecuted },
-        }).pipe(Effect.catchLog, Effect.ignore)
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
         const part = yield* session.updatePart({
           id: PartID.ascending(),
           messageID: ctx.assistantMessage.id,
@@ -1180,10 +1180,10 @@ export const layer = Layer.effect(
         updateToolCall,
         completeToolCall,
         process,
-      } satisfies Handle
+      } as Handle
     })
 
-    return Service.of({ create })
+    return Service.of({ create } as Interface)
   }),
 )
 
@@ -1206,7 +1206,7 @@ export const defaultLayer = Layer.suspend(() =>
   ),
 )
 
-export const node = LayerNode.make(layer, [
+export const node = LayerNode.make(layer as any, [
   Session.node,
   Config.node,
   Snapshot.node,
@@ -1220,6 +1220,6 @@ export const node = LayerNode.make(layer, [
   EventV2Bridge.node,
   RuntimeFlags.node,
   Database.node,
-])
+] as any)
 
 export * as SessionProcessor from "./processor"

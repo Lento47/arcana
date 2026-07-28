@@ -4,6 +4,7 @@ import { Database } from "@arcana/core/database/database"
 import { ClaimTable, ClaimEvidenceTable, ClaimDependencyTable, ClaimContradictionTable, ClaimOutcomeTable } from "@arcana/core/epistemic/sql"
 import type { Claim, ClaimStatus, EvidenceRef, ClaimOutcome } from "@arcana/core/epistemic/claim"
 import { SessionID } from "../schema"
+import { EventStore } from "./event-store"
 
 export interface Interface {
   readonly create: (claim: Claim) => Effect.Effect<void>
@@ -22,6 +23,7 @@ export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const { db } = yield* Database.Service
+    const eventStore = yield* EventStore.Service
 
     const create = Effect.fn("ClaimStore.create")(function* (claim: Claim) {
       yield* db.insert(ClaimTable).values({
@@ -51,6 +53,13 @@ export const layer = Layer.effect(
       for (const con of claim.contradicts) {
         yield* addContradiction(claim.id, con.claimId)
       }
+      // Emit epistemic claim.created event
+      yield* eventStore.append({
+        sessionId: claim.sessionId,
+        actor: { kind: "policy", id: "claim-store" },
+        type: "claim.created",
+        payload: { claimId: claim.id, proposition: claim.proposition, status: claim.status, confidence: claim.confidence },
+      }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
     })
 
     const get = Effect.fn("ClaimStore.get")(function* (id: string) {
@@ -76,6 +85,12 @@ export const layer = Layer.effect(
 
     const updateStatus = Effect.fn("ClaimStore.updateStatus")(function* (id: string, status: ClaimStatus) {
       yield* db.update(ClaimTable).set({ status, last_verified_at: new Date().toISOString() }).where(eq(ClaimTable.id, id)).pipe(Effect.orDie)
+      // Emit epistemic claim.transitioned event
+      yield* eventStore.append({
+        actor: { kind: "policy", id: "claim-store" },
+        type: "claim.transitioned",
+        payload: { claimId: id, newStatus: status },
+      }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
     })
 
     const addEvidence = Effect.fn("ClaimStore.addEvidence")(function* (claimId: string, evidence: EvidenceRef) {
@@ -88,6 +103,12 @@ export const layer = Layer.effect(
         location_line_end: evidence.location?.lineEnd ?? null,
         relationship: evidence.relationship,
       }).pipe(Effect.orDie)
+      // Emit epistemic evidence.attached event
+      yield* eventStore.append({
+        actor: { kind: "policy", id: "claim-store" },
+        type: "evidence.attached",
+        payload: { claimId, evidenceEventId: evidence.eventId, relationship: evidence.relationship },
+      }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
     })
 
     const addDependency = Effect.fn("ClaimStore.addDependency")(function* (claimId: string, dependsOnId: string) {

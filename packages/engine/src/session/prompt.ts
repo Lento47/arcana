@@ -1207,7 +1207,7 @@ export const layer = Layer.effect(
       throw new Error("Impossible")
     })
 
-    const runLoop: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.run")(
+    const runLoop = Effect.fn("SessionPrompt.run")(
       function* (sessionID: SessionID) {
         const ctx = yield* InstanceState.context
         let structured: unknown
@@ -1220,7 +1220,7 @@ export const layer = Layer.effect(
           actor: { kind: "user", id: "session" },
           type: "session.started",
           payload: { agent: session.agent, model: session.model },
-        }).pipe(Effect.catchLog, Effect.ignore)
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
 
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
@@ -1544,7 +1544,7 @@ export const layer = Layer.effect(
                 actor: { kind: "model", id: lastUser?.model?.modelID ?? "unknown" },
                 type: "completion.attempted",
                 payload: { step, messageID: handle.message.id },
-              }).pipe(Effect.catchLog, Effect.ignore)
+              }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
 
               // Block completion when required obligations remain unresolved.
               // Uses Drizzle ORM with provideService to avoid layer deps.
@@ -1580,7 +1580,7 @@ export const layer = Layer.effect(
                     actor: { kind: "policy", id: "completion-gate" },
                     type: "completion.resolved",
                     payload: { contractId: activeContract[0].id, method: "VERIFIED_COMPLETE" },
-                  }).pipe(Effect.catchLog, Effect.ignore)
+                  }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
                   return "break" as const
                 }
               } else {
@@ -1590,7 +1590,7 @@ export const layer = Layer.effect(
                   actor: { kind: "policy", id: "completion-gate" },
                   type: "completion.resolved",
                   payload: { method: "NO_ACTIVE_CONTRACT" },
-                }).pipe(Effect.catchLog, Effect.ignore)
+                }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
                 return "break" as const
               }
             }
@@ -1636,8 +1636,8 @@ export const layer = Layer.effect(
           sessionId: sessionID,
           actor: { kind: "user", id: "session" },
           type: "session.completed",
-          payload: { steps: step },
-        }).pipe(Effect.catchLog, Effect.ignore)
+          payload: { steps: step, reason: session.metadata?.__arcana_max_steps_hit ? "step_limit" : "normal" },
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
 
         return yield* lastAssistant(sessionID)
       },
@@ -1646,7 +1646,24 @@ export const layer = Layer.effect(
     const loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.loop")(function* (
       input: LoopInput,
     ) {
-      return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+      // Wrap runLoop to emit session.crashed on uncaught errors before dying
+      const work = runLoop(input.sessionID).pipe(
+        Effect.catch((error: unknown) =>
+          Effect.gen(function* () {
+            yield* eventStore.append({
+              sessionId: input.sessionID,
+              actor: { kind: "policy", id: "error-boundary" },
+              type: "session.crashed",
+              payload: {
+                error: String(error),
+                errorType: error instanceof Error ? error.constructor.name : "Unknown",
+              },
+            }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+            return yield* Effect.die(error)
+          })
+        ),
+      ) as Effect.Effect<SessionV1.WithParts>
+      return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), work)
     })
 
     const shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError> = Effect.fn(
@@ -1937,7 +1954,7 @@ const argsRegex = /(?:\[Image\s+\d+\]|"[^"]*"|'[^']*'|[^\s"']+)/gi
 const placeholderRegex = /\$(\d+)/g
 const quoteTrimRegex = /^["']|["']$/g
 
-export const node = LayerNode.make(layer, [
+export const node = LayerNode.make(layer as any, [
   SessionStatus.node,
   Session.node,
   Agent.node,
