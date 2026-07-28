@@ -5,10 +5,15 @@ import { getArcanaHome } from "./arcana-home.js"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
 import { getDataDir } from "./arcana-home.js"
 
-function loadEngineConfig(): Record<string, unknown> {
+function resolveDataDir(): string {
   const cp = join(getArcanaHome(), "config.json")
-  if (!existsSync(cp)) return {}
-  try { return JSON.parse(readFileSync(cp, "utf8")) } catch { return {} }
+  if (existsSync(cp)) {
+    try {
+      const cfg = JSON.parse(readFileSync(cp, "utf8"))
+      if (typeof cfg.dataDir === "string") return cfg.dataDir
+    } catch {}
+  }
+  return getDataDir()
 }
 
 export const MemoryCommand: CommandModule = {
@@ -24,7 +29,7 @@ export const MemoryCommand: CommandModule = {
       .option("limit", { alias: "n", type: "number", default: 10, describe: "max results" })
       .option("min-confidence", { type: "number", default: 0, describe: "min confidence when compiling" }),
   async handler(args) {
-    const db = openMemoryDB(getDataDir())
+    const db = openMemoryDB(resolveDataDir())
     const store = new MemoryStore(db)
     const action = String(args.action)
 
@@ -75,7 +80,7 @@ export const MemoryCommand: CommandModule = {
       const arts = store.listArtifacts(Number(args.limit))
       if (!arts.length) { console.log("No artifacts."); return }
       for (const a of arts) {
-        console.log(`  ${a.id.slice(0, 8)}  ${a.title ?? "unnamed"}  ${a.type ?? "?"}`)
+        console.log(`  [${a.id.slice(0, 8)}] ${a.title}${a.tags ? ` (${a.tags})` : ""}  ${a.created_at.slice(0, 10)}`)
       }
       return
     }

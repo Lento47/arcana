@@ -22,6 +22,20 @@ function getCronIntervalSeconds(): number {
 }
 
 /**
+ * Resolves data dir from config, falling back to default.
+ */
+function getCronDataDir(): string {
+  const cp = join(getArcanaHome(), "config.json")
+  if (existsSync(cp)) {
+    try {
+      const cfg = JSON.parse(readFileSync(cp, "utf8"))
+      if (typeof cfg.dataDir === "string") return cfg.dataDir
+    } catch {}
+  }
+  return getDataDir()
+}
+
+/**
  * Resolves the arcana binary for subprocess execution.
  * In production (Bun-compiled binary), process.execPath IS the engine binary.
  * In dev mode (bun run dev / node), fall back to "arcana" on PATH.
@@ -76,7 +90,7 @@ export const CronCommand: CommandModule = {
       .option("prompt", { alias: "p", type: "string", describe: "prompt to run" })
       .option("id", { alias: "i", type: "string", describe: "job ID" }),
   async handler(args) {
-    const dataDir = getDataDir()
+    const dataDir = getCronDataDir()
     const store = new JobStore(dataDir)
     const action = String(args.action)
 
