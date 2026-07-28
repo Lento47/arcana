@@ -26,23 +26,38 @@ export const ConfigCommand: CommandModule = {
       mkdirSync(dirname(configPath), { recursive: true })
       writeFileSync(configPath, JSON.stringify(defaults, null, 2), "utf8")
       console.log(`Created ${configPath}`)
-      console.log("Provider and model are auto-detected from env vars.")
+      console.log("Provider and model are auto-detected from env vars via models.dev.")
       console.log("Set a provider key (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY) to activate.")
       return
     }
 
-    if (!existsSync(configPath)) {
-      console.log(`No config found at ${configPath}. Run 'arcana config init' to create one.`)
-      return
+    // show — load file + merge env var overrides for display
+    let config: Record<string, unknown> = {}
+    if (existsSync(configPath)) {
+      try { config = JSON.parse(readFileSync(configPath, "utf8")) } catch {}
     }
-    const config = JSON.parse(readFileSync(configPath, "utf8"))
+
+    // Env var overrides (mirrors loadConfig() behaviour for display)
+    if (process.env.ARCANA_PROVIDER) config.provider = process.env.ARCANA_PROVIDER
+    if (process.env.ARCANA_MODEL) config.model = process.env.ARCANA_MODEL
+    if (process.env.ARCANA_API_KEY) config.apiKey = process.env.ARCANA_API_KEY
+
+    // Redact API key in display
+    const display = { ...config }
+    if (typeof display.apiKey === "string" && (display.apiKey as string).length > 4) {
+      display.apiKey = "sk-\u2026" + (display.apiKey as string).slice(-4)
+    } else if (!display.apiKey) {
+      display.apiKey = "(not set)"
+    }
+
     if (args.key) {
       const key = String(args.key)
-      if (config[key] === undefined) { console.error(`Key not found: ${key}`); process.exit(1) }
-      console.log(JSON.stringify(config[key], null, 2))
+      const val = display[key]
+      if (val === undefined) { console.error(`Key not found: ${key}`); process.exit(1) }
+      console.log(typeof val === "object" ? JSON.stringify(val, null, 2) : String(val))
       return
     }
-    console.log(JSON.stringify(config, null, 2))
+    console.log(JSON.stringify(display, null, 2))
     console.log(`\n  Config path: ${configPath}`)
     console.log("  Engine config: ~/.config/arcana/arcana.json")
   },

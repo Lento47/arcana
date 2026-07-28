@@ -1,8 +1,25 @@
 import type { CommandModule } from "yargs"
 import { JobStore, Scheduler } from "@arcana/cron"
 import type { Job, RunResult } from "@arcana/cron"
-import { getDataDir } from "./arcana-home.js"
+import { getDataDir, getArcanaHome } from "./arcana-home.js"
 import { spawnSync } from "node:child_process"
+import { existsSync, readFileSync } from "node:fs"
+import { join } from "node:path"
+
+/**
+ * Reads cron interval from ~/.arcana/config.json.
+ * Defaults to 60 seconds.
+ */
+function getCronIntervalSeconds(): number {
+  const cp = join(getArcanaHome(), "config.json")
+  if (existsSync(cp)) {
+    try {
+      const cfg = JSON.parse(readFileSync(cp, "utf8"))
+      if (typeof cfg.cron?.intervalSeconds === "number") return cfg.cron.intervalSeconds
+    } catch {}
+  }
+  return 60
+}
 
 /**
  * Resolves the arcana binary for subprocess execution.
@@ -93,9 +110,9 @@ export const CronCommand: CommandModule = {
           process.exit(1)
         }
         const job = await store.create({
-          name: String(args.name ?? ""),
           schedule: String(args.schedule),
           prompt: String(args.prompt),
+          name: args.name ? String(args.name) : undefined,
         })
         console.log(`Job created: ${job.id.slice(0, 8)}  schedule: ${job.schedule}`)
         break
@@ -141,12 +158,14 @@ export const CronCommand: CommandModule = {
         break
       }
       case "start": {
-        console.log("Starting cron scheduler... (Ctrl+C to stop)")
+        const intervalMs = getCronIntervalSeconds() * 1000
+        console.log(`Starting cron scheduler (interval: ${getCronIntervalSeconds()}s). Ctrl+C to stop.`)
         const scheduler = new Scheduler(store, async (job: Job) => {
           console.log(`[${new Date().toISOString()}] Running: ${job.name ?? job.prompt.slice(0, 40)}`)
           return spawnArcanaRun(job.prompt)
-        })
+        }, intervalMs)
         scheduler.start()
+        process.on("SIGINT", () => { scheduler.stop(); process.exit(0) })
         // Keep process alive
         await new Promise(() => {})
         break

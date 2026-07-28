@@ -4,7 +4,7 @@ import { join, dirname, relative } from "node:path"
 import { homedir } from "node:os"
 import matter from "gray-matter"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
-import { getDataDir } from "./arcana-home.js"
+import { getDataDir, getArcanaHome } from "./arcana-home.js"
 
 interface SkillEntry {
   name: string
@@ -14,11 +14,21 @@ interface SkillEntry {
   path: string
 }
 
-const DEFAULT_DIRS = [
-  join(homedir(), ".arcana", "skills"),
-  join(process.cwd(), "skills"),
-  join(process.cwd(), ".arcana", "skills"),
-]
+function loadSkillDirs(): string[] {
+  const cp = join(getArcanaHome(), "config.json")
+  if (existsSync(cp)) {
+    try {
+      const cfg = JSON.parse(readFileSync(cp, "utf8"))
+      if (Array.isArray(cfg.skillsDirs) && cfg.skillsDirs.length > 0) return cfg.skillsDirs
+    } catch {}
+  }
+  // Default: home skills + cwd skills
+  return [
+    join(homedir(), ".arcana", "skills"),
+    join(process.cwd(), "skills"),
+    join(process.cwd(), ".arcana", "skills"),
+  ]
+}
 
 function scanDir(dir: string): SkillEntry[] {
   if (!existsSync(dir)) return []
@@ -32,14 +42,14 @@ function scanDir(dir: string): SkillEntry[] {
       try {
         const raw = readFileSync(full, "utf8")
         const parsed = matter(raw)
-        const meta = parsed.data as { name?: string; description?: string }
+        const meta = parsed.data as { name?: string; description?: string; category?: string }
         if (!meta.name) continue
         const relDir = relative(dir, dirname(full))
         results.push({
           name: meta.name,
           description: meta.description ?? "",
           id: relDir.replace(/[\\/]/g, "/") || meta.name.toLowerCase().replace(/\s+/g, "-"),
-          category: relDir.split(/[\\/]/)[0] ?? "misc",
+          category: meta.category || relDir.split(/[\\/]/)[0] || "misc",
           path: full,
         })
       } catch {}
@@ -50,12 +60,13 @@ function scanDir(dir: string): SkillEntry[] {
 
 function scanAll(): SkillEntry[] {
   const all: SkillEntry[] = []
-  for (const dir of DEFAULT_DIRS) all.push(...scanDir(dir))
+  const dirs = loadSkillDirs()
+  for (const dir of dirs) all.push(...scanDir(dir))
   return all
 }
 
 function loadSkillBody(id: string): string | undefined {
-  for (const dir of DEFAULT_DIRS) {
+  for (const dir of loadSkillDirs()) {
     const fp = join(dir, id, "SKILL.md")
     if (existsSync(fp)) return readFileSync(fp, "utf8")
   }
