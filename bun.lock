@@ -18,7 +18,7 @@
     },
     "packages/arcana": {
       "name": "arcana-ai",
-      "version": "0.3.64",
+      "version": "0.3.67",
       "bin": {
         "arcana": "./bin/arcana",
       },
@@ -178,7 +178,7 @@
     },
     "packages/engine": {
       "name": "@arcana/engine",
-      "version": "0.3.64",
+      "version": "0.3.67",
       "bin": {
         "arcana": "./bin/arcana",
       },
@@ -187,7 +187,9 @@
         "@actions/github": "6.0.1",
         "@agentclientprotocol/sdk": "0.21.0",
         "@ai-sdk/provider": "3.0.8",
+        "@arcana/cron": "workspace:*",
         "@arcana/llm": "workspace:*",
+        "@arcana/memory": "workspace:*",
         "@arcana/ml": "workspace:*",
         "@arcana/plugin": "workspace:*",
         "@arcana/script": "workspace:*",
@@ -519,7 +521,7 @@
     },
     "packages/tui": {
       "name": "@arcana/tui",
-      "version": "0.3.64",
+      "version": "0.3.67",
       "dependencies": {
         "@arcana/core": "workspace:*",
         "@arcana/plugin": "workspace:*",
