@@ -7,6 +7,7 @@ import { computeEventHash } from "@arcana/core/epistemic/event-hash"
 import { ProofCommand } from "./proof.js"
 import { ReplayCommand } from "./replay.js"
 import { ReplayDeterministicCommand } from "./replay-deterministic.js"
+import { RevalidationCommand } from "./revalidation.js"
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -394,6 +395,7 @@ export const EpistemicCommand: CommandModule = {
       .command(obligations)
       .command(ProofCommand)
       .command(ReplayCommand)
+      .command(new RevalidationCommand())
       .demandCommand(),
   handler: () => {},
 }
