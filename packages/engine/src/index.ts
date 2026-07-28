@@ -233,6 +233,7 @@ const commandLoaders = {
   feedback: () => import("./cli/cmd/feedback").then((m) => m.FeedbackCommand),
   cron: () => import("./cli/cmd/cron").then((m) => m.CronCommand),
   gateway: () => import("./cli/cmd/gateway").then((m) => m.GatewayCommand),
+  epistemic: () => import("./cli/cmd/epistemic").then((m) => m.EpistemicCommand),
 }
 
 async function loadCommandsFor(firstArg: string | undefined): Promise<CommandModule[]> {
