@@ -45,10 +45,51 @@ const CREATE_TRACE_HEALTH = `
   )
 `
 
+const CREATE_CLAIMS = `
+  CREATE TABLE IF NOT EXISTS claims (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    proposition TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'observed',
+    confidence REAL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+`
+
+const CREATE_CONTRACTS = `
+  CREATE TABLE IF NOT EXISTS contracts (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    objective TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'proposed',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at TEXT,
+    resolution_state TEXT,
+    resolution_reason TEXT
+  )
+`
+
+const CREATE_OBLIGATIONS = `
+  CREATE TABLE IF NOT EXISTS obligations (
+    id TEXT PRIMARY KEY,
+    contract_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    required INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at TEXT,
+    waived_by_event_id TEXT,
+    waiver_reason TEXT
+  )
+`
+
 function createTables(db: any) {
   return Effect.gen(function* () {
     yield* db.run(CREATE_EVENTS)
     yield* db.run(CREATE_TRACE_HEALTH)
+    yield* db.run(CREATE_CLAIMS)
+    yield* db.run(CREATE_CONTRACTS)
+    yield* db.run(CREATE_OBLIGATIONS)
   })
 }
 
