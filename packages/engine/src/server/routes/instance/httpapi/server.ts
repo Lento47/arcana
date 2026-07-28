@@ -289,7 +289,7 @@ export function createRoutes(
     Layer.provide(LayerNode.buildLayer(app)),
     Layer.provide(Layer.succeed(CorsConfig)(corsOptions)),
     Layer.provide(Observability.layer),
-  ) as any
+  ) as any // Layer.mergeAll + .pipe(Layer.provide(...)) chain — tracked: TODO narrow
 }
 
 export const routes = createRoutes()

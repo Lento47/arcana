@@ -1180,10 +1180,10 @@ export const layer = Layer.effect(
         updateToolCall,
         completeToolCall,
         process,
-      } as Handle
+      } as Handle // Effect.fn generator doesn't narrow to Handle — runtime shape verified by tests
     })
 
-    return Service.of({ create } as Interface)
+    return Service.of({ create } as Interface) // Effect.fn wrapper loses dependency channel — runtime correct
   }),
 )
 
@@ -1206,7 +1206,7 @@ export const defaultLayer = Layer.suspend(() =>
   ),
 )
 
-export const node = LayerNode.make(layer as any, [
+export const node = LayerNode.make(layer as any, [ // Layer composition + EventStore dep — tracked: TODO narrow
   Session.node,
   Config.node,
   Snapshot.node,
@@ -1220,6 +1220,6 @@ export const node = LayerNode.make(layer as any, [
   EventV2Bridge.node,
   RuntimeFlags.node,
   Database.node,
-] as any)
+] as any) // LayerNode node array type mismatch — tracked: TODO narrow
 
 export * as SessionProcessor from "./processor"

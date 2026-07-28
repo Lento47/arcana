@@ -1662,7 +1662,7 @@ export const layer = Layer.effect(
             return yield* Effect.die(error)
           })
         ),
-      ) as Effect.Effect<SessionV1.WithParts>
+      ) as Effect.Effect<SessionV1.WithParts> // Effect.catch with Effect.die narrows error to never — runtime correct
       return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), work)
     })
 
@@ -1954,7 +1954,7 @@ const argsRegex = /(?:\[Image\s+\d+\]|"[^"]*"|'[^']*'|[^\s"']+)/gi
 const placeholderRegex = /\$(\d+)/g
 const quoteTrimRegex = /^["']|["']$/g
 
-export const node = LayerNode.make(layer as any, [
+export const node = LayerNode.make(layer as any, [ // Layer composition + EventStore dep — tracked: TODO narrow
   SessionStatus.node,
   Session.node,
   Agent.node,
