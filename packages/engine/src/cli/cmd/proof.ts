@@ -378,6 +378,24 @@ interface RunProofExport {
     runRoot: string
     proofHash: string
   }
+  /** ProofHashPayload fields — needed to recompute proofHash independently. */
+  proofHashInput: {
+    sessionId: string
+    eventCount: number
+    eventHashes: string[]
+    lifecycle: LifecycleCompleteness
+    lifecycleStatus: LifecycleStatus
+    traceHealth: TraceHealth
+    integrityStatus: IntegrityStatus
+    proofLevel: ProofLevel
+    completionMethod: string | null
+  }
+  /** Event references for store-aware runRoot verification. */
+  eventReferences: ReadonlyArray<{
+    sequence: number
+    id: string
+    hash: string
+  }>
   summary: {
     eventCount: number
     sequenceRange: [number, number] | null
@@ -439,6 +457,22 @@ function buildExport(proof: CLIRunProof, db: Database): RunProofExport {
       runRoot: proof.runRoot,
       proofHash: proof.proofHash,
     },
+    proofHashInput: {
+      sessionId: proof.sessionId,
+      eventCount: proof.eventCount,
+      eventHashes: rows.map((r) => r.id),
+      lifecycle: proof.lifecycle,
+      lifecycleStatus: proof.lifecycleStatus,
+      traceHealth: proof.traceHealth,
+      integrityStatus: proof.integrityStatus,
+      proofLevel: proof.proofLevel,
+      completionMethod: proof.completionMethod,
+    },
+    eventReferences: rows.map((r) => ({
+      sequence: r.sequence,
+      id: r.id,
+      hash: r.hash,
+    })),
     summary: {
       eventCount: proof.eventCount,
       sequenceRange: proof.sequenceRange,
@@ -680,7 +714,18 @@ export const proofExport: CommandModule = {
 
 // ── Export verification ──────────────────────────────────────────────
 
-export function verifyExport(filePath: string): { valid: boolean; errors: string[] } {
+const HEX64 = /^[0-9a-f]{64}$/
+
+export interface VerificationResult {
+  valid: boolean
+  errors: string[]
+  /** Independent proofHash recomputation from exported ProofHashPayload. */
+  proofHash?: { recomputed: string; exported: string; match: boolean }
+  /** Store-aware runRoot verification. */
+  runRoot?: { status: "VALID" | "INVALID" | "UNAVAILABLE"; reason?: string }
+}
+
+export function verifyExport(filePath: string, dbPath?: string): VerificationResult {
   const errors: string[] = []
 
   if (!existsSync(filePath)) {
@@ -707,28 +752,59 @@ export function verifyExport(filePath: string): { valid: boolean; errors: string
     return { valid: false, errors }
   }
 
-  // Required fields
+  // Required fields (accumulate, don't return early)
   if (!data.sessionId) errors.push("missing sessionId")
   if (!data.proof) errors.push("missing proof section")
   if (!data.verification) errors.push("missing verification section")
-  if (!data.proof?.proofHash) errors.push("missing proofHash")
+  if (data.proof?.proofHash === undefined || data.proof?.proofHash === null) errors.push("missing proofHash")
+  if (!data.proofHashInput) errors.push("missing proofHashInput (required for independent verification)")
 
-  if (errors.length > 0) return { valid: false, errors }
+  // Can't proceed with hash checks if proof section is missing
+  if (!data.proof || !data.proofHashInput) return { valid: false, errors }
 
-  // Verify proofHash if we can recompute
-  if (data.proof && data.proof.proofHash) {
-    // Can't fully recompute without original events, but we can check format
-    if (data.proof.proofHash.length !== 64) {
-      errors.push("proofHash is not a valid SHA-256 hex string")
+  // ── Strict hex validation ────────────────────────────────────────
+  const proofHashHex = data.proof!.proofHash
+  const runRootHex = data.proof!.runRoot
+
+  if (!HEX64.test(proofHashHex)) {
+    errors.push(`proofHash MALFORMED: not a valid 64-char lowercase hex SHA-256 digest`)
+  }
+  if (!HEX64.test(runRootHex)) {
+    errors.push(`runRoot MALFORMED: not a valid 64-char lowercase hex SHA-256 digest`)
+  }
+
+  // ── Independent proofHash recomputation ──────────────────────────
+  let proofHashResult: VerificationResult["proofHash"]
+  if (data.proofHashInput) {
+    const recomputed = computeProofHash(data.proofHashInput as ProofHashPayload)
+    proofHashResult = {
+      recomputed,
+      exported: proofHashHex,
+      match: recomputed === proofHashHex,
+    }
+    if (!proofHashResult.match) {
+      errors.push(`proofHash INTEGRITY INVALID: recomputed ${recomputed.slice(0, 16)}… ≠ exported ${proofHashHex.slice(0, 16)}…`)
     }
   }
 
-  // Verify runRoot format
-  if (data.proof?.runRoot && data.proof.runRoot.length !== 64) {
-    errors.push("runRoot is not a valid SHA-256 hex string")
+  // ── Store-aware runRoot verification ─────────────────────────────
+  let runRootResult: VerificationResult["runRoot"]
+  if (data.eventReferences && data.eventReferences.length > 0) {
+    // Recompute runRoot from exported event references
+    const recomputed = computeRunRoot(data.sessionId, data.eventReferences)
+    if (recomputed === runRootHex) {
+      runRootResult = { status: "VALID" }
+    } else {
+      runRootResult = { status: "INVALID", reason: `recomputed ${recomputed.slice(0, 16)}… ≠ exported ${runRootHex.slice(0, 16)}…` }
+      errors.push(`runRoot INTEGRITY INVALID: ${runRootResult.reason}`)
+    }
+  } else if (data.summary?.eventCount === 0) {
+    runRootResult = { status: "UNAVAILABLE", reason: "no events — runRoot cannot be verified" }
+  } else {
+    runRootResult = { status: "UNAVAILABLE", reason: "referenced source events were not provided" }
   }
 
-  return { valid: errors.length === 0, errors }
+  return { valid: errors.length === 0, errors, proofHash: proofHashResult, runRoot: runRootResult }
 }
 
 // ── Parent command ───────────────────────────────────────────────────
