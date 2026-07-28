@@ -1,6 +1,7 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs"
+import { mkdirSync, readFileSync, existsSync } from "node:fs"
+import { atomicWriteSync } from "../../util/atomic-write"
 
 export type KanbanCard = {
   id: string
@@ -36,7 +37,7 @@ export function loadBoard(sessionId: string): KanbanBoard | null {
 
 export function saveBoard(sessionId: string, board: KanbanBoard): void {
   mkdirSync(KANBAN_DIR, { recursive: true })
-  writeFileSync(boardPath(sessionId), JSON.stringify(board, null, 2), "utf8")
+  atomicWriteSync(boardPath(sessionId), JSON.stringify(board, null, 2))
   // Keep the vault wiki in sync on each mutation (best-effort). Previously this
   // ran inside formatBoard(), so a pure "format" call wrote to disk every time
   // the board was displayed.
@@ -141,7 +142,7 @@ function writeBoardWiki(board: KanbanBoard): void {
       ...renderBoard(board).slice(1),
     ].join("\n")
     mkdirSync(join(process.cwd(), ".vault"), { recursive: true })
-    writeFileSync(join(process.cwd(), ".vault", "kanban.md"), wiki, "utf8")
+    atomicWriteSync(join(process.cwd(), ".vault", "kanban.md"), wiki)
   } catch {}
 }
 

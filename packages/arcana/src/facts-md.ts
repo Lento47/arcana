@@ -10,10 +10,11 @@
  * Fallback when no project .arcana: ~/.arcana/FACTS.md
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, statSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { homedir } from "node:os"
 import type { MemoryStore, UserFact } from "@arcana/memory"
+import { atomicWriteSync } from "./util/atomic-write"
 
 export type FactOrigin = "user_facts" | "learned_md" | "learned_wiki"
 
@@ -296,7 +297,7 @@ export function parseFactsMd(content: string): CompiledFact[] {
 
 export function writeFactsMd(filePath: string, facts: CompiledFact[], meta?: { projectRoot?: string }): void {
   mkdirSync(dirname(filePath), { recursive: true })
-  writeFileSync(filePath, renderFactsMd(facts, meta), "utf8")
+  atomicWriteSync(filePath, renderFactsMd(facts, meta))
 }
 
 export function readFactsMdFile(path: string): CompiledFact[] {

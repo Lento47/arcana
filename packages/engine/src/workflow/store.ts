@@ -1,8 +1,9 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs"
+import { mkdirSync, readdirSync, readFileSync, existsSync, unlinkSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { Schema } from "effect"
 import { WorkflowPlan } from "./schema"
+import { atomicWriteSync } from "../util/atomic-write"
 
 const WORKFLOW_DIR = join(homedir(), ".arcana", "workflows")
 
@@ -24,7 +25,7 @@ function ensureDir() {
 export function saveWorkflow(name: string, plan: WorkflowPlan): void {
   validateName(name)
   ensureDir()
-  writeFileSync(join(WORKFLOW_DIR, `${name}.json`), JSON.stringify(plan, null, 2), "utf-8")
+  atomicWriteSync(join(WORKFLOW_DIR, `${name}.json`), JSON.stringify(plan, null, 2))
 }
 
 export function loadWorkflow(name: string): WorkflowPlan {

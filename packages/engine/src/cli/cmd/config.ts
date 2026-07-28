@@ -1,5 +1,6 @@
 import type { CommandModule } from "yargs"
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs"
+import { readFileSync, existsSync, mkdirSync } from "node:fs"
+import { atomicWriteSync } from "../../util/atomic-write"
 import { join, dirname } from "node:path"
 import { getArcanaHome } from "./arcana-home.js"
 
@@ -24,7 +25,7 @@ export const ConfigCommand: CommandModule = {
         cron: { enabled: true, intervalSeconds: 60 },
       }
       mkdirSync(dirname(configPath), { recursive: true })
-      writeFileSync(configPath, JSON.stringify(defaults, null, 2), "utf8")
+      atomicWriteSync(configPath, JSON.stringify(defaults, null, 2))
       console.log(`Created ${configPath}`)
       console.log("Provider and model are auto-detected from env vars via models.dev.")
       console.log("Set a provider key (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY) to activate.")

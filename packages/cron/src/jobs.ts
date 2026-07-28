@@ -1,6 +1,7 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises"
+import { readFile, mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { randomUUID } from "node:crypto"
+import { atomicWrite } from "./atomic-write"
 import { JobSchema, type Job, type JobCreate, type JobUpdate } from "./types.js"
 
 function now(): string {
@@ -100,7 +101,7 @@ export class JobStore {
   async save(): Promise<void> {
     await mkdir(this.dataPath, { recursive: true })
     const jobs = [...this.jobs.values()]
-    await writeFile(this.filePath, JSON.stringify(jobs, null, 2), "utf8")
+    await atomicWrite(this.filePath, JSON.stringify(jobs, null, 2))
   }
 
   async create(input: JobCreate): Promise<Job> {

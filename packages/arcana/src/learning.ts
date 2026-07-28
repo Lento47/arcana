@@ -7,6 +7,7 @@
  */
 import path from "path"
 import fs from "fs"
+import { atomicWriteSync } from "./util/atomic-write"
 
 export interface LearningExtraction {
   facts: LearningEntry[]
@@ -70,7 +71,7 @@ export function createWikiFile(root: string, entry: LearningEntry, sourceSession
     sourceSession ? `source: ${sourceSession}` : "",
     quarantine ? "quarantined: true" : "",
   ].filter(Boolean).join("\n")
-  fs.writeFileSync(fp, `${fm}\n# ${entry.slug.replace(/-/g, " ")}\n\n${entry.summary}\n\n${entry.body}\n`, "utf-8")
+  atomicWriteSync(fp, `${fm}\n# ${entry.slug.replace(/-/g, " ")}\n\n${entry.summary}\n\n${entry.body}\n`)
   return fp
 }
 
@@ -88,7 +89,7 @@ function appendToMoc(mocPath: string, entries: LearningEntry[], category: "facts
     else { const ins = content.indexOf("\n", idx) + 1; content = content.slice(0, ins) + `- ${link} — ${e.summary}\n` + content.slice(ins) }
   }
   ensureDir(path.dirname(mocPath))
-  fs.writeFileSync(mocPath, content, "utf-8")
+  atomicWriteSync(mocPath, content)
 }
 
 export function updateLearnedMd(root: string, entries: LearningEntry[], category: "facts" | "patterns" | "mistakes"): void {
@@ -154,7 +155,7 @@ export function updateModelTrust(root: string, entries: ConfidenceDecayEntry[]):
   }
   lines.push("")
   ensureDir(path.dirname(tp))
-  fs.writeFileSync(tp, lines.join("\n"), "utf-8")
+  atomicWriteSync(tp, lines.join("\n"))
   return true
 }
 

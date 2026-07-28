@@ -2,10 +2,11 @@
 // Copyright (c) 2026 arcana contributors
 
 import path from "node:path"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir } from "node:fs/promises"
 import type { RunProof } from "./types.js"
 import { normalizeRunProof } from "./compat.js"
 import { renderRunProofReplayLog } from "./render.js"
+import { atomicWrite } from "../util/atomic-write.js"
 
 export type ProofStoreTarget = "repo" | "home"
 
@@ -37,15 +38,14 @@ export async function saveRunProof(
   await mkdir(dir, { recursive: true })
 
   const jsonPath = path.join(dir, `${proof.id}.json`)
-  await writeFile(jsonPath, `${JSON.stringify(proof, null, 2)}\n`, "utf8")
-
+  await atomicWrite(jsonPath, `${JSON.stringify(proof, null, 2)}\n`)
   const replayPath = path.join(dir, `${proof.id}.replay.log`)
-  await writeFile(replayPath, renderRunProofReplayLog(proof), "utf8")
+  await atomicWrite(replayPath, renderRunProofReplayLog(proof))
 
   let markdownPath: string | undefined
   if (input.markdown) {
     markdownPath = path.join(dir, `${proof.id}.md`)
-    await writeFile(markdownPath, input.markdown.endsWith("\n") ? input.markdown : `${input.markdown}\n`, "utf8")
+    await atomicWrite(markdownPath, input.markdown.endsWith("\n") ? input.markdown : `${input.markdown}\n`)
   }
 
   return { proof, json_path: jsonPath, markdown_path: markdownPath, replay_path: replayPath }
