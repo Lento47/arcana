@@ -208,48 +208,91 @@ export function writeReplayExport(replay: AuditReplay, outputDir?: string): Repl
 
 export class ReplayCommand {
   command = "replay"
-  describe = "Audit replay of recorded sessions"
+  describe = "Audit and deterministic replay of recorded sessions"
 
   builder(yargs: any) {
-    return yargs.command({
-      command: "audit <session-id>",
-      describe: "Reconstruct what was recorded for a session",
-      builder: (y: any) => {
-        y.positional("session-id", { describe: "Session ID", type: "string" })
-        y.option("format", { describe: "Output format", choices: ["terminal", "json", "markdown"], default: "terminal" })
-        y.option("output", { describe: "Export to .arcana/proofs/", type: "string" })
-      },
-      handler: async (argv: any) => {
-        const sessionId = argv["session-id"] as string
-        const format = argv.format as "terminal" | "json" | "markdown"
-        const outputDir = argv.output as string | undefined
+    return yargs
+      .command({
+        command: "audit <session-id>",
+        describe: "Reconstruct what was recorded for a session",
+        builder: (y: any) => {
+          y.positional("session-id", { describe: "Session ID", type: "string" })
+          y.option("format", { describe: "Output format", choices: ["terminal", "json", "markdown"], default: "terminal" })
+          y.option("output", { describe: "Export to .arcana/proofs/", type: "string" })
+        },
+        handler: async (argv: any) => {
+          const sessionId = argv["session-id"] as string
+          const format = argv.format as "terminal" | "json" | "markdown"
+          const outputDir = argv.output as string | undefined
 
-        const Database = (await import("better-sqlite3")).default
-        const { getDatabasePath } = await import("@examples/infra-lib")
-        const dbPath = getDatabasePath()
-        const db = new Database(dbPath, { readonly: true })
+          const Database = (await import("better-sqlite3")).default
+          const { getDatabasePath } = await import("@examples/infra-lib")
+          const dbPath = getDatabasePath()
+          const db = new Database(dbPath, { readonly: true })
 
-        try {
-          const replay = deriveAuditReplay(db, sessionId)
+          try {
+            const replay = deriveAuditReplay(db, sessionId)
 
-          if (format === "json") {
-            console.log(formatJSON(replay))
-          } else if (format === "markdown") {
-            console.log(formatMarkdown(replay))
-          } else {
-            console.log(formatTerminal(replay))
+            if (format === "json") {
+              console.log(formatJSON(replay))
+            } else if (format === "markdown") {
+              console.log(formatMarkdown(replay))
+            } else {
+              console.log(formatTerminal(replay))
+            }
+
+            if (outputDir) {
+              const paths = writeReplayExport(replay, outputDir)
+              console.error(`\nWrote: ${paths.jsonPath}`)
+              console.error(`Wrote: ${paths.mdPath}`)
+            }
+          } finally {
+            db.close()
           }
+        },
+      })
+      .command({
+        command: "deterministic <session-id>",
+        describe: "Bounded deterministic replay of historical commands",
+        builder: (y: any) => {
+          y.positional("session-id", { describe: "Session ID", type: "string" })
+          y.option("format", { describe: "Output format", choices: ["terminal", "json", "markdown"], default: "terminal" })
+          y.option("output", { describe: "Export to .arcana/proofs/", type: "string" })
+          y.option("dry-run", { describe: "Check policy without executing", type: "boolean", default: false })
+        },
+        handler: async (argv: any) => {
+          const sessionId = argv["session-id"] as string
+          const format = argv.format as "terminal" | "json" | "markdown"
+          const outputDir = argv.output as string | undefined
+          const dryRun = argv["dry-run"] as boolean
 
-          if (outputDir) {
-            const paths = writeReplayExport(replay, outputDir)
-            console.error(`\nWrote: ${paths.jsonPath}`)
-            console.error(`Wrote: ${paths.mdPath}`)
+          const Database = (await import("better-sqlite3")).default
+          const { getDatabasePath } = await import("@examples/infra-lib")
+          const dbPath = getDatabasePath()
+          const db = new Database(dbPath, { readonly: true })
+
+          try {
+            const { deriveDeterministicReplay, formatDeterministicTerminal, formatDeterministicJSON: fmtJSON, formatDeterministicMarkdown: fmtMD, writeDeterministicReplayExport } = await import("./replay-deterministic.js")
+            const result = deriveDeterministicReplay(db, sessionId, { dryRun })
+
+            if (format === "json") {
+              console.log(fmtJSON(result))
+            } else if (format === "markdown") {
+              console.log(fmtMD(result))
+            } else {
+              console.log(formatDeterministicTerminal(result))
+            }
+
+            if (outputDir) {
+              const paths = writeDeterministicReplayExport(result, outputDir)
+              console.error(`\nWrote: ${paths.jsonPath}`)
+              console.error(`Wrote: ${paths.mdPath}`)
+            }
+          } finally {
+            db.close()
           }
-        } finally {
-          db.close()
-        }
-      },
-    })
+        },
+      })
   }
 
   handler() {}
