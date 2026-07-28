@@ -226,6 +226,11 @@ const commandLoaders = {
   daemon: () => import("./cli/cmd/daemon").then((m) => m.DaemonCommand),
   theme: () => import("./cli/cmd/theme").then((m) => m.ThemeCommand),
   learn: () => import("./cli/cmd/learn").then((m) => m.LearnCommand),
+  config: () => import("./cli/cmd/config").then((m) => m.ConfigCommand),
+  history: () => import("./cli/cmd/history").then((m) => m.HistoryCommand),
+  skills: () => import("./cli/cmd/skills").then((m) => m.SkillsCommand),
+  memory: () => import("./cli/cmd/memory").then((m) => m.MemoryCommand),
+  feedback: () => import("./cli/cmd/feedback").then((m) => m.FeedbackCommand),
 }
 
 async function loadCommandsFor(firstArg: string | undefined): Promise<CommandModule[]> {
