@@ -1,7 +1,7 @@
 # Type/Test Baseline Freeze
 
 **Date:** 2026-07-28
-**Commit:** 937d7b44 (to be updated on commit)
+**Commit:** 060eb4ff (to be updated on commit)
 **Branch:** phase-a-epistemic
 **Last verified:** 2026-07-28
 
