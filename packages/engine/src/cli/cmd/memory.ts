@@ -1,9 +1,12 @@
 import type { CommandModule } from "yargs"
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs"
 import { join, dirname } from "node:path"
+import { homedir } from "node:os"
 import { getArcanaHome } from "./arcana-home.js"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
 import { getDataDir } from "./arcana-home.js"
+
+// ── helpers ──────────────────────────────────────────────────────────
 
 function resolveDataDir(): string {
   const cp = join(getArcanaHome(), "config.json")
@@ -16,13 +19,68 @@ function resolveDataDir(): string {
   return getDataDir()
 }
 
+/** Proxy key from env var or ~/.arcana/proxy_key file. */
+function resolveProxyKey(): string | null {
+  if (process.env.ARCANA_PROXY_KEY?.trim()) return process.env.ARCANA_PROXY_KEY.trim()
+  const kp = join(getArcanaHome(), "proxy_key")
+  if (existsSync(kp)) {
+    try { const k = readFileSync(kp, "utf8").trim(); if (k) return k } catch {}
+  }
+  return null
+}
+
+const PROXY_BASES = [
+  process.env.ARCANA_PROXY_URL?.replace(/\/$/, ""),
+  "https://proxy-arcana.otnelhq.com",
+  "https://arcana-proxy.lejzerv.workers.dev",
+].filter(Boolean) as string[]
+
+type ProxyResult = { ok: boolean; status: number; data: any; base: string }
+
+async function proxyFetch(path: string, opts: { method?: string; body?: unknown } = {}): Promise<ProxyResult> {
+  const key = resolveProxyKey()
+  if (!key) return { ok: false, status: 0, data: { error: "no_proxy_key" }, base: "" }
+
+  let last: ProxyResult = { ok: false, status: 0, data: { error: "unreachable" }, base: PROXY_BASES[0] ?? "" }
+  for (const base of PROXY_BASES) {
+    try {
+      const res = await fetch(`${base}${path}`, {
+        method: opts.method ?? "GET",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+        signal: AbortSignal.timeout(12_000),
+      })
+      const text = await res.text()
+      let data: any = {}
+      try { data = text ? JSON.parse(text) : {} } catch { data = { raw: text.slice(0, 200) } }
+      last = { ok: res.ok, status: res.status, data, base }
+      if (res.ok || res.status < 500) return last
+    } catch (e) {
+      last = { ok: false, status: 0, data: { error: "network", message: String(e) }, base }
+    }
+  }
+  return last
+}
+
+function compileFacts(store: MemoryStore): { key: string; value: string; source?: string; confidence: number }[] {
+  const facts = store.getUserFacts().slice(0, 10000)
+  return facts.map((f) => ({
+    key: f.key,
+    value: f.value,
+    source: f.source,
+    confidence: f.confidence,
+  }))
+}
+
+// ── command ──────────────────────────────────────────────────────────
+
 export const MemoryCommand: CommandModule = {
   command: "memory <action>",
-  describe: "search, compile FACTS.md, and query arcana memory",
+  describe: "search, compile, and sync arcana memory",
   builder: (yargs) =>
     yargs
       .positional("action", {
-        choices: ["search", "sessions", "facts", "stats", "artifacts", "compile"] as const,
+        choices: ["search", "sessions", "facts", "stats", "artifacts", "compile", "push", "pull", "sync"] as const,
         demandOption: true,
       })
       .option("query", { alias: "q", type: "string", describe: "search query" })
@@ -89,7 +147,6 @@ export const MemoryCommand: CommandModule = {
       const facts = store.getUserFacts(Number(args["min-confidence"] ?? 0)).slice(0, 10000)
       const lines = ["# Arcana Compiled Facts", "", `Compiled ${new Date().toISOString()}`, `User facts from memory.db: ${facts.length}`, ""]
 
-      // User facts from memory.db
       for (const f of facts) {
         lines.push(`## ${f.key}`)
         lines.push(f.value)
@@ -97,18 +154,13 @@ export const MemoryCommand: CommandModule = {
         lines.push("")
       }
 
-      // LEARNED.md entries
       const projectRoot = process.cwd()
       const learnedMd = join(projectRoot, ".arcana", "LEARNED.md")
       if (existsSync(learnedMd)) {
         lines.push("## From LEARNED.md", "")
-        try {
-          const md = readFileSync(learnedMd, "utf8")
-          lines.push(md, "")
-        } catch {}
+        try { lines.push(readFileSync(learnedMd, "utf8"), "") } catch {}
       }
 
-      // learned/*.md entries
       const learnedDir = join(projectRoot, ".arcana", "learned")
       if (existsSync(learnedDir)) {
         try {
@@ -125,6 +177,50 @@ export const MemoryCommand: CommandModule = {
       writeFileSync(fp, lines.join("\n"), "utf8")
       console.log(`Compiled facts to ${fp}`)
       console.log(`  user_facts: ${facts.length}`)
+      return
+    }
+
+    // ── cloud sync ────────────────────────────────────────────────
+
+    if (action === "push" || action === "pull" || action === "sync") {
+      const key = resolveProxyKey()
+      if (!key) {
+        console.error("No proxy key found. Run: arcana console login  (or set ARCANA_PROXY_KEY / ~/.arcana/proxy_key)")
+        process.exit(1)
+      }
+
+      if (action === "push" || action === "sync") {
+        const facts = compileFacts(store)
+        if (!facts.length) {
+          console.log("No facts to push.")
+          if (action === "push") return
+        } else {
+          const res = await proxyFetch("/v1/memory", { method: "PUT", body: { facts } })
+          if (!res.ok) {
+            console.error(`Push failed (${res.status}) via ${res.base}:`, res.data?.message || res.data?.error || res.data)
+            process.exit(1)
+          }
+          console.log(`Pushed ${facts.length} fact(s) → cloud (merged ${res.data?.merged ?? "?"} · total ${res.data?.total ?? "?"}) via ${res.base}`)
+          console.log("Web: workspace → Memory")
+        }
+      }
+
+      if (action === "pull" || action === "sync") {
+        const res = await proxyFetch("/v1/memory?limit=200")
+        if (!res.ok) {
+          console.error(`Pull failed (${res.status}) via ${res.base}:`, res.data?.message || res.data?.error || res.data)
+          process.exit(1)
+        }
+        const remote = (res.data?.facts ?? []) as Array<{ key?: string; value?: string; source?: string; confidence?: number }>
+        if (!remote.length) { console.log("No cloud facts to pull."); return }
+        let merged = 0
+        for (const f of remote) {
+          if (!f.key || !f.value) continue
+          store.recordUserFact(f.key, f.value, f.source ?? "cloud", typeof f.confidence === "number" ? f.confidence : 1)
+          merged++
+        }
+        console.log(`Pulled ${merged} cloud fact(s) into memory.db (from ${res.base})`)
+      }
       return
     }
   },
