@@ -289,7 +289,14 @@ export function createRoutes(
     Layer.provide(LayerNode.buildLayer(app)),
     Layer.provide(Layer.succeed(CorsConfig)(corsOptions)),
     Layer.provide(Observability.layer),
-  ) as any // Layer.mergeAll + .pipe(Layer.provide(...)) chain — tracked: TODO narrow
+  ) as any
+  // CAST BOUNDARY #8 — createRoutes return type
+  // Upstream: Layer.mergeAll + .pipe(Layer.provide(...)) chain produces a Layer type
+  // that doesn't match the expected return type of createRoutes. The chain has
+  // 4+ .pipe(Layer.provide(...)) calls, each of which transforms the type parameter.
+  // Runtime: the returned layer is fully self-contained.
+  // Removal condition: Layer.mergeAll + provide chain preserves type through composition.
+  // Scope: narrow (entire return value of createRoutes)
 }
 
 export const routes = createRoutes()

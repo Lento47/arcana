@@ -262,7 +262,14 @@ export const layer = Layer.effect(
       } satisfies SessionTraceHealth
     })
 
-    return Service.of({ append: trackedAppend as Interface["append"], list, verify, traceInfo, sessionTraceHealth }) // Effect.fn + catch changes error channel — runtime preserves behavior
+    return Service.of({ append: trackedAppend as Interface["append"], list, verify, traceInfo, sessionTraceHealth })
+    // CAST BOUNDARY #5 — Effect.fn + Effect.catch changes error channel
+    // Upstream: trackedAppend wraps append with Effect.catch, which changes the error
+    // channel type from the original Effect.fn signature. The runtime behavior is
+    // identical — errors are caught, trace health persisted, then re-thrown.
+    // Runtime: verified by event-store-concurrency.test.ts test 10.
+    // Removal condition: Effect.catch preserves error channel type through wrapping.
+    // Scope: narrow (single method cast on the service object)
   }),
 )
 

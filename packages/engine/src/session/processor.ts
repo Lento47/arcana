@@ -1180,10 +1180,23 @@ export const layer = Layer.effect(
         updateToolCall,
         completeToolCall,
         process,
-      } as Handle // Effect.fn generator doesn't narrow to Handle — runtime shape verified by tests
+      } as Handle
+      // CAST BOUNDARY #1 — Effect.fn generator return type
+      // Upstream: Effect.fn wraps generator functions, but the return type inference
+      // doesn't narrow to Handle's structural interface (create/updateToolCall/completeToolCall/process).
+      // Runtime: the object genuinely satisfies Handle — verified by session lifecycle tests.
+      // Removal condition: Effect.fn return type narrows to declared interface.
+      // Scope: narrow (single object literal cast)
     })
 
-    return Service.of({ create } as Interface) // Effect.fn wrapper loses dependency channel — runtime correct
+    return Service.of({ create } as Interface)
+    // CAST BOUNDARY #2 — Effect.fn wrapper loses dependency channel
+    // Upstream: Effect.fn's return type doesn't preserve the full dependency
+    // channel (EventStore, etc.) in the Interface type. The runtime object has
+    // all required methods with correct signatures.
+    // Runtime: verified by processor integration tests.
+    // Removal condition: Effect.fn preserves dependency channels in return type.
+    // Scope: narrow (single service object cast)
   }),
 )
 
@@ -1206,7 +1219,14 @@ export const defaultLayer = Layer.suspend(() =>
   ),
 )
 
-export const node = LayerNode.make(layer as any, [ // Layer composition + EventStore dep — tracked: TODO narrow
+export const node = LayerNode.make(layer as any, [
+  // CAST BOUNDARY #3 — Layer composition with EventStore dependency
+  // Upstream: LayerNode.make expects Layer<R, E, never>, but layer.pipe(Layer.provide(...))
+  // produces a Layer whose type parameter includes the EventStore dependency that's
+  // been provided at construction time but not erased from the type.
+  // Runtime: the layer is fully self-contained — all deps provided.
+  // Removal condition: Layer.provide erases provided deps from type parameter.
+  // Scope: narrow (just the first arg to LayerNode.make)
   Session.node,
   Config.node,
   Snapshot.node,
@@ -1220,6 +1240,13 @@ export const node = LayerNode.make(layer as any, [ // Layer composition + EventS
   EventV2Bridge.node,
   RuntimeFlags.node,
   Database.node,
-] as any) // LayerNode node array type mismatch — tracked: TODO narrow
+] as any)
+  // CAST BOUNDARY #4 — LayerNode node array type
+  // Upstream: LayerNode.make's second parameter expects an array of specific node types,
+  // but the array includes nodes whose type signatures don't match exactly due to
+  // the EventStore dependency threading through the layer graph.
+  // Runtime: all nodes are valid LayerNode instances — verified by app startup.
+  // Removal condition: LayerNode accepts heterogeneous node arrays, or deps are erased.
+  // Scope: narrow (just the second arg to LayerNode.make)
 
 export * as SessionProcessor from "./processor"
