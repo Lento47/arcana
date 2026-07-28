@@ -58,6 +58,8 @@ import { AgentAttachment, FileAttachment, Prompt, Source } from "@arcana/core/se
 import { formatActiveGoalBlock } from "@arcana/core/session/goal"
 import * as DateTime from "effect/DateTime"
 import { eq } from "drizzle-orm"
+import { ContractTable } from "@arcana/core/epistemic/contract-sql"
+import { ObligationTable } from "@arcana/core/epistemic/obligation-sql"
 import { SessionTable } from "@arcana/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
@@ -1524,7 +1526,42 @@ export const layer = Layer.effect(
               }
             }
 
-            if (result === "stop") return "break" as const
+            if (result === "stop") {
+              // ── Epistemic completion gate ──────────────────────────
+              // Block completion when required obligations remain unresolved.
+              // Uses Drizzle ORM with provideService to avoid layer deps.
+              const activeContract = yield* db
+                .select({ id: ContractTable.id })
+                .from(ContractTable)
+                .where(eq(ContractTable.session_id, sessionID))
+                .limit(1)
+                .pipe(
+                  Effect.provideService(Database.Service, database),
+                  Effect.orElseSucceed(() => []),
+                )
+              if (activeContract.length > 0) {
+                const unresolved = yield* db
+                  .select({ id: ObligationTable.id })
+                  .from(ObligationTable)
+                  .where(eq(ObligationTable.contract_id, activeContract[0].id))
+                  .pipe(
+                    Effect.provideService(Database.Service, database),
+                    Effect.orElseSucceed(() => []),
+                  )
+                if (unresolved.length > 0) {
+                  yield* Effect.logWarning("completion gate: blocked", {
+                    sessionID,
+                    contractId: activeContract[0].id,
+                    unresolvedCount: unresolved.length,
+                  })
+                  // Fall through — let the loop continue
+                } else {
+                  return "break" as const
+                }
+              } else {
+                return "break" as const
+              }
+            }
             if (result === "compact") {
               yield* compaction.create({
                 sessionID,
