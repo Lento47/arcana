@@ -61,6 +61,7 @@ import { eq } from "drizzle-orm"
 import { ContractTable } from "@arcana/core/epistemic/contract-sql"
 import { ObligationTable } from "@arcana/core/epistemic/obligation-sql"
 import { EventStore } from "./epistemic/event-store"
+import { deriveCompletionReason } from "./epistemic/completion-reason"
 import { SessionTable } from "@arcana/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
@@ -141,6 +142,11 @@ export const layer = Layer.effect(
 
     const cancel = Effect.fn("SessionPrompt.cancel")(function* (sessionID: SessionID) {
       yield* Effect.logInfo("cancel", { "session.id": sessionID })
+      // Set cancellation metadata so session.completed emits reason: "cancelled"
+      yield* sessions.setMetadata({
+        sessionID,
+        metadata: { ...((yield* sessions.get(sessionID))?.metadata ?? {}), __arcana_cancelled: true },
+      }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
       yield* state.cancel(sessionID)
     })
 
@@ -1632,11 +1638,12 @@ export const layer = Layer.effect(
         }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
 
         // Emit session.completed event
+        const completionReason = deriveCompletionReason(session.metadata as Record<string, unknown> | undefined)
         yield* eventStore.append({
           sessionId: sessionID,
           actor: { kind: "user", id: "session" },
           type: "session.completed",
-          payload: { steps: step, reason: session.metadata?.__arcana_max_steps_hit ? "step_limit" : "normal" },
+          payload: { steps: step, reason: completionReason },
         }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
 
         return yield* lastAssistant(sessionID)
