@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, readdir
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { createHash } from "node:crypto"
+import { atomicWriteSync } from "../util/atomic-write"
 
 export interface DaemonLock {
   workspace: string
@@ -62,7 +63,7 @@ export function acquireLock(cwd: string, port: number, version: string): DaemonL
 export function updateLock(cwd: string, patch: Partial<DaemonLock>): void {
   const existing = readLock(cwd)
   if (!existing) return
-  writeFileSync(lockPath(workspaceHash(cwd)), JSON.stringify({ ...existing, ...patch }, null, 2))
+  atomicWriteSync(lockPath(workspaceHash(cwd)), JSON.stringify({ ...existing, ...patch }, null, 2))
 }
 
 export function removeLock(cwd: string): void {

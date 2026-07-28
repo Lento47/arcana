@@ -1,5 +1,6 @@
 import type { CommandModule } from "yargs"
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs"
+import { readFileSync, existsSync, mkdirSync } from "node:fs"
+import { atomicWriteSync } from "../../util/atomic-write"
 import { join, dirname } from "node:path"
 import { homedir } from "node:os"
 
@@ -25,7 +26,7 @@ export const ThemeCommand: CommandModule = {
       }
       config.theme = name
       mkdirSync(dirname(TUI_CONFIG), { recursive: true })
-      writeFileSync(TUI_CONFIG, JSON.stringify(config, null, 2), "utf8")
+      atomicWriteSync(TUI_CONFIG, JSON.stringify(config, null, 2))
       console.log(`Theme set to "${name}". Restart arcana to apply.`)
       return
     }

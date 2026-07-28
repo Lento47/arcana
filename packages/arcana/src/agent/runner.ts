@@ -112,9 +112,11 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
               proxyURL = base
               // Refresh cache for next cold start
               try {
-                const { mkdirSync, writeFileSync } = await import("node:fs")
+                const { mkdirSync, writeFileSync, renameSync } = await import("node:fs")
                 mkdirSync(join(home, "cache"), { recursive: true })
-                writeFileSync(cacheFile, JSON.stringify({ list: data.data, default: data.default || "openrouter/free", at: Date.now() }))
+                const tmp = cacheFile + ".tmp"
+                writeFileSync(tmp, JSON.stringify({ list: data.data, default: data.default || "openrouter/free", at: Date.now() }))
+                renameSync(tmp, cacheFile)
               } catch {}
               break
             }
