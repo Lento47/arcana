@@ -1214,6 +1214,14 @@ export const layer = Layer.effect(
         let step = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
+        // Emit session.started event
+        yield* eventStore.append({
+          sessionId: sessionID,
+          actor: { kind: "user", id: "session" },
+          type: "session.started",
+          payload: { agent: session.agent, model: session.model },
+        }).pipe(Effect.catchLog, Effect.ignore)
+
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
           yield* Effect.logInfo("loop", { "session.id": sessionID, step })
@@ -1571,7 +1579,7 @@ export const layer = Layer.effect(
                     sessionId: sessionID,
                     actor: { kind: "policy", id: "completion-gate" },
                     type: "completion.resolved",
-                    payload: { contractId: activeContract[0].id, method: "all-obligations-resolved" },
+                    payload: { contractId: activeContract[0].id, method: "VERIFIED_COMPLETE" },
                   }).pipe(Effect.catchLog, Effect.ignore)
                   return "break" as const
                 }
@@ -1581,7 +1589,7 @@ export const layer = Layer.effect(
                   sessionId: sessionID,
                   actor: { kind: "policy", id: "completion-gate" },
                   type: "completion.resolved",
-                  payload: { method: "no-active-contract" },
+                  payload: { method: "NO_ACTIVE_CONTRACT" },
                 }).pipe(Effect.catchLog, Effect.ignore)
                 return "break" as const
               }
@@ -1622,6 +1630,14 @@ export const layer = Layer.effect(
             reason: "post_turn",
           })
         }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+
+        // Emit session.completed event
+        yield* eventStore.append({
+          sessionId: sessionID,
+          actor: { kind: "user", id: "session" },
+          type: "session.completed",
+          payload: { steps: step },
+        }).pipe(Effect.catchLog, Effect.ignore)
 
         return yield* lastAssistant(sessionID)
       },

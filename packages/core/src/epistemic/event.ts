@@ -19,6 +19,9 @@ export const ArcanaEvent = Schema.Struct({
   }),
 
   type: Schema.Union([
+    Schema.Literal("session.started"),
+    Schema.Literal("session.completed"),
+    Schema.Literal("session.crashed"),
     Schema.Literal("contract.proposed"),
     Schema.Literal("contract.activated"),
     Schema.Literal("contract.amended"),
