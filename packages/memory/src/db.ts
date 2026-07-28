@@ -326,6 +326,21 @@ INSERT OR IGNORE INTO obligation_templates (rule_id, description, trigger, verif
   ('external-fact', 'External claim must be verified via primary source', 'external_current_fact_assertion', 'external_confirmation', 1),
   ('security-safe', 'Dependency or change must pass security policy', 'security_safe_assertion', 'human_decision', 1),
   ('requirement-complete', 'All stated requirements must have supporting evidence', 'requirement_complete_assertion', 'execution', 1);
+
+-- Immutable event store — hash-linked append-only trace (Phase A)
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  sequence INTEGER NOT NULL,
+  timestamp TEXT NOT NULL,
+  previous_hash TEXT,
+  hash TEXT NOT NULL,
+  actor_kind TEXT NOT NULL CHECK(actor_kind IN ('user','model','tool','policy')),
+  actor_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  payload TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_sequence ON events(sequence);
 `
 
 // Indexes that reference columns added by COLUMN_MIGRATIONS must be created
