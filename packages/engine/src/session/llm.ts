@@ -10,7 +10,9 @@ import { streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
 import type { LLMEvent } from "@arcana/llm"
 import { LLMClient, RequestExecutor, WebSocketExecutor } from "@arcana/llm/route"
 import type { LLMClientService } from "@arcana/llm/route"
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _GitLabWorkflowLanguageModel: any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getGitLabWorkflowLanguageModel(): Promise<any> {
   if (!_GitLabWorkflowLanguageModel) {
     _GitLabWorkflowLanguageModel = (await import("gitlab-ai-provider")).GitLabWorkflowLanguageModel
@@ -155,8 +157,8 @@ const live: Layer.Layer<
               metadata: typeof result === "object" ? result?.metadata : undefined,
               title: typeof result === "object" ? result?.title : undefined,
             }
-          } catch (e: any) {
-            return { result: "", error: e.message ?? String(e) }
+          } catch (e: unknown) {
+            return { result: "", error: e instanceof Error ? e.message : String(e) }
           }
         }
 
@@ -343,7 +345,7 @@ const live: Layer.Layer<
                 specificationVersion: "v3" as const,
                 async transformParams(args) {
                   if (args.type === "stream") {
-                    // @ts-expect-error
+                    // @ts-expect-error AI SDK v3 params are mutable — prompt mutation is by design
                     args.params.prompt = ProviderTransform.message(
                       args.params.prompt,
                       input.model,

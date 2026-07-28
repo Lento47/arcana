@@ -61,10 +61,10 @@ const PID_RECYCLE_GRACE_MS = 5 * 60 * 1000 // 5 minutes
 function isProcessAlive(pid: number, lockPpid?: number): boolean {
   try {
     process.kill(pid, 0)
-  } catch (e: any) {
+  } catch (e: unknown) {
     // Only ESRCH ("no such process") means dead; EPERM means alive but
     // unowned by us.
-    return e?.code === "EPERM"
+    return (e as NodeJS.ErrnoException)?.code === "EPERM"
   }
 
   // PID is alive according to signal-0. Guard against PID reuse:
@@ -333,9 +333,9 @@ function tryAtomicLock(projectRoot: string, data: SessionLockData): boolean {
     fs.writeSync(fd, JSON.stringify(data, null, 2), 0, "utf-8")
     fs.closeSync(fd)
     return true
-  } catch (e: any) {
+  } catch (e: unknown) {
     if (fd !== undefined) try { fs.closeSync(fd) } catch { /* ignore close errors */ }
-    if (e?.code === "EEXIST") return false
+    if ((e as NodeJS.ErrnoException)?.code === "EEXIST") return false
     // EACCES, EPERM, EROFS, ENOSPC — fall back to PID heuristic
     throw e
   }

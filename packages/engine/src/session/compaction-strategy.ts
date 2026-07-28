@@ -54,8 +54,15 @@ export function getPlan(level: CompactionLevel): CompactionPlan {
   }
 }
 
-export function dropLargeOutputs(messages: any[], maxChars: number): any[] {
-  return messages.map((msg: any) => {
+/** Message shape needed by compaction utilities — role + content. */
+interface MessageLike {
+  role: string
+  content: unknown
+  [key: string]: unknown
+}
+
+export function dropLargeOutputs(messages: MessageLike[], maxChars: number): MessageLike[] {
+  return messages.map((msg) => {
     if (msg.role === "tool" && typeof msg.content === "string" && msg.content.length > maxChars) {
       return { ...msg, content: msg.content.slice(0, maxChars) + "\n... [truncated]" }
     }

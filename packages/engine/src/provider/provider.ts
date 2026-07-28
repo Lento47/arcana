@@ -1461,13 +1461,13 @@ export const layer = Layer.effect(
         function mergeProvider(providerID: ProviderV2.ID, provider: Partial<Info>) {
           const existing = providers[providerID]
           if (existing) {
-            // @ts-expect-error
+            // @ts-expect-error mergeDeep type mismatch — Partial<Info> vs Info spread
             providers[providerID] = mergeDeep(existing, provider)
             return
           }
           const match = database[providerID]
           if (!match) return
-          // @ts-expect-error
+          // @ts-expect-error mergeDeep type mismatch — database record vs Partial<Info>
           providers[providerID] = mergeDeep(match, provider)
         }
 
