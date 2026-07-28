@@ -4,9 +4,20 @@
  * Used by processor.ts to enrich tool.called and tool.returned events
  * with structured replay data. Policy classification uses Arcana's
  * versioned allowlist — not a model-provided flag.
+ *
+ * CRITICAL SAFETY INVARIANT:
+ * Replay must re-evaluate the CURRENT policy at execution time.
+ * The historical decision proves what Arcana believed then.
+ * A stricter current policy always wins.
  */
 
 import { createHash } from "node:crypto"
+
+// ────────────────────────────────────────────────────────────────
+// Policy version — bump when allowlist changes
+// ────────────────────────────────────────────────────────────────
+
+export const CURRENT_POLICY_VERSION = "replay-policy-v2"
 
 // ────────────────────────────────────────────────────────────────
 // Replay metadata types
@@ -17,21 +28,39 @@ export interface ReplayCallMetadata {
   readonly arguments: ReadonlyArray<string>
   readonly cwd: string | null
   readonly timeout: number | null
+
+  readonly policyVersion: string
   readonly policyDecision: "ELIGIBLE" | "REFUSED" | "NOT_APPLICABLE"
   readonly refusalReason: string | null
+
+  /** true when executable+arguments were inferred by parseCommandString
+   *  rather than captured as structured data at the terminal-tool boundary.
+   *  Fallback-parsed commands carry lower assurance. */
+  readonly inferredInvocation: boolean
+
+  /** true when the command was wrapped in a shell (sh -c, cmd /c, powershell).
+   *  Shell-wrapped commands are never replayed. */
+  readonly shellWrapped: boolean
 }
 
 export interface ReplayReturnMetadata {
   readonly exitCode: number | null
-  readonly stdoutDigest: string | null
-  readonly stderrDigest: string | null
+
+  /** Raw boundary digests — from the terminal execution boundary,
+   *  not a transformed or truncated UI/tool result. */
+  readonly rawStdoutDigest: string | null
+  readonly rawStderrDigest: string | null
+
+  /** Normalized digest for comparison. Profile is versioned. */
   readonly normalizedOutputDigest: string | null
+  readonly normalizationProfile: string
+
   readonly duration: number | null
   readonly timeoutStatus: "COMPLETED" | "TIMED_OUT" | "UNKNOWN"
 }
 
 // ────────────────────────────────────────────────────────────────
-// Allowlist policy (matches deterministic-replay.ts)
+// Allowlist policy
 // ────────────────────────────────────────────────────────────────
 
 const ALLOWED_PROGRAMS = new Set([
@@ -64,8 +93,19 @@ const SECRET_PATTERNS = [
   /Bearer\s+\S+/, /password=\S+/i, /token=\S+/i, /key=\S+/i, /secret=\S+/i,
 ]
 
+// Shell wrapper patterns — never replay through these
+const SHELL_WRAPPERS = [
+  /^\s*sh\s+-c\s/,
+  /^\s*bash\s+-c\s/,
+  /^\s*cmd\s+\/c\s/i,
+  /^\s*cmd\.exe\s+\/c\s/i,
+  /^\s*powershell\s/i,
+  /^\s*pwsh\s/i,
+  /^\s*zsh\s+-c\s/,
+]
+
 // ────────────────────────────────────────────────────────────────
-// Command parsing
+// Command parsing (conservative fallback)
 // ────────────────────────────────────────────────────────────────
 
 export function parseCommandString(command: string): { executable: string; args: string[] } | null {
@@ -97,37 +137,52 @@ export function parseCommandString(command: string): { executable: string; args:
 // Policy classification
 // ────────────────────────────────────────────────────────────────
 
-function classifyCommand(command: string): { decision: "ELIGIBLE" | "REFUSED"; reason: string | null } {
-  // Check for secrets
-  for (const p of SECRET_PATTERNS) {
-    if (p.test(command)) return { decision: "REFUSED", reason: "contains_secret" }
+export function classifyCommand(
+  executable: string,
+  args: ReadonlyArray<string>,
+  shellWrapped: boolean,
+  inferredInvocation: boolean,
+): { decision: "ELIGIBLE" | "REFUSED"; reason: string | null } {
+  // Shell-wrapped commands are never replayed
+  if (shellWrapped) {
+    return { decision: "REFUSED", reason: "shell_wrapped" }
   }
 
-  // Check for dangerous patterns
-  for (const p of DANGEROUS_PATTERNS) {
-    if (p.test(command)) return { decision: "REFUSED", reason: `dangerous_pattern:${p.source}` }
+  // Inferred (fallback-parsed) invocations carry lower assurance — refuse
+  if (inferredInvocation) {
+    return { decision: "REFUSED", reason: "inferred_invocation_not_authoritative" }
   }
 
-  const parsed = parseCommandString(command)
-  if (!parsed) return { decision: "REFUSED", reason: "empty_command" }
-
-  const programName = parsed.executable.includes("/") || parsed.executable.includes("\\")
-    ? parsed.executable.split(/[/\\]/).pop()!
-    : parsed.executable
+  const programName = executable.includes("/") || executable.includes("\\")
+    ? executable.split(/[/\\]/).pop()!
+    : executable
 
   if (!ALLOWED_PROGRAMS.has(programName)) {
     return { decision: "REFUSED", reason: `program_not_allowed:${programName}` }
   }
 
   const allowedSubs = ALLOWED_SUBCOMMANDS[programName]
-  if (allowedSubs && parsed.args.length > 0) {
-    const sub = parsed.args[0]!
+  if (allowedSubs && args.length > 0) {
+    const sub = args[0]!
     if (!sub.startsWith("-") && !allowedSubs.has(sub)) {
       return { decision: "REFUSED", reason: `subcommand_not_allowed:${programName} ${sub}` }
     }
   }
 
+  // Check args for dangerous patterns and secrets
+  const fullCommand = [executable, ...args].join(" ")
+  for (const p of SECRET_PATTERNS) {
+    if (p.test(fullCommand)) return { decision: "REFUSED", reason: "contains_secret" }
+  }
+  for (const p of DANGEROUS_PATTERNS) {
+    if (p.test(fullCommand)) return { decision: "REFUSED", reason: `dangerous_pattern:${p.source}` }
+  }
+
   return { decision: "ELIGIBLE", reason: null }
+}
+
+function isShellWrapped(command: string): boolean {
+  return SHELL_WRAPPERS.some(p => p.test(command))
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -138,7 +193,6 @@ export function extractReplayCallMetadata(
   toolName: string,
   toolInput: Record<string, unknown>,
 ): ReplayCallMetadata {
-  // Only terminal/exec tools have replayable commands
   const isTerminal = toolName === "terminal" || toolName === "execute" || toolName === "shell"
 
   if (!isTerminal) {
@@ -147,8 +201,11 @@ export function extractReplayCallMetadata(
       arguments: [],
       cwd: null,
       timeout: null,
+      policyVersion: CURRENT_POLICY_VERSION,
       policyDecision: "NOT_APPLICABLE",
       refusalReason: null,
+      inferredInvocation: false,
+      shellWrapped: false,
     }
   }
 
@@ -165,27 +222,56 @@ export function extractReplayCallMetadata(
       arguments: [],
       cwd,
       timeout,
+      policyVersion: CURRENT_POLICY_VERSION,
       policyDecision: "REFUSED",
       refusalReason: "no_command_in_input",
+      inferredInvocation: false,
+      shellWrapped: false,
     }
   }
 
-  const parsed = parseCommandString(command)
-  const classification = classifyCommand(command)
+  // Prefer structured invocation from the tool input
+  const hasStructuredInvocation =
+    typeof toolInput.executable === "string" &&
+    Array.isArray(toolInput.arguments)
+
+  let executable: string
+  let args: ReadonlyArray<string>
+  let inferredInvocation: boolean
+
+  if (hasStructuredInvocation) {
+    executable = toolInput.executable as string
+    args = toolInput.arguments as string[]
+    inferredInvocation = false
+  } else {
+    // Fallback: parse from shell text — lower assurance
+    const parsed = parseCommandString(command)
+    executable = parsed?.executable ?? ""
+    args = parsed?.args ?? []
+    inferredInvocation = true
+  }
+
+  const shellWrapped = isShellWrapped(command)
+  const classification = classifyCommand(executable, args, shellWrapped, inferredInvocation)
 
   return {
-    executable: parsed?.executable ?? null,
-    arguments: parsed?.args ?? [],
+    executable: executable || null,
+    arguments: args,
     cwd,
     timeout,
+    policyVersion: CURRENT_POLICY_VERSION,
     policyDecision: classification.decision,
     refusalReason: classification.reason,
+    inferredInvocation,
+    shellWrapped,
   }
 }
 
 // ────────────────────────────────────────────────────────────────
-// Extraction from tool output
+// Extraction from tool output (raw terminal boundary)
 // ────────────────────────────────────────────────────────────────
+
+const NORMALIZATION_PROFILE = "terminal-output-v1"
 
 export function extractReplayReturnMetadata(
   toolInput: Record<string, unknown>,
@@ -198,14 +284,15 @@ export function extractReplayReturnMetadata(
     : typeof toolInput.exitCode === "number" ? toolInput.exitCode
     : null
 
-  const stdout = typeof metadata.stdout === "string" ? metadata.stdout : toolOutput
-  const stderr = typeof metadata.stderr === "string" ? metadata.stderr : ""
+  // Raw boundary — from terminal execution, not UI transformation
+  const rawStdout = typeof metadata.stdout === "string" ? metadata.stdout : toolOutput
+  const rawStderr = typeof metadata.stderr === "string" ? metadata.stderr : ""
 
-  const stdoutDigest = createHash("sha256").update(stdout).digest("hex")
-  const stderrDigest = createHash("sha256").update(stderr).digest("hex")
+  const rawStdoutDigest = createHash("sha256").update(rawStdout).digest("hex")
+  const rawStderrDigest = createHash("sha256").update(rawStderr).digest("hex")
 
   // Normalized: strip trailing whitespace, collapse multiple newlines
-  const normalized = stdout.replace(/\s+$/g, "").replace(/\n{3,}/g, "\n\n")
+  const normalized = rawStdout.replace(/\s+$/g, "").replace(/\n{3,}/g, "\n\n")
   const normalizedOutputDigest = createHash("sha256").update(normalized).digest("hex")
 
   const duration = startTime !== null ? endTime - startTime : null
@@ -219,9 +306,10 @@ export function extractReplayReturnMetadata(
 
   return {
     exitCode,
-    stdoutDigest,
-    stderrDigest,
+    rawStdoutDigest,
+    rawStderrDigest,
     normalizedOutputDigest,
+    normalizationProfile: NORMALIZATION_PROFILE,
     duration,
     timeoutStatus,
   }
