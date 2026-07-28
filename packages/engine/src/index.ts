@@ -232,6 +232,7 @@ const commandLoaders = {
   memory: () => import("./cli/cmd/memory").then((m) => m.MemoryCommand),
   feedback: () => import("./cli/cmd/feedback").then((m) => m.FeedbackCommand),
   cron: () => import("./cli/cmd/cron").then((m) => m.CronCommand),
+  gateway: () => import("./cli/cmd/gateway").then((m) => m.GatewayCommand),
 }
 
 async function loadCommandsFor(firstArg: string | undefined): Promise<CommandModule[]> {

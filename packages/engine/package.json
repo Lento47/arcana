@@ -50,6 +50,7 @@
     "@agentclientprotocol/sdk": "0.21.0",
     "@ai-sdk/provider": "3.0.8",
     "@arcana/cron": "workspace:*",
+    "@arcana/gateway": "workspace:*",
     "@arcana/llm": "workspace:*",
     "@arcana/memory": "workspace:*",
     "@arcana/ml": "workspace:*",
