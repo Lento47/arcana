@@ -98,10 +98,10 @@ export interface DeterministicReplayResult {
 // Workspace snapshot
 // ────────────────────────────────────────────────────────────────
 
-function snapshotWorkspace(dir: string, maxFiles: number = 1000): Map<string, string> {
+function snapshotWorkspace(dir: string, maxFiles: number = 200): Map<string, string> {
   const files = new Map<string, string>()
   function walk(current: string, depth: number) {
-    if (depth > 5 || files.size >= maxFiles) return
+    if (depth > 3 || files.size >= maxFiles) return
     try {
       const entries = fs.readdirSync(current, { withFileTypes: true })
       for (const entry of entries) {
