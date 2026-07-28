@@ -287,6 +287,45 @@ CREATE TABLE IF NOT EXISTS contract_assumptions (
   claim_id TEXT NOT NULL REFERENCES claims(id),
   PRIMARY KEY (contract_id, claim_id)
 );
+
+-- Proof obligations — evidence gates for contract completion (Phase A)
+CREATE TABLE IF NOT EXISTS obligations (
+  id TEXT PRIMARY KEY,
+  contract_id TEXT NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  source_kind TEXT NOT NULL CHECK(source_kind IN ('registry','acceptance_criterion','agent')),
+  source_rule_id TEXT,
+  source_criterion_id TEXT,
+  source_reason TEXT,
+  description TEXT NOT NULL,
+  required INTEGER NOT NULL DEFAULT 1,
+  verification TEXT NOT NULL CHECK(verification IN ('observation','execution','comparison','human_decision','external_confirmation')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','satisfied','failed','waived','not_applicable')),
+  created_at TEXT NOT NULL,
+  resolved_at TEXT,
+  waived_by_event_id TEXT,
+  waiver_reason TEXT
+);
+
+CREATE TABLE IF NOT EXISTS obligation_templates (
+  rule_id TEXT PRIMARY KEY,
+  description TEXT NOT NULL,
+  trigger TEXT NOT NULL,
+  verification TEXT NOT NULL,
+  required INTEGER NOT NULL DEFAULT 1
+);
+
+-- Seed baseline obligation templates
+INSERT OR IGNORE INTO obligation_templates (rule_id, description, trigger, verification, required) VALUES
+  ('file-content', 'File must contain the asserted content', 'file_content_assertion', 'observation', 1),
+  ('symbol-exists', 'Symbol must exist in the codebase', 'symbol_existence_assertion', 'observation', 1),
+  ('command-success', 'Command must exit with code 0', 'command_success_assertion', 'execution', 1),
+  ('bug-fixed', 'Bug reproduction must fail before fix and pass after', 'bug_fixed_assertion', 'execution', 1),
+  ('regression-free', 'Relevant regression suite must pass', 'regression_free_assertion', 'execution', 1),
+  ('build-success', 'Project must build without errors', 'build_success_assertion', 'execution', 1),
+  ('deployment-success', 'Deployment must succeed in target environment', 'deployment_success_assertion', 'external_confirmation', 1),
+  ('external-fact', 'External claim must be verified via primary source', 'external_current_fact_assertion', 'external_confirmation', 1),
+  ('security-safe', 'Dependency or change must pass security policy', 'security_safe_assertion', 'human_decision', 1),
+  ('requirement-complete', 'All stated requirements must have supporting evidence', 'requirement_complete_assertion', 'execution', 1);
 `
 
 // Indexes that reference columns added by COLUMN_MIGRATIONS must be created
