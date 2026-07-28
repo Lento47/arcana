@@ -27,6 +27,7 @@ import { Database } from "@arcana/core/database/database"
 import { SessionEvent } from "@arcana/core/session/event"
 import { SessionMessage } from "@arcana/core/session/message"
 import { ModelV2 } from "@arcana/core/model"
+import { extractReplayCallMetadata, extractReplayReturnMetadata } from "./epistemic/replay-metadata.js"
 import { ProviderV2 } from "@arcana/core/provider"
 import * as DateTime from "effect/DateTime"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -255,12 +256,25 @@ export const layer = Layer.effect(
             attachments: output.attachments,
           },
         })
-        // Emit epistemic tool.returned event
+        // Emit epistemic tool.returned event with replay metadata
+        const toolInput = isRecord(match.part.state.input) ? match.part.state.input : {}
+        const endTime = Date.now()
         yield* eventStore.append({
           sessionId: ctx.sessionID,
           actor: { kind: "tool", id: match.part.tool ?? toolCallID },
           type: "tool.returned",
-          payload: { callID: toolCallID, title: output.title, hasOutput: output.output.length > 0 },
+          payload: {
+            callID: toolCallID,
+            title: output.title,
+            hasOutput: output.output.length > 0,
+            replay: extractReplayReturnMetadata(
+              toolInput,
+              output.output,
+              isRecord(output.metadata) ? output.metadata : {},
+              match.part.state.time?.start ?? null,
+              endTime,
+            ),
+          },
         }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
         yield* settleToolCall(toolCallID)
       })
@@ -362,13 +376,6 @@ export const layer = Layer.effect(
             timestamp: DateTime.makeUnsafe(Date.now()),
           })
         }
-        // Emit epistemic tool.called event
-        yield* eventStore.append({
-          sessionId: ctx.sessionID,
-          actor: { kind: "model", id: ctx.model?.id ?? "unknown" },
-          type: "tool.called",
-          payload: { callID: input.id, tool: input.name, providerExecuted: input.providerExecuted },
-        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
         const part = yield* session.updatePart({
           id: PartID.ascending(),
           messageID: ctx.assistantMessage.id,
@@ -547,6 +554,19 @@ export const layer = Layer.effect(
                 timestamp: DateTime.makeUnsafe(Date.now()),
               })
             }
+            // Emit enriched epistemic tool.called event
+            // value.input has the tool's parameters (command, cwd, etc.)
+            yield* eventStore.append({
+              sessionId: ctx.sessionID,
+              actor: { kind: "model", id: value.name },
+              type: "tool.called",
+              payload: {
+                callID: value.id,
+                tool: value.name,
+                providerExecuted: toolCall.part.metadata?.providerExecuted === true,
+                replay: extractReplayCallMetadata(value.name, input),
+              },
+            }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
             yield* updateToolCall(value.id, (match) => ({
               ...match,
               tool: value.name,

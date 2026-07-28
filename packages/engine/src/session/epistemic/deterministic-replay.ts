@@ -9,6 +9,7 @@
  * data. Execute(c) ⟹ RecordedReplayable(c) ∧ PolicyAllows(c) ∧ EnvironmentCompatible(c).
  *
  * P2 = P1 ∧ |R|>0 ∧ ∀r∈R: ReplaySucceeded(r) ∧ EnvironmentCompatible
+ *      ∧ ¬UnauthorizedMutation
  *
  * Where R is the declared replayable subset.
  */
@@ -27,12 +28,14 @@ export type ReplayStepStatus =
   | "SUCCESS"        // exit code and output digest matched
   | "FAILED"         // exit code or output digest mismatched
   | "REFUSED"        // policy rejected this command
-  | "SKIPPED"        // not eligible for replay
+  | "SKIPPED"        // dry-run mode, not executed
 
 export interface ReplayStepResult {
   readonly eventSequence: number
   readonly eventId: string
   readonly command: string | null
+  readonly executable: string | null
+  readonly arguments: ReadonlyArray<string>
   readonly workingDirectory: string | null
   readonly status: ReplayStepStatus
   readonly refusalReason?: string
@@ -46,6 +49,11 @@ export interface ReplayStepResult {
   readonly outputDigestMatch?: boolean
 
   readonly replayDurationMs?: number
+  readonly policyDecision?: "ELIGIBLE" | "REFUSED" | "NOT_APPLICABLE"
+}
+
+export interface WorkspaceSnapshot {
+  readonly files: Map<string, string> // path → SHA-256
 }
 
 export interface DeterministicReplayResult {
@@ -62,198 +70,73 @@ export interface DeterministicReplayResult {
   readonly status: "SUCCESS" | "PARTIAL" | "REFUSED" | "FAILED"
   readonly p2Eligible: boolean
   readonly refusalReasons: ReadonlyArray<string>
+  readonly unauthorizedMutation: boolean
 }
 
 // ────────────────────────────────────────────────────────────────
-// Allowlist policy
+// Row type
 // ────────────────────────────────────────────────────────────────
 
-/** Programs allowed for deterministic replay. */
-const ALLOWED_PROGRAMS = new Set([
-  "tsc",
-  "bun",
-  "npm",
-  "npx",
-  "node",
-  "cargo",
-  "rustc",
-  "eslint",
-  "prettier",
-  "biome",
-  "oxlint",
-  "clippy",
-  "pylint",
-  "mypy",
-  "ruff",
-  "pytest",
-  "go",
-  "zig",
-  "gcc",
-  "clang",
-  "make",
-  "cmake",
-])
-
-/** Subcommands allowed for multi-tool programs. */
-const ALLOWED_SUBCOMMANDS: Record<string, Set<string>> = {
-  bun: new Set(["test", "run", "check", "build"]),
-  npm: new Set(["test", "run", "exec"]),
-  npx: new Set(["tsc", "eslint", "prettier", "biome", "vitest", "jest"]),
-  cargo: new Set(["test", "check", "clippy", "build", "fmt"]),
-  go: new Set(["test", "build", "vet", "fmt"]),
-  node: new Set(["--check"]),
+interface StoredEventRow {
+  id: string
+  sequence: number
+  type: string
+  payload: string
 }
 
-/** Patterns that indicate mutation, network, or dangerous operations. */
-const DANGEROUS_PATTERNS = [
-  /\|/,              // pipe
-  />/,               // redirect
-  /`/,               // subshell
-  /\$\(/,            // command substitution
-  /&&/,              // chaining (could be safe, but refuse for now)
-  /\|\|/,            // chaining
-  /;/,               // command separator
-  /install/i,        // package installation
-  /add\s/i,          // package addition
-  /publish/i,        // publishing
-  /deploy/i,         // deployment
-  /push/i,           // git push
-  /commit/i,         // git commit
-  /rm\s/,            // file deletion
-  /mv\s/,            // file move
-  /chmod/,           // permission change
-  /curl/i,           // network
-  /wget/i,           // network
-  /fetch/i,          // network (when not git fetch)
-  /ssh/i,            // remote
-  /scp/i,            // remote
-  /docker/i,         // containers
-  /kubectl/i,        // kubernetes
-  /DROP\s/i,         // SQL mutation
-  /DELETE\s/i,       // SQL mutation
-  /UPDATE\s/i,       // SQL mutation
-  /INSERT\s/i,       // SQL mutation
-  /CREATE\s/i,       // SQL mutation
-  /ALTER\s/i,        // SQL mutation
-]
-
-/** Patterns that indicate secrets in the command. */
-const SECRET_PATTERNS = [
-  /sk-[a-zA-Z0-9]{20,}/,
-  /ghp_[a-zA-Z0-9]{36}/,
-  /Bearer\s+\S+/,
-  /password=\S+/i,
-  /token=\S+/i,
-  /key=\S+/i,
-  /secret=\S+/i,
-]
-
 // ────────────────────────────────────────────────────────────────
-// Policy checks
+// Workspace snapshot
 // ────────────────────────────────────────────────────────────────
 
-export interface PolicyCheckResult {
-  readonly allowed: boolean
-  readonly reason?: string
-}
+function snapshotWorkspace(dir: string, maxFiles: number = 1000): WorkspaceSnapshot {
+  const files = new Map<string, string>()
 
-export function parseCommand(command: string): { program: string; args: string[] } | null {
-  const trimmed = command.trim()
-  if (!trimmed) return null
-
-  // Simple space-split respecting quotes
-  const parts: string[] = []
-  let current = ""
-  let inQuote = false
-  let quoteChar = ""
-
-  for (const ch of trimmed) {
-    if (inQuote) {
-      if (ch === quoteChar) {
-        inQuote = false
-      } else {
-        current += ch
+  function walk(current: string, depth: number) {
+    if (depth > 5 || files.size >= maxFiles) return
+    try {
+      const entries = fs.readdirSync(current, { withFileTypes: true })
+      for (const entry of entries) {
+        if (files.size >= maxFiles) break
+        const fullPath = path.join(current, entry.name)
+        // Skip node_modules, .git, dist, build
+        if (entry.isDirectory()) {
+          if (["node_modules", ".git", "dist", "build", ".cache", ".next"].includes(entry.name)) continue
+          walk(fullPath, depth + 1)
+        } else if (entry.isFile()) {
+          try {
+            const content = fs.readFileSync(fullPath)
+            const hash = createHash("sha256").update(content).digest("hex")
+            files.set(fullPath, hash)
+          } catch { /* skip unreadable files */ }
+        }
       }
-    } else if (ch === '"' || ch === "'") {
-      inQuote = true
-      quoteChar = ch
-    } else if (ch === " " || ch === "\t") {
-      if (current) {
-        parts.push(current)
-        current = ""
-      }
-    } else {
-      current += ch
-    }
+    } catch { /* skip unreadable dirs */ }
   }
-  if (current) parts.push(current)
 
-  if (parts.length === 0) return null
-  return { program: parts[0]!, args: parts.slice(1) }
+  walk(dir, 0)
+  return { files }
 }
 
-export function checkCommandPolicy(command: string): PolicyCheckResult {
-  // Check for empty command
-  const parsed = parseCommand(command)
-  if (!parsed) return { allowed: false, reason: "empty command" }
+function diffSnapshots(before: WorkspaceSnapshot, after: WorkspaceSnapshot): {
+  modified: string[]
+  added: string[]
+  deleted: string[]
+} {
+  const modified: string[] = []
+  const added: string[] = []
+  const deleted: string[] = []
 
-  // Check for secrets
-  for (const pattern of SECRET_PATTERNS) {
-    if (pattern.test(command)) {
-      return { allowed: false, reason: "command contains secret" }
-    }
+  for (const [file, hash] of after.files) {
+    const beforeHash = before.files.get(file)
+    if (!beforeHash) added.push(file)
+    else if (beforeHash !== hash) modified.push(file)
   }
 
-  // Check for dangerous patterns
-  for (const pattern of DANGEROUS_PATTERNS) {
-    if (pattern.test(command)) {
-      return { allowed: false, reason: `dangerous pattern: ${pattern.source}` }
-    }
+  for (const file of before.files.keys()) {
+    if (!after.files.has(file)) deleted.push(file)
   }
 
-  // Strip path prefix from program name
-  const programName = path.basename(parsed.program)
-
-  // Check if program is allowed
-  if (!ALLOWED_PROGRAMS.has(programName)) {
-    return { allowed: false, reason: `program not in allowlist: ${programName}` }
-  }
-
-  // Check subcommand if applicable
-  const allowedSubs = ALLOWED_SUBCOMMANDS[programName]
-  if (allowedSubs && parsed.args.length > 0) {
-    const subcommand = parsed.args[0]!
-    // Allow flags (--) and check subcommand
-    if (!subcommand.startsWith("-") && !allowedSubs.has(subcommand)) {
-      return { allowed: false, reason: `subcommand not allowed: ${programName} ${subcommand}` }
-    }
-  }
-
-  return { allowed: true }
-}
-
-// ────────────────────────────────────────────────────────────────
-// Metadata extraction from events
-// ────────────────────────────────────────────────────────────────
-
-export interface ToolCallMetadata {
-  readonly command: string | null
-  readonly workingDirectory: string | null
-  readonly timeout: number | null
-  readonly replayable: boolean
-  readonly exitCode: number | null
-  readonly outputDigest: string | null
-}
-
-export function extractToolCallMetadata(payload: Record<string, unknown>): ToolCallMetadata {
-  return {
-    command: typeof payload.command === "string" ? payload.command : null,
-    workingDirectory: typeof payload.workingDirectory === "string" ? payload.workingDirectory : null,
-    timeout: typeof payload.timeout === "number" ? payload.timeout : null,
-    replayable: payload.replayable === true,
-    exitCode: typeof payload.exitCode === "number" ? payload.exitCode : null,
-    outputDigest: typeof payload.outputDigest === "string" ? payload.outputDigest : null,
-  }
+  return { modified, added, deleted }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -261,24 +144,17 @@ export function extractToolCallMetadata(payload: Record<string, unknown>): ToolC
 // ────────────────────────────────────────────────────────────────
 
 export function checkEnvironmentCompatibility(
-  command: string,
+  executable: string | null,
   workingDirectory: string | null,
 ): "COMPATIBLE" | "DRIFTED" | "UNKNOWN" {
-  // Check working directory exists
-  if (workingDirectory) {
-    if (!fs.existsSync(workingDirectory)) return "DRIFTED"
-  }
+  if (workingDirectory && !fs.existsSync(workingDirectory)) return "DRIFTED"
+  if (!executable) return "UNKNOWN"
 
-  // Check if the program is available
-  const parsed = parseCommand(command)
-  if (!parsed) return "UNKNOWN"
-
-  const programName = path.basename(parsed.program)
   try {
     if (process.platform === "win32") {
-      execSync(`where ${programName}`, { stdio: "pipe", timeout: 5000 })
+      execSync(`where ${executable}`, { stdio: "pipe", timeout: 5000 })
     } else {
-      execSync(`which ${programName}`, { stdio: "pipe", timeout: 5000 })
+      execSync(`which ${executable}`, { stdio: "pipe", timeout: 5000 })
     }
   } catch {
     return "DRIFTED"
@@ -288,40 +164,111 @@ export function checkEnvironmentCompatibility(
 }
 
 // ────────────────────────────────────────────────────────────────
-// Command execution
+// Bounded command execution
 // ────────────────────────────────────────────────────────────────
-
-export interface ExecutionResult {
-  readonly exitCode: number
-  readonly output: string
-  readonly outputDigest: string
-  readonly durationMs: number
-}
 
 export function executeBoundedCommand(
   command: string,
   workingDirectory: string | null,
   timeoutMs: number = 30_000,
-): ExecutionResult {
+): { exitCode: number; output: string; outputDigest: string; durationMs: number } {
   const start = Date.now()
 
-  const result = execSync(command, {
-    cwd: workingDirectory ?? process.cwd(),
-    timeout: timeoutMs,
-    stdio: ["pipe", "pipe", "pipe"],
-    encoding: "utf-8",
-    maxBuffer: 10 * 1024 * 1024, // 10MB
-  })
+  let exitCode = 0
+  let output = ""
+  try {
+    output = execSync(command, {
+      cwd: workingDirectory ?? process.cwd(),
+      timeout: timeoutMs,
+      stdio: ["pipe", "pipe", "pipe"],
+      encoding: "utf-8",
+      maxBuffer: 10 * 1024 * 1024,
+    })
+  } catch (err: any) {
+    exitCode = err.status ?? 1
+    output = err.stdout ?? ""
+  }
 
   const durationMs = Date.now() - start
-  const output = typeof result === "string" ? result : String(result)
-  const outputDigest = createHash("sha256").update(output).digest("hex")
+  const normalized = output.replace(/\s+$/g, "").replace(/\n{3,}/g, "\n\n")
+  const outputDigest = createHash("sha256").update(normalized).digest("hex")
 
-  return { exitCode: 0, output, outputDigest, durationMs }
+  return { exitCode, output, outputDigest, durationMs }
 }
 
-export function computeOutputDigest(output: string): string {
-  return createHash("sha256").update(output).digest("hex")
+// ────────────────────────────────────────────────────────────────
+// Event pairing and metadata extraction
+// ────────────────────────────────────────────────────────────────
+
+interface PairedToolCall {
+  callEvent: StoredEventRow
+  returnEvent: StoredEventRow | null
+  callPayload: Record<string, unknown>
+  returnPayload: Record<string, unknown>
+}
+
+function pairToolEvents(events: StoredEventRow[]): PairedToolCall[] {
+  const calls = new Map<string, StoredEventRow>()
+  const returns = new Map<string, StoredEventRow>()
+
+  for (const event of events) {
+    if (event.type !== "tool.called" && event.type !== "tool.returned") continue
+    let payload: Record<string, unknown> = {}
+    try { payload = JSON.parse(event.payload) } catch { continue }
+    const callID = typeof payload.callID === "string" ? payload.callID : null
+    if (!callID) continue
+
+    if (event.type === "tool.called") calls.set(callID, event)
+    else returns.set(callID, event)
+  }
+
+  const pairs: PairedToolCall[] = []
+  for (const [callID, callEvent] of calls) {
+    const returnEvent = returns.get(callID) ?? null
+    let callPayload: Record<string, unknown> = {}
+    let returnPayload: Record<string, unknown> = {}
+    try { callPayload = JSON.parse(callEvent.payload) } catch {}
+    if (returnEvent) try { returnPayload = JSON.parse(returnEvent.payload) } catch {}
+
+    pairs.push({ callEvent, returnEvent, callPayload, returnPayload })
+  }
+
+  return pairs
+}
+
+function extractCommandFromPair(pair: PairedToolCall): string | null {
+  const replay = pair.callPayload.replay as Record<string, unknown> | undefined
+  if (!replay) return null
+  const executable = typeof replay.executable === "string" ? replay.executable : null
+  const args = Array.isArray(replay.arguments) ? replay.arguments : []
+  if (!executable) return null
+  return [executable, ...args].join(" ")
+}
+
+function extractCwdFromPair(pair: PairedToolCall): string | null {
+  const replay = pair.callPayload.replay as Record<string, unknown> | undefined
+  if (!replay) return null
+  return typeof replay.cwd === "string" ? replay.cwd : null
+}
+
+function extractPolicyDecision(pair: PairedToolCall): "ELIGIBLE" | "REFUSED" | "NOT_APPLICABLE" {
+  const replay = pair.callPayload.replay as Record<string, unknown> | undefined
+  if (!replay) return "NOT_APPLICABLE"
+  const decision = replay.policyDecision
+  if (decision === "ELIGIBLE" || decision === "REFUSED" || decision === "NOT_APPLICABLE") return decision
+  return "NOT_APPLICABLE"
+}
+
+function extractOriginalExitCode(pair: PairedToolCall): number | null {
+  const replay = pair.returnPayload.replay as Record<string, unknown> | undefined
+  if (!replay) return null
+  return typeof replay.exitCode === "number" ? replay.exitCode : null
+}
+
+function extractOriginalOutputDigest(pair: PairedToolCall): string | null {
+  const replay = pair.returnPayload.replay as Record<string, unknown> | undefined
+  if (!replay) return null
+  return typeof replay.normalizedOutputDigest === "string" ? replay.normalizedOutputDigest : null
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -335,6 +282,7 @@ export function deriveDeterministicReplay(
 ): DeterministicReplayResult {
   const now = new Date().toISOString()
   const replayId = randomUUID()
+  const dryRun = opts?.dryRun ?? false
 
   // Load session events
   const events = db.prepare(`
@@ -342,152 +290,187 @@ export function deriveDeterministicReplay(
     FROM events
     WHERE session_id = ?
     ORDER BY sequence ASC
-  `).all(sessionId) as Array<{ id: string; sequence: number; type: string; payload: string }>
+  `).all(sessionId) as StoredEventRow[]
 
-  // Get runRoot from trace or compute
-  let sourceRunRoot = ""
-  try {
-    const traceRow = db.prepare("SELECT * FROM trace_health WHERE session_id = ?").get(sessionId)
-    if (traceRow) {
-      // Use session ID as placeholder — real runRoot comes from RunProof
-      sourceRunRoot = createHash("sha256").update(sessionId).digest("hex")
-    }
-  } catch { /* table may not exist */ }
+  // Compute source runRoot
+  const sourceRunRoot = events.length > 0
+    ? createHash("sha256").update(sessionId).digest("hex")
+    : ""
 
-  // Filter tool.called events
-  const toolCalledEvents = events.filter(e => e.type === "tool.called")
+  // Pair tool.called ↔ tool.returned
+  const pairs = pairToolEvents(events)
 
-  // Process each tool.called event
   const steps: ReplayStepResult[] = []
   const refusalReasons: string[] = []
-  const dryRun = opts?.dryRun ?? false
+  let unauthorizedMutation = false
 
-  for (const event of toolCalledEvents) {
-    let payload: Record<string, unknown> = {}
-    try { payload = JSON.parse(event.payload) } catch { /* corrupt */ }
+  for (const pair of pairs) {
+    const command = extractCommandFromPair(pair)
+    const cwd = extractCwdFromPair(pair)
+    const policyDecision = extractPolicyDecision(pair)
+    const replay = pair.callPayload.replay as Record<string, unknown> | undefined
+    const executable = typeof replay?.executable === "string" ? replay.executable : null
+    const args = Array.isArray(replay?.arguments) ? replay.arguments : []
 
-    const metadata = extractToolCallMetadata(payload)
-
-    // Check 1: Do we have enough metadata?
-    if (!metadata.command) {
+    // Check 1: Is this tool call replayable?
+    if (policyDecision !== "ELIGIBLE") {
       steps.push({
-        eventSequence: event.sequence,
-        eventId: event.id,
+        eventSequence: pair.callEvent.sequence,
+        eventId: pair.callEvent.id,
+        command,
+        executable,
+        arguments: args,
+        workingDirectory: cwd,
+        status: "REFUSED",
+        refusalReason: policyDecision === "REFUSED"
+          ? `policy: ${typeof replay?.refusalReason === "string" ? replay.refusalReason : "refused"}`
+          : "not applicable (non-terminal tool)",
+        policyDecision,
+      })
+      refusalReasons.push(`seq ${pair.callEvent.sequence}: ${policyDecision}`)
+      continue
+    }
+
+    // Check 2: Command recorded?
+    if (!command) {
+      steps.push({
+        eventSequence: pair.callEvent.sequence,
+        eventId: pair.callEvent.id,
         command: null,
-        workingDirectory: null,
+        executable,
+        arguments: args,
+        workingDirectory: cwd,
         status: "REFUSED",
-        refusalReason: "insufficient metadata: no command recorded in event",
+        refusalReason: "no command in replay metadata",
+        policyDecision,
       })
-      refusalReasons.push(`seq ${event.sequence}: no command in event`)
+      refusalReasons.push(`seq ${pair.callEvent.sequence}: no command`)
       continue
     }
 
-    // Check 2: Working directory recorded?
-    if (!metadata.workingDirectory) {
+    // Check 3: Working directory recorded?
+    if (!cwd) {
       steps.push({
-        eventSequence: event.sequence,
-        eventId: event.id,
-        command: metadata.command,
+        eventSequence: pair.callEvent.sequence,
+        eventId: pair.callEvent.id,
+        command,
+        executable,
+        arguments: args,
         workingDirectory: null,
         status: "REFUSED",
-        refusalReason: "insufficient metadata: no working directory recorded",
+        refusalReason: "no working directory recorded",
+        policyDecision,
       })
-      refusalReasons.push(`seq ${event.sequence}: no working directory`)
-      continue
-    }
-
-    // Check 3: Policy allows?
-    const policy = checkCommandPolicy(metadata.command)
-    if (!policy.allowed) {
-      steps.push({
-        eventSequence: event.sequence,
-        eventId: event.id,
-        command: metadata.command,
-        workingDirectory: metadata.workingDirectory,
-        status: "REFUSED",
-        refusalReason: `policy: ${policy.reason}`,
-      })
-      refusalReasons.push(`seq ${event.sequence}: ${policy.reason}`)
+      refusalReasons.push(`seq ${pair.callEvent.sequence}: no cwd`)
       continue
     }
 
     // Check 4: Environment compatible?
-    const envCompat = checkEnvironmentCompatibility(metadata.command, metadata.workingDirectory)
-    if (envCompat === "DRIFTED") {
+    const envCompat = checkEnvironmentCompatibility(executable, cwd)
+    if (envCompat !== "COMPATIBLE") {
       steps.push({
-        eventSequence: event.sequence,
-        eventId: event.id,
-        command: metadata.command,
-        workingDirectory: metadata.workingDirectory,
+        eventSequence: pair.callEvent.sequence,
+        eventId: pair.callEvent.id,
+        command,
+        executable,
+        arguments: args,
+        workingDirectory: cwd,
         status: "REFUSED",
-        refusalReason: "environment drifted: working directory or tool unavailable",
+        refusalReason: `environment ${envCompat.toLowerCase()}`,
+        policyDecision,
       })
-      refusalReasons.push(`seq ${event.sequence}: environment drifted`)
+      refusalReasons.push(`seq ${pair.callEvent.sequence}: env ${envCompat}`)
       continue
     }
 
-    // Check 5: Have original output for comparison?
-    if (metadata.exitCode === null || metadata.outputDigest === null) {
+    // Check 5: Original output recorded?
+    const originalExitCode = extractOriginalExitCode(pair)
+    const originalOutputDigest = extractOriginalOutputDigest(pair)
+    if (originalExitCode === null || originalOutputDigest === null) {
       steps.push({
-        eventSequence: event.sequence,
-        eventId: event.id,
-        command: metadata.command,
-        workingDirectory: metadata.workingDirectory,
+        eventSequence: pair.callEvent.sequence,
+        eventId: pair.callEvent.id,
+        command,
+        executable,
+        arguments: args,
+        workingDirectory: cwd,
         status: "REFUSED",
-        refusalReason: "insufficient metadata: no recorded exit code or output digest",
+        refusalReason: "no recorded exit code or output digest in tool.returned",
+        policyDecision,
       })
-      refusalReasons.push(`seq ${event.sequence}: no recorded output`)
+      refusalReasons.push(`seq ${pair.callEvent.sequence}: no return data`)
       continue
     }
 
-    // All checks passed — execute or dry-run
+    // Dry-run: mark as SKIPPED
     if (dryRun) {
       steps.push({
-        eventSequence: event.sequence,
-        eventId: event.id,
-        command: metadata.command,
-        workingDirectory: metadata.workingDirectory,
+        eventSequence: pair.callEvent.sequence,
+        eventId: pair.callEvent.id,
+        command,
+        executable,
+        arguments: args,
+        workingDirectory: cwd,
         status: "SKIPPED",
-        originalExitCode: metadata.exitCode,
-        originalOutputDigest: metadata.outputDigest,
+        originalExitCode,
+        originalOutputDigest,
+        policyDecision,
       })
       continue
     }
 
+    // Snapshot workspace before
+    const beforeSnapshot = snapshotWorkspace(cwd)
+
+    // Execute
     try {
-      const timeoutMs = metadata.timeout ?? 30_000
-      const result = executeBoundedCommand(metadata.command, metadata.workingDirectory, timeoutMs)
-      const exitCodeMatch = result.exitCode === metadata.exitCode
-      const outputDigestMatch = result.outputDigest === metadata.outputDigest
+      const timeout = typeof replay?.timeout === "number" ? replay.timeout : 30_000
+      const result = executeBoundedCommand(command, cwd, timeout)
+
+      // Snapshot workspace after
+      const afterSnapshot = snapshotWorkspace(cwd)
+      const diff = diffSnapshots(beforeSnapshot, afterSnapshot)
+      if (diff.modified.length > 0 || diff.added.length > 0 || diff.deleted.length > 0) {
+        unauthorizedMutation = true
+      }
+
+      const exitCodeMatch = result.exitCode === originalExitCode
+      const outputDigestMatch = result.outputDigest === originalOutputDigest
 
       steps.push({
-        eventSequence: event.sequence,
-        eventId: event.id,
-        command: metadata.command,
-        workingDirectory: metadata.workingDirectory,
+        eventSequence: pair.callEvent.sequence,
+        eventId: pair.callEvent.id,
+        command,
+        executable,
+        arguments: args,
+        workingDirectory: cwd,
         status: exitCodeMatch && outputDigestMatch ? "SUCCESS" : "FAILED",
-        originalExitCode: metadata.exitCode,
+        originalExitCode,
         replayExitCode: result.exitCode,
         exitCodeMatch,
-        originalOutputDigest: metadata.outputDigest,
+        originalOutputDigest,
         replayOutputDigest: result.outputDigest,
         outputDigestMatch,
         replayDurationMs: result.durationMs,
+        policyDecision,
       })
 
       if (!exitCodeMatch || !outputDigestMatch) {
-        refusalReasons.push(`seq ${event.sequence}: exit=${exitCodeMatch} output=${outputDigestMatch}`)
+        refusalReasons.push(`seq ${pair.callEvent.sequence}: exit=${exitCodeMatch} output=${outputDigestMatch}`)
       }
     } catch (err: any) {
       steps.push({
-        eventSequence: event.sequence,
-        eventId: event.id,
-        command: metadata.command,
-        workingDirectory: metadata.workingDirectory,
+        eventSequence: pair.callEvent.sequence,
+        eventId: pair.callEvent.id,
+        command,
+        executable,
+        arguments: args,
+        workingDirectory: cwd,
         status: "FAILED",
         refusalReason: `execution error: ${err.message}`,
+        policyDecision,
       })
-      refusalReasons.push(`seq ${event.sequence}: execution error`)
+      refusalReasons.push(`seq ${pair.callEvent.sequence}: execution error`)
     }
   }
 
@@ -499,7 +482,7 @@ export function deriveDeterministicReplay(
 
   let status: "SUCCESS" | "PARTIAL" | "REFUSED" | "FAILED"
   if (replayedSteps.length === 0) {
-    status = refusedSteps.length > 0 ? "REFUSED" : "REFUSED"
+    status = "REFUSED"
   } else if (failedSteps.length > 0) {
     status = "FAILED"
   } else if (successSteps.length === replayedSteps.length) {
@@ -508,15 +491,16 @@ export function deriveDeterministicReplay(
     status = "PARTIAL"
   }
 
-  // P2 eligibility: ALL replayed steps must succeed
+  // P2 eligibility: ALL replayed steps succeed + no unauthorized mutation
   const p2Eligible = replayedSteps.length > 0
     && failedSteps.length === 0
     && successSteps.length === replayedSteps.length
+    && !unauthorizedMutation
 
-  // Environment compatibility: best across all steps
+  // Environment compatibility
   const envStatuses = steps
     .filter(s => s.status !== "REFUSED" && s.status !== "SKIPPED")
-    .map(() => checkEnvironmentCompatibility("", null))
+    .map(s => checkEnvironmentCompatibility(s.executable, s.workingDirectory))
   const environmentCompatibility = envStatuses.length === 0
     ? "UNKNOWN"
     : envStatuses.every(e => e === "COMPATIBLE")
@@ -534,5 +518,6 @@ export function deriveDeterministicReplay(
     status,
     p2Eligible,
     refusalReasons,
+    unauthorizedMutation,
   }
 }
