@@ -2,7 +2,7 @@ import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"
 
 export const EventTable = sqliteTable("events", {
   id: text().primaryKey(),
-  sequence: integer().notNull(),
+  sequence: integer().notNull().unique(),
   session_id: text(),
   timestamp: text().notNull(),
   previous_hash: text(),
