@@ -225,6 +225,7 @@ const commandLoaders = {
   loop: () => import("./cli/cmd/loop").then((m) => m.LoopCommand),
   daemon: () => import("./cli/cmd/daemon").then((m) => m.DaemonCommand),
   theme: () => import("./cli/cmd/theme").then((m) => m.ThemeCommand),
+  learn: () => import("./cli/cmd/learn").then((m) => m.LearnCommand),
 }
 
 async function loadCommandsFor(firstArg: string | undefined): Promise<CommandModule[]> {
