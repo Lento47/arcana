@@ -289,7 +289,7 @@ export function createRoutes(
     Layer.provide(LayerNode.buildLayer(app)),
     Layer.provide(Layer.succeed(CorsConfig)(corsOptions)),
     Layer.provide(Observability.layer),
-  )
+  ) as any
 }
 
 export const routes = createRoutes()

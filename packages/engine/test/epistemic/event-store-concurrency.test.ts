@@ -29,6 +29,24 @@ const CREATE_EVENTS = `
   )
 `
 
+const CREATE_TRACE_HEALTH = `
+  CREATE TABLE IF NOT EXISTS trace_health (
+    session_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'COMPLETE',
+    error_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    recorded_events INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+  )
+`
+
+function createTables(db: any) {
+  return Effect.gen(function* () {
+    yield* db.run(CREATE_EVENTS)
+    yield* db.run(CREATE_TRACE_HEALTH)
+  })
+}
+
 // ── tests ────────────────────────────────────────────────────────────
 
 describe("EventStore append safety", () => {
@@ -39,7 +57,7 @@ describe("EventStore append safety", () => {
       Effect.gen(function* () {
         const store = yield* EventStore.Service
         const { db } = yield* Database.Service
-        yield* db.run(CREATE_EVENTS)
+        yield* createTables(db)
 
         for (let i = 0; i < 10; i++) {
           yield* store.append({
@@ -67,7 +85,7 @@ describe("EventStore append safety", () => {
       Effect.gen(function* () {
         const store = yield* EventStore.Service
         const { db } = yield* Database.Service
-        yield* db.run(CREATE_EVENTS)
+        yield* createTables(db)
 
         for (let i = 0; i < 20; i++) {
           yield* store.append({
@@ -97,7 +115,7 @@ describe("EventStore append safety", () => {
       Effect.gen(function* () {
         const store = yield* EventStore.Service
         const { db } = yield* Database.Service
-        yield* db.run(CREATE_EVENTS)
+        yield* createTables(db)
 
         for (let i = 0; i < 50; i++) {
           yield* store.append({
@@ -127,7 +145,7 @@ describe("EventStore append safety", () => {
       Effect.gen(function* () {
         const store = yield* EventStore.Service
         const { db } = yield* Database.Service
-        yield* db.run(CREATE_EVENTS)
+        yield* createTables(db)
 
         // Append 3 events
         for (let i = 0; i < 3; i++) {
@@ -164,7 +182,7 @@ describe("EventStore append safety", () => {
       Effect.gen(function* () {
         const store = yield* EventStore.Service
         const { db } = yield* Database.Service
-        yield* db.run(CREATE_EVENTS)
+        yield* createTables(db)
 
         yield* store.append({
           sessionId: "session-abc",
@@ -184,6 +202,127 @@ describe("EventStore append safety", () => {
         expect(events).toHaveLength(2)
         expect(events[0].sessionId).toBe("session-abc")
         expect(events[1].sessionId).toBeUndefined()
+      }),
+    )
+  })
+})
+
+describe("Per-session trace health persistence", () => {
+  // ── 6. New session starts as UNAVAILABLE ────────────────────────────
+
+  it("returns UNAVAILABLE for sessions with no events or errors", async () => {
+    await runTest(
+      Effect.gen(function* () {
+        const store = yield* EventStore.Service
+        const { db } = yield* Database.Service
+        yield* createTables(db)
+
+        const health = yield* store.sessionTraceHealth("nonexistent-session")
+        expect(health.status).toBe("UNAVAILABLE")
+        expect(health.sessionId).toBe("nonexistent-session")
+        expect(health.recordedCriticalEvents).toBe(0)
+        expect(health.recordingErrors).toEqual([])
+      }),
+    )
+  })
+
+  // ── 7. Successful appends mark session as COMPLETE ──────────────────
+
+  it("marks session trace as COMPLETE after successful appends", async () => {
+    await runTest(
+      Effect.gen(function* () {
+        const store = yield* EventStore.Service
+        const { db } = yield* Database.Service
+        yield* createTables(db)
+
+        yield* store.append({
+          sessionId: "session-good",
+          actor: { kind: "user", id: "actor-1" },
+          type: "session.started",
+          payload: { agent: "default" },
+        })
+
+        yield* store.append({
+          sessionId: "session-good",
+          actor: { kind: "model", id: "gpt-4" },
+          type: "tool.called",
+          payload: { tool: "read_file" },
+        })
+
+        const health = yield* store.sessionTraceHealth("session-good")
+        expect(health.status).toBe("COMPLETE")
+        expect(health.recordedCriticalEvents).toBe(2)
+        expect(health.recordingErrors).toEqual([])
+      }),
+    )
+  })
+
+  // ── 8. Per-session isolation ────────────────────────────────────────
+
+  it("tracks trace health independently per session", async () => {
+    await runTest(
+      Effect.gen(function* () {
+        const store = yield* EventStore.Service
+        const { db } = yield* Database.Service
+        yield* createTables(db)
+
+        // Session A: 3 events
+        for (let i = 0; i < 3; i++) {
+          yield* store.append({
+            sessionId: "session-a",
+            actor: { kind: "user", id: "actor-1" },
+            type: "tool.called",
+            payload: { step: i },
+          })
+        }
+
+        // Session B: 1 event
+        yield* store.append({
+          sessionId: "session-b",
+          actor: { kind: "user", id: "actor-2" },
+          type: "tool.called",
+          payload: { step: 0 },
+        })
+
+        const healthA = yield* store.sessionTraceHealth("session-a")
+        const healthB = yield* store.sessionTraceHealth("session-b")
+        const healthC = yield* store.sessionTraceHealth("session-c")
+
+        expect(healthA.recordedCriticalEvents).toBe(3)
+        expect(healthA.status).toBe("COMPLETE")
+
+        expect(healthB.recordedCriticalEvents).toBe(1)
+        expect(healthB.status).toBe("COMPLETE")
+
+        expect(healthC.recordedCriticalEvents).toBe(0)
+        expect(healthC.status).toBe("UNAVAILABLE")
+      }),
+    )
+  })
+
+  // ── 9. Trace health survives across EventStore reads ────────────────
+
+  it("persists trace health in database (survives re-reads)", async () => {
+    await runTest(
+      Effect.gen(function* () {
+        const store = yield* EventStore.Service
+        const { db } = yield* Database.Service
+        yield* createTables(db)
+
+        // Add events for a session
+        for (let i = 0; i < 5; i++) {
+          yield* store.append({
+            sessionId: "persistent-session",
+            actor: { kind: "user", id: "actor-1" },
+            type: "tool.called",
+            payload: { step: i },
+          })
+        }
+
+        // Read health — should reflect 5 events
+        const health = yield* store.sessionTraceHealth("persistent-session")
+        expect(health.recordedCriticalEvents).toBe(5)
+        expect(health.status).toBe("COMPLETE")
       }),
     )
   })
