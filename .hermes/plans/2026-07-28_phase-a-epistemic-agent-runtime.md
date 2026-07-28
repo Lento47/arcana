@@ -14,6 +14,23 @@
 
 ---
 
+## Governance
+
+1. `vision-ultimate-plan.md` is the **north star**, not an active backlog.
+2. **This Phase A plan is the sole implementation authority.**
+3. Mathematical foundations guide **schema compatibility**; they are not Phase A requirements.
+4. **New ideas go into a deferred log**, not into the current scope.
+5. Every completed task must include: **code, tests, evidence, and the relevant acceptance criterion.**
+6. Phase A is successful **only if** the evaluation demonstrates fewer false completions at acceptable token and latency overhead.
+
+---
+
+## Deferred Log
+
+*None yet — add ideas here that belong after Phase A.*
+
+---
+
 ## Existing Architecture Survey
 
 **Current types to extend:**
@@ -1457,3 +1474,252 @@ packages/memory/src/store.ts                 # MemoryStore unchanged — claims 
 | **Total** | **19 tasks** | **15–20 hours** |
 
 Conservative estimate with debugging and integration testing: **2 weeks.**
+
+---
+
+# Mathematical Foundations
+
+> *Arcana does not become advanced because it contains complicated equations. It becomes advanced when mathematical model + real outcome data + enforced invariant + measurable improvement all agree.*
+
+---
+
+## For Phase A: Almost No Advanced Math
+
+Phase A mainly requires:
+- **Discrete logic:** enums, predicates, implications
+- **State machines:** legal and illegal transitions
+- **Graph relationships:** claim → evidence → obligation
+- **Deterministic hashing:** H(previousHash || canonicalEvent)
+- **Basic statistics:** measuring false-completion rate and overhead
+
+The central invariant is simple:
+
+$$\text{VERIFIED\_COMPLETE} \Rightarrow \forall o \in O_{\text{required}},\; o.\text{status} = \text{satisfied}$$
+
+This is more important than complicated confidence formulas.
+
+---
+
+## 1. Mathematical Logic and Formal Methods — Most Important
+
+Learn:
+- Propositional and first-order logic
+- Set theory
+- Predicates and inference rules
+- State-transition systems
+- Safety and liveness properties
+- Temporal logic
+- Model checking
+- Hoare logic and program invariants
+
+This lets Arcana formally express:
+- An assumption cannot count as verification
+- A contradicted claim cannot satisfy an obligation
+- A tool cannot execute without a capability
+- A run cannot complete while required obligations remain pending
+
+For example: $$\Box(\text{pendingRequiredObligation} \rightarrow \neg\text{verifiedComplete})$$
+
+□ means "this must always be true." TLA+ is particularly relevant because it models concurrent systems using set theory, first-order logic, and temporal logic.
+
+---
+
+## 2. Probability and Bayesian Statistics
+
+Needed for: claim confidence, model trust, confidence decay, comparing verifiers, handling uncertain evidence, deciding when Arcana should abstain.
+
+Learn:
+- Conditional probability, Bayes' theorem
+- Beta and Dirichlet distributions
+- Bayesian updating, hierarchical models
+- Confidence and credible intervals
+- Hypothesis testing
+- Proper scoring rules: Brier score, expected calibration error (ECE)
+- Conformal prediction
+
+A basic model-trust system could use:
+
+$$p_m \sim \operatorname{Beta}(\alpha_m,\beta_m)$$
+
+After verified success: $$\alpha_m \leftarrow \alpha_m + 1$$
+After verified failure: $$\beta_m \leftarrow \beta_m + 1$$
+
+But Arcana should eventually condition this by model, domain, task, and environment.
+
+Calibration matters because a model saying "90% confident" should historically be correct approximately 90% of the time. The Brier score measures squared error between predicted probabilities and actual outcomes, while ECE compares confidence with empirical accuracy.
+
+---
+
+## 3. Decision Theory
+
+Arcana constantly makes decisions under uncertainty: inspect another file? run another verifier? ask the user? use a stronger model? spend more tokens? stop or continue? execute or abstain?
+
+Learn:
+- Expected utility, Bayesian risk
+- Cost-sensitive decisions
+- Value of information (VoI)
+- Multi-armed bandits
+- Markov decision processes (MDPs)
+- Partially observable MDPs (POMDPs)
+- Risk measures such as CVaR
+
+A simplified decision rule:
+
+$$a^* = \arg\max_a \left[ P(\text{success}\mid a)\cdot V - C(a) - R(a) \right]$$
+
+For an additional verification step:
+
+$$\text{VOI} = \mathbb{E}[\text{loss before verification}] - \mathbb{E}[\text{loss after verification}] - \text{verification cost}$$
+
+Continue verifying only when the expected information value exceeds its cost. POMDP and value-of-information methods provide a formal foundation for allocating reasoning effort under incomplete observations.
+
+---
+
+## 4. Information Theory
+
+Needed for: detecting uncertainty, comparing multiple model answers, context compression, memory retrieval, identifying redundant evidence, measuring information gained from a tool call.
+
+Learn:
+- Entropy, conditional entropy, mutual information
+- Cross-entropy, KL divergence
+- Information gain
+- Rate–distortion trade-offs
+
+Entropy: $$H(X) = -\sum_x P(x)\log P(x)$$
+
+High disagreement among semantically different answers can indicate epistemic uncertainty. Semantic entropy groups outputs by meaning rather than by exact wording, although it is only an uncertainty signal — not proof that a claim is false.
+
+For context management:
+
+$$\text{page utility} = \frac{\text{expected information gain}}{\text{token cost}}$$
+
+That allows Arcana to load the most useful context rather than merely the most recent context.
+
+---
+
+## 5. Optimization
+
+Arcana will optimize several competing objectives: correctness, verification strength, token cost, latency, risk, context size, model quality.
+
+Learn:
+- Linear and nonlinear optimization
+- Constrained optimization, Lagrange multipliers
+- Integer programming, knapsack problems
+- Dynamic programming
+- Pareto frontiers, convex optimization
+
+Example — selecting highest-value context pages under a token budget:
+
+$$\max_S \sum_{i\in S} U_i \quad\text{subject to}\quad \sum_{i\in S}\text{tokens}_i \le B$$
+
+Model routing can similarly optimize:
+
+$$\max_m \left[ P_m(\text{verified success}) - \lambda_c C_m - \lambda_l L_m - \lambda_r R_m \right]$$
+
+---
+
+## 6. Linear Algebra and Geometry
+
+Needed for: embeddings, semantic similarity, memory retrieval, contradiction clustering, duplicate detection, creativity diversity, evidence independence estimation.
+
+Learn:
+- Vectors and matrices, dot products and cosine similarity: $$\cos(x,y) = \frac{x^\top y}{\|x\|\|y\|}$$
+- Eigenvalues and eigenvectors
+- Positive-semidefinite matrices
+- Matrix decompositions
+- Kernel methods
+
+For diverse candidate selection, determinantal point processes (DPPs) use matrix determinants to favor high-quality but non-redundant subsets. This is useful for Arcana's future creativity system, but unnecessary for Phase A.
+
+---
+
+## 7. Graph Theory
+
+Arcana's natural internal representation is a graph: contract → criterion → obligation → claim → evidence → event → artifact.
+
+Learn:
+- Directed graphs and DAGs
+- Reachability, topological sorting
+- Strongly connected components
+- Dependency graphs, graph traversal
+- Provenance graphs
+- Possibly probabilistic graphical models
+
+Graph theory allows Arcana to answer:
+- Which conclusions depend on this failed assumption?
+- Which obligations become invalid when evidence becomes stale?
+- Does this claim ultimately depend on itself? (cycle detection)
+- Which events contributed to the final result?
+- What must be revalidated after a dependency changes?
+
+---
+
+## 8. Cryptography
+
+Needed for: tamper-evident traces, signed RunProofs, artifact identity, organization attestations, cross-device synchronization, transparency logs.
+
+Learn:
+- Cryptographic hash functions (collision and preimage resistance)
+- Digital signatures, public-key infrastructure
+- Merkle trees, authenticated data structures
+- Canonical serialization
+- Key rotation and trust roots
+
+Phase A only requires:
+
+$$h_i = H(h_{i-1}\parallel\operatorname{canonical}(e_i))$$
+
+A hash chain detects modification, but it does not prove who created the events. Authenticity later requires signatures and protected keys. NIST defines secure hash algorithms as producing message digests that can be used to detect whether messages have changed.
+
+---
+
+## 9. Causal Inference
+
+This becomes important when Arcana must determine whether a change actually caused an improvement.
+
+Learn:
+- Causal graphs, confounding
+- Interventions, counterfactuals
+- A/B testing, difference-in-differences
+- Controlled experiments
+
+For example: "Tests pass after patch" does not necessarily imply "The patch caused the tests to pass." Perhaps the environment changed, the cache was cleared, or the test was flaky.
+
+Arcana should increasingly use interventions:
+
+> Failing baseline → apply patch → passing result → revert patch → failure returns → reapply patch → passing result returns
+
+That provides much stronger causal evidence than one post-patch test.
+
+---
+
+## Recommended Priority
+
+### Required now
+- Discrete logic
+- State machines
+- Graph fundamentals
+- Basic statistics
+- Hashing and canonical serialization
+
+### Required after Phase A
+- Bayesian statistics and calibration
+- Decision theory
+- Information theory
+- Constrained optimization
+
+### Research-grade future
+- Temporal logic and formal verification
+- POMDPs and value of information
+- Conformal prediction
+- Causal inference
+- Probabilistic graphical models
+- DPPs and kernel methods
+- Cryptographic attestations
+- Distributed consensus and multi-agent game theory
+
+---
+
+## The Critical Point
+
+Prioritize logic and state-machine correctness. Collect clean outcome data. The Bayesian trust models, uncertainty systems, decision theory and optimization should be introduced only after Arcana has enough verified runs to support them.
