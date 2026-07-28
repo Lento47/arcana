@@ -50,7 +50,7 @@ type ObligationRow = { id: string; contract_id: string; description: string; req
 
 // ── RunProof derivation (raw SQL) ────────────────────────────────────
 
-interface CLIRunProof {
+export interface CLIRunProof {
   sessionId: string
   derivedAt: string
   eventCount: number
@@ -73,7 +73,7 @@ interface CLIRunProof {
   satisfiedRequiredObligations: number
 }
 
-function deriveRunProof(db: Database, sessionId: string): CLIRunProof {
+export function deriveRunProof(db: Database, sessionId: string): CLIRunProof {
   const derivedAt = new Date().toISOString()
 
   // Query events for this session

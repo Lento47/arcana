@@ -5,6 +5,7 @@ import { homedir } from "node:os"
 import { Database } from "bun:sqlite"
 import { computeEventHash } from "@arcana/core/epistemic/event-hash"
 import { ProofCommand } from "./proof"
+import { ReplayCommand } from "./replay"
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -391,6 +392,7 @@ export const EpistemicCommand: CommandModule = {
       .command(contract)
       .command(obligations)
       .command(ProofCommand)
+      .command(ReplayCommand)
       .demandCommand(),
   handler: () => {},
 }
