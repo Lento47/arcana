@@ -1954,7 +1954,14 @@ const argsRegex = /(?:\[Image\s+\d+\]|"[^"]*"|'[^']*'|[^\s"']+)/gi
 const placeholderRegex = /\$(\d+)/g
 const quoteTrimRegex = /^["']|["']$/g
 
-export const node = LayerNode.make(layer as any, [ // Layer composition + EventStore dep — tracked: TODO narrow
+export const node = LayerNode.make(layer as any, [
+  // CAST BOUNDARY #7 — Layer composition with EventStore dependency (prompt)
+  // Upstream: Same issue as CAST BOUNDARY #3 in processor.ts. The layer.pipe(Layer.provide(...))
+  // chain includes EventStore.layer which is fully resolved at runtime but remains
+  // in the type parameter. LayerNode.make's strict type rejects it.
+  // Runtime: the layer is self-contained — verified by prompt lifecycle tests.
+  // Removal condition: Layer.provide erases provided deps from type parameter.
+  // Scope: narrow (just the first arg to LayerNode.make)
   SessionStatus.node,
   Session.node,
   Agent.node,

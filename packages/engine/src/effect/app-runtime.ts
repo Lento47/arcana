@@ -105,7 +105,14 @@ export const AppLayer = Layer.mergeAll(
   Layer.provideMerge(Observability.layer),
 )
 
-const rt = ManagedRuntime.make(AppLayer as any, { memoMap }) // Layer.provideMerge chain loses type info — tracked: TODO narrow
+const rt = ManagedRuntime.make(AppLayer as any, { memoMap })
+    // CAST BOUNDARY #6 — ManagedRuntime.make Layer type
+    // Upstream: Layer.provideMerge chain loses type information through multiple
+    // compositions. The resulting Layer type doesn't match ManagedRuntime.make's
+    // expected input because the dependency graph has been fully resolved at runtime.
+    // Runtime: the layer is self-contained — verified by app startup.
+    // Removal condition: Layer.provideMerge preserves full type through chain.
+    // Scope: narrow (single arg to ManagedRuntime.make)
 type Runtime = Pick<typeof rt, "runSync" | "runPromise" | "runPromiseExit" | "runFork" | "runCallback" | "dispose">
 
 /** Services provided by AppRuntime — i.e. what an Effect run via AppRuntime.runPromise can yield. */
