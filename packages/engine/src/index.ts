@@ -231,6 +231,7 @@ const commandLoaders = {
   skills: () => import("./cli/cmd/skills").then((m) => m.SkillsCommand),
   memory: () => import("./cli/cmd/memory").then((m) => m.MemoryCommand),
   feedback: () => import("./cli/cmd/feedback").then((m) => m.FeedbackCommand),
+  cron: () => import("./cli/cmd/cron").then((m) => m.CronCommand),
 }
 
 async function loadCommandsFor(firstArg: string | undefined): Promise<CommandModule[]> {
