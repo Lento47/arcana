@@ -19,7 +19,7 @@ function readConfig(): Record<string, unknown> {
 
 function getCronIntervalSeconds(): number {
   const cfg = readConfig()
-  if (typeof cfg.cron?.intervalSeconds === "number") return cfg.cron.intervalSeconds
+  if (typeof (cfg as any).cron?.intervalSeconds === "number") return (cfg as any).cron.intervalSeconds
   return 60
 }
 
