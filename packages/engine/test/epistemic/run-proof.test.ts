@@ -313,4 +313,63 @@ describe("RunProof derivation", () => {
       }),
     )
   })
+
+  // ── 9. RunRoot is deterministic ─────────────────────────────────────
+
+  it("produces deterministic runRoot for same events", async () => {
+    await runTest(
+      Effect.gen(function* () {
+        const store = yield* EventStore.Service
+        const { db } = yield* Database.Service
+        yield* createTables(db)
+
+        yield* store.append({
+          sessionId: "runroot-session",
+          actor: { kind: "user", id: "session" },
+          type: "session.started",
+          payload: {},
+        })
+        yield* store.append({
+          sessionId: "runroot-session",
+          actor: { kind: "user", id: "session" },
+          type: "session.completed",
+          payload: { steps: 0, reason: "normal" },
+        })
+
+        const proof = yield* RunProof.Service
+        const r1 = yield* proof.derive("runroot-session")
+        const r2 = yield* proof.derive("runroot-session")
+
+        expect(r1.runRoot).toBe(r2.runRoot)
+        expect(r1.runRoot).toMatch(/^[a-f0-9]{64}$/)
+      }),
+    )
+  })
+
+  // ── 10. RunRoot differs across sessions ─────────────────────────────
+
+  it("produces different runRoot for different sessions", async () => {
+    await runTest(
+      Effect.gen(function* () {
+        const store = yield* EventStore.Service
+        const { db } = yield* Database.Service
+        yield* createTables(db)
+
+        for (const sid of ["rr-a", "rr-b"]) {
+          yield* store.append({
+            sessionId: sid,
+            actor: { kind: "user", id: "session" },
+            type: "session.started",
+            payload: {},
+          })
+        }
+
+        const proof = yield* RunProof.Service
+        const a = yield* proof.derive("rr-a")
+        const b = yield* proof.derive("rr-b")
+
+        expect(a.runRoot).not.toBe(b.runRoot)
+      }),
+    )
+  })
 })

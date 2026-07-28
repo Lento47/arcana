@@ -34,6 +34,7 @@ export interface RunProof {
   readonly lifecycle: LifecycleCompleteness
   readonly proofLevel: ProofLevel
   readonly proofHash: string
+  readonly runRoot: string
   readonly events: ReadonlyArray<RunProofEvent>
   readonly gaps: ReadonlyArray<string>
 }
@@ -95,6 +96,9 @@ export const layer = Layer.effect(
       // Compute deterministic proof hash
       const proofHash = computeProofHash(sessionId, events, lifecycle, traceStatus, proofLevel)
 
+      // Compute runRoot: H(sessionId ∥ orderedEventHashes)
+      const runRoot = computeRunRoot(sessionId, rows)
+
       return {
         sessionId,
         derivedAt,
@@ -103,6 +107,7 @@ export const layer = Layer.effect(
         lifecycle,
         proofLevel,
         proofHash,
+        runRoot,
         events,
         gaps,
       } satisfies RunProof
@@ -191,6 +196,19 @@ function deriveProofLevel(
 
   // P3: Everything verified
   return { proofLevel: "P3", gaps: [] }
+}
+
+// ── RunRoot computation ────────────────────────────────────────────────
+
+function computeRunRoot(
+  sessionId: string,
+  rows: ReadonlyArray<{ hash: string }>,
+): string {
+  // H(sessionId ∥ orderedEventHashes)
+  // Binds the session to its complete event history
+  const { createHash } = require("node:crypto")
+  const hashChain = rows.map((r) => r.hash).join("")
+  return createHash("sha256").update(sessionId).update(hashChain).digest("hex")
 }
 
 // ── Deterministic hash ────────────────────────────────────────────────
