@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { Database } from "bun:sqlite"
+import { computeEventHash } from "@arcana/core/epistemic/event-hash"
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -280,6 +281,7 @@ export const proof: CommandModule = {
       }
 
       type EventRow = {
+        id: string
         sequence: number
         type: string
         actor_kind: string
@@ -291,7 +293,7 @@ export const proof: CommandModule = {
       }
 
       const rows = db
-        .query("SELECT sequence, type, actor_kind, actor_id, hash, previous_hash, timestamp, payload FROM events WHERE session_id = ? ORDER BY sequence")
+        .query("SELECT id, sequence, type, actor_kind, actor_id, hash, previous_hash, timestamp, payload FROM events WHERE session_id = ? ORDER BY sequence")
         .all(sessionId) as EventRow[]
 
       if (rows.length === 0) {
@@ -312,43 +314,63 @@ export const proof: CommandModule = {
       }
       console.log(`\n${rows.length} total event(s)`)
 
-      // Verify hash chain
+      // Verify
       if (argv.verify) {
-        const { createHash } = await import("node:crypto")
-        let valid = true
-        let breaksAt: number | undefined
+        // ── 1. Global chain integrity (all events in DB) ──────────────
+        const allRows = db
+          .query("SELECT id, sequence, type, actor_kind, actor_id, hash, previous_hash, timestamp, payload FROM events ORDER BY sequence")
+          .all() as EventRow[]
 
-        for (let i = 0; i < rows.length; i++) {
-          const e = rows[i]
-          const canonical = JSON.stringify({
-            id: e.hash.slice(0, 8),
-            sequence: e.sequence,
-            timestamp: e.timestamp,
-            previousHash: e.previous_hash,
-            actorKind: e.actor_kind,
-            actorId: e.actor_id,
-            type: e.type,
-            payload: JSON.parse(e.payload ?? "{}"),
+        let globalValid = true
+        let globalBreaksAt: number | undefined
+
+        for (let i = 0; i < allRows.length; i++) {
+          const e = allRows[i]
+          const computed = computeEventHash({
+            id: e.id, sequence: e.sequence, timestamp: e.timestamp, previousHash: e.previous_hash,
+            actorKind: e.actor_kind, actorId: e.actor_id, type: e.type, payload: e.payload,
           })
-          const computed = createHash("sha256").update(canonical).digest("hex")
-
           if (computed !== e.hash) {
-            valid = false
-            breaksAt = e.sequence
+            globalValid = false
+            globalBreaksAt = e.sequence
             break
           }
-          if (i > 0 && e.previous_hash !== rows[i - 1].hash) {
-            valid = false
-            breaksAt = e.sequence
+          if (i > 0 && e.previous_hash !== allRows[i - 1].hash) {
+            globalValid = false
+            globalBreaksAt = e.sequence
             break
           }
         }
 
-        if (valid) {
-          console.log("● event chain integrity verified")
-        } else {
-          console.log(`✕ chain broken at sequence ${breaksAt}`)
+        console.log(globalValid
+          ? `● global chain integrity verified (${allRows.length} events)`
+          : `✕ global chain broken at sequence ${globalBreaksAt}`)
+
+        // ── 2. Selected event integrity (session-filtered) ────────────
+        let selectedValid = true
+        let selectedBreaksAt: number | undefined
+
+        for (const e of rows) {
+          const computed = computeEventHash({
+            id: e.id, sequence: e.sequence, timestamp: e.timestamp, previousHash: e.previous_hash,
+            actorKind: e.actor_kind, actorId: e.actor_id, type: e.type, payload: e.payload,
+          })
+          if (computed !== e.hash) {
+            selectedValid = false
+            selectedBreaksAt = e.sequence
+            break
+          }
         }
+
+        console.log(selectedValid
+          ? `● selected event integrity verified (${rows.length} events)`
+          : `✕ selected event hash mismatch at sequence ${selectedBreaksAt}`)
+
+        // ── 3. Session membership binding (v1 limitation) ─────────────
+        console.log("○ session membership binding: NOT PROTECTED IN EVENT V1")
+
+        // ── 4. Session subset continuity ──────────────────────────────
+        console.log("○ session subset continuity: NOT APPLICABLE — global chain")
       }
     } finally {
       db.close()
