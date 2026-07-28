@@ -1,9 +1,15 @@
 import type { CommandModule } from "yargs"
-import { openMemoryDB, MemoryStore } from "@arcana/memory"
-import { getDataDir } from "./arcana-home.js"
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { getArcanaHome } from "./arcana-home.js"
+import { openMemoryDB, MemoryStore } from "@arcana/memory"
+import { getDataDir } from "./arcana-home.js"
+
+function loadEngineConfig(): Record<string, unknown> {
+  const cp = join(getArcanaHome(), "config.json")
+  if (!existsSync(cp)) return {}
+  try { return JSON.parse(readFileSync(cp, "utf8")) } catch { return {} }
+}
 
 export const MemoryCommand: CommandModule = {
   command: "memory <action>",
@@ -24,15 +30,13 @@ export const MemoryCommand: CommandModule = {
 
     if (action === "search") {
       if (!args.query) { console.error("--query required"); process.exit(1) }
-      const q = String(args.query).toLowerCase()
-      const allFacts = store.getUserFacts()
-      const results = allFacts.filter((f) =>
-        f.key.toLowerCase().includes(q) || f.value.toLowerCase().includes(q)
-      ).slice(0, Number(args.limit))
+      const results = store.search(String(args.query), Number(args.limit))
       if (!results.length) { console.log("No results."); return }
       for (const r of results) {
-        const conf = Math.round((r.confidence ?? 0) * 100)
-        console.log(`  [${conf}%] ${r.key}: ${r.value}`)
+        const label = r.type === "session"
+          ? `session:${r.id.slice(0, 8)}`
+          : `msg:${r.id.slice(0, 8)} [${r.session_id?.slice(0, 6)}\u2026]`
+        console.log(`[${label}] ${r.snippet}`)
       }
       return
     }
@@ -71,25 +75,51 @@ export const MemoryCommand: CommandModule = {
       const arts = store.listArtifacts(Number(args.limit))
       if (!arts.length) { console.log("No artifacts."); return }
       for (const a of arts) {
-        console.log(`  ${a.id.slice(0, 8)}  ${a.name ?? "unnamed"}  ${a.type ?? "?"}`)
+        console.log(`  ${a.id.slice(0, 8)}  ${a.title ?? "unnamed"}  ${a.type ?? "?"}`)
       }
       return
     }
 
     if (action === "compile") {
-      const facts = store.getUserFacts(Number(args.minConfidence ?? 0)).slice(0, 10000)
-      if (!facts.length) { console.log("No facts to compile."); return }
-      const lines = ["# Arcana Learned Facts", "", `Compiled ${new Date().toISOString()}`, `Total facts: ${facts.length}`, ""]
+      const facts = store.getUserFacts(Number(args["min-confidence"] ?? 0)).slice(0, 10000)
+      const lines = ["# Arcana Compiled Facts", "", `Compiled ${new Date().toISOString()}`, `User facts from memory.db: ${facts.length}`, ""]
+
+      // User facts from memory.db
       for (const f of facts) {
         lines.push(`## ${f.key}`)
         lines.push(f.value)
         if (f.source) lines.push(`_source: ${f.source}_`)
         lines.push("")
       }
+
+      // LEARNED.md entries
+      const projectRoot = process.cwd()
+      const learnedMd = join(projectRoot, ".arcana", "LEARNED.md")
+      if (existsSync(learnedMd)) {
+        lines.push("## From LEARNED.md", "")
+        try {
+          const md = readFileSync(learnedMd, "utf8")
+          lines.push(md, "")
+        } catch {}
+      }
+
+      // learned/*.md entries
+      const learnedDir = join(projectRoot, ".arcana", "learned")
+      if (existsSync(learnedDir)) {
+        try {
+          const entries = readdirSync(learnedDir).filter((f) => f.endsWith(".md")).sort()
+          for (const f of entries) {
+            lines.push(`## ${f.replace(".md", "")}`, "")
+            try { lines.push(readFileSync(join(learnedDir, f), "utf8"), "") } catch {}
+          }
+        } catch {}
+      }
+
       const fp = join(getArcanaHome(), "FACTS.md")
       mkdirSync(dirname(fp), { recursive: true })
       writeFileSync(fp, lines.join("\n"), "utf8")
-      console.log(`Compiled ${facts.length} facts to ${fp}`)
+      console.log(`Compiled facts to ${fp}`)
+      console.log(`  user_facts: ${facts.length}`)
       return
     }
   },

@@ -1,6 +1,19 @@
 import type { CommandModule } from "yargs"
+import { readFileSync, existsSync } from "node:fs"
+import { join } from "node:path"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
-import { getDataDir } from "./arcana-home.js"
+import { getDataDir, getArcanaHome } from "./arcana-home.js"
+
+function resolveDataDir(): string {
+  const cp = join(getArcanaHome(), "config.json")
+  if (existsSync(cp)) {
+    try {
+      const cfg = JSON.parse(readFileSync(cp, "utf8"))
+      if (typeof cfg.dataDir === "string") return cfg.dataDir
+    } catch {}
+  }
+  return getDataDir()
+}
 
 export const HistoryCommand: CommandModule = {
   command: "history [action]",
@@ -11,7 +24,7 @@ export const HistoryCommand: CommandModule = {
       .option("id", { alias: "i", type: "string", describe: "session ID" })
       .option("limit", { alias: "n", type: "number", default: 20, describe: "max results" }),
   async handler(args) {
-    const db = openMemoryDB(getDataDir())
+    const db = openMemoryDB(resolveDataDir())
     const memory = new MemoryStore(db)
     const action = String(args.action ?? "list")
 

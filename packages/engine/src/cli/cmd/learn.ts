@@ -44,8 +44,12 @@ export const LearnCommand: CommandModule = {
     console.log(`${files.length} learned entries:\n`)
     for (const f of files.sort()) {
       const raw = readFileSync(join(LEARNED_DIR, f), "utf8")
-      const firstLine = raw.split("\n")[0]?.replace(/^#+\s*/, "") ?? f
-      console.log(`  ${f.replace(".md", "")}  \u2014  ${firstLine.slice(0, 80)}`)
+      const lines = raw.split("\n").filter(
+        (l) => !l.startsWith("---") && !l.startsWith("tags:") && !l.startsWith("date:") &&
+          !l.startsWith("source:") && !l.startsWith("Related:") && l.trim(),
+      )
+      const summary = lines[0]?.replace(/^# /, "") ?? "(no summary)"
+      console.log(`  [[${f.replace(".md", "")}]] \u2014 ${summary.slice(0, 80)}`)
     }
   },
 }
