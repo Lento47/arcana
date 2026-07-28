@@ -4,8 +4,9 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 import { Database } from "bun:sqlite"
 import { computeEventHash } from "@arcana/core/epistemic/event-hash"
-import { ProofCommand } from "./proof"
-import { ReplayCommand } from "./replay"
+import { ProofCommand } from "./proof.js"
+import { ReplayCommand } from "./replay.js"
+import { ReplayDeterministicCommand } from "./replay-deterministic.js"
 
 // ── helpers ──────────────────────────────────────────────────────────
 
