@@ -1998,7 +1998,7 @@ export const layer = Layer.effect(
       }),
     )
 
-    const getModel = Effect.fn("Provider.getModel")(function* (providerID: ProviderV2.ID, modelID: ModelV2.ID) {
+    const getModel: (providerID: ProviderV2.ID, modelID: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError> = Effect.fn("Provider.getModel")(function* (providerID: ProviderV2.ID, modelID: ModelV2.ID) {
       const s = yield* InstanceState.get(state)
       const provider = s.providers[providerID]
       if (!provider) {
@@ -2012,16 +2012,16 @@ export const layer = Layer.effect(
             id: modelID,
             name: modelID as string,
             providerID: "ollama" as ProviderV2.ID,
-            api: { id: `ollama/${modelID}` as any, type: "aisdk" as const, package: "@ai-sdk/openai-compatible" as const, npm: "@ai-sdk/openai-compatible" as string, url: `http://localhost:${port}/v1` },
-            capabilities: { completion: true, tools: true } as any,
-            request: { body: {}, generation: {} },
+            api: { id: `ollama/${modelID}`, url: `http://localhost:${port}/v1`, npm: "@ai-sdk/openai-compatible" } as Model["api"],
+            capabilities: { completion: true, tools: true } as unknown as Model["capabilities"],
             variants: [],
-            time: { released: new Date("2024-01-01") } as any,
-            cost: [] as any,
+            cost: [] as unknown as Model["cost"],
             limit: { context: 128000, output: 8192 },
             status: "active" as const,
-            enabled: true,
-          } as any
+            options: {} as Record<string, any>,
+            headers: {} as Record<string, string>,
+            release_date: "2024-01-01",
+          } as unknown as Model
         }
         // Bare model name (no / in original) — search all providers
         if (!modelID) {
@@ -2029,14 +2029,18 @@ export const layer = Layer.effect(
           for (const [pid, p] of Object.entries(s.providers)) {
             // Exact match
             if (p.models[name]) {
-              return yield* getModel(ProviderV2.ID.make(pid), ModelV2.ID.make(name))
+              return yield* (getModel as (pid: ProviderV2.ID, mid: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError>)(
+                ProviderV2.ID.make(pid), ModelV2.ID.make(name)
+              )
             }
           }
           // Suffix match (e.g. "deepseek-v4-flash" → "aihubmix/deepseek-v4-flash")
           for (const [pid, p] of Object.entries(s.providers)) {
             for (const mid of Object.keys(p.models)) {
               if (mid === name || mid.endsWith("/" + name)) {
-                return yield* getModel(ProviderV2.ID.make(pid), ModelV2.ID.make(mid))
+                return yield* (getModel as (pid: ProviderV2.ID, mid: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError>)(
+                  ProviderV2.ID.make(pid), ModelV2.ID.make(mid)
+                )
               }
             }
           }
@@ -2062,16 +2066,16 @@ export const layer = Layer.effect(
             id: modelID,
             name: modelID as string,
             providerID: "ollama" as ProviderV2.ID,
-            api: { id: `ollama/${modelID}` as any, type: "aisdk" as const, package: "@ai-sdk/openai-compatible" as const, npm: "@ai-sdk/openai-compatible" as string, url: `http://localhost:${port}/v1` },
-            capabilities: { completion: true, tools: true } as any,
-            request: { body: {}, generation: {} },
+            api: { id: `ollama/${modelID}`, url: `http://localhost:${port}/v1`, npm: "@ai-sdk/openai-compatible" } as Model["api"],
+            capabilities: { completion: true, tools: true } as unknown as Model["capabilities"],
             variants: [],
-            time: { released: new Date("2024-01-01") } as any,
-            cost: [] as any,
+            cost: [] as unknown as Model["cost"],
             limit: { context: 128000, output: 8192 },
             status: "active" as const,
-            enabled: true,
-          } as any
+            options: {} as Record<string, any>,
+            headers: {} as Record<string, string>,
+            release_date: "2024-01-01",
+          } as unknown as Model
         }
         const current = modelSuggestions(provider, modelID, runtimeFlags.enableExperimentalModels)
         const suggestions = current.length

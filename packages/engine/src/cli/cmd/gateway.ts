@@ -151,7 +151,7 @@ export const GatewayCommand: CommandModule = {
       ...(args.discordToken ? { discord: { ...(gwConfig.discord as any ?? {}), token: String(args.discordToken) } } : {}),
     }
 
-    if (!gatewayConfig.telegram && !gatewayConfig.discord && !gatewayConfig.slack && !gatewayConfig.whatsapp) {
+    if (!gatewayConfig.telegram && !gatewayConfig.discord && !(gatewayConfig as any).slack && !(gatewayConfig as any).whatsapp) {
       console.error("No platform configured. Set gateway config or pass --telegram-token / --discord-token.")
       process.exit(1)
     }
