@@ -7,6 +7,7 @@ import type { ArcanaEvent } from "@arcana/core/epistemic/event"
 
 export interface Interface {
   readonly append: (input: {
+    sessionId?: string
     actor: ArcanaEvent["actor"]
     type: ArcanaEvent["type"]
     payload: unknown
@@ -49,6 +50,7 @@ export const layer = Layer.effect(
       yield* db.insert(EventTable).values({
         id,
         sequence,
+        session_id: input.sessionId ?? null,
         timestamp,
         previous_hash: previousHash,
         hash,
@@ -61,6 +63,7 @@ export const layer = Layer.effect(
       return {
         id,
         sequence,
+        sessionId: input.sessionId,
         timestamp,
         previousHash,
         hash,
@@ -76,7 +79,8 @@ export const layer = Layer.effect(
         .limit(limit)
         .pipe(Effect.orDie)
       return rows.reverse().map((r) => ({
-        id: r.id, sequence: r.sequence, timestamp: r.timestamp,
+        id: r.id, sequence: r.sequence, sessionId: r.session_id ?? undefined,
+        timestamp: r.timestamp,
         previousHash: r.previous_hash, hash: r.hash,
         actor: { kind: r.actor_kind as ArcanaEvent["actor"]["kind"], id: r.actor_id },
         type: r.type as ArcanaEvent["type"],

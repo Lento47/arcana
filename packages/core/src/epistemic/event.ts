@@ -3,6 +3,7 @@ import { Schema } from "effect"
 export const ArcanaEvent = Schema.Struct({
   id: Schema.String,
   sequence: Schema.Number,
+  sessionId: Schema.optional(Schema.String),
   timestamp: Schema.String,
   previousHash: Schema.Union([Schema.String, Schema.Null]),
   hash: Schema.String,
