@@ -249,6 +249,44 @@ CREATE TABLE IF NOT EXISTS claim_outcomes (
   )),
   resolved_at TEXT NOT NULL
 );
+
+-- Completion contracts — governed completion lifecycle (Phase A)
+CREATE TABLE IF NOT EXISTS contracts (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  objective TEXT NOT NULL,
+  risk_class TEXT NOT NULL CHECK(risk_class IN ('read','modify','publish','irreversible')),
+  source_event_id TEXT NOT NULL,
+  compiler_model TEXT,
+  revision INTEGER DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'proposed' CHECK(status IN ('proposed','active','amended','satisfied')),
+  created_at TEXT NOT NULL,
+  resolved_at TEXT,
+  resolution_state TEXT,
+  resolution_reason TEXT
+);
+
+CREATE TABLE IF NOT EXISTS contract_acceptance_criteria (
+  id TEXT PRIMARY KEY,
+  contract_id TEXT NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  required INTEGER NOT NULL DEFAULT 1,
+  verification TEXT NOT NULL CHECK(verification IN ('observation','execution','comparison','human_decision','external_confirmation')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','satisfied','failed','waived','not_applicable')),
+  evidence_event_id TEXT
+);
+
+CREATE TABLE IF NOT EXISTS contract_forbidden_outcomes (
+  contract_id TEXT NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  PRIMARY KEY (contract_id, description)
+);
+
+CREATE TABLE IF NOT EXISTS contract_assumptions (
+  contract_id TEXT NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  claim_id TEXT NOT NULL REFERENCES claims(id),
+  PRIMARY KEY (contract_id, claim_id)
+);
 `
 
 // Indexes that reference columns added by COLUMN_MIGRATIONS must be created
