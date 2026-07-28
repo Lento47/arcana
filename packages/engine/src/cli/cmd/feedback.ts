@@ -1,9 +1,20 @@
 import type { CommandModule } from "yargs"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
-import { getDataDir } from "./arcana-home.js"
+import { getDataDir, getArcanaHome } from "./arcana-home.js"
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+
+function resolveDataDir(): string {
+  const cp = join(getArcanaHome(), "config.json")
+  if (existsSync(cp)) {
+    try {
+      const cfg = JSON.parse(readFileSync(cp, "utf8"))
+      if (typeof cfg.dataDir === "string") return cfg.dataDir
+    } catch {}
+  }
+  return getDataDir()
+}
 
 function drainQueue(store: MemoryStore): number {
   const queuePath = join(homedir(), ".arcana", "feedback-queue.jsonl")
@@ -41,7 +52,7 @@ export const FeedbackCommand: CommandModule = {
       .option("praise", { type: "boolean", describe: "tag as praise" })
       .option("limit", { alias: "n", type: "number", default: 20, describe: "max rows" }),
   async handler(args) {
-    const dataDir = getDataDir()
+    const dataDir = resolveDataDir()
     try { mkdirSync(dataDir, { recursive: true }) } catch {}
     const db = openMemoryDB(dataDir)
     const store = new MemoryStore(db)
