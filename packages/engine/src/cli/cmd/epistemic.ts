@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 import { Database } from "bun:sqlite"
 import { computeEventHash } from "@arcana/core/epistemic/event-hash"
+import { ProofCommand } from "./proof"
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -389,7 +390,7 @@ export const EpistemicCommand: CommandModule = {
       .command(assumptions)
       .command(contract)
       .command(obligations)
-      .command(proof)
+      .command(ProofCommand)
       .demandCommand(),
   handler: () => {},
 }

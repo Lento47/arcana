@@ -12,6 +12,9 @@ import { createHash } from "node:crypto"
 import { Database } from "@arcana/core/database/database"
 import { EventTable } from "@arcana/core/epistemic/event-sql"
 import { TraceHealthTable } from "@arcana/core/epistemic/trace-health-sql"
+import { ClaimTable } from "@arcana/core/epistemic/sql"
+import { ContractTable } from "@arcana/core/epistemic/contract-sql"
+import { ObligationTable } from "@arcana/core/epistemic/obligation-sql"
 import type { TraceStatus } from "./event-store"
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -64,6 +67,10 @@ export type RunProof = ProofHashPayload & {
   readonly derivedAt: string
   readonly events: ReadonlyArray<RunProofEvent>
   readonly gaps: ReadonlyArray<string>
+  readonly claimsByStatus: Readonly<Record<string, number>>
+  readonly obligationsByStatus: Readonly<Record<string, number>>
+  readonly contractStatus: string | null
+  readonly p3DenialReasons: ReadonlyArray<string>
 }
 
 export interface RunProofEvent {
@@ -116,6 +123,40 @@ export const layer = Layer.effect(
         ? (traceRows[0]!.status as TraceHealth)
         : "UNAVAILABLE"
 
+      // Query claims grouped by status
+      const claimRows = yield* db.select({ status: ClaimTable.status })
+        .from(ClaimTable)
+        .where(eq(ClaimTable.session_id, sessionId))
+        .pipe(Effect.orDie)
+
+      const claimsByStatus: Record<string, number> = {}
+      for (const row of claimRows) {
+        claimsByStatus[row.status] = (claimsByStatus[row.status] ?? 0) + 1
+      }
+
+      // Query contract status (take the first contract for this session)
+      const contractRows = yield* db.select({ status: ContractTable.status })
+        .from(ContractTable)
+        .where(eq(ContractTable.session_id, sessionId))
+        .limit(1)
+        .pipe(Effect.orDie)
+
+      const contractStatus: string | null = contractRows.length > 0
+        ? contractRows[0]!.status
+        : null
+
+      // Query obligations grouped by status, joined through contracts for session_id
+      const obligationRows = yield* db.select({ status: ObligationTable.status })
+        .from(ObligationTable)
+        .innerJoin(ContractTable, eq(ObligationTable.contract_id, ContractTable.id))
+        .where(eq(ContractTable.session_id, sessionId))
+        .pipe(Effect.orDie)
+
+      const obligationsByStatus: Record<string, number> = {}
+      for (const row of obligationRows) {
+        obligationsByStatus[row.status] = (obligationsByStatus[row.status] ?? 0) + 1
+      }
+
       // Derive lifecycle completeness
       const lifecycle = deriveLifecycle(events)
 
@@ -139,7 +180,13 @@ export const layer = Layer.effect(
         traceHealth,
         integrityStatus,
         completionMethod,
+        claimsByStatus,
+        obligationsByStatus,
+        contractStatus,
       })
+
+      // Extract P3 denial reasons from gaps
+      const p3DenialReasons = extractP3DenialReasons(gaps)
 
       // Build the ProofHashPayload (everything except proofHash)
       const payload: ProofHashPayload = {
@@ -164,6 +211,10 @@ export const layer = Layer.effect(
         derivedAt,
         events,
         gaps,
+        claimsByStatus,
+        obligationsByStatus,
+        contractStatus,
+        p3DenialReasons,
       } satisfies RunProof
     })
 
@@ -257,8 +308,11 @@ function deriveProofLevel(ctx: {
   traceHealth: TraceHealth
   integrityStatus: IntegrityStatus
   completionMethod: string | null
+  claimsByStatus: Readonly<Record<string, number>>
+  obligationsByStatus: Readonly<Record<string, number>>
+  contractStatus: string | null
 }): { proofLevel: ProofLevel; gaps: string[] } {
-  const { events, lifecycleStatus, traceHealth, integrityStatus, completionMethod } = ctx
+  const { events, lifecycleStatus, traceHealth, integrityStatus, completionMethod, contractStatus } = ctx
   const gaps: string[] = []
 
   // ── P0 TRACE ── At least one event exists
@@ -307,8 +361,13 @@ function deriveProofLevel(ctx: {
     return { proofLevel: "P1", gaps }
   }
 
+  // Check: contract must be resolved (accepted/completed)
+  if (contractStatus !== null && contractStatus !== "resolved" && contractStatus !== "accepted") {
+    gaps.push(`contractStatus is ${contractStatus} — P3 requires resolved/accepted`)
+    return { proofLevel: "P1", gaps }
+  }
+
   // Check: all required obligations must be satisfied
-  const types = new Set(events.map((e) => e.type))
   const hasRequiredObligations = events.some((e) =>
     e.type === "obligation.created" && (e.payload as Record<string, unknown>)?.required === true
   )
@@ -331,6 +390,14 @@ function deriveProofLevel(ctx: {
 
   // All P3 invariants hold
   return { proofLevel: "P3", gaps: [] }
+}
+
+/**
+ * Extract P3-specific denial reasons from the gaps array.
+ * Filters for gap strings that mention P3 requirements.
+ */
+function extractP3DenialReasons(gaps: ReadonlyArray<string>): string[] {
+  return gaps.filter((g) => g.includes("P3"))
 }
 
 // ── RunRoot computation (hardened) ────────────────────────────────────

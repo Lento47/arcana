@@ -20,11 +20,11 @@
 
 ## Epistemic Tests
 
-- **Pass:** 43/43
-- **Expect calls:** 151
-- **Files:** event-hash.test.ts, event-store-concurrency.test.ts, event-store-multi-connection.test.ts, run-proof.test.ts
+- **Pass:** 59/59
+- **Expect calls:** 217
+- **Files:** event-hash.test.ts, event-store-concurrency.test.ts, event-store-multi-connection.test.ts, run-proof.test.ts, failure-injection.test.ts, run-proof-export.test.ts
 
-## Test Typecheck Errors (66)
+## Test Typecheck Errors (74)
 
 All in test files only. 0 source errors. CI rule: fingerprint comparison (see below).
 
@@ -34,6 +34,7 @@ All in test files only. 0 source errors. CI rule: fingerprint comparison (see be
 | run-proof.test.ts | 22 | TS2345 | `Effect<void, unknown, unknown>` → dependency channel |
 | compaction.test.ts | 16 | TS2345 | `Service → never` dependency channel |
 | event-store-concurrency.test.ts | 10 | TS2345 | Effect dependency channel |
+| failure-injection.test.ts | 8 | TS2345 | Effect dependency channel |
 | prompt.test.ts | 3 | TS2345 | Layer dependency channel |
 | httpapi-*.test.ts (5 files) | 5 | TS2345 | Layer dependency channel |
 | workspace.test.ts | 2 | TS2345 | Layer/Effect dependency channel |
@@ -43,7 +44,7 @@ All in test files only. 0 source errors. CI rule: fingerprint comparison (see be
 | app-runtime-logger.test.ts | 1 | TS2345 | Body type mismatch |
 | workspace-adapter.test.ts | 1 | TS2345 | Layer dependency channel |
 | httpapi-exercise/index.ts | 1 | TS2345 | Effect error channel |
-| **Total** | **66** | | |
+| **Total** | **74** | | |
 
 ### Root cause pattern:
 All test errors are `Service → never` dependency channel mismatches from Effect Layer composition. The test layers provide services that the type system tracks as unresolved. These are framework-level typing issues, not logic errors.
