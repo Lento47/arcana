@@ -1,11 +1,16 @@
 export function estimateTokens(text: string): number {
   if (!text) return 0
-  const codeChars = (text.match(/[{}[\]();:|<>]/g) || []).length
+  const codeChars = (text.match(/[{}[\\]();:|<>]/g) || []).length
   const regularChars = text.length - codeChars
   return Math.ceil(regularChars / 4) + Math.ceil(codeChars / 2)
 }
 
-export function estimateMessageTokens(msg: any): number {
+/** Minimal message shape needed for token estimation. */
+interface TokenEstimateMessage {
+  content: string | Array<string | { text?: string }>
+}
+
+export function estimateMessageTokens(msg: TokenEstimateMessage): number {
   let total = 0
   if (typeof msg.content === "string") total += estimateTokens(msg.content)
   if (Array.isArray(msg.content)) for (const part of msg.content) {
@@ -15,7 +20,7 @@ export function estimateMessageTokens(msg: any): number {
   return total
 }
 
-export function estimateMessagesTokens(messages: any[]): number {
+export function estimateMessagesTokens(messages: TokenEstimateMessage[]): number {
   return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0)
 }
 
@@ -27,7 +32,14 @@ export interface MessageUsage {
   chars: number
 }
 
-export function measureMessages(messages: any[]): { total: number; perMessage: MessageUsage[] } {
+/** Message with role for measurement. */
+interface MeasuredMessage extends TokenEstimateMessage {
+  role: string
+  name?: string
+  toolName?: string
+}
+
+export function measureMessages(messages: MeasuredMessage[]): { total: number; perMessage: MessageUsage[] } {
   const perMessage = messages.map((msg, i) => ({
     index: i,
     role: msg.role || "unknown",

@@ -63,7 +63,7 @@ import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@arcana/llm"
 
-// @ts-ignore
+// @ts-ignore globalThis.AI_SDK_LOG_WARNINGS not in TS lib — prevents ai-sdk stdout spam
 globalThis.AI_SDK_LOG_WARNINGS = false
 
 const decodeMessageInfo = Schema.decodeUnknownExit(SessionV1.Info)

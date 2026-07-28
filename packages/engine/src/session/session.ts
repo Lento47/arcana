@@ -421,9 +421,9 @@ export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?
         // google-vertex-anthropic returns metadata under "vertex" key
         // (AnthropicMessagesLanguageModel custom provider key from 'vertex.anthropic.messages')
         input.metadata?.["vertex"]?.["cacheCreationInputTokens"] ??
-        // @ts-expect-error
+        // @ts-expect-error bedrock cache metadata key not in AI SDK types
         input.metadata?.["bedrock"]?.["usage"]?.["cacheWriteInputTokens"] ??
-        // @ts-expect-error
+        // @ts-expect-error venice cache metadata key not in AI SDK types
         input.metadata?.["venice"]?.["usage"]?.["cacheCreationInputTokens"] ??
         0,
     ),

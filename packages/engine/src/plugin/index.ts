@@ -160,7 +160,7 @@ export const layer = Layer.effect(
           get serverUrl(): URL {
             return Server.url ?? new URL("http://localhost:4096")
           },
-          // @ts-expect-error
+          // @ts-expect-error Bun.$ not in @types/bun yet (https://github.com/oven-sh/bun/issues/5621)
           $: typeof Bun === "undefined" ? undefined : Bun.$,
         }
 
