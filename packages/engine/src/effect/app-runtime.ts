@@ -105,7 +105,7 @@ export const AppLayer = Layer.mergeAll(
   Layer.provideMerge(Observability.layer),
 )
 
-const rt = ManagedRuntime.make(AppLayer as any, { memoMap })
+const rt = ManagedRuntime.make(AppLayer as any, { memoMap }) // Layer.provideMerge chain loses type info — tracked: TODO narrow
 type Runtime = Pick<typeof rt, "runSync" | "runPromise" | "runPromiseExit" | "runFork" | "runCallback" | "dispose">
 
 /** Services provided by AppRuntime — i.e. what an Effect run via AppRuntime.runPromise can yield. */

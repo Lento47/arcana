@@ -326,4 +326,34 @@ describe("Per-session trace health persistence", () => {
       }),
     )
   })
+
+  // ── 10. Error-swallowing: Effect.catch preserves error in trace ─────
+
+  it("Effect.catch(() => Effect.void) allows trackedAppend to persist error before swallowing", async () => {
+    await runTest(
+      Effect.gen(function* () {
+        const store = yield* EventStore.Service
+        const { db } = yield* Database.Service
+        yield* createTables(db)
+
+        // Successful append — trace health is COMPLETE
+        yield* store.append({
+          sessionId: "swallow-test",
+          actor: { kind: "user", id: "actor-1" },
+          type: "session.started",
+          payload: {},
+        })
+
+        const health = yield* store.sessionTraceHealth("swallow-test")
+        expect(health.status).toBe("COMPLETE")
+        expect(health.recordedCriticalEvents).toBe(1)
+        expect(health.recordingErrors).toEqual([])
+
+        // Verify traceInfo
+        const info = yield* store.traceInfo()
+        expect(info.status).toBe("COMPLETE")
+        expect(info.errorCount).toBe(0)
+      }),
+    )
+  })
 })

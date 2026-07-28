@@ -262,7 +262,7 @@ export const layer = Layer.effect(
       } satisfies SessionTraceHealth
     })
 
-    return Service.of({ append: trackedAppend as Interface["append"], list, verify, traceInfo, sessionTraceHealth })
+    return Service.of({ append: trackedAppend as Interface["append"], list, verify, traceInfo, sessionTraceHealth }) // Effect.fn + catch changes error channel — runtime preserves behavior
   }),
 )
 
