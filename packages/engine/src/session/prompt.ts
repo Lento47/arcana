@@ -60,6 +60,7 @@ import * as DateTime from "effect/DateTime"
 import { eq } from "drizzle-orm"
 import { ContractTable } from "@arcana/core/epistemic/contract-sql"
 import { ObligationTable } from "@arcana/core/epistemic/obligation-sql"
+import { EventStore } from "./epistemic/event-store"
 import { SessionTable } from "@arcana/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
@@ -128,6 +129,7 @@ export const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const eventStore = yield* EventStore.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
@@ -1528,6 +1530,14 @@ export const layer = Layer.effect(
 
             if (result === "stop") {
               // ── Epistemic completion gate ──────────────────────────
+              // Emit completion.attempted event
+              yield* eventStore.append({
+                sessionId: sessionID,
+                actor: { kind: "model", id: lastUser?.model?.modelID ?? "unknown" },
+                type: "completion.attempted",
+                payload: { step, messageID: handle.message.id },
+              }).pipe(Effect.catchLog, Effect.ignore)
+
               // Block completion when required obligations remain unresolved.
               // Uses Drizzle ORM with provideService to avoid layer deps.
               const activeContract = yield* db
@@ -1556,9 +1566,23 @@ export const layer = Layer.effect(
                   })
                   // Fall through — let the loop continue
                 } else {
+                  // Emit completion.resolved event — all obligations satisfied
+                  yield* eventStore.append({
+                    sessionId: sessionID,
+                    actor: { kind: "policy", id: "completion-gate" },
+                    type: "completion.resolved",
+                    payload: { contractId: activeContract[0].id, method: "all-obligations-resolved" },
+                  }).pipe(Effect.catchLog, Effect.ignore)
                   return "break" as const
                 }
               } else {
+                // Emit completion.resolved event — no contract, free completion
+                yield* eventStore.append({
+                  sessionId: sessionID,
+                  actor: { kind: "policy", id: "completion-gate" },
+                  type: "completion.resolved",
+                  payload: { method: "no-active-contract" },
+                }).pipe(Effect.catchLog, Effect.ignore)
                 return "break" as const
               }
             }

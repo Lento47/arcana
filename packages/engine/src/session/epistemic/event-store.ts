@@ -1,8 +1,9 @@
 import { Effect, Context, Layer } from "effect"
 import { desc, eq } from "drizzle-orm"
-import { randomUUID, createHash } from "node:crypto"
+import { randomUUID } from "node:crypto"
 import { Database } from "@arcana/core/database/database"
 import { EventTable } from "@arcana/core/epistemic/event-sql"
+import { computeEventHash } from "@arcana/core/epistemic/event-hash"
 import type { ArcanaEvent } from "@arcana/core/epistemic/event"
 
 export interface Interface {
@@ -17,14 +18,6 @@ export interface Interface {
 }
 
 export class Service extends Context.Service<Service, Interface>()("@arcana/EventStore") {}
-
-function computeHash(
-  id: string, sequence: number, timestamp: string, previousHash: string | null,
-  actorKind: string, actorId: string, type: string, payload: unknown,
-): string {
-  const canonical = JSON.stringify({ id, sequence, timestamp, previousHash, actorKind, actorId, type, payload })
-  return createHash("sha256").update(canonical).digest("hex")
-}
 
 export const layer = Layer.effect(
   Service,
@@ -42,10 +35,11 @@ export const layer = Layer.effect(
       const id = randomUUID()
       const timestamp = new Date().toISOString()
       const payloadJson = JSON.stringify(input.payload)
-      const hash = computeHash(
+      const hash = computeEventHash({
         id, sequence, timestamp, previousHash,
-        input.actor.kind, input.actor.id, input.type, payloadJson,
-      )
+        actorKind: input.actor.kind, actorId: input.actor.id,
+        type: input.type, payload: payloadJson,
+      })
 
       yield* db.insert(EventTable).values({
         id,
@@ -95,10 +89,10 @@ export const layer = Layer.effect(
       const events = rows.reverse()
       for (let i = 0; i < events.length; i++) {
         const e = events[i]!
-        const computed = computeHash(
-          e.id, e.sequence, e.timestamp, e.previous_hash,
-          e.actor_kind, e.actor_id, e.type, e.payload,
-        )
+        const computed = computeEventHash({
+          id: e.id, sequence: e.sequence, timestamp: e.timestamp, previousHash: e.previous_hash,
+          actorKind: e.actor_kind, actorId: e.actor_id, type: e.type, payload: e.payload,
+        })
         if (computed !== e.hash) return { valid: false, breaksAt: e.sequence }
         if (i > 0 && e.previous_hash !== events[i - 1]!.hash) {
           return { valid: false, breaksAt: e.sequence }
@@ -110,3 +104,5 @@ export const layer = Layer.effect(
     return Service.of({ append, list, verify })
   }),
 )
+
+export * as EventStore from "./event-store"

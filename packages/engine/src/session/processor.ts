@@ -36,6 +36,7 @@ import {
   evaluateResponsePostflight,
   type ResponsePipelinePostflight,
 } from "@arcana/ml/response-pipeline"
+import { EventStore } from "./epistemic/event-store"
 
 const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
@@ -113,6 +114,7 @@ export const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const eventStore = yield* EventStore.Service
 
     const create = Effect.fn("SessionProcessor.create")(function* (input: Input) {
       // Pre-capture snapshot before the LLM stream starts. The AI SDK
@@ -253,6 +255,13 @@ export const layer = Layer.effect(
             attachments: output.attachments,
           },
         })
+        // Emit epistemic tool.returned event
+        yield* eventStore.append({
+          sessionId: ctx.sessionID,
+          actor: { kind: "tool", id: match.part.tool ?? toolCallID },
+          type: "tool.returned",
+          payload: { callID: toolCallID, title: output.title, hasOutput: output.output.length > 0 },
+        }).pipe(Effect.catchLog, Effect.ignore)
         yield* settleToolCall(toolCallID)
       })
 
@@ -353,6 +362,13 @@ export const layer = Layer.effect(
             timestamp: DateTime.makeUnsafe(Date.now()),
           })
         }
+        // Emit epistemic tool.called event
+        yield* eventStore.append({
+          sessionId: ctx.sessionID,
+          actor: { kind: "model", id: ctx.model?.modelID ?? "unknown" },
+          type: "tool.called",
+          payload: { callID: input.id, tool: input.name, providerExecuted: input.providerExecuted },
+        }).pipe(Effect.catchLog, Effect.ignore)
         const part = yield* session.updatePart({
           id: PartID.ascending(),
           messageID: ctx.assistantMessage.id,
@@ -1186,6 +1202,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(RuntimeFlags.defaultLayer),
     Layer.provide(Database.defaultLayer),
     Layer.provide(EventV2Bridge.defaultLayer),
+    Layer.provide(EventStore.layer),
   ),
 )
 
