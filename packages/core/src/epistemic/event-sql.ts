@@ -3,6 +3,7 @@ import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core"
 export const EventTable = sqliteTable("events", {
   id: text().primaryKey(),
   sequence: integer().notNull(),
+  session_id: text(),
   timestamp: text().notNull(),
   previous_hash: text(),
   hash: text().notNull(),
