@@ -309,7 +309,7 @@ export const EFFECT_BOUNDARY_INVENTORY: EffectBoundary[] = [
     currentEnforcement: "NONE",
     bypassPaths: ["MCP servers spawned as child processes", "transport connects via stdio/SSE/HTTP"],
     proposedPEP: "packages/engine/src/mcp/index.ts:transport creation",
-    migrationPriority: "P0",
+    migrationPriority: "P1",
   },
   {
     id: "eff-021",
@@ -452,7 +452,7 @@ export const EFFECT_BOUNDARY_INVENTORY: EffectBoundary[] = [
     currentEnforcement: "PERMISSION_PROMPT",
     bypassPaths: ["scheduled jobs run autonomously", "can spawn sessions with tool access"],
     proposedPEP: "packages/engine/src/session/processor.ts:cronjob branch",
-    migrationPriority: "P0",
+    migrationPriority: "P1",
   },
   {
     id: "eff-032",
