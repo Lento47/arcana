@@ -127,3 +127,17 @@ export {
   isRemoteContentIntentInjection,
   evaluateIntentBinding,
 } from "./intent-binding"
+
+export {
+  type DelegatedContext,
+  type CapabilityGrantDraft,
+  type DelegationRequest,
+  type DelegationResult,
+  type DelegationReason,
+  type DelegationReasonCode,
+  delegateCapabilities,
+  validateAttenuation,
+  canParentDelegate,
+  isResourceNarrowerOrEqual,
+  isSensitivityNarrowerOrEqual,
+} from "./delegation"
