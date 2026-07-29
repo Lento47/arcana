@@ -313,8 +313,10 @@ export type IntentBindingCreatedBy = "RUNTIME" | "USER_APPROVAL"
 export interface IntentBinding {
   readonly id: string
   readonly requestHash: string
+  readonly sessionId: string
   readonly userRequestEventId: string
   readonly contractId?: string
+  readonly contractRevision?: string
   readonly criterionIds: ReadonlyArray<string>
   readonly justification: IntentJustification
   readonly createdBy: IntentBindingCreatedBy

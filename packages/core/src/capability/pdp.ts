@@ -878,6 +878,20 @@ function evaluateIntentBindingLocal(
     (b) => b.status === "ACTIVE" && b.requestHash === computeRequestHash(request),
   )
 
+  // Session isolation: binding must belong to this session
+  const sessionBindings = activeBindings.filter(
+    (b) => b.sessionId === request.sessionId,
+  )
+
+  // Contract lifecycle: binding's contract must not be stale
+  const validBindings = sessionBindings.filter((b) => {
+    // If binding references a contract, check it's still active
+    if (b.contractId && b.status !== "ACTIVE") return false
+    // If binding has an expiry, check it hasn't passed
+    if (b.expiresAt && b.expiresAt <= "") return false
+    return true
+  })
+
   // LOW risk: OPTIONAL — always allowed
   if (risk === "LOW") {
     return { decision: "ALLOW", reasons }
@@ -885,7 +899,7 @@ function evaluateIntentBindingLocal(
 
   // MODERATE: USER_REQUEST — needs any active binding
   if (risk === "MODERATE") {
-    if (activeBindings.length > 0) {
+    if (validBindings.length > 0) {
       reasons.push({
         code: "ALLOW_INTENT_BINDING",
         message: "User request binding found",
@@ -903,7 +917,7 @@ function evaluateIntentBindingLocal(
 
   // HIGH: CONTRACT_CRITERION — needs contract + criterion
   if (risk === "HIGH") {
-    const valid = activeBindings.find((b) =>
+    const valid = validBindings.find((b) =>
       b.contractId !== undefined &&
       b.criterionIds.length > 0 &&
       (b.justification === "DIRECT_REQUIREMENT" || b.justification === "NECESSARY_SUBSTEP"),
@@ -926,7 +940,7 @@ function evaluateIntentBindingLocal(
 
   // CRITICAL: EXPLICIT_APPROVAL — needs explicit approval + contract
   if (risk === "CRITICAL") {
-    const valid = activeBindings.find((b) =>
+    const valid = validBindings.find((b) =>
       b.justification === "EXPLICIT_APPROVAL" &&
       b.contractId !== undefined &&
       b.criterionIds.length > 0,
