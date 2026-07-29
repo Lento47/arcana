@@ -16,6 +16,8 @@ import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@arcana/core/database/database"
 import { getSessionGoal, setSessionGoal } from "@arcana/core/session/goal"
+import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
+import { delegateCapabilities, type CapabilityGrantDraft } from "@arcana/core/capability/delegation"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>
@@ -235,6 +237,64 @@ export const TaskTool = Tool.define(
           blockedCards: parentGoal.blockedCards,
         })
       })
+
+      // ── Phase C: Capability delegation to child session ──────────────
+      // Load parent's capability grants and delegate attenuated grants to child.
+      // This runs alongside PermissionV1 — both systems are active.
+      // The capability PEP in tools.ts enforces capability grants at execution time.
+      yield* Effect.gen(function* () {
+        const grantStore = new SqliteGrantStore(database)
+        const parentGrants = yield* grantStore
+          .getGrantsForPrincipal(input.agent.name, ctx.sessionID)
+          .pipe(Effect.catch(() => Effect.succeed([])))
+
+        if (parentGrants.length > 0) {
+          // Derive child capability grants from parent
+          const childDrafts: CapabilityGrantDraft[] = parentGrants.map((pg) => ({
+            actions: pg.actions,
+            resources: pg.resources,
+            constraints: {
+              toolNames: pg.constraints.toolNames,
+              executable: pg.constraints.executable,
+              networkHosts: pg.constraints.networkHosts,
+              maxUses: pg.constraints.maxUses,
+            },
+          }))
+
+          const delegationResult = delegateCapabilities(
+            {
+              parentPrincipalId: input.agent.name,
+              childPrincipalId: next.name,
+              parentSessionId: ctx.sessionID,
+              childSessionId: nextSession.id,
+              contractId: parentGrants[0]?.constraints.contractId ?? "default",
+              contractRevision: parentGrants[0]?.constraints.contractRevision ?? 1,
+              requestedGrants: childDrafts,
+              delegatedContext: {
+                sourceEventIds: parentGrants.map((pg) => pg.createdEventId),
+                provenance: [],
+                sensitivity: "PUBLIC",
+                contractId: parentGrants[0]?.constraints.contractId ?? "default",
+                contractRevision: parentGrants[0]?.constraints.contractRevision ?? 1,
+                parentSessionId: ctx.sessionID,
+              },
+            },
+            [...parentGrants],
+            `delegation-${ctx.sessionID}-${nextSession.id}`,
+          )
+
+          if (delegationResult.status === "CREATED") {
+            for (const grant of delegationResult.childGrants) {
+              yield* grantStore.putGrant(grant).pipe(
+                Effect.catch(() => Effect.void),
+              )
+            }
+          }
+          // If delegation is denied, the child session still runs but
+          // the capability PEP will deny all consequential tool calls.
+        }
+      }).pipe(Effect.catch(() => Effect.void))
+      // ── End Phase C capability delegation ────────────────────────────
 
       const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID }).pipe(
         Effect.provideService(Database.Service, database),
