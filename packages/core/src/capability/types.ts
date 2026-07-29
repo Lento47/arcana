@@ -344,3 +344,24 @@ export const INTENT_BINDING_REQUIREMENT: Record<RiskClass, IntentBindingRequirem
 // ─── Policy Version ───────────────────────────────────────────────────
 
 export const POLICY_VERSION = "phase-c-v1"
+
+// ─── Execution Receipts ───────────────────────────────────────────────
+
+/**
+ * Execution receipt for replay resistance.
+ * Persisted before/after execution to prevent duplicate effects.
+ *
+ * executionKey = H(principalId ∥ sessionId ∥ requestHash ∥ capabilityId ∥ nonce)
+ */
+export interface ExecutionReceipt {
+  readonly executionKey: string
+  readonly principalId: string
+  readonly sessionId: string
+  readonly requestHash: string
+  readonly capabilityId: string
+  readonly nonce: string
+  readonly status: "EXECUTING" | "SUCCEEDED" | "FAILED" | "UNKNOWN_AFTER_CRASH"
+  readonly createdAt: string
+  readonly completedAt?: string
+  readonly eventId?: string
+}

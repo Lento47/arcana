@@ -27,6 +27,7 @@ export {
   type IntentBindingRequirement,
   INTENT_BINDING_REQUIREMENT,
   type InformationFlowProfile,
+  type ExecutionReceipt,
   SENSITIVITY_ORDER,
   combineSensitivity,
   maxSensitivity,
