@@ -220,8 +220,10 @@ export function validateIntentBinding(
  */
 export function createIntentBinding(params: {
   requestHash: string
+  sessionId: string
   userRequestEventId: string
   contractId?: string
+  contractRevision?: string
   criterionIds?: string[]
   justification: IntentJustification
   createdBy: IntentBindingCreatedBy
@@ -230,8 +232,10 @@ export function createIntentBinding(params: {
   return {
     id: `intent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     requestHash: params.requestHash,
+    sessionId: params.sessionId,
     userRequestEventId: params.userRequestEventId,
     contractId: params.contractId,
+    contractRevision: params.contractRevision,
     criterionIds: Object.freeze([...(params.criterionIds ?? [])]),
     justification: params.justification,
     createdBy: params.createdBy,

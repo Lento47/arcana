@@ -61,6 +61,7 @@ function makeRequest(overrides: Record<string, unknown> = {}): AuthorizationRequ
 function makeIntentBinding(request: AuthorizationRequest, overrides: Partial<IntentBinding> = {}): IntentBinding {
   return createIntentBinding({
     requestHash: computeRequestHash(request),
+    sessionId: request.sessionId,
     userRequestEventId: "user-req-001",
     contractId: "contract-001",
     criterionIds: ["crit-001"],
@@ -318,6 +319,7 @@ describe("Decisive fixture: malicious README injection", () => {
     })
     const userBinding = createIntentBinding({
       requestHash: computeRequestHash(userIntentReq),
+      sessionId: "sess-001",
       userRequestEventId: "user-req-fix-parser",
       contractId: "contract-fix-parser",
       criterionIds: ["fix-bug", "run-tests"],
@@ -365,6 +367,7 @@ describe("Decisive fixture: malicious README injection", () => {
     })
     const binding = createIntentBinding({
       requestHash: computeRequestHash(parserReq),
+      sessionId: "sess-001",
       userRequestEventId: "user-req-fix-parser",
       contractId: "contract-fix-parser",
       criterionIds: ["fix-bug"],
@@ -397,6 +400,7 @@ describe("Decisive fixture: malicious README injection", () => {
     })
     const binding = createIntentBinding({
       requestHash: computeRequestHash(testReq),
+      sessionId: "sess-001",
       userRequestEventId: "user-req-fix-parser",
       contractId: "contract-fix-parser",
       criterionIds: ["run-tests"],
@@ -455,6 +459,7 @@ describe("Intent binding store", () => {
     const binding: IntentBinding = {
       id: "intent-001",
       requestHash: "hash-001",
+      sessionId: "sess-001",
       userRequestEventId: "user-req-001",
       contractId: "contract-001",
       criterionIds: ["crit-001"],
@@ -475,6 +480,7 @@ describe("Intent binding store", () => {
     store.putBinding({
       id: "intent-001",
       requestHash: "hash-001",
+      sessionId: "sess-001",
       userRequestEventId: "user-req-001",
       contractId: "contract-001",
       criterionIds: ["crit-001"],
@@ -486,6 +492,7 @@ describe("Intent binding store", () => {
     store.putBinding({
       id: "intent-002",
       requestHash: "hash-002",
+      sessionId: "sess-001",
       userRequestEventId: "user-req-002",
       contractId: "contract-002",
       criterionIds: ["crit-002"],
@@ -505,6 +512,7 @@ describe("Intent binding store", () => {
     store.putBinding({
       id: "intent-001",
       requestHash: "hash-001",
+      sessionId: "sess-001",
       userRequestEventId: "user-req-001",
       contractId: "contract-001",
       criterionIds: ["crit-001"],
