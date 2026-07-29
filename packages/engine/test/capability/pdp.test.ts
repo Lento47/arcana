@@ -709,6 +709,14 @@ describe("PDP: resource matching properties", () => {
     expect(matchResource(sel, { kind: "process", executable: "/usr/bin/bun" })).toBe(true)
     expect(matchResource(sel, { kind: "process", executable: "bunx" })).toBe(false)
   })
+
+  test("wildcard executable does NOT match empty executable (regression)", () => {
+    // Security: empty executable is malformed, wildcard must not authorize it
+    const sel: ResourceSelector = { kind: "process", pattern: "*" }
+    expect(matchResource(sel, { kind: "process", executable: "bun" })).toBe(true)
+    expect(matchResource(sel, { kind: "process", executable: "" })).toBe(false)
+    expect(matchResource(sel, { kind: "process" })).toBe(false)  // undefined executable
+  })
 })
 
 describe("PDP: decision reason codes", () => {

@@ -149,6 +149,7 @@ describe("Runtime enforcement: seeded grants allow execution", () => {
         principalId: "agent:main",
         sessionId: "sess-001",
         args: { command: "bun test" },
+        executable: "bun",
       })
 
       const result = yield* authorizeAndExecuteEffect(
@@ -289,6 +290,7 @@ describe("Runtime enforcement: immediate revocation", () => {
         principalId: "agent:main",
         sessionId: "sess-001",
         args: {},
+        executable: "bun",
       })
 
       // First call: should succeed
