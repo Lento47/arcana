@@ -197,17 +197,99 @@ export interface AuthorizationDecision {
   validUntil?: string
 }
 
+// ─── Authorization Trace Health ────────────────────────────────────────
+
+/**
+ * Authorization trace health — whether authorization event recording is complete.
+ * COMPLETE: every executed event has a matching requested+allowed
+ * DEGRADED: some events may have failed to record
+ * UNAVAILABLE: no authorization events exist or emitter is nonfunctional
+ */
+export type AuthorizationTraceHealth = "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+
 // ─── Authorization Profile (RunProof integration) ─────────────────────
 
 export interface AuthorizationProfile {
-  policyVersion: string
+  policyVersions: ReadonlyArray<string>
   requests: number
   allowed: number
   denied: number
   approvalsRequired: number
+  staleDecisions: number
   executed: number
+  executionFailures: number
   unauthorizedExecutions: number
   capabilityViolations: number
+  authorizationTraceHealth: AuthorizationTraceHealth
+  orphanExecutions: number
+  unmatchedAllows: number
+  unmatchedRequests: number
+}
+
+// ─── Security Labels ──────────────────────────────────────────────────
+
+/**
+ * Security labels attached to every consequential value.
+ * Provenance: where the data came from (set — can have multiple sources).
+ * Sensitivity: how sensitive the data is (lattice — join selects maximum).
+ */
+export interface SecurityLabels {
+  readonly provenance: ReadonlySet<ProvenanceLabel>
+  readonly sensitivity: SensitivityLabel
+}
+
+/**
+ * A value with attached security labels and source event traceability.
+ * Labels are immutable once attached — only declassification creates a new derivative.
+ */
+export interface LabeledValue<T> {
+  readonly value: T
+  readonly labels: SecurityLabels
+  readonly sourceEventIds: ReadonlyArray<string>
+}
+
+/**
+ * Field-level provenance for authorization requests with heterogeneous sources.
+ */
+export interface LabeledAuthorizationField {
+  readonly field: string
+  readonly provenance: ReadonlyArray<ProvenanceLabel>
+  readonly sensitivity: SensitivityLabel
+  readonly sourceEventIds: ReadonlyArray<string>
+}
+
+// ─── Declassification ─────────────────────────────────────────────────
+
+/**
+ * A narrow declassification decision — explicit, scoped, immutable, capability-bound.
+ * Must be issued by trusted policy or explicit approval. Model output cannot issue this.
+ */
+export interface DeclassificationDecision {
+  readonly sourceSensitivity: "SECRET" | "PRIVATE"
+  readonly targetSensitivity: "PRIVATE" | "INTERNAL" | "PUBLIC"
+  readonly fields: ReadonlyArray<string>
+  readonly purpose: string
+  readonly capabilityId: string
+  readonly requestHash: string
+  readonly expiresAt: string
+}
+
+// ─── Information Flow Profile (RunProof integration) ──────────────────
+
+/**
+ * RunProof information-flow profile — derived from security label events.
+ * Hard invariant: unlabeledConsequentialRequests = 0.
+ */
+export interface InformationFlowProfile {
+  readonly labeledInputs: number
+  readonly labeledDerivedValues: number
+  readonly secretValuesUsed: number
+  readonly secretFlowsDenied: number
+  readonly declassificationsRequested: number
+  readonly declassificationsAllowed: number
+  readonly labelTamperingAttempts: number
+  readonly unlabeledConsequentialRequests: number
+  readonly traceHealth: AuthorizationTraceHealth
 }
 
 // ─── Intent Binding ───────────────────────────────────────────────────

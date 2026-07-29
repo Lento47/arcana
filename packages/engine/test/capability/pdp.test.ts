@@ -480,7 +480,7 @@ describe("PDP: provenance and sensitivity", () => {
     const ctx = makeContext({ capabilities: [cap] })
     const d = evaluate(req, ctx)
     expect(d.decision).toBe("DENY")
-    expect(d.reasons.some((r) => r.code === "DENY_SECRET_FLOW")).toBe(true)
+    expect(d.reasons.some((r) => r.code === "DENY_MCP_SECRET_USE")).toBe(true)
   })
 
   test("TOOL_OUTPUT cannot authorize policy.modify → DENY", () => {
@@ -496,7 +496,7 @@ describe("PDP: provenance and sensitivity", () => {
     const ctx = makeContext({ capabilities: [cap] })
     const d = evaluate(req, ctx)
     expect(d.decision).toBe("DENY")
-    expect(d.reasons.some((r) => r.code === "DENY_UNTRUSTED_PROVENANCE")).toBe(true)
+    expect(d.reasons.some((r) => r.code === "DENY_TOOL_OUTPUT_POLICY_CHANGE")).toBe(true)
   })
 
   test("SECRET + network.write → DENY", () => {
@@ -512,7 +512,7 @@ describe("PDP: provenance and sensitivity", () => {
     const ctx = makeContext({ capabilities: [cap] })
     const d = evaluate(req, ctx)
     expect(d.decision).toBe("DENY")
-    expect(d.reasons.some((r) => r.code === "DENY_SECRET_FLOW")).toBe(true)
+    expect(d.reasons.some((r) => r.code === "DENY_SECRET_EXFILTRATION")).toBe(true)
   })
 
   test("REMOTE_CONTENT + network.write → REQUIRE_APPROVAL", () => {
@@ -528,7 +528,7 @@ describe("PDP: provenance and sensitivity", () => {
     const ctx = makeContext({ capabilities: [cap] })
     const d = evaluate(req, ctx)
     expect(d.decision).toBe("REQUIRE_APPROVAL")
-    expect(d.reasons.some((r) => r.code === "REQUIRE_APPROVAL_UNTRUSTED_PROVENANCE")).toBe(true)
+    expect(d.reasons.some((r) => r.code === "REQUIRE_APPROVAL_REMOTE_WRITE")).toBe(true)
   })
 })
 
@@ -649,7 +649,7 @@ describe("PDP: composition", () => {
     const d = evaluate(req, ctx)
     // Should be DENY because SECRET + network.write is denied
     expect(d.decision).toBe("DENY")
-    expect(d.reasons.some((r) => r.code === "DENY_SECRET_FLOW")).toBe(true)
+    expect(d.reasons.some((r) => r.code === "DENY_SECRET_EXFILTRATION")).toBe(true)
   })
 })
 
@@ -812,6 +812,12 @@ describe("PDP: frozen reason-code enum (26 codes)", () => {
     "DENY_UNTRUSTED_PROVENANCE",
     "DENY_SECRET_FLOW",
     "DENY_EXPLICIT_POLICY",
+    "DENY_LABEL_TAMPERING",
+    "DENY_SECRET_EXFILTRATION",
+    "DENY_SECRET_MODEL_EXPOSURE",
+    "DENY_MCP_SECRET_USE",
+    "DENY_TOOL_OUTPUT_POLICY_CHANGE",
+    "DENY_UNLABELED_CONSEQUENTIAL",
   ]
 
   const EXPECTED_APPROVAL: ApprovalReasonCode[] = [
@@ -820,27 +826,29 @@ describe("PDP: frozen reason-code enum (26 codes)", () => {
     "REQUIRE_APPROVAL_UNTRUSTED_PROVENANCE",
     "REQUIRE_APPROVAL_SECRET_USE",
     "REQUIRE_APPROVAL_EXTERNAL_WRITE",
+    "REQUIRE_APPROVAL_REMOTE_WRITE",
+    "REQUIRE_APPROVAL_UNTRUSTED_LOCAL_WRITE",
   ]
 
   const EXPECTED_ALLOW: AllowReasonCode[] = ["ALLOW_CAPABILITY_MATCH"]
 
-  test("frozen deny code count: 20", () => {
-    expect(EXPECTED_DENY.length).toBe(20)
+  test("frozen deny code count: 26", () => {
+    expect(EXPECTED_DENY.length).toBe(26)
   })
 
-  test("frozen approval code count: 5", () => {
-    expect(EXPECTED_APPROVAL.length).toBe(5)
+  test("frozen approval code count: 7", () => {
+    expect(EXPECTED_APPROVAL.length).toBe(7)
   })
 
   test("frozen allow code count: 1", () => {
     expect(EXPECTED_ALLOW.length).toBe(1)
   })
 
-  test("frozen total reason code count: 26", () => {
+  test("frozen total reason code count: 34", () => {
     const total =
       EXPECTED_DENY.length +
       EXPECTED_APPROVAL.length +
       EXPECTED_ALLOW.length
-    expect(total).toBe(26)
+    expect(total).toBe(34)
   })
 })

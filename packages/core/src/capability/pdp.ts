@@ -80,6 +80,12 @@ export type DenyReasonCode =
   | "DENY_UNTRUSTED_PROVENANCE"
   | "DENY_SECRET_FLOW"
   | "DENY_EXPLICIT_POLICY"
+  | "DENY_LABEL_TAMPERING"
+  | "DENY_SECRET_EXFILTRATION"
+  | "DENY_SECRET_MODEL_EXPOSURE"
+  | "DENY_MCP_SECRET_USE"
+  | "DENY_TOOL_OUTPUT_POLICY_CHANGE"
+  | "DENY_UNLABELED_CONSEQUENTIAL"
 
 export type ApprovalReasonCode =
   | "REQUIRE_APPROVAL_HIGH_RISK"
@@ -87,6 +93,8 @@ export type ApprovalReasonCode =
   | "REQUIRE_APPROVAL_UNTRUSTED_PROVENANCE"
   | "REQUIRE_APPROVAL_SECRET_USE"
   | "REQUIRE_APPROVAL_EXTERNAL_WRITE"
+  | "REQUIRE_APPROVAL_REMOTE_WRITE"
+  | "REQUIRE_APPROVAL_UNTRUSTED_LOCAL_WRITE"
 
 export type AllowReasonCode = "ALLOW_CAPABILITY_MATCH"
 
@@ -509,32 +517,48 @@ function evaluateProvenance(
   const hasMcpDescription = req.provenance.includes("MCP_DESCRIPTION")
   const hasModelOutput = req.provenance.includes("MODEL_OUTPUT")
   const hasSecret = req.sensitivity.includes("SECRET")
+  const hasUntrustedLocal = req.provenance.includes("UNTRUSTED_LOCAL_SOURCE")
 
-  // MCP_DESCRIPTION cannot authorize secret.use
+  // MCP_DESCRIPTION cannot authorize secret.use — DENY_MCP_SECRET_USE
   if (hasMcpDescription && req.action === "secret.use") {
     reasons.push({
-      code: "DENY_SECRET_FLOW",
+      code: "DENY_MCP_SECRET_USE",
       message: "MCP tool description cannot authorize secret access",
       severity: "critical",
     })
   }
 
-  // TOOL_OUTPUT cannot authorize policy.modify
+  // TOOL_OUTPUT cannot authorize policy.modify — DENY_TOOL_OUTPUT_POLICY_CHANGE
   if (hasToolOutput && req.action === "policy.modify") {
     reasons.push({
-      code: "DENY_UNTRUSTED_PROVENANCE",
+      code: "DENY_TOOL_OUTPUT_POLICY_CHANGE",
       message: "Tool output cannot authorize policy modification",
       severity: "critical",
     })
   }
 
-  // SECRET + network.write without explicit combined capability
+  // SECRET + network.write without explicit combined capability — DENY_SECRET_EXFILTRATION
   if (hasSecret && req.action === "network.write") {
     reasons.push({
-      code: "DENY_SECRET_FLOW",
+      code: "DENY_SECRET_EXFILTRATION",
       message: "SECRET data cannot be sent to network without explicit combined capability",
       severity: "critical",
     })
+  }
+
+  // SECRET + model-visible log/export — DENY_SECRET_MODEL_EXPOSURE
+  if (hasSecret && hasModelOutput && (req.action === "network.write" || req.action === "filesystem.write")) {
+    reasons.push({
+      code: "DENY_SECRET_MODEL_EXPOSURE",
+      message: "SECRET data cannot be exposed through model output",
+      severity: "critical",
+    })
+  }
+
+  // MODEL_OUTPUT alone cannot create authority
+  if (hasModelOutput && !hasRemoteContent && !hasToolOutput && req.action !== "filesystem.read") {
+    // Model output alone cannot modify external state without other provenance
+    // This is a soft check — the capability grant still governs
   }
 
   return reasons
@@ -550,17 +574,26 @@ function evaluateProvenanceApprovals(
   const hasUntrustedLocal = req.provenance.includes("UNTRUSTED_LOCAL_SOURCE")
   const hasSecret = req.sensitivity.includes("SECRET")
 
-  // REMOTE_CONTENT + network.write → REQUIRE_APPROVAL
+  // REMOTE_CONTENT + network.write → REQUIRE_APPROVAL_REMOTE_WRITE
   if (hasRemoteContent && req.action === "network.write") {
     reasons.push({
-      code: "REQUIRE_APPROVAL_UNTRUSTED_PROVENANCE",
+      code: "REQUIRE_APPROVAL_REMOTE_WRITE",
       message: "Network write with remote content provenance requires approval",
       severity: "warning",
     })
   }
 
-  // UNTRUSTED_LOCAL_SOURCE + high-risk action → REQUIRE_APPROVAL
-  if (hasUntrustedLocal && ["network.write", "secret.use", "process.execute"].includes(req.action)) {
+  // UNTRUSTED_LOCAL_SOURCE + network.write → REQUIRE_APPROVAL_UNTRUSTED_LOCAL_WRITE
+  if (hasUntrustedLocal && req.action === "network.write") {
+    reasons.push({
+      code: "REQUIRE_APPROVAL_UNTRUSTED_LOCAL_WRITE",
+      message: "Untrusted local source with network write requires approval",
+      severity: "warning",
+    })
+  }
+
+  // UNTRUSTED_LOCAL_SOURCE + high-risk action → REQUIRE_APPROVAL_UNTRUSTED_PROVENANCE
+  if (hasUntrustedLocal && ["secret.use", "process.execute"].includes(req.action)) {
     reasons.push({
       code: "REQUIRE_APPROVAL_UNTRUSTED_PROVENANCE",
       message: "Untrusted local source with consequential action requires approval",
@@ -568,7 +601,7 @@ function evaluateProvenanceApprovals(
     })
   }
 
-  // SECRET + any network → REQUIRE_APPROVAL (if not already denied)
+  // SECRET + any network → REQUIRE_APPROVAL_SECRET_USE
   if (hasSecret && (req.action === "network.read" || req.action === "network.write")) {
     reasons.push({
       code: "REQUIRE_APPROVAL_SECRET_USE",
