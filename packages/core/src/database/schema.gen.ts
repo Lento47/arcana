@@ -274,6 +274,27 @@ export default {
       yield* tx.run(`CREATE INDEX \`session_parent_idx\` ON \`session\` (\`parent_id\`);`)
       yield* tx.run(`CREATE INDEX \`session_org_idx\` ON \`session\` (\`org_id\`);`)
       yield* tx.run(`CREATE INDEX \`todo_session_idx\` ON \`todo\` (\`session_id\`);`)
+      yield* tx.run(`
+        CREATE TABLE \`capability_grants\` (
+          \`id\` text PRIMARY KEY,
+          \`schema_version\` text NOT NULL DEFAULT '1',
+          \`principal_kind\` text NOT NULL,
+          \`principal_id\` text NOT NULL,
+          \`issuer_kind\` text NOT NULL,
+          \`issuer_id\` text NOT NULL,
+          \`actions\` text NOT NULL,
+          \`resources\` text NOT NULL,
+          \`constraints\` text NOT NULL,
+          \`delegation\` text NOT NULL,
+          \`status\` text NOT NULL DEFAULT 'ACTIVE',
+          \`created_event_id\` text NOT NULL,
+          \`revoked_event_id\` text,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`CREATE INDEX \`capability_grants_principal_idx\` ON \`capability_grants\` (\`principal_id\`, \`principal_kind\`);`)
+      yield* tx.run(`CREATE INDEX \`capability_grants_status_idx\` ON \`capability_grants\` (\`status\`);`)
     })
   },
 } satisfies Omit<DatabaseMigration.Migration, "id">

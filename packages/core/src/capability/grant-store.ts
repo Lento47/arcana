@@ -1,41 +1,58 @@
 /**
- * Phase C Task 7: Session-aware Policy Context Provider
+ * Phase C: Session-aware Policy Context Provider
  *
- * Replaces the permissive migration provider with a fail-closed provider
- * backed by persisted capability grants.
- *
+ * Fail-closed provider backed by persisted capability grants.
  * No grants → DENY. Missing storage → DENY. Unknown tool → DENY.
+ *
+ * The store interface returns Effects so the SQLite implementation
+ * can compose directly with the Effect runtime — no nested
+ * Effect.runPromise bridges.
  */
 
+import { Effect } from "effect"
 import type { PolicyContext, PolicyContextProvider, WorkspaceTrust } from "./pdp"
 import type { CapabilityGrant } from "./types"
 import { POLICY_VERSION } from "./types"
 
-// ─── Capability Grant Store ───────────────────────────────────────────
+// ─── Capability Grant Store (Effect-native) ──────────────────────────
+
+export interface CapabilityGrantStoreError {
+  readonly _tag: "CapabilityGrantStoreError"
+  readonly cause: unknown
+}
+
+export function CapabilityGrantStoreError(cause: unknown): CapabilityGrantStoreError {
+  return { _tag: "CapabilityGrantStoreError", cause }
+}
 
 /**
  * Abstract store interface for persisted capability grants.
- * Implementations backed by SQLite, in-memory, or file.
+ * All methods return Effects so implementations compose with the
+ * Effect runtime without bridging.
  */
 export interface CapabilityGrantStore {
-  /** Load all grants for a principal in a session. */
   getGrantsForPrincipal(
     principalId: string,
     sessionId: string,
     workspaceId?: string,
-  ): CapabilityGrant[] | Promise<CapabilityGrant[]>
+  ): Effect.Effect<readonly CapabilityGrant[], CapabilityGrantStoreError>
 
-  /** Load all grants for a workspace. */
-  getGrantsForWorkspace(workspaceId: string): CapabilityGrant[] | Promise<CapabilityGrant[]>
+  getGrantsForWorkspace(
+    workspaceId: string,
+  ): Effect.Effect<readonly CapabilityGrant[], CapabilityGrantStoreError>
 
-  /** Record a grant. */
-  putGrant(grant: CapabilityGrant): void | Promise<void>
+  putGrant(
+    grant: CapabilityGrant,
+  ): Effect.Effect<void, CapabilityGrantStoreError>
 
-  /** Revoke a grant by ID. Returns true if found. */
-  revokeGrant(grantId: string, revokedEventId: string): boolean | Promise<boolean>
+  revokeGrant(
+    grantId: string,
+    revokedEventId: string,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError>
 
-  /** Mark a grant as exhausted. */
-  exhaustGrant(grantId: string): boolean | Promise<boolean>
+  exhaustGrant(
+    grantId: string,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError>
 }
 
 // ─── In-Memory Grant Store ────────────────────────────────────────────
@@ -47,13 +64,19 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
     principalId: string,
     sessionId: string,
     workspaceId?: string,
+  ): Effect.Effect<readonly CapabilityGrant[], CapabilityGrantStoreError> {
+    return Effect.succeed(this._getForPrincipal(principalId, sessionId, workspaceId))
+  }
+
+  private _getForPrincipal(
+    principalId: string,
+    sessionId: string,
+    workspaceId?: string,
   ): CapabilityGrant[] {
     const result: CapabilityGrant[] = []
     for (const g of this.grants.values()) {
       if (g.principal.id === principalId) {
-        // Session-bound grants must match
         if (g.constraints.sessionId && g.constraints.sessionId !== sessionId) continue
-        // Workspace-bound grants must match
         if (g.constraints.workspaceId && workspaceId && g.constraints.workspaceId !== workspaceId) continue
         result.push(g)
       }
@@ -61,32 +84,42 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
     return result
   }
 
-  getGrantsForWorkspace(workspaceId: string): CapabilityGrant[] {
+  getGrantsForWorkspace(
+    workspaceId: string,
+  ): Effect.Effect<readonly CapabilityGrant[], CapabilityGrantStoreError> {
     const result: CapabilityGrant[] = []
     for (const g of this.grants.values()) {
       if (g.constraints.workspaceId === workspaceId) {
         result.push(g)
       }
     }
-    return result
+    return Effect.succeed(result)
   }
 
-  putGrant(grant: CapabilityGrant): void {
+  putGrant(
+    grant: CapabilityGrant,
+  ): Effect.Effect<void, CapabilityGrantStoreError> {
     this.grants.set(grant.id, { ...grant })
+    return Effect.void
   }
 
-  revokeGrant(grantId: string, revokedEventId: string): boolean {
+  revokeGrant(
+    grantId: string,
+    revokedEventId: string,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError> {
     const g = this.grants.get(grantId)
-    if (!g) return false
+    if (!g) return Effect.succeed(false)
     this.grants.set(grantId, { ...g, status: "REVOKED", revokedEventId })
-    return true
+    return Effect.succeed(true)
   }
 
-  exhaustGrant(grantId: string): boolean {
+  exhaustGrant(
+    grantId: string,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError> {
     const g = this.grants.get(grantId)
-    if (!g) return false
+    if (!g) return Effect.succeed(false)
     this.grants.set(grantId, { ...g, status: "EXHAUSTED" })
-    return true
+    return Effect.succeed(true)
   }
 }
 
@@ -102,51 +135,50 @@ export interface SessionPolicyBinding {
 /**
  * Fail-closed policy context provider.
  *
- * Loads capability grants from a persisted store.
+ * Loads capability grants from a persisted store via Effect.
  * No grants → empty capabilities → PDP returns DENY.
  * Storage failure → empty capabilities → PDP returns DENY.
  */
-export class SessionPolicyProvider implements PolicyContextProvider {
+export class SessionPolicyProvider {
   constructor(
     private store: CapabilityGrantStore,
     private binding: SessionPolicyBinding,
   ) {}
 
-  async snapshot(): Promise<PolicyContext> {
-    let grants: CapabilityGrant[] = []
+  snapshot(): Effect.Effect<PolicyContext, never, never> {
+    return Effect.gen(
+      { self: this },
+      function* () {
+        let grants: CapabilityGrant[] = []
 
-    try {
-      // Load grants for this principal+session
-      const principalGrants = await this.store.getGrantsForPrincipal(
-        this.binding.principalId,
-        this.binding.sessionId,
-        this.binding.workspaceId,
-      )
-      grants.push(...principalGrants)
+        const principalGrants = yield* this.store
+          .getGrantsForPrincipal(
+            this.binding.principalId,
+            this.binding.sessionId,
+            this.binding.workspaceId,
+          )
+          .pipe(Effect.catch(() => Effect.succeed<readonly CapabilityGrant[]>([])))
+        grants.push(...principalGrants)
 
-      // Load workspace-scoped grants if workspace is known
-      if (this.binding.workspaceId) {
-        const workspaceGrants = await this.store.getGrantsForWorkspace(
-          this.binding.workspaceId,
-        )
-        // Deduplicate by ID
-        const existing = new Set(grants.map((g) => g.id))
-        for (const g of workspaceGrants) {
-          if (!existing.has(g.id)) grants.push(g)
+        if (this.binding.workspaceId) {
+          const workspaceGrants = yield* this.store
+            .getGrantsForWorkspace(this.binding.workspaceId)
+            .pipe(Effect.catch(() => Effect.succeed<readonly CapabilityGrant[]>([])))
+          const existing = new Set(grants.map((g) => g.id))
+          for (const g of workspaceGrants) {
+            if (!existing.has(g.id)) grants.push(g)
+          }
         }
-      }
-    } catch {
-      // Storage failure → fail closed → empty grants → DENY
-      grants = []
-    }
 
-    return {
-      now: new Date().toISOString(),
-      policyVersion: POLICY_VERSION,
-      capabilities: grants,
-      explicitDenyRules: [],
-      approvalRules: [],
-      workspaceTrust: this.binding.workspaceTrust,
-    }
+        return {
+          now: new Date().toISOString(),
+          policyVersion: POLICY_VERSION,
+          capabilities: grants,
+          explicitDenyRules: [],
+          approvalRules: [],
+          workspaceTrust: this.binding.workspaceTrust,
+        } satisfies PolicyContext
+      },
+    )
   }
 }

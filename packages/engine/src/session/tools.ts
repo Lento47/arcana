@@ -21,45 +21,29 @@ import { ModelV2 } from "@arcana/core/model"
 import { withToolAdmission } from "@/tool/batch"
 import { checkGoalToolGate } from "@arcana/core/session/goal"
 import { buildAuthorizationRequest, toolToAction } from "@arcana/core/capability/pep-integration"
-import { authorizeAndExecute } from "@arcana/core/capability/pep"
+import { authorizeAndExecuteEffect } from "@arcana/core/capability/pep"
 import { computeRequestHash } from "@arcana/core/capability/request-hash"
+import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
+import { SessionPolicyProvider } from "@arcana/core/capability/grant-store"
+import { Database } from "@arcana/core/database/database"
 import type { PolicyContextProvider, PreparedEffect } from "@arcana/core/capability/pep"
 import type { PolicyContext } from "@arcana/core/capability/pdp"
 import type { AuthorizationRequest, ProvenanceLabel, SensitivityLabel } from "@arcana/core/capability/types"
 
-// ── Phase C PEP: Default permissive context for migration ─────────────
-// During Phase C migration, tools route through the PEP but use a
-// default-allow context. Once capability grants are persisted per-session,
-// this provider will load real grants and the PDP will enforce them.
-function defaultPolicyProvider(
+// ── Phase C PEP: Fail-closed production provider ──────────────────────
+// SessionPolicyProvider backed by SqliteGrantStore.
+// No grants -> DENY. Storage failure -> DENY.
+function createPolicyProvider(
+  db: Database.Interface,
   sessionID: string,
   agentName: string,
-): PolicyContextProvider {
-  const defaultCap = {
-    id: `cap-default-${sessionID}`,
-    schemaVersion: "1" as const,
-    principal: { kind: "agent" as const, id: agentName },
-    issuer: { kind: "user" as const, id: "user:default" },
-    actions: [
-      "process.execute", "filesystem.read", "filesystem.write", "filesystem.delete",
-      "network.read", "network.write", "secret.use", "git.commit", "delegate",
-    ] as const,
-    resources: [{ kind: "process" as const, pattern: "*" }],
-    constraints: {},
-    delegation: { allowed: true, maximumDepth: 3, currentDepth: 0 },
-    status: "ACTIVE" as const,
-    createdEventId: "evt-default",
-  }
-  return {
-    snapshot: () => ({
-      now: new Date().toISOString(),
-      policyVersion: "phase-c-v1",
-      capabilities: [defaultCap as any],
-      explicitDenyRules: [],
-      approvalRules: [],
-      workspaceTrust: "TRUSTED" as const,
-    }),
-  }
+): SessionPolicyProvider {
+  const store = new SqliteGrantStore(db)
+  return new SessionPolicyProvider(store, {
+    principalId: agentName,
+    sessionId: sessionID,
+    workspaceTrust: "TRUSTED",
+  })
 }
 
 function extractProvenance(toolName: string, args: Record<string, unknown>): ProvenanceLabel[] {
@@ -86,6 +70,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const registry = yield* ToolRegistry.Service
   const mcp = yield* MCP.Service
   const truncate = yield* Truncate.Service
+  const db = yield* Database.Service
 
   const sessionMeta = input.session.metadata as Record<string, unknown> | undefined
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
@@ -158,7 +143,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 }
               }
               // ── Phase C PEP: authorize before execution ───────────
-              const pepProvider = defaultPolicyProvider(ctx.sessionID, input.agent.name)
+              const pepProvider = createPolicyProvider(db, ctx.sessionID, input.agent.name)
               const authReq = buildAuthorizationRequest({
                 toolName: item.id,
                 principalId: input.agent.name,
@@ -167,10 +152,10 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 provenance: extractProvenance(item.id, args as Record<string, unknown>),
                 sensitivity: extractSensitivity(item.id, args as Record<string, unknown>),
               })
-              const pepResult = await authorizeAndExecute(
+              const pepResult = yield* authorizeAndExecuteEffect(
                 {
                   request: authReq,
-                  executeExact: async () => {
+                  executeExact: () => {
                     // Will be called only if PEP allows
                     return null
                   },
@@ -238,7 +223,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         Effect.gen(function* () {
           const ctx = context(args, opts)
           // ── Phase C PEP: authorize MCP before execution ───────────
-          const mcpPepProvider = defaultPolicyProvider(ctx.sessionID, input.agent.name)
+          const mcpPepProvider = createPolicyProvider(db, ctx.sessionID, input.agent.name)
           const mcpAuthReq = buildAuthorizationRequest({
             toolName: key,
             principalId: input.agent.name,
@@ -247,10 +232,10 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             provenance: ["MCP_DESCRIPTION" as ProvenanceLabel],
             sensitivity: extractSensitivity(key, args as Record<string, unknown>),
           })
-          const mcpPepResult = await authorizeAndExecute(
+          const mcpPepResult = yield* authorizeAndExecuteEffect(
             {
               request: mcpAuthReq,
-              executeExact: async () => null,
+              executeExact: () => null,
             },
             mcpPepProvider,
           )

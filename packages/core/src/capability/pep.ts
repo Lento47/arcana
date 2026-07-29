@@ -14,6 +14,7 @@
  * The PEP does NOT duplicate PDP policy logic.
  */
 
+import { Effect } from "effect"
 import { evaluate } from "./pdp"
 import { computeRequestHash } from "./request-hash"
 import type { PolicyContext } from "./pdp"
@@ -34,12 +35,12 @@ export interface PreparedEffect<T> {
    */
   executeExact(
     request: Readonly<AuthorizationRequest>,
-  ): T | Promise<T>
+  ): T | Promise<T> | Effect.Effect<T, unknown, unknown>
 }
 
 export interface PolicyContextProvider {
   /** Load a fresh policy context snapshot. Never cached. */
-  snapshot(): PolicyContext | Promise<PolicyContext>
+  snapshot(): PolicyContext | Promise<PolicyContext> | Effect.Effect<PolicyContext, never, never>
 }
 
 export type EnforcementResult<T> =
@@ -129,10 +130,46 @@ function verifyRequestIntegrity(
   return null
 }
 
-// ─── PEP Implementation ───────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+/** Resolve a snapshot that may be Effect, Promise, or synchronous value. */
+function resolveSnapshot(
+  provider: PolicyContextProvider,
+): Effect.Effect<PolicyContext> {
+  const result = provider.snapshot()
+  if (result && typeof result === "object" && Effect.isEffect(result)) {
+    return result as Effect.Effect<PolicyContext>
+  }
+  if (result instanceof Promise) {
+    return Effect.promise(() => result)
+  }
+  return Effect.succeed(result as PolicyContext)
+}
+
+/** Resolve an executeExact that may be Effect, Promise, or synchronous value. */
+function resolveExecute<T>(
+  fn: (req: Readonly<AuthorizationRequest>) => T | Promise<T> | Effect.Effect<T, unknown, unknown>,
+  req: Readonly<AuthorizationRequest>,
+): Effect.Effect<T> {
+  return Effect.tryPromise({
+    try: () => {
+      const result = fn(req)
+      if (result && typeof result === "object" && Effect.isEffect(result)) {
+        return Effect.runPromise(result as Effect.Effect<T>)
+      }
+      if (result instanceof Promise) {
+        return result
+      }
+      return Promise.resolve(result as T)
+    },
+    catch: (error) => error,
+  })
+}
+
+// ─── PEP Implementation (Effect-native) ──────────────────────────────
 
 /**
- * Authorize and execute an effect through the full PEP sequence:
+ * Effect-native authorize and execute.
  *
  * 1. Receive structured request
  * 2. Deep-freeze request
@@ -143,94 +180,90 @@ function verifyRequestIntegrity(
  * 7. ALLOW → re-validate → re-compute hash → confirm still ALLOW → execute
  * 8. Return structured receipt
  */
-export async function authorizeAndExecute<T>(
+export function authorizeAndExecuteEffect<T>(
   effect: PreparedEffect<T>,
   contextProvider: PolicyContextProvider,
-): Promise<EnforcementResult<T>> {
-  // Step 1-2: Deep-freeze the request to prevent mutation
-  const frozenRequest = deepFreeze({ ...effect.request })
-  const originalHash = computeRequestHash(frozenRequest as AuthorizationRequest)
+): Effect.Effect<EnforcementResult<T>> {
+  return Effect.gen(function* () {
+    // Step 1-2: Deep-freeze the request to prevent mutation
+    const frozenRequest = deepFreeze({ ...effect.request })
+    const originalHash = computeRequestHash(frozenRequest as AuthorizationRequest)
 
-  // Step 4: Load fresh policy context (never cached)
-  const ctx = await contextProvider.snapshot()
+    // Step 4: Load fresh policy context (never cached)
+    const ctx = yield* resolveSnapshot(contextProvider)
 
-  // Step 5: First PDP evaluation
-  const firstDecision = evaluate(
-    frozenRequest as AuthorizationRequest,
-    ctx,
-  )
+    // Step 5: First PDP evaluation
+    const firstDecision = evaluate(
+      frozenRequest as AuthorizationRequest,
+      ctx,
+    )
 
-  // Step 6: Gate on decision
-  if (firstDecision.decision === "DENY") {
-    return {
-      status: "DENIED",
-      request: frozenRequest as AuthorizationRequest,
-      decision: firstDecision,
+    // Step 6: Gate on decision
+    if (firstDecision.decision === "DENY") {
+      return {
+        status: "DENIED" as const,
+        request: frozenRequest as AuthorizationRequest,
+        decision: firstDecision,
+      }
     }
-  }
 
-  if (firstDecision.decision === "REQUIRE_APPROVAL") {
-    return {
-      status: "APPROVAL_REQUIRED",
-      request: frozenRequest as AuthorizationRequest,
-      decision: firstDecision,
+    if (firstDecision.decision === "REQUIRE_APPROVAL") {
+      return {
+        status: "APPROVAL_REQUIRED" as const,
+        request: frozenRequest as AuthorizationRequest,
+        decision: firstDecision,
+      }
     }
-  }
 
-  // Step 7: ALLOW — re-validate before execution
-
-  // Re-compute hash (should match)
-  const reHash = computeRequestHash(frozenRequest as AuthorizationRequest)
-  if (reHash !== originalHash) {
-    // Hash mismatch is a bug — refuse execution
-    return {
-      status: "STALE_DECISION",
-      request: frozenRequest as AuthorizationRequest,
-      originalDecision: firstDecision,
-      currentDecision: firstDecision,
-      reason: "request hash changed between authorization and execution",
+    // Step 7: ALLOW — re-validate before execution
+    const reHash = computeRequestHash(frozenRequest as AuthorizationRequest)
+    if (reHash !== originalHash) {
+      return {
+        status: "STALE_DECISION" as const,
+        request: frozenRequest as AuthorizationRequest,
+        originalDecision: firstDecision,
+        currentDecision: firstDecision,
+        reason: "request hash changed between authorization and execution",
+      }
     }
-  }
 
-  // Reload fresh policy context (capability may have been revoked)
-  const freshCtx = await contextProvider.snapshot()
-  const secondDecision = evaluate(
-    frozenRequest as AuthorizationRequest,
-    freshCtx,
-  )
+    // Reload fresh policy context (capability may have been revoked)
+    const freshCtx = yield* resolveSnapshot(contextProvider)
+    const secondDecision = evaluate(
+      frozenRequest as AuthorizationRequest,
+      freshCtx,
+    )
 
-  // Confirm the decision is still ALLOW
-  if (secondDecision.decision !== "ALLOW") {
-    return {
-      status: "STALE_DECISION",
-      request: frozenRequest as AuthorizationRequest,
-      originalDecision: firstDecision,
-      currentDecision: secondDecision,
-      reason: `decision changed from ALLOW to ${secondDecision.decision} between evaluations`,
+    if (secondDecision.decision !== "ALLOW") {
+      return {
+        status: "STALE_DECISION" as const,
+        request: frozenRequest as AuthorizationRequest,
+        originalDecision: firstDecision,
+        currentDecision: secondDecision,
+        reason: `decision changed from ALLOW to ${secondDecision.decision} between evaluations`,
+      }
     }
-  }
 
-  // Confirm request hash matches in the second decision
-  if (secondDecision.requestHash !== originalHash) {
-    return {
-      status: "STALE_DECISION",
-      request: frozenRequest as AuthorizationRequest,
-      originalDecision: firstDecision,
-      currentDecision: secondDecision,
-      reason: "request hash mismatch in re-evaluation",
+    if (secondDecision.requestHash !== originalHash) {
+      return {
+        status: "STALE_DECISION" as const,
+        request: frozenRequest as AuthorizationRequest,
+        originalDecision: firstDecision,
+        currentDecision: secondDecision,
+        reason: "request hash mismatch in re-evaluation",
+      }
     }
-  }
 
-  // Step 8: Execute the exact authorized operation
-  const startedAt = new Date().toISOString()
-  try {
-    const value = await effect.executeExact(
+    // Step 8: Execute the exact authorized operation
+    const startedAt = new Date().toISOString()
+    const value = yield* resolveExecute(
+      effect.executeExact,
       frozenRequest as Readonly<AuthorizationRequest>,
     )
     const completedAt = new Date().toISOString()
 
     return {
-      status: "EXECUTED",
+      status: "EXECUTED" as const,
       request: frozenRequest as AuthorizationRequest,
       requestHash: originalHash,
       decision: secondDecision,
@@ -238,14 +271,32 @@ export async function authorizeAndExecute<T>(
       startedAt,
       completedAt,
     }
-  } catch (error) {
-    return {
-      status: "EXECUTION_FAILED",
-      request: frozenRequest as AuthorizationRequest,
-      decision: secondDecision,
-      error,
-    }
-  }
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.succeed({
+        status: "EXECUTION_FAILED" as const,
+        request: deepFreeze({ ...effect.request }) as AuthorizationRequest,
+        decision: evaluate(
+          deepFreeze({ ...effect.request }) as AuthorizationRequest,
+          { now: "", policyVersion: "", capabilities: [], explicitDenyRules: [], approvalRules: [], workspaceTrust: "UNKNOWN" },
+        ),
+        error,
+      })
+    ),
+  )
+}
+
+// ─── Async wrapper (backward compatible) ─────────────────────────────
+
+/**
+ * Authorize and execute an effect through the full PEP sequence.
+ * Async wrapper around authorizeAndExecuteEffect for backward compatibility.
+ */
+export async function authorizeAndExecute<T>(
+  effect: PreparedEffect<T>,
+  contextProvider: PolicyContextProvider,
+): Promise<EnforcementResult<T>> {
+  return Effect.runPromise(authorizeAndExecuteEffect(effect, contextProvider))
 }
 
 // ─── Synchronous variant for non-async effects ────────────────────────

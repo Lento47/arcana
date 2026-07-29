@@ -241,10 +241,15 @@ function matchHost(pattern: string, target: string): boolean {
 }
 
 /**
- * Executable matching — exact name only.
+ * Executable matching — exact name only, with wildcard support.
  * "bun" matches "bun" but not "bunx" or "/usr/bin/bun"
+ * "*" matches any executable including empty
  */
 function matchExecutable(pattern: string, target: string): boolean {
+  // Wildcard-all matches everything
+  if (pattern === "*") return true
+  // Empty target with non-wildcard: no match
+  if (target.length === 0) return false
   // Normalize: extract basename
   const pBase = pattern.split(/[/\\]/).pop() ?? pattern
   const tBase = target.split(/[/\\]/).pop() ?? target
