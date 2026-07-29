@@ -50,6 +50,7 @@ export {
   type PolicyContextProvider,
   type EnforcementResult,
   authorizeAndExecute,
+  authorizeAndExecuteEffect,
   authorizeAndExecuteSync,
 } from "./pep"
 
@@ -62,10 +63,15 @@ export {
 
 export {
   type CapabilityGrantStore,
+  type CapabilityGrantStoreError,
   type SessionPolicyBinding,
   InMemoryGrantStore,
   SessionPolicyProvider,
 } from "./grant-store"
+
+export {
+  SqliteGrantStore,
+} from "./grant-store-sqlite"
 
 export {
   computeRequestHash,

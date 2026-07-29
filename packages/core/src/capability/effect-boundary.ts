@@ -121,9 +121,9 @@ export const EFFECT_BOUNDARY_INVENTORY: EffectBoundary[] = [
     actions: ["network.read"],
     riskClass: "MODERATE",
     resourcesDerivedFrom: "tool_input",
-    currentEnforcement: "MODEL_ONLY",
+    currentEnforcement: "DETERMINISTIC_POLICY",
     bypassPaths: [],
-    proposedPEP: "packages/arcana/src/agent/tools.ts:webFetch",
+    proposedPEP: "packages/engine/src/session/tools.ts:createPolicyProvider",
     migrationPriority: "P0",
   },
   {
@@ -147,9 +147,9 @@ export const EFFECT_BOUNDARY_INVENTORY: EffectBoundary[] = [
     actions: ["process.execute", "filesystem.read", "filesystem.write", "network.read", "network.write"],
     riskClass: "HIGH",
     resourcesDerivedFrom: "external_content",
-    currentEnforcement: "MODEL_ONLY",
+    currentEnforcement: "DETERMINISTIC_POLICY",
     bypassPaths: ["MCP server can register arbitrary tools", "tool descriptions are untrusted data"],
-    proposedPEP: "packages/engine/src/mcp/catalog.ts:callTool entry",
+    proposedPEP: "packages/engine/src/session/tools.ts:createPolicyProvider (MCP path)",
     migrationPriority: "P0",
   },
   {
