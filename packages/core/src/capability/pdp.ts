@@ -187,6 +187,12 @@ function matchFilePath(pattern: string, target: string): boolean {
   // Reject traversal
   if (t.includes("..") || p.includes("..")) return false
 
+  // Wildcard-all pattern matches any target
+  if (p === "*" || p === "**" || p === "/*") return true
+
+  // Empty target with non-wildcard pattern: no match
+  if (t.length === 0) return false
+
   // Exact match
   if (p === t) return true
 
@@ -214,16 +220,20 @@ function matchHost(pattern: string, target: string): boolean {
   const p = pattern.toLowerCase()
   const t = target.toLowerCase()
 
+  // Wildcard-all matches everything
+  if (p === "*" || p === "**") return true
+
+  // Empty target with non-wildcard: no match
+  if (t.length === 0) return false
+
   // Exact match
   if (p === t) return true
 
   // Wildcard subdomain: *.example.com matches sub.example.com
   if (p.startsWith("*.")) {
     const suffix = p.slice(1) // ".example.com"
-    // Must end with the suffix AND have exactly one more label
     if (!t.endsWith(suffix)) return false
     const prefix = t.slice(0, -suffix.length)
-    // prefix must be a single label (no dots)
     return prefix.length > 0 && !prefix.includes(".")
   }
 
