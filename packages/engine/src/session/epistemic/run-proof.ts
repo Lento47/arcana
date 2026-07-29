@@ -130,6 +130,37 @@ export interface InformationFlowProfile {
   readonly traceHealth: AuthorizationTraceHealth
 }
 
+/**
+ * Delegation profile — derived from capability delegation events.
+ * Hard invariant: authorityAmplifications = 0.
+ */
+export interface DelegationProfile {
+  readonly requested: number
+  readonly created: number
+  readonly denied: number
+  readonly maximumDepth: number
+  readonly invalidatedDescendants: number
+  readonly authorityAmplifications: number
+  readonly traceHealth: AuthorizationTraceHealth
+}
+
+/**
+ * Approval profile — derived from scoped approval events.
+ * Hard invariant: approvalReplayExecutions = 0.
+ */
+export interface ApprovalProfile {
+  readonly requested: number
+  readonly approved: number
+  readonly rejected: number
+  readonly claimed: number
+  readonly consumed: number
+  readonly expired: number
+  readonly recoveryRequired: number
+  readonly replayAttempts: number
+  readonly hashMismatches: number
+  readonly traceHealth: AuthorizationTraceHealth
+}
+
 /** The full RunProof = ProofHashPayload + derived hash fields. */
 export type RunProof = ProofHashPayload & {
   readonly proofHash: string
@@ -143,6 +174,8 @@ export type RunProof = ProofHashPayload & {
   readonly p3DenialReasons: ReadonlyArray<string>
   readonly authorizationProfile: AuthorizationProfile
   readonly informationFlowProfile: InformationFlowProfile
+  readonly delegationProfile: DelegationProfile
+  readonly approvalProfile: ApprovalProfile
 }
 
 export interface RunProofEvent {
@@ -281,6 +314,12 @@ export const layer = Layer.effect(
       // Derive information flow profile from security label events
       const informationFlowProfile = deriveInformationFlowProfile(events)
 
+      // Derive delegation profile from capability delegation events
+      const delegationProfile = deriveDelegationProfile(events)
+
+      // Derive approval profile from scoped approval events
+      const approvalProfile = deriveApprovalProfile(events)
+
       return {
         ...payload,
         proofHash,
@@ -294,6 +333,8 @@ export const layer = Layer.effect(
         p3DenialReasons,
         authorizationProfile,
         informationFlowProfile,
+        delegationProfile,
+        approvalProfile,
       } satisfies RunProof
     })
 
@@ -553,6 +594,128 @@ function deriveInformationFlowProfile(events: ReadonlyArray<RunProofEvent>): Inf
     declassificationsAllowed,
     labelTamperingAttempts,
     unlabeledConsequentialRequests,
+    traceHealth,
+  }
+}
+
+/**
+ * Derive delegation profile from capability delegation events.
+ * Hard invariant: authorityAmplifications = 0.
+ */
+function deriveDelegationProfile(events: ReadonlyArray<RunProofEvent>): DelegationProfile {
+  const delegEvents = events.filter((e) => e.type.startsWith("capability.delegation"))
+
+  let requested = 0
+  let created = 0
+  let denied = 0
+  let maximumDepth = 0
+  let invalidatedDescendants = 0
+  let authorityAmplifications = 0
+
+  for (const e of delegEvents) {
+    const p = e.payload as Record<string, unknown>
+    switch (e.type) {
+      case "capability.delegation_requested":
+        requested++
+        break
+      case "capability.delegated":
+        created++
+        if (typeof p.depth === "number" && p.depth > maximumDepth) {
+          maximumDepth = p.depth
+        }
+        break
+      case "capability.delegation_denied":
+        denied++
+        if (p.reason && String(p.reason).includes("AMPLIFICATION")) {
+          authorityAmplifications++
+        }
+        break
+      case "capability.ancestor_invalidated":
+        invalidatedDescendants++
+        break
+    }
+  }
+
+  const traceHealth: AuthorizationTraceHealth =
+    delegEvents.length === 0 ? "UNAVAILABLE"
+      : authorityAmplifications > 0 ? "DEGRADED"
+        : "COMPLETE"
+
+  return {
+    requested,
+    created,
+    denied,
+    maximumDepth,
+    invalidatedDescendants,
+    authorityAmplifications,
+    traceHealth,
+  }
+}
+
+/**
+ * Derive approval profile from scoped approval events.
+ * Hard invariant: replayAttempts = 0.
+ */
+function deriveApprovalProfile(events: ReadonlyArray<RunProofEvent>): ApprovalProfile {
+  const approvalEvents = events.filter((e) => e.type.startsWith("approval."))
+
+  let requested = 0
+  let approved = 0
+  let rejected = 0
+  let claimed = 0
+  let consumed = 0
+  let expired = 0
+  let recoveryRequired = 0
+  let replayAttempts = 0
+  let hashMismatches = 0
+
+  for (const e of approvalEvents) {
+    switch (e.type) {
+      case "approval.requested":
+        requested++
+        break
+      case "approval.approved":
+        approved++
+        break
+      case "approval.rejected":
+        rejected++
+        break
+      case "approval.claimed":
+        claimed++
+        break
+      case "approval.consumed":
+        consumed++
+        break
+      case "approval.expired":
+        expired++
+        break
+      case "approval.recovery_required":
+        recoveryRequired++
+        break
+      case "approval.replay_attempt":
+        replayAttempts++
+        break
+      case "approval.hash_mismatch":
+        hashMismatches++
+        break
+    }
+  }
+
+  const traceHealth: AuthorizationTraceHealth =
+    approvalEvents.length === 0 ? "UNAVAILABLE"
+      : replayAttempts > 0 ? "DEGRADED"
+        : "COMPLETE"
+
+  return {
+    requested,
+    approved,
+    rejected,
+    claimed,
+    consumed,
+    expired,
+    recoveryRequired,
+    replayAttempts,
+    hashMismatches,
     traceHealth,
   }
 }
