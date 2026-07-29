@@ -536,3 +536,171 @@ export function canParentDelegate(parent: CapabilityGrant, now: string): Delegat
   }
   return null
 }
+
+// ─── Ancestor Chain Validation ────────────────────────────────────────
+
+/**
+ * Validate that a child grant's complete ancestry is active.
+ *
+ * Usable(child) ⟹ Active(child) ∧ ∀a ∈ Ancestors(child): Active(a)
+ *
+ * A child grant must not remain usable after its parent authority is revoked.
+ */
+export function validateAncestorChain(
+  grant: CapabilityGrant,
+  getGrantById: (id: string) => CapabilityGrant | undefined,
+): { valid: boolean; reason: string | null } {
+  // Check the grant itself
+  if (grant.status !== "ACTIVE") {
+    return { valid: false, reason: `Grant ${grant.id} is ${grant.status}` }
+  }
+
+  // Walk up the ancestor chain via issuer
+  const visited = new Set<string>()
+  let current = grant
+
+  while (current.issuer.kind === "parent_capability") {
+    const parentId = current.issuer.id
+    if (visited.has(parentId)) {
+      return { valid: false, reason: `Cycle detected in ancestor chain at ${parentId}` }
+    }
+    visited.add(parentId)
+
+    const parent = getGrantById(parentId)
+    if (!parent) {
+      return { valid: false, reason: `Ancestor ${parentId} not found` }
+    }
+    if (parent.status !== "ACTIVE") {
+      return { valid: false, reason: `Ancestor ${parentId} is ${parent.status}` }
+    }
+    current = parent
+  }
+
+  return { valid: true, reason: null }
+}
+
+/**
+ * Find all descendant grants of a given grant.
+ * Returns grant IDs that would be invalidated if the given grant is revoked.
+ */
+export function findDescendants(
+  grantId: string,
+  allGrants: CapabilityGrant[],
+): string[] {
+  const descendants: string[] = []
+  const childrenMap = new Map<string, string[]>()
+
+  // Build parent→children index
+  for (const g of allGrants) {
+    if (g.issuer.kind === "parent_capability") {
+      const existing = childrenMap.get(g.issuer.id) ?? []
+      existing.push(g.id)
+      childrenMap.set(g.issuer.id, existing)
+    }
+  }
+
+  // BFS from grantId
+  const queue = [grantId]
+  const visited = new Set<string>([grantId])
+
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    const children = childrenMap.get(current) ?? []
+    for (const child of children) {
+      if (!visited.has(child)) {
+        visited.add(child)
+        descendants.push(child)
+        queue.push(child)
+      }
+    }
+  }
+
+  return descendants
+}
+
+/**
+ * Cascade revocation to all descendants.
+ * Returns the list of invalidated grant IDs.
+ */
+export function cascadeRevocation(
+  parentGrantId: string,
+  revokedEventId: string,
+  allGrants: CapabilityGrant[],
+): { invalidatedIds: string[]; updatedGrants: CapabilityGrant[] } {
+  const descendantIds = findDescendants(parentGrantId, allGrants)
+  const toInvalidate = new Set([parentGrantId, ...descendantIds])
+
+  const updatedGrants = allGrants.map((g) => {
+    if (toInvalidate.has(g.id) && g.status === "ACTIVE") {
+      return { ...g, status: "REVOKED" as const, revokedEventId }
+    }
+    return g
+  })
+
+  return {
+    invalidatedIds: descendantIds,
+    updatedGrants,
+  }
+}
+
+// ─── Delegation Evidence Profile ──────────────────────────────────────
+
+/**
+ * Delegation profile for RunProof — derived from delegation events.
+ * Hard invariant: authorityAmplifications = 0.
+ */
+export interface DelegationProfile {
+  delegationsRequested: number
+  delegationsCreated: number
+  delegationsDenied: number
+  authorityAmplifications: number
+  maxDepth: number
+  invalidatedDescendants: number
+}
+
+/**
+ * Derive delegation profile from delegation events.
+ */
+export function deriveDelegationProfile(
+  events: ReadonlyArray<{ type: string; payload: unknown }>,
+): DelegationProfile {
+  let delegationsRequested = 0
+  let delegationsCreated = 0
+  let delegationsDenied = 0
+  let authorityAmplifications = 0
+  let maxDepth = 0
+  let invalidatedDescendants = 0
+
+  for (const e of events) {
+    const p = e.payload as Record<string, unknown>
+    switch (e.type) {
+      case "capability.delegation_requested":
+        delegationsRequested++
+        break
+      case "capability.delegated":
+        delegationsCreated++
+        if (typeof p.depth === "number" && p.depth > maxDepth) {
+          maxDepth = p.depth
+        }
+        break
+      case "capability.delegation_denied":
+        delegationsDenied++
+        if (p.reason && String(p.reason).includes("AMPLIFICATION")) {
+          authorityAmplifications++
+        }
+        break
+      case "capability.ancestor_invalidated":
+        invalidatedDescendants++
+        break
+    }
+  }
+
+  return {
+    delegationsRequested,
+    delegationsCreated,
+    delegationsDenied,
+    authorityAmplifications,
+    maxDepth,
+    invalidatedDescendants,
+  }
+}
