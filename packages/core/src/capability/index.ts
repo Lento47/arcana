@@ -140,4 +140,9 @@ export {
   canParentDelegate,
   isResourceNarrowerOrEqual,
   isSensitivityNarrowerOrEqual,
+  validateAncestorChain,
+  findDescendants,
+  cascadeRevocation,
+  type DelegationProfile,
+  deriveDelegationProfile,
 } from "./delegation"
