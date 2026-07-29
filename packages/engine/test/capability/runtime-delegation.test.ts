@@ -16,7 +16,7 @@ import { Effect } from "effect"
 import { InMemoryGrantStore, SessionPolicyProvider } from "@arcana/core/capability/grant-store"
 import { delegateCapabilities, type CapabilityGrantDraft } from "@arcana/core/capability/delegation"
 import { executeDelegation, validateGrantUsability, revokeWithCascade, type RuntimeGrantStore } from "@arcana/core/capability/runtime-delegation"
-import { InMemoryScopedApprovalStore, createPendingApproval, approveRequest, consumeApproval, checkApprovedScope } from "@arcana/core/capability/scoped-approval"
+import { InMemoryScopedApprovalStore, createPendingApproval, approveRequest, claimApproval, consumeApproval, checkApprovedScope } from "@arcana/core/capability/scoped-approval"
 import { evaluate as evaluatePolicy, type PolicyContext } from "@arcana/core/capability/pdp"
 import type { CapabilityGrant, AuthorizationRequest } from "@arcana/core/capability/types"
 
@@ -598,11 +598,21 @@ describe("Scoped approval: production PDP integration", () => {
     const { approval, capability } = approveRequest(pending, "evt-approve")
     store.updateApproval(approval.id, approval)
 
-    // First consumption succeeds
-    const consumed = consumeApproval(approval, "evt-consume-1", new Date().toISOString())
+    // First: claim the approval (APPROVED → CLAIMED)
+    const claimed = claimApproval(approval, "evt-claim-1", new Date().toISOString())
+    expect(claimed).not.toBeNull()
+    expect(claimed!.decision).toBe("CLAIMED")
+    store.updateApproval(approval.id, claimed!)
+
+    // Second claim fails — already claimed
+    const secondClaim = claimApproval(claimed!, "evt-claim-2", new Date().toISOString())
+    expect(secondClaim).toBeNull()
+
+    // Consume the claimed approval (CLAIMED → CONSUMED)
+    const consumed = consumeApproval(claimed!, "evt-consume-1", new Date().toISOString())
     expect(consumed).not.toBeNull()
     expect(consumed!.decision).toBe("CONSUMED")
-    store.updateApproval(approval.id, consumed!)
+    store.updateApproval(claimed!.id, consumed!)
 
     // Second consumption fails — already consumed
     const second = consumeApproval(consumed!, "evt-consume-2", new Date().toISOString())
