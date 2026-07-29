@@ -51,6 +51,24 @@ Source for that page: [Lento47/arcana-site](https://github.com/Lento47/arcana-si
 | [end-to-end-examples.md](./end-to-end-examples.md) | E2E flow examples |
 | [progressive-mode-examples.md](./progressive-mode-examples.md) | Progressive mode examples |
 
+### Future Architecture
+
+The future architecture consolidates Arcana's path from governed runtime to execution platform and, eventually, an implementation-independent execution protocol.
+
+| Doc | Scope |
+|-----|-------|
+| [future/README.md](./future/README.md) | Future architecture index and system thesis |
+| [future/vision-and-principles.md](./future/vision-and-principles.md) | Mission, positioning, trust model, and design principles |
+| [future/governance-layer.md](./future/governance-layer.md) | Principals, capabilities, PDP/PEP, policy, risk, approvals, budgets, delegation |
+| [future/execution-platform.md](./future/execution-platform.md) | Durable runtime, scheduler, capabilities, verification, evidence, recovery, replay |
+| [future/execution-protocol.md](./future/execution-protocol.md) | Portable schemas, lifecycle, integrity, compatibility, and conformance |
+| [future/epistemic-agent.md](./future/epistemic-agent.md) | Claims, uncertainty, provenance, contradiction, and epistemic completion |
+| [future/sdk.md](./future/sdk.md) | SDK packages, APIs, adoption levels, and language strategy |
+| [future/components.md](./future/components.md) | Component inventory, authority boundaries, and deployment profiles |
+| [future/roadmap-2026-2031.md](./future/roadmap-2026-2031.md) | Capability-gated multi-year roadmap and exit criteria |
+| [future/adoption-and-ecosystem.md](./future/adoption-and-ecosystem.md) | Open-source, integrations, registries, design partners, and business alignment |
+| [future/risks-and-non-goals.md](./future/risks-and-non-goals.md) | Strategic risks, threat areas, non-goals, and architectural anti-patterns |
+
 ### Design / Aspirational Docs
 
 These documents describe Arcana's north-star architecture. Some concepts are partially or fully implemented; others are design targets for future milestones.
