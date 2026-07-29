@@ -108,7 +108,7 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
     }
   })
 
-  test("HIGH action without intent store → ALLOW (backward compatible)", async () => {
+  test("REQUIRED mode + no intent store → DENY (fail closed)", async () => {
     const store = new InMemoryGrantStore()
     await Effect.runPromise(store.putGrant(makeGrant()))
 
@@ -120,12 +120,44 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
       executable: "bun",
     })
 
-    // No intent store provided — backward compatible
+    // REQUIRED mode without intent store → fail closed
     const provider = new SessionPolicyProvider(store, {
       principalId: "agent:main",
       sessionId: "sess-001",
       workspaceTrust: "TRUSTED",
+    }, undefined, "REQUIRED")
+
+    const result = await Effect.runPromise(
+      authorizeAndExecuteEffect(
+        { request: req, executeExact: () => "should not run" },
+        provider,
+      ),
+    )
+
+    expect(result.status).toBe("DENIED")
+    if (result.status === "DENIED") {
+      expect(result.decision.reasons.some((r) => r.code === "DENY_NO_INTENT_BINDING")).toBe(true)
+    }
+  })
+
+  test("LEGACY_COMPAT mode + no intent store → ALLOW (backward compatible)", async () => {
+    const store = new InMemoryGrantStore()
+    await Effect.runPromise(store.putGrant(makeGrant()))
+
+    const req = buildAuthorizationRequest({
+      toolName: "terminal",
+      principalId: "agent:main",
+      sessionId: "sess-001",
+      args: { command: "bun test" },
+      executable: "bun",
     })
+
+    // LEGACY_COMPAT without intent store → skip → ALLOW
+    const provider = new SessionPolicyProvider(store, {
+      principalId: "agent:main",
+      sessionId: "sess-001",
+      workspaceTrust: "TRUSTED",
+    }, undefined, "LEGACY_COMPAT")
 
     const result = await Effect.runPromise(
       authorizeAndExecuteEffect(

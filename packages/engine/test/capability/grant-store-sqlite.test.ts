@@ -195,7 +195,7 @@ describe("SqliteGrantStore + SessionPolicyProvider: full PEP integration", () =>
     await runWithDb(Effect.gen(function* () {
       const { db } = yield* Database.Service
       const store = new SqliteGrantStore({ db })
-      const provider = new SessionPolicyProvider(store, makeBinding())
+      const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
       const req = makeRequest()
 
       const result = yield* authorizeAndExecuteEffect(
@@ -212,7 +212,7 @@ describe("SqliteGrantStore + SessionPolicyProvider: full PEP integration", () =>
       const store = new SqliteGrantStore({ db })
       yield* store.putGrant(makeGrant())
 
-      const provider = new SessionPolicyProvider(store, makeBinding())
+      const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
       const req = makeRequest()
 
       const result = yield* authorizeAndExecuteEffect(
@@ -232,7 +232,7 @@ describe("SqliteGrantStore + SessionPolicyProvider: full PEP integration", () =>
       const store = new SqliteGrantStore({ db })
       yield* store.putGrant(makeGrant())
 
-      const provider = new SessionPolicyProvider(store, makeBinding())
+      const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
       const req = makeRequest()
 
       const r1 = yield* authorizeAndExecuteEffect(
@@ -257,7 +257,7 @@ describe("SqliteGrantStore + SessionPolicyProvider: full PEP integration", () =>
       const store = new SqliteGrantStore({ db })
       yield* store.putGrant(makeGrant())
 
-      const provider = new SessionPolicyProvider(store, makeBinding())
+      const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
       const req = makeRequest()
 
       const r1 = yield* authorizeAndExecuteEffect(
@@ -282,7 +282,7 @@ describe("SqliteGrantStore + SessionPolicyProvider: full PEP integration", () =>
       const store = new SqliteGrantStore({ db })
       yield* store.putGrant(makeGrant({ actions: ["filesystem.read"] }))
 
-      const provider = new SessionPolicyProvider(store, makeBinding())
+      const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
       const req = makeRequest()
 
       const result = yield* authorizeAndExecuteEffect(
@@ -299,7 +299,7 @@ describe("SqliteGrantStore + SessionPolicyProvider: full PEP integration", () =>
       const store = new SqliteGrantStore({ db })
       yield* store.putGrant(makeGrant())
 
-      const provider = new SessionPolicyProvider(store, makeBinding({ principalId: "agent:other" }))
+      const provider = new SessionPolicyProvider(store, makeBinding({ principalId: "agent:other" }), undefined, "LEGACY_COMPAT")
       const req = makeRequest({ principalId: "agent:other" })
 
       const result = yield* authorizeAndExecuteEffect(
@@ -316,7 +316,7 @@ describe("SqliteGrantStore + SessionPolicyProvider: full PEP integration", () =>
       const store = new SqliteGrantStore({ db })
       yield* store.putGrant(makeGrant({ constraints: { toolNames: ["web_fetch"] } }))
 
-      const provider = new SessionPolicyProvider(store, makeBinding())
+      const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
       const req = makeRequest()
 
       const result = yield* authorizeAndExecuteEffect(

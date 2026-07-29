@@ -33,17 +33,27 @@ import type { AuthorizationRequest, ProvenanceLabel, SensitivityLabel } from "@a
 // ── Phase C PEP: Fail-closed production provider ──────────────────────
 // SessionPolicyProvider backed by SqliteGrantStore.
 // No grants -> DENY. Storage failure -> DENY.
+/**
+ * Production policy provider: REQUIRED mode.
+ * Intent binding store not yet implemented → intentBindings = [] → fail closed.
+ * HIGH/CRITICAL actions without bindings → DENY.
+ */
 function createPolicyProvider(
   db: Database.Interface,
   sessionID: string,
   agentName: string,
 ): SessionPolicyProvider {
   const store = new SqliteGrantStore(db)
-  return new SessionPolicyProvider(store, {
-    principalId: agentName,
-    sessionId: sessionID,
-    workspaceTrust: "TRUSTED",
-  })
+  return new SessionPolicyProvider(
+    store,
+    {
+      principalId: agentName,
+      sessionId: sessionID,
+      workspaceTrust: "TRUSTED",
+    },
+    undefined, // IntentBindingStoreEffect: not yet implemented
+    "REQUIRED",
+  )
 }
 
 /**

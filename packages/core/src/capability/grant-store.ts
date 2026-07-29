@@ -155,6 +155,21 @@ export class InMemoryIntentBindingStoreEffect implements IntentBindingStoreEffec
   }
 }
 
+// ─── Intent Enforcement Mode ──────────────────────────────────────────
+
+/**
+ * Intent enforcement mode for production policy providers.
+ *
+ * REQUIRED: intent binding store must be provided. Missing store → DENY.
+ *   This is the production default. A construction path that forgets to
+ *   provide the store silently disables intent binding — this is a bug.
+ *
+ * LEGACY_COMPAT: intent binding store is optional. Missing store → skip.
+ *   Security assurance marked PARTIAL. Warning event emitted.
+ *   For migration only. Must not be used in production.
+ */
+export type IntentEnforcementMode = "REQUIRED" | "LEGACY_COMPAT"
+
 // ─── Session-Aware Policy Context Provider ────────────────────────────
 
 export interface SessionPolicyBinding {
@@ -168,17 +183,22 @@ export interface SessionPolicyBinding {
  * Fail-closed policy context provider.
  *
  * Loads capability grants from a persisted store via Effect.
- * Loads intent bindings from an optional intent binding store.
+ * Loads intent bindings from an intent binding store.
+ *
+ * Enforcement modes:
+ *   REQUIRED: intentStore must be provided. Missing → intentBindings = [] → DENY.
+ *   LEGACY_COMPAT: intentStore is optional. Missing → intentBindings = undefined → skip.
+ *
  * No grants → empty capabilities → PDP returns DENY.
  * Storage failure → empty capabilities → PDP returns DENY.
- * No binding store → intentBindings = undefined → PDP skips intent check (backward compat).
- * Binding store failure → intentBindings = [] → fail closed.
+ * Binding store failure → empty bindings → fail closed → DENY.
  */
 export class SessionPolicyProvider {
   constructor(
     private store: CapabilityGrantStore,
     private binding: SessionPolicyBinding,
     private intentStore?: IntentBindingStoreEffect,
+    private intentMode: IntentEnforcementMode = "REQUIRED",
   ) {}
 
   snapshot(): Effect.Effect<PolicyContext, never, never> {
@@ -206,14 +226,20 @@ export class SessionPolicyProvider {
           }
         }
 
-        // Load intent bindings if store is provided
+        // Load intent bindings
         let intentBindings: IntentBinding[] | undefined = undefined
+
         if (this.intentStore) {
+          // Store provided — load bindings, fail closed on error
           const bindings = yield* this.intentStore
             .getActiveBindingsForSession(this.binding.sessionId)
             .pipe(Effect.catch(() => Effect.succeed<readonly IntentBinding[]>([])))
           intentBindings = [...bindings]
+        } else if (this.intentMode === "REQUIRED") {
+          // REQUIRED mode without store → fail closed: empty bindings
+          intentBindings = []
         }
+        // LEGACY_COMPAT without store → intentBindings stays undefined → PDP skips
 
         return {
           now: new Date().toISOString(),
