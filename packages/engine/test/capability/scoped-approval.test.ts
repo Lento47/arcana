@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   createPendingApproval,
   approveRequest,
+  claimApproval,
   consumeApproval,
   validateApprovalMatch,
   checkApprovedScope,
@@ -55,8 +56,12 @@ describe("Decisive fixture: scoped approval for git push", () => {
     const validation = validateApprovalMatch(approval, request, new Date().toISOString())
     expect(validation.valid).toBe(true)
 
-    // Step 5: Execute once → consume
-    const consumed = consumeApproval(approval, "evt-consume", new Date().toISOString())
+    // Step 5: Execute once → claim → consume
+    const claimed = claimApproval(approval, "evt-claim", new Date().toISOString())
+    expect(claimed).not.toBeNull()
+    expect(claimed!.decision).toBe("CLAIMED")
+
+    const consumed = consumeApproval(claimed!, "evt-consume", new Date().toISOString())
     expect(consumed).not.toBeNull()
     expect(consumed!.decision).toBe("CONSUMED")
     expect(consumed!.maxUses).toBe(0)
@@ -110,8 +115,11 @@ describe("Decisive fixture: scoped approval for git push", () => {
     const { approval } = approveRequest(pending, "evt-approve")
     store.putApproval(approval)
 
-    // First execution → ALLOW
-    const first = consumeApproval(approval, "evt-consume-1", new Date().toISOString())
+    // First execution → claim → consume
+    const claimed = claimApproval(approval, "evt-claim-1", new Date().toISOString())
+    expect(claimed).not.toBeNull()
+
+    const first = consumeApproval(claimed!, "evt-consume-1", new Date().toISOString())
     expect(first).not.toBeNull()
     expect(first!.decision).toBe("CONSUMED")
 
@@ -237,7 +245,8 @@ describe("checkApprovedScope: PDP integration", () => {
 
     const pending = createPendingApproval(request, "evt-create")
     const { approval } = approveRequest(pending, "evt-approve")
-    const consumed = consumeApproval(approval, "evt-consume", new Date().toISOString())!
+    const claimed = claimApproval(approval, "evt-claim", new Date().toISOString())!
+    const consumed = consumeApproval(claimed, "evt-consume", new Date().toISOString())!
     store.putApproval(consumed)
 
     const result = checkApprovedScope(request, store, new Date().toISOString())

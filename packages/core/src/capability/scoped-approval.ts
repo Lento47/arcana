@@ -28,7 +28,7 @@ import type { AuthorizationRequest } from "./types"
 
 // ─── Types ────────────────────────────────────────────────────────────
 
-export type ScopedApprovalDecision = "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "CONSUMED"
+export type ScopedApprovalDecision = "PENDING" | "APPROVED" | "CLAIMED" | "CONSUMED" | "REJECTED" | "EXPIRED" | "RECOVERY_REQUIRED"
 
 export interface ScopedApproval {
   readonly id: string
@@ -51,7 +51,28 @@ export interface ScopedApproval {
 
   readonly createdEventId: string
   readonly decidedEventId?: string
+  readonly claimedEventId?: string
   readonly consumedEventId?: string
+
+  /**
+   * Idempotency key for crash recovery.
+   * k = H(approvalId ∥ sessionId ∥ requestHash)
+   * Used to prevent duplicate execution after crash.
+   */
+  readonly idempotencyKey?: string
+}
+
+/**
+ * Execution receipt for crash recovery.
+ * Persisted before execution to prevent duplicate effects.
+ */
+export interface ApprovalExecutionReceipt {
+  readonly idempotencyKey: string
+  readonly approvalId: string
+  readonly requestHash: string
+  readonly status: "CLAIMED" | "EXECUTING" | "SUCCEEDED" | "FAILED" | "UNKNOWN_AFTER_CRASH"
+  readonly createdAt: string
+  readonly completedAt?: string
 }
 
 // ─── Store Interface ──────────────────────────────────────────────────
@@ -169,18 +190,66 @@ export function approveRequest(
 // ─── Approval Consumption ─────────────────────────────────────────────
 
 /**
- * Consume an approved approval after successful execution.
- * Atomically decrements uses and marks as CONSUMED.
+ * Compute idempotency key for crash recovery.
+ * k = H(approvalId ∥ sessionId ∥ requestHash)
+ */
+export function computeIdempotencyKey(
+  approvalId: string,
+  sessionId: string,
+  requestHash: string,
+): string {
+  // Simple hash for now — in production, use a cryptographic hash
+  return `${approvalId}:${sessionId}:${requestHash}`
+}
+
+/**
+ * Atomically claim an approved approval before execution.
+ * Changes APPROVED → CLAIMED. Only one claim can succeed.
  *
- * Returns null if the approval cannot be consumed (already consumed, expired, etc.)
+ * Returns null if the approval cannot be claimed (already claimed,
+ * expired, etc.)
+ */
+export function claimApproval(
+  approval: ScopedApproval,
+  claimedEventId: string,
+  now: string,
+): ScopedApproval | null {
+  // Must be APPROVED
+  if (approval.decision !== "APPROVED") return null
+
+  // Must not be expired
+  if (approval.expiresAt <= now) return null
+
+  // Must have uses remaining
+  if (approval.maxUses <= 0) return null
+
+  const idempotencyKey = computeIdempotencyKey(
+    approval.id,
+    approval.sessionId,
+    approval.requestHash,
+  )
+
+  return {
+    ...approval,
+    decision: "CLAIMED",
+    claimedEventId,
+    idempotencyKey,
+  }
+}
+
+/**
+ * Consume a claimed approval after successful execution.
+ * Changes CLAIMED → CONSUMED.
+ *
+ * Returns null if the approval cannot be consumed (not claimed, expired, etc.)
  */
 export function consumeApproval(
   approval: ScopedApproval,
   consumedEventId: string,
   now: string,
 ): ScopedApproval | null {
-  // Must be APPROVED
-  if (approval.decision !== "APPROVED") return null
+  // Must be CLAIMED (not just APPROVED)
+  if (approval.decision !== "CLAIMED") return null
 
   // Must not be expired
   if (approval.expiresAt <= now) return null
@@ -194,6 +263,33 @@ export function consumeApproval(
     maxUses: 0,
     consumedEventId,
   }
+}
+
+/**
+ * Mark a claimed approval as requiring recovery after a crash.
+ * Changes CLAIMED → RECOVERY_REQUIRED.
+ */
+export function markRecoveryRequired(
+  approval: ScopedApproval,
+): ScopedApproval | null {
+  if (approval.decision !== "CLAIMED") return null
+  return {
+    ...approval,
+    decision: "RECOVERY_REQUIRED",
+  }
+}
+
+/**
+ * Check if an approval can be retried after recovery.
+ * Only RECOVERY_REQUIRED approvals with valid expiry can be retried.
+ */
+export function canRetryAfterRecovery(
+  approval: ScopedApproval,
+  now: string,
+): boolean {
+  if (approval.decision !== "RECOVERY_REQUIRED") return false
+  if (approval.expiresAt <= now) return false
+  return true
 }
 
 // ─── Approval Validation ──────────────────────────────────────────────
