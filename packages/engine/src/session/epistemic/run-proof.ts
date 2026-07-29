@@ -89,6 +89,11 @@ export interface ProofHashPayload {
 }
 
 /**
+ * Authorization trace health — whether authorization event recording is complete.
+ */
+export type AuthorizationTraceHealth = "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+
+/**
  * Authorization profile — derived from authorization events in a session.
  * Hard invariant: unauthorizedExecutions = 0.
  */
@@ -103,6 +108,26 @@ export interface AuthorizationProfile {
   readonly executionFailures: number
   readonly unauthorizedExecutions: number
   readonly capabilityViolations: number
+  readonly authorizationTraceHealth: AuthorizationTraceHealth
+  readonly orphanExecutions: number
+  readonly unmatchedAllows: number
+  readonly unmatchedRequests: number
+}
+
+/**
+ * Information flow profile — derived from security label events.
+ * Hard invariant: unlabeledConsequentialRequests = 0.
+ */
+export interface InformationFlowProfile {
+  readonly labeledInputs: number
+  readonly labeledDerivedValues: number
+  readonly secretValuesUsed: number
+  readonly secretFlowsDenied: number
+  readonly declassificationsRequested: number
+  readonly declassificationsAllowed: number
+  readonly labelTamperingAttempts: number
+  readonly unlabeledConsequentialRequests: number
+  readonly traceHealth: AuthorizationTraceHealth
 }
 
 /** The full RunProof = ProofHashPayload + derived hash fields. */
@@ -117,6 +142,7 @@ export type RunProof = ProofHashPayload & {
   readonly contractStatus: string | null
   readonly p3DenialReasons: ReadonlyArray<string>
   readonly authorizationProfile: AuthorizationProfile
+  readonly informationFlowProfile: InformationFlowProfile
 }
 
 export interface RunProofEvent {
@@ -252,6 +278,9 @@ export const layer = Layer.effect(
       // Derive authorization profile from authorization events
       const authorizationProfile = deriveAuthorizationProfile(events)
 
+      // Derive information flow profile from security label events
+      const informationFlowProfile = deriveInformationFlowProfile(events)
+
       return {
         ...payload,
         proofHash,
@@ -264,6 +293,7 @@ export const layer = Layer.effect(
         contractStatus,
         p3DenialReasons,
         authorizationProfile,
+        informationFlowProfile,
       } satisfies RunProof
     })
 
@@ -322,6 +352,7 @@ function extractCompletionMethod(events: ReadonlyArray<RunProofEvent>): string |
  * Derive authorization profile from authorization events.
  * Counts each authorization event type and extracts policy versions.
  * Hard invariant: unauthorizedExecutions = 0.
+ * Trace health: COMPLETE when every executed has matching requested+allowed.
  */
 function deriveAuthorizationProfile(events: ReadonlyArray<RunProofEvent>): AuthorizationProfile {
   const authEvents = events.filter((e) => e.type.startsWith("authorization."))
@@ -333,22 +364,29 @@ function deriveAuthorizationProfile(events: ReadonlyArray<RunProofEvent>): Autho
   let staleDecisions = 0
   let executed = 0
   let executionFailures = 0
-  let unauthorizedExecutions = 0
+
+  // Track requestIds for matching
+  const requestedIds = new Set<string>()
+  const allowedIds = new Set<string>()
+  const executedIds = new Set<string>()
 
   for (const e of authEvents) {
     const p = e.payload as Record<string, unknown>
-    // Extract policy version from decision if present
     const decision = p?.decision as Record<string, unknown> | undefined
     if (decision?.policyVersion) {
       policyVersions.add(decision.policyVersion as string)
     }
 
+    const requestId = p?.requestId as string | undefined
+
     switch (e.type) {
       case "authorization.requested":
         requests++
+        if (requestId) requestedIds.add(requestId)
         break
       case "authorization.allowed":
         allowed++
+        if (requestId) allowedIds.add(requestId)
         break
       case "authorization.denied":
         denied++
@@ -361,6 +399,7 @@ function deriveAuthorizationProfile(events: ReadonlyArray<RunProofEvent>): Autho
         break
       case "authorization.executed":
         executed++
+        if (requestId) executedIds.add(requestId)
         break
       case "authorization.execution_failed":
         executionFailures++
@@ -368,10 +407,54 @@ function deriveAuthorizationProfile(events: ReadonlyArray<RunProofEvent>): Autho
     }
   }
 
-  // Hard invariant: unauthorizedExecutions = 0
-  // An unauthorized execution is one that executed without a prior authorization.allowed
-  // For now, we verify that executed <= allowed (every execution had an authorization)
-  unauthorizedExecutions = Math.max(0, executed - allowed)
+  // Orphan executions: executed without a prior matching allowed
+  let orphanExecutions = 0
+  for (const id of executedIds) {
+    if (!allowedIds.has(id)) {
+      orphanExecutions++
+    }
+  }
+
+  // Unmatched allows: allowed but never executed or explicitly refused
+  const refusedIds = new Set<string>(
+    authEvents
+      .filter((e) => e.type === "authorization.denied" || e.type === "authorization.stale" || e.type === "authorization.execution_failed")
+      .map((e) => (e.payload as Record<string, unknown>)?.requestId as string)
+      .filter(Boolean),
+  )
+  let unmatchedAllows = 0
+  for (const id of allowedIds) {
+    if (!executedIds.has(id) && !refusedIds.has(id)) {
+      unmatchedAllows++
+    }
+  }
+
+  // Unmatched requests: requested but never got a decision
+  const decidedIds = new Set<string>([...allowedIds, ...refusedIds])
+  for (const e of authEvents) {
+    if (e.type === "authorization.approval_required") {
+      decidedIds.add((e.payload as Record<string, unknown>)?.requestId as string)
+    }
+  }
+  let unmatchedRequests = 0
+  for (const id of requestedIds) {
+    if (!decidedIds.has(id)) {
+      unmatchedRequests++
+    }
+  }
+
+  // Unauthorized executions = executions without prior authorization
+  const unauthorizedExecutions = orphanExecutions
+
+  // Authorization trace health
+  let authorizationTraceHealth: "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+  if (authEvents.length === 0) {
+    authorizationTraceHealth = "UNAVAILABLE"
+  } else if (orphanExecutions > 0 || unmatchedRequests > 0) {
+    authorizationTraceHealth = "DEGRADED"
+  } else {
+    authorizationTraceHealth = "COMPLETE"
+  }
 
   return {
     policyVersions: [...policyVersions],
@@ -383,7 +466,94 @@ function deriveAuthorizationProfile(events: ReadonlyArray<RunProofEvent>): Autho
     executed,
     executionFailures,
     unauthorizedExecutions,
-    capabilityViolations: denied, // Each denied request is a capability violation
+    capabilityViolations: denied,
+    authorizationTraceHealth,
+    orphanExecutions,
+    unmatchedAllows,
+    unmatchedRequests,
+  }
+}
+
+/**
+ * Derive information flow profile from security label events.
+ * Hard invariant: unlabeledConsequentialRequests = 0.
+ */
+function deriveInformationFlowProfile(events: ReadonlyArray<RunProofEvent>): InformationFlowProfile {
+  const labelEvents = events.filter((e) => e.type.startsWith("security."))
+  const authEvents = events.filter((e) => e.type.startsWith("authorization."))
+
+  let labeledInputs = 0
+  let labeledDerivedValues = 0
+  let secretValuesUsed = 0
+  let secretFlowsDenied = 0
+  let declassificationsRequested = 0
+  let declassificationsAllowed = 0
+  let labelTamperingAttempts = 0
+  let unlabeledConsequentialRequests = 0
+
+  for (const e of labelEvents) {
+    switch (e.type) {
+      case "security.labels_assigned":
+        labeledInputs++
+        break
+      case "security.labels_propagated":
+        labeledDerivedValues++
+        break
+      case "security.label_tampering_detected":
+        labelTamperingAttempts++
+        break
+      case "security.declassification_requested":
+        declassificationsRequested++
+        break
+      case "security.declassification_allowed":
+        declassificationsAllowed++
+        break
+      case "security.declassification_denied":
+        // Counted but not separately tracked
+        break
+      case "security.secret_flow_denied":
+        secretFlowsDenied++
+        break
+    }
+  }
+
+  // Count secret values used from authorization events
+  for (const e of authEvents) {
+    const p = e.payload as Record<string, unknown>
+    if (e.type === "authorization.requested") {
+      // Check if request had SECRET sensitivity
+      const sensitivity = p?.sensitivity as string[] | undefined
+      if (sensitivity?.includes("SECRET")) {
+        secretValuesUsed++
+      }
+      // Check if request had labels at all
+      const provenance = p?.provenance as string[] | undefined
+      if (!provenance || provenance.length === 0) {
+        unlabeledConsequentialRequests++
+      }
+    }
+  }
+
+  // Trace health: based on whether label events are present
+  let traceHealth: "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+  if (labelEvents.length === 0 && authEvents.length === 0) {
+    traceHealth = "UNAVAILABLE"
+  } else if (unlabeledConsequentialRequests > 0) {
+    traceHealth = "DEGRADED"
+  } else {
+    traceHealth = "COMPLETE"
+  }
+
+  return {
+    labeledInputs,
+    labeledDerivedValues,
+    secretValuesUsed,
+    secretFlowsDenied,
+    declassificationsRequested,
+    declassificationsAllowed,
+    labelTamperingAttempts,
+    unlabeledConsequentialRequests,
+    traceHealth,
   }
 }
 
