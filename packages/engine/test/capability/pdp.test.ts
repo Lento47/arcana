@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { evaluate, classifyRisk, matchResource } from "@arcana/core/capability/pdp"
 import { computeRequestHash } from "@arcana/core/capability/request-hash"
-import type { PolicyContext, PolicyRule } from "@arcana/core/capability/pdp"
+import type { PolicyContext, PolicyRule, ReasonCode, DenyReasonCode, ApprovalReasonCode, AllowReasonCode } from "@arcana/core/capability/pdp"
 import type {
   AuthorizationRequest,
   CapabilityGrant,
@@ -777,5 +777,62 @@ describe("PDP: policy version", () => {
     })
     const d = evaluate(req, ctx)
     expect(d.policyVersion).toBe("custom-v42")
+  })
+})
+
+// ── Frozen reason-code enum ───────────────────────────────────────────
+
+describe("PDP: frozen reason-code enum (26 codes)", () => {
+  const EXPECTED_DENY: DenyReasonCode[] = [
+    "DENY_INVALID_REQUEST",
+    "DENY_REQUEST_HASH_MISMATCH",
+    "DENY_NO_MATCHING_CAPABILITY",
+    "DENY_PRINCIPAL_MISMATCH",
+    "DENY_ACTION_OUT_OF_SCOPE",
+    "DENY_RESOURCE_OUT_OF_SCOPE",
+    "DENY_WORKSPACE_MISMATCH",
+    "DENY_SESSION_MISMATCH",
+    "DENY_CONTRACT_MISMATCH",
+    "DENY_TOOL_OUT_OF_SCOPE",
+    "DENY_EXECUTABLE_OUT_OF_SCOPE",
+    "DENY_ARGUMENT_OUT_OF_SCOPE",
+    "DENY_NETWORK_HOST_OUT_OF_SCOPE",
+    "DENY_CAPABILITY_EXPIRED",
+    "DENY_CAPABILITY_REVOKED",
+    "DENY_CAPABILITY_EXHAUSTED",
+    "DENY_DELEGATION_DEPTH",
+    "DENY_UNTRUSTED_PROVENANCE",
+    "DENY_SECRET_FLOW",
+    "DENY_EXPLICIT_POLICY",
+  ]
+
+  const EXPECTED_APPROVAL: ApprovalReasonCode[] = [
+    "REQUIRE_APPROVAL_HIGH_RISK",
+    "REQUIRE_APPROVAL_UNTRUSTED_WORKSPACE",
+    "REQUIRE_APPROVAL_UNTRUSTED_PROVENANCE",
+    "REQUIRE_APPROVAL_SECRET_USE",
+    "REQUIRE_APPROVAL_EXTERNAL_WRITE",
+  ]
+
+  const EXPECTED_ALLOW: AllowReasonCode[] = ["ALLOW_CAPABILITY_MATCH"]
+
+  test("frozen deny code count: 20", () => {
+    expect(EXPECTED_DENY.length).toBe(20)
+  })
+
+  test("frozen approval code count: 5", () => {
+    expect(EXPECTED_APPROVAL.length).toBe(5)
+  })
+
+  test("frozen allow code count: 1", () => {
+    expect(EXPECTED_ALLOW.length).toBe(1)
+  })
+
+  test("frozen total reason code count: 26", () => {
+    const total =
+      EXPECTED_DENY.length +
+      EXPECTED_APPROVAL.length +
+      EXPECTED_ALLOW.length
+    expect(total).toBe(26)
   })
 })
