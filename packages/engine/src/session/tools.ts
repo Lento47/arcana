@@ -258,6 +258,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 }
               }
               // ── Phase C PEP: authorize before execution ───────────
+              // THE PEP IS THE PRIMARY AUTHORITY.
+              // If the PEP denies, the tool never executes.
+              // PermissionV1 (ctx.ask()) runs only inside the tool's execute
+              // function — after the PEP allows. PermissionV1 can only further
+              // restrict, never expand authority. The deterministic PDP always wins.
+              // Capability PDP says DENY → execution stops. PermissionV1 cannot override.
               const pepProvider = createPolicyProvider(db, ctx.sessionID, input.agent.name)
               const authReq = buildAuthorizationRequest({
                 toolName: item.id,
