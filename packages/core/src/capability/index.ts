@@ -20,6 +20,12 @@ export {
   type LabeledValue,
   type LabeledAuthorizationField,
   type DeclassificationDecision,
+  type IntentBinding,
+  type IntentJustification,
+  type IntentBindingStatus,
+  type IntentBindingCreatedBy,
+  type IntentBindingRequirement,
+  INTENT_BINDING_REQUIREMENT,
   type InformationFlowProfile,
   SENSITIVITY_ORDER,
   combineSensitivity,
@@ -108,3 +114,13 @@ export {
   classifySecret,
   classifySystemPolicy,
 } from "./labels"
+
+export {
+  type IntentBindingStore,
+  InMemoryIntentBindingStore,
+  resolveBindingRequirement,
+  validateIntentBinding,
+  createIntentBinding,
+  isRemoteContentIntentInjection,
+  evaluateIntentBinding,
+} from "./intent-binding"

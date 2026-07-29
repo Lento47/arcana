@@ -818,6 +818,8 @@ describe("PDP: frozen reason-code enum (26 codes)", () => {
     "DENY_MCP_SECRET_USE",
     "DENY_TOOL_OUTPUT_POLICY_CHANGE",
     "DENY_UNLABELED_CONSEQUENTIAL",
+    "DENY_NO_INTENT_BINDING",
+    "DENY_REMOTE_CONTENT_INJECTION",
   ]
 
   const EXPECTED_APPROVAL: ApprovalReasonCode[] = [
@@ -828,27 +830,28 @@ describe("PDP: frozen reason-code enum (26 codes)", () => {
     "REQUIRE_APPROVAL_EXTERNAL_WRITE",
     "REQUIRE_APPROVAL_REMOTE_WRITE",
     "REQUIRE_APPROVAL_UNTRUSTED_LOCAL_WRITE",
+    "REQUIRE_APPROVAL_INTENT",
   ]
 
-  const EXPECTED_ALLOW: AllowReasonCode[] = ["ALLOW_CAPABILITY_MATCH"]
+  const EXPECTED_ALLOW: AllowReasonCode[] = ["ALLOW_CAPABILITY_MATCH", "ALLOW_INTENT_BINDING"]
 
-  test("frozen deny code count: 26", () => {
-    expect(EXPECTED_DENY.length).toBe(26)
+  test("frozen deny code count: 28", () => {
+    expect(EXPECTED_DENY.length).toBe(28)
   })
 
-  test("frozen approval code count: 7", () => {
-    expect(EXPECTED_APPROVAL.length).toBe(7)
+  test("frozen approval code count: 8", () => {
+    expect(EXPECTED_APPROVAL.length).toBe(8)
   })
 
-  test("frozen allow code count: 1", () => {
-    expect(EXPECTED_ALLOW.length).toBe(1)
+  test("frozen allow code count: 2", () => {
+    expect(EXPECTED_ALLOW.length).toBe(2)
   })
 
-  test("frozen total reason code count: 34", () => {
+  test("frozen total reason code count: 38", () => {
     const total =
       EXPECTED_DENY.length +
       EXPECTED_APPROVAL.length +
       EXPECTED_ALLOW.length
-    expect(total).toBe(34)
+    expect(total).toBe(38)
   })
 })

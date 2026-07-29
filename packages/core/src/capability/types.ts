@@ -294,11 +294,49 @@ export interface InformationFlowProfile {
 
 // ─── Intent Binding ───────────────────────────────────────────────────
 
+/**
+ * Intent binding — links an authorization request to a user objective.
+ * A capability alone is insufficient for HIGH/CRITICAL actions.
+ * The action must connect to a real user request, contract criterion, or explicit approval.
+ *
+ * Invariant: Execute(q) ⇒ ∃b: Binds(b,q) ∧ b.requestHash = H(q) ∧ b.contractId = active contract
+ */
+export type IntentJustification =
+  | "DIRECT_REQUIREMENT"       // Action directly satisfies a contract criterion
+  | "NECESSARY_SUBSTEP"        // Action is a required substep of a requirement
+  | "EXPLICIT_APPROVAL"        // User explicitly approved this specific action
+
+export type IntentBindingStatus = "ACTIVE" | "STALE" | "REVOKED"
+
+export type IntentBindingCreatedBy = "RUNTIME" | "USER_APPROVAL"
+
 export interface IntentBinding {
-  requestEventId: string
-  contractId?: string
-  criterionIds: string[]
-  actionJustification: string
+  readonly id: string
+  readonly requestHash: string
+  readonly userRequestEventId: string
+  readonly contractId?: string
+  readonly criterionIds: ReadonlyArray<string>
+  readonly justification: IntentJustification
+  readonly createdBy: IntentBindingCreatedBy
+  readonly status: IntentBindingStatus
+  readonly createdAt: string
+  readonly expiresAt?: string
+}
+
+/**
+ * Intent binding requirements by risk class.
+ * LOW reads: optional
+ * MODERATE writes/executions: user request or active contract required
+ * HIGH actions: active contract criterion required
+ * CRITICAL actions: active contract + explicit approval required
+ */
+export type IntentBindingRequirement = "OPTIONAL" | "USER_REQUEST" | "CONTRACT_CRITERION" | "EXPLICIT_APPROVAL"
+
+export const INTENT_BINDING_REQUIREMENT: Record<RiskClass, IntentBindingRequirement> = {
+  LOW: "OPTIONAL",
+  MODERATE: "USER_REQUEST",
+  HIGH: "CONTRACT_CRITERION",
+  CRITICAL: "EXPLICIT_APPROVAL",
 }
 
 // ─── Policy Version ───────────────────────────────────────────────────
