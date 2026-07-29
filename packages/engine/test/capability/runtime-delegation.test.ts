@@ -516,7 +516,19 @@ describe("Scoped approval: production PDP integration", () => {
       explicitDenyRules: [],
       approvalRules: [],
       workspaceTrust: "TRUSTED",
-      scopedApprovalStore: store,
+      lookupApprovedScope: (hash: string) => {
+        const approval = store.getApprovalForRequest(hash)
+        if (!approval || approval.decision !== "APPROVED" || approval.maxUses <= 0) return undefined
+        return {
+          requestHash: approval.requestHash,
+          approvalId: approval.id,
+          capabilityId: approval.capabilityId,
+          principalId: approval.principalId,
+          sessionId: approval.sessionId,
+          expiresAt: approval.expiresAt,
+          maxUses: approval.maxUses,
+        }
+      },
     }
 
     const firstDecision = evaluatePolicy(request, ctx)
@@ -626,13 +638,7 @@ describe("PDP ancestor chain validation via PolicyContext.grantStore", () => {
       explicitDenyRules: [],
       approvalRules: [],
       workspaceTrust: "TRUSTED",
-      grantStore: {
-        getGrantById: (id: string) => {
-          if (id === "pdp-parent") return parentGrant
-          if (id === "pdp-child") return childGrant
-          return null
-        },
-      },
+      validateAncestors: true,
     }
 
     const request = makeAuthRequest({
@@ -672,13 +678,7 @@ describe("PDP ancestor chain validation via PolicyContext.grantStore", () => {
       explicitDenyRules: [],
       approvalRules: [],
       workspaceTrust: "TRUSTED",
-      grantStore: {
-        getGrantById: (id: string) => {
-          if (id === "pdp-active-parent") return parentGrant
-          if (id === "pdp-active-child") return childGrant
-          return null
-        },
-      },
+      validateAncestors: true,
     }
 
     const request = makeAuthRequest({

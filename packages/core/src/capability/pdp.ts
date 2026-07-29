@@ -9,7 +9,6 @@
  */
 
 import { computeRequestHash } from "./request-hash"
-import { checkApprovedScope, type ScopedApprovalStore } from "./scoped-approval"
 import type {
   AuthorizationRequest,
   AuthorizationDecision,
@@ -50,6 +49,20 @@ export interface PolicyRule {
 
 export type WorkspaceTrust = "TRUSTED" | "UNTRUSTED" | "UNKNOWN"
 
+/**
+ * Pre-computed approved request scope for the PDP.
+ * Loaded by SessionPolicyProvider.snapshot() — the PDP never calls a store.
+ */
+export interface ApprovedRequestScope {
+  readonly requestHash: string
+  readonly approvalId: string
+  readonly capabilityId?: string
+  readonly principalId: string
+  readonly sessionId: string
+  readonly expiresAt: string
+  readonly maxUses: number
+}
+
 export interface PolicyContext {
   now: string
   policyVersion: string
@@ -58,10 +71,24 @@ export interface PolicyContext {
   approvalRules: PolicyRule[]
   workspaceTrust: WorkspaceTrust
   intentBindings?: IntentBinding[]
-  /** Scoped approval store — when provided, the PDP checks for approved scopes. */
-  scopedApprovalStore?: ScopedApprovalStore
-  /** Runtime grant store — when provided, the PDP validates ancestor chains. */
-  grantStore?: { getGrantById(id: string): CapabilityGrant | null | Promise<CapabilityGrant | null> }
+  /**
+   * Pre-computed approved scopes. The PDP inspects this array but never
+   * calls a store. SessionPolicyProvider.snapshot() loads and validates
+   * approvals from the ScopedApprovalStore and passes only valid ones here.
+   */
+  approvedScopes?: readonly ApprovedRequestScope[]
+  /**
+   * Pure lookup function for approved scopes by request hash.
+   * Created by SessionPolicyProvider.snapshot() — closes over the store
+   * but is deterministic and read-only from the PDP's perspective.
+   * The PDP calls this as a pure function, not as a store operation.
+   */
+  lookupApprovedScope?: (requestHash: string) => ApprovedRequestScope | undefined
+  /**
+   * When true, the PDP validates ancestor chains for delegated grants.
+   * The ancestor data is already in capabilities[] — no store calls needed.
+   */
+  validateAncestors?: boolean
 }
 
 // ─── Reason Codes ─────────────────────────────────────────────────────
@@ -771,10 +798,10 @@ export function evaluate(
     return buildDecision(request, context, "DENY", reasons, [], timestamp)
   }
 
-  // Step 5.25: Ancestor chain validation
+  // Step 5.25: Ancestor chain validation (pure — uses capabilities[] only)
   // Usable(c) ⟹ Active(c) ∧ ∀a ∈ Ancestors(c): Active(a)
   // A child grant must not remain usable after its parent authority is revoked.
-  if (context.grantStore) {
+  if (context.validateAncestors) {
     const validIds: string[] = []
     for (const capId of capResult.matchedCapabilityIds) {
       const cap = context.capabilities.find((c) => c.id === capId)
@@ -899,29 +926,33 @@ export function evaluate(
   }
 
   if (approvalReasons.length > 0) {
-    // Check if an approved scope exists for this exact request
-    if (context.scopedApprovalStore) {
-      const approvalCheck = checkApprovedScope(request, context.scopedApprovalStore, timestamp)
-      if (approvalCheck.hasApproval && approvalCheck.approval) {
-        // Approved — add the approval capability to matched capabilities
-        const approvalCapId = approvalCheck.approval.capabilityId
-        if (approvalCapId) {
-          const allMatchedIds = [...capResult.matchedCapabilityIds, approvalCapId]
-          reasons.push(...approvalReasons)
-          reasons.push({
-            code: "ALLOW_CAPABILITY_MATCH",
-            message: `Approved scope: ${approvalCheck.approval.id}`,
-            severity: "info",
-          })
-          return buildDecision(
-            request,
-            context,
-            "ALLOW",
-            reasons,
-            allMatchedIds,
-            timestamp,
-          )
-        }
+    // Check if an approved scope exists for this exact request (pure — no store calls)
+    if (context.lookupApprovedScope) {
+      const requestHash = computeRequestHash(request)
+      const matchingScope = context.lookupApprovedScope(requestHash)
+      if (
+        matchingScope &&
+        matchingScope.capabilityId &&
+        matchingScope.principalId === request.principalId &&
+        matchingScope.sessionId === request.sessionId &&
+        matchingScope.expiresAt > timestamp &&
+        matchingScope.maxUses > 0
+      ) {
+        const allMatchedIds = [...capResult.matchedCapabilityIds, matchingScope.capabilityId]
+        reasons.push(...approvalReasons)
+        reasons.push({
+          code: "ALLOW_CAPABILITY_MATCH",
+          message: `Approved scope: ${matchingScope.approvalId}`,
+          severity: "info",
+        })
+        return buildDecision(
+          request,
+          context,
+          "ALLOW",
+          reasons,
+          allMatchedIds,
+          timestamp,
+        )
       }
     }
 

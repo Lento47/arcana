@@ -48,6 +48,7 @@ export {
   type PolicyRuleKind,
   type PolicyContext,
   type WorkspaceTrust,
+  type ApprovedRequestScope,
   type DenyReasonCode,
   type ApprovalReasonCode,
   type AllowReasonCode,
