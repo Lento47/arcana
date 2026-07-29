@@ -177,3 +177,15 @@ export {
   validateGrantUsability,
   revokeWithCascade,
 } from "./runtime-delegation"
+
+export {
+  type WorkspaceIdentity,
+  type WorkspaceTrustAssessment,
+  type MCPServerIdentity,
+  type MCPToolSchema,
+  type MCPRequestBinding,
+  type MCPTrustAssessment,
+  assessWorkspaceTrust,
+  assessMCPTrust,
+  computeToolSchemaDigest,
+} from "./trust-adapters"
