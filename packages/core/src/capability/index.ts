@@ -49,6 +49,7 @@ export {
   type PreparedEffect,
   type PolicyContextProvider,
   type EnforcementResult,
+  type AuthorizationEventEmitter,
   authorizeAndExecute,
   authorizeAndExecuteEffect,
   authorizeAndExecuteSync,
