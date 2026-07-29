@@ -189,3 +189,13 @@ export {
   assessMCPTrust,
   computeToolSchemaDigest,
 } from "./trust-adapters"
+
+export {
+  type FieldLineage,
+  type FieldTransformation,
+  type LineageAssessment,
+  CONSEQUENTIAL_FIELDS,
+  classifyFieldLineage,
+  assessFieldLineage,
+  assessRequestLineage,
+} from "./field-lineage"
