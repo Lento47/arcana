@@ -146,3 +146,15 @@ export {
   type DelegationProfile,
   deriveDelegationProfile,
 } from "./delegation"
+
+export {
+  type ScopedApproval,
+  type ScopedApprovalDecision,
+  type ScopedApprovalStore,
+  InMemoryScopedApprovalStore,
+  createPendingApproval,
+  approveRequest,
+  consumeApproval,
+  validateApprovalMatch,
+  checkApprovedScope,
+} from "./scoped-approval"
