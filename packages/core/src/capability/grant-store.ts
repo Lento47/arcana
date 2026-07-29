@@ -53,6 +53,21 @@ export interface CapabilityGrantStore {
   exhaustGrant(
     grantId: string,
   ): Effect.Effect<boolean, CapabilityGrantStoreError>
+
+  /** Get a single grant by ID. Returns null if not found. */
+  getGrantById(
+    grantId: string,
+  ): Effect.Effect<CapabilityGrant | null, CapabilityGrantStoreError>
+
+  /** Get all grants (for cascade operations). */
+  getAllGrants(): Effect.Effect<readonly CapabilityGrant[], CapabilityGrantStoreError>
+
+  /** Update grant status atomically. */
+  updateStatus(
+    grantId: string,
+    status: CapabilityGrant["status"],
+    eventId?: string,
+  ): Effect.Effect<void, CapabilityGrantStoreError>
 }
 
 // ─── In-Memory Grant Store ────────────────────────────────────────────
@@ -120,6 +135,32 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
     if (!g) return Effect.succeed(false)
     this.grants.set(grantId, { ...g, status: "EXHAUSTED" })
     return Effect.succeed(true)
+  }
+
+  getGrantById(
+    grantId: string,
+  ): Effect.Effect<CapabilityGrant | null, CapabilityGrantStoreError> {
+    const g = this.grants.get(grantId)
+    return Effect.succeed(g ? { ...g } : null)
+  }
+
+  getAllGrants(): Effect.Effect<readonly CapabilityGrant[], CapabilityGrantStoreError> {
+    return Effect.succeed([...this.grants.values()].map((g) => ({ ...g })))
+  }
+
+  updateStatus(
+    grantId: string,
+    status: CapabilityGrant["status"],
+    eventId?: string,
+  ): Effect.Effect<void, CapabilityGrantStoreError> {
+    const g = this.grants.get(grantId)
+    if (!g) return Effect.void
+    this.grants.set(grantId, {
+      ...g,
+      status,
+      ...(status === "REVOKED" && eventId ? { revokedEventId: eventId } : {}),
+    })
+    return Effect.void
   }
 }
 
@@ -199,6 +240,7 @@ export class SessionPolicyProvider {
     private binding: SessionPolicyBinding,
     private intentStore?: IntentBindingStoreEffect,
     private intentMode: IntentEnforcementMode = "REQUIRED",
+    private scopedApprovalStore?: import("./scoped-approval").ScopedApprovalStore,
   ) {}
 
   snapshot(): Effect.Effect<PolicyContext, never, never> {
@@ -249,6 +291,13 @@ export class SessionPolicyProvider {
           approvalRules: [],
           workspaceTrust: this.binding.workspaceTrust,
           intentBindings,
+          scopedApprovalStore: this.scopedApprovalStore,
+          grantStore: {
+            getGrantById: (id: string) => {
+              const found = grants.find((g) => g.id === id)
+              return found ?? null
+            },
+          },
         } satisfies PolicyContext
       },
     )

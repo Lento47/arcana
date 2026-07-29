@@ -198,4 +198,54 @@ export class SqliteGrantStore implements CapabilityGrantStore {
       },
     ).pipe(Effect.catch(() => Effect.succeed(false)))
   }
+
+  getGrantById(
+    grantId: string,
+  ): Effect.Effect<CapabilityGrant | null, CapabilityGrantStoreError> {
+    return Effect.gen(
+      { self: this },
+      function* () {
+        const row = yield* this.db.db
+          .get<GrantRow>(
+            sql`SELECT * FROM capability_grants WHERE id = ${grantId}`,
+          )
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+        return row ? rowToGrant(row) : null
+      },
+    ).pipe(Effect.catch(() => Effect.succeed(null)))
+  }
+
+  getAllGrants(): Effect.Effect<readonly CapabilityGrant[], CapabilityGrantStoreError> {
+    return Effect.gen(
+      { self: this },
+      function* () {
+        const rows = yield* this.db.db
+          .all<GrantRow>(sql`SELECT * FROM capability_grants`)
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+        return rows.map(rowToGrant)
+      },
+    ).pipe(Effect.catch(() => Effect.succeed<readonly CapabilityGrant[]>([])))
+  }
+
+  updateStatus(
+    grantId: string,
+    status: CapabilityGrant["status"],
+    eventId?: string,
+  ): Effect.Effect<void, CapabilityGrantStoreError> {
+    return Effect.gen(
+      { self: this },
+      function* () {
+        const now = Date.now()
+        yield* this.db.db
+          .run(
+            sql`UPDATE capability_grants
+                SET status = ${status},
+                    revoked_event_id = ${eventId ?? null},
+                    time_updated = ${now}
+                WHERE id = ${grantId}`,
+          )
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+      },
+    )
+  }
 }

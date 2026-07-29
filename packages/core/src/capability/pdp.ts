@@ -9,6 +9,7 @@
  */
 
 import { computeRequestHash } from "./request-hash"
+import { checkApprovedScope, type ScopedApprovalStore } from "./scoped-approval"
 import type {
   AuthorizationRequest,
   AuthorizationDecision,
@@ -57,6 +58,10 @@ export interface PolicyContext {
   approvalRules: PolicyRule[]
   workspaceTrust: WorkspaceTrust
   intentBindings?: IntentBinding[]
+  /** Scoped approval store — when provided, the PDP checks for approved scopes. */
+  scopedApprovalStore?: ScopedApprovalStore
+  /** Runtime grant store — when provided, the PDP validates ancestor chains. */
+  grantStore?: { getGrantById(id: string): CapabilityGrant | null | Promise<CapabilityGrant | null> }
 }
 
 // ─── Reason Codes ─────────────────────────────────────────────────────
@@ -766,6 +771,90 @@ export function evaluate(
     return buildDecision(request, context, "DENY", reasons, [], timestamp)
   }
 
+  // Step 5.25: Ancestor chain validation
+  // Usable(c) ⟹ Active(c) ∧ ∀a ∈ Ancestors(c): Active(a)
+  // A child grant must not remain usable after its parent authority is revoked.
+  if (context.grantStore) {
+    const validIds: string[] = []
+    for (const capId of capResult.matchedCapabilityIds) {
+      const cap = context.capabilities.find((c) => c.id === capId)
+      if (!cap) continue
+
+      // Check the grant itself
+      if (cap.status !== "ACTIVE") {
+        reasons.push({
+          code: "DENY_CAPABILITY_REVOKED",
+          message: `Capability ${capId} is ${cap.status}`,
+          severity: "critical",
+        })
+        continue
+      }
+
+      // Walk ancestor chain
+      let ancestryValid = true
+      let current = cap
+      const visited = new Set<string>([capId])
+
+      while (current.issuer.kind === "parent_capability") {
+        const parentId = current.issuer.id
+        if (visited.has(parentId)) {
+          reasons.push({
+            code: "DENY_DELEGATION_DEPTH",
+            message: `Cycle in ancestor chain at ${parentId}`,
+            severity: "critical",
+          })
+          ancestryValid = false
+          break
+        }
+        visited.add(parentId)
+
+        // Synchronous lookup — the store is in PolicyContext
+        const parent = context.capabilities.find((c) => c.id === parentId)
+        if (!parent) {
+          // Parent not in context — try the store (synchronous or cached)
+          // For now, if parent is not in capabilities, it means it's not loaded
+          // which is a failure mode
+          reasons.push({
+            code: "DENY_CAPABILITY_REVOKED",
+            message: `Ancestor ${parentId} not found in policy context`,
+            severity: "critical",
+          })
+          ancestryValid = false
+          break
+        }
+        if (parent.status !== "ACTIVE") {
+          reasons.push({
+            code: "DENY_CAPABILITY_REVOKED",
+            message: `Ancestor ${parentId} is ${parent.status}`,
+            severity: "critical",
+          })
+          ancestryValid = false
+          break
+        }
+        current = parent
+      }
+
+      if (ancestryValid) {
+        validIds.push(capId)
+      }
+    }
+
+    // Update matched IDs to only include those with valid ancestry
+    capResult.matchedCapabilityIds = validIds
+    capResult.matches = validIds.length > 0
+
+    if (!capResult.matches) {
+      if (reasons.length === 0) {
+        reasons.push({
+          code: "DENY_NO_MATCHING_CAPABILITY",
+          message: "All matching capabilities have invalid ancestor chains",
+          severity: "critical",
+        })
+      }
+      return buildDecision(request, context, "DENY", reasons, [], timestamp)
+    }
+  }
+
   // Step 5.5: Evaluate intent binding for HIGH/CRITICAL actions
   // Only evaluates when intentBindings is explicitly provided in the context.
   // When undefined, intent binding is not enforced (backward compatible).
@@ -810,6 +899,32 @@ export function evaluate(
   }
 
   if (approvalReasons.length > 0) {
+    // Check if an approved scope exists for this exact request
+    if (context.scopedApprovalStore) {
+      const approvalCheck = checkApprovedScope(request, context.scopedApprovalStore, timestamp)
+      if (approvalCheck.hasApproval && approvalCheck.approval) {
+        // Approved — add the approval capability to matched capabilities
+        const approvalCapId = approvalCheck.approval.capabilityId
+        if (approvalCapId) {
+          const allMatchedIds = [...capResult.matchedCapabilityIds, approvalCapId]
+          reasons.push(...approvalReasons)
+          reasons.push({
+            code: "ALLOW_CAPABILITY_MATCH",
+            message: `Approved scope: ${approvalCheck.approval.id}`,
+            severity: "info",
+          })
+          return buildDecision(
+            request,
+            context,
+            "ALLOW",
+            reasons,
+            allMatchedIds,
+            timestamp,
+          )
+        }
+      }
+    }
+
     reasons.push(...approvalReasons)
     return buildDecision(
       request,

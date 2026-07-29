@@ -158,3 +158,15 @@ export {
   validateApprovalMatch,
   checkApprovedScope,
 } from "./scoped-approval"
+
+export {
+  type RuntimeDelegationRequest,
+  type RuntimeDelegationResult,
+  type RuntimeDelegationError,
+  type RuntimeDelegationErrorCode,
+  type RuntimeGrantStore,
+  type DelegationSessionConfig,
+  executeDelegation,
+  validateGrantUsability,
+  revokeWithCascade,
+} from "./runtime-delegation"
