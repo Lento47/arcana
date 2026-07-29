@@ -57,7 +57,7 @@ describe("Runtime enforcement: empty database denies all P0 tools", () => {
           principalId: "agent:main",
           sessionId: "sess-001",
           workspaceTrust: "TRUSTED",
-        })
+        }, undefined, "LEGACY_COMPAT")
 
         const request = buildAuthorizationRequest({
           toolName: name,
@@ -92,7 +92,7 @@ describe("Runtime enforcement: MCP tools denied with no grants", () => {
         principalId: "agent:main",
         sessionId: "sess-001",
         workspaceTrust: "TRUSTED",
-      })
+      }, undefined, "LEGACY_COMPAT")
 
       const request = buildAuthorizationRequest({
         toolName: "mcp_github_create_issue",
@@ -142,7 +142,7 @@ describe("Runtime enforcement: seeded grants allow execution", () => {
         principalId: "agent:main",
         sessionId: "sess-001",
         workspaceTrust: "TRUSTED",
-      })
+      }, undefined, "LEGACY_COMPAT")
 
       const request = buildAuthorizationRequest({
         toolName: "terminal",
@@ -189,7 +189,7 @@ describe("Runtime enforcement: seeded grants allow execution", () => {
         principalId: "agent:main",
         sessionId: "sess-001",
         workspaceTrust: "TRUSTED",
-      })
+      }, undefined, "LEGACY_COMPAT")
 
       const request = buildAuthorizationRequest({
         toolName: "write_file",
@@ -234,7 +234,7 @@ describe("Runtime enforcement: seeded grants allow execution", () => {
         principalId: "agent:main",
         sessionId: "sess-001",
         workspaceTrust: "TRUSTED",
-      })
+      }, undefined, "LEGACY_COMPAT")
 
       const request = buildAuthorizationRequest({
         toolName: "git_push",
@@ -283,7 +283,7 @@ describe("Runtime enforcement: immediate revocation", () => {
         principalId: "agent:main",
         sessionId: "sess-001",
         workspaceTrust: "TRUSTED",
-      })
+      }, undefined, "LEGACY_COMPAT")
 
       const request = buildAuthorizationRequest({
         toolName: "terminal",
@@ -329,7 +329,7 @@ describe("Runtime enforcement: storage failure -> DENY", () => {
       principalId: "agent:main",
       sessionId: "sess-001",
       workspaceTrust: "TRUSTED",
-    })
+    }, undefined, "LEGACY_COMPAT")
 
     const request = buildAuthorizationRequest({
       toolName: "terminal",

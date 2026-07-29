@@ -79,6 +79,7 @@ export {
   type CapabilityGrantStoreError,
   type SessionPolicyBinding,
   type IntentBindingStoreEffect,
+  type IntentEnforcementMode,
   InMemoryGrantStore,
   InMemoryIntentBindingStoreEffect,
   SessionPolicyProvider,

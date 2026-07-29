@@ -135,7 +135,7 @@ describe("Authorization events: PEP emits events", () => {
           principalId: "agent:main",
           sessionId: "sess-001",
           workspaceTrust: "TRUSTED",
-        })
+        }, undefined, "LEGACY_COMPAT")
 
         // Create an event emitter that writes to the EventStore
         const emitter: AuthorizationEventEmitter = {
@@ -191,7 +191,7 @@ describe("Authorization events: PEP emits events", () => {
           principalId: "agent:main",
           sessionId: "sess-001",
           workspaceTrust: "TRUSTED",
-        })
+        }, undefined, "LEGACY_COMPAT")
 
         const emitter: AuthorizationEventEmitter = {
           emit: (event) =>
@@ -248,7 +248,7 @@ describe("Authorization events: PEP emits events", () => {
           principalId: "agent:main",
           sessionId: "sess-001",
           workspaceTrust: "TRUSTED",
-        })
+        }, undefined, "LEGACY_COMPAT")
 
         const emitter: AuthorizationEventEmitter = {
           emit: (event) =>

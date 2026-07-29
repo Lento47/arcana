@@ -59,7 +59,7 @@ function makeRequest(overrides = {}) {
 describe("Task 7: no grants → DENY", () => {
   test("empty store returns DENIED", async () => {
     const store = new InMemoryGrantStore()
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -72,7 +72,7 @@ describe("Task 7: no grants → DENY", () => {
   test("no grants for this principal → DENIED", async () => {
     const store = new InMemoryGrantStore()
     await Effect.runPromise(store.putGrant(makeGrant({ principal: { kind: "agent", id: "agent:other" } })))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -87,7 +87,7 @@ describe("Task 7: matching grant → EXECUTED", () => {
   test("exact matching grant allows execution", async () => {
     const store = new InMemoryGrantStore()
     await Effect.runPromise(store.putGrant(makeGrant()))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -123,7 +123,7 @@ describe("Task 7: wrong session → DENY", () => {
   test("session-bound grant does not cross sessions", async () => {
     const store = new InMemoryGrantStore()
     await Effect.runPromise(store.putGrant(makeGrant({ constraints: { sessionId: "sess-other" } })))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -138,7 +138,7 @@ describe("Task 7: wrong workspace → DENY", () => {
   test("workspace-bound grant does not cross workspaces", async () => {
     const store = new InMemoryGrantStore()
     await Effect.runPromise(store.putGrant(makeGrant({ constraints: { workspaceId: "ws-other" } })))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -153,7 +153,7 @@ describe("Task 7: wrong action → DENY", () => {
   test("grant for different action is rejected", async () => {
     const store = new InMemoryGrantStore()
     await Effect.runPromise(store.putGrant(makeGrant({ actions: ["filesystem.read"] })))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -173,7 +173,7 @@ describe("Task 7: resource constraint mismatch → DENY", () => {
     await Effect.runPromise(store.putGrant(makeGrant({
       resources: [{ kind: "process", pattern: "node" }],
     })))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -193,7 +193,7 @@ describe("Task 7: expired grant → DENY", () => {
     await Effect.runPromise(store.putGrant(makeGrant({
       constraints: { expiresAt: "2026-07-28T00:00:00Z" },
     })))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -212,7 +212,7 @@ describe("Task 7: revoked grant → DENY", () => {
     const store = new InMemoryGrantStore()
     await Effect.runPromise(store.putGrant(makeGrant()))
     await Effect.runPromise(store.revokeGrant("cap-001", "evt-revoke"))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -228,7 +228,7 @@ describe("Task 7: revoked grant → DENY", () => {
   test("revocation affects next decision immediately", async () => {
     const store = new InMemoryGrantStore()
     await Effect.runPromise(store.putGrant(makeGrant()))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     // First call: should succeed
@@ -276,7 +276,7 @@ describe("Task 7: unknown tool → DENY", () => {
     await Effect.runPromise(store.putGrant(makeGrant({
       constraints: { toolNames: ["web_fetch"] },
     })))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -297,7 +297,7 @@ describe("Task 7: approval required → no execution", () => {
       actions: ["git.push"],
       resources: [{ kind: "git", pattern: "*" }],
     })))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = buildAuthorizationRequest({
       toolName: "git_push",
       principalId: "agent:main",
@@ -317,7 +317,7 @@ describe("Task 7: policy version in decisions", () => {
   test("decision carries the current policy version", async () => {
     const store = new InMemoryGrantStore()
     await Effect.runPromise(store.putGrant(makeGrant()))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -338,7 +338,7 @@ describe("Task 7: MCP same semantics", () => {
       actions: ["network.read"],
       resources: [{ kind: "network", pattern: "*" }],
     })))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = buildAuthorizationRequest({
       toolName: "mcp_server_tool",
       principalId: "agent:main",
@@ -360,7 +360,7 @@ describe("Task 7: multiple grants", () => {
     const store = new InMemoryGrantStore()
     await Effect.runPromise(store.putGrant(makeGrant({ id: "cap-wrong", actions: ["filesystem.read"] })))
     await Effect.runPromise(store.putGrant(makeGrant({ id: "cap-right" })))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
@@ -379,7 +379,7 @@ describe("Task 7: exhausted grant → DENY", () => {
     const store = new InMemoryGrantStore()
     await Effect.runPromise(store.putGrant(makeGrant()))
     await Effect.runPromise(store.exhaustGrant("cap-001"))
-    const provider = new SessionPolicyProvider(store, makeBinding())
+    const provider = new SessionPolicyProvider(store, makeBinding(), undefined, "LEGACY_COMPAT")
     const req = makeRequest()
 
     const result = await Effect.runPromise(authorizeAndExecuteEffect(
