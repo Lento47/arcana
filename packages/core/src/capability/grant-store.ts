@@ -283,6 +283,31 @@ export class SessionPolicyProvider {
         }
         // LEGACY_COMPAT without store → intentBindings stays undefined → PDP skips
 
+        // Pre-compute approved scopes from the ScopedApprovalStore.
+        // The PDP receives a pure lookup function — never calls a store directly.
+        let lookupApprovedScope: ((requestHash: string) => import("./pdp").ApprovedRequestScope | undefined) | undefined = undefined
+        if (this.scopedApprovalStore) {
+          const store = this.scopedApprovalStore
+          lookupApprovedScope = (requestHash: string) => {
+            const approval = store.getApprovalForRequest(requestHash)
+            if (!approval) return undefined
+            if (approval.decision !== "APPROVED") return undefined
+            if (approval.maxUses <= 0) return undefined
+            return {
+              requestHash: approval.requestHash,
+              approvalId: approval.id,
+              capabilityId: approval.capabilityId,
+              principalId: approval.principalId,
+              sessionId: approval.sessionId,
+              expiresAt: approval.expiresAt,
+              maxUses: approval.maxUses,
+            }
+          }
+        }
+
+        // Determine if ancestor validation is needed (any delegated grants?)
+        const hasDelegatedGrants = grants.some((g) => g.issuer.kind === "parent_capability")
+
         return {
           now: new Date().toISOString(),
           policyVersion: POLICY_VERSION,
@@ -291,13 +316,8 @@ export class SessionPolicyProvider {
           approvalRules: [],
           workspaceTrust: this.binding.workspaceTrust,
           intentBindings,
-          scopedApprovalStore: this.scopedApprovalStore,
-          grantStore: {
-            getGrantById: (id: string) => {
-              const found = grants.find((g) => g.id === id)
-              return found ?? null
-            },
-          },
+          lookupApprovedScope,
+          validateAncestors: hasDelegatedGrants,
         } satisfies PolicyContext
       },
     )
