@@ -265,37 +265,28 @@ export function executeDelegation(
       }
     }
 
-    // Step 6: Persist child grants (atomic)
-    const persistedGrants: CapabilityGrant[] = []
-    for (const grant of result.childGrants) {
-      // Set delegation constraints
-      const childGrant: CapabilityGrant = {
-        ...grant,
-        delegation: {
-          allowed: request.allowFurtherDelegation ?? false,
-          maximumDepth: request.maxDepth ?? grant.delegation.maximumDepth,
-          currentDepth: grant.delegation.currentDepth,
-        },
-      }
-
-      yield* store.putGrant(childGrant).pipe(
-        Effect.catch((err) => {
-          // Rollback: revoke already-persisted grants
-          return Effect.gen(function* () {
-            for (const persisted of persistedGrants) {
-              yield* store.updateStatus(persisted.id, "REVOKED", `rollback-${delegationIdCounter}`).pipe(
-                Effect.catch(() => Effect.void),
-              )
-            }
-            return yield* Effect.fail(err)
-          })
-        }),
-      )
-
-      persistedGrants.push(childGrant)
-    }
-
+    // Step 6: Persist child grants within a real database transaction.
+    // If any grant insertion fails, the entire transaction rolls back.
     const delegationId = `delegation-${Date.now()}-${delegationIdCounter}`
+
+    const persistedGrants = yield* store.transaction((tx) =>
+      Effect.gen(function* () {
+        const grants: CapabilityGrant[] = []
+        for (const grant of result.childGrants) {
+          const childGrant: CapabilityGrant = {
+            ...grant,
+            delegation: {
+              allowed: request.allowFurtherDelegation ?? false,
+              maximumDepth: request.maxDepth ?? grant.delegation.maximumDepth,
+              currentDepth: grant.delegation.currentDepth,
+            },
+          }
+          yield* tx.putGrant(childGrant)
+          grants.push(childGrant)
+        }
+        return grants
+      }),
+    )
 
     return {
       status: "DELEGATED" as const,
@@ -354,15 +345,21 @@ export function revokeWithCascade(
  */
 export interface RuntimeGrantStore extends CapabilityGrantStore {
   /** Get a grant by ID */
-  getGrantById(id: string): Effect.Effect<CapabilityGrant, CapabilityGrantStoreError>
+  getGrantById(id: string): Effect.Effect<CapabilityGrant | null, CapabilityGrantStoreError>
   /** Get all grants */
   getAllGrants(): Effect.Effect<readonly CapabilityGrant[], CapabilityGrantStoreError>
-  /** Put a new grant */
-  putGrant(grant: CapabilityGrant): Effect.Effect<void, CapabilityGrantStoreError>
   /** Update grant status */
   updateStatus(
     id: string,
     status: CapabilityGrant["status"],
     eventId?: string,
   ): Effect.Effect<void, CapabilityGrantStoreError>
+  /**
+   * Execute an operation within a database transaction.
+   * All grant operations inside the callback are atomic —
+   * if any fail, the entire transaction rolls back.
+   */
+  transaction<A>(
+    fn: (store: RuntimeGrantStore) => Effect.Effect<A, CapabilityGrantStoreError>,
+  ): Effect.Effect<A, CapabilityGrantStoreError>
 }

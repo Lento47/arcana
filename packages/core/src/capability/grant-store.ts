@@ -162,6 +162,20 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
     })
     return Effect.void
   }
+
+  transaction<A>(
+    fn: (store: import("./runtime-delegation").RuntimeGrantStore) => Effect.Effect<A, CapabilityGrantStoreError>,
+  ): Effect.Effect<A, CapabilityGrantStoreError> {
+    // In-memory: snapshot → execute → commit or rollback
+    const snapshot = new Map(this.grants)
+    return fn(this as unknown as import("./runtime-delegation").RuntimeGrantStore).pipe(
+      Effect.catch((err) => {
+        // Rollback: restore snapshot
+        this.grants = snapshot
+        return Effect.fail(err)
+      }),
+    )
+  }
 }
 
 // ─── Intent Binding Store (Effect-native) ─────────────────────────────
