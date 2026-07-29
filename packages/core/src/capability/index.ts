@@ -61,6 +61,13 @@ export {
 } from "./pep-integration"
 
 export {
+  type CapabilityGrantStore,
+  type SessionPolicyBinding,
+  InMemoryGrantStore,
+  SessionPolicyProvider,
+} from "./grant-store"
+
+export {
   computeRequestHash,
   canonicalizeRequest,
 } from "./request-hash"
