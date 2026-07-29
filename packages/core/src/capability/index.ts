@@ -32,6 +32,20 @@ export {
 } from "./effect-boundary"
 
 export {
+  type PolicyRule,
+  type PolicyRuleKind,
+  type PolicyContext,
+  type WorkspaceTrust,
+  type DenyReasonCode,
+  type ApprovalReasonCode,
+  type AllowReasonCode,
+  type ReasonCode,
+  evaluate as evaluatePolicy,
+  classifyRisk,
+  matchResource,
+} from "./pdp"
+
+export {
   computeRequestHash,
   canonicalizeRequest,
 } from "./request-hash"
