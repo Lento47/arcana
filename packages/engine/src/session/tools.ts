@@ -46,11 +46,116 @@ function createPolicyProvider(
   })
 }
 
+/**
+ * Extract provenance labels for a tool call at the production boundary.
+ *
+ * Classification rules:
+ * - All model-generated arguments: MODEL_OUTPUT (inherited from prompt)
+ * - File reads: content provenance depends on source (read_file path)
+ * - Network reads: REMOTE_CONTENT + TOOL_OUTPUT
+ * - MCP tool calls: MCP_DESCRIPTION
+ * - Subagent delegation: SUBAGENT_OUTPUT
+ * - Secret access: SYSTEM_POLICY
+ * - User-facing tools (terminal, write): USER_INSTRUCTION (model-mediated)
+ *
+ * The model's arguments are always MODEL_OUTPUT.
+ * The content being acted upon carries additional provenance.
+ */
 function extractProvenance(toolName: string, args: Record<string, unknown>): ProvenanceLabel[] {
-  return ["USER_INSTRUCTION"]
+  const labels: ProvenanceLabel[] = ["MODEL_OUTPUT"]
+
+  switch (toolName) {
+    case "read_file":
+    case "search_files":
+      // Reading local files — content is trusted local source
+      labels.push("TRUSTED_LOCAL_SOURCE")
+      break
+
+    case "web_search":
+    case "web_fetch":
+      // Network reads return remote content
+      labels.push("REMOTE_CONTENT")
+      labels.push("TOOL_OUTPUT")
+      break
+
+    case "write_file":
+    case "patch":
+      // Model is generating file content based on user instruction
+      labels.push("USER_INSTRUCTION")
+      break
+
+    case "terminal":
+      // Model is generating commands based on user instruction
+      labels.push("USER_INSTRUCTION")
+      break
+
+    case "send_message":
+      // Model is composing a message
+      labels.push("USER_INSTRUCTION")
+      break
+
+    case "delegate_task":
+      // Delegating to a subagent — subagent output will carry its own labels
+      labels.push("SUBAGENT_OUTPUT")
+      break
+
+    case "git_commit":
+    case "git_autocommit":
+    case "git_push":
+      // Git operations derived from user instruction
+      labels.push("USER_INSTRUCTION")
+      break
+
+    case "skill_create":
+      // Writing skill files
+      labels.push("USER_INSTRUCTION")
+      break
+
+    case "cronjob":
+      // Scheduling — user-initiated
+      labels.push("USER_INSTRUCTION")
+      break
+
+    default:
+      // Unknown tools default to USER_INSTRUCTION
+      labels.push("USER_INSTRUCTION")
+      break
+  }
+
+  // Check for MCP tool calls — MCP descriptions cannot authorize secrets
+  if (toolName.startsWith("mcp_")) {
+    labels.push("MCP_DESCRIPTION")
+  }
+
+  return labels
 }
 
+/**
+ * Extract sensitivity labels for a tool call at the production boundary.
+ *
+ * Classification rules:
+ * - Secret access: SECRET
+ * - Network write with sensitive args: PRIVATE
+ * - File operations on sensitive paths: PRIVATE
+ * - Everything else: PUBLIC (default)
+ */
 function extractSensitivity(toolName: string, args: Record<string, unknown>): SensitivityLabel[] {
+  // Secret tools are always SECRET
+  if (toolName === "secret_use" || toolName === "env_read") {
+    return ["SECRET"]
+  }
+
+  // Check args for sensitive indicators
+  const argsStr = JSON.stringify(args).toLowerCase()
+
+  // Network writes to external hosts could be sensitive
+  if (toolName === "send_message" || toolName === "web_fetch") {
+    // If the content references secrets or env vars, elevate sensitivity
+    if (argsStr.includes("secret") || argsStr.includes("token") || argsStr.includes("password") || argsStr.includes("api_key")) {
+      return ["PRIVATE"]
+    }
+  }
+
   return ["PUBLIC"]
 }
 

@@ -21,6 +21,7 @@ import type {
   CanonicalResource,
   ResourceSelector,
   RiskClass,
+  IntentBinding,
 } from "./types"
 import { POLICY_VERSION, SENSITIVITY_ORDER } from "./types"
 
@@ -55,6 +56,7 @@ export interface PolicyContext {
   explicitDenyRules: PolicyRule[]
   approvalRules: PolicyRule[]
   workspaceTrust: WorkspaceTrust
+  intentBindings?: IntentBinding[]
 }
 
 // ─── Reason Codes ─────────────────────────────────────────────────────
@@ -86,6 +88,8 @@ export type DenyReasonCode =
   | "DENY_MCP_SECRET_USE"
   | "DENY_TOOL_OUTPUT_POLICY_CHANGE"
   | "DENY_UNLABELED_CONSEQUENTIAL"
+  | "DENY_NO_INTENT_BINDING"
+  | "DENY_REMOTE_CONTENT_INJECTION"
 
 export type ApprovalReasonCode =
   | "REQUIRE_APPROVAL_HIGH_RISK"
@@ -95,8 +99,9 @@ export type ApprovalReasonCode =
   | "REQUIRE_APPROVAL_EXTERNAL_WRITE"
   | "REQUIRE_APPROVAL_REMOTE_WRITE"
   | "REQUIRE_APPROVAL_UNTRUSTED_LOCAL_WRITE"
+  | "REQUIRE_APPROVAL_INTENT"
 
-export type AllowReasonCode = "ALLOW_CAPABILITY_MATCH"
+export type AllowReasonCode = "ALLOW_CAPABILITY_MATCH" | "ALLOW_INTENT_BINDING"
 
 export type ReasonCode =
   | DenyReasonCode
@@ -761,6 +766,27 @@ export function evaluate(
     return buildDecision(request, context, "DENY", reasons, [], timestamp)
   }
 
+  // Step 5.5: Evaluate intent binding for HIGH/CRITICAL actions
+  // Only evaluates when intentBindings is explicitly provided in the context.
+  // When undefined, intent binding is not enforced (backward compatible).
+  const intentRisk = classifyRisk(request.action, request.sensitivity)
+  if ((intentRisk === "HIGH" || intentRisk === "CRITICAL") && context.intentBindings !== undefined) {
+    const bindings = context.intentBindings
+    const intentResult = evaluateIntentBindingLocal(request, bindings, intentRisk)
+
+    if (intentResult.decision === "DENY") {
+      reasons.push(...intentResult.reasons)
+      return buildDecision(request, context, "DENY", reasons, capResult.matchedCapabilityIds, timestamp)
+    }
+    if (intentResult.decision === "REQUIRE_APPROVAL") {
+      reasons.push(...intentResult.reasons)
+      // Don't return yet — continue to step 6 approval checks
+    }
+    if (intentResult.decision === "ALLOW" && intentResult.reasons.length > 0) {
+      reasons.push(...intentResult.reasons)
+    }
+  }
+
   // Step 6: Evaluate approval conditions
   const approvalReasons: DecisionReason[] = []
 
@@ -810,6 +836,118 @@ export function evaluate(
     capResult.matchedCapabilityIds,
     timestamp,
   )
+}
+
+// ─── Intent Binding Evaluation ────────────────────────────────────────
+
+/**
+ * Local intent binding evaluation — pure, no external imports.
+ * Integrated into PDP to avoid circular dependencies with intent-binding.ts.
+ */
+function evaluateIntentBindingLocal(
+  request: AuthorizationRequest,
+  bindings: IntentBinding[],
+  risk: RiskClass,
+): { decision: "ALLOW" | "DENY" | "REQUIRE_APPROVAL"; reasons: DecisionReason[] } {
+  const reasons: DecisionReason[] = []
+
+  // Check for remote content injection
+  const hasRemoteContent = request.provenance.includes("REMOTE_CONTENT")
+  if (hasRemoteContent) {
+    // Only bindings for THIS specific request can satisfy the check
+    const requestBindings = bindings.filter(
+      (b) => b.status === "ACTIVE" && b.requestHash === computeRequestHash(request),
+    )
+    const hasUserBinding = requestBindings.some((b) =>
+      b.justification === "DIRECT_REQUIREMENT" ||
+      b.justification === "NECESSARY_SUBSTEP" ||
+      b.justification === "EXPLICIT_APPROVAL",
+    )
+    if (!hasUserBinding) {
+      reasons.push({
+        code: "DENY_REMOTE_CONTENT_INJECTION",
+        message: "Remote content cannot introduce consequential actions without user binding",
+        severity: "critical",
+      })
+      return { decision: "DENY", reasons }
+    }
+  }
+
+  // Filter active bindings for this request
+  const activeBindings = bindings.filter(
+    (b) => b.status === "ACTIVE" && b.requestHash === computeRequestHash(request),
+  )
+
+  // LOW risk: OPTIONAL — always allowed
+  if (risk === "LOW") {
+    return { decision: "ALLOW", reasons }
+  }
+
+  // MODERATE: USER_REQUEST — needs any active binding
+  if (risk === "MODERATE") {
+    if (activeBindings.length > 0) {
+      reasons.push({
+        code: "ALLOW_INTENT_BINDING",
+        message: "User request binding found",
+        severity: "info",
+      })
+      return { decision: "ALLOW", reasons }
+    }
+    reasons.push({
+      code: "REQUIRE_APPROVAL_INTENT",
+      message: "MODERATE action requires user request binding",
+      severity: "warning",
+    })
+    return { decision: "REQUIRE_APPROVAL", reasons }
+  }
+
+  // HIGH: CONTRACT_CRITERION — needs contract + criterion
+  if (risk === "HIGH") {
+    const valid = activeBindings.find((b) =>
+      b.contractId !== undefined &&
+      b.criterionIds.length > 0 &&
+      (b.justification === "DIRECT_REQUIREMENT" || b.justification === "NECESSARY_SUBSTEP"),
+    )
+    if (valid) {
+      reasons.push({
+        code: "ALLOW_INTENT_BINDING",
+        message: `Contract criterion binding found: ${valid.contractId}`,
+        severity: "info",
+      })
+      return { decision: "ALLOW", reasons }
+    }
+    reasons.push({
+      code: "DENY_NO_INTENT_BINDING",
+      message: "HIGH action requires active contract criterion binding",
+      severity: "critical",
+    })
+    return { decision: "DENY", reasons }
+  }
+
+  // CRITICAL: EXPLICIT_APPROVAL — needs explicit approval + contract
+  if (risk === "CRITICAL") {
+    const valid = activeBindings.find((b) =>
+      b.justification === "EXPLICIT_APPROVAL" &&
+      b.contractId !== undefined &&
+      b.criterionIds.length > 0,
+    )
+    if (valid) {
+      reasons.push({
+        code: "ALLOW_INTENT_BINDING",
+        message: "Explicit approval binding found",
+        severity: "info",
+      })
+      return { decision: "ALLOW", reasons }
+    }
+    reasons.push({
+      code: "REQUIRE_APPROVAL_INTENT",
+      message: "CRITICAL action requires explicit approval with active contract",
+      severity: "warning",
+    })
+    return { decision: "REQUIRE_APPROVAL", reasons }
+  }
+
+  return { decision: "ALLOW", reasons }
 }
 
 // ─── Decision Builder ─────────────────────────────────────────────────
