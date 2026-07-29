@@ -22,6 +22,16 @@ export {
 } from "./types"
 
 export {
+  type EffectBoundary,
+  type EnforcementLevel,
+  type ResourceDerivation,
+  type MigrationPriority,
+  type AuditAggregate,
+  EFFECT_BOUNDARY_INVENTORY,
+  computeAuditAggregate,
+} from "./effect-boundary"
+
+export {
   computeRequestHash,
   canonicalizeRequest,
 } from "./request-hash"
