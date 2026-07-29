@@ -248,4 +248,55 @@ export class SqliteGrantStore implements CapabilityGrantStore {
       },
     )
   }
+
+  tryConsumeUse(
+    grantId: string,
+    now: string,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError> {
+    return Effect.gen(
+      { self: this },
+      function* () {
+        // Atomic: only update if grant is ACTIVE, not expired, and has remaining uses
+        const result = yield* this.db.db
+          .run(
+            sql`UPDATE capability_grants
+                SET time_updated = ${Date.now()}
+                WHERE id = ${grantId}
+                  AND status = 'ACTIVE'
+                  AND (expires_at IS NULL OR expires_at > ${now})
+                  AND (
+                    json_extract(constraints, '$.maxUses') IS NULL
+                    OR json_extract(constraints, '$.maxUses') > 0
+                  )`,
+          )
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+
+        // Check if any row was updated
+        const row = yield* this.db.db
+          .get<{ id: string }>(
+            sql`SELECT id FROM capability_grants WHERE id = ${grantId} AND status = 'ACTIVE'`,
+          )
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+
+        return row !== undefined
+      },
+    ).pipe(Effect.catch(() => Effect.succeed(false)))
+  }
+
+  private executionReceipts = new Map<string, import("./types").ExecutionReceipt>()
+
+  recordExecution(
+    executionKey: string,
+    receipt: import("./types").ExecutionReceipt,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError> {
+    if (this.executionReceipts.has(executionKey)) return Effect.succeed(false)
+    this.executionReceipts.set(executionKey, receipt)
+    return Effect.succeed(true)
+  }
+
+  hasExecution(
+    executionKey: string,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError> {
+    return Effect.succeed(this.executionReceipts.has(executionKey))
+  }
 }

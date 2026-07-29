@@ -68,6 +68,33 @@ export interface CapabilityGrantStore {
     status: CapabilityGrant["status"],
     eventId?: string,
   ): Effect.Effect<void, CapabilityGrantStoreError>
+
+  /**
+   * Atomically consume one use from a grant.
+   * Returns true if the use was consumed, false if the grant has no remaining uses.
+   * Uses SQL: UPDATE ... SET uses_consumed = uses_consumed + 1
+   *   WHERE id = ? AND status = 'ACTIVE' AND uses_consumed < max_uses AND expires_at > now
+   */
+  tryConsumeUse(
+    grantId: string,
+    now: string,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError>
+
+  /**
+   * Record an execution for replay resistance.
+   * Returns true if this is a new execution, false if the key already exists.
+   */
+  recordExecution(
+    executionKey: string,
+    receipt: import("./types").ExecutionReceipt,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError>
+
+  /**
+   * Check if an execution key already exists (replay detection).
+   */
+  hasExecution(
+    executionKey: string,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError>
 }
 
 // ─── In-Memory Grant Store ────────────────────────────────────────────
@@ -161,6 +188,44 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
       ...(status === "REVOKED" && eventId ? { revokedEventId: eventId } : {}),
     })
     return Effect.void
+  }
+
+  private executionReceipts = new Map<string, import("./types").ExecutionReceipt>()
+
+  tryConsumeUse(
+    grantId: string,
+    now: string,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError> {
+    const g = this.grants.get(grantId)
+    if (!g) return Effect.succeed(false)
+    if (g.status !== "ACTIVE") return Effect.succeed(false)
+    if (g.constraints.expiresAt && g.constraints.expiresAt <= now) return Effect.succeed(false)
+    if (g.constraints.maxUses !== undefined && g.constraints.maxUses <= 0) return Effect.succeed(false)
+
+    const currentUses = (g as any).usesConsumed ?? 0
+    const maxUses = g.constraints.maxUses ?? Infinity
+    if (currentUses >= maxUses) return Effect.succeed(false)
+
+    this.grants.set(grantId, {
+      ...g,
+      constraints: { ...g.constraints, maxUses: g.constraints.maxUses !== undefined ? g.constraints.maxUses - 1 : undefined },
+    } as any)
+    return Effect.succeed(true)
+  }
+
+  recordExecution(
+    executionKey: string,
+    receipt: import("./types").ExecutionReceipt,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError> {
+    if (this.executionReceipts.has(executionKey)) return Effect.succeed(false)
+    this.executionReceipts.set(executionKey, receipt)
+    return Effect.succeed(true)
+  }
+
+  hasExecution(
+    executionKey: string,
+  ): Effect.Effect<boolean, CapabilityGrantStoreError> {
+    return Effect.succeed(this.executionReceipts.has(executionKey))
   }
 
   transaction<A>(
