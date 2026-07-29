@@ -46,6 +46,21 @@ export {
 } from "./pdp"
 
 export {
+  type PreparedEffect,
+  type PolicyContextProvider,
+  type EnforcementResult,
+  authorizeAndExecute,
+  authorizeAndExecuteSync,
+} from "./pep"
+
+export {
+  type ToolCallContext,
+  toolToAction,
+  buildAuthorizationRequest,
+  authorizeTool,
+} from "./pep-integration"
+
+export {
   computeRequestHash,
   canonicalizeRequest,
 } from "./request-hash"
