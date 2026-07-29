@@ -25,6 +25,20 @@ import type {
 
 // ─── Types ────────────────────────────────────────────────────────────
 
+/**
+ * Authorization event emitter — called by the PEP to record decisions.
+ * The PEP calls this at each decision point. The caller provides the
+ * implementation that writes to the EventStore.
+ */
+export interface AuthorizationEventEmitter {
+  readonly emit: (event: {
+    sessionId?: string
+    actor: { kind: string; id: string }
+    type: string
+    payload: unknown
+  }) => void | Promise<void> | Effect.Effect<void, unknown, unknown>
+}
+
 export interface PreparedEffect<T> {
   /** Immutable authorization request describing the exact operation. */
   request: AuthorizationRequest
@@ -183,44 +197,86 @@ function resolveExecute<T>(
 export function authorizeAndExecuteEffect<T>(
   effect: PreparedEffect<T>,
   contextProvider: PolicyContextProvider,
+  eventEmitter?: AuthorizationEventEmitter,
 ): Effect.Effect<EnforcementResult<T>> {
   return Effect.gen(function* () {
     // Step 1-2: Deep-freeze the request to prevent mutation
     const frozenRequest = deepFreeze({ ...effect.request })
-    const originalHash = computeRequestHash(frozenRequest as AuthorizationRequest)
+    const req = frozenRequest as AuthorizationRequest
+    const originalHash = computeRequestHash(req)
+
+    // Emit authorization.requested
+    yield* emitEvent(eventEmitter, {
+      sessionId: req.sessionId,
+      actor: { kind: "policy", id: "pep" },
+      type: "authorization.requested",
+      payload: {
+        requestId: req.requestId,
+        principalId: req.principalId,
+        tool: req.tool,
+        action: req.action,
+        requestHash: originalHash,
+      },
+    })
 
     // Step 4: Load fresh policy context (never cached)
     const ctx = yield* resolveSnapshot(contextProvider)
 
     // Step 5: First PDP evaluation
-    const firstDecision = evaluate(
-      frozenRequest as AuthorizationRequest,
-      ctx,
-    )
+    const firstDecision = evaluate(req, ctx)
 
     // Step 6: Gate on decision
     if (firstDecision.decision === "DENY") {
+      yield* emitEvent(eventEmitter, {
+        sessionId: req.sessionId,
+        actor: { kind: "policy", id: "pdp" },
+        type: "authorization.denied",
+        payload: {
+          requestId: req.requestId,
+          requestHash: originalHash,
+          decision: firstDecision,
+        },
+      })
       return {
         status: "DENIED" as const,
-        request: frozenRequest as AuthorizationRequest,
+        request: req,
         decision: firstDecision,
       }
     }
 
     if (firstDecision.decision === "REQUIRE_APPROVAL") {
+      yield* emitEvent(eventEmitter, {
+        sessionId: req.sessionId,
+        actor: { kind: "policy", id: "pdp" },
+        type: "authorization.approval_required",
+        payload: {
+          requestId: req.requestId,
+          requestHash: originalHash,
+          decision: firstDecision,
+        },
+      })
       return {
         status: "APPROVAL_REQUIRED" as const,
-        request: frozenRequest as AuthorizationRequest,
+        request: req,
         decision: firstDecision,
       }
     }
 
     // Step 7: ALLOW — re-validate before execution
-    const reHash = computeRequestHash(frozenRequest as AuthorizationRequest)
+    const reHash = computeRequestHash(req)
     if (reHash !== originalHash) {
+      yield* emitEvent(eventEmitter, {
+        sessionId: req.sessionId,
+        actor: { kind: "policy", id: "pep" },
+        type: "authorization.stale",
+        payload: {
+          requestId: req.requestId,
+          reason: "request hash changed between authorization and execution",
+        },
+      })
       return {
         status: "STALE_DECISION" as const,
-        request: frozenRequest as AuthorizationRequest,
+        request: req,
         originalDecision: firstDecision,
         currentDecision: firstDecision,
         reason: "request hash changed between authorization and execution",
@@ -229,15 +285,21 @@ export function authorizeAndExecuteEffect<T>(
 
     // Reload fresh policy context (capability may have been revoked)
     const freshCtx = yield* resolveSnapshot(contextProvider)
-    const secondDecision = evaluate(
-      frozenRequest as AuthorizationRequest,
-      freshCtx,
-    )
+    const secondDecision = evaluate(req, freshCtx)
 
     if (secondDecision.decision !== "ALLOW") {
+      yield* emitEvent(eventEmitter, {
+        sessionId: req.sessionId,
+        actor: { kind: "policy", id: "pdp" },
+        type: "authorization.stale",
+        payload: {
+          requestId: req.requestId,
+          reason: `decision changed from ALLOW to ${secondDecision.decision}`,
+        },
+      })
       return {
         status: "STALE_DECISION" as const,
-        request: frozenRequest as AuthorizationRequest,
+        request: req,
         originalDecision: firstDecision,
         currentDecision: secondDecision,
         reason: `decision changed from ALLOW to ${secondDecision.decision} between evaluations`,
@@ -245,26 +307,61 @@ export function authorizeAndExecuteEffect<T>(
     }
 
     if (secondDecision.requestHash !== originalHash) {
+      yield* emitEvent(eventEmitter, {
+        sessionId: req.sessionId,
+        actor: { kind: "policy", id: "pep" },
+        type: "authorization.stale",
+        payload: {
+          requestId: req.requestId,
+          reason: "request hash mismatch in re-evaluation",
+        },
+      })
       return {
         status: "STALE_DECISION" as const,
-        request: frozenRequest as AuthorizationRequest,
+        request: req,
         originalDecision: firstDecision,
         currentDecision: secondDecision,
         reason: "request hash mismatch in re-evaluation",
       }
     }
 
+    // Emit authorization.allowed
+    yield* emitEvent(eventEmitter, {
+      sessionId: req.sessionId,
+      actor: { kind: "policy", id: "pdp" },
+      type: "authorization.allowed",
+      payload: {
+        requestId: req.requestId,
+        requestHash: originalHash,
+        decision: secondDecision,
+      },
+    })
+
     // Step 8: Execute the exact authorized operation
     const startedAt = new Date().toISOString()
     const value = yield* resolveExecute(
       effect.executeExact,
-      frozenRequest as Readonly<AuthorizationRequest>,
+      req,
     )
     const completedAt = new Date().toISOString()
 
+    // Emit authorization.executed
+    yield* emitEvent(eventEmitter, {
+      sessionId: req.sessionId,
+      actor: { kind: "policy", id: "pep" },
+      type: "authorization.executed",
+      payload: {
+        requestId: req.requestId,
+        requestHash: originalHash,
+        decision: secondDecision,
+        startedAt,
+        completedAt,
+      },
+    })
+
     return {
       status: "EXECUTED" as const,
-      request: frozenRequest as AuthorizationRequest,
+      request: req,
       requestHash: originalHash,
       decision: secondDecision,
       value,
@@ -273,17 +370,47 @@ export function authorizeAndExecuteEffect<T>(
     }
   }).pipe(
     Effect.catch((error) =>
-      Effect.succeed({
-        status: "EXECUTION_FAILED" as const,
-        request: deepFreeze({ ...effect.request }) as AuthorizationRequest,
-        decision: evaluate(
-          deepFreeze({ ...effect.request }) as AuthorizationRequest,
-          { now: "", policyVersion: "", capabilities: [], explicitDenyRules: [], approvalRules: [], workspaceTrust: "UNKNOWN" },
-        ),
-        error,
+      Effect.gen(function* () {
+        const req = deepFreeze({ ...effect.request }) as AuthorizationRequest
+        yield* emitEvent(eventEmitter, {
+          sessionId: req.sessionId,
+          actor: { kind: "policy", id: "pep" },
+          type: "authorization.execution_failed",
+          payload: {
+            requestId: req.requestId,
+            error: String(error),
+          },
+        })
+        return {
+          status: "EXECUTION_FAILED" as const,
+          request: req,
+          decision: evaluate(req, {
+            now: "", policyVersion: "", capabilities: [],
+            explicitDenyRules: [], approvalRules: [], workspaceTrust: "UNKNOWN",
+          }),
+          error,
+        }
       })
     ),
   )
+}
+
+/** Best-effort event emission — never blocks authorization. */
+function emitEvent(
+  emitter: AuthorizationEventEmitter | undefined,
+  event: { sessionId?: string; actor: { kind: string; id: string }; type: string; payload: unknown },
+): Effect.Effect<void> {
+  if (!emitter) return Effect.void
+  return Effect.suspend(() => {
+    const result = emitter.emit(event)
+    if (result && typeof result === "object" && Effect.isEffect(result)) {
+      return result.pipe(Effect.catch(() => Effect.void))
+    }
+    if (result instanceof Promise) {
+      return Effect.promise(() => result.catch(() => {}))
+    }
+    return Effect.void
+  }).pipe(Effect.catch(() => Effect.void))
 }
 
 // ─── Async wrapper (backward compatible) ─────────────────────────────
@@ -295,8 +422,9 @@ export function authorizeAndExecuteEffect<T>(
 export async function authorizeAndExecute<T>(
   effect: PreparedEffect<T>,
   contextProvider: PolicyContextProvider,
+  eventEmitter?: AuthorizationEventEmitter,
 ): Promise<EnforcementResult<T>> {
-  return Effect.runPromise(authorizeAndExecuteEffect(effect, contextProvider))
+  return Effect.runPromise(authorizeAndExecuteEffect(effect, contextProvider, eventEmitter))
 }
 
 // ─── Synchronous variant for non-async effects ────────────────────────

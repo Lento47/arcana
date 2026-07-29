@@ -88,6 +88,23 @@ export interface ProofHashPayload {
   readonly completionMethod: string | null
 }
 
+/**
+ * Authorization profile — derived from authorization events in a session.
+ * Hard invariant: unauthorizedExecutions = 0.
+ */
+export interface AuthorizationProfile {
+  readonly policyVersions: ReadonlyArray<string>
+  readonly requests: number
+  readonly allowed: number
+  readonly denied: number
+  readonly approvalsRequired: number
+  readonly staleDecisions: number
+  readonly executed: number
+  readonly executionFailures: number
+  readonly unauthorizedExecutions: number
+  readonly capabilityViolations: number
+}
+
 /** The full RunProof = ProofHashPayload + derived hash fields. */
 export type RunProof = ProofHashPayload & {
   readonly proofHash: string
@@ -99,6 +116,7 @@ export type RunProof = ProofHashPayload & {
   readonly obligationsByStatus: Readonly<Record<string, number>>
   readonly contractStatus: string | null
   readonly p3DenialReasons: ReadonlyArray<string>
+  readonly authorizationProfile: AuthorizationProfile
 }
 
 export interface RunProofEvent {
@@ -231,6 +249,9 @@ export const layer = Layer.effect(
       // Compute proofHash from payload only
       const proofHash = computeProofHash(payload)
 
+      // Derive authorization profile from authorization events
+      const authorizationProfile = deriveAuthorizationProfile(events)
+
       return {
         ...payload,
         proofHash,
@@ -242,6 +263,7 @@ export const layer = Layer.effect(
         obligationsByStatus,
         contractStatus,
         p3DenialReasons,
+        authorizationProfile,
       } satisfies RunProof
     })
 
@@ -294,6 +316,75 @@ function extractCompletionMethod(events: ReadonlyArray<RunProofEvent>): string |
   if (!resolved) return null
   const p = resolved.payload as Record<string, unknown>
   return (p?.method as string) ?? null
+}
+
+/**
+ * Derive authorization profile from authorization events.
+ * Counts each authorization event type and extracts policy versions.
+ * Hard invariant: unauthorizedExecutions = 0.
+ */
+function deriveAuthorizationProfile(events: ReadonlyArray<RunProofEvent>): AuthorizationProfile {
+  const authEvents = events.filter((e) => e.type.startsWith("authorization."))
+  const policyVersions = new Set<string>()
+  let requests = 0
+  let allowed = 0
+  let denied = 0
+  let approvalsRequired = 0
+  let staleDecisions = 0
+  let executed = 0
+  let executionFailures = 0
+  let unauthorizedExecutions = 0
+
+  for (const e of authEvents) {
+    const p = e.payload as Record<string, unknown>
+    // Extract policy version from decision if present
+    const decision = p?.decision as Record<string, unknown> | undefined
+    if (decision?.policyVersion) {
+      policyVersions.add(decision.policyVersion as string)
+    }
+
+    switch (e.type) {
+      case "authorization.requested":
+        requests++
+        break
+      case "authorization.allowed":
+        allowed++
+        break
+      case "authorization.denied":
+        denied++
+        break
+      case "authorization.approval_required":
+        approvalsRequired++
+        break
+      case "authorization.stale":
+        staleDecisions++
+        break
+      case "authorization.executed":
+        executed++
+        break
+      case "authorization.execution_failed":
+        executionFailures++
+        break
+    }
+  }
+
+  // Hard invariant: unauthorizedExecutions = 0
+  // An unauthorized execution is one that executed without a prior authorization.allowed
+  // For now, we verify that executed <= allowed (every execution had an authorization)
+  unauthorizedExecutions = Math.max(0, executed - allowed)
+
+  return {
+    policyVersions: [...policyVersions],
+    requests,
+    allowed,
+    denied,
+    approvalsRequired,
+    staleDecisions,
+    executed,
+    executionFailures,
+    unauthorizedExecutions,
+    capabilityViolations: denied, // Each denied request is a capability violation
+  }
 }
 
 // ── Integrity verification ───────────────────────────────────────────

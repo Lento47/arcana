@@ -34,6 +34,18 @@ export const ArcanaEvent = Schema.Struct({
     Schema.Literal("completion.resolved"),
     Schema.Literal("tool.called"),
     Schema.Literal("tool.returned"),
+    // Phase C: capability lifecycle
+    Schema.Literal("capability.created"),
+    Schema.Literal("capability.revoked"),
+    Schema.Literal("capability.exhausted"),
+    // Phase C: authorization decisions
+    Schema.Literal("authorization.requested"),
+    Schema.Literal("authorization.allowed"),
+    Schema.Literal("authorization.denied"),
+    Schema.Literal("authorization.approval_required"),
+    Schema.Literal("authorization.stale"),
+    Schema.Literal("authorization.executed"),
+    Schema.Literal("authorization.execution_failed"),
   ]),
 
   payload: Schema.Unknown,
