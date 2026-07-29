@@ -11,7 +11,7 @@
 
 import { Effect } from "effect"
 import type { PolicyContext, PolicyContextProvider, WorkspaceTrust } from "./pdp"
-import type { CapabilityGrant } from "./types"
+import type { CapabilityGrant, IntentBinding } from "./types"
 import { POLICY_VERSION } from "./types"
 
 // ─── Capability Grant Store (Effect-native) ──────────────────────────
@@ -123,6 +123,38 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
   }
 }
 
+// ─── Intent Binding Store (Effect-native) ─────────────────────────────
+
+/**
+ * Abstract store for intent bindings.
+ * The SessionPolicyProvider uses this to supply bindings to the PDP.
+ */
+export interface IntentBindingStoreEffect {
+  getActiveBindingsForSession(
+    sessionId: string,
+  ): Effect.Effect<readonly IntentBinding[], CapabilityGrantStoreError>
+}
+
+/**
+ * In-memory intent binding store for tests.
+ */
+export class InMemoryIntentBindingStoreEffect implements IntentBindingStoreEffect {
+  private bindings = new Map<string, IntentBinding>()
+
+  addBinding(binding: IntentBinding): void {
+    this.bindings.set(binding.id, binding)
+  }
+
+  getActiveBindingsForSession(
+    sessionId: string,
+  ): Effect.Effect<readonly IntentBinding[], CapabilityGrantStoreError> {
+    const result = [...this.bindings.values()].filter(
+      (b) => b.sessionId === sessionId && b.status === "ACTIVE",
+    )
+    return Effect.succeed(result)
+  }
+}
+
 // ─── Session-Aware Policy Context Provider ────────────────────────────
 
 export interface SessionPolicyBinding {
@@ -136,13 +168,17 @@ export interface SessionPolicyBinding {
  * Fail-closed policy context provider.
  *
  * Loads capability grants from a persisted store via Effect.
+ * Loads intent bindings from an optional intent binding store.
  * No grants → empty capabilities → PDP returns DENY.
  * Storage failure → empty capabilities → PDP returns DENY.
+ * No binding store → intentBindings = undefined → PDP skips intent check (backward compat).
+ * Binding store failure → intentBindings = [] → fail closed.
  */
 export class SessionPolicyProvider {
   constructor(
     private store: CapabilityGrantStore,
     private binding: SessionPolicyBinding,
+    private intentStore?: IntentBindingStoreEffect,
   ) {}
 
   snapshot(): Effect.Effect<PolicyContext, never, never> {
@@ -170,6 +206,15 @@ export class SessionPolicyProvider {
           }
         }
 
+        // Load intent bindings if store is provided
+        let intentBindings: IntentBinding[] | undefined = undefined
+        if (this.intentStore) {
+          const bindings = yield* this.intentStore
+            .getActiveBindingsForSession(this.binding.sessionId)
+            .pipe(Effect.catch(() => Effect.succeed<readonly IntentBinding[]>([])))
+          intentBindings = [...bindings]
+        }
+
         return {
           now: new Date().toISOString(),
           policyVersion: POLICY_VERSION,
@@ -177,6 +222,7 @@ export class SessionPolicyProvider {
           explicitDenyRules: [],
           approvalRules: [],
           workspaceTrust: this.binding.workspaceTrust,
+          intentBindings,
         } satisfies PolicyContext
       },
     )
