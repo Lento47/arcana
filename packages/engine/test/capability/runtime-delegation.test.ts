@@ -618,13 +618,13 @@ describe("Scoped approval: production PDP integration", () => {
     store.updateApproval(approval.id, approval)
 
     // First: claim the approval (APPROVED → CLAIMED)
-    const claimed = claimApproval(approval, "evt-claim-1", new Date().toISOString())
+    const claimed = claimApproval(approval, "evt-claim-1", "exec-1", new Date().toISOString())
     expect(claimed).not.toBeNull()
     expect(claimed!.decision).toBe("CLAIMED")
     store.updateApproval(approval.id, claimed!)
 
     // Second claim fails — already claimed
-    const secondClaim = claimApproval(claimed!, "evt-claim-2", new Date().toISOString())
+    const secondClaim = claimApproval(claimed!, "evt-claim-2", "exec-2", new Date().toISOString())
     expect(secondClaim).toBeNull()
 
     // Consume the claimed approval (CLAIMED → CONSUMED)

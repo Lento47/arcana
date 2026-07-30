@@ -202,3 +202,10 @@ export {
   assessFieldLineage,
   assessRequestLineage,
 } from "./field-lineage"
+
+export {
+  type ChildRuntimeStatus,
+  type ChildLaunchBarrier,
+  ChildLaunchError,
+  InMemoryChildLaunchBarrier,
+} from "./child-launch-barrier"

@@ -22,6 +22,8 @@ import type {
   AuthorizationRequest,
   AuthorizationDecision,
 } from "./types"
+import type { ScopedApprovalStore } from "./scoped-approval"
+import { consumeApproval } from "./scoped-approval"
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -185,6 +187,19 @@ function resolveExecute<T>(
   })
 }
 
+/**
+ * Extract the approval ID from an ALLOW decision that came via an approved scope.
+ * Returns null if the decision was not approval-based.
+ */
+function extractApprovalId(decision: AuthorizationDecision): string | null {
+  for (const reason of decision.reasons) {
+    if (reason.code === "ALLOW_CAPABILITY_MATCH" && reason.message.startsWith("Approved scope: ")) {
+      return reason.message.slice("Approved scope: ".length)
+    }
+  }
+  return null
+}
+
 // ─── PEP Implementation (Effect-native) ──────────────────────────────
 
 /**
@@ -196,13 +211,15 @@ function resolveExecute<T>(
  * 4. Load fresh policy context
  * 5. Call PDP
  * 6. DENY/REQUIRE_APPROVAL → return without execution
- * 7. ALLOW → re-validate → re-compute hash → confirm still ALLOW → execute
- * 8. Return structured receipt
+ * 7. ALLOW via approval → atomic claim → skip second eval → execute → consume
+ * 8. ALLOW via capability → re-validate → re-compute hash → confirm still ALLOW → execute
+ * 9. Return structured receipt
  */
 export function authorizeAndExecuteEffect<T>(
   effect: PreparedEffect<T>,
   contextProvider: PolicyContextProvider,
   eventEmitter?: AuthorizationEventEmitter,
+  approvalStore?: ScopedApprovalStore,
 ): Effect.Effect<EnforcementResult<T>> {
   return Effect.gen(function* () {
     // Step 1-2: Deep-freeze the request to prevent mutation
@@ -267,7 +284,102 @@ export function authorizeAndExecuteEffect<T>(
       }
     }
 
-    // Step 7: ALLOW — re-validate before execution
+    // Step 7: ALLOW — check if approval-based
+    const approvalId = extractApprovalId(firstDecision)
+
+    if (approvalId && approvalStore) {
+      // Approval-based allow: atomically claim before execution.
+      // The atomic claim replaces the second evaluation — if it succeeds,
+      // the approval is bound to this execution and cannot be reused.
+      const executionId = `exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const now = new Date().toISOString()
+
+      const claimed = yield* approvalStore.atomicClaim(
+        approvalId,
+        executionId,
+        "evt-pep-claim",
+        now,
+      ).pipe(
+        Effect.catch(() => Effect.succeed(null)),
+      )
+
+      if (!claimed) {
+        // Claim failed — another execution already claimed it
+        yield* emitEvent(eventEmitter, {
+          sessionId: req.sessionId,
+          actor: { kind: "policy", id: "pep" },
+          type: "authorization.stale",
+          payload: {
+            requestId: req.requestId,
+            reason: `approval ${approvalId} claim failed — already claimed or consumed`,
+          },
+        })
+        return {
+          status: "STALE_DECISION" as const,
+          request: req,
+          originalDecision: firstDecision,
+          currentDecision: firstDecision,
+          reason: `approval ${approvalId} claim failed — already claimed or consumed`,
+        }
+      }
+
+      // Claim succeeded — emit allowed and execute
+      yield* emitEvent(eventEmitter, {
+        sessionId: req.sessionId,
+        actor: { kind: "policy", id: "pdp" },
+        type: "authorization.allowed",
+        payload: {
+          requestId: req.requestId,
+          requestHash: originalHash,
+          decision: firstDecision,
+          approvalId,
+          executionId,
+        },
+      })
+
+      const startedAt = new Date().toISOString()
+      const value = yield* resolveExecute(
+        effect.executeExact,
+        req,
+      )
+      const completedAt = new Date().toISOString()
+
+      // Consume the approval (CLAIMED → CONSUMED)
+      const consumed = consumeApproval(claimed, "evt-pep-consume", completedAt)
+      if (consumed) {
+        yield* approvalStore.updateApproval(claimed.id, consumed).pipe(
+          Effect.catch(() => Effect.void),
+        )
+      }
+
+      // Emit authorization.executed
+      yield* emitEvent(eventEmitter, {
+        sessionId: req.sessionId,
+        actor: { kind: "policy", id: "pep" },
+        type: "authorization.executed",
+        payload: {
+          requestId: req.requestId,
+          requestHash: originalHash,
+          decision: firstDecision,
+          startedAt,
+          completedAt,
+          approvalId,
+          executionId,
+        },
+      })
+
+      return {
+        status: "EXECUTED" as const,
+        request: req,
+        requestHash: originalHash,
+        decision: firstDecision,
+        value,
+        startedAt,
+        completedAt,
+      }
+    }
+
+    // Step 8: Non-approval allow — re-validate before execution
     const reHash = computeRequestHash(req)
     if (reHash !== originalHash) {
       yield* emitEvent(eventEmitter, {

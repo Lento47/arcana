@@ -58,7 +58,7 @@ describe("Decisive fixture: scoped approval for git push", () => {
     expect(validation.valid).toBe(true)
 
     // Step 5: Execute once → claim → consume
-    const claimed = claimApproval(approval, "evt-claim", new Date().toISOString())
+    const claimed = claimApproval(approval, "evt-claim", "exec-1", new Date().toISOString())
     expect(claimed).not.toBeNull()
     expect(claimed!.decision).toBe("CLAIMED")
 
@@ -118,7 +118,7 @@ describe("Decisive fixture: scoped approval for git push", () => {
     Effect.runSync(store.putApproval(approval))
 
     // First execution → claim → consume
-    const claimed = claimApproval(approval, "evt-claim-1", new Date().toISOString())
+    const claimed = claimApproval(approval, "evt-claim-1", "exec-1", new Date().toISOString())
     expect(claimed).not.toBeNull()
 
     const first = consumeApproval(claimed!, "evt-consume-1", new Date().toISOString())
@@ -247,7 +247,7 @@ describe("checkApprovedScope: PDP integration", () => {
 
     const pending = createPendingApproval(request, "evt-create")
     const { approval } = approveRequest(pending, "evt-approve")
-    const claimed = claimApproval(approval, "evt-claim", new Date().toISOString())!
+    const claimed = claimApproval(approval, "evt-claim", "exec-1", new Date().toISOString())!
     const consumed = consumeApproval(claimed, "evt-consume", new Date().toISOString())!
     Effect.runSync(store.putApproval(consumed))
 
