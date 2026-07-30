@@ -252,12 +252,24 @@ fn validate_schema(
     // Safe integer validation
     for field in &["issuerEpoch", "sequence"] {
         if let Some(val) = envelope.get(*field) {
-            if val.is_number() && !validate_safe_integer(val) {
-                return Some(VerificationResult::Rejected {
-                    stage: VerificationStage::Schema,
-                    reason: RejectionReason::SchemaUnsupported,
-                    detail: format!("field {} must be a safe integer", field),
-                });
+            if val.is_number() {
+                // Reject floating-point numbers
+                if let Some(f) = val.as_f64() {
+                    if f.fract() != 0.0 {
+                        return Some(VerificationResult::Rejected {
+                            stage: VerificationStage::Schema,
+                            reason: RejectionReason::SchemaUnsupported,
+                            detail: format!("field {} must be an integer, got float: {}", field, f),
+                        });
+                    }
+                }
+                if !validate_safe_integer(val) {
+                    return Some(VerificationResult::Rejected {
+                        stage: VerificationStage::Schema,
+                        reason: RejectionReason::SchemaUnsupported,
+                        detail: format!("field {} must be a safe integer", field),
+                    });
+                }
             }
         }
     }
