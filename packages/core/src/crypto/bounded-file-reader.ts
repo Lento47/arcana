@@ -103,13 +103,21 @@ export class SafeBoundedFileReader implements BoundedFileReader {
       return { success: false, reason: `path resolution failed: ${(e as Error).message}`, stage: "RESOLUTION" }
     }
 
-    // ── Stage 4: Pre-open containment check ──
+    // ── Stage 4: Capture pre-open identity for comparison ──
+    let preOpenStat: ReturnType<typeof statSync> | undefined
+    try {
+      preOpenStat = statSync(resolvedTarget)
+    } catch {
+      // May fail if file changes between realpath and stat — proceed to open
+    }
+
+    // ── Stage 5: Pre-open containment check ──
     const containment = verifyContainment(resolvedRoot, resolvedTarget)
     if (!containment.contained) {
       return { success: false, reason: containment.reason, stage: "CONTAINMENT" }
     }
 
-    // ── Stage 5: Open the file ──
+    // ── Stage 6: Open the file ──
     let fd: number
     try {
       fd = openSync(resolvedTarget, constants.O_RDONLY)
@@ -143,7 +151,21 @@ export class SafeBoundedFileReader implements BoundedFileReader {
         return { success: false, reason: `file size ${stat.size} exceeds maximum ${maximumBytes} bytes`, stage: "READ" }
       }
 
-      // ── Stage 7: Handle-relative containment verification ──
+      // ── Stage 7: Pre/post object-identity comparison ──
+      // Compare pre-open stat with post-open fstat to detect substitution.
+      // If an attacker replaced the file between stat and open, the
+      // inode would change. This is stronger than fstat alone.
+      if (preOpenStat) {
+        if (preOpenStat.dev !== stat.dev || preOpenStat.ino !== stat.ino) {
+          return {
+            success: false,
+            reason: `file replaced between stat and open: pre-open inode ${preOpenStat.ino} != post-open inode ${stat.ino}`,
+            stage: "IDENTITY",
+          }
+        }
+      }
+
+      // ── Stage 8: Handle-relative containment verification ──
       // This is the key v2 improvement: verify the opened handle
       // is the same object we resolved, not a replacement.
       const handleIdentity = getHandleIdentity(fd, resolvedTarget, stat)
