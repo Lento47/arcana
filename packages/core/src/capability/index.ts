@@ -151,6 +151,14 @@ export {
 } from "./delegation"
 
 export {
+  canonicalizePath,
+  isSegmentSubset,
+  validateCanonicalResource,
+  validateResourceSelector,
+  isCanonicalResourceNarrowerOrEqual,
+} from "./canonical-resource"
+
+export {
   type ScopedApproval,
   type ScopedApprovalDecision,
   type ScopedApprovalStore,

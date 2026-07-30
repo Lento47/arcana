@@ -353,13 +353,11 @@ describe("Wave 2B: Delegation amplification", () => {
     }
   })
 
-  // C20 — Path traversal in child resource (DOCUMENTED GAP)
-  // The delegation system does not normalize paths before comparison.
-  // 'packages/engine/../../etc/passwd' starts with 'packages/' so the
-  // prefix check passes. Path normalization happens in the PDP's
-  // matchFilePath function (which rejects '..'), but the delegation
-  // system uses its own comparison. This is a known gap.
-  it("C20: Path traversal — delegation does not normalize (documented gap)", () => {
+  // C20 — Path traversal in child resource (GAP CLOSED)
+  // The delegation system now canonicalizes paths before comparison.
+  // 'packages/engine/../../etc/passwd' contains '..' which is rejected
+  // by isResourceNarrowerOrEqual, preventing path traversal at delegation time.
+  it("C20: Path traversal rejected by delegation canonicalization", () => {
     const parent = makeParentGrant({
       resources: [{ kind: "file", pattern: "packages/**" }],
     })
@@ -369,13 +367,11 @@ describe("Wave 2B: Delegation amplification", () => {
       resources: [{ kind: "file", pattern: "packages/engine/../../etc/passwd" }],
     })
 
-    // Current behavior: delegation allows this because it does string prefix matching
-    // The PDP's matchFilePath would reject '..' at execution time
-    // This is a defense-in-depth gap — the PDP is the final enforcement point
-    expect(result.status).toBe("CREATED")
-
-    // But at execution time, the PDP rejects '..' paths:
-    // matchFilePath checks: if (t.includes("..")) return false
-    // So the child grant exists but cannot be used for traversal
+    // Canonical validation now rejects '..' traversal in child patterns
+    expect(result.status).toBe("DENIED")
+    if (result.status === "DENIED") {
+      const codes = result.reasons.map((r) => r.code)
+      expect(codes.some((c) => c === "DENY_RESOURCE_AMPLIFICATION")).toBe(true)
+    }
   })
 })

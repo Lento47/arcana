@@ -29,6 +29,13 @@ import type {
   CanonicalResource,
 } from "./types"
 import { SENSITIVITY_ORDER } from "./types"
+import {
+  canonicalizePath,
+  validateCanonicalResource,
+  validateResourceSelector,
+  isCanonicalResourceNarrowerOrEqual,
+  isSegmentSubset,
+} from "./canonical-resource"
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -113,6 +120,8 @@ export type DelegationResult =
 /**
  * Check if child resource selector is narrower than or equal to parent.
  * Returns true if child ⊆ parent.
+ *
+ * Security: Rejects '..' traversal in child resources before comparison.
  */
 export function isResourceNarrowerOrEqual(
   child: ResourceSelector,
@@ -120,6 +129,8 @@ export function isResourceNarrowerOrEqual(
 ): boolean {
   if (child.kind !== parent.kind) return false
 
+  // Canonical validation: reject '..' traversal in child patterns
+  if (child.pattern.includes("..")) return false
   switch (child.kind) {
     case "file":
     case "directory":
@@ -146,10 +157,14 @@ export function isResourceNarrowerOrEqual(
  * "packages/engine/**" ⊆ "packages/**" ✓
  * "packages/engine/**" ⊆ "packages/evil/**" ✗
  * "*" ⊆ "*" ✓ (wildcard matches wildcard)
+ *
+ * Uses canonical path normalization and segment-based comparison
+ * to prevent prefix confusion attacks (e.g., engine-malicious vs engine).
  */
 function isPathNarrowerOrEqual(child: string, parent: string): boolean {
-  const c = normalizePath(child)
-  const p = normalizePath(parent)
+  // Canonicalize paths to handle '..' traversal and normalize separators
+  const c = canonicalizePath(child) || normalizePath(child)
+  const p = canonicalizePath(parent) || normalizePath(parent)
 
   // Wildcard parent matches anything
   if (p === "*" || p === "**" || p === "/*") return true
