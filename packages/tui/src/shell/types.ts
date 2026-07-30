@@ -3,6 +3,8 @@ import type { ScrollBoxRenderable, ScrollAcceleration } from "@opentui/core"
 import type { Message, Part } from "@arcana/sdk/v2"
 import type { PromptRef } from "../component/prompt"
 import type { PromptInfo } from "../component/prompt/history"
+import type { ApprovalRecord } from "../../core/crypto/approval-lifecycle"
+import type { ApprovalShellController } from "./command-spine/approval-shell-controller"
 
 export interface RevertInfo {
   messageID: string
@@ -41,6 +43,16 @@ export interface ShellProps {
 
   theme: Record<string, unknown>
   transBorder: Accessor<unknown>
+
+  // ─── TUI-2.1: Approval integration (optional) ────────────────
+  /** Reactive approval records for the current session. */
+  approvals?: Accessor<readonly ApprovalRecord[]>
+  /** The approval shell controller. */
+  approvalController?: ApprovalShellController
+  /** Active session ID for isolation checks. */
+  activeSessionId?: Accessor<string>
+  /** Active workspace ID for isolation checks. */
+  activeWorkspaceId?: Accessor<string>
 }
 
 export type ShellComponent = Component<ShellProps>

@@ -23,6 +23,9 @@ import { useRoute } from "../../context/route"
 import { canToggleSpineEntry, nextSpineFocusID, navigableSpineEntries } from "./spine-navigation"
 import { spineEntryCopyText } from "./spine-clipboard"
 import { spineEntryDetailMessageID, spineEntryDiffMessageID, spineEntrySessionID } from "./spine-details"
+import { approvalToSpineEntry, isApprovalActionable, isApprovalTerminal } from "./approval-spine-adapter"
+import { createApprovalShellController, type ApprovalShellController, type ApprovalCommandInput } from "./approval-shell-controller"
+import { createDedupeKey, dedupeKeyToString } from "./spine-ordering"
 
 const USE_SAMPLE_SPINE = false
 
@@ -129,16 +132,99 @@ export function CommandSpineShell(props: ShellProps) {
     pendingGateEntries({ permissions: props.permissions(), questions: props.questions() }),
   )
   const visibleEntries = createMemo(() => [...entries(), ...gateEntries()])
+
+  // ─── TUI-2.1: Approval integration ──────────────────────────────
+  // Reactive accessor for approval records — never destructure reactive props
+  const approvals = createMemo(() => props.approvals?.() ?? [])
+
+  // Approval entries derived from durable records with deduplication
+  const approvalEntries = createMemo(() => {
+    const seen = new Set<string>()
+    const result: SpineEntry[] = []
+    for (const approval of approvals()) {
+      const key = dedupeKeyToString(createDedupeKey({
+        approvalId: approval.approvalId,
+        approvalVersion: approval.version,
+      }))
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push(approvalToSpineEntry(approval))
+    }
+    return result
+  })
+
+  // Merge all entries: messages + gates + approvals
+  const allVisibleEntries = createMemo(() => {
+    const seen = new Set<string>()
+    const merged: SpineEntry[] = []
+    for (const entry of [...visibleEntries(), ...approvalEntries()]) {
+      if (seen.has(entry.id)) continue
+      seen.add(entry.id)
+      merged.push(entry)
+    }
+    return merged
+  })
+
+  // Controller: use provided or create default no-op
+  const controller = createMemo(() => props.approvalController)
+
+  // Active session/workspace for isolation
+  const activeSessionId = createMemo(() => props.activeSessionId?.() ?? props.sessionID)
+  const activeWorkspaceId = createMemo(() => props.activeWorkspaceId?.() ?? "")
+
+  // Approval-specific ephemeral state
+  const [approvalSubmitting, setApprovalSubmitting] = createSignal(false)
+  const [inspectorApprovalId, setInspectorApprovalId] = createSignal<string | undefined>()
+
+  // Helpers for approval entries
+  const isApprovalEntry = (entry: SpineEntry): boolean =>
+    entry.source?.kind === "approve" && entry.id.startsWith("approval:")
+
+  const extractApprovalId = (entry: SpineEntry): string | undefined => {
+    if (!entry.id.startsWith("approval:")) return undefined
+    return entry.id.split(":")[1]
+  }
+
+  const getApprovalForEntry = (entry: SpineEntry) => {
+    const id = extractApprovalId(entry)
+    if (!id) return undefined
+    return approvals().find(a => a.approvalId === id)
+  }
+
+  const focusedApproval = createMemo(() => {
+    const fid = focusedEntryID()
+    if (!fid) return undefined
+    const entry = allVisibleEntries().find(e => e.id === fid)
+    if (!entry) return undefined
+    return getApprovalForEntry(entry)
+  })
+
+  const canApprove = createMemo(() => {
+    const approval = focusedApproval()
+    if (!approval) return false
+    if (!isApprovalActionable(approval)) return false
+    if (approval.sessionId !== activeSessionId()) return false
+    if (approvalSubmitting()) return false
+    return true
+  })
+
+  const canDeny = createMemo(() => canApprove())
+
+  const canInspectApproval = createMemo(() => {
+    const approval = focusedApproval()
+    if (!approval) return false
+    return true
+  })
   // Key For by stable string ids so new entry object identity (token/streaming
   // updates) updates props without remounting rows. Grok-style: content
   // refreshes; DOM chrome stays put.
-  const visibleEntryIDs = createMemo(() => visibleEntries().map((e) => e.id))
+  const visibleEntryIDs = createMemo(() => allVisibleEntries().map((e) => e.id))
   const visibleEntryByID = createMemo(() => {
     const map = new Map<string, SpineEntry>()
-    for (const e of visibleEntries()) map.set(e.id, e)
+    for (const e of allVisibleEntries()) map.set(e.id, e)
     return map
   })
-  const navigableEntries = createMemo(() => navigableSpineEntries(visibleEntries()))
+  const navigableEntries = createMemo(() => navigableSpineEntries(allVisibleEntries()))
   const runState = createMemo(() => {
     if (gateEntries().length) return "stop"
     // Only show "working" when both pending AND session is active.
@@ -183,12 +269,12 @@ export function CommandSpineShell(props: ShellProps) {
   const focusEntry = (entry: { id: string }, scrollIntoView = false) => focusEntryID(entry.id, scrollIntoView)
   const entryFocused = (entry: { id: string }) => focusedEntryID() === entry.id
   const focusRelativeEntry = (direction: -1 | 1) => {
-    const nextID = nextSpineFocusID(visibleEntries(), focusedEntryID(), direction)
+    const nextID = nextSpineFocusID(allVisibleEntries(), focusedEntryID(), direction)
     if (nextID) focusEntryID(nextID, true)
   }
   const resolveFocusedEntry = (preferToggleable = false) => {
     const focused = focusedEntryID()
-    let entry = focused ? visibleEntries().find((item) => item.id === focused) : undefined
+    let entry = focused ? allVisibleEntries().find((item) => item.id === focused) : undefined
     if (entry) return entry
     const pool = navigableEntries()
     const pick = preferToggleable ? pool.find((item) => canToggleSpineEntry(item)) ?? pool[0] : pool[0]
@@ -225,8 +311,8 @@ export function CommandSpineShell(props: ShellProps) {
   }
   const openFocusedEntryDiff = () => {
     const focused = focusedEntryID()
-    const entry = focused ? visibleEntries().find((item) => item.id === focused) : undefined
-    const messageID = spineEntryDiffMessageID(entry)
+    const entry = focused ? allVisibleEntries().find((item) => item.id === focused) : undefined
+        const messageID = spineEntryDiffMessageID(entry)
     if (!messageID) {
       const first = navigableEntries()[0]
       if (!entry && first) focusEntry(first, true)
@@ -248,8 +334,8 @@ export function CommandSpineShell(props: ShellProps) {
   }
   const openFocusedEntrySession = () => {
     const focused = focusedEntryID()
-    const entry = focused ? visibleEntries().find((item) => item.id === focused) : undefined
-    const sessionID = spineEntrySessionID(entry)
+    const entry = focused ? allVisibleEntries().find((item) => item.id === focused) : undefined
+        const sessionID = spineEntrySessionID(entry)
     if (!sessionID) {
       const first = navigableEntries()[0]
       if (!entry && first) focusEntry(first, true)
@@ -265,6 +351,37 @@ export function CommandSpineShell(props: ShellProps) {
     const focused = focusedEntryID()
     if (!focused) return
     if (!navigableEntries().some((entry) => entry.id === focused)) setFocusedEntryID(undefined)
+  })
+
+  // ─── TUI-2.1: Selection reconciliation ─────────────────────────
+  // Clear selection when session/workspace changes
+  createEffect(() => {
+    const sid = activeSessionId()
+    const wid = activeWorkspaceId()
+    // Clear on session/workspace change
+    const approval = focusedApproval()
+    if (approval) {
+      if (approval.sessionId !== sid || approval.workspaceId !== wid) {
+        setFocusedEntryID(undefined)
+        setInspectorApprovalId(undefined)
+      }
+    }
+  })
+
+  // Clear inspector when approval becomes terminal
+  createEffect(() => {
+    const inspectorId = inspectorApprovalId()
+    if (!inspectorId) return
+    const approval = approvals().find(a => a.approvalId === inspectorId)
+    if (!approval) {
+      // Approval disappeared
+      setInspectorApprovalId(undefined)
+      return
+    }
+    if (isApprovalTerminal(approval)) {
+      // Keep inspector open read-only, but clear any active action
+      // The terminal state is visible in the inspector
+    }
   })
 
   useBindings(() => ({
@@ -288,6 +405,89 @@ export function CommandSpineShell(props: ShellProps) {
       { key: "o", desc: "Open spine entry details", group: "Command Spine", cmd: openFocusedEntryDetails },
       { key: "d", desc: "Open focused spine diff", group: "Command Spine", cmd: openFocusedEntryDiff },
       { key: "g", desc: "Go to related spine session", group: "Command Spine", cmd: openFocusedEntrySession },
+    ],
+  }))
+
+  // ─── TUI-2.1: Approval keyboard bindings ────────────────────────
+  // Contextual: only active when an approval entry is focused and
+  // the prompt/editor is NOT accepting text. Prevents "a"/"d"/"v"
+  // from becoming approval commands during normal typing.
+  const approvalBindingsEnabled = () =>
+    renderer.currentFocusedEditor === null
+    && props.permissions().length === 0
+    && props.questions().length === 0
+    && !approvalSubmitting()
+    && focusedApproval() !== undefined
+
+  useBindings(() => ({
+    mode: ARCANA_BASE_MODE,
+    enabled: () => approvalBindingsEnabled(),
+    priority: 2, // Higher than spine navigation (priority 1)
+    bindings: [
+      {
+        key: "a",
+        desc: "Approve once",
+        group: "Approval",
+        cmd: async () => {
+          const approval = focusedApproval()
+          const ctrl = controller()
+          if (!approval || !ctrl || !canApprove()) return
+          setApprovalSubmitting(true)
+          try {
+            await ctrl.approveOnce({
+              approvalId: approval.approvalId,
+              expectedVersion: approval.version,
+              expectedRequestHash: approval.requestHash,
+              expectedContractRevision: approval.contractRevision,
+            })
+          } finally {
+            setApprovalSubmitting(false)
+          }
+        },
+      },
+      {
+        key: "d",
+        desc: "Deny approval",
+        group: "Approval",
+        cmd: async () => {
+          const approval = focusedApproval()
+          const ctrl = controller()
+          if (!approval || !ctrl || !canDeny()) return
+          setApprovalSubmitting(true)
+          try {
+            await ctrl.deny({
+              approvalId: approval.approvalId,
+              expectedVersion: approval.version,
+              expectedRequestHash: approval.requestHash,
+              expectedContractRevision: approval.contractRevision,
+            })
+          } finally {
+            setApprovalSubmitting(false)
+          }
+        },
+      },
+      {
+        key: "v",
+        desc: "Inspect approval",
+        group: "Approval",
+        cmd: () => {
+          const approval = focusedApproval()
+          if (!approval || !canInspectApproval()) return
+          setInspectorApprovalId(approval.approvalId)
+        },
+      },
+      {
+        key: "escape",
+        desc: "Close inspector or clear selection",
+        group: "Approval",
+        cmd: () => {
+          if (inspectorApprovalId()) {
+            setInspectorApprovalId(undefined)
+          } else if (focusedApproval()) {
+            setFocusedEntryID(undefined)
+          }
+        },
+      },
     ],
   }))
 
