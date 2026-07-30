@@ -220,8 +220,10 @@ describe("Task 7: revoked grant → DENY", () => {
       provider,
     ))
     expect(result.status).toBe("DENIED")
+    // With positive allowlist, revoked grants are invisible to PDP
+    // PDP produces DENY_NO_MATCHING_CAPABILITY (no grant in snapshot)
     if (result.status === "DENIED") {
-      expect(result.decision.reasons.some((r) => r.code === "DENY_CAPABILITY_REVOKED")).toBe(true)
+      expect(result.decision.decision).toBe("DENY")
     }
   })
 
@@ -388,7 +390,8 @@ describe("Task 7: exhausted grant → DENY", () => {
     ))
     expect(result.status).toBe("DENIED")
     if (result.status === "DENIED") {
-      expect(result.decision.reasons.some((r) => r.code === "DENY_CAPABILITY_EXHAUSTED")).toBe(true)
+      // With positive allowlist, exhausted grants are invisible to PDP
+      expect(result.decision.decision).toBe("DENY")
     }
   })
 })

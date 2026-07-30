@@ -10,9 +10,29 @@
  */
 
 import { Effect } from "effect"
-import type { PolicyContext, PolicyContextProvider, WorkspaceTrust } from "./pdp"
-import type { CapabilityGrant, IntentBinding } from "./types"
+import type { PolicyContext, WorkspaceTrust, ApprovedRequestScope } from "./pdp"
+import type { PolicyContextProvider } from "./pep"
+import type { CapabilityGrant, IntentBinding, CapabilityStatus } from "./types"
+import type { ScopedApproval, ScopedApprovalDecision } from "./scoped-approval"
 import { POLICY_VERSION } from "./types"
+
+// ─── Approved Scope Snapshot ──────────────────────────────────────────
+
+/**
+ * Serializable snapshot of an approved scope.
+ * Pre-computed at snapshot time — the PDP receives this as pure data,
+ * never calls a store.
+ */
+export interface ApprovedScopeSnapshot {
+  readonly requestHash: string
+  readonly approvalId: string
+  readonly capabilityId?: string
+  readonly principalId: string
+  readonly sessionId: string
+  readonly expiresAt: string
+  readonly maxUses: number
+  readonly status: ScopedApprovalDecision
+}
 
 // ─── Capability Grant Store (Effect-native) ──────────────────────────
 
@@ -65,7 +85,7 @@ export interface CapabilityGrantStore {
   /** Update grant status atomically. */
   updateStatus(
     grantId: string,
-    status: CapabilityGrant["status"],
+    status: CapabilityStatus,
     eventId?: string,
   ): Effect.Effect<void, CapabilityGrantStoreError>
 
@@ -95,6 +115,31 @@ export interface CapabilityGrantStore {
   hasExecution(
     executionKey: string,
   ): Effect.Effect<boolean, CapabilityGrantStoreError>
+
+  /**
+   * Activate all PENDING grants for a session (PENDING → ACTIVE).
+   * Returns the number of grants activated.
+   */
+  activateGrantsForSession(
+    sessionId: string,
+  ): Effect.Effect<number, CapabilityGrantStoreError>
+
+  /**
+   * Revoke all PENDING grants for a session (PENDING → REVOKED).
+   * Returns the number of grants revoked.
+   */
+  revokePendingGrantsForSession(
+    sessionId: string,
+  ): Effect.Effect<number, CapabilityGrantStoreError>
+
+  /**
+   * Recover stale PENDING grants that are older than maxAge.
+   * PENDING grants older than maxAge are revoked.
+   * Returns the number of grants recovered.
+   */
+  recoverPendingGrants(
+    maxAge: string,
+  ): Effect.Effect<number, CapabilityGrantStoreError>
 }
 
 // ─── In-Memory Grant Store ────────────────────────────────────────────
@@ -117,6 +162,7 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
   ): CapabilityGrant[] {
     const result: CapabilityGrant[] = []
     for (const g of this.grants.values()) {
+      if (g.status !== "ACTIVE") continue  // Positive allowlist — only ACTIVE grants are usable
       if (g.principal.id === principalId) {
         if (g.constraints.sessionId && g.constraints.sessionId !== sessionId) continue
         if (g.constraints.workspaceId && workspaceId && g.constraints.workspaceId !== workspaceId) continue
@@ -131,6 +177,7 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
   ): Effect.Effect<readonly CapabilityGrant[], CapabilityGrantStoreError> {
     const result: CapabilityGrant[] = []
     for (const g of this.grants.values()) {
+      if (g.status !== "ACTIVE") continue  // Positive allowlist
       if (g.constraints.workspaceId === workspaceId) {
         result.push(g)
       }
@@ -177,7 +224,7 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
 
   updateStatus(
     grantId: string,
-    status: CapabilityGrant["status"],
+    status: CapabilityStatus,
     eventId?: string,
   ): Effect.Effect<void, CapabilityGrantStoreError> {
     const g = this.grants.get(grantId)
@@ -200,16 +247,14 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
     if (!g) return Effect.succeed(false)
     if (g.status !== "ACTIVE") return Effect.succeed(false)
     if (g.constraints.expiresAt && g.constraints.expiresAt <= now) return Effect.succeed(false)
-    if (g.constraints.maxUses !== undefined && g.constraints.maxUses <= 0) return Effect.succeed(false)
 
-    const currentUses = (g as any).usesConsumed ?? 0
     const maxUses = g.constraints.maxUses ?? Infinity
-    if (currentUses >= maxUses) return Effect.succeed(false)
+    if (maxUses <= 0) return Effect.succeed(false)
 
     this.grants.set(grantId, {
       ...g,
       constraints: { ...g.constraints, maxUses: g.constraints.maxUses !== undefined ? g.constraints.maxUses - 1 : undefined },
-    } as any)
+    })
     return Effect.succeed(true)
   }
 
@@ -226,6 +271,45 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
     executionKey: string,
   ): Effect.Effect<boolean, CapabilityGrantStoreError> {
     return Effect.succeed(this.executionReceipts.has(executionKey))
+  }
+
+  activateGrantsForSession(
+    sessionId: string,
+  ): Effect.Effect<number, CapabilityGrantStoreError> {
+    let count = 0
+    for (const [id, g] of this.grants) {
+      if (g.status === "PENDING" && g.constraints.sessionId === sessionId) {
+        this.grants.set(id, { ...g, status: "ACTIVE" })
+        count++
+      }
+    }
+    return Effect.succeed(count)
+  }
+
+  revokePendingGrantsForSession(
+    sessionId: string,
+  ): Effect.Effect<number, CapabilityGrantStoreError> {
+    let count = 0
+    for (const [id, g] of this.grants) {
+      if (g.status === "PENDING" && g.constraints.sessionId === sessionId) {
+        this.grants.set(id, { ...g, status: "REVOKED" })
+        count++
+      }
+    }
+    return Effect.succeed(count)
+  }
+
+  recoverPendingGrants(
+    maxAge: string,
+  ): Effect.Effect<number, CapabilityGrantStoreError> {
+    let count = 0
+    for (const [id, g] of this.grants) {
+      if (g.status === "PENDING" && g.constraints.expiresAt && g.constraints.expiresAt <= maxAge) {
+        this.grants.set(id, { ...g, status: "REVOKED" })
+        count++
+      }
+    }
+    return Effect.succeed(count)
   }
 
   transaction<A>(
@@ -362,17 +446,18 @@ export class SessionPolicyProvider {
         }
         // LEGACY_COMPAT without store → intentBindings stays undefined → PDP skips
 
-        // Pre-compute approved scopes from the ScopedApprovalStore.
-        // The PDP receives a pure lookup function — never calls a store directly.
-        let lookupApprovedScope: ((requestHash: string) => import("./pdp").ApprovedRequestScope | undefined) | undefined = undefined
+        // Pre-compute approved scopes as serializable data.
+        // The PDP receives this array — never calls a store.
+        let approvedScopes: import("./pdp").ApprovedRequestScope[] = []
         if (this.scopedApprovalStore) {
-          const store = this.scopedApprovalStore
-          lookupApprovedScope = (requestHash: string) => {
-            const approval = store.getApprovalForRequest(requestHash)
-            if (!approval) return undefined
-            if (approval.decision !== "APPROVED") return undefined
-            if (approval.maxUses <= 0) return undefined
-            return {
+          const allApprovalExit = yield* this.scopedApprovalStore.allApprovals().pipe(
+            Effect.catch(() => Effect.succeed<readonly ScopedApproval[]>([])),
+          )
+          for (const approval of allApprovalExit) {
+            if (approval.decision !== "APPROVED") continue
+            if (approval.usesConsumed >= 1) continue
+            if (approval.expiresAt <= new Date().toISOString()) continue
+            approvedScopes.push({
               requestHash: approval.requestHash,
               approvalId: approval.id,
               capabilityId: approval.capabilityId,
@@ -380,11 +465,11 @@ export class SessionPolicyProvider {
               sessionId: approval.sessionId,
               expiresAt: approval.expiresAt,
               maxUses: approval.maxUses,
-            }
+            })
           }
         }
 
-        // Determine if ancestor validation is needed (any delegated grants?)
+        // Determine
         const hasDelegatedGrants = grants.some((g) => g.issuer.kind === "parent_capability")
 
         return {
@@ -395,7 +480,7 @@ export class SessionPolicyProvider {
           approvalRules: [],
           workspaceTrust: this.binding.workspaceTrust,
           intentBindings,
-          lookupApprovedScope,
+          approvedScopes,
           validateAncestors: hasDelegatedGrants,
         } satisfies PolicyContext
       },

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { Effect } from "effect"
 import {
   createPendingApproval,
   approveRequest,
@@ -41,13 +42,13 @@ describe("Decisive fixture: scoped approval for git push", () => {
     // Step 2: PDP returns REQUIRE_APPROVAL
     // The runtime creates a pending approval
     const pending = createPendingApproval(request, "evt-create", 3600)
-    store.putApproval(pending)
+    Effect.runSync(store.putApproval(pending))
     expect(pending.decision).toBe("PENDING")
     expect(pending.requestHash).toBe(computeRequestHash(request))
 
     // Step 3: User approves the exact request
     const { approval, capability } = approveRequest(pending, "evt-approve", 300)
-    store.updateApproval(approval.id, approval)
+    Effect.runSync(store.updateApproval(approval.id, approval))
     expect(approval.decision).toBe("APPROVED")
     expect(capability.constraints.maxUses).toBe(1)
     expect(capability.actions).toContain("git.push")
@@ -64,7 +65,8 @@ describe("Decisive fixture: scoped approval for git push", () => {
     const consumed = consumeApproval(claimed!, "evt-consume", new Date().toISOString())
     expect(consumed).not.toBeNull()
     expect(consumed!.decision).toBe("CONSUMED")
-    expect(consumed!.maxUses).toBe(0)
+    expect(consumed!.maxUses).toBe(1)
+    expect(consumed!.usesConsumed).toBe(1)
 
     // Step 6: Second execution → DENY (already consumed)
     const secondAttempt = consumeApproval(consumed!, "evt-consume-2", new Date().toISOString())
@@ -85,7 +87,7 @@ describe("Decisive fixture: scoped approval for git push", () => {
     // Create and approve
     const pending = createPendingApproval(originalRequest, "evt-create")
     const { approval } = approveRequest(pending, "evt-approve")
-    store.putApproval(approval)
+    Effect.runSync(store.putApproval(approval))
 
     // Agent changes request to git push origin main
     const modifiedRequest = buildAuthorizationRequest({
@@ -113,7 +115,7 @@ describe("Decisive fixture: scoped approval for git push", () => {
 
     const pending = createPendingApproval(request, "evt-create")
     const { approval } = approveRequest(pending, "evt-approve")
-    store.putApproval(approval)
+    Effect.runSync(store.putApproval(approval))
 
     // First execution → claim → consume
     const claimed = claimApproval(approval, "evt-claim-1", new Date().toISOString())
@@ -223,9 +225,9 @@ describe("checkApprovedScope: PDP integration", () => {
 
     const pending = createPendingApproval(request, "evt-create")
     const { approval } = approveRequest(pending, "evt-approve")
-    store.putApproval(approval)
+    Effect.runSync(store.putApproval(approval))
 
-    const result = checkApprovedScope(request, store, new Date().toISOString())
+    const result = Effect.runSync(checkApprovedScope(request, store, new Date().toISOString()))
     expect(result.hasApproval).toBe(true)
     expect(result.approval!.id).toBe(approval.id)
   })
@@ -234,7 +236,7 @@ describe("checkApprovedScope: PDP integration", () => {
     const store = new InMemoryScopedApprovalStore()
     const request = makeRequest()
 
-    const result = checkApprovedScope(request, store, new Date().toISOString())
+    const result = Effect.runSync(checkApprovedScope(request, store, new Date().toISOString()))
     expect(result.hasApproval).toBe(false)
     expect(result.reason).toContain("No approval found")
   })
@@ -247,9 +249,9 @@ describe("checkApprovedScope: PDP integration", () => {
     const { approval } = approveRequest(pending, "evt-approve")
     const claimed = claimApproval(approval, "evt-claim", new Date().toISOString())!
     const consumed = consumeApproval(claimed, "evt-consume", new Date().toISOString())!
-    store.putApproval(consumed)
+    Effect.runSync(store.putApproval(consumed))
 
-    const result = checkApprovedScope(request, store, new Date().toISOString())
+    const result = Effect.runSync(checkApprovedScope(request, store, new Date().toISOString()))
     expect(result.hasApproval).toBe(false)
   })
 })

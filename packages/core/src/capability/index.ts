@@ -20,7 +20,6 @@ export {
   type LabeledValue,
   type LabeledAuthorizationField,
   type DeclassificationDecision,
-  type IntentBinding,
   type IntentJustification,
   type IntentBindingStatus,
   type IntentBindingCreatedBy,
@@ -64,6 +63,7 @@ export {
   type PolicyContextProvider,
   type EnforcementResult,
   type AuthorizationEventEmitter,
+  AuthorizationStoreError,
   authorizeAndExecute,
   authorizeAndExecuteEffect,
   authorizeAndExecuteSync,
@@ -82,6 +82,7 @@ export {
   type SessionPolicyBinding,
   type IntentBindingStoreEffect,
   type IntentEnforcementMode,
+  type ApprovedScopeSnapshot,
   InMemoryGrantStore,
   InMemoryIntentBindingStoreEffect,
   SessionPolicyProvider,
@@ -154,6 +155,7 @@ export {
   type ScopedApprovalDecision,
   type ScopedApprovalStore,
   type ApprovalExecutionReceipt,
+  ScopedApprovalStoreError,
   InMemoryScopedApprovalStore,
   createPendingApproval,
   approveRequest,
@@ -164,6 +166,7 @@ export {
   canRetryAfterRecovery,
   validateApprovalMatch,
   checkApprovedScope,
+  checkApprovedScopeSync,
 } from "./scoped-approval"
 
 export {

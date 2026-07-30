@@ -9,7 +9,7 @@
  *     approval.requestHash = H(q)
  *     ∧ approval.principal = q.principal
  *     ∧ approval.status = ACTIVE
- *     ∧ approval.usesRemaining > 0
+ *     ∧ approval.usesConsumed < approval.maxUses
  *     ∧ now < approval.expiresAt
  *
  * Changing any field requires another approval:
@@ -17,6 +17,7 @@
  *   Destination, Secret, Contract, Session, Policy version
  */
 
+import { Effect } from "effect"
 import type {
   CapabilityAction,
   CanonicalResource,
@@ -47,6 +48,7 @@ export interface ScopedApproval {
 
   readonly capabilityId?: string
   readonly maxUses: 1
+  readonly usesConsumed: 0 | 1
   readonly expiresAt: string
 
   readonly createdEventId: string
@@ -75,13 +77,22 @@ export interface ApprovalExecutionReceipt {
   readonly completedAt?: string
 }
 
-// ─── Store Interface ──────────────────────────────────────────────────
+// ─── Store Error ──────────────────────────────────────────────────────
+
+export class ScopedApprovalStoreError {
+  readonly _tag = "ScopedApprovalStoreError" as const
+  constructor(readonly operation: string, readonly cause: unknown) {}
+}
+
+// ─── Store Interface (Effect-native) ──────────────────────────────────
 
 export interface ScopedApprovalStore {
-  getApproval(id: string): ScopedApproval | undefined | Promise<ScopedApproval | undefined>
-  getApprovalForRequest(requestHash: string): ScopedApproval | undefined | Promise<ScopedApproval | undefined>
-  putApproval(approval: ScopedApproval): void | Promise<void>
-  updateApproval(id: string, updates: Partial<ScopedApproval>): void | Promise<void>
+  readonly getApproval: (id: string) => Effect.Effect<ScopedApproval | undefined, ScopedApprovalStoreError>
+  readonly getApprovalForRequest: (requestHash: string) => Effect.Effect<ScopedApproval | undefined, ScopedApprovalStoreError>
+  readonly putApproval: (approval: ScopedApproval) => Effect.Effect<void, ScopedApprovalStoreError>
+  readonly updateApproval: (id: string, updates: Partial<ScopedApproval>) => Effect.Effect<void, ScopedApprovalStoreError>
+  /** Return all approvals for snapshot-time pre-computation. */
+  readonly allApprovals: () => Effect.Effect<readonly ScopedApproval[], ScopedApprovalStoreError>
 }
 
 // ─── In-Memory Store ──────────────────────────────────────────────────
@@ -89,26 +100,32 @@ export interface ScopedApprovalStore {
 export class InMemoryScopedApprovalStore implements ScopedApprovalStore {
   private approvals = new Map<string, ScopedApproval>()
 
-  getApproval(id: string): ScopedApproval | undefined {
-    return this.approvals.get(id)
+  getApproval(id: string): Effect.Effect<ScopedApproval | undefined, ScopedApprovalStoreError> {
+    return Effect.succeed(this.approvals.get(id))
   }
 
-  getApprovalForRequest(requestHash: string): ScopedApproval | undefined {
+  getApprovalForRequest(requestHash: string): Effect.Effect<ScopedApproval | undefined, ScopedApprovalStoreError> {
     for (const a of this.approvals.values()) {
-      if (a.requestHash === requestHash) return a
+      if (a.requestHash === requestHash) return Effect.succeed(a)
     }
-    return undefined
+    return Effect.succeed(undefined)
   }
 
-  putApproval(approval: ScopedApproval): void {
+  putApproval(approval: ScopedApproval): Effect.Effect<void, ScopedApprovalStoreError> {
     this.approvals.set(approval.id, approval)
+    return Effect.void
   }
 
-  updateApproval(id: string, updates: Partial<ScopedApproval>): void {
+  updateApproval(id: string, updates: Partial<ScopedApproval>): Effect.Effect<void, ScopedApprovalStoreError> {
     const existing = this.approvals.get(id)
     if (existing) {
       this.approvals.set(id, { ...existing, ...updates } as ScopedApproval)
     }
+    return Effect.void
+  }
+
+  allApprovals(): Effect.Effect<readonly ScopedApproval[], ScopedApprovalStoreError> {
+    return Effect.succeed([...this.approvals.values()])
   }
 }
 
@@ -137,6 +154,7 @@ export function createPendingApproval(
     actions: [request.action],
     resource: request.resource,
     maxUses: 1,
+    usesConsumed: 0,
     expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
     createdEventId: eventId,
   }
@@ -214,14 +232,20 @@ export function claimApproval(
   claimedEventId: string,
   now: string,
 ): ScopedApproval | null {
+  // Compile-time invariant: maxUses must be exactly 1
+  if (approval.maxUses !== 1) return null
+
+  // Compile-time invariant: single-use only
+  if (approval.maxUses !== 1) return null
+
   // Must be APPROVED
   if (approval.decision !== "APPROVED") return null
 
   // Must not be expired
   if (approval.expiresAt <= now) return null
 
-  // Must have uses remaining
-  if (approval.maxUses <= 0) return null
+  // Must not already be consumed
+  if (approval.usesConsumed >= 1) return null
 
   const idempotencyKey = computeIdempotencyKey(
     approval.id,
@@ -248,19 +272,22 @@ export function consumeApproval(
   consumedEventId: string,
   now: string,
 ): ScopedApproval | null {
+  // Compile-time invariant: single-use only
+  if (approval.maxUses !== 1) return null
+
   // Must be CLAIMED (not just APPROVED)
   if (approval.decision !== "CLAIMED") return null
 
   // Must not be expired
   if (approval.expiresAt <= now) return null
 
-  // Must have uses remaining
-  if (approval.maxUses <= 0) return null
+  // Must not already be consumed
+  if (approval.usesConsumed >= 1) return null
 
   return {
     ...approval,
     decision: "CONSUMED",
-    maxUses: 0,
+    usesConsumed: 1,
     consumedEventId,
   }
 }
@@ -319,7 +346,7 @@ export function validateApprovalMatch(
   }
 
   // Must have uses remaining
-  if (approval.maxUses <= 0) {
+  if (approval.usesConsumed >= 1) {
     return { valid: false, reason: "Approval has no uses remaining" }
   }
 
@@ -362,23 +389,49 @@ export function validateApprovalMatch(
 /**
  * Check if a request has a valid approved scope.
  * Used by the PDP to convert REQUIRE_APPROVAL to ALLOW when an approved scope exists.
+ *
+ * Now Effect-returning. The snapshot builder resolves this eagerly.
  */
 export function checkApprovedScope(
   request: AuthorizationRequest,
   store: ScopedApprovalStore,
   now: string,
-): { hasApproval: boolean; approval?: ScopedApproval; reason?: string } {
-  const requestHash = computeRequestHash(request)
-  const approval = store.getApprovalForRequest(requestHash)
+): Effect.Effect<{ hasApproval: boolean; approval?: ScopedApproval; reason?: string }, ScopedApprovalStoreError> {
+  return Effect.gen(function* () {
+    const requestHash = computeRequestHash(request)
+    const result = yield* store.getApprovalForRequest(requestHash)
 
-  if (!approval) {
-    return { hasApproval: false, reason: "No approval found for this request" }
-  }
+    if (!result) {
+      return { hasApproval: false, reason: "No approval found for this request" }
+    }
 
-  const validation = validateApprovalMatch(approval, request, now)
-  if (!validation.valid) {
-    return { hasApproval: false, reason: validation.reason ?? "Approval invalid" }
-  }
+    const approval = result
+    const validation = validateApprovalMatch(approval, request, now)
+    if (!validation.valid) {
+      return { hasApproval: false, reason: validation.reason ?? "Approval invalid" }
+    }
 
-  return { hasApproval: true, approval }
+    return { hasApproval: true, approval }
+  })
+}
+
+/**
+ * Synchronous version of checkApprovedScope for backward compatibility.
+ * Only works with synchronous stores (e.g. InMemoryScopedApprovalStore).
+ */
+export function checkApprovedScopeSync(
+  request: AuthorizationRequest,
+  store: ScopedApprovalStore,
+  now: string,
+): { hasApproval: boolean; approval?: ScopedApproval; reason?: string } | undefined {
+  // For synchronous stores, we can run synchronously
+  const program = checkApprovedScope(request, store, now)
+  // This is intentionally synchronous for in-memory stores
+  let result: { hasApproval: boolean; approval?: ScopedApproval; reason?: string } | undefined
+  Effect.runFork(program).addObserver((exit) => {
+    if (exit._tag === "Success") {
+      result = exit.value
+    }
+  })
+  return result
 }
