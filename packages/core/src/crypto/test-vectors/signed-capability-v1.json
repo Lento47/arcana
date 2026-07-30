@@ -1,6 +1,6 @@
 [
   {
-    "vectorId": "cap-v1-001",
+    "vectorId": "signed-capability-v1-001",
     "domain": "arcana:signed-capability:v1",
     "description": "Basic filesystem.read capability grant",
     "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000001",
@@ -38,7 +38,7 @@
     "verificationExpected": true
   },
   {
-    "vectorId": "cap-v1-002",
+    "vectorId": "signed-capability-v1-002",
     "domain": "arcana:signed-capability:v1",
     "description": "Capability with delegation ancestry",
     "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000002",
@@ -81,7 +81,7 @@
     "verificationExpected": true
   },
   {
-    "vectorId": "policy-v1-001",
+    "vectorId": "signed-policy-v1-001",
     "domain": "arcana:signed-policy:v1",
     "description": "Basic policy envelope",
     "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000003",
@@ -103,7 +103,7 @@
     "verificationExpected": true
   },
   {
-    "vectorId": "node-id-v1-001",
+    "vectorId": "node-identity-v1-001",
     "domain": "arcana:node-identity:v1",
     "description": "Node identity certificate",
     "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000004",
@@ -112,7 +112,7 @@
       "schemaVersion": 1,
       "nodeId": "node-alpha",
       "organizationId": "arcana-org",
-      "publicKey": "nBGylMGlNRkDfaLSk9wZ4cORuz9FqBP0EpTDlWIGf0c=",
+      "publicKey": "TLWr9q15-_WrvMr8wmnYXNJlHtS4hbWGnyQa7fCluik",
       "issuerId": "trust-registry",
       "issuerEpoch": 1,
       "issuedAt": "2026-07-29T12:00:00.000Z",
@@ -123,9 +123,9 @@
         "verify"
       ]
     },
-    "canonicalPayloadHex": "7b226361706162696c6974696573223a5b226772616e74222c227265766f6b65222c22766572696679225d2c22657870697265734174223a22323032362d30382d32395431323a30303a30302e3030305a222c226973737565644174223a22323032362d30372d32395431323a30303a30302e3030305a222c2269737375657245706f6368223a312c226973737565724964223a2274727573742d7265676973747279222c226e6f64654964223a226e6f64652d616c706861222c226f7267616e697a6174696f6e4964223a22617263616e612d6f7267222c227075626c69634b6579223a226e4247796c4d476c4e526b4466614c536b39775a34634f52757a394671425030457054446c5749476630633d222c22736368656d6156657273696f6e223a317d",
-    "signatureInputHex": "617263616e613a6e6f64652d6964656e746974793a76317b226361706162696c6974696573223a5b226772616e74222c227265766f6b65222c22766572696679225d2c22657870697265734174223a22323032362d30382d32395431323a30303a30302e3030305a222c226973737565644174223a22323032362d30372d32395431323a30303a30302e3030305a222c2269737375657245706f6368223a312c226973737565724964223a2274727573742d7265676973747279222c226e6f64654964223a226e6f64652d616c706861222c226f7267616e697a6174696f6e4964223a22617263616e612d6f7267222c227075626c69634b6579223a226e4247796c4d476c4e526b4466614c536b39775a34634f52757a394671425030457054446c5749476630633d222c22736368656d6156657273696f6e223a317d",
-    "signature": "oMak7RbYCIvNN_a_widI5mVWm6c0FglbcA5E6rqdgLxecYcA0slQKstA83qQGNu64viT0G5CMHi-uiA3iVpJCA",
+    "canonicalPayloadHex": "7b226361706162696c6974696573223a5b226772616e74222c227265766f6b65222c22766572696679225d2c22657870697265734174223a22323032362d30382d32395431323a30303a30302e3030305a222c226973737565644174223a22323032362d30372d32395431323a30303a30302e3030305a222c2269737375657245706f6368223a312c226973737565724964223a2274727573742d7265676973747279222c226e6f64654964223a226e6f64652d616c706861222c226f7267616e697a6174696f6e4964223a22617263616e612d6f7267222c227075626c69634b6579223a22544c5772397131352d5f5772764d7238776d6e59584e4a6c48745334686257476e7951613766436c75696b222c22736368656d6156657273696f6e223a317d",
+    "signatureInputHex": "617263616e613a6e6f64652d6964656e746974793a76317b226361706162696c6974696573223a5b226772616e74222c227265766f6b65222c22766572696679225d2c22657870697265734174223a22323032362d30382d32395431323a30303a30302e3030305a222c226973737565644174223a22323032362d30372d32395431323a30303a30302e3030305a222c2269737375657245706f6368223a312c226973737565724964223a2274727573742d7265676973747279222c226e6f64654964223a226e6f64652d616c706861222c226f7267616e697a6174696f6e4964223a22617263616e612d6f7267222c227075626c69634b6579223a22544c5772397131352d5f5772764d7238776d6e59584e4a6c48745334686257476e7951613766436c75696b222c22736368656d6156657273696f6e223a317d",
+    "signature": "l47r2K6mmB6hw474RcZr5fNTz1d2ciCoUe0gte89CMKpg1SXin7U1-I7zcyaRwiUeCieoEYdpJEf3ZsdakdECg",
     "verificationExpected": true
   },
   {
@@ -151,293 +151,54 @@
     "verificationExpected": true
   },
   {
-    "vectorId": "neg-audience",
-    "description": "Negative: wrong audience node",
-    "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000001",
-    "publicKey": "TLWr9q15-_WrvMr8wmnYXNJlHtS4hbWGnyQa7fCluik",
-    "unsignedPayload": {
-      "schemaVersion": 1,
-      "issuerId": "node-alpha",
-      "issuerEpoch": 1,
-      "audienceNodeId": "node-DELTA",
-      "grant": {
-        "grantId": "grant-001",
-        "principal": {
-          "kind": "agent",
-          "id": "arcana"
-        },
-        "actions": [
-          "filesystem.read"
-        ],
-        "resources": [
-          "packages/**"
-        ],
-        "workspaceId": "arcana",
-        "contractId": "contract-001",
-        "contractRevision": 1,
-        "maxUses": 10,
-        "delegationDepth": 0
-      },
-      "issuedAt": "2026-07-29T12:00:00.000Z",
-      "expiresAt": "2026-07-29T13:00:00.000Z",
-      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
-    },
-    "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA",
-    "verificationExpected": false,
-    "expectedRejectionReason": "WRONG_AUDIENCE",
-    "expectedStage": "AUDIENCE"
+    "vectorId": "neg-parse-unicode-escaped-dup",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Unicode escape \\u0069ssuerId decodes to duplicate key issuerId",
+    "envelope": {},
+    "expectedStage": "PARSE",
+    "expectedReason": "SCHEMA_UNSUPPORTED",
+    "rawJson": "{\"schemaVersion\":1,\"issuerId\":\"a\",\"\\u0069ssuerId\":\"b\",\"issuerEpoch\":1,\"audienceNodeId\":\"node-beta\",\"grant\":{\"grantId\":\"g\",\"principal\":{\"kind\":\"agent\",\"id\":\"a\"},\"actions\":[\"r\"],\"resources\":[\"p\"],\"workspaceId\":\"w\",\"contractId\":\"c\",\"contractRevision\":1,\"maxUses\":1,\"delegationDepth\":0},\"issuedAt\":\"2026-07-29T12:00:00.000Z\",\"expiresAt\":\"2026-07-29T13:00:00.000Z\",\"nonce\":\"n\",\"signatureAlgorithm\":\"Ed25519\",\"signature\":\"AA\"}"
   },
   {
-    "vectorId": "neg-wrong-key",
-    "description": "Negative: wrong public key",
-    "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000001",
-    "publicKey": "dCK5iHWYBo4yxESKlJrbKQ0PTjW54BsO5fGh5gD-JnQ",
-    "unsignedPayload": {
-      "schemaVersion": 1,
-      "issuerId": "node-alpha",
-      "issuerEpoch": 1,
-      "audienceNodeId": "node-beta",
-      "grant": {
-        "grantId": "grant-001",
-        "principal": {
-          "kind": "agent",
-          "id": "arcana"
-        },
-        "actions": [
-          "filesystem.read"
-        ],
-        "resources": [
-          "packages/**"
-        ],
-        "workspaceId": "arcana",
-        "contractId": "contract-001",
-        "contractRevision": 1,
-        "maxUses": 10,
-        "delegationDepth": 0
-      },
-      "issuedAt": "2026-07-29T12:00:00.000Z",
-      "expiresAt": "2026-07-29T13:00:00.000Z",
-      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
-    },
-    "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA",
-    "verificationExpected": false,
-    "expectedRejectionReason": "INVALID_SIGNATURE",
-    "expectedStage": "SIGNATURE"
+    "vectorId": "neg-parse-trailing-json",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Valid JSON with trailing garbage after closing brace",
+    "envelope": {},
+    "expectedStage": "PARSE",
+    "expectedReason": "SCHEMA_UNSUPPORTED",
+    "rawJson": "{\"schemaVersion\":1,\"issuerId\":\"node-alpha\",\"issuerEpoch\":1,\"audienceNodeId\":\"node-beta\",\"grant\":{\"grantId\":\"grant-001\",\"principal\":{\"kind\":\"agent\",\"id\":\"arcana\"},\"actions\":[\"filesystem.read\"],\"resources\":[\"packages/**\"],\"workspaceId\":\"arcana\",\"contractId\":\"contract-001\",\"contractRevision\":1,\"maxUses\":10,\"delegationDepth\":0},\"issuedAt\":\"2026-07-29T12:00:00.000Z\",\"expiresAt\":\"2026-07-29T13:00:00.000Z\",\"nonce\":\"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d\",\"signatureAlgorithm\":\"Ed25519\",\"signature\":\"AA\"} GARBAGE"
   },
   {
-    "vectorId": "neg-schema-ver",
-    "description": "Negative: unsupported schema version",
-    "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000001",
-    "publicKey": "TLWr9q15-_WrvMr8wmnYXNJlHtS4hbWGnyQa7fCluik",
-    "unsignedPayload": {
-      "schemaVersion": 99,
-      "issuerId": "node-alpha",
-      "issuerEpoch": 1,
-      "audienceNodeId": "node-beta",
-      "grant": {
-        "grantId": "grant-001",
-        "principal": {
-          "kind": "agent",
-          "id": "arcana"
-        },
-        "actions": [
-          "filesystem.read"
-        ],
-        "resources": [
-          "packages/**"
-        ],
-        "workspaceId": "arcana",
-        "contractId": "contract-001",
-        "contractRevision": 1,
-        "maxUses": 10,
-        "delegationDepth": 0
-      },
-      "issuedAt": "2026-07-29T12:00:00.000Z",
-      "expiresAt": "2026-07-29T13:00:00.000Z",
-      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
-    },
-    "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA",
-    "verificationExpected": false,
-    "expectedRejectionReason": "SCHEMA_UNSUPPORTED",
-    "expectedStage": "SCHEMA"
+    "vectorId": "neg-parse-excessive-nesting",
+    "domain": "arcana:signed-capability:v1",
+    "description": "200+ levels of nested objects in raw JSON",
+    "envelope": {},
+    "expectedStage": "PARSE",
+    "expectedReason": "SCHEMA_UNSUPPORTED",
+    "rawJson": "{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":{\"v\":1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"
   },
   {
-    "vectorId": "neg-expired",
-    "description": "Negative: expired envelope",
-    "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000001",
-    "publicKey": "TLWr9q15-_WrvMr8wmnYXNJlHtS4hbWGnyQa7fCluik",
-    "unsignedPayload": {
-      "schemaVersion": 1,
-      "issuerId": "node-alpha",
-      "issuerEpoch": 1,
-      "audienceNodeId": "node-beta",
-      "grant": {
-        "grantId": "grant-001",
-        "principal": {
-          "kind": "agent",
-          "id": "arcana"
-        },
-        "actions": [
-          "filesystem.read"
-        ],
-        "resources": [
-          "packages/**"
-        ],
-        "workspaceId": "arcana",
-        "contractId": "contract-001",
-        "contractRevision": 1,
-        "maxUses": 10,
-        "delegationDepth": 0
-      },
-      "issuedAt": "2026-07-29T12:00:00.000Z",
-      "expiresAt": "2026-07-29T13:00:00.000Z",
-      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
-    },
-    "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA",
-    "verificationExpected": false,
-    "expectedRejectionReason": "EXPIRED",
-    "expectedStage": "FRESHNESS",
-    "nowOverride": 1785369600000
+    "vectorId": "neg-cap-duplicate-key",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Duplicate schemaVersion key in raw JSON",
+    "envelope": {},
+    "expectedStage": "PARSE",
+    "expectedReason": "SCHEMA_UNSUPPORTED",
+    "rawJson": "{\"schemaVersion\":1,\"schemaVersion\":2,\"issuerId\":\"node-alpha\",\"issuerEpoch\":1,\"audienceNodeId\":\"node-beta\",\"grant\":{\"grantId\":\"grant-001\",\"principal\":{\"kind\":\"agent\",\"id\":\"arcana\"},\"actions\":[\"filesystem.read\"],\"resources\":[\"packages/**\"],\"workspaceId\":\"arcana\",\"contractId\":\"contract-001\",\"contractRevision\":1,\"maxUses\":10,\"delegationDepth\":0},\"issuedAt\":\"2026-07-29T12:00:00.000Z\",\"expiresAt\":\"2026-07-29T13:00:00.000Z\",\"nonce\":\"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d\",\"signatureAlgorithm\":\"Ed25519\",\"signature\":\"AA\"}"
   },
   {
-    "vectorId": "neg-unknown-issuer",
-    "description": "Negative: unknown issuer",
-    "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000001",
-    "publicKey": "TLWr9q15-_WrvMr8wmnYXNJlHtS4hbWGnyQa7fCluik",
-    "unsignedPayload": {
-      "schemaVersion": 1,
-      "issuerId": "node-alpha",
-      "issuerEpoch": 1,
-      "audienceNodeId": "node-beta",
-      "grant": {
-        "grantId": "grant-001",
-        "principal": {
-          "kind": "agent",
-          "id": "arcana"
-        },
-        "actions": [
-          "filesystem.read"
-        ],
-        "resources": [
-          "packages/**"
-        ],
-        "workspaceId": "arcana",
-        "contractId": "contract-001",
-        "contractRevision": 1,
-        "maxUses": 10,
-        "delegationDepth": 0
-      },
-      "issuedAt": "2026-07-29T12:00:00.000Z",
-      "expiresAt": "2026-07-29T13:00:00.000Z",
-      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
-    },
-    "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA",
-    "verificationExpected": false,
-    "expectedRejectionReason": "UNKNOWN_ISSUER",
-    "expectedStage": "TRUST",
-    "overrideIssuer": "unknown-node"
+    "vectorId": "neg-parse-unicode-replacement",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Unicode replacement character in issuerId (valid JSON, tests robustness)",
+    "envelope": {},
+    "expectedStage": "SCHEMA",
+    "expectedReason": "SCHEMA_UNSUPPORTED"
   },
   {
-    "vectorId": "neg-sig-mutation",
-    "description": "Negative: one-byte signature mutation",
-    "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000001",
-    "publicKey": "TLWr9q15-_WrvMr8wmnYXNJlHtS4hbWGnyQa7fCluik",
-    "unsignedPayload": {
-      "schemaVersion": 1,
-      "issuerId": "node-alpha",
-      "issuerEpoch": 1,
-      "audienceNodeId": "node-beta",
-      "grant": {
-        "grantId": "grant-001",
-        "principal": {
-          "kind": "agent",
-          "id": "arcana"
-        },
-        "actions": [
-          "filesystem.read"
-        ],
-        "resources": [
-          "packages/**"
-        ],
-        "workspaceId": "arcana",
-        "contractId": "contract-001",
-        "contractRevision": 1,
-        "maxUses": 10,
-        "delegationDepth": 0
-      },
-      "issuedAt": "2026-07-29T12:00:00.000Z",
-      "expiresAt": "2026-07-29T13:00:00.000Z",
-      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
-    },
-    "signature": "MRv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA",
-    "verificationExpected": false,
-    "expectedRejectionReason": "INVALID_SIGNATURE",
-    "expectedStage": "SIGNATURE"
-  },
-  {
-    "vectorId": "neg-seq-rollback",
-    "description": "Negative: policy sequence rollback",
-    "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000003",
-    "publicKey": "84FibkHnAn6kMb_jAJ6UvdJadGvuxGiUjWw8fF3JpUs",
-    "unsignedPayload": {
-      "schemaVersion": 1,
-      "issuerId": "node-alpha",
-      "issuerEpoch": 1,
-      "sequence": 1,
-      "policyId": "policy-default",
-      "policyVersion": "1.0.0",
-      "policyDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "issuedAt": "2026-07-29T12:00:00.000Z",
-      "expiresAt": "2026-07-30T12:00:00.000Z"
-    },
-    "signature": "06CpOIGCUDOcScUkbmYkO_zDVclyMZDLnlRs5BYm3xwFDYzHcqqobrGFkW20NlRMHWAcWDDmutrb2WJPniTXAA",
-    "verificationExpected": false,
-    "expectedRejectionReason": "SEQUENCE_ROLLBACK",
-    "expectedStage": "REVOCATION",
-    "knownSequenceOverride": 5
-  },
-  {
-    "vectorId": "neg-missing-field",
-    "description": "Negative: missing required field (nonce)",
-    "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000001",
-    "publicKey": "TLWr9q15-_WrvMr8wmnYXNJlHtS4hbWGnyQa7fCluik",
-    "unsignedPayload": {
-      "schemaVersion": 1,
-      "issuerId": "node-alpha",
-      "issuerEpoch": 1,
-      "audienceNodeId": "node-beta",
-      "grant": {
-        "grantId": "grant-001",
-        "principal": {
-          "kind": "agent",
-          "id": "arcana"
-        },
-        "actions": [
-          "filesystem.read"
-        ],
-        "resources": [
-          "packages/**"
-        ],
-        "workspaceId": "arcana",
-        "contractId": "contract-001",
-        "contractRevision": 1,
-        "maxUses": 10,
-        "delegationDepth": 0
-      },
-      "issuedAt": "2026-07-29T12:00:00.000Z",
-      "expiresAt": "2026-07-29T13:00:00.000Z"
-    },
-    "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA",
-    "verificationExpected": false,
-    "expectedRejectionReason": "SCHEMA_UNSUPPORTED",
-    "expectedStage": "SCHEMA"
-  },
-  {
-    "vectorId": "neg-unknown-field",
-    "description": "Negative: unknown field in envelope",
-    "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000001",
-    "publicKey": "TLWr9q15-_WrvMr8wmnYXNJlHtS4hbWGnyQa7fCluik",
-    "unsignedPayload": {
+    "vectorId": "neg-schema-unknown-field-cap",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Unknown field evilField on capability envelope",
+    "envelope": {
       "schemaVersion": 1,
       "issuerId": "node-alpha",
       "issuerEpoch": 1,
@@ -463,22 +224,41 @@
       "issuedAt": "2026-07-29T12:00:00.000Z",
       "expiresAt": "2026-07-29T13:00:00.000Z",
       "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
-      "extraField": "should-not-be-here"
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA",
+      "evilField": "should not be here"
     },
-    "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA",
-    "verificationExpected": false,
-    "expectedRejectionReason": "SCHEMA_UNSUPPORTED",
-    "expectedStage": "SCHEMA"
+    "expectedStage": "SCHEMA",
+    "expectedReason": "SCHEMA_UNSUPPORTED"
   },
   {
-    "vectorId": "neg-float-epoch",
-    "description": "Negative: floating-point issuerEpoch",
-    "privateKeySeed": "0000000000000000000000000000000000000000000000000000000000000001",
-    "publicKey": "TLWr9q15-_WrvMr8wmnYXNJlHtS4hbWGnyQa7fCluik",
-    "unsignedPayload": {
+    "vectorId": "neg-schema-unknown-field-policy",
+    "domain": "arcana:signed-policy:v1",
+    "description": "Unknown field on policy envelope",
+    "envelope": {
       "schemaVersion": 1,
       "issuerId": "node-alpha",
-      "issuerEpoch": 1.5,
+      "issuerEpoch": 1,
+      "sequence": 1,
+      "policyId": "policy-default",
+      "policyVersion": "1.0.0",
+      "policyDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-30T12:00:00.000Z",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "06CpOIGCUDOcScUkbmYkO_zDVclyMZDLnlRs5BYm3xwFDYzHcqqobrGFkW20NlRMHWAcWDDmutrb2WJPniTXAA",
+      "evilPolicyField": "should not be here"
+    },
+    "expectedStage": "SCHEMA",
+    "expectedReason": "SCHEMA_UNSUPPORTED"
+  },
+  {
+    "vectorId": "neg-schema-missing-required-cap",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Missing required field issuerId on capability envelope",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerEpoch": 1,
       "audienceNodeId": "node-beta",
       "grant": {
         "grantId": "grant-001",
@@ -500,11 +280,1063 @@
       },
       "issuedAt": "2026-07-29T12:00:00.000Z",
       "expiresAt": "2026-07-29T13:00:00.000Z",
-      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "AA"
     },
-    "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA",
-    "verificationExpected": false,
-    "expectedRejectionReason": "SCHEMA_UNSUPPORTED",
-    "expectedStage": "SCHEMA"
+    "expectedStage": "SCHEMA",
+    "expectedReason": "SCHEMA_UNSUPPORTED"
+  },
+  {
+    "vectorId": "neg-schema-missing-required-policy",
+    "domain": "arcana:signed-policy:v1",
+    "description": "Missing required field policyDigest on policy envelope",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "sequence": 1,
+      "policyId": "policy-default",
+      "policyVersion": "1.0.0",
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-30T12:00:00.000Z",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "AA"
+    },
+    "expectedStage": "SCHEMA",
+    "expectedReason": "SCHEMA_UNSUPPORTED"
+  },
+  {
+    "vectorId": "neg-cap-float-epoch",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Floating-point number in issuerEpoch",
+    "envelope": {},
+    "expectedStage": "SCHEMA",
+    "expectedReason": "SCHEMA_UNSUPPORTED",
+    "rawJson": "{\"schemaVersion\":1,\"issuerId\":\"node-alpha\",\"issuerEpoch\":1.5,\"audienceNodeId\":\"node-beta\",\"grant\":{\"grantId\":\"grant-001\",\"principal\":{\"kind\":\"agent\",\"id\":\"arcana\"},\"actions\":[\"filesystem.read\"],\"resources\":[\"packages/**\"],\"workspaceId\":\"arcana\",\"contractId\":\"contract-001\",\"contractRevision\":1,\"maxUses\":10,\"delegationDepth\":0},\"issuedAt\":\"2026-07-29T12:00:00.000Z\",\"expiresAt\":\"2026-07-29T13:00:00.000Z\",\"nonce\":\"a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d\",\"signatureAlgorithm\":\"Ed25519\",\"signature\":\"AA\"}"
+  },
+  {
+    "vectorId": "neg-cap-schema-version",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Unsupported schema version 99",
+    "envelope": {
+      "schemaVersion": 99,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "AA"
+    },
+    "expectedStage": "SCHEMA",
+    "expectedReason": "SCHEMA_UNSUPPORTED"
+  },
+  {
+    "vectorId": "neg-schema-unsafe-integer",
+    "domain": "arcana:signed-capability:v1",
+    "description": "issuerEpoch as 2^53 (unsafe integer)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 9007199254740992,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "AA"
+    },
+    "expectedStage": "SCHEMA",
+    "expectedReason": "SCHEMA_UNSUPPORTED"
+  },
+  {
+    "vectorId": "neg-schema-negative-sequence",
+    "domain": "arcana:signed-policy:v1",
+    "description": "Negative sequence number on policy envelope",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "sequence": -1,
+      "policyId": "policy-default",
+      "policyVersion": "1.0.0",
+      "policyDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-30T12:00:00.000Z",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "AA"
+    },
+    "expectedStage": "SCHEMA",
+    "expectedReason": "SCHEMA_UNSUPPORTED"
+  },
+  {
+    "vectorId": "neg-schema-noncanonical-timestamp",
+    "domain": "arcana:signed-capability:v1",
+    "description": "issuedAt without milliseconds (noncanonical timestamp)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "AA"
+    },
+    "expectedStage": "SCHEMA",
+    "expectedReason": "SCHEMA_UNSUPPORTED"
+  },
+  {
+    "vectorId": "neg-cap-missing-field",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Missing required field (nonce)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "AA"
+    },
+    "expectedStage": "SCHEMA",
+    "expectedReason": "SCHEMA_UNSUPPORTED"
+  },
+  {
+    "vectorId": "neg-sig-changed-action",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Changed grant action: filesystem.read → filesystem.write (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.write"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-resource",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Changed resource path (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/evil/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-audience",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Changed audienceNodeId (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-evil",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-epoch",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Changed issuer epoch (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 999,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-nonce",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Changed nonce (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "00000000-0000-0000-0000-000000000000",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-digest",
+    "domain": "arcana:signed-policy:v1",
+    "description": "Changed policy digest (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "sequence": 1,
+      "policyId": "policy-default",
+      "policyVersion": "1.0.0",
+      "policyDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-30T12:00:00.000Z",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "06CpOIGCUDOcScUkbmYkO_zDVclyMZDLnlRs5BYm3xwFDYzHcqqobrGFkW20NlRMHWAcWDDmutrb2WJPniTXAA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-sequence",
+    "domain": "arcana:signed-policy:v1",
+    "description": "Changed sequence number (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "sequence": 999,
+      "policyId": "policy-default",
+      "policyVersion": "1.0.0",
+      "policyDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-30T12:00:00.000Z",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "06CpOIGCUDOcScUkbmYkO_zDVclyMZDLnlRs5BYm3xwFDYzHcqqobrGFkW20NlRMHWAcWDDmutrb2WJPniTXAA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-node-pubkey",
+    "domain": "arcana:node-identity:v1",
+    "description": "Changed node public key in identity certificate (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "nodeId": "node-alpha",
+      "organizationId": "arcana-org",
+      "publicKey": "dCK5iHWYBo4yxESKlJrbKQ0PTjW54BsO5fGh5gD-JnQ",
+      "issuerId": "trust-registry",
+      "issuerEpoch": 1,
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-08-29T12:00:00.000Z",
+      "capabilities": [
+        "grant",
+        "revoke",
+        "verify"
+      ],
+      "signatureAlgorithm": "Ed25519",
+      "signature": "l47r2K6mmB6hw474RcZr5fNTz1d2ciCoUe0gte89CMKpg1SXin7U1-I7zcyaRwiUeCieoEYdpJEf3ZsdakdECg"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-revocation-subject",
+    "domain": "arcana:revocation:v1",
+    "description": "Changed revocation subject ID (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "sequence": 1,
+      "subjectType": "GRANT",
+      "subjectId": "grant-evil",
+      "reason": "operator requested revocation",
+      "effectiveAt": "2026-07-29T12:00:00.000Z",
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "fDA9IC8JvVkyNGStf150QodRmjthiVlSXsY2HtB_AXKGOglxKsoA9VZsZ1fAprHN-niMH1sOqc9wQ5fxIpTpCQ"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-mutated",
+    "domain": "arcana:signed-capability:v1",
+    "description": "One-byte signature mutation",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "Ahv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-wrong-key",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Wrong public key: verify vector 1 signature with vector 2's key",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-workspace",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Changed grant.workspaceId (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "evil-workspace",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-contract-revision",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Changed grant.contractRevision (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 999,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-expiry",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Changed expiresAt (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2099-12-31T23:59:59.999Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-changed-issuerId",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Changed issuerId (post-sign mutation)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-evil",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-invalid-base64url",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Signature with standard base64 chars (+/) instead of base64url",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "A+B/C+DEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-sig-wrong-sig-length",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Signature as valid base64url but 32 bytes instead of 64",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    "expectedStage": "SIGNATURE",
+    "expectedReason": "INVALID_SIGNATURE"
+  },
+  {
+    "vectorId": "neg-trust-unknown-issuer",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Issuer not in trusted set",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "TRUST",
+    "expectedReason": "UNKNOWN_ISSUER"
+  },
+  {
+    "vectorId": "neg-trust-issuer-epoch-too-old",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Issuer epoch too old (minimum epoch > envelope epoch, tested as unknown issuer)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "TRUST",
+    "expectedReason": "UNKNOWN_ISSUER",
+    "trustedIssuerMinimumEpoch": 100
+  },
+  {
+    "vectorId": "neg-audience-wrong-node",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Wrong expectedAudienceNodeId in verification options",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "AUDIENCE",
+    "expectedReason": "WRONG_AUDIENCE",
+    "expectedAudienceNodeId": "node-wrong"
+  },
+  {
+    "vectorId": "neg-audience-wrong-org",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Wrong organization context (tested as wrong audience node)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-29T13:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "zhv4w3MTAhvnGIB7d8hi7xQknWX_7yJMdP-z3K-_M78AMwCQR0jy4KxIH3VJq30gMXU1C8COd6qfCVOpyS6MBA"
+    },
+    "expectedStage": "AUDIENCE",
+    "expectedReason": "WRONG_AUDIENCE",
+    "expectedAudienceNodeId": "node-delta",
+    "expectedOrganization": "evil-org"
+  },
+  {
+    "vectorId": "neg-freshness-expired",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Expired envelope (expiresAt in 2020)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2020-01-01T00:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "okRoyLLxV04JGCzHLS4OltieCGlJ4YPpnxIY_5dPX9hMLm1tmr9H9h72ObVi3wTRcJ1I3M4KFTyCJRPgwNy-Dg"
+    },
+    "expectedStage": "FRESHNESS",
+    "expectedReason": "EXPIRED"
+  },
+  {
+    "vectorId": "neg-freshness-future-issued",
+    "domain": "arcana:signed-capability:v1",
+    "description": "Envelope issued in the future (issuedAt 2030, expires 2031) — expired relative to now",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "audienceNodeId": "node-beta",
+      "grant": {
+        "grantId": "grant-001",
+        "principal": {
+          "kind": "agent",
+          "id": "arcana"
+        },
+        "actions": [
+          "filesystem.read"
+        ],
+        "resources": [
+          "packages/**"
+        ],
+        "workspaceId": "arcana",
+        "contractId": "contract-001",
+        "contractRevision": 1,
+        "maxUses": 10,
+        "delegationDepth": 0
+      },
+      "issuedAt": "2030-01-01T00:00:00.000Z",
+      "expiresAt": "2031-01-01T00:00:00.000Z",
+      "nonce": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "YBwzkqyAFZo2cba_3GmDhbshKzd1Qlr8w6lEtgqhIN83R1YOOydWVHC_OMk-jUOfDvTpXxWHs5deEt3FN8gHDw"
+    },
+    "expectedStage": "FRESHNESS",
+    "expectedReason": "EXPIRED"
+  },
+  {
+    "vectorId": "neg-revocation-seq-rollback",
+    "domain": "arcana:signed-policy:v1",
+    "description": "Sequence rollback: policy sequence 1 <= known sequence 5",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "sequence": 1,
+      "policyId": "policy-default",
+      "policyVersion": "1.0.0",
+      "policyDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-30T12:00:00.000Z",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "06CpOIGCUDOcScUkbmYkO_zDVclyMZDLnlRs5BYm3xwFDYzHcqqobrGFkW20NlRMHWAcWDDmutrb2WJPniTXAA"
+    },
+    "expectedStage": "REVOCATION",
+    "expectedReason": "SEQUENCE_ROLLBACK"
+  },
+  {
+    "vectorId": "neg-revocation-grant-revoked",
+    "domain": "arcana:signed-policy:v1",
+    "description": "Grant revoked: policy sequence 3 <= known sequence 10",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "sequence": 3,
+      "policyId": "policy-default",
+      "policyVersion": "1.0.0",
+      "policyDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-30T12:00:00.000Z",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "LuqhFSe0u1ui0e8zUhx6R__GR_-51d2z717TPyOiHPgd1XVv54JjASCWQgfNPEqxUO91eUWvlJW6OBc8dcFCBw"
+    },
+    "expectedStage": "REVOCATION",
+    "expectedReason": "SEQUENCE_ROLLBACK",
+    "revokedGrantIds": [
+      "grant-001"
+    ]
+  },
+  {
+    "vectorId": "neg-revocation-node-revoked",
+    "domain": "arcana:revocation:v1",
+    "description": "Node revoked: revocation statement sequence 1 <= known sequence 5",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "sequence": 1,
+      "subjectType": "GRANT",
+      "subjectId": "grant-001",
+      "reason": "operator requested revocation",
+      "effectiveAt": "2026-07-29T12:00:00.000Z",
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "fDA9IC8JvVkyNGStf150QodRmjthiVlSXsY2HtB_AXKGOglxKsoA9VZsZ1fAprHN-niMH1sOqc9wQ5fxIpTpCQ"
+    },
+    "expectedStage": "REVOCATION",
+    "expectedReason": "SEQUENCE_ROLLBACK",
+    "revokedNodeIds": [
+      "node-beta"
+    ]
+  },
+  {
+    "vectorId": "neg-revocation-issuer-key-revoked",
+    "domain": "arcana:signed-policy:v1",
+    "description": "Issuer key revoked: policy sequence 2 <= known sequence 2 (equal is rollback)",
+    "envelope": {
+      "schemaVersion": 1,
+      "issuerId": "node-alpha",
+      "issuerEpoch": 1,
+      "sequence": 2,
+      "policyId": "policy-default",
+      "policyVersion": "1.0.0",
+      "policyDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "issuedAt": "2026-07-29T12:00:00.000Z",
+      "expiresAt": "2026-07-30T12:00:00.000Z",
+      "signatureAlgorithm": "Ed25519",
+      "signature": "FK6lXoCMNLXAy9P1N7bOW4VN-xQOfmSKXThVgb86xvCaYQcsknLUIdm8SWQFXdfeW8W6aknkMLc2VDpwye2qBQ"
+    },
+    "expectedStage": "REVOCATION",
+    "expectedReason": "SEQUENCE_ROLLBACK",
+    "revokedIssuerEpochs": [
+      1
+    ]
   }
 ]
