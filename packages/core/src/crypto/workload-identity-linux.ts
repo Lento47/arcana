@@ -50,6 +50,19 @@ export type LinuxWorkloadObservation = {
   securityLabel?: string
 }
 
+// ─── Cgroup Evidence ─────────────────────────────────────────────
+
+export type CgroupRuntime = "DOCKER" | "CONTAINERD" | "PODMAN" | "KUBERNETES"
+
+export type LinuxCgroupEvidence = {
+  version: 1 | 2
+  paths: readonly string[]
+  probableRuntime?: CgroupRuntime
+  containerId?: string
+  /** Always false — cgroup detection is descriptive unless corroborated. */
+  authoritative: false
+}
+
 // ─── Observation Result ─────────────────────────────────────────────
 
 export type LinuxObservationResult =
@@ -127,8 +140,11 @@ export function observeLinuxProcess(pid: number): LinuxObservationResult {
 
   // ── Read cgroup ──
   let cgroupPath: string | undefined
+  let cgroupEvidence: LinuxCgroupEvidence | undefined
   try {
-    cgroupPath = readFileSync(`${procBase}/cgroup`, "utf-8").trim().split("\n")[0]
+    const cgroupContent = readFileSync(`${procBase}/cgroup`, "utf-8").trim()
+    cgroupEvidence = parseCgroup(cgroupContent)
+    cgroupPath = cgroupContent.split("\n")[0]
   } catch {}
 
   // ── Read security label (SELinux/AppArmor) ──
@@ -268,5 +284,71 @@ export function parseProcStat(content: string): ProcStatFields | undefined {
   return {
     ppid: parseInt(fields[1], 10),
     starttime: fields[19],
+  }
+}
+
+/**
+ * Parse /proc/<pid>/cgroup content into structured evidence.
+ *
+ * Format v2: "0::/user.slice/..."
+ * Format v1: "N:controllers:/path"
+ *
+ * Returns structured evidence with version, paths, probable runtime,
+ * and container ID. Runtime detection is descriptive only.
+ */
+export function parseCgroup(content: string): LinuxCgroupEvidence {
+  const lines = content.split("\n").filter(l => l.trim())
+  const paths: string[] = []
+
+  // Detect v2 vs v1
+  // v2: single line starting with "0::"
+  // v1: multiple lines with "N:controllers:path"
+  const isV2 = lines.length === 1 && lines[0]!.startsWith("0::")
+  const version: 1 | 2 = isV2 ? 2 : 1
+
+  for (const line of lines) {
+    if (isV2) {
+      // v2 format: "0::/path"
+      const path = line.slice(3) // skip "0::"
+      if (path) paths.push(path)
+    } else {
+      // v1 format: "N:controllers:/path"
+      const colonIdx = line.indexOf(":", line.indexOf(":") + 1)
+      if (colonIdx >= 0) {
+        const path = line.slice(colonIdx + 1)
+        if (path) paths.push(path)
+      }
+    }
+  }
+
+  // Detect runtime and container ID
+  let probableRuntime: CgroupRuntime | undefined
+  let containerId: string | undefined
+
+  const allPaths = paths.join(" ")
+
+  // Check for container runtimes
+  if (allPaths.includes("/docker/") || allPaths.includes("/docker-")) {
+    probableRuntime = "DOCKER"
+  } else if (allPaths.includes("/containerd/") || allPaths.includes("/containerd-")) {
+    probableRuntime = "CONTAINERD"
+  } else if (allPaths.includes("/podman/") || allPaths.includes("/podman-")) {
+    probableRuntime = "PODMAN"
+  } else if (allPaths.includes("/kubepods/") || allPaths.includes("/kubepods.slice")) {
+    probableRuntime = "KUBERNETES"
+  }
+
+  // Extract container ID (64-hex-char pattern)
+  const containerMatch = allPaths.match(/([0-9a-f]{64})/)
+  if (containerMatch) {
+    containerId = containerMatch[1]
+  }
+
+  return {
+    version,
+    paths,
+    probableRuntime,
+    containerId,
+    authoritative: false,
   }
 }

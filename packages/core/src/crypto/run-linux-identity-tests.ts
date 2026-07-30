@@ -1,16 +1,20 @@
 /**
- * D-6A-L: Linux Workload Identity Collector Tests
+ * D-6A-L: Linux Workload Identity Tests
  * Run with: bun run packages/core/src/crypto/run-linux-identity-tests.ts
  *
- * Tests /proc parsing with captured fixtures.
- * Live Linux tests require WSL or Linux CI.
+ * Tests /proc parsing, cgroup v1/v2 fixtures, TOCTOU stability.
+ * Live tests require WSL or Linux.
  */
 
 import {
   parseProcStat,
+  parseCgroup,
   verifyLinuxObservationStable,
   type LinuxWorkloadObservation,
+  type LinuxCgroupEvidence,
 } from "./workload-identity-linux"
+
+// ─── Test Harness ────────────────────────────────────────────────
 
 let passed = 0
 let failed = 0
@@ -24,213 +28,381 @@ function assertEqual<T>(actual: T, expected: T, message: string) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// /proc/<pid>/stat parsing
+// 1. /proc/stat PARSING
 // ═══════════════════════════════════════════════════════════════════════
 
-console.log("Parse /proc/stat: normal process")
+console.log("\n═══ D-6A-L /proc/stat Parsing ═══")
+
+console.log("normal process")
 {
-  // Typical: 1234 (bash) S 1000 1234 1234 0 -1 4194304 ...
-  // Field 3 = state, field 4 = ppid, field 22 = starttime
-  const stat = "1234 (bash) S 1000 1234 1234 0 -1 4194304 1234 0 0 0 0 0 0 0 20 0 1 0 5000 12345 100 18446744073709551615"
+  // Standard format: pid (comm) state ppid ... starttime (field 19 after comm)
+  const stat = "1234 (bash) S 1000 1234 1234 34816 1234 4194304 123 0 0 0 0 0 0 0 20 0 1 0 12345678 ..."
   const result = parseProcStat(stat)
-  assert(result !== undefined, "parses successfully")
-  assertEqual(result!.ppid, 1000, "PPID is 1000")
-  assertEqual(result!.starttime, "5000", "starttime is 5000")
+  assert(result !== undefined, "parsed")
+  assertEqual(result!.ppid, 1000, "ppid")
+  assertEqual(result!.starttime, "12345678", "starttime")
 }
 
-console.log("Parse /proc/stat: process with spaces in name")
+console.log("process with spaces in comm")
 {
-  // "my process name" with spaces
-  const stat = "5678 (my process name) R 1000 5678 5678 0 -1 4194304 500 0 0 0 0 0 0 0 20 0 1 0 6000 20000 50 18446744073709551615"
+  const stat = "5678 (my process name) R 1000 5678 5678 34816 5678 4194304 100 0 0 0 0 0 0 0 20 0 1 0 98765432 ..."
   const result = parseProcStat(stat)
-  assert(result !== undefined, "parses with spaces in name")
-  assertEqual(result!.ppid, 1000, "PPID correct")
-  assertEqual(result!.starttime, "6000", "starttime correct")
+  assert(result !== undefined, "parsed with spaces")
+  assertEqual(result!.ppid, 1000, "ppid")
+  assertEqual(result!.starttime, "98765432", "starttime")
 }
 
-console.log("Parse /proc/stat: process with parentheses in name")
+console.log("process with parentheses in comm")
 {
-  // Process name contains parens: "test (foo)"
-  const stat = "9999 (test (foo)) S 100 9999 9999 0 -1 4194304 100 0 0 0 0 0 0 0 20 0 1 0 7000 30000 60 18446744073709551615"
+  const stat = "9999 (process (with) parens) S 1 9999 9999 34816 9999 4194304 50 0 0 0 0 0 0 0 20 0 1 0 11111111 ..."
   const result = parseProcStat(stat)
-  assert(result !== undefined, "parses with parens in name")
-  assertEqual(result!.ppid, 100, "PPID correct")
-  assertEqual(result!.starttime, "7000", "starttime correct")
+  assert(result !== undefined, "parsed with parens")
+  assertEqual(result!.ppid, 1, "ppid (init)")
+  assertEqual(result!.starttime, "11111111", "starttime")
 }
 
-console.log("Parse /proc/stat: kernel thread (kthreadd)")
+console.log("kernel thread (comm = kworker)")
 {
-  // PID 2: kthreadd
-  const stat = "2 (kthreadd) S 0 0 0 0 -1 2129920 0 0 0 0 0 0 0 0 20 0 1 0 10 0 0 18446744073709551615"
+  const stat = "100 (kworker/0:1) S 2 100 100 0 -1 69238816 0 0 0 0 0 0 0 0 20 0 1 0 55555555 ..."
   const result = parseProcStat(stat)
-  assert(result !== undefined, "parses kthreadd")
-  assertEqual(result!.ppid, 0, "PPID is 0 (init)")
+  assert(result !== undefined, "parsed kernel thread")
+  assertEqual(result!.ppid, 2, "ppid (kthreadd)")
 }
 
-console.log("Parse /proc/stat: malformed input")
+console.log("malformed stat — no closing paren")
 {
-  assert(parseProcStat("") === undefined, "empty string returns undefined")
-  assert(parseProcStat("invalid") === undefined, "invalid string returns undefined")
-  assert(parseProcStat("1234 (") === undefined, "incomplete paren returns undefined")
-}
-
-console.log("Parse /proc/stat: process with very long name")
-{
-  const longName = "a".repeat(200)
-  const stat = `1234 (${longName}) S 1000 1234 1234 0 -1 4194304 100 0 0 0 0 0 0 0 20 0 1 0 8000 40000 70 18446744073709551615`
+  const stat = "1234 (broken"
   const result = parseProcStat(stat)
-  assert(result !== undefined, "parses long name")
-  assertEqual(result!.ppid, 1000, "PPID correct")
+  assertEqual(result, undefined, "returns undefined")
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// TOCTOU stability
-// ═══════════════════════════════════════════════════════════════════════
-
-console.log("TOCTOU: identical observation is stable")
+console.log("malformed stat — too few fields after comm")
 {
-  const obs: LinuxWorkloadObservation = {
-    pid: 1234, processStartTicks: "5000",
-    executablePath: "/usr/bin/bun", executableDigest: "abc123",
-    executableDevice: "2049", executableInode: "123456",
-    uid: 1000, gid: 1000,
-    parentPid: 1000, parentStartTicks: "1000",
-    mountNamespace: "mnt:[4026531840]", pidNamespace: "pid:[4026531836]",
-    userNamespace: "user:[4026531837]",
-  }
-
-  const result = verifyLinuxObservationStable(obs, { ...obs })
-  assert(result.stable === true, "identical observation is stable")
+  const stat = "1234 (x) S 1000"
+  const result = parseProcStat(stat)
+  assertEqual(result, undefined, "returns undefined for too few fields")
 }
 
-console.log("TOCTOU: PID change detected")
+console.log("single-character comm")
 {
-  const obs: LinuxWorkloadObservation = {
-    pid: 1234, processStartTicks: "5000",
-    executablePath: "/usr/bin/bun", executableDigest: "abc123",
-    executableDevice: "2049", executableInode: "123456",
-    uid: 1000, gid: 1000,
-    mountNamespace: "mnt:[4026531840]", pidNamespace: "pid:[4026531836]",
-    userNamespace: "user:[4026531837]",
-  }
-
-  const result = verifyLinuxObservationStable(obs, { ...obs, pid: 9999 })
-  assert(result.stale === false && result.reason.includes("PID"), "PID change detected")
-}
-
-console.log("TOCTOU: PID reuse detected (start time change)")
-{
-  const obs: LinuxWorkloadObservation = {
-    pid: 1234, processStartTicks: "5000",
-    executablePath: "/usr/bin/bun", executableDigest: "abc123",
-    executableDevice: "2049", executableInode: "123456",
-    uid: 1000, gid: 1000,
-    mountNamespace: "mnt:[4026531840]", pidNamespace: "pid:[4026531836]",
-    userNamespace: "user:[4026531837]",
-  }
-
-  const result = verifyLinuxObservationStable(obs, { ...obs, processStartTicks: "9999" })
-  assert(result.stale === false && result.reason.includes("start time"), "PID reuse detected")
-}
-
-console.log("TOCTOU: executable inode change detected")
-{
-  const obs: LinuxWorkloadObservation = {
-    pid: 1234, processStartTicks: "5000",
-    executablePath: "/usr/bin/bun", executableDigest: "abc123",
-    executableDevice: "2049", executableInode: "123456",
-    uid: 1000, gid: 1000,
-    mountNamespace: "mnt:[4026531840]", pidNamespace: "pid:[4026531836]",
-    userNamespace: "user:[4026531837]",
-  }
-
-  const result = verifyLinuxObservationStable(obs, { ...obs, executableInode: "999999" })
-  assert(result.stale === false && result.reason.includes("inode"), "inode change detected")
-}
-
-console.log("TOCTOU: executable digest change detected")
-{
-  const obs: LinuxWorkloadObservation = {
-    pid: 1234, processStartTicks: "5000",
-    executablePath: "/usr/bin/bun", executableDigest: "abc123",
-    executableDevice: "2049", executableInode: "123456",
-    uid: 1000, gid: 1000,
-    mountNamespace: "mnt:[4026531840]", pidNamespace: "pid:[4026531836]",
-    userNamespace: "user:[4026531837]",
-  }
-
-  const result = verifyLinuxObservationStable(obs, { ...obs, executableDigest: "EVIL" })
-  assert(result.stale === false && result.reason.includes("digest"), "digest change detected")
-}
-
-console.log("TOCTOU: UID change detected")
-{
-  const obs: LinuxWorkloadObservation = {
-    pid: 1234, processStartTicks: "5000",
-    executablePath: "/usr/bin/bun", executableDigest: "abc123",
-    executableDevice: "2049", executableInode: "123456",
-    uid: 1000, gid: 1000,
-    mountNamespace: "mnt:[4026531840]", pidNamespace: "pid:[4026531836]",
-    userNamespace: "user:[4026531837]",
-  }
-
-  const result = verifyLinuxObservationStable(obs, { ...obs, uid: 0 })
-  assert(result.stale === false && result.reason.includes("UID"), "UID change detected")
-}
-
-console.log("TOCTOU: mount namespace change detected")
-{
-  const obs: LinuxWorkloadObservation = {
-    pid: 1234, processStartTicks: "5000",
-    executablePath: "/usr/bin/bun", executableDigest: "abc123",
-    executableDevice: "2049", executableInode: "123456",
-    uid: 1000, gid: 1000,
-    mountNamespace: "mnt:[4026531840]", pidNamespace: "pid:[4026531836]",
-    userNamespace: "user:[4026531837]",
-  }
-
-  const result = verifyLinuxObservationStable(obs, { ...obs, mountNamespace: "mnt:[4026539999]" })
-  assert(result.stale === false && result.reason.includes("mount namespace"), "mount namespace change detected")
-}
-
-console.log("TOCTOU: PID namespace change detected")
-{
-  const obs: LinuxWorkloadObservation = {
-    pid: 1234, processStartTicks: "5000",
-    executablePath: "/usr/bin/bun", executableDigest: "abc123",
-    executableDevice: "2049", executableInode: "123456",
-    uid: 1000, gid: 1000,
-    mountNamespace: "mnt:[4026531840]", pidNamespace: "pid:[4026531836]",
-    userNamespace: "user:[4026531837]",
-  }
-
-  const result = verifyLinuxObservationStable(obs, { ...obs, pidNamespace: "pid:[4026539999]" })
-  assert(result.stale === false && result.reason.includes("PID namespace"), "PID namespace change detected")
-}
-
-console.log("TOCTOU: user namespace change detected")
-{
-  const obs: LinuxWorkloadObservation = {
-    pid: 1234, processStartTicks: "5000",
-    executablePath: "/usr/bin/bun", executableDigest: "abc123",
-    executableDevice: "2049", executableInode: "123456",
-    uid: 1000, gid: 1000,
-    mountNamespace: "mnt:[4026531840]", pidNamespace: "pid:[4026531836]",
-    userNamespace: "user:[4026531837]",
-  }
-
-  const result = verifyLinuxObservationStable(obs, { ...obs, userNamespace: "user:[4026539999]" })
-  assert(result.stale === false && result.reason.includes("user namespace"), "user namespace change detected")
+  const stat = "1 (init) S 0 1 1 0 -1 4194304 100 0 0 0 0 0 0 0 20 0 1 0 100 ..."
+  const result = parseProcStat(stat)
+  assert(result !== undefined, "parsed single-char comm")
+  assertEqual(result!.ppid, 0, "ppid is 0 (no parent)")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// 2. CGROUP PARSING — v2
+// ═══════════════════════════════════════════════════════════════════════
 
-console.log(`\n═══════════════════════════════════════════`)
-console.log(`Total: ${passed + failed}  Passed: ${passed}  Failed: ${failed}`)
-if (failures.length > 0) {
-  console.log(`\nFailures:`)
-  for (const f of failures) console.log(`  ✗ ${f}`)
-  process.exit(1)
+console.log("\n═══ D-6A-L Cgroup v2 Parsing ═══")
+
+console.log("host process (user service)")
+{
+  const content = "0::/user.slice/user-1000.slice/session-2.scope"
+  const result = parseCgroup(content)
+  assertEqual(result.version, 2, "version")
+  assertEqual(result.paths.length, 1, "1 path")
+  assertEqual(result.paths[0], "/user.slice/user-1000.slice/session-2.scope", "path")
+  assertEqual(result.probableRuntime, undefined, "no container runtime")
+  assertEqual(result.containerId, undefined, "no container ID")
+  assertEqual(result.authoritative, false, "descriptive only")
+}
+
+console.log("systemd system service")
+{
+  const content = "0::/system.slice/sshd.service"
+  const result = parseCgroup(content)
+  assertEqual(result.version, 2, "version")
+  assertEqual(result.paths[0], "/system.slice/sshd.service", "path")
+}
+
+console.log("root cgroup")
+{
+  const content = "0::/"
+  const result = parseCgroup(content)
+  assertEqual(result.version, 2, "version")
+  assertEqual(result.paths[0], "/", "root path")
+}
+
+console.log("empty cgroup path")
+{
+  const content = "0::"
+  const result = parseCgroup(content)
+  assertEqual(result.version, 2, "version")
+  assertEqual(result.paths.length, 0, "empty paths")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 3. CGROUP PARSING — v1
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("\n═══ D-6A-L Cgroup v1 Parsing ═══")
+
+console.log("Docker container")
+{
+  const content = [
+    "12:perf_event:/docker/abc123def456789012345678901234567890123456789012345678901234abcd",
+    "11:memory:/docker/abc123def456789012345678901234567890123456789012345678901234abcd",
+    "10:cpu,cpuacct:/docker/abc123def456789012345678901234567890123456789012345678901234abcd",
+    "9:cpuset:/docker/abc123def456789012345678901234567890123456789012345678901234abcd",
+  ].join("\n")
+  const result = parseCgroup(content)
+  assertEqual(result.version, 1, "version")
+  assert(result.paths.length === 4, "4 paths")
+  assertEqual(result.probableRuntime, "DOCKER", "detected Docker")
+  assert(result.containerId !== undefined, "container ID extracted")
+  assert(result.containerId!.length === 64, "container ID is 64 hex chars")
+  assertEqual(result.authoritative, false, "descriptive only")
+}
+
+console.log("containerd container")
+{
+  const content = [
+    "11:memory:/containerd/abc123def456789012345678901234567890123456789012345678901234abcd",
+    "10:cpu,cpuacct:/containerd/abc123def456789012345678901234567890123456789012345678901234abcd",
+  ].join("\n")
+  const result = parseCgroup(content)
+  assertEqual(result.version, 1, "version")
+  assertEqual(result.probableRuntime, "CONTAINERD", "detected containerd")
+}
+
+console.log("podman container")
+{
+  const content = [
+    "11:memory:/podman/abc123def456789012345678901234567890123456789012345678901234abcd",
+  ].join("\n")
+  const result = parseCgroup(content)
+  assertEqual(result.version, 1, "version")
+  assertEqual(result.probableRuntime, "PODMAN", "detected podman")
+}
+
+console.log("Kubernetes pod")
+{
+  const content = [
+    "11:memory:/kubepods/besteffort/podabc123/def456",
+    "10:cpu,cpuacct:/kubepods/besteffort/podabc123/def456",
+  ].join("\n")
+  const result = parseCgroup(content)
+  assertEqual(result.version, 1, "version")
+  assertEqual(result.probableRuntime, "KUBERNETES", "detected Kubernetes")
+}
+
+console.log("multiple controllers")
+{
+  const content = [
+    "11:memory:/user.slice",
+    "10:cpu,cpuacct:/user.slice",
+    "9:cpuset:/user.slice",
+    "8:blkio:/user.slice",
+    "7:devices:/user.slice",
+  ].join("\n")
+  const result = parseCgroup(content)
+  assertEqual(result.version, 1, "version")
+  assertEqual(result.paths.length, 5, "5 paths")
+  assertEqual(result.probableRuntime, undefined, "no container runtime")
+}
+
+console.log("empty/root cgroup v1")
+{
+  const content = "10:cpu,cpuacct:/"
+  const result = parseCgroup(content)
+  assertEqual(result.version, 1, "version")
+  assertEqual(result.paths[0], "/", "root path")
+}
+
+console.log("malformed entry — no second colon")
+{
+  const content = "10 malformed"
+  const result = parseCgroup(content)
+  assertEqual(result.version, 1, "version (fallback)")
+  assertEqual(result.paths.length, 0, "no paths from malformed")
+}
+
+console.log("empty content")
+{
+  const content = ""
+  const result = parseCgroup(content)
+  // Empty content has 0 lines, isV2 check: lines.length === 1 && startsWith("0::") → false → v1
+  assertEqual(result.version, 1, "version (fallback)")
+  assertEqual(result.paths.length, 0, "no paths")
+}
+
+console.log("docker-compose with container name in path")
+{
+  const content = "11:memory:/docker/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  const result = parseCgroup(content)
+  assertEqual(result.probableRuntime, "DOCKER", "Docker")
+  assert(result.containerId !== undefined, "container ID")
+  assert(result.containerId!.length === 64, "64 hex chars")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 4. TOCTOU STABILITY — field changes
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("\n═══ D-6A-L TOCTOU Stability ═══")
+
+function makeObservation(overrides?: Partial<LinuxWorkloadObservation>): LinuxWorkloadObservation {
+  return {
+    pid: 1234,
+    processStartTicks: "12345678",
+    executablePath: "/usr/bin/bash",
+    executableDigest: "abc123",
+    executableDevice: "100",
+    executableInode: "500",
+    uid: 1000,
+    gid: 1000,
+    parentPid: 1,
+    parentStartTicks: "100",
+    parentExecutableDigest: "def456",
+    mountNamespace: "mnt:[4026531840]",
+    pidNamespace: "pid:[4026531836]",
+    userNamespace: "user:[4026531837]",
+    cgroupPath: "0::/user.slice",
+    securityLabel: "unconfined",
+    ...overrides,
+  }
+}
+
+const baseObs = makeObservation()
+
+console.log("identical observations are stable")
+{
+  const result = verifyLinuxObservationStable(baseObs, makeObservation())
+  assert("stable" in result, "stable")
+}
+
+console.log("same PID, changed start ticks → MISMATCH")
+{
+  const result = verifyLinuxObservationStable(baseObs, makeObservation({ processStartTicks: "99999999" }))
+  assert(!("stable" in result), "not stable")
+  assert(!("stable" in result) && result.reason.includes("start time"), "reason mentions start time")
+}
+
+console.log("executable device/inode changed → MISMATCH")
+{
+  const result = verifyLinuxObservationStable(baseObs, makeObservation({ executableDevice: "200" }))
+  assert(!("stable" in result), "not stable")
+  assert(!("stable" in result) && result.reason.includes("inode"), "reason mentions inode")
+}
+
+console.log("executable digest changed → MISMATCH")
+{
+  const result = verifyLinuxObservationStable(baseObs, makeObservation({ executableDigest: "changed" }))
+  assert(!("stable" in result), "not stable")
+  assert(!("stable" in result) && result.reason.includes("digest"), "reason mentions digest")
+}
+
+console.log("UID/GID changed → MISMATCH")
+{
+  const result = verifyLinuxObservationStable(baseObs, makeObservation({ uid: 0 }))
+  assert(!("stable" in result), "not stable")
+  assert(!("stable" in result) && result.reason.includes("UID"), "reason mentions UID")
+}
+
+console.log("mount namespace changed → MISMATCH")
+{
+  const result = verifyLinuxObservationStable(baseObs, makeObservation({ mountNamespace: "mnt:[9999999999]" }))
+  assert(!("stable" in result), "not stable")
+  assert(!("stable" in result) && result.reason.includes("mount"), "reason mentions mount")
+}
+
+console.log("PID namespace changed → MISMATCH")
+{
+  const result = verifyLinuxObservationStable(baseObs, makeObservation({ pidNamespace: "pid:[9999999999]" }))
+  assert(!("stable" in result), "not stable")
+  assert(!("stable" in result) && result.reason.includes("PID namespace"), "reason mentions PID namespace")
+}
+
+console.log("user namespace changed → MISMATCH")
+{
+  const result = verifyLinuxObservationStable(baseObs, makeObservation({ userNamespace: "user:[9999999999]" }))
+  assert(!("stable" in result), "not stable")
+  assert(!("stable" in result) && result.reason.includes("user namespace"), "reason mentions user namespace")
+}
+
+console.log("PID changed → MISMATCH")
+{
+  const result = verifyLinuxObservationStable(baseObs, makeObservation({ pid: 5678 }))
+  assert(!("stable" in result), "not stable")
+  assert(!("stable" in result) && result.reason.includes("PID"), "reason mentions PID")
+}
+
+console.log("cgroupPath change is NOT checked (descriptive)")
+{
+  // cgroup path is not authority-bearing
+  const result = verifyLinuxObservationStable(baseObs, makeObservation({ cgroupPath: "0::/docker/..." }))
+  assert("stable" in result, "stable (cgroup is descriptive)")
+}
+
+console.log("securityLabel change is NOT checked (descriptive)")
+{
+  const result = verifyLinuxObservationStable(baseObs, makeObservation({ securityLabel: "container_t" }))
+  assert("stable" in result, "stable (security label is descriptive)")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 5. LIVE LINUX (WSL) — if /proc/self exists
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("\n═══ D-6A-L Live Linux (WSL) ═══")
+
+import { existsSync } from "node:fs"
+
+if (existsSync("/proc/self")) {
+  console.log("/proc/self exists — running live tests")
+
+  // Import the actual collector
+  const { observeLinuxProcess } = require("./workload-identity-linux")
+
+  console.log("observe current process")
+  {
+    const result = observeLinuxProcess(process.pid)
+    assert(result.success === true, "observation succeeds")
+    if (result.success) {
+      assertEqual(result.observation.pid, process.pid, "PID matches")
+      assert(result.observation.processStartTicks !== "0", "start ticks collected")
+      assert(result.observation.executablePath !== "unknown", "executable path resolved")
+      assert(result.observation.executableDigest !== "unknown", "digest computed")
+      assert(result.observation.uid > 0, "UID is non-zero")
+      assert(result.observation.mountNamespace !== "unknown", "mount namespace collected")
+      assert(result.observation.pidNamespace !== "unknown", "PID namespace collected")
+      assert(result.observation.userNamespace !== "unknown", "user namespace collected")
+      assert(result.assurance === "OS_OBSERVED", "assurance is OS_OBSERVED")
+    }
+  }
+
+  console.log("observe twice — same process is stable")
+  {
+    const obs1 = observeLinuxProcess(process.pid)
+    const obs2 = observeLinuxProcess(process.pid)
+    if (obs1.success && obs2.success) {
+      const result = verifyLinuxObservationStable(obs1.observation, obs2.observation)
+      assert("stable" in result, "stable across re-reads")
+    }
+  }
+
+  console.log("observe non-existent PID → fail closed")
+  {
+    const result = observeLinuxProcess(999999999)
+    assert(result.success === false, "fails closed")
+    assert(result.assurance === "DECLARED", "assurance is DECLARED")
+  }
 } else {
-  console.log(`✓ All tests passed`)
+  console.log("/proc/self not available — skipping live tests (Windows native)")
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// SUMMARY
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("\n═══════════════════════════════════════════════════════════════════")
+console.log(`D-6A-L Linux Identity: ${passed} passed, ${failed} failed`)
+if (failures.length) {
+  console.log("\nFailed:")
+  failures.forEach(f => console.log(`  ✗ ${f}`))
+}
+console.log("═══════════════════════════════════════════════════════════════════")
+
+if (failed > 0) process.exit(1)
