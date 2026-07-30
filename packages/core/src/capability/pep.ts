@@ -287,6 +287,37 @@ export function authorizeAndExecuteEffect<T>(
     // Step 7: ALLOW — check if approval-based
     const approvalId = extractApprovalId(firstDecision)
 
+    if (approvalId && !approvalStore) {
+      // Approval-backed ALLOW but no store to claim/consume — DENY.
+      // Otherwise a construction path could load approved scopes into the
+      // snapshot but omit the component responsible for claiming them.
+      yield* emitEvent(eventEmitter, {
+        sessionId: req.sessionId,
+        actor: { kind: "policy", id: "pep" },
+        type: "authorization.denied",
+        payload: {
+          requestId: req.requestId,
+          reason: `approval ${approvalId} requires approvalStore but none provided`,
+        },
+      })
+      return {
+        status: "DENIED" as const,
+        request: req,
+        decision: {
+          ...firstDecision,
+          decision: "DENY" as const,
+          reasons: [
+            ...firstDecision.reasons,
+            {
+              code: "DENY_APPROVAL_STORE_UNAVAILABLE",
+              message: `Approval ${approvalId} requires approvalStore but none provided`,
+              severity: "critical" as const,
+            },
+          ],
+        },
+      }
+    }
+
     if (approvalId && approvalStore) {
       // Approval-based allow: atomically claim before execution.
       // The atomic claim replaces the second evaluation — if it succeeds,

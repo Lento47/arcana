@@ -637,6 +637,57 @@ describe("Wave 1 Group F: Failure modes", () => {
     expect(executorCalls).toBe(0)
   })
 
+  // F1b — Approval store absent on approval-backed allow
+  it("F1b: Approved scope present + approvalStore absent → DENY, executor calls = 0", async () => {
+    const store = new InMemoryScopedApprovalStore()
+
+    const request = makeRequest({
+      tool: "git_push",
+      action: "git.push",
+      resource: { kind: "git", path: "packages/engine" },
+    })
+
+    const pending = createPendingApproval(request, "evt-create")
+    const { approval, capability } = approveRequest(pending, "evt-approve")
+    Effect.runSync(store.putApproval(approval))
+
+    // Context has approvedScopes — PDP will return ALLOW via approval
+    const ctx = makeContext([capability], {
+      approvedScopes: [{
+        requestHash: approval.requestHash,
+        approvalId: approval.id,
+        capabilityId: capability.id,
+        principalId: approval.principalId,
+        sessionId: approval.sessionId,
+        expiresAt: approval.expiresAt,
+        maxUses: approval.maxUses,
+      }],
+    })
+
+    const { events, emitter } = collectEvents()
+    const provider = new TestContextProvider(ctx)
+
+    let executorCalls = 0
+    const effect: PreparedEffect<string> = {
+      request,
+      executeExact: () => { executorCalls++; return "executed" },
+    }
+
+    // PEP call WITHOUT approvalStore — should DENY
+    const result = await Effect.runPromise(
+      authorizeAndExecuteEffect(effect, provider, emitter),
+    )
+
+    expect(result.status).toBe("DENIED")
+    expect(executorCalls).toBe(0)
+    // Verify the denial reason
+    if (result.status === "DENIED") {
+      expect(result.decision.reasons.some(
+        (r: any) => r.code === "DENY_APPROVAL_STORE_UNAVAILABLE",
+      )).toBe(true)
+    }
+  })
+
   // F2 — Sequential calls on same approval → second denied after first consumes
   it("F2: First PEP call consumes approval → second call cannot execute", async () => {
     const store = new InMemoryScopedApprovalStore()
