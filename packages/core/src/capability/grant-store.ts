@@ -10,11 +10,22 @@
  */
 
 import { Effect } from "effect"
-import type { PolicyContext, WorkspaceTrust, ApprovedRequestScope } from "./pdp"
+import type { PolicyContext, WorkspaceTrust } from "./pdp"
 import type { PolicyContextProvider } from "./pep"
-import type { CapabilityGrant, IntentBinding, CapabilityStatus } from "./types"
-import type { ScopedApproval, ScopedApprovalDecision } from "./scoped-approval"
+import type { CapabilityGrant, IntentBinding } from "./types"
 import { POLICY_VERSION } from "./types"
+import type { ScopedApproval } from "./scoped-approval"
+
+/** Deep freeze for policy snapshots — no mutable references escape. */
+function deepFreeze<T>(obj: T): T {
+  if (obj && typeof obj === "object") {
+    Object.freeze(obj)
+    for (const key of Object.keys(obj as Record<string, unknown>)) {
+      deepFreeze((obj as Record<string, unknown>)[key])
+    }
+  }
+  return obj
+}
 
 // ─── Approved Scope Snapshot ──────────────────────────────────────────
 
@@ -472,17 +483,17 @@ export class SessionPolicyProvider {
         // Determine
         const hasDelegatedGrants = grants.some((g) => g.issuer.kind === "parent_capability")
 
-        return {
+        return deepFreeze({
           now: new Date().toISOString(),
           policyVersion: POLICY_VERSION,
-          capabilities: grants,
+          capabilities: grants.map((g) => ({ ...g, constraints: { ...g.constraints }, delegation: { ...g.delegation } })),
           explicitDenyRules: [],
           approvalRules: [],
           workspaceTrust: this.binding.workspaceTrust,
-          intentBindings,
-          approvedScopes,
+          intentBindings: intentBindings?.map((b) => ({ ...b })),
+          approvedScopes: approvedScopes.map((s) => ({ ...s })),
           validateAncestors: hasDelegatedGrants,
-        } satisfies PolicyContext
+        }) satisfies PolicyContext
       },
     )
   }
