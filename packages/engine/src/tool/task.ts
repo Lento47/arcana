@@ -18,6 +18,7 @@ import { Database } from "@arcana/core/database/database"
 import { getSessionGoal, setSessionGoal } from "@arcana/core/session/goal"
 import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
 import { delegateCapabilities, type CapabilityGrantDraft } from "@arcana/core/capability/delegation"
+import { ContractEngine } from "../session/epistemic/contract-engine"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>
@@ -242,58 +243,143 @@ export const TaskTool = Tool.define(
       // Load parent's capability grants and delegate attenuated grants to child.
       // This runs alongside PermissionV1 — both systems are active.
       // The capability PEP in tools.ts enforces capability grants at execution time.
+      //
+      // Non-fatal: if delegation fails, the child session runs without capability
+      // grants (PEP will deny consequential tools). This is honest — the child
+      // gets no authority it shouldn't have.
       yield* Effect.gen(function* () {
         const grantStore = new SqliteGrantStore(database)
+
+        // Use parent.agent (from session lookup) not input.agent.name
+        const parentPrincipalId = parent.agent
+        if (!parentPrincipalId) {
+          // No agent identity on parent session — skip delegation
+          return
+        }
+
         const parentGrants = yield* grantStore
-          .getGrantsForPrincipal(input.agent.name, ctx.sessionID)
+          .getGrantsForPrincipal(parentPrincipalId, ctx.sessionID)
           .pipe(Effect.catch(() => Effect.succeed([])))
 
-        if (parentGrants.length > 0) {
-          // Derive child capability grants from parent
-          const childDrafts: CapabilityGrantDraft[] = parentGrants.map((pg) => ({
-            actions: pg.actions,
-            resources: pg.resources,
-            constraints: {
-              toolNames: pg.constraints.toolNames,
-              executable: pg.constraints.executable,
-              networkHosts: pg.constraints.networkHosts,
-              maxUses: pg.constraints.maxUses,
-            },
-          }))
+        if (parentGrants.length === 0) {
+          // No grants to delegate — child runs without capability grants
+          return
+        }
 
-          const delegationResult = delegateCapabilities(
-            {
-              parentPrincipalId: input.agent.name,
-              childPrincipalId: next.name,
-              parentSessionId: ctx.sessionID,
-              childSessionId: nextSession.id,
-              contractId: parentGrants[0]?.constraints.contractId ?? "default",
-              contractRevision: parentGrants[0]?.constraints.contractRevision ?? 1,
-              requestedGrants: childDrafts,
-              delegatedContext: {
-                sourceEventIds: parentGrants.map((pg) => pg.createdEventId),
-                provenance: [],
-                sensitivity: "PUBLIC",
-                contractId: parentGrants[0]?.constraints.contractId ?? "default",
-                contractRevision: parentGrants[0]?.constraints.contractRevision ?? 1,
-                parentSessionId: ctx.sessionID,
-              },
+        // Get active contract for delegation context
+        // Query ContractTable for the active contract in this session
+        let contractId = `session-${ctx.sessionID}`
+        let contractRevision = 1
+
+        try {
+          // Attempt to load active contract from the epistemic system
+          const contractRows = yield* Effect.tryPromise({
+            try: async () => {
+              const { ContractTable } = await import("@arcana/core/epistemic/contract-sql")
+              const { eq } = await import("drizzle-orm")
+              const rows = database.db.select().from(ContractTable).where(
+                eq(ContractTable.session_id, ctx.sessionID),
+              )
+              const allRows = await Effect.runPromise(
+                rows.pipe(Effect.mapError(() => new Error("query failed")))
+              )
+              return allRows as Array<{ id: string; status: string; revision: number }>
             },
-            [...parentGrants],
-            `delegation-${ctx.sessionID}-${nextSession.id}`,
+            catch: () => [] as Array<{ id: string; status: string; revision: number }>,
+          })
+
+          const activeContract = contractRows.find((r) => r.status === "active")
+          if (activeContract) {
+            contractId = activeContract.id
+            contractRevision = activeContract.revision
+          } else {
+            // No active contract — log warning and skip delegation gracefully
+            yield* Effect.logWarning(
+              `No active contract found for session ${ctx.sessionID}, skipping capability delegation`,
+            )
+            return
+          }
+        } catch {
+          // Contract query failed — skip delegation gracefully
+          yield* Effect.logWarning(
+            `Failed to query contract for session ${ctx.sessionID}, skipping capability delegation`,
+          )
+          return
+        }
+
+        // Derive child capability grants from parent
+        const childDrafts: CapabilityGrantDraft[] = parentGrants.map((pg) => ({
+          actions: pg.actions,
+          resources: pg.resources,
+          constraints: {
+            toolNames: pg.constraints.toolNames,
+            executable: pg.constraints.executable,
+            networkHosts: pg.constraints.networkHosts,
+            maxUses: pg.constraints.maxUses,
+          },
+        }))
+
+        const delegationResult = delegateCapabilities(
+          {
+            parentPrincipalId,
+            childPrincipalId: next.name,
+            parentSessionId: ctx.sessionID,
+            childSessionId: nextSession.id,
+            contractId,
+            contractRevision,
+            requestedGrants: childDrafts,
+            delegatedContext: {
+              sourceEventIds: parentGrants.map((pg) => pg.createdEventId),
+              provenance: [],
+              sensitivity: "PUBLIC",
+              contractId,
+              contractRevision,
+              parentSessionId: ctx.sessionID,
+            },
+          },
+          [...parentGrants],
+          `delegation-${ctx.sessionID}-${nextSession.id}`,
+        )
+
+        if (delegationResult.status === "CREATED") {
+          // Insert child grants as PENDING first
+          for (const grant of delegationResult.childGrants) {
+            yield* grantStore.putGrant({
+              ...grant,
+              status: "PENDING" as const,
+            }).pipe(
+              Effect.catch(() => Effect.void),
+            )
+          }
+
+          // Activate PENDING grants after child session is confirmed
+          const activated = yield* grantStore.activateGrantsForSession(nextSession.id).pipe(
+            Effect.catch(() => Effect.succeed(0)),
           )
 
-          if (delegationResult.status === "CREATED") {
-            for (const grant of delegationResult.childGrants) {
-              yield* grantStore.putGrant(grant).pipe(
-                Effect.catch(() => Effect.void),
-              )
-            }
+          if (activated === 0) {
+            yield* Effect.logWarning(
+              `No grants activated for child session ${nextSession.id}`,
+            )
           }
-          // If delegation is denied, the child session still runs but
-          // the capability PEP will deny all consequential tool calls.
         }
-      }).pipe(Effect.catch(() => Effect.void))
+        // If delegation is denied, the child session still runs but
+        // the capability PEP will deny all consequential tool calls.
+      }).pipe(
+        // Non-fatal: catch all errors so delegation failures don't break the task
+        Effect.catch((error) =>
+          Effect.gen(function* () {
+            yield* Effect.logWarning(
+              `Capability delegation failed for child session: ${String(error)}`,
+            )
+            // Revoke any PENDING grants that may have been inserted
+            const grantStore = new SqliteGrantStore(database)
+            yield* grantStore.revokePendingGrantsForSession(nextSession.id).pipe(
+              Effect.catch(() => Effect.succeed(0)),
+            )
+          })
+        ),
+      )
       // ── End Phase C capability delegation ────────────────────────────
 
       const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID }).pipe(

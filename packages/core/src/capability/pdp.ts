@@ -9,6 +9,7 @@
  */
 
 import { computeRequestHash } from "./request-hash"
+import type { ScopedApprovalDecision } from "./scoped-approval"
 import type {
   AuthorizationRequest,
   AuthorizationDecision,
@@ -61,6 +62,7 @@ export interface ApprovedRequestScope {
   readonly sessionId: string
   readonly expiresAt: string
   readonly maxUses: number
+  readonly status?: ScopedApprovalDecision
 }
 
 export interface PolicyContext {
@@ -77,13 +79,6 @@ export interface PolicyContext {
    * approvals from the ScopedApprovalStore and passes only valid ones here.
    */
   approvedScopes?: readonly ApprovedRequestScope[]
-  /**
-   * Pure lookup function for approved scopes by request hash.
-   * Created by SessionPolicyProvider.snapshot() — closes over the store
-   * but is deterministic and read-only from the PDP's perspective.
-   * The PDP calls this as a pure function, not as a store operation.
-   */
-  lookupApprovedScope?: (requestHash: string) => ApprovedRequestScope | undefined
   /**
    * When true, the PDP validates ancestor chains for delegated grants.
    * The ancestor data is already in capabilities[] — no store calls needed.
@@ -927,17 +922,19 @@ export function evaluate(
 
   if (approvalReasons.length > 0) {
     // Check if an approved scope exists for this exact request (pure — no store calls)
-    if (context.lookupApprovedScope) {
-      const requestHash = computeRequestHash(request)
-      const matchingScope = context.lookupApprovedScope(requestHash)
-      if (
-        matchingScope &&
-        matchingScope.capabilityId &&
-        matchingScope.principalId === request.principalId &&
-        matchingScope.sessionId === request.sessionId &&
-        matchingScope.expiresAt > timestamp &&
-        matchingScope.maxUses > 0
-      ) {
+    const requestHash = computeRequestHash(request)
+
+    // First check the pre-computed approvedScopes array (Fix 6: serializable snapshot)
+    if (context.approvedScopes && context.approvedScopes.length > 0) {
+      const matchingScope = context.approvedScopes.find(
+        (s) =>
+          s.requestHash === requestHash &&
+          s.principalId === request.principalId &&
+          s.sessionId === request.sessionId &&
+          s.expiresAt > timestamp &&
+          s.maxUses > 0,
+      )
+      if (matchingScope && matchingScope.capabilityId) {
         const allMatchedIds = [...capResult.matchedCapabilityIds, matchingScope.capabilityId]
         reasons.push(...approvalReasons)
         reasons.push({

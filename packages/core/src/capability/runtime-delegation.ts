@@ -13,8 +13,10 @@
 import { Effect } from "effect"
 import type {
   CapabilityGrant,
-  CapabilityGrantDraft,
 } from "./types"
+import type {
+  CapabilityGrantDraft,
+} from "./delegation"
 import {
   delegateCapabilities,
   validateAncestorChain,

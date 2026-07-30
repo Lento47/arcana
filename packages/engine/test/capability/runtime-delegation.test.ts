@@ -406,7 +406,11 @@ describe("Runtime delegation service: atomic Effect transactions", () => {
 
     expect(result.status).toBe("DENIED")
     if (result.status === "DENIED") {
-      expect(result.errors.some((e) => e.code === "DENY_PARENT_DELEGATION_FORBIDDEN")).toBe(true)
+      // With positive allowlist, revoked parent is invisible → treated as not found
+      expect(result.errors.some((e) =>
+        e.code === "DENY_PARENT_DELEGATION_FORBIDDEN" ||
+        e.code === "DENY_PARENT_NOT_FOUND"
+      )).toBe(true)
     }
   })
 })
@@ -516,19 +520,20 @@ describe("Scoped approval: production PDP integration", () => {
       explicitDenyRules: [],
       approvalRules: [],
       workspaceTrust: "TRUSTED",
-      lookupApprovedScope: (hash: string) => {
-        const approval = store.getApprovalForRequest(hash)
-        if (!approval || approval.decision !== "APPROVED" || approval.maxUses <= 0) return undefined
-        return {
-          requestHash: approval.requestHash,
-          approvalId: approval.id,
-          capabilityId: approval.capabilityId,
-          principalId: approval.principalId,
-          sessionId: approval.sessionId,
-          expiresAt: approval.expiresAt,
-          maxUses: approval.maxUses,
-        }
-      },
+      approvedScopes: (() => {
+        const allApprovals = Effect.runSync(store.allApprovals())
+        return allApprovals
+          .filter(a => a.decision === "APPROVED" && a.usesConsumed < 1)
+          .map(a => ({
+            requestHash: a.requestHash,
+            approvalId: a.id,
+            capabilityId: a.capabilityId,
+            principalId: a.principalId,
+            sessionId: a.sessionId,
+            expiresAt: a.expiresAt,
+            maxUses: a.maxUses,
+          }))
+      })(),
     }
 
     const firstDecision = evaluatePolicy(request, ctx)
@@ -545,6 +550,20 @@ describe("Scoped approval: production PDP integration", () => {
     const ctxWithApproval: PolicyContext = {
       ...ctx,
       capabilities: [...grants, capability],
+      approvedScopes: (() => {
+        const allApprovals = Effect.runSync(store.allApprovals())
+        return allApprovals
+          .filter(a => a.decision === "APPROVED" && a.usesConsumed < 1)
+          .map(a => ({
+            requestHash: a.requestHash,
+            approvalId: a.id,
+            capabilityId: a.capabilityId,
+            principalId: a.principalId,
+            sessionId: a.sessionId,
+            expiresAt: a.expiresAt,
+            maxUses: a.maxUses,
+          }))
+      })(),
     }
 
     // Second evaluation: should find the approved scope → ALLOW
@@ -553,7 +572,7 @@ describe("Scoped approval: production PDP integration", () => {
     expect(secondDecision.capabilityIds).toContain(capability.id)
   })
 
-  it("changing branch invalidates approval — hash mismatch", () => {
+  it("changing branch invalidates approval — hash mismatch", async () => {
     const store = new InMemoryScopedApprovalStore()
     const request = makeAuthRequest({
       principalId: "general",
@@ -578,7 +597,7 @@ describe("Scoped approval: production PDP integration", () => {
       resource: { kind: "git", path: "main" },
     })
 
-    const check = checkApprovedScope(changedRequest, store, new Date().toISOString())
+    const check = await Effect.runPromise(checkApprovedScope(changedRequest, store, new Date().toISOString()))
     expect(check.hasApproval).toBe(false)
   })
 

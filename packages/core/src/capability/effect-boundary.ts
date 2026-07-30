@@ -22,6 +22,7 @@ export type ResourceDerivation =
   | "runtime_context"
   | "configuration"
   | "external_content"
+  | "model_output" 
 
 export type MigrationPriority = "P0" | "P1" | "P2"
 

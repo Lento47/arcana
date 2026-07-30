@@ -25,6 +25,11 @@ import type {
 
 // ─── Types ────────────────────────────────────────────────────────────
 
+export class AuthorizationStoreError {
+  readonly _tag = "AuthorizationStoreError" as const
+  constructor(readonly operation: string, readonly cause: unknown) {}
+}
+
 /**
  * Authorization event emitter — called by the PEP to record decisions.
  * The PEP calls this at each decision point. The caller provides the
@@ -164,19 +169,19 @@ function resolveSnapshot(
 function resolveExecute<T>(
   fn: (req: Readonly<AuthorizationRequest>) => T | Promise<T> | Effect.Effect<T, unknown, unknown>,
   req: Readonly<AuthorizationRequest>,
-): Effect.Effect<T> {
+): Effect.Effect<T, AuthorizationStoreError> {
   return Effect.tryPromise({
     try: () => {
       const result = fn(req)
       if (result && typeof result === "object" && Effect.isEffect(result)) {
-        return Effect.runPromise(result as Effect.Effect<T>)
+        return Effect.runPromise(result as Effect.Effect<T, unknown, never>)
       }
       if (result instanceof Promise) {
         return result
       }
       return Promise.resolve(result as T)
     },
-    catch: (error) => error,
+    catch: (cause) => new AuthorizationStoreError("resolveExecute", cause),
   })
 }
 
@@ -372,13 +377,15 @@ export function authorizeAndExecuteEffect<T>(
     Effect.catch((error) =>
       Effect.gen(function* () {
         const req = deepFreeze({ ...effect.request }) as AuthorizationRequest
+        // Unwrap AuthorizationStoreError to preserve original error
+        const originalError = error instanceof AuthorizationStoreError ? error.cause : error
         yield* emitEvent(eventEmitter, {
           sessionId: req.sessionId,
           actor: { kind: "policy", id: "pep" },
           type: "authorization.execution_failed",
           payload: {
             requestId: req.requestId,
-            error: String(error),
+            error: String(originalError),
           },
         })
         return {
@@ -388,7 +395,7 @@ export function authorizeAndExecuteEffect<T>(
             now: "", policyVersion: "", capabilities: [],
             explicitDenyRules: [], approvalRules: [], workspaceTrust: "UNKNOWN",
           }),
-          error,
+          error: originalError,
         }
       })
     ),
@@ -401,15 +408,13 @@ function emitEvent(
   event: { sessionId?: string; actor: { kind: string; id: string }; type: string; payload: unknown },
 ): Effect.Effect<void> {
   if (!emitter) return Effect.void
-  return Effect.suspend(() => {
+  return Effect.gen(function* () {
     const result = emitter.emit(event)
     if (result && typeof result === "object" && Effect.isEffect(result)) {
-      return result.pipe(Effect.catch(() => Effect.void))
+      yield* (result as Effect.Effect<void>).pipe(Effect.catch(() => Effect.void))
+    } else if (result instanceof Promise) {
+      yield* Effect.promise(() => result.catch(() => {}))
     }
-    if (result instanceof Promise) {
-      return Effect.promise(() => result.catch(() => {}))
-    }
-    return Effect.void
   }).pipe(Effect.catch(() => Effect.void))
 }
 
@@ -490,7 +495,7 @@ export function authorizeAndExecuteSync<T>(
   try {
     const value = effect.executeExact(
       frozenRequest as Readonly<AuthorizationRequest>,
-    )
+    ) as T
     const completedAt = new Date().toISOString()
 
     return {

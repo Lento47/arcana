@@ -100,7 +100,7 @@ export interface Issuer {
 
 // ─── Capability Grant ─────────────────────────────────────────────────
 
-export type CapabilityStatus = "ACTIVE" | "EXPIRED" | "REVOKED" | "EXHAUSTED"
+export type CapabilityStatus = "PENDING" | "ACTIVE" | "EXPIRED" | "REVOKED" | "EXHAUSTED"
 
 export interface CapabilityGrant {
   id: string

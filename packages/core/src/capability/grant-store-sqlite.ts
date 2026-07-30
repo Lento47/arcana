@@ -229,7 +229,7 @@ export class SqliteGrantStore implements CapabilityGrantStore {
 
   updateStatus(
     grantId: string,
-    status: CapabilityGrant["status"],
+    status: CapabilityStatus,
     eventId?: string,
   ): Effect.Effect<void, CapabilityGrantStoreError> {
     return Effect.gen(
@@ -298,5 +298,95 @@ export class SqliteGrantStore implements CapabilityGrantStore {
     executionKey: string,
   ): Effect.Effect<boolean, CapabilityGrantStoreError> {
     return Effect.succeed(this.executionReceipts.has(executionKey))
+  }
+
+  activateGrantsForSession(
+    sessionId: string,
+  ): Effect.Effect<number, CapabilityGrantStoreError> {
+    return Effect.gen(
+      { self: this },
+      function* () {
+        const now = Date.now()
+        yield* this.db.db
+          .run(
+            sql`UPDATE capability_grants
+                SET status = 'ACTIVE', time_updated = ${now}
+                WHERE json_extract(constraints, '$.sessionId') = ${sessionId}
+                  AND status = 'PENDING'`,
+          )
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+
+        // Count affected rows
+        const rows = yield* this.db.db
+          .all<{ id: string }>(
+            sql`SELECT id FROM capability_grants
+                WHERE json_extract(constraints, '$.sessionId') = ${sessionId}
+                  AND status = 'ACTIVE'
+                  AND time_updated = ${now}`,
+          )
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+
+        return rows.length
+      },
+    ).pipe(Effect.catch(() => Effect.succeed(0)))
+  }
+
+  revokePendingGrantsForSession(
+    sessionId: string,
+  ): Effect.Effect<number, CapabilityGrantStoreError> {
+    return Effect.gen(
+      { self: this },
+      function* () {
+        const now = Date.now()
+        yield* this.db.db
+          .run(
+            sql`UPDATE capability_grants
+                SET status = 'REVOKED', time_updated = ${now}
+                WHERE json_extract(constraints, '$.sessionId') = ${sessionId}
+                  AND status = 'PENDING'`,
+          )
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+
+        const rows = yield* this.db.db
+          .all<{ id: string }>(
+            sql`SELECT id FROM capability_grants
+                WHERE json_extract(constraints, '$.sessionId') = ${sessionId}
+                  AND status = 'REVOKED'
+                  AND time_updated = ${now}`,
+          )
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+
+        return rows.length
+      },
+    ).pipe(Effect.catch(() => Effect.succeed(0)))
+  }
+
+  recoverPendingGrants(
+    maxAge: string,
+  ): Effect.Effect<number, CapabilityGrantStoreError> {
+    return Effect.gen(
+      { self: this },
+      function* () {
+        const now = Date.now()
+        yield* this.db.db
+          .run(
+            sql`UPDATE capability_grants
+                SET status = 'REVOKED', time_updated = ${now}
+                WHERE status = 'PENDING'
+                  AND json_extract(constraints, '$.expiresAt') <= ${maxAge}`,
+          )
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+
+        const rows = yield* this.db.db
+          .all<{ id: string }>(
+            sql`SELECT id FROM capability_grants
+                WHERE status = 'REVOKED'
+                  AND time_updated = ${now}`,
+          )
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+
+        return rows.length
+      },
+    ).pipe(Effect.catch(() => Effect.succeed(0)))
   }
 }
