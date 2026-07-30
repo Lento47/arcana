@@ -96,12 +96,14 @@ export type DenyReasonCode =
   | "DENY_ACTION_OUT_OF_SCOPE"
   | "DENY_RESOURCE_OUT_OF_SCOPE"
   | "DENY_WORKSPACE_MISMATCH"
+  | "DENY_WORKSPACE_CONTEXT_MISSING"
   | "DENY_SESSION_MISMATCH"
   | "DENY_CONTRACT_MISMATCH"
   | "DENY_TOOL_OUT_OF_SCOPE"
   | "DENY_EXECUTABLE_OUT_OF_SCOPE"
   | "DENY_ARGUMENT_OUT_OF_SCOPE"
   | "DENY_NETWORK_HOST_OUT_OF_SCOPE"
+  | "DENY_WORKING_DIRECTORY_MISMATCH"
   | "DENY_CAPABILITY_EXPIRED"
   | "DENY_CAPABILITY_REVOKED"
   | "DENY_CAPABILITY_EXHAUSTED"
@@ -215,6 +217,22 @@ export function matchResource(
  * Pattern "packages/engine/**" matches "packages/engine/src/foo.ts"
  * but NOT "packages/engine-evil/foo.ts"
  */
+/**
+ * Canonicalize a working directory path.
+ * Normalizes separators, removes trailing/duplicate slashes, rejects '..' traversal.
+ */
+function canonicalizeWorkingDirectory(p: string): string {
+  // Normalize separators
+  let normalized = p.replace(/\\/g, "/")
+  // Remove duplicate slashes
+  normalized = normalized.replace(/\/+/g, "/")
+  // Remove trailing slash
+  normalized = normalized.replace(/\/$/, "")
+  // Reject '..' traversal
+  if (normalized.includes("..")) return ""
+  return normalized
+}
+
 function normalizePath(p: string): string {
   return p.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/$/, "")
 }
@@ -410,14 +428,57 @@ function matchCapabilities(
     }
 
     // Workspace constraint
-    if (
-      cap.constraints.workspaceId &&
-      req.sessionId &&
-      cap.constraints.workspaceId !== req.sessionId
-    ) {
-      // Workspace constraint is on the capability, not the request
-      // We check if the capability is workspace-bound and the request is outside
-      // This is checked via the session binding
+    if (cap.constraints.workspaceId) {
+      if (req.workspaceId) {
+        // Both grant and request have workspaceId — exact match required
+        if (cap.constraints.workspaceId !== req.workspaceId) {
+          capReasons.push({
+            code: "DENY_WORKSPACE_MISMATCH",
+            message: `Capability ${cap.id} bound to workspace ${cap.constraints.workspaceId}, request is for workspace ${req.workspaceId}`,
+            severity: "critical",
+          })
+        }
+      } else {
+        // Grant has workspaceId but request has no workspaceId
+        // For consequential actions (MODERATE+), deny
+        const risk = classifyRisk(req.action, req.sensitivity)
+        if (risk === "MODERATE" || risk === "HIGH" || risk === "CRITICAL") {
+          capReasons.push({
+            code: "DENY_WORKSPACE_CONTEXT_MISSING",
+            message: `Capability ${cap.id} bound to workspace ${cap.constraints.workspaceId}, but request has no workspace context for consequential action`,
+            severity: "critical",
+          })
+        }
+      }
+    }
+
+    // Working directory constraint
+    if (cap.constraints.workingDirectories && cap.constraints.workingDirectories.length > 0) {
+      if (req.workingDirectory) {
+        // Canonicalize the request working directory
+        const canonCwd = canonicalizeWorkingDirectory(req.workingDirectory)
+        const cwdAllowed = cap.constraints.workingDirectories.some((dir) => {
+          const canonDir = canonicalizeWorkingDirectory(dir)
+          return canonCwd === canonDir || canonCwd.startsWith(canonDir + "/")
+        })
+        if (!cwdAllowed) {
+          capReasons.push({
+            code: "DENY_WORKING_DIRECTORY_MISMATCH",
+            message: `Capability ${cap.id} allows working directories [${cap.constraints.workingDirectories.join(", ")}], request has ${req.workingDirectory}`,
+            severity: "critical",
+          })
+        }
+      } else {
+        // Grant has workingDirectories but request has no workingDirectory
+        // For process.execute, working directory is required
+        if (req.action === "process.execute") {
+          capReasons.push({
+            code: "DENY_WORKING_DIRECTORY_MISMATCH",
+            message: `Capability ${cap.id} has working directory constraints but request has no working directory for process.execute`,
+            severity: "critical",
+          })
+        }
+      }
     }
 
     // Session constraint
