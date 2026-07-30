@@ -6,19 +6,37 @@ import { createSignal } from "solid-js"
 import { ThemeProvider } from "../src/context/theme"
 import { TuiConfigProvider } from "../src/config"
 import { KVProvider } from "../src/context/kv"
+import { ArgsProvider } from "../src/context/args"
+import { ExitProvider } from "../src/context/exit"
+import { SDKProvider } from "../src/context/sdk"
+import { ProjectProvider } from "../src/context/project"
+import { SyncProvider } from "../src/context/sync"
 import { TestTuiContexts } from "./fixture/tui-environment"
 import { createTuiResolvedConfig } from "./fixture/tui-runtime"
+import { createFetch, createEventSource, directory } from "./fixture/tui-sdk"
 import { SpineEntry } from "../src/shell/command-spine/spine-entry"
 import type { SpineEntry as SpineEntryModel } from "../src/shell/command-spine/spine-types"
 
-function withTheme(component: () => JSX.Element) {
+function withProviders(component: () => JSX.Element) {
+  const calls = createFetch()
+  const events = createEventSource()
   return (
     <TestTuiContexts>
-      <TuiConfigProvider config={createTuiResolvedConfig()}>
-        <KVProvider>
-          <ThemeProvider mode="dark">{component()}</ThemeProvider>
-        </KVProvider>
-      </TuiConfigProvider>
+      <ExitProvider exit={() => {}}>
+        <ArgsProvider>
+          <TuiConfigProvider config={createTuiResolvedConfig()}>
+            <KVProvider>
+              <SDKProvider url="http://test" directory={directory} fetch={calls.fetch} events={events.source}>
+                <ProjectProvider>
+                  <SyncProvider>
+                    <ThemeProvider mode="dark">{component()}</ThemeProvider>
+                  </SyncProvider>
+                </ProjectProvider>
+              </SDKProvider>
+            </KVProvider>
+          </TuiConfigProvider>
+        </ArgsProvider>
+      </ExitProvider>
     </TestTuiContexts>
   )
 }
@@ -67,7 +85,7 @@ test("spine entry hover highlights and right-click expands collapsible thinking"
 
   const app = await testRender(
     () =>
-      withTheme(() => {
+      withProviders(() => {
         const [expanded, setExpanded] = createSignal(false)
         const [focused, setFocused] = createSignal(false)
         return (
@@ -110,7 +128,7 @@ test("spine entry hover highlights and right-click expands collapsible thinking"
 test("spine entry right-click toggles reasoning with local state", async () => {
   const app = await testRender(
     () =>
-      withTheme(() => (
+      withProviders(() => (
         <box flexDirection="column" width="100%" height="100%">
           <SpineEntry entry={thinkEntry} layout="wide" />
         </box>

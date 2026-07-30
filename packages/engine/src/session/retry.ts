@@ -18,7 +18,7 @@ const BRAND_TIERS = {
     price: "$10/month",
     url: "https://arcana.otnelhq.com/pro",
     limitReachedMessage:
-      "OpenCode Go subscription — this tier is being phased out in the near future. Subscribe to Arcana Pro for higher rate limits and more models.",
+      "Free tier limit reached. Subscribe to Arcana Pro for higher rate limits and more models.",
   },
 } as const
 
@@ -136,7 +136,7 @@ export function retryable(error: Err, provider: string) {
         action: {
           reason: "account_rate_limit",
           provider,
-          title: "OpenCode Go limit reached",
+          title: "Arcana Pro limit reached",
           message,
           label: "open settings",
           link,

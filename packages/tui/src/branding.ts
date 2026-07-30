@@ -247,7 +247,7 @@ export const BRAND_TIERS = {
       "Arcana Pro is a $10 per month subscription that provides reliable access to popular open coding models with generous usage limits.",
     limitReachedTitle: "Free limit reached",
     limitReachedMessage:
-      "OpenCode Go subscription — this tier is being phased out in the near future. Subscribe to Arcana Pro for higher rate limits and more models.",
+      "Free tier limit reached. Subscribe to Arcana Pro for higher rate limits and more models.",
     cta: "Upgrade",
   },
 } as const
