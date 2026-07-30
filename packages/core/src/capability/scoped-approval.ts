@@ -58,10 +58,23 @@ export interface ScopedApproval {
 
   /**
    * Idempotency key for crash recovery.
-   * k = H(approvalId ∥ sessionId ∥ requestHash)
+   * k = H(approvalId ∥ executionId ∥ sessionId ∥ requestHash)
    * Used to prevent duplicate execution after crash.
    */
   readonly idempotencyKey?: string
+
+  /**
+   * Execution ID that claimed this approval.
+   * Binds the claim to exactly one execution attempt.
+   * UsableClaim(a,e,q) ⟺ a.status=CLAIMED ∧ a.claimExecutionId=e.id
+   */
+  readonly claimExecutionId?: string
+
+  /**
+   * Lease expiration for the claim.
+   * If the claim is not consumed before this time, it becomes RECOVERY_REQUIRED.
+   */
+  readonly leaseExpiresAt?: string
 }
 
 /**
@@ -93,6 +106,22 @@ export interface ScopedApprovalStore {
   readonly updateApproval: (id: string, updates: Partial<ScopedApproval>) => Effect.Effect<void, ScopedApprovalStoreError>
   /** Return all approvals for snapshot-time pre-computation. */
   readonly allApprovals: () => Effect.Effect<readonly ScopedApproval[], ScopedApprovalStoreError>
+  /**
+   * Atomically claim an APPROVED approval, binding it to a specific execution.
+   * Returns the claimed approval, or null if the claim failed
+   * (already claimed/consumed/expired/wrong state).
+   *
+   * The atomicity guarantee: exactly one caller can successfully claim
+   * a given approval. For InMemory, this is single-threaded atomicity.
+   * For SQLite, this uses UPDATE ... WHERE status = 'APPROVED'.
+   */
+  readonly atomicClaim: (
+    id: string,
+    executionId: string,
+    claimedEventId: string,
+    now: string,
+    leaseSeconds?: number,
+  ) => Effect.Effect<ScopedApproval | null, ScopedApprovalStoreError>
 }
 
 // ─── In-Memory Store ──────────────────────────────────────────────────
@@ -126,6 +155,27 @@ export class InMemoryScopedApprovalStore implements ScopedApprovalStore {
 
   allApprovals(): Effect.Effect<readonly ScopedApproval[], ScopedApprovalStoreError> {
     return Effect.succeed([...this.approvals.values()])
+  }
+
+  atomicClaim(
+    id: string,
+    executionId: string,
+    claimedEventId: string,
+    now: string,
+    leaseSeconds: number = 300,
+  ): Effect.Effect<ScopedApproval | null, ScopedApprovalStoreError> {
+    // Single-threaded atomicity: read-check-write in one synchronous block
+    const existing = this.approvals.get(id)
+    if (!existing) return Effect.succeed(null)
+    if (existing.decision !== "APPROVED") return Effect.succeed(null)
+    if (existing.expiresAt <= now) return Effect.succeed(null)
+    if (existing.usesConsumed >= 1) return Effect.succeed(null)
+
+    const claimed = claimApproval(existing, claimedEventId, executionId, now, leaseSeconds)
+    if (!claimed) return Effect.succeed(null)
+
+    this.approvals.set(id, claimed)
+    return Effect.succeed(claimed)
   }
 }
 
@@ -209,33 +259,33 @@ export function approveRequest(
 
 /**
  * Compute idempotency key for crash recovery.
- * k = H(approvalId ∥ sessionId ∥ requestHash)
+ * k = H(approvalId ∥ executionId ∥ sessionId ∥ requestHash)
  */
 export function computeIdempotencyKey(
   approvalId: string,
+  executionId: string,
   sessionId: string,
   requestHash: string,
 ): string {
-  // Simple hash for now — in production, use a cryptographic hash
-  return `${approvalId}:${sessionId}:${requestHash}`
+  return `${approvalId}:${executionId}:${sessionId}:${requestHash}`
 }
 
 /**
  * Atomically claim an approved approval before execution.
  * Changes APPROVED → CLAIMED. Only one claim can succeed.
  *
+ * The claim is bound to exactly one execution via executionId.
  * Returns null if the approval cannot be claimed (already claimed,
  * expired, etc.)
  */
 export function claimApproval(
   approval: ScopedApproval,
   claimedEventId: string,
+  executionId: string,
   now: string,
+  leaseSeconds: number = 300,
 ): ScopedApproval | null {
   // Compile-time invariant: maxUses must be exactly 1
-  if (approval.maxUses !== 1) return null
-
-  // Compile-time invariant: single-use only
   if (approval.maxUses !== 1) return null
 
   // Must be APPROVED
@@ -249,6 +299,7 @@ export function claimApproval(
 
   const idempotencyKey = computeIdempotencyKey(
     approval.id,
+    executionId,
     approval.sessionId,
     approval.requestHash,
   )
@@ -257,6 +308,8 @@ export function claimApproval(
     ...approval,
     decision: "CLAIMED",
     claimedEventId,
+    claimExecutionId: executionId,
+    leaseExpiresAt: new Date(Date.parse(now) + leaseSeconds * 1000).toISOString(),
     idempotencyKey,
   }
 }
