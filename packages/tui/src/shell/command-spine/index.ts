@@ -27,3 +27,10 @@ export type {
   SessionContext,
   ApprovalShellController,
 } from "./approval-shell-controller"
+
+// TUI-2.1A: Production approval integration
+export { useApprovalIntegration, mergeSpineEntries } from "./approval-integration"
+export type {
+  ApprovalIntegrationInput,
+  ApprovalIntegrationOutput,
+} from "./approval-integration"
