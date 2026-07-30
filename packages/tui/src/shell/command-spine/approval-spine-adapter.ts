@@ -13,7 +13,7 @@
  *   Phase C executor callbacks
  */
 
-import type { ApprovalRecord, ApprovalState } from "../../core/crypto/approval-lifecycle"
+import type { ApprovalRecord, ApprovalState } from "@arcana/core/crypto/approval-lifecycle"
 import type { SpineEntry, SpineKind, StatusTone } from "./spine-types"
 import { SPINE_GLYPH } from "./spine-types"
 
@@ -86,6 +86,7 @@ function approvalGlyph(state: ApprovalState): string {
     case "CONSUMED": return "▣"
     case "EXPIRED": return "×"
     case "INVALIDATED": return "✗"
+    default: return "?"
   }
 }
 
@@ -106,6 +107,8 @@ function approvalSummary(approval: ApprovalRecord): string {
       return `expired · not claimed in time`
     case "INVALIDATED":
       return `invalidated · new authorization required`
+    default:
+      return `unknown state`
   }
 }
 

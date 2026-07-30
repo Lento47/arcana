@@ -12,7 +12,7 @@
  */
 
 import { createMemo, createSignal, type Accessor } from "solid-js"
-import type { ApprovalRecord } from "../../../core/crypto/approval-lifecycle"
+import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { SpineEntry } from "./spine-types"
 import {
   approvalToSpineEntry,

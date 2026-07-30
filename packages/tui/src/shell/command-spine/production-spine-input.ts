@@ -14,7 +14,7 @@
  */
 
 import type { SpineEntry } from "./spine-types"
-import type { ApprovalRecord } from "../../core/crypto/approval-lifecycle"
+import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import { approvalToSpineEntry } from "./approval-spine-adapter"
 
 // ─── Input Union ──────────────────────────────────────────────────
