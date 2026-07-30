@@ -248,7 +248,7 @@ type ProcStatFields = {
  * Parse /proc/<pid>/stat to extract PPID and start time.
  * Handles comm field containing spaces and parentheses.
  */
-function parseProcStat(content: string): ProcStatFields | undefined {
+export function parseProcStat(content: string): ProcStatFields | undefined {
   // Format: pid (comm) state ppid pgrp session tty_nr ...
   // comm can contain spaces and parens, so find the last ')'
   const lastParen = content.lastIndexOf(")")
