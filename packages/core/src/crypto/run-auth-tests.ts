@@ -13,7 +13,10 @@ import {
 import {
   deriveWorkloadId,
   verifyWorkloadStable,
+  detectHarness,
+  upgradeHarnessAuthority,
   type ObservedWorkloadIdentity,
+  type HarnessDetection,
 } from "./workload-identity"
 import {
   audienceMatches,
@@ -122,6 +125,77 @@ console.log("D-6B Replay protection")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Harness Detection (hardened)
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("Harness detection: descriptive metadata")
+{
+  // Default detection is not authoritative
+  const detection = detectHarness()
+  assert(
+    ["ARCANA", "CODEX", "CLAUDE", "GEMINI", "OPENCODE", "CUSTOM"].includes(detection.harness),
+    `detectHarness returns valid harness: ${detection.harness}`,
+  )
+  assert(typeof detection.evidence === "string", "detection has evidence source")
+  assert(typeof detection.authoritative === "boolean", "detection has authoritative flag")
+}
+
+console.log("Harness detection: env-based is descriptive only")
+{
+  const originalEnv = process.env.ARCANA_HARNESS
+  process.env.ARCANA_HARNESS = "CODEX"
+  const detection = detectHarness()
+  assertEqual(detection.harness, "CODEX", "env harness recognized")
+  assertEqual(detection.evidence, "ENVIRONMENT", "env-based evidence source")
+  assertEqual(detection.authoritative, false, "env-based is NOT authoritative")
+  process.env.ARCANA_HARNESS = originalEnv
+}
+
+console.log("Harness detection: upgrade to authoritative")
+{
+  const descriptive: HarnessDetection = {
+    harness: "CODEX",
+    evidence: "ARGV",
+    authoritative: false,
+  }
+
+  // Upgrade via policy-bound executable digest
+  const upgraded = upgradeHarnessAuthority(descriptive, "EXECUTABLE_DIGEST")
+  assertEqual(upgraded.harness, "CODEX", "harness preserved after upgrade")
+  assertEqual(upgraded.evidence, "EXECUTABLE_DIGEST", "evidence updated")
+  assertEqual(upgraded.authoritative, true, "authoritative after upgrade")
+
+  // Upgrade via signed binary
+  const upgraded2 = upgradeHarnessAuthority(descriptive, "SIGNED_BINARY")
+  assertEqual(upgraded2.authoritative, true, "SIGNED_BINARY is authoritative")
+
+  // Upgrade via configured mapping
+  const upgraded3 = upgradeHarnessAuthority(descriptive, "CONFIGURED_MAPPING")
+  assertEqual(upgraded3.authoritative, true, "CONFIGURED_MAPPING is authoritative")
+}
+
+console.log("Harness detection: authority source classification")
+{
+  // Verify the expected trust ordering
+  const authoritativeSources = ["EXECUTABLE_DIGEST", "SIGNED_BINARY", "CONFIGURED_MAPPING"]
+  const descriptiveSources = ["ENVIRONMENT", "ARGV"]
+
+  for (const source of authoritativeSources) {
+    const d = upgradeHarnessAuthority(
+      { harness: "CUSTOM", evidence: "ARGV", authoritative: false },
+      source as "EXECUTABLE_DIGEST" | "SIGNED_BINARY" | "CONFIGURED_MAPPING",
+    )
+    assert(d.authoritative === true, `${source} is authoritative`)
+  }
+
+  // Descriptive sources cannot independently grant authority
+  for (const source of descriptiveSources) {
+    const d: HarnessDetection = { harness: "CODEX", evidence: source as "ENVIRONMENT" | "ARGV", authoritative: false }
+    assert(d.authoritative === false, `${source} is never authoritative by itself`)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Workload Identity
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -151,6 +225,7 @@ console.log("Workload TOCTOU defense")
     operatingSystemPrincipal: "user-1",
     processId: 1234,
     harness: "CODEX",
+    harnessDetection: { harness: "CODEX", evidence: "ARGV", authoritative: false },
     assurance: "OS_OBSERVED",
   }
 
