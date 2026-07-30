@@ -13,7 +13,7 @@
  *   Phase C execution functions
  */
 
-import type { ApprovalRecord, ApprovalState } from "../../core/crypto/approval-lifecycle"
+import type { ApprovalRecord, ApprovalState } from "@arcana/core/crypto/approval-lifecycle"
 
 // ─── Types ───────────────────────────────────────────────────────
 

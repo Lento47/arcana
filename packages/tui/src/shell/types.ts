@@ -3,7 +3,7 @@ import type { ScrollBoxRenderable, ScrollAcceleration } from "@opentui/core"
 import type { Message, Part } from "@arcana/sdk/v2"
 import type { PromptRef } from "../component/prompt"
 import type { PromptInfo } from "../component/prompt/history"
-import type { ApprovalRecord } from "../../core/crypto/approval-lifecycle"
+import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { ApprovalShellController } from "./command-spine/approval-shell-controller"
 
 export interface RevertInfo {
