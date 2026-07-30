@@ -3,10 +3,186 @@
 > Phase D Architecture — Design Document
 > Status: DESIGN (not implemented)
 > Created: 2026-07-29
+> Updated: 2026-07-29 — Independent axes, corrected emergency wording
 
 ## Purpose
 
 Define the state machines for distributed protocol operations: grant signing, revocation propagation, policy synchronization, and node trust management.
+
+## Node Runtime State
+
+Identity status, connectivity status, policy freshness, and enforcement mode are **separate axes**. They compose independently.
+
+```typescript
+type NodeRuntimeState = {
+  identity:
+    | "UNREGISTERED"
+    | "PENDING"
+    | "TRUSTED"
+    | "SUSPENDED"
+    | "REVOKED"
+
+  connectivity:
+    | "ONLINE"
+    | "OFFLINE"
+
+  enforcement:
+    | "ONLINE"
+    | "OFFLINE_RESTRICTED"
+    | "OFFLINE_READ_ONLY"
+    | "QUARANTINED"
+
+  policy:
+    | "CURRENT"
+    | "STALE"
+    | "INVALID"
+    | "UNAVAILABLE"
+
+  revocation:
+    | "CURRENT"
+    | "STALE"
+    | "INVALID"
+    | "UNAVAILABLE"
+}
+```
+
+## Independent Invariants
+
+Each axis has its own invariant. They compose, but are not collapsed into a single compound expression.
+
+### Identity Invariant
+
+```
+Trusted(node) ⟹ ¬Revoked(node)
+Revoked(node) ⟹ Mode(node) = QUARANTINED
+```
+
+A trusted node is not revoked. A revoked node is quarantined. But a quarantined node is not necessarily identity-revoked — it may be quarantined because of stale policy, missing revocation updates, invalid clock state, broken proof synchronization, or unknown issuer epoch.
+
+### Enforcement Invariant
+
+```
+Mode(node) = QUARANTINED ⟹ ¬ConsequentialEffects(node)
+```
+
+A quarantined node cannot produce consequential effects regardless of why it was quarantined.
+
+### Execution Invariant
+
+```
+Effect_node(q) ⟹
+  Trusted(node)
+  ∧ ¬Revoked(node)
+  ∧ Mode(node) ≠ QUARANTINED
+  ∧ PolicyFresh(node)
+  ∧ RevocationFresh(node)
+```
+
+All five conditions must be satisfied for a consequential effect. This is the primary gate.
+
+### Policy Freshness Invariant
+
+```
+PolicyFresh(node) ⟹ node.policy ∈ {CURRENT}
+```
+
+Policy must be CURRENT. STALE, INVALID, or UNAVAILABLE all block consequential effects.
+
+### Revocation Freshness Invariant
+
+```
+RevocationFresh(node) ⟹ node.revocation ∈ {CURRENT}
+```
+
+Revocation state must be CURRENT. STALE, INVALID, or UNAVAILABLE all block consequential effects.
+
+## Valid Combinations
+
+Not all combinations of axes are valid. The following table defines which composite states are coherent.
+
+### Normal Operation
+
+| Identity | Connectivity | Enforcement | Policy | Revocation | Valid |
+|----------|-------------|-------------|--------|------------|-------|
+| TRUSTED | ONLINE | ONLINE | CURRENT | CURRENT | ✅ |
+| TRUSTED | ONLINE | ONLINE | STALE | CURRENT | ✅ degraded |
+| TRUSTED | ONLINE | ONLINE | CURRENT | STALE | ✅ degraded |
+| TRUSTED | OFFLINE | OFFLINE_RESTRICTED | STALE | CURRENT | ✅ restricted |
+| TRUSTED | OFFLINE | OFFLINE_READ_ONLY | STALE | STALE | ✅ read-only |
+
+### Quarantine States
+
+| Identity | Connectivity | Enforcement | Policy | Revocation | Valid | Cause |
+|----------|-------------|-------------|--------|------------|-------|-------|
+| TRUSTED | OFFLINE | QUARANTINED | STALE | STALE | ✅ | stale leases |
+| TRUSTED | OFFLINE | QUARANTINED | INVALID | CURRENT | ✅ | broken policy chain |
+| TRUSTED | OFFLINE | QUARANTINED | UNAVAILABLE | UNAVAILABLE | ✅ | never synced |
+| REVOKED | any | QUARANTINED | any | any | ✅ | identity revoked |
+| SUSPENDED | any | QUARANTINED | any | any | ✅ | identity suspended |
+| UNREGISTERED | any | QUARANTINED | any | any | ✅ | never registered |
+
+### Invalid Combinations
+
+| Identity | Connectivity | Enforcement | Policy | Revocation | Valid | Reason |
+|----------|-------------|-------------|--------|------------|-------|--------|
+| TRUSTED | ONLINE | QUARANTINED | CURRENT | CURRENT | ❌ | trusted + online + current = no quarantine cause |
+| REVOKED | ONLINE | ONLINE | CURRENT | CURRENT | ❌ | revoked node cannot be online enforcement |
+| UNREGISTERED | ONLINE | ONLINE | CURRENT | CURRENT | ❌ | unregistered cannot enforce |
+| TRUSTED | ONLINE | OFFLINE_RESTRICTED | CURRENT | CURRENT | ❌ | online but offline enforcement |
+| TRUSTED | OFFLINE | ONLINE | CURRENT | CURRENT | ❌ | offline but online enforcement |
+
+### Valid Combination Rule
+
+```
+ValidState(s) ⟺
+  // Identity must support enforcement mode
+  (s.identity ∈ {TRUSTED} → s.enforcement ∈ {ONLINE, OFFLINE_RESTRICTED, OFFLINE_READ_ONLY, QUARANTINED})
+  ∧ (s.identity ∈ {REVOKED, SUSPENDED, UNREGISTERED} → s.enforcement = QUARANTINED)
+  // Connectivity must support enforcement mode
+  ∧ (s.connectivity = ONLINE → s.enforcement ∈ {ONLINE, QUARANTINED})
+  ∧ (s.connectivity = OFFLINE → s.enforcement ∈ {OFFLINE_RESTRICTED, OFFLINE_READ_ONLY, QUARANTINED})
+  // Policy/revocation must support enforcement mode
+  ∧ (s.enforcement = ONLINE → s.policy ∈ {CURRENT, STALE} ∧ s.revocation ∈ {CURRENT, STALE})
+  ∧ (s.enforcement = OFFLINE_RESTRICTED → s.revocation = CURRENT)
+  ∧ (s.enforcement = OFFLINE_READ_ONLY → s.policy ∈ {STALE} ∨ s.revocation ∈ {STALE})
+```
+
+## Emergency Revocation Wording
+
+### What the Control Plane Can Guarantee
+
+**Online reachable node → acknowledge emergency epoch within 5 minutes**
+
+The control plane broadcasts an emergency epoch update. Online nodes that receive it must acknowledge within 5 minutes. This is an online-node acknowledgement objective.
+
+**Disconnected node → local offline lease expires within bounded duration**
+
+Under a network partition, the control plane cannot force a disconnected node to receive a revocation. The enforceable guarantee is:
+
+1. HIGH/CRITICAL actions are denied when offline leases are stale
+2. Offline grant and revocation leases for HIGH/CRITICAL actions must be at most 5 minutes
+3. After lease expiry, the node transitions to QUARANTINED
+4. Eventual quarantine if synchronization is not restored
+
+### What the Control Plane Cannot Guarantee
+
+- Instantaneous revocation propagation to disconnected nodes
+- Sub-5-minute stale-authority window for nodes with long offline leases
+- Forced synchronization under network partition
+
+### Emergency Deadline Definition
+
+```
+EmergencyDeadline = 5 minutes (online-node acknowledgement objective)
+
+For disconnected nodes:
+  StaleAuthorityWindow = max(grantLease, revocationLease)
+  If StaleAuthorityWindow > 5 minutes:
+    HIGH/CRITICAL actions denied during gap
+    Node transitions to QUARANTINED after lease expiry
+```
+
+To claim a maximum 5-minute stale-authority window, offline grant and revocation leases for HIGH/CRITICAL actions must also be at most 5 minutes.
 
 ## Grant Signing State Machine
 
@@ -294,38 +470,4 @@ Any → ONLINE:
   → Revocation sequence caught up
   → Identity valid
   → node.mode = ONLINE
-```
-
-## Composite State: Node Lifecycle
-
-A node's state is the combination of all state machines:
-
-```typescript
-type NodeLifecycleState = {
-  trust: "UNKNOWN" | "TRUSTED" | "REVOKED" | "EXPIRED" | "REINSTATED"
-  connectivity: "ONLINE" | "OFFLINE_RESTRICTED" | "OFFLINE_READ_ONLY" | "QUARANTINED"
-  policy: "SYNCHRONIZED" | "STALE" | "SYNCING" | "SYNC_FAILED" | "RETRY" | "QUARANTINED"
-  revocation: "PENDING" | "BROADCAST" | "ACKNOWLEDGED" | "CONFIRMED" | "RETRY" | "TIMEOUT"
-}
-```
-
-### Valid Combinations
-
-| Trust | Connectivity | Policy | Revocation | Valid |
-|-------|-------------|--------|------------|-------|
-| TRUSTED | ONLINE | SYNCHRONIZED | CONFIRMED | ✅ normal |
-| TRUSTED | OFFLINE_RESTRICTED | STALE | CONFIRMED | ✅ temporary |
-| TRUSTED | OFFLINE_READ_ONLY | STALE | TIMEOUT | ✅ degraded |
-| REVOKED | QUARANTINED | QUARANTINED | — | ✅ revoked |
-| UNKNOWN | any | any | — | ❌ must evaluate trust first |
-| TRUSTED | ONLINE | QUARANTINED | — | ❌ inconsistent |
-| REVOKED | ONLINE | SYNCHRONIZED | — | ❌ revoked but online |
-
-### Invariant
-
-```
-ValidNodeState(n) ⟺
-  (n.trust = TRUSTED ∧ n.connectivity ≠ QUARANTINED)
-  ∨ (n.trust = REVOKED ∧ n.connectivity = QUARANTINED)
-  ∨ (n.trust = UNKNOWN ∧ n.connectivity = QUARANTINED)
 ```
