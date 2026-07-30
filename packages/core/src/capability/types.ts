@@ -120,6 +120,7 @@ export interface CapabilityGrant {
     executable?: string
     argumentPatterns?: string[]
     networkHosts?: string[]
+    workingDirectories?: string[]
     maxUses?: number
     expiresAt?: string
     approvalRequired?: boolean
@@ -154,6 +155,7 @@ export interface AuthorizationRequest {
   principalId: string
   sessionId: string
   contractId?: string
+  workspaceId?: string
 
   tool: string
   action: CapabilityAction
