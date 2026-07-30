@@ -1,0 +1,1 @@
+L:\PROJECTS\arcana\tools\acep-conformance-rust\target\debug\acep-conformance.exe: L:\PROJECTS\arcana\tools\acep-conformance-rust\src\canonical.rs L:\PROJECTS\arcana\tools\acep-conformance-rust\src\main.rs L:\PROJECTS\arcana\tools\acep-conformance-rust\src\strict_json.rs L:\PROJECTS\arcana\tools\acep-conformance-rust\src\verifier.rs
