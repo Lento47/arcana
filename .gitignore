@@ -82,3 +82,4 @@ temp/
 
 # Claude local worktrees / session junk
 .claude/worktrees/
+packages/core/src/crypto/.test-crash-recovery/
