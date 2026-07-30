@@ -97,7 +97,7 @@ fn test_conformance_vectors() {
     let vectors: Vec<ConformanceVector> =
         serde_json::from_str(&vectors_json).expect("Failed to parse vectors");
 
-    assert_eq!(vectors.len(), 27, "Expected 27 conformance vectors");
+    assert_eq!(vectors.len(), 46, "Expected 46 conformance vectors");
 
     let mut agreements = 0;
     let mut disagreements: Vec<String> = Vec::new();
@@ -165,9 +165,26 @@ fn test_conformance_vectors() {
         }
 
         let result = if !raw_json.is_empty() {
-            // PARSE stage: try to parse
+            // PARSE stage: try to parse, then run schema if parse succeeds
             match parse_strict_envelope(raw_json) {
-                Ok(_) => VerificationResult::Valid,
+                Ok(parsed) => {
+                    // Parse succeeded — if expected stage is SCHEMA, run verification
+                    if vector.expected_stage.as_deref() == Some("SCHEMA") {
+                        let envelope_json = serde_json::to_string(&parsed).unwrap_or_default();
+                        verifier::verify_envelope(
+                            &envelope_json,
+                            domain_from_str(&vector.domain),
+                            required_fields,
+                            &trusted_keys,
+                            vector.expected_audience.as_deref(),
+                            &known_sequences,
+                            now_ms,
+                        )
+                    } else {
+                        // Expected PARSE rejection but parse succeeded
+                        VerificationResult::Valid
+                    }
+                }
                 Err(_) => VerificationResult::Rejected {
                     stage: VerificationStage::Parse,
                     reason: RejectionReason::SchemaUnsupported,
