@@ -199,60 +199,123 @@ describe("golden vector positive verification", () => {
   })
 })
 
-// ─── Negative Mutation Vectors ───────────────────────────────────────
+// ─── Negative Mutation Vectors (table-driven, no fallbacks) ──────────
 
 describe("negative mutation vectors", () => {
   const now = Date.parse("2026-07-29T12:30:00.000Z")
 
+  // Suite-level invariant: every vector has expected stage and reason
+  for (const vec of negativeVectors) {
+    if (!vec.expectedStage || !vec.expectedRejectionReason) {
+      throw new Error(`Vector ${vec.vectorId} missing expectedStage or expectedRejectionReason`)
+    }
+  }
+
+  // Suite-level invariant: all vector IDs are unique
+  const vectorIds = new Set(negativeVectors.map((v: any) => v.vectorId))
+  if (vectorIds.size !== negativeVectors.length) {
+    throw new Error("Duplicate vector IDs detected in negative vectors")
+  }
+
+  // Explicit handlers per vector ID — no default fallback
+  const handlers = new Map<string, (vec: any) => VerificationResult>()
+
+  // Wrong audience: use original envelope, verify with wrong expected audience
+  handlers.set("neg-audience", (vec) => {
+    const origVec = positiveVectors.find((v: any) => v.vectorId === "cap-v1-001")!
+    const envelope = buildEnvelopeFromVector(origVec)
+    const keys = buildTrustedKeys(["cap-v1-001"])
+    return verifySignedCapability(envelope, keys, { now, expectedAudienceNodeId: "node-DELTA" })
+  })
+
+  // Wrong key: use seed2's public key to verify cap1's signature (signed with seed1)
+  handlers.set("neg-wrong-key", (vec) => {
+    const envelope = buildEnvelopeFromVector(vec)
+    const keys = new Map<string, Uint8Array>()
+    const pubKeyBytes = decodeBase64url(vec.publicKey)
+    if (pubKeyBytes) keys.set(vec.unsignedPayload.issuerId, pubKeyBytes)
+    return verifySignedCapability(envelope, keys, { now })
+  })
+
+  // Unsupported schema version
+  handlers.set("neg-schema-ver", (vec) => {
+    const envelope = buildEnvelopeFromVector(vec)
+    const keys = buildTrustedKeys(["cap-v1-001"])
+    return verifySignedCapability(envelope, keys, { now })
+  })
+
+  // Expired envelope: use original with future now
+  handlers.set("neg-expired", (vec) => {
+    const origVec = positiveVectors.find((v: any) => v.vectorId === "cap-v1-001")!
+    const envelope = buildEnvelopeFromVector(origVec)
+    const keys = buildTrustedKeys(["cap-v1-001"])
+    return verifySignedCapability(envelope, keys, { now: vec.nowOverride })
+  })
+
+  // Unknown issuer: use a different issuer in the trust set
+  handlers.set("neg-unknown-issuer", (vec) => {
+    const envelope = buildEnvelopeFromVector(vec)
+    const keys = new Map<string, Uint8Array>()
+    const pubKeyBytes = decodeBase64url(vec.publicKey)
+    if (pubKeyBytes) keys.set(vec.overrideIssuer, pubKeyBytes)
+    return verifySignedCapability(envelope, keys, { now })
+  })
+
+  // One-byte signature mutation
+  handlers.set("neg-sig-mutation", (vec) => {
+    const envelope = buildEnvelopeFromVector(vec)
+    const keys = buildTrustedKeys(["cap-v1-001"])
+    return verifySignedCapability(envelope, keys, { now })
+  })
+
+  // Policy sequence rollback: use original policy envelope with high known sequence
+  handlers.set("neg-seq-rollback", (vec) => {
+    const origVec = positiveVectors.find((v: any) => v.vectorId === "policy-v1-001")!
+    const envelope = buildEnvelopeFromVector(origVec)
+    const keys = buildTrustedKeys(["policy-v1-001"])
+    const knownSeqs = new Map([[origVec.unsignedPayload.issuerId, vec.knownSequenceOverride]])
+    return verifySignedPolicy(envelope, keys, knownSeqs, now)
+  })
+
+  // Missing required field (nonce)
+  handlers.set("neg-missing-field", (vec) => {
+    const envelope = buildEnvelopeFromVector(vec)
+    const keys = buildTrustedKeys(["cap-v1-001"])
+    return verifySignedCapability(envelope, keys, { now })
+  })
+
+  // Unknown field in envelope
+  handlers.set("neg-unknown-field", (vec) => {
+    const envelope = buildEnvelopeFromVector(vec)
+    const keys = buildTrustedKeys(["cap-v1-001"])
+    return verifySignedCapability(envelope, keys, { now })
+  })
+
+  // Floating-point issuerEpoch
+  handlers.set("neg-float-epoch", (vec) => {
+    const envelope = buildEnvelopeFromVector(vec)
+    const keys = buildTrustedKeys(["cap-v1-001"])
+    return verifySignedCapability(envelope, keys, { now })
+  })
+
+  // Suite-level invariant: every negative vector has an explicit handler
+  for (const vec of negativeVectors) {
+    if (!handlers.has(vec.vectorId)) {
+      throw new Error(`Unhandled negative vector: ${vec.vectorId} — no explicit handler registered`)
+    }
+  }
+
+  // Execute each vector through its explicit handler
   for (const vec of negativeVectors) {
     test(`${vec.vectorId}: ${vec.description}`, () => {
-      const envelope = buildEnvelopeFromVector(vec)
-      let result: VerificationResult
-
-      if (vec.overrideIssuer) {
-        // Use a different issuer in the trust set
-        const keys = new Map<string, Uint8Array>()
-        const pubKeyBytes = decodeBase64url(vec.publicKey)
-        if (pubKeyBytes) keys.set(vec.overrideIssuer, pubKeyBytes)
-        result = verifySignedCapability(envelope, keys, { now: vec.nowOverride ?? now })
-      } else if (vec.vectorId === "neg-wrong-key") {
-        // Use seed2's public key (from the vector) to verify cap1's signature (signed with seed1)
-        const keys = new Map<string, Uint8Array>()
-        const pubKeyBytes = decodeBase64url(vec.publicKey)
-        if (pubKeyBytes) keys.set(vec.unsignedPayload.issuerId, pubKeyBytes)
-        result = verifySignedCapability(envelope, keys, { now })
-      } else if (vec.vectorId === "neg-audience") {
-        // Use original envelope, verify with a different expected audience
-        const origVec = positiveVectors.find((v: any) => v.vectorId === "cap-v1-001")!
-        const origEnvelope = buildEnvelopeFromVector(origVec)
-        const keys = buildTrustedKeys(["cap-v1-001"])
-        result = verifySignedCapability(origEnvelope, keys, { now, expectedAudienceNodeId: "node-DELTA" })
-      } else if (vec.vectorId === "neg-expired") {
-        // Use original envelope with a future now that exceeds expiry
-        const origVec = positiveVectors.find((v: any) => v.vectorId === "cap-v1-001")!
-        const origEnvelope = buildEnvelopeFromVector(origVec)
-        const keys = buildTrustedKeys(["cap-v1-001"])
-        result = verifySignedCapability(origEnvelope, keys, { now: vec.nowOverride })
-      } else if (vec.knownSequenceOverride !== undefined) {
-        // Use original policy envelope with high known sequence
-        const origVec = positiveVectors.find((v: any) => v.vectorId === "policy-v1-001")!
-        const origEnvelope = buildEnvelopeFromVector(origVec)
-        const keys = buildTrustedKeys(["policy-v1-001"])
-        const knownSeqs = new Map([[origVec.unsignedPayload.issuerId, vec.knownSequenceOverride]])
-        result = verifySignedPolicy(origEnvelope, keys, knownSeqs, now)
-      } else {
-        // Default: use cap-v1-001's key for the issuer "node-alpha"
-        const keys = buildTrustedKeys(["cap-v1-001"])
-        result = verifySignedCapability(envelope, keys, { now })
+      const handler = handlers.get(vec.vectorId)
+      if (!handler) {
+        throw new Error(`No handler for vector: ${vec.vectorId}`)
       }
-
+      const result = handler(vec)
       expect(result.valid).toBe(false)
-      if (vec.expectedStage) {
-        expect((result as any).stage).toBe(vec.expectedStage)
-      }
-      if (vec.expectedRejectionReason) {
-        expect((result as any).reason).toBe(vec.expectedRejectionReason)
-      }
+      expect((result as any).stage).toBe(vec.expectedStage)
+      expect((result as any).reason).toBe(vec.expectedRejectionReason)
     })
   }
 })
@@ -308,6 +371,19 @@ describe("strict wire parsing", () => {
   test("rejects duplicate in array-enclosed object", () => {
     const raw = '{"items":[{"a":1,"a":2}]}'
     expect(() => parseStrictEnvelope(raw)).toThrow("duplicate JSON key")
+  })
+
+  test("rejects Unicode-escaped equivalent key as duplicate", () => {
+    // \\u0069 decodes to 'i', so \\u0069ssuerId === issuerId after JSON decode
+    const raw = '{"issuerId":"a","\\u0069ssuerId":"b"}'
+    expect(() => parseStrictEnvelope(raw)).toThrow("duplicate JSON key")
+  })
+
+  test("allows distinct Unicode-escaped keys", () => {
+    // \\u0061 = 'a', \\u0041 = 'A' — distinct after decode
+    const raw = '{"\\u0061":"x","\\u0041":"y"}'
+    const result = parseStrictEnvelope(raw)
+    expect(result).toEqual({ a: "x", A: "y" })
   })
 
   test("rejects invalid JSON", () => {

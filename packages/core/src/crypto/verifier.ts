@@ -81,7 +81,7 @@ export function parseStrictEnvelope(raw: string): Record<string, unknown> {
 
 /**
  * Scan raw JSON text for duplicate object keys at any nesting level.
- * This catches the case where JSON.parse silently keeps the last value.
+ * Keys are compared after JSON escape decoding (Unicode escapes are resolved).
  */
 function detectDuplicateKeys(raw: string): void {
   const stack: Array<{ keys: Set<string>; inObject: boolean }> = []
@@ -91,15 +91,39 @@ function detectDuplicateKeys(raw: string): void {
   while (i < len) {
     const ch = raw[i]
     if (ch === '"') {
-      // Read the string
+      // Read and decode the string (handles \uXXXX, \", \\, etc.)
       i++
-      let str = ""
+      let decoded = ""
       while (i < len && raw[i] !== '"') {
         if (raw[i] === "\\") {
-          str += raw[i] + raw[i + 1]
-          i += 2
+          i++
+          if (i >= len) throw new Error("unterminated escape sequence")
+          const esc = raw[i]
+          switch (esc) {
+            case '"': decoded += '"'; i++; break
+            case "\\": decoded += "\\"; i++; break
+            case "/": decoded += "/"; i++; break
+            case "b": decoded += "\b"; i++; break
+            case "f": decoded += "\f"; i++; break
+            case "n": decoded += "\n"; i++; break
+            case "r": decoded += "\r"; i++; break
+            case "t": decoded += "\t"; i++; break
+            case "u": {
+              i++
+              if (i + 4 > len) throw new Error("incomplete unicode escape")
+              const hex = raw.slice(i, i + 4)
+              if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+                throw new Error(`invalid unicode escape: \\u${hex}`)
+              }
+              decoded += String.fromCharCode(parseInt(hex, 16))
+              i += 4
+              break
+            }
+            default:
+              throw new Error(`invalid escape sequence: \\${esc}`)
+          }
         } else {
-          str += raw[i]
+          decoded += raw[i]
           i++
         }
       }
@@ -110,10 +134,10 @@ function detectDuplicateKeys(raw: string): void {
       while (j < len && (raw[j] === " " || raw[j] === "\t" || raw[j] === "\n" || raw[j] === "\r")) j++
       if (j < len && raw[j] === ":" && stack.length > 0 && stack[stack.length - 1].inObject) {
         const keySet = stack[stack.length - 1].keys
-        if (keySet.has(str)) {
-          throw new Error(`duplicate JSON key: "${str}"`)
+        if (keySet.has(decoded)) {
+          throw new Error(`duplicate JSON key: "${decoded}"`)
         }
-        keySet.add(str)
+        keySet.add(decoded)
       }
     } else if (ch === "{") {
       stack.push({ keys: new Set(), inObject: true })
