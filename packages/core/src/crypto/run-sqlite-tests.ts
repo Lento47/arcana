@@ -435,8 +435,190 @@ console.log("11. Full lifecycle across restart")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// 12. PRAGMA verification
+// ═══════════════════════════════════════════════════════════════════════
 
-console.log(`\n═══════════════════════════════════════════`)
+console.log("12. PRAGMA verification")
+{
+  const dir = tempDir()
+  try {
+    // Store should initialize with correct pragmas
+    const store = new SqliteDurableStateStore(tempDb(dir), "node-1", "arcana.local")
+    await store.initializeNode("node-1", "arcana.local")
+
+    // Verify pragmas via direct query
+    const db = (store as any).db
+    const journalMode = db.query("PRAGMA journal_mode").get() as any
+    const syncMode = db.query("PRAGMA synchronous").get() as any
+
+    const jm = journalMode?.journal_mode ?? journalMode?.[Object.keys(journalMode ?? {})[0]]
+    const sm = syncMode?.synchronous ?? syncMode?.[Object.keys(syncMode ?? {})[0]]
+
+    assertEqual(jm, "wal", "journal_mode is WAL")
+    assertEqual(sm, 2, "synchronous is FULL (2)")
+
+    store.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 13. Integrity check
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("13. Integrity check")
+{
+  const dir = tempDir()
+  try {
+    const store = new SqliteDurableStateStore(tempDb(dir), "node-1", "arcana.local")
+    await store.initializeNode("node-1", "arcana.local")
+
+    const integrity = store.checkIntegrity()
+    assert(integrity.healthy === true, "integrity check passes on clean database")
+    assert(integrity.reason === undefined, "no reason when healthy")
+
+    store.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 14. Outbox lifecycle: PENDING → CLAIMED → DELIVERED
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("14. Outbox lifecycle")
+{
+  const dir = tempDir()
+  try {
+    const store = new SqliteDurableStateStore(tempDb(dir), "node-1", "arcana.local")
+    await store.initializeNode("node-1", "arcana.local")
+
+    await store.applyPolicy({
+      kind: "SNAPSHOT", issuerId: "node-alpha", issuerEpoch: 1, sequence: 1,
+      digest: "abc", expiresAt: "2099-12-31T23:59:59.999Z", receivedAt: "2026-07-29T12:00:00.000Z",
+    })
+
+    // Check stats
+    const stats1 = store.getOutboxStats()
+    assertEqual(stats1.pending, 1, "1 pending event")
+    assertEqual(stats1.claimed, 0, "0 claimed")
+    assertEqual(stats1.delivered, 0, "0 delivered")
+    assertEqual(stats1.poisoned, 0, "0 poisoned")
+
+    // Claim event
+    const claimed = await store.claimEvent("dispatcher-1")
+    assert(claimed !== null, "claimed an event")
+    assertEqual(claimed!.kind, "POLICY_APPLIED", "claimed policy event")
+
+    const stats2 = store.getOutboxStats()
+    assertEqual(stats2.pending, 0, "0 pending after claim")
+    assertEqual(stats2.claimed, 1, "1 claimed")
+
+    // Mark delivered
+    await store.markEventDispatched(claimed!.id)
+    const stats3 = store.getOutboxStats()
+    assertEqual(stats3.delivered, 1, "1 delivered")
+
+    store.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 15. Outbox POISONED lifecycle
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("15. Outbox POISONED lifecycle")
+{
+  const dir = tempDir()
+  try {
+    const store = new SqliteDurableStateStore(tempDb(dir), "node-1", "arcana.local")
+    await store.initializeNode("node-1", "arcana.local")
+
+    await store.applyPolicy({
+      kind: "SNAPSHOT", issuerId: "node-alpha", issuerEpoch: 1, sequence: 1,
+      digest: "abc", expiresAt: "2099-12-31T23:59:59.999Z", receivedAt: "2026-07-29T12:00:00.000Z",
+    })
+
+    const events = await store.getEvents()
+    const eventId = events[0].id
+
+    // Poison the event
+    await store.poisonEvent(eventId, "malformed payload")
+    const stats = store.getOutboxStats()
+    assertEqual(stats.poisoned, 1, "1 poisoned")
+    assertEqual(stats.pending, 0, "0 pending after poison")
+
+    store.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 16. Outbox claim expiry and recovery
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("16. Outbox claim expiry recovery")
+{
+  const dir = tempDir()
+  try {
+    const store = new SqliteDurableStateStore(tempDb(dir), "node-1", "arcana.local")
+    await store.initializeNode("node-1", "arcana.local")
+
+    await store.applyPolicy({
+      kind: "SNAPSHOT", issuerId: "node-alpha", issuerEpoch: 1, sequence: 1,
+      digest: "abc", expiresAt: "2099-12-31T23:59:59.999Z", receivedAt: "2026-07-29T12:00:00.000Z",
+    })
+
+    // Claim with very short lease
+    const claimed = await store.claimEvent("dispatcher-1", 1) // 1ms lease
+    assert(claimed !== null, "claimed event")
+
+    // Wait for lease to expire
+    await new Promise(r => setTimeout(r, 10))
+
+    // Recover expired claims
+    const recovered = await store.recoverExpiredClaims()
+    assertEqual(recovered, 1, "1 claim recovered")
+
+    const stats = store.getOutboxStats()
+    assertEqual(stats.pending, 1, "1 pending after recovery")
+    assertEqual(stats.claimed, 0, "0 claimed after recovery")
+
+    store.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 17. REVOKED identity invariant at startup
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("17. REVOKED identity invariant at startup")
+{
+  const dir = tempDir()
+  try {
+    // Create store, set identity to REVOKED
+    const store1 = new SqliteDurableStateStore(tempDb(dir), "node-1", "arcana.local")
+    await store1.initializeNode("node-1", "arcana.local")
+    await store1.updateIdentity("REVOKED")
+    store1.close()
+
+    // Reopen — should pass (REVOKED + QUARANTINED is valid)
+    const store2 = new SqliteDurableStateStore(tempDb(dir), "node-1", "arcana.local")
+    const state = await store2.load()
+    assertEqual(state!.identityStatus, "REVOKED", "REVOKED persists")
+    assertEqual(state!.enforcementMode, "QUARANTINED", "QUARANTINED persists")
+    store2.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
 console.log(`Total: ${passed + failed}  Passed: ${passed}  Failed: ${failed}`)
 if (failures.length > 0) {
   console.log(`\nFailures:`)

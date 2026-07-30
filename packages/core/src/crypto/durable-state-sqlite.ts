@@ -66,13 +66,20 @@ CREATE TABLE IF NOT EXISTS node_security_state (
 CREATE TABLE IF NOT EXISTS node_security_outbox (
   id TEXT PRIMARY KEY,
   node_id TEXT NOT NULL,
+  aggregate_version INTEGER NOT NULL,
   timestamp TEXT NOT NULL,
   kind TEXT NOT NULL,
   previous_version INTEGER NOT NULL,
   next_version INTEGER NOT NULL,
   detail TEXT NOT NULL,
-  dispatched INTEGER NOT NULL DEFAULT 0,
-  dispatched_at TEXT
+  status TEXT NOT NULL DEFAULT 'PENDING',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT,
+  claimed_by TEXT,
+  claim_expires_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  delivered_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS received_sync_messages (
@@ -216,12 +223,92 @@ export class SqliteDurableStateStore implements DurableNodeSecurityStateStore {
     this.nodeId = nodeId
     this.trustDomain = trustDomain
 
-    // Enable WAL mode for better concurrent read performance
+    // Configure for power-loss durability
     this.db.run("PRAGMA journal_mode=WAL")
+    this.db.run("PRAGMA synchronous=FULL")
     this.db.run("PRAGMA foreign_keys=ON")
+    this.db.run("PRAGMA busy_timeout=5000")
+
+    // Verify critical pragmas were accepted
+    this.verifyPragmas()
 
     // Create schema
     this.db.run(SCHEMA_SQL)
+
+    // Verify schema integrity
+    this.verifySchemaIntegrity()
+  }
+
+  /**
+   * Verify critical pragmas are set correctly.
+   * synchronous=FULL (value 2) ensures WAL transactions survive power loss.
+   */
+  private verifyPragmas(): void {
+    const journalMode = this.db.query("PRAGMA journal_mode").get() as any
+    const synchronous = this.db.query("PRAGMA synchronous").get() as any
+
+    if (!journalMode || (journalMode.journal_mode && journalMode.journal_mode !== "wal")) {
+      // journal_mode returns the new mode, not always a column
+      const jm = journalMode?.journal_mode ?? journalMode?.[Object.keys(journalMode ?? {})[0]]
+      if (jm !== "wal") {
+        throw new Error(`SQLite configuration error: journal_mode=${jm}, expected wal`)
+      }
+    }
+
+    // synchronous=FULL is value 2
+    const syncVal = synchronous?.synchronous ?? synchronous?.[Object.keys(synchronous ?? {})[0]]
+    if (syncVal !== 2) {
+      throw new Error(`SQLite configuration error: synchronous=${syncVal}, expected 2 (FULL)`)
+    }
+  }
+
+  /**
+   * Verify schema integrity at startup.
+   * Checks mandatory tables exist and latest state invariants hold.
+   */
+  private verifySchemaIntegrity(): void {
+    // Check mandatory tables exist
+    const tables = this.db.query(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN (?, ?, ?, ?, ?)"
+    ).all("node_security_state", "node_security_outbox", "received_sync_messages", "accepted_policy_artifacts", "accepted_revocation_artifacts") as any[]
+
+    if (tables.length < 5) {
+      throw new Error(`SQLite schema incomplete: found ${tables.length}/5 mandatory tables`)
+    }
+
+    // If state exists, verify invariants
+    const state = this.db.query("SELECT * FROM node_security_state WHERE node_id = ?").get(this.nodeId) as any
+    if (state) {
+      // REVOKED identity must have QUARANTINED enforcement
+      if (state.identity_status === "REVOKED" && state.enforcement_mode !== "QUARANTINED") {
+        throw new Error(`SQLite integrity violation: REVOKED identity with ${state.enforcement_mode} enforcement`)
+      }
+      // Policy sequence cannot be negative
+      if (state.policy_sequence < 0) {
+        throw new Error(`SQLite integrity violation: negative policy sequence ${state.policy_sequence}`)
+      }
+      // Revocation sequence cannot be negative
+      if (state.revocation_sequence < 0) {
+        throw new Error(`SQLite integrity violation: negative revocation sequence ${state.revocation_sequence}`)
+      }
+    }
+  }
+
+  /**
+   * Run integrity check and return result.
+   * Returns true if database is healthy, false if corruption detected.
+   */
+  checkIntegrity(): { healthy: boolean; reason?: string } {
+    try {
+      const result = this.db.query("PRAGMA integrity_check").get() as any
+      const val = result?.integrity_check ?? result?.[Object.keys(result ?? {})[0]]
+      if (val === "ok") {
+        return { healthy: true }
+      }
+      return { healthy: false, reason: `integrity_check returned: ${val}` }
+    } catch (e) {
+      return { healthy: false, reason: `integrity_check threw: ${e}` }
+    }
   }
 
   close(): void {
@@ -396,16 +483,87 @@ export class SqliteDurableStateStore implements DurableNodeSecurityStateStore {
 
   async getUndispatchedEvents(): Promise<TransitionEvent[]> {
     const rows = this.db.query(
-      "SELECT * FROM node_security_outbox WHERE node_id = ? AND dispatched = 0 ORDER BY next_version"
+      "SELECT * FROM node_security_outbox WHERE node_id = ? AND status = 'PENDING' ORDER BY next_version"
     ).all(this.nodeId) as any[]
     return rows.map(rowToEvent)
   }
 
   async markEventDispatched(eventId: string): Promise<void> {
     this.db.run(
-      "UPDATE node_security_outbox SET dispatched = 1, dispatched_at = ? WHERE id = ?",
+      "UPDATE node_security_outbox SET status = 'DELIVERED', delivered_at = ? WHERE id = ?",
       [new Date().toISOString(), eventId],
     )
+  }
+
+  /**
+   * Claim an outbox event for dispatch.
+   * Returns the claimed event, or null if no PENDING events.
+   * Claim lease expires after `leaseMs` (default 30s).
+   */
+  async claimEvent(dispatcherId: string, leaseMs: number = 30000): Promise<TransitionEvent | null> {
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + leaseMs).toISOString()
+
+    const row = this.db.query(
+      `SELECT * FROM node_security_outbox
+       WHERE node_id = ? AND status = 'PENDING'
+       ORDER BY next_version LIMIT 1`
+    ).get(this.nodeId) as any
+
+    if (!row) return null
+
+    this.db.run(
+      `UPDATE node_security_outbox
+       SET status = 'CLAIMED', claimed_by = ?, claim_expires_at = ?, attempts = attempts + 1
+       WHERE id = ?`,
+      [dispatcherId, expiresAt, row.id],
+    )
+
+    return rowToEvent(row)
+  }
+
+  /**
+   * Release a claimed event back to PENDING (e.g. dispatcher crash recovery).
+   */
+  async releaseClaim(eventId: string): Promise<void> {
+    this.db.run(
+      "UPDATE node_security_outbox SET status = 'PENDING', claimed_by = NULL, claim_expires_at = NULL WHERE id = ? AND status = 'CLAIMED'",
+      [eventId],
+    )
+  }
+
+  /**
+   * Mark an event as POISONED (permanent failure).
+   */
+  async poisonEvent(eventId: string, error: string): Promise<void> {
+    this.db.run(
+      "UPDATE node_security_outbox SET status = 'POISONED', last_error = ? WHERE id = ?",
+      [error, eventId],
+    )
+  }
+
+  /**
+   * Recover expired claims (dispatcher crashed).
+   * Resets CLAIMED events whose claim_expires_at has passed.
+   */
+  async recoverExpiredClaims(): Promise<number> {
+    const now = new Date().toISOString()
+    const result = this.db.run(
+      "UPDATE node_security_outbox SET status = 'PENDING', claimed_by = NULL, claim_expires_at = NULL WHERE node_id = ? AND status = 'CLAIMED' AND claim_expires_at < ?",
+      [this.nodeId, now],
+    )
+    return result.changes
+  }
+
+  /**
+   * Get outbox statistics.
+   */
+  getOutboxStats(): { pending: number; claimed: number; delivered: number; poisoned: number } {
+    const pending = (this.db.query("SELECT COUNT(*) as c FROM node_security_outbox WHERE node_id = ? AND status = 'PENDING'").get(this.nodeId) as any).c
+    const claimed = (this.db.query("SELECT COUNT(*) as c FROM node_security_outbox WHERE node_id = ? AND status = 'CLAIMED'").get(this.nodeId) as any).c
+    const delivered = (this.db.query("SELECT COUNT(*) as c FROM node_security_outbox WHERE node_id = ? AND status = 'DELIVERED'").get(this.nodeId) as any).c
+    const poisoned = (this.db.query("SELECT COUNT(*) as c FROM node_security_outbox WHERE node_id = ? AND status = 'POISONED'").get(this.nodeId) as any).c
+    return { pending, claimed, delivered, poisoned }
   }
 
   // ─── Transactional Update ─────────────────────────────────────────
@@ -490,9 +648,9 @@ export class SqliteDurableStateStore implements DurableNodeSecurityStateStore {
       }
 
       this.db.run(
-        `INSERT INTO node_security_outbox (id, node_id, timestamp, kind, previous_version, next_version, detail)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [event.id, event.nodeId, event.timestamp, event.kind, event.previousVersion, event.nextVersion, JSON.stringify(event.detail)],
+        `INSERT INTO node_security_outbox (id, node_id, aggregate_version, timestamp, kind, previous_version, next_version, detail, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
+        [event.id, event.nodeId, next.version, event.timestamp, event.kind, event.previousVersion, event.nextVersion, JSON.stringify(event.detail)],
       )
 
       // Persist artifact if provided
