@@ -25,12 +25,13 @@ import { createHash } from "node:crypto"
 // ─── Approval State Machine ─────────────────────────────────────────
 
 export type ApprovalState =
-  | "PENDING"      // Awaiting operator decision
-  | "APPROVED"     // Operator approved — not yet claimed
-  | "DENIED"       // Operator denied
-  | "CLAIMED"      // Execution in progress — executionId bound
-  | "CONSUMED"     // Effect completed, approval exhausted
-  | "EXPIRED"      // Not claimed in time or stale
+  | "PENDING"           // Awaiting operator decision
+  | "APPROVED"          // Operator approved — not yet claimed
+  | "DENIED"            // Operator denied
+  | "CLAIMED"           // Execution in progress — executionId bound
+  | "CONSUMED"          // Effect completed, approval exhausted
+  | "EXPIRED"           // Not claimed in time or stale
+  | "INVALIDATED"       // Authority changed (revocation, policy, quarantine) — cannot retry
 
 // ─── Approval Record ────────────────────────────────────────────────
 
