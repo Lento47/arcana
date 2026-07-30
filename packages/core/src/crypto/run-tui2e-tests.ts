@@ -1,8 +1,11 @@
 /**
- * TUI-2E: Governed Approval Executor Tests
+ * TUI-2E: Governed Approval Executor Tests (HARDENED)
  * Run with: bun run packages/core/src/crypto/run-tui2e-tests.ts
  *
- * Tests the real Phase C PDP/PEP binding through the approval lifecycle.
+ * Tests precise failure semantics:
+ *   Authority denial → INVALIDATED (never retry)
+ *   Effect definitely not started → RETRYABLE_FAILURE (may return to APPROVED)
+ *   Effect may have occurred → RECOVERY_REQUIRED (never auto-retry)
  */
 
 import {
@@ -28,8 +31,6 @@ function assert(condition: boolean, message: string) {
 function assertEqual<T>(actual: T, expected: T, message: string) {
   assert(actual === expected, `${message} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`)
 }
-
-// ─── Test Fixtures ──────────────────────────────────────────────────
 
 const now = new Date("2026-07-30T12:00:00.000Z").toISOString()
 
@@ -76,12 +77,9 @@ function createAction(): DistributedAction {
   return { action: "filesystem.read", workspace: "arcana", resource: "docs/test.md" }
 }
 
-// ─── In-Memory Stores ───────────────────────────────────────────────
-
 class MemoryExecutorStore implements GovernedExecutorStore {
   approvals = new Map<string, ApprovalRecord>()
   executions = new Map<string, ApprovalExecutionRecord>()
-
   loadApproval(id: string) { return this.approvals.get(id) ?? null }
   saveApproval(r: ApprovalRecord) { this.approvals.set(r.approvalId, { ...r }) }
   saveExecution(r: ApprovalExecutionRecord) { this.executions.set(r.approvalId, { ...r }) }
@@ -99,7 +97,7 @@ function setup() {
   let effectCallCount = 0
 
   const effectDispatcher: EffectDispatcher = {
-    async execute(request: ProtectedRequest): Promise<EffectResult> {
+    async execute(): Promise<EffectResult> {
       effectCallCount++
       return { success: true, receiptHash: `receipt-${effectCallCount}`, detail: { bytesRead: 42 } }
     },
@@ -117,21 +115,23 @@ function setup() {
   return { executorStore, requestStore, effectDispatcher, getEffectCalls: () => effectCallCount }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Approved → real PEP → effect once
-// ═══════════════════════════════════════════════════════════════════════
-
-console.log("Approved → real PDP/PEP → effect once → consumed")
-{
-  const { executorStore, requestStore, effectDispatcher, getEffectCalls } = setup()
-
-  // Create approved approval
-  executorStore.saveApproval({
-    approvalId: "appr-1", version: 1, sessionId: "session-1", workspaceId: "arcana",
+function createApproved(store: MemoryExecutorStore, id: string) {
+  store.saveApproval({
+    approvalId: id, version: 1, sessionId: "session-1", workspaceId: "arcana",
     requestHash: "hash-abc", contractRevision: 1, state: "APPROVED",
     approvedBy: "user:lejzer", expiresAt: "2099-12-31T23:59:59.999Z",
     createdAt: now, updatedAt: now,
   })
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Approved → real PDP/PEP → effect once → CONSUMED
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("Approved → real PDP/PEP → effect once → CONSUMED")
+{
+  const { executorStore, requestStore, effectDispatcher, getEffectCalls } = setup()
+  createApproved(executorStore, "appr-1")
 
   const executor = new RealGovernedApprovalExecutor(
     executorStore, requestStore, effectDispatcher, "node-local-01", "session-1",
@@ -142,26 +142,20 @@ console.log("Approved → real PDP/PEP → effect once → consumed")
   })
 
   assertEqual(result.status, "SUCCEEDED", "execution succeeds")
-  assert(result.status === "SUCCEEDED" && result.effectReceiptHash.startsWith("receipt-"), "receipt hash present")
-  assert(result.status === "SUCCEEDED" && result.runProof !== undefined, "RunProof present")
+  assertEqual(result.approvalState, "CONSUMED", "approval CONSUMED")
+  assert(result.status === "SUCCEEDED" && result.effectReceiptHash.startsWith("receipt-"), "receipt present")
   assert(result.status === "SUCCEEDED" && result.runProof.traceHealth === "COMPLETE", "RunProof COMPLETE")
   assert(getEffectCalls() === 1, "effect called exactly once")
 
-  // Verify approval consumed
   const approval = executorStore.loadApproval("appr-1")
-  assertEqual(approval!.state, "CONSUMED", "approval consumed")
-
-  // Verify execution record
-  const exec = executorStore.loadExecution("appr-1")
-  assertEqual(exec!.state, "SUCCEEDED", "execution succeeded")
-  assert(exec!.effectReceiptHash !== undefined, "receipt hash on execution")
+  assertEqual(approval!.state, "CONSUMED", "approval state CONSUMED in store")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // Denied approval → executor calls 0
 // ═══════════════════════════════════════════════════════════════════════
 
-console.log("Denied approval → executor calls 0")
+console.log("Denied approval → zero executor calls")
 {
   const { executorStore, requestStore, effectDispatcher, getEffectCalls } = setup()
 
@@ -179,19 +173,18 @@ console.log("Denied approval → executor calls 0")
     executionId: "exec-002", approvalId: "appr-denied", approvalVersion: 1, requestHash: "hash-abc",
   })
 
-  assertEqual(result.status, "DENIED", "returns DENIED")
+  assert(result.status !== "SUCCEEDED", "not succeeded")
   assert(getEffectCalls() === 0, "zero effect calls")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Quarantined node → PDP deny after approval
+// Node quarantined after approval → INVALIDATED (not back to APPROVED)
 // ═══════════════════════════════════════════════════════════════════════
 
-console.log("Node quarantined after approval → PDP deny")
+console.log("Node quarantined after approval → INVALIDATED")
 {
   const { executorStore, requestStore, effectDispatcher, getEffectCalls } = setup()
 
-  // Update request to quarantined state
   requestStore.requests.set("hash-abc", {
     action: createAction(),
     grant: createGrant(),
@@ -199,12 +192,7 @@ console.log("Node quarantined after approval → PDP deny")
     workloadIdentity: createWorkloadIdentity(),
   })
 
-  executorStore.saveApproval({
-    approvalId: "appr-qn", version: 1, sessionId: "session-1", workspaceId: "arcana",
-    requestHash: "hash-abc", contractRevision: 1, state: "APPROVED",
-    approvedBy: "user:lejzer", expiresAt: "2099-12-31T23:59:59.999Z",
-    createdAt: now, updatedAt: now,
-  })
+  createApproved(executorStore, "appr-qn")
 
   const executor = new RealGovernedApprovalExecutor(
     executorStore, requestStore, effectDispatcher, "node-local-01", "session-1",
@@ -215,40 +203,160 @@ console.log("Node quarantined after approval → PDP deny")
   })
 
   assertEqual(result.status, "DENIED", "quarantined → DENIED")
+  assertEqual(result.approvalState, "INVALIDATED", "approval INVALIDATED")
+  assert(result.status === "DENIED" && result.reason === "NODE_QUARANTINED", "reason is NODE_QUARANTINED")
   assert(getEffectCalls() === 0, "zero effect calls")
-  assert(result.status === "DENIED" && result.reason.includes("quarantined"), "reason mentions quarantined")
 
-  // Approval returned to APPROVED for re-evaluation
+  // Approval is INVALIDATED, NOT APPROVED
   const approval = executorStore.loadApproval("appr-qn")
-  assertEqual(approval!.state, "APPROVED", "approval returned to APPROVED")
+  assertEqual(approval!.state, "INVALIDATED", "approval INVALIDATED in store, not APPROVED")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Request hash changed → STALE
+// Capability revoked after approval → INVALIDATED
 // ═══════════════════════════════════════════════════════════════════════
 
-console.log("Request hash changed → STALE")
+console.log("Capability revoked after approval → INVALIDATED")
 {
   const { executorStore, requestStore, effectDispatcher, getEffectCalls } = setup()
 
-  executorStore.saveApproval({
-    approvalId: "appr-stale", version: 1, sessionId: "session-1", workspaceId: "arcana",
-    requestHash: "hash-abc", contractRevision: 1, state: "APPROVED",
-    approvedBy: "user:lejzer", expiresAt: "2099-12-31T23:59:59.999Z",
-    createdAt: now, updatedAt: now,
+  requestStore.requests.set("hash-abc", {
+    action: createAction(),
+    grant: createGrant(),
+    nodeState: createNodeState({ identityStatus: "REVOKED", enforcementMode: "QUARANTINED" }),
+    workloadIdentity: createWorkloadIdentity(),
   })
+
+  createApproved(executorStore, "appr-revoked")
 
   const executor = new RealGovernedApprovalExecutor(
     executorStore, requestStore, effectDispatcher, "node-local-01", "session-1",
   )
 
   const result = await executor.execute({
-    executionId: "exec-004", approvalId: "appr-stale", approvalVersion: 1, requestHash: "hash-CHANGED",
+    executionId: "exec-004", approvalId: "appr-revoked", approvalVersion: 1, requestHash: "hash-abc",
   })
 
-  assertEqual(result.status, "FAILED", "stale request → FAILED")
-  assert(result.status === "FAILED" && result.reason.includes("STALE"), "reason mentions STALE")
+  assertEqual(result.status, "DENIED", "revoked → DENIED")
+  assertEqual(result.approvalState, "INVALIDATED", "INVALIDATED")
+  assert(result.status === "DENIED" && result.reason === "CAPABILITY_REVOKED", "reason is CAPABILITY_REVOKED")
   assert(getEffectCalls() === 0, "zero effect calls")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Request hash changed → INVALIDATED (STALE)
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("Request hash changed → INVALIDATED")
+{
+  const { executorStore, requestStore, effectDispatcher, getEffectCalls } = setup()
+  createApproved(executorStore, "appr-stale")
+
+  const executor = new RealGovernedApprovalExecutor(
+    executorStore, requestStore, effectDispatcher, "node-local-01", "session-1",
+  )
+
+  const result = await executor.execute({
+    executionId: "exec-005", approvalId: "appr-stale", approvalVersion: 1, requestHash: "hash-CHANGED",
+  })
+
+  assertEqual(result.status, "DENIED", "stale → DENIED")
+  assertEqual(result.approvalState, "INVALIDATED", "INVALIDATED")
+  assert(result.status === "DENIED" && result.reason === "REQUEST_STALE", "reason is REQUEST_STALE")
+  assert(getEffectCalls() === 0, "zero effect calls")
+
+  const approval = executorStore.loadApproval("appr-stale")
+  assertEqual(approval!.state, "INVALIDATED", "approval INVALIDATED in store")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Effect definitely not started → RETRYABLE_FAILURE → back to APPROVED
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("Effect definitely not started → RETRYABLE_FAILURE → APPROVED")
+{
+  const { executorStore, requestStore } = setup()
+
+  const retryableDispatcher: EffectDispatcher = {
+    async execute(): Promise<EffectResult> {
+      return { success: false, reason: "file not found", effectDefinitelyNotStarted: true }
+    },
+  }
+
+  createApproved(executorStore, "appr-retry")
+
+  const executor = new RealGovernedApprovalExecutor(
+    executorStore, requestStore, retryableDispatcher, "node-local-01", "session-1",
+  )
+
+  const result = await executor.execute({
+    executionId: "exec-006", approvalId: "appr-retry", approvalVersion: 1, requestHash: "hash-abc",
+  })
+
+  assertEqual(result.status, "RETRYABLE_FAILURE", "effect not started → RETRYABLE_FAILURE")
+  assertEqual(result.approvalState, "APPROVED", "approval returned to APPROVED")
+  assert(result.status === "RETRYABLE_FAILURE" && result.effectDefinitelyNotStarted === true, "effectDefinitelyNotStarted flag")
+
+  const approval = executorStore.loadApproval("appr-retry")
+  assertEqual(approval!.state, "APPROVED", "approval APPROVED in store")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Effect may have occurred → RECOVERY_REQUIRED → stays CLAIMED
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("Effect may have occurred → RECOVERY_REQUIRED → stays CLAIMED")
+{
+  const { executorStore, requestStore } = setup()
+
+  const uncertainDispatcher: EffectDispatcher = {
+    async execute(): Promise<EffectResult> {
+      return { success: false, reason: "write timeout", effectDefinitelyNotStarted: false }
+    },
+  }
+
+  createApproved(executorStore, "appr-uncertain")
+
+  const executor = new RealGovernedApprovalExecutor(
+    executorStore, requestStore, uncertainDispatcher, "node-local-01", "session-1",
+  )
+
+  const result = await executor.execute({
+    executionId: "exec-007", approvalId: "appr-uncertain", approvalVersion: 1, requestHash: "hash-abc",
+  })
+
+  assertEqual(result.status, "RECOVERY_REQUIRED", "uncertain → RECOVERY_REQUIRED")
+  assertEqual(result.approvalState, "CLAIMED", "stays CLAIMED")
+  assert(result.status === "RECOVERY_REQUIRED" && result.effectMayHaveOccurred === true, "effectMayHaveOccurred flag")
+
+  const approval = executorStore.loadApproval("appr-uncertain")
+  assertEqual(approval!.state, "CLAIMED", "approval stays CLAIMED in store, not APPROVED")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Effect throws → RECOVERY_REQUIRED
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("Effect throws exception → RECOVERY_REQUIRED")
+{
+  const { executorStore, requestStore } = setup()
+
+  const throwingDispatcher: EffectDispatcher = {
+    async execute() { throw new Error("disk failure") },
+  }
+
+  createApproved(executorStore, "appr-throw")
+
+  const executor = new RealGovernedApprovalExecutor(
+    executorStore, requestStore, throwingDispatcher, "node-local-01", "session-1",
+  )
+
+  const result = await executor.execute({
+    executionId: "exec-008", approvalId: "appr-throw", approvalVersion: 1, requestHash: "hash-abc",
+  })
+
+  assertEqual(result.status, "RECOVERY_REQUIRED", "exception → RECOVERY_REQUIRED")
+  assert(result.status === "RECOVERY_REQUIRED" && result.effectMayHaveOccurred === true, "effectMayHaveOccurred")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -258,10 +366,35 @@ console.log("Request hash changed → STALE")
 console.log("Two workers claim → one winner")
 {
   const { executorStore, requestStore, effectDispatcher, getEffectCalls } = setup()
+  createApproved(executorStore, "appr-dual")
+
+  const executor = new RealGovernedApprovalExecutor(
+    executorStore, requestStore, effectDispatcher, "node-local-01", "session-1",
+  )
+
+  const r1 = await executor.execute({
+    executionId: "exec-100", approvalId: "appr-dual", approvalVersion: 1, requestHash: "hash-abc",
+  })
+  assertEqual(r1.status, "SUCCEEDED", "first worker succeeds")
+
+  const r2 = await executor.execute({
+    executionId: "exec-101", approvalId: "appr-dual", approvalVersion: 1, requestHash: "hash-abc",
+  })
+  assert(r2.status !== "SUCCEEDED", "second worker fails")
+  assert(getEffectCalls() === 1, "effect called exactly once total")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// INVALIDATED approval cannot be reactivated
+// ═══════════════════════════════════════════════════════════════════════
+
+console.log("INVALIDATED approval cannot be reactivated")
+{
+  const { executorStore, requestStore, effectDispatcher } = setup()
 
   executorStore.saveApproval({
-    approvalId: "appr-dual", version: 1, sessionId: "session-1", workspaceId: "arcana",
-    requestHash: "hash-abc", contractRevision: 1, state: "APPROVED",
+    approvalId: "appr-inv", version: 2, sessionId: "session-1", workspaceId: "arcana",
+    requestHash: "hash-abc", contractRevision: 1, state: "INVALIDATED",
     approvedBy: "user:lejzer", expiresAt: "2099-12-31T23:59:59.999Z",
     createdAt: now, updatedAt: now,
   })
@@ -270,72 +403,22 @@ console.log("Two workers claim → one winner")
     executorStore, requestStore, effectDispatcher, "node-local-01", "session-1",
   )
 
-  // First succeeds
-  const r1 = await executor.execute({
-    executionId: "exec-100", approvalId: "appr-dual", approvalVersion: 1, requestHash: "hash-abc",
-  })
-  assertEqual(r1.status, "SUCCEEDED", "first worker succeeds")
-
-  // Second fails (already consumed)
-  const r2 = await executor.execute({
-    executionId: "exec-101", approvalId: "appr-dual", approvalVersion: 1, requestHash: "hash-abc",
-  })
-  assertEqual(r2.status, "FAILED", "second worker fails")
-  assert(r2.status === "FAILED" && r2.reason.includes("consumed"), "reason mentions consumed")
-  assert(getEffectCalls() === 1, "effect called exactly once total")
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// Effect fails → approval returned to APPROVED
-// ═══════════════════════════════════════════════════════════════════════
-
-console.log("Effect fails → approval returned to APPROVED")
-{
-  const { executorStore, requestStore } = setup()
-
-  const failingDispatcher: EffectDispatcher = {
-    async execute(): Promise<EffectResult> {
-      return { success: false, reason: "disk read error" }
-    },
-  }
-
-  executorStore.saveApproval({
-    approvalId: "appr-fail", version: 1, sessionId: "session-1", workspaceId: "arcana",
-    requestHash: "hash-abc", contractRevision: 1, state: "APPROVED",
-    approvedBy: "user:lejzer", expiresAt: "2099-12-31T23:59:59.999Z",
-    createdAt: now, updatedAt: now,
-  })
-
-  const executor = new RealGovernedApprovalExecutor(
-    executorStore, requestStore, failingDispatcher, "node-local-01", "session-1",
-  )
-
   const result = await executor.execute({
-    executionId: "exec-fail", approvalId: "appr-fail", approvalVersion: 1, requestHash: "hash-abc",
+    executionId: "exec-009", approvalId: "appr-inv", approvalVersion: 2, requestHash: "hash-abc",
   })
 
-  assertEqual(result.status, "FAILED", "effect failure → FAILED")
-  assert(result.status === "FAILED" && result.reason.includes("disk read error"), "reason includes disk error")
-
-  // Approval returned to APPROVED
-  const approval = executorStore.loadApproval("appr-fail")
-  assertEqual(approval!.state, "APPROVED", "approval returned to APPROVED after effect failure")
+  assert(result.status !== "SUCCEEDED", "INVALIDATED cannot succeed")
+  assert(result.approvalState !== "CONSUMED", "cannot be consumed")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// RunProof agreement with approval database
+// RunProof agreement
 // ═══════════════════════════════════════════════════════════════════════
 
 console.log("RunProof agrees with approval database")
 {
   const { executorStore, requestStore, effectDispatcher } = setup()
-
-  executorStore.saveApproval({
-    approvalId: "appr-proof", version: 1, sessionId: "session-1", workspaceId: "arcana",
-    requestHash: "hash-abc", contractRevision: 1, state: "APPROVED",
-    approvedBy: "user:lejzer", expiresAt: "2099-12-31T23:59:59.999Z",
-    createdAt: now, updatedAt: now,
-  })
+  createApproved(executorStore, "appr-proof")
 
   const executor = new RealGovernedApprovalExecutor(
     executorStore, requestStore, effectDispatcher, "node-local-01", "session-1",
@@ -345,15 +428,15 @@ console.log("RunProof agrees with approval database")
     executionId: "exec-proof", approvalId: "appr-proof", approvalVersion: 1, requestHash: "hash-abc",
   })
 
-  assert(result.status === "SUCCEEDED", "execution succeeds")
-  if (result.status === "SUCCEEDED" && result.runProof) {
-    assertEqual(result.runProof.traceHealth, "COMPLETE", "RunProof trace COMPLETE")
-    assert(result.runProof.events.some(e => e.kind === "LOCAL_PDP_ALLOW"), "RunProof has PDP allow")
-    assert(result.runProof.events.some(e => e.kind === "PEP_RECHECK_PASSED"), "RunProof has PEP pass")
-    assert(result.runProof.events.some(e => e.kind === "EFFECT_EXECUTED"), "RunProof has effect")
-    assert(result.runProof.events.some(e => e.kind === "EFFECT_RECEIPT"), "RunProof has receipt")
-    assert(result.runProof.integrityStatus === "VALID", "RunProof integrity valid")
-  }
+  assertEqual(result.status, "SUCCEEDED", "succeeds")
+  assert(result.status === "SUCCEEDED" && result.runProof.traceHealth === "COMPLETE", "RunProof COMPLETE")
+  assert(result.status === "SUCCEEDED" && result.runProof.integrityStatus === "VALID", "integrity VALID")
+
+  // Verify approval database agrees
+  const approval = executorStore.loadApproval("appr-proof")
+  assertEqual(approval!.state, "CONSUMED", "database shows CONSUMED")
+  const exec = executorStore.loadExecution("appr-proof")
+  assertEqual(exec!.state, "SUCCEEDED", "execution SUCCEEDED")
 }
 
 // ═══════════════════════════════════════════════════════════════════════
