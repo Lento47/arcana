@@ -88,6 +88,25 @@
 - 16/16 packages typecheck ✅
 - 8/8 builds ✅
 
+## Streaming Lifecycle Fixes (Round 2 — found during interactive operator testing)
+
+**Date:** 2026-07-31
+**Commits:** `aedd96dc` … `e7cc8da6` (13 commits, validated by operator)
+
+| ID | File | Defect | Fix |
+|---|---|---|---|
+| SL-01 | packages/engine/src/session.ts:701 | `updateMessage` published `msg` by reference — SolidJS reconcile saw no diff, streaming chrome never updated | `publish("message.updated", { info: structuredClone(msg) })` |
+| SL-02 | command-spine-shell.tsx:263 | `runState` checked `"running"`/`"thinking"` — engine only emits `"busy"`/`"retry"` | Check `"busy"`/`"retry"` |
+| SL-03 | tui-streaming.ts:1670 | `makeInlineThinkEntry` passed no timed `part` — inline thinking shimmer stuck | Pass timed part to `buildTurnLifecycle` |
+| SL-04 | **spine-node.tsx:223** | **ROOT CAUSE: `active={!!thinking()}` always true** — plan entries hardcode `thinking="thinking"`, so `!!"thinking"` is always truthy; shimmer never stopped | `active={streaming()}` |
+| SL-05 | spine-mapper.ts:570 | `thinkingSummary` always returned "Thinking" — no begin/end marker on reasoning | `thinkingSummary(text, seed, streaming)` → `"Thinking"` while open, `"Thought"` when ended; both call sites pass `streaming` |
+| SL-06 | spine-chat.tsx:93-96 | Header shimmer verb `"thinking"` contradicted the flipped `"Thought"` think row | Verb `"writing"` for answer phase (interim) |
+| SL-07 | spine-chat.tsx (header) | **Operator decision:** no shimmer verb or spinner in the `✦ arcana` header at all | Removed `ShimmerText` + `SigilSpinner` from chat header; `streaming` still flows to prose body for markdown stability |
+
+**Regression tests added:** `test/spine-mapper.test.ts` — completed+idle → plan `streaming=false`, think summary `"Thought"`; mid-stream (busy) → think superseded `"Thought"`, plan still `streaming=true`.
+
+**Test totals after Round 2:** TUI 434/434 (was 342 at Round 1 close).
+
 ## Non-Blocking Items (documented, not fixed)
 
 - Internal "opencode" API names (keymap hooks, SDK client, config values) — breaking refactor, functional identifiers
