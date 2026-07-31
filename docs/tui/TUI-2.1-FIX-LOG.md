@@ -146,6 +146,17 @@
 
 **Test totals after Round 4:** TUI 447/448 pass (1 skip), 0 fail.
 
+## Destroyed EditBuffer Guard (Round 5 — live WS1 debugging)
+
+**Date:** 2026-07-31
+**Commit:** `27746683` (`[bump]`)
+
+**Defect:** `[command-execution-error] [Keymap] Error running command "prompt.autocomplete.select": EditBuffer is destroyed` — keypress → `select()` (autocomplete.tsx:735) → slash-command option `onSelect` (autocomplete.tsx:614) → `item.onSelect()` executes and navigates (unmounting the composer, destroying the TextareaRenderable's EditBuffer) → `props.clearPrompt()` then calls `input.clear()` on the destroyed buffer. OpenTUI `EditBuffer.guard()` throws on any call after `destroy()`. The keymap command outlives the component it targets.
+
+**Fix (surgical, 2 guards in `packages/tui/src/component/prompt/index.tsx`):** `clearPrompt()` and PromptRef `reset()` skip `input.clear()` / `input.extmarks.clear()` when `input.isDestroyed` (public getter, `Renderable.d.ts:282`). Store reset still runs (idempotent). Covers all 17+ clearPrompt callers (submit, clear command, palette, autocomplete). Fail-closed: clearing a dead composer is a no-op.
+
+**Verification:** typecheck clean; TUI suite 447/448 pass (1 skip), 0 fail (no regressions). **Operator validation (2026-07-31, live `dev:tui`):** slash-command select with navigation no longer logs the error. PASS.
+
 ## Non-Blocking Items (documented, not fixed)
 
 - Internal "opencode" API names (keymap hooks, SDK client, config values) — breaking refactor, functional identifiers
