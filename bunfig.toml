@@ -1,3 +1,7 @@
+# Solid transform for TUI when launching from monorepo root.
+# Package-level bunfig is not applied when bun cwd is the repo root.
+preload = ["./scripts/tui-solid-preload.ts"]
+
 [install]
 exact = true
 
