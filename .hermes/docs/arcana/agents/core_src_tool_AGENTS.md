@@ -1,5 +1,11 @@
 # Core Tool Architecture
 
+## Design Principles
+
+- Do not preserve backward compatibility.
+- Choose the simplest implementation that fully meets the current requirements.
+- Prefer established, well-maintained libraries over custom implementations.
+
 This folder owns Core's one local tool representation, process and Location registration, effective lookup, and settlement.
 
 ## Representations
