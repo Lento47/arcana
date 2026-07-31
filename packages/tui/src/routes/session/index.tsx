@@ -43,7 +43,7 @@ import type {
   ToolPart,
   UserMessage,
   TextPart,
-  ReasoningPart,
+  ReasoningPart as ReasoningPartType,
   SessionStatus,
 } from "@arcana/sdk/v2"
 import { useLocal } from "../../context/local"
@@ -181,7 +181,7 @@ const sessionGlobalBindingCommands = [
 
 const sessionGlobalUnfocusedBindingCommands = ["session.first", "session.last"] as const
 
-const context = createContext<{
+export const context = createContext<{
   width: number
   sessionID: string
   conceal: () => boolean
@@ -1954,7 +1954,7 @@ const PART_MAPPING = {
 
 const INLINE_TOOL_ICON_WIDTH = 2
 
-function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: AssistantMessage }) {
+export function ReasoningPart(props: { last: boolean; part: ReasoningPartType; message: AssistantMessage }) {
   const { theme } = useTheme()
   const ctx = use()
   // Show mode = expanded by default. Hide mode = collapsed by default.
@@ -1974,6 +1974,13 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
     return end === undefined ? 0 : Math.max(0, end - props.part.time.start)
   })
   const summary = createMemo(() => reasoningSummary(content()))
+  // Available width for the reasoning body: message column minus the
+  // container indent (3), the minimal-mode extra indent (2), and the left
+  // border (1). Clamped so degenerate widths never produce a zero/negative
+  // render target (same defensive pattern as spine-prose wrapCols).
+  const reasoningBodyWidth = createMemo(() =>
+    Math.max(1, ctx.width - 3 - (inMinimal() ? 2 : 0) - 1),
+  )
   const syntax = createSyntaxStyleMemo(() => generateSubtleSyntax(theme))
 
   const toggle = () => {
@@ -1999,10 +2006,13 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
             verbSeed={props.message.sessionID}
           />
         </box>
-        <Show when={expanded() && summary().body}>
-          <box paddingLeft={inMinimal() ? 2 : 0} marginTop={1} marginBottom={1}
+        <Show when={(!inMinimal() || expanded()) && summary().body}>
+          <box
+            paddingLeft={inMinimal() ? 2 : 0}
+            marginTop={1}
             border={["left"]}
             borderColor={theme.borderThinking}
+            width={reasoningBodyWidth()}
           >
             <code
               filetype="markdown"
@@ -2012,6 +2022,8 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
               content={summary().body}
               conceal={ctx.conceal()}
               fg={theme.textMuted}
+              wrapMode="word"
+              width={reasoningBodyWidth()}
             />
           </box>
         </Show>
