@@ -28,6 +28,10 @@ export type {
   ApprovalShellController,
 } from "./approval-shell-controller"
 
+// TUI-2.1C: HTTP operator service bridge (RB-01 D4 transport)
+export { HttpApprovalOperatorService } from "./approval-http-bridge"
+export type { HttpApprovalBridgeOptions } from "./approval-http-bridge"
+
 // TUI-2.1A: Production approval integration
 export { useApprovalIntegration, mergeSpineEntries } from "./approval-integration"
 export type {
