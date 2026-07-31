@@ -1847,14 +1847,18 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(
       Layer.mergeAll(
         Agent.defaultLayer,
-        Database.defaultLayer,
         SystemPrompt.defaultLayer,
         LLM.defaultLayer,
         CrossSpawnSpawner.defaultLayer,
         RuntimeFlags.defaultLayer,
         EventV2Bridge.defaultLayer,
+        // SessionPrompt yields EventStore; wire it with Database so AppRuntime
+        // dispose/listen paths do not surface "Service not found: Database".
+        EventStore.layer,
       ),
     ),
+    // Satisfy Database for SessionPrompt + EventStore after both require it.
+    Layer.provide(Database.defaultLayer),
   ),
 )
 const ModelRef = Schema.Struct({
@@ -1996,6 +2000,7 @@ export const node = LayerNode.make(layer as any, [
   EventV2Bridge.node,
   RuntimeFlags.node,
   Database.node,
+  EventStore.node,
 ])
 
 export * as SessionPrompt from "./prompt"

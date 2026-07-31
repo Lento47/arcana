@@ -1233,9 +1233,12 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(Image.defaultLayer),
     Layer.provide(Config.defaultLayer),
     Layer.provide(RuntimeFlags.defaultLayer),
-    Layer.provide(Database.defaultLayer),
     Layer.provide(EventV2Bridge.defaultLayer),
+    // EventStore requires Database — provide EventStore first so Database can
+    // satisfy both SessionProcessor's direct use and EventStore's requirement.
+    // Providing Database before EventStore leaves EventStore's Database dep open.
     Layer.provide(EventStore.layer),
+    Layer.provide(Database.defaultLayer),
   ),
 )
 
@@ -1260,6 +1263,7 @@ export const node = LayerNode.make(layer as any, [
   EventV2Bridge.node,
   RuntimeFlags.node,
   Database.node,
+  EventStore.node,
 ] as any)
   // CAST BOUNDARY #4 — LayerNode node array type
   // Upstream: LayerNode.make's second parameter expects an array of specific node types,

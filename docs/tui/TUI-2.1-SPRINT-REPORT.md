@@ -1,372 +1,370 @@
-# TUI-2.1 Production Integration — Sprint Report
+# TUI-2.1 Sprint Report
 
-**Date:** 2026-07-30  
+**Milestone:** `arcana-tui-2.1-production-integration-polish`  
 **Branch:** `phase-d-implementation`  
-**Head:** `18e394bf`  
-**Author:** Hermes Agent  
+**Report date:** 2026-07-30 (updated after harness + smoke automation)  
+**Status:** **Code complete; engine + listen harness fixed; automated smoke green; interactive operator smoke still pending**
+
+Related docs:
+
+- [TUI-2 Interactive Authority Control](./TUI-2-INTERACTIVE-AUTHORITY-CONTROL.md) (frozen prerequisite)
+- [TUI-2.1 Production Integration Polish](./TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md) (milestone contract)
+- [TUI-2.1 Manual Smoke Test](./TUI-2.1-MANUAL-SMOKE-TEST.md) (operator checklist)
 
 ---
 
-## Executive Summary
+## 1. Executive summary
 
-The TUI-2.1 production integration layer is **implemented, typechecked, and covered by 338 automated tests**. The actual SolidJS `command-spine-shell.tsx` component now mounts approval lifecycle data, provides contextual keyboard bindings with prompt conflict protection, and reconciles selection state across session/workspace changes.
+TUI-2.1 mounts the already-proven TUI-2 approval contract into the **real command-spine shell**: adapter, controller, integration hook, keyboard bindings, and production mounting.
 
-**Manual smoke testing is blocked** by a pre-existing engine infrastructure failure: the daemon's Effect-based HTTP server cannot bind ports on this Windows machine. This is unrelated to TUI-2.1 code changes.
+| Track | Result |
+|-------|--------|
+| TUI-2.1 production code | Landed on `phase-d-implementation` |
+| TUI-2.1 automated tests | **338 / 338 pass** (adapter + mounted-shell + production + TSX) |
+| Typecheck / imports | Cleaned (`18e394bf`) |
+| Engine daemon / `Server.listen` | Fixed (EventStore LayerNode + AppRuntime defaultLayer order) |
+| `httpapi-listen.test.ts` (Windows) | **5 pass / 6 skip (PTY) / 0 fail** |
+| Automated startup smoke | Daemon spawn + `/health` green |
+| Interactive operator smoke | Pending (terminal UI checklist) |
+| TUI-3 entry | Still blocked until interactive smoke + hard gates signed off |
+
+TUI-2.1 did **not** cause the TUI startup failure. That was a pre-existing engine LayerNode / `defaultLayer` wiring bug exposed when starting the daemon / `Server.listen` and when tests disposed `AppRuntime`.
 
 ---
 
-## What Was Built
+## 2. Objective (recap)
 
-### 1. Production Input Model
+Mount the durable approval lifecycle into production command-spine and keep the authority boundary:
 
-**File:** `packages/tui/src/shell/command-spine/production-spine-input.ts`
-
-```typescript
-type ProductionSpineInput =
-  | { source: "MESSAGE"; value: MessageView }
-  | { source: "GOVERNANCE"; value: GovernanceView }
-  | { source: "APPROVAL"; value: ApprovalRecord }
+```
+real approval event
+→ command-spine receipt
+→ operator select / inspect
+→ ApprovalOperatorService
+→ durable state transition
+→ runtime worker
+→ Phase C PDP/PEP
+→ receipts + RunProof
 ```
 
-Single integration boundary: `productionInputToSpineEntry(input)` prevents approval lifecycle logic from leaking across the shell.
+**Never:** shell → `GovernedApprovalExecutor` or button → effect.
 
-**Tests:** 12 (covered in production-contract suite)
+TUI-3 (delegation / subagent operations) remains blocked until TUI-2.1 hard gates and smoke pass.
 
-### 2. Deterministic Ordering
+---
 
-**File:** `packages/tui/src/shell/command-spine/spine-ordering.ts`
+## 3. Deliverables shipped
 
-```typescript
-type SpineOrderingKey = {
-  sessionId: string
-  sequence: number
-  timestamp: string
-  sourcePriority: number  // GOVERNANCE=0, APPROVAL=1, MESSAGE=2
-  sourceEventId: string   // final tie-breaker
+### 3.1 Production shell surfaces
+
+| Component | Path | Role |
+|-----------|------|------|
+| Spine adapter | `packages/tui/src/shell/command-spine/approval-spine-adapter.ts` | `ApprovalRecord` → `SpineEntry` (glyphs, kinds, tones, copy) |
+| Shell controller | `packages/tui/src/shell/command-spine/approval-shell-controller.ts` | Operator intents only; no executor imports |
+| Integration hook | `packages/tui/src/shell/command-spine/approval-integration.ts` | Production wiring for approvals into the shell |
+| Command spine mount | `packages/tui/src/shell/command-spine/command-spine-shell.tsx` | Merge approval entries, keyboard (`a`/`d`/`v`/`esc`), inspector, submitting guard |
+
+### 3.2 Core approval stack (TUI-2 foundation, reused)
+
+| Component | Path |
+|-----------|------|
+| Lifecycle + states | `packages/core/src/crypto/approval-lifecycle.ts` |
+| Operator service | `packages/core/src/crypto/approval-operator-service.ts` |
+| Shell state machine | `packages/core/src/crypto/approval-shell-state.ts` |
+| SQLite durable store | `packages/core/src/crypto/approval-store-sqlite.ts` |
+| Governed executor (runtime, not TUI) | `packages/core/src/crypto/governed-executor.ts` |
+
+### 3.3 Milestone commits (TUI-2.1 line)
+
+| Commit | Summary |
+|--------|---------|
+| `e0b14a2d` | TUI-2S shell integration + approval operator service + milestone document |
+| `7fb54840` | TUI-2.1 milestone doc + approval spine adapter |
+| `4bec4620` | TUI-2.1 adapter tests (73) |
+| `591b7973` | TUI-2.1 production mounting (+ D-6A-L / D-7.1 parallel work) |
+| `43a8e842` | Production approval integration + mounted-shell tests |
+| `ae1a6333` | Mount approval integration in `command-spine-shell.tsx` + TSX contract tests |
+| `18e394bf` | Cross-package import fixes + default switch cases |
+
+### 3.4 Docs
+
+| Doc | Status |
+|-----|--------|
+| `docs/tui/TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md` | Milestone contract (IN PROGRESS → update after smoke) |
+| `docs/tui/TUI-2.1-MANUAL-SMOKE-TEST.md` | Operator checklist (unchecked pending run) |
+| `docs/tui/TUI-2.1-SPRINT-REPORT.md` | This report |
+
+---
+
+## 4. Automated verification
+
+Re-run on report date from repo root:
+
+```text
+bun run packages/core/src/crypto/run-tui2.1-adapter-tests.ts
+  → Total: 73  Passed: 73  Failed: 0
+
+bun run packages/core/src/crypto/run-tui2.1-mounted-shell-tests.ts
+  → TUI-2.1 Mounted-Shell Integration: 75 passed, 0 failed
+
+bun run packages/core/src/crypto/run-tui2.1-production-tests.ts
+  → TUI-2.1 Production Integration: 137 passed, 0 failed
+
+bun run packages/core/src/crypto/run-tui2.1-production-tsx-tests.ts
+  → TUI-2.1 Production TSX Integration: 53 passed, 0 failed
+```
+
+| Suite | Passed | Failed |
+|-------|--------|--------|
+| Adapter | 73 | 0 |
+| Mounted shell | 75 | 0 |
+| Production integration | 137 | 0 |
+| Production TSX | 53 | 0 |
+| **Total** | **338** | **0** |
+
+Coverage themes (representative):
+
+- State → glyph / kind / tone mapping (PENDING…INVALIDATED)
+- APPROVED ≠ EXECUTED, CLAIMED ≠ SUCCEEDED
+- Inspector fields and redaction
+- Operator command path only (shell-to-executor paths = 0)
+- Duplicate submit suppression while SUBMITTING
+- Session isolation / terminal invalidation
+- Recovery-required copy and non-retry semantics
+
+---
+
+## 5. Hard gates (contract status)
+
+From [TUI-2.1 Production Integration Polish §11](./TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md):
+
+| Gate | Automated | Manual smoke | Notes |
+|------|-----------|--------------|-------|
+| Production command-spine mounted | PASS (code + tests) | PENDING | Mounted in `command-spine-shell.tsx` |
+| Shell-to-executor direct paths | **0** (tests) | PENDING | Enforced in adapter/controller design + TSX tests |
+| Button-to-effect paths | **0** (tests) | PENDING | Same |
+| Duplicate commands | **0** (tests) | PENDING | SUBMITTING guard covered |
+| Cross-session approvals | **0** (tests) | PENDING | Isolation cases in suites |
+| Right-edge truncation defects | — | PENDING | Width matrix in smoke plan |
+| Viewport overflow defects | — | PENDING | Smoke phases 8–9 |
+| Selection loss during resize | — | PENDING | Smoke phase 8 |
+| Hydration crashes | Partial (tests) | PENDING | Full child-session path needs live TUI |
+| False COMPLETE traces | — | PENDING | Needs live RunProof observation |
+| APPROVED rendered as EXECUTED | **0** (tests) | PENDING | Adapter assertions |
+| Recovery-required auto-retries | **0** (tests) | PENDING | |
+| Critical states hidden by filters | Partial (tests) | PENDING | |
+| Stale branding strings | Partial | PENDING | Smoke phase 1 |
+
+**Verdict:** Automated gates for authority boundaries and rendering contracts are green. **Operator smoke is still required** to close visual/resize/live RunProof gates.
+
+---
+
+## 6. Engine blocker: diagnosis and fix
+
+### 6.1 Symptom (pre-fix)
+
+TUI could not start: daemon / worker `Server.listen` appeared to hang on ports **9142–9150**.  
+Bun native listen and `Bun.serve` on the same ports worked. Hypothesis of Effect HTTP bind / better-sqlite3 / Windows-only platform bug was **incorrect**.
+
+### 6.2 Actual root cause
+
+`Server.listen` builds the HTTP app through **`LayerNode`**, not through each service’s `defaultLayer`.
+
+Phase A/B introduced `@arcana/EventStore` and used it from:
+
+- `SessionProcessor` (`yield* EventStore.Service`)
+- `SessionPrompt` (`yield* EventStore.Service`)
+
+`SessionProcessor.defaultLayer` provided `EventStore.layer`, but:
+
+1. `EventStore` had **no** `LayerNode` node
+2. `SessionProcessor.node` / `SessionPrompt.node` did **not** list `EventStore` in their dependency arrays
+3. `as any` on `LayerNode.make` **hid** the missing dependency at compile time
+
+Runtime failure:
+
+```text
+Service not found: @arcana/EventStore
+  (packages/engine/src/session/epistemic/event-store.ts)
+```
+
+### 6.3 Why it looked like a silent multi-port hang
+
+`packages/engine/src/daemon/lifecycle.ts` treated **all** listen errors as “try next port”:
+
+```ts
+} catch {
+  continue
 }
 ```
 
-Deduplication by durable ID (`approvalId:version`, `governanceEventId`, `executionId`, `messageId`). Never by receipt text.
+TUI auto-spawn also used **`stdio: ignore`**, so bootstrap errors never reached the operator. Each port failed for the **same layer bug**, not because Effect could not bind.
 
-**Tests:** 13 (ordering + deduplication)
+### 6.4 Environment note
 
-### 3. Approval Shell Controller
+This worktree temporarily lacked a complete `node_modules` install. After `bun install`, catalog versions resolved correctly:
 
-**File:** `packages/tui/src/shell/command-spine/approval-shell-controller.ts`
+- `effect@4.0.0-beta.74`
+- `@effect/platform-node@4.0.0-beta.74`
 
-```typescript
-interface ApprovalShellController {
-  select(approvalId: string): void
-  inspect(approvalId: string): void
-  approveOnce(input: ApprovalCommandInput): Promise<ApprovalCommandResult>
-  deny(input: ApprovalCommandInput): Promise<ApprovalCommandResult>
-  clearSelection(): void
-  getShellState(): ApprovalShellState | undefined
-  isSubmitting(): boolean
-}
+Incomplete installs can also produce misleading resolution into Bun cache (Effect 3.x) and stack-overflow storms; that was secondary noise, not the daemon bug.
+
+### 6.5 Fix applied (engine, not TUI-2.1 feature work)
+
+| Change | File |
+|--------|------|
+| Add `EventStore.node = LayerNode.make(layer, [Database.node])` | `packages/engine/src/session/epistemic/event-store.ts` |
+| Depend on `EventStore.node` | `packages/engine/src/session/processor.ts` |
+| Depend on `EventStore.node` | `packages/engine/src/session/prompt.ts` |
+| Log real `Server.listen` errors; aggregate on total failure | `packages/engine/src/daemon/lifecycle.ts` |
+
+### 6.6 Post-fix probes
+
+| Probe | Result |
+|-------|--------|
+| `Server.listen({ hostname: "127.0.0.1", port: 9146 })` | OK (~257 ms), `/health` → 200 |
+| `Server.listen({ port: 0 })` | Prefers 4096 when free |
+| `startDaemon(cwd, version)` | OK on **9142**, `/health` → `{"status":"ok",...}` |
+| TUI-style daemon spawn (`index.ts --daemon`) | Ready on 9142 after ~9 health polls |
+
+---
+
+## 6b. Follow-up: `httpapi-listen` test harness (Database + plugin)
+
+### 6b.1 What looked like a test-only failure
+
+`Server.listen` **succeeded** under bun test. The failure came from `afterEach` → `disposeAllInstances()` → `AppRuntime.runPromise(InstanceStore.disposeAll())`, which built `AppLayer` and hit:
+
+```text
+Service not found: @arcana/v2/storage/Database
 ```
 
-The **only** production UI component allowed to send approval commands. Depends on `ApprovalOperatorService` only. Never imports: `GovernedApprovalExecutor`, `SqliteApprovalStore`, Phase C callbacks, raw SQL.
+### 6b.2 Root cause (AppRuntime / defaultLayer order)
 
-Command lifecycle:
-1. Verify approval is actionable (PENDING, correct session/workspace)
-2. Set local SUBMITTING
-3. Issue one command via service
-4. Wait for durable result/event
-5. Clear SUBMITTING
-6. Render authoritative state from durable events
+`SessionProcessor.defaultLayer` did:
 
-Repeated input during SUBMITTING → zero additional commands.
-
-**Tests:** 35 (controller commands, error handling, concurrency, isolation)
-
-### 4. Approval Spine Adapter
-
-**File:** `packages/tui/src/shell/command-spine/approval-spine-adapter.ts`
-
-Maps `ApprovalRecord` → `SpineEntry` with:
-- State-specific glyphs: `◤` (PENDING), `✓` (APPROVED), `✗` (DENIED/INVALIDATED), `▷` (CLAIMED), `▣` (CONSUMED), `×` (EXPIRED)
-- State-specific labels and summaries
-- Receipt generation per lifecycle state
-- Recovery presentation (persistent, survives filters)
-- Invalidated presentation (reason + new-approval-required)
-
-**Tests:** 73 (adapter tests)
-
-### 5. Production Approval Integration Hook
-
-**File:** `packages/tui/src/shell/command-spine/approval-integration.ts`
-
-Composable SolidJS hook for the command-spine shell:
-- `useApprovalIntegration()` — provides `approvalEntries`, controller, helpers
-- `mergeSpineEntries()` — deterministic merge with deduplication
-
-**Tests:** 25 (covered in mounted-shell suite)
-
-### 6. ShellProps Extension
-
-**File:** `packages/tui/src/shell/types.ts`
-
-Added optional reactive props (backward-compatible):
-
-```typescript
-approvals?: Accessor<readonly ApprovalRecord[]>
-approvalController?: ApprovalShellController
-activeSessionId?: Accessor<string>
-activeWorkspaceId?: Accessor<string>
+```ts
+Layer.provide(Database.defaultLayer),
+Layer.provide(EventStore.layer), // EventStore still requires Database → bubbles open
 ```
 
-### 7. Command-Spine-Shell Mounting
+Providing `Database` **before** `EventStore` only satisfies `SessionProcessor`’s direct use. `EventStore.layer` re-introduces a Database requirement that was not re-satisfied.
 
-**File:** `packages/tui/src/shell/command-spine/command-spine-shell.tsx`
+`SessionPrompt.defaultLayer` yielded `EventStore.Service` but never provided `EventStore.layer`.
 
-Changes:
-- **Imports:** `approvalToSpineEntry`, `isApprovalActionable`, `isApprovalTerminal`, `createApprovalShellController`, `createDedupeKey`, `dedupeKeyToString`
-- **Reactive approvals:** `const approvals = createMemo(() => props.approvals?.() ?? [])` — never destructures reactive props
-- **Approval entries:** `approvalEntries` memo with deduplication by `approvalId:version`
-- **Merged visible entries:** `allVisibleEntries` combines messages + gates + approvals, deduplicates by entry ID
-- **Navigation updated:** All `visibleEntryIDs`, `visibleEntryByID`, `navigableEntries`, `resolveFocusedEntry`, `focusRelativeEntry`, `openFocusedEntryDiff`, `openFocusedEntrySession` use `allVisibleEntries()`
-- **Contextual keyboard bindings** (priority 2, higher than spine navigation at priority 1):
-  - `[a]` approve — guarded: `renderer.currentFocusedEditor === null`, approval actionable, correct session, not submitting
-  - `[d]` deny — same guards
-  - `[v]` inspect — opens inspector
-  - `[esc]` — closes inspector or clears selection
-  - **Critical invariant:** typing "a"/"d"/"v" in the prompt → letter appears, no approval command
-- **Selection reconciliation effects:**
-  - Session/workspace change → clears incompatible selection
-  - Approval disappears → clears inspector
-  - Approval becomes terminal → inspector stays read-only
+### 6b.3 Fixes
 
-**Tests:** 53 (TSX contract tests)
+| Change | File |
+|--------|------|
+| Provide `EventStore.layer` then `Database.defaultLayer` | `packages/engine/src/session/processor.ts` |
+| Provide `EventStore.layer` + trailing `Database.defaultLayer` | `packages/engine/src/session/prompt.ts` |
+| Plugin listen test sets `ARCANA_TRUST_WORKSPACE=1` | `packages/engine/test/server/httpapi-listen.test.ts` |
 
----
+Plugin test detail: ARC-SEC-I02 strips project plugins on untrusted workspaces, so the tmpdir plugin never loaded (`initialized` never written). Trust escape hatch is correct for an intentional project-plugin test.
 
-## Test Results
+### 6b.4 Results (`bun test test/server/httpapi-listen.test.ts`)
 
-| Suite | Tests | Status |
-|---|---|---|
-| TUI-2.1 adapter | 73 | ✅ ALL PASS |
-| TUI-2.1 production-contract | 137 | ✅ ALL PASS |
-| TUI-2.1 mounted-shell | 75 | ✅ ALL PASS |
-| TUI-2.1 TSX contract | 53 | ✅ ALL PASS |
-| **TUI-2.1 total** | **338** | **✅ ALL PASS** |
-| Previous suites | 699 | ✅ ALL PASS |
-| **Total TypeScript** | **1037** | **✅ ALL PASS** |
-| Rust conformance | 46/46 | ✅ ALL PASS |
-| Rust openat2 | 6/6 | ✅ ALL PASS |
-| **Total Rust** | **52/52** | **✅ ALL PASS** |
+| Result | Count |
+|--------|-------|
+| Pass | **5** (incl. port-0 prefer/fallback, plugin client, stop, default handler) |
+| Skip | **6** (PTY websocket cases — skipped on Windows) |
+| Fail | **0** |
 
 ---
 
-## Manual Smoke Test — BLOCKED
+## 6c. Automated smoke (non-interactive)
 
-### Blocker: Engine Daemon Cannot Start
+| Check | Result |
+|-------|--------|
+| TUI-2.1 adapter / mounted / production / TSX | **338/338** |
+| `startDaemon` + `/health` | PASS |
+| Daemon spawn path used by TUI (`--daemon`) | PASS |
+| Interactive checklist phases 1–9 | **Not run** (requires human terminal) |
 
-The TUI requires a running daemon (or Worker fallback) that provides the HTTP API for session management, model calls, and state. The daemon fails to start:
-
-```
-[daemon] bootstrap failed: No available port for daemon
-    at startDaemon (lifecycle.ts:29:26)
-```
-
-**Ports 9142–9150 are free** (verified via `netstat`). `Bun.serve` binds successfully on these ports. The failure is in `Server.listen()` which uses Effect's `HttpRouter.serve` + `Layer` pipeline. This pipeline silently fails to bind.
-
-**Evidence:**
-- `bun -e "Bun.serve({ port: 9142, ... }).stop()"` → works
-- `Server.listen({ port: 9142, hostname: '127.0.0.1' })` → hangs silently
-- Daemon bootstrap catches the error, tries all 9 ports, all fail
-- TUI falls back to Worker path, Worker also uses `Server.listen`, also fails
-- TUI exits with code 0 after ~3 seconds
-
-**Root cause:** Effect-based HTTP server layer fails on this Windows machine. Likely causes:
-1. `better-sqlite3` native binary not compiled for Bun 1.3.14 on Windows
-2. Effect `HttpRouter.serve` Windows-specific issue
-3. Missing transitive dependency in the Effect layer chain
-
-**This is a pre-existing engine infrastructure issue.** It blocks ALL TUI testing, not just TUI-2.1. It was present before any TUI-2.1 code was written.
-
-### Smoke Test Plan (ready when engine works)
-
-Full plan at: `docs/tui/TUI-2.1-MANUAL-SMOKE-TEST.md`
-
-11 phases, 50+ checkpoints:
-1. Startup verification
-2. Trigger approval
-3. Inspector ([v] open, [Esc] close)
-4. Approval lifecycle (PENDING→APPROVED→CLAIMED→CONSUMED)
-5. Denial lifecycle (deny + executor calls=0)
-6. Prompt conflict protection (type a/d/v → no command)
-7. Session isolation
-8. Resize (9 breakpoints: 59–180 columns)
-9. Theme validation (dark + light)
-10. Restart recovery
-11. Mouse interaction
+Interactive phases still required: approval glyphs, `a`/`d`/`v`/`esc`, resize matrix, themes, prompt conflict protection. See [TUI-2.1 Manual Smoke Test](./TUI-2.1-MANUAL-SMOKE-TEST.md).
 
 ---
 
-## Commit History
+## 7. Authority boundary audit (TUI-2.1)
 
-| Commit | Description | Files |
-|---|---|---|
-| `591b7973` | TUI-2.1 production mounting + cgroup fixtures + openat2 scaffold | 11 files |
-| `43a8e842` | Approval integration hook + mounted-shell tests | 3 files |
-| `ae1a6333` | Mount approval in command-spine-shell.tsx + TSX contract tests | 3 files |
-| `18e394bf` | Fix cross-package imports + manual smoke test plan | 6 files |
-
----
-
-## Branch Organization Issue
-
-All TUI-2.1 work landed on `phase-d-implementation` because the approval types (`ApprovalRecord`, `ApprovalState`) live in `@arcana/core/crypto/approval-lifecycle`, which was developed as part of Phase D.
-
-**The correct freeze procedure** (per user's instructions):
-
-1. Create clean branch from frozen TUI-2 tag:
-   ```bash
-   git switch -c tui-2.1-production-integration-polish \
-     arcana-tui-2-interactive-authority-control
-   ```
-
-2. Transplant only TUI-specific files:
-   ```bash
-   git restore --source=phase-d-implementation -- \
-     packages/tui \
-     docs/tui
-   ```
-
-3. Do NOT bring:
-   - `packages/core/src/crypto/workload-identity-linux.ts`
-   - `packages/core/src/crypto/run-linux-identity-tests.ts`
-   - `tools/fs-containment-rust/`
-   - Any Phase D implementation files
-
-4. The shared dependency (`@arcana/core/crypto/approval-lifecycle`) already exists in core from earlier TUI-2/Phase D work.
-
-5. Commit:
-   ```bash
-   git add packages/tui docs/tui
-   git commit -m "feat: mount TUI-2 approvals in production command spine"
-   ```
+| Rule | Status |
+|------|--------|
+| Shell issues operator intents only | Held in code + tests |
+| No TUI import of `GovernedApprovalExecutor` | Held (adapter header contract) |
+| No button → effect | Held |
+| Fresh PDP/PEP on execute (runtime) | TUI-2 / Phase C path; not reopened by 2.1 |
+| INVALIDATED terminal | Held in lifecycle + presentation tests |
+| Secrets not leaked into spine/inspector copy | Covered in production suites |
 
 ---
 
-## File Inventory
+## 8. Out of scope / non-goals (unchanged)
 
-### TUI-Specific (safe to transplant to TUI branch)
+Frozen non-goals for TUI-2.1:
 
-| File | Status | Lines |
-|---|---|---|
-| `packages/tui/src/shell/command-spine/approval-spine-adapter.ts` | NEW | 232 |
-| `packages/tui/src/shell/command-spine/approval-shell-controller.ts` | NEW | 199 |
-| `packages/tui/src/shell/command-spine/approval-integration.ts` | NEW | 148 |
-| `packages/tui/src/shell/command-spine/production-spine-input.ts` | NEW | 115 |
-| `packages/tui/src/shell/command-spine/spine-ordering.ts` | NEW | 112 |
-| `packages/tui/src/shell/command-spine/index.ts` | MODIFIED | +18 lines |
-| `packages/tui/src/shell/command-spine/command-spine-shell.tsx` | MODIFIED | +172 lines |
-| `packages/tui/src/shell/types.ts` | MODIFIED | +12 lines |
-| `docs/tui/TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md` | NEW | milestone doc |
-| `docs/tui/TUI-2.1-MANUAL-SMOKE-TEST.md` | NEW | test plan |
+- Capability creation / policy editing
+- Delegation mutation / remote-node control
+- Approval scope editing
+- Automatic recovery resolution
+- Full multi-panel cockpit (still aspirational; default remains command-spine)
 
-### Test Files (for validation, not production)
-
-| File | Tests |
-|---|---|
-| `packages/core/src/crypto/run-tui2.1-adapter-tests.ts` | 73 |
-| `packages/core/src/crypto/run-tui2.1-production-tests.ts` | 137 |
-| `packages/core/src/crypto/run-tui2.1-mounted-shell-tests.ts` | 75 |
-| `packages/core/src/crypto/run-tui2.1-production-tsx-tests.ts` | 53 |
-
-### OUT OF SCOPE — Do Not Transplant
-
-| File/Directory | Reason |
-|---|---|
-| `packages/core/src/crypto/workload-identity-linux.ts` | D-6A-L Linux identity — Phase D, not TUI |
-| `packages/core/src/crypto/run-linux-identity-tests.ts` | D-6A-L tests — Phase D |
-| `tools/fs-containment-rust/` | D-7.1 openat2 scaffold — Phase D |
-| `packages/core/src/crypto/approval-lifecycle.ts` | Already exists in core (pre-TUI-2.1) |
-| `packages/core/src/crypto/approval-store-sqlite.ts` | Pre-existing TUI-2I |
-| `packages/core/src/crypto/approval-executor.ts` | Pre-existing TUI-2E |
-| `packages/core/src/crypto/durable-state*.ts` | Phase D |
-| `packages/core/src/crypto/reducers.ts` | Phase D |
-| `packages/core/src/crypto/sync-*.ts` | Phase D |
-| `packages/core/src/crypto/identity-contracts.ts` | Phase D |
-| `packages/core/src/crypto/distributed-pep.ts` | Phase D |
-| `packages/core/src/crypto/proof-batching.ts` | Phase D |
-| `packages/core/src/crypto/runproof.ts` | Phase D |
-| `packages/core/src/crypto/verifier.ts` | Phase D |
-| `packages/core/src/crypto/canonical-serializer.ts` | Phase D |
-| `packages/core/src/crypto/golden-vectors.ts` | Phase D |
-| `tools/acep-conformance-rust/` | Phase D |
+Parallel Phase D work on the same branch (ACEP-1, D-6/D-7/D-8A, workload identity, openat2 scaffold) is **not** TUI-2.1 deliverable, but coexists on `phase-d-implementation`.
 
 ---
 
-## Open Issues
+## 9. Remaining work
 
-### Issue 1: Engine Daemon Cannot Start (PRE-EXISTING)
+### Must-do to close TUI-2.1
 
-**Severity:** Release blocker (for ALL TUI testing)  
-**Classification:** Pre-existing infrastructure  
-**Owner:** Engine team  
+1. **Run** [TUI-2.1 Manual Smoke Test](./TUI-2.1-MANUAL-SMOKE-TEST.md) on a real terminal (startup, approve, deny, resize matrix, themes).
+2. Record smoke results (checkboxes + width table) and freeze milestone status in `TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md`.
+3. Optional git hygiene: clean TUI-2.1 branch from frozen TUI-2 tag via transplant strategy (separate from runtime fix).
 
-**Description:** `Server.listen()` (Effect-based HTTP) fails to bind ports 9142–9150 on Windows. `Bun.serve` works on the same ports.
+### Nice-to-have / follow-ups
 
-**Reproduction:**
+- Consider not ignoring daemon stdio in TUI spawn (or pipe stderr to a log file)
+- Performance targets from §10 of the milestone doc (p95 metrics) still need live measurement
+- PTY listen tests remain skipped on Windows (pre-existing platform gate)
+
+### Explicitly blocked until interactive smoke
+
+- TUI-3: Delegation and Subagent Operations
+
+---
+
+## 10. How to reproduce green engine startup
+
 ```bash
-cd L:\PROJECTS\arcana
-bun packages/engine/src/index.ts --daemon
-# → "No available port for daemon"
+# from repo root, after bun install
+bun --conditions=browser -e "
+  const { startDaemon } = await import('./packages/engine/src/daemon/lifecycle.ts')
+  const { removeLock } = await import('./packages/engine/src/daemon/lock.ts')
+  removeLock(process.cwd())
+  const r = await startDaemon(process.cwd(), 'smoke')
+  console.log(r)
+  console.log(await fetch(r.url + '/health').then(x => x.text()))
+"
+
+# or launch TUI
+./arcana.cmd
+# or
+bun --conditions=browser packages/engine/src/index.ts
 ```
 
-**Suggested investigation:**
-1. Check if `better-sqlite3` native addon is compiled for Bun 1.3.14 on Windows
-2. Check Effect `HttpRouter.serve` Windows compatibility
-3. Try running daemon with `EFFECT_LOG_LEVEL=Debug`
-4. Check if `--conditions=browser` affects HTTP module resolution
-
-### Issue 2: Branch Organization
-
-**Severity:** Process  
-**Classification:** Housekeeping  
-
-All TUI-2.1 work is on `phase-d-implementation` instead of a TUI branch. Need to transplant to clean TUI branch per the procedure above.
-
-### Issue 3: TUI-2.1 Not Manually Verified
-
-**Severity:** Quality gate  
-**Classification:** Blocked by Issue 1  
-
-338 automated tests pass but the actual rendered TUI has not been observed. The smoke test plan is ready at `docs/tui/TUI-2.1-MANUAL-SMOKE-TEST.md`.
+Then execute the manual smoke checklist.
 
 ---
 
-## TUI-2.1 Freeze Gate
+## 11. Bottom line
 
-| Gate | Status |
-|---|---|
-| ProductionSpineInput mapping | ✅ IMPLEMENTED |
-| SpineOrderingKey ordering | ✅ IMPLEMENTED |
-| ApprovalShellController | ✅ IMPLEMENTED |
-| approval-integration hook | ✅ IMPLEMENTED |
-| ShellProps extended | ✅ IMPLEMENTED |
-| command-spine-shell.tsx mounted | ✅ IMPLEMENTED |
-| Contextual keyboard bindings | ✅ IMPLEMENTED |
-| Prompt conflict protection | ✅ IMPLEMENTED |
-| Selection reconciliation | ✅ IMPLEMENTED |
-| Automated tests | ✅ 338/338 |
-| **Manual smoke test** | ❌ BLOCKED (engine) |
-| **Responsive width matrix** | ❌ PENDING |
-| **Theme validation** | ❌ PENDING |
-| **Mounted performance** | ❌ PENDING |
-| **Clean branch transplant** | ❌ PENDING |
+| Question | Answer |
+|----------|--------|
+| Is TUI-2.1 code done? | **Yes** for production mount + automated contract |
+| Are automated tests green? | **338/338** TUI-2.1; **5/5 runnable** httpapi-listen on Windows |
+| Was TUI-2.1 responsible for no-start? | **No** |
+| What blocked smoke? | Missing `EventStore` in LayerNode + bad `defaultLayer` provide order + silent daemon catch |
+| Is that fixed? | **Yes** (LayerNode + AppRuntime defaultLayer + daemon logging) |
+| Listen harness Database error? | **Fixed** (was afterEach dispose, not listen) |
+| Can TUI-3 start? | **Not yet** — needs interactive operator smoke sign-off |
 
----
-
-## Next Steps
-
-1. **Fix engine daemon startup** (pre-existing, blocks everything)
-2. **Manual smoke test** per `docs/tui/TUI-2.1-MANUAL-SMOKE-TEST.md`
-3. **Create clean TUI-2.1 branch** from frozen TUI-2 tag
-4. **Transplant TUI files only** (not Phase D/Linux/openat2)
-5. **TUI polish** (responsive matrix, themes, recovery presentation)
-6. **Mounted performance benchmarks**
-7. **Freeze TUI-2.1** when all gates pass
+**Recommended next operator action:** open a real terminal, run `./arcana.cmd` (or engine TUI), execute [manual smoke](./TUI-2.1-MANUAL-SMOKE-TEST.md), then freeze the TUI-2.1 tag when gates pass.

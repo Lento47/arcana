@@ -57,7 +57,19 @@ async function target() {
 }
 
 async function input(value?: string) {
-  const piped = process.stdin.isTTY ? undefined : await Bun.stdin.text()
+  // Only drain stdin when it is clearly non-interactive. On some Windows hosts
+  // `stdin.isTTY` is false even for an interactive console; calling
+  // `Bun.stdin.text()` there consumes the stream and OpenTUI sees EOF and exits
+  // immediately. Prefer leaving stdin alone when stdout is still a TTY unless
+  // the caller forces pipe reading via ARCANA_READ_STDIN=1.
+  let piped: string | undefined
+  if (!process.stdin.isTTY) {
+    const forceRead = process.env.ARCANA_READ_STDIN === "1"
+    const fullyNonInteractive = !process.stdout.isTTY
+    if (forceRead || fullyNonInteractive) {
+      piped = await Bun.stdin.text()
+    }
+  }
   if (!value) return piped
   if (!piped) return value
   return piped + "\n" + value
@@ -111,6 +123,10 @@ export const TuiThreadCommand = cmd({
       }),
   handler: async (args) => {
     mark("tui-handler-start")
+    // Same guarantee as zero-arg index path: Solid transform must be registered
+    // before dynamic imports of @arcana/tui / app.tsx.
+    const { ensureSolidPreload } = await import("../tui/ensure-solid-preload")
+    await ensureSolidPreload()
     const unguard = win32InstallCtrlCGuard()
     try {
       const { TuiConfig } = await import("@/config/tui")

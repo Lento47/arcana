@@ -1,4 +1,4 @@
-import { createComponent, createContext, type JSX, useContext } from "solid-js"
+import { createContext, type JSX, useContext, type ParentProps } from "solid-js"
 
 export type TuiPaths = Readonly<{
   cwd: string
@@ -22,25 +22,30 @@ const PathsContext = createContext<TuiPaths>()
 const TerminalEnvironmentContext = createContext<TuiTerminalEnvironment>()
 const StartupContext = createContext<TuiStartup>()
 
-function provider<T>(context: ReturnType<typeof createContext<T>>, value: T, children: () => JSX.Element) {
-  return createComponent(context.Provider, {
-    value: Object.freeze({ ...value }),
-    get children() {
-      return children()
-    },
-  })
+const DEFAULT_STARTUP: TuiStartup = Object.freeze({
+  initialRoute: undefined,
+  skipInitialLoading: false,
+})
+
+/** JSX Provider form — reliable with OpenTUI Solid transform (createComponent getters were not). */
+export function TuiPathsProvider(props: ParentProps<{ value: TuiPaths }>) {
+  return (
+    <PathsContext.Provider value={Object.freeze({ ...props.value })}>{props.children}</PathsContext.Provider>
+  )
 }
 
-export function TuiPathsProvider(props: { value: TuiPaths; children: JSX.Element }) {
-  return provider(PathsContext, props.value, () => props.children)
+export function TuiTerminalEnvironmentProvider(props: ParentProps<{ value: TuiTerminalEnvironment }>) {
+  return (
+    <TerminalEnvironmentContext.Provider value={Object.freeze({ ...props.value })}>
+      {props.children}
+    </TerminalEnvironmentContext.Provider>
+  )
 }
 
-export function TuiTerminalEnvironmentProvider(props: { value: TuiTerminalEnvironment; children: JSX.Element }) {
-  return provider(TerminalEnvironmentContext, props.value, () => props.children)
-}
-
-export function TuiStartupProvider(props: { value: TuiStartup; children: JSX.Element }) {
-  return provider(StartupContext, props.value, () => props.children)
+export function TuiStartupProvider(props: ParentProps<{ value: TuiStartup }>) {
+  return (
+    <StartupContext.Provider value={Object.freeze({ ...props.value })}>{props.children}</StartupContext.Provider>
+  )
 }
 
 function required<T>(context: ReturnType<typeof createContext<T>>, name: string) {
@@ -58,5 +63,6 @@ export function useTuiTerminalEnvironment() {
 }
 
 export function useTuiStartup() {
-  return required(StartupContext, "TuiStartupProvider")
+  // Prefer provider value; fall back so a missed transform/provider cannot hard-crash boot.
+  return useContext(StartupContext) ?? DEFAULT_STARTUP
 }
