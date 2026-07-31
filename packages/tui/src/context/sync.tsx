@@ -25,7 +25,8 @@ import { detectLocalOllama } from "@arcana/core/providers/ollama"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useProject } from "./project"
 import { useEvent } from "./event"
-import { useSDK } from "./sdk"
+import { useSDK, SSE_SILENT_DEATH_MS } from "./sdk"
+import { shouldKeepLocalPart } from "../util/part-merge"
 import { useTuiStartup } from "./runtime"
 import { createSimpleContext } from "./helper"
 import { useExit } from "./exit"
@@ -150,6 +151,13 @@ export const {
     const olderCursors = new Map<string, string | undefined>()
     const loadingOlderSessions = new Set<string>()
     const exhaustedOlderSessions = new Set<string>()
+    /**
+     * Part-level liveness (part-merge.ts): last live part event (delta or
+     * full update) per part. Lets the hydration merge tell "live stream"
+     * (keep the locally-accumulated part) from "stream died" (REST is
+     * authoritative, replace the truncated prefix).
+     */
+    const lastPartLiveAt = new Map<string, number>()
     /** Serial idle-prefetch queue (concurrency cap 1). */
     const prefetchQueue: string[] = []
     let prefetchDraining = false
@@ -386,6 +394,7 @@ export const {
         }
         case "message.part.updated": {
           touchPart(event.properties.part.sessionID, event.properties.part.id)
+          lastPartLiveAt.set(event.properties.part.id, Date.now())
           const parts = store.part[event.properties.part.messageID]
           if (!parts) {
             setStore("part", event.properties.part.messageID, [event.properties.part])
@@ -412,6 +421,14 @@ export const {
           const result = search(parts, event.properties.partID, (p) => p.id)
           if (!result.found) break
           touchPart(event.properties.sessionID, event.properties.partID)
+          lastPartLiveAt.set(event.properties.partID, Date.now())
+          // Opportunistic prune: keep the map bounded, drop stale entries.
+          if (lastPartLiveAt.size > 1000) {
+            const cutoff = Date.now() - SSE_SILENT_DEATH_MS * 6
+            for (const [id, at] of lastPartLiveAt) {
+              if (at < cutoff) lastPartLiveAt.delete(id)
+            }
+          }
           setStore(
             "part",
             event.properties.messageID,
@@ -734,17 +751,20 @@ export const {
                     continue
                   }
                   const currentParts = draft.part[message.info.id] ?? []
+                  const now = Date.now()
                   const parts = message.parts.flatMap((part: any) => {
                     const current = currentParts.find((item) => item.id === part.id)
-                    if (tracker.parts.has(part.id)) return current ? [current] : []
                     if (
-                      current &&
-                      (part.type === "text" || part.type === "reasoning") &&
-                      (current.type === "text" || current.type === "reasoning") &&
-                      part.text.length === 0 &&
-                      current.text.length > 0
+                      shouldKeepLocalPart({
+                        rest: part,
+                        current,
+                        tracked: tracker.parts.has(part.id),
+                        lastEventAt: lastPartLiveAt.get(part.id) ?? 0,
+                        now,
+                        silenceMs: SSE_SILENT_DEATH_MS,
+                      })
                     ) {
-                      return [current]
+                      return current ? [current] : []
                     }
                     return [part]
                   })
@@ -872,7 +892,18 @@ export const {
                   const currentParts = draft.part[message.info.id] ?? []
                   const mergedParts = parts.flatMap((part: any) => {
                     const current = currentParts.find((item) => item.id === part.id)
-                    if (tracker.parts.has(part.id)) return current ? [current] : []
+                    if (
+                      shouldKeepLocalPart({
+                        rest: part,
+                        current,
+                        tracked: tracker.parts.has(part.id),
+                        lastEventAt: lastPartLiveAt.get(part.id) ?? 0,
+                        now: Date.now(),
+                        silenceMs: SSE_SILENT_DEATH_MS,
+                      })
+                    ) {
+                      return current ? [current] : []
+                    }
                     return [part]
                   })
                   draft.part[message.info.id] = [...currentParts.filter((p) => tracker.parts.has(p.id)), ...mergedParts]

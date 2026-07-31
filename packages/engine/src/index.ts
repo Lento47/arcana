@@ -9,7 +9,24 @@ import { EOL } from "os"
 import { errorMessage } from "./util/error"
 import { Heap } from "./cli/heap"
 import { createKernelContract } from "./kernel/kernel"
+import { appendFileSync } from "node:fs"
 mark("cli-import-end")
+
+/**
+ * Durable daemon lifecycle log. The crash handlers below write to stderr,
+ * which vanishes with the process in dev mode (terminal scrollback or a
+ * closed console). This file survives, so a daemon death can be correlated
+ * with the .session-lock timeline and the SSE drop the TUI observed.
+ * Windows path precedent: src/session/prompt.ts writes L:/tmp/arcana-ollama.log.
+ */
+const DAEMON_LOG = "L:/tmp/arcana-daemon.log"
+function daemonLog(line: string): void {
+  try {
+    appendFileSync(DAEMON_LOG, `[${new Date().toISOString()}] ${line}\n`)
+  } catch {
+    /* never let logging take the process down */
+  }
+}
 
 // Catch unhandled rejections and exceptions so the process doesn't silently
 // continue in an indeterminate state. These fire for promise rejections and
@@ -60,6 +77,7 @@ process.on("unhandledRejection", (reason) => {
   }
   const stack = reason instanceof Error ? reason.stack : String(reason)
   process.stderr.write(`[arcana] Unhandled rejection:\n${stack}\n`)
+  daemonLog(`[crash] unhandledRejection pid=${process.pid}\n${stack}`)
   process.exit(1)
 })
 process.on("uncaughtException", (err) => {
@@ -74,11 +92,17 @@ process.on("uncaughtException", (err) => {
   if (err instanceof TypeError) {
     process.stderr.write(`[arcana] TypeError: ${err.message}\n`)
   }
+  daemonLog(`[crash] uncaughtException pid=${process.pid}\n${msg}`)
   process.exit(1)
 })
 process.on("SIGTERM", () => {
   process.stderr.write("[arcana] Received SIGTERM, shutting down\n")
+  daemonLog(`[shutdown] SIGTERM pid=${process.pid}`)
   process.exit(0)
+})
+process.on("exit", (code) => {
+  // Normal exits (including process.exit from the handlers above) land here.
+  daemonLog(`[exit] code=${code} pid=${process.pid}`)
 })
 
 const args = process.argv.slice(2)
@@ -102,6 +126,7 @@ async function prepareRuntime(opts: {
   process.env.ARCANA_ENGINE = "1"
   process.env.ARCANA_RUNTIME = "engine"
   process.env.ARCANA_PID = String(process.pid)
+  daemonLog(`[boot] pid=${process.pid} args=${args.join(" ")}`)
 
   // Arcana should not identify as its fork lineage by default. Keep the old
   // env flag available only as an explicit compatibility shim for legacy

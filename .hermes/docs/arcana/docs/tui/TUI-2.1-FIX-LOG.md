@@ -197,4 +197,62 @@ ollama handling (`packages/core/src/session/runner/model.ts`,
 Feature provenance: hermes-plans/2026-07-26_150000-ollama-tui-only.md
 (pure addition, no mixing).
 
+---
+
+# Round 3 — SSE Truncation: Resync Liveness, Delta Durability, Crash Capture (2026-07-31)
+
+Implements P2/P3/P4 of `TUI-2.1-SSE-TRUNCATION-FIX-PLAN.md`.
+
+## P2 — Liveness-aware resync merge
+
+**Problem:** the hydration merge kept locally-touched parts (`tracker.parts`)
+even when the SSE stream was dead, so a resync after a silent death kept the
+truncated prefix instead of the REST full text.
+
+- `packages/tui/src/util/part-merge.ts` — new `shouldKeepLocalPart()`
+  predicate: tracked parts are kept only while their last delta is inside
+  the heartbeat window (30s); silent past the window, REST wins. The legacy
+  empty-REST guard is preserved.
+- `packages/tui/src/context/sync.tsx` — `lastPartDeltaAt` map updated on
+  `message.part.delta` (with opportunistic prune); both merge sites (main
+  hydration :736-750 and `ensureChildMessages` :891-902) use the predicate.
+- Tests: `test/part-merge.test.ts` (9 tests). TUI sync suites still green.
+
+## P3 — Throttled delta persistence (engine)
+
+**Problem:** text/reasoning deltas were SSE-only; the projector persists
+only full `PartUpdated` events. A daemon death before `text-end` left the
+DB itself with only the prefix — permanent truncation, no resync can heal.
+
+- `packages/engine/src/session/processor.ts` — `text-delta` and
+  `reasoning-delta` now flush the growing part via `session.updatePart`
+  every 500ms or every 64 deltas (`shouldFlushPersist`, exported). State
+  reset at `*-start`, `*-end`, and cleaned up in `finishReasoning`.
+- The existing final flush at `*-end` (and `cleanup()` for interrupted
+  streams) is unchanged, so normal flows persist exactly once more.
+- Tests: `test/session/processor-persist.test.ts` (5 tests).
+
+## P4 — Daemon crash capture
+
+**Problem:** 5+ daemon deaths/restarts with zero surviving traces — the
+crash handlers wrote only to stderr, which vanishes with the process.
+
+- `packages/engine/src/index.ts` — `daemonLog()` appends to
+  `L:/tmp/arcana-daemon.log`: `[boot]` (pid + args), `[crash]`
+  (unhandledRejection/uncaughtException stacks), `[shutdown]` (SIGTERM),
+  `[exit]` (code). Sync `appendFileSync` so it survives `process.exit`.
+
+## P5 — Deferred
+
+Visible "Reconnecting…" heal feedback — optional polish, no consumer
+surface yet. Tracked in the plan doc.
+
+## Verification
+
+- TUI full suite (453 baseline + 9 new part-merge + 5 watchdog): pending in
+  Round 3 run.
+- Core suite + engine session/capability suites: pending.
+- Typecheck clean: tui, engine, core.
+
+
 

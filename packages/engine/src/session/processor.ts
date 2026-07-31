@@ -92,6 +92,30 @@ interface ProcessorContext extends Input {
   v2AssistantMessageID: SessionMessage.ID | undefined
   mlRequest: string | undefined
   mlRevisionsUsed: number
+  /** Throttled persistence state for the active text part (see delta cases). */
+  textPersist: { lastAt: number; count: number }
+  /** Throttled persistence state per reasoning part id. */
+  reasoningPersist: Record<string, { lastAt: number; count: number }>
+}
+
+/**
+ * Throttled delta persistence: the growing part is flushed to the durable
+ * store (session.updatePart -> projector upsert) every interval or every N
+ * deltas, not only at *-end. A daemon death mid-stream would otherwise
+ * leave the DB itself with only the prefix (deltas are SSE-only), making
+ * truncation permanent — no resync can heal data the server never stored.
+ */
+const PART_PERSIST_INTERVAL_MS = 500
+const PART_PERSIST_DELTA_THRESHOLD = 64
+
+/** Throttle decision: flush when the interval elapsed or the delta count is hit. */
+export function shouldFlushPersist(
+  state: { lastAt: number; count: number },
+  now: number,
+  intervalMs: number = PART_PERSIST_INTERVAL_MS,
+  threshold: number = PART_PERSIST_DELTA_THRESHOLD,
+): boolean {
+  return now - state.lastAt >= intervalMs || state.count >= threshold
 }
 
 type StreamEvent = LLMEvent
@@ -137,6 +161,8 @@ export const layer = Layer.effect(
         v2AssistantMessageID: undefined,
         mlRequest: undefined,
         mlRevisionsUsed: 0,
+        textPersist: { lastAt: 0, count: 0 },
+        reasoningPersist: {},
       }
       const mirrorAssistant = flags.experimentalEventSystem && !input.assistantMessage.summary
       let aborted = false
@@ -316,6 +342,7 @@ export const layer = Layer.effect(
         ctx.reasoningMap[reasoningID].time = { ...ctx.reasoningMap[reasoningID].time, end: Date.now() }
         yield* session.updatePart(ctx.reasoningMap[reasoningID])
         delete ctx.reasoningMap[reasoningID]
+        delete ctx.reasoningPersist[reasoningID]
       })
 
       const flushV2Fragments = Effect.fn("SessionProcessor.flushV2Fragments")(function* () {
@@ -444,6 +471,7 @@ export const layer = Layer.effect(
               time: { start: Date.now() },
               metadata: value.providerMetadata,
             }
+            ctx.reasoningPersist[value.id] = { lastAt: Date.now(), count: 0 }
             yield* session.updatePart(ctx.reasoningMap[value.id])
             return
 
@@ -469,6 +497,16 @@ export const layer = Layer.effect(
               field: "text",
               delta: value.text,
             })
+            // Throttled durable flush (same rationale as text-delta).
+            {
+              const persist = (ctx.reasoningPersist[value.id] ??= { lastAt: Date.now(), count: 0 })
+              persist.count += 1
+              if (shouldFlushPersist(persist, Date.now())) {
+                yield* session.updatePart(ctx.reasoningMap[value.id])
+                persist.lastAt = Date.now()
+                persist.count = 0
+              }
+            }
             return
 
           case "reasoning-end":
@@ -852,6 +890,7 @@ export const layer = Layer.effect(
               metadata: value.providerMetadata,
             }
             ctx.currentTextID = value.id
+            ctx.textPersist = { lastAt: Date.now(), count: 0 }
             yield* session.updatePart(ctx.currentText)
             return
 
@@ -881,6 +920,17 @@ export const layer = Layer.effect(
               field: "text",
               delta: value.text,
             })
+            // Throttled durable flush: keep the DB close to the live stream
+            // so a mid-stream daemon death does not permanently truncate.
+            {
+              const persist = ctx.textPersist
+              persist.count += 1
+              if (shouldFlushPersist(persist, Date.now())) {
+                yield* session.updatePart(ctx.currentText)
+                persist.lastAt = Date.now()
+                persist.count = 0
+              }
+            }
             return
 
           case "text-end":
@@ -992,6 +1042,7 @@ export const layer = Layer.effect(
             yield* session.updatePart(ctx.currentText)
             ctx.currentText = undefined
             ctx.currentTextID = undefined
+            ctx.textPersist = { lastAt: 0, count: 0 }
             return
 
           case "finish":
