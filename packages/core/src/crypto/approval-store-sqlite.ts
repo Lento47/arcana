@@ -15,7 +15,7 @@ import type {
 
 // ─── Schema ─────────────────────────────────────────────────────────
 
-const APPROVAL_SCHEMA = `
+export const APPROVAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS approval_records (
   approval_id TEXT PRIMARY KEY,
   version INTEGER NOT NULL DEFAULT 1,
