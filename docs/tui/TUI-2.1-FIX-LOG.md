@@ -157,6 +157,26 @@
 
 **Verification:** typecheck clean; TUI suite 447/448 pass (1 skip), 0 fail (no regressions). **Operator validation (2026-07-31, live `dev:tui`):** slash-command select with navigation no longer logs the error. PASS.
 
+## OPEN DEFECT — Daemon re-registration loses in-memory InstanceRef registry (WS2 lifecycle blocker)
+
+**Date:** 2026-07-31 (second occurrence; first at 14:49)
+**Status:** OPEN — diagnosis complete, fix not implemented
+
+**Symptoms (live):** every tool call (`echo test` included) fails `EXECUTION_FAILED Error: InstanceRef not provided`; the agent churns retrying; the assistant reply freezes mid-stream in the display while the durable store holds the complete text (`step-finish` present, `time.end` set). SSE gap-closer alone cannot heal: the REST re-hydration fails for the same reason the tools fail.
+
+**Evidence:**
+- Two daemon locks in `~/.arcana/daemon/`: `a36c69a17d38.json` (workspace `L:\PROJECTS\arcana`, pid 28124, 15:24 — process DEAD, lock stale) and `97f015ffe189.json` (workspace `packages/engine`, pid 5040, 15:28 — alive, owns port 9142, 4 ESTABLISHED SSE connections).
+- `InstanceRef` is an Effect service (`packages/engine/src/effect/instance-ref`); tool effects `Effect.die("InstanceRef not provided")` when the service is missing (`cli/cmd/agent.ts:65-66`, same pattern in `github.handler.ts:156-157`). The engine middleware provides `InstanceRef` for request-derived context (per `engine_src_server_routes_instance_httpapi_AGENTS.md`).
+- The instance registry is in-memory: a daemon re-registration wipes it. The TUI reconnects SSE (global stream, no instance needed) but never re-bootstraps (the `server.instance.disposed` event never arrives on stream teardown — the same gap the Round 4 fix addresses) → the new daemon never re-registers the session's instance → all instance-scoped requests fail.
+- Ground truth check: durable `part` table shows the turn completed (`step-finish`, reason `stop`) with the full text; the TUI displayed only the first token ("All"). Display stale, engine data intact.
+
+**Blocker chain:** daemon dies (cause still unknown; engine dev process ~557MB) → in-memory instance registry lost → InstanceRef not provided on every tool → agent loops → reply stalls. The Round 4 `resync()` is fail-closed (guard stays cleared) but has no retry trigger when the stream is alive and REST is broken.
+
+**Fix candidates (WS2):**
+1. Persist/restore the instance registry across daemon restarts, or re-register instances lazily on first instance-scoped request (fixes tools AND REST).
+2. TUI: on `sse.reconnected`, if `resync()` rejects, retry with bounded backoff (3 attempts) — heals display even when the daemon is mid-transition.
+3. Root-cause the daemon death (crash logs, OOM, watcher restart).
+
 ## Non-Blocking Items (documented, not fixed)
 
 - Internal "opencode" API names (keymap hooks, SDK client, config values) — breaking refactor, functional identifiers
