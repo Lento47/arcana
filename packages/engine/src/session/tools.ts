@@ -30,7 +30,86 @@ import { ensureSessionAgentGrants, shortPrincipal } from "@arcana/core/capabilit
 import { Database } from "@arcana/core/database/database"
 import type { PolicyContextProvider, PreparedEffect } from "@arcana/core/capability/pep"
 import type { PolicyContext } from "@arcana/core/capability/pdp"
-import type { AuthorizationRequest, ProvenanceLabel, SensitivityLabel } from "@arcana/core/capability/types"
+import type { AuthorizationRequest, CanonicalResource, ProvenanceLabel, SensitivityLabel } from "@arcana/core/capability/types"
+import type { ScopedApproval } from "@arcana/core/capability/scoped-approval"
+import { SqliteScopedApprovalStore } from "@arcana/core/crypto/scoped-approval-adapter"
+
+// ── Durable approval pipeline (RB-01) ─────────────────────────────────
+// One sqlite-backed ScopedApprovalStore per workspace (lazily opened).
+// The PEP (approval-backed ALLOW) and the operator service share it.
+const scopedApprovalStores = new Map<string, SqliteScopedApprovalStore>()
+
+function getScopedApprovalStore(cwd: string | undefined): SqliteScopedApprovalStore {
+  const base = cwd ?? process.cwd()
+  const path = `${base}/.arcana/approvals.db`
+  let store = scopedApprovalStores.get(path)
+  if (!store) {
+    store = new SqliteScopedApprovalStore(path)
+    scopedApprovalStores.set(path, store)
+  }
+  return store
+}
+
+/** Default approval TTL (ms) — 5 minutes, matching the TUI-2 expiry contract. */
+const APPROVAL_TTL_MS = 5 * 60 * 1000
+
+type ApprovalGate = {
+  decision: Promise<"approved" | "denied">
+  approve: () => void
+  deny: () => void
+}
+
+function createApprovalGate(): ApprovalGate {
+  let resolveGate!: (d: "approved" | "denied") => void
+  const decision = new Promise<"approved" | "denied">((resolve) => {
+    resolveGate = resolve
+  })
+  return {
+    decision,
+    approve: () => resolveGate("approved"),
+    deny: () => resolveGate("denied"),
+  }
+}
+
+/** Parked tool calls awaiting an operator decision, keyed by approval ID. */
+const parkedApprovals = new Map<string, ApprovalGate>()
+
+/**
+ * Resolve a parked approval from the operator side (RB-01 transport).
+ * Returns false when no parked call exists for the id.
+ */
+export function notifyApprovalDecision(approvalId: string, approved: boolean): boolean {
+  const gate = parkedApprovals.get(approvalId)
+  if (!gate) return false
+  parkedApprovals.delete(approvalId)
+  if (approved) gate.approve()
+  else gate.deny()
+  return true
+}
+
+function makePendingScopedApproval(input: {
+  approvalId: string
+  requestHash: string
+  principalId: string
+  sessionId: string
+  action: string
+  resource: CanonicalResource
+}): ScopedApproval {
+  return {
+    id: input.approvalId,
+    requestId: input.approvalId,
+    requestHash: input.requestHash,
+    principalId: input.principalId,
+    sessionId: input.sessionId,
+    decision: "PENDING",
+    actions: [input.action as ScopedApproval["actions"][number]],
+    resource: input.resource,
+    maxUses: 1,
+    usesConsumed: 0,
+    expiresAt: new Date(Date.now() + APPROVAL_TTL_MS).toISOString(),
+    createdEventId: `evt-approval-created:${input.approvalId}`,
+  }
+}
 
 // ── Phase C PEP: Fail-closed production provider ──────────────────────
 // SessionPolicyProvider backed by SqliteGrantStore.
@@ -49,6 +128,7 @@ function createPolicyProvider(
   db: Database.Interface,
   sessionID: string,
   agentName: string,
+  scopedApprovalStore?: SqliteScopedApprovalStore,
 ): SessionPolicyProvider {
   const store = new SqliteGrantStore(db)
   return new SessionPolicyProvider(
@@ -60,6 +140,7 @@ function createPolicyProvider(
     },
     undefined, // IntentBindingStoreEffect: not yet implemented
     "LEGACY_COMPAT",
+    scopedApprovalStore,
   )
 }
 
@@ -67,13 +148,14 @@ async function preparePolicyProvider(
   db: Database.Interface,
   sessionID: string,
   agentName: string,
+  scopedApprovalStore?: SqliteScopedApprovalStore,
 ): Promise<SessionPolicyProvider> {
   const store = new SqliteGrantStore(db)
   // Bootstrap session agent grants before the first PDP snapshot (idempotent).
   await Effect.runPromise(
     ensureSessionAgentGrants(store, { agentName, sessionId: sessionID }),
   )
-  return createPolicyProvider(db, sessionID, agentName)
+  return createPolicyProvider(db, sessionID, agentName, scopedApprovalStore)
 }
 
 function formatPepDenial(input: {
@@ -328,79 +410,129 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                   metadata: { goal_gate: gate.reason },
                 }
               }
-              // ── Phase C PEP: authorize before execution ───────────
-              // THE PEP IS THE PRIMARY AUTHORITY.
-              // If the PEP denies, the tool never executes.
-              // PermissionV1 (ctx.ask()) runs only inside the tool's execute
-              // function — after the PEP allows. PermissionV1 can only further
-              // restrict, never expand authority. The deterministic PDP always wins.
-              // Capability PDP says DENY → execution stops. PermissionV1 cannot override.
-              const pepProvider = yield* Effect.promise(() =>
-                preparePolicyProvider(db, ctx.sessionID, input.agent.name),
-              )
-              const authReq = buildAuthorizationRequest({
-                toolName: item.id,
-                principalId: input.agent.name,
-                sessionId: ctx.sessionID,
-                args: args as Record<string, unknown>,
-                provenance: extractProvenance(item.id, args as Record<string, unknown>),
-                sensitivity: extractSensitivity(item.id, args as Record<string, unknown>),
-              })
-              const pepResult = yield* authorizeAndExecuteEffect(
-                {
-                  request: authReq,
-                  executeExact: () => {
-                    // Will be called only if PEP allows
-                    return null
-                  },
-                },
-                pepProvider,
-              )
-              if (pepResult.status === "DENIED") {
-                return {
-                  title: `Authorization denied: ${item.id}`,
-                  output: formatPepDenial({
+              // ── Phase C PEP: THE PRIMARY AUTHORITY ───────────────
+              // The effect runs ONLY inside executeExact (RB-01): no tool
+              // execution outside the PEP boundary. APPROVAL_REQUIRED parks
+              // the call on a durable PENDING approval; the operator decides
+              // via notifyApprovalDecision, then the PEP re-evaluates with a
+              // fresh snapshot (approved scope now loaded) and executes.
+              const workspaceCwd = input.processor.message.path?.cwd
+              const scopedStore = getScopedApprovalStore(workspaceCwd)
+
+              const runThroughPep = (attempt: number): Effect.Effect<any> =>
+                Effect.gen(function* () {
+                  const pepProvider = yield* Effect.promise(() =>
+                    preparePolicyProvider(db, ctx.sessionID, input.agent.name, scopedStore),
+                  )
+                  const authReq = buildAuthorizationRequest({
                     toolName: item.id,
-                    authReq,
-                    reasons: pepResult.decision.reasons,
-                  }),
-                  metadata: {
-                    pep_denied: true,
-                    decision: pepResult.decision,
-                    request_principal: authReq.principalId,
-                    session_id: authReq.sessionId,
-                  },
-                }
-              }
-              if (pepResult.status === "APPROVAL_REQUIRED") {
-                const reasons = pepResult.decision.reasons.map((r) => r.code).join(", ")
-                return {
-                  title: `Approval required: ${item.id}`,
-                  output: `APPROVAL_REQUIRED\nreason: ${reasons}\naction: ${authReq.action}\ntool: ${item.id}\nrequest_principal: ${shortPrincipal(authReq.principalId)}\nsession: ${shortPrincipal(authReq.sessionId, 12)}`,
-                  metadata: { pep_approval_required: true, decision: pepResult.decision },
-                }
-              }
-              // ── End Phase C PEP ───────────────────────────────────
-              yield* plugin.trigger(
-                "tool.execute.before",
-                { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
-                { args },
-              )
-              const result = yield* item.execute(args, ctx)
+                    principalId: input.agent.name,
+                    sessionId: ctx.sessionID,
+                    args: args as Record<string, unknown>,
+                    provenance: extractProvenance(item.id, args as Record<string, unknown>),
+                    sensitivity: extractSensitivity(item.id, args as Record<string, unknown>),
+                  })
+                  const pepResult = yield* authorizeAndExecuteEffect(
+                    {
+                      request: authReq,
+                      executeExact: () =>
+                        Effect.gen(function* () {
+                          yield* plugin.trigger(
+                            "tool.execute.before",
+                            { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
+                            { args },
+                          )
+                          const res = yield* item.execute(args, ctx)
+                          yield* plugin.trigger(
+                            "tool.execute.after",
+                            { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID, args },
+                            res,
+                          )
+                          return res
+                        }),
+                    },
+                    pepProvider,
+                    undefined,
+                    scopedStore,
+                  )
+                  if (pepResult.status === "DENIED") {
+                    return {
+                      title: `Authorization denied: ${item.id}`,
+                      output: formatPepDenial({
+                        toolName: item.id,
+                        authReq,
+                        reasons: pepResult.decision.reasons,
+                      }),
+                      metadata: {
+                        pep_denied: true,
+                        decision: pepResult.decision,
+                        request_principal: authReq.principalId,
+                        session_id: authReq.sessionId,
+                      },
+                    }
+                  }
+                  if (pepResult.status === "STALE_DECISION") {
+                    return {
+                      title: `Authorization stale: ${item.id}`,
+                      output: `STALE_DECISION\nreason: ${pepResult.reason}\naction: ${authReq.action}\ntool: ${item.id}`,
+                      metadata: { pep_stale: true, decision: pepResult.currentDecision },
+                    }
+                  }
+                  if (pepResult.status === "EXECUTION_FAILED") {
+                    return {
+                      title: `Authorization execution failed: ${item.id}`,
+                      output: `EXECUTION_FAILED\n${String(pepResult.error ?? "unknown error")}`,
+                      metadata: { pep_execution_failed: true },
+                    }
+                  }
+                  if (pepResult.status === "APPROVAL_REQUIRED") {
+                    const reasons = pepResult.decision.reasons.map((r) => r.code).join(", ")
+                    const approvalId = `appr_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+                    const scoped = makePendingScopedApproval({
+                      approvalId,
+                      requestHash: pepResult.decision.requestHash,
+                      principalId: authReq.principalId,
+                      sessionId: ctx.sessionID,
+                      action: authReq.action ?? item.id,
+                      resource: authReq.resource,
+                    })
+                    yield* Effect.promise(() => Effect.runPromise(scopedStore.putApproval(scoped)))
+                    const gate = createApprovalGate()
+                    parkedApprovals.set(approvalId, gate)
+                    const decision = yield* Effect.promise(() => gate.decision)
+                    if (decision === "denied") {
+                      return {
+                        title: `Denied: ${item.id}`,
+                        output: `DENIED by operator\napproval: ${approvalId}\naction: ${authReq.action}\ntool: ${item.id}\nrequest_principal: ${shortPrincipal(authReq.principalId)}`,
+                        metadata: { approval_denied: true, approval_id: approvalId, pep_approval_required: true },
+                      }
+                    }
+                    // Approved — re-run with a fresh snapshot. The approved
+                    // scope now loads; the PEP claims, executes, consumes.
+                    // Guard recursion (max 2 attempts) — fail closed otherwise.
+                    if (attempt >= 2) {
+                      return {
+                        title: `Approval re-run failed: ${item.id}`,
+                        output: `APPROVAL_RE_RUN_EXHAUSTED\nreason: ${reasons}\naction: ${authReq.action}\ntool: ${item.id}`,
+                        metadata: { approval_re_run_exhausted: true, approval_id: approvalId },
+                      }
+                    }
+                    return yield* runThroughPep(attempt + 1)
+                  }
+                  // EXECUTED — the tool ran inside the PEP boundary.
+                  return pepResult.value
+                })
+
+              const result = yield* runThroughPep(0)
               const output = {
                 ...result,
-                attachments: result.attachments?.map((attachment) => ({
+                attachments: result.attachments?.map((attachment: any) => ({
                   ...attachment,
                   id: PartID.ascending(),
                   sessionID: ctx.sessionID,
                   messageID: input.processor.message.id,
                 })),
               }
-              yield* plugin.trigger(
-                "tool.execute.after",
-                { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID, args },
-                output,
-              )
               if (options.abortSignal?.aborted) {
                 yield* input.processor.completeToolCall(options.toolCallId, output)
               }
@@ -431,74 +563,144 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           yield* budget.checkOrBlock(ctx.sessionID as any, mcpCost)
           try {
           // ── Phase C PEP: authorize MCP before execution ───────────
-          const mcpPepProvider = yield* Effect.promise(() =>
-            preparePolicyProvider(db, ctx.sessionID, input.agent.name),
-          )
-          const mcpAuthReq = buildAuthorizationRequest({
-            toolName: key,
-            principalId: input.agent.name,
-            sessionId: ctx.sessionID,
-            args: args as Record<string, unknown>,
-            provenance: ["MCP_DESCRIPTION" as ProvenanceLabel],
-            sensitivity: extractSensitivity(key, args as Record<string, unknown>),
-          })
-          const mcpPepResult = yield* authorizeAndExecuteEffect(
-            {
-              request: mcpAuthReq,
-              executeExact: () => null,
-            },
-            mcpPepProvider,
-          )
-          if (mcpPepResult.status === "DENIED") {
-            return {
-              content: [
+          // Same RB-01 contract as local tools: the effect runs only inside
+          // executeExact; APPROVAL_REQUIRED parks on a durable approval.
+          const mcpWorkspaceCwd = input.processor.message.path?.cwd
+          const mcpScopedStore = getScopedApprovalStore(mcpWorkspaceCwd)
+
+          const runMcpThroughPep = (attempt: number): Effect.Effect<any> =>
+            Effect.gen(function* () {
+              const mcpPepProvider = yield* Effect.promise(() =>
+                preparePolicyProvider(db, ctx.sessionID, input.agent.name, mcpScopedStore),
+              )
+              const mcpAuthReq = buildAuthorizationRequest({
+                toolName: key,
+                principalId: input.agent.name,
+                sessionId: ctx.sessionID,
+                args: args as Record<string, unknown>,
+                provenance: ["MCP_DESCRIPTION" as ProvenanceLabel],
+                sensitivity: extractSensitivity(key, args as Record<string, unknown>),
+              })
+              const mcpPepResult = yield* authorizeAndExecuteEffect(
                 {
-                  type: "text",
-                  text: formatPepDenial({
-                    toolName: key,
-                    authReq: mcpAuthReq,
-                    reasons: mcpPepResult.decision.reasons,
-                  }),
+                  request: mcpAuthReq,
+                  executeExact: () =>
+                    Effect.gen(function* () {
+                      yield* plugin.trigger(
+                        "tool.execute.before",
+                        { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId },
+                        { args },
+                      )
+                      const res: Awaited<ReturnType<NonNullable<typeof execute>>> = yield* Effect.gen(function* () {
+                        yield* ctx.ask({ permission: key, metadata: {}, patterns: ["*"], always: ["*"] })
+                        return yield* Effect.promise(() => execute(args, opts))
+                      }).pipe(
+                        Effect.withSpan("Tool.execute", {
+                          attributes: {
+                            "tool.name": key,
+                            "tool.call_id": opts.toolCallId,
+                            "session.id": ctx.sessionID,
+                            "message.id": input.processor.message.id,
+                          },
+                        }),
+                      )
+                      yield* plugin.trigger(
+                        "tool.execute.after",
+                        { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId, args },
+                        res,
+                      )
+                      return res as Record<string, unknown>
+                    }),
                 },
-              ],
-              metadata: { pep_denied: true, request_principal: mcpAuthReq.principalId },
-            } as any
-          }
-          if (mcpPepResult.status === "APPROVAL_REQUIRED") {
-            const reasons = mcpPepResult.decision.reasons.map((r) => r.code).join(", ")
-            return {
-              content: [{ type: "text", text: `APPROVAL_REQUIRED\nreason: ${reasons}\naction: ${mcpAuthReq.action}\ntool: ${key}` }],
-              metadata: { pep_approval_required: true },
-            } as any
-          }
-          // ── End Phase C PEP ───────────────────────────────────────
-          yield* plugin.trigger(
-            "tool.execute.before",
-            { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId },
-            { args },
-          )
-          const result: Awaited<ReturnType<NonNullable<typeof execute>>> = yield* Effect.gen(function* () {
-            yield* ctx.ask({ permission: key, metadata: {}, patterns: ["*"], always: ["*"] })
-            return yield* Effect.promise(() => execute(args, opts))
-          }).pipe(
-            Effect.withSpan("Tool.execute", {
-              attributes: {
-                "tool.name": key,
-                "tool.call_id": opts.toolCallId,
-                "session.id": ctx.sessionID,
-                "message.id": input.processor.message.id,
-              },
-            }),
-          )
-          yield* plugin.trigger(
-            "tool.execute.after",
-            { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId, args },
-            result,
-          )
+                mcpPepProvider,
+                undefined,
+                mcpScopedStore,
+              )
+              if (mcpPepResult.status === "DENIED") {
+                return {
+                  content: [
+                    {
+                      type: "text",
+                      text: formatPepDenial({
+                        toolName: key,
+                        authReq: mcpAuthReq,
+                        reasons: mcpPepResult.decision.reasons,
+                      }),
+                    },
+                  ],
+                  metadata: { pep_denied: true, request_principal: mcpAuthReq.principalId },
+                } as any
+              }
+              if (mcpPepResult.status === "STALE_DECISION") {
+                return {
+                  content: [
+                    {
+                      type: "text",
+                      text: `STALE_DECISION\nreason: ${mcpPepResult.reason}\naction: ${mcpAuthReq.action}\ntool: ${key}`,
+                    },
+                  ],
+                  metadata: { pep_stale: true },
+                } as any
+              }
+              if (mcpPepResult.status === "EXECUTION_FAILED") {
+                return {
+                  content: [
+                    {
+                      type: "text",
+                      text: `EXECUTION_FAILED\n${String(mcpPepResult.error ?? "unknown error")}`,
+                    },
+                  ],
+                  metadata: { pep_execution_failed: true },
+                } as any
+              }
+              if (mcpPepResult.status === "APPROVAL_REQUIRED") {
+                const reasons = mcpPepResult.decision.reasons.map((r) => r.code).join(", ")
+                const approvalId = `appr_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+                const scoped = makePendingScopedApproval({
+                  approvalId,
+                  requestHash: mcpPepResult.decision.requestHash,
+                  principalId: mcpAuthReq.principalId,
+                  sessionId: ctx.sessionID,
+                  action: mcpAuthReq.action ?? key,
+                  resource: mcpAuthReq.resource,
+                })
+                yield* Effect.promise(() => Effect.runPromise(mcpScopedStore.putApproval(scoped)))
+                const gate = createApprovalGate()
+                parkedApprovals.set(approvalId, gate)
+                const decision = yield* Effect.promise(() => gate.decision)
+                if (decision === "denied") {
+                  return {
+                    content: [
+                      {
+                        type: "text",
+                        text: `DENIED by operator\napproval: ${approvalId}\naction: ${mcpAuthReq.action}\ntool: ${key}`,
+                      },
+                    ],
+                    metadata: { approval_denied: true, approval_id: approvalId, pep_approval_required: true },
+                  } as any
+                }
+                if (attempt >= 2) {
+                  return {
+                    content: [
+                      {
+                        type: "text",
+                        text: `APPROVAL_RE_RUN_EXHAUSTED\nreason: ${reasons}\naction: ${mcpAuthReq.action}\ntool: ${key}`,
+                      },
+                    ],
+                    metadata: { approval_re_run_exhausted: true, approval_id: approvalId },
+                  } as any
+                }
+                return yield* runMcpThroughPep(attempt + 1)
+              }
+              // EXECUTED — MCP ran inside the PEP boundary.
+              return mcpPepResult.value
+            })
+
+          const mcpResult = yield* runMcpThroughPep(0)
 
           const textParts: string[] = []
           const attachments: Omit<SessionV1.FilePart, "id" | "sessionID" | "messageID">[] = []
-          for (const contentItem of result.content) {
+          for (const contentItem of mcpResult.content) {
             if (contentItem.type === "text") textParts.push(contentItem.text)
             else if (contentItem.type === "image") {
               attachments.push({
@@ -522,7 +724,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
 
           const truncated = yield* truncate.output(textParts.join("\n\n"), {}, input.agent)
           const metadata = {
-            ...result.metadata,
+            ...mcpResult.metadata,
             truncated: truncated.truncated,
             ...(truncated.truncated && { outputPath: truncated.outputPath }),
           }
@@ -537,7 +739,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               sessionID: ctx.sessionID,
               messageID: input.processor.message.id,
             })),
-            content: result.content,
+            content: mcpResult.content,
           }
           if (opts.abortSignal?.aborted) {
             yield* input.processor.completeToolCall(opts.toolCallId, output)
