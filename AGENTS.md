@@ -3,6 +3,10 @@
 > **Master specification:** `.hermes/docs/arcana/docs/arcana-Master/Arcana_Project_Master_Specification.md`
 > This is the single source of truth for architecture, security model, roadmap, and product identity.
 > Read it when you need to understand WHY something exists, not just WHERE the code is.
+>
+> **Completion gate:** `.hermes/docs/arcana/docs/arcana-Master/ARCANA_PHASES_100_PERCENT_COMPLETION_PLAYBOOK.md`
+> Normative release-gate spec. MUST be read and checked before any phase, track, or workstream is declared 100% complete.
+> 100% completion requires evidence against every applicable gate PLUS explicit human approval. Never self-certify.
 
 ## Project Identity
 
@@ -144,6 +148,7 @@ bun run build
 - RunProof internals → read `packages/arcana/src/proof/` and Master Spec §11
 - Database schema → read `docs/architecture/database-schema.md`
 - Phase D distributed architecture → read `docs/architecture/phase-d/`
+- Declaring any phase/track/workstream 100% complete → read `ARCANA_PHASES_100_PERCENT_COMPLETION_PLAYBOOK.md` (see Completion Gate)
 
 **DON'T research** (just do it):
 - Simple file reads, edits, patches
@@ -161,6 +166,7 @@ All docs live in `.hermes/docs/`:
 | Directory | Content | When to use |
 |-----------|---------|-------------|
 | `arcana/docs/` | Product, architecture, security, ops | Project-specific questions |
+| `arcana/docs/arcana-Master/` | Master Spec, 100% Completion Playbook | Architecture decisions, completion gates |
 | `arcana/root/` | README, CHANGELOG, CONTRIBUTING, LICENSE | Repo metadata |
 | `arcana/agents/` | Per-package AGENTS.md (9 files) | Package-specific conventions |
 | `arcana/skills/` | Repository skills (644 files) | Skill authoring reference |
@@ -181,6 +187,20 @@ All docs live in `.hermes/docs/`:
 - **Delegation**: Zero ambient authority. `Authority(child) ⪯ Authority(parent)`.
 - **Provenance**: 10 labels (SYSTEM_POLICY through MCP_DESCRIPTION). UNKNOWN lineage on HIGH/CRITICAL = fail closed.
 - **Sensitivity**: PUBLIC < INTERNAL < PRIVATE < SECRET.
+
+## 100% Completion Gate
+
+Before declaring any phase, track, workstream, or feature 100% complete:
+
+1. Read `ARCANA_PHASES_100_PERCENT_COMPLETION_PLAYBOOK.md` in full (`.hermes/docs/arcana/docs/arcana-Master/`).
+2. Check the work against every applicable playbook criterion: scope, production integration, hard invariants, adversarial tests, positive utility, persistence and restart, performance, observability, frozen documentation.
+3. Present the evidence checklist to the user with concrete results (test counts, adversarial outcomes, restart and performance measurements).
+4. Wait for explicit human approval. A phase is NOT 100% complete without it.
+
+Rules:
+- Unit tests passing is never sufficient. The real runtime path must use the feature.
+- Security invariants and exit gates cannot be weakened without an explicit architecture decision record.
+- If a criterion does not apply, state that explicitly and why.
 
 ## Phase Status
 

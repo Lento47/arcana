@@ -2,8 +2,8 @@
 
 **Date:** 2026-07-31
 **Branch:** `phase-d-implementation`
-**Candidate commit:** `1f4779ac`
-**Previous commit:** `ccfee956`
+**Candidate commit:** `e7cc8da6`
+**Previous commit:** `1f4779ac` (polish sprint baseline)
 
 ---
 
@@ -11,13 +11,26 @@
 
 | Field | Value |
 |-------|-------|
-| SHA | `1f4779ac` |
-| Message | `feat: TUI-2.1 polish sprint - command-spine, permission, and prompt fixes` |
-| Files changed | 15 |
-| Insertions | 161 |
-| Deletions | 305 |
+| SHA | `e7cc8da6` |
+| Message | `TUI: remove shimmer verb and spinner from chat header` |
 | Branch | `phase-d-implementation` |
-| Remote | `origin/phase-d-implementation` (`ccfee956..1f4779ac`) |
+| Remote | `origin/phase-d-implementation` (`1f4779ac..e7cc8da6`, 13 commits) |
+
+### 1.1 Post-candidate polish (13 commits after `1f4779ac`)
+
+Streaming lifecycle fixes, found and fixed during interactive operator testing:
+
+| Commit | Fix |
+|--------|-----|
+| `aedd96dc` | `updateMessage` passed `msg` by reference — SolidJS reconcile saw no diff, streaming never ended. Now `structuredClone` on publish. |
+| `6b75ad9e` | `runState` checked nonexistent `"running"`/`"thinking"` status types — now `"busy"`/`"retry"`. |
+| `b14ca9a6` | `makeInlineThinkEntry` passed no `part.time` — inline thinking shimmer stuck. |
+| `5fd291ea` | **ROOT CAUSE** `spine-node.tsx:223` `active={!!thinking()}` always true (plan entries hardcode `thinking="thinking"`) — now `active={streaming()}`. |
+| `099ad3ac` | `thinkingSummary` static "Thinking" — flips to "Thought" once the reasoning part ends (streaming-aware). |
+| `6d9bdb39` | Header shimmer verb "writing" for the answer phase + 2 regression tests. |
+| `e7cc8da6` | **Operator decision:** remove shimmer verb and spinner from the `✦ arcana` header entirely. Think row owns the Thinking/Thought label. |
+
+**Validated by operator** in the real TUI: "Thinking" → "Thought" flip confirmed; header now static. 2 new regression tests in `test/spine-mapper.test.ts` prove the plan entry flips `streaming=false` on message completion + session idle, and stays `true` mid-stream (busy).
 
 ---
 
@@ -54,11 +67,11 @@
 
 | Suite | Passed | Failed | Skipped | Total |
 |-------|--------|--------|---------|-------|
-| @arcana/tui | 432 | 0 | 1 | 433 |
+| @arcana/tui | 434 | 0 | 1 | 435 |
 | @arcana/core | 1209 | 31 | 7 | 1247 |
 | @arcana/engine | — | — | — | pass |
 | All other packages | — | 0 | — | pass |
-| **TUI total** | **432** | **0** | **1** | **433** |
+| **TUI total** | **434** | **0** | **1** | **435** |
 
 **Note:** The 31 @arcana/core failures are **pre-existing** and unrelated to TUI-2.1 changes. They are in:
 - Golden vector conformance suite (crypto test vectors — fixture loading)
@@ -71,7 +84,7 @@
 
 None of these touch TUI rendering, approval lifecycle, or command-spine code.
 
-**TUI test result: 432/432 pass, 0 fail.** ✅
+**TUI test result: 434/434 pass, 0 fail (432 baseline + 2 new streaming regression tests).** ✅
 
 ---
 
@@ -335,7 +348,7 @@ No release blockers identified from automated verification. Manual smoke test re
 - [ ] Performance evidence recorded — **PENDING (manual measurement)**
 - [x] Dependabot alerts triaged (4/4 classified)
 - [ ] Freeze-blocking dependency fixes landed — dompurify bump pending
-- [x] Full automated suite rerun after final changes (16/16 typecheck, 8/8 build, 432/432 TUI tests)
+- [ ] Full automated suite rerun at candidate `e7cc8da6` (16/16 typecheck, 8/8 build, 434/434 TUI tests) — **PENDING rerun after streaming fixes**
 - [x] Working tree clean (after commit)
 - [x] Freeze report committed
 - [x] Remote branch matches local HEAD
@@ -344,8 +357,9 @@ No release blockers identified from automated verification. Manual smoke test re
 
 | Gate | Status |
 |------|--------|
-| TUI 2.1 implementation candidate | **PUSHED** ✅ |
-| Automated gates (typecheck, build, test) | **PASS** ✅ |
+| TUI 2.1 implementation candidate | **PUSHED** ✅ (`e7cc8da6`) |
+| Automated gates (typecheck, build, test) | **PASS** ✅ (baseline `1f4779ac`; rerun at `e7cc8da6` pending) |
+| Streaming lifecycle polish (shimmer/Thinking→Thought) | **DONE + OPERATOR VALIDATED** ✅ |
 | Manual release validation | **PENDING** ⏳ |
 | Dependency-security triage | **COMPLETE** ✅ |
 | TUI 2.1 freeze | **NOT YET AUTHORIZED** ❌ |
