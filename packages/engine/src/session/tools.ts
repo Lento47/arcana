@@ -1,4 +1,6 @@
 import { Agent } from "@/agent/agent"
+import { EventV2Bridge } from "@/event-v2-bridge"
+import { ApprovalEvent } from "@/approval/events"
 import { SessionV1 } from "@arcana/core/v1/session"
 import { Provider } from "@/provider/provider"
 import { ProviderTransform } from "@/provider/transform"
@@ -16,6 +18,7 @@ import { Effect } from "effect"
 import { Session } from "./session"
 import { SessionProcessor } from "./processor"
 import { PartID } from "./schema"
+import { SessionID } from "./schema"
 import { SessionBudget, toolBudgetCost } from "./budget"
 import { EffectBridge } from "@/effect/bridge"
 import { ModelV2 } from "@arcana/core/model"
@@ -334,6 +337,22 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const truncate = yield* Truncate.Service
   const db = yield* Database.Service
   const budget = yield* SessionBudget.Service
+  const events = yield* EventV2Bridge.Service
+
+  // RB-01 gap fix: the TUI read path is the SSE sync channel
+  // (sync.data.approvals) — a fresh PENDING record with no subsequent
+  // transition would never reach it. Publish approval.updated on create so
+  // the entry renders immediately. A read/publish failure must not fail the
+  // tool call (the durable record is already written).
+  const publishApprovalCreated = (sessionID: SessionID, store: SqliteScopedApprovalStore, approvalId: string) =>
+    store.getApprovalRecord(approvalId).pipe(
+      Effect.flatMap((record) =>
+        record
+          ? events.publish(ApprovalEvent, { sessionID, approval: record })
+          : Effect.void,
+      ),
+      Effect.catch(() => Effect.void),
+    )
 
   const sessionMeta = input.session.metadata as Record<string, unknown> | undefined
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
@@ -497,6 +516,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                       resource: authReq.resource,
                     })
                     yield* Effect.promise(() => Effect.runPromise(scopedStore.putApproval(scoped)))
+                    yield* publishApprovalCreated(ctx.sessionID, scopedStore, approvalId)
                     const gate = createApprovalGate()
                     parkedApprovals.set(approvalId, gate)
                     const decision = yield* Effect.promise(() => gate.decision)
@@ -665,6 +685,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                   resource: mcpAuthReq.resource,
                 })
                 yield* Effect.promise(() => Effect.runPromise(mcpScopedStore.putApproval(scoped)))
+                yield* publishApprovalCreated(ctx.sessionID, mcpScopedStore, approvalId)
                 const gate = createApprovalGate()
                 parkedApprovals.set(approvalId, gate)
                 const decision = yield* Effect.promise(() => gate.decision)

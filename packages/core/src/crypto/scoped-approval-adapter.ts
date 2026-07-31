@@ -21,6 +21,7 @@ import type {
   ScopedApprovalStore,
   ScopedApprovalDecision,
 } from "../capability/scoped-approval"
+import type { ApprovalRecord } from "./approval-lifecycle"
 import { ScopedApprovalStoreError } from "../capability/scoped-approval"
 import { APPROVAL_SCHEMA } from "./approval-store-sqlite"
 
@@ -96,6 +97,25 @@ function rowToScoped(row: ApprovalRow): ScopedApproval {
   }
 }
 
+/** Same row, ApprovalRecord shape — the wire/event form the TUI sync store consumes. */
+function rowToApprovalRecord(row: ApprovalRow): ApprovalRecord {
+  return {
+    approvalId: row.approval_id,
+    version: row.version,
+    sessionId: row.session_id,
+    workspaceId: row.workspace_id,
+    requestHash: row.request_hash,
+    contractRevision: row.contract_revision ?? 0,
+    principalId: row.principal_id ?? undefined,
+    state: (row.state as ApprovalRecord["state"]) ?? "PENDING",
+    approvedBy: row.approved_by ?? undefined,
+    executionId: row.execution_id ?? undefined,
+    expiresAt: row.expires_at ?? new Date(0).toISOString(),
+    updatedAt: row.updated_at,
+    createdAt: row.created_at,
+  }
+}
+
 export class SqliteScopedApprovalStore implements ScopedApprovalStore {
   private db: Database
 
@@ -141,6 +161,19 @@ export class SqliteScopedApprovalStore implements ScopedApprovalStore {
         return row ? rowToScoped(row) : undefined
       },
       catch: (cause) => new ScopedApprovalStoreError("getApproval", cause),
+    })
+  }
+
+  /** Read a record in wire form (ApprovalRecord) for sync-channel events. */
+  getApprovalRecord(id: string): Effect.Effect<ApprovalRecord | undefined, ScopedApprovalStoreError> {
+    return Effect.try({
+      try: () => {
+        const row = this.db.query("SELECT * FROM approval_records WHERE approval_id = ?").get(id) as
+          | ApprovalRow
+          | undefined
+        return row ? rowToApprovalRecord(row) : undefined
+      },
+      catch: (cause) => new ScopedApprovalStoreError("getApprovalRecord", cause),
     })
   }
 

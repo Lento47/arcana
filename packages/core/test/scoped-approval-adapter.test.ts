@@ -143,4 +143,23 @@ describe("SqliteScopedApprovalStore (RB-01 adapter)", () => {
     store2.close()
     expect(loaded?.decision).toBe("APPROVED")
   })
+
+  test("getApprovalRecord returns wire-form ApprovalRecord for the sync channel", () => {
+    const store = freshStore()
+    run(store.putApproval(makeApproval()))
+    const record = run(store.getApprovalRecord("appr_test_1"))
+    expect(record).toBeDefined()
+    expect(record!.approvalId).toBe("appr_test_1")
+    expect(record!.version).toBe(1)
+    expect(record!.sessionId).toBe("sess-1")
+    expect(record!.workspaceId).toBe("sess-1") // workspace = session-scoped
+    expect(record!.requestHash).toBe("hash-abc-123")
+    expect(record!.contractRevision).toBe(0)
+    expect(record!.state).toBe("PENDING")
+    expect(record!.principalId).toBe("agent:default")
+    expect(record!.expiresAt).toBeDefined()
+    expect(record!.createdAt).toBeDefined()
+    expect(record!.updatedAt).toBeDefined()
+    expect(run(store.getApprovalRecord("missing"))).toBeUndefined()
+  })
 })
