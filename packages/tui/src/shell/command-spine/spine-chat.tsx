@@ -1,8 +1,6 @@
 import { Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { APP_NAME, Glyph } from "../../branding"
-import { SigilSpinner } from "../../component/sigil-spinner"
-import { ShimmerText } from "../../component/shimmer-text"
 import {
   compactSpineElapsed,
   spineElapsedMax,
@@ -90,13 +88,6 @@ export function SpineChatCard(props: {
     return undefined
   })
 
-  const shimmerVerb = createMemo(() => {
-    // Reasoning phase is its own think row ("Thinking"/"Thought"). Once the
-    // answer text streams, this header shows the *writing* phase — never a
-    // stale "thinking" that contradicts the flipped think label.
-    return "writing"
-  })
-
   const accentGlyph = createMemo(() => (isUser() ? Glyph.diamond : Glyph.star))
 
   return (
@@ -125,16 +116,6 @@ export function SpineChatCard(props: {
           <text fg={speakerColor()} wrapMode="none">
             {accentGlyph()} {speaker()}
           </text>
-          <Show when={streaming()} keyed>
-            <SigilSpinner color={speakerColor()} />
-          </Show>
-          <Show when={streaming() && !elapsedText()} keyed>
-            <ShimmerText
-              text={shimmerVerb()}
-              active={true}
-              background={(cardBg() ?? t.background) as any}
-            />
-          </Show>
         </box>
         <box flexGrow={1} minWidth={1} />
         <Show when={hasRightTime()}>
