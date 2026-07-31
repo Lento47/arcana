@@ -16,7 +16,7 @@ import { createHash, randomUUID } from "node:crypto"
 import * as fs from "node:fs"
 import * as path from "node:path"
 import { execSync } from "node:child_process"
-import type Database from "better-sqlite3"
+import type { Database } from "bun:sqlite"
 
 import {
   classifyCommand,
@@ -261,7 +261,7 @@ function evaluatePolicyDrift(callReplay: ReplayCallMetadata): PolicyDriftRecord 
 // ────────────────────────────────────────────────────────────────
 
 export function deriveDeterministicReplay(
-  db: Database.Database,
+  db: Database,
   sessionId: string,
   opts?: { dryRun?: boolean },
 ): DeterministicReplayResult {

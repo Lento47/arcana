@@ -9,7 +9,6 @@
 
 import * as fs from "node:fs"
 import * as path from "node:path"
-import type Database from "better-sqlite3"
 
 import {
   deriveRevalidation,
@@ -174,10 +173,8 @@ export class RevalidationCommand {
         const format = argv.format as "terminal" | "json" | "markdown"
         const outputDir = argv.output as string | undefined
 
-        const Database = (await import("better-sqlite3")).default
-        const { getDatabasePath } = await import("@examples/infra-lib")
-        const dbPath = getDatabasePath()
-        const db = new Database(dbPath, { readonly: true })
+        const { openReplayDatabase } = await import("./replay-db")
+        const db = openReplayDatabase(true)
 
         try {
           const result = deriveRevalidation(db, sessionId)
