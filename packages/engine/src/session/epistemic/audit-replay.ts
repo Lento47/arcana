@@ -13,7 +13,7 @@
  */
 
 import { createHash } from "node:crypto"
-import type Database from "better-sqlite3"
+import type { Database } from "bun:sqlite"
 
 // ────────────────────────────────────────────────────────────────
 // Types
@@ -139,7 +139,7 @@ export interface VerifiedEvent {
 }
 
 export function verifySourceEvents(
-  db: Database.Database,
+  db: Database,
   sessionId: string,
   eventRefs: ReadonlyArray<{ readonly eventId: string; readonly sequence: number; readonly hash: string }>,
 ): { events: VerifiedEvent[]; status: "VALID" | "INVALID" | "MISMATCH" | "UNAVAILABLE" } {
@@ -442,7 +442,7 @@ export function detectClaimObligationIssues(entries: ReadonlyArray<AuditReplayEn
 // Global chain verification
 // ────────────────────────────────────────────────────────────────
 
-export function verifyGlobalChain(db: Database.Database): "VALID" | "INVALID" | "UNAVAILABLE" {
+export function verifyGlobalChain(db: Database): "VALID" | "INVALID" | "UNAVAILABLE" {
   const events = db.prepare(`
     SELECT id, sequence, session_id, timestamp, previous_hash, hash,
            actor_kind, actor_id, type, payload
@@ -477,7 +477,7 @@ export function verifyGlobalChain(db: Database.Database): "VALID" | "INVALID" | 
 // Trace health lookup
 // ────────────────────────────────────────────────────────────────
 
-function getTraceHealth(db: Database.Database, sessionId: string): "COMPLETE" | "DEGRADED" | "INCOMPLETE" {
+function getTraceHealth(db: Database, sessionId: string): "COMPLETE" | "DEGRADED" | "INCOMPLETE" {
   try {
     const row = db.prepare("SELECT status FROM trace_health WHERE session_id = ?").get(sessionId) as { status: string } | undefined
     if (row && (row.status === "COMPLETE" || row.status === "DEGRADED" || row.status === "INCOMPLETE")) {
@@ -504,7 +504,7 @@ function deriveLifecycleStatus(timeline: ReadonlyArray<AuditReplayEntry>): "COMP
 // ────────────────────────────────────────────────────────────────
 
 function getEventRefsFromDB(
-  db: Database.Database,
+  db: Database,
   sessionId: string,
 ): Array<{ eventId: string; sequence: number; hash: string }> {
   const rows = db.prepare(
@@ -518,7 +518,7 @@ function getEventRefsFromDB(
 // ────────────────────────────────────────────────────────────────
 
 export function deriveAuditReplay(
-  db: Database.Database,
+  db: Database,
   sessionId: string,
 ): AuditReplay {
   const now = new Date().toISOString()

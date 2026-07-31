@@ -17,7 +17,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import * as fs from "node:fs"
 import * as path from "node:path"
-import type Database from "better-sqlite3"
+import type { Database } from "bun:sqlite"
 
 // ────────────────────────────────────────────────────────────────
 // Types
@@ -239,7 +239,7 @@ function revalidateClaims(
 // ────────────────────────────────────────────────────────────────
 
 export function deriveRevalidation(
-  db: Database.Database,
+  db: Database,
   sessionId: string,
 ): RevalidationResult {
   const startedAt = new Date().toISOString()

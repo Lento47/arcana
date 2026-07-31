@@ -10,7 +10,6 @@
 
 import * as fs from "node:fs"
 import * as path from "node:path"
-import type Database from "better-sqlite3"
 
 import {
   deriveDeterministicReplay,
@@ -175,10 +174,8 @@ export class ReplayDeterministicCommand {
         const outputDir = argv.output as string | undefined
         const dryRun = argv["dry-run"] as boolean
 
-        const Database = (await import("better-sqlite3")).default
-        const { getDatabasePath } = await import("@examples/infra-lib")
-        const dbPath = getDatabasePath()
-        const db = new Database(dbPath, { readonly: true })
+        const { openReplayDatabase } = await import("./replay-db")
+        const db = openReplayDatabase(true)
 
         try {
           const result = deriveDeterministicReplay(db, sessionId, { dryRun })
