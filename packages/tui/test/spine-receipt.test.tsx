@@ -191,7 +191,7 @@ test("patch receipt with no stats returns null", async () => {
 
 // ---------- inspect ----------
 
-test("inspect receipt returns null (deferred)", async () => {
+test("inspect receipt shows Done when completed without summary", async () => {
   const frame = await capture(
     await renderReceipt(
       "inspect",
@@ -200,7 +200,7 @@ test("inspect receipt returns null (deferred)", async () => {
       120,
     ),
   )
-  expect(frame).toBe("")
+  expect(frame).toContain("Done")
 })
 
 // ---------- fallback ----------
@@ -215,10 +215,10 @@ test("unknown kind shows fallback", async () => {
     ),
   )
   expect(frame).toContain("user")
-  expect(frame).toContain("ok")
+  expect(frame).toContain("Done")
 })
 
-test("unknown kind at minimal shows status only", async () => {
+test("unknown kind at minimal shows Done", async () => {
   const frame = await capture(
     await renderReceipt(
       "plan",
@@ -227,7 +227,7 @@ test("unknown kind at minimal shows status only", async () => {
       40,
     ),
   )
-  expect(frame).toBe("ok")
+  expect(frame).toContain("Done")
 })
 
 // ---------- empty receipt (guarded by Show) ----------

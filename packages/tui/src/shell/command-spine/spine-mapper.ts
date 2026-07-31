@@ -1962,6 +1962,11 @@ function dedupeFilePaths(entries: SpineEntry[]): SpineEntry[] {
   let lastTool = ""
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i]!
+    // Think rows carry verbs ("Thinking"/"Thought") or reasoning titles, not
+    // file paths — ditto-collapsing consecutive "Thought" rows to "⟐" made
+    // completed reasoning blocks lose their label. Reset the path cursor so
+    // think entries can never be deduped against each other or a file row.
+    if (e.kind === "think") { lastFile = ""; lastTool = ""; continue }
     if (e.kind === "fail" || e.hidden) { lastFile = ""; lastTool = ""; continue }
     if (e.children) { lastFile = ""; lastTool = ""; continue }
     const file = e.summary?.replace(/^[^:]*:\s*/, "").trim()
