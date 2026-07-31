@@ -21,6 +21,8 @@ import { PartID } from "./schema"
 import { SessionID } from "./schema"
 import { SessionBudget, toolBudgetCost } from "./budget"
 import { EffectBridge } from "@/effect/bridge"
+import { InstanceRef } from "@/effect/instance-ref"
+import { InstanceStore } from "@/project/instance-store"
 import { ModelV2 } from "@arcana/core/model"
 import { withToolAdmission } from "@/tool/batch"
 import { checkGoalToolGate } from "@arcana/core/session/goal"
@@ -329,7 +331,23 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   promptOps: TaskPromptOps
 }) {
   const tools: Record<string, AITool> = {}
-  const run = yield* EffectBridge.make()
+  // InstanceRef is request-derived context: it is provided by the HTTP
+  // middleware for the turn that started the request, but a turn resumed or
+  // re-driven after a daemon re-registration can run without it (the in-memory
+  // instance registry is process-local). The durable session record carries
+  // the instance directory — rebuild the context on demand so tool execution
+  // never depends on the request path. Idempotent in the healthy case: the
+  // request-derived ref wins when present.
+  const instanceRef = yield* InstanceRef
+  const instance = instanceRef ?? (yield* Effect.gen(function* () {
+    yield* Effect.logWarning("InstanceRef missing at tool resolve — recovering from durable session", {
+      sessionID: input.session.id,
+      directory: input.session.directory,
+    })
+    const store = yield* InstanceStore.Service
+    return yield* store.load({ directory: input.session.directory })
+  }))
+  const run = yield* EffectBridge.make({ instance })
   const plugin = yield* Plugin.Service
   const permission = yield* Permission.Service
   const registry = yield* ToolRegistry.Service

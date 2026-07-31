@@ -1,6 +1,7 @@
 import { Context, Effect, Exit, Fiber } from "effect"
 import { WorkspaceContext } from "@/control-plane/workspace-context"
 import type { WorkspaceV2 } from "@arcana/core/workspace"
+import type { InstanceContext } from "@/project/instance-context"
 import { InstanceRef, WorkspaceRef } from "./instance-ref"
 import { attachWith } from "./run-service"
 
@@ -51,12 +52,16 @@ export const fromPromise = <T>(fn: () => Promise<T> | T): Effect.Effect<T> =>
     return yield* Effect.promise(() => Promise.resolve(restoreWorkspace(workspace, () => fn())))
   })
 
-export function make(): Effect.Effect<Shape> {
+export function make(input?: { instance?: InstanceContext; workspace?: WorkspaceV2.ID }): Effect.Effect<Shape> {
   return Effect.gen(function* () {
     const ctx = yield* Effect.context()
     const captured = captureSync()
-    const instance = (yield* InstanceRef) ?? captured.instance
-    const workspace = (yield* WorkspaceRef) ?? captured.workspace
+    // Explicit override wins; then the current context; then the captured fiber
+    // context. tools.ts passes a recovered instance (from the durable session
+    // record) so tool execution never depends on the request-derived context
+    // of the turn that started it — daemon re-registration drops that context.
+    const instance = input?.instance ?? (yield* InstanceRef) ?? captured.instance
+    const workspace = input?.workspace ?? (yield* WorkspaceRef) ?? captured.workspace
     const wrap = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       attachWith(effect.pipe(Effect.provide(ctx)) as Effect.Effect<A, E, never>, { instance, workspace })
 
