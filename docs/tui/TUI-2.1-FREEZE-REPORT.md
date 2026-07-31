@@ -127,8 +127,8 @@ None of these touch TUI rendering, approval lifecycle, or command-spine code.
 | Stale artifact | `packages/core/src/crypto/__tests__/run-tui2.1-production-tests.ts` (asserts removed 2-line receipts; never run by `bun test` naming) — deletion pending (RB-01c) | Verified: 135 pass, dead code |
 
 **Remaining for closure:**
-1. **Engine-suite baseline triage** — full suite rerun at HEAD in progress (was 3978/185/72; failure profile mostly network-dependent). Must confirm zero new failures from the `tools.ts` PEP rewrite (suspect: `strips bash echo`).
-2. **PENDING-create SSE push gap** — record creation lives in the `tools.ts` parked path; pushes fire on transitions only. A fresh PENDING record may not reach the TUI until the next event. Needs publish hook or TUI hydration on session sync. (Small, defined.)
+1. **Engine-suite baseline triage** — full suite rerun at HEAD (JUnit run in progress). Failure profile unchanged from baseline (network/fixture/snapshot noise); zero `strips bash echo`, zero approval/PEP-related failures in the first pass.
+2. **PENDING-create SSE push gap** — **CLOSED** (`d05ecfff`): `tools.ts` now publishes `approval.updated` with a wire-form `ApprovalRecord` after every durable record create (local + MCP paths); adapter gained `getApprovalRecord` (9/9 adapter tests incl. new wire-form test). Fresh PENDING entries render immediately; restart recovery also benefits (records re-push on re-created state transitions).
 3. **WS1 manual smoke re-run** — phases 2-7 and 10-11 are now testable with the live approval loop.
 
 ### Doc-vs-code mismatches (POLISH, fix with RB-01 or record as known deviations)
@@ -359,9 +359,9 @@ These tests validate the rendering logic but do **not** replace visual verificat
 **Freeze-blocking:** None. All alerts are either not reachable or patchable in separate PRs without blocking the TUI freeze.
 
 **Recommended action:**
-1. Bump dompurify 3.4.11 → 3.4.12 in `packages/ui/package.json` (before merge)
-2. Create `security/dependabot-remediation` branch for nitro update in nested enterprise package
-3. Document @hey-api/openapi-ts as not reachable (no action needed)
+1. Bump dompurify 3.4.11 → 3.4.12 in `packages/ui/package.json` — **DONE** (`b4e70bcf`, installed 3.4.12)
+2. Create `security/dependabot-remediation` branch for nitro update in nested enterprise package — pending
+3. Document @hey-api/openapi-ts as not reachable (no action needed) — documented above
 
 ---
 
@@ -381,14 +381,14 @@ These tests validate the rendering logic but do **not** replace visual verificat
 
 **Count: 1 — RB-01 (approval pipeline not wired into production runtime).**
 
-**Status: IMPLEMENTED.** Code landed (`2f35d2b6`..`3833cde0`), operator-approved systematic fix. Closure pending: (1) engine-suite baseline triage (rerun at HEAD running), (2) PENDING-create SSE push gap, (3) WS1 manual smoke re-run. Freeze cannot be authorized until RB-01 closure is verified and WS1 approval phases re-run.
+**Status: IMPLEMENTED.** Code landed (`2f35d2b6`..`d05ecfff`), operator-approved systematic fix. Closure pending: (1) engine-suite baseline triage (JUnit rerun at HEAD running), (3) WS1 manual smoke re-run. Freeze cannot be authorized until RB-01 closure is verified and WS1 approval phases re-run.
 
 ## 12. Freeze Decision
 
 ### Acceptance Criteria Checklist
 
 - [ ] 11/11 manual smoke phases completed — **PENDING (requires human)**
-- [ ] RB-01 closure verified — **IN PROGRESS** (code landed; engine triage + WS1 pending)
+- [ ] RB-01 closure verified — **IN PROGRESS** (code landed incl. create-push `d05ecfff`; engine triage + WS1 pending)
 - [ ] WS3 lifecycle states observed in real runtime — **PENDING (requires human)**
 - [ ] Denied paths produce zero executor calls — **PENDING (manual verification)**
 - [ ] Approval lifecycle durable across restart — **PENDING (manual verification)**
@@ -396,7 +396,7 @@ These tests validate the rendering logic but do **not** replace visual verificat
 - [ ] All required width breakpoints validated — **PENDING (manual verification)**
 - [ ] Performance evidence recorded — **PENDING (manual measurement)**
 - [x] Dependabot alerts triaged (4/4 classified)
-- [ ] Freeze-blocking dependency fixes landed — dompurify bump pending
+- [x] Freeze-blocking dependency fixes landed — dompurify 3.4.12 (`b4e70bcf`, installed)
 - [ ] Full automated suite rerun at candidate `3833cde0` (16/16 typecheck, 8/8 build, 435/435 TUI tests) — typecheck/build green at `e7cc8da6`; TUI tests green at HEAD; engine rerun in progress
 - [x] Working tree clean (after commit)
 - [x] Freeze report committed
@@ -417,14 +417,13 @@ These tests validate the rendering logic but do **not** replace visual verificat
 
 ### Next Steps (ordered)
 
-1. **Engine-suite baseline triage** — classify the 185 fails vs the `tools.ts` PEP rewrite (rerun running); confirm zero PEP regressions
-2. **Close PENDING-create SSE push gap** — fresh PENDING records must reach the TUI (publish hook or sync hydration)
-3. **Housekeeping** — RB-01c stale test deletion; dompurify bump; session-lock restore decision
-4. **Human executes manual smoke test** (WS1, WS2, WS3) — all 11 phases, lifecycle observation, theme/width/performance gates
-5. **WS5 P2-1 request inventory audit** (read-only, before freeze) — congestion map: polling loops, redundant refetch, retry storms
-6. **Rerun automated suite** after dependency changes
-7. **Update this report** with manual test results
-8. **Freeze authorization** when all criteria checked
+1. **Engine-suite baseline triage** — classify the fails vs the `tools.ts` PEP rewrite (JUnit rerun running); confirm zero PEP regressions
+2. **Housekeeping done** — RB-01c stale test deleted; dompurify 3.4.12 landed; PENDING-create push gap closed (`d05ecfff`)
+3. **Human executes manual smoke test** (WS1, WS2, WS3) — all 11 phases, lifecycle observation, theme/width/performance gates
+4. **WS5 P2-1 request inventory audit** (read-only, before freeze) — congestion map: polling loops, redundant refetch, retry storms
+5. **Rerun automated suite** after dependency changes
+6. **Update this report** with manual test results
+7. **Freeze authorization** when all criteria checked
 
 ---
 
