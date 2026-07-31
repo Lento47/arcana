@@ -251,6 +251,24 @@ Verify these exact texts appear correctly:
 - [ ] Approval state is correct (APPROVED if command was sent, PENDING if not)
 - [ ] No duplicate executions
 
+### 10.3 Silent SSE death (watchdog + resume resync)
+Requires the Round 2 fixes (sse-watchdog, on-view resume). Engine heartbeat
+cadence is 10s; the watchdog trips after 30s of total silence.
+
+- [ ] Start a turn (e.g. `git status` or a long task)
+- [ ] Kill the daemon process mid-turn (no graceful shutdown)
+- [ ] TUI keeps running with the partial turn visible
+- [ ] Within ~35s the TUI reconnects (`sse.reconnected`), the session REST
+      resync fires, and text + `Done`/`Thought` verbs restore to the durable
+      state
+- [ ] No truncation persists after the heal
+
+### 10.4 Stale-cache revisit (on-view resume)
+- [ ] With the daemon dead or a stream silently dropped, navigate away from
+      the affected session and back
+- [ ] The session re-hydrates from REST: text and verbs reflect the durable
+      store (not the stale partial cache)
+
 ---
 
 ## Phase 11: Mouse Interaction

@@ -132,6 +132,36 @@ Hints are **cheap projection**. They must not replace RunProof events or tool re
 
 ---
 
+## Stream liveness contract (SSE)
+
+The TUI observes session state through the global SSE stream. The engine
+emits `server.heartbeat` every **10s** while the stream is open. The client
+uses it as a liveness signal:
+
+| Piece | Location |
+|-------|----------|
+| Engine heartbeat | `packages/engine/src/server/routes/instance/httpapi/handlers/event.ts` (`Stream.tick("10 seconds")`) |
+| Watchdog | `packages/tui/src/util/sse-watchdog.ts` — 30s silence window (3 missed heartbeats), re-armed on every event |
+| Watchdog wiring | `packages/tui/src/context/sdk.tsx` — trip aborts only the current attempt; the loop reconnects and emits `sse.reconnected` |
+| REST resync | Session route resyncs the active session on `sse.reconnected`; on-view resume resync heals stale caches when SSE is silent and a cached assistant message never completed (`routes/session/index.tsx`) |
+| Liveness meta | `getLastSseEventMeta()` (`context/sdk.tsx`) — last event type + timestamp, used by the on-view resume guard |
+
+Rules:
+
+- **Silent death ≠ truncation.** A daemon death without socket close (half-open
+  TCP) used to hang the client `for await` forever. The watchdog converts it
+  into a reconnect within ~35s, and the REST resync heals text + verbs from
+  the durable store.
+- **The TUI never invents completion.** Verbs flip only from delivered state
+  (`reasoning-end`, `tool-output-available`, `finish` events or the REST
+  re-hydration). A stale partial turn is a data-delivery problem, not a verb
+  bug.
+- **No event replay.** SSE events carry no id, so Last-Event-ID replay is
+  impossible; the gap-closer is always a full session REST resync
+  (idempotent, fail-closed).
+
+---
+
 ## What is *not* in the default UI
 
 - Token HUD / dashboard footer
