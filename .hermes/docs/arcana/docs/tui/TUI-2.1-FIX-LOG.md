@@ -155,3 +155,33 @@ in transit and the TUI had no liveness signal.
 - Navigate away and back to a session with a stale partial turn → verbs and
   text restore from REST.
 
+---
+
+# Round 2.1 — Ollama Discovery Opt-In (2026-07-31)
+
+## Background
+
+The TUI unconditionally probed `http://localhost:11434/api/tags` on every
+provider refresh to auto-discover local Ollama models. On machines that never
+run Ollama this fired a failed fetch and a `[ollama] Failed to fetch models
+from localhost:11434` console log on every refresh and in test output. The
+active model was never affected; the probe is a parallel discovery that only
+adds an "Ollama (local)" entry to the provider switcher.
+
+## Fix
+
+`packages/tui/src/context/sync.tsx` — the probe is now opt-in:
+
+- Runs only when `OLLAMA_PORT` is set (port to use) or
+  `ARCANA_OLLAMA_DISCOVERY=1` (default port 11434).
+- Default-off: no probe, no failure log, no disconnected "Ollama (local)"
+  entry in the switcher.
+- Enabled behavior unchanged: success injects the provider with its models;
+  failure adds a `disconnected` entry and logs once per refresh.
+
+Feature provenance: hermes-plans/2026-07-26_150000-ollama-tui-only.md
+(pure addition, no mixing). The engine-side ollama handling
+(`packages/core/src/session/runner/model.ts`, `packages/arcana/src/agent/
+providers.ts`) is untouched — this gate only affects TUI auto-discovery.
+
+
