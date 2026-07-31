@@ -37,7 +37,7 @@ const now = new Date("2026-07-30T12:00:00.000Z").toISOString()
 function createNodeState(overrides?: Partial<DurableNodeSecurityState>): DurableNodeSecurityState {
   return {
     nodeId: "node-local-01", trustDomain: "arcana.local",
-    identityStatus: "VERIFIED", nodeKeyEpoch: 1, nodeCertificateFingerprint: "fp-1",
+    identityStatus: "TRUSTED", nodeKeyEpoch: 1, nodeCertificateFingerprint: "fp-1",
     acceptedPolicyIssuerId: "issuer-1", acceptedPolicyIssuerEpoch: 1,
     acceptedPolicySequence: 5, acceptedPolicyDigest: "pd-abc",
     policyExpiresAt: "2099-12-31T23:59:59.999Z",

@@ -235,7 +235,7 @@ export function phaseC_pep(
 
   // TOCTOU: workload identity must be stable
   const stability = verifyWorkloadStable(admissionIdentity, workloadIdentity)
-  if (!("stable" in stability) || !stability.stable) {
+  if (!stability.stable) {
     return { decision: "DENY", reason: `workload identity stale: ${stability.reason}` }
   }
 
@@ -371,7 +371,7 @@ export async function executeDistributedPep(
     trustedKeys,
   )
 
-  if (verificationResult.stage !== "COMPLETE") {
+  if (!verificationResult.valid) {
     return {
       allowed: false,
       reason: `envelope verification failed at ${verificationResult.stage}: ${verificationResult.reason}`,

@@ -123,7 +123,7 @@ function addNegative(id: string, desc: string, domain: string, envelope: Record<
     unsignedPayload: unsigned,
     canonicalPayloadHex: Buffer.from(new TextEncoder().encode(canonical)).toString("hex"),
     signatureInputHex: Buffer.from(sigInput).toString("hex"),
-    signature: envelope.signature,
+    signature: envelope.signature as string,
     rawJson: opts?.rawJson,
     expectedStatus: "REJECTED",
     expectedStage: stage,

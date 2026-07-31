@@ -417,6 +417,17 @@ function verifyRevocationStatus(
   return { valid: true }
 }
 
+// ─── Re-export layers for independent testing ────────────────────────
+
+export {
+  validateEnvelopeSchema,
+  verifyEnvelopeSignature,
+  verifyIssuerTrust,
+  verifyAudience,
+  verifyFreshness,
+  verifyRevocationStatus,
+}
+
 // ─── Full Envelope Verification ──────────────────────────────────────
 
 function verifyEnvelope(

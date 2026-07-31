@@ -25,16 +25,24 @@ function createWorkerFetch(client: RpcClient): typeof fetch {
   const fn = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const request = new Request(input, init)
     const body = request.body ? await request.text() : undefined
-    const result = await client.call("fetch", {
-      url: request.url,
-      method: request.method,
-      headers: Object.fromEntries(request.headers.entries()),
-      body,
-    })
-    return new Response(result.body, {
-      status: result.status,
-      headers: result.headers,
-    })
+    try {
+      const result = await client.call("fetch", {
+        url: request.url,
+        method: request.method,
+        headers: Object.fromEntries(request.headers.entries()),
+        body,
+      })
+      return new Response(result.body, {
+        status: result.status,
+        headers: result.headers,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return new Response(JSON.stringify({ error: "Worker unavailable: " + msg }), {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      })
+    }
   }
   return fn as typeof fetch
 }

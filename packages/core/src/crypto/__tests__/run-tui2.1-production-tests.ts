@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, mock } from "bun:test"
-import type { ApprovalRecord, ApprovalState } from "../../approval-lifecycle"
+import type { ApprovalRecord, ApprovalState } from "../approval-lifecycle"
 import type { SpineEntry } from "../../../../tui/src/shell/command-spine/spine-types"
 import {
   productionInputToSpineEntry,
@@ -69,17 +69,19 @@ function makeSession(): SessionContext {
 }
 
 function makeMockService(): ApprovalOperatorService {
+  const approveOnceFn = mock(async (input: ApprovalCommandInput): Promise<ApprovalCommandResult> => ({
+    status: "APPROVED",
+    approvalId: input.approvalId,
+    newVersion: input.expectedVersion + 1,
+  }))
+  const denyFn = mock(async (input: ApprovalCommandInput): Promise<ApprovalCommandResult> => ({
+    status: "DENIED",
+    approvalId: input.approvalId,
+    newVersion: input.expectedVersion + 1,
+  }))
   return {
-    approveOnce: mock(async (input: ApprovalCommandInput): Promise<ApprovalCommandResult> => ({
-      status: "APPROVED",
-      approvalId: input.approvalId,
-      newVersion: input.expectedVersion + 1,
-    })),
-    deny: mock(async (input: ApprovalCommandInput): Promise<ApprovalCommandResult> => ({
-      status: "DENIED",
-      approvalId: input.approvalId,
-      newVersion: input.expectedVersion + 1,
-    })),
+    approveOnce: approveOnceFn as unknown as ApprovalOperatorService["approveOnce"],
+    deny: denyFn as unknown as ApprovalOperatorService["deny"],
   }
 }
 

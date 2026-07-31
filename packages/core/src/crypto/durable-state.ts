@@ -29,6 +29,8 @@ import {
   INITIAL_NODE_STATE,
 } from "./reducers"
 
+export type { Enforcement } from "./reducers"
+
 // ─── Durable State ────────────────────────────────────────────────────
 
 export type DurableNodeSecurityState = {

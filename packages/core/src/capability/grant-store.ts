@@ -12,9 +12,9 @@
 import { Effect } from "effect"
 import type { PolicyContext, WorkspaceTrust } from "./pdp"
 import type { PolicyContextProvider } from "./pep"
-import type { CapabilityGrant, IntentBinding } from "./types"
+import type { CapabilityGrant, CapabilityStatus, IntentBinding } from "./types"
 import { POLICY_VERSION } from "./types"
-import type { ScopedApproval } from "./scoped-approval"
+import type { ScopedApproval, ScopedApprovalDecision } from "./scoped-approval"
 
 /** Deep freeze for policy snapshots — no mutable references escape. */
 function deepFreeze<T>(obj: T): T {

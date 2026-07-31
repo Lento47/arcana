@@ -38,7 +38,7 @@ function createValidNodeState(overrides?: Partial<DurableNodeSecurityState>): Du
   return {
     nodeId: "node-local-01",
     trustDomain: "arcana.local",
-    identityStatus: "VERIFIED",
+    identityStatus: "TRUSTED",
     nodeKeyEpoch: 1,
     nodeCertificateFingerprint: "fp-1",
     acceptedPolicyIssuerId: "issuer-1",
