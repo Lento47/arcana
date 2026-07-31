@@ -18,7 +18,6 @@ import { Database } from "@arcana/core/database/database"
 import { getSessionGoal, setSessionGoal } from "@arcana/core/session/goal"
 import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
 import { delegateCapabilities, type CapabilityGrantDraft } from "@arcana/core/capability/delegation"
-import { ContractEngine } from "../session/epistemic/contract-engine"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>

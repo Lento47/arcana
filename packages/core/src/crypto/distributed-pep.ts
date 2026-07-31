@@ -235,7 +235,7 @@ export function phaseC_pep(
 
   // TOCTOU: workload identity must be stable
   const stability = verifyWorkloadStable(admissionIdentity, workloadIdentity)
-  if (!stability.stable) {
+  if ("stale" in stability) {
     return { decision: "DENY", reason: `workload identity stale: ${stability.reason}` }
   }
 

@@ -68,7 +68,7 @@ function makeIntentBinding(request: AuthorizationRequest, overrides: Partial<Int
     justification: "DIRECT_REQUIREMENT",
     createdBy: "RUNTIME",
     ...overrides,
-  })
+  } as any)
 }
 
 // ── Binding Requirement Resolution ────────────────────────────────────

@@ -394,7 +394,7 @@ export const EpistemicCommand: CommandModule = {
       .command(contract)
       .command(obligations)
       .command(ProofCommand)
-      .command(ReplayCommand)
+      .command(new ReplayCommand() as any)
       .command(new RevalidationCommand())
       .demandCommand(),
   handler: () => {},

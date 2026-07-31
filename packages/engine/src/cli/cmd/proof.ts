@@ -12,7 +12,7 @@ import { homedir } from "node:os"
 import { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
 import { computeRunRoot, verifyRunRoot, verifyProofHash, computeProofHash } from "@arcana/engine/session/epistemic/run-proof"
-import type { ProofHashPayload, ProofLevel, TraceHealth, LifecycleStatus, IntegrityStatus, LifecycleCompleteness } from "@arcana/engine/session/epistemic/run-proof"
+import type { ProofHashPayload, ProofLevel, TraceHealth, LifecycleStatus, IntegrityStatus, LifecycleCompleteness, AssuranceProfile } from "@arcana/engine/session/epistemic/run-proof"
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -257,12 +257,21 @@ export function deriveRunProof(db: Database, sessionId: string): CLIRunProof {
   if (p3DenialReasons.length > 0) proofLevel = "P1"
   else proofLevel = "P3"
 
+  // Derive assurance profile for ProofHashPayload
+  const assuranceProfile: AssuranceProfile = {
+    trace: traceHealth === "COMPLETE" ? "RECORDED" : "NONE",
+    integrity: integrityStatus as AssuranceProfile["integrity"],
+    verification: "UNVERIFIED",
+    reproducibility: "NONE",
+    reproducibilityDetail: null,
+  }
+
   // Compute proofHash
   const payload: ProofHashPayload = {
     sessionId, eventCount: rows.length,
     eventHashes: rows.map((r) => r.id),
     lifecycle, lifecycleStatus, traceHealth, integrityStatus,
-    proofLevel, completionMethod,
+    proofLevel, assuranceProfile, completionMethod,
   }
   const proofHash = computeProofHash(payload)
 
@@ -776,7 +785,7 @@ export function verifyExport(filePath: string, dbPath?: string): VerificationRes
   // ── Independent proofHash recomputation ──────────────────────────
   let proofHashResult: VerificationResult["proofHash"]
   if (data.proofHashInput) {
-    const recomputed = computeProofHash(data.proofHashInput as ProofHashPayload)
+    const recomputed = computeProofHash(data.proofHashInput as unknown as ProofHashPayload)
     proofHashResult = {
       recomputed,
       exported: proofHashHex,

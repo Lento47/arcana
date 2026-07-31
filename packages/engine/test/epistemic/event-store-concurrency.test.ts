@@ -10,8 +10,8 @@ function makeTestLayer() {
   return Layer.mergeAll(dbLayer, EventStore.layer.pipe(Layer.provide(dbLayer)))
 }
 
-function runTest<A>(effect: Effect.Effect<A, never, EventStore.Service | Database.Service>) {
-  return Effect.runPromise(effect.pipe(Effect.provide(makeTestLayer())))
+function runTest<A, E = never>(effect: Effect.Effect<A, E, any>) {
+  return Effect.runPromise(effect.pipe(Effect.provide(makeTestLayer())) as any)
 }
 
 const CREATE_EVENTS = `

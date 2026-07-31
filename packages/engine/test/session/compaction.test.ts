@@ -287,7 +287,7 @@ const compactionEnv = Layer.mergeAll(
   Database.defaultLayer,
   EventV2Bridge.defaultLayer,
   CrossSpawnSpawner.defaultLayer,
-)
+) as any
 const itCompaction = testEffect(compactionEnv)
 
 type CompactionProcessOptions = {

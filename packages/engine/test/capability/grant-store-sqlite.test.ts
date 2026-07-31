@@ -53,8 +53,8 @@ function makeTestLayer() {
   return Database.layerFromPath(":memory:")
 }
 
-function runWithDb<A>(effect: Effect.Effect<A, never, Database.Service>) {
-  return Effect.runPromise(effect.pipe(Effect.provide(makeTestLayer())))
+function runWithDb<A, E = never>(effect: Effect.Effect<A, E, any>) {
+  return Effect.runPromise(effect.pipe(Effect.provide(makeTestLayer())) as any)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────

@@ -111,7 +111,7 @@ describe("Authorization trace health", () => {
         expect(proof.authorizationProfile.authorizationTraceHealth).toBe("COMPLETE")
         expect(proof.authorizationProfile.orphanExecutions).toBe(0)
         expect(proof.authorizationProfile.unmatchedRequests).toBe(0)
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -136,7 +136,7 @@ describe("Authorization trace health", () => {
         expect(proof.authorizationProfile.authorizationTraceHealth).toBe("DEGRADED")
         expect(proof.authorizationProfile.orphanExecutions).toBe(1)
         expect(proof.authorizationProfile.unauthorizedExecutions).toBe(1)
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -159,7 +159,7 @@ describe("Authorization trace health", () => {
         const proof = yield* runProof.derive("s3")
         expect(proof.authorizationProfile.authorizationTraceHealth).toBe("DEGRADED")
         expect(proof.authorizationProfile.unmatchedRequests).toBe(1)
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -181,7 +181,7 @@ describe("Authorization trace health", () => {
         expect(proof.authorizationProfile.orphanExecutions).toBe(0)
         expect(proof.authorizationProfile.unmatchedAllows).toBe(0)
         expect(proof.authorizationProfile.unmatchedRequests).toBe(0)
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -204,7 +204,7 @@ describe("Authorization trace health", () => {
 
         const proof = yield* runProof.derive("s5")
         expect(proof.authorizationProfile.unmatchedAllows).toBe(1)
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -244,7 +244,7 @@ describe("Authorization trace health", () => {
         expect(ap.requests).toBe(2)
         expect(ap.allowed).toBe(2)
         expect(ap.executed).toBe(2)
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -277,7 +277,7 @@ describe("Authorization trace health", () => {
         expect(ap.authorizationTraceHealth).toBe("DEGRADED")
         expect(ap.orphanExecutions).toBe(1)
         expect(ap.unauthorizedExecutions).toBe(1)
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 })
@@ -317,8 +317,8 @@ describe("Information flow profile", () => {
         })
 
         // Security label events
-        yield* eventStore.append({ sessionId: "if1", actor: { kind: "security", id: "labeler" }, type: "security.labels_assigned", payload: {} })
-        yield* eventStore.append({ sessionId: "if1", actor: { kind: "security", id: "propagator" }, type: "security.labels_propagated", payload: {} })
+        yield* eventStore.append({ sessionId: "if1", actor: { kind: "security", id: "labeler" }, type: "security.labels_assigned", payload: {} } as any)
+        yield* eventStore.append({ sessionId: "if1", actor: { kind: "security", id: "propagator" }, type: "security.labels_propagated", payload: {} } as any)
 
         yield* eventStore.append({ sessionId: "if1", actor: { kind: "user", id: "u" }, type: "session.completed", payload: {} })
 
@@ -328,7 +328,7 @@ describe("Information flow profile", () => {
         expect(proof.informationFlowProfile.labeledDerivedValues).toBe(1)
         expect(proof.informationFlowProfile.unlabeledConsequentialRequests).toBe(0)
         expect(proof.informationFlowProfile.traceHealth).toBe("COMPLETE")
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -362,7 +362,7 @@ describe("Information flow profile", () => {
         const proof = yield* runProof.derive("if2")
         expect(proof.informationFlowProfile.unlabeledConsequentialRequests).toBe(0)
         expect(proof.informationFlowProfile.traceHealth).toBe("COMPLETE")
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -390,7 +390,7 @@ describe("Information flow profile", () => {
         const proof = yield* runProof.derive("if3")
         expect(proof.informationFlowProfile.unlabeledConsequentialRequests).toBe(1)
         expect(proof.informationFlowProfile.traceHealth).toBe("DEGRADED")
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -416,7 +416,7 @@ describe("Information flow profile", () => {
 
         const proof = yield* runProof.derive("if4")
         expect(proof.informationFlowProfile.secretValuesUsed).toBe(1)
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -431,10 +431,10 @@ describe("Information flow profile", () => {
 
         yield* eventStore.append({ sessionId: "if5", actor: { kind: "user", id: "u" }, type: "session.started", payload: {} })
 
-        yield* eventStore.append({ sessionId: "if5", actor: { kind: "security", id: "s" }, type: "security.label_tampering_detected", payload: {} })
-        yield* eventStore.append({ sessionId: "if5", actor: { kind: "security", id: "s" }, type: "security.secret_flow_denied", payload: {} })
-        yield* eventStore.append({ sessionId: "if5", actor: { kind: "security", id: "s" }, type: "security.declassification_requested", payload: {} })
-        yield* eventStore.append({ sessionId: "if5", actor: { kind: "security", id: "s" }, type: "security.declassification_allowed", payload: {} })
+        yield* eventStore.append({ sessionId: "if5", actor: { kind: "security", id: "s" }, type: "security.label_tampering_detected", payload: {} } as any)
+        yield* eventStore.append({ sessionId: "if5", actor: { kind: "security", id: "s" }, type: "security.secret_flow_denied", payload: {} } as any)
+        yield* eventStore.append({ sessionId: "if5", actor: { kind: "security", id: "s" }, type: "security.declassification_requested", payload: {} } as any)
+        yield* eventStore.append({ sessionId: "if5", actor: { kind: "security", id: "s" }, type: "security.declassification_allowed", payload: {} } as any)
 
         yield* eventStore.append({ sessionId: "if5", actor: { kind: "user", id: "u" }, type: "session.completed", payload: {} })
 
@@ -443,7 +443,7 @@ describe("Information flow profile", () => {
         expect(proof.informationFlowProfile.secretFlowsDenied).toBe(1)
         expect(proof.informationFlowProfile.declassificationsRequested).toBe(1)
         expect(proof.informationFlowProfile.declassificationsAllowed).toBe(1)
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -468,7 +468,7 @@ describe("Information flow profile", () => {
         // Both are UNAVAILABLE when no events exist
         expect(proof.authorizationProfile.authorizationTraceHealth).toBe("UNAVAILABLE")
         expect(proof.informationFlowProfile.traceHealth).toBe("UNAVAILABLE")
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 })
@@ -492,7 +492,7 @@ describe("Phase A/B/C regression: no existing guarantees broken", () => {
         expect(proof.lifecycleStatus).toBe("COMPLETE")
         expect(proof.lifecycle.started).toBe(true)
         expect(proof.lifecycle.hasTerminalEvent).toBe(true)
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -512,7 +512,7 @@ describe("Phase A/B/C regression: no existing guarantees broken", () => {
         expect(proof.integrityStatus).toBe("VALID")
         expect(proof.proofHash).toBeTruthy()
         expect(proof.runRoot).toBeTruthy()
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 })

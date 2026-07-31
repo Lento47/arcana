@@ -569,7 +569,7 @@ describe("TUI-2.1 Controller", () => {
   it("repeated approveOnce while submitting emits zero additional commands", async () => {
     // Make service hang to simulate slow command
     let resolveFirst: (v: ApprovalCommandResult) => void
-    service.approveOnce = mock(async (input: ApprovalCommandInput) => {
+    service.approveOnce = mock(async (input: ApprovalCommandInput): Promise<ApprovalCommandResult> => {
       return new Promise((resolve) => {
         resolveFirst = resolve
       })

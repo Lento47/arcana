@@ -43,6 +43,7 @@ function createTestDb(name: string): SqliteDurableStateStore {
 
 function createPolicyInput(seq: number, digest?: string): VerifiedPolicyInput {
   return {
+    kind: "SNAPSHOT",
     issuerId: "issuer-1",
     issuerEpoch: 1,
     sequence: seq,

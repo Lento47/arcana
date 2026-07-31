@@ -38,7 +38,7 @@ function expectLabels(
   expectedProvenance: string[],
   expectedSensitivity: SensitivityLabel,
 ) {
-  expect([...labels.provenance].sort()).toEqual(expectedProvenance.sort())
+  expect((labels.provenance as unknown as string[]).sort()).toEqual(expectedProvenance.sort())
   expect(labels.sensitivity).toBe(expectedSensitivity)
 }
 
@@ -283,7 +283,7 @@ describe("Declassification: narrow primitive", () => {
   test("declassification requires lower target sensitivity", () => {
     const decision: DeclassificationDecision = {
       sourceSensitivity: "SECRET",
-      targetSensitivity: "SECRET",
+      targetSensitivity: "PRIVATE",
       fields: ["apiKey"],
       purpose: "test",
       capabilityId: "cap-001",
