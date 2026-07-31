@@ -147,6 +147,10 @@ function show(out: string) {
 
 async function runDirectTui() {
   mark("zero-arg-tui-dispatch-start")
+  // Register Solid transform before any TUI JSX modules load. Bunfig preload is
+  // not enough when this file is launched from a cwd that skips packages/engine/bunfig.
+  const { ensureSolidPreload } = await import("./cli/tui/ensure-solid-preload")
+  await ensureSolidPreload()
   await prepareRuntime({ tui: true })
   mark("zero-arg-tui-dispatch-end")
   measure("cli-import-start", "zero-arg-tui-dispatch-end", "zero-arg-tui-dispatch")
@@ -172,7 +176,25 @@ if (args.length === 0) {
       // Dump full error before the minified "Unexpected error" swallows context.
       process.stderr.write(`[arcana] TUI bootstrap crashed:\n`)
       if (e instanceof Error) {
-        process.stderr.write(`  message: ${e.message}\n  stack:\n${e.stack ?? "  (none)"}\n`)
+        process.stderr.write(`  message: ${e.message}\n`)
+        // Effect.tryPromise wraps the real failure in `.cause` — surface it first.
+        let depth = 0
+        let cur: unknown = e
+        while (cur && depth < 6) {
+          const cause =
+            cur instanceof Error && "cause" in cur
+              ? (cur as Error & { cause?: unknown }).cause
+              : undefined
+          if (!cause) break
+          const label = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)
+          process.stderr.write(`  cause[${depth}]: ${label}\n`)
+          if (cause instanceof Error && cause.stack) {
+            process.stderr.write(`${cause.stack}\n`)
+          }
+          cur = cause
+          depth++
+        }
+        if (e.stack) process.stderr.write(`  stack:\n${e.stack}\n`)
       } else {
         process.stderr.write(`  ${String(e)}\n`)
       }

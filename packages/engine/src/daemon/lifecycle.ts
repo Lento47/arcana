@@ -17,16 +17,26 @@ export async function startDaemon(cwd: string, version: string): Promise<{ port:
   let port = DAEMON_PORT_START
   let server: Awaited<ReturnType<typeof Server.listen>> | null = null
 
+  const listenErrors: string[] = []
   for (; port <= DAEMON_PORT_END; port++) {
     try {
       server = await Server.listen({ port, hostname: "127.0.0.1" })
       break
-    } catch {
+    } catch (err) {
+      // Do not treat layer/bootstrap failures as "port busy". Log and keep trying
+      // so a transient bind conflict can still recover on the next port.
+      const message = err instanceof Error ? err.message : String(err)
+      listenErrors.push(`${port}: ${message}`)
+      console.error(`[daemon] Server.listen failed on 127.0.0.1:${port}: ${message}`)
       continue
     }
   }
 
-  if (!server) throw new Error("No available port for daemon")
+  if (!server) {
+    throw new Error(
+      `No available port for daemon (${DAEMON_PORT_START}-${DAEMON_PORT_END}). Last errors:\n${listenErrors.join("\n")}`,
+    )
+  }
 
   // Atomic lock acquisition — wins the race or fails fast
   const lock = acquireLock(cwd, port, version)

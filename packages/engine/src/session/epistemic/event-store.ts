@@ -2,6 +2,7 @@ import { Effect, Context, Layer } from "effect"
 import { desc, eq } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { Database } from "@arcana/core/database/database"
+import { LayerNode } from "@arcana/core/effect/layer-node"
 import { EventTable } from "@arcana/core/epistemic/event-sql"
 import { TraceHealthTable } from "@arcana/core/epistemic/trace-health-sql"
 import { computeEventHash } from "@arcana/core/epistemic/event-hash"
@@ -272,5 +273,9 @@ export const layer = Layer.effect(
     // Scope: narrow (single method cast on the service object)
   }),
 )
+
+// App-graph node: Server.listen builds via LayerNode, not defaultLayer.
+// Without this, SessionProcessor/SessionPrompt fail with "Service not found: @arcana/EventStore".
+export const node = LayerNode.make(layer, [Database.node])
 
 export * as EventStore from "./event-store"

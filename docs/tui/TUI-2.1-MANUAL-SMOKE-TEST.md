@@ -1,19 +1,28 @@
 # TUI-2.1 Manual Smoke Test Plan
 
 **Branch:** `phase-d-implementation`  
-**Commit:** `ae1a6333`  
 **Date:** 2026-07-30  
+**Engine prerequisite:** EventStore LayerNode + AppRuntime `defaultLayer` fixes (daemon/`Server.listen` must reach `/health`)
 
 ---
 
 ## Prerequisites
 
 ```bash
-cd /l/PROJECTS/arcana
-bun run dev:tui
+# from repo root after bun install
+./arcana.cmd
+# or:
+bun --conditions=browser packages/engine/src/index.ts
 ```
 
 Open the TUI in a terminal at ~120 columns for the initial test.
+
+**Automated pre-check (optional):** daemon should bind and answer health:
+
+```bash
+# expect HTTP 200 + {"status":"ok",...}
+# if this fails, do not start interactive smoke — engine bootstrap is broken again
+```
 
 ---
 
