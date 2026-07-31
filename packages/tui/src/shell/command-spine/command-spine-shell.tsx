@@ -260,7 +260,7 @@ export function CommandSpineShell(props: ShellProps) {
     // Stale messages without time.completed shouldn't block idle transition.
     const sessionStatus = props.sessionStatus?.()
     const statusType = sessionStatus?.type
-    const sessionActive = !statusType || statusType === "running" || statusType === "thinking"
+    const sessionActive = statusType === "busy" || statusType === "retry"
     if (props.pending() && sessionActive) return "working"
     return "idle"
   })
