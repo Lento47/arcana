@@ -220,7 +220,7 @@ export function SpineNode(props: {
           <Show when={thinking()}>
             <ShimmerText
               text={thinking() || (streaming() ? "Thinking" : "Thought")}
-              active={!!thinking()}
+              active={streaming()}
               background={t.backgroundPanel as any}
             />
             <text fg={t.spineDiffMuted as any}> · </text>
