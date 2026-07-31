@@ -567,14 +567,15 @@ function isLowSignalThinkingLine(line: string): boolean {
   return /^(?:more detail|details?|step by step|step one|next step|continuing)(?:\b|\.|…|\.\.\.)/i.test(line.trim())
 }
 
-function thinkingSummary(text: string, seed: string): string {
+function thinkingSummary(text: string, seed: string, streaming: boolean): string {
   // Prefer OpenAI-style **Title** — compact slug for the spine header.
   const content = text.trim()
-  if (!content) return "Thinking"
+  if (!content) return streaming ? "Thinking" : "Thought"
   const titleMatch = content.match(/^\*\*([^*\n]+)\*\*(?:\r?\n\r?\n|$)/)
   if (titleMatch?.[1]) return truncate(titleMatch[1].trim(), 36)
   // Fixed verb — avoids confusing glyph salad across entries.
-  return "Thinking"
+  // Flips to past tense once the reasoning part has ended.
+  return streaming ? "Thinking" : "Thought"
 }
 
 const EMPTY_PARTS: Part[] = []
@@ -1675,7 +1676,7 @@ function makeInlineThinkEntry(
   const streaming =
     message.role === "assistant" && isAssistantSegmentStreaming("think", life)
   const { body: titleStrippedBody } = reasoningSummary(raw)
-  const summary = thinkingSummary(raw, `${part.id}:inline`)
+  const summary = thinkingSummary(raw, `${part.id}:inline`, streaming)
   return {
     id: `${message.id}:${part.id}:think-inline`,
     index: 0,
@@ -1717,7 +1718,7 @@ function makeThinkEntry(
   // header summary, not duplicated at the top of the body (matches legacy reasoningSummary).
   const { body: titleStrippedBody } = reasoningSummary(raw)
   // Summary is a short one-line title only (no "think"/"thinking" label spam).
-  const summary = thinkingSummary(raw, part.id)
+  const summary = thinkingSummary(raw, part.id, streaming)
   // Auto-open while tokens are streaming so the user actually sees the agent think;
   // when complete, respect thinking_mode (expandThinking).
   const expandedByDefault = hasText && (streaming || options?.expandThinking === true)

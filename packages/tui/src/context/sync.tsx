@@ -301,8 +301,6 @@ export const {
         }
 
         case "session.status": {
-          const ss = event.properties.status as any
-          try { require("fs").appendFileSync("L:/PROJECTS/arcana/tui-debug.log", `[sync] session.status: ${event.properties.sessionID} type=${ss.type}\n`) } catch {}
           setStore("session_status", event.properties.sessionID, event.properties.status)
           break
         }
@@ -333,9 +331,6 @@ export const {
           const result = search(messages, event.properties.info.id, (m) => m.id)
           if (result.found) {
             const info = event.properties.info
-            if (info.time?.completed) {
-              try { require("fs").appendFileSync("L:/PROJECTS/arcana/tui-debug.log", `[sync] message.updated: ${info.id} completed=${info.time.completed}\n`) } catch {}
-            }
             setStore("message", event.properties.info.sessionID, result.index, reconcile(info))
             break
           }
@@ -383,10 +378,6 @@ export const {
           break
         }
         case "message.part.updated": {
-          const _p = event.properties.part as any
-          if (_p.type === "reasoning" || _p.time?.end) {
-            try { require("fs").appendFileSync("L:/PROJECTS/arcana/tui-debug.log", `[sync] part.updated: type=${_p.type} id=${_p.id} time.end=${_p.time?.end ?? "none"}\n`) } catch {}
-          }
           touchPart(event.properties.part.sessionID, event.properties.part.id)
           const parts = store.part[event.properties.part.messageID]
           if (!parts) {
@@ -457,8 +448,6 @@ export const {
         }
       }
     })
-
-    try { require("fs").writeFileSync("L:/PROJECTS/arcana/tui-debug.log", `[sync] STARTUP ${new Date().toISOString()}\n`) } catch {}
 
     const exit = useExit()
     const args = useArgs()
