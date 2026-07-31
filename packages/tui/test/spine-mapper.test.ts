@@ -1592,6 +1592,79 @@ Diff excerpts can be improved later.`,
     expect(plan!.streaming).toBe(false)
   })
 
+  test("reasoning + text, message completed, session idle: think flips to Thought and plan shimmer stops", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-complete-chat", { completed: 5000 })
+    parts.push({
+      id: "p-reason",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "reasoning",
+      text: "The user said hi - simple greeting, respond briefly.",
+      time: { start: 1000, end: 2000 },
+    } as Part)
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Hi. What",
+      time: { start: 2000, end: 4000 },
+    } as Part)
+
+    // Session idle = turn closed; nothing may keep shimmer chrome alive.
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "idle",
+    })
+
+    const think = result.find((e) => e.kind === "think")
+    expect(think).toBeDefined()
+    expect(think!.streaming).toBe(false)
+    expect(think!.summary).toBe("Thought")
+
+    const plan = result.find((e) => e.kind === "plan")
+    expect(plan).toBeDefined()
+    expect(plan!.streaming).toBe(false)
+  })
+
+  test("reasoning + text mid-stream (session busy): think flips to Thought when superseded, plan still shimmering", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-mid-chat")
+    parts.push({
+      id: "p-reason",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "reasoning",
+      text: "The user said hi - simple greeting, respond briefly.",
+      time: { start: 1000, end: 2000 },
+    } as Part)
+    parts.push({
+      id: "p-text",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "text",
+      text: "Hi. What",
+      time: { start: 2000 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "busy",
+    })
+
+    const think = result.find((e) => e.kind === "think")
+    expect(think!.streaming).toBe(false)
+    expect(think!.summary).toBe("Thought")
+
+    // Text part still open + turn active → writing chrome must stay on.
+    const plan = result.find((e) => e.kind === "plan")
+    expect(plan).toBeDefined()
+    expect(plan!.streaming).toBe(true)
+  })
+
   test("running skill superseded by later text does not leave Working forever", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a-skill-stop")
     parts.push({
