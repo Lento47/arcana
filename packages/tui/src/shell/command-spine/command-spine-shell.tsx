@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, ErrorBoundary } from "solid-js"
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
@@ -25,7 +25,7 @@ import { spineEntryCopyText } from "./spine-clipboard"
 import { spineEntryDetailMessageID, spineEntryDiffMessageID, spineEntrySessionID } from "./spine-details"
 import { approvalToSpineEntry, isApprovalActionable, isApprovalTerminal } from "./approval-spine-adapter"
 import { createApprovalShellController, type ApprovalShellController, type ApprovalCommandInput } from "./approval-shell-controller"
-import { createDedupeKey, dedupeKeyToString } from "./spine-ordering"
+import { createDedupeKey, dedupeKeyToString, compareOrderingKeys, createOrderingKey } from "./spine-ordering"
 
 const USE_SAMPLE_SPINE = false
 
@@ -162,6 +162,26 @@ export function CommandSpineShell(props: ShellProps) {
       seen.add(entry.id)
       merged.push(entry)
     }
+    // Sort by deterministic ordering key so approvals interleave with
+    // messages by timestamp/source-priority, not always appended last.
+    const sid = props.sessionID ?? ""
+    merged.sort((a, b) => {
+      const keyA = createOrderingKey({
+        sessionId: sid,
+        sequence: a.index,
+        timestamp: a.timestamp ?? "",
+        source: a.source?.kind === "approve" ? "APPROVAL" : "MESSAGE",
+        sourceEventId: a.id,
+      })
+      const keyB = createOrderingKey({
+        sessionId: sid,
+        sequence: b.index,
+        timestamp: b.timestamp ?? "",
+        source: b.source?.kind === "approve" ? "APPROVAL" : "MESSAGE",
+        sourceEventId: b.id,
+      })
+      return compareOrderingKeys(keyA, keyB)
+    })
     return merged
   })
 
@@ -187,7 +207,11 @@ export function CommandSpineShell(props: ShellProps) {
 
   const extractApprovalId = (entry: SpineEntry): string | undefined => {
     if (!entry.id.startsWith("approval:")) return undefined
-    return entry.id.split(":")[1]
+    // ID format is "approval:<approvalId>:<version>" — join all middle segments
+    // in case approvalId itself contains ":".
+    const parts = entry.id.split(":")
+    if (parts.length < 3) return undefined
+    return parts.slice(1, -1).join(":")
   }
 
   const getApprovalForEntry = (entry: SpineEntry) => {
@@ -434,6 +458,7 @@ export function CommandSpineShell(props: ShellProps) {
     && !gatesOpen()
     && !approvalSubmitting()
     && focusedApproval() !== undefined
+    && isApprovalActionable(focusedApproval()!)
 
   // Close inspector whenever open; clear selection only when spine has focus.
   const approvalEscapeEnabled = () =>
@@ -537,6 +562,12 @@ export function CommandSpineShell(props: ShellProps) {
 
   return (
     <Show when={props.session()}>
+      <ErrorBoundary fallback={(error) => (
+        <box flexDirection="column" padding={1} flexGrow={1}>
+          <text fg={themeObj.text}>⚠ Spine render error: {error.message}</text>
+          <text fg={themeObj.textMuted}>Session may be partially rendered</text>
+        </box>
+      )}>
       <box flexDirection="column" flexGrow={1} minHeight={0}>
         <SpineHeader session={props.session} layout={layout()} segments={[] as any} />
         <box position="relative" flexDirection="column" flexGrow={1}>
@@ -556,7 +587,7 @@ export function CommandSpineShell(props: ShellProps) {
                 foregroundColor: t.border as any,
               },
             }}
-            viewportCulling={false}
+            viewportCulling={true}
             stickyScroll={true}
             stickyStart="bottom"
             flexGrow={1}
@@ -564,17 +595,19 @@ export function CommandSpineShell(props: ShellProps) {
           >
             <For each={visibleEntryIDs()}>
               {(id) => {
-                const entry = () => visibleEntryByID().get(id)!
+                const entry = () => visibleEntryByID().get(id)
+                const e = entry()
+                if (!e) return null
                 return (
                   <SpineEntryView
-                    entry={entry()}
+                    entry={e}
                     layout={layout()}
                     contentWidth={contentWidth()}
                     thinkContentWidth={thinkContentWidth()}
-                    expanded={entryExpanded(entry())}
-                    focused={entryFocused(entry())}
-                    onToggle={() => toggleEntry(entry())}
-                    onFocus={() => focusEntry(entry())}
+                    expanded={entryExpanded(e)}
+                    focused={entryFocused(e)}
+                    onToggle={() => toggleEntry(e)}
+                    onFocus={() => focusEntry(e)}
                     onNavigate={(sid) => route.navigate({ type: "session", sessionID: sid })}
                     sessionID={route.data?.type === "session" ? (route.data as any).sessionID : undefined}
                     nodeRef={(node) => {
@@ -627,6 +660,7 @@ export function CommandSpineShell(props: ShellProps) {
           state={runState as any}
         />
       </box>
+      </ErrorBoundary>
     </Show>
   )
 }

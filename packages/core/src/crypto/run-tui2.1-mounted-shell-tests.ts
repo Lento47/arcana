@@ -439,8 +439,7 @@ console.log("CLAIMED → CONSUMED updates receipt")
 {
   const r = generateApprovalReceipt(makeApproval({ state: "CONSUMED", executionId: "exec-1" }))
   assertIncludes(r[0]!.text, "consumed", "consumed")
-  assertEqual(r.length, 2, "consumed + authority line")
-  assertIncludes(r[1]!.text, "authority approval consumed", "authority")
+  assertEqual(r.length, 1, "single consumed line")
 }
 
 console.log("APPROVED → INVALIDATED becomes terminal")

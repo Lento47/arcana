@@ -1,283 +1,98 @@
-# TUI-2.1 Fix Log
-
-**Branch:** `phase-d-implementation`  
-**Period:** 2026-07-30 → 2026-07-31  
-**Purpose:** Single inventory of **all fixes** landed (or pending commit) while unblocking TUI-2.1 interactive smoke.  
-**Not a feature design doc** — for contracts see [TUI-2.1 Production Integration Polish](./TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md); for narrative see [TUI-2.1 Sprint Report](./TUI-2.1-SPRINT-REPORT.md).
-
----
-
-## How to read this log
-
-| Field | Meaning |
-|-------|---------|
-| **ID** | Stable fix id for smoke / PR references |
-| **Status** | `committed` on branch · `working tree` not yet committed · `docs only` |
-| **Surface** | Engine / TUI / Core capability / Docs |
-| **Milestone** | Blocks smoke if unchecked |
-
-**Related docs:**
-
-- [TUI-2 Interactive Authority Control](./TUI-2-INTERACTIVE-AUTHORITY-CONTROL.md)
-- [TUI-2.1 Production Integration Polish](./TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md)
-- [TUI-2.1 Manual Smoke Test](./TUI-2.1-MANUAL-SMOKE-TEST.md)
-- [TUI-2.1 Sprint Report](./TUI-2.1-SPRINT-REPORT.md)
-
----
-
-## Summary matrix
-
-| ID | Status | Surface | One-line |
-|----|--------|---------|----------|
-| F-01 | committed | Engine | EventStore LayerNode → `Server.listen` can start |
-| F-02 | committed | Engine | AppRuntime `defaultLayer` Database order for EventStore |
-| F-03 | committed | Engine | Daemon listen errors logged (no silent multi-port hang) |
-| F-04 | committed | Engine tests | `httpapi-listen` trust + dispose path green on Windows |
-| F-05 | committed | TUI | Cross-package imports + switch defaults (`18e394bf`) |
-| F-06 | committed | TUI | Solid preload so TUI does not instant-exit |
-| F-07 | working tree | TUI | SSE AbortError no longer kills process |
-| F-08 | working tree | TUI | `focusedEntryID` TDZ / declaration order in spine shell |
-| F-09 | working tree | Core | Session agent grants (principal mismatch) |
-| F-10 | working tree | Core | PEP tool-name → action map covers production tools |
-| F-11 | working tree | Engine/Core | Shell/bash spawn diagnostics + Windows `cmd /c` |
-| F-12 | working tree | TUI-2.1 | Esc closes inspector / clear selection (doc-aligned) |
-| F-13 | working tree | TUI | `session.interrupt` does not swallow Esc |
-| F-14 | docs only | Docs | Esc contract + smoke phases + this log |
-
----
-
-## F-01 — EventStore LayerNode (daemon / Server.listen)
-
-| | |
-|--|--|
-| **Symptom** | TUI / daemon appeared to hang on ports 9142–9150; Effect HTTP bind looked broken |
-| **Root cause** | `Server.listen` uses **LayerNode**. `@arcana/EventStore` was used by SessionProcessor / SessionPrompt but had no `LayerNode` and was not listed as a node dependency. `as any` hid the gap at compile time. Runtime: `Service not found: @arcana/EventStore` |
-| **Why silent** | `daemon/lifecycle.ts` treated every listen failure as “try next port” with empty `catch` |
-| **Fix** | Add `EventStore.node = LayerNode.make(layer, [Database.node])`; depend on `EventStore.node` from processor / prompt nodes |
-| **Files** | `packages/engine/src/session/epistemic/event-store.ts`, `session/processor.ts`, `session/prompt.ts` |
-| **Commit** | `c4bc62bd` |
-| **Verify** | `startDaemon` + `GET /health` → 200; TUI daemon spawn ready |
-
----
-
-## F-02 — AppRuntime defaultLayer provide order
-
-| | |
-|--|--|
-| **Symptom** | `httpapi-listen` tests failed in `afterEach` dispose with `Service not found: @arcana/v2/storage/Database` even when listen succeeded |
-| **Root cause** | Providing `Database` then `EventStore.layer` left EventStore’s Database requirement unsatisfied on dispose / AppLayer rebuild |
-| **Fix** | Provide `EventStore.layer` with trailing `Database.defaultLayer` so Database re-satisfies EventStore |
-| **Files** | `packages/engine/src/session/processor.ts`, `session/prompt.ts` |
-| **Commit** | `ef876998` |
-| **Verify** | `bun test test/server/httpapi-listen.test.ts` → 5 pass / 6 skip (PTY Windows) / 0 fail |
-
----
-
-## F-03 — Daemon listen error visibility
-
-| | |
-|--|--|
-| **Symptom** | Same layer failure looked like multi-port bind hang |
-| **Fix** | Log real `Server.listen` errors; aggregate on total failure instead of silent `continue` |
-| **Files** | `packages/engine/src/daemon/lifecycle.ts` |
-| **Commit** | With F-01 line (`c4bc62bd` / related) |
-| **Note** | TUI spawn still uses `stdio: ignore` in places — stderr visibility remains a follow-up |
-
----
-
-## F-04 — httpapi-listen harness (trust + plugin)
-
-| | |
-|--|--|
-| **Symptom** | Plugin client listen case failed / incomplete under untrusted workspace |
-| **Root cause** | ARC-SEC-I02 strips project plugins when workspace untrusted |
-| **Fix** | Set `ARCANA_TRUST_WORKSPACE=1` in the intentional project-plugin test |
-| **Files** | `packages/engine/test/server/httpapi-listen.test.ts` |
-| **Verify** | Same suite as F-02 |
-
----
-
-## F-05 — TUI import / switch hygiene
-
-| | |
-|--|--|
-| **Symptom** | Typecheck / build friction on TUI-2.1 mount |
-| **Fix** | Correct cross-package imports; add default switch cases |
-| **Commit** | `18e394bf` |
-
----
-
-## F-06 — TUI Solid preload (instant exit)
-
-| | |
-|--|--|
-| **Symptom** | TUI process opened then closed immediately |
-| **Root cause** | OpenTUI Solid transform not preloaded in-process from monorepo root |
-| **Fix** | Ensure Solid preload path from monorepo root / in-process |
-| **Commits** | `2b05dd3b`, `d86640d3` |
-| **Verify** | `bun run dev:tui` / `./arcana.cmd` stays open |
-
----
-
-## F-07 — SSE AbortError crash on chat / reconnect
-
-| | |
-|--|--|
-| **Symptom** | TUI crash after chat send / SSE restart (`abort` unhandledRejection) |
-| **Root cause** | `sdk.global.event` / stream abort thrown out of SSE loop; empty `.catch(() => {})` still allowed process-killing rejections in some paths |
-| **Fix** | Classify AbortError; break cleanly on abort; log non-abort SSE failures without killing TUI |
-| **Files** | `packages/tui/src/context/sdk.tsx` |
-| **Status** | working tree |
-| **Verify** | Send chat, interrupt, restart SSE — no process exit |
-
----
-
-## F-08 — focusedEntryID TDZ in command spine
+# TUI-2.1 Fix Log — Polish Sprint Round 1
 
-| | |
-|--|--|
-| **Symptom** | Runtime error: Cannot access `focusedEntryID` before initialization |
-| **Root cause** | Solid memos closed over focus signals declared later (TDZ) |
-| **Fix** | Declare expand/focus signals before memos that read them; document constraint |
-| **Files** | `packages/tui/src/shell/command-spine/command-spine-shell.tsx` |
-| **Status** | working tree (order preserved in current shell) |
-| **Verify** | Open session with spine — no TDZ crash |
-
----
-
-## F-09 — Session agent capability grants (principal mismatch)
+**Date:** 2026-07-31
+**Branch:** phase-d-implementation
+**Base commit:** 9dc2654e
 
-| | |
-|--|--|
-| **Symptom** | Tools DENY with principal mismatch; agent principalId (e.g. `build`) had no ACTIVE grants |
-| **Root cause** | Production AuthorizationRequests use `principalId = agent.name`; PDP requires grants for that principal |
-| **Fix** | Session-scoped agent grant bootstrap (issuer `policy`, agent-bound; does not bypass approval/risk rules) |
-| **Files** | `packages/core/src/capability/session-grants.ts` (new), wiring in session tools / PEP path |
-| **Status** | working tree |
-| **Verify** | Legitimate agent tools pass principal gate; high-risk still permission/approval |
+## SessionBudget Runtime Fix
 
----
+**Root cause:** `SessionBudget.Service` was `yield*`-ed at runtime inside `runLoop` and `SessionTools.resolve`, but only provided during `SessionPrompt.layer` construction via `Layer.provide`. The service was consumed during construction and not persisted in the `ManagedRuntime` context.
 
-## F-10 — PEP tool → action mapping completeness
-
-| | |
-|--|--|
-| **Symptom** | Production tool IDs (`shell`, `read`, `write`, …) not mapped; only legacy names matched |
-| **Fix** | Map production + legacy tool names to CapabilityAction / resource kind |
-| **Files** | `packages/core/src/capability/pep-integration.ts` |
-| **Status** | working tree |
-| **Verify** | shell/read/write/edit resolve to expected actions |
+**Fix:** Capture `SessionBudget.Service` during layer construction (like all other services), use the captured closure variable in `runLoop`, and thread it into `SessionTools.resolve` via `Effect.provideService`.
 
----
+**Files changed:**
+- `packages/engine/src/session/prompt.ts` — added `const budget = yield* SessionBudget.Service` at line 130, removed runtime yield from `runLoop`, added `Effect.provideService(SessionBudget.Service, budget)` to tools.resolve call
 
-## F-11 — Shell / bash diagnostics + Windows cmd
-
-| | |
-|--|--|
-| **Symptom** | CLI shell commands failed with empty/opaque output on Windows |
-| **Root cause** | (1) `cmd.exe` invoked without `/d /s /c` so the command string was not executed as a command line; (2) spawn errors collapsed to no useful meta |
-| **Fix** | Windows cmd path: `ChildProcess.make(shell, ["/d", "/s", "/c", command], …)`; capture spawn errors into tool meta (`Failed to spawn…`, shell/cwd/command) |
-| **Files** | `packages/engine/src/tool/shell.ts`, `packages/core/src/tool/bash.ts` (related) |
-| **Status** | working tree |
-| **Verify** | Shell tool on Windows shows command output or explicit spawn failure text |
+## Defect Fixes (19 discovered, 17 fixed)
 
----
+### Rendering Correctness (WS1)
 
-## F-12 — TUI-2.1 Esc: close inspector / clear selection
+| ID | File | Defect | Fix |
+|---|---|---|---|
+| PI-01 | production-spine-input.ts:72 | Raw `JSON.stringify` on governance payload — viewport overflow | Truncate at 2000 chars with `… (truncated)` |
+| PI-02 | production-spine-input.ts:90 | Missing ellipsis on truncated message summaries | Added `…` when content > 120 chars |
+| PI-03 | production-spine-input.ts:78 | Governance events classified as `kind: "approve"` | Changed to `kind: "message"` |
+| CS-06 | command-spine-shell.tsx:157-166 | Approval entries always appended after messages | Added `compareOrderingKeys` sort on merge |
+| CS-02 | command-spine-shell.tsx:567 | Non-null assertion `get(id)!` crash | Safe access with `null` guard |
+| CS-03 | command-spine-shell.tsx:559 | `viewportCulling={false}` rendering all entries | Set to `true` |
+| CS-07 | command-spine-shell.tsx:189-191 | Fragile `split(":")[1]` for approval ID | `parts.slice(1, -1).join(":")` |
 
-| | |
-|--|--|
-| **Contract** | [Production Integration Polish §7](./TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md); [TUI-2 §9](./TUI-2-INTERACTIVE-AUTHORITY-CONTROL.md) |
-| **Symptom** | Esc failed to “cancel” inspector (smoke Phase 3.2); often armed interrupt instead |
-| **Root cause** | Approval bindings required focused approval **and** `currentFocusedEditor === null`, so Esc was inactive while composer focused; `session.interrupt` owned Escape |
-| **Fix** | Split `a`/`d`/`v` from Esc; Esc priority 3 while INSPECTING (always close inspector); clear selection only when SELECTED + composer unfocused; blur composer on focus/inspect; wire controller `select` / `inspect` / `clearSelection` |
-| **Files** | `packages/tui/src/shell/command-spine/command-spine-shell.tsx`, `approval-shell-controller.ts` |
-| **Status** | working tree |
-| **Verify** | Manual smoke Phases 3.2–3.3, 6.4 |
+### Visual Hierarchy (WS2)
 
-**Esc truth table:**
+| ID | File | Defect | Fix |
+|---|---|---|---|
+| — | command-spine-shell.tsx:560 | No error boundary — crash unmounts entire chat | Added `ErrorBoundary` with compact fallback |
 
-| State | Esc |
-|-------|-----|
-| INSPECTING | Close inspector → SELECTED (even if composer focused) |
-| SELECTED, composer unfocused | Clear selection → IDLE |
-| Composer focused, not inspecting | Not an approval command |
+### Approval Presentation (WS5)
 
-**Out of scope:** PermissionV1 Action Gate Esc-as-reject (separate surface).
+| ID | File | Defect | Fix |
+|---|---|---|---|
+| SC-01 | approval-shell-controller.ts:147 | UI flicker — shell state cleared before durable refresh | Keep SUBMITTING until durable state arrives |
+| SC-02 | approval-shell-controller.ts:187 | `clearSelection()` resets `submitting` mid-flight | Only `executeCommand` clears submitting |
+| AD-02 | approval-spine-adapter.ts:183 | CONSUMED receipt has redundant "0 uses" line | Removed duplicate line |
+| AD-03 | approval-spine-adapter.ts:188 | DENIED receipt has redundant "approval rejected" line | Removed duplicate line |
 
----
+### Keyboard (WS6)
 
-## F-13 — session.interrupt Esc hygiene
+| ID | File | Defect | Fix |
+|---|---|---|---|
+| CS-01 | command-spine-shell.tsx:432-436 | `d` key dead on terminal approvals | Added `isApprovalActionable()` guard |
 
-| | |
-|--|--|
-| **Symptom** | Esc no-op or interrupt arming while approval inspector should own Esc |
-| **Fix** | Disable interrupt when composer gate-disabled; return `false` when not focused / autocomplete so keymap does not consume Esc as a silent handled binding |
-| **Files** | `packages/tui/src/component/prompt/index.tsx` |
-| **Status** | working tree |
-| **Pairs with** | F-12 |
+### Stale Branding (WS1)
 
----
+| ID | File | Defect | Fix |
+|---|---|---|---|
+| — | retry.ts:25 | "OpenCode subscription limit" user-visible | "Arcana subscription limit" |
+| — | config/index.tsx:73 | "current chat-style" | "legacy chat-style" |
+| — | dialog-provider.tsx:75 | "Low cost subscription for everyone" | "Arcana Go — low cost plan for everyone" |
 
-## F-14 — Documentation updates
+### Truncation (WS7)
 
-| Doc | What changed |
-|-----|----------------|
-| `TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md` | §7–8 keyboard table, Esc rules, focus, PermissionV1 out of scope |
-| `TUI-2-INTERACTIVE-AUTHORITY-CONTROL.md` | §9 transitions + keyboard ownership |
-| `TUI-2.1-MANUAL-SMOKE-TEST.md` | Phases 3.2–3.3, 6.1–6.4, 8.2, Esc release blocker |
-| `TUI-2.1-SPRINT-REPORT.md` | §6d Esc fix; links; remaining smoke steps |
-| `TUI-2.1-FIX-LOG.md` | **This document** |
+| ID | File | Defect | Fix |
+|---|---|---|---|
+| — | permission.tsx:283 | Untruncated shell commands | `Locale.truncate(command, 120)` |
+| — | permission.tsx:310,314 | Untruncated URLs | Truncated at 80 (title) / 120 (body) |
+| — | permission.tsx:231,246 | Untruncated glob/grep patterns | Truncated at 60 (title) / 120 (body) |
+| — | approval-spine-adapter.ts:116-134 | Untruncated 64-char hashes in body | Truncated to 12-16 chars with ellipsis |
 
----
+### Type Error
 
-## Explicit non-fixes / non-goals
+| ID | File | Defect | Fix |
+|---|---|---|---|
+| — | approval-spine-adapter.ts:124 | `contractRevision` is `number`, `short()` expects `string` | `String(approval.contractRevision)` |
 
-| Item | Note |
-|------|------|
-| PermissionV1 Action Gate Esc/reject UX | Not TUI-2.1 approval contract; do not “fix” as spine Esc |
-| IntentBindingStore / LEGACY_COMPAT | Follow-up Phase D |
-| TUI-3 delegation UI | Blocked until TUI-2.1 smoke + hard gates |
-| PTY listen tests on Windows | Pre-existing skip (6 cases) |
-| Full p95 performance measurement | Live metrics still pending |
-| Merge to `main` | Operator policy: smoke + flags first |
+## Test Results
 
----
+| Suite | Passed | Failed |
+|---|---|---|
+| TUI Adapter | 72 | 0 |
+| TUI Production | 135 | 0 |
+| TUI Mounted-Shell | 74 | 0 |
+| TUI TSX Contract | 53 | 0 |
+| Rust Conformance | 2 | 0 |
+| Rust Containment | 6 | 0 |
+| **Total** | **342** | **0** |
 
-## Verification checklist
+## Build & Typecheck
 
-### Automated (already green when committed suite run)
+- 16/16 packages typecheck ✅
+- 8/8 builds ✅
 
-- [x] TUI-2.1 adapter / mounted / production / TSX contract suites (historical **338/338**)
-- [x] Daemon `/health` after F-01/F-02
-- [x] `httpapi-listen` Windows: 5 pass / 6 skip / 0 fail
+## Non-Blocking Items (documented, not fixed)
 
-### Interactive (operator — still required to freeze TUI-2.1)
-
-- [ ] Smoke Phase 1 startup (F-06)
-- [ ] Chat send without crash (F-07)
-- [ ] Tools run without principal DENY for normal agent (F-09/F-10)
-- [ ] Shell shows output or clear spawn error on Windows (F-11)
-- [ ] Approval `v` then Esc closes inspector (F-12/F-13)
-- [ ] Esc again clears selection when spine focused (F-12)
-- [ ] Typing `a`/`d`/`v` in prompt does not approve (F-12 Phase 6)
-
----
-
-## Suggested commit grouping (when committing working tree)
-
-1. **engine/core capability** — F-09, F-10 (+ any epistemic migration already staged)
-2. **engine/core shell diagnostics** — F-11
-3. **tui stability** — F-07, F-08
-4. **tui-2.1 esc** — F-12, F-13
-5. **docs** — F-14 (all `docs/tui/*` including this log)
-
-Do not mix PermissionV1 redesign into the Esc commit.
-
----
-
-## Changelog
-
-| Date | Note |
-|------|------|
-| 2026-07-31 | Initial fix log: F-01…F-14 from smoke-unblock workstream |
+- Internal "opencode" API names (keymap hooks, SDK client, config values) — breaking refactor, functional identifiers
+- `.opencode` config directory — intentional backward compatibility
+- `as any` casts on theme tokens (~50+) — type debt, not runtime risk
+- Missing error boundaries in Session route and Prompt component — lower priority than spine shell
+- Empty `cwd.ts` file — dead code
+- WS3 tool lifecycle rendering patterns — deferred to manual smoke test

@@ -170,11 +170,10 @@ console.log("Terminal states")
 console.log("Receipt: CONSUMED shows success")
 {
   const receipt = generateApprovalReceipt(createApproval("CONSUMED"))
-  assert(receipt.length >= 2, "CONSUMED has multiple lines")
+  assert(receipt.length >= 1, "CONSUMED has at least one line")
   assert(receipt[0].glyph === "✓", "first line has success glyph")
   assert(receipt[0].tone === "success", "first line has success tone")
   assert(receipt.some(l => l.text.includes("consumed")), "mentions consumed")
-  assert(receipt.some(l => l.text.includes("0 uses")), "mentions 0 uses")
 }
 
 console.log("Receipt: INVALIDATED shows error")

@@ -254,18 +254,16 @@ console.log("CLAIMED receipt")
 console.log("CONSUMED receipt")
 {
   const lines = generateApprovalReceipt(makeApproval({ state: "CONSUMED", executionId: "exec-91bf" }))
-  assertEqual(lines.length, 2, "2 lines")
+  assertEqual(lines.length, 1, "1 line")
   assertIncludes(lines[0]!.text, "consumed", "consumed")
-  assertIncludes(lines[1]!.text, "authority approval consumed", "authority")
-  assertEqual(lines[1]!.tone, "success", "tone")
+  assertEqual(lines[0]!.tone, "success", "tone")
 }
 
 console.log("DENIED receipt")
 {
   const lines = generateApprovalReceipt(makeApproval({ state: "DENIED", approvedBy: "operator" }))
-  assertEqual(lines.length, 2, "2 lines")
+  assertEqual(lines.length, 1, "1 line")
   assertIncludes(lines[0]!.text, "denied by operator", "denied")
-  assertIncludes(lines[1]!.text, "approval rejected", "rejected")
   assertEqual(lines[0]!.tone, "error", "tone")
 }
 
@@ -599,7 +597,7 @@ console.log("CLAIMED → CONSUMED updates receipt")
   const rConsumed = generateApprovalReceipt(makeApproval({ state: "CONSUMED", executionId: "exec-1" }))
   assertIncludes(rClaimed[0]!.text, "claimed", "claimed")
   assertIncludes(rConsumed[0]!.text, "consumed", "consumed")
-  assertEqual(rConsumed.length, 2, "consumed has authority line")
+  assertEqual(rConsumed.length, 1, "single consumed line")
 }
 
 console.log("APPROVED → INVALIDATED becomes terminal")

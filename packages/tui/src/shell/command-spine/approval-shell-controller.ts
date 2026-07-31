@@ -142,9 +142,12 @@ export function createApprovalShellController(input: {
     try {
       const result = await input.service[command](input_)
 
-      // Clear SUBMITTING — durable event refresh handles final state
+      // Keep SUBMITTING shell state — don't clear to undefined here.
+      // The durable event refresh will deliver the terminal state
+      // (APPROVED/DENIED/CLAIMED/CONSUMED), which replaces the shell state.
+      // Clearing to undefined here would flash the base state before the
+      // terminal state arrives (UI flicker).
       submitting = false
-      setState(input_.approvalId, undefined)
 
       return result
     } catch (err) {
@@ -184,7 +187,9 @@ export function createApprovalShellController(input: {
       const prev = selectedId
       selectedId = undefined
       inspectingId = undefined
-      submitting = false
+      // Do NOT reset `submitting` here — only the command completion in
+      // executeCommand should clear it. Otherwise pressing Escape during an
+      // in-flight command would allow a duplicate submission.
       if (prev) setState(prev, undefined)
     },
 

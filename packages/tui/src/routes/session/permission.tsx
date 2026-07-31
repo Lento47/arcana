@@ -228,11 +228,11 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               const pattern = typeof data.pattern === "string" ? data.pattern : ""
               return {
                 icon: "✱",
-                title: `Glob "${pattern}"`,
+                title: `Glob "${Locale.truncate(pattern, 60)}"`,
                 body: (
                   <Show when={pattern}>
                     <box paddingLeft={1}>
-                      <text fg={theme.textMuted}>{"Pattern: " + pattern}</text>
+                      <text fg={theme.textMuted}>{"Pattern: " + Locale.truncate(pattern, 120)}</text>
                     </box>
                   </Show>
                 ),
@@ -243,11 +243,11 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               const pattern = typeof data.pattern === "string" ? data.pattern : ""
               return {
                 icon: "✱",
-                title: `Grep "${pattern}"`,
+                title: `Grep "${Locale.truncate(pattern, 60)}"`,
                 body: (
                   <Show when={pattern}>
                     <box paddingLeft={1}>
-                      <text fg={theme.textMuted}>{"Pattern: " + pattern}</text>
+                      <text fg={theme.textMuted}>{"Pattern: " + Locale.truncate(pattern, 120)}</text>
                     </box>
                   </Show>
                 ),
@@ -280,7 +280,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
                 body: (
                   <Show when={command}>
                     <box paddingLeft={1}>
-                      <text fg={theme.text}>{"$ " + command}</text>
+                      <text fg={theme.text}>{"$ " + Locale.truncate(command, 120)}</text>
                     </box>
                   </Show>
                 ),
@@ -307,11 +307,11 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               const url = typeof data.url === "string" ? data.url : ""
               return {
                 icon: "%",
-                title: `WebFetch ${url}`,
+                title: `WebFetch ${Locale.truncate(url, 80)}`,
                 body: (
                   <Show when={url}>
                     <box paddingLeft={1}>
-                      <text fg={theme.textMuted}>{"URL: " + url}</text>
+                      <text fg={theme.textMuted}>{"URL: " + Locale.truncate(url, 120)}</text>
                     </box>
                   </Show>
                 ),
