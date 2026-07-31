@@ -330,7 +330,11 @@ export const {
           }
           const result = search(messages, event.properties.info.id, (m) => m.id)
           if (result.found) {
-            setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info))
+            const info = event.properties.info
+            if (info.time?.completed) {
+              console.error(`[sync] message.updated: ${info.id} completed=${info.time.completed}`)
+            }
+            setStore("message", event.properties.info.sessionID, result.index, reconcile(info))
             break
           }
           setStore(
