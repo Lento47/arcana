@@ -98,6 +98,21 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       flush()
     }
 
+    function isAbortError(error: unknown): boolean {
+      if (error == null) return false
+      if (typeof error === "string") {
+        const s = error.toLowerCase()
+        return s === "abort" || s === "aborted" || s.includes("abort")
+      }
+      if (typeof error === "object") {
+        const e = error as { name?: string; message?: string; code?: string }
+        if (e.name === "AbortError" || e.code === "ABORT_ERR") return true
+        const msg = typeof e.message === "string" ? e.message.toLowerCase() : ""
+        if (msg === "abort" || msg === "aborted" || msg.includes("this operation was aborted")) return true
+      }
+      return false
+    }
+
     function startSSE() {
       sse?.abort()
       const ctrl = new AbortController()
@@ -107,10 +122,17 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
         while (true) {
           if (abort.signal.aborted || ctrl.signal.aborted) break
 
-          const events = await sdk.global.event({
-            signal: ctrl.signal,
-            sseMaxRetryAttempts: 0,
-          })
+          let events: Awaited<ReturnType<typeof sdk.global.event>>
+          try {
+            events = await sdk.global.event({
+              signal: ctrl.signal,
+              sseMaxRetryAttempts: 0,
+            })
+          } catch (error) {
+            // Expected when startSSE restarts or provider unmounts.
+            if (isAbortError(error) || abort.signal.aborted || ctrl.signal.aborted) break
+            throw error
+          }
 
           if (Flag.ARCANA_EXPERIMENTAL_WORKSPACES) {
             // Start syncing workspaces, it's important to do this after
@@ -118,9 +140,14 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
             await sdk.sync.start().catch(() => {})
           }
 
-          for await (const event of events.stream) {
-            if (ctrl.signal.aborted) break
-            handleEvent(event)
+          try {
+            for await (const event of events.stream) {
+              if (ctrl.signal.aborted) break
+              handleEvent(event)
+            }
+          } catch (error) {
+            if (isAbortError(error) || abort.signal.aborted || ctrl.signal.aborted) break
+            // Stream ended with a transient error — fall through to reconnect.
           }
 
           if (timer) clearTimeout(timer)
@@ -132,7 +159,11 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
           const backoff = Math.min(retryDelay * 2 ** (attempt - 1), maxRetryDelay)
           await new Promise((resolve) => setTimeout(resolve, backoff))
         }
-      })().catch(() => {})
+      })().catch((error) => {
+        // Never surface AbortError as unhandled — process unhandledRejection kills the TUI.
+        if (isAbortError(error) || abort.signal.aborted || ctrl.signal.aborted) return
+        console.error("[arcana] SSE event loop failed:", error)
+      })
     }
 
     onMount(async () => {
@@ -151,8 +182,18 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     })
 
     onCleanup(() => {
-      abort.abort()
-      sse?.abort()
+      // Abort in-flight SSE/fetch. Callers must treat AbortError as non-fatal
+      // (see engine unhandledRejection filter + startSSE catch).
+      try {
+        abort.abort()
+      } catch {
+        /* ignore */
+      }
+      try {
+        sse?.abort()
+      } catch {
+        /* ignore */
+      }
       if (timer) clearTimeout(timer)
       handlers.clear()
     })

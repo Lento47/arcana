@@ -33,12 +33,42 @@ mark("cli-import-end")
   } as typeof String.prototype.startsWith
 }
 
+function isBenignAbort(reason: unknown): boolean {
+  if (reason == null) return false
+  if (typeof reason === "string") {
+    const s = reason.toLowerCase()
+    return s === "abort" || s === "aborted" || s.includes("abort")
+  }
+  if (typeof reason === "object") {
+    const r = reason as { name?: string; message?: string; code?: string }
+    if (r.name === "AbortError" || r.name === "TimeoutError") return true
+    if (r.code === "ABORT_ERR") return true
+    const msg = typeof r.message === "string" ? r.message.toLowerCase() : ""
+    if (msg === "abort" || msg === "aborted" || msg.includes("this operation was aborted")) return true
+  }
+  return false
+}
+
 process.on("unhandledRejection", (reason) => {
+  // SSE reconnect / Solid cleanup aborts fetch streams during route navigate.
+  // Those must not kill the interactive TUI (user saw "abort" on every send).
+  if (isBenignAbort(reason)) {
+    if (process.env.ARCANA_PRINT_LOGS === "1" || process.env.ARCANA_DEBUG === "1") {
+      process.stderr.write(`[arcana] ignored abort rejection (SSE/request cancelled)\n`)
+    }
+    return
+  }
   const stack = reason instanceof Error ? reason.stack : String(reason)
   process.stderr.write(`[arcana] Unhandled rejection:\n${stack}\n`)
   process.exit(1)
 })
 process.on("uncaughtException", (err) => {
+  if (isBenignAbort(err)) {
+    if (process.env.ARCANA_PRINT_LOGS === "1" || process.env.ARCANA_DEBUG === "1") {
+      process.stderr.write(`[arcana] ignored abort exception (SSE/request cancelled)\n`)
+    }
+    return
+  }
   const msg = err instanceof Error ? (err.stack ?? err.message) : String(err)
   process.stderr.write(`[arcana] Uncaught exception:\n${msg}\n`)
   if (err instanceof TypeError) {
