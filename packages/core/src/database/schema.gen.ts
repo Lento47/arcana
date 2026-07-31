@@ -295,6 +295,158 @@ export default {
       `)
       yield* tx.run(`CREATE INDEX \`capability_grants_principal_idx\` ON \`capability_grants\` (\`principal_id\`, \`principal_kind\`);`)
       yield* tx.run(`CREATE INDEX \`capability_grants_status_idx\` ON \`capability_grants\` (\`status\`);`)
+
+      // Epistemic layer (Phase A/B) — EventStore, claims, contracts, obligations
+      yield* tx.run(`
+        CREATE TABLE \`events\` (
+          \`id\` text PRIMARY KEY,
+          \`sequence\` integer NOT NULL UNIQUE,
+          \`session_id\` text,
+          \`timestamp\` text NOT NULL,
+          \`previous_hash\` text,
+          \`hash\` text NOT NULL,
+          \`actor_kind\` text NOT NULL,
+          \`actor_id\` text NOT NULL,
+          \`type\` text NOT NULL,
+          \`payload\` text NOT NULL
+        );
+      `)
+      yield* tx.run(`CREATE INDEX \`events_session_idx\` ON \`events\` (\`session_id\`);`)
+      yield* tx.run(`CREATE INDEX \`events_sequence_idx\` ON \`events\` (\`sequence\`);`)
+      yield* tx.run(`
+        CREATE TABLE \`trace_health\` (
+          \`session_id\` text PRIMARY KEY,
+          \`status\` text NOT NULL DEFAULT 'COMPLETE',
+          \`error_count\` integer NOT NULL DEFAULT 0,
+          \`last_error\` text,
+          \`recorded_events\` integer NOT NULL DEFAULT 0,
+          \`updated_at\` text NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`claims\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`proposition\` text NOT NULL,
+          \`status\` text NOT NULL,
+          \`scope_workspace\` text,
+          \`scope_branch\` text,
+          \`scope_file\` text,
+          \`scope_symbol\` text,
+          \`confidence\` real DEFAULT 0.5,
+          \`calibration_domain\` text,
+          \`valid_from\` text,
+          \`valid_until\` text,
+          \`last_verified_at\` text,
+          \`created_at\` text NOT NULL,
+          \`created_by_event_id\` text NOT NULL
+        );
+      `)
+      yield* tx.run(`CREATE INDEX \`claims_session_idx\` ON \`claims\` (\`session_id\`);`)
+      yield* tx.run(`
+        CREATE TABLE \`claim_evidence\` (
+          \`claim_id\` text NOT NULL REFERENCES \`claims\`(\`id\`) ON DELETE CASCADE,
+          \`event_id\` text NOT NULL,
+          \`artifact_digest\` text,
+          \`location_file\` text,
+          \`location_line_start\` integer,
+          \`location_line_end\` integer,
+          \`relationship\` text NOT NULL,
+          PRIMARY KEY (\`claim_id\`, \`event_id\`, \`relationship\`)
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`claim_dependencies\` (
+          \`claim_id\` text NOT NULL REFERENCES \`claims\`(\`id\`) ON DELETE CASCADE,
+          \`depends_on_claim_id\` text NOT NULL REFERENCES \`claims\`(\`id\`) ON DELETE CASCADE,
+          PRIMARY KEY (\`claim_id\`, \`depends_on_claim_id\`)
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`claim_contradictions\` (
+          \`claim_id\` text NOT NULL REFERENCES \`claims\`(\`id\`) ON DELETE CASCADE,
+          \`contradicts_claim_id\` text NOT NULL REFERENCES \`claims\`(\`id\`) ON DELETE CASCADE,
+          PRIMARY KEY (\`claim_id\`, \`contradicts_claim_id\`)
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`claim_outcomes\` (
+          \`claim_id\` text PRIMARY KEY REFERENCES \`claims\`(\`id\`) ON DELETE CASCADE,
+          \`predicted_confidence\` real,
+          \`final_outcome\` text NOT NULL,
+          \`resolved_at\` text NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`contracts\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`objective\` text NOT NULL,
+          \`risk_class\` text NOT NULL,
+          \`source_event_id\` text NOT NULL,
+          \`compiler_model\` text,
+          \`revision\` integer DEFAULT 1,
+          \`status\` text NOT NULL DEFAULT 'proposed',
+          \`created_at\` text NOT NULL,
+          \`resolved_at\` text,
+          \`resolution_state\` text,
+          \`resolution_reason\` text
+        );
+      `)
+      yield* tx.run(`CREATE INDEX \`contracts_session_idx\` ON \`contracts\` (\`session_id\`);`)
+      yield* tx.run(`
+        CREATE TABLE \`contract_acceptance_criteria\` (
+          \`id\` text PRIMARY KEY,
+          \`contract_id\` text NOT NULL REFERENCES \`contracts\`(\`id\`) ON DELETE CASCADE,
+          \`description\` text NOT NULL,
+          \`required\` integer NOT NULL DEFAULT 1,
+          \`verification\` text NOT NULL,
+          \`status\` text NOT NULL DEFAULT 'pending',
+          \`evidence_event_id\` text
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`contract_forbidden_outcomes\` (
+          \`contract_id\` text NOT NULL REFERENCES \`contracts\`(\`id\`) ON DELETE CASCADE,
+          \`description\` text NOT NULL,
+          PRIMARY KEY (\`contract_id\`, \`description\`)
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`contract_assumptions\` (
+          \`contract_id\` text NOT NULL REFERENCES \`contracts\`(\`id\`) ON DELETE CASCADE,
+          \`claim_id\` text NOT NULL REFERENCES \`claims\`(\`id\`),
+          PRIMARY KEY (\`contract_id\`, \`claim_id\`)
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`obligations\` (
+          \`id\` text PRIMARY KEY,
+          \`contract_id\` text NOT NULL REFERENCES \`contracts\`(\`id\`) ON DELETE CASCADE,
+          \`source_kind\` text NOT NULL,
+          \`source_rule_id\` text,
+          \`source_criterion_id\` text,
+          \`source_reason\` text,
+          \`description\` text NOT NULL,
+          \`required\` integer NOT NULL DEFAULT 1,
+          \`verification\` text NOT NULL,
+          \`status\` text NOT NULL DEFAULT 'pending',
+          \`created_at\` text NOT NULL,
+          \`resolved_at\` text,
+          \`waived_by_event_id\` text,
+          \`waiver_reason\` text
+        );
+      `)
+      yield* tx.run(`CREATE INDEX \`obligations_contract_idx\` ON \`obligations\` (\`contract_id\`);`)
+      yield* tx.run(`
+        CREATE TABLE \`obligation_templates\` (
+          \`rule_id\` text PRIMARY KEY,
+          \`description\` text NOT NULL,
+          \`trigger\` text NOT NULL,
+          \`verification\` text NOT NULL,
+          \`required\` integer NOT NULL DEFAULT 1
+        );
+      `)
     })
   },
 } satisfies Omit<DatabaseMigration.Migration, "id">
