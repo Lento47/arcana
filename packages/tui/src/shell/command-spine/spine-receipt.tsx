@@ -59,8 +59,11 @@ function renderRunReceipt(r: SpineReceiptType, layout: SpineLayout, t: Record<st
     )
   }
 
-  if (r.status === "ok" && layout !== "minimal") {
-    const inline = r.summary || (r.stats?.duration ? `✓ ok · ${r.stats.duration}` : "✓ ok")
+  if (r.status === "ok") {
+    const inline = r.summary || (r.stats?.duration ? `✓ Done · ${r.stats.duration}` : "✓ Done")
+    if (layout === "minimal") {
+      return <text fg={t.spineOk as any}>{r.summary || "Done"}</text>
+    }
     return <text fg={t.spineOk as any}>{inline}</text>
   }
 
@@ -131,8 +134,11 @@ function renderInspectReceipt(r: SpineReceiptType, layout: SpineLayout, t: Recor
     if (layout === "minimal") return <text fg={t.spineFail as any}>FAIL</text>
     return <text fg={t.spineFail as any}>{truncate(msg, layout === "narrow" ? 40 : 80)}</text>
   }
-  if (r.summary && layout !== "minimal") {
-    return <text fg={t.spineDiffMuted as any}>{r.summary}</text>
+  if (r.status === "ok") {
+    if (r.summary && layout !== "minimal") {
+      return <text fg={t.spineDiffMuted as any}>{r.summary}</text>
+    }
+    return <text fg={t.spineOk as any}>Done</text>
   }
   return null
 }
@@ -147,6 +153,12 @@ function renderFallbackReceipt(r: SpineReceiptType, layout: SpineLayout, t: Reco
   }
   if (r.status === "fail") {
     return renderFailReceipt(r, layout, t)
+  }
+  if (r.status === "ok") {
+    if (layout === "minimal") {
+      return <text fg={t.spineOk as any}>Done</text>
+    }
+    return <text fg={t.spineDiffMuted as any}>{r.label} · Done</text>
   }
   if (layout === "minimal") {
     return <text fg={t.spineDiffMuted as any}>{r.status}</text>

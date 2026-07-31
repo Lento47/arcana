@@ -1665,6 +1665,57 @@ Diff excerpts can be improved later.`,
     expect(plan!.streaming).toBe(true)
   })
 
+  test("consecutive completed thinks keep Thought verb (no ditto collapse)", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-two-thoughts")
+    parts.push({
+      id: "p-r1",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "reasoning",
+      text: "First check the status.",
+      time: { start: 1000, end: 1100 },
+    } as Part)
+    parts.push({
+      id: "p-t1",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      tool: "bash",
+      callID: "c-1",
+      state: {
+        status: "completed",
+        input: { command: "git status" },
+        output: "clean",
+        title: "bash",
+        metadata: {},
+        time: { start: 1100, end: 1200 },
+      },
+    } as Part)
+    parts.push({
+      id: "p-r2",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "reasoning",
+      text: "Then push the branch.",
+      time: { start: 1200, end: 1300 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "busy",
+    })
+
+    const thinks = result.filter((e) => e.kind === "think")
+    expect(thinks.length).toBeGreaterThanOrEqual(2)
+    // Both completed reasoning blocks keep their verb — dedupeFilePaths must
+    // never collapse consecutive "Thought" rows to the file ditto marker.
+    expect(thinks[0]!.summary).toBe("Thought")
+    expect(thinks[1]!.summary).toBe("Thought")
+    expect(thinks.some((e) => e.summary === "⟐")).toBe(false)
+  })
+
   test("running skill superseded by later text does not leave Working forever", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a-skill-stop")
     parts.push({
