@@ -16,6 +16,7 @@ import { Effect } from "effect"
 import { Session } from "./session"
 import { SessionProcessor } from "./processor"
 import { PartID } from "./schema"
+import { SessionBudget, toolBudgetCost } from "./budget"
 import { EffectBridge } from "@/effect/bridge"
 import { ModelV2 } from "@arcana/core/model"
 import { withToolAdmission } from "@/tool/batch"
@@ -250,6 +251,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const mcp = yield* MCP.Service
   const truncate = yield* Truncate.Service
   const db = yield* Database.Service
+  const budget = yield* SessionBudget.Service
 
   const sessionMeta = input.session.metadata as Record<string, unknown> | undefined
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
@@ -308,6 +310,11 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             item.id,
             Effect.gen(function* () {
               const ctx = context(args, options)
+              // SessionBudget: queue (wait for capacity) instead of erroring.
+              // Occupancy is released in finally so waiters can continue.
+              const cost = toolBudgetCost(item.id, args as Record<string, unknown>)
+              yield* budget.checkOrBlock(ctx.sessionID as any, cost)
+              try {
               // Goal awareness: Tier B mutation gate + freeze after goal complete.
               const gate = checkGoalToolGate({
                 sessionID: ctx.sessionID,
@@ -398,6 +405,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 yield* input.processor.completeToolCall(options.toolCallId, output)
               }
               return output
+              } finally {
+                yield* budget.release(ctx.sessionID as any, cost)
+              }
             }),
             { input: args },
           ),
@@ -417,6 +427,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       run.promise(
         Effect.gen(function* () {
           const ctx = context(args, opts)
+          const mcpCost = toolBudgetCost(key, args as Record<string, unknown>)
+          yield* budget.checkOrBlock(ctx.sessionID as any, mcpCost)
+          try {
           // ── Phase C PEP: authorize MCP before execution ───────────
           const mcpPepProvider = yield* Effect.promise(() =>
             preparePolicyProvider(db, ctx.sessionID, input.agent.name),
@@ -530,6 +543,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             yield* input.processor.completeToolCall(opts.toolCallId, output)
           }
           return output
+          } finally {
+            yield* budget.release(ctx.sessionID as any, mcpCost)
+          }
         }),
       )
     tools[key] = item
