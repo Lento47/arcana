@@ -21,6 +21,7 @@ import type {
   ConsoleState,
 } from "@arcana/sdk/v2"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
+import { detectLocalOllama } from "@arcana/core/providers/ollama"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useProject } from "./project"
 import { useEvent } from "./event"
@@ -518,58 +519,37 @@ export const {
               if (sessions !== undefined) setStore("session", reconcile(sessions))
             })
 
-            // Local Ollama auto-discovery is opt-in: probe only when
-            // OLLAMA_PORT is set (port to use) or ARCANA_OLLAMA_DISCOVERY=1
-            // (default port). Default-off removes the per-refresh probe and
-            // its failure log on machines that never run Ollama. The active
-            // model is never affected either way; the probe only adds an
-            // "Ollama (local)" entry to the provider switcher when enabled.
-            const env = typeof process !== "undefined" ? process.env : undefined
-            const ollamaPort = env?.OLLAMA_PORT
-            const ollamaEnabled =
-              (ollamaPort !== undefined && ollamaPort !== "") || env?.ARCANA_OLLAMA_DISCOVERY === "1"
-            const probePort = ollamaPort ?? "11434"
-            if (ollamaEnabled) {
+            // Local Ollama discovery follows the arcana doctor: both use the
+            // shared detectLocalOllama probe (packages/core/src/providers/
+            // ollama.ts). No detection -> no entry, no log. Detected but no
+            // models -> nothing to switch to, stay silent. The active model
+            // is never affected; the probe only adds an "Ollama (local)"
+            // entry to the provider switcher when a daemon is actually
+            // running.
+            void detectLocalOllama().then((ollama) => {
+              if (!ollama || ollama.models.length === 0) return
               const ollamaProvider = {
                 id: "ollama",
                 name: "Ollama (local)",
                 status: "connected" as const,
-                models: {} as Record<string, { id: string; name: string; providerID: string }>,
+                models: Object.fromEntries(
+                  ollama.models.map((m) => [m, { id: m, name: m, providerID: "ollama" }]),
+                ) as Record<string, { id: string; name: string; providerID: string }>,
               }
-              fetch(`http://localhost:${probePort}/api/tags`)
-                .then((r) => {
-                  if (!r.ok) throw new Error(`Ollama HTTP ${r.status}`)
-                  return r.json()
-                })
-                .then((data: any) => {
-                  const models = data.models ?? []
-                  if (models.length === 0) return
-                  const modelMap: Record<string, { id: string; name: string; providerID: string }> = {}
-                  for (const m of models) modelMap[m.name] = { id: m.name, name: m.name, providerID: "ollama" }
-                  ollamaProvider.models = modelMap
-                  // Inject into provider_next (new) and provider (legacy)
-                  setStore("provider_next", "all", (prev: any[]) => {
-                    const filtered = prev.filter((p: any) => p.id !== "ollama")
-                    return [...filtered, ollamaProvider]
-                  })
-                  setStore("provider_next", "connected", (prev: string[]) => {
-                    if (prev.includes("ollama")) return prev
-                    return [...prev, "ollama"]
-                  })
-                  setStore("provider", (prev: any[]) => {
-                    const filtered = prev.filter((p: any) => p.id !== "ollama")
-                    return [...filtered, ollamaProvider] as any
-                  })
-                })
-                .catch((err) => {
-                  // Still add empty provider so user knows Ollama option exists
-                  setStore("provider_next", "all", (prev: any[]) => {
-                    const filtered = prev.filter((p: any) => p.id !== "ollama")
-                    return [...filtered, { ...ollamaProvider, status: "disconnected" as const }] as any
-                  })
-                  console.log(`[ollama] Failed to fetch models from localhost:${probePort}: ${err.message}`)
-                })
-            }
+              // Inject into provider_next (new) and provider (legacy)
+              setStore("provider_next", "all", (prev: any[]) => {
+                const filtered = prev.filter((p: any) => p.id !== "ollama")
+                return [...filtered, ollamaProvider]
+              })
+              setStore("provider_next", "connected", (prev: string[]) => {
+                if (prev.includes("ollama")) return prev
+                return [...prev, "ollama"]
+              })
+              setStore("provider", (prev: any[]) => {
+                const filtered = prev.filter((p: any) => p.id !== "ollama")
+                return [...filtered, ollamaProvider] as any
+              })
+            })
           })
         })
         .then(() => {

@@ -157,7 +157,7 @@ in transit and the TUI had no liveness signal.
 
 ---
 
-# Round 2.1 — Ollama Discovery Opt-In (2026-07-31)
+# Round 2.1 — Ollama Discovery Follows the Doctor (2026-07-31)
 
 ## Background
 
@@ -170,18 +170,31 @@ adds an "Ollama (local)" entry to the provider switcher.
 
 ## Fix
 
-`packages/tui/src/context/sync.tsx` — the probe is now opt-in:
+Shared detection, one source of truth:
 
-- Runs only when `OLLAMA_PORT` is set (port to use) or
-  `ARCANA_OLLAMA_DISCOVERY=1` (default port 11434).
-- Default-off: no probe, no failure log, no disconnected "Ollama (local)"
-  entry in the switcher.
-- Enabled behavior unchanged: success injects the provider with its models;
-  failure adds a `disconnected` entry and logs once per refresh.
+- `packages/core/src/providers/ollama.ts` — new `detectLocalOllama()`:
+  probes `/api/tags` (honors `OLLAMA_PORT`, defaults 11434), returns
+  `{ port, models }` or `null`. Injectable `fetch` for tests.
+- `packages/engine/src/cli/cmd/doctor.ts` — the doctor's Ollama check now
+  calls the shared detector (was an inline duplicate probe).
+- `packages/tui/src/context/sync.tsx` — discovery follows the doctor:
+  probe via the shared detector; inject the provider **only when a daemon
+  is detected with models**. No detection → no entry, no log. The
+  disconnected-entry injection and the failure `console.log` are gone.
+
+Rules: TUI probes exactly when the doctor would report Ollama as running.
+Detected but empty catalog → silent (nothing to switch to). Engine-side
+ollama handling (`packages/core/src/session/runner/model.ts`,
+`packages/arcana/src/agent/providers.ts`) untouched.
+
+## Tests
+
+- `packages/core/test/providers/ollama.test.ts` — 7 tests: detect with
+  models, empty catalog, non-OK, network failure, malformed payload,
+  malformed entries filtered, default port.
+- Typecheck clean: core, engine, tui. PEP regression suite 3/3.
 
 Feature provenance: hermes-plans/2026-07-26_150000-ollama-tui-only.md
-(pure addition, no mixing). The engine-side ollama handling
-(`packages/core/src/session/runner/model.ts`, `packages/arcana/src/agent/
-providers.ts`) is untouched — this gate only affects TUI auto-discovery.
+(pure addition, no mixing).
 
 

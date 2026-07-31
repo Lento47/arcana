@@ -2,6 +2,7 @@ import type { CommandModule } from "yargs"
 import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { detectLocalOllama } from "@arcana/core/providers/ollama"
 
 const PASS = "✅"
 const FAIL = "❌"
@@ -38,13 +39,12 @@ function runChecks(): Check[] {
 }
 
 async function runAsyncChecks(checks: Check[]): Promise<void> {
-  try {
-    const port = process.env.OLLAMA_PORT ?? "11434"
-    const res = await fetch(`http://localhost:${port}/api/tags`)
-    checks.push({ label: "Ollama", ok: res.ok, detail: res.ok ? `running at localhost:${port}` : "not reachable" })
-  } catch {
-    checks.push({ label: "Ollama", ok: false, detail: "not running" })
-  }
+  const ollama = await detectLocalOllama()
+  checks.push({
+    label: "Ollama",
+    ok: ollama !== null,
+    detail: ollama ? `running at localhost:${ollama.port}` : "not running",
+  })
   try {
     const pkg = require("../../../package.json")
     checks.push({ label: "Version", ok: true, detail: pkg.version ?? "?" })

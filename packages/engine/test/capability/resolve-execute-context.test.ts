@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { authorizeAndExecuteEffect } from "@arcana/core/capability/pep"
 import type { PolicyContext } from "@arcana/core/capability/pdp"
-import type { CapabilityGrant } from "@arcana/core/capability/types"
+import type { CapabilityGrant, AuthorizationRequest } from "@arcana/core/capability/types"
 import { InstanceRef } from "../../src/effect/instance-ref"
 import { InstanceState } from "../../src/effect/instance-state"
 import type { InstanceContext } from "../../src/project/instance-context"
@@ -43,17 +43,16 @@ function makeContext(): PolicyContext {
   }
 }
 
-const request = {
-  schemaVersion: "1" as const,
+const request: AuthorizationRequest = {
+  schemaVersion: "1",
   requestId: "req-ctx-preserve",
   principalId: "agent:main",
   sessionId: "sess-ctx-preserve",
   tool: "read_file",
   action: "filesystem.read",
-  resource: { kind: "file" as const, path: "/tmp/x" },
-  args: { path: "/tmp/x" },
-  provenance: [] as string[],
-  sensitivity: [] as string[],
+  resource: { kind: "file", path: "/tmp/x" },
+  provenance: [],
+  sensitivity: [],
   requestedAt: NOW,
   nonce: "nonce-1",
 }
@@ -62,10 +61,12 @@ const instanceCtx: InstanceContext = {
   directory: "C:\\test\\project",
   worktree: "C:\\test\\project",
   project: {
-    id: "proj-test",
+    id: "proj-test" as InstanceContext["project"]["id"],
     name: "test",
-    root: "C:\\test\\project",
-    vcs: "none" as const,
+    worktree: "C:\\test\\project",
+    vcs: "git",
+    time: { created: Date.now(), updated: Date.now() },
+    sandboxes: [],
   },
   startedAt: Date.now(),
 }
