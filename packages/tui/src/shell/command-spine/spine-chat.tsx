@@ -91,7 +91,9 @@ export function SpineChatCard(props: {
   })
 
   const shimmerVerb = createMemo(() => {
-    if (kind() === "plan") return "thinking"
+    // Reasoning phase is its own think row ("Thinking"/"Thought"). Once the
+    // answer text streams, this header shows the *writing* phase — never a
+    // stale "thinking" that contradicts the flipped think label.
     return "writing"
   })
 
