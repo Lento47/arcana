@@ -1233,9 +1233,12 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(Image.defaultLayer),
     Layer.provide(Config.defaultLayer),
     Layer.provide(RuntimeFlags.defaultLayer),
-    Layer.provide(Database.defaultLayer),
     Layer.provide(EventV2Bridge.defaultLayer),
+    // EventStore requires Database — provide EventStore first so Database can
+    // satisfy both SessionProcessor's direct use and EventStore's requirement.
+    // Providing Database before EventStore leaves EventStore's Database dep open.
     Layer.provide(EventStore.layer),
+    Layer.provide(Database.defaultLayer),
   ),
 )
 
