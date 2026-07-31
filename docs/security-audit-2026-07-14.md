@@ -89,8 +89,9 @@ The entries below preserve the first pass's useful control inventory, but their 
 
 ### 6. Session Budget Limits (`packages/engine/src/session/budget.ts`)
 
-- Max destructive ops limit (default: 5) — pauses run when exceeded
-- Tracks files touched, lines changed, external exposures
+- Max concurrent destructive ops (default: 5), files (50), LOC (2000), external (10)
+- When a limit would be exceeded, tools are **queued** until capacity frees — never hard-error
+- Capacity frees on tool `release`, `reset` (each run), `lower`, or `disable`
 
 ---
 

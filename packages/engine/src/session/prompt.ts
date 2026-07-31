@@ -1219,6 +1219,9 @@ export const layer = Layer.effect(
         let structured: unknown
         let step = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+        const budget = yield* SessionBudget.Service
+        // Fresh concurrent occupancy for this run; wakes any parked tool waiters.
+        yield* budget.reset(sessionID)
 
         // Emit session.started event
         yield* eventStore.append({
