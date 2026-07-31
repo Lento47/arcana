@@ -289,6 +289,14 @@ Mastra / LangGraph / AI SDK / Codex / Claude / Gemini / internal agents
                          RUNPROOF
 ```
 
+#### **3.5 Design principles** 
+
+- Do not preserve backward compatibility. 
+
+- Choose the simplest implementation that fully meets the current requirements. 
+
+- Prefer established, well-maintained libraries over custom implementations. 
+
 ### **4. Current Status and Validated Milestones** 
 
 #### **4.1 Phase A — Epistemic foundation** 
