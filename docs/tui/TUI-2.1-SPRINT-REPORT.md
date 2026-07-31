@@ -2,9 +2,8 @@
 
 **Milestone:** `arcana-tui-2.1-production-integration-polish`  
 **Branch:** `phase-d-implementation`  
-**Head (code):** `18e394bf` — fix(tui): correct cross-package imports + add default switch cases  
-**Report date:** 2026-07-30  
-**Status:** **Code complete; manual smoke unblocked after engine fix (pending operator run)**
+**Report date:** 2026-07-30 (updated after harness + smoke automation)  
+**Status:** **Code complete; engine + listen harness fixed; automated smoke green; interactive operator smoke still pending**
 
 Related docs:
 
@@ -21,12 +20,15 @@ TUI-2.1 mounts the already-proven TUI-2 approval contract into the **real comman
 | Track | Result |
 |-------|--------|
 | TUI-2.1 production code | Landed on `phase-d-implementation` |
-| Automated tests | **338 / 338 pass** (adapter + mounted-shell + production + TSX) |
+| TUI-2.1 automated tests | **338 / 338 pass** (adapter + mounted-shell + production + TSX) |
 | Typecheck / imports | Cleaned (`18e394bf`) |
-| Manual smoke | Was blocked by engine daemon startup; **engine root cause fixed** and committed |
-| TUI-3 entry | Still blocked until manual smoke + hard gates signed off |
+| Engine daemon / `Server.listen` | Fixed (EventStore LayerNode + AppRuntime defaultLayer order) |
+| `httpapi-listen.test.ts` (Windows) | **5 pass / 6 skip (PTY) / 0 fail** |
+| Automated startup smoke | Daemon spawn + `/health` green |
+| Interactive operator smoke | Pending (terminal UI checklist) |
+| TUI-3 entry | Still blocked until interactive smoke + hard gates signed off |
 
-TUI-2.1 did **not** cause the TUI startup failure. That was a pre-existing engine LayerNode wiring bug exposed when starting the daemon / `Server.listen`.
+TUI-2.1 did **not** cause the TUI startup failure. That was a pre-existing engine LayerNode / `defaultLayer` wiring bug exposed when starting the daemon / `Server.listen` and when tests disposed `AppRuntime`.
 
 ---
 
@@ -223,10 +225,63 @@ Incomplete installs can also produce misleading resolution into Bun cache (Effec
 | `Server.listen({ hostname: "127.0.0.1", port: 9146 })` | OK (~257 ms), `/health` → 200 |
 | `Server.listen({ port: 0 })` | Prefers 4096 when free |
 | `startDaemon(cwd, version)` | OK on **9142**, `/health` → `{"status":"ok",...}` |
+| TUI-style daemon spawn (`index.ts --daemon`) | Ready on 9142 after ~9 health polls |
 
-**Note:** `packages/engine/test/server/httpapi-listen.test.ts` still showed a harness-specific `@arcana/v2/storage/Database` service error under bun test preload; direct runtime probes and daemon start succeed. Treat as separate test-harness follow-up, not TUI-2.1 scope.
+---
 
-**Commit status:** engine EventStore / daemon logging changes are included in the follow-up commit that lands this report (after `18e394bf`).
+## 6b. Follow-up: `httpapi-listen` test harness (Database + plugin)
+
+### 6b.1 What looked like a test-only failure
+
+`Server.listen` **succeeded** under bun test. The failure came from `afterEach` → `disposeAllInstances()` → `AppRuntime.runPromise(InstanceStore.disposeAll())`, which built `AppLayer` and hit:
+
+```text
+Service not found: @arcana/v2/storage/Database
+```
+
+### 6b.2 Root cause (AppRuntime / defaultLayer order)
+
+`SessionProcessor.defaultLayer` did:
+
+```ts
+Layer.provide(Database.defaultLayer),
+Layer.provide(EventStore.layer), // EventStore still requires Database → bubbles open
+```
+
+Providing `Database` **before** `EventStore` only satisfies `SessionProcessor`’s direct use. `EventStore.layer` re-introduces a Database requirement that was not re-satisfied.
+
+`SessionPrompt.defaultLayer` yielded `EventStore.Service` but never provided `EventStore.layer`.
+
+### 6b.3 Fixes
+
+| Change | File |
+|--------|------|
+| Provide `EventStore.layer` then `Database.defaultLayer` | `packages/engine/src/session/processor.ts` |
+| Provide `EventStore.layer` + trailing `Database.defaultLayer` | `packages/engine/src/session/prompt.ts` |
+| Plugin listen test sets `ARCANA_TRUST_WORKSPACE=1` | `packages/engine/test/server/httpapi-listen.test.ts` |
+
+Plugin test detail: ARC-SEC-I02 strips project plugins on untrusted workspaces, so the tmpdir plugin never loaded (`initialized` never written). Trust escape hatch is correct for an intentional project-plugin test.
+
+### 6b.4 Results (`bun test test/server/httpapi-listen.test.ts`)
+
+| Result | Count |
+|--------|-------|
+| Pass | **5** (incl. port-0 prefer/fallback, plugin client, stop, default handler) |
+| Skip | **6** (PTY websocket cases — skipped on Windows) |
+| Fail | **0** |
+
+---
+
+## 6c. Automated smoke (non-interactive)
+
+| Check | Result |
+|-------|--------|
+| TUI-2.1 adapter / mounted / production / TSX | **338/338** |
+| `startDaemon` + `/health` | PASS |
+| Daemon spawn path used by TUI (`--daemon`) | PASS |
+| Interactive checklist phases 1–9 | **Not run** (requires human terminal) |
+
+Interactive phases still required: approval glyphs, `a`/`d`/`v`/`esc`, resize matrix, themes, prompt conflict protection. See [TUI-2.1 Manual Smoke Test](./TUI-2.1-MANUAL-SMOKE-TEST.md).
 
 ---
 
@@ -267,11 +322,11 @@ Parallel Phase D work on the same branch (ACEP-1, D-6/D-7/D-8A, workload identit
 
 ### Nice-to-have / follow-ups
 
-- Investigate bun-test harness `Database` service miss in `httpapi-listen.test.ts`
 - Consider not ignoring daemon stdio in TUI spawn (or pipe stderr to a log file)
 - Performance targets from §10 of the milestone doc (p95 metrics) still need live measurement
+- PTY listen tests remain skipped on Windows (pre-existing platform gate)
 
-### Explicitly blocked until smoke
+### Explicitly blocked until interactive smoke
 
 - TUI-3: Delegation and Subagent Operations
 
@@ -305,10 +360,11 @@ Then execute the manual smoke checklist.
 | Question | Answer |
 |----------|--------|
 | Is TUI-2.1 code done? | **Yes** for production mount + automated contract |
-| Are automated tests green? | **338/338** |
+| Are automated tests green? | **338/338** TUI-2.1; **5/5 runnable** httpapi-listen on Windows |
 | Was TUI-2.1 responsible for no-start? | **No** |
-| What blocked smoke? | Missing `EventStore` in LayerNode graph + silent daemon catch |
-| Is that fixed? | **Yes** (EventStore LayerNode + daemon error logging) |
-| Can TUI-3 start? | **Not yet** — needs live smoke sign-off |
+| What blocked smoke? | Missing `EventStore` in LayerNode + bad `defaultLayer` provide order + silent daemon catch |
+| Is that fixed? | **Yes** (LayerNode + AppRuntime defaultLayer + daemon logging) |
+| Listen harness Database error? | **Fixed** (was afterEach dispose, not listen) |
+| Can TUI-3 start? | **Not yet** — needs interactive operator smoke sign-off |
 
-**Recommended next operator action:** run manual smoke → update this report’s smoke section and freeze the TUI-2.1 tag when gates pass.
+**Recommended next operator action:** open a real terminal, run `./arcana.cmd` (or engine TUI), execute [manual smoke](./TUI-2.1-MANUAL-SMOKE-TEST.md), then freeze the TUI-2.1 tag when gates pass.

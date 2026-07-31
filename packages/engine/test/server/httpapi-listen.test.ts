@@ -330,7 +330,11 @@ describe("HttpApi Server.listen", () => {
       },
     })
     const previous = process.env.ARCANA_DISABLE_DEFAULT_PLUGINS
+    const previousTrust = process.env.ARCANA_TRUST_WORKSPACE
     process.env.ARCANA_DISABLE_DEFAULT_PLUGINS = "1"
+    // ARC-SEC-I02 strips project plugins unless the workspace is trusted.
+    // This test intentionally loads a tmpdir project plugin.
+    process.env.ARCANA_TRUST_WORKSPACE = "1"
     let listener: Awaited<ReturnType<typeof startListener>> | undefined
     try {
       listener = await startListener()
@@ -350,6 +354,8 @@ describe("HttpApi Server.listen", () => {
       if (listener) await stop(listener, "timed out cleaning up plugin client listener").catch(() => undefined)
       if (previous === undefined) delete process.env.ARCANA_DISABLE_DEFAULT_PLUGINS
       else process.env.ARCANA_DISABLE_DEFAULT_PLUGINS = previous
+      if (previousTrust === undefined) delete process.env.ARCANA_TRUST_WORKSPACE
+      else process.env.ARCANA_TRUST_WORKSPACE = previousTrust
     }
   })
 
