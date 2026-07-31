@@ -90,23 +90,51 @@ None of these touch TUI rendering, approval lifecycle, or command-spine code.
 
 ## 4. Manual Smoke Test Matrix (WS1)
 
-**Status: PENDING — requires human interactive testing in real terminal**
+**Status: BLOCKED — Release Blocker RB-01 (approval pipeline not wired into the production runtime).** The 11-phase checklist cannot be executed as written until the engine creates approval records and the session route feeds them to the shell. Source-accuracy verification of the runbook found 1 release blocker + 7 doc-vs-code mismatches (below).
 
-All 11 phases from `docs/tui/TUI-2.1-MANUAL-SMOKE-TEST.md` must be executed manually. Each checkpoint requires visual inspection and keyboard/mouse interaction that cannot be automated from a remote agent session.
+### RB-01 — Approval pipeline not mounted in production (RELEASE BLOCKER)
+
+Verified 2026-07-31 (source inspection + targeted runs):
+
+| Layer | Evidence |
+|-------|----------|
+| Engine | `packages/engine/src` imports **zero** approval symbols (`approval-lifecycle`, `ApprovalOperatorService`, `GovernedApprovalExecutor`, `approval-store`). No runtime path creates durable ApprovalRecords; consequential tools route through the legacy permission gate. |
+| TUI route | `packages/tui/src/routes/session/index.tsx:1535-1590` `shellProps` omits `approvals`, `approvalController`, `activeSessionId`, `activeWorkspaceId`. `useApprovalIntegration` (approval-integration.ts) is exported but used by **no production file**. |
+| Consequence | In the real TUI: approval entries never render (`approvals()` is always `[]`), and `a`/`d`/`v`/`Esc` approval commands no-op (controller undefined). WS1 phases 2-7 and 10-11 are untestable. |
+| What DOES work | The isolated stack: adapter, controller, operator service, SQLite store, governed executor — 135/135 production-runner tests, 434/434 TUI tests. The gap is wiring, not the stack itself. |
+
+**Fix scope (code — operator permission required):**
+1. Engine: route consequential tool requests through the durable approval lifecycle (create ApprovalRecord → operator decision → governed executor → receipt + RunProof).
+2. TUI route: consume approval records (sync channel or API) + construct `useApprovalIntegration` controller and pass all four shell props.
+3. Delete stale `packages/core/src/crypto/__tests__/run-tui2.1-production-tests.ts` (asserts removed 2-line receipts; never run by `bun test` naming, dead code) or update it.
+
+### Doc-vs-code mismatches (POLISH, fix with RB-01 or record as known deviations)
+
+| # | Doc says | Code says | Severity |
+|---|----------|-----------|----------|
+| M1 | PENDING entry glyph `◤` | `◇` (`SPINE_GLYPH.approve`, spine-types.ts:281 — collides with think glyph; `◤` only in receipts) | POLISH |
+| M2 | Receipt line `authority approval consumed · 0 uses` | Removed by fix AD-02; adapter emits one line | POLISH (doc stale) |
+| M3 | Receipt line `approval rejected` | Removed by fix AD-03; one line | POLISH (doc stale) |
+| M4 | Fresh PENDING Version "should be 1" | Records created at version 0 (lifecycle:207, sqlite DEFAULT 0); version 1 after approve | POLISH |
+| M5 | "Full request hash (not truncated)" | Body truncates request hash to 16 chars (adapter:123) | POLISH |
+| M6 | "Inspector opens" | No inspector panel exists; info is the PENDING expanded entry body | POLISH |
+| M7 | "Brief SUBMITTING state visible" | SUBMITTING is internal shell state; no UI renders it | POLISH |
+
+All 11 phases from `docs/tui/TUI-2.1-MANUAL-SMOKE-TEST.md` remain required, but phases 2-7/10-11 are **blocked pending RB-01**.
 
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 1 | Startup Verification | NOT TESTED — requires interactive terminal |
-| 2 | Trigger Approval | NOT TESTED — requires interactive terminal |
-| 3 | Inspector | NOT TESTED — requires interactive terminal |
-| 4 | Approval Lifecycle (APPROVED → CLAIMED → CONSUMED) | NOT TESTED — requires interactive terminal |
-| 5 | Denial Lifecycle (zero executor calls) | NOT TESTED — requires interactive terminal |
-| 6 | Prompt Conflict Protection | NOT TESTED — requires interactive terminal |
-| 7 | Session Isolation | NOT TESTED — requires interactive terminal |
+| 2 | Trigger Approval | BLOCKED — RB-01 (no engine approval path) |
+| 3 | Inspector | BLOCKED — RB-01 (M6: no inspector panel; info is expanded body) |
+| 4 | Approval Lifecycle (APPROVED → CLAIMED → CONSUMED) | BLOCKED — RB-01 |
+| 5 | Denial Lifecycle (zero executor calls) | BLOCKED — RB-01 |
+| 6 | Prompt Conflict Protection | BLOCKED — RB-01 (logic verified in code) |
+| 7 | Session Isolation | BLOCKED — RB-01 (logic verified in code) |
 | 8 | Resize (9 width breakpoints) | NOT TESTED — requires interactive terminal |
 | 9 | Theme Validation (dark + light) | NOT TESTED — requires interactive terminal |
-| 10 | Restart Recovery | NOT TESTED — requires interactive terminal |
-| 11 | Mouse Interaction | NOT TESTED — requires interactive terminal |
+| 10 | Restart Recovery | BLOCKED — RB-01 (no durable records exist to recover) |
+| 11 | Mouse Interaction | BLOCKED — RB-01 (no entries to click) |
 
 ### Instructions for Manual Tester
 
@@ -328,11 +356,9 @@ These tests validate the rendering logic but do **not** replace visual verificat
 
 ## 11. Release Blockers
 
-**Count: 0**
+**Count: 1 — RB-01 (approval pipeline not wired into production runtime).**
 
-No release blockers identified from automated verification. Manual smoke test results pending.
-
----
+Details in §4. Engine creates no ApprovalRecords; TUI session route passes no approval props. Freeze cannot be authorized until RB-01 is fixed and WS1 approval phases re-run.
 
 ## 12. Freeze Decision
 

@@ -26,12 +26,32 @@ The only open gate is manual release validation. Everything below exists to clos
 
 ## 1. Pre-flight: automated re-verification at new candidate
 
-- [ ] TUI suite rerun at `e7cc8da6` → expect **434/434** (bounded per-test timeout; a network test hung the suite before)
-- [ ] Typecheck → **16/16**
-- [ ] Build → **8/8**
-- [ ] Record exact numbers in the freeze report §3
+- [x] TUI suite rerun at `e7cc8da6` → **434/434 pass, 1 skip** ✅ (verified 2026-07-31; bounded per-test timeout, no hang)
+- [x] Typecheck → **16/16** ✅
+- [x] Build → **8/8** ✅ (engine smoke `0.0.0-phase-d-implementation-202607311750`)
+- [x] TUI-2.1 production runner → **135/135** ✅ (sprint report's 137 was pre-AD-02/AD-03)
+- [x] Record exact numbers in the freeze report §3 (commits `1ed93b12`, `ae8c7d28`)
 
-**Assignee:** delegated verification subagent (read-only). **DoD:** exact counts returned, no files modified.
+**Assignee:** delegated verification subagent (read-only). **DoD:** exact counts returned, no files modified. ✅ COMPLETE
+
+## 1b. RELEASE BLOCKER RB-01 — approval pipeline not wired into production
+
+Verified by source inspection (delegated accuracy check + main-agent confirmation):
+
+- Engine (`packages/engine/src`): zero imports of approval lifecycle / operator service / governed executor / approval store. No runtime path creates durable ApprovalRecords.
+- TUI route (`routes/session/index.tsx:1535-1590`): `shellProps` omits `approvals`, `approvalController`, `activeSessionId`, `activeWorkspaceId`. `useApprovalIntegration` unused by production code.
+- Consequence: real TUI shows no approval entries; `a`/`d`/`v`/`Esc` no-op. WS1 phases 2-7/10-11 blocked.
+- The isolated stack (adapter/controller/service/store/executor) is complete and tested — the gap is WIRING both ends.
+
+**Fix tasks (code — operator permission REQUIRED before any modification):**
+
+| # | Task | File(s) |
+|---|------|---------|
+| RB-01a | Route consequential tool requests through the durable approval lifecycle: create ApprovalRecord → operator decision → governed executor → receipt + RunProof update | `packages/engine/src` (processor/kernel/action path) |
+| RB-01b | TUI route: consume approval records + construct `useApprovalIntegration` controller, pass all four shell props | `packages/tui/src/routes/session/index.tsx`, `approval-integration.ts` |
+| RB-01c | Delete or update stale `__tests__/run-tui2.1-production-tests.ts` (dead code, asserts removed receipts) | `packages/core/src/crypto/__tests__/` |
+
+**Polish items (M1-M7)** from the freeze report §4 ride along: PENDING glyph `◇` vs doc `◤` (glyph collision), stale receipt lines in doc, version 0 vs 1, truncated hash, no inspector panel, no visible SUBMITTING.
 
 ---
 
