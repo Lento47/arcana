@@ -652,8 +652,11 @@ export function Prompt(props: PromptProps) {
       input.gotoBufferEnd()
     },
     reset() {
-      input.clear()
-      input.extmarks.clear()
+      // Same guard as clearPrompt: keymap commands can outlive the composer.
+      if (input && !input.isDestroyed) {
+        input.clear()
+        input.extmarks.clear()
+      }
       setStore("prompt", {
         input: "",
         parts: [],
@@ -1752,8 +1755,14 @@ export function Prompt(props: PromptProps) {
         mode: store.mode,
       })
     }
-    input.clear()
-    input.extmarks.clear()
+    // Keymap commands can outlive the composer: autocomplete onSelect may
+    // navigate first (unmounting the prompt), then call clearPrompt.
+    // OpenTUI throws "EditBuffer is destroyed" on any call after destroy —
+    // skip buffer ops on a dead renderable. Store reset stays (idempotent).
+    if (input && !input.isDestroyed) {
+      input.clear()
+      input.extmarks.clear()
+    }
     setStore("prompt", {
       input: "",
       parts: [],
