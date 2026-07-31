@@ -92,6 +92,11 @@ import { getScrollAcceleration } from "../../util/scroll"
 import { collapseToolOutput } from "../../util/collapse-tool-output"
 import { usePluginRuntime } from "../../plugin/runtime"
 import { resolveShell, type ShellProps } from "../../shell"
+import {
+  useApprovalIntegration,
+  HttpApprovalOperatorService,
+  type ApprovalShellController,
+} from "../../shell/command-spine"
 import { DialogRetryAction } from "../../component/dialog-retry-action"
 import { getRevertDiffFiles } from "../../util/revert-diff"
 import { ARCANA_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } from "../../keymap"
@@ -1532,6 +1537,28 @@ export function Session() {
 
   const ShellCmp = createMemo(() => resolveShell(tuiConfig.shell))
 
+  // ─── TUI-2.1 (RB-01): durable approval integration ─────────────
+  // Approvals arrive via the sync channel (sync.data.approvals); operator
+  // commands go through the engine HTTP endpoint via the bridge. The engine
+  // records workspace_id = session_id (session-scoped records), so the
+  // isolation check compares against sessionID to stay consistent.
+  const approvals = createMemo(() =>
+    Object.values(sync.data.approvals).filter((a) => a.sessionId === route.sessionID),
+  )
+  const activeWorkspaceId = () => route.sessionID
+  const approvalBridge = new HttpApprovalOperatorService({
+    baseUrl: sdk.url,
+    getSessionId: () => route.sessionID,
+    getWorkspaceId: activeWorkspaceId,
+    getApprovals: approvals,
+  })
+  const approvalIntegration = useApprovalIntegration({
+    approvals,
+    service: approvalBridge,
+    session: { sessionId: route.sessionID, workspaceId: activeWorkspaceId(), operatorId: "operator" },
+    onShellStateChange: () => {},
+  })
+
   const shellProps = createMemo(
     () =>
       ({
@@ -1577,6 +1604,12 @@ export function Session() {
         visible,
         disabled,
         sessionID: route.sessionID,
+
+        // TUI-2.1 (RB-01): durable approval shell props
+        approvals,
+        approvalController: approvalIntegration.controller,
+        activeSessionId: () => route.sessionID,
+        activeWorkspaceId,
 
         toBottom,
         bind,

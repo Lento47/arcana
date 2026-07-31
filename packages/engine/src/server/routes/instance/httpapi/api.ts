@@ -3,6 +3,7 @@ import { HttpApi } from "effect/unstable/httpapi"
 import { EventV2 } from "@arcana/core/event"
 import { InstanceDisposed } from "@/server/event"
 import { Question } from "@/question"
+import { ApprovalApi } from "./groups/approval"
 import { ConfigApi } from "./groups/config"
 import { ControlApi } from "./groups/control"
 import { ControlPlaneApi } from "./groups/control-plane"
@@ -49,6 +50,7 @@ export const RootHttpApi = HttpApi.make("opencode-root")
   .middleware(Authorization)
 
 export const InstanceHttpApi = HttpApi.make("opencode-instance")
+  .addHttpApi(ApprovalApi)
   .addHttpApi(ConfigApi)
   .addHttpApi(ExperimentalApi)
   .addHttpApi(FileApi)

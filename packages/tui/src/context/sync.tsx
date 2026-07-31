@@ -458,9 +458,9 @@ export const {
     // TUI-2.1C (RB-01 §D4): durable approval records are pushed on create and
     // every transition over the same SSE channel as messages/parts. The event
     // is not yet part of the generated SDK union — match defensively by name.
-    // Contract: { type: "session.approval.updated", properties: { sessionID, approval } }
+    // Contract: { type: "approval.updated", properties: { sessionID, approval } }
     event.subscribe((event) => {
-      if ((event as { type: string }).type !== "session.approval.updated") return
+      if ((event as { type: string }).type !== "approval.updated") return
       const approval = (event as unknown as { properties?: { approval?: ApprovalRecord } }).properties?.approval
       if (!approval?.approvalId) return
       setStore("approvals", approval.approvalId, approval)
