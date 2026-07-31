@@ -67,7 +67,39 @@ const modelOutput = (output: Output) => {
     ? `\n\nWarnings:\n${output.warnings.map((warning) => `- ${warning}`).join("\n")}`
     : ""
   if (output.timedOut) return `${output.output}${warnings}\n\nCommand timed out before completion.`
-  return `${output.output}${warnings}\n\nCommand exited with code ${output.exitCode}.`
+  const code = output.exitCode
+  if (code === undefined) {
+    return `${output.output}${warnings}\n\nCommand finished without reporting an exit code.`
+  }
+  if (code !== 0) {
+    const empty = !output.output || output.output === "(no output)"
+    const hint = empty
+      ? " No stdout/stderr was captured — the shell may have failed to start the process, or the executable was not found."
+      : ""
+    return `${output.output}${warnings}\n\nCommand failed with exit code ${code}.${hint}`
+  }
+  return `${output.output}${warnings}\n\nCommand exited successfully with code 0.`
+}
+
+const formatProcessError = (error: unknown, command: string): string => {
+  if (error && typeof error === "object") {
+    const e = error as {
+      _tag?: string
+      message?: string
+      exitCode?: number
+      stderr?: string
+      cause?: unknown
+      command?: string
+    }
+    const parts: string[] = [`Unable to execute command: ${command}`]
+    if (typeof e.exitCode === "number") parts.push(`exitCode=${e.exitCode}`)
+    if (typeof e.stderr === "string" && e.stderr.trim()) parts.push(`stderr: ${e.stderr.trim().slice(0, 4000)}`)
+    if (e.cause instanceof Error && e.cause.message) parts.push(`cause: ${e.cause.message}`)
+    else if (typeof e.cause === "string" && e.cause) parts.push(`cause: ${e.cause}`)
+    else if (typeof e.message === "string" && e.message && e.message !== command) parts.push(`reason: ${e.message}`)
+    return parts.join(". ")
+  }
+  return `Unable to execute command: ${command}. Reason: ${String(error)}`
 }
 
 const isTimeout = (error: AppProcess.AppProcessError) =>
@@ -198,7 +230,14 @@ export const layer = Layer.effectDiscard(
                 ...(result.stdoutTruncated ? { stdoutTruncated: true } : {}),
                 ...(result.stderrTruncated ? { stderrTruncated: true } : {}),
               }
-            }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to execute command: ${input.command}` }))),
+            }).pipe(
+              Effect.mapError(
+                (error) =>
+                  new ToolFailure({
+                    message: formatProcessError(error, input.command),
+                  }),
+              ),
+            ),
         }),
       })
       .pipe(Effect.orDie)

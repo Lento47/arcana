@@ -306,6 +306,17 @@ function cmd(shell: string, command: string, cwd: string, env: NodeJS.ProcessEnv
     })
   }
 
+  // Windows cmd.exe: pass /d /s /c so the command string is executed, not treated
+  // as a bare executable name (which yields empty output and no useful error).
+  if (process.platform === "win32" && Shell.name(shell) === "cmd") {
+    return ChildProcess.make(shell, ["/d", "/s", "/c", command], {
+      cwd,
+      env,
+      stdin: "ignore",
+      detached: false,
+    })
+  }
+
   return ChildProcess.make(command, [], {
     shell,
     cwd,
@@ -514,6 +525,7 @@ export const ShellTool = Tool.define(
         },
       })
 
+      let spawnError: string | undefined
       const code: number | null = yield* Effect.scoped(
         Effect.gen(function* () {
           yield* Effect.addFinalizer(closeSink)
@@ -594,9 +606,27 @@ export const ShellTool = Tool.define(
 
           return exit.kind === "exit" ? exit.code : null
         }),
-      ).pipe(Effect.orDie)
+      ).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            spawnError =
+              error instanceof Error
+                ? error.message
+                : typeof error === "object" && error && "message" in error
+                  ? String((error as { message: unknown }).message)
+                  : String(error)
+            return null as number | null
+          }),
+        ),
+      )
 
       const meta: string[] = []
+      if (spawnError) {
+        meta.push(`Failed to spawn shell process: ${spawnError}`)
+        meta.push(`shell=${input.shell}`)
+        meta.push(`cwd=${input.cwd}`)
+        meta.push(`command=${input.command}`)
+      }
       if (expired) {
         meta.push(
           `shell tool terminated command after exceeding timeout ${input.timeout} ms. If this command is expected to take longer and is not waiting for interactive input, retry with a larger timeout value in milliseconds.`,
@@ -617,6 +647,28 @@ export const ShellTool = Tool.define(
         output = `...output truncated...\n\nFull output saved to: ${file}\n\n` + output
       }
 
+      // Always surface process outcome to the model. Exit code used to live only
+      // in metadata, so failed commands with empty stdout/stderr looked like
+      // "no reason" successes/failures and agents could not recover.
+      if (expired) {
+        // already in meta
+      } else if (aborted) {
+        // already in meta
+      } else if (code === null) {
+        meta.push(
+          "shell tool could not determine a process exit code (spawn may have failed, or the process was killed without reporting status).",
+        )
+      } else if (code !== 0) {
+        meta.push(`Command failed with exit code ${code}.`)
+        if (output === "(no output)") {
+          meta.push(
+            "No stdout/stderr was captured. On Windows this often means the shell could not start the command, the executable was not found, or output went to a different stream. Retry with an absolute path or verify the shell (`pwsh`/`cmd.exe`) via config.shell.",
+          )
+        }
+      } else {
+        meta.push(`Command exited successfully with code 0.`)
+      }
+
       if (meta.length > 0) {
         output += "\n\n<shell_metadata>\n" + meta.join("\n") + "\n</shell_metadata>"
       }
@@ -627,6 +679,7 @@ export const ShellTool = Tool.define(
           exit: code,
           description: input.description,
           truncated: cut,
+          failed: code !== null && code !== 0,
           ...(cut && file ? { outputPath: file } : {}),
         },
         output,
