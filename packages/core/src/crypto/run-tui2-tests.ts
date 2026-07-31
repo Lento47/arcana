@@ -131,7 +131,7 @@ console.log("Operator denial → zero executor calls")
   
   store.saveApproval({
     approvalId: "appr-denied",
-    version: 0,
+    version: 1,
     sessionId: "session-1",
     workspaceId: "arcana",
     requestHash: "hash-abc",
@@ -188,7 +188,7 @@ console.log("Two operators approve concurrently → one winner")
 
   store.saveApproval({
     approvalId: "appr-concurrent",
-    version: 0,
+    version: 1,
     sessionId: "session-1",
     workspaceId: "arcana",
     requestHash: "hash-abc",
@@ -331,7 +331,7 @@ console.log("Cross-workspace approvals rejected")
 
   store.saveApproval({
     approvalId: "appr-cross",
-    version: 0,
+    version: 1,
     sessionId: "session-1",
     workspaceId: "workspace-B", // different workspace
     requestHash: "hash-abc",
@@ -369,7 +369,7 @@ console.log("Expired approval cannot be approved")
 
   store.saveApproval({
     approvalId: "appr-expired",
-    version: 0,
+    version: 1,
     sessionId: "session-1",
     workspaceId: "arcana",
     requestHash: "hash-abc",
@@ -527,7 +527,7 @@ console.log("Operator with wildcard scope can approve any workspace")
 
   store.saveApproval({
     approvalId: "appr-wildcard",
-    version: 0,
+    version: 1,
     sessionId: "session-1",
     workspaceId: "any-workspace",
     requestHash: "hash-abc",
