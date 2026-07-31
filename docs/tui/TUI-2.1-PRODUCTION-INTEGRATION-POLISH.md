@@ -3,6 +3,8 @@
 **Tag:** `arcana-tui-2.1-production-integration-polish`
 **Status:** IN PROGRESS
 
+**Fix inventory:** [TUI-2.1 Fix Log](./TUI-2.1-FIX-LOG.md) (all smoke-unblock fixes F-01…F-14).
+
 ## 1. Objective
 
 Mount the already-tested approval contract into the real application
@@ -93,27 +95,48 @@ security-critical fields. Ellipsis visible when abbreviation occurs.
 
 ## 7. Interaction Polish
 
-**Keyboard:**
-- `a` approve once
-- `d` deny
-- `v` inspect
-- `esc` close inspector or clear selection
+**Keyboard (TUI-2.1 approval surface only):**
+
+| Key | Action | When active |
+|-----|--------|-------------|
+| `a` | Approve once | Approval **SELECTED**, composer **not** focused, no PermissionV1/question gate, not SUBMITTING |
+| `d` | Deny | Same as `a` (outranks spine `d`:diff while approval is selected) |
+| `v` | Open exact-request inspector → **INSPECTING** | Same as `a` |
+| `esc` | Close inspector **or** clear selection | See Esc rules below |
+
+**Esc rules (shell interaction, TUI-2 §9):**
+
+1. **INSPECTING** → `esc` closes the inspector and returns to **SELECTED**.  
+   Active even if the composer still has focus, so `session.interrupt` cannot steal Escape while the inspector is open.
+2. **SELECTED** (inspector closed) → `esc` clears selection → **IDLE**.  
+   Only when the composer is **not** focused (typing in the prompt must not deselect).
+3. No approval selected / no inspector → Esc is not an approval command (prompt interrupt / other layers may handle it).
+
+**Prompt conflict protection:**
+
+- While the composer is focused, typing `a` / `d` / `v` inserts characters only — **no** approval commands.
+- Focusing an approval entry (click or `j`/`k` after spine focus) blurs the composer so approval keys are reachable.
+- Opening the inspector (`v`) blurs the composer.
 
 **Mouse:**
-- click: select approval
+- click: select approval (SELECTED; blurs composer)
 - double-click: inspect
 - hover: stable highlight without layout shift
 - scroll: never loses selection unexpectedly
 
 Repeated input while SUBMITTING must not emit duplicate commands.
 
+**Out of scope for these keys:** PermissionV1 Action Gate (`Allow once` / `Always` / `Reject`) is a separate surface. Its Esc-as-reject copy is not the TUI-2.1 approval contract.
+
 ## 8. Focus and Session Behavior
 
 - Resize preserves valid selection
-- Session switch clears incompatible selection
+- Session switch clears incompatible selection and closes the inspector
 - Child-session hydration never crashes parent TUI
 - Late events from old session cannot update current selection
 - Inspector closes safely if its approval disappears
+- Esc priority while INSPECTING outranks base-mode `session.interrupt`
+- Shell controller states: `select` → SELECTED (clears inspecting); `inspect` → INSPECTING; `clearSelection` → IDLE
 
 Hydration failure test:
 ```

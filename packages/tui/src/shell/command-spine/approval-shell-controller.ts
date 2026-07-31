@@ -159,12 +159,15 @@ export function createApprovalShellController(input: {
   }
 
   return {
+    // Shell interaction (TUI-2 §9): SELECTED ↔ INSPECTING are ephemeral only.
     select(approvalId: string) {
       selectedId = approvalId
+      inspectingId = undefined
       setState(approvalId, "SELECTED")
     },
 
     inspect(approvalId: string) {
+      selectedId = approvalId
       inspectingId = approvalId
       setState(approvalId, "INSPECTING")
     },

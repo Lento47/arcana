@@ -265,8 +265,18 @@ export function CommandSpineShell(props: ShellProps) {
     })
   }
 
+  /** Leave the composer so TUI-2.1 spine keys (a/d/v/esc) are not blocked by focused-editor gating. */
+  const blurComposer = () => {
+    const editor = renderer.currentFocusedEditor as { blur?: () => void } | null
+    if (editor && typeof editor.blur === "function") editor.blur()
+  }
+
   const focusEntryID = (entryID: string, scrollIntoView = false) => {
     setFocusedEntryID(entryID)
+    blurComposer()
+    // Shell interaction: SELECTED when an approval entry gains spine focus.
+    const approvalId = entryID.startsWith("approval:") ? entryID.slice("approval:".length) : undefined
+    if (approvalId) controller()?.select(approvalId)
     if (scrollIntoView) scrollEntryIntoView(entryID)
   }
   const focusEntry = (entry: { id: string }, scrollIntoView = false) => focusEntryID(entry.id, scrollIntoView)
@@ -412,20 +422,32 @@ export function CommandSpineShell(props: ShellProps) {
   }))
 
   // ─── TUI-2.1: Approval keyboard bindings ────────────────────────
-  // Contextual: only active when an approval entry is focused and
-  // the prompt/editor is NOT accepting text. Prevents "a"/"d"/"v"
-  // from becoming approval commands during normal typing.
-  const approvalBindingsEnabled = () =>
-    renderer.currentFocusedEditor === null
-    && props.permissions().length === 0
-    && props.questions().length === 0
+  // Docs (TUI-2.1 §7): a approve · d deny · v inspect · esc close inspector / clear selection.
+  // a/d/v only when an approval is SELECTED and the composer is not typing (Phase 6).
+  // esc is split out so INSPECTING can always close the inspector (including when
+  // the composer still has focus — otherwise session.interrupt steals Escape).
+  const gatesOpen = () => props.permissions().length > 0 || props.questions().length > 0
+  const composerFocused = () => renderer.currentFocusedEditor !== null
+
+  const approvalActionBindingsEnabled = () =>
+    !composerFocused()
+    && !gatesOpen()
     && !approvalSubmitting()
     && focusedApproval() !== undefined
 
+  // Close inspector whenever open; clear selection only when spine has focus.
+  const approvalEscapeEnabled = () =>
+    !gatesOpen()
+    && !approvalSubmitting()
+    && (
+      inspectorApprovalId() !== undefined
+      || (focusedApproval() !== undefined && !composerFocused())
+    )
+
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
-    enabled: () => approvalBindingsEnabled(),
-    priority: 2, // Higher than spine navigation (priority 1)
+    enabled: () => approvalActionBindingsEnabled(),
+    priority: 2, // Higher than spine navigation (priority 1); d deny beats d:diff
     bindings: [
       {
         key: "a",
@@ -476,9 +498,22 @@ export function CommandSpineShell(props: ShellProps) {
         cmd: () => {
           const approval = focusedApproval()
           if (!approval || !canInspectApproval()) return
+          blurComposer()
           setInspectorApprovalId(approval.approvalId)
+          controller()?.inspect(approval.approvalId)
         },
       },
+    ],
+  }))
+
+  // TUI-2.1 §7 / smoke Phase 3.2: Esc closes inspector or clears selection.
+  useBindings(() => ({
+    mode: ARCANA_BASE_MODE,
+    enabled: () => approvalEscapeEnabled(),
+    // Above session.interrupt (default 0) so Esc does not become "again to interrupt"
+    // while the exact-request inspector is open.
+    priority: 3,
+    bindings: [
       {
         key: "escape",
         desc: "Close inspector or clear selection",
@@ -486,8 +521,14 @@ export function CommandSpineShell(props: ShellProps) {
         cmd: () => {
           if (inspectorApprovalId()) {
             setInspectorApprovalId(undefined)
-          } else if (focusedApproval()) {
+            // Stay SELECTED on the approval entry after closing inspector.
+            const approval = focusedApproval()
+            if (approval) controller()?.select(approval.approvalId)
+            return
+          }
+          if (focusedApproval()) {
             setFocusedEntryID(undefined)
+            controller()?.clearSelection()
           }
         },
       },
