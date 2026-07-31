@@ -147,6 +147,10 @@ function show(out: string) {
 
 async function runDirectTui() {
   mark("zero-arg-tui-dispatch-start")
+  // Register Solid transform before any TUI JSX modules load. Bunfig preload is
+  // not enough when this file is launched from a cwd that skips packages/engine/bunfig.
+  const { ensureSolidPreload } = await import("./cli/tui/ensure-solid-preload")
+  await ensureSolidPreload()
   await prepareRuntime({ tui: true })
   mark("zero-arg-tui-dispatch-end")
   measure("cli-import-start", "zero-arg-tui-dispatch-end", "zero-arg-tui-dispatch")
