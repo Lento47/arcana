@@ -4,7 +4,7 @@
 **Branch:** `phase-d-implementation`
 **Candidate commit:** `3833cde0` (approval pipeline wired end-to-end)
 **Previous commit:** `1f4779ac` (polish sprint baseline)
-**HEAD:** `9bc837bc` (test/docs on top of candidate)
+**HEAD:** `ca73e50e` (wrap fix on top of candidate; 7 post-candidate commits)
 
 ---
 
@@ -51,6 +51,11 @@
 | `9bc837bc` | TUI tests: keep `streaming-lifecycle.test.ts` (6-phase cache-reuse regression), drop stale shimmer-chrome repro |
 | `c86f5ec9` | Docs: WS5 workstream (startup/session-open performance + communication hygiene) |
 | `e15c4110`→`d1d2b786` | Docs: design principles (added to Master Spec §3.5; AGENTS.md edits reverted per operator) |
+| `74a57e73`, `3d01336e`, `6b39869e` | Docs: freeze report — candidate re-point, JUnit evidence, accurate engine comparison wording |
+| `d05ecfff` | **RB-01 closure:** PENDING-create SSE push — `tools.ts` publishes `approval.updated` on every durable create (local + MCP); adapter `getApprovalRecord` (9/9) |
+| `06b38d8d` | WS5 P2-1 request-inventory audit — 10 network paths scanned, no request-amplification bugs; daemon boot poll + LLM retry layer documented as follow-ups |
+| `1c6e6310` | Test: `approval.updated` SSE seam — sync store upserts durable approvals |
+| `ca73e50e` | **RW-01 wrap fix:** reasoning body `<code>` got `wrapMode="word"` + clamped width — long single-line reasoning wraps instead of clipping at the terminal edge (found during live WS1 debugging; 8 regression tests) |
 
 **Validated by operator** in the real TUI: "Thinking" → "Thought" flip confirmed; header now static. 2 regression tests in `test/spine-mapper.test.ts` + 6-phase `test/streaming-lifecycle.test.ts` prove the plan entry flips `streaming=false` on completion, stays `true` mid-stream, and never resurrects stale `streaming=true` across cache reuse.
 
@@ -89,11 +94,11 @@
 
 | Suite | Passed | Failed | Skipped | Total |
 |-------|--------|--------|---------|-------|
-| @arcana/tui | 437 | 0 | 1 | 438 |
+| @arcana/tui | 444 | 0 | 1 | 445 |
 | @arcana/core | 1209 | 31 | 7 | 1247 |
 | @arcana/engine | 3978 | 185 | 73 | 4236 |
 | All other packages | — | 0 | — | pass |
-| **TUI total** | **437** | **0** | **1** | **438** |
+| **TUI total** | **444** | **0** | **1** | **445** |
 
 **Note:** The 31 @arcana/core failures are **pre-existing** and unrelated to TUI-2.1 changes. They are in:
 - Golden vector conformance suite (crypto test vectors — fixture loading)
@@ -106,7 +111,9 @@
 
 None of these touch TUI rendering, approval lifecycle, or command-spine code.
 
-**TUI test result: 437/437 pass (with skip), 0 fail.** ✅
+**TUI test result: 444/444 pass (with skip), 0 fail.** ✅
+
+**RW-01 wrap fix (`ca73e50e`):** reasoning body clipped at the terminal right edge (117/133 chars visible at 120 cols) because the session-route `<code>` renderable defaulted to `wrapMode="none"`. Fixed with `wrapMode="word"` + clamped `reasoningBodyWidth()` (message column minus container indent, minimal-mode indent, and border; `Math.max(1, …)`). Stored reasoning data was always complete — display-only defect. 8 regression tests in `test/reasoning-part-wrap.test.tsx` (wrap, no duplication after `time.end`, streaming partial, minimal collapse, width sweep 59–180, degenerate clamp, in-place resize). `ReasoningPart` + session context exported for testability; type import aliased `ReasoningPartType`.
 
 **Environment note (2026-07-31):** `bun test` from the repo root now segfaults deterministically (Bun 1.3.14 Windows, `bun.report/1.3.14/wt10d9b296...`, kernel32/ntdll frames). Repo code unchanged — environmental. Workaround: run suites from their package dirs (`cd packages/tui && bun test`), which is clean. Re-check after Bun upgrade.
 
@@ -356,12 +363,14 @@ These tests validate the rendering logic but do **not** replace visual verificat
 | #4 | nitro | MEDIUM | PATCH IN SEPARATE SECURITY PR |
 | #3 | nitro | MEDIUM | PATCH IN SEPARATE SECURITY PR |
 
-**Freeze-blocking:** None. All alerts are either not reachable or patchable in separate PRs without blocking the TUI freeze.
+**Freeze-blocking:** None. All alerts are either patched, not reachable, or patchable in separate PRs without blocking the TUI freeze.
 
 **Recommended action:**
-1. Bump dompurify 3.4.11 → 3.4.12 in `packages/ui/package.json` — **DONE** (`b4e70bcf`, installed 3.4.12)
-2. Create `security/dependabot-remediation` branch for nitro update in nested enterprise package — pending
+1. Bump dompurify 3.4.11 → 3.4.12 in `packages/ui/package.json` — **DONE** (`b4e70bcf`, installed 3.4.12; alert #29 still shows OPEN on GitHub until the next dependabot scan after push — code is patched, alert is stale)
+2. Create `security/dependabot-remediation` branch for nitro update in nested enterprise package — pending (separate security PR, post-freeze)
 3. Document @hey-api/openapi-ts as not reachable (no action needed) — documented above
+
+**Verification (2026-07-31):** installed versions re-confirmed — dompurify **3.4.12** (≥ patched), @hey-api/openapi-ts **0.90.10** (vulnerable, dev-only codegen), nitro **3.0.1-alpha.1** (vulnerable, enterprise-only). Reachability re-confirmed: dompurify used in `packages/ui/src/components/markdown.tsx` (runtime); openapi-ts appears only as generated output (`sdk/js/src/gen/client/*`); nitro only in `vite.config.ts` with **zero `routeRules` usage** in enterprise source — neither vulnerable path is invoked.
 
 ---
 
@@ -397,7 +406,7 @@ These tests validate the rendering logic but do **not** replace visual verificat
 - [ ] Performance evidence recorded — **PENDING (manual measurement)**
 - [x] Dependabot alerts triaged (4/4 classified)
 - [x] Freeze-blocking dependency fixes landed — dompurify 3.4.12 (`b4e70bcf`, installed)
-- [ ] Full automated suite rerun at candidate `3833cde0` (16/16 typecheck, 8/8 build, 437/437 TUI tests) — typecheck green at HEAD; TUI 437 tests green at HEAD; engine 3978/185/73 (baseline-equal) at HEAD
+- [ ] Full automated suite rerun at candidate `3833cde0` (16/16 typecheck, 8/8 build, 444/444 TUI tests) — typecheck green at HEAD; TUI 444 tests green at HEAD; engine 3978/185/73 (baseline-equal) at HEAD; build 8/8 at HEAD
 - [x] Working tree clean (after commit)
 - [x] Freeze report committed
 - [x] Remote branch matches local HEAD
@@ -407,12 +416,13 @@ These tests validate the rendering logic but do **not** replace visual verificat
 | Gate | Status |
 |------|--------|
 | TUI 2.1 implementation candidate | **PUSHED** ✅ (`3833cde0`) |
-| Automated gates (typecheck, build, test) | **PASS** ✅ (TUI 437/437 at HEAD; engine 3978/185/73 baseline-equal) |
+| Automated gates (typecheck, build, test) | **PASS** ✅ (TUI 444/444 at HEAD; engine 3978/185/73 baseline-equal) |
 | Streaming lifecycle polish (shimmer/Thinking→Thought) | **DONE + OPERATOR VALIDATED** ✅ |
 | RB-01 approval pipeline (engine → transport → TUI) | **IMPLEMENTED + VERIFIED** ✅ — WS1 smoke re-run pending |
 | Manual release validation | **PENDING** ⏳ |
 | Dependency-security triage | **COMPLETE** ✅ |
 | WS5 perf + communication hygiene (TUI-1.6) | **PLANNED** ⏳ — thresholds defined, P1/P2 tasks in execution plan |
+| RW-01 reasoning wrap | **FIXED + TESTED** ✅ (`ca73e50e`, 8 regression tests) |
 | TUI 2.1 freeze | **NOT YET AUTHORIZED** ❌ |
 
 ### Next Steps (ordered)
