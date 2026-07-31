@@ -278,7 +278,7 @@ export const SPINE_GLYPH: Record<SpineKind, string> = {
   run: "▸",
   fail: "×",
   fix: "▸",
-  approve: "◇",
+  approve: "◤",
   question: "?",
   ok: "✦",
   think: "◇",
