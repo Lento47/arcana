@@ -50,7 +50,7 @@ import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
 import { webSearchProviderLabel } from "../../util/tool-display"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
-import { useSDK } from "../../context/sdk"
+import { useSDK, getLastSseEventMeta, SSE_SILENT_DEATH_MS } from "../../context/sdk"
 import { useEditorContext } from "../../context/editor"
 import { openEditor } from "../../editor"
 import { useDialog } from "../../ui/dialog"
@@ -438,6 +438,22 @@ export function Session() {
 
       await syncTask
       const tSync = profile ? performance.now() : 0
+
+      // Resume pattern (AI SDK resume-streams): a cached assistant message
+      // that never completed, combined with SSE silence beyond the heartbeat
+      // window, means the previous stream died silently (half-open socket)
+      // and its tail events never reached this store. Force one REST
+      // re-hydration to heal text + verbs. Guarded: only when events
+      // previously flowed (at > 0 — a fresh boot has no prior stream), only
+      // when the route is still this session, and never while SSE is live
+      // (recent heartbeat proves the connection is fine; the watchdog owns
+      // the silent-death reconnect).
+      if (route.sessionID === sessionID && untrack(() => messageMeta().pending)) {
+        const lastSse = getLastSseEventMeta()
+        if (lastSse.at > 0 && Date.now() - lastSse.at > SSE_SILENT_DEATH_MS) {
+          void sync.session.resync(sessionID).catch(() => {})
+        }
+      }
 
       const session = sync.session.get(sessionID)
       if (!session) {

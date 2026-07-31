@@ -3,6 +3,18 @@ import type { GlobalEvent } from "@arcana/sdk/v2"
 import { Flag } from "@arcana/core/flag/flag"
 import { createSimpleContext } from "./helper"
 import { batch, onCleanup, onMount } from "solid-js"
+import { createSseWatchdog } from "../util/sse-watchdog"
+
+/**
+ * Engine heartbeat cadence: handlers/event.ts streams server.heartbeat every
+ * 10 seconds while the SSE stream is open (Stream.tick("10 seconds")).
+ * Total silence beyond 3x that interval means the daemon died without
+ * closing the socket (half-open TCP delivers no FIN/RST), so the client
+ * `for await` never ends on its own. The watchdog aborts the dead attempt;
+ * the loop then reconnects and emits sse.reconnected for the REST resync.
+ */
+export const SSE_HEARTBEAT_INTERVAL_MS = 10_000
+export const SSE_SILENT_DEATH_MS = SSE_HEARTBEAT_INTERVAL_MS * 3
 
 export type EventSource = {
   subscribe: (handler: (event: GlobalEvent) => void) => Promise<() => void>
@@ -33,6 +45,17 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
   }) => {
     const abort = new AbortController()
     let sse: AbortController | undefined
+    // Stale startSSE closures must stop: each call bumps the generation, and
+    // every loop checks it at the top. Watchdog trips never bump it, so the
+    // current loop keeps reconnecting (that is the point).
+    let generation = 0
+
+    // Liveness watchdog (AI SDK stream protocol: "keep-alive through ping").
+    // Armed on every event; trips after SSE_SILENT_DEATH_MS of silence.
+    const sseWatchdog = createSseWatchdog({
+      timeoutMs: SSE_SILENT_DEATH_MS,
+      onTrip: () => sse?.abort(),
+    })
 
     function createSDK() {
       return createOpencodeClient({
@@ -86,6 +109,9 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     const handleEvent = (event: GlobalEvent) => {
       noteSseEvent(event)
       queue.push(event)
+      // Any event proves the connection is alive — push the silence window
+      // out. server.heartbeat arrives every 10s even when nothing else flows.
+      sseWatchdog.arm()
       const elapsed = Date.now() - last
 
       if (timer) return
@@ -114,24 +140,33 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     }
 
     function startSSE() {
+      // Stop any stale loop: generation bump makes old closures break at
+      // their next top-of-loop check (after one in-flight abort cycle).
+      generation += 1
+      const gen = generation
       sse?.abort()
       const ctrl = new AbortController()
       sse = ctrl
+      sseWatchdog.arm()
       ;(async () => {
         let attempt = 0
         while (true) {
-          if (abort.signal.aborted || ctrl.signal.aborted) break
+          // Only the outer abort (unmount) or a stale loop stops. Watchdog
+          // trips abort the attempt (ctrl) and MUST fall through to reconnect.
+          if (abort.signal.aborted || gen !== generation) break
 
-          let events: Awaited<ReturnType<typeof sdk.global.event>>
+          let events: Awaited<ReturnType<typeof sdk.global.event>> | undefined
           try {
             events = await sdk.global.event({
               signal: ctrl.signal,
               sseMaxRetryAttempts: 0,
             })
           } catch (error) {
-            // Expected when startSSE restarts or provider unmounts.
-            if (isAbortError(error) || abort.signal.aborted || ctrl.signal.aborted) break
-            throw error
+            if (abort.signal.aborted || gen !== generation) break
+            // AbortError here means the watchdog tripped (silent death) or a
+            // stale restart aborted this attempt — reconnect below. Other
+            // errors are unexpected; surface them to the outer handler.
+            if (!isAbortError(error)) throw error
           }
 
           if (Flag.ARCANA_EXPERIMENTAL_WORKSPACES) {
@@ -140,31 +175,34 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
             await sdk.sync.start().catch(() => {})
           }
 
-          try {
-            for await (const event of events.stream) {
-              if (ctrl.signal.aborted) break
-              handleEvent(event)
+          if (events) {
+            try {
+              for await (const event of events.stream) {
+                if (ctrl.signal.aborted) break
+                handleEvent(event)
+              }
+            } catch (error) {
+              if (abort.signal.aborted || gen !== generation) break
+              // AbortError (watchdog trip) or transient stream error — fall
+              // through to reconnect.
             }
-          } catch (error) {
-            if (isAbortError(error) || abort.signal.aborted || ctrl.signal.aborted) break
-            // Stream ended with a transient error — fall through to reconnect.
           }
 
           if (timer) clearTimeout(timer)
           if (queue.length > 0) flush()
           attempt += 1
-          if (abort.signal.aborted || ctrl.signal.aborted) break
+          if (abort.signal.aborted || gen !== generation) break
 
           // Exponential backoff
           const backoff = Math.min(retryDelay * 2 ** (attempt - 1), maxRetryDelay)
           await new Promise((resolve) => setTimeout(resolve, backoff))
 
           // Synthetic reconnect signal. The stream just dropped (daemon
-          // re-registration, transient fetch error, or partial event left in
-          // the parser buffer at EOF). SSE events carry no id, so
-          // Last-Event-ID replay is impossible — listeners (session route)
+          // re-registration, transient fetch error, silent death, or partial
+          // event left in the parser buffer at EOF). SSE events carry no id,
+          // so Last-Event-ID replay is impossible — listeners (session route)
           // re-sync the active session from REST to close the gap.
-          if (!abort.signal.aborted && !ctrl.signal.aborted) {
+          if (!abort.signal.aborted && gen === generation) {
             emitter.emit("event", {
               directory: props.directory ?? "",
               payload: {
@@ -175,6 +213,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
             } as unknown as GlobalEvent)
           }
         }
+        sseWatchdog.stop()
       })().catch((error) => {
         // Never surface AbortError as unhandled — process unhandledRejection kills the TUI.
         if (isAbortError(error) || abort.signal.aborted || ctrl.signal.aborted) return
@@ -210,6 +249,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       } catch {
         /* ignore */
       }
+      sseWatchdog.stop()
       if (timer) clearTimeout(timer)
       handlers.clear()
     })
