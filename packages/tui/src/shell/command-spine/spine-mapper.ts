@@ -1667,7 +1667,7 @@ function makeInlineThinkEntry(
   const hasText = !!raw.trim()
   const life = buildTurnLifecycle({
     message,
-    part: undefined,
+    part: part.time ? part : undefined,
     segmentSuperseded: hasLaterContentPart(allParts, part.id),
     isLatestAssistant: streamingCtx.isLatestAssistant,
     sessionStatusType: streamingCtx.sessionStatusType,
