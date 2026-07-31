@@ -657,7 +657,7 @@ export class SqliteDurableStateStore implements DurableNodeSecurityStateStore {
       if (artifactTable && artifactData) {
         const cols = Object.keys(artifactData)
         const placeholders = cols.map(() => "?").join(", ")
-        const vals = Object.values(artifactData)
+        const vals = Object.values(artifactData) as import("bun:sqlite").SQLQueryBindings[]
         this.db.run(
           `INSERT OR IGNORE INTO ${artifactTable} (${cols.join(", ")}) VALUES (${placeholders})`,
           vals,

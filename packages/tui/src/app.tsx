@@ -89,6 +89,7 @@ import * as TuiAudio from "./audio"
 import { win32DisableProcessedInput, win32FlushInputBuffer } from "./terminal-win32"
 import { destroyRenderer } from "./util/renderer"
 import { cliErrorMessage, errorFormat } from "./util/error"
+import { resolveInteractiveStdin } from "./util/stdin"
 
 const appGlobalBindingCommands = [
   "session.list",
@@ -1717,6 +1718,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
   const exit = { epilogue: undefined as string | undefined, reason: undefined as unknown }
   const result = yield* Effect.scoped(
     Effect.gen(function* () {
+      const { stdin: resolvedStdin } = resolveInteractiveStdin()
       const renderer = yield* Effect.acquireRelease(
         Effect.tryPromise(() =>
           createCliRenderer({
@@ -1727,6 +1729,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
             useKittyKeyboard: {},
             autoFocus: false,
             openConsoleOnError: false,
+            stdin: resolvedStdin,
             useMouse: !Flag.ARCANA_DISABLE_MOUSE && input.config.mouse,
             consoleOptions: {
               keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],

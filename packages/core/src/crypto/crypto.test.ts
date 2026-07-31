@@ -18,7 +18,7 @@ import {
   validateSafeInteger,
   encodeBase64url,
   type SignatureDomain,
-} from "../canonical-serializer"
+} from "./canonical-serializer"
 import {
   parseStrictEnvelope,
   verifySignedCapability,
@@ -32,14 +32,14 @@ import {
   verifyFreshness,
   verifyRevocationStatus,
   type VerificationResult,
-} from "../verifier"
+} from "./verifier"
 import {
   CAPABILITY_DOMAIN,
   POLICY_DOMAIN,
   NODE_IDENTITY_DOMAIN,
   REVOCATION_DOMAIN,
   type RejectionReason,
-} from "../signed-envelopes"
+} from "./signed-envelopes"
 import { ed25519 } from "@noble/curves/ed25519.js"
 
 // ═══════════════════════════════════════════════════════════════════════

@@ -48,7 +48,7 @@ function createPolicyInput(seq: number, digest?: string): VerifiedPolicyInput {
     sequence: seq,
     digest: digest ?? `policy-digest-${seq}`,
     expiresAt: "2099-12-31T23:59:59.999Z",
-    issuedAt: new Date().toISOString(),
+    receivedAt: new Date().toISOString(),
   }
 }
 

@@ -61,7 +61,7 @@ export type ApprovalExecutionOutcome =
   | {
       status: "RECOVERY_REQUIRED"
       reason: string
-      effectMayHaveOccurred: true
+      effectMayHaveOccurred: boolean
       runProof?: DistributedRunProof
       approvalState: "CLAIMED" // remains claimed, never auto-retry
     }

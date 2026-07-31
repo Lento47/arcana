@@ -236,19 +236,19 @@ console.log("Workload TOCTOU defense")
 
   // Workload ID changed
   const r2 = verifyWorkloadStable(admission, { ...current, workloadId: "wld-2" })
-  assert(r2.stale === false && r2.reason.includes("workloadId"), "workloadId change detected")
+  assert(!r2.stable && r2.reason.includes("workloadId"), "workloadId change detected")
 
   // Executable digest changed
   const r3 = verifyWorkloadStable(admission, { ...current, executableDigest: "evil" })
-  assert(r3.stale === false && r3.reason.includes("executableDigest"), "executableDigest change detected")
+  assert(!r3.stable && r3.reason.includes("executableDigest"), "executableDigest change detected")
 
   // PID changed
   const r4 = verifyWorkloadStable(admission, { ...current, processId: 9999 })
-  assert(r4.stale === false && r4.reason.includes("processId"), "processId change detected")
+  assert(!r4.stable && r4.reason.includes("processId"), "processId change detected")
 
   // OS principal changed
   const r5 = verifyWorkloadStable(admission, { ...current, operatingSystemPrincipal: "evil" })
-  assert(r5.stale === false && r5.reason.includes("osPrincipal"), "osPrincipal change detected")
+  assert(!r5.stable && r5.reason.includes("osPrincipal"), "osPrincipal change detected")
 }
 
 // ═══════════════════════════════════════════════════════════════════════

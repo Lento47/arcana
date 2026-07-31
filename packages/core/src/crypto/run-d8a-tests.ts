@@ -151,12 +151,13 @@ console.log("Build batch: too many proofs rejected")
 console.log("Build batch: sequence discontinuity from previous batch")
 {
   const proofs = [createProof(5), createProof(6)]
-  const result = buildProofBatch(proofs, CTX, undefined, /* lastBatchLastSequence */ 3)
+  const result = buildProofBatch(proofs, {
+    ...CTX,
+    lastBatchLastSequence: 3,
+  })
 
-  // Actually, lastBatchLastSequence is in context — let me check the API
-  // It's not in context, it's a separate parameter... but looking at the code,
-  // it's actually in the context object. Let me pass it correctly.
-  assert(true, "placeholder — sequence discontinuity tested below")
+  assert(!result.success, "discontinuity rejected")
+  assert(result.success === false && result.reason.includes("discontinuity"), "reason mentions discontinuity")
 }
 
 console.log("Build batch: continuation from previous batch")
