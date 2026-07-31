@@ -140,6 +140,8 @@
 
 **Note:** the reconnect *fetch* itself still throws (pre-existing) if the daemon refuses at the exact retry moment, killing the loop; the resync heals the display but live streaming would need a restart. Deferred to WS2 lifecycle robustness.
 
+**SDK contract note (from `packages/sdk/openapi.json`, the SDK's only documentation — no markdown exists):** the API documents an intended catch-up channel — `POST /sync/history` returns sync events with `seq >` the client's last-known per-aggregate sequence, and `POST /sync/replay` replays a full history. The TUI never uses seq bookkeeping; the REST `resync()` achieves the same heal with less state. Revisit `/sync/history` as a WS2 candidate for true event-level catch-up. SSE stream is `GET /global/event` (`sdk.global.event`); `sseMaxRetryAttempts` is a client-side option, not an API parameter.
+
 **Test totals after Round 4:** TUI 447/448 pass (1 skip), 0 fail.
 
 ## Non-Blocking Items (documented, not fixed)
