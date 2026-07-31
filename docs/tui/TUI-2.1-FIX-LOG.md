@@ -107,6 +107,21 @@
 
 **Test totals after Round 2:** TUI 434/434 (was 342 at Round 1 close).
 
+## Reasoning Wrap Fix (Round 3 — found during live WS1 debugging)
+
+**Date:** 2026-07-31
+**Commit:** `ca73e50e` (8 regression tests, `[bump]`)
+
+| ID | File | Defect | Fix |
+|---|---|---|---|
+| RW-01 | packages/tui/src/routes/session/index.tsx:2007 | Reasoning body `<code>` had no `wrapMode` — CodeRenderable defaults to `"none"`, so long single-line reasoning **clipped at the terminal right edge** (117 of 133 chars visible at 120 cols). Stored reasoning data was always complete — display-only defect. The spine already passed `wrapMode="word"` + a numeric width; the session route never got the same treatment | `wrapMode="word"` + clamped `reasoningBodyWidth()` memo (`ctx.width − 3 − minimal-indent − 1`, `Math.max(1, …)`) on the `<code>` and its body box; `ReasoningPart` + session context exported for testability; SDK type import aliased `ReasoningPartType` |
+
+**Key finding:** the user-approved literal patch (`streaming={true}` + `drawUnstyledText={false}` constants) cannot render deterministically — CodeRenderable's styled-streaming path (`@opentui/core` `index-7z5n7k9m.js:3156`) skips the synchronous buffer update and gates ALL rendering on async tree-sitter highlight (never resolves in test env; per-token whole-buffer highlight cost in production). Kept the original dynamic flags (`!isDone()`) — the width fix is the actual defect fix.
+
+**Regression tests added:** `test/reasoning-part-wrap.test.tsx` — 8 tests: 120-col wrap (head + tail on different rows), final words visible, no duplication after `time.end`, streaming partial content, complete after final delta, minimal mode collapsed until click, show mode stays expanded, width sweep 59/80/100/120/180, degenerate-width clamp, in-place `resize()` narrower/wider preserves content. Test harness installs `MockTreeSitterClient` via OpenTUI's singleton registry (`globalThis[Symbol.for("@opentui/core/singleton")]`, key `"tree-sitter-client"`).
+
+**Test totals after Round 3:** TUI 444/444 pass (1 skip), 0 fail.
+
 ## Non-Blocking Items (documented, not fixed)
 
 - Internal "opencode" API names (keymap hooks, SDK client, config values) — breaking refactor, functional identifiers
