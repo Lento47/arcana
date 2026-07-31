@@ -142,6 +142,7 @@ bun run build
 - LLM/provider behavior → read `packages/llm/AGENTS.md`
 - SolidJS reactive patterns (signals, memos, stores, effects) → read `.hermes/docs/solidjs/concepts/` and `.hermes/docs/solidjs/reference/`
 - OpenTUI component/API questions → read `.hermes/docs/opentui/`
+- AI SDK / LLM provider layer questions → read `.hermes/docs/ai-sdk/ai-main/content/docs/`
 - TypeScript type patterns → read `.hermes/docs/typescript/`
 - Rust (if touching native bindings) → read `.hermes/docs/rust/`
 - Security model details → read `docs/security/` and Master Spec §10–12
@@ -163,6 +164,8 @@ bun run build
 
 All docs live in `.hermes/docs/`:
 
+**Routing rule:** arcana-specific questions → `arcana/` docs only. For everything else — OpenTUI, AI SDK, TypeScript, SolidJS, Rust — go to that directory in the library below. The library is the authoritative reference for these five; do not rely on memory or external docs.
+
 | Directory | Content | When to use |
 |-----------|---------|-------------|
 | `arcana/docs/` | Product, architecture, security, ops | Project-specific questions |
@@ -171,6 +174,7 @@ All docs live in `.hermes/docs/`:
 | `arcana/agents/` | Per-package AGENTS.md (9 files) | Package-specific conventions |
 | `arcana/skills/` | Repository skills (644 files) | Skill authoring reference |
 | `arcana/hermes-plans/` | Plans, feedback, vision (51 files) | Historical context |
+| `ai-sdk/` | Vercel AI SDK repo checkout (7,315 files; docs under `ai-main/content/docs`, plus cookbook, providers, tools-registry) | AI SDK / LLM provider layer questions |
 | `typescript/` | TypeScript handbook + reference | TS type system questions |
 | `solidjs/` | SolidJS docs (330 files: concepts, reference, guides, router, start) | TUI reactive patterns, signals, memos, JSX |
 | `opentui/` | OpenTUI docs (46 files) | TUI component/API reference |
