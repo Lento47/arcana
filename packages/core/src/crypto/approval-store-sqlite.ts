@@ -18,7 +18,7 @@ import type {
 const APPROVAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS approval_records (
   approval_id TEXT PRIMARY KEY,
-  version INTEGER NOT NULL DEFAULT 0,
+  version INTEGER NOT NULL DEFAULT 1,
   session_id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
   request_hash TEXT NOT NULL,
