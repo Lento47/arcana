@@ -70,7 +70,7 @@ export const Background = Schema.Struct({
 export type Background = Schema.Schema.Type<typeof Background>
 
 export const Shell = Schema.Literals(["opencode", "command-spine"]).annotate({
-  description: "TUI shell layout: 'opencode' (current chat-style) or 'command-spine' (chronicle layout)",
+  description: "TUI shell layout: 'opencode' (legacy chat-style) or 'command-spine' (chronicle layout)",
 })
 export type Shell = Schema.Schema.Type<typeof Shell>
 

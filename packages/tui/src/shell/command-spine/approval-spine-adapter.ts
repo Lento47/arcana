@@ -113,14 +113,15 @@ function approvalSummary(approval: ApprovalRecord): string {
 }
 
 function approvalBody(approval: ApprovalRecord): string {
+  const short = (s: string, n = 12) => s.length > n ? s.slice(0, n) + "…" : s
   const lines = [
-    `Approval: ${approval.approvalId}`,
+    `Approval: ${short(approval.approvalId, 16)}`,
     `Version: ${approval.version}`,
     `State: ${approval.state}`,
-    `Session: ${approval.sessionId}`,
-    `Workspace: ${approval.workspaceId}`,
-    `Request: ${approval.requestHash}`,
-    `Contract: ${approval.contractRevision}`,
+    `Session: ${short(approval.sessionId, 12)}`,
+    `Workspace: ${short(approval.workspaceId, 12)}`,
+    `Request: ${short(approval.requestHash, 16)}`,
+    `Contract: ${String(approval.contractRevision)}`,
     `Expires: ${approval.expiresAt}`,
   ]
 
@@ -180,12 +181,10 @@ export function generateApprovalReceipt(approval: ApprovalRecord): ApprovalRecei
 
     case "CONSUMED":
       lines.push({ glyph: "✓", text: `approval consumed · execution ${approval.executionId ?? "unknown"}`, tone: "success" })
-      lines.push({ glyph: "▣", text: `authority approval consumed · 0 uses`, tone: "success" })
       break
 
     case "DENIED":
       lines.push({ glyph: "✗", text: `denied by operator ${approval.approvedBy ?? "unknown"}`, tone: "error" })
-      lines.push({ glyph: "✗", text: `approval ${approval.requestHash.slice(0, 8)} · approval rejected`, tone: "error" })
       break
 
     case "INVALIDATED":

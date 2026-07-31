@@ -127,6 +127,7 @@ export const layer = Layer.effect(
     const summary = yield* SessionSummary.Service
     const sys = yield* SystemPrompt.Service
     const llm = yield* LLM.Service
+    const budget = yield* SessionBudget.Service
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
@@ -1219,7 +1220,6 @@ export const layer = Layer.effect(
         let structured: unknown
         let step = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
-        const budget = yield* SessionBudget.Service
         // Fresh concurrent occupancy for this run; wakes any parked tool waiters.
         yield* budget.reset(sessionID)
 
@@ -1424,6 +1424,7 @@ export const layer = Layer.effect(
               Effect.provideService(ToolRegistry.Service, registry),
               Effect.provideService(MCP.Service, mcp),
               Effect.provideService(Truncate.Service, truncate),
+              Effect.provideService(SessionBudget.Service, budget),
             )
 
             if (lastUser.format?.type === "json_schema") {

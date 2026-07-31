@@ -22,7 +22,7 @@ const BRAND_TIERS = {
   },
 } as const
 
-export const GO_UPSELL_MESSAGE = "OpenCode subscription limit — this tier is being phased out. Use Arcana Pro for higher rate limits."
+export const GO_UPSELL_MESSAGE = "Arcana subscription limit — upgrade to Arcana Pro for higher rate limits."
 export const GO_UPSELL_URL = BRAND_TIERS.go.url
 export type RetryReason = "free_tier_limit" | "account_rate_limit" | (string & {})
 

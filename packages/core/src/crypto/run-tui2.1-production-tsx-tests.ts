@@ -457,7 +457,7 @@ console.log("APPROVED → CLAIMED → CONSUMED receipt updates")
   const rConsumed = generateApprovalReceipt(makeApproval({ state: "CONSUMED", executionId: "exec-1" }))
   assertIncludes(rClaimed[0]!.text, "claimed", "claimed")
   assertIncludes(rConsumed[0]!.text, "consumed", "consumed")
-  assertEqual(rConsumed.length, 2, "consumed + authority line")
+  assertEqual(rConsumed.length, 1, "single consumed line")
 }
 
 console.log("INVALIDATED cannot be resubmitted")

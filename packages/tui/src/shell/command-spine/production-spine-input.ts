@@ -62,6 +62,10 @@ export function productionInputToSpineEntry(
 }
 
 function governanceToSpineEntry(view: GovernanceView): SpineEntry {
+  // Truncate payload to prevent viewport overflow at narrow widths.
+  // At 80 cols the content area is ~73 chars; cap at 2000 chars to stay safe.
+  const rawBody = JSON.stringify(view.payload, null, 2)
+  const body = rawBody.length > 2000 ? rawBody.slice(0, 2000) + "\n… (truncated)" : rawBody
   return {
     id: `governance:${view.id}`,
     index: 0,
@@ -69,25 +73,27 @@ function governanceToSpineEntry(view: GovernanceView): SpineEntry {
     kind: "inspect",
     glyph: "◇",
     summary: `${view.eventType}`,
-    body: JSON.stringify(view.payload, null, 2),
+    body,
     bodyLabel: "governance event",
     collapsible: true,
     expandedByDefault: false,
     source: {
       messageID: view.id,
-      kind: "approve",
+      kind: "message",
     },
   }
 }
 
 function messageToSpineEntry(view: MessageView): SpineEntry {
+  // Append ellipsis when content is truncated so users can see it was cut.
+  const needsEllipsis = view.content.length > 120
   return {
     id: `message:${view.id}`,
     index: 0,
     elapsed: "",
     kind: view.role === "assistant" ? "plan" : "ask",
     glyph: view.role === "assistant" ? "✦" : "◆",
-    summary: view.content.slice(0, 120),
+    summary: view.content.slice(0, 120) + (needsEllipsis ? "…" : ""),
     body: view.content,
     collapsible: true,
     expandedByDefault: false,
