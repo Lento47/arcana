@@ -163,6 +163,23 @@ Thresholds are DEFINED BEFORE measuring (playbook §24 gates):
 
 **Assignee:** delegated subagents (audit + implement) with operator verification of P1-2/P1-3 in the real TUI. **DoD:** all thresholds measured and recorded; violations fixed; gates pass.
 
+### P2-1 audit results (2026-07-31, read-only scan at HEAD)
+
+| # | Network path | Location | Trigger | Cadence | Dedup/guard state | Verdict |
+|---|--------------|----------|---------|---------|-------------------|---------|
+| 1 | Daemon health poll (boot) | `engine/src/cli/cmd/tui.ts:186` | TUI launch, no daemon | 200 ms × max 30 (6 s worst case) | lock file + healthCheck; exits on first ready | ⚠️ P1-1/P1-2 target: blocks TUI shell on input path |
+| 2 | SSE event stream (session) | `tui/src/context/sdk.tsx:116-167` | TUI mount | 1 connection, reconnect 1 s→5 s capped exp backoff, `while(true)` | `sseMaxRetryAttempts: 0` (SDK) + TUI-loop backoff; single connection (abort prior) | ✅ meets ≤1/sec threshold; unbounded attempts = deliberate (local daemon may restart) |
+| 3 | Editor server WS | `tui/src/context/editor.ts:276-288` | editor attach | reconnect 1 s→10 s capped exp | single socket guard (`socket !== current`) | ✅ bounded |
+| 4 | Session list + project sync | `tui/src/context/sync.tsx:472+` | bootstrap | once per mount; parallel fire | — | ✅ one-shot, parallel (1 RTT saved) |
+| 5 | Message/part reads | sync store + spine L2 cache | session switch / SSE events | event-driven, no poll | cache keyed by message id; `EMPTY_PARTS` stable ref | ✅ no refetch of unchanged data |
+| 6 | LSP status | `sync.tsx:445` | `lsp.updated` event only | event-driven | — | ✅ no poll loop |
+| 7 | Model/tool calls | `llm/` + `engine/session/llm/` | per turn | per request | **no retry layer** — 429/503 map to typed errors (`map-upstream.ts:77,115`), fail closed | ⚠️ P2-4 candidate: no blind retry (good), but no bounded retry+backoff for transient 429/503 (resilience gap) |
+| 8 | Approval endpoints | `engine/src/server/.../approval.ts`, TUI bridge | operator key press | 1 POST per command; SSE `approval.updated` pushes | sync store upsert by approvalId; command carries expectedVersion/hash (idempotent guard) | ✅ one action → one effect |
+| 9 | UI timers (metrics bar 1 s, dots, shimmer, scroll poll) | various components | render lifecycle | local intervals | cleanup on unmount | ✅ no network traffic |
+| 10 | Daemon lock cleanup | `daemon/lock` | stale lock detection | on launch only | stale-check before reuse | ✅ |
+
+**Verdict:** No request-amplification bugs found in the scan. The two actionable items are the daemon boot poll (P1-1/P1-2 — also the operator's startup-latency complaint) and the missing LLM retry/backoff layer (P2-4 resilience, deliberately absent so no storm risk). SSE reconnect discipline meets the WS5 threshold already.
+
 ---
 
 ## Task assignments
