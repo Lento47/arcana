@@ -114,13 +114,33 @@
 
 | ID | File | Defect | Fix |
 |---|---|---|---|
-| RW-01 | packages/tui/src/routes/session/index.tsx:2007 | Reasoning body `<code>` had no `wrapMode` — CodeRenderable defaults to `"none"`, so long single-line reasoning **clipped at the terminal right edge** (117 of 133 chars visible at 120 cols). Stored reasoning data was always complete — display-only defect. The spine already passed `wrapMode="word"` + a numeric width; the session route never got the same treatment | `wrapMode="word"` + clamped `reasoningBodyWidth()` memo (`ctx.width − 3 − minimal-indent − 1`, `Math.max(1, …)`) on the `<code>` and its body box; `ReasoningPart` + session context exported for testability; SDK type import aliased `ReasoningPartType` |
+| RW-01 | packages/tui/src/routes/session/index.tsx:2007 | Reasoning body `<code>` had no numeric width — `CodeRenderable` `wrapMode` defaults to `"word"` (docs `components/code.mdx`; dist `TextBufferRenderable._wrapMode = "word"`), but wrap only engages when `width > 0` (dist: `if (this._wrapMode !== "none" && this.width > 0) setWrapWidth(this.width)`). Width auto → no wrap constraint → intrinsic width → long single-line reasoning **clipped at the terminal right edge** (117 of 133 chars visible at 120 cols). Stored reasoning data was always complete — display-only defect. The spine already passed `wrapMode="word"` + a numeric width; the session route never got the same treatment | `wrapMode="word"` (explicit; matches default) + clamped `reasoningBodyWidth()` memo (`ctx.width − 3 − minimal-indent − 1`, `Math.max(1, …)`) on the `<code>` and its body box — the numeric width is the actual cure; `ReasoningPart` + session context exported for testability; SDK type import aliased `ReasoningPartType` |
 
-**Key finding:** the user-approved literal patch (`streaming={true}` + `drawUnstyledText={false}` constants) cannot render deterministically — CodeRenderable's styled-streaming path (`@opentui/core` `index-7z5n7k9m.js:3156`) skips the synchronous buffer update and gates ALL rendering on async tree-sitter highlight (never resolves in test env; per-token whole-buffer highlight cost in production). Kept the original dynamic flags (`!isDone()`) — the width fix is the actual defect fix.
+**Key finding:** the user-approved literal patch (`streaming={true}` + `drawUnstyledText={false}` constants) cannot render deterministically — per the documented contract, `drawUnstyledText` shows text *before* highlighting completes, so `false` + `streaming` (async tree-sitter highlight) gates ALL rendering on highlight completion (`@opentui/core` `index-7z5n7k9m.js:3156` styled-streaming path skips the synchronous buffer update; never resolves in test env; per-token whole-buffer highlight cost in production). Kept the original dynamic flags (`!isDone()`) — the width fix is the actual defect fix.
 
 **Regression tests added:** `test/reasoning-part-wrap.test.tsx` — 8 tests: 120-col wrap (head + tail on different rows), final words visible, no duplication after `time.end`, streaming partial content, complete after final delta, minimal mode collapsed until click, show mode stays expanded, width sweep 59/80/100/120/180, degenerate-width clamp, in-place `resize()` narrower/wider preserves content. Test harness installs `MockTreeSitterClient` via OpenTUI's singleton registry (`globalThis[Symbol.for("@opentui/core/singleton")]`, key `"tree-sitter-client"`).
 
 **Test totals after Round 3:** TUI 444/444 pass (1 skip), 0 fail.
+
+## SSE Gap-Closer on Reconnect (Round 4 — live WS1 debugging)
+
+**Date:** 2026-07-31
+**Commit:** `aeb89f53` (3 regression tests, `[bump]`)
+
+**Defect:** a new-session exchange froze mid-stream at the last delivered snapshot ("Hello. How") while the engine store was already complete (`time.end` set). Old sessions opened later rendered complete via REST hydration — proving the engine data was intact and the display was stale. Root cause: the daemon re-registered mid-exchange (session lock rewrote at 14:49, SSE connections 7→1), tearing down the TUI's SSE stream. The tail events were never delivered and never recovered: SSE events carry no `id:` (Last-Event-ID replay impossible), the parser discards partial buffered events at stream end (`serverSentEvents.gen.ts`), and the sync store's `fullSyncedSessions` guard marks a session synced once — so no re-fetch ever happened. The gap was permanent until TUI restart.
+
+**Fix (3 files, surgical):**
+| File | Change |
+|---|---|
+| `src/context/sdk.tsx` | After reconnect backoff, before the next fetch, emit a synthetic `sse.reconnected` GlobalEvent through the existing emitter |
+| `src/context/sync.tsx` | New `resync(sessionID)`: clears the `fullSyncedSessions` guard + the older-messages exhausted marker, then re-runs the existing full hydrate (`session.get` + messages + parts + todo + diff). Reuses `sync()` so live-delta tracker merge and race guards are identical. Fail-closed: on fetch failure the guard stays cleared, so the next attempt retries |
+| `src/routes/session/index.tsx` | Listens for `sse.reconnected` (defensive name check, same pattern as `approval.updated`) and calls `resync(route.sessionID)`, errors swallowed |
+
+**Verification:** 3 regression tests in `test/cli/cmd/tui/sync-resync.test.tsx` — (1) resync clears the guard and re-fetches: stale partial "Hello. How" is replaced by the complete REST snapshot, second REST read proven by request counter; (2) live deltas arriving during the resync hydrate are preserved, not clobbered; (3) engine-down failure rejects, guard stays cleared, recovery attempt succeeds. TUI suite 447/448 pass (1 skip), 0 fail. Typecheck clean.
+
+**Note:** the reconnect *fetch* itself still throws (pre-existing) if the daemon refuses at the exact retry moment, killing the loop; the resync heals the display but live streaming would need a restart. Deferred to WS2 lifecycle robustness.
+
+**Test totals after Round 4:** TUI 447/448 pass (1 skip), 0 fail.
 
 ## Non-Blocking Items (documented, not fixed)
 

@@ -56,6 +56,8 @@
 | `06b38d8d` | WS5 P2-1 request-inventory audit — 10 network paths scanned, no request-amplification bugs; daemon boot poll + LLM retry layer documented as follow-ups |
 | `1c6e6310` | Test: `approval.updated` SSE seam — sync store upserts durable approvals |
 | `ca73e50e` | **RW-01 wrap fix:** reasoning body `<code>` got `wrapMode="word"` + clamped width — long single-line reasoning wraps instead of clipping at the terminal edge (found during live WS1 debugging; 8 regression tests) |
+| `aeb89f53` | **SSE gap-closer:** `resync()` re-hydrates the active session from REST after every SSE reconnect (`sse.reconnected` synthetic event) — heals mid-stream tail drops from daemon re-registration (found during live WS1 debugging; 3 regression tests) |
+| `babd515e` | Docs: freeze report + fix log — RW-01 closure, TUI 444/444, WS4 verification (dompurify 3.4.12) |
 
 **Validated by operator** in the real TUI: "Thinking" → "Thought" flip confirmed; header now static. 2 regression tests in `test/spine-mapper.test.ts` + 6-phase `test/streaming-lifecycle.test.ts` prove the plan entry flips `streaming=false` on completion, stays `true` mid-stream, and never resurrects stale `streaming=true` across cache reuse.
 
@@ -111,9 +113,9 @@
 
 None of these touch TUI rendering, approval lifecycle, or command-spine code.
 
-**TUI test result: 444/444 pass (with skip), 0 fail.** ✅
+**TUI test result: 447/448 pass (with skip), 0 fail.** ✅
 
-**RW-01 wrap fix (`ca73e50e`):** reasoning body clipped at the terminal right edge (117/133 chars visible at 120 cols) because the session-route `<code>` renderable defaulted to `wrapMode="none"`. Fixed with `wrapMode="word"` + clamped `reasoningBodyWidth()` (message column minus container indent, minimal-mode indent, and border; `Math.max(1, …)`). Stored reasoning data was always complete — display-only defect. 8 regression tests in `test/reasoning-part-wrap.test.tsx` (wrap, no duplication after `time.end`, streaming partial, minimal collapse, width sweep 59–180, degenerate clamp, in-place resize). `ReasoningPart` + session context exported for testability; type import aliased `ReasoningPartType`.
+**RW-01 wrap fix (`ca73e50e`):** reasoning body clipped at the terminal right edge (117/133 chars visible at 120 cols) because the session-route `<code>` renderable had no numeric width — `CodeRenderable` `wrapMode` defaults to `"word"` (docs `components/code.mdx`; dist `TextBufferRenderable._wrapMode = "word"`), but wrap only engages when `width > 0` (dist: `if (this._wrapMode !== "none" && this.width > 0) setWrapWidth(this.width)`). Width auto → intrinsic layout → right-edge clip. Fixed with explicit `wrapMode="word"` + clamped `reasoningBodyWidth()` (message column minus container indent, minimal-mode indent, and border; `Math.max(1, …)`) — the numeric width is the actual cure. Stored reasoning data was always complete — display-only defect. 8 regression tests in `test/reasoning-part-wrap.test.tsx` (wrap, no duplication after `time.end`, streaming partial, minimal collapse, width sweep 59–180, degenerate clamp, in-place resize). `ReasoningPart` + session context exported for testability; type import aliased `ReasoningPartType`.
 
 **Environment note (2026-07-31):** `bun test` from the repo root now segfaults deterministically (Bun 1.3.14 Windows, `bun.report/1.3.14/wt10d9b296...`, kernel32/ntdll frames). Repo code unchanged — environmental. Workaround: run suites from their package dirs (`cd packages/tui && bun test`), which is clean. Re-check after Bun upgrade.
 
