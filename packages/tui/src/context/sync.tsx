@@ -301,6 +301,8 @@ export const {
         }
 
         case "session.status": {
+          const ss = event.properties.status as any
+          console.error(`[sync] session.status: ${event.properties.sessionID} type=${ss.type}`)
           setStore("session_status", event.properties.sessionID, event.properties.status)
           break
         }
@@ -381,6 +383,10 @@ export const {
           break
         }
         case "message.part.updated": {
+          const _p = event.properties.part as any
+          if (_p.type === "reasoning" || _p.time?.end) {
+            console.error(`[sync] part.updated: type=${_p.type} id=${_p.id} time.end=${_p.time?.end ?? "none"}`)
+          }
           touchPart(event.properties.part.sessionID, event.properties.part.id)
           const parts = store.part[event.properties.part.messageID]
           if (!parts) {
