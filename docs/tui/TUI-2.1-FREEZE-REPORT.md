@@ -127,7 +127,7 @@ None of these touch TUI rendering, approval lifecycle, or command-spine code.
 | Stale artifact | `packages/core/src/crypto/__tests__/run-tui2.1-production-tests.ts` (asserts removed 2-line receipts; never run by `bun test` naming) — deletion pending (RB-01c) | Verified: 135 pass, dead code |
 
 **Remaining for closure:**
-1. **Engine-suite baseline triage** — **CLOSED** (JUnit rerun at HEAD, 2026-07-31): **3978 pass / 185 fail / 73 skip** — pass and fail counts EXACTLY match the pre-RB-01 baseline (3978/185/72, +1 skip from a new network-gated test). Zero new failures from the `tools.ts` PEP rewrite or the create-push fix. Zero approval/PEP/provenance failures in the failing set. The 185 are pre-existing environmental/config-test failures (agent config override loading, ACP sessions, HttpApi compression, source-classification fixtures, network-gated tests — none touch the PEP path). Evidence: `/tmp/engine-junit.xml` (4236 tests, 344 files, 825s).
+1. **Engine-suite baseline triage** — **CLOSED** (JUnit rerun at HEAD, 2026-07-31): **3978 pass / 185 fail / 73 skip** — pass and fail counts EXACTLY match the previous full-suite run (3978/185/72, +1 skip from a new network-gated test), which already included the RB-01 engine rewrite. Zero new failures introduced by the create-push fix (`d05ecfff`). Zero approval/PEP/provenance failures in the failing set. The 185 are pre-existing environmental/config-test failures (agent config override loading, ACP sessions, HttpApi compression, source-classification fixtures, network-gated tests — none touch the PEP path). Note: the previous run used the root bunfig (now blocked by the Bun root-crash); this run used the package bunfig — counts identical across contexts. Evidence: `/tmp/engine-junit.xml` (4236 tests, 344 files, 825s).
 2. **PENDING-create SSE push gap** — **CLOSED** (`d05ecfff`): `tools.ts` now publishes `approval.updated` with a wire-form `ApprovalRecord` after every durable record create (local + MCP paths); adapter gained `getApprovalRecord` (9/9 adapter tests incl. new wire-form test). TUI seam covered by new sync test (`1c6e6310`). Fresh PENDING entries render immediately; restart recovery also benefits.
 3. **WS1 manual smoke re-run** — phases 2-7 and 10-11 are now testable with the live approval loop.
 
@@ -388,7 +388,7 @@ These tests validate the rendering logic but do **not** replace visual verificat
 ### Acceptance Criteria Checklist
 
 - [ ] 11/11 manual smoke phases completed — **PENDING (requires human)**
-- [x] RB-01 closure verified — engine baseline triage CLOSED (3978/185/73 == baseline); PENDING-create gap CLOSED (`d05ecfff`); WS1 smoke re-run pending
+- [x] RB-01 closure verified — engine triage CLOSED (3978/185/73 == previous run, zero new); PENDING-create gap CLOSED (`d05ecfff`); WS1 smoke re-run pending
 - [ ] WS3 lifecycle states observed in real runtime — **PENDING (requires human)**
 - [ ] Denied paths produce zero executor calls — **PENDING (manual verification)**
 - [ ] Approval lifecycle durable across restart — **PENDING (manual verification)**
