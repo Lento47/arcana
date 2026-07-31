@@ -162,7 +162,7 @@ export function SpineNode(props: {
               <Show when={thinking()}>
                 <box flexDirection="row" gap={1} flexShrink={0}>
                   <ShimmerText
-                    text={summary() || "Thinking"}
+                    text={summary() || (streaming() ? "Thinking" : "Thought")}
                     active={streaming() || !!thinking()}
                     background={t.backgroundPanel as any}
                   />
@@ -172,7 +172,7 @@ export function SpineNode(props: {
               <Show when={isThinkStreaming()} fallback={summaryBody()}>
                 <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
                   <ShimmerText
-                    text={summary() || "Thinking"}
+                    text={summary() || (streaming() ? "Thinking" : "Thought")}
                     active={true}
                     background={t.backgroundPanel as any}
                   />
@@ -219,7 +219,7 @@ export function SpineNode(props: {
           {actorBox()}
           <Show when={thinking()}>
             <ShimmerText
-              text={thinking() || "Thinking"}
+              text={thinking() || (streaming() ? "Thinking" : "Thought")}
               active={!!thinking()}
               background={t.backgroundPanel as any}
             />
