@@ -158,6 +158,22 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
           // Exponential backoff
           const backoff = Math.min(retryDelay * 2 ** (attempt - 1), maxRetryDelay)
           await new Promise((resolve) => setTimeout(resolve, backoff))
+
+          // Synthetic reconnect signal. The stream just dropped (daemon
+          // re-registration, transient fetch error, or partial event left in
+          // the parser buffer at EOF). SSE events carry no id, so
+          // Last-Event-ID replay is impossible — listeners (session route)
+          // re-sync the active session from REST to close the gap.
+          if (!abort.signal.aborted && !ctrl.signal.aborted) {
+            emitter.emit("event", {
+              directory: props.directory ?? "",
+              payload: {
+                id: `sse.reconnected.${attempt}`,
+                type: "sse.reconnected",
+                properties: {},
+              },
+            } as unknown as GlobalEvent)
+          }
         }
       })().catch((error) => {
         // Never surface AbortError as unhandled — process unhandledRejection kills the TUI.

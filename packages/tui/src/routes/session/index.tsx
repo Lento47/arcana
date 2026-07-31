@@ -631,6 +631,16 @@ export function Session() {
     })
   })
 
+  // SSE gap-closer: the event stream can drop mid-exchange (daemon
+  // re-registration, parser buffer discard at EOF). Events carry no id,
+  // so replay is impossible — re-hydrate the active session from REST
+  // after every reconnect. Idempotent; failure just leaves the sync
+  // guard cleared for the next attempt.
+  event.subscribe((evt) => {
+    if ((evt as { type: string }).type !== "sse.reconnected") return
+    void sync.session.resync(route.sessionID).catch(() => {})
+  })
+
   // Helper: Find next visible message boundary in direction.
   // Build a single Set of message IDs with valid text parts so we do not
   // perform an O(n) find + per-child parts scan for every renderable child.
