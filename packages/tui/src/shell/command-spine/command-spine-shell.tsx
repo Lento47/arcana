@@ -175,6 +175,11 @@ export function CommandSpineShell(props: ShellProps) {
   // Approval-specific ephemeral state
   const [approvalSubmitting, setApprovalSubmitting] = createSignal(false)
   const [inspectorApprovalId, setInspectorApprovalId] = createSignal<string | undefined>()
+  // Focus/expand state MUST be declared before any memo that reads focusedEntryID
+  // (TDZ: createMemo callbacks close over const bindings; using them earlier throws
+  // "Cannot access 'focusedEntryID' before initialization").
+  const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
+  const [focusedEntryID, setFocusedEntryID] = createSignal<string | undefined>()
 
   // Helpers for approval entries
   const isApprovalEntry = (entry: SpineEntry): boolean =>
@@ -235,8 +240,6 @@ export function CommandSpineShell(props: ShellProps) {
     if (props.pending() && sessionActive) return "working"
     return "idle"
   })
-  const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
-  const [focusedEntryID, setFocusedEntryID] = createSignal<string | undefined>()
   const entryExpanded = (entry: { id: string; expandedByDefault?: boolean; collapsible?: boolean }) =>
     expandedEntries()[entry.id] ?? entry.expandedByDefault ?? entry.collapsible !== true
   const toggleEntry = (entry: {
