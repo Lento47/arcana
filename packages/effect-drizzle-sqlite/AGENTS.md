@@ -1,11 +1,5 @@
 # Effect Drizzle SQLite
 
-## Design Principles
-
-- Do not preserve backward compatibility.
-- Choose the simplest implementation that fully meets the current requirements.
-- Prefer established, well-maintained libraries over custom implementations.
-
 This package vendors a Drizzle Effect SQLite adapter for this repo.
 
 - Keep this package generic: Drizzle + Effect + SQLite only.

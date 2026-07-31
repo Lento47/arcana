@@ -1,11 +1,5 @@
 # Server Test Guide
 
-## Design Principles
-
-- Do not preserve backward compatibility.
-- Choose the simplest implementation that fully meets the current requirements.
-- Prefer established, well-maintained libraries over custom implementations.
-
 Use these patterns for server and HttpApi middleware tests in this directory.
 
 - Prefer focused middleware tests with tiny fake routes over full API route trees when testing routing, context, proxying, or middleware policy.

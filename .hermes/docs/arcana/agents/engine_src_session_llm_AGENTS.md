@@ -1,12 +1,6 @@
 # Session LLM Runtime Boundaries
 
-## Design Principles
-
-- Do not preserve backward compatibility.
-- Choose the simplest implementation that fully meets the current requirements.
-- Prefer established, well-maintained libraries over custom implementations.
-
-`../llm.ts` is the opencode session LLM service.
+`../llm.ts` is the opencode session LLM service. It owns opencode concerns: auth, config, model/provider resolution, plugins, permissions, telemetry headers, and runtime selection. It is the only file in this area that should know about the full session request shape.
 
 This folder contains adapters behind that service boundary:
 

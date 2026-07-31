@@ -1,11 +1,5 @@
 # Test Fixtures Guide
 
-## Design Principles
-
-- Do not preserve backward compatibility.
-- Choose the simplest implementation that fully meets the current requirements.
-- Prefer established, well-maintained libraries over custom implementations.
-
 ## Temporary Directory Fixture
 
 The `tmpdir` function in `fixture/fixture.ts` creates temporary directories for tests with automatic cleanup.
