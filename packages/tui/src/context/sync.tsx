@@ -776,6 +776,21 @@ export const {
           syncingSessions.set(sessionID, task)
           return task
         },
+        /**
+         * Force a full REST re-hydration of a session, bypassing the
+         * fullSyncedSessions warm-switch guard. Called after an SSE reconnect
+         * to close any gap (stream teardown, parser buffer drop at EOF).
+         * Reuses sync() so live-hydration race guards and the tracker merge
+         * stay identical. Fail-closed: on fetch failure the guard stays
+         * cleared so the next sync attempt retries.
+         */
+        async resync(sessionID: string) {
+          fullSyncedSessions.delete(sessionID)
+          // The fresh hydrate resets the older-messages cursor; un-exhaust so
+          // scrolled-up history stays reachable after the reconnect trim.
+          exhaustedOlderSessions.delete(sessionID)
+          return result.session.sync(sessionID)
+        },
         async loadOlder(sessionID: string) {
           const messages = store.message[sessionID]
           if (!messages || messages.length === 0) return false
