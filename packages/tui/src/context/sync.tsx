@@ -20,6 +20,7 @@ import type {
   SnapshotFileDiff,
   ConsoleState,
 } from "@arcana/sdk/v2"
+import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useProject } from "./project"
 import { useEvent } from "./event"
@@ -103,6 +104,10 @@ export const {
       }
       formatter: FormatterStatus[]
       vcs: VcsInfo | undefined
+      /** Durable approval records, keyed by approvalId (RB-01 D4 sync channel). */
+      approvals: {
+        [approvalId: string]: ApprovalRecord
+      }
     }>({
       provider_next: {
         all: [],
@@ -131,6 +136,7 @@ export const {
       mcp_resource: {},
       formatter: [],
       vcs: undefined,
+      approvals: {},
     })
 
     const event = useEvent()
@@ -447,6 +453,17 @@ export const {
           break
         }
       }
+    })
+
+    // TUI-2.1C (RB-01 §D4): durable approval records are pushed on create and
+    // every transition over the same SSE channel as messages/parts. The event
+    // is not yet part of the generated SDK union — match defensively by name.
+    // Contract: { type: "session.approval.updated", properties: { sessionID, approval } }
+    event.subscribe((event) => {
+      if ((event as { type: string }).type !== "session.approval.updated") return
+      const approval = (event as unknown as { properties?: { approval?: ApprovalRecord } }).properties?.approval
+      if (!approval?.approvalId) return
+      setStore("approvals", approval.approvalId, approval)
     })
 
     const exit = useExit()
