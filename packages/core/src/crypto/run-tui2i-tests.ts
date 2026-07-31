@@ -48,7 +48,7 @@ function createOperator(overrides?: Partial<AuthenticatedOperator>): Authenticat
 function createPending(store: SqliteApprovalStore, id: string, overrides?: Partial<ApprovalRecord>) {
   store.saveApproval({
     approvalId: id,
-    version: 0,
+    version: 1,
     sessionId: "session-1",
     workspaceId: "arcana",
     requestHash: "hash-abc",

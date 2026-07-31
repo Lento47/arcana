@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS approval_records (
   workspace_id TEXT NOT NULL,
   request_hash TEXT NOT NULL,
   contract_revision INTEGER NOT NULL,
+  principal_id TEXT NOT NULL DEFAULT '',
   state TEXT NOT NULL DEFAULT 'PENDING',
   approved_by TEXT,
   execution_id TEXT,
@@ -87,10 +88,11 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
 
   saveApproval(record: ApprovalRecord): void {
     this.db.run(
-      `INSERT INTO approval_records (approval_id, version, session_id, workspace_id, request_hash, contract_revision, state, approved_by, execution_id, expires_at, updated_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO approval_records (approval_id, version, session_id, workspace_id, request_hash, contract_revision, principal_id, state, approved_by, execution_id, expires_at, updated_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(approval_id) DO UPDATE SET
          version = excluded.version,
+         principal_id = excluded.principal_id,
          state = excluded.state,
          approved_by = excluded.approved_by,
          execution_id = excluded.execution_id,
@@ -98,7 +100,8 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
          updated_at = excluded.updated_at`,
       [
         record.approvalId, record.version, record.sessionId, record.workspaceId,
-        record.requestHash, record.contractRevision, record.state,
+        record.requestHash, record.contractRevision, record.principalId ?? "",
+        record.state,
         record.approvedBy ?? null, record.executionId ?? null,
         record.expiresAt, record.updatedAt, record.createdAt,
       ],
@@ -142,6 +145,24 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
     const rows = this.db.query(
       "SELECT * FROM approval_records WHERE session_id = ? AND state = 'PENDING' ORDER BY created_at"
     ).all(sessionId) as any[]
+    return rows.map(rowToApproval)
+  }
+
+  /**
+   * Load the most recent approval bound to an exact request hash.
+   * Used by the scoped-approval adapter for request-scoped lookups.
+   */
+  loadApprovalByRequestHash(requestHash: string): ApprovalRecord | null {
+    const row = this.db.query(
+      "SELECT * FROM approval_records WHERE request_hash = ? ORDER BY created_at DESC LIMIT 1"
+    ).get(requestHash) as any
+    if (!row) return null
+    return rowToApproval(row)
+  }
+
+  /** Load every approval record (snapshot pre-computation for the PDP). */
+  loadAllApprovals(): ApprovalRecord[] {
+    const rows = this.db.query("SELECT * FROM approval_records ORDER BY created_at").all() as any[]
     return rows.map(rowToApproval)
   }
 
@@ -194,6 +215,7 @@ function rowToApproval(row: any): ApprovalRecord {
     workspaceId: row.workspace_id,
     requestHash: row.request_hash,
     contractRevision: row.contract_revision,
+    principalId: row.principal_id || undefined,
     state: row.state,
     approvedBy: row.approved_by ?? undefined,
     executionId: row.execution_id ?? undefined,

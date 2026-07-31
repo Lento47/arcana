@@ -56,7 +56,7 @@ function createOperator(overrides?: Partial<AuthenticatedOperator>): Authenticat
 function createPendingApproval(store: InMemoryApprovalStore, id: string, overrides?: Partial<ApprovalRecord>) {
   store.saveApproval({
     approvalId: id,
-    version: 0,
+    version: 1,
     sessionId: "session-1",
     workspaceId: "arcana",
     requestHash: "hash-abc",
@@ -86,7 +86,7 @@ console.log("[a] emits exactly one APPROVE_ONCE command")
   const result = service.submitCommand({
     approvalId: "appr-1",
     command: "APPROVE_ONCE",
-    expectedVersion: 0,
+    expectedVersion: 1,
     expectedRequestHash: "hash-abc",
     expectedContractRevision: 1,
   })
@@ -105,7 +105,7 @@ console.log("[d] emits exactly one DENY command")
   const result = service.submitCommand({
     approvalId: "appr-2",
     command: "DENY",
-    expectedVersion: 0,
+    expectedVersion: 1,
     expectedRequestHash: "hash-abc",
     expectedContractRevision: 1,
   })
@@ -141,7 +141,7 @@ console.log("Shell state: IDLE → SELECTED → INSPECTING → SUBMITTING → ID
 {
   let state: ApprovalShellState = { kind: "IDLE" }
 
-  state = reduceApprovalShellState(state, { kind: "SELECT", approvalId: "appr-1", expectedVersion: 0 })
+  state = reduceApprovalShellState(state, { kind: "SELECT", approvalId: "appr-1", expectedVersion: 1 })
   assertEqual(state.kind, "SELECTED", "SELECT → SELECTED")
   assert(canOpenInspector(state), "can open inspector from SELECTED")
 
@@ -160,7 +160,7 @@ console.log("Shell state: IDLE → SELECTED → INSPECTING → SUBMITTING → ID
 console.log("Shell state: SUBMITTING blocks duplicate commands")
 {
   let state: ApprovalShellState = { kind: "IDLE" }
-  state = reduceApprovalShellState(state, { kind: "SELECT", approvalId: "appr-1", expectedVersion: 0 })
+  state = reduceApprovalShellState(state, { kind: "SELECT", approvalId: "appr-1", expectedVersion: 1 })
   state = reduceApprovalShellState(state, { kind: "OPEN_INSPECTOR" })
   state = reduceApprovalShellState(state, { kind: "SUBMIT_APPROVE" })
   assertEqual(state.kind, "SUBMITTING", "first submit → SUBMITTING")
@@ -176,7 +176,7 @@ console.log("Shell state: SUBMITTING blocks duplicate commands")
 console.log("Shell state: COMMAND_FAILED")
 {
   let state: ApprovalShellState = { kind: "IDLE" }
-  state = reduceApprovalShellState(state, { kind: "SELECT", approvalId: "appr-1", expectedVersion: 0 })
+  state = reduceApprovalShellState(state, { kind: "SELECT", approvalId: "appr-1", expectedVersion: 1 })
   state = reduceApprovalShellState(state, { kind: "OPEN_INSPECTOR" })
   state = reduceApprovalShellState(state, { kind: "SUBMIT_DENY" })
   state = reduceApprovalShellState(state, { kind: "COMMAND_FAILED", reason: "version changed" })
@@ -193,7 +193,7 @@ console.log("Shell state: COMMAND_FAILED")
 console.log("Shell state: SESSION_CHANGED clears selection")
 {
   let state: ApprovalShellState = { kind: "IDLE" }
-  state = reduceApprovalShellState(state, { kind: "SELECT", approvalId: "appr-1", expectedVersion: 0 })
+  state = reduceApprovalShellState(state, { kind: "SELECT", approvalId: "appr-1", expectedVersion: 1 })
   state = reduceApprovalShellState(state, { kind: "OPEN_INSPECTOR" })
   assertEqual(state.kind, "INSPECTING", "INSPECTING")
 
@@ -204,7 +204,7 @@ console.log("Shell state: SESSION_CHANGED clears selection")
 console.log("Shell state: APPROVAL_DISAPPEARED clears selection")
 {
   let state: ApprovalShellState = { kind: "IDLE" }
-  state = reduceApprovalShellState(state, { kind: "SELECT", approvalId: "appr-1", expectedVersion: 0 })
+  state = reduceApprovalShellState(state, { kind: "SELECT", approvalId: "appr-1", expectedVersion: 1 })
   state = reduceApprovalShellState(state, { kind: "APPROVAL_DISAPPEARED" })
   assertEqual(state.kind, "IDLE", "APPROVAL_DISAPPEARED → IDLE")
 }
@@ -222,7 +222,7 @@ console.log("Another session's approval cannot be submitted")
   const result = service.submitCommand({
     approvalId: "appr-other",
     command: "APPROVE_ONCE",
-    expectedVersion: 0,
+    expectedVersion: 1,
     expectedRequestHash: "hash-abc",
     expectedContractRevision: 1,
   })
@@ -240,7 +240,7 @@ console.log("Another workspace's approval cannot be submitted")
   const result = service.submitCommand({
     approvalId: "appr-ws",
     command: "APPROVE_ONCE",
-    expectedVersion: 0,
+    expectedVersion: 1,
     expectedRequestHash: "hash-abc",
     expectedContractRevision: 1,
   })
@@ -350,7 +350,7 @@ console.log("Approval database state matches receipt after approve")
   const result = service.submitCommand({
     approvalId: "appr-receipt",
     command: "APPROVE_ONCE",
-    expectedVersion: 0,
+    expectedVersion: 1,
     expectedRequestHash: "hash-abc",
     expectedContractRevision: 1,
   })

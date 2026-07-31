@@ -43,6 +43,9 @@ export type ApprovalRecord = {
   requestHash: string
   contractRevision: number
 
+  /** Principal the approval authorizes (agent identity). Optional for backward compat. */
+  principalId?: string
+
   state: ApprovalState
 
   approvedBy?: string
@@ -204,7 +207,7 @@ function handleApprove(
     // New approval — create PENDING record first
     record = {
       approvalId: command.approvalId,
-      version: 0,
+      version: 1,
       sessionId: command.sessionId,
       workspaceId: command.workspaceId,
       requestHash: command.requestHash,
