@@ -38,6 +38,7 @@ const themeSource: ThemeSource = {
   async discover() {
     const directories = [Global.Path.config]
     for (let current = process.cwd(); ; current = path.dirname(current)) {
+      directories.push(path.join(current, ".arcana"))
       directories.push(path.join(current, ".opencode"))
       if (path.dirname(current) === current) break
     }
@@ -267,7 +268,7 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
         if (theme) return resolveTheme(theme, store.mode)
       }
 
-      return resolveTheme(store.themes.arcana ?? store.themes.opencode, store.mode)
+      return resolveTheme(store.themes.arcana ?? store.themes.opencode ?? store.themes.arcana, store.mode)
     })
 
     createEffect(() => renderer.setBackgroundColor(values().background))
