@@ -128,6 +128,25 @@ Shell-local states (ephemeral, not durable):
 - SUBMITTING (approvalId, command)
 - COMMAND_FAILED (approvalId, reason)
 
+Transitions (production spine, TUI-2.1):
+
+```
+IDLE
+  → focus/click approval entry → SELECTED
+  → v (inspect) → INSPECTING
+INSPECTING
+  → esc → SELECTED (inspector closed; entry remains focused)
+SELECTED
+  → esc → IDLE (selection cleared)
+  → a / d → SUBMITTING → durable reload (never local lifecycle inference)
+```
+
+Keyboard ownership:
+
+- `a` / `d` / `v` require SELECTED (or actionable focus) with the **composer unfocused**
+- `esc` while INSPECTING always closes the inspector (priority over `session.interrupt`)
+- `esc` while SELECTED clears selection only when the composer is unfocused
+
 After command submission, the shell reloads from the durable event
 stream. It never infers the next lifecycle state locally.
 

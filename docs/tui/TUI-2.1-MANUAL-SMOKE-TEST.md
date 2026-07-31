@@ -2,7 +2,8 @@
 
 **Branch:** `phase-d-implementation`  
 **Date:** 2026-07-30  
-**Engine prerequisite:** EventStore LayerNode + AppRuntime `defaultLayer` fixes (daemon/`Server.listen` must reach `/health`)
+**Engine prerequisite:** EventStore LayerNode + AppRuntime `defaultLayer` fixes (daemon/`Server.listen` must reach `/health`)  
+**All fixes reference:** [TUI-2.1 Fix Log](./TUI-2.1-FIX-LOG.md) (F-01…F-14)
 
 ---
 
@@ -74,9 +75,15 @@ Trigger any action that requires approval (e.g., a consequential tool call that 
 
 ### 3.2 Close inspector
 - [ ] Press `Esc`
-- [ ] Inspector closes
-- [ ] Focus returns to the approval entry (or clears)
-- [ ] Prompt regains usability
+- [ ] Inspector closes (**SELECTED**, not IDLE)
+- [ ] Approval entry remains focused / selected
+- [ ] Esc does **not** start "again to interrupt" while inspector is open
+- [ ] Prompt remains usable (composer not stuck)
+
+### 3.3 Clear selection after inspect
+- [ ] With inspector closed and approval still selected, press `Esc` again
+- [ ] Selection clears (no focused approval)
+- [ ] A further `a`/`d`/`v` does nothing until an approval is focused again
 
 ---
 
@@ -131,10 +138,11 @@ Create another approval-required action.
 - [ ] Type `d` → letter "d" appears in prompt
 - [ ] Type `v` → letter "v" appears in prompt
 - [ ] **No approval command is triggered**
+- [ ] With an approval still selected in the spine but composer focused, `Esc` does **not** clear selection (interrupt / prompt layers may use Esc)
 
 ### 6.2 Return to spine
-- [ ] Press `j`/`k` to refocus spine
-- [ ] Navigate to an approval entry
+- [ ] Click the approval entry (or blur prompt then `j`/`k`)
+- [ ] Composer loses focus; approval is SELECTED
 - [ ] Press `a` → approval command fires (if PENDING)
 
 ### 6.3 Rapid key press
@@ -142,6 +150,12 @@ Create another approval-required action.
 - [ ] Rapidly press `a` 5 times
 - [ ] Only ONE approval command fires
 - [ ] Entry transitions to APPROVED (not multiple versions)
+
+### 6.4 Esc vs interrupt while inspecting
+- [ ] Focus PENDING approval, press `v` (inspector open)
+- [ ] Optionally click the prompt so the composer is focused
+- [ ] Press `Esc` once → inspector closes (SELECTED); not interrupt arming
+- [ ] Only after inspector is closed and composer is focused may Esc participate in interrupt
 
 ---
 
@@ -174,7 +188,7 @@ Create another approval-required action.
 - [ ] Resize to 80 columns
 - [ ] Inspector remains readable
 - [ ] No viewport overflow
-- [ ] Close inspector (`Esc`)
+- [ ] Close inspector (`Esc`) → SELECTED (entry still focused)
 
 ### 8.3 Width matrix
 Test at each width. For each, verify:
@@ -286,6 +300,7 @@ _(Add issues here as you find them)_
 
 ### Release Blocker
 - Typing triggers approval command
+- Esc while INSPECTING fails to close inspector (or arms interrupt instead)
 - Wrong session approval is actionable
 - Duplicate approval command
 - APPROVED shown as executed

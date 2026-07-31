@@ -10,6 +10,7 @@ Related docs:
 - [TUI-2 Interactive Authority Control](./TUI-2-INTERACTIVE-AUTHORITY-CONTROL.md) (frozen prerequisite)
 - [TUI-2.1 Production Integration Polish](./TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md) (milestone contract)
 - [TUI-2.1 Manual Smoke Test](./TUI-2.1-MANUAL-SMOKE-TEST.md) (operator checklist)
+- [TUI-2.1 Fix Log](./TUI-2.1-FIX-LOG.md) (**all fixes** F-01…F-14: engine, harness, TUI crash, grants, shell, Esc)
 
 ---
 
@@ -62,7 +63,7 @@ TUI-3 (delegation / subagent operations) remains blocked until TUI-2.1 hard gate
 | Spine adapter | `packages/tui/src/shell/command-spine/approval-spine-adapter.ts` | `ApprovalRecord` → `SpineEntry` (glyphs, kinds, tones, copy) |
 | Shell controller | `packages/tui/src/shell/command-spine/approval-shell-controller.ts` | Operator intents only; no executor imports |
 | Integration hook | `packages/tui/src/shell/command-spine/approval-integration.ts` | Production wiring for approvals into the shell |
-| Command spine mount | `packages/tui/src/shell/command-spine/command-spine-shell.tsx` | Merge approval entries, keyboard (`a`/`d`/`v`/`esc`), inspector, submitting guard |
+| Command spine mount | `packages/tui/src/shell/command-spine/command-spine-shell.tsx` | Merge approval entries, keyboard (`a`/`d`/`v`/`esc`), inspector, submitting guard; Esc priority while INSPECTING |
 
 ### 3.2 Core approval stack (TUI-2 foundation, reused)
 
@@ -90,9 +91,11 @@ TUI-3 (delegation / subagent operations) remains blocked until TUI-2.1 hard gate
 
 | Doc | Status |
 |-----|--------|
-| `docs/tui/TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md` | Milestone contract (IN PROGRESS → update after smoke) |
-| `docs/tui/TUI-2.1-MANUAL-SMOKE-TEST.md` | Operator checklist (unchecked pending run) |
-| `docs/tui/TUI-2.1-SPRINT-REPORT.md` | This report |
+| `docs/tui/TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md` | Milestone contract; §7–8 Esc/focus rules updated |
+| `docs/tui/TUI-2.1-MANUAL-SMOKE-TEST.md` | Operator checklist; Phase 3.2–3.3 + 6.4 Esc cases |
+| `docs/tui/TUI-2-INTERACTIVE-AUTHORITY-CONTROL.md` | TUI-2 foundation; §9 shell transitions + Esc ownership |
+| `docs/tui/TUI-2.1-SPRINT-REPORT.md` | This report (§6d Esc fix) |
+| `docs/tui/TUI-2.1-FIX-LOG.md` | Consolidated fix inventory (F-01…F-14) |
 
 ---
 
@@ -285,6 +288,34 @@ Interactive phases still required: approval glyphs, `a`/`d`/`v`/`esc`, resize ma
 
 ---
 
+## 6d. Esc / focus fix (doc-aligned, post-smoke feedback)
+
+**Symptom:** `Esc` failed to close the exact-request inspector (smoke Phase 3.2), often because approval bindings required both a focused approval **and** `currentFocusedEditor === null`, so base-mode `session.interrupt` owned Escape while the composer stayed focused.
+
+**Contract (unchanged intent, tightened implementation):**
+
+| State | Esc |
+|-------|-----|
+| INSPECTING | Always close inspector → SELECTED (priority over interrupt) |
+| SELECTED, composer unfocused | Clear selection → IDLE |
+| Composer focused, not inspecting | No approval Esc; interrupt / prompt may use Esc |
+
+**Code:**
+
+| File | Change |
+|------|--------|
+| `command-spine-shell.tsx` | Split `a`/`d`/`v` from Esc; Esc layer priority 3; blur composer on focus/inspect; wire `select` / `inspect` / `clearSelection` |
+| `approval-shell-controller.ts` | `select` clears inspecting; `inspect` keeps selection |
+| `component/prompt/index.tsx` | `session.interrupt` disabled when gate-disabled; returns `false` when unfocused so Esc is not a no-op swallow |
+
+**Docs updated:** this report, `TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md` §7–8, `TUI-2-INTERACTIVE-AUTHORITY-CONTROL.md` §9, `TUI-2.1-MANUAL-SMOKE-TEST.md` Phases 3 and 6, **[TUI-2.1-FIX-LOG.md](./TUI-2.1-FIX-LOG.md)** (F-12/F-13).
+
+**Not in scope:** PermissionV1 Action Gate Esc-as-reject.
+
+Full inventory of engine, harness, TUI crash, grants, shell, and Esc fixes: **[TUI-2.1 Fix Log](./TUI-2.1-FIX-LOG.md)**.
+
+---
+
 ## 7. Authority boundary audit (TUI-2.1)
 
 | Rule | Status |
@@ -316,9 +347,10 @@ Parallel Phase D work on the same branch (ACEP-1, D-6/D-7/D-8A, workload identit
 
 ### Must-do to close TUI-2.1
 
-1. **Run** [TUI-2.1 Manual Smoke Test](./TUI-2.1-MANUAL-SMOKE-TEST.md) on a real terminal (startup, approve, deny, resize matrix, themes).
-2. Record smoke results (checkboxes + width table) and freeze milestone status in `TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md`.
-3. Optional git hygiene: clean TUI-2.1 branch from frozen TUI-2 tag via transplant strategy (separate from runtime fix).
+1. **Run** [TUI-2.1 Manual Smoke Test](./TUI-2.1-MANUAL-SMOKE-TEST.md) on a real terminal (startup, approve, deny, **Esc close inspector / clear selection**, resize matrix, themes).
+2. Confirm Phase 3.2–3.3 and 6.4 (Esc vs interrupt) after the §6d focus fix.
+3. Record smoke results (checkboxes + width table) and freeze milestone status in `TUI-2.1-PRODUCTION-INTEGRATION-POLISH.md`.
+4. Optional git hygiene: clean TUI-2.1 branch from frozen TUI-2 tag via transplant strategy (separate from runtime fix).
 
 ### Nice-to-have / follow-ups
 

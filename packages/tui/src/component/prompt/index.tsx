@@ -445,16 +445,19 @@ export function Prompt(props: PromptProps) {
         name: "session.interrupt",
         category: "Session",
         hidden: true,
-        enabled: status().type !== "idle",
+        // Disabled while permission/question gates own the shell (composer disabled).
+        enabled: status().type !== "idle" && !props.disabled,
         run: () => {
-          if (auto()?.visible) return
-          if (!input.focused) return
+          // Return false so Escape can fall through to higher-priority layers
+          // (e.g. TUI-2.1 close inspector) instead of being consumed as a no-op.
+          if (auto()?.visible) return false
+          if (!input.focused) return false
           // TODO: this should be its own command
           if (store.mode === "shell") {
             setStore("mode", "normal")
             return
           }
-          if (!props.sessionID) return
+          if (!props.sessionID) return false
 
           setStore("interrupt", store.interrupt + 1)
 
