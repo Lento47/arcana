@@ -190,6 +190,8 @@ function getAllowedFields(domain: SignatureDomain): Set<string> {
     case NODE_IDENTITY_DOMAIN: return NODE_IDENTITY_ALLOWED_FIELDS
     case REVOCATION_DOMAIN: return REVOCATION_ALLOWED_FIELDS
   }
+  // Unreachable: all domain cases covered, but TS needs explicit return
+  throw new Error(`unknown domain: ${domain as string}`)
 }
 
 // ─── Layered Verification ────────────────────────────────────────────
@@ -404,7 +406,7 @@ function verifyRevocationStatus(
   knownSequences: Map<string, number>,
 ): VerificationResult {
   const issuerId = envelope.issuerId as string
-  const sequence = envelope.sequence as number
+  const sequence = envelope.sequence as number | undefined
   if (sequence === undefined) return { valid: true }
 
   const knownSeq = knownSequences.get(issuerId)
@@ -415,17 +417,6 @@ function verifyRevocationStatus(
     }
   }
   return { valid: true }
-}
-
-// ─── Re-export layers for independent testing ────────────────────────
-
-export {
-  validateEnvelopeSchema,
-  verifyEnvelopeSignature,
-  verifyIssuerTrust,
-  verifyAudience,
-  verifyFreshness,
-  verifyRevocationStatus,
 }
 
 // ─── Full Envelope Verification ──────────────────────────────────────

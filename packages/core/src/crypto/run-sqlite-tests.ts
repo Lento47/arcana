@@ -30,7 +30,7 @@ function assertEqual<T>(actual: T, expected: T, message: string) {
   assert(actual === expected, `${message} — expected ${expected}, got ${actual}`)
 }
 
-async function assertThrows(fn: () => Promise<void>, message: string) {
+async function assertThrows(fn: () => Promise<unknown>, message: string) {
   try {
     await fn()
     failed++

@@ -145,7 +145,7 @@ export const layer = Layer.effect(
       // Set cancellation metadata so session.completed emits reason: "cancelled"
       yield* sessions.setMetadata({
         sessionID,
-        metadata: { ...((yield* sessions.get(sessionID))?.metadata ?? {}), __arcana_cancelled: true },
+        metadata: { ...((yield* sessions.get(sessionID).pipe(Effect.catch(() => Effect.succeed(null))))?.metadata ?? {}), __arcana_cancelled: true },
       }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
       yield* state.cancel(sessionID)
     })

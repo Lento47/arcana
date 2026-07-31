@@ -136,7 +136,7 @@ describe("Group A: Verification Accuracy", () => {
       fixtureId: "A1",
       expected: "not VERIFIED",
       actual: result.status,
-      pass: result.status !== "VERIFIED",
+      pass: result.status !== ("VERIFIED" as typeof result.status),
       policyVersion: CURRENT_POLICY_VERSION,
     }
     expect(r.pass).toBe(true)
@@ -283,7 +283,7 @@ describe("Group B: Reproducibility Accuracy", () => {
     insertEvent(db, { id: "b4-2", sequence: 2, sessionId: "b4", type: "session.completed", payload: { reason: "normal" } })
 
     // Override historical decision to ELIGIBLE (simulating older policy)
-    const payload = JSON.parse(db.prepare("SELECT payload FROM events WHERE id = 'b4-1'").get().payload)
+    const payload = JSON.parse((db.prepare("SELECT payload FROM events WHERE id = 'b4-1'").get() as any).payload) as any
     payload.replay.policyDecision = "ELIGIBLE"
     payload.replay.policyVersion = "replay-policy-v1"
     db.prepare("UPDATE events SET payload = ? WHERE id = 'b4-1'").run(JSON.stringify(payload))

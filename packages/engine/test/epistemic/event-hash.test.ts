@@ -3,17 +3,18 @@ import { computeEventHash } from "@arcana/core/epistemic/event-hash"
 
 // ── helpers ──────────────────────────────────────────────────────────
 
+const base = () => ({
+  id: "550e8400-e29b-41d4-a716-446655440000",
+  sequence: 0,
+  timestamp: "2026-07-28T00:00:00.000Z",
+  previousHash: null as string | null,
+  actorKind: "user",
+  actorId: "actor-1",
+  type: "contract.proposed",
+  payload: '{"objective":"test"}',
+})
+
 function makeEvent(overrides: Partial<ReturnType<typeof base>> = {}) {
-  const base = () => ({
-    id: "550e8400-e29b-41d4-a716-446655440000",
-    sequence: 0,
-    timestamp: "2026-07-28T00:00:00.000Z",
-    previousHash: null as string | null,
-    actorKind: "user",
-    actorId: "actor-1",
-    type: "contract.proposed",
-    payload: '{"objective":"test"}',
-  })
   return { ...base(), ...overrides }
 }
 
@@ -68,8 +69,7 @@ describe("computeEventHash", () => {
     // The bug was using JSON.parse(payload) directly in the canonical form,
     // not as a string. Let's verify the critical case: payload as object vs string.
     const parsedPayload = parsed // object, not string
-    // @ts-expect-error — testing wrong type usage that was the original bug
-    const hash3 = computeEventHash(makeEvent({ payload: parsedPayload }))
+    const hash3 = computeEventHash(makeEvent({ payload: parsedPayload as any }))
 
     // hash3 will differ because JSON.stringify({..., payload: {object}}) !==
     // JSON.stringify({..., payload: '{"objective":"test",...}'})

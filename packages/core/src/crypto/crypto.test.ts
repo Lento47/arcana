@@ -32,6 +32,7 @@ import {
   verifyFreshness,
   verifyRevocationStatus,
   type VerificationResult,
+  type VerificationStage,
 } from "./verifier"
 import {
   CAPABILITY_DOMAIN,
@@ -1012,8 +1013,8 @@ describe("§7 Golden vector conformance suite", () => {
       } else {
         expect(result.valid).toBe(false)
         if (!result.valid) {
-          expect(result.stage).toBe(vector.expectedStage)
-          expect(result.reason).toBe(vector.expectedReason)
+          expect(result.stage).toBe(vector.expectedStage as VerificationStage)
+          expect(result.reason).toBe(vector.expectedReason as RejectionReason)
         }
       }
     })

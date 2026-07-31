@@ -24,8 +24,10 @@ import {
 } from "./durable-state"
 import type {
   ObservedWorkloadIdentity,
-  WorkloadIdentityAssurance,
 } from "./workload-identity"
+import type {
+  WorkloadIdentityAssurance,
+} from "./identity-contracts"
 import type {
   DistributedGrantAudience,
   NodeIdentity,
@@ -225,7 +227,7 @@ console.log("D-7I: Valid signed envelope → real filesystem read")
   if (readResult.success) {
     assertEqual(readResult.bytesRead, Buffer.byteLength(TARGET_CONTENT), "correct bytes read")
     assert(readResult.hash.length === 64, "SHA-256 hash produced")
-    assert(readResult.content.toString(), "content is readable")
+    assert(readResult.content.toString().length > 0, "content is readable")
   }
 
   // 5. Verify containment

@@ -159,7 +159,7 @@ describe("PEP: request hash integrity", () => {
 
     const result = await authorizeAndExecute(effect, provider)
     const expected = computeRequestHash(req)
-    expect(result.request.requestHash ?? (result as any).requestHash).toBe(expected)
+    expect((result as any).requestHash).toBe(expected)
     if (result.status === "EXECUTED") {
       expect(result.requestHash).toBe(expected)
     }
@@ -351,8 +351,8 @@ describe("PEP: determinism", () => {
       provider,
     )
 
-    expect(r1.request.requestHash ?? (r1 as any).requestHash).toBe(
-      r2.request.requestHash ?? (r2 as any).requestHash,
+    expect((r1 as any).requestHash).toBe(
+      (r2 as any).requestHash,
     )
   })
 })

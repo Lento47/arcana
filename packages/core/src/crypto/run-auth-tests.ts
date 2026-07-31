@@ -232,23 +232,23 @@ console.log("Workload TOCTOU defense")
   // Stable
   const current = { ...admission }
   const r1 = verifyWorkloadStable(admission, current)
-  assert(r1.stable === true, "identical identity is stable")
+  assert("stable" in r1 && r1.stable === true, "identical identity is stable")
 
   // Workload ID changed
   const r2 = verifyWorkloadStable(admission, { ...current, workloadId: "wld-2" })
-  assert(!r2.stable && r2.reason.includes("workloadId"), "workloadId change detected")
+  assert("stale" in r2 && r2.reason.includes("workloadId"), "workloadId change detected")
 
   // Executable digest changed
   const r3 = verifyWorkloadStable(admission, { ...current, executableDigest: "evil" })
-  assert(!r3.stable && r3.reason.includes("executableDigest"), "executableDigest change detected")
+  assert("stale" in r3 && r3.reason.includes("executableDigest"), "executableDigest change detected")
 
   // PID changed
   const r4 = verifyWorkloadStable(admission, { ...current, processId: 9999 })
-  assert(!r4.stable && r4.reason.includes("processId"), "processId change detected")
+  assert("stale" in r4 && r4.reason.includes("processId"), "processId change detected")
 
   // OS principal changed
   const r5 = verifyWorkloadStable(admission, { ...current, operatingSystemPrincipal: "evil" })
-  assert(!r5.stable && r5.reason.includes("osPrincipal"), "osPrincipal change detected")
+  assert("stale" in r5 && r5.reason.includes("osPrincipal"), "osPrincipal change detected")
 }
 
 // ═══════════════════════════════════════════════════════════════════════

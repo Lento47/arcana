@@ -287,7 +287,7 @@ describe("RunProof export verification", () => {
     const data = makeValidExport({
       p3DenialReasons: ["no VERIFIED_COMPLETE decision", "lifecycle is incomplete"],
     })
-    expect(data.p3DenialReasons).toContain("no VERIFIED_COMPLETE decision")
-    expect(data.p3DenialReasons).toContain("lifecycle is incomplete")
+    expect((data.p3DenialReasons as readonly string[]) as string[]).toContain("no VERIFIED_COMPLETE decision")
+    expect((data.p3DenialReasons as readonly string[]) as string[]).toContain("lifecycle is incomplete")
   })
 })

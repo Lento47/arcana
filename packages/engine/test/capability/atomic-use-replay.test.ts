@@ -14,7 +14,7 @@ function makeGrant(overrides: Partial<CapabilityGrant> = {}): CapabilityGrant {
     id: `grant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     schemaVersion: "1",
     principal: { kind: "agent", id: "general" },
-    issuer: { kind: "system", id: "test" },
+    issuer: { kind: "policy", id: "test" },
     actions: ["filesystem.read"],
     resources: [{ kind: "file", pattern: "packages/**" }],
     constraints: { sessionId: "session-1", maxUses: 3 },

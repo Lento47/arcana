@@ -171,7 +171,7 @@ describe("Authorization events: PEP emits events", () => {
         const denied = authEvents.find((e) => e.type === "authorization.denied")
         expect(denied).toBeTruthy()
         expect((denied!.payload as any).decision.decision).toBe("DENY")
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -225,7 +225,7 @@ describe("Authorization events: PEP emits events", () => {
 
         const executed = authEvents.find((e) => e.type === "authorization.executed")
         expect(executed).toBeTruthy()
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -280,7 +280,7 @@ describe("Authorization events: PEP emits events", () => {
         const authEvents = events.filter((e) => e.type.startsWith("authorization."))
         const approval = authEvents.find((e) => e.type === "authorization.approval_required")
         expect(approval).toBeTruthy()
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 })
@@ -361,7 +361,7 @@ describe("Authorization events: RunProof integration", () => {
         expect(proof.authorizationProfile.unauthorizedExecutions).toBe(0)
         expect(proof.authorizationProfile.capabilityViolations).toBe(1)
         expect(proof.authorizationProfile.policyVersions).toContain("phase-c-v1")
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 
@@ -419,7 +419,7 @@ describe("Authorization events: RunProof integration", () => {
         expect(proof.authorizationProfile.unauthorizedExecutions).toBe(0)
         expect(proof.authorizationProfile.denied).toBe(0)
         expect(proof.authorizationProfile.capabilityViolations).toBe(0)
-      }).pipe(Effect.provide(testLayer)),
+      }).pipe(Effect.provide(testLayer)) as any,
     )
   })
 })

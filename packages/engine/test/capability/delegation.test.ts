@@ -7,10 +7,12 @@ import {
   isSensitivityNarrowerOrEqual,
 } from "@arcana/core/capability/delegation"
 import type {
-  CapabilityGrant,
   CapabilityGrantDraft,
   DelegationRequest,
   DelegatedContext,
+} from "@arcana/core/capability/delegation"
+import type {
+  CapabilityGrant,
   ResourceSelector,
 } from "@arcana/core/capability/types"
 

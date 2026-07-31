@@ -239,9 +239,9 @@ function makeHttpNoLLMServer(input?: { processor?: "blocking" }) {
   return makePrompt(input)
 }
 
-const it = testEffect(makeHttp())
-const noLLMServer = testEffect(makeHttpNoLLMServer())
-const raceNoLLMServer = testEffect(makeHttpNoLLMServer({ processor: "blocking" }))
+const it = testEffect(makeHttp() as any)
+const noLLMServer = testEffect(makeHttpNoLLMServer() as any)
+const raceNoLLMServer = testEffect(makeHttpNoLLMServer({ processor: "blocking" }) as any)
 const unix = process.platform !== "win32" ? it.instance : it.instance.skip
 const unixNoLLMServer = process.platform !== "win32" ? noLLMServer.instance : noLLMServer.instance.skip
 

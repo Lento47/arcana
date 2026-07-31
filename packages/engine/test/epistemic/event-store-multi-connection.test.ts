@@ -39,8 +39,8 @@ function makeLayerForFile(dbPath: string) {
   return Layer.mergeAll(dbLayer, EventStore.layer.pipe(Layer.provide(dbLayer)))
 }
 
-function runWithFile<A>(dbPath: string, effect: Effect.Effect<A, never, EventStore.Service | Database.Service>) {
-  return Effect.runPromise(effect.pipe(Effect.provide(makeLayerForFile(dbPath))))
+function runWithFile<A, E = never>(dbPath: string, effect: Effect.Effect<A, E, any>) {
+  return Effect.runPromise(effect.pipe(Effect.provide(makeLayerForFile(dbPath))) as any)
 }
 
 // ── tests ────────────────────────────────────────────────────────────
