@@ -25,6 +25,7 @@ import { authorizeAndExecuteEffect } from "@arcana/core/capability/pep"
 import { computeRequestHash } from "@arcana/core/capability/request-hash"
 import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
 import { SessionPolicyProvider } from "@arcana/core/capability/grant-store"
+import { ensureSessionAgentGrants, shortPrincipal } from "@arcana/core/capability/session-grants"
 import { Database } from "@arcana/core/database/database"
 import type { PolicyContextProvider, PreparedEffect } from "@arcana/core/capability/pep"
 import type { PolicyContext } from "@arcana/core/capability/pdp"
@@ -33,10 +34,15 @@ import type { AuthorizationRequest, ProvenanceLabel, SensitivityLabel } from "@a
 // ── Phase C PEP: Fail-closed production provider ──────────────────────
 // SessionPolicyProvider backed by SqliteGrantStore.
 // No grants -> DENY. Storage failure -> DENY.
+//
+// Intent binding store is not production-wired yet. Using LEGACY_COMPAT here
+// means intentBindings stay undefined → PDP skips intent binding (not "allow
+// any principal"). Capability matching + risk/approval rules still apply.
+// When IntentBindingStore is implemented, switch back to REQUIRED.
 /**
- * Production policy provider: REQUIRED mode.
- * Intent binding store not yet implemented → intentBindings = [] → fail closed.
- * HIGH/CRITICAL actions without bindings → DENY.
+ * Production policy provider for a session agent.
+ * Ensures a session-scoped grant exists for the agent principal so legitimate
+ * TUI sessions are not blanket-denied with DENY_PRINCIPAL_MISMATCH.
  */
 function createPolicyProvider(
   db: Database.Interface,
@@ -52,8 +58,51 @@ function createPolicyProvider(
       workspaceTrust: "TRUSTED",
     },
     undefined, // IntentBindingStoreEffect: not yet implemented
-    "REQUIRED",
+    "LEGACY_COMPAT",
   )
+}
+
+async function preparePolicyProvider(
+  db: Database.Interface,
+  sessionID: string,
+  agentName: string,
+): Promise<SessionPolicyProvider> {
+  const store = new SqliteGrantStore(db)
+  // Bootstrap session agent grants before the first PDP snapshot (idempotent).
+  await Effect.runPromise(
+    ensureSessionAgentGrants(store, { agentName, sessionId: sessionID }),
+  )
+  return createPolicyProvider(db, sessionID, agentName)
+}
+
+function formatPepDenial(input: {
+  toolName: string
+  authReq: AuthorizationRequest
+  reasons: { code: string; message: string }[]
+  grantPrincipalIds?: string[]
+}): string {
+  const lines = [
+    "DENIED",
+    `reason: ${input.reasons.map((r) => r.code).join(", ") || "UNKNOWN"}`,
+    `action: ${input.authReq.action}`,
+    `tool: ${input.toolName}`,
+    `request_principal: ${shortPrincipal(input.authReq.principalId)}`,
+    `session: ${shortPrincipal(input.authReq.sessionId, 12)}`,
+  ]
+  if (input.authReq.workspaceId) {
+    lines.push(`workspace: ${shortPrincipal(input.authReq.workspaceId, 12)}`)
+  }
+  if (input.grantPrincipalIds && input.grantPrincipalIds.length > 0) {
+    lines.push(
+      `grant_principals: ${input.grantPrincipalIds.map((id) => shortPrincipal(id)).join(", ")}`,
+    )
+  } else {
+    lines.push("grant_principals: (none for request principal)")
+  }
+  for (const r of input.reasons) {
+    lines.push(`detail: ${r.code} — ${r.message}`)
+  }
+  return lines.join("\n")
 }
 
 /**
@@ -75,25 +124,37 @@ function extractProvenance(toolName: string, args: Record<string, unknown>): Pro
   const labels: ProvenanceLabel[] = ["MODEL_OUTPUT"]
 
   switch (toolName) {
+    case "read":
     case "read_file":
+    case "glob":
+    case "grep":
     case "search_files":
+    case "lsp":
       // Reading local files — content is trusted local source
       labels.push("TRUSTED_LOCAL_SOURCE")
       break
 
+    case "websearch":
     case "web_search":
+    case "webfetch":
     case "web_fetch":
+    case "fetch":
+    case "search":
       // Network reads return remote content
       labels.push("REMOTE_CONTENT")
       labels.push("TOOL_OUTPUT")
       break
 
+    case "write":
     case "write_file":
+    case "edit":
     case "patch":
       // Model is generating file content based on user instruction
       labels.push("USER_INSTRUCTION")
       break
 
+    case "shell":
+    case "bash":
     case "terminal":
       // Model is generating commands based on user instruction
       labels.push("USER_INSTRUCTION")
@@ -104,7 +165,9 @@ function extractProvenance(toolName: string, args: Record<string, unknown>): Pro
       labels.push("USER_INSTRUCTION")
       break
 
+    case "task":
     case "delegate_task":
+    case "workflow":
       // Delegating to a subagent — subagent output will carry its own labels
       labels.push("SUBAGENT_OUTPUT")
       break
@@ -116,6 +179,7 @@ function extractProvenance(toolName: string, args: Record<string, unknown>): Pro
       labels.push("USER_INSTRUCTION")
       break
 
+    case "skill":
     case "skill_create":
       // Writing skill files
       labels.push("USER_INSTRUCTION")
@@ -264,7 +328,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               // function — after the PEP allows. PermissionV1 can only further
               // restrict, never expand authority. The deterministic PDP always wins.
               // Capability PDP says DENY → execution stops. PermissionV1 cannot override.
-              const pepProvider = createPolicyProvider(db, ctx.sessionID, input.agent.name)
+              const pepProvider = yield* Effect.promise(() =>
+                preparePolicyProvider(db, ctx.sessionID, input.agent.name),
+              )
               const authReq = buildAuthorizationRequest({
                 toolName: item.id,
                 principalId: input.agent.name,
@@ -284,18 +350,26 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 pepProvider,
               )
               if (pepResult.status === "DENIED") {
-                const reasons = pepResult.decision.reasons.map((r) => r.code).join(", ")
                 return {
                   title: `Authorization denied: ${item.id}`,
-                  output: `DENIED\nreason: ${reasons}\naction: ${authReq.action}\ntool: ${item.id}`,
-                  metadata: { pep_denied: true, decision: pepResult.decision },
+                  output: formatPepDenial({
+                    toolName: item.id,
+                    authReq,
+                    reasons: pepResult.decision.reasons,
+                  }),
+                  metadata: {
+                    pep_denied: true,
+                    decision: pepResult.decision,
+                    request_principal: authReq.principalId,
+                    session_id: authReq.sessionId,
+                  },
                 }
               }
               if (pepResult.status === "APPROVAL_REQUIRED") {
                 const reasons = pepResult.decision.reasons.map((r) => r.code).join(", ")
                 return {
                   title: `Approval required: ${item.id}`,
-                  output: `APPROVAL_REQUIRED\nreason: ${reasons}\naction: ${authReq.action}\ntool: ${item.id}`,
+                  output: `APPROVAL_REQUIRED\nreason: ${reasons}\naction: ${authReq.action}\ntool: ${item.id}\nrequest_principal: ${shortPrincipal(authReq.principalId)}\nsession: ${shortPrincipal(authReq.sessionId, 12)}`,
                   metadata: { pep_approval_required: true, decision: pepResult.decision },
                 }
               }
@@ -344,7 +418,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         Effect.gen(function* () {
           const ctx = context(args, opts)
           // ── Phase C PEP: authorize MCP before execution ───────────
-          const mcpPepProvider = createPolicyProvider(db, ctx.sessionID, input.agent.name)
+          const mcpPepProvider = yield* Effect.promise(() =>
+            preparePolicyProvider(db, ctx.sessionID, input.agent.name),
+          )
           const mcpAuthReq = buildAuthorizationRequest({
             toolName: key,
             principalId: input.agent.name,
@@ -361,10 +437,18 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             mcpPepProvider,
           )
           if (mcpPepResult.status === "DENIED") {
-            const reasons = mcpPepResult.decision.reasons.map((r) => r.code).join(", ")
             return {
-              content: [{ type: "text", text: `DENIED\nreason: ${reasons}\naction: ${mcpAuthReq.action}\ntool: ${key}` }],
-              metadata: { pep_denied: true },
+              content: [
+                {
+                  type: "text",
+                  text: formatPepDenial({
+                    toolName: key,
+                    authReq: mcpAuthReq,
+                    reasons: mcpPepResult.decision.reasons,
+                  }),
+                },
+              ],
+              metadata: { pep_denied: true, request_principal: mcpAuthReq.principalId },
             } as any
           }
           if (mcpPepResult.status === "APPROVAL_REQUIRED") {

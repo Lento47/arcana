@@ -22,35 +22,52 @@ export function toolToAction(toolName: string): {
   action: CapabilityAction
   resourceKind: CanonicalResource["kind"]
 } {
+  // Map both production tool IDs (shell, read, write, …) and legacy/audit names
+  // (terminal, read_file, …) so PDP resource matching stays consistent.
   switch (toolName) {
+    case "shell":
+    case "bash":
     case "terminal":
+    case "cronjob":
+    case "env_install":
       return { action: "process.execute", resourceKind: "process" }
+    case "write":
     case "write_file":
+    case "edit":
     case "patch":
+    case "env_write":
+    case "skill_create":
+    case "skill":
       return { action: "filesystem.write", resourceKind: "file" }
+    case "read":
     case "read_file":
+    case "glob":
+    case "grep":
     case "search_files":
+    case "lsp":
+    case "todo":
+    case "goal_set":
+    case "goal_check":
+    case "plan":
+    case "question":
       return { action: "filesystem.read", resourceKind: "file" }
     case "send_message":
-      return { action: "network.write", resourceKind: "network" }
-    case "delegate_task":
-      return { action: "delegate", resourceKind: "process" }
-    case "cronjob":
-      return { action: "process.execute", resourceKind: "process" }
-    case "web_search":
-    case "web_fetch":
-      return { action: "network.read", resourceKind: "network" }
     case "image_generate":
     case "speak":
       return { action: "network.write", resourceKind: "network" }
-    case "env_install":
-      return { action: "process.execute", resourceKind: "process" }
-    case "env_write":
-      return { action: "filesystem.write", resourceKind: "file" }
+    case "task":
+    case "delegate_task":
+    case "workflow":
+      return { action: "delegate", resourceKind: "process" }
+    case "websearch":
+    case "web_search":
+    case "webfetch":
+    case "web_fetch":
+    case "fetch":
+    case "search":
+      return { action: "network.read", resourceKind: "network" }
     case "env_clean":
       return { action: "filesystem.delete", resourceKind: "file" }
-    case "skill_create":
-      return { action: "filesystem.write", resourceKind: "file" }
     case "git_commit":
     case "git_autocommit":
       return { action: "git.commit", resourceKind: "git" }
@@ -85,12 +102,16 @@ export interface ToolCallContext {
  */
 export function buildAuthorizationRequest(ctx: ToolCallContext): AuthorizationRequest {
   const { action, resourceKind } = toolToAction(ctx.toolName)
+  const executable = resourceKind === "process" ? extractExecutable(ctx) : undefined
+  const path = extractPath(ctx)
+  const host = extractHost(ctx)
 
   const resource: CanonicalResource = {
     kind: resourceKind,
-    path: extractPath(ctx),
-    host: extractHost(ctx),
-    executable: resourceKind === "process" ? ctx.executable : undefined,
+    path,
+    host,
+    // PDP matchExecutable("*") requires a non-empty executable string.
+    executable,
     secretKind: extractSecretKind(ctx),
   }
 
@@ -104,15 +125,41 @@ export function buildAuthorizationRequest(ctx: ToolCallContext): AuthorizationRe
     tool: ctx.toolName,
     action,
     resource,
-    executable: ctx.executable,
-    arguments: ctx.arguments,
-    workingDirectory: ctx.workingDirectory,
-    networkDestination: ctx.networkDestination,
+    executable,
+    arguments: ctx.arguments ?? extractArguments(ctx),
+    workingDirectory: ctx.workingDirectory ?? extractWorkingDirectory(ctx),
+    networkDestination: ctx.networkDestination ?? host,
     provenance: ctx.provenance ?? ["USER_INSTRUCTION"],
     sensitivity: ctx.sensitivity ?? ["PUBLIC"],
     requestedAt: new Date().toISOString(),
     nonce: randomUUID(),
   }
+}
+
+function extractExecutable(ctx: ToolCallContext): string {
+  if (ctx.executable && ctx.executable.length > 0) return ctx.executable
+  const args = ctx.args
+  const command = (args.command as string) ?? (args.cmd as string) ?? ""
+  if (command.trim()) {
+    // First token as executable best-effort (quoted paths supported loosely)
+    const match = command.trim().match(/^("([^"]+)"|'([^']+)'|(\S+))/)
+    const token = match?.[2] ?? match?.[3] ?? match?.[4]
+    if (token) return token
+  }
+  // Fallback so wildcard process grants can match shell tools without a parsed binary
+  return ctx.toolName || "shell"
+}
+
+function extractArguments(ctx: ToolCallContext): string[] | undefined {
+  if (ctx.arguments) return ctx.arguments
+  const command = (ctx.args.command as string) ?? (ctx.args.cmd as string)
+  if (!command) return undefined
+  return command.split(/\s+/).filter(Boolean)
+}
+
+function extractWorkingDirectory(ctx: ToolCallContext): string | undefined {
+  if (ctx.workingDirectory) return ctx.workingDirectory
+  return (ctx.args.workdir as string) ?? (ctx.args.cwd as string) ?? (ctx.args.working_directory as string) ?? undefined
 }
 
 function extractPath(ctx: ToolCallContext): string | undefined {
