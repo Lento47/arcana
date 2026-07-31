@@ -127,6 +127,44 @@ When WS1 + WS2 + WS3 + H4 all pass:
 
 ---
 
+## 7. WS5 — Performance + communication hygiene (operator request, added to milestones TUI-1.6)
+
+Thresholds are DEFINED BEFORE measuring (playbook §24 gates):
+
+| Metric | Threshold |
+|--------|-----------|
+| Session-open → input-ready p95 (warm daemon) | < 500 ms |
+| Input echo p95 | < 16.7 ms |
+| First model token p95 (excl. provider latency) | < 1 s |
+| Redundant requests / 5-min session | 0 |
+| SSE reconnect rate | ≤ 1/sec, exponential backoff + jitter |
+| Sustained idle network traffic | 0 |
+
+### WS-P1 — Startup and session-open latency
+
+| # | Task | Evidence |
+|---|------|----------|
+| P1-1 | Instrument the boot path: daemon spawn (currently ~9 health polls before ready, sprint report §6c), TUI shell, session hydration | timing marks boot→prompt, prompt→input-ready |
+| P1-2 | Move daemon spawn/health polling off the input path (async; prompt usable before engine ready) | no input block during spawn |
+| P1-3 | Progressive hydration: prompt accepts input before session sync completes; optimistic user message already synthesized (routes/session/index.tsx getParts) — extend to send-before-sync | type→Enter→submit works mid-hydration |
+| P1-4 | Optimistic echo: typed text visible immediately (no round-trip); first model token starts while hydration continues | echo p95, first-token p95 |
+| P1-5 | Fix violations found by measurement | gate results |
+
+### WS-P2 — Communication hygiene (no congestion, no rate-limit bugs)
+
+| # | Task | Evidence |
+|---|------|----------|
+| P2-1 | Request inventory audit: every network path (health polls, SSE connect/reconnect, session sync, part/message reads, model/tool calls, approval endpoints) — one row each, trigger, cadence, dedup state | audit table in doc |
+| P2-2 | SSE discipline: single connection per session, capped reconnect attempts, exponential backoff + jitter, no reconnect storms | reconnect log, cap proof |
+| P2-3 | Diff-aware reads: no refetch of unchanged messages/parts (identity/diff checks); verify the L2 spine cache + sync paths | redundant-request counter = 0 |
+| P2-4 | Model/tool API discipline: per-session request budget, idempotency keys, 429/503 honored with backoff — never blind retry | budget + backoff tests |
+| P2-5 | Idle-traffic proof: 5-minute idle session with no streaming → zero network activity | packet/request log |
+| P2-6 | Regression gate: request-amplification test (one logical action → one network effect) | test in suite |
+
+**Assignee:** delegated subagents (audit + implement) with operator verification of P1-2/P1-3 in the real TUI. **DoD:** all thresholds measured and recorded; violations fixed; gates pass.
+
+---
+
 ## Task assignments
 
 | Task | Assignee | Read-only? | Permission needed? |
@@ -136,5 +174,7 @@ When WS1 + WS2 + WS3 + H4 all pass:
 | H1/H2: repro tests | operator decision → me | — | YES |
 | H3: session-lock restore | me | — | YES |
 | H4: dompurify bump | delegated implementer (after approval) | no | YES |
+| WS-P1: startup/session-open perf | delegated subagents + operator verify | mixed | no (docs/measurement) |
+| WS-P2: communication hygiene | delegated subagents | mixed | no (docs/measurement) |
 | WS1/2/3: manual | operator (user) | — | — |
 | Freeze tag + report finalize | me | — | operator authorization |
