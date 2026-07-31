@@ -172,18 +172,31 @@ function resolveExecute<T>(
   fn: (req: Readonly<AuthorizationRequest>) => T | Promise<T> | Effect.Effect<T, unknown, unknown>,
   req: Readonly<AuthorizationRequest>,
 ): Effect.Effect<T, AuthorizationStoreError> {
-  return Effect.tryPromise({
-    try: () => {
-      const result = fn(req)
-      if (result && typeof result === "object" && Effect.isEffect(result)) {
-        return Effect.runPromise(result as Effect.Effect<T, unknown, never>)
-      }
-      if (result instanceof Promise) {
-        return result
-      }
-      return Promise.resolve(result as T)
-    },
-    catch: (cause) => new AuthorizationStoreError("resolveExecute", cause),
+  return Effect.gen(function* () {
+    // Run the executeExact effect in the CALLER's context. Effect.runPromise
+    // boots a fresh runtime whose default context drops every service the
+    // caller provided (InstanceRef, WorkspaceRef, ...) — tool effects died
+    // with "InstanceRef not provided" even when the caller had it. Providing
+    // the ambient context restores it for the exact-effect execution.
+    const callerContext = yield* Effect.context()
+    const result = yield* Effect.tryPromise({
+      try: () => {
+        const value = fn(req)
+        if (value && typeof value === "object" && Effect.isEffect(value)) {
+          return Effect.runPromise(
+            (value as Effect.Effect<T, unknown, never>).pipe(
+              Effect.provide(callerContext as never),
+            ) as Effect.Effect<T, unknown, never>,
+          )
+        }
+        if (value instanceof Promise) {
+          return value
+        }
+        return Promise.resolve(value as T)
+      },
+      catch: (cause) => new AuthorizationStoreError("resolveExecute", cause),
+    })
+    return result
   })
 }
 
