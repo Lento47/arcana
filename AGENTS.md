@@ -84,6 +84,11 @@ These are the primary files you will touch most often:
 
 ## Conventions
 
+### Design Principles
+- Do not preserve backward compatibility.
+- Choose the simplest implementation that fully meets the current requirements.
+- Prefer established, well-maintained libraries over custom implementations.
+
 ### Effect Code
 - Use `Effect.gen(function* () { ... })` for composition.
 - Use `Effect.fn("Domain.method")` for named/traced effects.
