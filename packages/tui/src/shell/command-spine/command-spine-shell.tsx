@@ -114,7 +114,6 @@ export function CommandSpineShell(props: ShellProps) {
     let previousEntries: SpineEntry[] = state.previousEntries
     // Read session status inside this memo so session.status → idle invalidates spine.
     const sessionStatusType = props.sessionStatus?.()?.type
-    try { require("fs").appendFileSync("L:/PROJECTS/arcana/tui-debug.log", `[entries] memo fired: sessionStatus=${sessionStatusType} msgs=${props.messages().length}\n`) } catch {}
     const result = messagesToSpineEntriesCached({
       messages: props.messages(),
       getParts: props.getParts,
