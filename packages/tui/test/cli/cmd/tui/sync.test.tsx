@@ -64,4 +64,44 @@ describe("tui sync", () => {
       app.renderer.destroy()
     }
   })
+
+  test("approval.updated events upsert the durable approvals map (RB-01 sync seam)", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(`${tmp.path}/kv.json`, "{}")
+    const { app, emit, sync } = await mount(undefined, tmp.path)
+
+    try {
+      const approval = {
+        approvalId: "appr_test_1",
+        version: 1,
+        sessionId: "sess_1",
+        workspaceId: "sess_1",
+        requestHash: "hash-abc",
+        contractRevision: 0,
+        principalId: "agent:default",
+        state: "PENDING",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      }
+      // "approval.updated" is not yet part of the generated SDK union —
+      // the sync store matches defensively by name (sync.tsx:462-467).
+      emit({
+        directory: "/tmp/other",
+        project: "proj_test",
+        payload: {
+          id: "evt_approval_1",
+          type: "approval.updated",
+          properties: { sessionID: "sess_1", approval },
+        },
+      } as unknown as GlobalEvent)
+
+      await wait(() => sync.data.approvals?.["appr_test_1"] !== undefined)
+      expect(sync.data.approvals["appr_test_1"].state).toBe("PENDING")
+      expect(sync.data.approvals["appr_test_1"].sessionId).toBe("sess_1")
+      expect(sync.data.approvals["appr_test_1"].version).toBe(1)
+    } finally {
+      app.renderer.destroy()
+    }
+  })
 })
