@@ -1260,6 +1260,7 @@ export const node = LayerNode.make(layer as any, [
   EventV2Bridge.node,
   RuntimeFlags.node,
   Database.node,
+  EventStore.node,
 ] as any)
   // CAST BOUNDARY #4 — LayerNode node array type
   // Upstream: LayerNode.make's second parameter expects an array of specific node types,

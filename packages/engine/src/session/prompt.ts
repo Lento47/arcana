@@ -1996,6 +1996,7 @@ export const node = LayerNode.make(layer as any, [
   EventV2Bridge.node,
   RuntimeFlags.node,
   Database.node,
+  EventStore.node,
 ])
 
 export * as SessionPrompt from "./prompt"
