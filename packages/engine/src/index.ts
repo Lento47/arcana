@@ -9,24 +9,16 @@ import { EOL } from "os"
 import { errorMessage } from "./util/error"
 import { Heap } from "./cli/heap"
 import { createKernelContract } from "./kernel/kernel"
-import { appendFileSync } from "node:fs"
+import { daemonLog } from "./daemon/log"
 mark("cli-import-end")
 
 /**
- * Durable daemon lifecycle log. The crash handlers below write to stderr,
+ * Durable daemon lifecycle log lives in daemon/log.ts and is shared with the
+ * daemon process (daemon/entry.ts). The crash handlers below write to stderr,
  * which vanishes with the process in dev mode (terminal scrollback or a
- * closed console). This file survives, so a daemon death can be correlated
+ * closed console). The log file survives, so a daemon death can be correlated
  * with the .session-lock timeline and the SSE drop the TUI observed.
- * Windows path precedent: src/session/prompt.ts writes L:/tmp/arcana-ollama.log.
  */
-const DAEMON_LOG = "L:/tmp/arcana-daemon.log"
-function daemonLog(line: string): void {
-  try {
-    appendFileSync(DAEMON_LOG, `[${new Date().toISOString()}] ${line}\n`)
-  } catch {
-    /* never let logging take the process down */
-  }
-}
 
 // Catch unhandled rejections and exceptions so the process doesn't silently
 // continue in an indeterminate state. These fire for promise rejections and

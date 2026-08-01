@@ -7,6 +7,7 @@ import * as Stream from "effect/Stream"
 import { HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import * as Sse from "effect/unstable/encoding/Sse"
+import { resetActivity, sseConnected, sseDisconnected } from "@/daemon/activity"
 import { EventApi } from "../groups/event"
 
 function eventData(data: unknown): Sse.Event {
@@ -62,17 +63,31 @@ function eventResponse(events: EventV2.Interface) {
     )
     const heartbeat = Stream.tick("10 seconds").pipe(
       Stream.drop(1),
-      Stream.map(() => ({ id: eventID(), type: "server.heartbeat", properties: {} })),
+      Stream.map(() => {
+        // A flowing heartbeat means at least one live SSE client: keep the
+        // daemon's idle self-destruct from firing (see daemon/activity.ts).
+        resetActivity()
+        return { id: eventID(), type: "server.heartbeat", properties: {} }
+      }),
     )
 
     yield* Effect.logInfo("event connected")
+    yield* Effect.sync(() => {
+      sseConnected()
+      resetActivity()
+    })
     return HttpServerResponse.stream(
       Stream.make({ id: eventID(), type: "server.connected", properties: {} }).pipe(
         Stream.concat(output.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }))),
         Stream.map(eventData),
         Stream.pipeThroughChannel(Sse.encode()),
         Stream.encodeText,
-        Stream.ensuring(Effect.logInfo("event disconnected")),
+        Stream.ensuring(
+          Effect.gen(function* () {
+            yield* Effect.logInfo("event disconnected")
+            yield* Effect.sync(() => sseDisconnected())
+          }),
+        ),
       ),
       {
         contentType: "text/event-stream",
