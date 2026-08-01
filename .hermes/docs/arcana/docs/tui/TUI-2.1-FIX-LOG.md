@@ -256,3 +256,33 @@ surface yet. Tracked in the plan doc.
 
 
 
+
+## Round 4 — Daemon idle self-destruct (P7+P8, 2026-08-01)
+
+Root cause found by full audit: `daemon/lifecycle.ts` armed a 5-minute idle
+timer at boot and `resetActivity()` was exported but NEVER called. Every
+daemon died exactly 300s after boot, even with the TUI connected. All day's
+deaths (16:03, 16:05, 16:46, 17:18, 23:38, 23:47, 00:09) were this timer.
+
+Fixes:
+- `daemon/activity.ts` (NEW) — module-level idle control: `armIdle` arms the
+  timer; `resetActivity` re-arms on real activity; `sseConnected`/`sseDisconnected`
+  suspend it while an SSE client is connected (refcounted).
+- `server/server.ts` — request middleware resets activity on EVERY HTTP request.
+- `handlers/event.ts` — SSE connect suspends the idle timer; SSE disconnect
+  restarts the countdown; each 10s heartbeat resets activity.
+- `daemon/lifecycle.ts` — `stopDaemon` logs `[daemon] stop reason=... uptime=Ns`;
+  idle stop exits the daemon process explicitly (ARCANA_DAEMON=1 discriminator)
+  so stream fibers cannot leave a zombie.
+- `daemon/log.ts` (NEW) — shared durable log (`L:/tmp/arcana-daemon.log`);
+  `daemon/entry.ts` now logs boot/stop/crash/exit lines; index.ts uses the
+  shared helper.
+- Tests: `test/daemon/activity.test.ts` 7/7 (idle fires, reset re-arms,
+  cwd mismatch ignored, SSE suspend/resume, refcount, clear).
+
+Live evidence in the log: old-build daemon pid 16156 idle-stopped at exactly
+300s (uptime=300s) with the TUI connected; full-build smoke daemon pid 19040
+idle-stopped at 300s with zero clients and exited cleanly (exit code=0).
+
+Behavior after fix: TUI open = daemon alive (SSE suspends the timer, HTTP and
+heartbeats reset it). TUI closed + no traffic 5 min = clean stop + exit.

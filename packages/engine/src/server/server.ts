@@ -2,7 +2,7 @@ import "./init-projectors"
 
 import { NodeHttpServer } from "@effect/platform-node"
 import { ConfigProvider, Context, Effect, Exit, Layer, Scope } from "effect"
-import { HttpRouter, HttpServer } from "effect/unstable/http"
+import { HttpMiddleware, HttpRouter, HttpServer } from "effect/unstable/http"
 import { OpenApi } from "effect/unstable/httpapi"
 import { createServer } from "node:http"
 import { MDNS } from "./mdns"
@@ -10,6 +10,7 @@ import { HttpApiApp } from "./routes/instance/httpapi/server"
 import { disposeMiddleware } from "./routes/instance/httpapi/lifecycle"
 import { WebSocketTracker } from "./routes/instance/httpapi/websocket-tracker"
 import { PublicApi } from "./routes/instance/httpapi/public"
+import { resetActivity } from "../daemon/activity"
 import type { CorsOptions } from "@arcana/server/cors"
 import { lazy } from "@/util/lazy"
 
@@ -96,9 +97,20 @@ const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unkno
   },
 )
 
+/**
+ * Every HTTP request counts as daemon activity: it re-arms the idle
+ * self-destruct timer (see daemon/activity.ts) so an actively used daemon
+ * never shuts itself down mid-session.
+ */
+const requestActivityMiddleware: HttpMiddleware.HttpMiddleware = (effect) =>
+  Effect.gen(function* () {
+    resetActivity()
+    return yield* effect
+  })
+
 function listenerLayer(opts: ListenOptions, port: number) {
   return HttpRouter.serve(HttpApiApp.createRoutes(opts), {
-    middleware: disposeMiddleware,
+    middleware: (effect) => disposeMiddleware(requestActivityMiddleware(effect)),
     disableLogger: true,
     disableListenLog: true,
   }).pipe(

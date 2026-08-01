@@ -1,9 +1,10 @@
-import { readLock, acquireLock, removeLock, isLockStale, touchActivity } from "./lock"
+import { readLock, acquireLock, removeLock, isLockStale } from "./lock"
+import { armIdle, clearIdle, resetActivity } from "./activity"
+import { daemonLog } from "./log"
 import { Server } from "../server/server"
 
 const DAEMON_PORT_START = 9142
 const DAEMON_PORT_END = 9150
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 const RESPAWN_DEBOUNCE_MS = 3_000 // prevent storms on network flap
 
 export async function startDaemon(cwd: string, version: string): Promise<{ port: number; url: string }> {
@@ -48,39 +49,48 @@ export async function startDaemon(cwd: string, version: string): Promise<{ port:
     throw new Error("Lock race lost but no winner lock found")
   }
 
-  // Idle timeout — shut down after inactivity
-  let idleTimer: ReturnType<typeof setTimeout> | undefined
-  function resetIdleTimer() {
-    if (idleTimer) clearTimeout(idleTimer)
-    idleTimer = setTimeout(async () => {
-      await stopDaemon(server!, cwd)
-    }, IDLE_TIMEOUT_MS)
-    touchActivity(cwd)
-  }
-
-  resetIdleTimer()
+  // Idle timeout — shut down after inactivity. The timer lives in
+  // daemon/activity.ts and is reset by any HTTP request, any SSE heartbeat,
+  // and suspended while an SSE client is connected (see activity.ts).
+  armIdle(cwd, () => {
+    void stopDaemon(server!, cwd, "idle").then(() => {
+      // stopDaemon closes the listener but lingering stream fibers (SSE
+      // heartbeat ticks) can keep the event loop alive, leaving a zombie
+      // process that consumes memory and confuses health checks. The daemon
+      // process must exit explicitly. Discriminator: entry.ts sets
+      // ARCANA_DAEMON=1; the TUI process never does.
+      if (process.env.ARCANA_DAEMON === "1") process.exit(0)
+    })
+  })
 
   // Signal handlers — clean up and exit so Ctrl+C kills the process
   process.on("SIGTERM", async () => {
-    await stopDaemon(server!, cwd)
+    await stopDaemon(server!, cwd, "signal")
     process.exit(0)
   })
   process.on("SIGINT", async () => {
-    await stopDaemon(server!, cwd)
+    await stopDaemon(server!, cwd, "signal")
     process.exit(0)
   })
 
   return { port, url: `http://127.0.0.1:${port}` }
 }
 
-export async function stopDaemon(server: Awaited<ReturnType<typeof Server.listen>>, cwd: string) {
+export async function stopDaemon(
+  server: Awaited<ReturnType<typeof Server.listen>>,
+  cwd: string,
+  reason: "idle" | "signal" | "manual" = "manual",
+) {
+  clearIdle()
+  const lock = readLock(cwd)
+  const uptimeSec = lock ? Math.round((Date.now() - lock.startedAt) / 1000) : 0
   removeLock(cwd)
+  daemonLog(`[daemon] stop reason=${reason} uptime=${uptimeSec}s pid=${process.pid}`)
   await server.stop(true)
 }
 
-export function resetActivity(cwd: string) {
-  touchActivity(cwd)
-}
+/** Kept for API compatibility; real resets come from activity.ts. */
+export { resetActivity }
 
 export async function healthCheck(port: number): Promise<boolean> {
   try {
