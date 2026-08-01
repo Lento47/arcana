@@ -4,6 +4,8 @@ import { Flag } from "@arcana/core/flag/flag"
 import { createSimpleContext } from "./helper"
 import { batch, onCleanup, onMount } from "solid-js"
 import { createSseWatchdog } from "../util/sse-watchdog"
+import { createIsolatedEmitter } from "../util/isolated-emitter"
+import { streamState, transportOf, type TransportEnvelope } from "./stream-state"
 
 /**
  * Engine heartbeat cadence: handlers/event.ts streams server.heartbeat every
@@ -70,17 +72,12 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     let sdk = createSDK()
 
     const handlers = new Set<(event: GlobalEvent) => void>()
-    const emitter = {
-      emit(_type: "event", event: GlobalEvent) {
-        for (const handler of handlers) handler(event)
-      },
-      on(_type: "event", handler: (event: GlobalEvent) => void) {
-        handlers.add(handler)
-        return () => {
-          handlers.delete(handler)
-        }
-      },
-    }
+    // Isolated emitter (P12.2): one throwing subscriber must not prevent
+    // later subscribers from seeing the same event or abort the batch. The
+    // central sync subscriber is registered first, but any subscriber
+    // (dialogs, renderers) can throw; without isolation the flush loop
+    // aborts, remaining events are lost, and the SSE loop reconnects.
+    const emitter = createIsolatedEmitter<GlobalEvent>()
 
     let queue: GlobalEvent[] = []
     let timer: Timer | undefined
@@ -101,13 +98,32 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       // Batch all event emissions so all store updates result in a single render
       batch(() => {
         for (const event of events) {
-          emitter.emit("event", event)
+          try {
+            emitter.emit(event)
+          } catch (error) {
+            // Belt-and-suspenders: the emitter isolates subscribers, but an
+            // emitter-level failure must not drop the remaining batched events.
+            console.error("[arcana] event batch failure:", event?.payload?.type, error)
+          }
         }
       })
     }
 
     const handleEvent = (event: GlobalEvent) => {
       noteSseEvent(event)
+      // Transport sequence tracking (P12). A new streamID means the daemon
+      // restarted or the connection re-established: previous sequence
+      // expectations are void, counters reset, and the reconnect resync
+      // (sse.reconnected) re-hydrates the projection.
+      const tr = transportOf(event as { transport?: { streamID: string; sequence: number; headSequence?: number } })
+      if (tr?.streamID && tr.streamID !== streamState.streamID) {
+        streamState.streamID = tr.streamID
+        streamState.lastReceived = 0
+        streamState.lastApplied = 0
+      }
+      if (tr && tr.headSequence === undefined) {
+        if (tr.sequence > streamState.lastReceived) streamState.lastReceived = tr.sequence
+      }
       queue.push(event)
       // Any event proves the connection is alive — push the silence window
       // out. server.heartbeat arrives every 10s even when nothing else flows.
@@ -203,7 +219,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
           // so Last-Event-ID replay is impossible — listeners (session route)
           // re-sync the active session from REST to close the gap.
           if (!abort.signal.aborted && gen === generation) {
-            emitter.emit("event", {
+            emitter.emit({
               directory: props.directory ?? "",
               payload: {
                 id: `sse.reconnected.${attempt}`,
@@ -251,7 +267,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       }
       sseWatchdog.stop()
       if (timer) clearTimeout(timer)
-      handlers.clear()
+      emitter.clear()
     })
 
     return {

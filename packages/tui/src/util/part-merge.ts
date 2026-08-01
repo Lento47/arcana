@@ -54,3 +54,87 @@ export function shouldKeepLocalPart(params: {
 
   return false
 }
+
+/**
+ * Authoritative merge decision (P12.4). Used by reconcile() when the live
+ * projection is repaired from REST after a detected divergence.
+ *
+ * Precedence is deterministic and does NOT trust the tracker-merge liveness
+ * heuristic: a frozen local prefix ("## Qo" while REST has 7,962 chars) must
+ * be replaced regardless of whether the part was recently tracked.
+ *
+ * 1. Tool parts: terminal remote state always beats local running.
+ * 2. Text/reasoning: prefix-aware comparison. Remote append (remote text
+ *    startsWith local and longer) wins. Local append (local startsWith
+ *    remote and longer) wins temporarily ONLY if the local part is live
+ *    (touched within the silence window) — REST snapshots lag a live stream.
+ * 3. Divergent texts: a completed remote message wins; otherwise keep the
+ *    apparently-newer local state and report non-convergence so the next
+ *    heartbeat re-checks.
+ */
+export const TERMINAL_TOOL_STATES = new Set(["completed", "error", "denied", "cancelled"])
+
+export type AuthoritativeMergeDecision = {
+  keepLocal: boolean
+  /** False when the local projection may still differ from durable truth. */
+  converged: boolean
+}
+
+export function shouldKeepLocalAuthoritative(params: {
+  rest: PartMergeCandidate
+  current: PartMergeCandidate | undefined
+  lastEventAt: number
+  now: number
+  silenceMs: number
+}): AuthoritativeMergeDecision {
+  const { rest, current, lastEventAt, now, silenceMs } = params
+  if (!current) return { keepLocal: false, converged: true }
+
+  const restType = rest.type ?? ""
+  const localType = current.type ?? ""
+  const restText = rest.text ?? ""
+  const localText = current.text ?? ""
+
+  // Tool parts: terminal authoritative state beats local running. No liveness
+  // window preserves a local running state over a terminal remote state.
+  if (restType === "tool" || localType === "tool") {
+    const restState = (rest as { state?: { status?: string } }).state?.status
+    const localState = (current as { state?: { status?: string } }).state?.status
+    const restTerminal = restState !== undefined && TERMINAL_TOOL_STATES.has(restState)
+    const localTerminal = localState !== undefined && TERMINAL_TOOL_STATES.has(localState)
+    if (restTerminal && !localTerminal) return { keepLocal: false, converged: true }
+    if (!restTerminal && localTerminal) return { keepLocal: true, converged: false }
+    // Both terminal (or both running): remote is the authoritative projection.
+    return { keepLocal: false, converged: true }
+  }
+
+  // Text / reasoning parts (append-only streams).
+  const localRecentlyTouched = now - lastEventAt < silenceMs
+
+  if (restText.startsWith(localText) && restText.length > localText.length) {
+    // Remote is a strict superset (frozen local prefix repaired).
+    return { keepLocal: false, converged: true }
+  }
+  if (localText.startsWith(restText) && localText.length > restText.length) {
+    if (localRecentlyTouched) {
+      // Live stream ahead of the REST snapshot; keep streaming locally.
+      return { keepLocal: true, converged: false }
+    }
+    // Local longer but silent: ambiguous; remote is authoritative.
+    return { keepLocal: false, converged: false }
+  }
+  if (localText === restText) {
+    return { keepLocal: true, converged: true }
+  }
+  // Divergent texts.
+  const restCompleted = (rest as { completed?: boolean }).completed === true
+  if (restCompleted) {
+    return { keepLocal: false, converged: true }
+  }
+  if (localRecentlyTouched) {
+    // Both streaming and diverged: keep the local (apparently newer) state,
+    // report non-convergence so the next heartbeat re-checks.
+    return { keepLocal: true, converged: false }
+  }
+  return { keepLocal: false, converged: false }
+}

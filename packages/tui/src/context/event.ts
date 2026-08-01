@@ -10,7 +10,7 @@ export function useEvent() {
   const sdk = useSDK()
 
   function subscribe(handler: (event: Event, metadata: EventMetadata) => void) {
-    return sdk.event.on("event", (event) => {
+    return sdk.event.on((event) => {
       if (event.payload.type === "sync") {
         return
       }

@@ -16796,6 +16796,25 @@ $ bun run --conditions=browser ./src/index.ts generate
           "workspace": {
             "type": "string"
           },
+          "transport": {
+            "type": "object",
+            "description": "Live-consistency transport envelope (P12): per-connection stream identity and monotonic wire sequence. Present on engine-streamed events.",
+            "properties": {
+              "streamID": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "number"
+              },
+              "headSequence": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "streamID",
+              "sequence"
+            ]
+          },
           "payload": {
             "anyOf": [
               {

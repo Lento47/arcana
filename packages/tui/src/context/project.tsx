@@ -67,7 +67,7 @@ export const { use: useProject, provider: ProjectProvider } = createSimpleContex
       })
     }
 
-    sdk.event.on("event", (event: any) => {
+    sdk.event.on((event: any) => {
       if (event.payload.type === "workspace.status") {
         setStore("workspace", "status", event.payload.properties.workspaceID, event.payload.properties.status)
       }

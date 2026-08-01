@@ -51,6 +51,7 @@ import { Locale } from "../../util/locale"
 import { webSearchProviderLabel } from "../../util/tool-display"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import { useSDK, getLastSseEventMeta, SSE_SILENT_DEATH_MS } from "../../context/sdk"
+import { streamState } from "../../context/stream-state"
 import { useEditorContext } from "../../context/editor"
 import { openEditor } from "../../editor"
 import { useDialog } from "../../ui/dialog"
@@ -657,16 +658,23 @@ export function Session() {
     void sync.session.resync(route.sessionID).catch(() => {})
   })
 
-  // Periodic ground-truth reconciliation (P10): the engine heartbeats every
-  // 10s unconditionally (handlers/event.ts). A resync on each heartbeat
-  // converges ANY delivery gap — missed event, consumer stall, silent
-  // freeze — within one heartbeat, with no dependence on the watchdog.
-  // Live-streaming parts stay protected: the hydration merge keeps parts
-  // with a live event in the last 5s (SSE_PART_LIVENESS_MS) and the
-  // empty-REST preserve guard keeps unpersisted text.
+  // Divergence detection + authoritative repair (P12). The engine numbers
+  // every state-bearing event per stream (handlers/event.ts) and heartbeats
+  // carry headSequence = the highest sequence enqueued before the tick.
+  // If headSequence outruns what the sync store applied, events were
+  // dropped or failed to apply: reconcile the active session from REST.
+  // Grace of 4 covers transient in-flight lag during healthy streaming;
+  // a real stall (frozen part) leaves applied behind and converges within
+  // one heartbeat.
+  const HEARTBEAT_GAP_GRACE = 4
   event.subscribe((evt) => {
     if ((evt as { type: string }).type !== "server.heartbeat") return
-    void sync.session.resync(route.sessionID).catch(() => {})
+    const transport = (evt as { transport?: { headSequence?: number } }).transport
+    const head = transport?.headSequence
+    if (typeof head !== "number") return
+    if (head - streamState.lastApplied > HEARTBEAT_GAP_GRACE) {
+      void sync.session.reconcile(route.sessionID, "heartbeat-gap", head).catch(() => {})
+    }
   })
 
   // Helper: Find next visible message boundary in direction.

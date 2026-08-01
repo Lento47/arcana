@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { createSseClient } from "../gen/core/serverSentEvents.gen"
+import { createSseClient } from "../gen/core/serverSentEvents.gen.js"
 
 /**
  * SDK SSE parser load test. The engine pipeline is verified clean by

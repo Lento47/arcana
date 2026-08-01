@@ -26,7 +26,9 @@ import { createStore, produce, reconcile } from "solid-js/store"
 import { useProject } from "./project"
 import { useEvent } from "./event"
 import { useSDK, SSE_SILENT_DEATH_MS } from "./sdk"
-import { shouldKeepLocalPart } from "../util/part-merge"
+import { shouldKeepLocalPart, shouldKeepLocalAuthoritative } from "../util/part-merge"
+import { streamState, type TransportEnvelope } from "./stream-state"
+import { createMissingDeltaTracker } from "../util/missing-delta-tracker"
 import { useTuiStartup } from "./runtime"
 import { createSimpleContext } from "./helper"
 import { useExit } from "./exit"
@@ -34,6 +36,8 @@ import { useArgs } from "./args"
 import { batch, onMount } from "solid-js"
 import path from "path"
 import { useKV } from "./kv"
+
+export type ReconcileReason = "heartbeat-gap" | "missing-part" | "reconnect" | "stream-reset" | "manual"
 
 /**
  * Part liveness window for hydration merges. An actively-streaming part
@@ -162,6 +166,33 @@ export const {
     const loadingOlderSessions = new Set<string>()
     const exhaustedOlderSessions = new Set<string>()
     /**
+     * Authoritative reconcile state (P12.4). Separate from syncingSessions so
+     * a heartbeat-gap repair can never be mistaken for (or deduped into) the
+     * initial hydration, and vice versa.
+     */
+    const reconcilingSessions = new Map<string, Promise<void>>()
+    const reconcileGeneration = new Map<string, number>()
+    const RECONCILE_TIMEOUT_MS = 15_000
+    /**
+     * Missing-part delta diagnostics (P12.5). Deltas that arrive for a part
+     * the store does not know are never replayed (authoritative REST content
+     * is preferred; replay risks duplication). They are counted and bounded
+     * by missing-delta-tracker.ts, and each occurrence triggers an
+     * authoritative reconcile.
+     */
+    const missingDeltaTracker = createMissingDeltaTracker()
+    function noteMissingPartDelta(event: { properties: { partID: string; delta?: string; sessionID?: string }; transport?: TransportEnvelope }) {
+      const stats = missingDeltaTracker.note(event.properties.partID, event.properties.delta, event.transport?.sequence)
+      if (missingDeltaTracker.overflowed(event.properties.partID)) {
+        console.warn(
+          `[arcana] missing-part delta buffer overflow part=${event.properties.partID} count=${stats.count} bytes=${stats.bytes} seq=${stats.lastSequence} — reconciling`,
+        )
+      }
+    }
+    function clearMissingPartStats(partID: string) {
+      missingDeltaTracker.clear(partID)
+    }
+    /**
      * Part-level liveness (part-merge.ts): last live part event (delta or
      * full update) per part. Lets the hydration merge tell "live stream"
      * (keep the locally-accumulated part) from "stream died" (REST is
@@ -195,6 +226,13 @@ export const {
     }
 
     event.subscribe((event, { workspace }) => {
+      // P12 applied-tracking: this subscriber IS the store projection. The
+      // transport sequence advances lastApplied only when the event was fully
+      // processed without throwing; a failure leaves lastApplied behind so the
+      // heartbeat gap check triggers an authoritative reconcile.
+      const __eventTransport = (event as { transport?: TransportEnvelope }).transport
+      const __appliedSeq = __eventTransport?.headSequence === undefined ? __eventTransport?.sequence : undefined
+      try {
       switch (event.type) {
         case "server.instance.disposed":
           void bootstrap()
@@ -404,6 +442,7 @@ export const {
         }
         case "message.part.updated": {
           touchPart(event.properties.part.sessionID, event.properties.part.id)
+          clearMissingPartStats(event.properties.part.id)
           lastPartLiveAt.set(event.properties.part.id, Date.now())
           const parts = store.part[event.properties.part.messageID]
           if (!parts) {
@@ -427,9 +466,22 @@ export const {
 
         case "message.part.delta": {
           const parts = store.part[event.properties.messageID]
-          if (!parts) break
-          const result = search(parts, event.properties.partID, (p) => p.id)
-          if (!result.found) break
+          if (!parts) {
+            // P12.5: delta for a message the store does not know. Never replay
+            // (duplication risk); record diagnostics and reconcile from REST.
+            noteMissingPartDelta(event as { properties: { partID: string; delta?: string; sessionID?: string }; transport?: TransportEnvelope })
+            void result.session.reconcile(event.properties.sessionID, "missing-part").catch(() => {})
+            break
+          }
+          const hit = search(parts, event.properties.partID, (p) => p.id)
+          if (!hit.found) {
+            // P12.5: delta for a part the store does not know (its creation
+            // event was dropped or reordered). The part will be repaired by
+            // the authoritative reconcile; the deltas are diagnostics only.
+            noteMissingPartDelta(event as { properties: { partID: string; delta?: string; sessionID?: string }; transport?: TransportEnvelope })
+            void result.session.reconcile(event.properties.sessionID, "missing-part").catch(() => {})
+            break
+          }
           touchPart(event.properties.sessionID, event.properties.partID)
           lastPartLiveAt.set(event.properties.partID, Date.now())
           // Opportunistic prune: keep the map bounded, drop stale entries.
@@ -443,7 +495,7 @@ export const {
             "part",
             event.properties.messageID,
             produce((draft) => {
-              const part = draft[result.index]
+              const part = draft[hit.index]
               const field = event.properties.field as keyof typeof part
               const existing = part[field] as string | undefined
               ;(part[field] as string) = (existing ?? "") + event.properties.delta
@@ -480,6 +532,12 @@ export const {
           }
           break
         }
+      }
+      if (__appliedSeq !== undefined) {
+        streamState.lastApplied = Math.max(streamState.lastApplied, __appliedSeq)
+      }
+      } catch (__applyError) {
+        console.error(`[arcana] sync subscriber failed on ${event.type} seq=${__appliedSeq ?? "?"}`, __applyError)
       }
     })
 
@@ -799,19 +857,126 @@ export const {
           return task
         },
         /**
-         * Force a full REST re-hydration of a session, bypassing the
-         * fullSyncedSessions warm-switch guard. Called after an SSE reconnect
-         * to close any gap (stream teardown, parser buffer drop at EOF).
-         * Reuses sync() so live-hydration race guards and the tracker merge
-         * stay identical. Fail-closed: on fetch failure the guard stays
-         * cleared so the next sync attempt retries.
+         * Authoritative reconciliation (P12.4). Repairs a live projection
+         * from durable REST state after a detected divergence: heartbeat gap,
+         * missing-part delta, reconnect, or stream reset.
+         *
+         * Distinct from sync() (initial hydration, tracker-protected): this
+         * bypasses fullSyncedSessions, dedupes via reconcilingSessions,
+         * guards against stale late commits with a generation token, aborts
+         * after RECONCILE_TIMEOUT_MS, and merges with deterministic
+         * authoritative precedence (terminal tool state, prefix-aware text).
+         * On full convergence it acks streamState.lastApplied so the next
+         * heartbeat does not re-trigger.
+         */
+        async reconcile(sessionID: string, reason: ReconcileReason, head?: number) {
+          const generation = (reconcileGeneration.get(sessionID) ?? 0) + 1
+          reconcileGeneration.set(sessionID, generation)
+          const running = reconcilingSessions.get(sessionID)
+          if (running) return running
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), RECONCILE_TIMEOUT_MS)
+          const task = (async () => {
+            try {
+              const converged = await result.session.reconcileImpl(sessionID, reason, generation, controller.signal)
+              if (reconcileGeneration.get(sessionID) !== generation) return // stale response: never commit
+              // The projection was just rebuilt from REST: it is as fresh as a
+              // full hydrate, so warm-switch sync() calls may skip the network.
+              fullSyncedSessions.add(sessionID)
+              const ackTo = head ?? streamState.lastReceived
+              if (converged) {
+                streamState.lastApplied = Math.max(streamState.lastApplied, ackTo)
+              } else {
+                console.warn(
+                  `[arcana] reconcile partial session=${sessionID} reason=${reason} head=${head ?? "?"} applied=${streamState.lastApplied}`,
+                )
+              }
+            } catch (error) {
+              console.error(`[arcana] reconcile failed session=${sessionID} reason=${reason}`, error)
+            } finally {
+              clearTimeout(timeout)
+              reconcilingSessions.delete(sessionID)
+            }
+          })()
+          reconcilingSessions.set(sessionID, task)
+          return task
+        },
+        /**
+         * Internal: fetch the durable snapshot and apply it with authoritative
+         * merge precedence. Exposed on the API for tests.
+         */
+        async reconcileImpl(sessionID: string, reason: ReconcileReason, generation: number, signal: AbortSignal) {
+          const [session, messages, todo, diff] = await Promise.all([
+            sdk.client.session.get({ sessionID }, { throwOnError: true, signal } as never),
+            sdk.client.session.messages({ sessionID, limit: 25, signal } as never),
+            sdk.client.session.todo({ sessionID, signal } as never),
+            sdk.client.session.diff({ sessionID, signal } as never),
+          ])
+          const responseData = (messages as any).data?.items ?? (messages as any).data ?? []
+          const oldest = responseData[responseData.length - 1]
+          olderCursors.set(sessionID, oldest?.info?.id ?? undefined)
+          let converged = true
+          setStore(
+            produce((draft) => {
+              const match = search(draft.session, sessionID, (s) => s.id)
+              if (match.found) draft.session[match.index] = session.data!
+              if (!match.found) draft.session.splice(match.index, 0, session.data!)
+              draft.todo[sessionID] = todo.data ?? []
+              const infos = responseData.map((message: any) => message.info)
+              const removed = infos.slice(0, -100)
+              const visible: any[] = infos.slice(-100)
+              const visibleIDs = new Set(visible.map((message: any) => message.id))
+              for (const message of responseData) {
+                if (!visibleIDs.has(message.info.id)) continue
+                const currentParts = draft.part[message.info.id] ?? []
+                const now = Date.now()
+                const restParts = message.parts ?? []
+                const restIDs = new Set(restParts.map((p: any) => p.id))
+                const merged: any[] = []
+                for (const part of restParts) {
+                  const current = currentParts.find((item: any) => item.id === part.id)
+                  const decision = shouldKeepLocalAuthoritative({
+                    rest: part,
+                    current,
+                    lastEventAt: lastPartLiveAt.get(part.id) ?? 0,
+                    now,
+                    silenceMs: SSE_PART_LIVENESS_MS,
+                  })
+                  if (decision.keepLocal) {
+                    if (!decision.converged) converged = false
+                    if (current) merged.push(current)
+                  } else {
+                    if (!decision.converged) converged = false
+                    merged.push(part)
+                  }
+                }
+                // Local parts absent from REST: keep only live-streaming ones
+                // (REST snapshot may lag a part created moments ago).
+                const liveExtras = currentParts.filter(
+                  (p: any) => !restIDs.has(p.id) && now - (lastPartLiveAt.get(p.id) ?? 0) < SSE_PART_LIVENESS_MS,
+                )
+                if (liveExtras.length > 0) converged = false
+                merged.push(...liveExtras)
+                draft.part[message.info.id] = merged
+              }
+              for (const message of removed) delete draft.part[message.id]
+              draft.message[sessionID] = visible
+              draft.session_diff[sessionID] = diff.data ?? []
+            }),
+          )
+          return converged
+        },
+        /**
+         * Force a full REST re-hydration of a session after an SSE reconnect.
+         * Now an alias of the authoritative reconcile: reconnects repair the
+         * projection from durable state, not from the tracker merge.
          */
         async resync(sessionID: string) {
           fullSyncedSessions.delete(sessionID)
           // The fresh hydrate resets the older-messages cursor; un-exhaust so
           // scrolled-up history stays reachable after the reconnect trim.
           exhaustedOlderSessions.delete(sessionID)
-          return result.session.sync(sessionID)
+          return result.session.reconcile(sessionID, "reconnect")
         },
         async loadOlder(sessionID: string) {
           const messages = store.message[sessionID]

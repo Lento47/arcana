@@ -4,8 +4,17 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})
 }
 
+export type EventTransportEnvelope = {
+  /** Per-connection stream identity (engine handlers/event.ts). */
+  streamID: string
+  /** Sequence of this event within the stream. Heartbeats carry their own counter. */
+  sequence: number
+  /** Heartbeat only: highest state-bearing sequence enqueued before this tick. */
+  headSequence?: number
+}
+
 export type Event =
-  | EventSessionNextAgentSwitched
+  | (EventSessionNextAgentSwitched
   | EventSessionNextModelSwitched
   | EventSessionNextMoved
   | EventSessionNextPrompted
@@ -91,7 +100,8 @@ export type Event =
   | EventWorkspaceReady
   | EventWorkspaceFailed
   | EventWorkspaceStatus
-  | EventServerInstanceDisposed
+  | EventServerInstanceDisposed)
+  & { transport?: EventTransportEnvelope }
 
 export type QuestionReplied = {
   sessionID: string
@@ -729,7 +739,10 @@ export type GlobalEvent = {
   directory: string
   project?: string
   workspace?: string
+  /** Transport envelope (P12): present on engine streamed events. */
+  transport?: EventTransportEnvelope
   payload:
+    | (
     | {
         id: string
         type: "session.next.agent.switched"
@@ -1624,6 +1637,8 @@ export type GlobalEvent = {
     | SyncEventMessageRemoved
     | SyncEventMessagePartUpdated
     | SyncEventMessagePartRemoved
+    )
+    & { transport?: EventTransportEnvelope }
 }
 
 /**
