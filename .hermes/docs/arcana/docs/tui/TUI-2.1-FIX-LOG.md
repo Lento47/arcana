@@ -286,3 +286,28 @@ idle-stopped at 300s with zero clients and exited cleanly (exit code=0).
 
 Behavior after fix: TUI open = daemon alive (SSE suspends the timer, HTTP and
 heartbeats reset it). TUI closed + no traffic 5 min = clean stop + exit.
+
+## Round 5 — Live-stream reconciliation (P10+P11, 2026-08-01)
+
+The 18:16 live session (ses_04551e419ffeVd3u) froze at 5 chars of the final
+text while the daemon kept streaming (7,962 chars in DB). The engine publish
+-> SSE pipeline and the SDK parser were PROVEN clean by new load tests
+(test/server/httpapi-event-load.test.ts 4/4, sdk v2 server-sent-events-load
+3/3). The disease: the TUI trusts the SSE absolutely and only resyncs on
+reconnect/watchdog; the P2 merge's 30s liveness window perpetuates stale
+local parts across resyncs.
+
+Fixes:
+- `routes/session/index.tsx` — heartbeat-driven reconciliation: on every
+  10s `server.heartbeat`, resync the active session from REST. Any delivery
+  gap (missed event, consumer stall, silent freeze) converges within one
+  heartbeat, no watchdog dependence.
+- `context/sync.tsx` — merge liveness window tightened 30s -> 5s
+  (`SSE_PART_LIVENESS_MS`) at both merge sites; live-streaming parts still
+  protected (deltas arrive far faster than 5s).
+- `handlers/event.ts` — per-subscriber SSE queue: unbounded ->
+  `Queue.sliding(512)` (drop-oldest). A slow consumer can never stall the
+  publish path or grow memory; throttled part.updated (500ms) converges
+  dropped deltas.
+- Tests: engine load suite 4/4 (incl. sliding-queue unit), SDK parser 3/3,
+  TUI part-merge 9/9, TUI full suite 463/0. Typecheck clean tui+engine.

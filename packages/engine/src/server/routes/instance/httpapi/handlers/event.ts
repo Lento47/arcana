@@ -29,7 +29,11 @@ function eventResponse(events: EventV2.Interface) {
     const workspaceID = yield* InstanceState.workspaceID
     // Listener registration is eager, so events published after this point cannot
     // be lost while the HTTP body fiber is starting or emitting server.connected.
-    const queue = yield* Queue.unbounded<EventV2.Payload>()
+    // Sliding (drop-oldest) per subscriber: a slow consumer can never stall the
+    // publish path or accumulate unbounded memory. During streaming the throttled
+    // part.updated (processor.ts, every 500ms) carries the full part, so dropped
+    // deltas converge on the next full update.
+    const queue = yield* Queue.sliding<EventV2.Payload>(512)
     const unsubscribe = yield* events.listen((event) => Effect.sync(() => Queue.offerUnsafe(queue, event)))
     yield* Effect.addFinalizer(() => unsubscribe)
     const stream = Stream.fromQueue(queue).pipe(

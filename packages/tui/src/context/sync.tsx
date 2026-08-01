@@ -35,6 +35,16 @@ import { batch, onMount } from "solid-js"
 import path from "path"
 import { useKV } from "./kv"
 
+/**
+ * Part liveness window for hydration merges. An actively-streaming part
+ * receives deltas far more often than every 5s, so live text stays
+ * protected; a part whose events stopped (missed event, consumer stall,
+ * silent freeze) converges to the REST ground truth on the next heartbeat
+ * resync (10s cadence). The 30s SSE_SILENT_DEATH_MS stays for watchdog
+ * bookkeeping; this 5s window is the merge's convergence bound.
+ */
+const SSE_PART_LIVENESS_MS = 5_000
+
 const emptyConsoleState: ConsoleState = {
   consoleManagedProviders: [],
   switchableOrgCount: 0,
@@ -761,7 +771,7 @@ export const {
                         tracked: tracker.parts.has(part.id),
                         lastEventAt: lastPartLiveAt.get(part.id) ?? 0,
                         now,
-                        silenceMs: SSE_SILENT_DEATH_MS,
+                        silenceMs: SSE_PART_LIVENESS_MS,
                       })
                     ) {
                       return current ? [current] : []
@@ -899,7 +909,7 @@ export const {
                         tracked: tracker.parts.has(part.id),
                         lastEventAt: lastPartLiveAt.get(part.id) ?? 0,
                         now: Date.now(),
-                        silenceMs: SSE_SILENT_DEATH_MS,
+                        silenceMs: SSE_PART_LIVENESS_MS,
                       })
                     ) {
                       return current ? [current] : []
