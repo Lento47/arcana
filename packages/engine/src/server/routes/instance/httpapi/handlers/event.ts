@@ -23,26 +23,60 @@ function eventID() {
   return EventV2.ID.create()
 }
 
+/**
+ * Live-consistency transport envelope (P12).
+ *
+ * Every event emitted to a subscriber carries a per-connection streamID and a
+ * monotonic wire sequence. Heartbeats carry headSequence = the highest
+ * state-bearing sequence enqueued before the heartbeat tick, so a client can
+ * detect divergence while the connection is alive: if headSequence outruns
+ * what the client applied, events were dropped or failed to apply, and the
+ * client must reconcile from REST. The sequence space is assigned AFTER the
+ * workspace/directory filter, so clients see a gapless sequence over exactly
+ * the events they were meant to receive.
+ *
+ * The sliding queue stays bounded (slow consumers cannot stall the publish
+ * path), but drops are no longer silent: the heartbeat fiber estimates drops
+ * from offered/delivered/queue-depth accounting and logs an overflow warning.
+ * The client-side sequence gap remains the authoritative correctness detector.
+ */
 function eventResponse(events: EventV2.Interface) {
   return Effect.gen(function* () {
     const instance = yield* InstanceState.context
     const workspaceID = yield* InstanceState.workspaceID
+    const streamID = `stm_${eventID()}`
     // Listener registration is eager, so events published after this point cannot
     // be lost while the HTTP body fiber is starting or emitting server.connected.
     // Sliding (drop-oldest) per subscriber: a slow consumer can never stall the
-    // publish path or accumulate unbounded memory. During streaming the throttled
-    // part.updated (processor.ts, every 500ms) carries the full part, so dropped
-    // deltas converge on the next full update.
+    // publish path or accumulate unbounded memory.
     const queue = yield* Queue.sliding<EventV2.Payload>(512)
-    const unsubscribe = yield* events.listen((event) => Effect.sync(() => Queue.offerUnsafe(queue, event)))
+    const unsubscribe = yield* events.listen((event) =>
+      Effect.sync(() => {
+        offered += 1
+        Queue.offerUnsafe(queue, event)
+      }),
+    )
     yield* Effect.addFinalizer(() => unsubscribe)
+
+    // Per-subscriber wire counters. All increments happen on the single-threaded
+    // event loop (no awaits between read and write), so plain numbers are safe.
+    let wireSeq = 0 // state-bearing events emitted to the wire (post-filter)
+    let hbSeq = 0 // heartbeat sequence (own counter, never pollutes wireSeq)
+    let offered = 0 // events offered to the sliding queue
+    let delivered = 0 // events pulled from the queue by the stream
+    let lastReportedDropped = 0
+
     const stream = Stream.fromQueue(queue).pipe(
+      Stream.tap(() =>
+        Effect.sync(() => {
+          delivered += 1
+        }),
+      ),
       Stream.filter(
         (event) =>
           event.location?.directory === instance.directory &&
           (event.location.workspaceID === undefined || event.location.workspaceID === workspaceID),
       ),
-      Stream.map((event) => ({ id: event.id, type: event.type, properties: event.data })),
     )
     const disposed = Stream.callback<{ id: string; type: string; properties: unknown }>((queue) => {
       const listener = (event: {
@@ -64,15 +98,37 @@ function eventResponse(events: EventV2.Interface) {
     const output = stream.pipe(
       Stream.merge(disposed, { haltStrategy: "left" }),
       Stream.takeUntil((event) => event.type === "server.instance.disposed"),
+      // Number everything that goes on the wire with the per-connection envelope.
+      Stream.map((event) => ({
+        id: (event as { id?: string }).id ?? eventID(),
+        type: (event as { type: string }).type,
+        properties: ((event as { data?: unknown }).data ?? (event as { properties?: unknown }).properties ?? {}) as unknown,
+        transport: { streamID, sequence: ++wireSeq },
+      })),
     )
     const heartbeat = Stream.tick("10 seconds").pipe(
       Stream.drop(1),
-      Stream.map(() => {
-        // A flowing heartbeat means at least one live SSE client: keep the
-        // daemon's idle self-destruct from firing (see daemon/activity.ts).
-        resetActivity()
-        return { id: eventID(), type: "server.heartbeat", properties: {} }
-      }),
+      Stream.mapEffect(() =>
+        Effect.gen(function* () {
+          // A flowing heartbeat means at least one live SSE client: keep the
+          // daemon's idle self-destruct from firing (see daemon/activity.ts).
+          resetActivity()
+          const queueDepth = yield* Queue.size(queue)
+          const estimatedDropped = Math.max(0, offered - delivered - queueDepth)
+          if (estimatedDropped > lastReportedDropped) {
+            lastReportedDropped = estimatedDropped
+            yield* Effect.logWarning(
+              `[sse] subscriber overflow stream=${streamID} offered=${offered} delivered=${delivered} queue=${queueDepth} estimatedDropped=${estimatedDropped} head=${wireSeq}`,
+            )
+          }
+          return {
+            id: eventID(),
+            type: "server.heartbeat",
+            properties: { headSequence: wireSeq },
+            transport: { streamID, sequence: ++hbSeq, headSequence: wireSeq },
+          }
+        }),
+      ),
     )
 
     yield* Effect.logInfo("event connected")
@@ -81,14 +137,21 @@ function eventResponse(events: EventV2.Interface) {
       resetActivity()
     })
     return HttpServerResponse.stream(
-      Stream.make({ id: eventID(), type: "server.connected", properties: {} }).pipe(
+      Stream.make({
+        id: eventID(),
+        type: "server.connected",
+        properties: {},
+        transport: { streamID, sequence: 0, headSequence: 0 },
+      }).pipe(
         Stream.concat(output.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }))),
         Stream.map(eventData),
         Stream.pipeThroughChannel(Sse.encode()),
         Stream.encodeText,
         Stream.ensuring(
           Effect.gen(function* () {
-            yield* Effect.logInfo("event disconnected")
+            yield* Effect.logInfo(
+              `[sse] subscriber closed stream=${streamID} offered=${offered} delivered=${delivered} estimatedDropped=${lastReportedDropped} head=${wireSeq}`,
+            )
             yield* Effect.sync(() => sseDisconnected())
           }),
         ),

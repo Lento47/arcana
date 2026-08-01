@@ -155,13 +155,12 @@ test("resync failure keeps the guard cleared so the next sync attempt retries", 
     expect(sync.session.isSynced(sessionID)).toBe(true)
 
     // Engine down: every REST call rejects. session.get uses throwOnError,
-    // so Promise.all rejects and resync propagates the failure. (A partial
-    // failure — only the messages call — is swallowed by sync() by design:
-    // messages() has no throwOnError. The real tripwire is session.get.)
+    // so Promise.all rejects and the reconcile fails INTERNALLY (it must
+    // never reject: the heartbeat path fires it on every gap). Fail-closed:
+    // fullSyncedSessions stays cleared, so the next attempt re-fetches.
     failAll = true
-    await expect(sync.session.resync(sessionID)).rejects.toThrow()
+    await sync.session.resync(sessionID)
 
-    // Fail-closed: the guard is cleared, so a later attempt re-fetches.
     expect(sync.session.isSynced(sessionID)).toBe(false)
 
     failAll = false

@@ -311,3 +311,64 @@ Fixes:
   dropped deltas.
 - Tests: engine load suite 4/4 (incl. sliding-queue unit), SDK parser 3/3,
   TUI part-merge 9/9, TUI full suite 463/0. Typecheck clean tui+engine.
+
+## Round 6 — Live-validation failure + divergence repair protocol (P12, 2026-08-01)
+
+The QoS review turn (arcana-proxy, 6:55 PM) reproduced the disease on the
+P10+P11 build: engine finished (full summary in REST), TUI froze at "## Qo".
+Both heartbeat resync AND the reconnect resync (daemon respawned at 6:57:52
+mid-turn, log: [boot] pid=10536) failed to converge. External review
+confirmed the disease class: durable advances, live projection doesn't.
+
+Two real defects confirmed in code:
+1. `sdk.tsx` emitter: bare `for (const handler of handlers) handler(event)` —
+   one throwing subscriber aborts the batch, drops remaining events, forces
+   reconnect. Top micro-cause candidate for a persistent freeze.
+2. `sync.tsx` delta handler: `if (!parts) break` / `if (!result.found) break`
+   — deltas for a missing part vanish silently, no marker, no recovery.
+
+P12 implements the full divergence-detection + repair protocol:
+
+Engine (`handlers/event.ts`):
+- Per-subscriber `streamID` + monotonic wire `sequence` on every event
+  emitted to the wire (numbered AFTER the workspace filter, so clients see
+  gapless sequences over exactly the events they should receive).
+- Heartbeat carries `transport.headSequence` = highest state-bearing
+  sequence enqueued before the tick; heartbeat has its own sequence counter.
+- Drop accounting: offered/delivered/queue-depth estimate logged on
+  overflow; subscriber close logs offered/delivered/estimatedDropped/head.
+- Sliding queue retained (bounded memory); drops are now DETECTABLE by the
+  client instead of silent.
+
+TUI (`sdk.tsx`, `sync.tsx`, `routes/session/index.tsx`, new
+`context/stream-state.ts`, `util/isolated-emitter.ts`,
+`util/missing-delta-tracker.ts`):
+- Emitter: per-subscriber exception isolation (one throw cannot starve the
+  sync store subscriber or abort the batch).
+- Stream state: lastReceived (parser delivered) vs lastApplied (store
+  applied) tracked per streamID; streamID change resets both.
+- Heartbeat hook: reconcile the active session when
+  `headSequence - lastApplied > 4` (grace covers in-flight lag; a real
+  stall converges within one heartbeat).
+- Authoritative `reconcile()`: separate from hydration sync(), bypasses
+  fullSyncedSessions, dedupes via reconcilingSessions, generation token
+  prevents stale late commits, 15s abort, acks lastApplied on convergence.
+- Merge precedence (`shouldKeepLocalAuthoritative`): terminal remote tool
+  state always beats local running; prefix-aware text comparison (remote
+  superset wins; local append wins only while live); divergent text with
+  completed remote message wins; liveness is the last tie-breaker.
+- Missing-part deltas: bounded diagnostics tracker (128/part, 256KB,
+  TTL 15s) + immediate reconcile trigger; never replayed (duplication
+  risk).
+- SDK types: `EventTransportEnvelope` typed on the Event union + GlobalEvent
+  payload; transport mirrored onto payload for useEvent subscribers.
+
+Tests: engine event-sequence 3/3 (monotonic gapless sequences, heartbeat
+headSequence gap detection, per-connection streamID reset), TUI
+part-merge-authoritative 10/10, isolated-emitter 4/4, missing-delta-tracker
+5/5, existing part-merge 9/9, SDK parser 3/3, daemon activity 7/7.
+Typecheck clean: engine, tui, sdk.
+
+Remaining (P13 candidates): server.resync_required on overflow, part
+revisions, live-state endpoint. The headSequence gap subsumes
+resync_required functionally.
