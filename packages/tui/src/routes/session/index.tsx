@@ -673,6 +673,11 @@ export function Session() {
     const head = transport?.headSequence
     if (typeof head !== "number") return
     if (head - streamState.lastApplied > HEARTBEAT_GAP_GRACE) {
+      // Detection point: what diverged, and by how much. The repair itself
+      // logs per-part before/after (reconcile applied ... changed=N).
+      console.warn(
+        `[arcana] stream gap session=${route.sessionID} head=${head} applied=${streamState.lastApplied} lag=${head - streamState.lastApplied} -> reconcile`,
+      )
       void sync.session.reconcile(route.sessionID, "heartbeat-gap", head).catch(() => {})
     }
   })
