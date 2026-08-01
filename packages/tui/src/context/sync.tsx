@@ -111,6 +111,10 @@ export const {
       part: {
         [messageID: string]: Part[]
       }
+      /** Monotonic semantic revision for each message's part collection. */
+      part_revision: {
+        [messageID: string]: number
+      }
       lsp: LspStatus[]
       mcp: {
         [key: string]: McpStatus
@@ -147,6 +151,7 @@ export const {
       todo: {},
       message: {},
       part: {},
+      part_revision: {},
       lsp: [],
       mcp: {},
       mcp_resource: {},
@@ -158,6 +163,10 @@ export const {
     const event = useEvent()
     const project = useProject()
     const sdk = useSDK()
+
+    const bumpPartRevision = (messageID: string) => {
+      setStore("part_revision", messageID, (revision) => (revision ?? 0) + 1)
+    }
 
     const fullSyncedSessions = new Set<string>()
     const syncingSessions = new Map<string, Promise<void>>()
@@ -421,6 +430,12 @@ export const {
                   delete draft[oldest.id]
                 }),
               )
+              setStore(
+                "part_revision",
+                produce((draft) => {
+                  delete draft[oldest.id]
+                }),
+              )
             })
           }
           break
@@ -446,21 +461,30 @@ export const {
           lastPartLiveAt.set(event.properties.part.id, Date.now())
           const parts = store.part[event.properties.part.messageID]
           if (!parts) {
-            setStore("part", event.properties.part.messageID, [event.properties.part])
+            batch(() => {
+              setStore("part", event.properties.part.messageID, [event.properties.part])
+              bumpPartRevision(event.properties.part.messageID)
+            })
             break
           }
           const result = search(parts, event.properties.part.id, (p) => p.id)
           if (result.found) {
-            setStore("part", event.properties.part.messageID, result.index, reconcile(event.properties.part))
+            batch(() => {
+              setStore("part", event.properties.part.messageID, result.index, reconcile(event.properties.part))
+              bumpPartRevision(event.properties.part.messageID)
+            })
             break
           }
-          setStore(
-            "part",
-            event.properties.part.messageID,
-            produce((draft) => {
-              draft.splice(result.index, 0, event.properties.part)
-            }),
-          )
+          batch(() => {
+            setStore(
+              "part",
+              event.properties.part.messageID,
+              produce((draft) => {
+                draft.splice(result.index, 0, event.properties.part)
+              }),
+            )
+            bumpPartRevision(event.properties.part.messageID)
+          })
           break
         }
 
@@ -491,16 +515,19 @@ export const {
               if (at < cutoff) lastPartLiveAt.delete(id)
             }
           }
-          setStore(
-            "part",
-            event.properties.messageID,
-            produce((draft) => {
-              const part = draft[hit.index]
-              const field = event.properties.field as keyof typeof part
-              const existing = part[field] as string | undefined
-              ;(part[field] as string) = (existing ?? "") + event.properties.delta
-            }),
-          )
+          batch(() => {
+            setStore(
+              "part",
+              event.properties.messageID,
+              produce((draft) => {
+                const part = draft[hit.index]
+                const field = event.properties.field as keyof typeof part
+                const existing = part[field] as string | undefined
+                ;(part[field] as string) = (existing ?? "") + event.properties.delta
+              }),
+            )
+            bumpPartRevision(event.properties.messageID)
+          })
           break
         }
 
@@ -509,13 +536,16 @@ export const {
           const parts = store.part[event.properties.messageID]
           const result = search(parts, event.properties.partID, (p) => p.id)
           if (result.found) {
-            setStore(
-              "part",
-              event.properties.messageID,
-              produce((draft) => {
-                draft.splice(result.index, 1)
-              }),
-            )
+            batch(() => {
+              setStore(
+                "part",
+                event.properties.messageID,
+                produce((draft) => {
+                  draft.splice(result.index, 1)
+                }),
+              )
+              bumpPartRevision(event.properties.messageID)
+            })
           }
           break
         }
@@ -820,6 +850,7 @@ export const {
                 for (const message of responseData) {
                   if (!visibleIDs.has(message.info.id)) {
                     delete draft.part[message.info.id]
+                    delete draft.part_revision[message.info.id]
                     continue
                   }
                   const currentParts = draft.part[message.info.id] ?? []
@@ -846,8 +877,12 @@ export const {
                     ),
                   )
                   draft.part[message.info.id] = parts
+                  draft.part_revision[message.info.id] = (draft.part_revision[message.info.id] ?? 0) + 1
                 }
-                for (const message of removed) delete draft.part[message.id]
+                for (const message of removed) {
+                  delete draft.part[message.id]
+                  delete draft.part_revision[message.id]
+                }
                 draft.message[sessionID] = visible
                 draft.session_diff[sessionID] = diff.data ?? []
               }),
@@ -947,6 +982,7 @@ export const {
               for (const message of responseData) {
                 if (!visibleIDs.has(message.info.id)) continue
                 const currentParts = draft.part[message.info.id] ?? []
+                let messagePartsChanged = false
                 const now = Date.now()
                 const restParts = message.parts ?? []
                 const restIDs = new Set(restParts.map((p: any) => p.id))
@@ -975,6 +1011,7 @@ export const {
                   } else {
                     if (!decision.converged) converged = false
                     merged.push(part)
+                    messagePartsChanged = true
                     changes.push({
                       partID: part.id,
                       type: part.type ?? "?",
@@ -1000,9 +1037,16 @@ export const {
                   })
                 }
                 merged.push(...liveExtras)
+                if (merged.length !== currentParts.length) messagePartsChanged = true
                 draft.part[message.info.id] = merged
+                if (messagePartsChanged) {
+                  draft.part_revision[message.info.id] = (draft.part_revision[message.info.id] ?? 0) + 1
+                }
               }
-              for (const message of removed) delete draft.part[message.id]
+              for (const message of removed) {
+                delete draft.part[message.id]
+                delete draft.part_revision[message.id]
+              }
               draft.message[sessionID] = visible
               draft.session_diff[sessionID] = diff.data ?? []
             }),
@@ -1080,6 +1124,7 @@ export const {
                     // Add parts for new messages
                     for (const { messageID, parts } of newParts) {
                       draft.part[messageID] = parts
+                      draft.part_revision[messageID] = (draft.part_revision[messageID] ?? 0) + 1
                     }
                   }
                 }),
@@ -1131,6 +1176,7 @@ export const {
                     return [part]
                   })
                   draft.part[message.info.id] = [...currentParts.filter((p) => tracker.parts.has(p.id)), ...mergedParts]
+                  draft.part_revision[message.info.id] = (draft.part_revision[message.info.id] ?? 0) + 1
                 }
               }),
             )

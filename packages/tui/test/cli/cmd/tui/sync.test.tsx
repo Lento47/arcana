@@ -104,4 +104,54 @@ describe("tui sync", () => {
       app.renderer.destroy()
     }
   })
+
+  test("part updates, deltas, and removals advance the message part revision", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(`${tmp.path}/kv.json`, "{}")
+    const { app, emit, sync } = await mount(undefined, tmp.path)
+    const sessionID = "ses_part_revision"
+    const messageID = "msg_part_revision"
+    const partID = "prt_part_revision"
+
+    try {
+      emit({
+        directory: "/tmp/other",
+        payload: {
+          id: "evt_part_created",
+          type: "message.part.updated",
+          properties: {
+            sessionID,
+            time: 1,
+            part: { id: partID, sessionID, messageID, type: "text", text: "What" },
+          },
+        },
+      } as unknown as GlobalEvent)
+      await wait(() => sync.data.part_revision[messageID] === 1)
+      expect(sync.data.part[messageID]?.[0]).toMatchObject({ text: "What" })
+
+      emit({
+        directory: "/tmp/other",
+        payload: {
+          id: "evt_part_delta",
+          type: "message.part.delta",
+          properties: { sessionID, messageID, partID, field: "text", delta: " kind" },
+        },
+      } as unknown as GlobalEvent)
+      await wait(() => sync.data.part_revision[messageID] === 2)
+      expect(sync.data.part[messageID]?.[0]).toMatchObject({ text: "What kind" })
+
+      emit({
+        directory: "/tmp/other",
+        payload: {
+          id: "evt_part_removed",
+          type: "message.part.removed",
+          properties: { sessionID, messageID, partID },
+        },
+      } as unknown as GlobalEvent)
+      await wait(() => sync.data.part_revision[messageID] === 3)
+      expect(sync.data.part[messageID]).toHaveLength(0)
+    } finally {
+      app.renderer.destroy()
+    }
+  })
 })

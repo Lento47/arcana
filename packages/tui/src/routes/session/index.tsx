@@ -1643,6 +1643,7 @@ export function Session() {
           // Stable empty array — a fresh `[]` every call busts the spine message cache.
           return EMPTY_PARTS
         },
+        getPartRevision: (messageId: string) => sync.data.part_revision[messageId] ?? 0,
         revert,
         pending,
         lastAssistant,

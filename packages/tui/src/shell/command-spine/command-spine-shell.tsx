@@ -8,7 +8,7 @@ import { getSpineLayout, spineGutterWidth, spineOuterPadding, spineRailWidth, ty
 import { SAMPLE_ENTRIES } from "./sample-entries"
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
 import { SpineHeader } from "./spine-header"
-import { SpineEntry as SpineEntryView } from "./spine-entry"
+import { SpineEntryBinding } from "./spine-entry-binding"
 import { SpinePrompt } from "./spine-prompt"
 import { pendingGateEntries } from "./spine-gates"
 import { PermissionPrompt } from "../../routes/session/permission"
@@ -117,6 +117,7 @@ export function CommandSpineShell(props: ShellProps) {
     const result = messagesToSpineEntriesCached({
       messages: props.messages(),
       getParts: props.getParts,
+      getPartRevision: props.getPartRevision,
       assistantDuration: props.assistantDuration(),
       cache,
       previousEntries,
@@ -595,19 +596,26 @@ export function CommandSpineShell(props: ShellProps) {
           >
             <For each={visibleEntryIDs()}>
               {(id) => {
-                const entry = () => visibleEntryByID().get(id)
-                const e = entry()
-                if (!e) return null
+                // IMPORTANT: A keyed Solid <For> runs this child once per id. Never
+                // capture the entry object here; doing so freezes the first streamed
+                // prefix until restart. The binding must resolve the current object.
+                const getEntry = () => visibleEntryByID().get(id)
                 return (
-                  <SpineEntryView
-                    entry={e}
+                  <SpineEntryBinding
+                    getEntry={getEntry}
                     layout={layout()}
                     contentWidth={contentWidth()}
                     thinkContentWidth={thinkContentWidth()}
-                    expanded={entryExpanded(e)}
-                    focused={entryFocused(e)}
-                    onToggle={() => toggleEntry(e)}
-                    onFocus={() => focusEntry(e)}
+                    expanded={entryExpanded(getEntry()!)}
+                    focused={entryFocused(getEntry()!)}
+                    onToggle={() => {
+                      const entry = getEntry()
+                      if (entry) toggleEntry(entry)
+                    }}
+                    onFocus={() => {
+                      const entry = getEntry()
+                      if (entry) focusEntry(entry)
+                    }}
                     onNavigate={(sid) => route.navigate({ type: "session", sessionID: sid })}
                     sessionID={route.data?.type === "session" ? (route.data as any).sessionID : undefined}
                     nodeRef={(node) => {

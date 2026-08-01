@@ -67,6 +67,7 @@ describe("repro: streaming lifecycle through cached mapper (debug-log replay)", 
   test("final idle run must produce streaming=false entries even with reused cache", () => {
     const { messages, parts, getParts } = makeFixtures()
     const assistantDuration = new Map<string, number>()
+    const getPartRevision = () => 0
     let cache: ReturnType<typeof messagesToSpineEntriesCached>["cache"] | undefined
     let previousEntries: ReturnType<typeof messagesToSpineEntriesCached>["entries"] = []
 
@@ -74,6 +75,7 @@ describe("repro: streaming lifecycle through cached mapper (debug-log replay)", 
       const result = messagesToSpineEntriesCached({
         messages,
         getParts,
+        getPartRevision,
         assistantDuration,
         cache,
         previousEntries,
@@ -118,5 +120,73 @@ describe("repro: streaming lifecycle through cached mapper (debug-log replay)", 
     entries = run(undefined)
     expect(entries.find((e) => e.kind === "think")?.streaming).toBe(false)
     expect(entries.find((e) => e.kind === "plan")?.streaming).toBe(false)
+  })
+
+  test("part revision invalidates a completed message cached with a truncated prefix", () => {
+    const { messages, reasoning, text, getParts } = makeFixtures()
+    const assistant = messages[1] as any
+    assistant.time.completed = 3400
+    assistant.finish = "stop"
+    ;(reasoning as any).time = { end: 3200 }
+    ;(text as any).time = { end: 3300 }
+    ;(reasoning as any).text = "The user is starting a new project"
+    ;(text as any).text = "What kind"
+
+    const revisions = new Map<string, number>([[assistant.id, 1]])
+    const assistantDuration = new Map<string, number>()
+    let cache: ReturnType<typeof messagesToSpineEntriesCached>["cache"] | undefined
+    let previousEntries: ReturnType<typeof messagesToSpineEntriesCached>["entries"] = []
+
+    const run = () => {
+      const result = messagesToSpineEntriesCached({
+        messages,
+        getParts,
+        getPartRevision: (messageID) => revisions.get(messageID) ?? 0,
+        assistantDuration,
+        cache,
+        previousEntries,
+        sessionStatusType: "idle",
+      })
+      cache = result.cache
+      previousEntries = result.entries
+      return result.entries
+    }
+
+    let entries = run()
+    const prefixPlan = entries.find((entry) => entry.kind === "plan")
+    const prefixThink = entries.find((entry) => entry.kind === "think")
+    expect(prefixPlan?.summary).toBe("What kind")
+    expect(prefixThink?.body).toBe("The user is starting a new project")
+
+    // Solid store proxies and the parts array keep their identity while the
+    // event handlers mutate text in place. Only the semantic revision moves.
+    ;(reasoning as any).text =
+      "The user is starting a new project and wants to get it ready. They need a clarifying question."
+    ;(text as any).text = 'What kind of project? What does "ready" look like for you?'
+    revisions.set(assistant.id, 2)
+
+    entries = run()
+    const completePlan = entries.find((entry) => entry.kind === "plan")
+    const completeThink = entries.find((entry) => entry.kind === "think")
+    expect(completePlan?.summary).toBe('What kind of project? What does "ready" look like for you?')
+    expect(completeThink?.body).toBe(
+      "The user is starting a new project and wants to get it ready. They need a clarifying question.",
+    )
+    expect(completePlan).not.toBe(prefixPlan)
+    expect(completeThink).not.toBe(prefixThink)
+
+    const cold = messagesToSpineEntriesCached({
+      messages,
+      getParts,
+      getPartRevision: (messageID) => revisions.get(messageID) ?? 0,
+      assistantDuration,
+      sessionStatusType: "idle",
+    }).entries
+    expect(completePlan?.summary).toBe(cold.find((entry) => entry.kind === "plan")?.summary)
+    expect(completeThink?.body).toBe(cold.find((entry) => entry.kind === "think")?.body)
+
+    entries = run()
+    expect(entries.find((entry) => entry.kind === "plan")).toBe(completePlan)
+    expect(entries.find((entry) => entry.kind === "think")).toBe(completeThink)
   })
 })
