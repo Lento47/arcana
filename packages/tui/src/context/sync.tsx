@@ -185,7 +185,7 @@ export const {
       const stats = missingDeltaTracker.note(event.properties.partID, event.properties.delta, event.transport?.sequence)
       if (missingDeltaTracker.overflowed(event.properties.partID)) {
         console.warn(
-          `[arcana] missing-part delta buffer overflow part=${event.properties.partID} count=${stats.count} bytes=${stats.bytes} seq=${stats.lastSequence} — reconciling`,
+          `[arcana] missing-part delta buffer overflow session=${event.properties.sessionID ?? "?"} part=${event.properties.partID} count=${stats.count} bytes=${stats.bytes} seq=${stats.lastSequence} — reconciling`,
         )
       }
     }
@@ -537,7 +537,11 @@ export const {
         streamState.lastApplied = Math.max(streamState.lastApplied, __appliedSeq)
       }
       } catch (__applyError) {
-        console.error(`[arcana] sync subscriber failed on ${event.type} seq=${__appliedSeq ?? "?"}`, __applyError)
+        const __props = (event as { properties?: { partID?: string; messageID?: string; part?: { id?: string } } }).properties
+        console.error(
+          `[arcana] sync subscriber failed on ${event.type} seq=${__appliedSeq ?? "?"} part=${__props?.partID ?? __props?.part?.id ?? "?"} msg=${__props?.messageID ?? "?"}`,
+          __applyError,
+        )
       }
     })
 
@@ -916,6 +920,20 @@ export const {
           const oldest = responseData[responseData.length - 1]
           olderCursors.set(sessionID, oldest?.info?.id ?? undefined)
           let converged = true
+          // What CHANGED, not just that a reconcile ran: per-part decisions
+          // with the before/after state, logged after the apply.
+          const changes: Array<{
+            partID: string
+            type: string
+            action: "replaced" | "added" | "kept-live" | "kept-identical"
+            from: string
+            to: string
+          }> = []
+          const summarize = (part: any) => {
+            if (part?.type === "tool") return `tool:${part?.state?.status ?? "?"}`
+            if (part?.type === "text" || part?.type === "reasoning") return `${part?.type}:${(part?.text ?? "").length}`
+            return `${part?.type ?? "?"}`
+          }
           setStore(
             produce((draft) => {
               const match = search(draft.session, sessionID, (s) => s.id)
@@ -944,10 +962,26 @@ export const {
                   })
                   if (decision.keepLocal) {
                     if (!decision.converged) converged = false
-                    if (current) merged.push(current)
+                    if (current) {
+                      merged.push(current)
+                      changes.push({
+                        partID: part.id,
+                        type: part.type ?? "?",
+                        action: decision.converged ? "kept-identical" : "kept-live",
+                        from: summarize(current),
+                        to: summarize(current),
+                      })
+                    }
                   } else {
                     if (!decision.converged) converged = false
                     merged.push(part)
+                    changes.push({
+                      partID: part.id,
+                      type: part.type ?? "?",
+                      action: current ? "replaced" : "added",
+                      from: current ? summarize(current) : "-",
+                      to: summarize(part),
+                    })
                   }
                 }
                 // Local parts absent from REST: keep only live-streaming ones
@@ -956,6 +990,15 @@ export const {
                   (p: any) => !restIDs.has(p.id) && now - (lastPartLiveAt.get(p.id) ?? 0) < SSE_PART_LIVENESS_MS,
                 )
                 if (liveExtras.length > 0) converged = false
+                for (const extra of liveExtras) {
+                  changes.push({
+                    partID: extra.id,
+                    type: extra.type ?? "?",
+                    action: "kept-live",
+                    from: summarize(extra),
+                    to: summarize(extra),
+                  })
+                }
                 merged.push(...liveExtras)
                 draft.part[message.info.id] = merged
               }
@@ -963,6 +1006,12 @@ export const {
               draft.message[sessionID] = visible
               draft.session_diff[sessionID] = diff.data ?? []
             }),
+          )
+          const changed = changes.filter((c) => c.action === "replaced" || c.action === "added")
+          console.log(
+            `[arcana] reconcile applied session=${sessionID} reason=${reason} converged=${converged} changed=${changed.length}${
+              changed.length > 0 ? ` [${changed.map((c) => `${c.partID} ${c.action} ${c.from}->${c.to}`).join(" | ")}]` : ""
+            }`,
           )
           return converged
         },

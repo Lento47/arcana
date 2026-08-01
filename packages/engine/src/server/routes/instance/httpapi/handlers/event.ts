@@ -116,9 +116,17 @@ function eventResponse(events: EventV2.Interface) {
           const queueDepth = yield* Queue.size(queue)
           const estimatedDropped = Math.max(0, offered - delivered - queueDepth)
           if (estimatedDropped > lastReportedDropped) {
+            // What CHANGED, not just that it happened: the sliding queue
+            // evicts the OLDEST entries, so the dropped offers are exactly
+            // offers [delivered+1 .. delivered+dropped]. For a single
+            // workspace/directory subscriber, offer order == wire sequence
+            // order, so this is the dropped wire range the client will see
+            // as a sequence gap.
+            const firstDropped = delivered + 1
+            const lastDropped = delivered + estimatedDropped
             lastReportedDropped = estimatedDropped
             yield* Effect.logWarning(
-              `[sse] subscriber overflow stream=${streamID} offered=${offered} delivered=${delivered} queue=${queueDepth} estimatedDropped=${estimatedDropped} head=${wireSeq}`,
+              `[sse] subscriber overflow stream=${streamID} droppedOffers=${estimatedDropped} droppedOfferRange=${firstDropped}-${lastDropped} queue=${queueDepth} offered=${offered} delivered=${delivered} head=${wireSeq}`,
             )
           }
           return {
