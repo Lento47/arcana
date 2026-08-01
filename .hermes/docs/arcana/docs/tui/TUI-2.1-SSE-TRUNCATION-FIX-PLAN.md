@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-31
 **Branch:** phase-d-implementation
-**Status:** P2/P3/P4 IMPLEMENTED (committed) — P5 pending. P7+P8 IMPLEMENTED (daemon idle self-destruct root cause, see TUI-2.1-DAEMON-ROOTCAUSE-AUDIT.md). P9 (live validation) pending.
+**Status:** P2/P3/P4 IMPLEMENTED. P7+P8 IMPLEMENTED (daemon idle self-destruct, see TUI-2.1-DAEMON-ROOTCAUSE-AUDIT.md). P10+P11 IMPLEMENTED (live-stream reconciliation, see TUI-2.1-SSE-STALL-REPORT.md). P12 (live validation) pending.
 
 ---
 

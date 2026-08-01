@@ -657,6 +657,18 @@ export function Session() {
     void sync.session.resync(route.sessionID).catch(() => {})
   })
 
+  // Periodic ground-truth reconciliation (P10): the engine heartbeats every
+  // 10s unconditionally (handlers/event.ts). A resync on each heartbeat
+  // converges ANY delivery gap — missed event, consumer stall, silent
+  // freeze — within one heartbeat, with no dependence on the watchdog.
+  // Live-streaming parts stay protected: the hydration merge keeps parts
+  // with a live event in the last 5s (SSE_PART_LIVENESS_MS) and the
+  // empty-REST preserve guard keeps unpersisted text.
+  event.subscribe((evt) => {
+    if ((evt as { type: string }).type !== "server.heartbeat") return
+    void sync.session.resync(route.sessionID).catch(() => {})
+  })
+
   // Helper: Find next visible message boundary in direction.
   // Build a single Set of message IDs with valid text parts so we do not
   // perform an O(n) find + per-child parts scan for every renderable child.
