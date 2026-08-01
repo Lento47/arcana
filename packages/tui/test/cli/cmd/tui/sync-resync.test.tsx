@@ -52,12 +52,15 @@ test("resync clears the full-sync guard and heals a stale partial part from REST
   try {
     await sync.session.sync(sessionID)
     expect(sync.data.part[messageID]?.[0]).toMatchObject({ text: "Hello. How" })
+    const initialRevision = sync.data.part_revision[messageID]
+    expect(initialRevision).toBeGreaterThan(0)
     expect(sync.session.isSynced(sessionID)).toBe(true)
     expect(messageRequests).toBe(1)
 
     // Guarded sync is a no-op — the stale snapshot would stick forever.
     await sync.session.sync(sessionID)
     expect(messageRequests).toBe(1)
+    expect(sync.data.part_revision[messageID]).toBe(initialRevision)
 
     // SSE gap-closer: the engine store has the complete reply now.
     messagesResponse = json([
@@ -70,6 +73,7 @@ test("resync clears the full-sync guard and heals a stale partial part from REST
 
     expect(messageRequests).toBe(2)
     expect(sync.data.part[messageID]?.[0]).toMatchObject({ text: "Hello. How can I help?" })
+    expect(sync.data.part_revision[messageID]).toBeGreaterThan(initialRevision!)
     expect(sync.session.isSynced(sessionID)).toBe(true)
   } finally {
     app.renderer.destroy()

@@ -20,6 +20,7 @@ export interface ShellProps {
 
   messages: Accessor<Message[]>
   getParts: (messageId: string) => Part[]
+  getPartRevision: (messageId: string) => number
   revert: Accessor<RevertInfo | undefined>
   pending: Accessor<string | undefined>
   lastAssistant: Accessor<Message | undefined>

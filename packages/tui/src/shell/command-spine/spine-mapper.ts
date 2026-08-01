@@ -2242,6 +2242,7 @@ function stabilizeEntries(next: SpineEntry[], previous: SpineEntry[] | undefined
 export type SpineMessageCacheEntry = {
   message: Message
   parts: Part[]
+  partRevision: number
   duration: number | undefined
   expandThinking: boolean
   // Tracks `message.time.completed` so the per-message cache detects the
@@ -2264,6 +2265,7 @@ export type SpineEntriesCache = Map<string, SpineMessageCacheEntry>
 export function messagesToSpineEntriesCached(input: {
   messages: Message[]
   getParts: (messageId: string) => Part[]
+  getPartRevision: (messageId: string) => number
   assistantDuration: ReadonlyMap<string, number>
   expandThinking?: boolean
   /** Session turn status (idle/busy/…) — Grok-style authority to stop writing chrome. */
@@ -2271,7 +2273,7 @@ export function messagesToSpineEntriesCached(input: {
   cache?: SpineEntriesCache
   previousEntries?: SpineEntry[]
 }): { entries: SpineEntry[]; cache: SpineEntriesCache } {
-  const { messages, getParts, assistantDuration, cache, previousEntries } = input
+  const { messages, getParts, getPartRevision, assistantDuration, cache, previousEntries } = input
   const expandThinking = input.expandThinking === true
   const sessionStatusType = input.sessionStatusType
 
@@ -2289,6 +2291,7 @@ export function messagesToSpineEntriesCached(input: {
 
   for (const message of messages) {
     const parts = getParts(message.id) ?? EMPTY_PARTS
+    const partRevision = getPartRevision(message.id)
     const duration = assistantDuration.get(message.id)
     const cached = cache?.get(message.id)
     const completed = message.role === "assistant" ? message.time?.completed : undefined
@@ -2314,6 +2317,9 @@ export function messagesToSpineEntriesCached(input: {
       && !turnOpenForChrome
       && cached.message === message
       && cached.parts === parts
+      // Solid store proxies retain identity across in-place part mutations.
+      // The revision is the semantic cache key for text/state changes.
+      && cached.partRevision === partRevision
       && cached.duration === duration
       && cached.expandThinking === expandThinking
       && cached.completed === completed
@@ -2337,6 +2343,7 @@ export function messagesToSpineEntriesCached(input: {
     nextCache.set(message.id, {
       message,
       parts,
+      partRevision,
       duration,
       expandThinking,
       completed,
@@ -2364,5 +2371,5 @@ export function messagesToSpineEntries(input: {
   expandThinking?: boolean
   sessionStatusType?: string
 }): SpineEntry[] {
-  return messagesToSpineEntriesCached(input).entries
+  return messagesToSpineEntriesCached({ ...input, getPartRevision: () => 0 }).entries
 }
