@@ -5,7 +5,7 @@ document_class: completion_report
 authority: secondary (status authority: docs/STATUS.md)
 status: checkpoint — NOT a phase F completion declaration
 created: 2026-08-02
-audited_commit: cb1a214d (2026-08-02 campaign checkpoint; suites verified on
+audited_commit: 0392ad7b (2026-08-02 campaign checkpoint; suites verified on
 the pre-commit worktree, which the commit reproduces exactly)
 supersedes: none
 superseded_by: future final completion report after Phase F freeze
@@ -109,7 +109,7 @@ worker-path patch; no dependency was downgraded.
 |---|---|---|
 | Finish through Phase F per the four master docs | All F1–F13 cores implemented and mounted (`/api/enterprise/*` + SDK client); freeze draft documents remaining gates | INCOMPLETE — external/operator/human gates remain (TUI consoles, live exercises, F13 assessment, L3, Node freeze, license review) |
 | Document blockers in a new folder | `docs/blockers/README.md` + A/B/C/TUI/CLI/D/E/F/1.0 registers | DONE |
-| Save current changes as a checkpoint | Git history; HEAD `4f7e5bea`; every commit verified green before landing | DONE |
+| Save current changes as a checkpoint | Git history; HEAD `0392ad7b`; every commit verified green before landing | DONE |
 | Document every trace from each phase and tasks | `docs/roadmap/PHASE-TRACEABILITY.md` + `TASK-REGISTER.md` | DONE |
 | Keep tasks updated and add new tasks along the way | TASK-REGISTER AUD-01..44, updated per commit | DONE |
 | Write a NEW completion document even with bugs | This report (fixed + open bugs, residual risks, totals) | DONE (kept current) |

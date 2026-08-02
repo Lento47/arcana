@@ -3,7 +3,7 @@
 **Document class:** blocker register (evidence-backed)
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Created:** 2026-08-02 (Phase A–F completion audit)
-**Applies to commit:** `b34299ff` (2026-08-02 checkpoint)
+**Applies to commit:** `0392ad7b` (2026-08-02 checkpoint)
 
 This folder is the **new blocker documentation** required by the Phase A–F
 completion objective. It records, per phase and product track, every
