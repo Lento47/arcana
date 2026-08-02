@@ -124,6 +124,7 @@ worker-path patch; no dependency was downgraded.
 | D-5 revocation store + convergence measurement implemented (sequence-monotonic statements, REVOCATION_SNAPSHOT delivery, frozen p95 bounds; 10 tests); emergency push channel + hostile-node revocation pending | BLK-D-01 | Engineering |
 | D-10 hostile-node matrix implemented: 15 fail-closed fixtures across all ten adversarial categories, 0 bypasses (incl. new future-issuedAt freshness check); Node 1.0 freeze + independent reproduction pending | BLK-D-08 | Engineering |
 | Node CLI shipped: `arcana node enroll|proof upload|sync|status` with restart-safe identity file (enrollment ceremony client + proof upload loop + authenticated sync are now operator-invokable) | BLK-D-04/05 | Engineering |
+| Emergency deny-list implemented (`POST /api/revocations/emergency`: immediate node revocation + signed NODE statement propagation; sync 401) and Node 1.0 API contract draft published; release freeze remains gated on TLS, live Linux validation, proof-store integration, independent reproduction | BLK-D-05/07/09 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 
