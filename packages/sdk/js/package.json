@@ -16,6 +16,7 @@
     "./v2": "./src/v2/index.ts",
     "./v2/client": "./src/v2/client.ts",
     "./v2/governance": "./src/v2/governance.ts",
+    "./v2/proof": "./src/v2/proof.ts",
     "./v2/gen/client": "./src/v2/gen/client/index.ts",
     "./v2/server": "./src/v2/server.ts"
   },
