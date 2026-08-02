@@ -136,6 +136,9 @@ register, phase/task traceability, and a checkpoint completion report:
 - Task register: `docs/roadmap/TASK-REGISTER.md` (living; new `AUD-` tasks).
 - Traceability: `docs/roadmap/PHASE-TRACEABILITY.md`.
 - Completion report (with bugs): `docs/releases/COMPLETION-REPORT-2026-08-02.md`.
+- Protocol freeze draft: `docs/protocol/PROTOCOL-1.0-SPEC.md`.
+- Conformance suite + runner: `docs/protocol/CONFORMANCE-SUITE.md`,
+  `script/conformance.ts` (TS + Rust independent implementations, 46 vectors).
 
 Nothing in these artifacts changes the milestone matrix above; they make the
 gaps and evidence explicit.

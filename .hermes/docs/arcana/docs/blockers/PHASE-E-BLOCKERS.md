@@ -7,8 +7,8 @@ stable SDK 1.0.**
 
 | ID | Task | Gap evidence | Acceptance evidence required |
 |---|---|---|---|
-| BLK-E-01 | E1 freeze protocol specifications | `docs/protocol/SCHEMA-VERSION-REGISTRY.md` exists; canonical serialization test vectors not public/frozen | Versioned public specs for AuthorizationRequest, CapabilityGrant, SignedGrantEnvelope, PolicySnapshot, ScopedApproval, Delegation, labels/lineage, event envelope, RunProof, node protocol, reason codes |
-| BLK-E-02 | E2 independent conformance suite | 46 cross-runtime vectors exist (D2 work); suite is not independent of the production implementation | Two independent implementations produce matching vectors |
+| BLK-E-01 | E1 freeze protocol specifications | **Freeze draft published 2026-08-02** (`docs/protocol/PROTOCOL-1.0-SPEC.md`): serialization rules, signature domains, object registry, labels, reason codes, version negotiation. Remaining: public release, external review, third-party implementation | Versioned public specs (DRAFT DONE); external review + public release |
+| BLK-E-02 | E2 independent conformance suite | **Independent implementations DONE 2026-08-02**: TS production + Rust verifier agree on 46 vectors (`script/conformance.ts` runner, 3/3 suites). Remaining: L3 external reproduction | Two independent implementations produce matching vectors (DONE in-repo); external reproduction |
 | BLK-E-03 | E3 TypeScript/JavaScript SDK 1.0 | `packages/sdk/js` exists (7/7 tests) but lacks request builder, adapter hooks, proof verifier, stable error model | SDK 1.0 API + semver/compat policy + conformance pass |
 | BLK-E-04 | E4 additional language SDK | none (Rust tooling is conformance/containment scaffolding, not an SDK) | One additional SDK passing the same conformance suite |
 | BLK-E-05 | E5 external CLI adapters (Codex/Claude/Gemini) | `arcana launch *` not implemented | Three adapters at declared certification levels; hostile escape fixture blocked at declared boundaries |

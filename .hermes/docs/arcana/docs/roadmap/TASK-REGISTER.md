@@ -100,8 +100,8 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 
 | Task | Weight | Status | Evidence | Blockers |
 |---|---:|---|---|---|
-| E1 Freeze protocol specifications | 15% | PENDING | schema registry draft | BLK-E-01 |
-| E2 Conformance test suite | 15% | PARTIAL | 46 internal vectors; not independent | BLK-E-02 |
+| E1 Freeze protocol specifications | 15% | PARTIAL | **PROTOCOL-1.0-SPEC.md published 2026-08-02** (freeze draft): canonical serialization, 7 signature domains, object registry, labels/lineage, reason-code registry, version negotiation, strict unknown-field rejection. Remaining: public release + external review | BLK-E-01 |
+| E2 Conformance test suite | 15% | PARTIAL | **Runner + independent implementations DONE 2026-08-02**: `script/conformance.ts` runs TS golden crypto (100/100) + TS D-10 matrix (15/0) + **Rust independent verifier** (2/2, 46 vectors — TS generates, Rust verifies, no oracle sharing); suite doc `CONFORMANCE-SUITE.md`. Remaining: L3 external reproduction | BLK-E-02 |
 | E3 TypeScript/JavaScript SDK 1.0 | 10% | PARTIAL | `packages/sdk/js` 7/7; SDK 1.0 surface missing | BLK-E-03 |
 | E4 Additional language SDKs | 10% | PENDING | Rust scaffolding only | BLK-E-04 |
 | E5 External CLI adapters | 15% | PENDING | none | BLK-E-05 |
