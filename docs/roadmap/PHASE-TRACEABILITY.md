@@ -174,7 +174,7 @@ registry, market assessment.
 | F3 Central policy | PARTIAL | D-4 signed store + F3 promotion/diff/approval lifecycle (6 tests) | BLK-F-03 |
 | F4 Fleet ops | PARTIAL | fleet inventory + health derivation + heartbeats (3 tests) | BLK-F-04 |
 | F5 Central approvals | PARTIAL | central queue: exact inspection, separation of duties, expiry, bulk deny, emergency revocation (4 tests) | BLK-F-05 |
-| F6 Audit/compliance archive | PENDING | local export only | BLK-F-06 |
+| F6 Audit/compliance archive | PARTIAL | immutable archive + fingerprint export + retention/legal-hold/custody (4 tests) | BLK-F-06 |
 | F7 HA/DR | PENDING | — | BLK-F-07 |
 | F8 Federation | PENDING | — | BLK-F-08 |
 | F9 Security operations | PENDING | — | BLK-F-09 |
