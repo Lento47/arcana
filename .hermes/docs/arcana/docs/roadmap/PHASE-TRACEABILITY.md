@@ -127,10 +127,10 @@ protocol, performance.
 |---|---|---|---|
 | D1 Node identity/enrollment | PARTIAL | identity contracts + `node-enrollment.ts`/`node-enrollment-sqlite.ts` + HTTP `/api/nodes/*` (16 tests); D-8B registry integrated; node-side client pending | BLK-D-05 |
 | D2 Signed short-lived grants | IMPLEMENTED | 7-layer verifier, 46 conformance vectors (41 negative), Rust conformance 2/2 | BLK-D-09 |
-| D3 Mutual authentication | PARTIAL | D-6B authenticated sync control | BLK-D-01 |
-| D4 Policy distribution | PARTIAL | policy digest chains in envelopes | BLK-D-01 |
-| D5 Remote revocation | PARTIAL | revocation envelopes, durable state, sync protocol | BLK-D-01 |
-| D6 Replay resistance | PARTIAL | reducers, durable state, sync protocol | BLK-D-01 |
+| D3 Mutual authentication | PARTIAL | D-6B sync control + **D-6B-T signed-envelope HTTP transport** (15 tests); TLS pending | BLK-D-01 |
+| D4 Policy distribution | PARTIAL | digest chains + authenticated transport; policy bundle store pending | BLK-D-01 |
+| D5 Remote revocation | PARTIAL | envelopes + durable state + authenticated transport; convergence unmeasured | BLK-D-01 |
+| D6 Replay resistance | PARTIAL | reducers + transport replay protection; duplicate-execution matrix pending | BLK-D-01 |
 | D7 Proof sync | FROZEN (local) | TAG `arcana-phase-d7-local-distributed-authority` → `017ad998`; D-7.1 containment partial: Linux openat2 scaffold + Windows handle final-path reader (`tools/fs-containment-rust`, 10/10) | BLK-D-02 |
 | D8 Proof composition | PARTIAL | D-8A Merkle batching + gap detection; **D-8B remote registration** (control-plane ledger + HTTP `/api/proof/*`; node-side uploader/outbox + HTTP client; 27 core + 6 engine tests) | BLK-D-04 |
 | D9 Offline/partition | PARTIAL | design doc + D-4C reducer + `offline-policy.ts` grant/lease policy (15 tests); PEP wiring + node-level partition tests pending | BLK-D-06 |
