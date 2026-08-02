@@ -17,7 +17,7 @@ const dialogSrc = read("ui/dialog.tsx")
 const appSrc = read("app.tsx")
 const artifactSrc = read("routes/session/artifact-viewer.tsx")
 const inheritedReview = readFileSync(
-  join(import.meta.dir, "../../../docs/tui-interface-dialog-mouse-review.md"),
+  join(import.meta.dir, "../../../.hermes/docs/arcana/docs/tui-interface-dialog-mouse-review.md"),
   "utf8",
 ).replace(/\r\n/g, "\n")
 

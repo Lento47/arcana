@@ -4,7 +4,7 @@ The image is not really “Grimoire.” It is closer to **Style B Chronicle**, b
 
 # Arcana Command Spine
 
-> **Current product surface (2026-07):** Command-spine is the **default** shell. Live chrome is documented in [`docs/architecture/command-spine-ui.md`](docs/architecture/command-spine-ui.md). Summary vs the original image notes below:
+> **Current product surface (2026-07):** Command-spine is the **default** shell. Live chrome is documented in [command-spine-ui.md](.hermes/docs/arcana/docs/architecture/command-spine-ui.md). Summary vs the original image notes below:
 >
 > - Prompt lead is **`✶` + rounded box with `❯` / `!`** — **not** `arcana ›` on the lead.
 > - Brand wordmark lives in the **header**, not the composer.

@@ -1,7 +1,7 @@
 # Freeze Drafts and Release Plan (consolidated)
 
 **Status:** DRAFTS / PLANS — none are authorized. Freeze requires the stated acceptance evidence plus explicit human sign-off.
-**Consolidated:** 2026-08-02 — merges the former `docs/FREEZE-RELEASE.md`, `docs/FREEZE-RELEASE.md`, and `docs/FREEZE-RELEASE.md`
+**Consolidated:** 2026-08-02 — merges the former `docs/releases/CLI-1.0-FREEZE-DRAFT.md`, `docs/releases/PHASE-F-FREEZE-DRAFT.md`, and `docs/releases/RELEASE-FLOW-PLAN.md`
 **Applies to commit:** `882ea468` (latest documentation checkpoint)
 
 This file contains: (1) the Phase F GA freeze draft with playbook §40 gate evidence, (2) the CLI 1.0 contract freeze draft (catalog, JSON/NDJSON + exit-code contract, launch protocol), and (3) the release-flow plan (verify → freeze/tag → build → sign → installer/update smoke → publish → mainline promotion → post-verify).

@@ -12,9 +12,9 @@ supersedes: status claims inside Arcana_Project_Master_Specification.md Parts I-
 # Arcana — Live Status
 
 This is the **only current-status authority**. The architecture compendium
-(`docs/arcana-Master/Arcana_Project_Master_Specification.md`) is a reference
-reader; its Parts I–III are historical snapshots and their status claims are
-superseded by this file.
+(`.hermes/docs/arcana/docs/arcana-Master/Arcana_Project_Master_Specification.md`)
+is a reference reader; its Parts I–III are historical snapshots and their
+status claims are superseded by this file.
 
 **Authority note:** `docs/STATUS.md` is the primary status authority. The
 `.hermes/docs/arcana/docs/STATUS.md` copy is a synchronized mirror and is
@@ -61,8 +61,7 @@ Arcana Runtime
 ```
 
 - **Arcana Desktop** = local operator workstation. Formalized as a parallel
-  track; specification only, NOT implemented
-  (`docs/roadmap/DESKTOP-1.0-SPEC.md`). Not required for Arcana 1.0.
+  track; specification only, NOT implemented. Not required for Arcana 1.0.
 - **Arcana Control** = remote enterprise governance plane (fleet, policy
   distribution, central approvals, remote revocation, compliance).
   **IMPLEMENTED as `/api/enterprise/*` + SDK client (2026-08-02)**; operator
@@ -91,7 +90,7 @@ immutable tag).
 
 Explicitly **outside** the active goal and NOT started by this sprint:
 
-- Arcana Desktop implementation (spec-only; `docs/roadmap/DESKTOP-1.0-SPEC.md`)
+- Arcana Desktop implementation (spec-only)
 - Node 1.0 work
 - Phase D expansion beyond the TUI-2.1 freeze prerequisites
 - New product features beyond TUI-2.1 polish
@@ -138,9 +137,9 @@ register, phase/task traceability, and a checkpoint completion report:
 - Task register + traceability: `docs/TASKS.md` (living; new `AUD-` tasks).
 - Completion report (with bugs): `docs/COMPLETION-REPORT.md`.
 - Freeze drafts + release plan: `docs/FREEZE-RELEASE.md`.
-- Protocol freeze draft: `docs/protocol/PROTOCOL-1.0-SPEC.md`.
-- Conformance suite + runner: `docs/protocol/CONFORMANCE-SUITE.md`,
-  `script/conformance.ts` (TS + Rust independent implementations, 46 vectors).
+- Protocol freeze draft: PROTOCOL-1.0-SPEC (draft, published 2026-08-02).
+- Conformance suite + runner: CONFORMANCE-SUITE + `script/conformance.ts`
+  (TS + Rust independent implementations, 46 vectors).
 
 Nothing in these artifacts changes the milestone matrix above; they make the
 gaps and evidence explicit.
@@ -155,7 +154,7 @@ gaps and evidence explicit.
   objects/credential brokering not deployed.
 - **External CLIs and processes outside the effect boundary:** NOT governed
   (target architecture).
-- Detail matrix: `docs/security/EFFECT-COVERAGE.md`.
+- Detail matrix: security effect-coverage matrix (EFFECT-COVERAGE).
 
 ## Release blockers
 

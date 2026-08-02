@@ -76,10 +76,14 @@ conflicts with statements inside the historical Parts, the ledger wins.
 - View filters (`f`): all → conversation → tools → governance → proof;
   security-critical rows (denials, pending approvals, degraded proof) always
   break through.
+- Governance and proof rows are always compact (never chat cards), whole-row
+  click toggles collapsed blocks with focus retention, expanded governance
+  groups auto-collapse on new turns, `H`/`G` scroll to top/bottom, and
+  approval-required events read `pending approval` rather than `failed`.
 
 ### Verification evidence (2026-08-01/02 checkpoint)
 
-- TUI suite: 775 pass / 1 skip / 0 fail (776 tests).
+- TUI suite: 777 pass / 1 skip / 0 fail (778 tests).
 - Repo-wide typecheck: 16/16 packages.
 - Build: 8/8 tasks (engine binaries smoke-tested).
 - Core suite: 1256 pass / 7 skip / 0 fail (clean rerun 2026-08-02; the earlier
