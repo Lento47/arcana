@@ -20,6 +20,8 @@ import { SqliteFederationStore } from "@arcana/core/enterprise/federation-sqlite
 import { SqliteEscalationStore } from "@arcana/core/enterprise/escalation-sqlite"
 import { SqliteMeteringStore } from "@arcana/core/enterprise/metering-sqlite"
 import { SqliteAdminEventStore } from "@arcana/core/enterprise/admin-events-sqlite"
+import { SqliteCrossOrgApprovalStore } from "@arcana/core/enterprise/federation-approvals-sqlite"
+import { SqliteUpgradeRingStore } from "@arcana/core/enterprise/upgrade-rings-sqlite"
 import type { EnrollmentContext } from "@arcana/core/crypto/node-enrollment"
 
 /**
@@ -44,6 +46,8 @@ export type ControlPlaneState = {
   escalations: SqliteEscalationStore
   metering: SqliteMeteringStore
   adminEvents: SqliteAdminEventStore
+  crossOrgApprovals: SqliteCrossOrgApprovalStore
+  upgradeRings: SqliteUpgradeRingStore
 }
 
 const stateCache = new Map<string, ControlPlaneState>()
@@ -73,6 +77,8 @@ export function controlStateFor(directory: string): ControlPlaneState {
       escalations: new SqliteEscalationStore(db),
       metering: new SqliteMeteringStore(db),
       adminEvents: new SqliteAdminEventStore(db),
+      crossOrgApprovals: new SqliteCrossOrgApprovalStore(db),
+      upgradeRings: new SqliteUpgradeRingStore(db),
     }
     stateCache.set(directory, state)
   }
