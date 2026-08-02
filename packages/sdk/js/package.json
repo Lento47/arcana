@@ -18,6 +18,7 @@
     "./v2/governance": "./src/v2/governance.ts",
     "./v2/proof": "./src/v2/proof.ts",
     "./v2/errors": "./src/v2/errors.ts",
+    "./v2/adapters": "./src/v2/adapters/index.ts",
     "./v2/gen/client": "./src/v2/gen/client/index.ts",
     "./v2/server": "./src/v2/server.ts"
   },
