@@ -3,7 +3,8 @@ document_class: status
 authority: current_status
 status: current
 status_source: self
-evaluated_commit: 0392ad7b
+implementation_checkpoint: 0392ad7b
+documentation_reconciliation_commit: 882ea468
 current_branch_at_publication: phase-d-implementation
 last_verified: 2026-08-02
 supersedes: status claims inside Arcana_Project_Master_Specification.md Parts I-III
@@ -25,8 +26,9 @@ secondary; never edit the mirror independently.
 | Field | Value |
 |---|---|
 | Current implementation branch | `phase-d-implementation` |
-| Committed HEAD at last verification | `0392ad7b` (2026-08-02, external/human gate register consolidation) |
-| Uncommitted worktree | clean at checkpoint `0392ad7b` |
+| Implementation checkpoint | `0392ad7b` (2026-08-02; suites verified on the pre-commit worktree) |
+| Documentation reconciliation commit | `882ea468` (baseline for the consolidated files) |
+| Uncommitted worktree | clean at implementation checkpoint `0392ad7b` |
 | Default branch (`master` / `origin/master`) | stale — Phase B/C, D-7, TUI-2 milestone commits not on it; mainline promotion pending (post-sign-off release action) |
 | Release version | pre-release builds only (`0.0.0-phase-d-implementation-*`) |
 | Last verification date | 2026-08-02 (checkpoint; full engine rerun pending) |
@@ -39,9 +41,9 @@ secondary; never edit the mirror independently.
 | Phase A — Epistemic Foundation | COMPLETE / FROZEN (declared complete in master spec) |
 | Phase B — Verification and Replay | COMPLETE / FROZEN (`arcana-epistemic-runtime-phase-b`) |
 | Phase C — Local Governed Autonomy | EVALUATION PASS; tags exist (`arcana-governed-autonomy-phase-c`, `phase-c-production-enforcement`); release sign-off = Approve with exceptions (2026-08-01) |
-| Phase D — Distributed Authority | IN-REPO COMPLETE — D-7 frozen, D-8B end-to-end, D-9 offline policy, D-1 enrollment + `arcana node key rotate`, D-6B-T sync transport with POLICY_DELTA/REVOCATION_DELTA + node persistence + compatibility negotiation, D-6 execution ledger, D-5 revocation store/convergence + emergency deny-list + SSE push channel, D-10 hostile matrices (15 + 9 fixtures, 0 bypasses), containment fixtures, Node CLI + Node 1.0 API contract draft; Node 1.0 release freeze pending (TLS/mTLS, live Linux, L3) |
-| Phase E — Protocol/SDK/Adapters | PARTIAL — protocol spec draft + conformance runner 5/5 (TS golden vectors, D-10 matrix, Rust verifier, SDK surface, adapter request-hash vectors) + AI SDK/MCP/Mastra/LangGraph governed adapters + certified vectors; remaining: live PEP transport, macOS/Linux validation, ecosystem freeze, L3 |
-| Phase F — Enterprise Control Plane | PARTIAL — F1–F13 cores implemented and mounted (`/api/enterprise/*` + SDK client: orgs, RBAC, fleet + rings + diagnostics, approvals + escalation, policy promotion/drafts, audit archive, security ops + anomaly, governance, reliability, federation + routing + revocation transport, SIEM, ticketing, webhooks, metering + usage export, entitlements); freeze NOT authorized — TUI consoles, live exercises, external assessment (F13) pending |
+| Phase D — Distributed Authority | Implementation coverage: HIGH — D-7 frozen, D-8B end-to-end, D-9 offline policy, D-1 enrollment + `arcana node key rotate`, D-6B-T sync transport with POLICY_DELTA/REVOCATION_DELTA + node persistence + compatibility negotiation, D-6 execution ledger, D-5 revocation store/convergence + emergency deny-list + SSE push channel, D-10 hostile matrices (15 + 9 fixtures, 0 bypasses), containment fixtures, Node CLI + Node 1.0 API contract draft. Release readiness: BLOCKED — TLS/mTLS, live Linux validation, offline PEP wiring, L3, Node 1.0 freeze |
+| Phase E — Protocol/SDK/Adapters | Implementation coverage: MODERATE–HIGH — protocol spec draft + conformance runner 5/5 (TS golden vectors, D-10 matrix, Rust verifier, SDK surface, adapter request-hash vectors) + AI SDK/MCP/Mastra/LangGraph governed adapters + certified vectors. Release readiness: BLOCKED — live PEP transport, macOS/Linux validation, ecosystem freeze, L3 |
+| Phase F — Enterprise Control Plane | Service-core implementation: HIGH — F1–F13 cores implemented and mounted (`/api/enterprise/*` + SDK client: orgs, RBAC, fleet + rings + diagnostics, approvals + escalation, policy promotion/drafts, audit archive, security ops + anomaly, governance, reliability, federation + routing + revocation transport, SIEM, ticketing, webhooks, metering + usage export, entitlements). Production mounting: SUBSTANTIAL. Secure production boundary: BLOCKED (BLK-F-AUTH-01). Release readiness: BLOCKED — TUI consoles, live exercises, external assessment (F13) pending |
 | TUI-1 | Historical independent tag (`arcana-tui-1-governance-observability`); not in current branch ancestry |
 | TUI-2 — Interactive Authority Control | FROZEN (`arcana-tui-2-interactive-authority-control`) |
 | TUI-2.1 — Production Integration + Polish | MOUNTED, AUTOMATED GREEN (TUI 787 tests, 0 fail); freeze NOT AUTHORIZED. Manual validation in progress (2026-08-02): contract admission, tool execution, governance aggregation, proof axes, approval via gate, denial with zero effects, restart durability, daemon respawn on idle-stop (F-22), approval inspector + spine keys (F-23), `v` inspect for any approval state + guidance toast (F-24), Esc always leaves the composer without interrupting (F-25), Esc inert on ACTION GATES (F-26), spine navigation + `v` inspection available while a gate is open (F-27), permission-gate `v` inspector (F-28); approval lifecycle via spine keys, matrices, stream protocol, and performance pending |
@@ -64,8 +66,10 @@ Arcana Runtime
   track; specification only, NOT implemented. Not required for Arcana 1.0.
 - **Arcana Control** = remote enterprise governance plane (fleet, policy
   distribution, central approvals, remote revocation, compliance).
-  **IMPLEMENTED as `/api/enterprise/*` + SDK client (2026-08-02)**; operator
-  console UI (TUI/web dashboard) pending.
+  **Service cores IMPLEMENTED and MOUNTED as `/api/enterprise/*` + SDK
+  client (2026-08-02)**; operator console UI (TUI/web dashboard) pending;
+  secure authenticated-principal binding unresolved (BLK-F-AUTH-01) — the
+  mounted surface is not a production-ready boundary until that P0 closes.
 - **Arcana 1.0** = secure local runtime + CLI/TUI + one external adapter.
 
 Immediate roadmap:
@@ -111,7 +115,11 @@ validation, manual validation, external validation, release.
 | TUI-2.1 spine polish (grouping, aggregation, filters, compact rows, click-toggle) | Yes | Yes | Yes | In progress | No | No |
 | Distributed authority (signed envelopes, sync, D-7) | Partial | Partial | Partial | No | No | No |
 | Host containment (filesystem/process/network) | Partial | Partial | Partial | No | No | No |
-| External CLI adapters (codex/claude/gemini) | No | No | No | No | No | No |
+| External CLI adapters (codex/claude/gemini) | Yes (A1 launch scaffold) | No | Partial | No | No | No |
+
+External adapters: A1 launch scaffold implemented (`arcana launch <runtime>`:
+declaration, `--dry-run`, supervision, durable evidence; no sandbox claim);
+production-certified adapter: no (BLK-CLI-01).
 
 ## Test checkpoint (2026-08-02)
 
@@ -165,10 +173,12 @@ gaps and evidence explicit.
 3. Mainline promotion (`master` fast-forward to `phase-d-implementation`).
 4. Independent validation (L3+ reproduction of the Phase C evaluation).
 5. Phase D/E/F remaining work per `docs/BLOCKERS.md`: in-repo engineering is
-   complete; remaining gates are ops/external/human — TLS/mTLS, live Linux
-   validation, TUI operator consoles, live DR/compromised-node/key exercises,
-   F13 external assessment, L3 reproduction, Node 1.0 freeze sign-off,
-   license text review.
+   substantially complete, but the remaining work is NOT exclusively
+   operational/external — Phase F still has an unresolved production security
+   and integration code gap (BLK-F-AUTH-01: authenticated administrative
+   identity binding), plus TLS/mTLS, live Linux validation, TUI operator
+   consoles, live DR/compromised-node/key exercises, F13 external assessment,
+   L3 reproduction, Node 1.0 freeze sign-off, and license text review.
 
 ## Nonclaims
 

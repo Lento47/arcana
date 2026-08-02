@@ -7,6 +7,7 @@ status: checkpoint — NOT a phase F completion declaration
 created: 2026-08-02
 audited_commit: 0392ad7b (2026-08-02 campaign checkpoint; suites verified on
 the pre-commit worktree, which the commit reproduces exactly)
+documentation_reconciliation_commit: 882ea468 (baseline for the consolidated files)
 supersedes: none
 superseded_by: future final completion report after Phase F freeze
 ---
@@ -29,9 +30,9 @@ every hard gate to pass and every phase to be human-approved before "100%".
 | TUI-2 (interactive authority) | FROZEN (`arcana-tui-2-interactive-authority-control`) |
 | TUI-2.1 (production polish) | MOUNTED + automated green; freeze NOT authorized |
 | CLI 1.0 | PARTIAL — contract not frozen |
-| Phase D — Distributed Governed Autonomy | FEATURE-COMPLETE in-repo (enrollment, revocation store + push, delta transport + node persistence, execution ledger, hostile matrices); remaining: TLS/mTLS, live Linux validation, L3, Node 1.0 freeze |
-| Phase E — Protocol/SDK/Adapters | PARTIAL — protocol draft + conformance 5/5 (TS + Rust + adapter vectors) + adapters (AI SDK/MCP/Mastra/LangGraph) + certified vectors; remaining: live PEP transport, macOS/Linux, L3 |
-| Phase F — Enterprise Control Plane | PARTIAL — F1–F13 cores implemented and mounted (`/api/enterprise/*` + SDK client: admin API, SIEM, ticketing, webhooks, escalation, policy, archive, fleet, federation, metering); GA freeze NOT authorized (TUI consoles, live exercises, external assessment pending) |
+| Phase D — Distributed Governed Autonomy | Implementation coverage: HIGH (enrollment, revocation store + push, delta transport + node persistence, execution ledger, hostile matrices). Release readiness: BLOCKED — TLS/mTLS, live Linux validation, offline PEP wiring, L3, Node 1.0 freeze |
+| Phase E — Protocol/SDK/Adapters | Implementation coverage: MODERATE–HIGH (protocol draft + conformance 5/5 with TS + Rust + adapter vectors + adapters AI SDK/MCP/Mastra/LangGraph + certified vectors). Release readiness: BLOCKED — live PEP transport, macOS/Linux, L3, ecosystem freeze |
+| Phase F — Enterprise Control Plane | Implementation coverage: HIGH for service cores; Production mounting: SUBSTANTIAL (`/api/enterprise/*` + SDK client: admin API, SIEM, ticketing, webhooks, escalation, policy, archive, fleet, federation, metering). Secure production boundary: BLOCKED (BLK-F-AUTH-01). Release readiness: BLOCKED — TUI consoles, live exercises, external assessment pending |
 | Arcana 1.0 convergence | NOT REACHED |
 
 The local product core (A + B + C + frozen TUI-2 + working CLI surfaces) is
@@ -69,39 +70,36 @@ paths. Tags: `arcana-governed-autonomy-phase-c`,
 
 Frozen tag with approval lifecycle, governed executor, and operator surfaces.
 
-## 4. Verification evidence (2026-08-02, current working tree)
+## 4. Verification evidence (single authoritative checkpoint)
 
-| Gate | Result |
+One checkpoint only: implementation commit `0392ad7b` (2026-08-02), verified
+on the pre-commit worktree, which the commit reproduces exactly.
+
+```text
+Implementation checkpoint: 0392ad7b
+Engine: 4305 pass / 4 fail / 1 todo
+Timeout: default 5 seconds
+Classification: not a clean suite
+Closure: clean full rerun under the approved timeout policy
+```
+
+| Suite | Result |
 |---|---|
-| TUI suite | **781 pass / 1 skip / 0 fail** (782 tests) |
-| Engine suite | **4251 pass / 74 skip / 1 todo / 0 fail** (4,326 tests, 990.6 s) |
-| Core suite | **1264 pass / 7 skip / 0 fail** (1,271 tests) |
-| Arcana CLI/proof suite | **116 pass / 0 fail** |
-| SDK JS suite | **7 pass / 0 fail** |
-| Rust conformance | **2 pass / 0 fail** |
-| Typecheck | **16/16 packages** |
-| Build | **8/8 tasks**; engine binary smoke `0.0.0-phase-d-implementation-202608021350` |
+| TUI suite | 786 pass / 1 skip / 0 fail (787 tests) |
+| Core suite | 1465 pass / 7 skip / 0 fail (1472 tests, 175 files) |
+| Arcana CLI/proof suite | 116 pass / 0 fail |
+| SDK JS suite | 34 pass / 0 fail (full `src` run) |
+| Conformance runner | 5/5 suites (46 crypto vectors + 4 adapter vectors + 15 hostile fixtures + Rust verifier + SDK surface) |
+| Typecheck | 16/16 packages (core, engine, TUI, SDK all clean) |
+| Build | 8/8 tasks; engine binary smoke `0.0.0-phase-d-implementation-202608021350` |
 | Denied-path executor calls | 0 (Phase C frozen suite) |
 | Unexpected allows | 0 (95 fixtures) |
-| Core suite (current) | 1419 pass / 7 skip / 0 fail (1,426 tests incl. Phase D/E/F cores) |
-| Conformance runner | 4/4 suites (46 vectors + 15 hostile fixtures + SDK surface) |
 
-No regressions versus the previous checkpoint: TUI 762 → 781 pass, core 1256 →
-1264 pass, engine 4248 → 4251 pass. OpenTUI remains pinned at 0.4.5 with the
-worker-path patch; no dependency was downgraded.
-
-**Current checkpoint totals (2026-08-02):**
-
-- Core suite: **1465 pass / 7 skip / 0 fail** (1472 tests, 175 files).
-- SDK JS suite: **34 pass / 0 fail** (full `src` run).
-- TUI suite: **786 pass / 1 skip / 0 fail** (787 tests).
-- Engine full suite: **4305 pass / 1 todo / 4 fail** under the default 5s
-  per-test timeout (4384 tests); the 4 failures are timing-bound and pass
-  with adequate timeout/in isolation (see Known bugs). Affected
-  server/node suites: **83 pass / 0 fail**.
-- Conformance runner: **5/5 suites** (46 crypto vectors + 4 adapter vectors +
-  15 hostile fixtures + Rust verifier + SDK surface).
-- Typecheck: core, engine, TUI, SDK all clean.
+OpenTUI remains pinned at 0.4.5 with the worker-path patch; no dependency was
+downgraded. The four engine failures at the default 5s timeout are
+timing-bound (`revert + compact restore` ×2 pass at 6–7s with `--timeout
+30000`; `snapshot state isolation` + `diffFull batch order` pass in
+isolation); engine code is unchanged since the `e57c5ca2` verified run.
 
 ## 4a. Completion audit (objective → evidence)
 
@@ -113,7 +111,7 @@ worker-path patch; no dependency was downgraded.
 | Document every trace from each phase and tasks | `docs/TASKS.md` (task register + traceability) | DONE |
 | Keep tasks updated and add new tasks along the way | TASK-REGISTER AUD-01..44, updated per commit | DONE |
 | Write a NEW completion document even with bugs | This report (fixed + open bugs, residual risks, totals) | DONE (kept current) |
-| No regressions or downgrade versions | Fresh runs 2026-08-02: core 1465/7/0, SDK 30/0, conformance 5/5, typechecks clean; OpenTUI pinned 0.4.5, no dependency downgrades | VERIFIED |
+| No regressions or downgrade versions | Fresh runs 2026-08-02 at checkpoint `0392ad7b`: core 1465/7/0, TUI 786/1/0, SDK 34/0, conformance 5/5, engine 4305 pass / 4 fail / 1 todo under the default 5s timeout (timing-bound; not a clean suite); typechecks clean; OpenTUI pinned 0.4.5, no dependency downgrades | VERIFIED |
 
 ## 5. Known bugs
 
@@ -145,7 +143,7 @@ worker-path patch; no dependency was downgraded.
 |---|---|---|
 | Bun 1.3.14 root-runner segmentation fault on Windows | Workaround: package-local runners; isolated, documented, accepted exception | Bun upstream |
 | Engine 5s-default test timeout flakiness (2026-08-02 full run): `revert + compact restore` ×2 need 6–7s on this machine; `snapshot state isolation` + `diffFull batch order` flaked under full-suite load | Both restore tests pass with `--timeout 30000`; snapshot/diffFull pass in isolation; engine code unchanged since `e57c5ca2` verified run (4251/74/1/0) — timing, not a logic regression | Engineering |
-| Enterprise admin API actor identity is client-supplied in mutation payloads (`actorUserId`/`approvedBy`) rather than bound to the authenticated principal | RBAC permission checks are exercised end-to-end, but the auth-context binding (HTTP auth → principal) is a follow-up before GA (BLK-F-02/11) | Engineering |
+| Enterprise admin API actor identity is client-supplied in mutation payloads (`actorUserId`/`approvedBy`) rather than bound to the authenticated principal | **P0 — BLK-F-AUTH-01**: enterprise administrative mutations must derive actor and tenant identity from authenticated server context; body actor attribution must not establish authority or audit attribution. RBAC decision core PASS; authenticated HTTP boundary BLOCKED; acceptance = authenticated principal → tenant → role → permission, body fields rejected/ignored, cross-tenant impersonation + forged-approver fixtures fail closed, audit uses the authenticated principal | Engineering |
 | TUI-2.1 live validation still pending: approval lifecycle via `v`/`a`/`d`, width matrix, theme matrix, restart/session isolation, performance, 6-checkpoint stream protocol | Freeze NOT authorized until passed at the exact commit | Engineering + operator |
 | "Failed to send prompt / Unable to connect" after daemon death | F-22 mitigation implemented; re-verify through the live-stream protocol | Engineering |
 | No L3+ independent reproduction of the Phase C evaluation | Blocker AUD-20 | External |
@@ -163,7 +161,7 @@ worker-path patch; no dependency was downgraded.
 | Node CLI shipped: `arcana node enroll|proof upload|sync|status` with restart-safe identity file (enrollment ceremony client + proof upload loop + authenticated sync are now operator-invokable) | BLK-D-04/05 | Engineering |
 | Emergency deny-list implemented (`POST /api/revocations/emergency`: immediate node revocation + signed NODE statement propagation; sync 401) and Node 1.0 API contract draft published; release freeze remains gated on TLS, live Linux validation, proof-store integration, independent reproduction | BLK-D-05/07/09 | Engineering |
 | Local proof store integration completed: `arcana node proof upload` now reads the durable `.arcana/proofs` store, builds deterministic ordered batches (chained across batch boundaries), and runs the upload loop (2 tests) | BLK-D-04 | Engineering |
-| Phase E started: `PROTOCOL-1.0-SPEC.md` freeze draft + independent conformance harness (TS + Rust agree on 46 vectors, `script/conformance.ts` 3/3 suites) | BLK-E-01/02 | Engineering |
+| Phase E started: `PROTOCOL-1.0-SPEC.md` freeze draft + independent conformance harness (TS + Rust agree on 46 vectors, `script/conformance.ts` progressed 3/3 → 4/4 → 5/5 suites) | BLK-E-01/02 | Engineering |
 | SDK 1.0 governance surface shipped: canonical authorization request builder, framework-adapter mapping hook, strict envelope verification (`@arcana/sdk/v2/governance`, SDK suite 10/10) | BLK-E-03 | Engineering |
 | SDK RunProof verifier shipped: schema/lifecycle/timestamp checks + canonical fingerprint with tamper detection (`@arcana/sdk/v2/proof`, SDK suite 15/15) | BLK-E-03 | Engineering |
 | SDK stable error model + compatibility contract shipped (`@arcana/sdk/v2/errors`, `SDK-1.0-COMPATIBILITY.md`; conformance runner now 4/4 incl. SDK suite 17/17); protocol governance + quickstart docs published | BLK-E-03/08/09 | Engineering |
@@ -205,14 +203,21 @@ worker-path patch; no dependency was downgraded.
 ## 6. What is NOT complete (honest scope)
 
 - **TUI-2.1 freeze** — automated green only; manual/live gates pending.
-- **CLI 1.0** — no frozen JSON/exit-code contract, no launch adapters.
-- **Phase D** — ~45–55% by playbook weighting; D-6B-T, D-7.1, D-6A-L, D-8B,
-  enrollment/key rotation, offline policy, ops deployment, hostile-node
-  evaluation, Node 1.0 freeze all pending.
-- **Phase E** — no frozen public protocol, no independent conformance, no SDK
-  1.0, no external/framework adapters.
-- **Phase F** — no multi-tenant control plane, identity, fleet operations,
-  federation, compliance archive, HA/DR, or external security assessment.
+- **CLI 1.0** — no frozen JSON/exit-code contract; A1 launch scaffold
+  implemented but no production-certified adapter. CLI 1.0 is a required
+  Arcana 1.0 convergence gate (BLK-CLI-01..05).
+- **Phase D** — Implementation coverage: HIGH; Release readiness: BLOCKED —
+  TLS/mTLS + channel binding, live Linux validation (D-6A-L), OS-containment
+  engine integration, offline PEP wiring, Node 1.0 freeze, L3.
+- **Phase E** — Implementation coverage: MODERATE–HIGH (protocol freeze draft,
+  conformance 5/5, SDK governance/proof/errors/adapters, certified vectors);
+  Release readiness: BLOCKED — live PEP transport, macOS/Linux validation,
+  ecosystem freeze, L3.
+- **Phase F** — Implementation coverage: HIGH for service cores (F1–F13
+  implemented and mounted on `/api/enterprise/*` + SDK client); Production
+  mounting: SUBSTANTIAL; Secure production boundary: BLOCKED (BLK-F-AUTH-01);
+  Release readiness: BLOCKED — TUI consoles, live exercises, external
+  security assessment.
 - **Arcana 1.0** — requires TUI 1.0 + CLI 1.0 + one production adapter +
   signed artifacts + mainline promotion.
 
@@ -249,8 +254,9 @@ freeze at the exact final commit, followed by Phase D milestones, then E/F.
    offline → ops → adversarial eval → Node 1.0 freeze).
 3. AUD-16..17: freeze protocol specs, independent conformance, SDK 1.0, first
    external adapter.
-4. AUD-18: build the enterprise control plane (F1–F13) with tenant isolation
-   and federation.
+4. AUD-18: close the remaining enterprise control-plane items —
+   authenticated-principal binding (BLK-F-AUTH-01), operator consoles, live
+   exercises, and F13 external assessment.
 5. AUD-19: execute the release flow (signed artifacts, installer, mainline
    promotion).
 6. AUD-20: independent reproduction of the Phase C evaluation.

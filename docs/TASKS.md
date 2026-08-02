@@ -3,7 +3,8 @@
 **Document class:** living task register + traceability matrix
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Consolidated:** 2026-08-02 — merges the former `docs/roadmap/TASK-REGISTER.md` and `docs/roadmap/PHASE-TRACEABILITY.md`
-**Applies to commit:** `882ea468` (latest documentation checkpoint)
+**Implementation checkpoint:** `0392ad7b` (2026-08-02; suites verified on the pre-commit worktree)
+**Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
 
 Part 1 is the living per-task status register (playbook tasks plus AUD-xx campaign tasks). Part 2 is the task → evidence → gate traceability matrix.
 
@@ -70,7 +71,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | TUI-1.3 Subagent/delegation console | PENDING | not implemented | — |
 | TUI-1.4 Proof/replay/audit UI | PARTIAL | `proof-view/run-proof-view.ts`; full audit UI pending | — |
 | TUI-1.5 Responsive Command Spine | PARTIAL | spine width logic + tests; matrix pending | BLK-TUI-02 |
-| TUI-1.6 Stability/performance/accessibility | PARTIAL | 781/1/0 suite; live/performance gates pending | BLK-TUI-06, BLK-TUI-07 |
+| TUI-1.6 Stability/performance/accessibility | PARTIAL | 786/1/0 suite; live/performance gates pending | BLK-TUI-06, BLK-TUI-07 |
 | TUI-1.7 Documentation and manual smoke plan | PARTIAL | runbook + smoke plan exist; execution pending | BLK-TUI-01 |
 | TUI-2.1 production polish + freeze | PARTIAL | mounted, automated green; freeze NOT authorized | BLK-TUI-01..08 |
 | TUI-3/4/5 (later milestones) | PENDING | out of TUI-2.1 scope | — |
@@ -82,7 +83,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | Session/execution group | PARTIAL | `run`, `session list`, `serve`, history | BLK-CLI-02 |
 | Policy/capability group | PARTIAL | `capability.ts`, approval CLI | BLK-CLI-02 |
 | Proof/replay group | COMPLETE (not frozen) | 116/116 proof/CLI tests | BLK-CLI-02 |
-| External-agent launch group | PENDING | no `launch codex/claude/gemini` | BLK-CLI-01 |
+| External-agent launch group | PARTIAL | A1 scaffold implemented (`arcana launch codex|claude|gemini`: declaration, `--dry-run`, supervision, durable evidence; no sandbox claim); production-certified adapter pending | BLK-CLI-01 |
 | Operations group | PARTIAL | doctor/trust/models/providers/daemon/gateway/cron | BLK-CLI-02/04 |
 | JSON output + deterministic exit codes | PENDING | not frozen | BLK-CLI-02 |
 | Shell completion | PENDING | not implemented | BLK-CLI-03 |
@@ -111,7 +112,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 |---|---:|---|---|---|
 | E1 Freeze protocol specifications | 15% | PARTIAL | **PROTOCOL-1.0-SPEC.md published 2026-08-02** (freeze draft): canonical serialization, 7 signature domains, object registry, labels/lineage, reason-code registry, version negotiation, strict unknown-field rejection. Remaining: public release + external review | BLK-E-01 |
 | E2 Conformance test suite | 15% | PARTIAL | **Runner + independent implementations DONE 2026-08-02**: `script/conformance.ts` runs TS golden crypto (100/100) + TS D-10 matrix (15/0) + **Rust independent verifier** (2/2, 46 vectors — TS generates, Rust verifies, no oracle sharing); suite doc `CONFORMANCE-SUITE.md`. Remaining: L3 external reproduction | BLK-E-02 |
-| E3 TypeScript/JavaScript SDK 1.0 | 10% | PARTIAL | **Governance + proof + error model IMPLEMENTED 2026-08-02** (`@arcana/sdk/v2/governance|proof|errors`: canonical requests, adapter hook, envelope + RunProof verification, stable error codes; SDK suite 17/17; SDK conformance step wired into `script/conformance.ts` 4/4; `SDK-1.0-COMPATIBILITY.md` semver/error/conformance contract). Remaining: release freeze + conformance against external vectors | BLK-E-03 |
+| E3 TypeScript/JavaScript SDK 1.0 | 10% | PARTIAL | **Governance + proof + error model IMPLEMENTED 2026-08-02** (`@arcana/sdk/v2/governance|proof|errors`: canonical requests, adapter hook, envelope + RunProof verification, stable error codes; SDK suite 34/0 full `src`; SDK conformance step wired into `script/conformance.ts` 5/5; `SDK-1.0-COMPATIBILITY.md` semver/error/conformance contract). Remaining: release freeze + conformance against external vectors | BLK-E-03 |
 | E4 Additional language SDKs | 10% | PARTIAL | **Rust protocol SDK foundation IMPLEMENTED 2026-08-02** (`tools/acep-conformance-rust/src/request.rs`): canonical AuthorizationRequest encoding + domain-separated SHA-256 ported byte-for-byte from TypeScript, with a **cross-language golden vector** (same fixture hashes identically in TS and Rust: `b1e96acf…`); crate now 5 tests (3 request + 2 conformance). Remaining: full Rust SDK surface (envelopes, PEP client) | BLK-E-04 |
 | E5 External CLI adapters | 15% | PARTIAL | **Launch scaffold IMPLEMENTED 2026-08-02** (`arcana launch codex|claude|gemini`): declared A1 level with explicit boundaries/bypasses, `--dry-run` declaration, process supervision + durable launch evidence record; NO sandbox claim (documented). Remaining: OS-level sandbox/interception for a real enforcement claim + hostile-escape fixtures | BLK-E-05 |
 | E6 Framework adapters | 10% | PARTIAL | **AI SDK-style + MCP hooks IMPLEMENTED 2026-08-02** (`@arcana/sdk/v2/adapters`: `governedTool`, `governedMcpTool` — canonical requests, ALLOW-only execution, exact binding, MCP_DESCRIPTION default provenance). **Mastra + LangGraph hooks IMPLEMENTED 2026-08-02** (`governedMastraTool`, `governedLangGraphTool`; 6 new tests, SDK suite 28/28). Remaining: live PEP transport integration | BLK-E-06 |
@@ -143,8 +144,8 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | Track | Status | Evidence | Blockers |
 |---|---|---|---|
 | Node 1.0 | PARTIAL | D-7 frozen, D-8A done; **API contract draft node-1.0-api-contract (2026-08-02)**; release freeze NOT authorized — TLS (BLK-D-07), live Linux validation (BLK-D-03), local proof-store integration (BLK-D-04), independent reproduction pending | BLK-D-01..09 |
-| SDK 1.0 | PARTIAL | JS SDK basic client | BLK-E-02/03/04 |
-| Control 1.0 | PENDING | enterprise scaffold | BLK-F-01..13 |
+| SDK 1.0 | PARTIAL — governance, proof, errors, enterprise client and framework hooks implemented; release freeze, live PEP transport, full Rust surface and L3 validation pending | BLK-E-02/03/04/06, BLK-F-11 |
+| Control 1.0 | PARTIAL — service cores and enterprise APIs substantially implemented; authenticated-principal binding (BLK-F-AUTH-01), operator consoles, production integrations, live exercises and external assessment pending | BLK-F-01..13 |
 | Arcana Desktop | SPEC ONLY (not required for 1.0) | DESKTOP-1.0-SPEC (spec only) | — |
 | Arcana 1.0 convergence | NOT REACHED | — | BLK-1.0-01..05 |
 
@@ -306,7 +307,7 @@ Gates (playbook §19): all PASS within declared scope — see
 |---|---|---|---|
 | TUI-1 governance visibility | COMPLETE (historical tag) | TAG `arcana-tui-1-governance-observability` | Not in current branch ancestry |
 | TUI-2 interactive authority | COMPLETE (frozen) | TAG `arcana-tui-2-interactive-authority-control` → `e0b14a2d`; approval lifecycle sources | Approval pipeline mounted |
-| TUI-2.1 production polish | PARTIAL — automated green, freeze NOT authorized | TST TUI 781/1/0; SRC spine polish, `approval-inspector.tsx`, daemon respawn; DOC TUI-2.1-FREEZE-OPERATOR-RUNBOOK | Runbook Gates 1–10 pending (BLK-TUI-01..08) |
+| TUI-2.1 production polish | PARTIAL — automated green, freeze NOT authorized | TST TUI 786/1/0; SRC spine polish, `approval-inspector.tsx`, daemon respawn; DOC TUI-2.1-FREEZE-OPERATOR-RUNBOOK | Runbook Gates 1–10 pending (BLK-TUI-01..08) |
 | TUI-3 delegation console | PENDING | — | — |
 | TUI-4 proof/replay/audit UI | PARTIAL | SRC `packages/tui/src/proof-view/run-proof-view.ts` | Full audit UI pending |
 | TUI-5 final polish | PENDING | — | — |
@@ -332,7 +333,7 @@ protocol, performance.
 
 ---
 
-## Phase D — Distributed Governed Autonomy (ACTIVE, ~45–55%)
+## Phase D — Distributed Governed Autonomy (implementation coverage HIGH; release readiness BLOCKED)
 
 | Task | Status | Evidence | Blocker |
 |---|---|---|---|
@@ -357,13 +358,13 @@ BLK-D set to be closed first.
 
 ---
 
-## Phase E — Protocol, SDKs, and External Adapters (PLANNED / PARTIAL)
+## Phase E — Protocol, SDKs, and External Adapters (PARTIAL — implementation MODERATE–HIGH; release BLOCKED)
 
 | Task | Status | Evidence | Blocker |
 |---|---|---|---|
 | E1 Protocol freeze | PARTIAL | `PROTOCOL-1.0-SPEC.md` freeze draft + schema registry | BLK-E-01 |
-| E2 Independent conformance | PARTIAL | TS + Rust independent implementations agree on 46 vectors (`script/conformance.ts` 3/3); L3 pending | BLK-E-02 |
-| E3 JS/TS SDK 1.0 | PARTIAL | `@arcana/sdk/v2/governance|proof|errors` (17/17 SDK suite; conformance 4/4; compat contract) | BLK-E-03 |
+| E2 Independent conformance | PARTIAL | TS + Rust independent implementations agree on 46 vectors (`script/conformance.ts` 5/5 suites incl. D-10 + adapter + SDK surface); L3 pending | BLK-E-02 |
+| E3 JS/TS SDK 1.0 | PARTIAL | `@arcana/sdk/v2/governance|proof|errors` (SDK suite 34/0 full `src`; conformance 5/5; compat contract) | BLK-E-03 |
 | E4 Additional SDK | PARTIAL | Rust canonical serializer/verifier + request hashing with TS↔Rust golden vector (5 tests) | BLK-E-04 |
 | E5 CLI adapters | PARTIAL | `arcana launch <runtime>` A1 scaffold (declaration, dry-run, evidence) | BLK-E-05 |
 | E6 Framework adapters | PARTIAL | SDK governedTool + governedMcpTool + governedMastraTool + governedLangGraphTool hooks (11 tests) | BLK-E-06 |
@@ -377,7 +378,7 @@ registry, market assessment.
 
 ---
 
-## Phase F — Enterprise Control Plane and Federation (PLANNED / PARTIAL)
+## Phase F — Enterprise Control Plane and Federation (PARTIAL — service cores HIGH; production boundary BLOCKED by BLK-F-AUTH-01)
 
 | Task | Status | Evidence | Blocker |
 |---|---|---|---|
@@ -393,22 +394,24 @@ registry, market assessment.
 | F10 Data governance | PARTIAL | classification + regional/CMK + PII export/retention (3 tests) + HTTP governance checks (integration tested) | BLK-F-10 |
 | F11 Enterprise API/automation | PARTIAL | `/api/enterprise/*` admin surface (F1-F12 cores mounted) + admin-event store + SIEM CEF export (4 core tests) + ticketing payloads (1 core test) + webhook delivery sink (4 core tests) + HTTP record/list/siem-export/ticketing/webhooks (18 HTTP integration tests + 2 event tests) + SDK enterprise admin client (4 SDK tests; equivalent automation) | BLK-F-11 |
 | F12 Commercial readiness | PARTIAL | entitlements + metering-invariant + redacted diagnostics (4 tests) + metering pipeline (3 tests) + HTTP entitlement/metering/usage/quota/usage-export/diagnostics/upgrade (integration tested) | BLK-F-12 |
-| F13 Assessment + GA freeze | PENDING | freeze draft with gate evidence; external assessment pending | BLK-F-13 |
+| F13 Assessment + GA freeze | PENDING | freeze draft with gate evidence; authenticated-principal binding + operator consoles + external assessment pending | BLK-F-13 |
+| F-AUTH Admin identity boundary | BLOCKED | BLK-F-AUTH-01: enterprise mutations must derive actor/tenant identity from authenticated server context; body actor fields (`actorUserId`/`approvedBy`/`tenantId`) must not establish authority or audit attribution; cross-tenant impersonation + forged-approver fixtures fail closed; audit records use the authenticated principal | BLK-F-AUTH-01 |
 
 ---
 
 ## Cross-cutting traces
 
-### Verification checkpoint (2026-08-02, working tree)
+### Verification checkpoint (canonical: implementation checkpoint `0392ad7b`)
 
 | Suite | Result |
 |---|---|
-| TUI | 781 pass / 1 skip / 0 fail (782) |
-| Engine | 4251 pass / 74 skip / 1 todo / 0 fail (4326, 990.6 s) |
-| Core | 1264 pass / 7 skip / 0 fail (1271) |
+| TUI | 786 pass / 1 skip / 0 fail (787) |
+| Engine | 4305 pass / 1 todo / 4 fail under the default 5s per-test timeout (4384 tests) — timing-bound, pass with `--timeout 30000` or in isolation; NOT a clean suite |
+| Core | 1465 pass / 7 skip / 0 fail (1472 tests, 175 files) |
 | Arcana CLI/proof | 116 pass / 0 fail |
-| SDK JS | 7 pass / 0 fail |
+| SDK JS | 34 pass / 0 fail (full `src` run) |
 | Rust conformance | 2 pass / 0 fail |
+| Conformance runner | 5/5 suites (46 crypto + 4 adapter vectors + 15 hostile fixtures + Rust verifier + SDK surface) |
 | Typecheck | 16/16 packages |
 | Build | 8/8 tasks; engine binary smoke `0.0.0-phase-d-implementation-202608021350` |
 
