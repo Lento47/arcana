@@ -156,6 +156,7 @@ worker-path patch; no dependency was downgraded.
 | F5 approvals list endpoint added (`CentralApprovalStore.all` + `GET /api/enterprise/*/approvals` with status filter; integration tested) — supports the escalation/auditor consoles | BLK-F-05 | Engineering |
 | Mastra + LangGraph governed-tool adapters added to the SDK (`governedMastraTool`, `governedLangGraphTool`; ALLOW-only execution, MCP_DESCRIPTION default provenance, exact binding; 6 tests, SDK suite 28/28) — closes the E6 adapter gap | BLK-E-06 | Engineering |
 | D-7.1 hostile-escape fixtures made runnable in the core suite (`bounded-file-reader.test.ts`: traversal, absolute path, null byte, directory, size budget, symlink/junction escape; 7/7) — containment adversary evidence is now part of `bun test` | BLK-D-02/E-05 | Engineering |
+| D-4 DELTA bundles implemented and served (`policy-delta.ts`: deterministic field diffs, dotted-path apply, base/result digest + chain verification; sync control plane serves POLICY_DELTA for exactly-one-step-behind nodes and REVOCATION_DELTA for statements after the accepted sequence, bounded at 32; 4 core + 1 engine test) — closes the D-4 delta-transport gap | BLK-D-01/D-4 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 

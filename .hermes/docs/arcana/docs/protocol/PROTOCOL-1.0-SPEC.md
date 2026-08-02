@@ -68,6 +68,17 @@ Sync response kinds: NO_CHANGE, POLICY_SNAPSHOT, POLICY_DELTA,
 REVOCATION_SNAPSHOT, REVOCATION_DELTA, FULL_SNAPSHOT_REQUIRED, QUARANTINE,
 RETRY_LATER.
 
+POLICY_DELTA carries `delta` (`SignedPolicyDeltaPayload`:
+`schemaVersion: 1`, `issuerId`, `issuerEpoch`, `sequence`,
+`basePolicyDigest`, `resultPolicyDigest`, `operations`, `issuedAt`,
+`expiresAt`) plus the fully signed target `envelope`. A node applies the
+delta only when the base digest matches its accepted bundle, the sequence is
+exactly base + 1, the operations reproduce the target envelope fields, and
+the result digest equals the target `policyDigest`; any mismatch fails
+closed to `FULL_SNAPSHOT_REQUIRED`. REVOCATION_DELTA carries
+`envelopes` — the signed statements after the node's accepted sequence,
+bounded at 32 per response.
+
 Execution statuses: PENDING, EXECUTING, COMPLETED, FAILED,
 UNKNOWN_AFTER_CRASH, UNKNOWN_AFTER_NETWORK, REJECTED.
 

@@ -47,6 +47,8 @@ export const SyncResponseContextSchema = Schema.Struct({
   revocationDigest: Schema.optional(Schema.String),
   emergencyEpoch: Schema.optional(Schema.Number),
   envelope: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  delta: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  envelopes: Schema.optional(Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),
   issuedAt: Schema.String,
   expiresAt: Schema.String,
 })

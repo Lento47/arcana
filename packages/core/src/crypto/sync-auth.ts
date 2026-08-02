@@ -73,6 +73,12 @@ export type SyncResponseContext = {
   /** Signed policy/revocation envelope for SNAPSHOT/DELTA responses. */
   envelope?: Record<string, unknown>
 
+  /** Signed policy delta payload for POLICY_DELTA responses. */
+  delta?: Record<string, unknown>
+
+  /** Signed revocation statement envelopes for REVOCATION_DELTA responses. */
+  envelopes?: readonly Record<string, unknown>[]
+
   issuedAt: string
   expiresAt: string
 }

@@ -230,8 +230,9 @@ describe("syncNode HttpApi (D-6B-T)", () => {
         const behindBody = (yield* behindRevocation.json) as {
           envelope: SignedSyncEnvelope<SyncResponseContext>
         }
-        expect(behindBody.envelope.context.responseKind).toBe("REVOCATION_SNAPSHOT")
+        expect(behindBody.envelope.context.responseKind).toBe("REVOCATION_DELTA")
         expect(behindBody.envelope.context.revocationSequence).toBe(1)
+        expect(behindBody.envelope.context.envelopes).toHaveLength(1)
 
         const caughtUpRevocation = yield* requestInDirectory(SyncNodePaths.revocation, tmp.directory, {
           method: "POST",
@@ -313,6 +314,169 @@ describe("syncNode HttpApi (D-6B-T)", () => {
           body: JSON.stringify(requestEnvelope({ requestId: "req-sync-2", clientNonce: "nonce-3" })),
         })
         expect(suspendedSync.status).toBe(401)
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
+    "serves POLICY_DELTA and REVOCATION_DELTA to nodes exactly one bounded step behind",
+    () =>
+      Effect.gen(function* () {
+        Flag.ARCANA_EXPERIMENTAL_WORKSPACES = true
+        configure()
+
+        const tmp = yield* TestInstance
+        const headers = { "x-opencode-directory": tmp.directory, "content-type": "application/json" }
+
+        const enrolled = yield* requestInDirectory(EnrollmentPaths.enroll, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            joinToken: createJoinToken(
+              {
+                organizationId: "org-arcana",
+                trustDomain: "arcana.test",
+                nodeId: "node-alpha",
+                issuedAt: new Date(),
+                expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+              },
+              issuerKey.secretKey,
+            ),
+            publicKey: encodeBase64url(nodeKey.publicKey),
+          }),
+        })
+        expect(((yield* enrolled.json) as { kind?: string }).kind).toBe("ENROLLED")
+
+        for (const sequence of [1, 2]) {
+          const published = yield* requestInDirectory(PolicyPaths.publish, tmp.directory, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              envelope: policyEnvelope(sequence, sequence === 2 ? "digest-1" : undefined),
+              activationTime: new Date().toISOString(),
+            }),
+          })
+          expect(((yield* published.json) as { kind?: string }).kind).toBe("PUBLISHED")
+        }
+
+        const deltaRes = yield* requestInDirectory(SyncNodePaths.policy, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            requestEnvelope({
+              requestId: "req-delta-1",
+              clientNonce: "nonce-d1",
+              acceptedPolicySequence: 1,
+              acceptedPolicyDigest: "digest-1",
+            }),
+          ),
+        })
+        const deltaBody = (yield* deltaRes.json) as {
+          envelope: SignedSyncEnvelope<SyncResponseContext>
+        }
+        expect(deltaBody.envelope.context.responseKind).toBe("POLICY_DELTA")
+        expect(deltaBody.envelope.context.policySequence).toBe(2)
+        expect(deltaBody.envelope.context.policyDigest).toBe("digest-2")
+        expect(deltaBody.envelope.context.delta).toMatchObject({
+          schemaVersion: 1,
+          sequence: 2,
+          basePolicyDigest: "digest-1",
+          resultPolicyDigest: "digest-2",
+        })
+        expect(deltaBody.envelope.context.envelope?.policyDigest).toBe("digest-2")
+        const verifiedDelta = verifySyncResponse(deltaBody.envelope, issuerKey.publicKey, {
+          nodeId: "node-alpha",
+          requestId: "req-delta-1",
+          clientNonce: "nonce-d1",
+          now: new Date(),
+        })
+        expect(verifiedDelta).toEqual({ valid: true })
+
+        // A node two steps behind still gets a full snapshot, not a delta.
+        const snapshotRes = yield* requestInDirectory(SyncNodePaths.policy, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            requestEnvelope({
+              requestId: "req-delta-2",
+              clientNonce: "nonce-d2",
+            }),
+          ),
+        })
+        const snapshotBody = (yield* snapshotRes.json) as {
+          envelope: SignedSyncEnvelope<SyncResponseContext>
+        }
+        expect(snapshotBody.envelope.context.responseKind).toBe("POLICY_SNAPSHOT")
+        expect(snapshotBody.envelope.context.delta).toBeUndefined()
+
+        const revDigests: string[] = []
+        for (const sequence of [1, 2]) {
+          const published = yield* requestInDirectory(RevocationPaths.publish, tmp.directory, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              statement: revocationStatement(sequence),
+            }),
+          })
+          const publishedBody = (yield* published.json) as {
+            kind: string
+            record?: { digest: string }
+          }
+          expect(publishedBody.kind).toBe("PUBLISHED")
+          if (publishedBody.record?.digest) revDigests.push(publishedBody.record.digest)
+        }
+
+        const revocationDelta = yield* requestInDirectory(SyncNodePaths.revocation, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            requestEnvelope({
+              requestId: "req-delta-3",
+              clientNonce: "nonce-d3",
+            }),
+          ),
+        })
+        const revocationDeltaBody = (yield* revocationDelta.json) as {
+          envelope: SignedSyncEnvelope<SyncResponseContext>
+        }
+        expect(revocationDeltaBody.envelope.context.responseKind).toBe("REVOCATION_DELTA")
+        expect(revocationDeltaBody.envelope.context.revocationSequence).toBe(2)
+        expect(revocationDeltaBody.envelope.context.envelopes).toHaveLength(2)
+
+        const oneBehind = yield* requestInDirectory(SyncNodePaths.revocation, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            requestEnvelope({
+              requestId: "req-delta-4",
+              clientNonce: "nonce-d4",
+              acceptedRevocationSequence: 1,
+              acceptedRevocationDigest: revDigests[0],
+            }),
+          ),
+        })
+        const oneBehindBody = (yield* oneBehind.json) as {
+          envelope: SignedSyncEnvelope<SyncResponseContext>
+        }
+        expect(oneBehindBody.envelope.context.responseKind).toBe("REVOCATION_DELTA")
+        expect(oneBehindBody.envelope.context.envelopes).toHaveLength(1)
+
+        const caughtUp = yield* requestInDirectory(SyncNodePaths.revocation, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            requestEnvelope({
+              requestId: "req-delta-5",
+              clientNonce: "nonce-d5",
+              acceptedRevocationSequence: 2,
+              acceptedRevocationDigest: revDigests[1],
+            }),
+          ),
+        })
+        const caughtUpBody = (yield* caughtUp.json) as {
+          envelope: SignedSyncEnvelope<SyncResponseContext>
+        }
+        expect(caughtUpBody.envelope.context.responseKind).toBe("NO_CHANGE")
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )
