@@ -3,7 +3,7 @@ document_class: status
 authority: current_status
 status: current
 status_source: self
-evaluated_commit: 3c87df89
+evaluated_commit: cb1a214d
 current_branch_at_publication: phase-d-implementation
 last_verified: 2026-08-02
 supersedes: status claims inside Arcana_Project_Master_Specification.md Parts I-III
@@ -25,8 +25,8 @@ secondary; never edit the mirror independently.
 | Field | Value |
 |---|---|
 | Current implementation branch | `phase-d-implementation` |
-| Committed HEAD at last verification | `3c87df89` (2026-08-02, completion-report refresh after F12 usage export) |
-| Uncommitted worktree | clean at checkpoint `3c87df89` |
+| Committed HEAD at last verification | `cb1a214d` (2026-08-02, CLI 1.0 freeze draft + release-flow plan + blocker/task updates) |
+| Uncommitted worktree | clean at checkpoint `cb1a214d` |
 | Default branch (`master` / `origin/master`) | stale — Phase B/C, D-7, TUI-2 milestone commits not on it; mainline promotion pending (post-sign-off release action) |
 | Release version | pre-release builds only (`0.0.0-phase-d-implementation-*`) |
 | Last verification date | 2026-08-02 (checkpoint; full engine rerun pending) |
@@ -118,13 +118,13 @@ validation, manual validation, external validation, release.
 
 | Gate | Result |
 |---|---|
-| TUI suite | 781 pass / 1 skip / 0 fail (782 tests) — rerun 2026-08-02 |
+| TUI suite | 786 pass / 1 skip / 0 fail (787 tests) — rerun 2026-08-02 after F-23..F-28 keyboard/gate fixes |
 | Repo-wide typecheck | 16/16 packages |
 | Build | 8/8 tasks (engine binaries smoke-tested; `0.0.0-phase-d-implementation-202608021350`) |
 | Core suite | 1465 pass / 7 skip / 0 fail (1,472 tests, 175 files — clean rerun 2026-08-02 incl. enterprise cores, delta bundles, revocation hostile fixtures, containment fixtures) |
-| Engine suite | Full rerun 4251 pass / 74 skip / 1 todo / 0 fail at `e57c5ca2`; server suites re-verified green on later commits (sync-node/revocations/push/enterprise/OpenAPI/drift/instance: 43+ pass / 0 fail). Re-verify full suite at the exact final commit |
+| Engine suite | Full rerun 2026-08-02: 4305 pass / 1 todo / 4 fail under the default 5s per-test timeout (4384 tests). The 4 failures are timing-bound: `revert + compact restore` ×2 pass at 6–7s (`--timeout 30000`), `snapshot state isolation` + `diffFull batch order` pass in isolation (~4s, load flakiness). Engine code unchanged since `e57c5ca2` verified run (4251/74/1/0) — no logic regression. Affected server/node suites: 83 pass / 0 fail |
 | Arcana CLI/proof suite | 116 pass / 0 fail (2026-08-02) |
-| SDK JS suite | 30 pass / 0 fail (2026-08-02) |
+| SDK JS suite | 34 pass / 0 fail (2026-08-02, full `src` run incl. enterprise client, adapters, vectors, SSE) |
 | Conformance runner | 5/5 suites (TS golden vectors + D-10 matrix + Rust verifier + SDK surface + adapter vectors; 46 crypto + 4 adapter vectors + 15 hostile fixtures) |
 | ML eval / smoke | Earlier baseline: ml:eval 13/13, smoke 8/8 |
 | Validation level | Strongest at L1–L2 (production-path integration + internal adversarial); L3+ independent validation not obtained |

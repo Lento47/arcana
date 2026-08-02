@@ -5,7 +5,7 @@ document_class: completion_report
 authority: secondary (status authority: docs/STATUS.md)
 status: checkpoint — NOT a phase F completion declaration
 created: 2026-08-02
-audited_commit: 4f7e5bea (2026-08-02 campaign checkpoint; suites verified on
+audited_commit: cb1a214d (2026-08-02 campaign checkpoint; suites verified on
 the pre-commit worktree, which the commit reproduces exactly)
 supersedes: none
 superseded_by: future final completion report after Phase F freeze
@@ -90,16 +90,18 @@ No regressions versus the previous checkpoint: TUI 762 → 781 pass, core 1256 �
 1264 pass, engine 4248 → 4251 pass. OpenTUI remains pinned at 0.4.5 with the
 worker-path patch; no dependency was downgraded.
 
-**Current checkpoint totals (2026-08-02, HEAD `9100ac1d`):**
+**Current checkpoint totals (2026-08-02):**
 
 - Core suite: **1465 pass / 7 skip / 0 fail** (1472 tests, 175 files).
-- SDK JS suite: **30 pass / 0 fail** (enterprise client, governance, proof,
-  errors, AI SDK/MCP/Mastra/LangGraph adapters, adapter vectors, SSE).
-- Engine server suites (affected): 43+ pass / 0 fail across sync-node,
-  revocations, push channel, enterprise, OpenAPI, query-drift, instance.
+- SDK JS suite: **34 pass / 0 fail** (full `src` run).
+- TUI suite: **786 pass / 1 skip / 0 fail** (787 tests).
+- Engine full suite: **4305 pass / 1 todo / 4 fail** under the default 5s
+  per-test timeout (4384 tests); the 4 failures are timing-bound and pass
+  with adequate timeout/in isolation (see Known bugs). Affected
+  server/node suites: **83 pass / 0 fail**.
 - Conformance runner: **5/5 suites** (46 crypto vectors + 4 adapter vectors +
   15 hostile fixtures + Rust verifier + SDK surface).
-- Typecheck: core, engine, SDK all clean.
+- Typecheck: core, engine, TUI, SDK all clean.
 
 ## 4a. Completion audit (objective → evidence)
 
@@ -133,12 +135,16 @@ worker-path patch; no dependency was downgraded.
 | F-26 | ACTION GATE Esc rejected/declined the request (permission, question, and contract gates) | Esc is now inert on gates (`escapeKey` removed from the permission stage, question Esc-reject bindings removed); gates resolve explicitly with ←/→ + Enter, and the Reject confirmation stage keeps Esc=cancel |
 | F-27 | ACTION GATE blocked all spine interaction, so the pending approval row (`01◤ approve`) could not be focused or inspected | Spine navigation (j/k), copy/details, and `v` inspection now remain available while a gate is open; decisions are still made exclusively in the gate (←/→ + Enter), and `a`/`d` stay gated until it resolves |
 | F-28 | `v` on the `01◤ approve` permission-gate row showed the "no approval to inspect" toast (gate entries are `permission:<id>`, not durable approval records) | New read-only permission inspector (`permission-inspector.tsx`): `v` on a gate row shows request ID, session, permission, patterns, tool message/call IDs, and description; pure row builder + regression tests |
+| CLI 1.0 contract freeze draft produced (`docs/releases/CLI-1.0-FREEZE-DRAFT.md`: command catalog, JSON/NDJSON + exit-code proposal, launch protocol, BLK-CLI-01..05 gate evidence; NOT frozen) | BLK-CLI-01..05 | Engineering |
+| Release-flow preparation plan produced (`docs/releases/RELEASE-FLOW-PLAN.md`: verify → freeze/tag → build → sign → installer/update smoke → publish → mainline promotion → post-verify; owners/evidence; NOT executed) | BLK-1.0-04/05, AUD-19 | Release |
+| D-7.1 OS-containment engine integration blocker documented with explicit owner/artifact/evidence (BLK-D-02 unblock requirements) | BLK-D-02 | Engineering |
 
 ### Open / residual bugs and risks
 
 | Bug / risk | Status | Owner |
 |---|---|---|
 | Bun 1.3.14 root-runner segmentation fault on Windows | Workaround: package-local runners; isolated, documented, accepted exception | Bun upstream |
+| Engine 5s-default test timeout flakiness (2026-08-02 full run): `revert + compact restore` ×2 need 6–7s on this machine; `snapshot state isolation` + `diffFull batch order` flaked under full-suite load | Both restore tests pass with `--timeout 30000`; snapshot/diffFull pass in isolation; engine code unchanged since `e57c5ca2` verified run (4251/74/1/0) — timing, not a logic regression | Engineering |
 | Enterprise admin API actor identity is client-supplied in mutation payloads (`actorUserId`/`approvedBy`) rather than bound to the authenticated principal | RBAC permission checks are exercised end-to-end, but the auth-context binding (HTTP auth → principal) is a follow-up before GA (BLK-F-02/11) | Engineering |
 | TUI-2.1 live validation still pending: approval lifecycle via `v`/`a`/`d`, width matrix, theme matrix, restart/session isolation, performance, 6-checkpoint stream protocol | Freeze NOT authorized until passed at the exact commit | Engineering + operator |
 | "Failed to send prompt / Unable to connect" after daemon death | F-22 mitigation implemented; re-verify through the live-stream protocol | Engineering |
