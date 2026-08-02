@@ -144,6 +144,7 @@ worker-path patch; no dependency was downgraded.
 | F9 security-ops core (alerts, incident timelines, audited revocation campaigns, forensic exports), F10 data governance (classification, regional/CMK, PII controls), F11 admin event surface (webhook/SIEM/ticketing envelopes) implemented (8 tests) | BLK-F-09/10/11 | Engineering |
 | F12 commercial readiness core (tiered entitlements, metering-never-affects-security invariant, redacted diagnostics, upgrade policy; 4 tests) + Phase F GA freeze draft published (gate evidence; freeze not authorized) | BLK-F-12/13 | Engineering |
 | Enterprise admin HTTP surface mounted (`/api/enterprise/*`: organizations, roles, fleet, approvals with exact inspection, audit; HTTP integration test) — production mounting of F1/F2/F4/F5 cores | BLK-F-01/02/04/05/11 | Engineering |
+| Enterprise HTTP operations surface mounted (`/api/enterprise/*`: F3 policy promotion/diff with RBAC into per-environment target chains, F4 node register/heartbeat, F5 emergency revoke + bulk deny, F6 archive/export/custody/legal-hold/retention-sweep, F9 alerts/timeline/revocation-campaign/forensics, F10 governance checks; 5 integration tests) | BLK-F-03/04/05/06/09/10/11 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 

@@ -14,6 +14,7 @@ import { SqliteIdentityStore } from "@arcana/core/enterprise/identity-sqlite"
 import { SqliteFleetStore } from "@arcana/core/enterprise/fleet-sqlite"
 import { SqliteCentralApprovalStore } from "@arcana/core/enterprise/approvals-sqlite"
 import { SqliteAuditArchiveStore } from "@arcana/core/enterprise/audit-archive-sqlite"
+import { SqliteSecurityOpsStore } from "@arcana/core/enterprise/security-ops-sqlite"
 import type { EnrollmentContext } from "@arcana/core/crypto/node-enrollment"
 
 /**
@@ -32,9 +33,11 @@ export type ControlPlaneState = {
   fleet: SqliteFleetStore
   approvals: SqliteCentralApprovalStore
   auditArchive: SqliteAuditArchiveStore
+  securityOps: SqliteSecurityOpsStore
 }
 
 const stateCache = new Map<string, ControlPlaneState>()
+const targetPolicyCache = new Map<string, SqlitePolicyBundleStore>()
 
 export function controlStateFor(directory: string): ControlPlaneState {
   let state = stateCache.get(directory)
@@ -54,10 +57,32 @@ export function controlStateFor(directory: string): ControlPlaneState {
       fleet: new SqliteFleetStore(db),
       approvals: new SqliteCentralApprovalStore(db),
       auditArchive: new SqliteAuditArchiveStore(db),
+      securityOps: new SqliteSecurityOpsStore(db),
     }
     stateCache.set(directory, state)
   }
   return state
+}
+
+/**
+ * Per-environment policy target store for F3 promotion. Each environment
+ * gets its own SQLite database so promotion re-validates the signed bundle
+ * and chain continuity against an independent target chain.
+ */
+export function policyTargetStoreFor(
+  directory: string,
+  environment: string,
+): SqlitePolicyBundleStore {
+  const key = `${directory}|${environment}`
+  let store = targetPolicyCache.get(key)
+  if (!store) {
+    const stateDir = join(directory, ".arcana")
+    mkdirSync(stateDir, { recursive: true })
+    const safeEnv = environment.replace(/[^a-zA-Z0-9_-]/g, "_")
+    store = new SqlitePolicyBundleStore(new Database(join(stateDir, `policy-target-${safeEnv}.db`)))
+    targetPolicyCache.set(key, store)
+  }
+  return store
 }
 
 /**
