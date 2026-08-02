@@ -40,6 +40,11 @@ import {
   queueRevocationDelivery,
   receiveRevocationDelivery,
 } from "@arcana/core/enterprise/federation-transport"
+import {
+  deliverPendingWebhooks,
+  enqueueWebhookDeliveries,
+  type WebhookEndpoint,
+} from "@arcana/core/enterprise/webhooks"
 import type { SignedPolicyEnvelope } from "@arcana/core/crypto/signed-envelopes"
 import { SignedPolicyEnvelopeSchema } from "../groups/policy"
 import {
@@ -1039,7 +1044,15 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
         at: recordedAt,
       } as unknown as AdminEvent
       const record = { ...event, recordedAt }
-      controlStateFor(directory).adminEvents.put(record)
+      const state = controlStateFor(directory)
+      state.adminEvents.put(record)
+      enqueueWebhookDeliveries(
+        ctx.params.tenantId,
+        record,
+        state.webhooks.listEndpoints(ctx.params.tenantId),
+        state.webhooks,
+        new Date(),
+      )
       return record
     })
 
@@ -1408,6 +1421,71 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       return { ok: true }
     })
 
+    const putWebhook = Effect.fn("EnterpriseHttpApi.putWebhook")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { webhookId: string; url: string; active: boolean }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const endpoint: WebhookEndpoint = {
+        tenantId: ctx.params.tenantId,
+        webhookId: ctx.payload.webhookId,
+        url: ctx.payload.url,
+        active: ctx.payload.active,
+        createdAt: new Date().toISOString(),
+      }
+      controlStateFor(directory).webhooks.putEndpoint(endpoint)
+      return endpoint
+    })
+
+    const listWebhooks = Effect.fn("EnterpriseHttpApi.listWebhooks")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).webhooks.listEndpoints(ctx.params.tenantId)
+    })
+
+    const listWebhookDeliveries = Effect.fn("EnterpriseHttpApi.listWebhookDeliveries")(
+      function* (ctx: {
+        params: { tenantId: string }
+        query: { directory?: string }
+      }) {
+        const directory = yield* resolveDirectory(ctx.query.directory)
+        return controlStateFor(directory).webhooks.deliveries(ctx.params.tenantId)
+      },
+    )
+
+    const deliverWebhooks = Effect.fn("EnterpriseHttpApi.deliverWebhooks")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { maxAttempts?: number }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const store = controlStateFor(directory).webhooks
+      const deliver = async (url: string, payloadJson: string) => {
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: payloadJson,
+          })
+          return { ok: response.ok, status: response.status }
+        } catch (error) {
+          return { ok: false, error: error instanceof Error ? error.message : String(error) }
+        }
+      }
+      return yield* Effect.promise(() =>
+        deliverPendingWebhooks(
+          ctx.params.tenantId,
+          store,
+          new Date(),
+          deliver,
+          ctx.payload.maxAttempts,
+        ),
+      )
+    })
+
     return handlers
       .handle("createOrganization", createOrganization)
       .handle("assignRole", assignRole)
@@ -1478,5 +1556,9 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       .handle("receiveRevocationDelivery", receiveDelivery)
       .handle("listRevocationInbox", listInbox)
       .handle("markRevocationDelivered", markDelivered)
+      .handle("putWebhook", putWebhook)
+      .handle("listWebhooks", listWebhooks)
+      .handle("listWebhookDeliveries", listWebhookDeliveries)
+      .handle("deliverWebhooks", deliverWebhooks)
   }),
 )
