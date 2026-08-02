@@ -84,7 +84,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 
 | Task | Weight | Status | Evidence | Blockers |
 |---|---:|---|---|---|
-| D1 Node identity + enrollment | 10% | PARTIAL | envelope/contracts existed; **enrollment ceremony + key rotation IMPLEMENTED 2026-08-02** (`node-enrollment.ts`: join tokens, certificate issuance, TRUSTED/SUSPENDED/REVOKED lifecycle, epoch-advancing rotation with superseded-key rejection, decommissioning; `node-enrollment-sqlite.ts`: durable registry; 13 tests). Remaining: wire into control-plane enrollment endpoints + node-side key store/ceremony client | BLK-D-05 |
+| D1 Node identity + enrollment | 10% | PARTIAL | **Enrollment ceremony + key rotation IMPLEMENTED 2026-08-02**: core (`node-enrollment.ts` + `node-enrollment-sqlite.ts`, 13 tests) **and HTTP endpoints** (`/api/nodes/enroll`, `/api/nodes/:nodeId/rotate|status|get`; issuer from env; 3 HTTP tests); the D-8B proof handler now consumes the durable enrollment registry (env stub removed) — rotated keys are rejected over HTTP. Remaining: node-side ceremony client + key store | BLK-D-05 |
 | D2 Signed short-lived grants | 15% | IMPLEMENTED (not frozen) | 7-layer verifier, 46 vectors, Rust conformance 2/2 | BLK-D-09 |
 | D3 Mutual authentication | 10% | PARTIAL | D-6B sync control; production transport pending | BLK-D-01 |
 | D4 Policy distribution/versioning | 10% | PARTIAL | digest chains in envelopes; signed bundles pending | BLK-D-01 |
@@ -155,7 +155,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | AUD-10 | Implement D-7.1 kernel containment: Linux `openat2 RESOLVE_BENEATH` + Windows handle final-path validation — Windows reader DONE (10/10); remaining: engine integration + live Linux validation | BLK-D-02 | Engineering |
 | AUD-11 | Validate D-6A-L workload identity against a live Linux workload | BLK-D-03 | Engineering |
 | AUD-12 | Implement D-8B remote proof registration with node/server hash reconciliation — control-plane ledger + HTTP surface DONE; node-side uploader/outbox + HTTP client DONE (27 core + 6 engine tests); remaining: scheduler/CLI wiring + hostile-node duplicate-delivery matrix | BLK-D-04 | Engineering |
-| AUD-13 | Implement node enrollment ceremony, durable key rotation, decommissioning — control-plane registry + tokens DONE (13 tests); remaining: enrollment endpoints + node-side ceremony client/key store | BLK-D-05 | Engineering |
+| AUD-13 | Implement node enrollment ceremony, durable key rotation, decommissioning — control-plane core + HTTP endpoints DONE (13 core + 3 HTTP tests, proof handler on durable registry); remaining: node-side ceremony client/key store | BLK-D-05 | Engineering |
 | AUD-14 | Implement D-9 offline/partition policy with TTL and reconciliation — offline grant/lease policy DONE (15 tests); remaining: wire into distributed PEP, node-level partition tests, reconnection reconciliation exercise | BLK-D-06 | Engineering |
 | AUD-15 | Phase D ops deployment + hostile-node adversarial suite + Node 1.0 freeze | BLK-D-07/08/09 | Engineering |
 | AUD-16 | Freeze protocol specs, build independent conformance harness, ship SDK 1.0 (JS) | BLK-E-01/02/03 | Engineering |

@@ -85,6 +85,7 @@ import { approvalHandlers } from "./handlers/approval"
 import { configHandlers } from "./handlers/config"
 import { controlHandlers } from "./handlers/control"
 import { controlPlaneHandlers } from "./handlers/control-plane"
+import { enrollmentHandlers } from "./handlers/enrollment"
 import { experimentalHandlers } from "./handlers/experimental"
 import { fileHandlers } from "./handlers/file"
 import { globalHandlers } from "./handlers/global"
@@ -152,6 +153,7 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
   Layer.provide([
     approvalHandlers,
     proofHandlers,
+    enrollmentHandlers,
     configHandlers,
     experimentalHandlers,
     fileHandlers,
