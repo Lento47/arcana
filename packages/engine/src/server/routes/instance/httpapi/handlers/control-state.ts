@@ -7,6 +7,7 @@ import { SqliteProofBatchLedger } from "@arcana/core/crypto/proof-registration-s
 import { SqliteEnrollmentRegistry } from "@arcana/core/crypto/node-enrollment-sqlite"
 import { SqliteSyncReplayStore } from "@arcana/core/crypto/sync-replay-store-sqlite"
 import { SqlitePolicyBundleStore } from "@arcana/core/crypto/policy-bundle-store-sqlite"
+import { SqliteExecutionLedger } from "@arcana/core/crypto/execution-ledger-sqlite"
 import type { EnrollmentContext } from "@arcana/core/crypto/node-enrollment"
 
 /**
@@ -18,6 +19,7 @@ export type ControlPlaneState = {
   registry: SqliteEnrollmentRegistry
   replayStore: SqliteSyncReplayStore
   policyStore: SqlitePolicyBundleStore
+  executionLedger: SqliteExecutionLedger
 }
 
 const stateCache = new Map<string, ControlPlaneState>()
@@ -33,6 +35,7 @@ export function controlStateFor(directory: string): ControlPlaneState {
       registry: new SqliteEnrollmentRegistry(db),
       replayStore: new SqliteSyncReplayStore(db),
       policyStore: new SqlitePolicyBundleStore(db),
+      executionLedger: new SqliteExecutionLedger(db),
     }
     stateCache.set(directory, state)
   }
