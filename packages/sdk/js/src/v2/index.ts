@@ -2,6 +2,7 @@ export * from "./client.js"
 export * from "./server.js"
 export * from "./governance.js"
 export * from "./proof.js"
+export * from "./enterprise.js"
 export {
   ArcanaError,
   AuthorizationDeniedError,
