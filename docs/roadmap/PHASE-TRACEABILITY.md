@@ -131,7 +131,7 @@ protocol, performance.
 | D4 Policy distribution | PARTIAL | signed bundle store (publish/staged/last-known-good/rollback, 11 tests) + HTTP policy endpoints + POLICY_SNAPSHOT via sync transport (4 engine tests); DELTA + compat negotiation pending | BLK-D-01 |
 | D5 Remote revocation | PARTIAL | revocation store + convergence bounds + REVOCATION_SNAPSHOT delivery + emergency deny-list (node revoked, sync 401); push channel optional | BLK-D-01 |
 | D6 Replay resistance | PARTIAL | reducers + transport replay protection + **execution ledger + governed distributed PEP** (claim-before-effect, offline gating; 17 tests); hostile-node matrix pending | BLK-D-01 |
-| D7 Proof sync | FROZEN (local) | TAG `arcana-phase-d7-local-distributed-authority` → `017ad998`; D-7.1 containment partial: Linux openat2 scaffold + Windows handle final-path reader (`tools/fs-containment-rust`, 10/10) | BLK-D-02 |
+| D7 Proof sync | FROZEN (local) | TAG `arcana-phase-d7-local-distributed-authority` → `017ad998`; D-7.1 containment partial: Linux openat2 scaffold + Windows handle final-path reader (`tools/fs-containment-rust`, 10/10) + runnable hostile-escape fixture suite (`bounded-file-reader.test.ts`, 7/7) | BLK-D-02 |
 | D8 Proof composition | PARTIAL | D-8A batching + **D-8B end-to-end** (control-plane + node side + CLI + local proof store integration, chained batches); ops/L3 outstanding | BLK-D-04 |
 | D9 Offline/partition | PARTIAL | design doc + D-4C reducer + `offline-policy.ts` grant/lease policy (15 tests); PEP wiring + node-level partition tests pending | BLK-D-06 |
 | D10 Adversarial eval/freeze | PARTIAL | hostile-node matrix: 15 fail-closed fixtures / 0 bypasses across all ten categories (11 tests); Node 1.0 freeze pending | BLK-D-08/09 |
