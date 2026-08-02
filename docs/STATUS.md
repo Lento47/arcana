@@ -3,7 +3,7 @@ document_class: status
 authority: current_status
 status: current
 status_source: self
-evaluated_commit: c07faba6
+evaluated_commit: 3c87df89
 current_branch_at_publication: phase-d-implementation
 last_verified: 2026-08-02
 supersedes: status claims inside Arcana_Project_Master_Specification.md Parts I-III
@@ -25,8 +25,8 @@ secondary; never edit the mirror independently.
 | Field | Value |
 |---|---|
 | Current implementation branch | `phase-d-implementation` |
-| Committed HEAD at last verification | `e57c5ca2` (2026-08-02, `chore: checkpoint TUI-2.1 polish + daemon respawn + inspector + Phase A-F audit docs`) |
-| Uncommitted worktree | clean at checkpoint `e57c5ca2`; subsequent docs-only updates tracked below |
+| Committed HEAD at last verification | `3c87df89` (2026-08-02, completion-report refresh after F12 usage export) |
+| Uncommitted worktree | clean at checkpoint `3c87df89` |
 | Default branch (`master` / `origin/master`) | stale — Phase B/C, D-7, TUI-2 milestone commits not on it; mainline promotion pending (post-sign-off release action) |
 | Release version | pre-release builds only (`0.0.0-phase-d-implementation-*`) |
 | Last verification date | 2026-08-02 (checkpoint; full engine rerun pending) |
@@ -39,8 +39,9 @@ secondary; never edit the mirror independently.
 | Phase A — Epistemic Foundation | COMPLETE / FROZEN (declared complete in master spec) |
 | Phase B — Verification and Replay | COMPLETE / FROZEN (`arcana-epistemic-runtime-phase-b`) |
 | Phase C — Local Governed Autonomy | EVALUATION PASS; tags exist (`arcana-governed-autonomy-phase-c`, `phase-c-production-enforcement`); release sign-off = Approve with exceptions (2026-08-01) |
-| Phase D — Distributed Authority | ACTIVE DEVELOPMENT, ~45–55% by playbook weighting; D-7 frozen (`arcana-phase-d7-local-distributed-authority`), D-8A proof batching implemented, **D-8B proof registration end-to-end (incl. local proof store integration) + D-9 offline grant/lease policy + D-1 enrollment w/ HTTP + D-6B-T signed-envelope sync transport + D-4 signed policy bundle store + D-6 execution ledger + governed distributed PEP + D-5 revocation store/convergence + emergency deny-list + D-10 hostile-node matrix + Node CLI + Node 1.0 API contract draft (2026-08-02)**; Node 1.0 release freeze pending (TLS, live Linux, L3) |
-| Phase F — Enterprise Control Plane | STARTED — F1..F12 cores implemented + GA freeze draft published (2026-08-02); freeze NOT authorized — live exercises + external assessment (F13) pending |
+| Phase D — Distributed Authority | IN-REPO COMPLETE — D-7 frozen, D-8B end-to-end, D-9 offline policy, D-1 enrollment + `arcana node key rotate`, D-6B-T sync transport with POLICY_DELTA/REVOCATION_DELTA + node persistence + compatibility negotiation, D-6 execution ledger, D-5 revocation store/convergence + emergency deny-list + SSE push channel, D-10 hostile matrices (15 + 9 fixtures, 0 bypasses), containment fixtures, Node CLI + Node 1.0 API contract draft; Node 1.0 release freeze pending (TLS/mTLS, live Linux, L3) |
+| Phase E — Protocol/SDK/Adapters | PARTIAL — protocol spec draft + conformance runner 5/5 (TS golden vectors, D-10 matrix, Rust verifier, SDK surface, adapter request-hash vectors) + AI SDK/MCP/Mastra/LangGraph governed adapters + certified vectors; remaining: live PEP transport, macOS/Linux validation, ecosystem freeze, L3 |
+| Phase F — Enterprise Control Plane | PARTIAL — F1–F13 cores implemented and mounted (`/api/enterprise/*` + SDK client: orgs, RBAC, fleet + rings + diagnostics, approvals + escalation, policy promotion/drafts, audit archive, security ops + anomaly, governance, reliability, federation + routing + revocation transport, SIEM, ticketing, webhooks, metering + usage export, entitlements); freeze NOT authorized — TUI consoles, live exercises, external assessment (F13) pending |
 | TUI-1 | Historical independent tag (`arcana-tui-1-governance-observability`); not in current branch ancestry |
 | TUI-2 — Interactive Authority Control | FROZEN (`arcana-tui-2-interactive-authority-control`) |
 | TUI-2.1 — Production Integration + Polish | MOUNTED, AUTOMATED GREEN; freeze NOT AUTHORIZED. Manual validation in progress (2026-08-02): contract admission, tool execution, governance aggregation, proof axes, approval via gate, denial with zero effects, restart durability, daemon respawn on idle-stop (F-22) observed, approval inspector + spine keys implemented (F-23) with regression tests; approval lifecycle via spine keys, matrices, stream protocol, and performance pending |
@@ -63,8 +64,9 @@ Arcana Runtime
   track; specification only, NOT implemented
   (`docs/roadmap/DESKTOP-1.0-SPEC.md`). Not required for Arcana 1.0.
 - **Arcana Control** = remote enterprise governance plane (fleet, policy
-  distribution, central approvals, remote revocation, compliance). Not
-  implemented; depends on Phase D.
+  distribution, central approvals, remote revocation, compliance).
+  **IMPLEMENTED as `/api/enterprise/*` + SDK client (2026-08-02)**; operator
+  console UI (TUI/web dashboard) pending.
 - **Arcana 1.0** = secure local runtime + CLI/TUI + one external adapter.
 
 Immediate roadmap:
@@ -119,11 +121,11 @@ validation, manual validation, external validation, release.
 | TUI suite | 781 pass / 1 skip / 0 fail (782 tests) — rerun 2026-08-02 |
 | Repo-wide typecheck | 16/16 packages |
 | Build | 8/8 tasks (engine binaries smoke-tested; `0.0.0-phase-d-implementation-202608021350`) |
-| Core suite | 1373 pass / 7 skip / 0 fail (1,380 tests, clean rerun 2026-08-02 incl. D-8B/D-9/D-1/D-6B-T/D-4/D-6/D-PEP/D-5/D-10 suites) |
-| Engine suite | CLEAN full rerun 2026-08-02 at the audit worktree (now committed as `e57c5ca2`): 4251 pass / 74 skip / 1 todo / 0 fail (4,326 tests, 990.6s). Includes post-run fixes: OpenTUI 0.4.5 worker-path patch, daemon obligation-template seed idempotency, completion-gate per-contract idempotency, PEP criteria receipts. Re-verify at the exact final commit |
+| Core suite | 1465 pass / 7 skip / 0 fail (1,472 tests, 175 files — clean rerun 2026-08-02 incl. enterprise cores, delta bundles, revocation hostile fixtures, containment fixtures) |
+| Engine suite | Full rerun 4251 pass / 74 skip / 1 todo / 0 fail at `e57c5ca2`; server suites re-verified green on later commits (sync-node/revocations/push/enterprise/OpenAPI/drift/instance: 43+ pass / 0 fail). Re-verify full suite at the exact final commit |
 | Arcana CLI/proof suite | 116 pass / 0 fail (2026-08-02) |
-| SDK JS suite | 7 pass / 0 fail (2026-08-02) |
-| Rust conformance | 2 pass / 0 fail (2026-08-02) |
+| SDK JS suite | 30 pass / 0 fail (2026-08-02) |
+| Conformance runner | 5/5 suites (TS golden vectors + D-10 matrix + Rust verifier + SDK surface + adapter vectors; 46 crypto + 4 adapter vectors + 15 hostile fixtures) |
 | ML eval / smoke | Earlier baseline: ml:eval 13/13, smoke 8/8 |
 | Validation level | Strongest at L1–L2 (production-path integration + internal adversarial); L3+ independent validation not obtained |
 
@@ -164,8 +166,11 @@ gaps and evidence explicit.
 2. Engine/core/TUI/CLI/SDK/Rust suite rerun at the exact final commit.
 3. Mainline promotion (`master` fast-forward to `phase-d-implementation`).
 4. Independent validation (L3+ reproduction of the Phase C evaluation).
-5. Phase D remaining work (BLK-D-01..09), Phase E (BLK-E-01..10), Phase F
-   (BLK-F-01..13) per `docs/blockers/`.
+5. Phase D/E/F remaining work per `docs/blockers/`: in-repo engineering is
+   complete; remaining gates are ops/external/human — TLS/mTLS, live Linux
+   validation, TUI operator consoles, live DR/compromised-node/key exercises,
+   F13 external assessment, L3 reproduction, Node 1.0 freeze sign-off,
+   license text review.
 
 ## Nonclaims
 
@@ -173,8 +178,9 @@ gaps and evidence explicit.
   trust model required before claiming it.
 - No universal governance of external CLIs yet (A0–A3 assurance levels are a
   product contract, not an implemented surface).
-- No distributed/fleet production claim; Phase D is ~45–55% and D-7 is the
-  only frozen sub-milestone.
+- No distributed/fleet production claim; Phase D in-repo engineering is
+  complete but production deployment (TLS/mTLS), live Linux validation, and
+  Node 1.0 freeze remain.
 - No public proof protocol (stable schemas, canonical serialization, external
   verifier, public vectors) published yet.
 - No independent/third-party security assessment yet.
