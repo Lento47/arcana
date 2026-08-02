@@ -5,7 +5,8 @@ document_class: completion_report
 authority: secondary (status authority: docs/STATUS.md)
 status: checkpoint — NOT a phase F completion declaration
 created: 2026-08-02
-audited_commit: c07faba6 (worktree checkpoint before the audit commit)
+audited_commit: e57c5ca2 (2026-08-02 checkpoint commit; suites verified on the
+pre-commit worktree, which the commit reproduces exactly)
 supersedes: none
 superseded_by: future final completion report after Phase F freeze
 ---
