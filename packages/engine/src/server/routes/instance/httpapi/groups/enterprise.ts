@@ -542,6 +542,33 @@ export const WebhookDeliverySummarySchema = Schema.Struct({
   pending: Schema.Number,
 })
 
+export const CentralApprovalRecordSchema = Schema.Struct({
+  tenantId: Schema.String,
+  approvalId: Schema.String,
+  requestHash: Schema.String,
+  requesterId: Schema.String,
+  approverId: Schema.optional(Schema.String),
+  status: Schema.Literals([
+    "PENDING",
+    "APPROVED",
+    "CLAIMED",
+    "CONSUMED",
+    "EXPIRED",
+    "REJECTED",
+  ]),
+  exactRequestJson: Schema.String,
+  createdAt: Schema.String,
+  expiresAt: Schema.String,
+  decidedAt: Schema.optional(Schema.String),
+})
+
+export const ApprovalListQuery = Schema.Struct({
+  ...WorkspaceRoutingQuery.fields,
+  status: Schema.optional(
+    Schema.Literals(["PENDING", "APPROVED", "CLAIMED", "CONSUMED", "EXPIRED", "REJECTED"]),
+  ),
+})
+
 export const AlertsQuery = Schema.Struct({
   ...WorkspaceRoutingQuery.fields,
   severity: Schema.optional(Schema.Literals(["LOW", "MEDIUM", "HIGH", "CRITICAL"])),
@@ -630,6 +657,7 @@ export const EnterprisePaths = {
   webhooks: `${root}/organizations/:tenantId/webhooks`,
   webhookDeliveries: `${root}/organizations/:tenantId/webhooks/deliveries`,
   webhookDeliver: `${root}/organizations/:tenantId/webhooks/deliver`,
+  approvals: `${root}/organizations/:tenantId/approvals`,
 } as const
 
 export const EnterpriseApi = HttpApi.make("enterprise").add(
@@ -1583,6 +1611,16 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         OpenApi.annotations({
           identifier: "enterprise.deliverWebhooks",
           summary: "Deliver due webhook events with bounded retries (F11)",
+        }),
+      ),
+      HttpApiEndpoint.get("listApprovals", EnterprisePaths.approvals, {
+        params: { tenantId: Schema.String },
+        query: ApprovalListQuery,
+        success: described(Schema.Array(CentralApprovalRecordSchema), "Central approvals (F5)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.listApprovals",
+          summary: "List central approvals, optionally filtered by status (F5)",
         }),
       ),
     )

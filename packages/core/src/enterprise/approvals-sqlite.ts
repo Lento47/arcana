@@ -75,6 +75,17 @@ export class SqliteCentralApprovalStore implements CentralApprovalStore {
     return rows.map(mapRow)
   }
 
+  all(tenantId: string): CentralApprovalRecord[] {
+    const rows = this.db
+      .query(
+        `SELECT * FROM central_approvals
+         WHERE tenant_id = $tenantId
+         ORDER BY created_at ASC`,
+      )
+      .all({ $tenantId: tenantId }) as unknown as ApprovalRow[]
+    return rows.map(mapRow)
+  }
+
   updateStatus(tenantId: string, approvalId: string, status: CentralApprovalStatus, decidedAt: string): void {
     this.db
       .query(

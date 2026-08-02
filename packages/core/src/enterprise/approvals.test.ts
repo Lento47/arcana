@@ -94,5 +94,7 @@ describe("F5 central approvals", () => {
     store.put(record({ tenantId: "tenant-b", approvalId: "appr-b" }))
     expect(store.list("tenant-a", "PENDING").map((r) => r.approvalId)).toEqual(["appr-1"])
     expect(store.list("tenant-b", "PENDING").map((r) => r.approvalId)).toEqual(["appr-b"])
+    expect(store.all("tenant-a").map((r) => r.approvalId)).toEqual(["appr-1"])
+    expect(store.all("tenant-b").map((r) => r.approvalId)).toEqual(["appr-b"])
   })
 })
