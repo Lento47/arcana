@@ -23,6 +23,7 @@ import { SqliteAdminEventStore } from "@arcana/core/enterprise/admin-events-sqli
 import { SqliteCrossOrgApprovalStore } from "@arcana/core/enterprise/federation-approvals-sqlite"
 import { SqliteUpgradeRingStore } from "@arcana/core/enterprise/upgrade-rings-sqlite"
 import { SqliteFederationTransportStore } from "@arcana/core/enterprise/federation-transport-sqlite"
+import { SqliteWebhookStore } from "@arcana/core/enterprise/webhooks-sqlite"
 import type { EnrollmentContext } from "@arcana/core/crypto/node-enrollment"
 
 /**
@@ -50,6 +51,7 @@ export type ControlPlaneState = {
   crossOrgApprovals: SqliteCrossOrgApprovalStore
   upgradeRings: SqliteUpgradeRingStore
   federationTransport: SqliteFederationTransportStore
+  webhooks: SqliteWebhookStore
 }
 
 const stateCache = new Map<string, ControlPlaneState>()
@@ -82,6 +84,7 @@ export function controlStateFor(directory: string): ControlPlaneState {
       crossOrgApprovals: new SqliteCrossOrgApprovalStore(db),
       upgradeRings: new SqliteUpgradeRingStore(db),
       federationTransport: new SqliteFederationTransportStore(db),
+      webhooks: new SqliteWebhookStore(db),
     }
     stateCache.set(directory, state)
   }

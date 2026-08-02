@@ -515,6 +515,33 @@ export const RevocationReceiveResponseSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("REJECTED"), reason: Schema.String }),
 ])
 
+export const WebhookEndpointSchema = Schema.Struct({
+  tenantId: Schema.String,
+  webhookId: Schema.String,
+  url: Schema.String,
+  active: Schema.Boolean,
+  createdAt: Schema.String,
+})
+
+export const WebhookDeliverySchema = Schema.Struct({
+  tenantId: Schema.String,
+  deliveryId: Schema.String,
+  webhookId: Schema.String,
+  payloadJson: Schema.String,
+  status: Schema.Literals(["PENDING", "DELIVERED", "FAILED"]),
+  attempts: Schema.Number,
+  nextAttemptAt: Schema.String,
+  createdAt: Schema.String,
+  deliveredAt: Schema.optional(Schema.String),
+  lastError: Schema.optional(Schema.String),
+})
+
+export const WebhookDeliverySummarySchema = Schema.Struct({
+  delivered: Schema.Number,
+  failed: Schema.Number,
+  pending: Schema.Number,
+})
+
 export const AlertsQuery = Schema.Struct({
   ...WorkspaceRoutingQuery.fields,
   severity: Schema.optional(Schema.Literals(["LOW", "MEDIUM", "HIGH", "CRITICAL"])),
@@ -600,6 +627,9 @@ export const EnterprisePaths = {
   revocationOutbox: `${root}/organizations/:tenantId/federation/revocations/outbox`,
   revocationInbox: `${root}/organizations/:tenantId/federation/revocations/inbox`,
   revocationDelivered: `${root}/organizations/:tenantId/federation/revocations/outbox/:deliveryId/delivered`,
+  webhooks: `${root}/organizations/:tenantId/webhooks`,
+  webhookDeliveries: `${root}/organizations/:tenantId/webhooks/deliveries`,
+  webhookDeliver: `${root}/organizations/:tenantId/webhooks/deliver`,
 } as const
 
 export const EnterpriseApi = HttpApi.make("enterprise").add(
@@ -1507,6 +1537,52 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         OpenApi.annotations({
           identifier: "enterprise.markRevocationDelivered",
           summary: "Mark a revocation delivery as delivered (F8)",
+        }),
+      ),
+      HttpApiEndpoint.post("putWebhook", EnterprisePaths.webhooks, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          webhookId: Schema.String,
+          url: Schema.String,
+          active: Schema.Boolean,
+        }),
+        success: described(WebhookEndpointSchema, "Webhook endpoint stored (F11)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.putWebhook",
+          summary: "Register a webhook endpoint for admin events (F11)",
+        }),
+      ),
+      HttpApiEndpoint.get("listWebhooks", EnterprisePaths.webhooks, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(Schema.Array(WebhookEndpointSchema), "Webhook endpoints (F11)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.listWebhooks",
+          summary: "List webhook endpoints (F11)",
+        }),
+      ),
+      HttpApiEndpoint.get("listWebhookDeliveries", EnterprisePaths.webhookDeliveries, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(Schema.Array(WebhookDeliverySchema), "Webhook deliveries (F11)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.listWebhookDeliveries",
+          summary: "List webhook delivery state (F11)",
+        }),
+      ),
+      HttpApiEndpoint.post("deliverWebhooks", EnterprisePaths.webhookDeliver, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({ maxAttempts: Schema.optional(Schema.Number) }),
+        success: described(WebhookDeliverySummarySchema, "Webhook delivery summary (F11)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.deliverWebhooks",
+          summary: "Deliver due webhook events with bounded retries (F11)",
         }),
       ),
     )
