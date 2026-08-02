@@ -198,3 +198,4 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | AUD-53 | Full verification pass at the campaign checkpoint (core/engine/TUI/SDK/conformance/typechecks; totals recorded) — DONE | — | Engineering |
 | AUD-54 | TUI-2.1 operator consoles (F3 simulation editor, F5 escalation console, F6 auditor console) — design proposed; **PENDING USER DECISION** (implementation requires approval) | TUI-2.1 | Engineering |
 | AUD-55 | Live PEP transport (SDK adapter `authorize()` wired to an engine HTTP PEP endpoint) — design proposed; **PENDING USER DECISION** (implementation requires approval) | BLK-E-06/E-10 | Engineering |
+| AUD-56 | Consolidate the external/human gate register with exact owner/artifact/evidence per gate (TLS, live Linux, live exercises, TUI matrices, F13, L3, license, Node freeze, Phase F freeze, Arcana 1.0 sign-off) — DONE (`docs/blockers/README.md`) | — | All owners |
