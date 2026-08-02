@@ -63,7 +63,7 @@ attenuation, workspace/MCP trust, security RunProof profiles, 95-fixture
 adversarial evaluation with 0 unexpected allows and 0 executor calls on denied
 paths. Tags: `arcana-governed-autonomy-phase-c`,
 `phase-c-production-enforcement`. Sign-off: APPROVED WITH EXCEPTIONS
-(2026-08-01) — see `docs/audits/ARCANA-SIGNOFF-2026-08-01.md`.
+(2026-08-01).
 
 ### TUI-2 (interactive authority control)
 
@@ -229,7 +229,8 @@ worker-path patch; no dependency was downgraded.
 - Blockers: `docs/BLOCKERS.md` (consolidated register).
 - Living task status + task → evidence → gate trace: `docs/TASKS.md`.
 - Live status authority: `docs/STATUS.md`.
-- TUI-2.1 freeze runbook: `docs/tui/TUI-2.1-FREEZE-OPERATOR-RUNBOOK.md`.
+- TUI-2.1 freeze runbook: TUI-2.1-FREEZE-OPERATOR-RUNBOOK (gates tracked in
+  `docs/BLOCKERS.md`).
 
 ## 9. Sign-off
 

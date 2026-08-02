@@ -19,7 +19,7 @@ locked mode allowlists
 - `memory.policy.example.json`
 - `context.policy.example.json`
 
-Tool-risk policy is documented in `docs/tool-risk-model.md` instead of a JSON example for now.
+Tool-risk policy is documented in `.hermes/docs/arcana/docs/tool-risk-model.md` instead of a JSON example for now.
 
 ## Status
 

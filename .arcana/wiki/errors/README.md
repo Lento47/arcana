@@ -13,7 +13,7 @@ Internal map of support / engineering notes for `ARC_*` codes.
 
 ## Taxonomy
 
-- Spec: [[../../docs/architecture/arcana-error-taxonomy|arcana-error-taxonomy]]
+- Spec: [[../../../.hermes/docs/arcana/docs/architecture/arcana-error-taxonomy|arcana-error-taxonomy]]
 - Code: `packages/engine/src/error/`
 - Proxy: `arcanaErrorResponse` in arcana-proxy
 

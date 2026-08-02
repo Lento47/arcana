@@ -10,7 +10,7 @@
 Arcana began as an OpenCode fork. It's now faster, leaner, and more capable.
 
 <p align="center">
-  <img src="docs/benchmark.svg" alt="arcana vs opencode benchmark" width="720">
+  <img src="benchmark.svg" alt="arcana vs opencode benchmark" width="720">
 </p>
 
 ```sh
@@ -25,7 +25,7 @@ arcana stats             # usage stats
 arcana serve             # local headless server (loopback by default)
 ```
 
-**Docs:** [arcana.otnelhq.com/docs](https://arcana.otnelhq.com/docs) · in-repo index: [docs/README.md](docs/README.md)
+**Docs:** [arcana.otnelhq.com/docs](https://arcana.otnelhq.com/docs) · in-repo campaign docs: [STATUS](docs/STATUS.md) · [TASKS](docs/TASKS.md) · [BLOCKERS](docs/BLOCKERS.md) · [COMPLETION-REPORT](docs/COMPLETION-REPORT.md) · [FREEZE-RELEASE](docs/FREEZE-RELEASE.md)
 
 ## Install
 
@@ -114,7 +114,7 @@ The full catalog of supported providers and their env keys is documented in `pac
 
 ## Packages
 
-20+ packages organized in a layered architecture. Full details: [docs/architecture/system-architecture.md](docs/architecture/system-architecture.md) · [docs/arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md)
+20+ packages organized in a layered architecture. Full details: [system-architecture.md](.hermes/docs/arcana/docs/architecture/system-architecture.md) · [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md)
 
 | Layer | Packages | Purpose |
 |-------|----------|---------|
@@ -127,24 +127,24 @@ The full catalog of supported providers and their env keys is documented in `pac
 
 ## Deep Dive
 
-Ready-to-use features beyond the basics. Full guide: [docs/arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md)
+Ready-to-use features beyond the basics. Full guide: [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md)
 
 | Feature | Command / Config | Docs |
 |---------|-----------------|------|
-| **Memory** | `arcana memory search "query"` | [session-compaction.md](docs/session-compaction.md) |
-| **History** | `arcana history list` / `arcana history resume --id <id>` | [arcana-updates-v0.3.5.md](docs/arcana-updates-v0.3.5.md) |
-| **Learn** | `arcana learn list` / `arcana learn moc` | [arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md) |
-| **Doctor** | `arcana doctor` | [configuration.md](docs/configuration.md) |
-| **Gateway** | `arcana gateway` (Telegram, Discord, Slack, WhatsApp) | [gateway.md](docs/gateway.md) |
-| **Cron** | `arcana cron add --name ... --schedule ... --prompt ...` | [cron.md](docs/cron.md) |
-| **ML Engine** | `ARCANA_ML_RUNTIME=1 arcana run "..."` | [arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md) |
-| **Web App** | `bun run dev:web` (Vite + SolidJS Start) | [arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md) |
-| **Plugins** | 30+ hooks via `@arcana/plugin` | [arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md) |
-| **HTTP Recorder** | `import { HttpRecorder } from "@arcana/http-recorder"` | [arcana-comprehensive-guide.md](docs/arcana-comprehensive-guide.md) |
+| **Memory** | `arcana memory search "query"` | [session-compaction.md](.hermes/docs/arcana/docs/session-compaction.md) |
+| **History** | `arcana history list` / `arcana history resume --id <id>` | [arcana-updates-v0.3.5.md](.hermes/docs/arcana/docs/arcana-updates-v0.3.5.md) |
+| **Learn** | `arcana learn list` / `arcana learn moc` | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
+| **Doctor** | `arcana doctor` | [configuration.md](.hermes/docs/arcana/docs/configuration.md) |
+| **Gateway** | `arcana gateway` (Telegram, Discord, Slack, WhatsApp) | [gateway.md](.hermes/docs/arcana/docs/gateway.md) |
+| **Cron** | `arcana cron add --name ... --schedule ... --prompt ...` | [cron.md](.hermes/docs/arcana/docs/cron.md) |
+| **ML Engine** | `ARCANA_ML_RUNTIME=1 arcana run "..."` | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
+| **Web App** | `bun run dev:web` (Vite + SolidJS Start) | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
+| **Plugins** | 30+ hooks via `@arcana/plugin` | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
+| **HTTP Recorder** | `import { HttpRecorder } from "@arcana/http-recorder"` | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
 
 ## Skills
 
-174+ skills across 28 categories. Full guide: [docs/skills.md](docs/skills.md)
+174+ skills across 28 categories. Full guide: [skills.md](.hermes/docs/arcana/docs/skills.md)
 
 ```sh
 arcana skills list                    # all skills
@@ -156,7 +156,7 @@ Skills live in `skills/` (in-repo) and `~/.arcana/skills/` (user-local). Each is
 
 ## Configuration
 
-`~/.arcana/config.json` — most settings have sensible defaults and can be overridden with env vars. Full reference: [docs/configuration.md](docs/configuration.md)
+`~/.arcana/config.json` — most settings have sensible defaults and can be overridden with env vars. Full reference: [configuration.md](.hermes/docs/arcana/docs/configuration.md)
 
 ```json
 {
@@ -223,10 +223,10 @@ Set a custom full-screen background image (truecolor terminals — Kitty, iTerm2
 ## Recent Changes
 
 - **v0.3.5** — Workspace trust (`arcana trust`), console login ceremony + device-flow resilience, security hardenings (gateway allowlists, WhatsApp signatures, non-loopback serve auth, env_write sandbox), command-spine + theme polish, goals MVP. Public docs: https://arcana.otnelhq.com/docs
-- **v0.3.4** — QA fixes: session locking, secret redaction, streaming timeouts, command-spine UX. See [docs/qa-fixes-2026-07-10.md](docs/qa-fixes-2026-07-10.md).
+- **v0.3.4** — QA fixes: session locking, secret redaction, streaming timeouts, command-spine UX. See [qa-fixes-2026-07-10.md](.hermes/docs/arcana/docs/qa-fixes-2026-07-10.md).
 - **v0.3.0** — Command Spine shell, OpenTUI pin, plugin system, cron daemon, web dashboard.
 
-Security remediation status: [docs/security-posture-2026-07-20.md](docs/security-posture-2026-07-20.md).
+Security remediation status: [security-posture-2026-07-20.md](.hermes/docs/arcana/docs/security-posture-2026-07-20.md).
 
 ---
 

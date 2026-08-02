@@ -3,7 +3,7 @@
 **Document class:** blocker register (evidence-backed)
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Created:** 2026-08-02 (Phase A–F completion audit)
-**Consolidated:** 2026-08-02 — single register replacing the former `docs/BLOCKERS.md` folder
+**Consolidated:** 2026-08-02 — single register replacing the former `docs/blockers/` folder
 **Applies to commit:** `882ea468` (latest documentation checkpoint)
 
 This file consolidates every phase and product-track blocker register. Each area below preserves the original rows: the playbook task or gate it blocks, the current evidence of the gap, and the acceptance evidence required to close it.
@@ -151,7 +151,7 @@ Phase C blockers (recorded as nonclaims or later-phase work):
 - L3+ independent reproduction of the evaluation (global validation-level
   gap, not a Phase C gate).
 - Physical host containment (namespaces/seccomp/job objects) — tracked in
-  Phase D (D-7.1) and `docs/security/EFFECT-COVERAGE.md`.
+  Phase D (D-7.1).
 - Governance of external CLIs and processes outside the Arcana effect
   boundary — Phase E.
 
@@ -187,7 +187,7 @@ Phase C blockers (recorded as nonclaims or later-phase work):
 | C9 Workspace and MCP trust | 6% | `trust-adapters.ts` + suites |
 | C10 Security evidence / RunProof profiles | 5% | RunProof profiles + trace health suites |
 | C11 Adversarial evaluation | 12% | 95 fixtures, 8 groups (playbook §18.1) |
-| C12 Freeze and tag | 10% | `docs/security/PHASE-C-MILESTONE.md`, tags, sign-off |
+| C12 Freeze and tag | 10% | PHASE-C-MILESTONE, tags, sign-off |
 
 ## Accepted exceptions (2026-08-01 sign-off)
 
@@ -207,8 +207,8 @@ remote attestation.
 **Status: TUI-2 FROZEN (`arcana-tui-2-interactive-authority-control`);
 TUI-2.1 MOUNTED and AUTOMATED GREEN, freeze NOT AUTHORIZED.**
 
-The open blockers below are exactly the TUI-2.1 freeze gates from
-`docs/tui/TUI-2.1-FREEZE-OPERATOR-RUNBOOK.md` plus the remaining product-track
+The open blockers below are exactly the TUI-2.1 freeze gates
+(TUI-2.1-FREEZE-OPERATOR-RUNBOOK) plus the remaining product-track
 items (TUI-3 delegation console, TUI-4 proof/replay/audit views, TUI-5
 final polish) that are outside the TUI-2.1 scope.
 
@@ -295,7 +295,7 @@ implemented.**
 | BLK-D-06 | D-9 partition/offline policy | Reducer (`D-4C`) implements the enforcement state machine; **offline grant/lease policy IMPLEMENTED 2026-08-02** (`offline-policy.ts`: offlineEnabled grants, min(grant expiry, lease end, per-grant override), approval-required denial, policy/revocation lease freshness, consequential window, doc-default config; 15 tests). Remaining: wire the policy into the distributed PEP effect path and run node-level partition tests + reconnection reconciliation exercise | Partition tests match documented policy through the distributed PEP; TTL enforcement; reconnection reconciliation |
 | BLK-D-07 | Operational deployment | no deployment topology/trust-bootstrap/monitoring procedures exercised | Deployment runbook + exercised topology |
 | BLK-D-08 | D-10 hostile-node adversarial evaluation | **Frozen matrix IMPLEMENTED 2026-08-02** (`hostile-node-evaluation.test.ts`): 15 fail-closed fixtures across all ten categories (forged grants, wrong audience, replay, clock skew incl. new future-issuedAt freshness check, key rotation, delayed revocation, partition, duplicate execution, proof omission, node replacement) — 0 bypasses. **Revocation hostile suite ADDED 2026-08-02** (`revocation-hostile.test.ts`): 9 fail-closed fixtures — forged signature, unknown issuer, schema-invalid, future-dated (freshness check now applies to envelopes without `expiresAt`), non-genesis first sequence, sequence rollback, duplicate-sequence content change, revoked-subject resurrection — 0 bypasses. Remaining: independent reproduction + Node 1.0 freeze linkage | Forged grants, wrong audience, replay, clock skew, key rotation, delayed revocation, partition, duplicate execution, proof omission, node replacement — all zero (DONE in-repo); revocation hostile fixtures zero (DONE); L3 independent reproduction |
-| BLK-D-09 | Node 1.0 freeze | **API contract draft published 2026-08-02** (`docs/architecture/node-1.0-api-contract.md`: frozen HTTP/CLI/core surface + §31 gate evidence + outstanding gates). **DELTA bundles DONE 2026-08-02** + **emergency revocation push channel DONE 2026-08-02** (SSE). Release freeze NOT authorized: TLS/mTLS (BLK-D-07), live Linux validation (BLK-D-03), independent reproduction pending | §31 gates all zero + milestone tag after outstanding gates close |
+| BLK-D-09 | Node 1.0 freeze | **API contract draft published 2026-08-02** (node-1.0-api-contract: frozen HTTP/CLI/core surface + §31 gate evidence + outstanding gates). **DELTA bundles DONE 2026-08-02** + **emergency revocation push channel DONE 2026-08-02** (SSE). Release freeze NOT authorized: TLS/mTLS (BLK-D-07), live Linux validation (BLK-D-03), independent reproduction pending | §31 gates all zero + milestone tag after outstanding gates close |
 
 ## Partial evidence (already implemented)
 
@@ -325,23 +325,23 @@ stable SDK 1.0.**
 
 | ID | Task | Gap evidence | Acceptance evidence required |
 |---|---|---|---|
-| BLK-E-01 | E1 freeze protocol specifications | **Freeze draft published 2026-08-02** (`docs/protocol/PROTOCOL-1.0-SPEC.md`): serialization rules, signature domains, object registry, labels, reason codes, version negotiation. Remaining: public release, external review, third-party implementation | Versioned public specs (DRAFT DONE); external review + public release |
+| BLK-E-01 | E1 freeze protocol specifications | **Freeze draft published 2026-08-02** (PROTOCOL-1.0-SPEC): serialization rules, signature domains, object registry, labels, reason codes, version negotiation. Remaining: public release, external review, third-party implementation | Versioned public specs (DRAFT DONE); external review + public release |
 | BLK-E-02 | E2 independent conformance suite | **Independent implementations DONE 2026-08-02**: TS production + Rust verifier agree on 46 vectors (`script/conformance.ts` runner, 3/3 suites). Remaining: L3 external reproduction | Two independent implementations produce matching vectors (DONE in-repo); external reproduction |
 | BLK-E-03 | E3 TypeScript/JavaScript SDK 1.0 | **Governance + proof + error model + conformance wiring DONE 2026-08-02** (`@arcana/sdk/v2/*`; SDK suite 17/17; conformance runner 4/4; `SDK-1.0-COMPATIBILITY.md`). Remaining: release freeze + external-vector conformance | SDK 1.0 release + external conformance |
 | BLK-E-04 | E4 additional language SDK | **Rust foundation DONE 2026-08-02**: canonical serializer + verifier + request hashing with cross-language golden vector (TS ↔ Rust identical hash). Remaining: full Rust SDK surface | One additional SDK passing the same conformance suite (request-hash vector PASS; full surface pending) |
 | BLK-E-05 | E5 external CLI adapters (Codex/Claude/Gemini) | **A1 launch scaffold DONE 2026-08-02** (`arcana launch <runtime>`: declaration, dry-run, supervision + evidence; no sandbox claim). **Hostile-escape fixtures runnable 2026-08-02** (`bounded-file-reader.test.ts`, 7 fixtures: traversal, absolute path, null byte, directory, size budget, junction escape). Remaining: OS-level containment engine integration + live Linux validation before any enforcement-level claim | Three adapters at declared levels; hostile escape fixtures for the declared boundary |
 | BLK-E-06 | E6 framework adapters (Mastra/AI SDK/LangGraph/MCP apps) | **AI SDK-style + MCP hooks DONE 2026-08-02** (`governedTool` + `governedMcpTool`). **Mastra + LangGraph hooks DONE 2026-08-02** (`governedMastraTool` + `governedLangGraphTool`; 6 new tests, SDK suite 28/28). Remaining: live PEP transport integration | Framework tool calls map to canonical requests (DONE); PEP cannot be bypassed (hook-level DONE for AI SDK/MCP/Mastra/LangGraph, live transport pending) |
 | BLK-E-07 | E7 adapter certification levels | **Registry published 2026-08-02** (`ADAPTER-CERTIFICATION.md`: A0–A3, procedure, nonclaims). Remaining: fixtures per adapter | Certification contract (DONE); per-adapter fixture results |
-| BLK-E-08 | E8 developer experience and examples | `docs/protocol/QUICKSTART.md` published; reference apps + test-node/policy samples pending | DX package + security checklist |
-| BLK-E-09 | E9 protocol governance and compatibility | `docs/protocol/PROTOCOL-GOVERNANCE.md` published (lifecycle, deprecation, advisory, extensions, matrix); registry enforcement pending | Governance doc (DRAFT DONE) + registry enforcement |
+| BLK-E-08 | E8 developer experience and examples | Protocol quickstart published; reference apps + test-node/policy samples pending | DX package + security checklist |
+| BLK-E-09 | E9 protocol governance and compatibility | PROTOCOL-GOVERNANCE published (lifecycle, deprecation, advisory, extensions, matrix); registry enforcement pending | Governance doc (DRAFT DONE) + registry enforcement |
 | BLK-E-10 | E10 ecosystem evaluation and freeze | **Matrix published 2026-08-02** (`ECOSYSTEM-EVALUATION.md`: runtimes, languages, OSes, levels + freeze-gate status). **Certified adapter fixtures DONE 2026-08-02** (`src/v2/adapters/vectors.test.ts`: 4 frozen request-hash golden vectors — AI SDK/MCP/Mastra/LangGraph naming, pinned request identity; wired into `script/conformance.ts` as suite 5/5; `GovernanceContext` gained deterministic `requestId`/`nonce`/`requestedAt`). Remaining: live PEP transport, macOS/Linux validation, L3 | Matrix (DRAFT DONE); certified fixtures DONE; freeze pending live/L3 |
 
 ## Existing partial evidence
 
 - `tools/acep-conformance-rust` — canonical node-identity + 46-vector conformance (2/2 tests).
-- `docs/protocol/SCHEMA-VERSION-REGISTRY.md` — schema version registry draft.
+- SCHEMA-VERSION-REGISTRY — schema version registry draft.
 - `packages/sdk/js` — typed client and server spawner (7/7).
-- `docs/competitive/2026-08-02-market-assessment.md` — external adapter analysis.
+- 2026-08-02 market assessment — external adapter analysis.
 
 ## Phase F — Enterprise Control Plane
 
@@ -358,7 +358,7 @@ compliance archive is production-ready.**
 | BLK-F-03 | F3 central policy management | **Lifecycle DONE 2026-08-02** (D-4 signed store: validation-before-activation, staged rollout, transactional rollback, RunProof digest proof; F3: approved promotion + diff, 6 tests). **HTTP promotion/diff MOUNTED 2026-08-02** (`/api/enterprise/*/policies/*`: RBAC-checked promotion into per-environment target chains, structural diff; integration tested). **Draft validation IMPLEMENTED + MOUNTED 2026-08-02** (`policy-drafts.ts`: validate signed candidate against live chain without publishing — schema, signature, chain continuity; 2 core + 1 integration test). Remaining: simulation editor UI | Activation requires validation (DONE); rollback transactional (DONE); nodes prove policy digest (DONE via RunProof); authoring validation DONE; simulation editor pending |
 | BLK-F-04 | F4 fleet and node operations | **Fleet core DONE 2026-08-02** (tenant inventory, health derivation, heartbeats, upgrade rings, backlog; 3 tests). **HTTP register/heartbeat/fleet-view/node-diagnostics MOUNTED 2026-08-02** (integration tested). **Upgrade-ring rollout IMPLEMENTED + MOUNTED 2026-08-02** (ring CRUD, node assignment, gated rollout plans; 3 core + 1 integration test) | Fleet view distinguishes unknown/healthy (DONE); stale nodes explicit (DONE); diagnostics DONE; rollout automation DONE (core) |
 | BLK-F-05 | F5 central approval operations | **Central queue DONE 2026-08-02** (exact inspection, separation of duties, expiry, bulk deny only, emergency revocation; 4 tests; local PEP remains the execution authority). **Escalation core + HTTP MOUNTED 2026-08-02** (bounded fallback approvers, audited events, never consumes approvals; 4 core + 1 integration test). **Approvals list endpoint MOUNTED 2026-08-02** (`GET /api/enterprise/*/approvals` with status filter; integration tested). Remaining: escalation console mounting | Exact single-use approvals across network (core DONE); central UI cannot bypass local PEP (DONE by design); delegated approver authority bounded (DONE, tested) |
-| BLK-F-06 | F6 audit/compliance/evidence archive | **Archive core DONE 2026-08-02** (immutable retention, fingerprint-verified export, custody chain, legal hold, tenant isolation; 4 tests; auditor read-only enforced via F2 RBAC). **HTTP archive/export/custody/legal-hold/retention-sweep MOUNTED 2026-08-02** (integration tested). **Compliance crosswalk PUBLISHED 2026-08-02** (`docs/compliance/PHASE-F-COMPLIANCE-CROSSWALK.md`: SOC 2 / ISO 27001 / NIST mapping; certification explicitly not claimed) | Exported proof verifies independently (fingerprint DONE; SDK verifier available); auditor read-only tenant-scoped (DONE via RBAC); mappings DONE (engineering index; formal certification external) |
+| BLK-F-06 | F6 audit/compliance/evidence archive | **Archive core DONE 2026-08-02** (immutable retention, fingerprint-verified export, custody chain, legal hold, tenant isolation; 4 tests; auditor read-only enforced via F2 RBAC). **HTTP archive/export/custody/legal-hold/retention-sweep MOUNTED 2026-08-02** (integration tested). **Compliance crosswalk PUBLISHED 2026-08-02** (PHASE-F-COMPLIANCE-CROSSWALK: SOC 2 / ISO 27001 / NIST mapping; certification explicitly not claimed) | Exported proof verifies independently (fingerprint DONE; SDK verifier available); auditor read-only tenant-scoped (DONE via RBAC); mappings DONE (engineering index; formal certification external) |
 | BLK-F-07 | F7 HA/DR | **Core DONE 2026-08-02** (targets, digest-verified backup/restore, drill evaluation, degraded fail-closed; 3 tests). **HTTP backup/restore/drill MOUNTED 2026-08-02** (integration tested). Remaining: live multi-region DR exercise + key backup automation | Restore drills meet RPO/RTO (evaluator DONE; live exercise pending); fail-closed behavior matches policy (DONE) |
 | BLK-F-08 | F8 federation | **Core DONE 2026-08-02** (agreements, authority intersection, conflict resolution, proof exchange, revocation propagation; 5 tests). **HTTP agreements/exchange/revocation/intersection MOUNTED 2026-08-02** (integration tested). **Cross-org approval routing IMPLEMENTED + MOUNTED 2026-08-02** (exact action grants, daily caps, agreement validity; 3 core + 1 integration test). **Federated revocation transport IMPLEMENTED + MOUNTED 2026-08-02** (`federation-transport.ts` + SQLite: outbox/inbox exchange, agreement-validated queue/receive, delivery state, dedup; 3 core + 1 integration test). Remaining: live network delivery + channel binding in ops deployment | Federation intersects authority (DONE); unknown issuer fails closed (DONE); delegated approver authority bounded (DONE, tested); revocation transport exchange DONE; live delivery pending (ops) |
 | BLK-F-09 | F9 enterprise security operations | **Core DONE 2026-08-02** (alerts, incident timelines, audited revocation campaigns, forensic exports; 3 tests). **HTTP alerts/timeline/campaign/forensic MOUNTED 2026-08-02** (RBAC-checked; integration tested). **Anomaly detection IMPLEMENTED + MOUNTED 2026-08-02** (`anomaly.ts`: alert-burst/revocation-velocity/backlog/stale-ratio heuristics recorded through the alert pipeline; 3 core + 1 integration test). Remaining: compromise simulation (operator exercise) | Compromise simulation pending (operator exercise); emergency deny propagation (DONE, audited); anomaly heuristics DONE |
@@ -420,8 +420,8 @@ and signed release artifacts.
 Every task row in the playbook and every new task added during this audit is
 tracked in:
 
-- `docs/TASKS.md` — living per-task status register.
-- `docs/TASKS.md` — task → evidence → gate trace.
+- `docs/TASKS.md` — living per-task status register (Part 1) and task →
+  evidence → gate trace (Part 2).
 
 ## External and human gates (owner / artifact / evidence)
 
