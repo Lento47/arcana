@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto"
 import { Effect, Option } from "effect"
+import type { HttpServerRequest } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { decodeCanonicalBase64url } from "@arcana/core/crypto/canonical-serializer"
 import { verifySyncRequest } from "@arcana/core/crypto/sync-transport"
@@ -13,6 +14,7 @@ import {
   SyncRequestEnvelopeSchema,
 } from "../groups/sync-node"
 import { controlStateFor, issuerContext } from "./control-state"
+import { revocationStreamResponse } from "./revocation-push"
 
 function trustDomainFromEnv(): string {
   return process.env.ARCANA_CONTROL_TRUST_DOMAIN ?? "arcana.local"
@@ -221,6 +223,19 @@ export const syncNodeHandlers = HttpApiBuilder.group(InstanceHttpApi, "syncNode"
       return { kind: "RESPONSE" as const, envelope }
     })
 
+    const revocationStream = Effect.fn("SyncNodeHttpApi.revocationStream")(function* (ctx: {
+      request: HttpServerRequest.HttpServerRequest
+    }) {
+      const url = new URL(ctx.request.url, "http://localhost")
+      const routeDirectory = Option.getOrUndefined(
+        (yield* Effect.serviceOption(WorkspaceRouteContext)).pipe(
+          Option.map((serviceContext) => serviceContext.directory),
+        ),
+      )
+      const directory = routeDirectory || url.searchParams.get("directory") || process.cwd()
+      return yield* revocationStreamResponse(directory)
+    })
+
     return handlers
       .handle("policy", (ctx: { payload: typeof SyncRequestEnvelopeSchema.Type; query: { directory?: string } }) =>
         sync("policy", ctx),
@@ -228,5 +243,6 @@ export const syncNodeHandlers = HttpApiBuilder.group(InstanceHttpApi, "syncNode"
       .handle("revocation", (ctx: { payload: typeof SyncRequestEnvelopeSchema.Type; query: { directory?: string } }) =>
         sync("revocation", ctx),
       )
+      .handleRaw("revocationStream", revocationStream)
   }),
 )

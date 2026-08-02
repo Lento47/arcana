@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
+import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
 import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
@@ -70,6 +70,7 @@ export const SyncResponseEnvelopeSchema = Schema.Struct({
 export const SyncNodePaths = {
   policy: `${root}/policy`,
   revocation: `${root}/revocation`,
+  revocationStream: `${root}/revocations/stream`,
 } as const
 
 export class ApiSyncNodeUnauthorized extends Schema.ErrorClass<ApiSyncNodeUnauthorized>(
@@ -115,6 +116,17 @@ export const SyncNodeApi = HttpApi.make("syncNode").add(
           summary: "Synchronize revocation state",
           description:
             "Authenticated revocation sync with the same signed-envelope transport and replay protection as policy sync.",
+        }),
+      ),
+      HttpApiEndpoint.get("revocationStream", SyncNodePaths.revocationStream, {
+        query: WorkspaceRoutingQuery,
+        success: Schema.String.pipe(HttpApiSchema.asText({ contentType: "text/event-stream" })),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "syncNode.revocationStream",
+          summary: "Subscribe to live revocation statements (D-5 push channel)",
+          description:
+            "SSE stream of revocation statements as they are published. Statements remain issuer-signed and must still be verified by the subscriber; push never bypasses verification.",
         }),
       ),
     )

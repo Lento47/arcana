@@ -7,6 +7,7 @@ import { InstanceHttpApi } from "../api"
 import { WorkspaceRouteContext } from "../middleware/workspace-routing"
 import { RevocationStatementSchema } from "../groups/revocations"
 import { controlStateFor, issuerContext } from "./control-state"
+import { publishRevocationStatement } from "./revocation-push"
 
 export const revocationHandlers = HttpApiBuilder.group(InstanceHttpApi, "revocations", (handlers) =>
   Effect.gen(function* () {
@@ -38,6 +39,10 @@ export const revocationHandlers = HttpApiBuilder.group(InstanceHttpApi, "revocat
         controlStateFor(directory).revocationStore,
       )
       if (result.kind === "PUBLISHED") {
+        publishRevocationStatement(
+          directory,
+          JSON.parse(result.record.signedStatementJson) as RevocationStatement,
+        )
         return { kind: "PUBLISHED" as const, record: result.record }
       }
       return { kind: "REJECTED" as const, reason: result.reason }
@@ -96,6 +101,10 @@ export const revocationHandlers = HttpApiBuilder.group(InstanceHttpApi, "revocat
         state.revocationStore,
       )
       if (result.kind === "PUBLISHED") {
+        publishRevocationStatement(
+          directory,
+          JSON.parse(result.record.signedStatementJson) as RevocationStatement,
+        )
         return { kind: "PUBLISHED" as const, record: result.record }
       }
       return { kind: "REJECTED" as const, reason: result.reason }
