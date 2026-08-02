@@ -169,7 +169,7 @@ registry, market assessment.
 
 | Task | Status | Evidence | Blocker |
 |---|---|---|---|
-| F1 Multi-tenant model | PENDING | enterprise scaffold | BLK-F-01 |
+| F1 Multi-tenant model | PARTIAL | tenant model + SQLite store (tenant-scoped queries, deletion isolation, 3 tests) | BLK-F-01 |
 | F2 Identity and access | PENDING | — | BLK-F-02 |
 | F3 Central policy | PENDING | — | BLK-F-03 |
 | F4 Fleet ops | PENDING | — | BLK-F-04 |

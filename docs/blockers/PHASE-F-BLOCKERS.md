@@ -8,7 +8,7 @@ compliance archive is production-ready.**
 
 | ID | Task | Gap evidence | Acceptance evidence required |
 |---|---|---|---|
-| BLK-F-01 | F1 multi-tenant organization model | no tenant-scoped record model | Tenant-isolation adversarial suite: 0 leaks; tenant deletion/retention documented |
+| BLK-F-01 | F1 multi-tenant organization model | **Tenant model + SQLite store IMPLEMENTED 2026-08-02** (all 10 entity kinds tenant-scoped; tenant-filtered queries; deletion isolation; 3 tests). Remaining: enterprise API mounting + retention policy doc | Tenant-isolation adversarial suite (core DONE; HTTP surface pending); deletion/retention documented |
 | BLK-F-02 | F2 enterprise identity and access | no SSO/SCIM/MFA/RBAC/service accounts | Deprovisioning bound measured; privileged actions audited; break-glass time-bounded |
 | BLK-F-03 | F3 central policy management | no authoring/simulation/staged rollout/signed distribution | Activation requires validation; rollback transactional; nodes prove policy digest |
 | BLK-F-04 | F4 fleet and node operations | no enrollment inventory/health/upgrade rings | Fleet view distinguishes unknown/healthy; stale nodes explicit |
