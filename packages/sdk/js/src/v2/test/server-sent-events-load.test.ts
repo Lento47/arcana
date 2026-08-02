@@ -21,17 +21,19 @@ function streamResponse(events: unknown[], chunkSize: number, delayMs = 0): Resp
       yield bytes.subarray(i, Math.min(i + chunkSize, bytes.length))
     }
   })()
-  return new Response(new ReadableStream({
-    async pull(controller) {
-      const { value, done } = await reader.next()
-      if (done) controller.close()
-      else controller.enqueue(value)
-    },
-  }), { headers: { "content-type": "text/event-stream" } })
+  return new Response(
+    new ReadableStream({
+      async pull(controller) {
+        const { value, done } = await reader.next()
+        if (done) controller.close()
+        else controller.enqueue(value)
+      },
+    }),
+    { headers: { "content-type": "text/event-stream" } },
+  )
 }
 
-const fakeFetch = (response: Response) =>
-  (async () => response) as unknown as typeof fetch
+const fakeFetch = (response: Response) => (async () => response) as unknown as typeof fetch
 
 describe("SDK SSE parser — large payloads", () => {
   test("yields all events when frames are split across tiny chunks", async () => {

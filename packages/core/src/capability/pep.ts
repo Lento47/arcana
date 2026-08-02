@@ -27,6 +27,25 @@ import { consumeApproval } from "./scoped-approval"
 
 // ─── Types ────────────────────────────────────────────────────────────
 
+/**
+ * Classify a successfully executed request into a criteria receipt kind.
+ * Only real test/build runners produce receipts (cargo/bun/npm/…), so
+ * commands like `Test-Path` or the `goal_check` tool never look test-like.
+ * Mirrors the completion verifier's criteria matching.
+ */
+export function receiptKindForRequest(req: {
+  executable?: string
+  arguments?: readonly string[]
+}): "test_receipt" | "build_receipt" | undefined {
+  const args = req.arguments ?? []
+  const command = [req.executable, ...args].filter(Boolean).join(" ").toLowerCase()
+  const runner = /(^|[\s/\\])(cargo|bun|npm|pnpm|yarn|npx|go|node|python|python3|pytest|mvn|gradle|dotnet|make|rake|meson|cmake|tsc)(\s|$)/
+  if (!runner.test(command)) return undefined
+  if (/(test|check|verify|regression|clippy)/.test(command)) return "test_receipt"
+  if (/(build|compile)/.test(command)) return "build_receipt"
+  return undefined
+}
+
 export class AuthorizationStoreError {
   readonly _tag = "AuthorizationStoreError" as const
   constructor(readonly operation: string, readonly cause: unknown) {}
@@ -62,7 +81,43 @@ export interface PreparedEffect<T> {
 export interface PolicyContextProvider {
   /** Load a fresh policy context snapshot. Never cached. */
   snapshot(): PolicyContext | Promise<PolicyContext> | Effect.Effect<PolicyContext, never, never>
+  /**
+   * Atomically claim one use from the matched capability grants.
+   * Production providers (SessionPolicyProvider) MUST implement this;
+   * legacy test fakes may omit it, in which case the PEP proceeds without
+   * a use claim (unlimited legacy semantics).
+   */
+  claimUse?(
+    capabilityIds: readonly string[],
+    now: string,
+  ): Effect.Effect<CapabilityClaimResult, never, never>
 }
+
+export type CapabilityClaimResult =
+  | {
+      readonly status: "CLAIMED"
+      readonly capabilityId?: string
+      /** True when this claim consumed the grant's last remaining use. */
+      readonly exhausted?: boolean
+    }
+  | {
+      readonly status: "EXHAUSTED"
+      readonly capabilityId?: string
+    }
+  | {
+      readonly status: "UNAVAILABLE"
+    }
+
+export type CapabilityClaimOutcome =
+  | {
+      readonly status: "CLAIMED"
+      readonly capabilityId?: string
+      readonly exhausted: boolean
+    }
+  | {
+      readonly status: "DENIED"
+      readonly decision: AuthorizationDecision
+    }
 
 export type EnforcementResult<T> =
   | {
@@ -119,6 +174,9 @@ function verifyRequestIntegrity(
   if (original.requestId !== atExecution.requestId) return "requestId changed"
   if (original.principalId !== atExecution.principalId) return "principalId changed"
   if (original.sessionId !== atExecution.sessionId) return "sessionId changed"
+  if (original.contractId !== atExecution.contractId) return "contractId changed"
+  if (original.contractRevision !== atExecution.contractRevision) return "contractRevision changed"
+  if (original.workspaceId !== atExecution.workspaceId) return "workspaceId changed"
   if (original.tool !== atExecution.tool) return "tool changed"
   if (original.action !== atExecution.action) return "action changed"
   if (original.resource.kind !== atExecution.resource.kind) return "resource.kind changed"
@@ -147,6 +205,10 @@ function verifyRequestIntegrity(
   const sensA = [...original.sensitivity].sort()
   const sensB = [...atExecution.sensitivity].sort()
   if (sensA.join(",") !== sensB.join(",")) return "sensitivity changed"
+
+  const criteriaA = [...(original.criterionIds ?? [])].sort()
+  const criteriaB = [...(atExecution.criterionIds ?? [])].sort()
+  if (criteriaA.join(",") !== criteriaB.join(",")) return "criterionIds changed"
 
   return null
 }
@@ -251,6 +313,12 @@ export function authorizeAndExecuteEffect<T>(
         tool: req.tool,
         action: req.action,
         requestHash: originalHash,
+        provenance: [...req.provenance],
+        sensitivity: [...req.sensitivity],
+        contractId: req.contractId,
+        contractRevision: req.contractRevision,
+        criterionIds: req.criterionIds ? [...req.criterionIds] : undefined,
+        workspaceId: req.workspaceId,
       },
     })
 
@@ -332,6 +400,24 @@ export function authorizeAndExecuteEffect<T>(
     }
 
     if (approvalId && approvalStore) {
+      // Claim capability use budget BEFORE claiming the single-use approval so
+      // a failed budget claim never consumes the approval.
+      const useClaim = yield* claimCapabilityUses(
+        contextProvider,
+        firstDecision.capabilityIds,
+        new Date().toISOString(),
+        eventEmitter,
+        req,
+        firstDecision,
+      )
+      if (useClaim.status === "DENIED") {
+        return {
+          status: "DENIED" as const,
+          request: req,
+          decision: useClaim.decision,
+        }
+      }
+
       // Approval-based allow: atomically claim before execution.
       // The atomic claim replaces the second evaluation — if it succeeds,
       // the approval is bound to this execution and cannot be reused.
@@ -380,6 +466,18 @@ export function authorizeAndExecuteEffect<T>(
           executionId,
         },
       })
+      if (useClaim.exhausted && useClaim.capabilityId) {
+        yield* emitEvent(eventEmitter, {
+          sessionId: req.sessionId,
+          actor: { kind: "policy", id: "pep" },
+          type: "capability.exhausted",
+          payload: {
+            capabilityId: useClaim.capabilityId,
+            requestId: req.requestId,
+            requestHash: originalHash,
+          },
+        })
+      }
 
       const startedAt = new Date().toISOString()
       const value = yield* resolveExecute(
@@ -409,8 +507,32 @@ export function authorizeAndExecuteEffect<T>(
           completedAt,
           approvalId,
           executionId,
+          // Command-receipt context so verifiers can match criteria-specific
+          // evidence (tests vs builds) instead of any executed effect.
+          tool: req.tool,
+          action: req.action,
+          executable: req.executable,
+          arguments: req.arguments ? [...req.arguments].slice(0, 20) : undefined,
         },
       })
+
+      const receiptKind = receiptKindForRequest(req)
+      if (receiptKind) {
+        yield* emitEvent(eventEmitter, {
+          sessionId: req.sessionId,
+          actor: { kind: "policy", id: "pep" },
+          type: "evidence.attached",
+          payload: {
+            kind: receiptKind,
+            requestId: req.requestId,
+            requestHash: originalHash,
+            tool: req.tool,
+            action: req.action,
+            executable: req.executable,
+            arguments: req.arguments ? [...req.arguments].slice(0, 20) : undefined,
+          },
+        })
+      }
 
       return {
         status: "EXECUTED" as const,
@@ -486,6 +608,24 @@ export function authorizeAndExecuteEffect<T>(
       }
     }
 
+    // Claim capability use budget before recording the final ALLOW. A claim
+    // failure (exhausted, revoked, expired, store unavailable) fails closed.
+    const useClaim = yield* claimCapabilityUses(
+      contextProvider,
+      secondDecision.capabilityIds,
+      new Date().toISOString(),
+      eventEmitter,
+      req,
+      secondDecision,
+    )
+    if (useClaim.status === "DENIED") {
+      return {
+        status: "DENIED" as const,
+        request: req,
+        decision: useClaim.decision,
+      }
+    }
+
     // Emit authorization.allowed
     yield* emitEvent(eventEmitter, {
       sessionId: req.sessionId,
@@ -497,6 +637,18 @@ export function authorizeAndExecuteEffect<T>(
         decision: secondDecision,
       },
     })
+    if (useClaim.exhausted && useClaim.capabilityId) {
+      yield* emitEvent(eventEmitter, {
+        sessionId: req.sessionId,
+        actor: { kind: "policy", id: "pep" },
+        type: "capability.exhausted",
+        payload: {
+          capabilityId: useClaim.capabilityId,
+          requestId: req.requestId,
+          requestHash: originalHash,
+        },
+      })
+    }
 
     // Step 8: Execute the exact authorized operation
     const startedAt = new Date().toISOString()
@@ -517,8 +669,30 @@ export function authorizeAndExecuteEffect<T>(
         decision: secondDecision,
         startedAt,
         completedAt,
+        tool: req.tool,
+        action: req.action,
+        executable: req.executable,
+        arguments: req.arguments ? [...req.arguments].slice(0, 20) : undefined,
       },
     })
+
+    const receiptKind = receiptKindForRequest(req)
+    if (receiptKind) {
+      yield* emitEvent(eventEmitter, {
+        sessionId: req.sessionId,
+        actor: { kind: "policy", id: "pep" },
+        type: "evidence.attached",
+        payload: {
+          kind: receiptKind,
+          requestId: req.requestId,
+          requestHash: originalHash,
+          tool: req.tool,
+          action: req.action,
+          executable: req.executable,
+          arguments: req.arguments ? [...req.arguments].slice(0, 20) : undefined,
+        },
+      })
+    }
 
     return {
       status: "EXECUTED" as const,
@@ -572,6 +746,57 @@ function emitEvent(
       yield* Effect.promise(() => result.catch(() => {}))
     }
   }).pipe(Effect.catch(() => Effect.void))
+}
+
+/**
+ * Claim capability use budget at the PEP boundary.
+ *
+ * Runs immediately before the final ALLOW is recorded and the effect executes.
+ * A failed claim fails closed: the request is denied without execution. A
+ * claim that consumes the last use reports `exhausted` so the caller can emit
+ * `capability.exhausted` evidence.
+ */
+function claimCapabilityUses(
+  contextProvider: PolicyContextProvider,
+  capabilityIds: readonly string[],
+  now: string,
+  eventEmitter: AuthorizationEventEmitter | undefined,
+  request: AuthorizationRequest,
+  decision: AuthorizationDecision,
+): Effect.Effect<CapabilityClaimOutcome, never, never> {
+  return Effect.gen(function* () {
+    if (!contextProvider.claimUse || capabilityIds.length === 0) {
+      return { status: "CLAIMED", exhausted: false }
+    }
+    const result = yield* contextProvider.claimUse(capabilityIds, now)
+    if (result.status === "CLAIMED") {
+      return {
+        status: "CLAIMED",
+        capabilityId: result.capabilityId,
+        exhausted: result.exhausted === true,
+      }
+    }
+    const code =
+      result.status === "EXHAUSTED"
+        ? "DENY_CAPABILITY_EXHAUSTED"
+        : "DENY_CAPABILITY_CLAIM_UNAVAILABLE"
+    const message =
+      result.status === "EXHAUSTED"
+        ? "Capability use budget exhausted at claim time"
+        : "Capability use claim unavailable at execution time"
+    const denied: AuthorizationDecision = {
+      ...decision,
+      decision: "DENY",
+      reasons: [...decision.reasons, { code, message, severity: "critical" }],
+    }
+    yield* emitEvent(eventEmitter, {
+      sessionId: request.sessionId,
+      actor: { kind: "policy", id: "pep" },
+      type: "authorization.denied",
+      payload: { requestId: request.requestId, reason: message, decision: denied },
+    })
+    return { status: "DENIED", decision: denied }
+  })
 }
 
 // ─── Async wrapper (backward compatible) ─────────────────────────────

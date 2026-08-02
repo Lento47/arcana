@@ -1,7 +1,7 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { mkdirSync, readFileSync, existsSync } from "node:fs"
-import { atomicWriteSync } from "../../util/atomic-write"
+import { atomicWriteSync } from "../util/atomic-write"
 
 export type KanbanCard = {
   id: string

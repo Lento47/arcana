@@ -14,6 +14,7 @@ export const ArcanaEvent = Schema.Struct({
       Schema.Literal("model"),
       Schema.Literal("tool"),
       Schema.Literal("policy"),
+      Schema.Literal("operator"),
     ]),
     id: Schema.String,
   }),
@@ -32,6 +33,11 @@ export const ArcanaEvent = Schema.Struct({
     Schema.Literal("obligation.resolved"),
     Schema.Literal("completion.attempted"),
     Schema.Literal("completion.resolved"),
+    // Phase C: intent lifecycle and explicit compatibility evidence
+    Schema.Literal("intent.enforcement_required"),
+    Schema.Literal("intent.binding_created"),
+    Schema.Literal("intent.binding_revoked"),
+    Schema.Literal("intent.compatibility_mode"),
     Schema.Literal("tool.called"),
     Schema.Literal("tool.returned"),
     // Phase C: capability lifecycle
@@ -46,6 +52,10 @@ export const ArcanaEvent = Schema.Struct({
     Schema.Literal("authorization.stale"),
     Schema.Literal("authorization.executed"),
     Schema.Literal("authorization.execution_failed"),
+    // Phase C: explicit operator/verifier outcomes for obligations that
+    // cannot be auto-resolved from executed effects (comparison, human
+    // decision, external confirmation).
+    Schema.Literal("verification.recorded"),
   ]),
 
   payload: Schema.Unknown,

@@ -29,6 +29,7 @@ import { Snapshot } from "../../src/snapshot"
 import { ProviderTest } from "../fake/provider"
 import { testEffect } from "../lib/effect"
 import { CrossSpawnSpawner } from "@arcana/core/cross-spawn-spawner"
+import { EventStore } from "../../src/session/epistemic/event-store"
 import { TestConfig } from "../fixture/config"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { LLMEvent, Usage } from "@arcana/llm"
@@ -270,12 +271,14 @@ const deps = Layer.mergeAll(
   RuntimeFlags.layer({ experimentalEventSystem: true }),
   Database.defaultLayer,
   EventV2Bridge.defaultLayer,
+  EventStore.layer.pipe(Layer.provide(Database.defaultLayer)),
 )
 
 const env = Layer.mergeAll(
   SessionNs.defaultLayer,
   Database.defaultLayer,
   EventV2Bridge.defaultLayer,
+  EventStore.layer.pipe(Layer.provide(Database.defaultLayer)),
   CrossSpawnSpawner.defaultLayer,
   SessionCompaction.layer.pipe(Layer.provide(SessionNs.defaultLayer), Layer.provideMerge(deps)),
 )
@@ -286,6 +289,7 @@ const compactionEnv = Layer.mergeAll(
   SessionNs.defaultLayer,
   Database.defaultLayer,
   EventV2Bridge.defaultLayer,
+  EventStore.layer.pipe(Layer.provide(Database.defaultLayer)),
   CrossSpawnSpawner.defaultLayer,
 ) as any
 const itCompaction = testEffect(compactionEnv)
@@ -326,6 +330,7 @@ function compactionProcessLayer(options?: CompactionProcessOptions) {
     Layer.provide(options?.config ?? Config.defaultLayer),
     Layer.provide(RuntimeFlags.layer({ experimentalEventSystem: true })),
     Layer.provide(EventV2Bridge.defaultLayer),
+    Layer.provide(EventStore.layer.pipe(Layer.provide(Database.defaultLayer))),
   )
 }
 
@@ -1341,7 +1346,10 @@ describe("session.compaction.process", () => {
             })
             .pipe(Effect.forkChild)
 
-          yield* Deferred.await(ready).pipe(Effect.timeout("1 second"))
+          // Boot (provider/config/plugin layers) can exceed 1s in the test env;
+          // the 5s budget only gates the plugin trigger, not the cancellation
+          // semantics asserted below.
+          yield* Deferred.await(ready).pipe(Effect.timeout("5 seconds"))
           yield* Fiber.interrupt(fiber)
           const exit = yield* Fiber.await(fiber).pipe(Effect.timeout("250 millis"))
           const all = yield* ssn.messages({ sessionID: session.id })

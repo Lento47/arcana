@@ -20,8 +20,7 @@ import type { UserMessage as UserMessageType, AssistantMessage as AssistantMessa
 import type { ShellProps } from "./types"
 
 export function OpencodeShell(props: ShellProps) {
-  const { theme: themeObj } = useTheme()
-  const t = themeObj as Record<string, unknown>
+  const { theme } = useTheme()
   const dialog = useDialog()
   const keymap = useOpencodeKeymap()
   const renderer = useRenderer()
@@ -40,8 +39,8 @@ export function OpencodeShell(props: ShellProps) {
           paddingLeft: 1,
           visible: props.showScrollbar(),
           trackOptions: {
-            backgroundColor: t.backgroundElement as any,
-            foregroundColor: t.border as any,
+            backgroundColor: theme.backgroundElement,
+            foregroundColor: theme.border,
           },
         }}
         viewportCulling={false}
@@ -79,29 +78,29 @@ export function OpencodeShell(props: ShellProps) {
                       flexShrink={0}
                       border={["left"]}
                       customBorderChars={SplitBorder.customBorderChars}
-                      borderColor={t.backgroundPanel as any}
+                      borderColor={theme.backgroundPanel}
                     >
                       <box
                         paddingTop={1}
                         paddingBottom={1}
                         paddingLeft={2}
-                        backgroundColor={hover() ? (t.backgroundElement as any) : (t.backgroundPanel as any)}
+                        backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
                       >
-                        <text fg={t.textMuted as any}>{props.revert()!.reverted.length} message reverted</text>
-                        <text fg={t.textMuted as any}>
-                          <span style={{ fg: t.text as any }}>{redoShortcut()}</span> or /redo to restore
+                        <text fg={theme.textMuted}>{props.revert()!.reverted.length} message reverted</text>
+                        <text fg={theme.textMuted}>
+                          <span style={{ fg: theme.text }}>{redoShortcut()}</span> or /redo to restore
                         </text>
                         <Show when={props.revert()!.diffFiles?.length}>
                           <box marginTop={1}>
                             <For each={props.revert()!.diffFiles}>
                               {(file) => (
-                                <text fg={t.text as any}>
+                                <text fg={theme.text}>
                                   {file.filename}
                                   <Show when={file.additions > 0}>
-                                    <span style={{ fg: t.diffAdded as any }}> +{file.additions}</span>
+                                    <span style={{ fg: theme.diffAdded }}> +{file.additions}</span>
                                   </Show>
                                   <Show when={file.deletions > 0}>
-                                    <span style={{ fg: t.diffRemoved as any }}> -{file.deletions}</span>
+                                    <span style={{ fg: theme.diffRemoved }}> -{file.deletions}</span>
                                   </Show>
                                 </text>
                               )}
@@ -120,7 +119,7 @@ export function OpencodeShell(props: ShellProps) {
                 <Show when={index() > 0 && props.messages()[index() - 1]?.role === "assistant"}>
                   <box
                     border={["bottom"]}
-                    borderColor={t.borderSubtle as any}
+                    borderColor={theme.borderSubtle}
                     customBorderChars={DashBorder}
                     marginBottom={1}
                   />

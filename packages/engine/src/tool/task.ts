@@ -183,8 +183,13 @@ export const TaskTool = Tool.define(
         return yield* Effect.fail(new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`))
       }
 
-      // Always create a fresh subagent session — never reuse old ones
       const parent = yield* sessions.get(ctx.sessionID)
+      // Resuming a prior task continues the same subagent session; a missing
+      // id or a session that is not this parent's child creates a fresh one.
+      const existing = params.task_id
+        ? yield* sessions.get(SessionID.make(params.task_id)).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        : undefined
+      const resume = existing !== undefined && existing.parentID === ctx.sessionID
       const childPermission = deriveSubagentSessionPermission({
         parentSessionPermission: parent.permission ?? [],
         subagent: next,
@@ -202,51 +207,52 @@ export const TaskTool = Tool.define(
           action: "deny" as const,
         })) ?? []),
       ]
-      const nextSession = yield* sessions.create({
-          parentID: ctx.sessionID,
-          title: params.description + ` (@${next.name} subagent)`,
-          agent: next.name,
-          permission: [
-            ...childPermission,
-            ...childToolDenies.filter(
-              (deny) =>
-                !childPermission.some(
-                  (rule) =>
-                    rule.permission === deny.permission && rule.pattern === deny.pattern && rule.action === deny.action,
-                ),
-            ),
-          ],
+      const nextSession = resume && existing ? existing : yield* sessions.create({
+            parentID: ctx.sessionID,
+            title: params.description + ` (@${next.name} subagent)`,
+            agent: next.name,
+            permission: [
+              ...childPermission,
+              ...childToolDenies.filter(
+                (deny) =>
+                  !childPermission.some(
+                    (rule) =>
+                      rule.permission === deny.permission && rule.pattern === deny.pattern && rule.action === deny.action,
+                  ),
+              ),
+            ],
+          })
+
+      if (!resume) {
+        // Inherit parent session goal so subagent turns see the same active goal
+        // and mutation gates align with the parent objective.
+        yield* Effect.sync(() => {
+          const parentGoal = getSessionGoal(ctx.sessionID)
+          if (parentGoal.status === "unset") return
+          setSessionGoal(nextSession.id, {
+            goal: parentGoal.goal,
+            scope: parentGoal.scope,
+            priority: parentGoal.priority,
+            status:
+              parentGoal.status === "complete" || parentGoal.status === "complete_unverified"
+                ? parentGoal.status
+                : "in_progress",
+            boardSessionID: parentGoal.boardSessionID,
+            openCards: parentGoal.openCards,
+            doneCards: parentGoal.doneCards,
+            blockedCards: parentGoal.blockedCards,
+          })
         })
 
-      // Inherit parent session goal so subagent turns see the same active goal
-      // and mutation gates align with the parent objective.
-      yield* Effect.sync(() => {
-        const parentGoal = getSessionGoal(ctx.sessionID)
-        if (parentGoal.status === "unset") return
-        setSessionGoal(nextSession.id, {
-          goal: parentGoal.goal,
-          scope: parentGoal.scope,
-          priority: parentGoal.priority,
-          status:
-            parentGoal.status === "complete" || parentGoal.status === "complete_unverified"
-              ? parentGoal.status
-              : "in_progress",
-          boardSessionID: parentGoal.boardSessionID,
-          openCards: parentGoal.openCards,
-          doneCards: parentGoal.doneCards,
-          blockedCards: parentGoal.blockedCards,
-        })
-      })
-
-      // ── Phase C: Capability delegation to child session ──────────────
-      // Load parent's capability grants and delegate attenuated grants to child.
-      // This runs alongside PermissionV1 — both systems are active.
-      // The capability PEP in tools.ts enforces capability grants at execution time.
-      //
-      // Non-fatal: if delegation fails, the child session runs without capability
-      // grants (PEP will deny consequential tools). This is honest — the child
-      // gets no authority it shouldn't have.
-      yield* Effect.gen(function* () {
+        // ── Phase C: Capability delegation to child session ──────────────
+        // Load parent's capability grants and delegate attenuated grants to child.
+        // This runs alongside PermissionV1 — both systems are active.
+        // The capability PEP in tools.ts enforces capability grants at execution time.
+        //
+        // Non-fatal: if delegation fails, the child session runs without capability
+        // grants (PEP will deny consequential tools). This is honest — the child
+        // gets no authority it shouldn't have.
+        yield* Effect.gen(function* () {
         const grantStore = new SqliteGrantStore(database)
 
         // Use parent.agent (from session lookup) not input.agent.name
@@ -379,6 +385,7 @@ export const TaskTool = Tool.define(
           })
         ),
       )
+      }
       // ── End Phase C capability delegation ────────────────────────────
 
       const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID }).pipe(

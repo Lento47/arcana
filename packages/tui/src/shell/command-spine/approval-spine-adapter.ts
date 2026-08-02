@@ -16,6 +16,7 @@
 import type { ApprovalRecord, ApprovalState } from "@arcana/core/crypto/approval-lifecycle"
 import type { SpineEntry, SpineKind, StatusTone } from "./spine-types"
 import { SPINE_GLYPH } from "./spine-types"
+import { Locale } from "../../util/locale"
 
 // ─── Approval → SpineEntry ──────────────────────────────────────────
 
@@ -113,7 +114,9 @@ function approvalSummary(approval: ApprovalRecord): string {
 }
 
 function approvalBody(approval: ApprovalRecord): string {
-  const short = (s: string, n = 12) => s.length > n ? s.slice(0, n) + "…" : s
+  // T9: truncate by display width (n + 1 = n cols + the "…" glyph) so CJK
+  // approval bodies don't overflow the receipt row.
+  const short = (s: string, n = 12) => Locale.truncate(s, n + 1)
   const lines = [
     `Approval: ${short(approval.approvalId, 16)}`,
     `Version: ${approval.version}`,
@@ -140,6 +143,19 @@ function approvalBody(approval: ApprovalRecord): string {
 /**
  * Check if an approval is actionable (can be approved/denied).
  */
+/**
+ * M10: the ONE parse of an approval spine-entry id — `approval:<approvalId>:<version>`.
+ * Joins all middle segments (approvalId itself may contain ":"), strips the trailing
+ * version. The shell's focus/select path previously re-parsed with a bare
+ * `slice("approval:".length)`, passing `id:version` to the controller.
+ */
+export function approvalIdFromEntryID(entryID: string): string | undefined {
+  if (!entryID.startsWith("approval:")) return undefined
+  const parts = entryID.split(":")
+  if (parts.length < 3) return undefined
+  return parts.slice(1, -1).join(":")
+}
+
 export function isApprovalActionable(approval: ApprovalRecord): boolean {
   return approval.state === "PENDING"
 }

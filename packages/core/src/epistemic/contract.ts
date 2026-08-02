@@ -80,6 +80,7 @@ export const CompletionContract = Schema.Struct({
     Schema.Literal("active"),
     Schema.Literal("amended"),
     Schema.Literal("satisfied"),
+    Schema.Literal("resolved"),
   ]),
 })
 export type CompletionContract = typeof CompletionContract.Type

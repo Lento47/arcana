@@ -11,7 +11,7 @@
 
 import { Effect } from "effect"
 import type { PolicyContext, WorkspaceTrust } from "./pdp"
-import type { PolicyContextProvider } from "./pep"
+import type { CapabilityClaimResult, PolicyContextProvider } from "./pep"
 import type { CapabilityGrant, CapabilityStatus, IntentBinding } from "./types"
 import { POLICY_VERSION } from "./types"
 import type { ScopedApproval, ScopedApprovalDecision } from "./scoped-approval"
@@ -350,6 +350,12 @@ export interface IntentBindingStoreEffect {
   ): Effect.Effect<readonly IntentBinding[], CapabilityGrantStoreError>
 }
 
+/** Durable intent stores also expose immutable insertion and explicit revocation. */
+export interface MutableIntentBindingStoreEffect extends IntentBindingStoreEffect {
+  putBinding(binding: IntentBinding): Effect.Effect<void, CapabilityGrantStoreError>
+  revokeBinding(bindingId: string): Effect.Effect<boolean, CapabilityGrantStoreError>
+}
+
 /**
  * In-memory intent binding store for tests.
  */
@@ -444,15 +450,23 @@ export class SessionPolicyProvider {
 
         // Load intent bindings
         let intentBindings: IntentBinding[] | undefined = undefined
+        let intentStoreAvailable: boolean | undefined = undefined
 
         if (this.intentStore) {
           // Store provided — load bindings, fail closed on error
+          intentStoreAvailable = true
           const bindings = yield* this.intentStore
             .getActiveBindingsForSession(this.binding.sessionId)
-            .pipe(Effect.catch(() => Effect.succeed<readonly IntentBinding[]>([])))
+            .pipe(
+              Effect.catch(() => {
+                intentStoreAvailable = false
+                return Effect.succeed<readonly IntentBinding[]>([])
+              }),
+            )
           intentBindings = [...bindings]
         } else if (this.intentMode === "REQUIRED") {
-          // REQUIRED mode without store → fail closed: empty bindings
+          // REQUIRED mode without a store is distinguishable from no bindings.
+          intentStoreAvailable = false
           intentBindings = []
         }
         // LEGACY_COMPAT without store → intentBindings stays undefined → PDP skips
@@ -491,10 +505,56 @@ export class SessionPolicyProvider {
           approvalRules: [],
           workspaceTrust: this.binding.workspaceTrust,
           intentBindings: intentBindings?.map((b) => ({ ...b })),
+          intentStoreAvailable,
           approvedScopes: approvedScopes.map((s) => ({ ...s })),
           validateAncestors: hasDelegatedGrants,
         }) satisfies PolicyContext
       },
     )
+  }
+
+  /**
+   * Atomically claim one use from the matched capability grants, in order.
+   * Fails closed: returns EXHAUSTED when every candidate is use-limited at
+   * zero or expired, UNAVAILABLE when no claim is possible for any other
+   * reason (revoked, missing, store failure).
+   */
+  claimUse(
+    capabilityIds: readonly string[],
+    now: string,
+  ): Effect.Effect<CapabilityClaimResult, never, never> {
+    return Effect.gen(
+      { self: this },
+      function* () {
+        for (const capabilityId of capabilityIds) {
+          const consumed = yield* this.store.tryConsumeUse(capabilityId, now)
+          if (!consumed) continue
+          const grant = yield* this.store
+            .getGrantById(capabilityId)
+            .pipe(Effect.catch(() => Effect.succeed(null)))
+          return {
+            status: "CLAIMED",
+            capabilityId,
+            exhausted: grant?.constraints.maxUses === 0,
+          } as const
+        }
+        for (const capabilityId of capabilityIds) {
+          const grant = yield* this.store
+            .getGrantById(capabilityId)
+            .pipe(Effect.catch(() => Effect.succeed(null)))
+          if (grant?.status === "ACTIVE") {
+            const maxUses = grant.constraints.maxUses
+            const expiresAt = grant.constraints.expiresAt
+            if (
+              (maxUses !== undefined && maxUses <= 0)
+              || (expiresAt !== undefined && expiresAt <= now)
+            ) {
+              return { status: "EXHAUSTED", capabilityId } as const
+            }
+          }
+        }
+        return { status: "UNAVAILABLE" } as const
+      },
+    ).pipe(Effect.catch(() => Effect.succeed({ status: "UNAVAILABLE" } as const)))
   }
 }

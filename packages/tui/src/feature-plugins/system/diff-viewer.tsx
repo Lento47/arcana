@@ -18,6 +18,7 @@ import { DiffViewerFileTree } from "./diff-viewer-file-tree"
 import { Panel, PanelGroup, Separator } from "./diff-viewer-ui"
 import { DialogSelect } from "../../ui/dialog-select"
 import { getScrollAcceleration } from "../../util/scroll"
+import { diffPatchPaneWidth } from "../../util/geometry"
 import {
   allExpandedFileTreeDirectories,
   buildFileTree,
@@ -129,7 +130,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   )
   const showFileTree = createMemo(() => showDiffViewerFileTree(fileTreeEnabled(), files().length))
   const [singlePatch, setSinglePatch] = createSignal(props.api.kv.get<boolean>(KV_SINGLE_PATCH, false) === true)
-  const patchPaneWidth = createMemo(() => dimensions().width - (showFileTree() ? 33 : 0) - 4)
+  const patchPaneWidth = createMemo(() => diffPatchPaneWidth(dimensions().width, showFileTree()))
   const patchLeftBorder = createMemo<BorderSides[]>(() => (showFileTree() ? ["left"] : []))
   const splitAvailable = createMemo(() => patchPaneWidth() >= MIN_SPLIT_WIDTH)
   const defaultView = createMemo(() => {

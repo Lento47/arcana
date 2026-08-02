@@ -1,6 +1,8 @@
 import { For, Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
+import type { Theme } from "../../theme"
 import { ShimmerText } from "../../component/shimmer-text"
+import { displayWidth, truncate } from "../../util/locale"
 import {
   compactSpineElapsed,
   spineElapsedMax,
@@ -9,20 +11,37 @@ import {
   type SpineLayout,
 } from "./spine-types"
 
+/**
+ * Meta parts that must live in a `flexShrink={0}` sibling box beside the
+ * word-wrapping summary text (audit M1) — never inside the `wrapMode="word"`
+ * node. When embedded inline, a wrapping summary strands the chevron/elapsed
+ * on their own line (meta floats alone under the content). Tone tags the
+ * part so the render path can color the chevron with the summary tone and
+ * the elapsed with `spineGutterElapsed` without interleaving them into text.
+ */
+export type NodeMetaPart = { text: string; tone: "summary" | "elapsed" }
+
+export function nodeMetaStrip(disclosure: string, elapsed: string): NodeMetaPart[] {
+  const parts: NodeMetaPart[] = []
+  if (disclosure) parts.push({ text: ` ${disclosure}`, tone: "summary" })
+  if (elapsed) parts.push({ text: ` · ${elapsed}`, tone: "elapsed" })
+  return parts
+}
+
 /** Max characters for the tool label column (short verbs: search, read, run). */
 const TOOL_LABEL_WIDTH = 7
 /** Wider column for chat voice so "assistant" / "you" are not truncated. */
 const CHAT_LABEL_WIDTH = 10
 
-function patchSummaryColor(part: string, index: number, theme: Record<string, unknown>) {
-  if (part.startsWith("+")) return theme.spineDiffAdd as any
-  if (part.startsWith("-")) return theme.spineDiffRemove as any
-  if (part === "diff") return theme.spineOk as any
-  if (part.includes("unavailable") || part.includes("incomplete") || part.includes("file-list only")) return theme.warning as any
-  return index === 0 ? (theme.spineDiffMuted as any) : (theme.text as any)
+function patchSummaryColor(part: string, index: number, theme: Theme) {
+  if (part.startsWith("+")) return theme.spineDiffAdd
+  if (part.startsWith("-")) return theme.spineDiffRemove
+  if (part === "diff") return theme.spineOk
+  if (part.includes("unavailable") || part.includes("incomplete") || part.includes("file-list only")) return theme.warning
+  return index === 0 ? theme.spineDiffMuted : theme.text
 }
 
-function PatchSummaryText(props: { summary: string; disclosure: string; theme: Record<string, unknown> }) {
+function PatchSummaryText(props: { summary: string; disclosure: string; theme: Theme }) {
   const parts = createMemo(() => props.summary.split(/\s+·\s+/).filter(Boolean))
   return (
     <text wrapMode="word">
@@ -30,23 +49,24 @@ function PatchSummaryText(props: { summary: string; disclosure: string; theme: R
         {(part, index) => (
           <>
             <Show when={index() > 0}>
-              <span style={{ fg: props.theme.spineDiffMuted as any }}> · </span>
+              <span style={{ fg: props.theme.spineDiffMuted }}> · </span>
             </Show>
             <span style={{ fg: patchSummaryColor(part, index(), props.theme) }}>{part}</span>
           </>
         )}
       </For>
       <Show when={props.disclosure}>
-        <span style={{ fg: props.theme.spineDiffMuted as any }}> {props.disclosure}</span>
+        <span style={{ fg: props.theme.spineDiffMuted }}> {props.disclosure}</span>
       </Show>
     </text>
   )
 }
 
-/** Truncate actor name with ellipsis when it exceeds the column width. */
+/** Truncate/pad actor name to the column width, display-column aware (audit T4). */
 function truncateActor(name: string, width: number): string {
-  if (name.length <= width) return name.padEnd(width)
-  return name.slice(0, width - 1) + "…"
+  const w = displayWidth(name)
+  if (w <= width) return name + " ".repeat(width - w)
+  return truncate(name, width)
 }
 
 /**
@@ -73,8 +93,7 @@ export function SpineNode(props: {
   /** Merged think verb for tool rows — shows inline after the tool glyph. */
   thinking?: string
 }) {
-  const { theme: themeObj } = useTheme()
-  const t = themeObj as Record<string, unknown>
+  const { theme } = useTheme()
 
   const kind = () => props.kind
   const layout = () => props.layout
@@ -106,43 +125,60 @@ export function SpineNode(props: {
   )
   const showActor = createMemo(() => !!actor() && (kind() === "agent" || actor() === "you"))
 
-  const tone = createMemo(() => spineTone(kind(), t))
+  const tone = createMemo(() => spineTone(kind(), theme))
   const summaryColor = createMemo(() => {
-    if (kind() === "fail") return t.spineFail as any
-    if (kind() === "think") return t.spineThink as any
-    if (isChat()) return t.spineDiffMuted as any
-    if (isTool()) return t.text as any
-    return t.text as any
+    if (kind() === "fail") return theme.spineFail
+    if (kind() === "think") return theme.spineThink
+    if (isChat()) return theme.spineDiffMuted
+    if (isTool()) return theme.text
+    return theme.text
   })
   const labelColor = createMemo(() => {
-    if (isChat()) return (t.spineBrand ?? t.spineOk ?? t.accent ?? tone()) as any
-    if (isTool()) return (t.spineContext ?? t.textMuted ?? tone()) as any
-    return tone() as any
+    if (isChat()) return theme.spineBrand
+    if (isTool()) return theme.spineContext
+    return tone()
   })
 
-  const truncatedLabel = createMemo(() => {
-    const raw = label()
-    const w = labelWidth()
-    if (raw.length > w) return raw.slice(0, w - 1) + "…"
-    return raw
-  })
+  const truncatedLabel = createMemo(() => truncate(label(), labelWidth()))
 
+  const metaStrip = createMemo(() => nodeMetaStrip(disclosure(), elapsedText()))
+
+  // M1: the wrapping text node carries ONLY the summary; the chevron + elapsed
+  // render in a flexShrink={0} sibling so a wrapped summary can never strand
+  // meta alone on its own line. No flexGrow on the summary box: meta follows
+  // the content (not pinned to the right edge), so it stays visually identical
+  // to the pre-fix inline position and to the sibling isThinkStreaming path.
   const summaryBody = () => (
-    <box flexGrow={1} minWidth={0} flexShrink={1}>
-      <text fg={summaryColor()} wrapMode="word">
-        {summary() || " "}
-        {disclosure() ? ` ${disclosure()}` : ""}
-        <Show when={elapsedText()}>
-          <span style={{ fg: t.spineGutterElapsed as any }}>{` · ${elapsedText()}`}</span>
-        </Show>
-      </text>
+    <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
+      <box flexShrink={1} minWidth={0}>
+        <text fg={summaryColor()} wrapMode="word">
+          {summary() || " "}
+        </text>
+      </box>
+      <Show when={metaStrip().length > 0}>
+        <box flexShrink={0}>
+          <text wrapMode="none">
+            <For each={metaStrip()}>
+              {(part) => (
+                <span
+                  style={{
+                    fg: part.tone === "summary" ? summaryColor() : theme.spineGutterElapsed,
+                  }}
+                >
+                  {part.text}
+                </span>
+              )}
+            </For>
+          </text>
+        </box>
+      </Show>
     </box>
   )
 
   const actorBox = () => (
     <Show when={showActor()}>
       <box flexShrink={0} width={kind() === "agent" ? 12 : 5}>
-        <text fg={t.spineActor as any}>
+        <text fg={theme.spineActor}>
           {truncateActor(actor(), kind() === "agent" ? 12 : 5)}
         </text>
       </box>
@@ -164,9 +200,9 @@ export function SpineNode(props: {
                   <ShimmerText
                     text={summary() || (streaming() ? "Thinking" : "Thought")}
                     active={streaming() || !!thinking()}
-                    background={t.backgroundPanel as any}
+                    background={theme.backgroundPanel}
                   />
-                  <text fg={t.spineDiffMuted as any}>·</text>
+                  <text fg={theme.spineDiffMuted}>·</text>
                 </box>
               </Show>
               <Show when={isThinkStreaming()} fallback={summaryBody()}>
@@ -174,10 +210,10 @@ export function SpineNode(props: {
                   <ShimmerText
                     text={summary() || (streaming() ? "Thinking" : "Thought")}
                     active={true}
-                    background={t.backgroundPanel as any}
+                    background={theme.backgroundPanel}
                   />
                   <Show when={elapsedText()}>
-                    <text fg={t.spineGutterElapsed as any} wrapMode="none">{` · ${elapsedText()}`}</text>
+                    <text fg={theme.spineGutterElapsed} wrapMode="none">{` · ${elapsedText()}`}</text>
                   </Show>
                 </box>
               </Show>
@@ -185,7 +221,7 @@ export function SpineNode(props: {
           }
         >
           <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
-            <text fg={isChat() ? (t.spineOk as any) : summaryColor()} wrapMode="word">
+            <text fg={isChat() ? theme.spineOk : summaryColor()} wrapMode="word">
               {isChat() ? `${label()}  ` : ""}
               {summary()}
               {disclosure() ? ` ${disclosure()}` : ""}
@@ -205,7 +241,7 @@ export function SpineNode(props: {
               </text>
             </box>
             <Show when={elapsedText()}>
-              <text fg={t.spineGutterElapsed as any} wrapMode="none">{` · ${elapsedText()}`}</text>
+              <text fg={theme.spineGutterElapsed} wrapMode="none">{` · ${elapsedText()}`}</text>
             </Show>
             {actorBox()}
             <box flexGrow={1} minWidth={0} />
@@ -221,9 +257,9 @@ export function SpineNode(props: {
             <ShimmerText
               text={thinking() || (streaming() ? "Thinking" : "Thought")}
               active={streaming()}
-              background={t.backgroundPanel as any}
+              background={theme.backgroundPanel}
             />
-            <text fg={t.spineDiffMuted as any}> · </text>
+            <text fg={theme.spineDiffMuted}> · </text>
           </Show>
           <box flexGrow={1} minWidth={0} flexShrink={1}>
             <Show
@@ -235,12 +271,12 @@ export function SpineNode(props: {
                 </text>
               }
             >
-              <PatchSummaryText summary={summary()} disclosure={disclosure()} theme={t} />
+              <PatchSummaryText summary={summary()} disclosure={disclosure()} theme={theme} />
             </Show>
           </box>
           <Show when={elapsedText()}>
             <box flexShrink={0}>
-              <text fg={t.spineGutterElapsed as any} wrapMode="none">{` · ${elapsedText()}`}</text>
+              <text fg={theme.spineGutterElapsed} wrapMode="none">{` · ${elapsedText()}`}</text>
             </box>
           </Show>
         </box>

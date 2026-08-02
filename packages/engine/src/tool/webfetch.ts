@@ -29,7 +29,11 @@ const isPrivateIP = (ip: string): boolean => {
 }
 
 const assertHostSafe = (host: string): void => {
-  if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1" || host === "[::1]") {
+  // ARCANA_WEBFETCH_ALLOW_LOOPBACK exists only for integration tests that
+  // serve fixtures from the local machine. Production never sets it, so the
+  // SSRF boundary stays closed by default.
+  if (process.env.ARCANA_WEBFETCH_ALLOW_LOOPBACK !== "1" &&
+      (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1" || host === "[::1]")) {
     throw new Error("Blocked: localhost/loopback access is not allowed")
   }
   if (host.endsWith(".local") || host.endsWith(".internal")) {

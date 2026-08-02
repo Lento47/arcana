@@ -1,4 +1,6 @@
 import { AwsClient } from "aws4fetch"
+import { promises as fsp } from "node:fs"
+import path from "node:path"
 import { lazy } from "@arcana/core/util/lazy"
 
 export namespace Storage {
@@ -83,10 +85,69 @@ export namespace Storage {
     return createAdapter(client, `https://${accountId}.r2.cloudflarestorage.com`, process.env.ARCANA_STORAGE_BUCKET!)
   }
 
+  /**
+   * Filesystem adapter for local development and tests. Selected with
+   * `ARCANA_STORAGE_ADAPTER=local`; `ARCANA_STORAGE_LOCAL_DIR` sets the root
+   * (defaults to `<cwd>/.arcana-storage`). Mirrors the S3 adapter's
+   * lexicographic key semantics so callers behave identically in both modes.
+   */
+  function local(): Adapter {
+    const root = path.resolve(process.env.ARCANA_STORAGE_LOCAL_DIR || path.join(process.cwd(), ".arcana-storage"))
+    const target = (key: string) => {
+      const resolved = path.resolve(root, key)
+      if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+        throw new Error(`Storage key escapes local root: ${key}`)
+      }
+      return resolved
+    }
+    return {
+      async read(key: string): Promise<string | undefined> {
+        try {
+          return await fsp.readFile(target(key), "utf8")
+        } catch (error) {
+          if (typeof error === "object" && error !== null && (error as { code?: string }).code === "ENOENT") {
+            return undefined
+          }
+          throw error
+        }
+      },
+      async write(key: string, value: string): Promise<void> {
+        const file = target(key)
+        await fsp.mkdir(path.dirname(file), { recursive: true })
+        await fsp.writeFile(file, value, "utf8")
+      },
+      async remove(key: string): Promise<void> {
+        await fsp.rm(target(key), { force: true })
+      },
+      async list(options?: { prefix?: string; limit?: number; after?: string; before?: string }): Promise<string[]> {
+        const prefix = options?.prefix || ""
+        const start = options?.after ? prefix + options.after + ".json" : undefined
+        const before = options?.before ? prefix + options.before + ".json" : undefined
+        const base = path.join(root, ...prefix.split("/").filter(Boolean))
+        const keys: string[] = []
+        const walk = async (dir: string, rel: string) => {
+          const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])
+          entries.sort((a, b) => a.name.localeCompare(b.name))
+          for (const entry of entries) {
+            const full = path.join(dir, entry.name)
+            const relPath = rel ? `${rel}/${entry.name}` : entry.name
+            if (entry.isDirectory()) await walk(full, relPath)
+            else if (entry.isFile() && entry.name.endsWith(".json")) keys.push(relPath)
+          }
+        }
+        await walk(base, prefix.replace(/\/$/, ""))
+        keys.sort((a, b) => a.localeCompare(b))
+        const filtered = keys.filter((key) => (!start || key > start) && (!before || key < before))
+        return options?.limit ? filtered.slice(0, options.limit) : filtered
+      },
+    }
+  }
+
   const adapter = lazy(() => {
     const type = process.env.ARCANA_STORAGE_ADAPTER
     if (type === "r2") return r2()
     if (type === "s3") return s3()
+    if (type === "local") return local()
     throw new Error("No storage adapter configured")
   })
 

@@ -21,7 +21,7 @@ describe("Session title helpers", () => {
     const out = titleFromUserText(long)
     expect(out).toBeDefined()
     expect(out!.length).toBeLessThanOrEqual(TITLE_MAX_CHARS)
-    expect(out!.endsWith("...")).toBe(true)
+    expect(out!.endsWith("…")).toBe(true)
   })
 
   test("custom titles are never classified as default (clobber guard)", () => {

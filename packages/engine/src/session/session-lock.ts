@@ -257,6 +257,18 @@ export function checkLock(projectRoot: string): LockStatus {
   const now = Date.now()
   const age = now - existing.timestamp
 
+  // A lock written by this process is always ours — reacquiring it must never
+  // be classified stale. The ppid liveness probe below can transiently fail
+  // in worker processes (bun --parallel), which made own-PID reacquire
+  // return "stale_cleaned" under full-suite load.
+  if (existing.pid === process.pid) {
+    return {
+      type: "active",
+      pid: existing.pid,
+      timestamp: existing.timestamp,
+    }
+  }
+
   // Stale: lock is older than 24h
   if (age > STALE_LOCK_MS) {
     return {

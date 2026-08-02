@@ -119,7 +119,10 @@ function rangeText(file: PreviewFile) {
 
 function formatLineNumber(value: number | undefined) {
   if (value === undefined || !Number.isFinite(value)) return "     "
-  return String(value).padStart(5).slice(-5)
+  // S12: no `.slice(-5)` — that silently clipped numbers ≥ 100000 (123456 →
+  // "23456", a lie). padStart(5) alone keeps the 5-col alignment for the
+  // common case and renders the full number past five digits.
+  return String(value).padStart(5)
 }
 
 function takePreviewLines(files: PreviewFile[], limit: number) {
@@ -147,7 +150,7 @@ export function SpineDiff(props: {
   const changed = createMemo(() => takePreviewLines(preview(), lineLimit(props.layout)))
 
   if (props.layout === "minimal") {
-    return <text fg={theme.spineDiffMuted as any}>{files()[0] ?? "patch"}</text>
+    return <text fg={theme.spineDiffMuted}>{files()[0] ?? "patch"}</text>
   }
 
   if (!body()) {
@@ -156,8 +159,8 @@ export function SpineDiff(props: {
         <For each={files().length ? files() : ["file path unavailable"]}>
           {(file) => (
             <text wrapMode="word">
-              <span style={{ fg: theme.spineContext as any }}>{file}</span>
-              <span style={{ fg: theme.warning as any }}> · line diff unavailable</span>
+              <span style={{ fg: theme.spineContext }}>{file}</span>
+              <span style={{ fg: theme.warning }}> · line diff unavailable</span>
             </text>
           )}
         </For>
@@ -170,8 +173,8 @@ export function SpineDiff(props: {
       <For each={preview()}>
         {(file) => (
           <text wrapMode="word">
-            <span style={{ fg: theme.spineContext as any }}>{file.file}</span>
-            <span style={{ fg: theme.spineDiffMuted as any }}> · {rangeText(file)}</span>
+            <span style={{ fg: theme.spineContext }}>{file.file}</span>
+            <span style={{ fg: theme.spineDiffMuted }}> · {rangeText(file)}</span>
           </text>
         )}
       </For>
@@ -179,16 +182,16 @@ export function SpineDiff(props: {
         <For each={changed().lines}>
           {(line) => (
             <text wrapMode="word">
-              <span style={{ fg: theme.spineDiffMuted as any }}>{formatLineNumber(line.line)}</span>
-              <span style={{ fg: theme.spineDiffMuted as any }}> │ </span>
-              <span style={{ fg: (line.kind === "add" ? theme.spineDiffAdd : theme.spineDiffRemove) as any }}>
+              <span style={{ fg: theme.spineDiffMuted }}>{formatLineNumber(line.line)}</span>
+              <span style={{ fg: theme.spineDiffMuted }}> │ </span>
+              <span style={{ fg: line.kind === "add" ? theme.spineDiffAdd : theme.spineDiffRemove }}>
                 {line.kind === "add" ? "+ " : "- "}{line.text || " "}
               </span>
             </text>
           )}
         </For>
         <Show when={changed().truncated}>
-          <text fg={theme.spineDiffMuted as any}>o · open full diff for remaining changes</text>
+          <text fg={theme.spineDiffMuted}>o · open full diff for remaining changes</text>
         </Show>
       </Show>
     </box>

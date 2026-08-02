@@ -38,6 +38,11 @@ process.env["XDG_STATE_HOME"] = path.join(dir, "state")
 process.env["ARCANA_MODELS_PATH"] = path.join(import.meta.dir, "tool", "fixtures", "models-api.json")
 process.env["ARCANA_EXPERIMENTAL_EVENT_SYSTEM"] = "true"
 process.env["ARCANA_EXPERIMENTAL_WORKSPACES"] = "true"
+// Config/agent/plugin tests exercise project-level executable config, which
+// ARC-SEC-I02 strips from untrusted worktrees. Force trust in the test
+// process (the suite itself toggles this var when it needs untrusted
+// behavior; no engine test asserts the default untrusted path).
+process.env["ARCANA_TRUST_WORKSPACE"] ??= "1"
 
 // Set test home directory to isolate tests from user's actual home directory
 // This prevents tests from picking up real user configs/skills from ~/.claude/skills

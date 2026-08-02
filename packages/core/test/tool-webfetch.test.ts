@@ -9,6 +9,10 @@ import { WebFetchTool } from "@arcana/core/tool/webfetch"
 import { testEffect } from "./lib/effect"
 import { toolIdentity, executeTool, settleTool, toolDefinitions } from "./lib/tool"
 
+// Local fixture server: opt the tool into loopback for this test process only.
+// Production SSRF protection is unchanged (the env var is never set outside tests).
+process.env.ARCANA_WEBFETCH_ALLOW_LOOPBACK = "1"
+
 const sessionID = SessionV2.ID.make("ses_webfetch_test")
 const requests: Array<{ readonly url: string; readonly headers: Record<string, string> }> = []
 const assertions: PermissionV2.AssertInput[] = []

@@ -4,7 +4,7 @@ import { IntegrationSchema } from "../integration/schema"
 import { ValidateRequest, ValidateResponse, ActivateRequest, ActivateResponse, LicenseInfo } from "./schema"
 import { getMachineId } from "./machine"
 
-const LICENSE_SERVER = "https://api.arcana.otnelhq.com"
+const LICENSE_SERVER = "https://api-arcana.otnelhq.com"
 const LICENSE_INTEGRATION_ID = IntegrationSchema.ID.make("arcana_license")
 
 export class LicenseError {

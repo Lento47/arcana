@@ -1,8 +1,9 @@
 import type { Message, Part, ToolPart, TextPart, PatchPart, ReasoningPart } from "@arcana/sdk/v2"
 import type { SpineEntry, SpineKind, SpineReportData, SpineConcernSeverity, SpineReceipt } from "./spine-types"
-import { SPINE_GLYPH } from "./spine-types"
+import { SPINE_GLYPH, formatElapsedMs } from "./spine-types"
 import { reasoningSummary } from "../../context/thinking"
 import { APP_NAME } from "../../branding"
+import { truncate } from "../../util/locale"
 import {
   buildTurnLifecycle,
   isAssistantSegmentStreaming,
@@ -68,21 +69,9 @@ function toolToSpineKind(tool: string): SpineKind {
   return "inspect"
 }
 
-function formatElapsed(ms: number | undefined): string {
-  if (ms === undefined || ms < 0) return ""
-
-  if (ms >= 3600000) {
-    const h = Math.floor(ms / 3600000)
-    const m = Math.floor((ms % 3600000) / 60000)
-    return `+${h}h`
-  }
-  if (ms >= 60000) {
-    return `+${Math.round(ms / 60000)}m`
-  }
-  if (ms < 1000) return `+${Math.round(ms)}ms`
-  const s = Math.round(ms / 1000)
-  return s >= 1 ? `+${s}s` : ""
-}
+// T8: single canonical elapsed formatter (spine-types.formatElapsedMs) — the
+// old local copy had tier-by-tier precision drift (int-rounded seconds,
+// round-up minutes, hours dropping the minute term).
 
 function formatTimestamp(ms: number | undefined): string | undefined {
   if (ms === undefined || !Number.isFinite(ms) || ms <= 0) return undefined
@@ -138,10 +127,7 @@ function kindLabel(kind: SpineKind, fallback?: string, tool?: string): string {
   }
 }
 
-function truncate(text: string, max = 500): string {
-  if (text.length <= max) return text
-  return text.slice(0, max).trimEnd() + "…"
-}
+// Truncation: shared display-width-aware helper from util/locale (audit T2).
 
 function normalizeNewlines(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
@@ -195,7 +181,9 @@ function splitMarkdownSections(md: string): Map<string, string> {
 
 function extractFirstHeading(md: string): string | undefined {
   const m = md.match(/^# ([^\n]+)/)
-  return m?.[1]?.trim().slice(0, 80)
+  const heading = m?.[1]?.trim()
+  // T9: display-width truncation (grapheme-aware; no mid-surrogate cuts).
+  return heading ? truncate(heading, 80) : undefined
 }
 
 function parseScorecard(section: string): SpineReportData["scorecard"] {
@@ -221,15 +209,15 @@ function parseConcerns(section: string): SpineReportData["concerns"] {
     const headMatch = block.match(/^###?\s*(?:\[(HIGH|MEDIUM|LOW)\]\s*)?(.+)/m)
     if (!headMatch) continue
     const severity = (headMatch[1] ?? "MEDIUM") as SpineConcernSeverity
-    const title = headMatch[2].trim().slice(0, 120)
-    const detail = block.slice(headMatch[0].length).trim().slice(0, 300)
+    const title = truncate(headMatch[2].trim(), 120)
+    const detail = truncate(block.slice(headMatch[0].length).trim(), 300)
     items.push({ severity, title, detail })
   }
   if (!items.length) {
     for (const line of section.split("\n")) {
       const m = line.match(/^\s*[-*]\s*\*?\*?(HIGH|MEDIUM|LOW)\*?\*?:?\s*(.+)/i)
       if (!m) continue
-      items.push({ severity: m[1].toUpperCase() as SpineConcernSeverity, title: m[2].trim().slice(0, 120), detail: "" })
+      items.push({ severity: m[1].toUpperCase() as SpineConcernSeverity, title: truncate(m[2].trim(), 120), detail: "" })
     }
   }
   return items
@@ -734,6 +722,14 @@ function getInspectSummary(part: ToolPart): string {
   const input = part.state.input as Record<string, unknown>
   const filePath = (input.filePath as string) ?? (input.path as string) ?? (input.file as string) ?? ""
   const pattern = (input.pattern as string) ?? (input.query as string) ?? (input.glob as string) ?? ""
+  // Search-family tools: the query is the *what*; the path is only the scope.
+  // Showing the path first made every search row read as a directory dump.
+  if (
+    (part.tool === "search" || part.tool === "grep" || part.tool === "ripgrep")
+    && pattern
+  ) {
+    return pattern
+  }
   // Tool-specific primary inputs that aren't paths/patterns. Surfaced here so the
   // spine row shows the *what* during pending instead of just a "Working" shimmer.
   const goal = (input.goal as string) ?? (input.objective as string) ?? ""
@@ -758,19 +754,37 @@ function computeElapsed(
     const state = toolPart.state
     if ("time" in state && state.time && "end" in state.time && state.time.end && "start" in state.time) {
       const ms = state.time.end - state.time.start
-      return { ms, str: formatElapsed(ms) }
+      return { ms, str: formatElapsedMs(ms) }
     }
   }
 
   if (message.role === "assistant") {
     const dur = assistantDuration?.get(message.id)
-    if (dur !== undefined) return { ms: dur, str: formatElapsed(dur) }
+    if (dur !== undefined) return { ms: dur, str: formatElapsedMs(dur) }
     if (message.time?.completed) {
       const ms = message.time.completed - message.time.created
-      return { ms, str: formatElapsed(ms) }
+      return { ms, str: formatElapsedMs(ms) }
     }
   }
 
+  return { ms: undefined, str: "" }
+}
+
+/** Duration of a reasoning/text segment from its own time stamps. */
+function reasoningElapsed(part: { time?: { start?: number; end?: number } } | undefined): {
+  ms: number | undefined
+  str: string
+} {
+  const time = part?.time
+  if (
+    time
+    && typeof time.start === "number"
+    && typeof time.end === "number"
+    && time.end > time.start
+  ) {
+    const ms = time.end - time.start
+    return { ms, str: formatElapsedMs(ms) }
+  }
   return { ms: undefined, str: "" }
 }
 
@@ -924,7 +938,7 @@ function toolStateToReceipt(tool: string, state: ToolPart["state"]): SpineReceip
           typeof metadata.duration === "string"
             ? metadata.duration
             : typeof metadata.durationMs === "number"
-              ? formatElapsed(metadata.durationMs).replace(/^\+/, "")
+              ? formatElapsedMs(metadata.durationMs).replace(/^\+/, "")
               : undefined,
       }
       const fromOutput = parseTestStats(stripAnsi(state.output ?? ""))
@@ -1666,6 +1680,7 @@ function makeInlineThinkEntry(
 ): SpineEntry {
   const raw = preserveBodyText(text.replace("[REDACTED]", ""))
   const hasText = !!raw.trim()
+  const elapsed = reasoningElapsed(part)
   const life = buildTurnLifecycle({
     message,
     part: part.time ? part : undefined,
@@ -1680,7 +1695,8 @@ function makeInlineThinkEntry(
   return {
     id: `${message.id}:${part.id}:think-inline`,
     index: 0,
-    elapsed: "",
+    elapsed: elapsed.str,
+    elapsedMs: elapsed.ms,
     timestamp: formatTimestamp(message.time?.created),
     kind: "think",
     label: "",
@@ -1705,6 +1721,7 @@ function makeThinkEntry(
   // Strip OpenRouter encrypted-reasoning placeholder (matches legacy session route).
   const raw = preserveBodyText((part.text ?? "").replace("[REDACTED]", ""))
   const hasText = !!raw.trim()
+  const elapsed = reasoningElapsed(part)
   const life = buildTurnLifecycle({
     message,
     part,
@@ -1725,7 +1742,8 @@ function makeThinkEntry(
   return {
     id: `${message.id}:${part.id}:think`,
     index: 0,
-    elapsed: "",
+    elapsed: elapsed.str,
+    elapsedMs: elapsed.ms,
     timestamp: formatTimestamp(message.time?.created),
     kind: "think",
     // Empty label — glyph `?` is enough; avoids redundant thinking labels.
@@ -2029,6 +2047,19 @@ function groupToolSummary(entries: SpineEntry[]): string {
     return `${n} commands`
   }
   if (kind === "inspect") {
+    // Semantic group label: aggregate the distinct targets (files/dirs) so a
+    // read burst reads "inspect PDP, PEP, types" instead of "3× read".
+    const paths: string[] = []
+    for (const entry of entries) {
+      const path = (entry.summary ?? "").split(/\s·\s/)[0]?.trim()
+      if (!path || path.length < 3 || !/[\\/.]/.test(path)) continue
+      if (!paths.includes(path)) paths.push(path)
+    }
+    if (paths.length) {
+      const shown = paths.slice(0, 3)
+      const suffix = paths.length > 3 ? ` +${paths.length - 3} more` : ""
+      return `${n}× inspect · ${shown.join(", ")}${suffix}`
+    }
     const label = (entries[0]?.label || "tool").trim() || "tool"
     return `${n}× ${label}`
   }
@@ -2106,7 +2137,7 @@ function groupConsecutiveTools(entries: SpineEntry[]): SpineEntry[] {
       }
       result.push({
         ...first,
-        elapsed: totalMs > 0 ? formatElapsed(totalMs) : first.elapsed,
+        elapsed: totalMs > 0 ? formatElapsedMs(totalMs) : first.elapsed,
         elapsedMs: totalMs > 0 ? totalMs : first.elapsedMs,
         summary: groupToolSummary(burst),
         // Parent is a folder of actions — don't pin first tool's output body

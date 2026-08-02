@@ -2,7 +2,7 @@ import { cmd } from "./cmd"
 import { UI } from "../ui"
 
 async function fetchAudit(path: string): Promise<any> {
-  const res = await fetch(`https://api.arcana.otnelhq.com${path}`, {
+  const res = await fetch(`https://api-arcana.otnelhq.com${path}`, {
     signal: AbortSignal.timeout(10000),
   })
   return res.json()

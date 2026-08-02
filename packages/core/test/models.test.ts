@@ -48,15 +48,15 @@ const fixture: Record<string, ModelsDev.Provider> = {
   },
 }
 
-const fixture2: Record<string, ModelsDev.Provider> = {
-  beta: {
-    id: "beta",
-    name: "Beta",
-    env: ["BETA_API_KEY"],
+const fetchedFixture: Record<string, ModelsDev.Provider> = {
+  zeta: {
+    id: "zeta",
+    name: "Zeta",
+    env: ["ZETA_API_KEY"],
     models: {
-      "beta-1": {
-        id: "beta-1",
-        name: "Beta One",
+      "zeta-1": {
+        id: "zeta-1",
+        name: "Zeta One",
         release_date: "2026-02-01",
         attachment: false,
         reasoning: true,
@@ -158,7 +158,7 @@ describe("ModelsDev Service", () => {
   it.live("get() recovers from a corrupted cache file by fetching a fresh catalog", () =>
     Effect.gen(function* () {
       yield* writeCacheText("{")
-      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
+      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fetchedFixture) })
       const result = yield* Effect.acquireUseRelease(
         Effect.sync(() => {
           Flag.ARCANA_DISABLE_MODELS_FETCH = false
@@ -214,7 +214,7 @@ describe("ModelsDev Service", () => {
           const svc = yield* ModelsDev.Service
           const a = yield* svc.get()
           // mutate disk between calls — cache should mask the change
-          yield* writeCache(fixture2)
+          yield* writeCache(fetchedFixture)
           const b = yield* svc.get()
           return { a, b }
         }),
@@ -227,7 +227,7 @@ describe("ModelsDev Service", () => {
   it.live("refresh(true) fetches via HttpClient and updates the cache", () =>
     Effect.gen(function* () {
       yield* writeCache(fixture)
-      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
+      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fetchedFixture) })
       const result = yield* provided(
         state,
         Effect.gen(function* () {
@@ -251,7 +251,7 @@ describe("ModelsDev Service", () => {
     Effect.gen(function* () {
       // Fresh: mtime within the 5-minute TTL.
       yield* writeCache(fixture, Date.now() - 1000)
-      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
+      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fetchedFixture) })
       yield* provided(
         state,
         ModelsDev.Service.use((s) => s.refresh(false)),
@@ -265,7 +265,7 @@ describe("ModelsDev Service", () => {
     Effect.gen(function* () {
       // Stale: mtime 10 minutes ago, beyond the 5-minute TTL.
       yield* writeCache(fixture, Date.now() - 10 * 60 * 1000)
-      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fixture2) })
+      const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fetchedFixture) })
       const after = yield* provided(
         state,
         Effect.gen(function* () {

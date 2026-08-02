@@ -1160,6 +1160,10 @@ export const layer = Layer.effect(
           }
         }
         ctx.assistantMessage.error = error
+        // F-A7a: the generic halt path must close the message as terminal
+        // ("error"), not leave it with finish=None — an orphaned
+        // non-terminal message is a false-incomplete trace (D6 → error).
+        ctx.assistantMessage.finish = "error"
         yield* events.publish(Session.Event.Error, {
           sessionID: ctx.assistantMessage.sessionID,
           error: ctx.assistantMessage.error,
@@ -1207,6 +1211,26 @@ export const layer = Layer.effect(
                 provider: input.model.providerID,
                 parse,
                 set: (info) => {
+                  // F-A3: prune the failed attempt's in-flight text/reasoning
+                  // parts. On retry the stream regenerates the whole message
+                  // under fresh PartIDs — leaving the half-written part durable
+                  // would duplicate it. The in-flight set is by construction
+                  // exactly this attempt's unfinished parts (reset at process
+                  // start, created only by text-start/reasoning-start, removed
+                  // at text-end/reasoning-end). Committed blocks and tool parts
+                  // are never touched.
+                  const stale: SessionV1.Part[] = []
+                  if (ctx.currentText) stale.push(ctx.currentText)
+                  for (const part of Object.values(ctx.reasoningMap)) stale.push(part)
+                  const prune = Effect.forEach(stale, (part) =>
+                    session
+                      .removePart({
+                        sessionID: part.sessionID,
+                        messageID: part.messageID,
+                        partID: part.id,
+                      })
+                      .pipe(Effect.ignore),
+                  )
                   // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
                   const event = mirrorAssistant
                     ? events.publish(SessionEvent.Retried, {
@@ -1219,7 +1243,8 @@ export const layer = Layer.effect(
                         timestamp: DateTime.makeUnsafe(Date.now()),
                       })
                     : Effect.void
-                  return flushV2Fragments().pipe(
+                  return prune.pipe(
+                    Effect.andThen(flushV2Fragments()),
                     Effect.andThen(event),
                     Effect.andThen(
                       status.set(ctx.sessionID, {

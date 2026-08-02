@@ -36,6 +36,102 @@ function noteSseEvent(event: GlobalEvent) {
   lastSseEventAt = Date.now()
 }
 
+// ─── Daemon respawn on connection failure ─────────────────────────────
+// The engine daemon self-destructs after idle (5 min, activity.ts) or can
+// crash. The TUI must bring it back on the next request instead of failing
+// with "Unable to connect". The engine host publishes the exact spawn
+// command via ARCANA_DAEMON_CMD (cli/cmd/tui.ts); this wrapper respawns once
+// (debounced) and retries the request.
+
+const DAEMON_RESPAWN_DEBOUNCE_MS = 3_000
+const DAEMON_RESPAWN_ATTEMPTS = 35 // 200ms × 35 = 7s — engine daemon boot can take ~5s
+
+function isDaemonConnectionError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  if (error.name === "AbortError" || error.name === "TimeoutError") return false
+  const message = error.message.toLowerCase()
+  return (
+    message.includes("fetch failed")
+    || message.includes("failed to fetch")
+    || message.includes("unable to connect")
+    || message.includes("econnrefused")
+    || message.includes("network")
+    || message.includes("connect")
+  )
+}
+
+function daemonSpawnCommand(): string[] | undefined {
+  const raw = typeof process !== "undefined" ? process.env.ARCANA_DAEMON_CMD : undefined
+  if (!raw) return undefined
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) && parsed.every((part) => typeof part === "string")
+      ? (parsed as string[])
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function daemonHealthOk(url: string): Promise<boolean> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 1_500)
+  try {
+    const res = await fetch(`${url.replace(/\/$/, "")}/health`, { signal: controller.signal })
+    return res.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+let lastDaemonRespawnAt = 0
+
+async function respawnDaemon(url: string, directory: string | undefined): Promise<boolean> {
+  const bun = (globalThis as { Bun?: { spawn?: (...args: unknown[]) => unknown } }).Bun
+  const cmd = daemonSpawnCommand()
+  if (!bun?.spawn || !cmd?.length) return false
+  const now = Date.now()
+  if (now - lastDaemonRespawnAt < DAEMON_RESPAWN_DEBOUNCE_MS) return false
+  lastDaemonRespawnAt = now
+  const cwd = directory ?? (typeof process !== "undefined" ? process.cwd() : undefined)
+  try {
+    const proc = bun.spawn({
+      cmd,
+      stdio: ["ignore", "ignore", "ignore"],
+      cwd,
+      env: {
+        ...(typeof process !== "undefined" ? (process.env as Record<string, string>) : {}),
+        ARCANA_DAEMON: "1",
+        ...(cwd ? { ARCANA_DAEMON_CWD: cwd } : {}),
+      },
+    }) as { unref?: () => void }
+    proc?.unref?.()
+    for (let attempt = 0; attempt < DAEMON_RESPAWN_ATTEMPTS; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      if (await daemonHealthOk(url)) return true
+    }
+  } catch {
+    // fall through — caller retries the original error
+  }
+  return false
+}
+
+export function wrapDaemonFetch(baseUrl: string, directory: string | undefined, baseFetch: typeof fetch) {
+  const wrapped = async (input: URL | RequestInfo, init?: RequestInit) => {
+    try {
+      return await baseFetch(input, init)
+    } catch (error) {
+      if (!isDaemonConnectionError(error)) throw error
+      const respawned = await respawnDaemon(baseUrl, directory)
+      if (!respawned) throw error
+      return baseFetch(input, init)
+    }
+  }
+  return wrapped as unknown as typeof fetch
+}
+
 export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
   name: "SDK",
   init: (props: {
@@ -46,7 +142,13 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     events?: EventSource
   }) => {
     const abort = new AbortController()
-    let sse: AbortController | undefined
+    // The controller of the CURRENT reconnect attempt (F-A8b). The watchdog
+    // trips this — never the outer abort — so a trip falls through to a
+    // reconnect with a FRESH controller (command-spine-ui liveness contract:
+    // "trip aborts only the current attempt"). A single controller shared
+    // across attempts would stay permanently aborted and every reconnect
+    // would silently no-op (A10).
+    let watchdogTarget: AbortController | undefined
     // Stale startSSE closures must stop: each call bumps the generation, and
     // every loop checks it at the top. Watchdog trips never bump it, so the
     // current loop keeps reconnecting (that is the point).
@@ -56,15 +158,17 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     // Armed on every event; trips after SSE_SILENT_DEATH_MS of silence.
     const sseWatchdog = createSseWatchdog({
       timeoutMs: SSE_SILENT_DEATH_MS,
-      onTrip: () => sse?.abort(),
+      onTrip: () => watchdogTarget?.abort(),
     })
+
+    const effectiveFetch = props.fetch ?? wrapDaemonFetch(props.url, props.directory, fetch)
 
     function createSDK() {
       return createOpencodeClient({
         baseUrl: props.url,
         signal: abort.signal,
         directory: props.directory,
-        fetch: props.fetch,
+        fetch: effectiveFetch,
         headers: props.headers,
       })
     }
@@ -160,23 +264,27 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       // their next top-of-loop check (after one in-flight abort cycle).
       generation += 1
       const gen = generation
-      sse?.abort()
-      const ctrl = new AbortController()
-      sse = ctrl
+      watchdogTarget?.abort()
       sseWatchdog.arm()
       ;(async () => {
         let attempt = 0
         while (true) {
           // Only the outer abort (unmount) or a stale loop stops. Watchdog
-          // trips abort the attempt (ctrl) and MUST fall through to reconnect.
+          // trips abort the attempt (watchdogTarget) and MUST fall through to
+          // reconnect — each attempt gets a FRESH controller so a trip never
+          // poisons future attempts.
           if (abort.signal.aborted || gen !== generation) break
 
+          const ctrl = new AbortController()
+          watchdogTarget = ctrl
           let events: Awaited<ReturnType<typeof sdk.global.event>> | undefined
+          let attempted = false
           try {
             events = await sdk.global.event({
               signal: ctrl.signal,
               sseMaxRetryAttempts: 0,
             })
+            attempted = true
           } catch (error) {
             if (abort.signal.aborted || gen !== generation) break
             // AbortError here means the watchdog tripped (silent death) or a
@@ -208,17 +316,26 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
           if (queue.length > 0) flush()
           attempt += 1
           if (abort.signal.aborted || gen !== generation) break
+          // Attempt over: the next loop iteration owns a fresh controller.
+          watchdogTarget = undefined
 
-          // Exponential backoff
+          // Exponential backoff with additive jitter (playbook line 1221 +
+          // P2-2): 1.0-1.5x keeps the ≤1/sec reconnect gate
+          // (FREEZE-EXECUTION-PLAN.md:140) while de-synchronizing concurrent
+          // subscribers.
           const backoff = Math.min(retryDelay * 2 ** (attempt - 1), maxRetryDelay)
-          await new Promise((resolve) => setTimeout(resolve, backoff))
+          const jittered = backoff + backoff * Math.random() * 0.5
+          await new Promise((resolve) => setTimeout(resolve, jittered))
 
-          // Synthetic reconnect signal. The stream just dropped (daemon
-          // re-registration, transient fetch error, silent death, or partial
-          // event left in the parser buffer at EOF). SSE events carry no id,
-          // so Last-Event-ID replay is impossible — listeners (session route)
-          // re-sync the active session from REST to close the gap.
-          if (!abort.signal.aborted && gen === generation) {
+          // Synthetic reconnect signal — only when a fetch was actually
+          // attempted this cycle (a watchdog trip that aborted the fetch
+          // must not emit a phantom reconnect; the next real attempt emits
+          // it). The stream just dropped (daemon re-registration, transient
+          // fetch error, silent death, or partial event left in the parser
+          // buffer at EOF). SSE events carry no id, so Last-Event-ID replay
+          // is impossible — listeners (session route) re-sync the active
+          // session from REST to close the gap.
+          if (attempted && !abort.signal.aborted && gen === generation) {
             emitter.emit({
               directory: props.directory ?? "",
               payload: {
@@ -232,7 +349,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
         sseWatchdog.stop()
       })().catch((error) => {
         // Never surface AbortError as unhandled — process unhandledRejection kills the TUI.
-        if (isAbortError(error) || abort.signal.aborted || ctrl.signal.aborted) return
+        if (isAbortError(error) || abort.signal.aborted || watchdogTarget?.signal.aborted === true) return
         console.error("[arcana] SSE event loop failed:", error)
       })
     }
@@ -261,7 +378,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
         /* ignore */
       }
       try {
-        sse?.abort()
+        watchdogTarget?.abort()
       } catch {
         /* ignore */
       }
@@ -276,7 +393,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       },
       directory: props.directory,
       event: emitter,
-      fetch: props.fetch ?? fetch,
+      fetch: effectiveFetch,
       url: props.url,
     }
   },

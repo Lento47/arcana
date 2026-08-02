@@ -4,7 +4,9 @@
 
 import { describe, expect, it } from "bun:test"
 import { Effect } from "effect"
+import { Database } from "@arcana/core/database/database"
 import { InMemoryGrantStore } from "@arcana/core/capability/grant-store"
+import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
 import type { CapabilityGrant, ExecutionReceipt } from "@arcana/core/capability/types"
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -87,6 +89,82 @@ describe("Atomic use counters", () => {
     const store = new InMemoryGrantStore()
     const result = await Effect.runPromise(store.tryConsumeUse("nonexistent", new Date().toISOString()))
     expect(result).toBe(false)
+  })
+})
+
+describe("SQLite atomic use counters", () => {
+  const runWithDb = <A, E>(effect: Effect.Effect<A, E, Database.Service>) =>
+    Effect.runPromise(effect.pipe(Effect.provide(Database.layerFromPath(":memory:"))))
+
+  it("tryConsumeUse decrements remaining uses exactly like the in-memory store", async () => {
+    await runWithDb(
+      Effect.gen(function* () {
+        const database = yield* Database.Service
+        const store = new SqliteGrantStore(database)
+        const grant = makeGrant({
+          id: "sqlite-use-counter-1",
+          constraints: { sessionId: "s1", maxUses: 3 },
+        })
+        yield* store.putGrant(grant)
+        const now = new Date().toISOString()
+
+        expect(yield* store.tryConsumeUse(grant.id, now)).toBe(true)
+        expect(yield* store.tryConsumeUse(grant.id, now)).toBe(true)
+        expect(yield* store.tryConsumeUse(grant.id, now)).toBe(true)
+        // Fourth use fails — exhausted.
+        expect(yield* store.tryConsumeUse(grant.id, now)).toBe(false)
+      }),
+    )
+  })
+
+  it("tryConsumeUse fails on revoked, expired, and non-existent grants", async () => {
+    await runWithDb(
+      Effect.gen(function* () {
+        const database = yield* Database.Service
+        const store = new SqliteGrantStore(database)
+        const revoked = makeGrant({ id: "sqlite-revoked", status: "REVOKED" })
+        yield* store.putGrant(revoked)
+        const expired = makeGrant({
+          id: "sqlite-expired",
+          constraints: {
+            sessionId: "s1",
+            maxUses: 5,
+            expiresAt: new Date(Date.now() - 10_000).toISOString(),
+          },
+        })
+        yield* store.putGrant(expired)
+        const now = new Date().toISOString()
+
+        expect(yield* store.tryConsumeUse("sqlite-revoked", now)).toBe(false)
+        expect(yield* store.tryConsumeUse("sqlite-expired", now)).toBe(false)
+        expect(yield* store.tryConsumeUse("sqlite-missing", now)).toBe(false)
+      }),
+    )
+  })
+
+  it("getActiveGrantsForSession returns only ACTIVE grants for the session", async () => {
+    await runWithDb(
+      Effect.gen(function* () {
+        const database = yield* Database.Service
+        const store = new SqliteGrantStore(database)
+        yield* store.putGrant(
+          makeGrant({ id: "grant-session-a", constraints: { sessionId: "session-a", maxUses: 2 } }),
+        )
+        yield* store.putGrant(
+          makeGrant({
+            id: "grant-session-a-revoked",
+            constraints: { sessionId: "session-a" },
+            status: "REVOKED",
+          }),
+        )
+        yield* store.putGrant(
+          makeGrant({ id: "grant-session-b", constraints: { sessionId: "session-b" } }),
+        )
+
+        const grants = yield* store.getActiveGrantsForSession("session-a")
+        expect(grants.map((grant) => grant.id)).toEqual(["grant-session-a"])
+      }),
+    )
   })
 })
 

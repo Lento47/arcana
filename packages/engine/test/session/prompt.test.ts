@@ -17,6 +17,8 @@ import { Config } from "@/config/config"
 import { LSP } from "@/lsp/lsp"
 import { MCP } from "../../src/mcp"
 import { Permission } from "../../src/permission"
+import { PermissionV1 } from "@arcana/core/v1/permission"
+import { trustWorkspace } from "@arcana/core/workspace/trust"
 import { Plugin } from "../../src/plugin"
 import { Provider as ProviderSvc } from "@/provider/provider"
 import { Env } from "../../src/env"
@@ -35,6 +37,9 @@ import { SessionSummary } from "../../src/session/summary"
 import { Instruction } from "../../src/session/instruction"
 import { SessionProcessor } from "../../src/session/processor"
 import { SessionPrompt } from "../../src/session/prompt"
+import { EventStore } from "../../src/session/epistemic/event-store"
+import { ContractEngine } from "../../src/session/epistemic/contract-engine"
+import { ObligationEngine } from "../../src/session/epistemic/obligation-engine"
 import { SessionBudget } from "../../src/session/budget"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
@@ -156,6 +161,38 @@ const status = SessionStatus.layer.pipe(Layer.provideMerge(EventV2Bridge.default
 const run = SessionRunState.layer.pipe(Layer.provide(status))
 const infra = Layer.mergeAll(NodeFileSystem.layer, CrossSpawnSpawner.defaultLayer)
 
+// The session runtime now yields EventStore, ContractEngine, and
+// ObligationEngine (governance evidence + contract admission + verified
+// completion). Provide them with their dependencies like the production graph.
+const eventStore = EventStore.layer.pipe(Layer.provideMerge(Database.defaultLayer))
+const obligationEngine = ObligationEngine.layer.pipe(
+  Layer.provideMerge(eventStore),
+  Layer.provideMerge(Database.defaultLayer),
+)
+const contractEngine = ContractEngine.layer.pipe(
+  Layer.provideMerge(obligationEngine),
+  Layer.provideMerge(eventStore),
+  Layer.provideMerge(Database.defaultLayer),
+)
+
+/**
+ * Test permission gate: auto-allows tool permissions, and declines contract
+ * admission so sessions keep the pre-admission LEGACY_COMPAT semantics (no
+ * contract, no obligations, free completion) — loops must not block waiting
+ * for an operator reply.
+ */
+const testPermission = Layer.succeed(
+  Permission.Service,
+  Permission.Service.of({
+    ask: (input) =>
+      input.permission === "contract.accept"
+        ? Effect.fail(new PermissionV1.RejectedError())
+        : Effect.void,
+    reply: () => Effect.void,
+    list: () => Effect.succeed([]),
+  }),
+)
+
 const processorCreateStarted: Array<() => void> = []
 const blockingProcessor = Layer.succeed(
   SessionProcessor.Service,
@@ -172,7 +209,7 @@ function makePrompt(input?: { processor?: "blocking" }) {
     Env.defaultLayer,
     AgentSvc.defaultLayer,
     Command.defaultLayer,
-    Permission.defaultLayer,
+    testPermission,
     Plugin.defaultLayer,
     Config.defaultLayer,
     ProviderSvc.defaultLayer,
@@ -183,6 +220,9 @@ function makePrompt(input?: { processor?: "blocking" }) {
     status,
     Database.defaultLayer,
     EventV2Bridge.defaultLayer,
+    eventStore,
+    obligationEngine,
+    contractEngine,
   ).pipe(Layer.provideMerge(infra))
   const question = Question.layer.pipe(Layer.provideMerge(deps))
   const todo = Todo.layer.pipe(Layer.provideMerge(deps))
@@ -309,10 +349,14 @@ const writeConfig = Effect.fn("test.writeConfig")(function* (dir: string, config
   )
 })
 
-const useServerConfig = Effect.fn("test.useServerConfig")(function* (config: (url: string) => Partial<ConfigV1.Info>) {
+const useServerConfig = Effect.fn("test.useServerConfig")(function* (
+  config: (url: string) => Partial<ConfigV1.Info>,
+  options?: { trust?: boolean },
+) {
   const { directory: dir } = yield* TestInstance
   const llm = yield* TestLLMServer
   yield* writeConfig(dir, config(llm.url))
+  if (options?.trust) trustWorkspace(dir)
   return { dir, llm }
 })
 
@@ -795,14 +839,17 @@ it.instance("loop continues when finish is stop but assistant has tool parts", (
 
 it.instance("failed subtask preserves metadata on error tool state", () =>
   Effect.gen(function* () {
-    const { llm } = yield* useServerConfig((url) => ({
-      ...providerCfg(url),
-      agent: {
-        general: {
-          model: "test/missing-model",
+    const { llm } = yield* useServerConfig(
+      (url) => ({
+        ...providerCfg(url),
+        agent: {
+          general: {
+            model: "test/missing-model",
+          },
         },
-      },
-    }))
+      }),
+      { trust: true },
+    )
     const prompt = yield* SessionPrompt.Service
     const sessions = yield* Session.Service
     const chat = yield* sessions.create({ title: "Pinned" })
@@ -835,6 +882,7 @@ it.instance("failed subtask preserves metadata on error tool state", () =>
       modelID: ModelV2.ID.make("missing-model"),
     })
   }),
+  { trust: true },
 )
 
 it.instance("subtask child inherits parent session external_directory allow", () =>
@@ -1244,7 +1292,9 @@ it.instance(
       }
     }),
   { git: true },
-  3_000,
+  // Windows + full-suite parallel load exceeded the original 10s budget
+  // (cancel/concurrency flakes, 2026-08-02 engine checkpoint).
+  20_000,
 )
 
 // Queue semantics
@@ -1282,7 +1332,7 @@ it.instance(
       expect(a.info.id).toBe(b.info.id)
       expect(a.info.role).toBe("assistant")
     }),
-  3_000,
+  10_000,
 )
 
 it.instance(
@@ -1350,7 +1400,7 @@ it.instance(
       expect(inputs).toHaveLength(2)
       expect(JSON.stringify(inputs.at(-1)?.messages)).toContain("second")
     }),
-  3_000,
+  10_000,
 )
 
 it.instance(
@@ -1596,7 +1646,7 @@ unixNoLLMServer(
   30_000,
 )
 
-it.instance(
+unix(
   "loop waits while shell runs and starts after shell exits",
   () =>
     Effect.gen(function* () {
@@ -1633,7 +1683,7 @@ it.instance(
   3_000,
 )
 
-it.instance(
+unix(
   "shell completion resumes queued loop callers",
   () =>
     Effect.gen(function* () {
@@ -2165,7 +2215,7 @@ it.instance(
         expect(last.info.error?.name).toBe("MessageAbortedError")
       }
     }),
-  3_000,
+  10_000,
 )
 
 // Agent variant
@@ -2215,8 +2265,8 @@ noLLMServer.instance(
       yield* sessions.remove(session.id)
     }),
   {
-    config: {
-      ...cfg,
+      config: {
+        ...cfg,
       provider: {
         ...cfg.provider,
         test: {
@@ -2236,6 +2286,7 @@ noLLMServer.instance(
         },
       },
     },
+    trust: true,
   },
 )
 

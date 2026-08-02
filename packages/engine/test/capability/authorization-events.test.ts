@@ -148,7 +148,13 @@ describe("Authorization events: PEP emits events", () => {
             }).pipe(Effect.catch(() => Effect.void)),
         }
 
-        const request = makeRequest()
+        const request = makeRequest({
+          provenance: ["USER_INSTRUCTION", "ACTIVE_CONTRACT"],
+          sensitivity: ["INTERNAL"],
+          contractId: "contract-event-evidence",
+          contractRevision: "4",
+          criterionIds: ["criterion-event-evidence"],
+        })
         const result = yield* authorizeAndExecuteEffect(
           { request, executeExact: () => "should not run" },
           provider,
@@ -165,7 +171,13 @@ describe("Authorization events: PEP emits events", () => {
         // Should have authorization.requested
         const requested = authEvents.find((e) => e.type === "authorization.requested")
         expect(requested).toBeTruthy()
-        expect((requested!.payload as any).requestId).toBe(request.requestId)
+        const requestedPayload = requested!.payload as any
+        expect(requestedPayload.requestId).toBe(request.requestId)
+        expect(requestedPayload.provenance).toEqual(["USER_INSTRUCTION", "ACTIVE_CONTRACT"])
+        expect(requestedPayload.sensitivity).toEqual(["INTERNAL"])
+        expect(requestedPayload.contractId).toBe("contract-event-evidence")
+        expect(requestedPayload.contractRevision).toBe("4")
+        expect(requestedPayload.criterionIds).toEqual(["criterion-event-evidence"])
 
         // Should have authorization.denied
         const denied = authEvents.find((e) => e.type === "authorization.denied")

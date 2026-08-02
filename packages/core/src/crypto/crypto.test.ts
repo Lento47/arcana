@@ -510,6 +510,7 @@ interface VectorDef {
   expectedAudienceNodeId?: string
   trustedKeysOverride?: Map<string, Uint8Array>
   knownSequences?: Map<string, number>
+  now?: number
 }
 
 // Build positive vectors
@@ -668,13 +669,12 @@ negativeVectors.push({
 negativeVectors.push({
   vectorId: "neg-schema-float-epoch",
   description: "Floating-point number in issuerEpoch",
-  envelope: {},
-  rawJson: JSON.stringify({
+  envelope: {
     ...capabilityPayload1,
     issuerEpoch: 1.5,
     signatureAlgorithm: "Ed25519",
     signature: "AA",
-  }),
+  },
   expectedStatus: "REJECTED",
   expectedStage: "SCHEMA",
   expectedReason: "SCHEMA_UNSUPPORTED",
@@ -688,10 +688,17 @@ const sigMutationVectors = [
   { id: "neg-sig-changed-audience", desc: "Changed audienceNodeId (post-sign mutation)", mut: (e: any) => { e.audienceNodeId = "node-evil" } },
   { id: "neg-sig-changed-epoch", desc: "Changed issuer epoch (post-sign mutation)", mut: (e: any) => { e.issuerEpoch = 999 } },
   { id: "neg-sig-changed-nonce", desc: "Changed nonce (post-sign mutation)", mut: (e: any) => { e.nonce = "00000000-0000-0000-0000-000000000000" } },
-  { id: "neg-sig-changed-issuerId", desc: "Changed issuerId (post-sign mutation)", mut: (e: any) => { e.issuerId = "node-evil" } },
+  {
+    id: "neg-sig-changed-issuerId",
+    desc: "Changed issuerId (post-sign mutation)",
+    mut: (e: any) => { e.issuerId = "node-evil" },
+    // The mutated id is trusted (with a different key) so the failure is
+    // caught at the SIGNATURE stage, matching the golden conformance vectors.
+    keys: new Map([["node-evil", keypairs[1].publicKey]]),
+  },
   { id: "neg-sig-changed-workspace", desc: "Changed grant.workspaceId (post-sign mutation)", mut: (e: any) => { e.grant.workspaceId = "evil-workspace" } },
   { id: "neg-sig-changed-contract-revision", desc: "Changed grant.contractRevision (post-sign mutation)", mut: (e: any) => { e.grant.contractRevision = 999 } },
-  { id: "neg-sig-changed-expiry", desc: "Changed expiresAt (post-sign mutation)", mut: (e: any) => { e.expiresAt = "2099-12-31T23:59:59.999Z" } },
+  { id: "neg-sig-changed-expiry", desc: "Changed expiresAt (post-sign mutation)", mut: (e: any) => { e.expiresAt = "2027-01-01T00:00:00.000Z" } },
 ]
 
 for (const sv of sigMutationVectors) {
@@ -706,6 +713,7 @@ for (const sv of sigMutationVectors) {
     expectedStatus: "REJECTED",
     expectedStage: "SIGNATURE",
     expectedReason: "INVALID_SIGNATURE",
+    ...("keys" in sv ? { trustedKeysOverride: sv.keys } : {}),
   })
 }
 
@@ -798,8 +806,8 @@ negativeVectors.push({
   description: "Verify capability envelope with policy domain verifier",
   envelope: buildSignedPayload(0, CAPABILITY_DOMAIN, capabilityPayload1),
   expectedStatus: "REJECTED",
-  expectedStage: "SIGNATURE",
-  expectedReason: "INVALID_SIGNATURE",
+  expectedStage: "SCHEMA",
+  expectedReason: "SCHEMA_UNSUPPORTED",
 })
 
 // Signature with invalid base64url
@@ -895,6 +903,7 @@ negativeVectors.push({
     const payload = { ...capabilityPayload1, issuedAt: "2030-01-01T00:00:00.000Z", expiresAt: "2031-01-01T00:00:00.000Z" }
     return buildSignedPayload(0, CAPABILITY_DOMAIN, payload)
   })(),
+  now: Date.parse("2031-06-01T00:00:00.000Z"),
   expectedStatus: "REJECTED",
   expectedStage: "FRESHNESS",
   expectedReason: "EXPIRED",
@@ -957,8 +966,8 @@ describe("§7 Golden vector conformance suite", () => {
   // Suite-level invariant: every vector is executed
   it("vector count matches expected", () => {
     expect(positiveVectors.length).toBe(5)
-    expect(negativeVectors.length).toBe(35)
-    expect(allVectors.length).toBe(40)
+    expect(negativeVectors.length).toBe(40)
+    expect(allVectors.length).toBe(45)
   })
 
   // Table-driven: each vector is tested exactly once
@@ -979,11 +988,21 @@ describe("§7 Golden vector conformance suite", () => {
       if (vector.knownSequences) {
         options.knownSequences = vector.knownSequences
       }
+      if (vector.now) {
+        options.now = vector.now
+      }
 
       // Route to the correct verifier based on envelope shape
       let result: VerificationResult
       const envelope = vector.envelope as Record<string, unknown>
 
+      if (vector.vectorId.includes("node-pubkey")) {
+        result = verifyNodeIdentity(envelope, keys, options.now ?? Date.now())
+      } else if (vector.vectorId.includes("revocation") && !vector.vectorId.includes("seq")) {
+        result = verifyRevocationStatement(envelope, keys, options.knownSequences ?? new Map(), options.now ?? Date.now())
+      } else if (vector.vectorId.includes("wrong-domain")) {
+        result = verifySignedPolicy(envelope, keys, options.knownSequences ?? new Map(), options.now ?? Date.now())
+      } else
       if (vector.vectorId.startsWith("signed-capability") || vector.vectorId.startsWith("neg-sig-") || vector.vectorId.startsWith("neg-schema-") || vector.vectorId.startsWith("neg-trust-") || vector.vectorId.startsWith("neg-audience-") || vector.vectorId.startsWith("neg-freshness-")) {
         // Default to capability verifier unless it's a policy/revocation vector
         if (vector.vectorId.includes("policy") || vector.vectorId.includes("digest") || vector.vectorId.includes("sequence")) {

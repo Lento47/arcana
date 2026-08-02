@@ -256,31 +256,69 @@ export class SqliteGrantStore implements CapabilityGrantStore {
     return Effect.gen(
       { self: this },
       function* () {
-        // Atomic: only update if grant is ACTIVE, not expired, and has remaining uses
-        const result = yield* this.db.db
-          .run(
-            sql`UPDATE capability_grants
-                SET time_updated = ${Date.now()}
-                WHERE id = ${grantId}
-                  AND status = 'ACTIVE'
-                  AND (expires_at IS NULL OR expires_at > ${now})
-                  AND (
-                    json_extract(constraints, '$.maxUses') IS NULL
-                    OR json_extract(constraints, '$.maxUses') > 0
-                  )`,
+        // Serialized claim: read the current use budget and decrement within a
+        // single IMMEDIATE transaction, so concurrent claims cannot
+        // over-consume. A use-limited grant is exhausted after its last
+        // successful claim (constraints.maxUses reaches 0), mirroring the
+        // in-memory store's semantics.
+        const consumed = yield* this.db.db
+          .transaction(
+            (tx) =>
+              Effect.gen(function* () {
+                const row = yield* tx
+                  .get<{ constraints: string; status: string }>(
+                    sql`SELECT constraints, status
+                        FROM capability_grants
+                        WHERE id = ${grantId}`,
+                  )
+                  .pipe(Effect.mapError((error) => makeStoreError(error)))
+                if (!row || row.status !== "ACTIVE") return false
+                const constraints = JSON.parse(row.constraints) as {
+                  maxUses?: number
+                  expiresAt?: string
+                }
+                if (constraints.expiresAt && constraints.expiresAt <= now) return false
+                if (constraints.maxUses !== undefined && constraints.maxUses <= 0) return false
+                const nextMaxUses =
+                  constraints.maxUses === undefined ? undefined : constraints.maxUses - 1
+                const nextConstraints =
+                  nextMaxUses === undefined
+                    ? row.constraints
+                    : JSON.stringify({ ...constraints, maxUses: nextMaxUses })
+                yield* tx
+                  .run(
+                    sql`UPDATE capability_grants
+                        SET constraints = ${nextConstraints}, time_updated = ${Date.now()}
+                        WHERE id = ${grantId}`,
+                  )
+                  .pipe(Effect.mapError((error) => makeStoreError(error)))
+                return true
+              }),
+            { behavior: "immediate" },
           )
-          .pipe(Effect.mapError((e) => makeStoreError(e)))
-
-        // Check if any row was updated
-        const row = yield* this.db.db
-          .get<{ id: string }>(
-            sql`SELECT id FROM capability_grants WHERE id = ${grantId} AND status = 'ACTIVE'`,
-          )
-          .pipe(Effect.mapError((e) => makeStoreError(e)))
-
-        return row !== undefined
+          .pipe(Effect.mapError((error) => makeStoreError(error)))
+        return consumed
       },
     ).pipe(Effect.catch(() => Effect.succeed(false)))
+  }
+
+  /** All ACTIVE grants scoped to a session (used for lifecycle revocation). */
+  getActiveGrantsForSession(
+    sessionId: string,
+  ): Effect.Effect<readonly import("./types").CapabilityGrant[], CapabilityGrantStoreError> {
+    return Effect.gen(
+      { self: this },
+      function* () {
+        const rows = yield* this.db.db
+          .all<GrantRow>(
+            sql`SELECT * FROM capability_grants
+                WHERE status = 'ACTIVE'
+                  AND json_extract(constraints, '$.sessionId') = ${sessionId}`,
+          )
+          .pipe(Effect.mapError((e) => makeStoreError(e)))
+        return rows.map(rowToGrant)
+      },
+    ).pipe(Effect.catch(() => Effect.succeed<readonly import("./types").CapabilityGrant[]>([])))
   }
 
   private executionReceipts = new Map<string, import("./types").ExecutionReceipt>()

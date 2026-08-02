@@ -53,7 +53,7 @@ function statusWithFetch(
 ): RuntimeStatus {
   const providerID = input.model.providerID
   if (providerID !== "openai" && providerID !== "anthropic" && !providerID.startsWith("arcana"))
-    return { type: "unsupported", reason: "provider is not openai, opencode, or anthropic" }
+    return { type: "unsupported", reason: "provider is not openai, arcana, or anthropic" }
   const npm = input.model.api.npm
   if (npm !== "@ai-sdk/openai" && npm !== "@ai-sdk/openai-compatible" && npm !== "@ai-sdk/anthropic")
     return { type: "unsupported", reason: "provider package is not OpenAI, OpenAI-compatible, or Anthropic" }
@@ -170,7 +170,7 @@ export function nativeTools(tools: Record<string, Tool>, input: Pick<StreamInput
   return Object.fromEntries(
     Object.entries(tools).map(([name, item]) => [
       name,
-      // Tool execution remains opencode-owned. The native runtime only adapts
+      // Tool execution remains Arcana-owned. The native runtime only adapts
       // the @arcana/llm tool call back into the AI SDK Tool.execute shape.
       // Admission is applied in SessionTools.resolve (AI SDK path) and in
       // ToolRuntime.dispatch callers via FiberSet — see withToolAdmission.

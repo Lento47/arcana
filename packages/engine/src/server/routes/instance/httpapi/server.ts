@@ -38,6 +38,10 @@ import { SessionRunState } from "@/session/run-state"
 import { Session } from "@/session/session"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
+import { GovernanceEventBridge } from "@/session/epistemic/governance-event-bridge"
+import { EventStore } from "@/session/epistemic/event-store"
+import { RunProof } from "@/session/epistemic/run-proof"
+import { ObligationEngine } from "@/session/epistemic/obligation-engine"
 import { Todo } from "@/session/todo"
 import { SessionShare } from "@/share/session"
 import { ShareNext } from "@/share/share-next"
@@ -236,6 +240,10 @@ const app = LayerNode.group([
   BackgroundJob.node,
   RuntimeFlags.node,
   EventV2Bridge.node,
+  EventStore.node,
+  ObligationEngine.node,
+  GovernanceEventBridge.node,
+  RunProof.node,
   SessionRunState.node,
   SessionProcessor.node,
   SessionCompaction.node,

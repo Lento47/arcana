@@ -567,7 +567,7 @@ describe("OpenAI Chat route", () => {
     }),
   )
 
-  it.effect("does not finalize streamed tool calls without a finish reason", () =>
+  it.effect("finalizes with reason 'unknown' when the stream ends without a finish reason", () =>
     Effect.gen(function* () {
       const body = sseEvents(
         deltaChunk({
@@ -582,11 +582,17 @@ describe("OpenAI Chat route", () => {
         }),
       ).pipe(Effect.provide(fixedResponse(body)))
 
+      // F-A1: a reason-less stream end is an indeterminate outcome (D6), not a
+      // silent success — the terminal event is emitted with reason "unknown".
+      // The un-terminated tool call is NOT finalized as a `tool-call` (no
+      // completion sentinel), so the caller sees the cut and can recover.
       expect(response.events).toEqual([
         { type: "step-start", index: 0 },
         { type: "tool-input-start", id: "call_1", name: "lookup", providerMetadata: undefined },
         { type: "tool-input-delta", id: "call_1", name: "lookup", text: '{"query"' },
         { type: "tool-input-delta", id: "call_1", name: "lookup", text: ':"weather"}' },
+        { type: "step-finish", index: 0, reason: "unknown", usage: undefined, providerMetadata: undefined },
+        { type: "finish", reason: "unknown", usage: undefined },
       ])
       expect(response.toolCalls).toEqual([])
     }),

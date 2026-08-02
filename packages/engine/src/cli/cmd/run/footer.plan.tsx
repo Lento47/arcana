@@ -21,6 +21,7 @@ import type { ColorInput } from "@opentui/core"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { permissionInfo } from "./permission.shared"
 import { transparent, type RunFooterTheme } from "./theme"
+import * as Locale from "@/util/locale"
 
 type RiskLevel = "safe" | "write" | "mutate" | "danger"
 type ConfLevel = "HIGH" | "MED" | "LOW"
@@ -137,7 +138,9 @@ export function RunPlanBody(props: {
       const staleTag = isStale ? 8 : 0 // "[STALE]" = 8 chars
       const tagLen = 14 + (cf !== "HIGH" ? 11 : 0) + staleTag
       const maxLen = Math.max(10, tw() - tagLen)
-      const truncated = title.length > maxLen ? title.slice(0, maxLen - 1) + "…" : title
+      // T9: maxLen is a column budget from terminal width — truncate by
+      // display width so CJK plan titles don't exceed the computed width.
+      const truncated = Locale.truncate(title, maxLen)
       return { id: r.id, icon, title: truncated, level: rl.level, label: rl.label, conf: cf, stale: isStale }
     })
     const filtered = lowOnly() ? all.filter((l) => l.conf === "LOW") : all

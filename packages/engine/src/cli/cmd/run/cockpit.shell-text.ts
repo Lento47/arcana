@@ -2,11 +2,14 @@
 // Copyright (c) 2026 arcana contributors
 
 import type { ArcanaCockpitShell } from "./cockpit.shell"
+import * as Locale from "@/util/locale"
 
 function fit(text: string, width: number): string {
-  if (text.length <= width) return text
+  // T9: the mission line budget is terminal columns — measure with
+  // Bun.stringWidth so CJK/emoji objectives don't overflow the width.
+  if (Bun.stringWidth(text) <= width) return text
   if (width <= 1) return ""
-  return `${text.slice(0, width - 1)}…`
+  return Locale.truncate(text, width)
 }
 
 export function cockpitMissionLine(shell: ArcanaCockpitShell, width = 100): string {

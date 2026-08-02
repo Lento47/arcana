@@ -93,16 +93,16 @@ describe("session messages endpoint", () => {
 
         const a = yield* request(`/session/${session.id}/message?limit=2`)
         expect(a.status).toBe(200)
-        const aBody = yield* json<SessionV1.WithParts[]>(a)
-        expect(aBody.map((item) => item.info.id)).toEqual(ids.slice(-2))
+        const aBody = yield* json<{ items: SessionV1.WithParts[] }>(a)
+        expect(aBody.items.map((item) => item.info.id)).toEqual(ids.slice(-2))
         const cursor = a.headers["x-next-cursor"]
         expect(cursor).toBeTruthy()
         expect(a.headers["link"]).toContain('rel="next"')
 
         const b = yield* request(`/session/${session.id}/message?limit=2&before=${encodeURIComponent(cursor!)}`)
         expect(b.status).toBe(200)
-        const bBody = yield* json<SessionV1.WithParts[]>(b)
-        expect(bBody.map((item) => item.info.id)).toEqual(ids.slice(-4, -2))
+        const bBody = yield* json<{ items: SessionV1.WithParts[] }>(b)
+        expect(bBody.items.map((item) => item.info.id)).toEqual(ids.slice(-4, -2))
       }),
     ),
     { git: true },
@@ -117,8 +117,8 @@ describe("session messages endpoint", () => {
 
         const res = yield* request(`/session/${session.id}/message`)
         expect(res.status).toBe(200)
-        const body = yield* json<SessionV1.WithParts[]>(res)
-        expect(body.map((item) => item.info.id)).toEqual(ids)
+        const body = yield* json<{ items: SessionV1.WithParts[] }>(res)
+        expect(body.items.map((item) => item.info.id)).toEqual(ids)
       }),
     ),
     { git: true },
@@ -149,8 +149,8 @@ describe("session messages endpoint", () => {
 
         const res = yield* request(`/session/${session.id}/message?limit=510`)
         expect(res.status).toBe(200)
-        const body = yield* json<SessionV1.WithParts[]>(res)
-        expect(body).toHaveLength(510)
+        const body = yield* json<{ items: SessionV1.WithParts[] }>(res)
+        expect(body.items).toHaveLength(510)
       }),
     ),
     { git: true },
@@ -168,9 +168,9 @@ describe("session messages endpoint", () => {
           `/session/${session.id}/message?limit=80&directory=${encodeURIComponent(tmp.directory)}`,
         )
         expect(res.status).toBe(200)
-        const body = yield* json<unknown[]>(res)
-        expect(Array.isArray(body)).toBe(true)
-        expect(body).toHaveLength(1)
+        const body = yield* json<{ items: unknown[] }>(res)
+        expect(Array.isArray(body.items)).toBe(true)
+        expect(body.items).toHaveLength(1)
       }),
     ),
     { git: true },

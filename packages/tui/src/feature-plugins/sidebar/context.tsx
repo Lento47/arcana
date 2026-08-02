@@ -3,14 +3,10 @@ import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { Lexicon, Glyph } from "../../branding"
 import { contextPressure } from "../../util/context-pressure"
+import { Locale } from "../../util/locale"
 import { createMemo, Show } from "solid-js"
 
 const id = "internal:sidebar-context"
-
-const money = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-})
 
 function clampPercent(pct: number): number {
   return Math.max(0, Math.min(100, pct))
@@ -58,7 +54,7 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
         {(label) => <text fg={label() === "compact now" ? theme().error : theme().warning}>{label()}</text>}
       </Show>
       <text fg={theme().textMuted}>
-        {Glyph.diamond} {money.format(cost())} {Lexicon.Token.cost}
+        {Glyph.diamond} {Locale.currency(cost())} {Lexicon.Token.cost}
       </text>
     </box>
   )

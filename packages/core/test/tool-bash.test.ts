@@ -138,7 +138,7 @@ describe("BashTool", () => {
             expect(
               yield* settleTool(registry, call({ command: "pwd", description: "Print working directory" })),
             ).toEqual({
-              result: { type: "text", value: "hello\n\n\nCommand exited with code 0." },
+              result: { type: "text", value: "hello\n\n\nCommand exited successfully with code 0." },
               output: {
                 structured: {
                   command: "pwd",
@@ -147,7 +147,7 @@ describe("BashTool", () => {
                   output: "hello\n",
                   truncated: false,
                 },
-                content: [{ type: "text", text: "hello\n\n\nCommand exited with code 0." }],
+                content: [{ type: "text", text: "hello\n\n\nCommand exited successfully with code 0." }],
               },
             })
             expect(runs).toMatchObject([{ command: "pwd", cwd: realpathSync(tmp.path) }])
@@ -331,7 +331,7 @@ describe("BashTool", () => {
             Effect.sync(() => {
               expect(settled.result).toMatchObject({
                 type: "text",
-                value: expect.stringContaining("Command exited with code 7"),
+                value: expect.stringContaining("Command failed with exit code 7"),
               })
               expect(settled.output?.structured).toMatchObject({
                 command: "false",

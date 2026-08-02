@@ -74,6 +74,11 @@ export interface PolicyContext {
   workspaceTrust: WorkspaceTrust
   intentBindings?: IntentBinding[]
   /**
+   * Explicit store-health signal for REQUIRED intent enforcement. An empty
+   * binding list is a valid policy result; an unavailable store is not.
+   */
+  intentStoreAvailable?: boolean
+  /**
    * Pre-computed approved scopes. The PDP inspects this array but never
    * calls a store. SessionPolicyProvider.snapshot() loads and validates
    * approvals from the ScopedApprovalStore and passes only valid ones here.
@@ -118,6 +123,7 @@ export type DenyReasonCode =
   | "DENY_TOOL_OUTPUT_POLICY_CHANGE"
   | "DENY_UNLABELED_CONSEQUENTIAL"
   | "DENY_NO_INTENT_BINDING"
+  | "DENY_INTENT_STORE_UNAVAILABLE"
   | "DENY_REMOTE_CONTENT_INJECTION"
 
 export type ApprovalReasonCode =
@@ -938,13 +944,23 @@ export function evaluate(
     }
   }
 
-  // Step 5.5: Evaluate intent binding for HIGH/CRITICAL actions
+  // Step 5.5: Evaluate intent binding for every consequential action.
   // Only evaluates when intentBindings is explicitly provided in the context.
   // When undefined, intent binding is not enforced (backward compatible).
   const intentRisk = classifyRisk(request.action, request.sensitivity)
-  if ((intentRisk === "HIGH" || intentRisk === "CRITICAL") && context.intentBindings !== undefined) {
+  if (intentRisk !== "LOW" && context.intentStoreAvailable === false) {
+    reasons.push({
+      code: "DENY_INTENT_STORE_UNAVAILABLE",
+      message: "Required intent binding store is unavailable",
+      severity: "critical",
+    })
+    return buildDecision(request, context, "DENY", reasons, capResult.matchedCapabilityIds, timestamp)
+  }
+
+  let intentRequiresBinding = false
+  if (intentRisk !== "LOW" && context.intentBindings !== undefined) {
     const bindings = context.intentBindings
-    const intentResult = evaluateIntentBindingLocal(request, bindings, intentRisk)
+    const intentResult = evaluateIntentBindingLocal(request, bindings, intentRisk, context.now)
 
     if (intentResult.decision === "DENY") {
       reasons.push(...intentResult.reasons)
@@ -952,7 +968,7 @@ export function evaluate(
     }
     if (intentResult.decision === "REQUIRE_APPROVAL") {
       reasons.push(...intentResult.reasons)
-      // Don't return yet — continue to step 6 approval checks
+      intentRequiresBinding = true
     }
     if (intentResult.decision === "ALLOW" && intentResult.reasons.length > 0) {
       reasons.push(...intentResult.reasons)
@@ -979,6 +995,20 @@ export function evaluate(
       message: `CRITICAL risk action requires approval`,
       severity: "warning",
     })
+  }
+
+  // An ordinary approved scope cannot replace the exact, durable intent
+  // binding. The approval retry inserts that binding before reevaluation.
+  if (intentRequiresBinding) {
+    reasons.push(...approvalReasons)
+    return buildDecision(
+      request,
+      context,
+      "REQUIRE_APPROVAL",
+      reasons,
+      capResult.matchedCapabilityIds,
+      timestamp,
+    )
   }
 
   if (approvalReasons.length > 0) {
@@ -1052,6 +1082,7 @@ function evaluateIntentBindingLocal(
   request: AuthorizationRequest,
   bindings: IntentBinding[],
   risk: RiskClass,
+  now: string,
 ): { decision: "ALLOW" | "DENY" | "REQUIRE_APPROVAL"; reasons: DecisionReason[] } {
   const reasons: DecisionReason[] = []
 
@@ -1059,8 +1090,16 @@ function evaluateIntentBindingLocal(
   const hasRemoteContent = request.provenance.includes("REMOTE_CONTENT")
   if (hasRemoteContent) {
     // Only bindings for THIS specific request can satisfy the check
+    const requestedCriteria = [...(request.criterionIds ?? [])].sort().join("\u0000")
     const requestBindings = bindings.filter(
-      (b) => b.status === "ACTIVE" && b.requestHash === computeRequestHash(request),
+      (b) =>
+        b.status === "ACTIVE" &&
+        b.requestHash === computeRequestHash(request) &&
+        b.sessionId === request.sessionId &&
+        b.contractId === request.contractId &&
+        b.contractRevision === request.contractRevision &&
+        [...b.criterionIds].sort().join("\u0000") === requestedCriteria &&
+        (!b.expiresAt || b.expiresAt > now),
     )
     const hasUserBinding = requestBindings.some((b) =>
       b.justification === "DIRECT_REQUIREMENT" ||
@@ -1077,22 +1116,30 @@ function evaluateIntentBindingLocal(
     }
   }
 
-  // Filter active bindings for this request
+  const requestHash = computeRequestHash(request)
+  const requestedCriteria = [...(request.criterionIds ?? [])].sort()
+
+  // Filter active bindings for this exact request and session.
   const activeBindings = bindings.filter(
-    (b) => b.status === "ACTIVE" && b.requestHash === computeRequestHash(request),
+    (b) =>
+      b.status === "ACTIVE" &&
+      b.requestHash === requestHash &&
+      b.sessionId === request.sessionId &&
+      (!b.expiresAt || b.expiresAt > now),
   )
 
-  // Session isolation: binding must belong to this session
-  const sessionBindings = activeBindings.filter(
-    (b) => b.sessionId === request.sessionId,
-  )
-
-  // Contract lifecycle: binding's contract must not be stale
-  const validBindings = sessionBindings.filter((b) => {
-    // If binding references a contract, check it's still active
-    if (b.contractId && b.status !== "ACTIVE") return false
-    // If binding has an expiry, check it hasn't passed
-    if (b.expiresAt && b.expiresAt <= "") return false
+  // Contract lifecycle and criterion identity are part of the request, not
+  // trusted ambient context. Exact equality prevents cross-revision reuse.
+  const validBindings = activeBindings.filter((b) => {
+    const contractScoped = request.contractId !== undefined || b.contractId !== undefined
+    if (contractScoped) {
+      if (!request.contractId || b.contractId !== request.contractId) return false
+      if (!request.contractRevision || b.contractRevision !== request.contractRevision) return false
+    }
+    if (requestedCriteria.length > 0) {
+      const bindingCriteria = [...b.criterionIds].sort()
+      if (bindingCriteria.join("\u0000") !== requestedCriteria.join("\u0000")) return false
+    }
     return true
   })
 
@@ -1123,8 +1170,14 @@ function evaluateIntentBindingLocal(
   if (risk === "HIGH") {
     const valid = validBindings.find((b) =>
       b.contractId !== undefined &&
+      b.contractRevision !== undefined &&
+      request.contractId === b.contractId &&
+      request.contractRevision === b.contractRevision &&
+      requestedCriteria.length > 0 &&
       b.criterionIds.length > 0 &&
-      (b.justification === "DIRECT_REQUIREMENT" || b.justification === "NECESSARY_SUBSTEP"),
+      (b.justification === "DIRECT_REQUIREMENT" ||
+        b.justification === "NECESSARY_SUBSTEP" ||
+        (b.justification === "EXPLICIT_APPROVAL" && b.createdBy === "USER_APPROVAL")),
     )
     if (valid) {
       reasons.push({
@@ -1134,9 +1187,17 @@ function evaluateIntentBindingLocal(
       })
       return { decision: "ALLOW", reasons }
     }
+    if (request.contractId && request.contractRevision && requestedCriteria.length > 0) {
+      reasons.push({
+        code: "REQUIRE_APPROVAL_INTENT",
+        message: "HIGH action requires exact operator approval for this active contract criterion",
+        severity: "warning",
+      })
+      return { decision: "REQUIRE_APPROVAL", reasons }
+    }
     reasons.push({
       code: "DENY_NO_INTENT_BINDING",
-      message: "HIGH action requires active contract criterion binding",
+      message: "HIGH action requires an active contract revision and criterion binding",
       severity: "critical",
     })
     return { decision: "DENY", reasons }
@@ -1146,7 +1207,12 @@ function evaluateIntentBindingLocal(
   if (risk === "CRITICAL") {
     const valid = validBindings.find((b) =>
       b.justification === "EXPLICIT_APPROVAL" &&
+      b.createdBy === "USER_APPROVAL" &&
       b.contractId !== undefined &&
+      b.contractRevision !== undefined &&
+      request.contractId === b.contractId &&
+      request.contractRevision === b.contractRevision &&
+      requestedCriteria.length > 0 &&
       b.criterionIds.length > 0,
     )
     if (valid) {

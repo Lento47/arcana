@@ -11,6 +11,7 @@
 // of the error string with CORRUPT_GLYPHS for ~600ms before resolving.
 import type { FooterApi, FooterOutput, FooterPatch, FooterSubagentState, StreamCommit } from "./types"
 import { CORRUPT_GLYPHS, Lexicon } from "@arcana/tui/branding"
+import * as Locale from "@/util/locale"
 
 /** Render an error string as a transient corruption-glitch banner. */
 function corruptGlitch(text: string): string {
@@ -62,7 +63,9 @@ function summarize(value: unknown): unknown {
     return {
       type: "string",
       length: value.length,
-      preview: `${value.slice(0, 160)}...`,
+      // T9: display-width truncation — CJK tool output would otherwise
+      // render a 320-column preview inside a 160-column budget.
+      preview: Locale.truncate(value, 160),
     }
   }
 

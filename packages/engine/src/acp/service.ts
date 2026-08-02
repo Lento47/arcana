@@ -215,7 +215,10 @@ export function make(input: {
       () => input.sdk.session.messages({ directory: params.cwd, sessionID: params.sessionId }, { throwOnError: true }),
       "session",
     )
-    const restored = restoreFromMessages(messages.items.map((item) => item.info))
+    const rawMessages = messages ?? []
+    const messageList = normalizeMessages(rawMessages)
+    const messageInfos = messageList.map((item) => item.info)
+    const restored = restoreFromMessages(messageInfos)
     const model = restored.model ?? selectDefaultModel(snapshot)
     const state = yield* session.load({
       id: params.sessionId,
@@ -229,7 +232,7 @@ export function make(input: {
 
     yield* registerMcpServers(input.sdk, registeredMcp, params.cwd, state.id, params.mcpServers)
     yield* sendAvailableCommands(input.connection, state.id, snapshot)
-    yield* replayMessages(events, messages.items)
+    yield* replayMessages(events, messageList)
 
     return {
       configOptions: configOptions(snapshot, {
@@ -300,7 +303,7 @@ export function make(input: {
         ),
       "session",
     )
-    const restored = restoreFromMessages(messages.items.map((item) => item.info))
+    const restored = restoreFromMessages(normalizeMessages(messages).map((item) => item.info))
     const model = restored.model ?? selectDefaultModel(snapshot)
     const state = yield* session.load({
       id: params.sessionId,
@@ -314,7 +317,7 @@ export function make(input: {
 
     yield* registerMcpServers(input.sdk, registeredMcp, params.cwd, state.id, params.mcpServers ?? [])
     yield* sendAvailableCommands(input.connection, state.id, snapshot)
-    yield* replayMessages(events, messages.items)
+    yield* replayMessages(events, normalizeMessages(messages))
 
     return {
       configOptions: configOptions(snapshot, {
@@ -369,7 +372,7 @@ export function make(input: {
         input.sdk.session.messages({ directory: params.cwd, sessionID: forked.id, limit: 20 }, { throwOnError: true }),
       "session",
     )
-    const restored = restoreFromMessages(messages.items.map((item) => item.info))
+    const restored = restoreFromMessages(normalizeMessages(messages).map((item) => item.info))
     const model = restored.model ?? selectDefaultModel(snapshot)
     const state = yield* session.load({
       id: forked.id,
@@ -383,7 +386,7 @@ export function make(input: {
 
     yield* registerMcpServers(input.sdk, registeredMcp, params.cwd, state.id, params.mcpServers ?? [])
     yield* sendAvailableCommands(input.connection, state.id, snapshot)
-    yield* replayMessages(events, messages.items)
+    yield* replayMessages(events, normalizeMessages(messages))
 
     return {
       sessionId: state.id,
@@ -672,6 +675,20 @@ function replayMessages(subscription: ACPEvent.Subscription | undefined, message
       await subscription.replayMessage(message).catch(() => {})
     }
   })
+}
+
+function normalizeMessages(
+  messages: unknown,
+): SessionMessageResponse[] {
+  if (Array.isArray(messages)) return messages as SessionMessageResponse[]
+  if (
+    messages !== null
+    && typeof messages === "object"
+    && Array.isArray((messages as { items?: unknown }).items)
+  ) {
+    return (messages as { items: SessionMessageResponse[] }).items
+  }
+  return []
 }
 
 type ConfigState = {

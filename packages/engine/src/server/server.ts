@@ -208,7 +208,11 @@ function forceClose(state: ListenerState) {
 }
 
 function serverLayer(opts: { port: number; hostname: string }) {
-  const server = createServer()
+  // F-A8a: keep-alive hygiene — without keepAliveTimeout/headersTimeout,
+  // half-open sockets can accumulate and saturate the fetch pool under
+  // connection storms (mechanism C). 5s keep-alive + 10s header timeout
+  // bounds idle socket lifetime without affecting active streams.
+  const server = createServer({ keepAliveTimeout: 5_000, headersTimeout: 10_000 })
   const serverRef = { closeStarted: false, forceStop: false }
   const close = server.close.bind(server)
   // Keep shutdown owned by NodeHttpServer, but honor listener.stop(true) by

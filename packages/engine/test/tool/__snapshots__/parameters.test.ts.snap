@@ -331,9 +331,23 @@ exports[`tool parameters JSON Schema (wire shape) task 1`] = `
       "description": "A short (3-5 words) description of the task",
       "type": "string",
     },
+    "isolation": {
+      "description": "Isolation mode. "worktree" creates a temporary git worktree so the subagent works on an isolated copy of the repo. Auto-cleaned if unchanged.",
+      "enum": [
+        "worktree",
+      ],
+      "type": "string",
+    },
+    "maxDepth": {
+      "description": "Maximum recursion depth for subagent spawning. 0 or undefined allows infinite depth.",
+      "type": "number",
+    },
     "prompt": {
       "description": "The task for the agent to perform",
       "type": "string",
+    },
+    "schema": {
+      "description": "JSON Schema to validate the subagent's final output. If provided, the subagent is instructed to call a StructuredOutput tool with its result. The returned data is validated against this schema. If validation fails, the subagent retries once.",
     },
     "subagent_type": {
       "description": "The type of specialized agent to use for this task",
@@ -342,6 +356,10 @@ exports[`tool parameters JSON Schema (wire shape) task 1`] = `
     "task_id": {
       "description": "This should only be set if you mean to resume a previous task (you can pass a prior task_id and the task will continue the same subagent session as before instead of creating a fresh one)",
       "type": "string",
+    },
+    "timeout": {
+      "description": "Maximum time in milliseconds the subagent is allowed to run. On timeout, the subagent is aborted and an error is returned.",
+      "type": "number",
     },
   },
   "required": [

@@ -105,12 +105,13 @@ describe("tool.lsp", () => {
           const req = items.find((item) => item.permission === "lsp")
 
           expect(req).toBeDefined()
-          expect(req!.metadata).toEqual({
+          expect(req!.metadata).toMatchObject({
             operation: "goToDefinition",
             filePath: file,
             line: 3,
             character: 7,
           })
+          expect(req!.metadata.engine_action).toMatchObject({ id: expect.any(String), kind: "tool", name: "lsp" })
           expect(result.title).toBe("goToDefinition test.ts:3:7")
         }),
       { git: true },
@@ -129,10 +130,11 @@ describe("tool.lsp", () => {
           const req = items.find((item) => item.permission === "lsp")
 
           expect(req).toBeDefined()
-          expect(req!.metadata).toEqual({
+          expect(req!.metadata).toMatchObject({
             operation: "documentSymbol",
             filePath: file,
           })
+          expect(req!.metadata.engine_action).toMatchObject({ id: expect.any(String), kind: "tool", name: "lsp" })
           expect(result.title).toBe("documentSymbol test.ts")
         }),
       { git: true },
@@ -152,9 +154,10 @@ describe("tool.lsp", () => {
           const req = items.find((item) => item.permission === "lsp")
 
           expect(req).toBeDefined()
-          expect(req!.metadata).toEqual({
+          expect(req!.metadata).toMatchObject({
             operation: "workspaceSymbol",
           })
+          expect(req!.metadata.engine_action).toMatchObject({ id: expect.any(String), kind: "tool", name: "lsp" })
           expect(result.title).toBe("workspaceSymbol")
         }),
       { git: true },

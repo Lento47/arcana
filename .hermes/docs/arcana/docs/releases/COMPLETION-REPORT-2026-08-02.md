@@ -1,0 +1,175 @@
+# Arcana Completion Report — Phase A–F Campaign (checkpoint, with bugs)
+
+---
+document_class: completion_report
+authority: secondary (status authority: docs/STATUS.md)
+status: checkpoint — NOT a phase F completion declaration
+created: 2026-08-02
+audited_commit: c07faba6 (worktree checkpoint before the audit commit)
+supersedes: none
+superseded_by: future final completion report after Phase F freeze
+---
+
+## 1. What this document is
+
+This is the **new completion document** required by the Phase A–F campaign. It
+records what is genuinely complete, what remains incomplete, and the known
+bugs and blockers — including bugs that were fixed and bugs that remain open.
+It deliberately does not declare overall completion: playbook §4 requires
+every hard gate to pass and every phase to be human-approved before "100%".
+
+## 2. Executive summary
+
+| Area | Status |
+|---|---|
+| Phase A — Epistemic Foundation | COMPLETE / FROZEN |
+| Phase B — Verification and Replay | COMPLETE / FROZEN |
+| Phase C — Local Governed Autonomy | EVALUATION PASS; approved with exceptions (2026-08-01) |
+| TUI-2 (interactive authority) | FROZEN (`arcana-tui-2-interactive-authority-control`) |
+| TUI-2.1 (production polish) | MOUNTED + automated green; freeze NOT authorized |
+| CLI 1.0 | PARTIAL — contract not frozen |
+| Phase D — Distributed Governed Autonomy | ACTIVE (~45–55%); D-7 frozen, D-8A done |
+| Phase E — Protocol/SDK/Adapters | PLANNED / PARTIAL |
+| Phase F — Enterprise Control Plane | PLANNED / PARTIAL |
+| Arcana 1.0 convergence | NOT REACHED |
+
+The local product core (A + B + C + frozen TUI-2 + working CLI surfaces) is
+the strongest verified portion of the campaign. Everything distributed,
+external, and enterprise remains behind the blockers documented in
+`docs/blockers/`.
+
+## 3. Completed with evidence
+
+### Phase A — Epistemic Foundation
+
+Typed claims/evidence, revisioned contracts/criteria/obligations, transactional
+hash-linked event store, execution receipts, hard completion gate, inspection
+commands, freeze documentation. Gate audit: `docs/blockers/PHASE-A-BLOCKERS.md`.
+
+### Phase B — Verification and Replay
+
+RunProof with independent assurance axes, model-independent verification,
+audit replay, deterministic replay, live revalidation, trace health,
+performance baselines, frozen milestone tag
+(`arcana-epistemic-runtime-phase-b`). Gate audit:
+`docs/blockers/PHASE-B-BLOCKERS.md`.
+
+### Phase C — Local Governed Autonomy
+
+Canonical request hashing, durable capabilities, pure PDP, fresh PEP, intent
+binding, provenance/sensitivity/lineage, scoped approvals, delegation
+attenuation, workspace/MCP trust, security RunProof profiles, 95-fixture
+adversarial evaluation with 0 unexpected allows and 0 executor calls on denied
+paths. Tags: `arcana-governed-autonomy-phase-c`,
+`phase-c-production-enforcement`. Sign-off: APPROVED WITH EXCEPTIONS
+(2026-08-01) — see `docs/audits/ARCANA-SIGNOFF-2026-08-01.md`.
+
+### TUI-2 (interactive authority control)
+
+Frozen tag with approval lifecycle, governed executor, and operator surfaces.
+
+## 4. Verification evidence (2026-08-02, current working tree)
+
+| Gate | Result |
+|---|---|
+| TUI suite | **781 pass / 1 skip / 0 fail** (782 tests) |
+| Engine suite | **4251 pass / 74 skip / 1 todo / 0 fail** (4,326 tests, 990.6 s) |
+| Core suite | **1264 pass / 7 skip / 0 fail** (1,271 tests) |
+| Arcana CLI/proof suite | **116 pass / 0 fail** |
+| SDK JS suite | **7 pass / 0 fail** |
+| Rust conformance | **2 pass / 0 fail** |
+| Typecheck | **16/16 packages** |
+| Build | **8/8 tasks**; engine binary smoke `0.0.0-phase-d-implementation-202608021350` |
+| Denied-path executor calls | 0 (Phase C frozen suite) |
+| Unexpected allows | 0 (95 fixtures) |
+
+No regressions versus the previous checkpoint: TUI 762 → 781 pass, core 1256 →
+1264 pass, engine 4248 → 4251 pass. OpenTUI remains pinned at 0.4.5 with the
+worker-path patch; no dependency was downgraded.
+
+## 5. Known bugs
+
+### Fixed during this campaign (with regression coverage)
+
+| ID | Bug | Fix |
+|---|---|---|
+| F-15 | OpenTUI 0.4.5 compiled-binary worker-path crash (TUI would not open) | `script/patch-opentui.ts` postinstall patch |
+| F-16 | Daemon boot crash: obligation_templates seed UNIQUE violation | idempotent seed |
+| F-17 | Governance/proof rows rendered as chat cards when healthy | spine mapper fix |
+| F-18 | Completion gate idempotency was per-session, not per-contract | per-contract idempotency + test |
+| F-19 | Criteria receipts were never emitted in production | PEP `test_receipt`/`build_receipt` emission |
+| F-20 | RunProof hid operator-rejected executions | rejection evidence recorded |
+| F-21 | Proof/governed rows swapped order on live updates ("duplicate proof") | stable ordering + regression test |
+| F-22 | Daemon idle-stop left the TUI with "Failed to send prompt / Unable to connect" | daemon respawn in `tui.ts` + `sdk.tsx` + `daemon-respawn.test.ts` |
+| F-23 | Approval inspector invisible + spine keys unreachable from the keyboard | `approval-inspector.tsx` + command-spine keys + `approval-inspector.test.ts` |
+
+### Open / residual bugs and risks
+
+| Bug / risk | Status | Owner |
+|---|---|---|
+| Bun 1.3.14 root-runner segmentation fault on Windows | Workaround: package-local runners; isolated, documented, accepted exception | Bun upstream |
+| TUI-2.1 live validation still pending: approval lifecycle via `v`/`a`/`d`, width matrix, theme matrix, restart/session isolation, performance, 6-checkpoint stream protocol | Freeze NOT authorized until passed at the exact commit | Engineering + operator |
+| "Failed to send prompt / Unable to connect" after daemon death | F-22 mitigation implemented; re-verify through the live-stream protocol | Engineering |
+| No L3+ independent reproduction of the Phase C evaluation | Blocker AUD-20 | External |
+| `master` mainline stale vs `phase-d-implementation` | Post-sign-off release action (BLK-1.0-05) | Release |
+| Phase D transport/containment/enrollment/offline/ops/eval gaps | BLK-D-01..09 | Engineering |
+| Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
+| Phase F control-plane gaps | BLK-F-01..13 | Engineering |
+
+## 6. What is NOT complete (honest scope)
+
+- **TUI-2.1 freeze** — automated green only; manual/live gates pending.
+- **CLI 1.0** — no frozen JSON/exit-code contract, no launch adapters.
+- **Phase D** — ~45–55% by playbook weighting; D-6B-T, D-7.1, D-6A-L, D-8B,
+  enrollment/key rotation, offline policy, ops deployment, hostile-node
+  evaluation, Node 1.0 freeze all pending.
+- **Phase E** — no frozen public protocol, no independent conformance, no SDK
+  1.0, no external/framework adapters.
+- **Phase F** — no multi-tenant control plane, identity, fleet operations,
+  federation, compliance archive, HA/DR, or external security assessment.
+- **Arcana 1.0** — requires TUI 1.0 + CLI 1.0 + one production adapter +
+  signed artifacts + mainline promotion.
+
+## 7. Nonclaims (unchanged)
+
+- No hostile-host containment; no universal prompt-injection prevention.
+- No governance of effects outside the Arcana PEP boundary.
+- No distributed-node or fleet production claim.
+- No public proof protocol or independent verification.
+- No enterprise/GA claims until Phase F gates and external assessment pass.
+
+## 8. Traceability and blocker index
+
+- Blockers: `docs/blockers/README.md` (10 register files).
+- Living task status: `docs/roadmap/TASK-REGISTER.md`.
+- Task → evidence → gate trace: `docs/roadmap/PHASE-TRACEABILITY.md`.
+- Live status authority: `docs/STATUS.md`.
+- TUI-2.1 freeze runbook: `docs/tui/TUI-2.1-FREEZE-OPERATOR-RUNBOOK.md`.
+
+## 9. Sign-off
+
+**No phase F / full-campaign completion sign-off is claimed by this document.**
+This is a checkpoint report. The next human sign-off gate is the TUI-2.1
+freeze at the exact final commit, followed by Phase D milestones, then E/F.
+
+| Role | Name | Decision | Date |
+|---|---|---|---|
+| Approver | Operator | ☐ Approve / ☐ Reject (checkpoint only) | |
+
+## 10. Ordered next steps
+
+1. AUD-01..08: finish the TUI-2.1 manual/live/performance gates and freeze.
+2. AUD-09..15: close Phase D blockers (transport → containment → enrollment →
+   offline → ops → adversarial eval → Node 1.0 freeze).
+3. AUD-16..17: freeze protocol specs, independent conformance, SDK 1.0, first
+   external adapter.
+4. AUD-18: build the enterprise control plane (F1–F13) with tenant isolation
+   and federation.
+5. AUD-19: execute the release flow (signed artifacts, installer, mainline
+   promotion).
+6. AUD-20: independent reproduction of the Phase C evaluation.
+7. AUD-21/22: keep STATUS, task register, and blocker evidence current.
+
+*This report is the completion record with bugs: the completed core is real
+and measured; the unfinished phases are explicit, evidence-backed, and
+tracked to closure.*

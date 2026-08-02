@@ -155,6 +155,8 @@ export interface AuthorizationRequest {
   principalId: string
   sessionId: string
   contractId?: string
+  contractRevision?: string
+  criterionIds?: string[]
   workspaceId?: string
 
   tool: string

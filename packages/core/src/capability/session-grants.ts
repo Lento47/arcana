@@ -77,6 +77,7 @@ export function makeSessionAgentGrant(input: {
 export function ensureSessionAgentGrants(
   store: CapabilityGrantStore,
   input: { agentName: string; sessionId: string; workspaceId?: string },
+  onCreated?: (grant: CapabilityGrant) => Effect.Effect<void, never>,
 ): Effect.Effect<readonly CapabilityGrant[], never> {
   return Effect.gen(function* () {
     const principalId = agentPrincipalId(input.agentName)
@@ -87,7 +88,16 @@ export function ensureSessionAgentGrants(
     if (existing.length > 0) return existing
 
     const grant = makeSessionAgentGrant(input)
-    yield* store.putGrant(grant).pipe(Effect.catch(() => Effect.void))
+    const persisted = yield* store.putGrant(grant).pipe(
+      Effect.as(true),
+      Effect.catch(() => Effect.succeed(false)),
+    )
+    if (persisted && onCreated) {
+      // Lifecycle evidence is post-commit. Observer failure cannot fabricate a
+      // failed grant write; its own evidence store is responsible for marking
+      // trace degradation.
+      yield* onCreated(grant).pipe(Effect.catchCause(() => Effect.void))
+    }
 
     // Re-read so callers see store-canonical grants
     return yield* store

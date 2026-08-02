@@ -17,6 +17,12 @@ import type {
   AuthorizationRequest,
 } from "@arcana/core/capability/types"
 
+const intentScope = {
+  contractId: "contract-001",
+  contractRevision: "8",
+  criterionIds: ["crit-001"],
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function makeCapability(overrides: Partial<CapabilityGrant> = {}): CapabilityGrant {
@@ -54,6 +60,7 @@ function makeRequest(overrides: Record<string, unknown> = {}): AuthorizationRequ
     sessionId: "sess-001",
     args: { command: "bun test" },
     executable: "bun",
+    ...intentScope,
     ...overrides,
   })
 }
@@ -63,8 +70,9 @@ function makeIntentBinding(request: AuthorizationRequest, overrides: Partial<Int
     requestHash: computeRequestHash(request),
     sessionId: request.sessionId,
     userRequestEventId: "user-req-001",
-    contractId: "contract-001",
-    criterionIds: ["crit-001"],
+    contractId: request.contractId,
+    contractRevision: request.contractRevision,
+    criterionIds: request.criterionIds,
     justification: "DIRECT_REQUIREMENT",
     createdBy: "RUNTIME",
     ...overrides,
@@ -94,6 +102,7 @@ describe("Intent binding: requirement resolution", () => {
       toolName: "git_push",
       principalId: "agent:main",
       sessionId: "sess-001",
+      ...intentScope,
       args: {},
     })
     expect(resolveBindingRequirement(req)).toBe("EXPLICIT_APPROVAL")
@@ -141,9 +150,10 @@ describe("Intent binding: validation", () => {
       toolName: "git_push",
       principalId: "agent:main",
       sessionId: "sess-001",
+      ...intentScope,
       args: {},
     })
-    const binding = makeIntentBinding(req, { justification: "EXPLICIT_APPROVAL" })
+    const binding = makeIntentBinding(req, { justification: "EXPLICIT_APPROVAL", createdBy: "USER_APPROVAL" })
     const result = validateIntentBinding(req, [binding])
     expect(result.satisfied).toBe(true)
   })
@@ -168,6 +178,24 @@ describe("Intent binding: validation", () => {
     store.revokeBinding(binding.id)
     const revoked = store.getBindingsForRequest(computeRequestHash(req))
     expect(revoked.length).toBe(0)
+  })
+
+  test("different contract revision cannot reuse an exact binding", () => {
+    const req = makeRequest()
+    const binding = makeIntentBinding(req, { contractRevision: "7" })
+    expect(validateIntentBinding(req, [binding]).satisfied).toBe(false)
+  })
+
+  test("different criterion set cannot reuse an exact binding", () => {
+    const req = makeRequest()
+    const binding = makeIntentBinding(req, { criterionIds: ["crit-other"] })
+    expect(validateIntentBinding(req, [binding]).satisfied).toBe(false)
+  })
+
+  test("expired binding cannot authorize", () => {
+    const req = makeRequest()
+    const binding = makeIntentBinding(req, { expiresAt: "2026-07-28T23:59:59Z" })
+    expect(validateIntentBinding(req, [binding], "2026-07-29T00:00:00Z").satisfied).toBe(false)
   })
 })
 
@@ -202,7 +230,7 @@ describe("Intent binding: remote content injection", () => {
 // ── PDP Integration: Intent Binding ───────────────────────────────────
 
 describe("PDP integration: intent binding rules", () => {
-  test("HIGH action without binding → DENY", () => {
+  test("HIGH action with active contract but no binding → REQUIRE_APPROVAL", () => {
     const cap = makeCapability({
       actions: ["process.execute"],
       resources: [{ kind: "process", pattern: "*" }],
@@ -211,8 +239,15 @@ describe("PDP integration: intent binding rules", () => {
     const ctx = makeContext({ capabilities: [cap], intentBindings: [] })
     const d = evaluate(req, ctx)
     // HIGH action (process.execute) without intent binding
+    expect(d.decision).toBe("REQUIRE_APPROVAL")
+    expect(d.reasons.some((r) => r.code === "REQUIRE_APPROVAL_INTENT")).toBe(true)
+  })
+
+  test("HIGH action without active contract context → DENY", () => {
+    const req = makeRequest({ contractId: undefined, contractRevision: undefined, criterionIds: undefined })
+    const d = evaluate(req, makeContext({ intentBindings: [] }))
     expect(d.decision).toBe("DENY")
-    expect(d.reasons.some((r) => r.code === "DENY_NO_INTENT_BINDING")).toBe(true)
+    expect(d.reasons.some((reason) => reason.code === "DENY_NO_INTENT_BINDING")).toBe(true)
   })
 
   test("HIGH action with valid binding → ALLOW", () => {
@@ -237,6 +272,7 @@ describe("PDP integration: intent binding rules", () => {
       toolName: "git_push",
       principalId: "agent:main",
       sessionId: "sess-001",
+      ...intentScope,
       args: {},
     })
     const ctx = makeContext({ capabilities: [cap], intentBindings: [] })
@@ -255,9 +291,10 @@ describe("PDP integration: intent binding rules", () => {
       toolName: "git_push",
       principalId: "agent:main",
       sessionId: "sess-001",
+      ...intentScope,
       args: {},
     })
-    const binding = makeIntentBinding(req, { justification: "EXPLICIT_APPROVAL" })
+    const binding = makeIntentBinding(req, { justification: "EXPLICIT_APPROVAL", createdBy: "USER_APPROVAL" })
     const ctx = makeContext({ capabilities: [cap], intentBindings: [binding] })
     const d = evaluate(req, ctx)
     // Intent binding satisfied, but CRITICAL still requires approval from risk check
@@ -316,6 +353,9 @@ describe("Decisive fixture: malicious README injection", () => {
       sessionId: "sess-001",
       args: { path: "parser.ts", content: "fixed code" },
       provenance: ["USER_INSTRUCTION"],
+      contractId: "contract-fix-parser",
+      contractRevision: "3",
+      criterionIds: ["fix-bug"],
     })
     const userBinding = createIntentBinding({
       requestHash: computeRequestHash(userIntentReq),
@@ -362,6 +402,9 @@ describe("Decisive fixture: malicious README injection", () => {
       toolName: "write_file",
       principalId: "agent:main",
       sessionId: "sess-001",
+      contractId: "contract-fix-parser",
+      contractRevision: "3",
+      criterionIds: ["fix-bug"],
       args: { path: "parser.ts", content: "fixed code" },
       provenance: ["USER_INSTRUCTION"],
     })
@@ -370,6 +413,7 @@ describe("Decisive fixture: malicious README injection", () => {
       sessionId: "sess-001",
       userRequestEventId: "user-req-fix-parser",
       contractId: "contract-fix-parser",
+      contractRevision: "3",
       criterionIds: ["fix-bug"],
       justification: "DIRECT_REQUIREMENT",
       createdBy: "RUNTIME",
@@ -397,12 +441,16 @@ describe("Decisive fixture: malicious README injection", () => {
       args: { command: "bun test" },
       executable: "bun",
       provenance: ["USER_INSTRUCTION"],
+      contractId: "contract-fix-parser",
+      contractRevision: "3",
+      criterionIds: ["run-tests"],
     })
     const binding = createIntentBinding({
       requestHash: computeRequestHash(testReq),
       sessionId: "sess-001",
       userRequestEventId: "user-req-fix-parser",
       contractId: "contract-fix-parser",
+      contractRevision: "3",
       criterionIds: ["run-tests"],
       justification: "NECESSARY_SUBSTEP",
       createdBy: "RUNTIME",

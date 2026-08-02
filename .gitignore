@@ -80,6 +80,13 @@ temp/
 # Local project memory (Claude session notes, not uploaded)
 .memory/
 
+# Vendored docs library working checkout — only content/ is committed
+.hermes/docs/ai-sdk/ai-main/*
+!.hermes/docs/ai-sdk/ai-main/content/
+
+# Local engine runtime state (approvals DB, session locks)
+packages/engine/.arcana/approvals.db*
+
 # Claude local worktrees / session junk
 .claude/worktrees/
 packages/core/src/crypto/.test-crash-recovery/

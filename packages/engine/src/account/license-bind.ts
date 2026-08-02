@@ -13,7 +13,7 @@ import { Effect } from "effect"
  * Workers.dev URL when the primary fails.
  */
 const LICENSE_SERVER_BASES = [
-  "https://api.arcana.otnelhq.com",
+  "https://api-arcana.otnelhq.com",
   "https://arcana-license-server.lejzerv.workers.dev",
 ] as const
 

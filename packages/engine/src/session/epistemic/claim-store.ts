@@ -84,9 +84,14 @@ export const layer = Layer.effect(
     })
 
     const updateStatus = Effect.fn("ClaimStore.updateStatus")(function* (id: string, status: ClaimStatus) {
+      const claimRows = yield* db.select({ session_id: ClaimTable.session_id }).from(ClaimTable)
+        .where(eq(ClaimTable.id, id)).limit(1).pipe(Effect.orDie)
+      const sessionId = claimRows[0]?.session_id
+      if (!sessionId) return yield* Effect.die(new Error(`Claim ${id} has no owning session`))
       yield* db.update(ClaimTable).set({ status, last_verified_at: new Date().toISOString() }).where(eq(ClaimTable.id, id)).pipe(Effect.orDie)
       // Emit epistemic claim.transitioned event
       yield* eventStore.append({
+        sessionId,
         actor: { kind: "policy", id: "claim-store" },
         type: "claim.transitioned",
         payload: { claimId: id, newStatus: status },
@@ -94,6 +99,10 @@ export const layer = Layer.effect(
     })
 
     const addEvidence = Effect.fn("ClaimStore.addEvidence")(function* (claimId: string, evidence: EvidenceRef) {
+      const claimRows = yield* db.select({ session_id: ClaimTable.session_id }).from(ClaimTable)
+        .where(eq(ClaimTable.id, claimId)).limit(1).pipe(Effect.orDie)
+      const sessionId = claimRows[0]?.session_id
+      if (!sessionId) return yield* Effect.die(new Error(`Claim ${claimId} has no owning session`))
       yield* db.insert(ClaimEvidenceTable).values({
         claim_id: claimId,
         event_id: evidence.eventId,
@@ -105,6 +114,7 @@ export const layer = Layer.effect(
       }).pipe(Effect.orDie)
       // Emit epistemic evidence.attached event
       yield* eventStore.append({
+        sessionId,
         actor: { kind: "policy", id: "claim-store" },
         type: "evidence.attached",
         payload: { claimId, evidenceEventId: evidence.eventId, relationship: evidence.relationship },
@@ -175,3 +185,5 @@ function hydrateRow(
     createdByEventId: row.created_by_event_id,
   }
 }
+
+export * as ClaimStore from "./claim-store"

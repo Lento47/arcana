@@ -18,6 +18,7 @@ import type { InstanceContext } from "../../src/project/instance-context"
 import { InstanceRuntime } from "../../src/project/instance-runtime"
 import { InstanceStore } from "../../src/project/instance-store"
 import { TestLLMServer } from "../lib/llm-server"
+import { trustWorkspace } from "@arcana/core/workspace/trust"
 
 const noopBootstrap = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
 export const testInstanceStoreLayer = InstanceStore.defaultLayer.pipe(Layer.provide(noopBootstrap))
@@ -121,6 +122,7 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
 export function tmpdirScoped<E = never, R = never>(options?: {
   git?: boolean
   config?: Partial<ConfigV1.Info> | (() => Partial<ConfigV1.Info>)
+  trust?: boolean
   init?: (directory: string) => Effect.Effect<void, E, R>
 }) {
   return Effect.gen(function* () {
@@ -201,11 +203,15 @@ export const withTmpdirInstance =
   <E2 = never, R2 = never>(options?: {
     git?: boolean
     config?: Partial<ConfigV1.Info> | (() => Partial<ConfigV1.Info>)
+    trust?: boolean
     init?: (directory: string) => Effect.Effect<void, E2, R2>
   }) =>
   <A, E, R>(self: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
       const directory = yield* tmpdirScoped(options)
+      if (options?.trust) {
+        trustWorkspace(directory)
+      }
       // Pin worktree to the test directory. Without this, `git.find` walks up
       // from the tmpdir and may discover an outer repository (e.g. the user's
       // home if it happens to be a git repo). That makes `ctx.worktree` much

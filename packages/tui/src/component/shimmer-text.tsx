@@ -1,12 +1,13 @@
 import { For, createEffect, createSignal, onCleanup } from "solid-js"
-import type { RGBA } from "@opentui/core"
+import type { ColorInput, RGBA } from "@opentui/core"
 
 type Stop = readonly [position: number, color: readonly [number, number, number]]
 
 interface ShimmerTextProps {
   text: string
   active?: boolean
-  background?: string
+  /** Terminal bg color — RGBA from the theme resolves to a valid ColorInput. */
+  background?: ColorInput
   accent?: string
 }
 

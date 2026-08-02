@@ -7,11 +7,23 @@ import { Global } from "@arcana/core/global"
 import { Flag } from "@arcana/core/flag/flag"
 import { InstallationVersion } from "@arcana/core/installation/version"
 import { APP_NAME, APP_ABBR, DOCS_URL, COPY } from "./branding"
+import {
+  asRecord,
+  contextBudgetsFromEvents,
+  normalizeProofView,
+  proofString,
+  type RunProofCheckView,
+  type RunProofConsensusView,
+  type RunProofDiffView,
+  type RunProofEventView,
+  type RunProofMLEvidenceView,
+  type RunProofView,
+} from "./proof-view/run-proof-view"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
 import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
 import * as Selection from "./util/selection"
-import { createCliRenderer, MouseButton, type CliRenderer } from "@opentui/core"
+import { CliRenderEvents, createCliRenderer, MouseButton, type CliRenderer } from "@opentui/core"
 import { RouteProvider, useRoute } from "./context/route"
 import {
   Switch,
@@ -61,8 +73,9 @@ import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
 import { DialogAlert } from "./ui/dialog-alert"
 import { DialogConfirm } from "./ui/dialog-confirm"
-import { ToastProvider, useToast } from "./ui/toast"
+import { ToastProvider, Toast, useToast } from "./ui/toast"
 import { displaySessionTitle } from "./util/session"
+import { truncate, truncateMiddle } from "./util/locale"
 import { KVProvider, useKV } from "./context/kv"
 import * as Model from "./util/model"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
@@ -139,606 +152,11 @@ const appBindingCommands = [
   "app.toggle.session_directory_filter",
 ] as const
 
-type RunProofContractView = {
-  goal?: string
-  scope?: string
-  allowed_files?: string[]
-  allowed_commands?: string[]
-  risk_level?: string
-  required_approvals?: string[]
-  expected_artifacts?: string[]
-  rollback_plan?: string
-  verification_steps?: string[]
-  status?: string
-}
-
-type RunProofEventView = {
-  timestamp?: string
-  type?: string
-  actor?: string
-  summary?: string
-  risk?: string
-  status?: string
-  refs?: Record<string, string>
-  data?: Record<string, unknown>
-}
-
-type RunProofLifecycleView = {
-  status?: string
-  started_at?: string
-  ended_at?: string
-}
-
-type RunProofRiskView = {
-  level?: string
-  reasons?: string[]
-  required_approval?: boolean
-}
-
-type RunProofRollbackView = {
-  checkpoint_id?: string
-  strategy?: string
-  restore_command?: string
-  valid_until?: string
-  restore_status?: string
-  staged_at?: string
-  approval_required?: boolean
-  approved_at?: string
-  approved_by?: string
-  executed_at?: string
-  execution_status?: string
-  execution_exit_code?: number
-}
-
-type RunProofFinalEvidenceView = {
-  completed?: boolean
-  summary?: string
-  proof_score?: number
-  human_review_recommended?: boolean
-}
-
-type RunProofDiffView = {
-  id?: string
-  path?: string
-  status?: string
-  additions?: number
-  deletions?: number
-  summary?: string
-}
-
-type RunProofFileReadView = {
-  id?: string
-  path?: string
-  reason?: string
-  exists?: boolean
-  bytes_read?: number
-}
-
-type RunProofFileWriteView = {
-  id?: string
-  path?: string
-  mode?: string
-  reason?: string
-  bytes_written?: number
-}
-
-type RunProofShellCommandView = {
-  id?: string
-  command?: string
-  cwd?: string
-  status?: string
-  risk?: string
-  exit_code?: number
-  stdout_summary?: string
-  stderr_summary?: string
-}
-
-type RunProofCheckView = {
-  id?: string
-  command?: string
-  source?: string
-  description?: string
-  status?: string
-  summary?: string
-  evidence?: string
-  passed?: number
-  failed?: number
-  skipped?: number
-  duration_ms?: number
-}
-
-type RunProofVerifierReviewView = {
-  model?: string
-  status?: string
-  summary?: string
-  concerns?: string[]
-}
-
-type RunProofVerificationView = {
-  diagnostics: RunProofCheckView[]
-  tests: RunProofCheckView[]
-  manual_checks: RunProofCheckView[]
-  typecheck?: RunProofCheckView
-  lint?: RunProofCheckView
-  build?: RunProofCheckView
-  verifier_review?: RunProofVerifierReviewView
-}
-
-type RunProofSovereigntyView = {
-  provider?: string
-  model?: string
-  route?: string
-  reason?: string
-  data_left_local?: boolean
-  selection_source?: string
-  fallback_provider?: string
-  fallback_model?: string
-  data_boundary?: string
-  estimated_cost_usd?: number
-  latency_ms?: number
-  timestamp?: string
-  summary?: string
-}
-
-type RunProofTokenUsageView = {
-  input_tokens: number
-  output_tokens: number
-  total_tokens: number
-  tool_calls: number
-  turns: number
-}
-
-type RunProofContextBudgetView = {
-  estimated_tokens: number
-  system_tokens: number
-  tool_tokens: number
-  message_count: number
-  threshold: number
-  action: string
-  risk?: string
-  status?: string
-  summary?: string
-  timestamp?: string
-}
-
-type RunProofConsensusView = {
-  council_id?: string
-  prompt?: string
-  models: string[]
-  rounds?: number
-  vote_mode?: string
-  status?: string
-  winner_model?: string
-  vote_tally: Record<string, number>
-  cost_tokens?: {
-    input: number
-    output: number
-  }
-  errored: string[]
-  transcript?: string
-  timestamp?: string
-  summary?: string
-}
-
-type RunProofMLEvidenceView = {
-  kind?: "turn" | "tool"
-  timestamp?: string
-  summary?: string
-  intent?: string
-  tool?: string
-  risk?: string
-  posture?: string
-  confidence?: number
-  labels?: string[]
-  reasons?: string[]
-  route?: string
-  route_reason?: string
-  decision_action?: string
-  decision_posture?: string
-  decision_confidence?: number
-  decision_reasons?: string[]
-}
-
-type RunProofView = {
-  id?: string
-  user_intent?: string
-  timestamp?: string
-  lifecycle?: RunProofLifecycleView
-  contract?: RunProofContractView
-  events?: RunProofEventView[]
-  risk?: RunProofRiskView
-  rollback?: RunProofRollbackView
-  final_evidence?: RunProofFinalEvidenceView
-  diffs?: {
-    proposed: RunProofDiffView[]
-    applied: RunProofDiffView[]
-    rejected: RunProofDiffView[]
-  }
-  execution?: {
-    file_reads: RunProofFileReadView[]
-    file_writes: RunProofFileWriteView[]
-    shell_commands: RunProofShellCommandView[]
-  }
-  verification?: RunProofVerificationView
-  sovereignty?: RunProofSovereigntyView
-  token_usage?: RunProofTokenUsageView
-  consensus?: RunProofConsensusView[]
-  ml_evidence?: RunProofMLEvidenceView[]
-}
-
 type ProofLoadResult =
   | { status: "ready"; proof: RunProofView; path: string }
   | { status: "unbound" }
   | { status: "error"; message: string }
 
-function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
-}
-
-function proofString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined
-}
-
-function proofNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined
-}
-
-function proofBoolean(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined
-}
-
-function normalizeDiffs(value: unknown): RunProofDiffView[] {
-  return Array.isArray(value)
-    ? value.flatMap((item): RunProofDiffView[] => {
-        const diff = asRecord(item)
-        if (!diff) return []
-        return [
-          {
-            id: proofString(diff.id),
-            path: proofString(diff.path),
-            status: proofString(diff.status),
-            additions: proofNumber(diff.additions),
-            deletions: proofNumber(diff.deletions),
-            summary: proofString(diff.summary),
-          },
-        ]
-      })
-    : []
-}
-
-function normalizeFileReads(value: unknown): RunProofFileReadView[] {
-  return Array.isArray(value)
-    ? value.flatMap((item): RunProofFileReadView[] => {
-        const read = asRecord(item)
-        return read
-          ? [
-              {
-                id: proofString(read.id),
-                path: proofString(read.path),
-                reason: proofString(read.reason),
-                exists: proofBoolean(read.exists),
-                bytes_read: proofNumber(read.bytes_read),
-              },
-            ]
-          : []
-      })
-    : []
-}
-
-function normalizeFileWrites(value: unknown): RunProofFileWriteView[] {
-  return Array.isArray(value)
-    ? value.flatMap((item): RunProofFileWriteView[] => {
-        const write = asRecord(item)
-        return write
-          ? [
-              {
-                id: proofString(write.id),
-                path: proofString(write.path),
-                mode: proofString(write.mode),
-                reason: proofString(write.reason),
-                bytes_written: proofNumber(write.bytes_written),
-              },
-            ]
-          : []
-      })
-    : []
-}
-
-function normalizeShellCommands(value: unknown): RunProofShellCommandView[] {
-  return Array.isArray(value)
-    ? value.flatMap((item): RunProofShellCommandView[] => {
-        const cmd = asRecord(item)
-        return cmd
-          ? [
-              {
-                id: proofString(cmd.id),
-                command: proofString(cmd.command),
-                cwd: proofString(cmd.cwd),
-                status: proofString(cmd.status),
-                risk: proofString(cmd.risk),
-                exit_code: proofNumber(cmd.exit_code),
-                stdout_summary: proofString(cmd.stdout_summary),
-                stderr_summary: proofString(cmd.stderr_summary),
-              },
-            ]
-          : []
-      })
-    : []
-}
-
-function normalizeCheck(value: unknown): RunProofCheckView | undefined {
-  const check = asRecord(value)
-  if (!check) return undefined
-  return {
-    id: proofString(check.id),
-    command: proofString(check.command),
-    source: proofString(check.source),
-    description: proofString(check.description),
-    status: proofString(check.status),
-    summary: proofString(check.summary),
-    evidence: proofString(check.evidence),
-    passed: proofNumber(check.passed),
-    failed: proofNumber(check.failed),
-    skipped: proofNumber(check.skipped),
-    duration_ms: proofNumber(check.duration_ms),
-  }
-}
-
-function normalizeChecks(value: unknown): RunProofCheckView[] {
-  return Array.isArray(value) ? value.flatMap((item) => normalizeCheck(item) ?? []) : []
-}
-
-function normalizeProofView(value: unknown): RunProofView {
-  const proof = asRecord(value) ?? {}
-  const contract = asRecord(proof.contract)
-  const lifecycle = asRecord(proof.lifecycle)
-  const risk = asRecord(proof.risk)
-  const rollback = asRecord(proof.rollback)
-  const finalEvidence = asRecord(proof.final_evidence)
-  const diffs = asRecord(proof.diffs)
-  const execution = asRecord(proof.execution)
-  const verification = asRecord(proof.verification)
-  const verifierReview = asRecord(verification?.verifier_review)
-  const events = Array.isArray(proof.events) ? proof.events : []
-  const normalizedEvents = events.flatMap((item): RunProofEventView[] => {
-    const event = asRecord(item)
-    if (!event) return []
-    const refs = asRecord(event.refs)
-    return [
-      {
-        timestamp: proofString(event.timestamp),
-        type: proofString(event.type),
-        actor: proofString(event.actor),
-        summary: proofString(event.summary),
-        risk: proofString(event.risk),
-        status: proofString(event.status),
-        refs: refs
-          ? Object.fromEntries(
-              Object.entries(refs).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-            )
-          : undefined,
-        data: asRecord(event.data),
-      },
-    ]
-  })
-  return {
-    id: proofString(proof.id),
-    user_intent: proofString(proof.user_intent),
-    timestamp: proofString(proof.timestamp),
-    lifecycle: lifecycle
-      ? {
-          status: proofString(lifecycle.status),
-          started_at: proofString(lifecycle.started_at),
-          ended_at: proofString(lifecycle.ended_at),
-        }
-      : undefined,
-    contract: contract
-      ? {
-          goal: proofString(contract.goal),
-          scope: proofString(contract.scope),
-          allowed_files: asStringArray(contract.allowed_files),
-          allowed_commands: asStringArray(contract.allowed_commands),
-          risk_level: proofString(contract.risk_level),
-          required_approvals: asStringArray(contract.required_approvals),
-          expected_artifacts: asStringArray(contract.expected_artifacts),
-          rollback_plan: proofString(contract.rollback_plan),
-          verification_steps: asStringArray(contract.verification_steps),
-          status: proofString(contract.status),
-        }
-      : undefined,
-    risk: risk
-      ? {
-          level: proofString(risk.level),
-          reasons: asStringArray(risk.reasons),
-          required_approval: proofBoolean(risk.required_approval),
-        }
-      : undefined,
-    rollback: rollback
-      ? {
-          checkpoint_id: proofString(rollback.checkpoint_id),
-          strategy: proofString(rollback.strategy),
-          restore_command: proofString(rollback.restore_command),
-          valid_until: proofString(rollback.valid_until),
-          restore_status: proofString(rollback.restore_status),
-          staged_at: proofString(rollback.staged_at),
-          approval_required: proofBoolean(rollback.approval_required),
-          approved_at: proofString(rollback.approved_at),
-          approved_by: proofString(rollback.approved_by),
-          executed_at: proofString(rollback.executed_at),
-          execution_status: proofString(rollback.execution_status),
-          execution_exit_code: proofNumber(rollback.execution_exit_code),
-        }
-      : undefined,
-    final_evidence: finalEvidence
-      ? {
-          completed: proofBoolean(finalEvidence.completed),
-          summary: proofString(finalEvidence.summary),
-          proof_score: proofNumber(finalEvidence.proof_score),
-          human_review_recommended: proofBoolean(finalEvidence.human_review_recommended),
-        }
-      : undefined,
-    diffs: {
-      proposed: normalizeDiffs(diffs?.proposed),
-      applied: normalizeDiffs(diffs?.applied),
-      rejected: normalizeDiffs(diffs?.rejected),
-    },
-    execution: {
-      file_reads: normalizeFileReads(execution?.file_reads),
-      file_writes: normalizeFileWrites(execution?.file_writes),
-      shell_commands: normalizeShellCommands(execution?.shell_commands),
-    },
-    verification: {
-      diagnostics: normalizeChecks(verification?.diagnostics),
-      tests: normalizeChecks(verification?.tests),
-      manual_checks: normalizeChecks(verification?.manual_checks),
-      typecheck: normalizeCheck(verification?.typecheck),
-      lint: normalizeCheck(verification?.lint),
-      build: normalizeCheck(verification?.build),
-      verifier_review: verifierReview
-        ? {
-            model: proofString(verifierReview.model),
-            status: proofString(verifierReview.status),
-            summary: proofString(verifierReview.summary),
-            concerns: asStringArray(verifierReview.concerns),
-          }
-        : undefined,
-    },
-    sovereignty: sovereigntyFromEvents(normalizedEvents),
-    token_usage: tokenUsageFromEvents(normalizedEvents),
-    consensus: consensusFromEvents(normalizedEvents),
-    ml_evidence: mlEvidenceFromEvents(normalizedEvents),
-    events: normalizedEvents,
-  }
-}
-
-function sovereigntyFromEvents(events: RunProofEventView[]): RunProofSovereigntyView | undefined {
-  const event = events.findLast((item) => item.type === "sovereignty.routed")
-  if (!event) return undefined
-  const data = event.data ?? {}
-  return {
-    provider: proofString(data.provider) ?? event.refs?.provider,
-    model: proofString(data.model) ?? event.refs?.model,
-    route: proofString(data.route),
-    reason: proofString(data.reason),
-    data_left_local: proofBoolean(data.data_left_local),
-    selection_source: proofString(data.selection_source),
-    fallback_provider: proofString(data.fallback_provider),
-    fallback_model: proofString(data.fallback_model),
-    data_boundary: proofString(data.data_boundary),
-    estimated_cost_usd: proofNumber(data.estimated_cost_usd),
-    latency_ms: proofNumber(data.latency_ms),
-    timestamp: event.timestamp,
-    summary: event.summary,
-  }
-}
-
-function mlEvidenceFromEvents(events: RunProofEventView[]): RunProofMLEvidenceView[] {
-  return events
-    .filter((event) => event.type === "ml.signal")
-    .map((event) => {
-      const data = event.data ?? {}
-      const signal = asRecord(data.signal) ?? {}
-      const decision = asRecord(data.decision)
-      const route = asRecord(signal.modelRoute)
-      const confidenceRecord = asRecord(signal.confidence)
-      return {
-        kind: proofString(data.kind) === "tool" ? "tool" : "turn",
-        timestamp: event.timestamp,
-        summary: event.summary,
-        intent: proofString(signal.intent),
-        tool: proofString(signal.toolName),
-        risk: proofString(signal.risk),
-        posture: proofString(signal.executionPosture),
-        confidence: proofNumber(confidenceRecord?.value ?? signal.confidence),
-        labels: asStringArray(signal.labels),
-        reasons: asStringArray(signal.reasons),
-        route: proofString(route?.profile),
-        route_reason: proofString(route?.reason),
-        decision_action: proofString(decision?.action),
-        decision_posture: proofString(decision?.posture),
-        decision_confidence: proofNumber(decision?.confidence),
-        decision_reasons: asStringArray(decision?.reasons),
-      }
-    })
-}
-
-function consensusFromEvents(events: RunProofEventView[]): RunProofConsensusView[] {
-  return events
-    .filter((event) => event.type === "consensus.recorded")
-    .map((event) => {
-      const data = event.data ?? {}
-      const cost = asRecord(data.cost_tokens)
-      const tally = asRecord(data.vote_tally)
-      const vote_tally: Record<string, number> = {}
-      for (const [key, value] of Object.entries(tally ?? {})) {
-        const count = proofNumber(value)
-        if (count !== undefined) vote_tally[key] = count
-      }
-      return {
-        council_id: proofString(data.council_id) ?? event.refs?.council_id,
-        prompt: proofString(data.prompt),
-        models: asStringArray(data.models),
-        rounds: proofNumber(data.rounds),
-        vote_mode: proofString(data.vote_mode),
-        status: proofString(data.status) ?? event.status,
-        winner_model: proofString(data.winner_model) ?? event.refs?.winner_model,
-        vote_tally,
-        cost_tokens: cost
-          ? {
-              input: proofNumber(cost.input) ?? 0,
-              output: proofNumber(cost.output) ?? 0,
-            }
-          : undefined,
-        errored: asStringArray(data.errored),
-        transcript: proofString(data.transcript),
-        timestamp: event.timestamp,
-        summary: event.summary,
-      }
-    })
-}
-
-function tokenUsageFromEvents(events: RunProofEventView[]): RunProofTokenUsageView | undefined {
-  const usage = events.filter((item) => item.type === "token.used")
-  if (usage.length === 0) return undefined
-
-  return usage.reduce<RunProofTokenUsageView>(
-    (total, event) => {
-      const data = event.data ?? {}
-      total.input_tokens += proofNumber(data.input_tokens) ?? 0
-      total.output_tokens += proofNumber(data.output_tokens) ?? 0
-      total.total_tokens += proofNumber(data.total_tokens) ?? 0
-      total.tool_calls += proofNumber(data.tool_calls) ?? 0
-      total.turns += 1
-      return total
-    },
-    { input_tokens: 0, output_tokens: 0, total_tokens: 0, tool_calls: 0, turns: 0 },
-  )
-}
-
-function contextBudgetsFromEvents(events: RunProofEventView[]): RunProofContextBudgetView[] {
-  return events.flatMap((event): RunProofContextBudgetView[] => {
-    if (event.type !== "context.budgeted") return []
-    const data = event.data ?? {}
-    return [
-      {
-        estimated_tokens: proofNumber(data.estimated_tokens) ?? 0,
-        system_tokens: proofNumber(data.system_tokens) ?? 0,
-        tool_tokens: proofNumber(data.tool_tokens) ?? 0,
-        message_count: proofNumber(data.message_count) ?? 0,
-        threshold: proofNumber(data.threshold) ?? 0,
-        action: proofString(data.action) ?? "observe",
-        risk: event.risk,
-        status: event.status,
-        summary: event.summary,
-        timestamp: event.timestamp,
-      },
-    ]
-  })
-}
 
 function activeProofPath(): string | undefined {
   const value = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
@@ -1161,7 +579,9 @@ function refsText(refs: Record<string, string> | undefined): string | undefined 
 
 function compactProofId(id: string | undefined): string {
   if (!id) return "unknown"
-  return id.length > 16 ? `${id.slice(0, 10)}...${id.slice(-4)}` : id
+  // T7: display-width-aware middle truncation (grapheme-safe) — same 17-col
+  // budget as the old 10+…+4 shape, but never cuts a surrogate or CJK glyph.
+  return truncateMiddle(id, 17)
 }
 
 function eventTime(value: string | undefined): string {
@@ -1747,16 +1167,42 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
         Effect.sync(() => registerOpencodeKeymap(keymap, renderer, input.config)),
         (unregister) => Effect.sync(unregister),
       )
-      // Optional custom background image (composited into empty cells; see background.ts).
+      // Optional custom background image. Half-block compositing needs truecolor
+      // (audit C1/D6): on ANSI-256 terminals RGBA→palette quantization shifts hues
+      // and the bottom half of "▀" can inherit the default background (ghosted,
+      // mispositioned blocks). Gate on renderer.capabilities.rgb; when truecolor
+      // is available, prefer renderer.setBackgroundColor (OSC 11) — mirroring
+      // context/theme.tsx — so the terminal itself paints the background instead of
+      // a per-frame post-process pass. See background.ts.
+      //
+      // Capabilities are finalized only after the terminal answers the probe
+      // (the renderer re-reads and emits CAPABILITIES in processCapabilitySequence;
+      // the snapshot from setupTerminal can still be a pre-detection default). Apply
+      // immediately when rgb is already definitive, otherwise wait for the event.
       const bg = input.config.background
       if (!process.env.NO_COLOR && bg?.enabled && bg.image) {
         yield* Effect.promise(async () => {
-          const { decodeImage, createBackgroundComposite } = await import("./background")
-          const image = await decodeImage(bg.image!)
-          if (image && !renderer.isDestroyed) {
-            renderer.addPostProcessFn(
-              createBackgroundComposite(image, { opacity: bg.opacity ?? 0.5, fit: bg.fit ?? "cover" }),
-            )
+          const applyBackground = () => {
+            if (renderer.capabilities?.rgb !== true || renderer.isDestroyed) return
+            void import("./background").then(async ({ decodeImage, dominantColor }) => {
+              const image = await decodeImage(bg.image!)
+              if (image && !renderer.isDestroyed) {
+                renderer.setBackgroundColor(dominantColor(image, { opacity: bg.opacity ?? 0.5 }))
+              }
+            })
+          }
+          if (renderer.capabilities?.rgb === true) {
+            applyBackground()
+          } else {
+            // CAPABILITIES fires once per capability reply (DA1/DA2/XTVERSION arrive
+            // progressively), so only tear down once rgb is confirmed true — an early
+            // partial snapshot must not discard the listener.
+            const onCapabilities = () => {
+              if (renderer.capabilities?.rgb !== true || renderer.isDestroyed) return
+              renderer.off(CliRenderEvents.CAPABILITIES, onCapabilities)
+              applyBackground()
+            }
+            renderer.on(CliRenderEvents.CAPABILITIES, onCapabilities)
           }
         })
       }
@@ -2039,7 +1485,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         title: session.title,
         created: session.time?.created,
       })
-      const title = label.length > 40 ? label.slice(0, 37) + "..." : label
+      const title = truncate(label, 40)
       renderer.setTerminalTitle(`${APP_ABBR} | ${title}`)
       return
     }
@@ -2952,6 +2398,10 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       <Show when={Flag.ARCANA_SHOW_TTFD}>
         <TimeToFirstDraw />
       </Show>
+      {/* D7: one app-global toast surface, above every route (home/session/
+          plugin) — per-route <Toast /> instances were deleted from home and
+          session so plugin-route toasts had nowhere to render. */}
+      <Toast />
       <Show when={ready()}>
         <box flexGrow={1} minHeight={0} flexDirection="column">
           <Switch>

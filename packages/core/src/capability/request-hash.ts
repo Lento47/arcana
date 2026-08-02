@@ -58,6 +58,15 @@ export function canonicalizeRequest(req: AuthorizationRequest): Buffer {
   parts.push(str(req.sessionId))
   parts.push(strOpt(req.contractId))
 
+  // Contract-scoped intent extension. Keep the original v1 byte stream for
+  // contractless requests, but bind every supplied revision/criterion into
+  // H(q). A binding for one contract revision must never authorize another.
+  if (req.contractRevision !== undefined || req.criterionIds !== undefined) {
+    parts.push(str("intent-contract-v1"))
+    parts.push(strOpt(req.contractRevision))
+    parts.push(labelArr(req.criterionIds ?? []))
+  }
+
   // Action
   parts.push(str(req.tool))
   parts.push(str(req.action))

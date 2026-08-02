@@ -296,6 +296,26 @@ export default {
       yield* tx.run(`CREATE INDEX \`capability_grants_principal_idx\` ON \`capability_grants\` (\`principal_id\`, \`principal_kind\`);`)
       yield* tx.run(`CREATE INDEX \`capability_grants_status_idx\` ON \`capability_grants\` (\`status\`);`)
 
+      yield* tx.run(`
+        CREATE TABLE \`intent_bindings\` (
+          \`id\` text PRIMARY KEY,
+          \`request_hash\` text NOT NULL,
+          \`session_id\` text NOT NULL,
+          \`user_request_event_id\` text NOT NULL,
+          \`contract_id\` text,
+          \`contract_revision\` text,
+          \`criterion_ids\` text NOT NULL,
+          \`justification\` text NOT NULL,
+          \`created_by\` text NOT NULL,
+          \`status\` text NOT NULL DEFAULT 'ACTIVE',
+          \`created_at\` text NOT NULL,
+          \`expires_at\` text
+        );
+      `)
+      yield* tx.run(`CREATE INDEX \`intent_bindings_session_status_idx\` ON \`intent_bindings\` (\`session_id\`, \`status\`);`)
+      yield* tx.run(`CREATE INDEX \`intent_bindings_request_status_idx\` ON \`intent_bindings\` (\`request_hash\`, \`status\`);`)
+      yield* tx.run(`CREATE INDEX \`intent_bindings_contract_revision_idx\` ON \`intent_bindings\` (\`contract_id\`, \`contract_revision\`, \`status\`);`)
+
       // Epistemic layer (Phase A/B) — EventStore, claims, contracts, obligations
       yield* tx.run(`
         CREATE TABLE \`events\` (

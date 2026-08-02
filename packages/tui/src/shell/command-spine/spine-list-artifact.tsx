@@ -8,8 +8,7 @@ export function SpineListArtifact(props: {
   rows: string[][]
   focused?: boolean
 }) {
-  const { theme: themeObj } = useTheme()
-  const t = themeObj as Record<string, unknown>
+  const { theme } = useTheme()
   const hasMultiRow = props.rows.length > 1
 
   return (
@@ -27,8 +26,8 @@ export function SpineListArtifact(props: {
             <For each={row}>
               {(cell, ci) => (
                 <box flexDirection="row" flexShrink={0} minWidth={0} gap={1}>
-                  <text fg={(t.spineContext ?? t.textMuted) as any}>{props.headers[ci()] ?? ""}</text>
-                  <text fg={t.text as any} wrapMode="word">
+                  <text fg={theme.spineContext}>{props.headers[ci()] ?? ""}</text>
+                  <text fg={theme.text} wrapMode="word">
                     {cell || "—"}
                   </text>
                 </box>

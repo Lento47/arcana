@@ -7,12 +7,10 @@ import { useTheme } from "../../context/theme"
 export function SpineListing(props: {
   entries: string[]
   note?: string
-  focused?: boolean
 }) {
-  const { theme: themeObj } = useTheme()
-  const t = themeObj as Record<string, unknown>
-  const nameColor = () => (props.focused ? t.text : t.text) as any
-  const muted = () => (t.spineDiffMuted ?? t.textMuted) as any
+  const { theme } = useTheme()
+  const nameColor = () => theme.text
+  const muted = () => theme.spineDiffMuted
 
   return (
     <box flexDirection="column" flexShrink={0} minWidth={0} paddingLeft={1}>

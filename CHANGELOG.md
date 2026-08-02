@@ -71,10 +71,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Arcana updates v0.3.5** (`docs/arcana-updates-v0.3.5.md`): Comprehensive updates document covering v0.3.0–v0.3.5, RunProof architecture, TUI performance, git PII redaction, and security hardening.
 - **Git PII redaction architecture** (`docs/architecture/git-pii-redaction.md`): Architecture document for the PII redaction layer covering threat model, pipeline design, guard functions, extension points, and testing.
 - **Providers comparison** (`docs/providers-comparison.md`): LLM provider comparison covering 33+ providers with pricing tiers, speed rankings, quality assessments, feature matrix, cost optimization guide, and recommended use cases.
+<<<<<<< Updated upstream
 - **Model recommendations** (`docs/model-recommendations.md`): Task-specific model recommendations for coding, writing, analysis, creative, and general use with benchmarks, cost estimates, Arcana-specific guidance, benchmark/cost disclaimers, and `@arcana/ml` signal engine section (env: `ARCANA_ML_RUNTIME`).
 - **Team onboarding** (`docs/onboarding.md`): Step-by-step team onboarding checklist covering install, provider config, workspace trust, shared skills, gateway setup, and a reusable onboarding template.
 - **Provider setup guides** (`docs/providers/`): Individual setup guides for the top 5 providers — OpenAI, Anthropic, Google Gemini, xAI Grok, and Amazon Bedrock — with env vars, model lists, pricing, custom base URLs, provider options, and troubleshooting.
 - **Database schema** (`docs/architecture/database-schema.md`): Complete SQLite schema documentation with Drizzle ORM tables, FTS5 indexes, trigger SQL examples, PRAGMA timing, and entity relationship diagrams.
+=======
+- **Team onboarding** (`docs/onboarding.md`): Step-by-step team onboarding checklist covering install, provider config, workspace trust, shared skills, gateway setup, and a reusable onboarding template.
+>>>>>>> Stashed changes
 
 ### Changed
 - **Docs index update** (`docs/README.md`): Updated with links to all new documentation files.

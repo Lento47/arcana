@@ -347,7 +347,7 @@ describe("run session replay", () => {
     expect(out.commits.filter((commit) => commit.summary)).toEqual([
       expect.objectContaining({
         kind: "system",
-        text: "▣ Build · gpt-5 · 2.0s",
+        text: "▣ Build · gpt-5 · 2s",
         messageID: "msg-step-2",
       }),
     ])

@@ -1,5 +1,5 @@
 import { Effect, Context, Layer } from "effect"
-import { desc, eq } from "drizzle-orm"
+import { and, desc, eq, like, or } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { Database } from "@arcana/core/database/database"
 import { LayerNode } from "@arcana/core/effect/layer-node"
@@ -7,6 +7,7 @@ import { EventTable } from "@arcana/core/epistemic/event-sql"
 import { TraceHealthTable } from "@arcana/core/epistemic/trace-health-sql"
 import { computeEventHash } from "@arcana/core/epistemic/event-hash"
 import type { ArcanaEvent } from "@arcana/core/epistemic/event"
+import { GovernanceEvent } from "./governance-event"
 
 /** Per-session trace integrity status. */
 export type TraceStatus = "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
@@ -31,6 +32,9 @@ export interface TraceInfo {
   readonly eventCount: number
 }
 
+export type Listener = (event: ArcanaEvent) => Effect.Effect<void, unknown>
+export type Unsubscribe = Effect.Effect<void>
+
 export interface Interface {
   readonly append: (input: {
     sessionId?: string
@@ -39,6 +43,9 @@ export interface Interface {
     payload: unknown
   }) => Effect.Effect<ArcanaEvent>
   readonly list: (limit?: number) => Effect.Effect<ArcanaEvent[]>
+  readonly listGovernance: (sessionId: string, limit?: number) => Effect.Effect<ArcanaEvent[]>
+  readonly listType: (sessionId: string, type: ArcanaEvent["type"], limit?: number) => Effect.Effect<ArcanaEvent[]>
+  readonly listen: (listener: Listener) => Effect.Effect<Unsubscribe>
   readonly verify: () => Effect.Effect<{ valid: boolean; breaksAt?: number }>
   readonly traceInfo: () => Effect.Effect<TraceInfo>
   readonly sessionTraceHealth: (sessionId: string) => Effect.Effect<SessionTraceHealth>
@@ -50,6 +57,7 @@ export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const { db } = yield* Database.Service
+    const listeners = new Set<Listener>()
 
     // In-memory operational counters (not authoritative for proof)
     let errorCount = 0
@@ -107,8 +115,20 @@ export const layer = Layer.effect(
     })
 
     // Wrap append to track errors and persist degraded trace health
+    const notifyListeners = (event: ArcanaEvent) =>
+      Effect.forEach(
+        listeners,
+        (listener) =>
+          listener(event).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logError("EventStore listener failed", { eventID: event.id, eventType: event.type, cause }),
+            ),
+          ),
+        { discard: true },
+      )
+
     const trackedAppend = Effect.fn("EventStore.append.tracked")(function* (input: Parameters<typeof append>[0]) {
-      return yield* append(input).pipe(
+      const event = yield* append(input).pipe(
         Effect.catch((error) => {
           errorCount++
           lastError = String(error)
@@ -122,6 +142,10 @@ export const layer = Layer.effect(
           return Effect.fail(error as any)
         }),
       )
+      // Observation is strictly post-commit and isolated. A TUI/SSE listener
+      // can never turn a recorded authorization decision into a failed append.
+      yield* notifyListeners(event)
+      return event
     })
 
     /** Persist a recording error for a session's trace health. */
@@ -200,6 +224,58 @@ export const layer = Layer.effect(
       }))
     })
 
+    const listGovernance = Effect.fn("EventStore.listGovernance")(function* (sessionId: string, limit = 500) {
+      const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 1_000))
+      const rows = yield* db.select().from(EventTable)
+        .where(
+          and(
+            eq(EventTable.session_id, sessionId),
+            or(...GovernanceEvent.prefixes.map((prefix) => like(EventTable.type, `${prefix}%`))),
+          ),
+        )
+        .orderBy(desc(EventTable.sequence))
+        .limit(boundedLimit)
+        .pipe(Effect.orDie)
+      return rows.reverse().map((r) => ({
+        id: r.id, sequence: r.sequence, sessionId: r.session_id ?? undefined,
+        timestamp: r.timestamp,
+        previousHash: r.previous_hash, hash: r.hash,
+        actor: { kind: r.actor_kind as ArcanaEvent["actor"]["kind"], id: r.actor_id },
+        type: r.type as ArcanaEvent["type"],
+        payload: JSON.parse(r.payload),
+      }))
+    })
+
+    /** Durable idempotency query: events of one type for a session. */
+    const listType = Effect.fn("EventStore.listType")(function* (
+      sessionId: string,
+      type: ArcanaEvent["type"],
+      limit = 50,
+    ) {
+      const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 1_000))
+      const rows = yield* db.select().from(EventTable)
+        .where(and(eq(EventTable.session_id, sessionId), eq(EventTable.type, type)))
+        .orderBy(desc(EventTable.sequence))
+        .limit(boundedLimit)
+        .pipe(Effect.orDie)
+      return rows.reverse().map((r) => ({
+        id: r.id, sequence: r.sequence, sessionId: r.session_id ?? undefined,
+        timestamp: r.timestamp,
+        previousHash: r.previous_hash, hash: r.hash,
+        actor: { kind: r.actor_kind as ArcanaEvent["actor"]["kind"], id: r.actor_id },
+        type: r.type as ArcanaEvent["type"],
+        payload: JSON.parse(r.payload),
+      }))
+    })
+
+    const listen = (listener: Listener): Effect.Effect<Unsubscribe> =>
+      Effect.sync(() => {
+        listeners.add(listener)
+        return Effect.sync(() => {
+          listeners.delete(listener)
+        })
+      })
+
     const verify = Effect.fn("EventStore.verify")(function* () {
       const rows = yield* db.select().from(EventTable)
         .orderBy(desc(EventTable.sequence))
@@ -263,7 +339,16 @@ export const layer = Layer.effect(
       } satisfies SessionTraceHealth
     })
 
-    return Service.of({ append: trackedAppend as Interface["append"], list, verify, traceInfo, sessionTraceHealth })
+    return Service.of({
+      append: trackedAppend as Interface["append"],
+      list,
+      listGovernance,
+      listType,
+      listen,
+      verify,
+      traceInfo,
+      sessionTraceHealth,
+    })
     // CAST BOUNDARY #5 — Effect.fn + Effect.catch changes error channel
     // Upstream: trackedAppend wraps append with Effect.catch, which changes the error
     // channel type from the original Effect.fn signature. The runtime behavior is
@@ -277,5 +362,6 @@ export const layer = Layer.effect(
 // App-graph node: Server.listen builds via LayerNode, not defaultLayer.
 // Without this, SessionProcessor/SessionPrompt fail with "Service not found: @arcana/EventStore".
 export const node = LayerNode.make(layer, [Database.node])
+export const defaultLayer = layer.pipe(Layer.provide(Database.defaultLayer))
 
 export * as EventStore from "./event-store"

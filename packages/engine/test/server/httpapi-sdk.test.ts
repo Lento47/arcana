@@ -26,6 +26,11 @@ import { testProviderConfig } from "../lib/test-provider"
 import { ProviderV2 } from "@arcana/core/provider"
 import { ModelV2 } from "@arcana/core/model"
 import { Database } from "@arcana/core/database/database"
+import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
+import type { CapabilityGrant } from "@arcana/core/capability/types"
+import { ContractTable } from "@arcana/core/epistemic/contract-sql"
+import { ObligationTable } from "@arcana/core/epistemic/obligation-sql"
+import { eq } from "drizzle-orm"
 import { httpApiLayer } from "./httpapi-layer"
 
 const noopBootstrap = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
@@ -54,6 +59,7 @@ type TestServices =
   | FSUtil.Service
   | ChildProcessSpawner.ChildProcessSpawner
   | InstanceStore.Service
+  | Database.Service
   | HttpServer.HttpServer
 type TestScope = Scope.Scope | TestServices
 
@@ -218,8 +224,12 @@ function httpapiInstance<A, E>(
   )
 }
 
-function serverPathParity<A, E>(name: string, scenario: (serverPath: ServerPath) => Effect.Effect<A, E, TestScope>) {
-  it.live(name, scenario("raw"))
+function serverPathParity<A, E>(
+  name: string,
+  scenario: (serverPath: ServerPath) => Effect.Effect<A, E, TestScope>,
+  timeout?: number,
+) {
+  it.live(name, scenario("raw"), timeout)
 }
 
 function withProject<A, E, E2 = never>(
@@ -575,6 +585,7 @@ describe("HttpApi SDK", () => {
         const todo = yield* capture(() => sdk.session.todo({ sessionID: parentID }))
         const status = yield* capture(() => sdk.session.status())
         const messages = yield* capture(() => sdk.session.messages({ sessionID: parentID }))
+        const governance = yield* capture(() => sdk.session.governance({ sessionID: parentID }))
         const missingGet = yield* capture(() => sdk.session.get({ sessionID: "ses_missing" }))
         const missingMessages = yield* capture(() => sdk.session.messages({ sessionID: "ses_missing", limit: 2 }))
         const invalidCursor = yield* capture(() =>
@@ -595,6 +606,7 @@ describe("HttpApi SDK", () => {
             todo,
             status,
             messages,
+            governance,
             missingGet,
             missingMessages,
             invalidCursor,
@@ -608,6 +620,8 @@ describe("HttpApi SDK", () => {
           childCount: array(children.data).length,
           todoCount: array(todo.data).length,
           messageCount: array(messages.data).length,
+          governanceSessionID: String(record(governance.data).sessionId),
+          governanceTraceStatus: String(record(record(governance.data).trace).status),
         }
       }),
     ),
@@ -800,6 +814,101 @@ describe("HttpApi SDK", () => {
     ),
   )
 
+  serverPathParity(
+    "streams and persists production PEP governance events",
+    (serverPath) => withFakeLlm(serverPath, ({ sdk, llm }) =>
+      Effect.gen(function* () {
+        yield* llm.tool("glob", { pattern: "**/*.txt" })
+        yield* llm.text("governance recorded")
+        const session = yield* capture(() =>
+          sdk.session.create({
+            title: "governance runtime",
+            permission: [{ permission: "*", pattern: "*", action: "allow" }],
+          }),
+        )
+        const sessionID = String(record(session.data).id)
+
+        const controller = new AbortController()
+        yield* Effect.addFinalizer(() => Effect.sync(() => controller.abort()))
+        const stream = yield* call(() => sdk.event.subscribe(undefined, { signal: controller.signal }))
+        yield* Effect.addFinalizer(() =>
+          call(async () => void (await stream.stream.return?.(undefined))).pipe(Effect.ignore),
+        )
+
+        const ready = yield* Deferred.make<void>()
+        const recorded = yield* Deferred.make<unknown>()
+        yield* call(async () => {
+          for await (const event of stream.stream) {
+            const payload = record(event).payload ?? event
+            const envelope = record(payload)
+            if (envelope.type === "server.connected") {
+              Deferred.doneUnsafe(ready, Effect.void)
+              continue
+            }
+            if (envelope.type !== "governance.recorded") continue
+            const properties = record(envelope.properties)
+            if (properties.sessionID !== sessionID) continue
+            Deferred.doneUnsafe(recorded, Effect.succeed(properties))
+            return
+          }
+        }).pipe(Effect.forkScoped)
+
+        yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for /event server.connected", "2 seconds")
+        const prompt = yield* capture(() =>
+          sdk.session.prompt({
+            sessionID,
+            agent: "build",
+            model: { providerID: "test", modelID: "test-model" },
+            parts: [{ type: "text", text: "find text files" }],
+          }),
+        )
+        const live = yield* awaitWithTimeout(
+          Deferred.await(recorded),
+          "timed out waiting for governance.recorded over /event",
+          "5 seconds",
+        )
+        const governance = yield* capture(() => sdk.session.governance({ sessionID }))
+        const governanceSnapshot = record(governance.data)
+        const durableEvents = array(governanceSnapshot.events)
+        const eventTypes = durableEvents.map((event) => String(record(event).type))
+        const proof = record(governanceSnapshot.proof)
+        const authorization = record(proof.authorizationProfile)
+
+        expect(session.status).toBe(200)
+        expect(prompt.status).toBe(200)
+        expect(governance.status).toBe(200)
+        // Production contract admission runs first: the contract is proposed,
+        // accepted (allow-all session permission), and activated before tool
+        // authorization, so intent enforcement is REQUIRED end-to-end.
+        expect(eventTypes).toContain("contract.proposed")
+        expect(eventTypes).toContain("contract.activated")
+        expect(eventTypes).toContain("intent.enforcement_required")
+        expect(eventTypes).toContain("capability.created")
+        expect(eventTypes).toContain("authorization.requested")
+        expect(eventTypes).toContain("authorization.allowed")
+        expect(eventTypes).toContain("authorization.executed")
+        // The production verifier resolves the seeded obligation from the
+        // executed-effect evidence, so completion is verified end-to-end.
+        expect(eventTypes).toContain("obligation.created")
+        expect(eventTypes).toContain("obligation.resolved")
+        expect(eventTypes).toContain("completion.resolved")
+        // Verified completion revokes the session's capability grants.
+        expect(eventTypes).toContain("capability.revoked")
+        expect(proof.integrityStatus).toBe("VALID")
+        expect(record(proof).contractStatus).toBe("resolved")
+        expect(record(proof).completionMethod).toBe("VERIFIED_COMPLETE")
+        expect(record(record(proof).assuranceProfile).verification).toBe("VERIFIED")
+        expect(record(record(proof).obligationsByStatus).satisfied).toBe(1)
+        expect(authorization.authorizationTraceHealth).toBe("COMPLETE")
+        expect(authorization.intentEnforcementMode).toBe("REQUIRED")
+        expect(authorization.intentTraceHealth).toBe("COMPLETE")
+        expect(authorization.unauthorizedExecutions).toBe(0)
+        expect(record(record(live).event).type).toBe("contract.proposed")
+      }),
+    ),
+    30_000,
+  )
+
   httpapi(
     "includes project skills in REST API prompt context",
     withFakeLlmProject("default", { setup: writeProjectSkill }, ({ sdk, llm }) =>
@@ -902,6 +1011,260 @@ describe("HttpApi SDK", () => {
             worktreeSelected: record(after.data).worktree === directory,
           },
         }
+      }),
+    ),
+  )
+
+  serverPathParity("revokes an active session capability with evidence", (serverPath) =>
+    withFakeLlm(serverPath, ({ sdk, llm }) =>
+      Effect.gen(function* () {
+        yield* llm.tool("glob", { pattern: "**/*.txt" })
+        yield* llm.text("revoke me")
+        // Deny contract admission so the run completes without verified
+        // completion — the session's capability grant stays ACTIVE for the
+        // operator revocation path.
+        const session = yield* capture(() =>
+          sdk.session.create({
+            title: "capability revoke",
+            permission: [
+              { permission: "*", pattern: "*", action: "allow" },
+              // Deny wins over the wildcard allow (evaluate uses findLast).
+              { permission: "contract.accept", pattern: "*", action: "deny" },
+            ],
+          }),
+        )
+        const sessionID = String(record(session.data).id)
+        const prompt = yield* capture(() =>
+          sdk.session.prompt({
+            sessionID,
+            agent: "build",
+            model: { providerID: "test", modelID: "test-model" },
+            parts: [{ type: "text", text: "list text files" }],
+          }),
+        )
+        expect(prompt.status).toBe(200)
+
+        const governance = yield* capture(() => sdk.session.governance({ sessionID }))
+        const events = array(record(governance.data).events)
+        const created = events.find((event) => record(event).type === "capability.created")
+        expect(created).toBeDefined()
+        const capabilityId = String(record(record(created).payload).capabilityId)
+
+        // Unknown / foreign capabilities fail closed with 404 (no existence leak).
+        const missing = yield* capture(() =>
+          sdk.session.revokeCapability({
+            sessionID,
+            capabilityID: "cap-does-not-exist",
+            reason: "probe",
+          }),
+        )
+        expect(missing.status).toBe(404)
+
+        const revoked = yield* capture(() =>
+          sdk.session.revokeCapability({
+            sessionID,
+            capabilityID: capabilityId,
+            reason: "operator test revoke",
+          }),
+        )
+        expect(revoked.status).toBe(200)
+        expect(array(record(revoked.data).revokedIds)).toContain(capabilityId)
+
+        const after = yield* capture(() => sdk.session.governance({ sessionID }))
+        const revokedEvents = array(record(after.data).events).filter(
+          (event) => record(event).type === "capability.revoked",
+        )
+        expect(revokedEvents.length).toBeGreaterThan(0)
+        expect(String(record(record(revokedEvents[0]).payload).reason)).toBe("OPERATOR_REVOKE")
+      }),
+    ),
+  )
+
+  serverPathParity("cascades a capability revocation to descendant grants over HTTP", (serverPath) =>
+    withFakeLlm(serverPath, ({ sdk }) =>
+      Effect.gen(function* () {
+        const database = yield* Database.Service
+        const session = yield* capture(() => sdk.session.create({ title: "cascade revoke" }))
+        const sessionID = String(record(session.data).id)
+
+        const store = new SqliteGrantStore(database)
+        const baseGrant: CapabilityGrant = {
+          id: "base",
+          schemaVersion: "1",
+          principal: { kind: "agent", id: "agent:main" },
+          issuer: { kind: "policy", id: "test" },
+          actions: ["filesystem.read"],
+          resources: [{ kind: "file", pattern: "**" }],
+          constraints: { sessionId: sessionID },
+          delegation: { allowed: true, maximumDepth: 2, currentDepth: 0 },
+          status: "ACTIVE",
+          createdEventId: "evt-cascade-parent",
+        }
+        yield* store.putGrant({ ...baseGrant, id: "cap-cascade-parent" })
+        yield* store.putGrant({
+          ...baseGrant,
+          id: "cap-cascade-child",
+          issuer: { kind: "parent_capability", id: "cap-cascade-parent" },
+          delegation: { allowed: false, maximumDepth: 0, currentDepth: 1 },
+          createdEventId: "evt-cascade-child",
+        })
+        yield* store.putGrant({
+          ...baseGrant,
+          id: "cap-cascade-sibling",
+          delegation: { allowed: false, maximumDepth: 0, currentDepth: 0 },
+          createdEventId: "evt-cascade-sibling",
+        })
+
+        const revoked = yield* capture(() =>
+          sdk.session.revokeCapability({
+            sessionID,
+            capabilityID: "cap-cascade-parent",
+            reason: "cascade fixture",
+          }),
+        )
+        expect(revoked.status).toBe(200)
+        expect(array(record(revoked.data).revokedIds).sort()).toEqual([
+          "cap-cascade-child",
+          "cap-cascade-parent",
+        ])
+
+        const after = yield* capture(() => sdk.session.governance({ sessionID }))
+        const revokedEvents = array(record(after.data).events).filter(
+          (event) => record(event).type === "capability.revoked",
+        )
+        const ids = revokedEvents
+          .map((event) => String(record(record(event).payload).capabilityId))
+          .sort()
+        expect(ids).toEqual(["cap-cascade-child", "cap-cascade-parent"])
+
+        const childEvent = revokedEvents.find(
+          (event) => record(record(event).payload).capabilityId === "cap-cascade-child",
+        )
+        expect(childEvent).toBeDefined()
+        expect(String(record(record(childEvent!).payload).reason)).toBe("PARENT_REVOKED")
+
+        const sibling = yield* store.getGrantById("cap-cascade-sibling")
+        expect(sibling?.status).toBe("ACTIVE")
+      }),
+    ),
+  )
+
+  serverPathParity("revokes a capability through the /capability revoke command", (serverPath) =>
+    withFakeLlm(serverPath, ({ sdk }) =>
+      Effect.gen(function* () {
+        const database = yield* Database.Service
+        const session = yield* capture(() => sdk.session.create({ title: "capability command" }))
+        const sessionID = String(record(session.data).id)
+
+        const store = new SqliteGrantStore(database)
+        const grant: CapabilityGrant = {
+          id: "cap-cmd-parent",
+          schemaVersion: "1",
+          principal: { kind: "agent", id: "agent:main" },
+          issuer: { kind: "policy", id: "test" },
+          actions: ["filesystem.read"],
+          resources: [{ kind: "file", pattern: "**" }],
+          constraints: { sessionId: sessionID },
+          delegation: { allowed: true, maximumDepth: 1, currentDepth: 0 },
+          status: "ACTIVE",
+          createdEventId: "evt-cmd-parent",
+        }
+        yield* store.putGrant(grant)
+        yield* store.putGrant({
+          ...grant,
+          id: "cap-cmd-child",
+          issuer: { kind: "parent_capability", id: "cap-cmd-parent" },
+          delegation: { allowed: false, maximumDepth: 0, currentDepth: 1 },
+          createdEventId: "evt-cmd-child",
+        })
+
+        const command = yield* capture(() =>
+          sdk.session.command({
+            sessionID,
+            command: "capability",
+            arguments: "revoke cap-cmd-parent operator fixture",
+            model: "test/test-model",
+          }),
+        )
+        expect(command.status).toBe(200)
+        const parts = array(record(command.data).parts) as Array<{ type?: string; text?: string }>
+        const text = parts.map((part) => (part.type === "text" ? part.text ?? "" : "")).join("\n")
+        expect(text).toContain("cap-cmd-parent")
+        expect(text).toContain("cap-cmd-child")
+
+        const after = yield* capture(() => sdk.session.governance({ sessionID }))
+        const revokedEvents = array(record(after.data).events).filter(
+          (event) => record(event).type === "capability.revoked",
+        )
+        expect(revokedEvents).toHaveLength(2)
+      }),
+    ),
+  )
+
+  serverPathParity("records an operator verification outcome through the endpoint", (serverPath) =>
+    withFakeLlm(serverPath, ({ sdk }) =>
+      Effect.gen(function* () {
+        const database = yield* Database.Service
+        const session = yield* capture(() => sdk.session.create({ title: "verify obligation" }))
+        const sessionID = String(record(session.data).id)
+        yield* database.db.insert(ContractTable).values({
+          id: "contract-verify",
+          session_id: sessionID,
+          objective: "Verify the operator decision path",
+          risk_class: "modify",
+          source_event_id: "user-verify",
+          revision: 1,
+          status: "active",
+          created_at: "2026-08-01T00:00:00.000Z",
+        })
+        yield* database.db.insert(ObligationTable).values({
+          id: "obl-verify",
+          contract_id: "contract-verify",
+          source_kind: "acceptance_criterion",
+          source_criterion_id: "criterion-human",
+          description: "Requires a human decision",
+          required: 1,
+          verification: "human_decision",
+          status: "pending",
+          created_at: "2026-08-01T00:00:00.000Z",
+        })
+
+        const recorded = yield* capture(() =>
+          sdk.session.verifyObligation({
+            sessionID,
+            obligationID: "obl-verify",
+            outcome: "satisfied",
+            reason: "operator reviewed",
+            details: { reviewer: "console" },
+          }),
+        )
+        expect(recorded.status).toBe(200)
+        expect(record(recorded.data).status).toBe("satisfied")
+
+        const after = yield* capture(() => sdk.session.governance({ sessionID }))
+        const recordedEvents = array(record(after.data).events).filter(
+          (event) => record(event).type === "verification.recorded",
+        )
+        expect(recordedEvents).toHaveLength(1)
+        expect(record(record(recordedEvents[0]).payload).reason).toBe("operator reviewed")
+        expect(record(record(recordedEvents[0]).payload).details).toEqual({ reviewer: "console" })
+
+        const rows = yield* database.db
+          .select({ status: ObligationTable.status })
+          .from(ObligationTable)
+          .where(eq(ObligationTable.id, "obl-verify"))
+        expect(rows[0]?.status).toBe("satisfied")
+
+        // Unknown / foreign obligations fail closed with 404.
+        const missing = yield* capture(() =>
+          sdk.session.verifyObligation({
+            sessionID,
+            obligationID: "obl-missing",
+            outcome: "waived",
+            reason: "probe",
+          }),
+        )
+        expect(missing.status).toBe(404)
       }),
     ),
   )

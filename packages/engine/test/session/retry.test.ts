@@ -273,7 +273,7 @@ describe("session.retry.retryable", () => {
         provider: "arcana",
         title: "Free limit reached",
         message:
-          "Subscribe to Arcana Pro for reliable access to the best open-source models, starting at $10/month.",
+          "Free tier limit reached. Subscribe to Arcana Pro for higher rate limits and more models.",
         label: "subscribe",
         link: SessionRetry.GO_UPSELL_URL,
       },
@@ -309,7 +309,7 @@ describe("session.retry.retryable", () => {
       action: {
         reason: "account_rate_limit",
         provider: "opencode-go",
-        title: "Go limit reached",
+        title: "Arcana Pro limit reached",
         message:
           "5 hour usage limit reached. It will reset in 5 hours 23 minutes. To continue using this model now, enable usage from your available balance",
         label: "open settings",

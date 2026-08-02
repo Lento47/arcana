@@ -163,19 +163,26 @@ Server side: each key is a `LicenseID` row in the KV namespace, with
 The following URLs are **intentionally dead** and must not be used
 in code, docs, or telemetry:
 
-- `api.arcana.otnelhq.com` — was a thin wrapper around the proxy;
-  dead since mid-2026, CI broken.
+- `api.arcana.otnelhq.com` — legacy license endpoint; superseded by
+  `api-arcana.otnelhq.com`.
 - `arcana.otnelhq.com/auth/callback` — old OAuth callback. New
-  flow uses `proxy.arcana.workers.dev/auth/callback`.
+  flow uses the console at `arcana.otnelhq.com`.
+- `proxy.arcana.otnelhq.com` — dot-form proxy host; fails TLS, never use.
+- `app.opencode.ai` — legacy web UI upstream; superseded by
+  `arcana.otnelhq.com`.
 
 The following URLs are **live** and the only allowed surface:
 
 - `https://arcana.otnelhq.com` — marketing / docs (Cloudflare Pages).
-- `https://arcana.otnelhq.com/pro` — Arcana Pro landing page.
+- `https://arcana.otnelhq.com/pricing/` — Arcana Pro pricing page.
 - `https://arcana.otnelhq.com/pro/workspace/<workspaceID>` — per-workspace
   Pro settings (from the retry upsell action).
-- `https://proxy.arcana.workers.dev` — production proxy.
-- `https://license.arcana.workers.dev` — production license server.
+- `https://proxy-arcana.otnelhq.com` — AI Gateway API (canonical;
+  health check at `/healthz`).
+- `https://api-arcana.otnelhq.com/api` — license server API (canonical).
+- `https://arcana-proxy.lejzerv.workers.dev` — AI Gateway fallback origin.
+- `https://arcana-license-server.lejzerv.workers.dev` — license server
+  fallback origin.
 
 In sandbox / CI environments where `*.otnelhq.com` is unreachable, use
 the `*.workers.dev` URLs directly. They are functionally identical.

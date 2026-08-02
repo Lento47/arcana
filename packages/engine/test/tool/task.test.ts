@@ -282,13 +282,14 @@ describe("tool.task", () => {
       yield* exec({ bypassAgentCheck: true })
 
       expect(calls).toHaveLength(1)
-      expect(calls[0]).toEqual({
+      expect(calls[0]).toMatchObject({
         permission: "task",
         patterns: ["general"],
         always: ["*"],
         metadata: {
           description: "inspect bug",
           subagent_type: "general",
+          engine_action: { id: expect.any(String), kind: "tool", name: "task" },
         },
       })
     }),

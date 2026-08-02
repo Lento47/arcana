@@ -10,6 +10,7 @@ import { Effect, Context, Layer } from "effect"
 import { eq } from "drizzle-orm"
 import { createHash } from "node:crypto"
 import { Database } from "@arcana/core/database/database"
+import { LayerNode } from "@arcana/core/effect/layer-node"
 import { EventTable } from "@arcana/core/epistemic/event-sql"
 import { TraceHealthTable } from "@arcana/core/epistemic/trace-health-sql"
 import { ClaimTable } from "@arcana/core/epistemic/sql"
@@ -112,6 +113,9 @@ export interface AuthorizationProfile {
   readonly orphanExecutions: number
   readonly unmatchedAllows: number
   readonly unmatchedRequests: number
+  readonly intentEnforcementMode: "REQUIRED" | "LEGACY_COMPAT" | "UNAVAILABLE"
+  readonly intentBindingsCreated: number
+  readonly intentTraceHealth: AuthorizationTraceHealth
 }
 
 /**
@@ -397,6 +401,7 @@ function extractCompletionMethod(events: ReadonlyArray<RunProofEvent>): string |
  */
 function deriveAuthorizationProfile(events: ReadonlyArray<RunProofEvent>): AuthorizationProfile {
   const authEvents = events.filter((e) => e.type.startsWith("authorization."))
+  const intentEvents = events.filter((e) => e.type.startsWith("intent."))
   const policyVersions = new Set<string>()
   let requests = 0
   let allowed = 0
@@ -497,6 +502,20 @@ function deriveAuthorizationProfile(events: ReadonlyArray<RunProofEvent>): Autho
     authorizationTraceHealth = "COMPLETE"
   }
 
+  const hasCompatibility = intentEvents.some((event) => event.type === "intent.compatibility_mode")
+  const hasRequired = intentEvents.some((event) => event.type === "intent.enforcement_required")
+  const intentBindingsCreated = intentEvents.filter((event) => event.type === "intent.binding_created").length
+  const intentEnforcementMode = hasCompatibility
+    ? "LEGACY_COMPAT"
+    : hasRequired
+      ? "REQUIRED"
+      : "UNAVAILABLE"
+  const intentTraceHealth: AuthorizationTraceHealth = hasCompatibility
+    ? "DEGRADED"
+    : hasRequired
+      ? "COMPLETE"
+      : "UNAVAILABLE"
+
   return {
     policyVersions: [...policyVersions],
     requests,
@@ -512,6 +531,9 @@ function deriveAuthorizationProfile(events: ReadonlyArray<RunProofEvent>): Autho
     orphanExecutions,
     unmatchedAllows,
     unmatchedRequests,
+    intentEnforcementMode,
+    intentBindingsCreated,
+    intentTraceHealth,
   }
 }
 
@@ -763,6 +785,14 @@ function deriveAssuranceProfile(ctx: {
   replayCoverage?: { declaredReplaySubset: number; successfullyReproduced: number; reproducibility: string } | null
 }): { profile: AssuranceProfile; proofLevel: ProofLevel; gaps: string[] } {
   const gaps: string[] = []
+  const hasAuthorization = ctx.events.some((event) => event.type.startsWith("authorization."))
+  const hasRequiredIntent = ctx.events.some((event) => event.type === "intent.enforcement_required")
+  const hasCompatibilityIntent = ctx.events.some((event) => event.type === "intent.compatibility_mode")
+  if (hasCompatibilityIntent) {
+    gaps.push("intent enforcement is LEGACY_COMPAT - security assurance is degraded")
+  } else if (hasAuthorization && !hasRequiredIntent) {
+    gaps.push("intent enforcement evidence is unavailable")
+  }
 
   // ── Trace (independent) ──
   const trace: TraceAssurance = ctx.events.length > 0 ? "RECORDED" : "NONE"
@@ -781,6 +811,7 @@ function deriveAssuranceProfile(ctx: {
     const contractOk = ctx.contractStatus === null
       || ctx.contractStatus === "resolved"
       || ctx.contractStatus === "accepted"
+      || ctx.contractStatus === "satisfied"
     // Check required obligations (not all pending — only required ones)
     const hasRequiredObligations = ctx.events.some((e) =>
       e.type === "obligation.created" && (e.payload as Record<string, unknown>)?.required === true
@@ -801,7 +832,7 @@ function deriveAssuranceProfile(ctx: {
     if (contractOk && unresolvedRequired === 0) {
       verification = "VERIFIED"
     } else {
-      if (!contractOk) gaps.push(`contractStatus is ${ctx.contractStatus} — P3 requires resolved/accepted`)
+      if (!contractOk) gaps.push(`contractStatus is ${ctx.contractStatus} — P3 requires resolved/accepted/satisfied`)
       if (unresolvedRequired > 0) gaps.push(`${unresolvedRequired} required obligation(s) unresolved — P3 requires all satisfied`)
     }
   } else {
@@ -920,8 +951,8 @@ function deriveProofLevel(ctx: {
   }
 
   // Check: contract must be resolved (accepted/completed)
-  if (contractStatus !== null && contractStatus !== "resolved" && contractStatus !== "accepted") {
-    gaps.push(`contractStatus is ${contractStatus} — P3 requires resolved/accepted`)
+  if (contractStatus !== null && contractStatus !== "resolved" && contractStatus !== "accepted" && contractStatus !== "satisfied") {
+    gaps.push(`contractStatus is ${contractStatus} — P3 requires resolved/accepted/satisfied`)
     return { proofLevel: "P1", gaps }
   }
 
@@ -1099,5 +1130,7 @@ function computeEventHashFromRow(row: {
   })
   return createHash("sha256").update(canonical).digest("hex")
 }
+
+export const node = LayerNode.make(layer, [Database.node])
 
 export * as RunProof from "./run-proof"

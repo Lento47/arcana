@@ -198,7 +198,7 @@ describe("HttpApi UI fallback", () => {
       expect(response.status).toBe(200)
       expect(response.headers.get("content-type")).toContain("text/html")
       expect(yield* responseText(response)).toBe("<html>opencode</html>")
-      expect(proxiedUrl).toBe("https://app.opencode.ai/")
+    expect(proxiedUrl).toBe("https://arcana.otnelhq.com/")
     }),
   )
 
@@ -243,7 +243,7 @@ describe("HttpApi UI fallback", () => {
       )
 
       expect(response.status).toBe(200)
-      expect(proxiedUrl).toBe("https://app.opencode.ai/assets/app.js")
+    expect(proxiedUrl).toBe("https://arcana.otnelhq.com/assets/app.js")
       expect(response.headers.get("content-encoding")).toBeNull()
       expect(response.headers.get("content-length")).not.toBe("999")
       expect(response.headers.get("content-type")).toContain("text/javascript")
@@ -351,7 +351,7 @@ describe("HttpApi UI fallback", () => {
       // connect-src is tightened to arcana-owned endpoints plus data: (see
       // src/server/shared/ui.ts csp) — no longer the wildcard `*`.
       expect(csp).toContain("https://arcana-proxy.lejzerv.workers.dev")
-      expect(csp).toContain("https://api.arcana.otnelhq.com")
+    expect(csp).toContain("https://api-arcana.otnelhq.com")
     }),
   )
 

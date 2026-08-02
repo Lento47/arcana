@@ -1484,7 +1484,7 @@ Diff excerpts can be improved later.`,
     expect(result[0]!.label).toBe("you")
     expect(result[0]!.kind).toBe("ask")
     const run = result.find((e) => e.kind === "run")
-    expect(run!.elapsed).toBe("+2s")
+    expect(run!.elapsed).toBe("+1.5s")
   })
 
   test("bash test output is parsed into receipt stats", () => {

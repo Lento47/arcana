@@ -519,8 +519,6 @@ function stripEcho(data: SessionData, msg: string | undefined, chunk: string): s
     if (!item || !chunk.startsWith(item)) continue
     // Safety: don't strip if the match consumes more than half the chunk
     if (item.length > chunk.length * 0.5) continue
-    // Safety: require minimum match length to avoid false positives on short overlaps
-    if (item.length < 10) continue
 
     if (process.env.DEBUG_ECHO_STRIP) {
       console.error(`[echo-strip] removed ${item.length} chars from chunk (${chunk.length} total)`)

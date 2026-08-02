@@ -2,6 +2,7 @@ import type { CommandModule } from "yargs"
 import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
+import * as Locale from "@/util/locale"
 import { getDataDir, getArcanaHome } from "./arcana-home.js"
 
 function resolveDataDir(): string {
@@ -49,7 +50,7 @@ export const HistoryCommand: CommandModule = {
       const msgs = memory.getMessages(session.id)
       console.log("\n--- Last 10 messages ---")
       for (const m of msgs.slice(-10)) {
-        console.log(`[${m.role}] ${m.content.slice(0, 120)}${m.content.length > 120 ? "\u2026" : ""}`)
+        console.log(`[${m.role}] ${Locale.truncate(m.content, 120)}`)
       }
       return
     }
@@ -59,7 +60,7 @@ export const HistoryCommand: CommandModule = {
     console.log(`${sessions.length} sessions:\n`)
     for (const s of sessions) {
       const id = s.id.slice(0, 8)
-      const title = (s.title ?? "(untitled)").slice(0, 40)
+      const title = Locale.truncate(s.title ?? "(untitled)", 40)
       const date = s.updated_at.slice(0, 16).replace("T", " ")
       console.log(`  ${id}  ${date}  ${String(s.message_count).padEnd(8)} ${title}`)
     }

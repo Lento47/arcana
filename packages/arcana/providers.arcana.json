@@ -2,11 +2,25 @@
   "$schema": "https://arcana.otnelhq.com/schema/config.json",
   "provider": {
     "arcana-proxy": {
-      "_comment": "Licensed Arcana Proxy. workers.dev is the stable origin; custom domain proxy.arcana.otnelhq.com may lag DNS/SSL.",
+      "_comment": "Licensed Arcana Proxy (AI Gateway API). proxy-arcana.otnelhq.com is canonical; workers.dev is the fallback origin.",
       "name": "Arcana Proxy",
       "npm": "@ai-sdk/openai-compatible",
       "api": "https://proxy-arcana.otnelhq.com/v1",
       "env": ["ARCANA_PROXY_KEY"]
+    },
+    "cloudflare-ai-gateway": {
+      "_comment": "Direct Cloudflare AI Gateway — requires CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY. Prefer arcana-proxy for licensed Arcana routing.",
+      "name": "Cloudflare AI Gateway",
+      "npm": "@ai-sdk/openai-compatible",
+      "api": "https://gateway.ai.cloudflare.com/v1",
+      "env": ["CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID"]
+    },
+    "cloudflare-workers-ai": {
+      "_comment": "Direct Workers AI — requires CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY. Licensed users should use arcana-proxy (auto when ~/.arcana/proxy_key exists).",
+      "name": "Cloudflare Workers AI",
+      "npm": "@ai-sdk/openai-compatible",
+      "api": "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+      "env": ["CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID"]
     },
     "nous-portal": {
       "name": "Nous Portal",

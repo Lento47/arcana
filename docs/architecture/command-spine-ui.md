@@ -132,6 +132,103 @@ Hints are **cheap projection**. They must not replace RunProof events or tool re
 
 ---
 
+## Durable governance evidence contract
+
+The Command Spine has a separate evidence path for authority and proof state:
+
+```text
+canonical ArcanaEvent
+-> EventStore
+-> GovernanceEventBridge (`governance.recorded`)
+-> REST snapshot / SSE
+-> generated SDK
+-> TUI sync store
+-> ProductionSpineInput
+-> Command Spine entry
+```
+
+Only durable `ArcanaEvent` families are governance truth. The current projection accepts
+`contract.*`, `claim.*`, `evidence.*`, `obligation.*`, `completion.*`,
+`authorization.*`, `capability.*`, and `intent.*`. Tool logs, activity hints, and
+presentation-local state must not be promoted into this projection.
+
+`GET /session/:sessionID/governance` returns the bounded event snapshot, trace health,
+and a compact RunProof projection. The proof row exposes the proof level, integrity,
+authorization trace health, authorization counts, independent assurance axes, evidence
+gaps, proof hash, and run root. Hashes and roots remain available in the expandable body
+rather than being shortened into display-only identifiers.
+
+Intent enforcement is part of the same projection. RunProof authorization profiles carry
+`intentEnforcementMode` (`REQUIRED` / `LEGACY_COMPAT` / `UNAVAILABLE`),
+`intentBindingsCreated`, and `intentTraceHealth`; the spine renders intent assurance as
+healthy only when enforcement is `REQUIRED` and the trace is `COMPLETE`. Compatibility
+mode (no active contract) and unavailable intent stores are deliberately visible as
+degraded rather than silently accepted. The spine summary/body shows the enforcement
+mode, trace health, and binding count, and `authorization.requested` exposes bounded
+governance metadata (provenance, sensitivity, contract ID/revision, criterion IDs,
+workspace ID, request hash) without raw arguments. When a contract is resolved, the
+runtime revokes its intent bindings and projects `intent.binding_revoked`, so the spine
+shows the revocation lifecycle instead of stale ACTIVE evidence.
+
+Primary sessions now get production contract admission: on the first step of a user turn
+with no active contract, the runtime proposes a completion contract from the user's
+request and presents it through the permission gate (`contract.accept` with the
+objective, revision, and contract ID in metadata). Acceptance activates the contract and
+enters REQUIRED intent enforcement; a decline is recorded once so the session stays in
+visible `LEGACY_COMPAT` without re-prompting. Allow-all session permissions auto-accept;
+subagent, compaction, structured-output, and empty-text turns never ask. The spine
+therefore shows `contract.proposed` / `contract.activated` before the first
+`intent.enforcement_required` entry.
+
+Completion is evidence-gated: contract activation seeds proof obligations from the
+acceptance criteria, and the production verifier resolves `execution` / `observation`
+obligations from durable events before the natural-finish completion gate emits
+`completion.resolved` (`VERIFIED_COMPLETE`). The spine therefore projects
+`obligation.created`, `obligation.resolved`, and `completion.resolved` entries, and the
+proof row reports `contractStatus: resolved` with `VERIFIED` assurance when the chain is
+complete. Unresolved required obligations block verified completion and remain visible
+in the proof gaps.
+
+Contracts are compiled from the user's request: mentions of tests, defects, or builds
+produce specific criteria with meaningful descriptions (e.g. "Relevant tests and checks
+pass"), and those descriptions flow into `obligation.created` entries and the admission
+permission card — so the spine shows what the objective actually required, not a generic
+"Task completed as described".
+
+Verified completion also revokes the session's capability grants and projects
+`capability.revoked` (`CONTRACT_RESOLVED`), so the spine shows the authority lifecycle
+ending with the objective rather than leaving stale ACTIVE grants.
+
+Use-limited capabilities are enforced at the PEP: every allow claims one use before
+execution, the last successful claim projects `capability.exhausted`, and an exhausted or
+unavailable claim fails closed as a denial — the spine shows the denial with
+`DENY_CAPABILITY_EXHAUSTED` / `DENY_CAPABILITY_CLAIM_UNAVAILABLE` and zero executor calls.
+
+Operators can revoke a session capability through
+`POST /session/:sessionID/capability/:capabilityID/revoke` (exposed as
+`sdk.session.revokeCapability`); the revoke cascades to descendant grants and projects
+`capability.revoked` with `OPERATOR_REVOKE` / `PARENT_REVOKED` reasons, so the spine
+shows the full authority lifecycle. Unknown, foreign, or already-revoked grants return
+404 rather than leaking existence.
+
+Fail-visible rules:
+
+- `COMPLETE` is never inferred from zero counts alone.
+- Missing projection data is `UNAVAILABLE`, rendered as a failed/expanded proof row.
+- Degraded trace health, invalid integrity, unauthorized execution, or orphan execution
+  is rendered as failed evidence.
+- A denial always has a stable reason string and an inspectable full payload.
+- The TUI observes the server's proof projection; it does not derive or repair proof truth.
+
+The initial REST hydration and live `governance.recorded` stream use the same session-scoped
+event shape. TUI source changes require an engine/TUI restart before the running operator
+surface can show them.
+
+Implementation status and unresolved completion gates are recorded in
+[TUI-1.1 Governance Visibility Audit](../audits/TUI-1.1-GOVERNANCE-VISIBILITY-2026-08-01.md).
+
+---
+
 ## What is *not* in the default UI
 
 - Token HUD / dashboard footer

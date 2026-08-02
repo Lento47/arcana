@@ -98,7 +98,7 @@ export function redactGitEmails(text: string): string {
 const IPV4 = /\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/g
 
 /** IPv6 address (simplified) — redacts to `<IPV6>` */
-const IPV6 = /\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b/g
+const IPV6 = /\b(?:[0-9a-fA-F]{1,4}:){1,7}(?::[0-9a-fA-F]{1,4}){1,7}\b|\b::[0-9a-fA-F]{1,4}\b/g
 
 /** US phone number patterns: requires explicit formatting to avoid false positives on version/build numbers.
  * Matches: (555) 555-5555, 555-555-5555, 555.555.5555, +1 555 555 5555
@@ -140,7 +140,7 @@ export function redactPII(text: string): string {
  * The name portion is personal PII. This redacts the name while preserving
  * the email (which redactGitEmails handles separately) and the role prefix.
  */
-const GIT_AUTHOR_LINE = /^(Author|Committer):\s+([^<]+)/m
+const GIT_AUTHOR_LINE = /^(Author|Committer):\s+([^<]+?)(?=\s*<)/m
 
 /**
  * Matches parenthesized author in git blame output:
@@ -327,7 +327,7 @@ export function auditLog(entry: { tool: string; args?: unknown; result?: string;
     if (process.env.ARCANA_LICENSE_TIER && process.env.ARCANA_LICENSE_TIER !== "free") {
       const orgId = process.env.ARCANA_ORG_ID ?? "default"
       const actor = process.env.ARCANA_USER ?? process.env.USER ?? "local"
-      fetch("https://api.arcana.otnelhq.com/api/team/" + orgId + "/audit/events", {
+    fetch("https://api-arcana.otnelhq.com/api/team/" + orgId + "/audit/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

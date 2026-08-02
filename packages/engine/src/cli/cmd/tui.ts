@@ -146,6 +146,9 @@ export const TuiThreadCommand = cmd({
 
       // Resolve relative --project paths from PWD, then use the real cwd after
       // chdir so the thread and worker share the same directory key.
+      // Resolve the daemon script against the ORIGINAL cwd: after chdir below,
+      // a relative process.argv[1] would resolve against the project dir.
+      const daemonScript = process.argv[1] ? path.resolve(process.argv[1]) : ""
       const next = resolveThreadDirectory(args.project)
       const file = await target()
       try {
@@ -158,6 +161,13 @@ export const TuiThreadCommand = cmd({
 
       // ── Daemon detection: try existing daemon, auto-spawn if missing ──
       let daemonUrl: string | null = null
+      const isCompiled = typeof Bun !== "undefined" && (Bun as any).isCompiled
+      const daemonCmd = isCompiled
+        ? [process.execPath, "--daemon"]
+        : [process.execPath, "--conditions=browser", daemonScript, "--daemon"]
+      // The TUI respawns the daemon on connection failure (idle-stop / crash).
+      // Publish the exact spawn command so the TUI never re-derives it.
+      process.env.ARCANA_DAEMON_CMD = JSON.stringify(daemonCmd)
       try {
         const { readLock: readDaemonLock, isLockStale: isDaemonLockStale, removeLock: removeDaemonLock } = await import("../../daemon/lock")
         const { healthCheck } = await import("../../daemon/lifecycle")
@@ -167,10 +177,6 @@ export const TuiThreadCommand = cmd({
         } else {
           // No running daemon — spawn one as detached child, wait for ready
           if (lock) removeDaemonLock(cwd)
-          const isCompiled = typeof Bun !== "undefined" && (Bun as any).isCompiled
-          const daemonCmd = isCompiled
-            ? [process.execPath, "--daemon"]
-            : [process.execPath, "--conditions=browser", process.argv[1] || "", "--daemon"]
           const daemonProc = Bun.spawn({
             cmd: daemonCmd,
             stdio: ["ignore", "ignore", "ignore"],
@@ -280,7 +286,7 @@ export const TuiThreadCommand = cmd({
           const { homedir } = await import("node:os")
           const dbPath = join(homedir(), ".arcana", "data", "arcana.db")
           if (existsSync(dbPath)) {
-            fetch("https://api.arcana.otnelhq.com/api/health", { signal: AbortSignal.timeout(5000) }).catch(() => {})
+            fetch("https://api-arcana.otnelhq.com/api/health", { signal: AbortSignal.timeout(5000) }).catch(() => {})
           }
         } catch {}
       }, 2000).unref?.()

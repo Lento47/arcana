@@ -121,6 +121,7 @@ export interface IntentValidationResult {
 export function validateIntentBinding(
   request: AuthorizationRequest,
   bindings: IntentBinding[],
+  now = request.requestedAt,
 ): IntentValidationResult {
   const requirement = resolveBindingRequirement(request)
 
@@ -133,24 +134,35 @@ export function validateIntentBinding(
     }
   }
 
-  // Filter to active bindings for this request hash
-  const activeBindings = bindings.filter((b) => b.status === "ACTIVE")
+  const requestHash = computeRequestHash(request)
+  const requestedCriteria = [...(request.criterionIds ?? [])].sort()
+
+  // Exact binding boundary: request, session, contract revision, criteria,
+  // status, and expiry all participate. A caller may pass a session snapshot;
+  // validation must never assume the store already narrowed it correctly.
+  const activeBindings = bindings.filter((b) => {
+    if (b.status !== "ACTIVE") return false
+    if (b.requestHash !== requestHash || b.sessionId !== request.sessionId) return false
+    if (b.expiresAt && b.expiresAt <= now) return false
+
+    const contractScoped = request.contractId !== undefined || b.contractId !== undefined
+    if (contractScoped) {
+      if (!request.contractId || b.contractId !== request.contractId) return false
+      if (!request.contractRevision || b.contractRevision !== request.contractRevision) return false
+    }
+
+    if (requestedCriteria.length > 0) {
+      const bindingCriteria = [...b.criterionIds].sort()
+      if (bindingCriteria.join("\u0000") !== requestedCriteria.join("\u0000")) return false
+    }
+    return true
+  })
 
   if (activeBindings.length === 0) {
     return {
       satisfied: false,
       requirement,
       reason: `No active intent binding for ${requirement} requirement`,
-    }
-  }
-
-  // Check for stale/revoked bindings
-  const staleBindings = bindings.filter((b) => b.status !== "ACTIVE")
-  if (staleBindings.length > 0 && activeBindings.length === 0) {
-    return {
-      satisfied: false,
-      requirement,
-      reason: "All intent bindings are stale or revoked",
     }
   }
 
@@ -175,8 +187,14 @@ export function validateIntentBinding(
   if (requirement === "CONTRACT_CRITERION") {
     const valid = activeBindings.find((b) =>
       b.contractId !== undefined &&
+      b.contractRevision !== undefined &&
+      request.contractId === b.contractId &&
+      request.contractRevision === b.contractRevision &&
+      requestedCriteria.length > 0 &&
       b.criterionIds.length > 0 &&
-      (b.justification === "DIRECT_REQUIREMENT" || b.justification === "NECESSARY_SUBSTEP"),
+      (b.justification === "DIRECT_REQUIREMENT" ||
+        b.justification === "NECESSARY_SUBSTEP" ||
+        (b.justification === "EXPLICIT_APPROVAL" && b.createdBy === "USER_APPROVAL")),
     )
     if (valid) {
       return { satisfied: true, requirement, binding: valid, reason: `Contract criterion binding found: ${valid.contractId}` }
@@ -192,7 +210,12 @@ export function validateIntentBinding(
   if (requirement === "EXPLICIT_APPROVAL") {
     const valid = activeBindings.find((b) =>
       b.justification === "EXPLICIT_APPROVAL" &&
+      b.createdBy === "USER_APPROVAL" &&
       b.contractId !== undefined &&
+      b.contractRevision !== undefined &&
+      request.contractId === b.contractId &&
+      request.contractRevision === b.contractRevision &&
+      requestedCriteria.length > 0 &&
       b.criterionIds.length > 0,
     )
     if (valid) {
@@ -265,8 +288,15 @@ export function isRemoteContentIntentInjection(
 
   // Only bindings for THIS request hash can satisfy
   const requestHash = computeRequestHash(request)
+  const requestedCriteria = [...(request.criterionIds ?? [])].sort().join("\u0000")
   const requestBindings = bindings.filter(
-    (b) => b.status === "ACTIVE" && b.requestHash === requestHash,
+    (b) =>
+      b.status === "ACTIVE" &&
+      b.requestHash === requestHash &&
+      b.sessionId === request.sessionId &&
+      b.contractId === request.contractId &&
+      b.contractRevision === request.contractRevision &&
+      [...b.criterionIds].sort().join("\u0000") === requestedCriteria,
   )
   const hasUserBinding = requestBindings.some((b) =>
     b.justification === "DIRECT_REQUIREMENT" ||

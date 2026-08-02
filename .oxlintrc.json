@@ -1,0 +1,10 @@
+{
+  "ignorePatterns": [
+    "**/node_modules/**",
+    ".hermes/**",
+    "**/.output/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/.turbo/**"
+  ]
+}

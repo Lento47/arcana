@@ -1,0 +1,26 @@
+# Phase E — Arcana Protocol, SDKs, and External Adapters: Blocker Register
+
+**Status: PLANNED / PARTIAL — no frozen protocol, no certified adapters, no
+stable SDK 1.0.**
+
+## Open blockers
+
+| ID | Task | Gap evidence | Acceptance evidence required |
+|---|---|---|---|
+| BLK-E-01 | E1 freeze protocol specifications | `docs/protocol/SCHEMA-VERSION-REGISTRY.md` exists; canonical serialization test vectors not public/frozen | Versioned public specs for AuthorizationRequest, CapabilityGrant, SignedGrantEnvelope, PolicySnapshot, ScopedApproval, Delegation, labels/lineage, event envelope, RunProof, node protocol, reason codes |
+| BLK-E-02 | E2 independent conformance suite | 46 cross-runtime vectors exist (D2 work); suite is not independent of the production implementation | Two independent implementations produce matching vectors |
+| BLK-E-03 | E3 TypeScript/JavaScript SDK 1.0 | `packages/sdk/js` exists (7/7 tests) but lacks request builder, adapter hooks, proof verifier, stable error model | SDK 1.0 API + semver/compat policy + conformance pass |
+| BLK-E-04 | E4 additional language SDK | none (Rust tooling is conformance/containment scaffolding, not an SDK) | One additional SDK passing the same conformance suite |
+| BLK-E-05 | E5 external CLI adapters (Codex/Claude/Gemini) | `arcana launch *` not implemented | Three adapters at declared certification levels; hostile escape fixture blocked at declared boundaries |
+| BLK-E-06 | E6 framework adapters (Mastra/AI SDK/LangGraph/MCP apps) | none | Framework tool calls map to canonical AuthorizationRequest; PEP cannot be bypassed |
+| BLK-E-07 | E7 adapter certification levels | A0–A3 described only | Published certification contract with boundaries/bypasses/test version/OS |
+| BLK-E-08 | E8 developer experience and examples | no quickstarts/examples/test node/policy samples | DX package + security checklist |
+| BLK-E-09 | E9 protocol governance and compatibility | version lifecycle/deprecation/advisory process not defined | Governance doc + extension registry |
+| BLK-E-10 | E10 ecosystem evaluation and freeze | no cross-runtime matrix | Matrix across runtimes/languages/OSes/levels; SDK 1.0 + protocol milestone frozen |
+
+## Existing partial evidence
+
+- `tools/acep-conformance-rust` — canonical node-identity + 46-vector conformance (2/2 tests).
+- `docs/protocol/SCHEMA-VERSION-REGISTRY.md` — schema version registry draft.
+- `packages/sdk/js` — typed client and server spawner (7/7).
+- `docs/competitive/2026-08-02-market-assessment.md` — external adapter analysis.

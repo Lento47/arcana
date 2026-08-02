@@ -60,6 +60,18 @@ describe("request hashing", () => {
     expect(computeRequestHash(a)).not.toBe(computeRequestHash(b))
   })
 
+  test("different contract revision produces different hash", () => {
+    const a = makeRequest({ contractId: "contract-1", contractRevision: "1", criterionIds: ["criterion-1"] })
+    const b = makeRequest({ contractId: "contract-1", contractRevision: "2", criterionIds: ["criterion-1"] })
+    expect(computeRequestHash(a)).not.toBe(computeRequestHash(b))
+  })
+
+  test("criterion order is canonical", () => {
+    const a = makeRequest({ contractId: "contract-1", contractRevision: "1", criterionIds: ["a", "b"] })
+    const b = makeRequest({ contractId: "contract-1", contractRevision: "1", criterionIds: ["b", "a"] })
+    expect(computeRequestHash(a)).toBe(computeRequestHash(b))
+  })
+
   test("hash is 64-char hex", () => {
     const hash = computeRequestHash(makeRequest())
     expect(hash).toMatch(/^[0-9a-f]{64}$/)

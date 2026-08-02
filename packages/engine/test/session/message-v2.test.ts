@@ -1525,7 +1525,7 @@ describe("session.message-v2.fromError", () => {
     expect(SessionV1.APIError.isInstance(result)).toBe(true)
     const data = (result as SessionV1.APIError).data
     expect(data.message).toBe(
-      "Arcana proxy token limit exceeded (138108 > 112446). Compact the session or reduce context before retrying.",
+      "This session is over the proxy token limit (138108 > 112446). Compact or start a new session.",
     )
     expect(data.isRetryable).toBe(false)
     expect(data.responseBody).not.toContain("openrouter")
