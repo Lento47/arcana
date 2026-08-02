@@ -9,6 +9,7 @@ import { ControlApi } from "./groups/control"
 import { ControlPlaneApi } from "./groups/control-plane"
 import { EnrollmentApi } from "./groups/enrollment"
 import { EventApi } from "./groups/event"
+import { ExecutionApi } from "./groups/executions"
 import { ExperimentalApi } from "./groups/experimental"
 import { FileApi } from "./groups/file"
 import { InstanceApi } from "./groups/instance"
@@ -56,9 +57,10 @@ export const RootHttpApi = HttpApi.make("arcana-root")
 
 export const InstanceHttpApi = HttpApi.make("arcana-instance")
   .addHttpApi(ApprovalApi)
-  .addHttpApi(ConfigApi)
-  .addHttpApi(EnrollmentApi)
-  .addHttpApi(ExperimentalApi)
+.addHttpApi(ConfigApi)
+.addHttpApi(EnrollmentApi)
+.addHttpApi(ExecutionApi)
+.addHttpApi(ExperimentalApi)
   .addHttpApi(FileApi)
   .addHttpApi(InstanceApi)
   .addHttpApi(McpApi)
@@ -78,9 +80,9 @@ export const InstanceHttpApi = HttpApi.make("arcana-instance")
   .middleware(SchemaErrorMiddleware)
 
 export const ArcanaHttpApi = HttpApi.make("arcana")
-  .addHttpApi(RootHttpApi)
-  .addHttpApi(EventApi)
-  .addHttpApi(InstanceHttpApi)
+.addHttpApi(RootHttpApi)
+.addHttpApi(EventApi)
+.addHttpApi(InstanceHttpApi)
   .addHttpApi(Api)
   .addHttpApi(PtyConnectApi)
   .annotate(HttpApi.AdditionalSchemas, [EventSchema, Question.Replied, Question.Rejected])
