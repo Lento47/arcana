@@ -172,8 +172,8 @@ registry, market assessment.
 | F1 Multi-tenant model | PARTIAL | tenant model + SQLite store (tenant-scoped queries, deletion isolation, 3 tests) | BLK-F-01 |
 | F2 Identity and access | PARTIAL | RBAC core: tenant-scoped roles/permissions, privileged audit, immediate deprovisioning, break-glass (5 tests) | BLK-F-02 |
 | F3 Central policy | PARTIAL | D-4 signed store + F3 promotion/diff/approval lifecycle (6 tests) | BLK-F-03 |
-| F4 Fleet ops | PENDING | — | BLK-F-04 |
-| F5 Central approvals | PENDING | — | BLK-F-05 |
+| F4 Fleet ops | PARTIAL | fleet inventory + health derivation + heartbeats (3 tests) | BLK-F-04 |
+| F5 Central approvals | PARTIAL | central queue: exact inspection, separation of duties, expiry, bulk deny, emergency revocation (4 tests) | BLK-F-05 |
 | F6 Audit/compliance archive | PENDING | local export only | BLK-F-06 |
 | F7 HA/DR | PENDING | — | BLK-F-07 |
 | F8 Federation | PENDING | — | BLK-F-08 |
