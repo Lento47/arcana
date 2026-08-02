@@ -91,6 +91,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | D5 Remote revocation | 15% | PARTIAL | envelopes + durable state + sync; convergence unmeasured | BLK-D-01 |
 | D6 Distributed replay resistance | 10% | PARTIAL | reducers/durable state; duplicate-execution matrix pending | BLK-D-01 |
 | D7 Proof synchronization | 10% | FROZEN (local) | `arcana-phase-d7-local-distributed-authority` → `017ad998` | BLK-D-02 (containment) |
+| D-7.1 filesystem containment | — | PARTIAL | Linux `openat2 RESOLVE_BENEATH` scaffold + Windows handle final-path reader (`tools/fs-containment-rust`, 10/10 tests incl. traversal + junction escape, 2026-08-02); engine integration + live Linux validation pending | BLK-D-02 |
 | D8 Cross-node proof composition | 10% | PARTIAL | D-8A batching (Merkle root + gap detection); D-8B pending | BLK-D-04 |
 | D9 Partition/offline policy | 5% | PENDING | design doc only | BLK-D-06 |
 | D10 Adversarial evaluation + freeze | 5% | PENDING | — | BLK-D-08, BLK-D-09 |
@@ -151,7 +152,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | AUD-07 | Measure TUI performance: input echo, session-open, first token, redundant requests, reconnect storms, idle traffic | BLK-TUI-07 | Engineering |
 | AUD-08 | Rerun every suite at the exact committed checkpoint and record results; freeze tag pending sign-off | BLK-TUI-08 | Engineering |
 | AUD-09 | Implement D-6B-T authenticated transport with MITM/wrong-audience/expired-credential fixtures | BLK-D-01 | Engineering |
-| AUD-10 | Implement D-7.1 kernel containment: Linux `openat2 RESOLVE_BENEATH` + Windows handle final-path validation | BLK-D-02 | Engineering |
+| AUD-10 | Implement D-7.1 kernel containment: Linux `openat2 RESOLVE_BENEATH` + Windows handle final-path validation — Windows reader DONE (10/10); remaining: engine integration + live Linux validation | BLK-D-02 | Engineering |
 | AUD-11 | Validate D-6A-L workload identity against a live Linux workload | BLK-D-03 | Engineering |
 | AUD-12 | Implement D-8B remote proof registration with node/server hash reconciliation | BLK-D-04 | Engineering |
 | AUD-13 | Implement node enrollment ceremony, durable key rotation, decommissioning | BLK-D-05 | Engineering |
