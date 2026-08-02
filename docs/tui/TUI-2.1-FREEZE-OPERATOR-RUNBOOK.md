@@ -91,11 +91,13 @@ failed, successful, inspector, prompt focus, diff additions, diff deletions.
 
 > Keyboard note: the composer owns letter keys while focused. Press `Esc` to
 > leave the composer and activate the spine keys (`j`/`k` navigate, `v`
-> inspect, `a` approve, `d` deny) — this works while idle AND while a durable
-> approval is pending mid-turn. `Esc` again clears the selection; `Esc` a
-> third time returns to the composer. While busy with no pending approval,
-> `Esc` keeps its two-press interrupt meaning, and while a permission
-> ACTION GATE is open, `Esc` rejects the gate (use `←`/`→` + `Enter`).
+> inspect, `a` approve, `d` deny) — this works while idle AND while the
+> session is busy or a durable approval is pending mid-turn (F-25: Esc from
+> the composer never interrupts). `Esc` again clears the selection; `Esc` a
+> third time returns to the composer. Interrupting a running turn is now an
+> explicit command (palette → "Interrupt session") rather than Esc. While a
+> permission ACTION GATE is open, `Esc` rejects the gate (use `←`/`→` +
+> `Enter`).
 >
 > **Contract gate warning:** on the `contract.accept` ACTION GATE, `Esc`
 > DECLINES the contract. A declined contract leaves the session in
