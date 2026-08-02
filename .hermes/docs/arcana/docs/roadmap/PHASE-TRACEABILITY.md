@@ -177,9 +177,9 @@ registry, market assessment.
 | F6 Audit/compliance archive | PARTIAL | immutable archive + fingerprint export + retention/legal-hold/custody (4 tests) | BLK-F-06 |
 | F7 HA/DR | PARTIAL | targets + digest-verified restore + drill evaluation + degraded fail-closed (3 tests) | BLK-F-07 |
 | F8 Federation | PARTIAL | agreements + authority intersection + conflict resolution + proof exchange + revocation propagation (5 tests) | BLK-F-08 |
-| F9 Security operations | PENDING | — | BLK-F-09 |
-| F10 Data governance | PENDING | — | BLK-F-10 |
-| F11 Enterprise API/automation | PENDING | local HTTP API | BLK-F-11 |
+| F9 Security operations | PARTIAL | alerts + incident timelines + audited campaigns + forensic exports (3 tests) | BLK-F-09 |
+| F10 Data governance | PARTIAL | classification + regional/CMK + PII export/retention (3 tests) | BLK-F-10 |
+| F11 Enterprise API/automation | PARTIAL | canonical admin event surface (2 tests) | BLK-F-11 |
 | F12 Commercial readiness | PENDING | license review pending | BLK-F-12 |
 | F13 Assessment + GA freeze | PENDING | — | BLK-F-13 |
 
