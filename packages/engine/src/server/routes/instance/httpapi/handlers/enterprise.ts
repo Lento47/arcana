@@ -33,6 +33,11 @@ import { siemCef } from "@arcana/core/enterprise/siem-export"
 import type { AdminEvent } from "@arcana/core/enterprise/admin-events"
 import { routeCrossOrgApproval } from "@arcana/core/enterprise/federation-approvals"
 import { planRingRollout, type UpgradeRing } from "@arcana/core/enterprise/upgrade-rings"
+import { validatePolicyDraft } from "@arcana/core/enterprise/policy-drafts"
+import { detectAnomalies } from "@arcana/core/enterprise/anomaly"
+import { toTicketPayload } from "@arcana/core/enterprise/ticketing"
+import type { SignedPolicyEnvelope } from "@arcana/core/crypto/signed-envelopes"
+import { SignedPolicyEnvelopeSchema } from "../groups/policy"
 import {
   DEFAULT_RELIABILITY_CONFIG,
   evaluateDrill,
@@ -1253,6 +1258,74 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       return planRingRollout(ring, nodes)
     })
 
+    const validateDraft = Effect.fn("EnterpriseHttpApi.validatePolicyDraft")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        envelope: typeof SignedPolicyEnvelopeSchema.Type
+        activationTime?: string
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const issuer = issuerContext()
+      if (!issuer.ok) {
+        return { valid: false as const, reason: `issuer not configured: ${issuer.reason}` }
+      }
+      const result = validatePolicyDraft(
+        ctx.payload.envelope as unknown as SignedPolicyEnvelope,
+        controlStateFor(directory).policyStore.history(),
+        issuer.context.issuerPublicKeys,
+        ctx.payload.activationTime ? new Date(ctx.payload.activationTime) : new Date(),
+      )
+      if (result.valid) {
+        return { valid: true as const, record: result.record }
+      }
+      return { valid: false as const, reason: result.reason }
+    })
+
+    const anomalyScan = Effect.fn("EnterpriseHttpApi.anomalyScan")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        alertsLastHour: number
+        revocationsLastHour: number
+        maxProofBacklog: number
+        staleNodeCount: number
+        totalNodeCount: number
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      const signals = detectAnomalies({ ...ctx.payload, tenantId: ctx.params.tenantId })
+      for (const signal of signals) {
+        state.securityOps.putAlert({
+          tenantId: signal.tenantId,
+          alertId: signal.signalId,
+          severity: signal.severity,
+          kind: `anomaly.${signal.kind}`,
+          detail: signal.detail,
+          at: signal.at,
+        })
+      }
+      return signals
+    })
+
+    const ticketingExport = Effect.fn("EnterpriseHttpApi.ticketingExport")(function* (ctx: {
+      params: { tenantId: string }
+      query: {
+        directory?: string
+        kind?: "approval.pending" | "node.revoked" | "policy.promoted" | "alert.critical"
+        since?: string
+      }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const events = controlStateFor(directory).adminEvents.list(ctx.params.tenantId, {
+        kind: ctx.query.kind,
+        since: ctx.query.since,
+      })
+      return events.map((event) => toTicketPayload(event))
+    })
+
     return handlers
       .handle("createOrganization", createOrganization)
       .handle("assignRole", assignRole)
@@ -1315,5 +1388,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       .handle("listUpgradeRings", listUpgradeRings)
       .handle("assignRingNode", assignRingNode)
       .handle("ringPlan", ringPlan)
+      .handle("validatePolicyDraft", validateDraft)
+      .handle("anomalyScan", anomalyScan)
+      .handle("ticketingExport", ticketingExport)
   }),
 )
