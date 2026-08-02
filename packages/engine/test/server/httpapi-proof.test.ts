@@ -5,7 +5,9 @@ import { ed25519 } from "@noble/curves/ed25519.js"
 import { encodeBase64url } from "@arcana/core/crypto/canonical-serializer"
 import { buildProofBatch } from "@arcana/core/crypto/proof-batching"
 import { signProofBatch } from "@arcana/core/crypto/proof-registration"
+import { createJoinToken } from "@arcana/core/crypto/node-enrollment"
 import { ProofPaths } from "../../src/server/routes/instance/httpapi/groups/proof"
+import { EnrollmentPaths } from "../../src/server/routes/instance/httpapi/groups/enrollment"
 import { Session } from "@/session/session"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
@@ -14,25 +16,39 @@ import { httpApiLayer, requestInDirectory } from "./httpapi-layer"
 
 const originalWorkspaces = Flag.ARCANA_EXPERIMENTAL_WORKSPACES
 const originalTrustDomain = process.env.ARCANA_CONTROL_TRUST_DOMAIN
-const originalNodeKeys = process.env.ARCANA_CONTROL_NODE_KEYS
+const originalIssuerSeed = process.env.ARCANA_CONTROL_ISSUER_SEED
+const originalIssuerId = process.env.ARCANA_CONTROL_ISSUER_ID
+const originalOrgId = process.env.ARCANA_CONTROL_ORGANIZATION_ID
 
 const context = Context.empty() as Context.Context<unknown>
 const it = testEffect(Layer.mergeAll(Session.defaultLayer, httpApiLayer))
 
 const nodeKey = ed25519.keygen(new Uint8Array(32).fill(0x11))
+const rotatedKey = ed25519.keygen(new Uint8Array(32).fill(0x22))
+const issuerSeed = new Uint8Array(32).fill(0xab)
+const issuerKey = ed25519.keygen(issuerSeed)
 
 afterEach(async () => {
   mock.restore()
   Flag.ARCANA_EXPERIMENTAL_WORKSPACES = originalWorkspaces
   if (originalTrustDomain === undefined) delete process.env.ARCANA_CONTROL_TRUST_DOMAIN
   else process.env.ARCANA_CONTROL_TRUST_DOMAIN = originalTrustDomain
-  if (originalNodeKeys === undefined) delete process.env.ARCANA_CONTROL_NODE_KEYS
-  else process.env.ARCANA_CONTROL_NODE_KEYS = originalNodeKeys
+  if (originalIssuerSeed === undefined) delete process.env.ARCANA_CONTROL_ISSUER_SEED
+  else process.env.ARCANA_CONTROL_ISSUER_SEED = originalIssuerSeed
+  if (originalIssuerId === undefined) delete process.env.ARCANA_CONTROL_ISSUER_ID
+  else process.env.ARCANA_CONTROL_ISSUER_ID = originalIssuerId
+  if (originalOrgId === undefined) delete process.env.ARCANA_CONTROL_ORGANIZATION_ID
+  else process.env.ARCANA_CONTROL_ORGANIZATION_ID = originalOrgId
   await disposeAllInstances()
   await resetDatabase()
 })
 
-function makeEnvelope(sequences: number[], previousBatchRoot?: string) {
+function makeEnvelope(
+  sequences: number[],
+  previousBatchRoot?: string,
+  secretKey: Uint8Array = nodeKey.secretKey,
+  nodeKeyEpoch = 1,
+) {
   const built = buildProofBatch(
     sequences.map((seq) => ({
       localSequence: seq,
@@ -44,7 +60,7 @@ function makeEnvelope(sequences: number[], previousBatchRoot?: string) {
     {
       trustDomain: "arcana.test",
       nodeId: "node-alpha",
-      nodeKeyEpoch: 1,
+      nodeKeyEpoch,
       policySequence: 1,
       policyDigest: "policy-1",
       revocationSequence: 0,
@@ -55,7 +71,34 @@ function makeEnvelope(sequences: number[], previousBatchRoot?: string) {
     },
   )
   if (!built.success) throw new Error(`fixture build failed: ${built.reason}`)
-  return signProofBatch(built.payload, nodeKey.secretKey)
+  return signProofBatch(built.payload, secretKey)
+}
+
+function configureControlPlane() {
+  process.env.ARCANA_CONTROL_TRUST_DOMAIN = "arcana.test"
+  process.env.ARCANA_CONTROL_ISSUER_SEED = encodeBase64url(issuerSeed)
+  process.env.ARCANA_CONTROL_ISSUER_ID = "issuer-arcana"
+  process.env.ARCANA_CONTROL_ORGANIZATION_ID = "org-arcana"
+}
+
+function enrollViaHttp(tmp: { directory: string }, headers: Record<string, string>, nodeId: string, publicKey: Uint8Array) {
+  return requestInDirectory(EnrollmentPaths.enroll, tmp.directory, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      joinToken: createJoinToken(
+        {
+          organizationId: "org-arcana",
+          trustDomain: "arcana.test",
+          nodeId,
+          issuedAt: new Date(),
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        },
+        issuerKey.secretKey,
+      ),
+      publicKey: encodeBase64url(publicKey),
+    }),
+  })
 }
 
 describe("proof HttpApi (D-8B)", () => {
@@ -64,13 +107,14 @@ describe("proof HttpApi (D-8B)", () => {
     () =>
       Effect.gen(function* () {
         Flag.ARCANA_EXPERIMENTAL_WORKSPACES = true
-        process.env.ARCANA_CONTROL_TRUST_DOMAIN = "arcana.test"
-        process.env.ARCANA_CONTROL_NODE_KEYS = JSON.stringify({
-          "node-alpha": encodeBase64url(nodeKey.publicKey),
-        })
+        configureControlPlane()
 
         const tmp = yield* TestInstance
         const headers = { "x-opencode-directory": tmp.directory, "content-type": "application/json" }
+
+        const enrolled = yield* enrollViaHttp(tmp, headers, "node-alpha", nodeKey.publicKey)
+        expect(enrolled.status).toBe(200)
+        expect(((yield* enrolled.json) as { kind?: string }).kind).toBe("ENROLLED")
 
         const first = makeEnvelope([1, 2])
         const registered = yield* requestInDirectory(ProofPaths.register, tmp.directory, {
@@ -130,12 +174,53 @@ describe("proof HttpApi (D-8B)", () => {
   )
 
   it.instance(
+    "rejects batches signed with a rotated key",
+    () =>
+      Effect.gen(function* () {
+        Flag.ARCANA_EXPERIMENTAL_WORKSPACES = true
+        configureControlPlane()
+
+        const tmp = yield* TestInstance
+        const headers = { "x-opencode-directory": tmp.directory, "content-type": "application/json" }
+
+        const enrolled = yield* enrollViaHttp(tmp, headers, "node-alpha", nodeKey.publicKey)
+        expect(((yield* enrolled.json) as { kind?: string }).kind).toBe("ENROLLED")
+
+        const ok = yield* requestInDirectory(ProofPaths.register, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(makeEnvelope([1, 2])),
+        })
+        expect(((yield* ok.json) as { kind?: string }).kind).toBe("REGISTERED")
+
+        const rotated = yield* requestInDirectory(
+          EnrollmentPaths.rotate.replace(":nodeId", "node-alpha"),
+          tmp.directory,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ publicKey: encodeBase64url(rotatedKey.publicKey) }),
+          },
+        )
+        expect(rotated.status).toBe(200)
+        expect(((yield* rotated.json) as { kind?: string }).kind).toBe("ROTATED")
+
+        const oldKey = yield* requestInDirectory(ProofPaths.register, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(makeEnvelope([3, 4], undefined, nodeKey.secretKey, 1)),
+        })
+        expect(((yield* oldKey.json) as { kind?: string }).kind).toBe("REJECTED")
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
     "fails closed without a node registry",
     () =>
       Effect.gen(function* () {
         Flag.ARCANA_EXPERIMENTAL_WORKSPACES = true
-        process.env.ARCANA_CONTROL_TRUST_DOMAIN = "arcana.test"
-        delete process.env.ARCANA_CONTROL_NODE_KEYS
+        configureControlPlane()
 
         const tmp = yield* TestInstance
         const headers = { "x-opencode-directory": tmp.directory, "content-type": "application/json" }
