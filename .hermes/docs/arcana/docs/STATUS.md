@@ -25,8 +25,8 @@ secondary; never edit the mirror independently.
 | Field | Value |
 |---|---|
 | Current implementation branch | `phase-d-implementation` |
-| Committed HEAD at last verification | `c07faba6` (2026-08-01, `fix: render complete streamed TUI messages`); checkpoint commit follows the 2026-08-02 audit |
-| Uncommitted worktree | 2026-08-01/02 spine polish + view filters + documentation consolidation + Phase A–F audit docs (checkpointed 2026-08-02) |
+| Committed HEAD at last verification | `e57c5ca2` (2026-08-02, `chore: checkpoint TUI-2.1 polish + daemon respawn + inspector + Phase A-F audit docs`) |
+| Uncommitted worktree | clean at checkpoint `e57c5ca2`; subsequent docs-only updates tracked below |
 | Default branch (`master` / `origin/master`) | stale — Phase B/C, D-7, TUI-2 milestone commits not on it; mainline promotion pending (post-sign-off release action) |
 | Release version | pre-release builds only (`0.0.0-phase-d-implementation-*`) |
 | Last verification date | 2026-08-02 (checkpoint; full engine rerun pending) |
@@ -119,7 +119,7 @@ validation, manual validation, external validation, release.
 | Repo-wide typecheck | 16/16 packages |
 | Build | 8/8 tasks (engine binaries smoke-tested; `0.0.0-phase-d-implementation-202608021350`) |
 | Core suite | 1264 pass / 7 skip / 0 fail (1,271 tests, clean rerun 2026-08-02) |
-| Engine suite | CLEAN full rerun 2026-08-02 at the audit worktree: 4251 pass / 74 skip / 1 todo / 0 fail (4,326 tests, 990.6s). Includes post-run fixes: OpenTUI 0.4.5 worker-path patch, daemon obligation-template seed idempotency, completion-gate per-contract idempotency, PEP criteria receipts. Re-verify at the exact final commit |
+| Engine suite | CLEAN full rerun 2026-08-02 at the audit worktree (now committed as `e57c5ca2`): 4251 pass / 74 skip / 1 todo / 0 fail (4,326 tests, 990.6s). Includes post-run fixes: OpenTUI 0.4.5 worker-path patch, daemon obligation-template seed idempotency, completion-gate per-contract idempotency, PEP criteria receipts. Re-verify at the exact final commit |
 | Arcana CLI/proof suite | 116 pass / 0 fail (2026-08-02) |
 | SDK JS suite | 7 pass / 0 fail (2026-08-02) |
 | Rust conformance | 2 pass / 0 fail (2026-08-02) |
