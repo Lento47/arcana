@@ -172,15 +172,15 @@ registry, market assessment.
 | F1 Multi-tenant model | PARTIAL | tenant model + SQLite store (tenant-scoped queries, deletion isolation, 3 tests) | BLK-F-01 |
 | F2 Identity and access | PARTIAL | RBAC core: tenant-scoped roles/permissions, privileged audit, immediate deprovisioning, break-glass (5 tests) | BLK-F-02 |
 | F3 Central policy | PARTIAL | D-4 signed store + F3 promotion/diff/approval lifecycle (6 tests) + HTTP promotion/diff (RBAC, per-environment targets; integration tested) | BLK-F-03 |
-| F4 Fleet ops | PARTIAL | fleet inventory + health derivation + heartbeats (3 tests) + HTTP register/heartbeat/fleet-view (integration tested) | BLK-F-04 |
-| F5 Central approvals | PARTIAL | central queue: exact inspection, separation of duties, expiry, bulk deny, emergency revocation (4 tests) + HTTP revoke/bulk-deny (RBAC; integration tested) | BLK-F-05 |
+| F4 Fleet ops | PARTIAL | fleet inventory + health derivation + heartbeats + node diagnostics (3 core tests) + HTTP register/heartbeat/fleet-view/diagnostics (integration tested) | BLK-F-04 |
+| F5 Central approvals | PARTIAL | central queue: exact inspection, separation of duties, expiry, bulk deny, emergency revocation (4 tests) + escalation core (4 tests) + HTTP revoke/bulk-deny/escalation (RBAC; integration tested) | BLK-F-05 |
 | F6 Audit/compliance archive | PARTIAL | immutable archive + fingerprint export + retention/legal-hold/custody (4 tests) + HTTP archive/export/custody/hold/sweep (integration tested) | BLK-F-06 |
 | F7 HA/DR | PARTIAL | targets + digest-verified restore + drill evaluation + degraded fail-closed (3 tests) + HTTP backup/restore/drill (integration tested) | BLK-F-07 |
 | F8 Federation | PARTIAL | agreements + authority intersection + conflict resolution + proof exchange + revocation propagation (5 tests) + HTTP agreements/exchange/revocation/intersection (integration tested) | BLK-F-08 |
 | F9 Security operations | PARTIAL | alerts + incident timelines + audited campaigns + forensic exports (3 tests) + HTTP alerts/timeline/campaign/forensic (RBAC; integration tested) | BLK-F-09 |
 | F10 Data governance | PARTIAL | classification + regional/CMK + PII export/retention (3 tests) + HTTP governance checks (integration tested) | BLK-F-10 |
-| F11 Enterprise API/automation | PARTIAL | `/api/enterprise/*` admin surface (F1-F12 cores mounted: orgs/roles/fleet/approvals/audit/policy/archive/security-ops/governance/reliability/federation/commercial) + admin events (9 HTTP integration tests + 2 event tests) | BLK-F-11 |
-| F12 Commercial readiness | PARTIAL | entitlements + metering-invariant + redacted diagnostics (4 tests) + HTTP entitlement/metering/diagnostics/upgrade (integration tested) | BLK-F-12 |
+| F11 Enterprise API/automation | PARTIAL | `/api/enterprise/*` admin surface (F1-F12 cores mounted) + admin-event store + SIEM CEF export (4 core tests) + HTTP record/list/siem-export (12 HTTP integration tests + 2 event tests) | BLK-F-11 |
+| F12 Commercial readiness | PARTIAL | entitlements + metering-invariant + redacted diagnostics (4 tests) + metering pipeline (3 tests) + HTTP entitlement/metering/usage/quota/diagnostics/upgrade (integration tested) | BLK-F-12 |
 | F13 Assessment + GA freeze | PENDING | freeze draft with gate evidence; external assessment pending | BLK-F-13 |
 
 ---

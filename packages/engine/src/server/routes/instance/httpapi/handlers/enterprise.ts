@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
-import { fleetView } from "@arcana/core/enterprise/fleet"
+import { fleetView, nodeDiagnostics } from "@arcana/core/enterprise/fleet"
 import {
   decideApproval,
   type CentralApprovalRecord,
@@ -27,6 +27,10 @@ import {
   DEFAULT_DATA_GOVERNANCE_POLICY,
 } from "@arcana/core/enterprise/data-governance"
 import { diffPolicyBundles, promotePolicyBundle } from "@arcana/core/enterprise/policy-lifecycle"
+import { escalateApproval, type EscalationPolicy } from "@arcana/core/enterprise/escalation"
+import { quotaStatus, type UsageEvent } from "@arcana/core/enterprise/metering"
+import { siemCef } from "@arcana/core/enterprise/siem-export"
+import type { AdminEvent } from "@arcana/core/enterprise/admin-events"
 import {
   DEFAULT_RELIABILITY_CONFIG,
   evaluateDrill,
@@ -928,6 +932,185 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       return DEFAULT_UPGRADE_POLICY
     })
 
+    const nodeDetail = Effect.fn("EnterpriseHttpApi.nodeDetail")(function* (ctx: {
+      params: { tenantId: string; nodeId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return (
+        nodeDiagnostics(
+          controlStateFor(directory).fleet,
+          ctx.params.tenantId,
+          ctx.params.nodeId,
+          new Date(),
+        ) ?? null
+      )
+    })
+
+    const putEscalationPolicy = Effect.fn("EnterpriseHttpApi.putEscalationPolicy")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        policyId: string
+        maxWaitMs: number
+        fallbackApprovers: readonly string[]
+        requireBreakGlass: boolean
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const policy: EscalationPolicy = {
+        tenantId: ctx.params.tenantId,
+        policyId: ctx.payload.policyId,
+        maxWaitMs: ctx.payload.maxWaitMs,
+        fallbackApprovers: [...ctx.payload.fallbackApprovers],
+        requireBreakGlass: ctx.payload.requireBreakGlass,
+      }
+      controlStateFor(directory).escalations.putPolicy(policy)
+      return policy
+    })
+
+    const getEscalationPolicy = Effect.fn("EnterpriseHttpApi.getEscalationPolicy")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).escalations.getPolicy(ctx.params.tenantId) ?? null
+    })
+
+    const escalationCheck = Effect.fn("EnterpriseHttpApi.escalationCheck")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { approvalId: string; now?: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      const approval = state.approvals.get(ctx.params.tenantId, ctx.payload.approvalId)
+      if (!approval) {
+        return { escalated: false as const, reason: "approval not found" }
+      }
+      const now = ctx.payload.now ? new Date(ctx.payload.now) : new Date()
+      return escalateApproval(
+        ctx.params.tenantId,
+        approval,
+        state.escalations.getPolicy(ctx.params.tenantId),
+        state.escalations,
+        now,
+      )
+    })
+
+    const escalationEvents = Effect.fn("EnterpriseHttpApi.escalationEvents")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).escalations.events(ctx.params.tenantId)
+    })
+
+    const putAdminEvent = Effect.fn("EnterpriseHttpApi.putAdminEvent")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        kind: "approval.pending" | "node.revoked" | "policy.promoted" | "alert.critical"
+        approvalId?: string
+        requestHash?: string
+        nodeId?: string
+        reason?: string
+        policyId?: string
+        sequence?: number
+        alertId?: string
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const recordedAt = new Date().toISOString()
+      const event = {
+        ...ctx.payload,
+        tenantId: ctx.params.tenantId,
+        at: recordedAt,
+      } as unknown as AdminEvent
+      const record = { ...event, recordedAt }
+      controlStateFor(directory).adminEvents.put(record)
+      return record
+    })
+
+    const listAdminEvents = Effect.fn("EnterpriseHttpApi.listAdminEvents")(function* (ctx: {
+      params: { tenantId: string }
+      query: {
+        directory?: string
+        kind?: "approval.pending" | "node.revoked" | "policy.promoted" | "alert.critical"
+        since?: string
+      }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).adminEvents.list(ctx.params.tenantId, {
+        kind: ctx.query.kind,
+        since: ctx.query.since,
+      })
+    })
+
+    const siemExport = Effect.fn("EnterpriseHttpApi.siemExport")(function* (ctx: {
+      params: { tenantId: string }
+      query: {
+        directory?: string
+        kind?: "approval.pending" | "node.revoked" | "policy.promoted" | "alert.critical"
+        since?: string
+      }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const events = controlStateFor(directory).adminEvents.list(ctx.params.tenantId, {
+        kind: ctx.query.kind,
+        since: ctx.query.since,
+      })
+      return siemCef(events)
+    })
+
+    const putUsage = Effect.fn("EnterpriseHttpApi.putUsage")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { eventId: string; feature: string; units: number; at?: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const event: UsageEvent = {
+        tenantId: ctx.params.tenantId,
+        eventId: ctx.payload.eventId,
+        feature: ctx.payload.feature,
+        units: ctx.payload.units,
+        at: ctx.payload.at ?? new Date().toISOString(),
+      }
+      controlStateFor(directory).metering.putUsage(event)
+      return event
+    })
+
+    const getUsage = Effect.fn("EnterpriseHttpApi.getUsage")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string; feature?: string; since?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const store = controlStateFor(directory).metering
+      if (ctx.query.feature) {
+        const units = store.usage(
+          ctx.params.tenantId,
+          ctx.query.feature,
+          ctx.query.since ?? "1970-01-01T00:00:00.000Z",
+        )
+        return { kind: "summary" as const, feature: ctx.query.feature, units }
+      }
+      return { kind: "events" as const, events: store.allUsage(ctx.params.tenantId) }
+    })
+
+    const usageQuota = Effect.fn("EnterpriseHttpApi.usageQuota")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { limit: number; feature: string; since?: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const used = controlStateFor(directory).metering.usage(
+        ctx.params.tenantId,
+        ctx.payload.feature,
+        ctx.payload.since ?? "1970-01-01T00:00:00.000Z",
+      )
+      return quotaStatus(ctx.payload.limit, used)
+    })
+
     return handlers
       .handle("createOrganization", createOrganization)
       .handle("assignRole", assignRole)
@@ -971,5 +1154,16 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       .handle("meteringCheck", meteringCheck)
       .handle("diagnostics", diagnostics)
       .handle("upgradePolicy", upgradePolicy)
+      .handle("nodeDetail", nodeDetail)
+      .handle("putEscalationPolicy", putEscalationPolicy)
+      .handle("getEscalationPolicy", getEscalationPolicy)
+      .handle("escalationCheck", escalationCheck)
+      .handle("escalationEvents", escalationEvents)
+      .handle("putAdminEvent", putAdminEvent)
+      .handle("listAdminEvents", listAdminEvents)
+      .handle("siemExport", siemExport)
+      .handle("putUsage", putUsage)
+      .handle("getUsage", getUsage)
+      .handle("usageQuota", usageQuota)
   }),
 )

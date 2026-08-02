@@ -17,6 +17,9 @@ import { SqliteAuditArchiveStore } from "@arcana/core/enterprise/audit-archive-s
 import { SqliteSecurityOpsStore } from "@arcana/core/enterprise/security-ops-sqlite"
 import { SqliteReliabilityStore } from "@arcana/core/enterprise/reliability-sqlite"
 import { SqliteFederationStore } from "@arcana/core/enterprise/federation-sqlite"
+import { SqliteEscalationStore } from "@arcana/core/enterprise/escalation-sqlite"
+import { SqliteMeteringStore } from "@arcana/core/enterprise/metering-sqlite"
+import { SqliteAdminEventStore } from "@arcana/core/enterprise/admin-events-sqlite"
 import type { EnrollmentContext } from "@arcana/core/crypto/node-enrollment"
 
 /**
@@ -38,6 +41,9 @@ export type ControlPlaneState = {
   securityOps: SqliteSecurityOpsStore
   reliability: SqliteReliabilityStore
   federation: SqliteFederationStore
+  escalations: SqliteEscalationStore
+  metering: SqliteMeteringStore
+  adminEvents: SqliteAdminEventStore
 }
 
 const stateCache = new Map<string, ControlPlaneState>()
@@ -64,6 +70,9 @@ export function controlStateFor(directory: string): ControlPlaneState {
       securityOps: new SqliteSecurityOpsStore(db),
       reliability: new SqliteReliabilityStore(db),
       federation: new SqliteFederationStore(db),
+      escalations: new SqliteEscalationStore(db),
+      metering: new SqliteMeteringStore(db),
+      adminEvents: new SqliteAdminEventStore(db),
     }
     stateCache.set(directory, state)
   }

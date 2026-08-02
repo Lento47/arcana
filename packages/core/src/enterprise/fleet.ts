@@ -82,3 +82,19 @@ export function fleetView(
     health: deriveFleetHealth(node, now, thresholds),
   }))
 }
+
+/**
+ * Remote diagnostics for a single node: the full inventory record plus the
+ * derived health. Returns undefined when the node is not registered.
+ */
+export function nodeDiagnostics(
+  store: FleetStore,
+  tenantId: string,
+  nodeId: string,
+  now: Date,
+  thresholds: FleetHealthThresholds = DEFAULT_FLEET_HEALTH_THRESHOLDS,
+): (FleetNodeRecord & { health: FleetNodeHealth }) | undefined {
+  const node = store.getNode(tenantId, nodeId)
+  if (!node) return undefined
+  return { ...node, health: deriveFleetHealth(node, now, thresholds) }
+}
