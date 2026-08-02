@@ -102,13 +102,13 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 |---|---:|---|---|---|
 | E1 Freeze protocol specifications | 15% | PARTIAL | **PROTOCOL-1.0-SPEC.md published 2026-08-02** (freeze draft): canonical serialization, 7 signature domains, object registry, labels/lineage, reason-code registry, version negotiation, strict unknown-field rejection. Remaining: public release + external review | BLK-E-01 |
 | E2 Conformance test suite | 15% | PARTIAL | **Runner + independent implementations DONE 2026-08-02**: `script/conformance.ts` runs TS golden crypto (100/100) + TS D-10 matrix (15/0) + **Rust independent verifier** (2/2, 46 vectors — TS generates, Rust verifies, no oracle sharing); suite doc `CONFORMANCE-SUITE.md`. Remaining: L3 external reproduction | BLK-E-02 |
-| E3 TypeScript/JavaScript SDK 1.0 | 10% | PARTIAL | **Governance + proof surface IMPLEMENTED 2026-08-02** (`@arcana/sdk/v2/governance`: request builder, adapter hook, envelope verification; `@arcana/sdk/v2/proof`: `verifyRunProofExport` schema/lifecycle/timestamp checks + canonical fingerprint with tamper detection; SDK suite 15/15). Remaining: stable error model + semver/compat policy, SDK conformance pass | BLK-E-03 |
+| E3 TypeScript/JavaScript SDK 1.0 | 10% | PARTIAL | **Governance + proof + error model IMPLEMENTED 2026-08-02** (`@arcana/sdk/v2/governance|proof|errors`: canonical requests, adapter hook, envelope + RunProof verification, stable error codes; SDK suite 17/17; SDK conformance step wired into `script/conformance.ts` 4/4; `SDK-1.0-COMPATIBILITY.md` semver/error/conformance contract). Remaining: release freeze + conformance against external vectors | BLK-E-03 |
 | E4 Additional language SDKs | 10% | PENDING | Rust scaffolding only | BLK-E-04 |
 | E5 External CLI adapters | 15% | PENDING | none | BLK-E-05 |
 | E6 Framework adapters | 10% | PENDING | none | BLK-E-06 |
 | E7 Adapter certification levels | 5% | PENDING | A0–A3 described only | BLK-E-07 |
-| E8 Developer experience/examples | 5% | PENDING | none | BLK-E-08 |
-| E9 Protocol governance/compatibility | 5% | PENDING | none | BLK-E-09 |
+| E8 Developer experience/examples | 5% | PARTIAL | `docs/protocol/QUICKSTART.md` (authorize → executeExact → verify flow with enforcement-level guidance) | BLK-E-08 |
+| E9 Protocol governance/compatibility | 5% | PARTIAL | `docs/protocol/PROTOCOL-GOVERNANCE.md` (version lifecycle, deprecation, security advisory, extension registry, compatibility matrix, ownership) | BLK-E-09 |
 | E10 Ecosystem evaluation + freeze | 10% | PENDING | none | BLK-E-10 |
 
 ## Phase F — Enterprise Control Plane and Federation
