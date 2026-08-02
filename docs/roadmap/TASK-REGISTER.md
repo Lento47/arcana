@@ -116,7 +116,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | Task | Weight | Status | Evidence | Blockers |
 |---|---:|---|---|---|
 | F1 Multi-tenant organization model | 8% | PARTIAL | **Tenant model IMPLEMENTED 2026-08-02** (`packages/core/src/enterprise/tenant.ts` + SQLite): organizations, workspaces, environments, teams, users, service/agent principals, nodes, policy bundles, approval queues, proof archives — every record tenant-scoped, tenant-filtered queries (zero cross-tenant reads by construction), pure `withTenantAccess` guard, tenant deletion isolation, restart persistence (3 tests). Remaining: production mounting into enterprise APIs + retention policy doc | BLK-F-01 |
-| F2 Enterprise identity and access | 10% | PENDING | none | BLK-F-02 |
+| F2 Enterprise identity and access | 10% | PARTIAL | **RBAC core IMPLEMENTED 2026-08-02** (`packages/core/src/enterprise/identity.ts` + SQLite): tenant-scoped role assignments (OWNER/ADMIN/OPERATOR/AUDITOR/MEMBER), permission matrix, privileged-action audit (ALLOWED/DENIED), immediate deprovisioning (bound = 0), visible time-bounded break-glass with explicit end (5 tests). Remaining: SSO/SCIM/MFA service integration, service-account scopes, separation-of-duties workflows | BLK-F-02 |
 | F3 Central policy management | 10% | PENDING | none | BLK-F-03 |
 | F4 Fleet and node operations | 10% | PENDING | none | BLK-F-04 |
 | F5 Central approval operations | 8% | PENDING | none | BLK-F-05 |
