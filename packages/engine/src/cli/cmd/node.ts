@@ -17,7 +17,12 @@ import {
   SqliteSyncStateStore,
 } from "@/node/sync-state"
 import { buildOutboxRecords, listLocalProofs } from "@/node/local-proof-source"
-import { loadNodeIdentity, saveNodeIdentity, type NodeIdentityFile } from "@/node/node-identity-file"
+import {
+  loadNodeIdentity,
+  rotatedIdentity,
+  saveNodeIdentity,
+  type NodeIdentityFile,
+} from "@/node/node-identity-file"
 import { cmd } from "./cmd"
 import { CliError, effectCmd, fail } from "../effect-cmd"
 
@@ -27,6 +32,7 @@ export const NodeCommand = cmd({
   builder: (yargs: Argv) =>
     yargs
       .command(NodeEnrollCommand)
+      .command(NodeKeyRotateCommand)
       .command(NodeProofUploadCommand)
       .command(NodeSyncCommand)
       .command(NodeStatusCommand)
@@ -131,6 +137,81 @@ export const NodeEnrollCommand = effectCmd({
     }
     saveNodeIdentity(directory, identity)
     console.log(`node ${identity.nodeId} enrolled (epoch ${identity.nodeKeyEpoch})`)
+  }),
+})
+
+// ─── key rotate ────────────────────────────────────────────────────
+
+export const NodeKeyRotateCommand = effectCmd({
+  command: "key rotate",
+  describe: "rotate this node's key against the control plane and persist the new identity",
+  instance: false,
+  builder: (yargs) =>
+    directoryOption(yargs)
+      .option("endpoint", {
+        describe: "control-plane base URL",
+        type: "string",
+        demandOption: true,
+      })
+      .option("key", {
+        describe: "base64url 32-byte Ed25519 secret key seed (default: random)",
+        type: "string",
+      }),
+  handler: Effect.fn("Cli.node.keyRotate")(function* (args) {
+    const directory = resolveDirectory(args)
+    const identity = loadNodeIdentity(directory)
+    if (!identity) {
+      return yield* fail("node is not enrolled; run `arcana node enroll` first")
+    }
+
+    const seed = args.key ? decodeCanonicalBase64url(args.key) : ed25519.utils.randomSecretKey()
+    if (!seed || seed.length !== 32) {
+      return yield* fail("--key must be a base64url 32-byte Ed25519 seed")
+    }
+    const keys = ed25519.keygen(seed)
+    const newPublicKeyB64 = encodeBase64url(keys.publicKey)
+
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(
+          `${args.endpoint.replace(/\/+$/, "")}/api/nodes/${encodeURIComponent(identity.nodeId)}/rotate`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ publicKey: newPublicKeyB64 }),
+          },
+        ),
+      catch: (error) => new CliError({ message: `key rotation transport error: ${String(error)}` }),
+    })
+    if (response.status !== 200) {
+      const text = yield* Effect.tryPromise({
+        try: () => response.text().catch(() => ""),
+        catch: (error) => new CliError({ message: `key rotation response error: ${String(error)}` }),
+      })
+      return yield* fail(`key rotation failed: HTTP ${response.status} ${text}`)
+    }
+    const body = (yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: (error) => new CliError({ message: `key rotation response parse error: ${String(error)}` }),
+    })) as {
+      kind: string
+      detail?: string
+      record?: {
+        nodeId: string
+        trustDomain: string
+        publicKey: string
+        nodeKeyEpoch: number
+        certificate: Record<string, unknown>
+        enrolledAt: string
+      }
+    }
+    if (body.kind !== "ROTATED" || !body.record) {
+      return yield* fail(`key rotation rejected: ${body.detail ?? body.kind}`)
+    }
+    saveNodeIdentity(directory, rotatedIdentity(body.record, encodeBase64url(seed)))
+    console.log(
+      `node ${body.record.nodeId} key rotated (epoch ${body.record.nodeKeyEpoch}); previous key is superseded`,
+    )
   }),
 })
 
