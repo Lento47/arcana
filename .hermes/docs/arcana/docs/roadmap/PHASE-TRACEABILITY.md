@@ -180,7 +180,7 @@ registry, market assessment.
 | F9 Security operations | PARTIAL | alerts + incident timelines + audited campaigns + forensic exports (3 tests) + anomaly heuristics (3 tests) + HTTP alerts/timeline/campaign/forensic/anomaly-scan (RBAC; integration tested) | BLK-F-09 |
 | F10 Data governance | PARTIAL | classification + regional/CMK + PII export/retention (3 tests) + HTTP governance checks (integration tested) | BLK-F-10 |
 | F11 Enterprise API/automation | PARTIAL | `/api/enterprise/*` admin surface (F1-F12 cores mounted) + admin-event store + SIEM CEF export (4 core tests) + ticketing payloads (1 core test) + webhook delivery sink (4 core tests) + HTTP record/list/siem-export/ticketing/webhooks (18 HTTP integration tests + 2 event tests) + SDK enterprise admin client (4 SDK tests; equivalent automation) | BLK-F-11 |
-| F12 Commercial readiness | PARTIAL | entitlements + metering-invariant + redacted diagnostics (4 tests) + metering pipeline (3 tests) + HTTP entitlement/metering/usage/quota/diagnostics/upgrade (integration tested) | BLK-F-12 |
+| F12 Commercial readiness | PARTIAL | entitlements + metering-invariant + redacted diagnostics (4 tests) + metering pipeline (3 tests) + HTTP entitlement/metering/usage/quota/usage-export/diagnostics/upgrade (integration tested) | BLK-F-12 |
 | F13 Assessment + GA freeze | PENDING | freeze draft with gate evidence; external assessment pending | BLK-F-13 |
 
 ---

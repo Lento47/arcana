@@ -414,6 +414,11 @@ export const QuotaStatusSchema = Schema.Struct({
   overQuota: Schema.Boolean,
 })
 
+export const UsageExportEntrySchema = Schema.Struct({
+  feature: Schema.String,
+  units: Schema.Number,
+})
+
 export const CrossOrgApprovalRuleSchema = Schema.Struct({
   ruleId: Schema.String,
   orgA: Schema.String,
@@ -642,6 +647,7 @@ export const EnterprisePaths = {
   siemExport: `${root}/organizations/:tenantId/admin-events/siem-export`,
   usage: `${root}/organizations/:tenantId/commercial/usage`,
   usageQuota: `${root}/organizations/:tenantId/commercial/usage/quota`,
+  usageExport: `${root}/organizations/:tenantId/commercial/usage/export`,
   federationRules: `${root}/organizations/:tenantId/federation/rules`,
   federationRouteApproval: `${root}/organizations/:tenantId/federation/route-approval`,
   federationRouted: `${root}/organizations/:tenantId/federation/routed`,
@@ -1362,6 +1368,16 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         OpenApi.annotations({
           identifier: "enterprise.usageQuota",
           summary: "Evaluate quota status; never affects decisions (F12)",
+        }),
+      ),
+      HttpApiEndpoint.get("usageExport", EnterprisePaths.usageExport, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(Schema.Array(UsageExportEntrySchema), "Usage export (F12)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.usageExport",
+          summary: "Export metered usage aggregated per feature (F12)",
         }),
       ),
       HttpApiEndpoint.post("putFederationRule", EnterprisePaths.federationRules, {

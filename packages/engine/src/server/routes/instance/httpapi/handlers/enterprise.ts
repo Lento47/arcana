@@ -1135,6 +1135,21 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       return quotaStatus(ctx.payload.limit, used)
     })
 
+    const usageExport = Effect.fn("EnterpriseHttpApi.usageExport")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const events = controlStateFor(directory).metering.allUsage(ctx.params.tenantId)
+      const totals = new Map<string, number>()
+      for (const event of events) {
+        totals.set(event.feature, (totals.get(event.feature) ?? 0) + event.units)
+      }
+      return [...totals.entries()]
+        .map(([feature, units]) => ({ feature, units }))
+        .sort((a, b) => a.feature.localeCompare(b.feature))
+    })
+
     const putFederationRule = Effect.fn("EnterpriseHttpApi.putFederationRule")(function* (ctx: {
       params: { tenantId: string }
       payload: {
@@ -1554,6 +1569,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       .handle("putUsage", putUsage)
       .handle("getUsage", getUsage)
       .handle("usageQuota", usageQuota)
+      .handle("usageExport", usageExport)
       .handle("putFederationRule", putFederationRule)
       .handle("listFederationRules", listFederationRules)
       .handle("routeCrossOrgApproval", routeCrossOrgApprovalHandler)
