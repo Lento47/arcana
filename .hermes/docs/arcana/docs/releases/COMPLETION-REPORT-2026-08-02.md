@@ -122,6 +122,7 @@ worker-path patch; no dependency was downgraded.
 | D-4 signed policy bundle store implemented (strict schema, chaining, staged activation, last-known-good, audited rollback) with HTTP endpoints; sync transport now serves POLICY_SNAPSHOT; DELTA bundles + compat negotiation pending | BLK-D-01 | Engineering |
 | D-6 execution ledger implemented and wired into the distributed PEP (exactly-once claims, cross-node matrix, UNKNOWN_AFTER_* replay-forbidden, offline gating; 17 tests); hostile-node matrix pending | BLK-D-01 | Engineering |
 | D-5 revocation store + convergence measurement implemented (sequence-monotonic statements, REVOCATION_SNAPSHOT delivery, frozen p95 bounds; 10 tests); emergency push channel + hostile-node revocation pending | BLK-D-01 | Engineering |
+| D-10 hostile-node matrix implemented: 15 fail-closed fixtures across all ten adversarial categories, 0 bypasses (incl. new future-issuedAt freshness check); Node 1.0 freeze + independent reproduction pending | BLK-D-08 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 
