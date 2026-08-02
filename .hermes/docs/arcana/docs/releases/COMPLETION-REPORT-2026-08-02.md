@@ -132,6 +132,7 @@ worker-path patch; no dependency was downgraded.
 | F-25 | TUI Esc cancelled the turn instead of leaving the composer while the session was busy | The leave-composer binding no longer requires idle/pending state: Esc from the composer always blurs to spine mode (j/k/v/a/d); interrupt stays explicit via the palette command |
 | F-26 | ACTION GATE Esc rejected/declined the request (permission, question, and contract gates) | Esc is now inert on gates (`escapeKey` removed from the permission stage, question Esc-reject bindings removed); gates resolve explicitly with ←/→ + Enter, and the Reject confirmation stage keeps Esc=cancel |
 | F-27 | ACTION GATE blocked all spine interaction, so the pending approval row (`01◤ approve`) could not be focused or inspected | Spine navigation (j/k), copy/details, and `v` inspection now remain available while a gate is open; decisions are still made exclusively in the gate (←/→ + Enter), and `a`/`d` stay gated until it resolves |
+| F-28 | `v` on the `01◤ approve` permission-gate row showed the "no approval to inspect" toast (gate entries are `permission:<id>`, not durable approval records) | New read-only permission inspector (`permission-inspector.tsx`): `v` on a gate row shows request ID, session, permission, patterns, tool message/call IDs, and description; pure row builder + regression tests |
 
 ### Open / residual bugs and risks
 
