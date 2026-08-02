@@ -4,6 +4,8 @@ import { Flag } from "@arcana/core/flag/flag"
 import { ed25519 } from "@noble/curves/ed25519.js"
 import { encodeBase64url } from "@arcana/core/crypto/canonical-serializer"
 import { createJoinToken } from "@arcana/core/crypto/node-enrollment"
+import { POLICY_DOMAIN, type SignedPolicyEnvelope } from "@arcana/core/crypto/signed-envelopes"
+import { signEnvelope } from "@arcana/core/crypto/node-enrollment"
 import {
   signSyncRequest,
   verifySyncResponse,
@@ -13,6 +15,7 @@ import type { SyncRequestContext } from "@arcana/core/crypto/sync-auth"
 import type { SyncResponseContext } from "@arcana/core/crypto/sync-auth"
 import { SyncNodePaths } from "../../src/server/routes/instance/httpapi/groups/sync-node"
 import { EnrollmentPaths } from "../../src/server/routes/instance/httpapi/groups/enrollment"
+import { PolicyPaths } from "../../src/server/routes/instance/httpapi/groups/policy"
 import { Session } from "@/session/session"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
@@ -71,6 +74,22 @@ function requestEnvelope(
   return signSyncRequest(context, secretKey)
 }
 
+function policyEnvelope(sequence: number, previousPolicyDigest?: string): SignedPolicyEnvelope {
+  const payload = {
+    schemaVersion: 1,
+    issuerId: "issuer-arcana",
+    issuerEpoch: 1,
+    sequence,
+    policyId: "policy-root",
+    policyVersion: `1.0.${sequence}`,
+    policyDigest: `digest-${sequence}`,
+    issuedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    ...(previousPolicyDigest !== undefined ? { previousPolicyDigest } : {}),
+  }
+  return signEnvelope(POLICY_DOMAIN, payload, issuerKey.secretKey) as unknown as SignedPolicyEnvelope
+}
+
 describe("syncNode HttpApi (D-6B-T)", () => {
   it.instance(
     "serves signed policy sync with replay idempotency and conflict detection",
@@ -101,6 +120,16 @@ describe("syncNode HttpApi (D-6B-T)", () => {
         })
         expect(((yield* enrolled.json) as { kind?: string }).kind).toBe("ENROLLED")
 
+        const published = yield* requestInDirectory(PolicyPaths.publish, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            envelope: policyEnvelope(1),
+            activationTime: new Date().toISOString(),
+          }),
+        })
+        expect(((yield* published.json) as { kind?: string }).kind).toBe("PUBLISHED")
+
         const envelope = requestEnvelope()
         const res = yield* requestInDirectory(SyncNodePaths.policy, tmp.directory, {
           method: "POST",
@@ -121,7 +150,9 @@ describe("syncNode HttpApi (D-6B-T)", () => {
           now: new Date(),
         })
         expect(verified).toEqual({ valid: true })
-        expect(body.envelope.context.responseKind).toBe("NO_CHANGE")
+        expect(body.envelope.context.responseKind).toBe("POLICY_SNAPSHOT")
+        expect(body.envelope.context.policySequence).toBe(1)
+        expect(body.envelope.context.envelope?.policyDigest).toBe("digest-1")
 
         // Idempotent retry: identical request → identical stored response.
         const replay = yield* requestInDirectory(SyncNodePaths.policy, tmp.directory, {
@@ -141,6 +172,24 @@ describe("syncNode HttpApi (D-6B-T)", () => {
           body: JSON.stringify(requestEnvelope({ clientNonce: "nonce-2" })),
         })
         expect(conflict.status).toBe(401)
+
+        // Caught-up node receives NO_CHANGE.
+        const caughtUp = yield* requestInDirectory(SyncNodePaths.policy, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            requestEnvelope({
+              requestId: "req-sync-2",
+              clientNonce: "nonce-2",
+              acceptedPolicySequence: 1,
+              acceptedPolicyDigest: "digest-1",
+            }),
+          ),
+        })
+        const caughtUpBody = (yield* caughtUp.json) as {
+          envelope: SignedSyncEnvelope<SyncResponseContext>
+        }
+        expect(caughtUpBody.envelope.context.responseKind).toBe("NO_CHANGE")
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )

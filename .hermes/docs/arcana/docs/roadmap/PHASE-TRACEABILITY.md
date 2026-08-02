@@ -128,7 +128,7 @@ protocol, performance.
 | D1 Node identity/enrollment | PARTIAL | identity contracts + `node-enrollment.ts`/`node-enrollment-sqlite.ts` + HTTP `/api/nodes/*` (16 tests); D-8B registry integrated; node-side client pending | BLK-D-05 |
 | D2 Signed short-lived grants | IMPLEMENTED | 7-layer verifier, 46 conformance vectors (41 negative), Rust conformance 2/2 | BLK-D-09 |
 | D3 Mutual authentication | PARTIAL | D-6B sync control + **D-6B-T signed-envelope HTTP transport** (15 tests); TLS pending | BLK-D-01 |
-| D4 Policy distribution | PARTIAL | digest chains + authenticated transport; policy bundle store pending | BLK-D-01 |
+| D4 Policy distribution | PARTIAL | signed bundle store (publish/staged/last-known-good/rollback, 11 tests) + HTTP policy endpoints + POLICY_SNAPSHOT via sync transport (4 engine tests); DELTA + compat negotiation pending | BLK-D-01 |
 | D5 Remote revocation | PARTIAL | envelopes + durable state + authenticated transport; convergence unmeasured | BLK-D-01 |
 | D6 Replay resistance | PARTIAL | reducers + transport replay protection; duplicate-execution matrix pending | BLK-D-01 |
 | D7 Proof sync | FROZEN (local) | TAG `arcana-phase-d7-local-distributed-authority` → `017ad998`; D-7.1 containment partial: Linux openat2 scaffold + Windows handle final-path reader (`tools/fs-containment-rust`, 10/10) | BLK-D-02 |

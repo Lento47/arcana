@@ -14,6 +14,7 @@ import { FileApi } from "./groups/file"
 import { InstanceApi } from "./groups/instance"
 import { McpApi } from "./groups/mcp"
 import { PermissionApi } from "./groups/permission"
+import { PolicyApi } from "./groups/policy"
 import { ProofApi } from "./groups/proof"
 import { ProjectApi } from "./groups/project"
 import { ProjectCopyApi } from "./groups/project-copy"
@@ -63,6 +64,7 @@ export const InstanceHttpApi = HttpApi.make("arcana-instance")
   .addHttpApi(McpApi)
   .addHttpApi(ProjectApi)
   .addHttpApi(ProofApi)
+  .addHttpApi(PolicyApi)
   .addHttpApi(SyncNodeApi)
   .addHttpApi(ProjectCopyApi)
   .addHttpApi(PtyApi)

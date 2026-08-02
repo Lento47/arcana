@@ -103,34 +103,45 @@ export const syncNodeHandlers = HttpApiBuilder.group(InstanceHttpApi, "syncNode"
       const issuedAt = now.toISOString()
       const expiresAt = new Date(now.getTime() + 5 * 60 * 1000).toISOString()
 
+      const latestPolicy = state.policyStore.latestActive()
+      const policyNeedsSnapshot =
+        latestPolicy !== undefined &&
+        (requestContext.acceptedPolicySequence < latestPolicy.sequence ||
+          (requestContext.acceptedPolicyDigest ?? "") !== latestPolicy.digest)
+
+      const base = {
+        protocolVersion: 1 as const,
+        requestId: requestContext.requestId,
+        clientNonce: requestContext.clientNonce,
+        serverNonce,
+        nodeId: requestContext.nodeId,
+        serverIdentity: issuer.context.issuerId,
+        issuedAt,
+        expiresAt,
+      }
+
       const responseContext: SyncResponseContext =
         kind === "policy"
-          ? {
-              protocolVersion: 1,
-              requestId: requestContext.requestId,
-              clientNonce: requestContext.clientNonce,
-              serverNonce,
-              nodeId: requestContext.nodeId,
-              serverIdentity: issuer.context.issuerId,
-              responseKind: "NO_CHANGE",
-              policySequence: requestContext.acceptedPolicySequence,
-              policyDigest: requestContext.acceptedPolicyDigest ?? "",
-              issuedAt,
-              expiresAt,
-            }
+          ? policyNeedsSnapshot
+            ? {
+                ...base,
+                responseKind: "POLICY_SNAPSHOT",
+                policySequence: latestPolicy!.sequence,
+                policyDigest: latestPolicy!.digest,
+                envelope: JSON.parse(latestPolicy!.signedEnvelopeJson),
+              }
+            : {
+                ...base,
+                responseKind: "NO_CHANGE",
+                policySequence: requestContext.acceptedPolicySequence,
+                policyDigest: requestContext.acceptedPolicyDigest ?? "",
+              }
           : {
-              protocolVersion: 1,
-              requestId: requestContext.requestId,
-              clientNonce: requestContext.clientNonce,
-              serverNonce,
-              nodeId: requestContext.nodeId,
-              serverIdentity: issuer.context.issuerId,
+              ...base,
               responseKind: "NO_CHANGE",
               revocationSequence: requestContext.acceptedRevocationSequence,
               revocationDigest: requestContext.acceptedRevocationDigest ?? "",
               emergencyEpoch: requestContext.acceptedEmergencyEpoch,
-              issuedAt,
-              expiresAt,
             }
 
       const envelope = signSyncResponse(responseContext, issuer.context.issuerSecretKey)
