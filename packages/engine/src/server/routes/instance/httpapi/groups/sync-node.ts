@@ -49,6 +49,8 @@ export const SyncResponseContextSchema = Schema.Struct({
   envelope: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
   delta: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
   envelopes: Schema.optional(Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),
+  compatibleFrom: Schema.optional(Schema.Number),
+  compatibleTo: Schema.optional(Schema.Number),
   issuedAt: Schema.String,
   expiresAt: Schema.String,
 })

@@ -79,6 +79,10 @@ export type SyncResponseContext = {
   /** Signed revocation statement envelopes for REVOCATION_DELTA responses. */
   envelopes?: readonly Record<string, unknown>[]
 
+  /** Compatibility range of the served policy bundle (D-4). */
+  compatibleFrom?: number
+  compatibleTo?: number
+
   issuedAt: string
   expiresAt: string
 }

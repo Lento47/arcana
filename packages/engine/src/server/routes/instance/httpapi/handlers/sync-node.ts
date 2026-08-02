@@ -165,6 +165,8 @@ export const syncNodeHandlers = HttpApiBuilder.group(InstanceHttpApi, "syncNode"
                 responseKind: "POLICY_DELTA",
                 policySequence: latestPolicy!.sequence,
                 policyDigest: latestPolicy!.digest,
+                compatibleFrom: latestPolicy!.compatibleFrom,
+                compatibleTo: latestPolicy!.compatibleTo,
                 delta: policyDelta as unknown as Record<string, unknown>,
                 envelope: JSON.parse(latestPolicy!.signedEnvelopeJson),
               }
@@ -174,6 +176,8 @@ export const syncNodeHandlers = HttpApiBuilder.group(InstanceHttpApi, "syncNode"
                 responseKind: "POLICY_SNAPSHOT",
                 policySequence: latestPolicy!.sequence,
                 policyDigest: latestPolicy!.digest,
+                compatibleFrom: latestPolicy!.compatibleFrom,
+                compatibleTo: latestPolicy!.compatibleTo,
                 envelope: JSON.parse(latestPolicy!.signedEnvelopeJson),
               }
             : {
