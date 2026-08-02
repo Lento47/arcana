@@ -114,6 +114,7 @@ worker-path patch; no dependency was downgraded.
 | No L3+ independent reproduction of the Phase C evaluation | Blocker AUD-20 | External |
 | `master` mainline stale vs `phase-d-implementation` | Post-sign-off release action (BLK-1.0-05) | Release |
 | Phase D transport/containment/enrollment/offline/ops/eval gaps | BLK-D-01..09 | Engineering |
+| D-7.1 Windows handle-based containment reader implemented (10/10 tests incl. traversal + junction escape); engine integration + live Linux validation pending | BLK-D-02 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 

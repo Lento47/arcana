@@ -131,7 +131,7 @@ protocol, performance.
 | D4 Policy distribution | PARTIAL | policy digest chains in envelopes | BLK-D-01 |
 | D5 Remote revocation | PARTIAL | revocation envelopes, durable state, sync protocol | BLK-D-01 |
 | D6 Replay resistance | PARTIAL | reducers, durable state, sync protocol | BLK-D-01 |
-| D7 Proof sync | FROZEN (local) | TAG `arcana-phase-d7-local-distributed-authority` → `017ad998` | BLK-D-02 |
+| D7 Proof sync | FROZEN (local) | TAG `arcana-phase-d7-local-distributed-authority` → `017ad998`; D-7.1 containment partial: Linux openat2 scaffold + Windows handle final-path reader (`tools/fs-containment-rust`, 10/10) | BLK-D-02 |
 | D8 Proof composition | PARTIAL | D-8A Merkle batching + gap detection | BLK-D-04 |
 | D9 Offline/partition | PENDING | design doc `docs/architecture/phase-d/offline-enforcement.md` | BLK-D-06 |
 | D10 Adversarial eval/freeze | PENDING | — | BLK-D-08/09 |
