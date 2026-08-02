@@ -5,6 +5,7 @@ import { decodeCanonicalBase64url } from "@arcana/core/crypto/canonical-serializ
 import { verifySyncRequest } from "@arcana/core/crypto/sync-transport"
 import { signSyncResponse } from "@arcana/core/crypto/sync-transport"
 import type { SyncResponseContext } from "@arcana/core/crypto/sync-auth"
+import { buildPolicyDelta } from "@arcana/core/crypto/policy-delta"
 import { InstanceHttpApi } from "../api"
 import { WorkspaceRouteContext } from "../middleware/workspace-routing"
 import {
@@ -105,12 +106,43 @@ export const syncNodeHandlers = HttpApiBuilder.group(InstanceHttpApi, "syncNode"
 
       const latestPolicy = state.policyStore.latestActive()
       const latestRevocation = state.revocationStore.last()
+      const policyDelta =
+        latestPolicy !== undefined &&
+        latestPolicy.previousDigest !== undefined &&
+        requestContext.acceptedPolicySequence === latestPolicy.sequence - 1 &&
+        (requestContext.acceptedPolicyDigest ?? undefined) === latestPolicy.previousDigest
+          ? (() => {
+              const base = state.policyStore.getBySequence(latestPolicy.sequence - 1)
+              return base ? buildPolicyDelta(base, latestPolicy, now) : undefined
+            })()
+          : undefined
       const policyNeedsSnapshot =
         latestPolicy !== undefined &&
+        policyDelta === undefined &&
         (requestContext.acceptedPolicySequence < latestPolicy.sequence ||
           (requestContext.acceptedPolicyDigest ?? "") !== latestPolicy.digest)
+
+      const acceptedRevocationSequence = requestContext.acceptedRevocationSequence
+      const revocationStatements =
+        latestRevocation !== undefined && acceptedRevocationSequence < latestRevocation.sequence
+          ? state.revocationStore
+              .history()
+              .filter((record) => record.sequence > acceptedRevocationSequence)
+          : []
+      const revocationDeltaOk =
+        revocationStatements.length > 0 &&
+        revocationStatements.length <= 32 &&
+        (acceptedRevocationSequence === 0 ||
+          (() => {
+            const previous = state.revocationStore.getBySequence(acceptedRevocationSequence)
+            return (
+              previous !== undefined &&
+              (requestContext.acceptedRevocationDigest ?? undefined) === previous.digest
+            )
+          })())
       const revocationNeedsSnapshot =
         latestRevocation !== undefined &&
+        !revocationDeltaOk &&
         (requestContext.acceptedRevocationSequence < latestRevocation.sequence ||
           (requestContext.acceptedRevocationDigest ?? "") !== latestRevocation.digest)
 
@@ -127,7 +159,16 @@ export const syncNodeHandlers = HttpApiBuilder.group(InstanceHttpApi, "syncNode"
 
       const responseContext: SyncResponseContext =
         kind === "policy"
-          ? policyNeedsSnapshot
+          ? policyDelta
+            ? {
+                ...base,
+                responseKind: "POLICY_DELTA",
+                policySequence: latestPolicy!.sequence,
+                policyDigest: latestPolicy!.digest,
+                delta: policyDelta as unknown as Record<string, unknown>,
+                envelope: JSON.parse(latestPolicy!.signedEnvelopeJson),
+              }
+            : policyNeedsSnapshot
             ? {
                 ...base,
                 responseKind: "POLICY_SNAPSHOT",
@@ -143,7 +184,16 @@ export const syncNodeHandlers = HttpApiBuilder.group(InstanceHttpApi, "syncNode"
               }
           : {
               ...base,
-              ...(revocationNeedsSnapshot
+              ...(revocationDeltaOk
+                ? {
+                    responseKind: "REVOCATION_DELTA" as const,
+                    revocationSequence: latestRevocation!.sequence,
+                    revocationDigest: latestRevocation!.digest,
+                    envelopes: revocationStatements.map((statement) =>
+                      JSON.parse(statement.signedStatementJson),
+                    ),
+                  }
+                : revocationNeedsSnapshot
                 ? {
                     responseKind: "REVOCATION_SNAPSHOT" as const,
                     revocationSequence: latestRevocation!.sequence,
