@@ -96,15 +96,18 @@ failed, successful, inspector, prompt focus, diff additions, diff deletions.
 > the composer never interrupts). `Esc` again clears the selection; `Esc` a
 > third time returns to the composer. Interrupting a running turn is now an
 > explicit command (palette → "Interrupt session") rather than Esc. While a
-> permission ACTION GATE is open, `Esc` rejects the gate (use `←`/`→` +
-> `Enter`).
+> permission ACTION GATE is open, `Esc` is intentionally inert (F-26): an
+> accidental Escape must never reject or decline the request. Resolve the
+> gate explicitly with `←`/`→` + `Enter` (Allow once / Allow always /
+> Reject); Reject is a deliberate two-step choice with its own confirmation
+> stage where `Esc` cancels the rejection.
 >
 > **Contract gate warning:** on the `contract.accept` ACTION GATE, `Esc`
-> DECLINES the contract. A declined contract leaves the session in
-> LEGACY_COMPAT mode, which disables exact intent enforcement entirely —
-> no durable approvals are ever created and Phase 4 cannot be observed.
-> Always accept the contract gate with `←`/`→` + `Enter` (Allow once) before
-> testing the approval lifecycle.
+> is inert — it can no longer DECLINE the contract. Declining is only
+> possible by selecting Reject explicitly, so a declined contract (which
+> leaves the session in LEGACY_COMPAT mode, disabling exact intent
+> enforcement) is always deliberate. Accept the contract gate with
+> `←`/`→` + `Enter` (Allow once) before testing the approval lifecycle.
 
 Observe in the real TUI:
 

@@ -407,7 +407,10 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               header={header()}
               body={current.body}
               options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
-              escapeKey="reject"
+              // Esc is intentionally NOT mapped on the gate: an accidental
+              // Escape must never reject/decline the request. The operator
+              // resolves the gate explicitly with ←/→ + Enter (Reject is a
+              // deliberate two-step choice with its own confirmation stage).
               fullscreen
               onSelect={(option) => {
                 if (option === "always") {
