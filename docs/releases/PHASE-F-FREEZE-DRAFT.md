@@ -36,9 +36,13 @@ gates are operational/external, not code.
 2. External architecture review + penetration test + threat-model review +
    supply-chain assessment (BLK-F-13).
 3. L3 independent reproduction of core suites.
-4. Production mounting of the enterprise cores into the console/API
-   (F3 editor, F4 diagnostics, F5 escalation, F6 auditor console, F11 admin
-   API/Terraform/SIEM).
+4. Production mounting of the enterprise cores into the console/API —
+   **mostly DONE 2026-08-02**: `/api/enterprise/*` now mounts all F1–F12
+   cores (17 HTTP integration tests), SIEM CEF export, ticketing payloads,
+   and the SDK enterprise admin client (equivalent automation) are shipped.
+   Remaining surfaces are operator-facing consoles/UI: F3 simulation editor,
+   F5 escalation console, F6 auditor console, plus live transport adapters
+   (ticketing delivery, Terraform provider is optional given the SDK client).
 
 ## Nonclaims
 

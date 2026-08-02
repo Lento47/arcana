@@ -166,3 +166,10 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | AUD-20 | Obtain independent (L3+) reproduction of the Phase C evaluation | BLK-C/L3 | External |
 | AUD-21 | Keep this register and `docs/STATUS.md` updated on every session touching a task | — | All agents |
 | AUD-22 | Add per-task acceptance evidence links (commands + outputs) when each blocker closes | — | All agents |
+| AUD-24 | Mount the enterprise admin HTTP surface (`/api/enterprise/*`: orgs, roles, fleet view, approvals with exact inspection, audit) — DONE (`b9d7e1e4`; 1 HTTP integration test) | BLK-F-01/02/04/05/11 | Engineering |
+| AUD-25 | Mount the enterprise ops surface (F3 policy promotion/diff, F4 register/heartbeat, F5 revoke/bulk-deny, F6 archive/export/hold/sweep, F9 alerts/campaign/forensics, F10 governance checks) — DONE (`5e9b8633`; 5 HTTP integration tests) | BLK-F-03..06/09/10/11 | Engineering |
+| AUD-26 | Mount F7 backup/restore/drill, F8 agreements/exchange/revocation/intersection, F12 entitlements/metering-invariant/diagnostics — DONE (`6f111ab5`; 3 HTTP integration tests) | BLK-F-07/08/11/12 | Engineering |
+| AUD-27 | Implement and mount F4 node diagnostics, F5 escalation (bounded, advisory), F11 admin-event store + SIEM CEF export, F12 metering pipeline — DONE (`945897ee`; 11 core + 3 integration tests) | BLK-F-04/05/11/12 | Engineering |
+| AUD-28 | Implement and mount F8 cross-org approval routing (exact grants, daily caps) + F4 upgrade-ring rollout + publish F6 compliance crosswalk — DONE (`a3db77e5`; 6 core + 2 integration tests) | BLK-F-04/06/08/11 | Engineering |
+| AUD-29 | Ship the SDK enterprise admin client as F11 equivalent automation — DONE (`e0eba947`; 4 SDK tests) | BLK-F-11 | Engineering |
+| AUD-30 | Implement and mount F3 policy draft validation, F9 anomaly-detection heuristics, F11 ticketing payloads — DONE (`aefd28f1`; 6 core + 3 integration tests) | BLK-F-03/09/11 | Engineering |
