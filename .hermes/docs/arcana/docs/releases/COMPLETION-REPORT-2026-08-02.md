@@ -129,6 +129,7 @@ worker-path patch; no dependency was downgraded.
 | Phase E started: `PROTOCOL-1.0-SPEC.md` freeze draft + independent conformance harness (TS + Rust agree on 46 vectors, `script/conformance.ts` 3/3 suites) | BLK-E-01/02 | Engineering |
 | SDK 1.0 governance surface shipped: canonical authorization request builder, framework-adapter mapping hook, strict envelope verification (`@arcana/sdk/v2/governance`, SDK suite 10/10) | BLK-E-03 | Engineering |
 | SDK RunProof verifier shipped: schema/lifecycle/timestamp checks + canonical fingerprint with tamper detection (`@arcana/sdk/v2/proof`, SDK suite 15/15) | BLK-E-03 | Engineering |
+| SDK stable error model + compatibility contract shipped (`@arcana/sdk/v2/errors`, `SDK-1.0-COMPATIBILITY.md`; conformance runner now 4/4 incl. SDK suite 17/17); protocol governance + quickstart docs published | BLK-E-03/08/09 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 

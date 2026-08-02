@@ -2,6 +2,14 @@ export * from "./client.js"
 export * from "./server.js"
 export * from "./governance.js"
 export * from "./proof.js"
+export {
+  ArcanaError,
+  AuthorizationDeniedError,
+  ApprovalRequiredError,
+  VerificationFailedError,
+  TransportError,
+  toArcanaError,
+} from "./errors.js"
 
 import { createOpencodeClient } from "./client.js"
 import { createOpencodeServer } from "./server.js"
