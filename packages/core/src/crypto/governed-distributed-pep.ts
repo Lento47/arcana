@@ -70,6 +70,8 @@ export type GovernedDistributedPepInput = {
     irreversible?: boolean
     now?: Date
   }
+  /** D-5 applied revocation state: revoked grant IDs deny immediately. */
+  revokedGrantIds?: ReadonlySet<string>
 }
 
 export function governedDistributedPep(
@@ -84,6 +86,10 @@ export function governedDistributedPep(
   )
   if (base.decision === "DENY") {
     return { decision: "DENY", reason: base.reason }
+  }
+
+  if (input.revokedGrantIds?.has(input.grant.localGrantId)) {
+    return { decision: "DENY", reason: `grant ${input.grant.localGrantId} is revoked` }
   }
 
   // D-9: offline policy gates (only when the node is disconnected).

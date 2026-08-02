@@ -134,7 +134,7 @@ protocol, performance.
 | D7 Proof sync | FROZEN (local) | TAG `arcana-phase-d7-local-distributed-authority` → `017ad998`; D-7.1 containment partial: Linux openat2 scaffold + Windows handle final-path reader (`tools/fs-containment-rust`, 10/10) | BLK-D-02 |
 | D8 Proof composition | PARTIAL | D-8A Merkle batching + gap detection; **D-8B remote registration** (control-plane ledger + HTTP `/api/proof/*`; node-side uploader/outbox + HTTP client; 27 core + 6 engine tests) | BLK-D-04 |
 | D9 Offline/partition | PARTIAL | design doc + D-4C reducer + `offline-policy.ts` grant/lease policy (15 tests); PEP wiring + node-level partition tests pending | BLK-D-06 |
-| D10 Adversarial eval/freeze | PENDING | — | BLK-D-08/09 |
+| D10 Adversarial eval/freeze | PARTIAL | hostile-node matrix: 15 fail-closed fixtures / 0 bypasses across all ten categories (11 tests); Node 1.0 freeze pending | BLK-D-08/09 |
 
 Architecture docs: `docs/architecture/phase-d/` (node-identity, signed-grants,
 policy-synchronization, revocation-protocol, offline-enforcement,

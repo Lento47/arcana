@@ -395,6 +395,18 @@ function verifyFreshness(
       detail: `expired at ${expiresAt}`,
     }
   }
+  // Clock-skew tolerance: envelopes issued more than 5 minutes in the future
+  // are rejected (mirrors the sync transport's freshness rule).
+  const issuedAt = envelope.issuedAt as string | undefined
+  if (issuedAt) {
+    const issuedAtMs = new Date(issuedAt).getTime()
+    if (issuedAtMs > now + 5 * 60 * 1000) {
+      return {
+        valid: false, stage: "FRESHNESS", reason: "EXPIRED",
+        detail: `issuedAt ${issuedAt} is more than 5 minutes in the future`,
+      }
+    }
+  }
   return { valid: true }
 }
 
