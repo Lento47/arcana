@@ -5,7 +5,7 @@ import { NonNegativeInt } from "@arcana/core/schema"
 import { Global } from "@arcana/core/global"
 import { FSUtil } from "@arcana/core/fs-util"
 
-export const OAUTH_DUMMY_KEY = "opencode-oauth-dummy-key"
+export const OAUTH_DUMMY_KEY = "arcana-oauth-dummy-key"
 
 const file = path.join(Global.Path.data, "auth.json")
 

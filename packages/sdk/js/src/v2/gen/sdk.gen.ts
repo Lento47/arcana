@@ -8,6 +8,10 @@ import type {
   AppAgentsResponses,
   AppLogErrors,
   AppLogResponses,
+  ApprovalCommandErrors,
+  ApprovalCommandResponses,
+  ApprovalListErrors,
+  ApprovalListResponses,
   AppSkillsErrors,
   AppSkillsResponses,
   Auth as Auth3,
@@ -201,6 +205,8 @@ import type {
   SessionForkResponses,
   SessionGetErrors,
   SessionGetResponses,
+  SessionGovernanceErrors,
+  SessionGovernanceResponses,
   SessionInitErrors,
   SessionInitResponses,
   SessionListErrors,
@@ -215,6 +221,8 @@ import type {
   SessionPromptResponses,
   SessionRevertErrors,
   SessionRevertResponses,
+  SessionRevokeCapabilityErrors,
+  SessionRevokeCapabilityResponses,
   SessionShareErrors,
   SessionShareResponses,
   SessionShellErrors,
@@ -231,6 +239,8 @@ import type {
   SessionUnshareResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
+  SessionVerifyObligationErrors,
+  SessionVerifyObligationResponses,
   SubtaskPartInput,
   SyncHistoryListErrors,
   SyncHistoryListResponses,
@@ -540,7 +550,7 @@ export class App extends HeyApiClient {
   /**
    * List agents
    *
-   * Get a list of all available AI agents in the OpenCode system.
+   * Get a list of all available AI agents in the Arcana system.
    */
   public agents<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -570,7 +580,7 @@ export class App extends HeyApiClient {
   /**
    * List skills
    *
-   * Get a list of all available skills in the OpenCode system.
+   * Get a list of all available skills in the Arcana system.
    */
   public skills<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -713,7 +723,7 @@ export class Console extends HeyApiClient {
   /**
    * Switch active Console org
    *
-   * Persist a new active Console account/org selection for the current local OpenCode state.
+   * Persist a new active Console account/org selection for the current local Arcana state.
    */
   public switchOrg<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -879,7 +889,7 @@ export class Session extends HeyApiClient {
   /**
    * List sessions
    *
-   * Get a list of all OpenCode sessions across projects, sorted by most recently updated. Archived sessions are excluded by default.
+   * Get a list of all Arcana sessions across projects, sorted by most recently updated. Archived sessions are excluded by default.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1349,7 +1359,7 @@ export class Config extends HeyApiClient {
   /**
    * Get global configuration
    *
-   * Retrieve the current global OpenCode configuration settings and preferences.
+   * Retrieve the current global Arcana configuration settings and preferences.
    */
   public get<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalConfigGetResponses, GlobalConfigGetErrors, ThrowOnError>({
@@ -1361,7 +1371,7 @@ export class Config extends HeyApiClient {
   /**
    * Update global configuration
    *
-   * Update global OpenCode configuration settings and preferences.
+   * Update global Arcana configuration settings and preferences.
    */
   public update<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1387,7 +1397,7 @@ export class Global extends HeyApiClient {
   /**
    * Get health
    *
-   * Get health information about the OpenCode server.
+   * Get health information about the Arcana server.
    */
   public health<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<GlobalHealthResponses, GlobalHealthErrors, ThrowOnError>({
@@ -1399,7 +1409,7 @@ export class Global extends HeyApiClient {
   /**
    * Get global events
    *
-   * Subscribe to global events from the OpenCode system using server-sent events.
+   * Subscribe to global events from the Arcana system using server-sent events.
    */
   public event<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).sse.get<GlobalEventResponses, GlobalEventErrors, ThrowOnError>({
@@ -1411,7 +1421,7 @@ export class Global extends HeyApiClient {
   /**
    * Dispose instance
    *
-   * Clean up and dispose all OpenCode instances, releasing all resources.
+   * Clean up and dispose all Arcana instances, releasing all resources.
    */
   public dispose<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).post<GlobalDisposeResponses, GlobalDisposeErrors, ThrowOnError>({
@@ -1421,9 +1431,9 @@ export class Global extends HeyApiClient {
   }
 
   /**
-   * Upgrade opencode
+   * Upgrade arcana
    *
-   * Upgrade opencode to the specified version or latest if not specified.
+   * Upgrade arcana to the specified version or latest if not specified.
    */
   public upgrade<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1482,11 +1492,92 @@ export class Event extends HeyApiClient {
   }
 }
 
+export class Approval extends HeyApiClient {
+  /**
+   * Submit an operator approval command
+   *
+   * Submit an APPROVE_ONCE or DENY command for a durable approval. The body carries the version, request hash and contract revision the operator saw; mismatches return success:false with stale:true and nothing is executed. On success the parked tool call resumes (APPROVE_ONCE) or fails closed (DENY).
+   */
+  public command<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      approvalID: string
+      directory?: string
+      workspace?: string
+      command?: "APPROVE_ONCE" | "DENY"
+      expectedVersion?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      expectedRequestHash?: string
+      expectedContractRevision?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "approvalID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "command" },
+            { in: "body", key: "expectedVersion" },
+            { in: "body", key: "expectedRequestHash" },
+            { in: "body", key: "expectedContractRevision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ApprovalCommandResponses, ApprovalCommandErrors, ThrowOnError>({
+      url: "/api/session/{sessionID}/approval/{approvalID}/command",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List approvals for a session
+   *
+   * Snapshot of all durable approval records for a session, keyed by approvalId. Used by the TUI to hydrate the approvals sync store.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ApprovalListResponses, ApprovalListErrors, ThrowOnError>({
+      url: "/api/session/{sessionID}/approval",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Config2 extends HeyApiClient {
   /**
    * Get configuration
    *
-   * Retrieve the current OpenCode configuration settings and preferences.
+   * Retrieve the current Arcana configuration settings and preferences.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1516,7 +1607,7 @@ export class Config2 extends HeyApiClient {
   /**
    * Update configuration
    *
-   * Update OpenCode configuration settings and preferences.
+   * Update Arcana configuration settings and preferences.
    */
   public update<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1994,7 +2085,7 @@ export class Instance extends HeyApiClient {
   /**
    * Dispose instance
    *
-   * Clean up and dispose the current OpenCode instance, releasing all resources.
+   * Clean up and dispose the current Arcana instance, releasing all resources.
    */
   public dispose<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -2026,7 +2117,7 @@ export class Path extends HeyApiClient {
   /**
    * Get paths
    *
-   * Retrieve the current working directory and related path information for the OpenCode instance.
+   * Retrieve the current working directory and related path information for the Arcana instance.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -2228,7 +2319,7 @@ export class Command extends HeyApiClient {
   /**
    * List commands
    *
-   * Get a list of all available commands in the OpenCode system.
+   * Get a list of all available commands in the Arcana system.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -2599,7 +2690,7 @@ export class Project extends HeyApiClient {
   /**
    * List all projects
    *
-   * Get a list of projects that have been opened with OpenCode.
+   * Get a list of projects that have been opened with Arcana.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -2629,7 +2720,7 @@ export class Project extends HeyApiClient {
   /**
    * Get current project
    *
-   * Retrieve the currently active project that OpenCode is working with.
+   * Retrieve the currently active project that Arcana is working with.
    */
   public current<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -2805,7 +2896,7 @@ export class Pty extends HeyApiClient {
   /**
    * List PTY sessions
    *
-   * Get a list of all active pseudo-terminal (PTY) sessions managed by OpenCode.
+   * Get a list of all active pseudo-terminal (PTY) sessions managed by Arcana.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3440,7 +3531,7 @@ export class Session2 extends HeyApiClient {
   /**
    * List sessions
    *
-   * Get a list of all OpenCode sessions, sorted by most recently updated.
+   * Get a list of all Arcana sessions, sorted by most recently updated.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3482,7 +3573,7 @@ export class Session2 extends HeyApiClient {
   /**
    * Create session
    *
-   * Create a new OpenCode session for interacting with AI assistants and managing conversations.
+   * Create a new Arcana session for interacting with AI assistants and managing conversations.
    */
   public create<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -3599,7 +3690,7 @@ export class Session2 extends HeyApiClient {
   /**
    * Get session
    *
-   * Retrieve detailed information about a specific OpenCode session.
+   * Retrieve detailed information about a specific Arcana session.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
@@ -3940,6 +4031,126 @@ export class Session2 extends HeyApiClient {
       url: "/session/{sessionID}/message/{messageID}",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Get session governance
+   *
+   * Retrieve canonical durable governance evidence, trace health, and the current RunProof projection for a session.
+   */
+  public governance<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionGovernanceResponses, SessionGovernanceErrors, ThrowOnError>({
+      url: "/session/{sessionID}/governance",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Revoke a session capability
+   *
+   * Revoke an ACTIVE capability grant owned by the session and all descendant grants, recording capability.revoked evidence for each.
+   */
+  public revokeCapability<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      capabilityID: string
+      reason?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "capabilityID" },
+            { in: "body", key: "reason" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionRevokeCapabilityResponses,
+      SessionRevokeCapabilityErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/capability/{capabilityID}/revoke",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Record an operator verification outcome
+   *
+   * Record an explicit operator/verifier outcome (satisfied, failed, or waived) with a required reason for a comparison, human_decision, or external_confirmation obligation, persisting verification.recorded governance evidence.
+   */
+  public verifyObligation<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      obligationID: string
+      outcome?: "satisfied" | "failed" | "waived"
+      reason?: string
+      details?: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "obligationID" },
+            { in: "body", key: "outcome" },
+            { in: "body", key: "reason" },
+            { in: "body", key: "details" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionVerifyObligationResponses,
+      SessionVerifyObligationErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/obligation/{obligationID}/verify",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -6818,6 +7029,11 @@ export class OpencodeClient extends HeyApiClient {
   private _event?: Event
   get event(): Event {
     return (this._event ??= new Event({ client: this.client }))
+  }
+
+  private _approval?: Approval
+  get approval(): Approval {
+    return (this._approval ??= new Approval({ client: this.client }))
   }
 
   private _config?: Config2

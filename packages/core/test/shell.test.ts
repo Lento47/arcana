@@ -71,7 +71,11 @@ describe("shell", () => {
     })
 
     test("normalizes Git Bash shell paths from env", async () => {
-      const shell = "/cygdrive/c/Program Files/Git/bin/bash.exe"
+      const bash = Shell.gitbash()
+      if (!bash) return
+      // Convert the real Git Bash install to its cygdrive form so the env
+      // path actually resolves on this machine.
+      const shell = bash.replace(/^([A-Za-z]):/, (_, drive) => `/cygdrive/${drive.toLowerCase()}`).replaceAll("\\", "/")
       await withShell(shell, async () => {
         expect(Shell.preferred()).toBe(FSUtil.windowsPath(shell))
       })

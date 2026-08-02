@@ -144,22 +144,33 @@ function diffSnapshots(before: Map<string, string>, after: Map<string, string>):
 // Environment compatibility
 // ────────────────────────────────────────────────────────────────
 
+// Executable resolution (`which`/`where`) is the dominant cost of replay
+// derivation on Windows. Cache per executable for the lifetime of the process:
+// PATH does not change mid-derivation and the same binary is re-checked for
+// every replayed step.
+const environmentCompatibilityCache = new Map<string, "COMPATIBLE" | "DRIFTED" | "UNKNOWN">()
+
 export function checkEnvironmentCompatibility(
   executable: string | null,
   workingDirectory: string | null,
 ): "COMPATIBLE" | "DRIFTED" | "UNKNOWN" {
   if (workingDirectory && !fs.existsSync(workingDirectory)) return "DRIFTED"
   if (!executable) return "UNKNOWN"
+  const cached = environmentCompatibilityCache.get(executable)
+  if (cached) return cached
+  let result: "COMPATIBLE" | "DRIFTED" | "UNKNOWN"
   try {
     if (process.platform === "win32") {
       execSync(`where ${executable}`, { stdio: "pipe", timeout: 5000 })
     } else {
       execSync(`which ${executable}`, { stdio: "pipe", timeout: 5000 })
     }
+    result = "COMPATIBLE"
   } catch {
-    return "DRIFTED"
+    result = "DRIFTED"
   }
-  return "COMPATIBLE"
+  environmentCompatibilityCache.set(executable, result)
+  return result
 }
 
 // ────────────────────────────────────────────────────────────────

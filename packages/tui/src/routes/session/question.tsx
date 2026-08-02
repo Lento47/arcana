@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store"
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
-import type { TextareaRenderable } from "@opentui/core"
+import type { RGBA, TextareaRenderable } from "@opentui/core"
 import { selectedForeground, useTheme } from "../../context/theme"
 import type { QuestionAnswer, QuestionRequest } from "@arcana/sdk/v2"
 import { useSDK } from "../../context/sdk"
@@ -9,8 +9,8 @@ import { useTuiConfig } from "../../config"
 import { useBindings, useOpencodeModeStack } from "../../keymap"
 import { useToast } from "../../ui/toast"
 import { errorMessage } from "../../util/error"
-import { getSpineLayout } from "../../shell/command-spine/spine-types"
 import { SpineGutterSpacer, spineLeadMetrics } from "../../shell/command-spine/spine-lead"
+import { useSpineLayout } from "../../shell/command-spine/use-spine-layout"
 import { SpineRail } from "../../shell/command-spine/spine-rail"
 
 const QUESTION_MODE = "question"
@@ -59,17 +59,14 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   })
 
   // Same lead metrics as SpinePrompt / SpineEntry so columns never drift.
-  let _prevLayoutQ: string | undefined
-  const layout = createMemo(() => {
-    const l = getSpineLayout(dimensions().width, _prevLayoutQ as any)
-    _prevLayoutQ = l
-    return l
-  })
+  // Hysteresis (audit S4): shared tracked-prev hook — replaces the inline
+  // _prevLayoutQ holder + `as any` (same dead-zone behavior, typed).
+  const layout = useSpineLayout(() => dimensions().width)
   const metrics = createMemo(() => spineLeadMetrics(layout()))
   const narrow = createMemo(() => dimensions().width < 88)
   const optionIndexWidth = createMemo(() => Math.max(4, String(options().length + (custom() ? 1 : 0)).length + 3))
 
-  function GateRow(props: { glyph?: string; color?: unknown; children: JSX.Element; marginTop?: number }) {
+  function GateRow(props: { glyph?: string; color?: RGBA; children: JSX.Element; marginTop?: number }) {
     return (
       <box
         flexDirection="row"
@@ -399,15 +396,15 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
   const header = (
     <box flexDirection="column" minWidth={0}>
       <box flexDirection="row" minWidth={0} alignItems="center">
-        <text fg={theme.spineInspect as any} flexShrink={0}>QUESTION</text>
+        <text fg={theme.spineInspect} flexShrink={0}>QUESTION</text>
         <Show when={!single()}>
-          <text fg={theme.textMuted as any} flexShrink={0}>
+          <text fg={theme.textMuted} flexShrink={0}>
             {"  "}
             {confirm() ? "review" : `${store.tab + 1}/${questions().length}`}
           </text>
         </Show>
         <Show when={store.busy}>
-          <text fg={theme.textMuted as any} flexShrink={0}>{"  ·  submitting…"}</text>
+          <text fg={theme.textMuted} flexShrink={0}>{"  ·  submitting…"}</text>
         </Show>
       </box>
       <Show when={!single()}>
@@ -505,7 +502,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                         width={optionIndexWidth()}
                         flexShrink={0}
                       >
-                        <text fg={active() ? selectedForeground(theme, theme.backgroundElement) : (theme.spineContext as any)}>
+                        <text fg={active() ? selectedForeground(theme, theme.backgroundElement) : theme.spineContext}>
                           {`${i() + 1}.`}
                         </text>
                       </box>
@@ -529,7 +526,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                     </box>
                     <Show when={opt.description}>
                       <box paddingLeft={optionIndexWidth()} minWidth={0}>
-                        <text fg={theme.spineContext as any} wrapMode="word">
+                        <text fg={theme.spineContext} wrapMode="word">
                           {opt.description}
                         </text>
                       </box>
@@ -555,7 +552,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                     width={optionIndexWidth()}
                     flexShrink={0}
                   >
-                    <text fg={other() ? selectedForeground(theme, theme.backgroundElement) : (theme.spineContext as any)}>
+                    <text fg={other() ? selectedForeground(theme, theme.backgroundElement) : theme.spineContext}>
                       {`${options().length + 1}.`}
                     </text>
                   </box>
@@ -590,20 +587,20 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                       }}
                       initialValue={input()}
                       placeholder="Type your own answer"
-                      placeholderColor={theme.spineContext as any}
+                      placeholderColor={theme.spineContext}
                       width="100%"
                       minHeight={1}
                       maxHeight={6}
                       textColor={theme.text}
                       focusedTextColor={theme.text}
                       cursorColor={theme.primary}
-                      focusedBackgroundColor={theme.background as any}
+                      focusedBackgroundColor={theme.background}
                     />
                   </box>
                 </Show>
                 <Show when={!store.editing && input()}>
                   <box paddingLeft={optionIndexWidth()} minWidth={0}>
-                    <text fg={theme.spineContext as any} wrapMode="word">{input()}</text>
+                    <text fg={theme.spineContext} wrapMode="word">{input()}</text>
                   </box>
                 </Show>
               </box>
@@ -622,7 +619,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
               return (
                 <box marginTop={1} minWidth={0}>
                   <text wrapMode="word">
-                    <span style={{ fg: theme.spineContext as any }}>{q.header || `Q${index() + 1}`}:</span>{" "}
+                    <span style={{ fg: theme.spineContext }}>{q.header || `Q${index() + 1}`}:</span>{" "}
                     <span style={{ fg: answered() ? theme.text : theme.error }}>
                       {answered() ? value() : "(not answered)"}
                     </span>
@@ -640,17 +637,17 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     <box flexDirection={narrow() ? "column" : "row"} flexShrink={0} gap={narrow() ? 0 : 2} minWidth={0}>
       <box flexDirection="row" gap={2} flexShrink={0}>
         <Show when={!single()}>
-          <text fg={theme.spineContext as any}>tab steps</text>
+          <text fg={theme.spineContext}>tab steps</text>
         </Show>
         <Show when={!confirm()}>
-          <text fg={theme.spineContext as any}>↑↓ select</text>
+          <text fg={theme.spineContext}>↑↓ select</text>
         </Show>
       </box>
       <box flexDirection="row" gap={2} flexShrink={0}>
-        <text fg={theme.spineContext as any}>
+        <text fg={theme.spineContext}>
           enter {confirm() ? "submit" : multi() ? "toggle" : single() ? "submit" : "next"}
         </text>
-        <text fg={theme.spineContext as any}>esc dismiss</text>
+        <text fg={theme.spineContext}>esc dismiss</text>
       </box>
     </box>
   )

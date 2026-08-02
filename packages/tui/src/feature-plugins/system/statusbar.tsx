@@ -10,8 +10,6 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "so
 
 const id = "internal:statusbar"
 
-const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
-
 interface BarSegment { filled: boolean }
 
 function renderBar(pct: number): BarSegment[] {
@@ -33,15 +31,17 @@ function clampPercent(pct: number): number {
  * (e.g. YYYYMMDD) so model versions remain distinguishable at a glance.
  */
 function compactModelName(value: string): string {
-  if (value.length <= 50) return value
+  // T9: budget is display columns, not code units — CJK/emoji model names
+  // would otherwise render at 2× the 50-col budget.
+  if (Locale.displayWidth(value) <= 50) return value
   // Try to preserve a trailing date suffix: ...20260514
   const dateMatch = value.match(/[-_](\d{8}|\d{4}-\d{2}-\d{2})$/)
   if (dateMatch) {
     const suffix = dateMatch[0] // e.g. "-20260514"
-    const prefixMax = 50 - suffix.length - 3 // 3 for "..."
-    return value.slice(0, prefixMax) + "..." + suffix
+    // Reserve columns for the suffix; truncate the prefix by display width.
+    return Locale.truncate(value, 50 - Locale.displayWidth(suffix)) + suffix
   }
-  return `${value.slice(0, 47)}...`
+  return Locale.truncate(value, 50)
 }
 
 function tokenStateLabel(percent: number | null, compacting: boolean): string {
@@ -132,6 +132,12 @@ function View(props: { api: TuiPluginApi }) {
     return "Thinking…"
   })
 
+  // C4: the chip is flush with the bar's left edge when it is the first visible
+  // element (no busy shimmer leads). The bar collapses its padding and the chip
+  // absorbs it (3 = bar 0 + chip 3), so the solid block reaches the edge instead
+  // of floating on the transparent bar background.
+  const chipAtEdge = () => !busyVerb() && (compacting() || contextPressure())
+
   return (
     <Show when={sessionID() && (shell() === "command-spine" ? (compacting() || contextPressure()) : (busy() || compacting() || model() || usage()))}>
       <box
@@ -140,7 +146,9 @@ function View(props: { api: TuiPluginApi }) {
         flexShrink={0}
         alignItems="center"
         gap={2}
-        paddingLeft={2}
+        minWidth={0}
+        overflow="hidden"
+        paddingLeft={chipAtEdge() ? 0 : 2}
         paddingRight={2}
         backgroundColor={theme().background}
         border={["top"]}
@@ -150,7 +158,7 @@ function View(props: { api: TuiPluginApi }) {
           <ShimmerText text={busyVerb()} active={true} background={theme().background as any} />
         </Show>
         <Show when={compacting()}>
-          <box backgroundColor={theme().warning} paddingLeft={1} paddingRight={1}>
+          <box backgroundColor={theme().warning} paddingLeft={chipAtEdge() ? 3 : 1} paddingRight={1}>
             <text fg={selectedForeground(theme(), theme().warning)}>
               <span style={{ fg: selectedForeground(theme(), theme().warning), bold: true }}>
                 ⟳ COMPACTING
@@ -160,7 +168,7 @@ function View(props: { api: TuiPluginApi }) {
         </Show>
         <Show when={contextPressure()}>
           {(pressure) => (
-            <box backgroundColor={pressure().color} paddingLeft={1} paddingRight={1}>
+            <box backgroundColor={pressure().color} paddingLeft={chipAtEdge() ? 3 : 1} paddingRight={1}>
               <text fg={selectedForeground(theme(), pressure().color)}>
                 <span style={{ fg: selectedForeground(theme(), pressure().color), bold: true }}>
                   {pressure().label}
@@ -219,7 +227,7 @@ function View(props: { api: TuiPluginApi }) {
         </Show>
         <Show when={cost() !== undefined && cost()! > 0}>
           <text fg={theme().textMuted}>
-            {Glyph.diamond} {money.format(cost()!)}
+            {Glyph.diamond} {Locale.currency(cost()!)}
           </text>
         </Show>
       </box>

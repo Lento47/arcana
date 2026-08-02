@@ -6,5 +6,8 @@
     "types": [
       "bun"
     ]
-  }
+  },
+  "exclude": [
+    "src/crypto/run-tui2*.ts"
+  ]
 }

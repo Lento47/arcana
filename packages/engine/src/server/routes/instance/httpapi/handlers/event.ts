@@ -48,11 +48,22 @@ function eventResponse(events: EventV2.Interface) {
     // Listener registration is eager, so events published after this point cannot
     // be lost while the HTTP body fiber is starting or emitting server.connected.
     // Sliding (drop-oldest) per subscriber: a slow consumer can never stall the
-    // publish path or accumulate unbounded memory.
-    const queue = yield* Queue.sliding<EventV2.Payload>(512)
+    // publish path or accumulate unbounded memory. F-A2: capacity raised from
+    // 512 to 4096, and foreign events are filtered BEFORE the offer below —
+    // a cross-directory/workspace flood can no longer evict this subscriber's
+    // own deltas from the queue.
+    const queue = yield* Queue.sliding<EventV2.Payload>(4096)
+    const belongsToSubscriber = (event: EventV2.Payload) =>
+      event.location?.directory === instance.directory &&
+      (event.location.workspaceID === undefined || event.location.workspaceID === workspaceID)
     const unsubscribe = yield* events.listen((event) =>
       Effect.sync(() => {
         offered += 1
+        // Pre-filter before the offer: foreign events never consume queue
+        // budget (F-A2). The post-stream filter below remains as
+        // defense-in-depth and keeps the wire sequence gapless over exactly
+        // this subscriber's events.
+        if (!belongsToSubscriber(event)) return
         Queue.offerUnsafe(queue, event)
       }),
     )
@@ -72,11 +83,7 @@ function eventResponse(events: EventV2.Interface) {
           delivered += 1
         }),
       ),
-      Stream.filter(
-        (event) =>
-          event.location?.directory === instance.directory &&
-          (event.location.workspaceID === undefined || event.location.workspaceID === workspaceID),
-      ),
+      Stream.filter(belongsToSubscriber),
     )
     const disposed = Stream.callback<{ id: string; type: string; properties: unknown }>((queue) => {
       const listener = (event: {

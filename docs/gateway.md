@@ -46,7 +46,7 @@ arcana gateway --discord-token "xxx"
 4. Invite the bot to your server with the `bot` scope and `Send Messages` + `Read Message History` permissions.
 5. Add the channel ID to `allowedChannels`.
 
-**Note:** Discord replies are capped at 2000 characters. Longer responses are truncated automatically.
+**Note:** Discord replies are capped at 2000 characters. Longer responses are split into multiple messages; chunks carry a `…[continued]` tail and the final chunk reports the omitted character count (honest-tail marker, never silent truncation).
 
 ### Slack
 
@@ -76,7 +76,7 @@ ngrok http 3100
 6. In the Meta dashboard, configure the webhook URL as `https://your-domain/webhook` and subscribe to `messages` events.
 7. Set `verifyToken` to match what you configure in the Meta dashboard (or it defaults to a random UUID).
 
-**Note:** WhatsApp messages are capped at 4096 characters. Longer responses are truncated automatically.
+**Note:** WhatsApp messages are capped at 4096 characters. Longer responses are split into multiple messages; chunks carry a `…[continued]` tail and the final chunk reports the omitted character count (honest-tail marker, never silent truncation).
 
 ## Security
 

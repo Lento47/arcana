@@ -911,6 +911,38 @@ const scenarios: Scenario[] = [
       headers: ctx.headers(),
     }))
     .json(404, object, "status"),
+  http.protected
+    .get("/api/session/{sessionID}/approval", "approval.list")
+    .seeded((ctx) => ctx.session({ title: "Approval list session" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/approval", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body) => {
+      object(body)
+      check(Object.keys(body).length === 0, "a session without approval requests should return an empty approval map")
+    }),
+  http.protected
+    .post("/api/session/{sessionID}/approval/{approvalID}/command", "approval.command.missing")
+    .seeded((ctx) => ctx.session({ title: "Approval command session" }))
+    .at((ctx) => ({
+      path: route("/api/session/{sessionID}/approval/{approvalID}/command", {
+        sessionID: ctx.state.id,
+        approvalID: "apr_httpapi_missing",
+      }),
+      headers: ctx.headers(),
+      body: {
+        command: "DENY",
+        expectedVersion: 1,
+        expectedRequestHash: "missing-request",
+        expectedContractRevision: 1,
+      },
+    }))
+    .json(200, (body) => {
+      object(body)
+      check(body.success === false, "a command for a missing approval should fail closed")
+      check(typeof body.reason === "string" && body.reason.length > 0, "a rejected command should explain why")
+    }),
   http.protected.get("/api/permission/saved", "v2.permission.saved.list").json(200, (body) => {
     object(body)
     array(body.data)
@@ -1193,6 +1225,23 @@ const scenarios: Scenario[] = [
     .seeded((ctx) => ctx.session({ title: "Diff session" }))
     .at((ctx) => ({ path: route("/session/{sessionID}/diff", { sessionID: ctx.state.id }), headers: ctx.headers() }))
     .json(200, array),
+  http.protected
+    .get("/session/{sessionID}/governance", "session.governance")
+    .seeded((ctx) => ctx.session({ title: "Governance session" }))
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/governance", { sessionID: ctx.state.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body, ctx) => {
+      object(body)
+      check(body.sessionId === ctx.state.id, "governance snapshot should match the requested session")
+      array(body.events)
+      object(body.trace)
+      check(
+        body.trace.status === "COMPLETE" || body.trace.status === "DEGRADED" || body.trace.status === "UNAVAILABLE",
+        "governance snapshot should expose authoritative trace health",
+      )
+    }),
   http.protected
     .get("/session/{sessionID}/message", "session.messages")
     .seeded((ctx) => ctx.session({ title: "Messages session" }))

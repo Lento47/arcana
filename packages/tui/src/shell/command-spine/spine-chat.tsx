@@ -33,8 +33,7 @@ export function SpineChatCard(props: {
   /** Full measured wrap width for the answer body (terminal − gutters). */
   contentWidth?: number
 }) {
-  const { theme: themeObj } = useTheme()
-  const t = themeObj as Record<string, unknown>
+  const { theme } = useTheme()
 
   const kind = () => props.kind
   const isUser = createMemo(() => kind() === "ask")
@@ -63,17 +62,17 @@ export function SpineChatCard(props: {
   })
 
   const speakerColor = createMemo(() => {
-    if (isUser()) return (t.spineAsk ?? t.accent ?? spineTone("ask", t)) as any
-    return (t.spineBrand ?? t.primary ?? t.spineOk ?? spineTone("ok", t)) as any
+    if (isUser()) return theme.spineAsk
+    return theme.spineBrand
   })
 
   const railColor = createMemo(() => speakerColor())
-  const timeColor = createMemo(() => (t.spineGutterElapsed ?? t.textMuted) as any)
+  const timeColor = createMemo(() => theme.spineGutterElapsed)
   const railW = createMemo(() => spineRailWidth(props.layout))
 
   const cardBg = createMemo(() => {
     if (!isAssistant()) return undefined
-    return (t.backgroundPanel ?? t.backgroundElement) as any
+    return theme.backgroundPanel
   })
 
   const bodyLabel = createMemo(
@@ -81,9 +80,12 @@ export function SpineChatCard(props: {
   )
 
   // Explicit wrap width — never leave markdown to Yoga % guesswork.
+  // Present-but-narrow width is a real budget: clamp to >= 1 rather than
+  // returning "100%" (which would re-open the 80-fallback in SpineProse.wrapCols).
+  // Missing width (first paint) -> undefined: card sizes naturally, no floor.
   const bodyWidth = createMemo(() => {
-    if (typeof props.contentWidth === "number" && props.contentWidth >= 24) {
-      return Math.floor(props.contentWidth)
+    if (typeof props.contentWidth === "number" && Number.isFinite(props.contentWidth)) {
+      return Math.max(1, Math.floor(props.contentWidth))
     }
     return undefined
   })
@@ -108,7 +110,7 @@ export function SpineChatCard(props: {
     >
       {/* Turn separator — thin line above user messages */}
       <Show when={isUser()}>
-        <box border={["bottom"]} borderColor={(t.borderSubtle ?? t.textMuted) as any} width="100%" />
+        <box border={["bottom"]} borderColor={theme.borderSubtle} width="100%" />
       </Show>
       {/* Header — single row, no markdown here */}
       <box flexDirection="row" flexShrink={0} alignItems="center" width="100%">

@@ -29,16 +29,17 @@ import type {
   LabeledAuthorizationField,
   DeclassificationDecision,
   SensitivityLabel,
+  ProvenanceLabel,
 } from "@arcana/core/capability/types"
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function expectLabels(
   labels: SecurityLabels,
-  expectedProvenance: string[],
+  expectedProvenance: ProvenanceLabel[],
   expectedSensitivity: SensitivityLabel,
 ) {
-  expect((labels.provenance as unknown as string[]).sort()).toEqual(expectedProvenance.sort())
+  expect([...labels.provenance].sort()).toEqual(expectedProvenance.sort())
   expect(labels.sensitivity).toBe(expectedSensitivity)
 }
 
@@ -282,7 +283,7 @@ describe("Declassification: narrow primitive", () => {
 
   test("declassification requires lower target sensitivity", () => {
     const decision: DeclassificationDecision = {
-      sourceSensitivity: "SECRET",
+      sourceSensitivity: "PRIVATE",
       targetSensitivity: "PRIVATE",
       fields: ["apiKey"],
       purpose: "test",

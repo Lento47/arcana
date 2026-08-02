@@ -142,6 +142,9 @@ export type AcpHandle = {
   // calls this, so tests only need it when asserting exit behavior.
   readonly close: () => void
   readonly exited: Promise<number>
+  // Captured stderr tail for diagnosing protocol timeouts. Cheap because the
+  // drain is already running for every ACP subprocess.
+  readonly stderr: () => string
 }
 
 export type OpencodeCli = {
@@ -398,6 +401,7 @@ export function withCliFixture<A, E>(
         // proc.stdin.end() is idempotent in Bun; no try/catch needed.
         close: () => proc.stdin.end(),
         exited: proc.exited as Promise<number>,
+        stderr: () => stderrChunks.join("").slice(-4000),
       } satisfies AcpHandle
     })
 

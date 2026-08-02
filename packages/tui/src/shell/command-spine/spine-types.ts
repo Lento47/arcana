@@ -1,3 +1,6 @@
+import type { Theme } from "../../theme"
+import { displayWidth } from "../../util/locale"
+
 export type SpineKind =
   | "ask"
   | "plan"
@@ -25,27 +28,27 @@ export type StatusSegment = {
   tone: StatusTone
 }
 
-export function statusToneColor(tone: StatusTone, theme: Record<string, unknown>): any {
+export function statusToneColor(tone: StatusTone, theme: Theme) {
   switch (tone) {
     case "brand":
-      return theme.spineBrand as any
+      return theme.spineBrand
     case "success":
-      return theme.success as any
+      return theme.success
     case "accent":
-      return theme.accent as any
+      return theme.accent
     case "secondary":
-      return theme.secondary as any
+      return theme.secondary
     case "info":
-      return theme.info as any
+      return theme.info
     case "warning":
-      return theme.warning as any
+      return theme.warning
     case "error":
-      return theme.error as any
+      return theme.error
     case "text":
-      return theme.text as any
+      return theme.text
     case "muted":
     default:
-      return theme.textMuted as any
+      return theme.textMuted
   }
 }
 
@@ -84,7 +87,7 @@ export type SpineSourceRef = {
   partID?: string
   /** Child subsession ID for agent/subtask entries — enables click-to-navigate. */
   sessionID?: string
-  kind: "message" | "text" | "tool" | "patch" | "reasoning" | "subtask" | "agent" | "approve" | "question"
+  kind: "message" | "text" | "tool" | "patch" | "reasoning" | "subtask" | "agent" | "approve" | "question" | "governance"
 }
 
 export type SpineEntry = {
@@ -94,6 +97,8 @@ export type SpineEntry = {
   /** Numeric elapsed in ms (parallel to `elapsed`). Use for sums; avoids re-parsing "+1h"→"+1s" bug. */
   elapsedMs?: number
   timestamp?: string
+  /** Absolute occurrence time (unix ms) — enables group duration/range derivation. */
+  occurredAt?: number
   actor?: string
   label?: string
   kind: SpineKind
@@ -178,16 +183,42 @@ export function spineGutterWidth(_layout: SpineLayout) {
   return 2
 }
 
+/**
+ * Gutter width for the largest visible display index. The 2-col contract
+ * grows only when a session actually exceeds 99 rows — the gutter never
+ * repeats "99" as a fake cap.
+ */
+export function spineGutterDigits(maxIndex: number): number {
+  const digits = String(Math.max(1, Math.floor(maxIndex))).length
+  return Math.max(2, digits)
+}
+
 /** Glyph column — single cell + trailing space. */
 export function spineRailWidth(_layout: SpineLayout) {
   return 2
 }
 
 /**
+ * Rail cell text (audit B8): display-width, grapheme-safe.
+ *
+ * A 1-col glyph gets a trailing space to fill the 2-col rail; a 2-col glyph
+ * (◤, ⤷, wide emoji) fills the rail alone. Never slices mid-grapheme — the
+ * old `(symbol + " ").slice(0, width).padEnd(width)` split surrogate pairs.
+ */
+export function spineRailCell(symbol: string, width: number): string {
+  if (width <= 0) return ""
+  const w = displayWidth(symbol)
+  if (w >= width) return symbol
+  return symbol + " ".repeat(width - w)
+}
+
+/**
  * Measured content width for chat/think prose (Grok-class wrap width).
  *
- * Terminal columns minus gutter + rail + card padding/border + safety.
- * Floors at 24 so Yoga never collapses markdown to mid-word wraps.
+ * Terminal columns minus outer pad + gutter + variant chrome + safety,
+ * clamped to >= 1. Never a bare 80-column fallback: a present-but-narrow
+ * terminal gets its real budget, and a missing/zero width (first paint race)
+ * degrades to 1, which cannot overflow the parent.
  *
  * @param terminalWidth - full terminal columns
  * @param layout - current spine layout
@@ -197,21 +228,19 @@ export function spineProseWidth(
   terminalWidth: number,
   layout: SpineLayout,
   variant: "chat" | "think" | "inline" = "chat",
+  gutterWidth?: number,
 ): number {
-  // Prefer a sane default if dimensions are missing/zero (first paint race).
-  const term =
-    Number.isFinite(terminalWidth) && terminalWidth >= 40
-      ? Math.floor(terminalWidth)
-      : 80
+  const term = Number.isFinite(terminalWidth) ? Math.floor(terminalWidth) : 1
   // Entry: outer pad + gutter. Chat card: left border + padL + padR.
   // No separate rail sibling on the body anymore (pad/border only).
+  const gutter = gutterWidth ?? spineGutterWidth(layout)
   const chrome =
     spineOuterPadding(layout)
-    + spineGutterWidth(layout)
+    + gutter
     + (variant === "chat" ? 1 /* border */ + 2 /* padL */ + 1 /* padR */ : variant === "think" ? spineRailWidth(layout) + 1 : 1)
     + 2 // scrollbar / safety
-  // Floor high enough that word-wrap never collapses to mid-token wraps.
-  return Math.max(40, term - chrome)
+  // Clamp to >= 1 so a tiny/narrow terminal never yields negative or 80-wide prose.
+  return Math.max(1, term - chrome)
 }
 
 /**
@@ -224,48 +253,99 @@ export function spineElapsedMax(layout: SpineLayout) {
   return 7 // "+12.1s"
 }
 
-/** Compact "+1.2s" / "+12s" for node meta. Empty when max is 0 or value blank. */
+// Unit preservation for compactSpineElapsed (audit T6): an ellipsis must never
+// eat the unit — "+123…" is ambiguous (seconds? minutes?), "+0.1s" is not.
+const ELAPSED_UNIT_MS: Record<string, number> = {
+  ms: 1,
+  s: 1000,
+  m: 60000,
+  h: 3600000,
+  d: 86400000,
+}
+
+/** Drop a trailing ".0" so "5.0s" reads "5s" (consolidated lexicon). */
+function stripZero(s: string) {
+  return s.replace(/\.0$/, "")
+}
+
+/**
+ * Canonical elapsed formatter (audit T8): consistent precision across all
+ * ranges via the same finest-tier forms as `compactElapsedForms`, with the
+ * sign prefix. Old local copies rounded seconds to ints (`+12s`), rounded
+ * minutes up (`90s → +2m`) and dropped the hour's minutes — tier-by-tier
+ * precision drift. Zero/negative/non-finite → "" (no `+0ms` noise).
+ */
+export function formatElapsedMs(ms: number | undefined): string {
+  if (ms === undefined || !Number.isFinite(ms) || ms <= 0) return ""
+  return "+" + compactElapsedForms(ms)[0]!
+}
+
+/** Finest → coarsest unit-preserving render tiers for a value in ms. */
+function compactElapsedForms(abs: number): string[] {
+  if (abs < 1000) return [`${Math.round(abs)}ms`, `${stripZero((abs / 1000).toFixed(1))}s`]
+  if (abs < 60000) return [`${stripZero((abs / 1000).toFixed(1))}s`, `${Math.round(abs / 1000)}s`]
+  if (abs < 3600000) return [`${Math.floor(abs / 60000)}m`]
+  if (abs < 86400000) return [`${Math.floor(abs / 3600000)}h`]
+  return [`${Math.floor(abs / 86400000)}d`]
+}
+
+/**
+ * Compact "+1.2s" / "+12s" for node meta. Empty when max is 0 or value blank.
+ * Values that fit are returned unchanged. Values that don't fit are re-rendered
+ * at a coarser precision that keeps the unit intact (audit T6) — the unit is
+ * never truncated, even at the cost of a slight overflow.
+ */
 export function compactSpineElapsed(elapsed: string | undefined, max: number): string {
   if (!elapsed || max <= 0) return ""
   const value = elapsed.trim()
   if (!value) return ""
-  if (value.length <= max) return value
-  const stripped = value.replace(/^\+/, "").replace(/(\d+)\.(\d+)s/, "$1s")
-  const withPlus = stripped.startsWith("+") ? stripped : `+${stripped}`
-  if (withPlus.length <= max) return withPlus
-  return withPlus.slice(0, max - 1) + "…"
+  if (displayWidth(value) <= max) return value
+  const match = value.match(/^([+-]?)(\d+(?:\.\d+)?)(ms|s|m|h|d)?$/)
+  if (!match) return value.slice(0, Math.max(1, max))
+  const sign = match[1] === "-" ? "-" : "+"
+  const ms = Number(match[2]) * (ELAPSED_UNIT_MS[match[3] ?? "s"] ?? 1000)
+  if (!Number.isFinite(ms) || ms <= 0) return value.slice(0, Math.max(1, max))
+  const forms = compactElapsedForms(ms)
+  for (const form of forms) {
+    const candidate = sign + form
+    if (displayWidth(candidate) <= max) return candidate
+  }
+  // Coarsest tier keeps the unit — accept a slight overflow rather than eat it.
+  return sign + forms[forms.length - 1]!
 }
 
-export function spineTone(kind: SpineKind, theme: Record<string, unknown>) {
+export function spineTone(kind: SpineKind, theme: Theme) {
   switch (kind) {
     case "ask":
-      return theme.spineAsk as any
+      return theme.spineAsk
     case "plan":
-      return theme.spinePlan as any
+      return theme.spinePlan
     case "inspect":
-      return theme.spineInspect as any
+      return theme.spineInspect
     case "patch":
-      return theme.spinePatch as any
+      return theme.spinePatch
     case "run":
-      return theme.spineRun as any
+      return theme.spineRun
     case "fail":
-      return theme.spineFail as any
+      return theme.spineFail
     case "fix":
-      return theme.spineFix as any
+      return theme.spineFix
     case "approve":
-      return (theme.warning ?? theme.spineFix) as any
+      return theme.warning
     case "question":
-      return (theme.spineAsk ?? theme.accent) as any
+      return theme.spineAsk
     case "ok":
-      return theme.spineOk as any
+      return theme.spineOk
     case "think":
-      return theme.spineThink as any
+      return theme.spineThink
     case "agent":
-      return theme.spineSubagent as any
+      return theme.spineSubagent
+    // S1 catch: `spineReport` was never a Theme token — the old `as any` hid that
+    // it was undefined at runtime. Map to the semantically-closest subagent tone.
     case "report":
-      return theme.spineReport as any
+      return theme.spineSubagent
     default:
-      return theme.spineThink as any
+      return theme.spineThink
   }
 }
 

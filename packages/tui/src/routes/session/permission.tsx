@@ -2,7 +2,7 @@ import { createStore } from "solid-js/store"
 import { dirname } from "node:path"
 import { createMemo, For, Match, Show, Switch } from "solid-js"
 import { Portal, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
-import type { TextareaRenderable } from "@opentui/core"
+import type { RGBA, TextareaRenderable } from "@opentui/core"
 import { useTheme, selectedForeground } from "../../context/theme"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { useSDK } from "../../context/sdk"
@@ -15,8 +15,8 @@ import { getScrollAcceleration } from "../../util/scroll"
 import { useTuiConfig } from "../../config"
 import { ARCANA_BASE_MODE, useBindings, useCommandShortcut } from "../../keymap"
 import { usePathFormatter } from "../../context/path-format"
-import { getSpineLayout } from "../../shell/command-spine/spine-types"
 import { SpineGutterSpacer, spineLeadMetrics } from "../../shell/command-spine/spine-lead"
+import { useSpineLayout } from "../../shell/command-spine/use-spine-layout"
 import { SpineRail } from "../../shell/command-spine/spine-rail"
 
 type PermissionStage = "permission" | "always" | "reject"
@@ -450,16 +450,13 @@ function GateFrame(props: {
   footer?: JSX.Element
   expanded?: boolean
   glyph?: string
-  color?: unknown
+  color?: RGBA
 }) {
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
-  let _prevLayoutP: string | undefined
-  const layout = createMemo(() => {
-    const l = getSpineLayout(dimensions().width, _prevLayoutP as any)
-    _prevLayoutP = l
-    return l
-  })
+  // Hysteresis (audit S4): shared tracked-prev hook — replaces the inline
+  // _prevLayoutP holder + `as any` (same dead-zone behavior, typed).
+  const layout = useSpineLayout(() => dimensions().width)
   const metrics = createMemo(() => spineLeadMetrics(layout()))
   const glyph = createMemo(() => props.glyph ?? "△")
   const color = createMemo(() => props.color ?? theme.spineFix)
@@ -480,7 +477,7 @@ function GateFrame(props: {
         <SpineGutterSpacer layout={layout()} />
         <Show
           when={row.rail === "node"}
-          fallback={<SpineRail layout={layout()} glyph="│" color={theme.spineRail as any} />}
+          fallback={<SpineRail layout={layout()} glyph="│" color={theme.spineRail} />}
         >
           <SpineRail layout={layout()} glyph={glyph()} color={color()} active />
         </Show>
@@ -555,8 +552,8 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
       header={
         <box flexDirection="column" gap={0} minWidth={0}>
           <box flexDirection="row" gap={1} minWidth={0}>
-            <text fg={theme.spineFail as any} flexShrink={0}>{"×"}</text>
-            <text fg={theme.spineFail as any} wrapMode="word">REJECT PERMISSION</text>
+            <text fg={theme.spineFail} flexShrink={0}>{"×"}</text>
+            <text fg={theme.spineFail} wrapMode="word">REJECT PERMISSION</text>
           </box>
           <text fg={theme.text} wrapMode="word">Tell arcana what to do differently</text>
         </box>
@@ -586,8 +583,8 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
             cursorColor={theme.primary}
           />
           <box flexDirection={narrow() ? "column" : "row"} gap={narrow() ? 0 : 2} flexShrink={0} minWidth={0}>
-            <text fg={theme.text}>enter <span style={{ fg: theme.spineContext as any }}>confirm</span></text>
-            <text fg={theme.text}>esc <span style={{ fg: theme.spineContext as any }}>cancel</span></text>
+            <text fg={theme.text}>enter <span style={{ fg: theme.spineContext }}>confirm</span></text>
+            <text fg={theme.text}>esc <span style={{ fg: theme.spineContext }}>cancel</span></text>
           </box>
         </box>
       }
@@ -708,8 +705,8 @@ function Prompt<const T extends Record<string, string>>(props: {
   const defaultHeader = (
     <box flexDirection="column" gap={0} minWidth={0}>
       <box flexDirection="row" gap={1} minWidth={0}>
-        <text fg={theme.spineFix as any} flexShrink={0}>{"△"}</text>
-        <text fg={theme.spineFix as any} wrapMode="word">{props.title.toUpperCase()}</text>
+        <text fg={theme.spineFix} flexShrink={0}>{"△"}</text>
+        <text fg={theme.spineFix} wrapMode="word">{props.title.toUpperCase()}</text>
       </box>
     </box>
   )
@@ -717,7 +714,7 @@ function Prompt<const T extends Record<string, string>>(props: {
   const footer = (
     <box flexDirection="column" gap={1} minWidth={0}>
       <box flexDirection={narrow() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
-        <text fg={theme.spineContext as any} flexShrink={0}>Decision</text>
+        <text fg={theme.spineContext} flexShrink={0}>Decision</text>
         <box flexDirection={narrow() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
           <For each={keys}>
             {(option) => {
@@ -745,13 +742,13 @@ function Prompt<const T extends Record<string, string>>(props: {
         </box>
       </box>
       <box flexDirection={narrow() ? "column" : "row"} gap={narrow() ? 0 : 2} flexShrink={0} minWidth={0}>
-        <text fg={theme.spineContext as any}>←/→ select</text>
-        <text fg={theme.spineContext as any}>enter confirm</text>
+        <text fg={theme.spineContext}>←/→ select</text>
+        <text fg={theme.spineContext}>enter confirm</text>
         <Show when={props.escapeKey}>
-          <text fg={theme.spineContext as any}>esc reject</text>
+          <text fg={theme.spineContext}>esc reject</text>
         </Show>
         <Show when={props.fullscreen}>
-          <text fg={theme.spineContext as any}>{fullscreenHint()} {hint()}</text>
+          <text fg={theme.spineContext}>{fullscreenHint()} {hint()}</text>
         </Show>
       </box>
     </box>

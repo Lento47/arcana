@@ -1,16 +1,20 @@
 import { RGBA } from "@opentui/core"
-import type { OptimizedBuffer } from "@opentui/core"
 
 /**
- * Custom TUI background image (Phase 1).
+ * Custom TUI background image (Phase 1, truecolor-gated).
  *
- * opentui has no background-image primitive, so we composite a decoded image into the
- * cell grid via a renderer post-process pass. Each terminal cell holds 2 vertical pixels
- * rendered as the upper-half-block "▀" (fg = top pixel, bg = bottom pixel) — truecolor,
- * works in any 24-bit terminal. We only paint cells that are still "background"
- * (empty glyph + the most-common bg value), so existing text and panels are untouched.
- * Result: the image shows on the home/splash and any empty area. Full see-through during
- * chat (transparent scrollback/panels) is Phase 2.
+ * The original implementation composited a decoded image into the cell grid via
+ * a renderer post-process pass using upper-half-block "▀" glyphs (fg = top pixel,
+ * bg = bottom pixel). On non-truecolor terminals the RGBA→palette quantization
+ * shifts every block's hue, and where the bottom half inherits the default
+ * background half the block becomes invisible (audit C1/D6).
+ *
+ * Per the audit fix, compositing is gated on `renderer.capabilities.rgb` and
+ * skipped entirely on ANSI-256 terminals. When truecolor IS available we prefer
+ * `renderer.setBackgroundColor()` (OSC 11, mirroring `context/theme.tsx`) so the
+ * terminal itself paints the background — no per-frame decode, no half-block
+ * ghosting. This module therefore derives a single representative color from the
+ * image; app.tsx decides whether to apply it.
  */
 
 export interface DecodedImage {
@@ -33,88 +37,57 @@ export async function decodeImage(filePath: string): Promise<DecodedImage | unde
   }
 }
 
-const UPPER_HALF_BLOCK = "▀"
+// Quantized histogram bucket (4 bits per channel) → dominant color. Keeps the
+// average honest by counting the most-populated bucket, not the mean of the
+// whole image (which trends gray on mixed-content photos).
+const BUCKET = 16 // 4 bits per channel
+const BUCKETS = BUCKET * BUCKET * BUCKET
 
-// Most-common bg value = the cleared background. Comparing raw packed Uint16 avoids
-// needing to know opentui's color packing.
-function mostCommonU16(arr: Uint16Array): number {
-  const counts = new Map<number, number>()
-  let best = arr.length ? arr[0] : 0
-  let bestN = 0
-  for (let i = 0; i < arr.length; i++) {
-    const v = arr[i]
-    const n = (counts.get(v) ?? 0) + 1
-    counts.set(v, n)
-    if (n > bestN) {
-      bestN = n
-      best = v
-    }
-  }
-  return best
-}
-
-export function createBackgroundComposite(
-  image: DecodedImage,
-  opts: { opacity: number; fit: "cover" | "contain" },
-): (buffer: OptimizedBuffer) => void {
+/**
+ * Representative background color for the terminal (OSC 11 via
+ * `renderer.setBackgroundColor`). Computes a dominant color from the decoded
+ * image: quantize each pixel into a 4-bit-per-channel bucket, pick the most
+ * populated bucket, and return the arithmetic mean of that bucket's members.
+ * `opacity` scales the result toward black (0..1), matching the previous
+ * composite's dimming behavior.
+ */
+export function dominantColor(image: DecodedImage, opts: { opacity: number }): RGBA {
   const dim = Math.max(0, Math.min(1, opts.opacity))
-  let cw = -1
-  let ch = -1
-  let top: RGBA[] = []
-  let bottom: RGBA[] = []
-  let bgVal: number | undefined
+  const n = image.width * image.height
+  if (n === 0) return RGBA.fromInts(0, 0, 0)
 
-  function rebuild(cols: number, rows: number) {
-    const pxW = cols
-    const pxH = rows * 2 // 2 vertical pixels per cell (half-block)
-    top = new Array(cols * rows)
-    bottom = new Array(cols * rows)
-    const iw = image.width
-    const ih = image.height
-    if (iw === 0 || ih === 0) return
-    const scale = opts.fit === "contain" ? Math.min(pxW / iw, pxH / ih) : Math.max(pxW / iw, pxH / ih)
-    const offX = (pxW - iw * scale) / 2
-    const offY = (pxH - ih * scale) / 2
-    const px = (tx: number, ty: number): RGBA => {
-      const sx = Math.floor((tx - offX) / scale)
-      const sy = Math.floor((ty - offY) / scale)
-      if (sx < 0 || sy < 0 || sx >= iw || sy >= ih) return RGBA.fromInts(0, 0, 0)
-      const o = (sy * iw + sx) * 4
-      return RGBA.fromInts(
-        Math.round(image.data[o] * dim),
-        Math.round(image.data[o + 1] * dim),
-        Math.round(image.data[o + 2] * dim),
-      )
-    }
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        const i = y * cols + x
-        top[i] = px(x, y * 2)
-        bottom[i] = px(x, y * 2 + 1)
-      }
+  const counts = new Uint32Array(BUCKETS)
+  const sumR = new Float64Array(BUCKETS)
+  const sumG = new Float64Array(BUCKETS)
+  const sumB = new Float64Array(BUCKETS)
+  const data = image.data
+  for (let i = 0; i < n; i++) {
+    const o = i * 4
+    const r = data[o]
+    const g = data[o + 1]
+    const b = data[o + 2]
+    const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4)
+    counts[key]++
+    sumR[key] += r
+    sumG[key] += g
+    sumB[key] += b
+  }
+
+  let best = 0
+  let bestN = 0
+  for (let key = 0; key < BUCKETS; key++) {
+    if (counts[key] > bestN) {
+      bestN = counts[key]
+      best = key
     }
   }
 
-  return (buffer: OptimizedBuffer) => {
-    const cols = buffer.width
-    const rows = buffer.height
-    if (cols !== cw || rows !== ch) {
-      rebuild(cols, rows)
-      cw = cols
-      ch = rows
-      bgVal = undefined
-    }
-    if (top.length !== cols * rows) return
-    const { char, bg } = buffer.buffers
-    if (bgVal === undefined) bgVal = mostCommonU16(bg)
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        const i = y * cols + x
-        const c = char[i]
-        if ((c === 0 || c === 32) && bg[i] === bgVal) {
-          buffer.setCell(x, y, UPPER_HALF_BLOCK, top[i], bottom[i])
-        }
-      }
-    }
-  }
+  const mean = (sum: Float64Array) => (bestN > 0 ? sum[best] / bestN : 0)
+  // Explicit opaque alpha: the terminal background (OSC 11) must not be transparent.
+  return RGBA.fromInts(
+    Math.round(mean(sumR) * dim),
+    Math.round(mean(sumG) * dim),
+    Math.round(mean(sumB) * dim),
+    255,
+  )
 }

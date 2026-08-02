@@ -1,0 +1,4 @@
+# Audit S14: uniform LF for the command-spine sources (mixed CRLF/LF made
+# every diff noisy). The index already stores LF; this pins checkout/commit.
+packages/tui/src/shell/command-spine/*.ts text eol=lf
+packages/tui/src/shell/command-spine/*.tsx text eol=lf

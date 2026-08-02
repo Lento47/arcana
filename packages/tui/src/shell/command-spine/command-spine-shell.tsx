@@ -1,13 +1,17 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, ErrorBoundary } from "solid-js"
-import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core"
+import { For, Show, createEffect, createMemo, createSignal, onMount, ErrorBoundary } from "solid-js"
+import type { MouseEvent, ScrollBoxRenderable } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
+import type { AssistantMessage } from "@arcana/sdk/v2"
 import { useTheme } from "../../context/theme"
 import { useThinkingMode } from "../../context/thinking"
+import { useSync } from "../../context/sync"
 import type { ShellProps } from "../types"
-import { getSpineLayout, spineGutterWidth, spineOuterPadding, spineRailWidth, type SpineEntry } from "./spine-types"
-import { SAMPLE_ENTRIES } from "./sample-entries"
+import { spineProseWidth, spineGutterDigits, spineOuterPadding, type SpineEntry } from "./spine-types"
+import { shouldShowScrollButton } from "../../util/geometry"
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
 import { SpineHeader } from "./spine-header"
+import { buildStatusSegments } from "./spine-segments"
+import { useSpineLayout } from "./use-spine-layout"
 import { SpineEntryBinding } from "./spine-entry-binding"
 import { SpinePrompt } from "./spine-prompt"
 import { pendingGateEntries } from "./spine-gates"
@@ -15,7 +19,9 @@ import { PermissionPrompt } from "../../routes/session/permission"
 import { QuestionPrompt } from "../../routes/session/question"
 import { SubagentFooter } from "../../routes/session/subagent-footer"
 import { DialogMessage } from "../../routes/session/dialog-message"
+import { ApprovalInspector } from "../../routes/session/approval-inspector"
 import { ARCANA_BASE_MODE, useBindings } from "../../keymap"
+import { usePromptRef } from "../../context/prompt"
 import { useClipboard } from "../../context/clipboard"
 import { useToast } from "../../ui/toast"
 import { useDialog } from "../../ui/dialog"
@@ -23,11 +29,26 @@ import { useRoute } from "../../context/route"
 import { canToggleSpineEntry, nextSpineFocusID, navigableSpineEntries } from "./spine-navigation"
 import { spineEntryCopyText } from "./spine-clipboard"
 import { spineEntryDetailMessageID, spineEntryDiffMessageID, spineEntrySessionID } from "./spine-details"
-import { approvalToSpineEntry, isApprovalActionable, isApprovalTerminal } from "./approval-spine-adapter"
+import {
+  approvalIdFromEntryID,
+  approvalToSpineEntry,
+  isApprovalActionable,
+  isApprovalTerminal,
+} from "./approval-spine-adapter"
 import { createApprovalShellController, type ApprovalShellController, type ApprovalCommandInput } from "./approval-shell-controller"
 import { createDedupeKey, dedupeKeyToString, compareOrderingKeys, createOrderingKey } from "./spine-ordering"
-
-const USE_SAMPLE_SPINE = false
+import {
+  governanceProofToSpineEntry,
+  governanceTraceToSpineEntry,
+  productionInputToSpineEntry,
+} from "./production-spine-input"
+import { groupGovernanceEntries } from "./spine-governance-group"
+import {
+  applyViewFilter,
+  nextSpineViewFilter,
+  spineFilterLabel,
+  type SpineViewFilter,
+} from "./spine-view-filter"
 
 // Cross-session cache: keyed by sessionID so back-switching to a session
 // reuses the already-computed entries + per-message cache instead of
@@ -55,31 +76,65 @@ function getSessionCache(sessionID: string) {
 }
 
 export function CommandSpineShell(props: ShellProps) {
-  const { theme: themeObj } = useTheme()
-  const t = themeObj as Record<string, unknown>
+  const { theme } = useTheme()
   const thinking = useThinkingMode()
   const renderer = useRenderer()
   const clipboard = useClipboard()
   const toast = useToast()
   const dialog = useDialog()
   const route = useRoute()
+  const promptRef = usePromptRef()
   const dims = useTerminalDimensions()
-  const layout = createMemo(() => getSpineLayout(dims().width))
+  // Hysteresis (audit S4): feed the current layout back into getSpineLayout so
+  // the dead zone engages at the 80/100/120 breakpoints — no layout flapping.
+  const layout = useSpineLayout(() => dims().width)
   // Centralized width contract — computed once, passed to all children.
   // No component should subtract its own padding.
   const viewportWidth = createMemo(() => dims().width)
-  const entryWidth = createMemo(() => viewportWidth() - spineOuterPadding(layout()) - 2 /* scrollbar */)
-  const gutterWidth = createMemo(() => spineGutterWidth(layout()))
-  const railWidth = createMemo(() => spineRailWidth(layout()))
-  const contentWidth = createMemo(() => entryWidth() - gutterWidth() - railWidth())
-  // proseWidth accounts for SpineChatCard padding + left border
-  const proseWidth = createMemo(() => Math.max(24, contentWidth() - (3/*padL*/ + 1/*padR*/ + 1/*border*/)))
-  // codeWidth: code blocks have pad(1) + left border
-  const codeWidth = createMemo(() => Math.max(24, contentWidth() - 2))
-  // thinkWidth: no extra padding
-  const thinkWidth = createMemo(() => contentWidth())
-  // @deprecated — kept for backward compat with SpineEntry prop
-  const thinkContentWidth = createMemo(() => thinkWidth())
+  // Header segments (audit S3): real context fed to SpineHeader — model, branch,
+  // ctx %, turn state, session id, working directory. Every source is optional;
+  // the header degrades to just the brand row when nothing is available.
+  // Derivation mirrors the statusbar plugin (provider catalog + last assistant
+  // message + session_status) so both surfaces agree on model and pressure.
+  const sync = useSync()
+  const lastAssistant = createMemo(() =>
+    props.messages().findLast((m): m is AssistantMessage => m.role === "assistant"),
+  )
+  const lastUsageAssistant = createMemo(() =>
+    props.messages().findLast(
+      (m): m is AssistantMessage => m.role === "assistant" && m.tokens.output > 0,
+    ),
+  )
+  const modelName = createMemo(() => {
+    const last = lastAssistant()
+    if (!last) return undefined
+    const provider = sync.data.provider.find((p) => p.id === last.providerID)
+    return provider?.models[last.modelID]?.name ?? last.modelID
+  })
+  const ctxPercent = createMemo(() => {
+    const last = lastUsageAssistant()
+    if (!last) return null
+    const tokens =
+      last.tokens.input
+      + last.tokens.output
+      + last.tokens.reasoning
+      + last.tokens.cache.read
+      + last.tokens.cache.write
+    const provider = sync.data.provider.find((p) => p.id === last.providerID)
+    const limit = provider?.models[last.modelID]?.limit?.context
+    return limit ? Math.round((tokens / limit) * 100) : null
+  })
+  const headerSegments = createMemo(() => {
+    const session = sync.data.session.find((s) => s.id === props.sessionID)
+    return buildStatusSegments({
+      sessionID: props.sessionID,
+      branch: sync.data.vcs?.branch,
+      model: modelName(),
+      ctxPercent: ctxPercent(),
+      state: props.sessionStatus?.()?.type,
+      path: session?.directory,
+    })
+  })
 
   // Cross-session cache slot for the CURRENT session. This must be a memo,
   // not a const, because <Session /> no longer remounts on session switch —
@@ -88,51 +143,73 @@ export function CommandSpineShell(props: ShellProps) {
   // corrupting the LRU. The memo re-derives on props.sessionID change.
   const sessionState = createMemo(() => getSessionCache(props.sessionID))
   let scroll: ScrollBoxRenderable | undefined
-  const entryNodes = new Map<string, BoxRenderable>()
 
-  // Scroll-to-bottom button
+  // Scroll-to-bottom button — event-driven (audit D10). The old 250ms poll
+  // is gone; the signal is recomputed at every scroll-triggering action:
+  // wheel (onMouseScroll → refreshScrollButton), keyboard focus nav
+  // (scrollChildIntoView → refreshScrollButton), the button itself, and
+  // initial mount. Sticky scroll keeps an at-bottom user at the bottom, so
+  // no content-arrival event is needed to re-evaluate.
   const [showScrollButton, setShowScrollButton] = createSignal(false)
-  let scrollPollInterval: ReturnType<typeof setInterval> | undefined
+  // P2: view filter — conversation/tools/governance/proof/all. Security states
+  // break through via applyViewFilter, so a filter never hides a denial or a
+  // pending approval. Declared before any eager memo reads it (a later
+  // declaration would be in the TDZ during component setup).
+  const [viewFilter, setViewFilter] = createSignal<SpineViewFilter>("all")
+  const cycleViewFilter = () => setViewFilter((current) => nextSpineViewFilter(current))
+  const refreshScrollButton = () => {
+    const s = scroll
+    if (!s || s.isDestroyed) return
+    setShowScrollButton(shouldShowScrollButton(s.scrollHeight, s.y, s.height))
+  }
 
-  onMount(() => {
-    scrollPollInterval = setInterval(() => {
-      const s = scroll
-      if (!s || s.isDestroyed) return
-      const distanceFromBottom = s.scrollHeight - s.y - s.height
-      setShowScrollButton(distanceFromBottom > s.height / 2)
-    }, 250)
-  })
+  const handleMouseScroll = (event: MouseEvent) => {
+    const direction = event.scroll?.direction
+    if (direction !== "up" && direction !== "down") return
+    // Observe only — ScrollBox scrolls natively on wheel. Re-evaluate the
+    // button against post-scroll geometry once the native scroll has applied.
+    queueMicrotask(refreshScrollButton)
+  }
 
-  onCleanup(() => {
-    if (scrollPollInterval) clearInterval(scrollPollInterval)
-  })
+  onMount(refreshScrollButton)
 
+  // S6(a): memo is PURE — it returns the mapper result { entries, cache }
+  // untouched and never writes cache state (create-memo.mdx: "This function
+  // should be pure (it should not modify other reactive values)"). The
+  // LRU/cache write is a side effect, so it lives in the createEffect keyed
+  // on the memo result below — each recompute is persisted once, after the
+  // memo settles, never inside the memo body.
   const entries = createMemo(() => {
-    if (USE_SAMPLE_SPINE) return SAMPLE_ENTRIES
     const state = sessionState()
-    let cache: SpineEntriesCache = state.cache
-    let previousEntries: SpineEntry[] = state.previousEntries
     // Read session status inside this memo so session.status → idle invalidates spine.
     const sessionStatusType = props.sessionStatus?.()?.type
-    const result = messagesToSpineEntriesCached({
+    return messagesToSpineEntriesCached({
       messages: props.messages(),
       getParts: props.getParts,
       getPartRevision: props.getPartRevision,
       assistantDuration: props.assistantDuration(),
-      cache,
-      previousEntries,
+      cache: state.cache,
+      previousEntries: state.previousEntries,
       expandThinking: thinking.mode() === "show",
       sessionStatusType,
     })
+  })
+
+  // Persist the LRU/cache OUTSIDE the memo. Keyed on entries() — the fresh
+  // result-object identity guarantees the effect re-runs after every memo
+  // recompute, then writes into the stable per-session cache slot (a plain
+  // Map field, not reactive, so no feedback loop).
+  createEffect(() => {
+    const result = entries()
+    const state = sessionState()
     state.cache = result.cache
     state.previousEntries = result.entries
-    return [...result.entries]
   })
 
   const gateEntries = createMemo(() =>
     pendingGateEntries({ permissions: props.permissions(), questions: props.questions() }),
   )
-  const visibleEntries = createMemo(() => [...entries(), ...gateEntries()])
+  const visibleEntries = createMemo(() => [...entries().entries, ...gateEntries()])
 
   // ─── TUI-2.1: Approval integration ──────────────────────────────
   // Reactive accessor for approval records — never destructure reactive props
@@ -154,11 +231,49 @@ export function CommandSpineShell(props: ShellProps) {
     return result
   })
 
-  // Merge all entries: messages + gates + approvals
+  const governanceEntries = createMemo(() => {
+    const seen = new Set<string>()
+    const result: SpineEntry[] = []
+    const trace = props.governanceTrace?.()
+    if (trace) {
+      const traceEntry = governanceTraceToSpineEntry({
+        sessionId: props.sessionID,
+        status: trace.status,
+        expectedCriticalEvents: Number(trace.expectedCriticalEvents),
+        recordedCriticalEvents: Number(trace.recordedCriticalEvents),
+        recordingErrors: trace.recordingErrors,
+      })
+      if (traceEntry) result.push(traceEntry)
+    }
+    for (const event of props.governance?.() ?? []) {
+      const key = dedupeKeyToString(createDedupeKey({ governanceEventId: event.id }))
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push(
+        productionInputToSpineEntry({
+          source: "GOVERNANCE",
+          value: {
+            id: event.id,
+            sessionId: event.sessionId ?? props.sessionID,
+            eventType: event.type,
+            sequence: typeof event.sequence === "number" ? event.sequence : 0,
+            timestamp: Date.parse(event.timestamp),
+            actor: `${event.actor.kind}:${event.actor.id}`,
+            payload: event.payload,
+          },
+        }),
+      )
+    }
+    const proof = props.governanceProof?.()
+    if (proof) result.push(governanceProofToSpineEntry(props.sessionID, proof))
+    return result
+  })
+
+  // Merge all entries: messages + gates + durable governance + approvals.
   const allVisibleEntries = createMemo(() => {
     const seen = new Set<string>()
     const merged: SpineEntry[] = []
-    for (const entry of [...visibleEntries(), ...approvalEntries()]) {
+    for (const entry of [...visibleEntries(), ...governanceEntries(), ...approvalEntries()]) {
       if (seen.has(entry.id)) continue
       seen.add(entry.id)
       merged.push(entry)
@@ -171,20 +286,46 @@ export function CommandSpineShell(props: ShellProps) {
         sessionId: sid,
         sequence: a.index,
         timestamp: a.timestamp ?? "",
-        source: a.source?.kind === "approve" ? "APPROVAL" : "MESSAGE",
+        source: a.source?.kind === "governance" ? "GOVERNANCE" : a.source?.kind === "approve" ? "APPROVAL" : "MESSAGE",
         sourceEventId: a.id,
       })
       const keyB = createOrderingKey({
         sessionId: sid,
         sequence: b.index,
         timestamp: b.timestamp ?? "",
-        source: b.source?.kind === "approve" ? "APPROVAL" : "MESSAGE",
+        source: b.source?.kind === "governance" ? "GOVERNANCE" : b.source?.kind === "approve" ? "APPROVAL" : "MESSAGE",
         sourceEventId: b.id,
       })
       return compareOrderingKeys(keyA, keyB)
     })
     return merged
   })
+
+  // ─── TUI-2.1: turn grouping + progressive disclosure ────────────
+  // Consecutive governance events collapse into one "governed" summary row
+  // (children stay as the forensic inspector). Display indices are then
+  // assigned to the collapsed top-level rows, so the gutter is real and
+  // monotonic — never a repeated "99" cap.
+  const groupedVisibleEntries = createMemo(() => groupGovernanceEntries(allVisibleEntries()))
+  const displayRows = createMemo(() => {
+    let next = 1
+    return groupedVisibleEntries().map((entry) => {
+      if (entry.hidden) return entry
+      const withIndex = entry.index === next ? entry : { ...entry, index: next }
+      next++
+      return withIndex
+    })
+  })
+  // Gutter width grows with the session (2-col minimum, 3+ for 100+ rows).
+  const gutterWidth = createMemo(() =>
+    spineGutterDigits(displayRows().reduce((max, entry) => Math.max(max, entry.index), 0)),
+  )
+  // Width contracts derive from the same gutter the rows actually use.
+  const proseWidth = createMemo(() => spineProseWidth(viewportWidth(), layout(), "chat", gutterWidth()))
+  const thinkWidth = createMemo(() => spineProseWidth(viewportWidth(), layout(), "think", gutterWidth()))
+  // @deprecated — kept for backward compat with SpineEntry prop
+  const thinkContentWidth = createMemo(() => thinkWidth())
+  const filteredRows = createMemo(() => applyViewFilter(displayRows(), viewFilter()))
 
   // Controller: use provided or create default no-op
   const controller = createMemo(() => props.approvalController)
@@ -206,17 +347,9 @@ export function CommandSpineShell(props: ShellProps) {
   const isApprovalEntry = (entry: SpineEntry): boolean =>
     entry.source?.kind === "approve" && entry.id.startsWith("approval:")
 
-  const extractApprovalId = (entry: SpineEntry): string | undefined => {
-    if (!entry.id.startsWith("approval:")) return undefined
-    // ID format is "approval:<approvalId>:<version>" — join all middle segments
-    // in case approvalId itself contains ":".
-    const parts = entry.id.split(":")
-    if (parts.length < 3) return undefined
-    return parts.slice(1, -1).join(":")
-  }
-
+  // M10: single shared parse — `approval:<approvalId>:<version>` → approvalId.
   const getApprovalForEntry = (entry: SpineEntry) => {
-    const id = extractApprovalId(entry)
+    const id = approvalIdFromEntryID(entry.id)
     if (!id) return undefined
     return approvals().find(a => a.approvalId === id)
   }
@@ -224,7 +357,7 @@ export function CommandSpineShell(props: ShellProps) {
   const focusedApproval = createMemo(() => {
     const fid = focusedEntryID()
     if (!fid) return undefined
-    const entry = allVisibleEntries().find(e => e.id === fid)
+    const entry = filteredRows().find(e => e.id === fid)
     if (!entry) return undefined
     return getApprovalForEntry(entry)
   })
@@ -248,13 +381,25 @@ export function CommandSpineShell(props: ShellProps) {
   // Key For by stable string ids so new entry object identity (token/streaming
   // updates) updates props without remounting rows. Grok-style: content
   // refreshes; DOM chrome stays put.
-  const visibleEntryIDs = createMemo(() => allVisibleEntries().map((e) => e.id))
+  const visibleEntryIDs = createMemo(() => {
+    // Defensive: a keyed <For> must never receive the same id twice, or a
+    // transient second row (e.g. a duplicate proof during live updates) can
+    // render for one frame and then vanish.
+    const ids: string[] = []
+    const seen = new Set<string>()
+    for (const entry of filteredRows()) {
+      if (seen.has(entry.id)) continue
+      seen.add(entry.id)
+      ids.push(entry.id)
+    }
+    return ids
+  })
   const visibleEntryByID = createMemo(() => {
     const map = new Map<string, SpineEntry>()
-    for (const e of allVisibleEntries()) map.set(e.id, e)
+    for (const e of filteredRows()) map.set(e.id, e)
     return map
   })
-  const navigableEntries = createMemo(() => navigableSpineEntries(allVisibleEntries()))
+  const navigableEntries = createMemo(() => navigableSpineEntries(filteredRows()))
   const runState = createMemo(() => {
     if (gateEntries().length) return "stop"
     // Only show "working" when both pending AND session is active.
@@ -279,14 +424,12 @@ export function CommandSpineShell(props: ShellProps) {
   }
   const scrollEntryIntoView = (entryID: string) => {
     queueMicrotask(() => {
-      const node = entryNodes.get(entryID)
-      if (!node || !scroll || scroll.isDestroyed) return
-
-      const top = node.y - scroll.y
-      const bottom = top + node.height
-      const padding = 1
-      if (top < padding) scroll.scrollBy(top - padding)
-      else if (bottom > scroll.height - padding) scroll.scrollBy(bottom - scroll.height + padding)
+      if (!scroll || scroll.isDestroyed) return
+      // D10: native DOM-style "nearest" scroll — no manual geometry math.
+      // The entry root box carries id={entry.id}, resolved via
+      // content.findDescendantById.
+      scroll.scrollChildIntoView(entryID)
+      refreshScrollButton()
     })
   }
 
@@ -300,19 +443,20 @@ export function CommandSpineShell(props: ShellProps) {
     setFocusedEntryID(entryID)
     blurComposer()
     // Shell interaction: SELECTED when an approval entry gains spine focus.
-    const approvalId = entryID.startsWith("approval:") ? entryID.slice("approval:".length) : undefined
+    // M10: same parse as getApprovalForEntry — no version-suffixed select.
+    const approvalId = approvalIdFromEntryID(entryID)
     if (approvalId) controller()?.select(approvalId)
     if (scrollIntoView) scrollEntryIntoView(entryID)
   }
   const focusEntry = (entry: { id: string }, scrollIntoView = false) => focusEntryID(entry.id, scrollIntoView)
   const entryFocused = (entry: { id: string }) => focusedEntryID() === entry.id
   const focusRelativeEntry = (direction: -1 | 1) => {
-    const nextID = nextSpineFocusID(allVisibleEntries(), focusedEntryID(), direction)
+    const nextID = nextSpineFocusID(filteredRows(), focusedEntryID(), direction)
     if (nextID) focusEntryID(nextID, true)
   }
   const resolveFocusedEntry = (preferToggleable = false) => {
     const focused = focusedEntryID()
-    let entry = focused ? allVisibleEntries().find((item) => item.id === focused) : undefined
+    let entry = focused ? filteredRows().find((item) => item.id === focused) : undefined
     if (entry) return entry
     const pool = navigableEntries()
     const pick = preferToggleable ? pool.find((item) => canToggleSpineEntry(item)) ?? pool[0] : pool[0]
@@ -349,7 +493,7 @@ export function CommandSpineShell(props: ShellProps) {
   }
   const openFocusedEntryDiff = () => {
     const focused = focusedEntryID()
-    const entry = focused ? allVisibleEntries().find((item) => item.id === focused) : undefined
+    const entry = focused ? filteredRows().find((item) => item.id === focused) : undefined
         const messageID = spineEntryDiffMessageID(entry)
     if (!messageID) {
       const first = navigableEntries()[0]
@@ -372,7 +516,7 @@ export function CommandSpineShell(props: ShellProps) {
   }
   const openFocusedEntrySession = () => {
     const focused = focusedEntryID()
-    const entry = focused ? allVisibleEntries().find((item) => item.id === focused) : undefined
+    const entry = focused ? filteredRows().find((item) => item.id === focused) : undefined
         const sessionID = spineEntrySessionID(entry)
     if (!sessionID) {
       const first = navigableEntries()[0]
@@ -389,6 +533,36 @@ export function CommandSpineShell(props: ShellProps) {
     const focused = focusedEntryID()
     if (!focused) return
     if (!navigableEntries().some((entry) => entry.id === focused)) setFocusedEntryID(undefined)
+  })
+
+  // A new session starts with the unfiltered spine.
+  createEffect(() => {
+    props.sessionID
+    setViewFilter("all")
+  })
+
+  // A new user turn collapses every expanded governance group. Without this,
+  // one manually-expanded group (25+ events with full JSON payloads) stays
+  // expanded forever and forces huge scroll distances through old turns.
+  let seenUserMessageID: string | undefined
+  createEffect(() => {
+    const lastUser = displayRows()
+      .filter((entry) => entry.kind === "ask" && entry.source?.kind === "message")
+      .at(-1)
+    const id = lastUser?.id
+    if (!id || id === seenUserMessageID) return
+    seenUserMessageID = id
+    setExpandedEntries((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const key of Object.keys(next)) {
+        if (key.startsWith("governance-group:") && next[key] === true) {
+          next[key] = false
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
   })
 
   // ─── TUI-2.1: Selection reconciliation ─────────────────────────
@@ -430,7 +604,7 @@ export function CommandSpineShell(props: ShellProps) {
     // otherwise win over gate bindings (priority 1 vs default 0).
     enabled: () =>
       renderer.currentFocusedEditor === null
-      && navigableEntries().length > 0
+      && displayRows().length > 0
       && props.permissions().length === 0
       && props.questions().length === 0,
     priority: 1,
@@ -443,6 +617,34 @@ export function CommandSpineShell(props: ShellProps) {
       { key: "o", desc: "Open spine entry details", group: "Command Spine", cmd: openFocusedEntryDetails },
       { key: "d", desc: "Open focused spine diff", group: "Command Spine", cmd: openFocusedEntryDiff },
       { key: "g", desc: "Go to related spine session", group: "Command Spine", cmd: openFocusedEntrySession },
+      {
+        key: "H",
+        desc: "Scroll to top of session",
+        group: "Command Spine",
+        cmd: () => {
+          if (scroll && !scroll.isDestroyed) {
+            scroll.scrollTo(0)
+            refreshScrollButton()
+          }
+        },
+      },
+      {
+        key: "G",
+        desc: "Scroll to bottom of session",
+        group: "Command Spine",
+        cmd: () => {
+          if (scroll && !scroll.isDestroyed) {
+            scroll.scrollTo(scroll.scrollHeight)
+            refreshScrollButton()
+          }
+        },
+      },
+      {
+        key: "f",
+        desc: "Cycle view filter: all → conversation → tools → governance → proof",
+        group: "Command Spine",
+        cmd: cycleViewFilter,
+      },
     ],
   }))
 
@@ -527,7 +729,77 @@ export function CommandSpineShell(props: ShellProps) {
           blurComposer()
           setInspectorApprovalId(approval.approvalId)
           controller()?.inspect(approval.approvalId)
+          // Render from the live approvals store so the inspector stays
+          // truthful if the record transitions (CLAIMED/CONSUMED) while open.
+          const liveApproval = () =>
+            approvals().find((x) => x.approvalId === approval.approvalId) ?? approval
+          dialog.replace(
+            () => <ApprovalInspector approval={liveApproval()} />,
+            () => {
+              setInspectorApprovalId(undefined)
+              // Phase 3.2: closing the inspector leaves the entry SELECTED.
+              const still = focusedApproval()
+              if (still) controller()?.select(still.approvalId)
+            },
+          )
         },
+      },
+    ],
+  }))
+
+  // Keyboard-only spine mode (Phase 3/4): while the session is idle, Esc
+  // leaves the composer so j/k/v/a/d become active; with nothing focused,
+  // Esc returns to the composer. While busy, Esc keeps its two-press
+  // session.interrupt meaning (this binding is disabled when busy).
+  const sessionIdle = () => {
+    const status = props.sessionStatus?.()
+    return status === undefined || status.type === "idle"
+  }
+
+  // A parked durable approval keeps the turn BUSY while it waits for the
+  // operator. Esc must still leave the composer in that state — otherwise
+  // the approval keys (a/d/v) are unreachable exactly when they matter.
+  const hasPendingApproval = createMemo(() =>
+    approvals().some(
+      (a) => a.state === "PENDING" && a.sessionId === activeSessionId(),
+    ),
+  )
+
+  useBindings(() => ({
+    mode: ARCANA_BASE_MODE,
+    enabled: () =>
+      composerFocused()
+      && !gatesOpen()
+      && !approvalSubmitting()
+      && (sessionIdle() || hasPendingApproval())
+      && displayRows().length > 0,
+    priority: 3,
+    bindings: [
+      {
+        key: "escape",
+        desc: "Leave composer and activate spine keys",
+        group: "Command Spine",
+        cmd: () => blurComposer(),
+      },
+    ],
+  }))
+
+  useBindings(() => ({
+    mode: ARCANA_BASE_MODE,
+    enabled: () =>
+      !composerFocused()
+      && !gatesOpen()
+      && !approvalSubmitting()
+      && inspectorApprovalId() === undefined
+      && focusedApproval() === undefined
+      && (sessionIdle() || hasPendingApproval()),
+    priority: 3,
+    bindings: [
+      {
+        key: "escape",
+        desc: "Return focus to composer",
+        group: "Command Spine",
+        cmd: () => promptRef.current?.focus(),
       },
     ],
   }))
@@ -565,12 +837,12 @@ export function CommandSpineShell(props: ShellProps) {
     <Show when={props.session()}>
       <ErrorBoundary fallback={(error) => (
         <box flexDirection="column" padding={1} flexGrow={1}>
-          <text fg={themeObj.text}>⚠ Spine render error: {error.message}</text>
-          <text fg={themeObj.textMuted}>Session may be partially rendered</text>
+          <text fg={theme.text}>⚠ Spine render error: {error.message}</text>
+          <text fg={theme.textMuted}>Session may be partially rendered</text>
         </box>
       )}>
       <box flexDirection="column" flexGrow={1} minHeight={0}>
-        <SpineHeader session={props.session} layout={layout()} segments={[] as any} />
+        <SpineHeader session={props.session} layout={layout()} segments={headerSegments()} />
         <box position="relative" flexDirection="column" flexGrow={1}>
           <scrollbox
             ref={(r) => {
@@ -584,8 +856,8 @@ export function CommandSpineShell(props: ShellProps) {
               paddingLeft: 1,
               visible: props.showScrollbar(),
               trackOptions: {
-                backgroundColor: t.backgroundElement as any,
-                foregroundColor: t.border as any,
+                backgroundColor: theme.backgroundElement,
+                foregroundColor: theme.border,
               },
             }}
             viewportCulling={true}
@@ -593,6 +865,7 @@ export function CommandSpineShell(props: ShellProps) {
             stickyStart="bottom"
             flexGrow={1}
             scrollAcceleration={props.scrollAcceleration}
+            onMouseScroll={handleMouseScroll}
           >
             <For each={visibleEntryIDs()}>
               {(id) => {
@@ -604,7 +877,8 @@ export function CommandSpineShell(props: ShellProps) {
                   <SpineEntryBinding
                     getEntry={getEntry}
                     layout={layout()}
-                    contentWidth={contentWidth()}
+                    gutterWidth={gutterWidth()}
+                    contentWidth={proseWidth()}
                     thinkContentWidth={thinkContentWidth()}
                     expanded={entryExpanded(getEntry()!)}
                     focused={entryFocused(getEntry()!)}
@@ -618,10 +892,6 @@ export function CommandSpineShell(props: ShellProps) {
                     }}
                     onNavigate={(sid) => route.navigate({ type: "session", sessionID: sid })}
                     sessionID={route.data?.type === "session" ? (route.data as any).sessionID : undefined}
-                    nodeRef={(node) => {
-                      if (node) entryNodes.set(id, node)
-                      else entryNodes.delete(id)
-                    }}
                   />
                 )
               }}
@@ -638,10 +908,11 @@ export function CommandSpineShell(props: ShellProps) {
               onMouseUp={() => {
                 if (scroll && !scroll.isDestroyed) {
                   scroll.scrollTo(scroll.scrollHeight)
+                  refreshScrollButton()
                 }
               }}
             >
-              <text fg={t.accent as any}>↓</text>
+              <text fg={theme.accent}>↓</text>
             </box>
           </Show>
         </box>
@@ -650,6 +921,13 @@ export function CommandSpineShell(props: ShellProps) {
         </Show>
         <Show when={props.permissions().length === 0 && props.questions().length > 0}>
           <QuestionPrompt request={props.questions()[0] as any} />
+        </Show>
+        <Show when={viewFilter() !== "all"}>
+          <box flexDirection="row" flexShrink={0} paddingLeft={spineOuterPadding(layout()) + 2}>
+            <text fg={theme.spineDiffMuted}>
+              view: {spineFilterLabel(viewFilter())} · f cycles · security states always visible
+            </text>
+          </box>
         </Show>
         <Show when={props.session()?.parentID}>
           <SubagentFooter />
@@ -665,7 +943,8 @@ export function CommandSpineShell(props: ShellProps) {
           sessionID={props.sessionID}
           toBottom={props.toBottom as any}
           layout={layout as any}
-          state={runState as any}
+          state={runState}
+          gutterWidth={gutterWidth()}
         />
       </box>
       </ErrorBoundary>

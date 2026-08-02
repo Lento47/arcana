@@ -605,18 +605,22 @@ const step = (state: ParserState, event: BedrockEvent) =>
 
 const framing = BedrockEventStream.framing(ADAPTER)
 
-const onHalt = (state: ParserState): ReadonlyArray<LLMEvent> =>
-  state.pendingFinish
-    ? (() => {
-        const events: LLMEvent[] = []
-        Lifecycle.finish(state.lifecycle, events, {
-          reason:
-            state.pendingFinish.reason === "stop" && state.hasToolCalls ? "tool-calls" : state.pendingFinish.reason,
-          usage: state.pendingFinish.usage,
-        })
-        return events
-      })()
-    : []
+const onHalt = (state: ParserState): ReadonlyArray<LLMEvent> => {
+  const events: LLMEvent[] = []
+  if (state.pendingFinish) {
+    Lifecycle.finish(state.lifecycle, events, {
+      reason:
+        state.pendingFinish.reason === "stop" && state.hasToolCalls ? "tool-calls" : state.pendingFinish.reason,
+      usage: state.pendingFinish.usage,
+    })
+    return events
+  }
+  // Clean EOF before the terminal metadata event (messageStop/metadata never
+  // arrived): the turn cut mid-stream. Record the indeterminate outcome
+  // (D6) rather than ending without any terminal event.
+  Lifecycle.finish(state.lifecycle, events, { reason: "unknown" })
+  return events
+}
 
 // =============================================================================
 // Protocol And Bedrock Route

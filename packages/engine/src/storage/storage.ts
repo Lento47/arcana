@@ -234,8 +234,9 @@ export const layer = Layer.effect(
           const exit = yield* Effect.exit(step(dir, fs, git))
           if (Exit.isFailure(exit)) {
             yield* Effect.logError("failed to run migration — skipping and continuing", { index: i, cause: exit.cause })
-            yield* fs.writeWithDirs(marker, String(i + 1))
-            continue
+            // Never advance the marker on failure: the next startup must retry
+            // the same step instead of silently skipping a broken migration.
+            return { dir }
           }
           yield* fs.writeWithDirs(marker, String(i + 1))
         }

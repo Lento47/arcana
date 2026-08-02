@@ -43,6 +43,7 @@ import type { FilePart, UserMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
 import { errorMessage } from "../../util/error"
 import { formatDuration } from "../../util/format"
+import { promptMaxHeight } from "../../util/geometry"
 import { useDialog } from "../../ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
@@ -262,8 +263,8 @@ export function Prompt(props: PromptProps) {
     let id = local.model.parsed().modelID.toLowerCase()
     // Strip internal routing prefixes
     id = id.replace(/^cloudflare-ai-gateway\//, "").replace(/^cloudflare\//, "")
-    // Truncate if still very long
-    if (id.length > 36) id = id.slice(0, 33) + "..."
+    // Truncate if still very long (T9: display-width aware)
+    if (Locale.displayWidth(id) > 36) id = Locale.truncate(id, 36)
     return id
   })
   /** True when the active primary agent is not the list default (usually build). */
@@ -1396,7 +1397,8 @@ export function Prompt(props: PromptProps) {
           setSessionGoal(sessionID, { goal: args, status: "in_progress" })
           toast.show({
             title: "Goal set",
-            message: args.length > 120 ? args.slice(0, 117) + "…" : args,
+            // T9: helper appends "…" only when it truncated.
+            message: Locale.truncate(args, 120),
             variant: "success",
           })
         })
@@ -1816,8 +1818,10 @@ export function Prompt(props: PromptProps) {
     return `${PROMPT_FRAME.normal} "${list()[store.placeholder % list().length]}"`
   })
 
-  const maxHeight = createMemo(() => tuiConfig.prompt?.max_height ?? Math.max(6, Math.floor(dimensions().height / 3)))
-  const moveLabelWidth = createMemo(() => Math.max(12, Math.min(44, dimensions().width - 48)))
+  // D5: geometry routes through the centralized spine contract — the prompt
+  // does not subtract its own padding (command-spine-shell.tsx:69-71). A dead
+  // memo that derived a move-label width here (zero consumers) was deleted.
+  const maxHeight = createMemo(() => tuiConfig.prompt?.max_height ?? promptMaxHeight(dimensions().height))
 
   // Grok-like composer: mode changes the lead glyph (❯ vs !), not a permanent "intent" label.
   const spineShell = createMemo(() => isCommandSpine() && store.mode === "shell")
@@ -2107,7 +2111,7 @@ export function Prompt(props: PromptProps) {
                         if (!r) return
                         if (r.message.includes("exceeded your current quota") && r.message.includes("gemini"))
                           return "gemini is way too hot right now"
-                        if (r.message.length > 80) return r.message.slice(0, 80) + "..."
+                        if (Locale.displayWidth(r.message) > 80) return Locale.truncate(r.message, 80)
                         return r.message
                       })
                       const isTruncated = createMemo(() => {

@@ -23,6 +23,7 @@ import { described } from "./metadata"
 import { QueryBoolean } from "./query"
 import { ProviderV2 } from "@arcana/core/provider"
 import { ModelV2 } from "@arcana/core/model"
+import { ArcanaEvent } from "@arcana/core/epistemic/event"
 
 const root = "/session"
 export const ListQuery = Schema.Struct({
@@ -46,6 +47,65 @@ export const MessagesQuery = Schema.Struct({
 const MessagesResponse = Schema.Struct({
   items: Schema.Array(SessionV1.WithParts),
   cursor: Schema.optional(Schema.String),
+})
+const TraceHealth = Schema.Literals(["COMPLETE", "DEGRADED", "UNAVAILABLE"])
+const RunProofSnapshot = Schema.Struct({
+  proofHash: Schema.String,
+  runRoot: Schema.String,
+  derivedAt: Schema.String,
+  eventCount: Schema.Number,
+  lastSequence: Schema.Number,
+  proofLevel: Schema.Literals(["P0", "P1", "P2", "P3"]),
+  traceHealth: TraceHealth,
+  integrityStatus: Schema.Literals(["VALID", "INVALID", "UNVERIFIED"]),
+  lifecycleStatus: Schema.Literals(["COMPLETE", "INCOMPLETE", "CRASHED", "CANCELLED"]),
+  completionMethod: Schema.optional(Schema.String),
+  assuranceProfile: Schema.Struct({
+    trace: Schema.Literals(["NONE", "RECORDED"]),
+    integrity: Schema.Literals(["UNVERIFIED", "VALID", "INVALID"]),
+    verification: Schema.Literals(["UNVERIFIED", "VERIFIED"]),
+    reproducibility: Schema.Literals(["NONE", "PARTIAL", "FULL"]),
+    reproducibilityDetail: Schema.optional(Schema.String),
+  }),
+  contractStatus: Schema.optional(Schema.String),
+  claimsByStatus: Schema.Record(Schema.String, Schema.Number),
+  obligationsByStatus: Schema.Record(Schema.String, Schema.Number),
+  gaps: Schema.Array(Schema.String),
+  authorizationProfile: Schema.Struct({
+    policyVersions: Schema.Array(Schema.String),
+    requests: Schema.Number,
+    allowed: Schema.Number,
+    denied: Schema.Number,
+    approvalsRequired: Schema.Number,
+    staleDecisions: Schema.Number,
+    executed: Schema.Number,
+    executionFailures: Schema.Number,
+    unauthorizedExecutions: Schema.Number,
+    capabilityViolations: Schema.Number,
+    authorizationTraceHealth: TraceHealth,
+    orphanExecutions: Schema.Number,
+    unmatchedAllows: Schema.Number,
+    unmatchedRequests: Schema.Number,
+    intentEnforcementMode: Schema.Literals(["REQUIRED", "LEGACY_COMPAT", "UNAVAILABLE"]),
+    intentBindingsCreated: Schema.Number,
+    intentTraceHealth: TraceHealth,
+  }),
+})
+export const GovernanceSnapshot = Schema.Struct({
+  sessionId: Schema.String,
+  trace: Schema.Struct({
+    status: TraceHealth,
+    expectedCriticalEvents: Schema.Number,
+    recordedCriticalEvents: Schema.Number,
+    recordingErrors: Schema.Array(
+      Schema.Struct({
+        timestamp: Schema.String,
+        error: Schema.String,
+      }),
+    ),
+  }),
+  events: Schema.Array(ArcanaEvent),
+  proof: RunProofSnapshot,
 })
 
 export const StatusMap = Schema.Record(Schema.String, SessionStatus.Info)
@@ -87,6 +147,7 @@ export const SessionPaths = {
   diff: `${root}/:sessionID/diff`,
   messages: `${root}/:sessionID/message`,
   message: `${root}/:sessionID/message/:messageID`,
+  governance: `${root}/:sessionID/governance`,
   create: root,
   remove: `${root}/:sessionID`,
   update: `${root}/:sessionID`,
@@ -105,7 +166,27 @@ export const SessionPaths = {
   deleteMessage: `${root}/:sessionID/message/:messageID`,
   deletePart: `${root}/:sessionID/message/:messageID/part/:partID`,
   updatePart: `${root}/:sessionID/message/:messageID/part/:partID`,
+  revokeCapability: `${root}/:sessionID/capability/:capabilityID/revoke`,
+  verifyObligation: `${root}/:sessionID/obligation/:obligationID/verify`,
 } as const
+
+export const RevokeCapabilityPayload = Schema.Struct({
+  reason: Schema.optional(Schema.String),
+})
+export const RevokeCapabilityResult = Schema.Struct({
+  revokedIds: Schema.Array(Schema.String),
+  reason: Schema.String,
+})
+
+export const VerifyObligationPayload = Schema.Struct({
+  outcome: Schema.Literals(["satisfied", "failed", "waived"]),
+  reason: Schema.String,
+  details: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+})
+export const VerifyObligationResult = Schema.Struct({
+  obligationId: Schema.String,
+  status: Schema.String,
+})
 
 export const SessionApi = HttpApi.make("session")
   .add(
@@ -118,7 +199,7 @@ export const SessionApi = HttpApi.make("session")
           OpenApi.annotations({
             identifier: "session.list",
             summary: "List sessions",
-            description: "Get a list of all OpenCode sessions, sorted by most recently updated.",
+            description: "Get a list of all Arcana sessions, sorted by most recently updated.",
           }),
         ),
         HttpApiEndpoint.get("status", SessionPaths.status, {
@@ -141,7 +222,7 @@ export const SessionApi = HttpApi.make("session")
           OpenApi.annotations({
             identifier: "session.get",
             summary: "Get session",
-            description: "Retrieve detailed information about a specific OpenCode session.",
+            description: "Retrieve detailed information about a specific Arcana session.",
           }),
         ),
         HttpApiEndpoint.get("children", SessionPaths.children, {
@@ -203,6 +284,45 @@ export const SessionApi = HttpApi.make("session")
             description: "Retrieve a specific message from a session by its message ID.",
           }),
         ),
+        HttpApiEndpoint.get("governance", SessionPaths.governance, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          success: described(GovernanceSnapshot, "Session governance events and trace health"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.governance",
+            summary: "Get session governance",
+            description:
+              "Retrieve canonical durable governance evidence, trace health, and the current RunProof projection for a session.",
+          }),
+        ),
+        HttpApiEndpoint.post("revokeCapability", SessionPaths.revokeCapability, {
+          params: { sessionID: SessionID, capabilityID: Schema.String },
+          payload: RevokeCapabilityPayload,
+          success: described(RevokeCapabilityResult, "Revoked capability ids"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.revokeCapability",
+            summary: "Revoke a session capability",
+            description:
+              "Revoke an ACTIVE capability grant owned by the session and all descendant grants, recording capability.revoked evidence for each.",
+          }),
+        ),
+        HttpApiEndpoint.post("verifyObligation", SessionPaths.verifyObligation, {
+          params: { sessionID: SessionID, obligationID: Schema.String },
+          payload: VerifyObligationPayload,
+          success: described(VerifyObligationResult, "Recorded obligation verification"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.verifyObligation",
+            summary: "Record an operator verification outcome",
+            description:
+              "Record an explicit operator/verifier outcome (satisfied, failed, or waived) with a required reason for a comparison, human_decision, or external_confirmation obligation, persisting verification.recorded governance evidence.",
+          }),
+        ),
         HttpApiEndpoint.post("create", SessionPaths.create, {
           query: WorkspaceRoutingQuery,
           payload: [HttpApiSchema.NoContent, Session.CreateInput],
@@ -212,7 +332,7 @@ export const SessionApi = HttpApi.make("session")
           OpenApi.annotations({
             identifier: "session.create",
             summary: "Create session",
-            description: "Create a new OpenCode session for interacting with AI assistants and managing conversations.",
+            description: "Create a new Arcana session for interacting with AI assistants and managing conversations.",
           }),
         ),
         HttpApiEndpoint.delete("remove", SessionPaths.remove, {

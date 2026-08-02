@@ -4,17 +4,8 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})
 }
 
-export type EventTransportEnvelope = {
-  /** Per-connection stream identity (engine handlers/event.ts). */
-  streamID: string
-  /** Sequence of this event within the stream. Heartbeats carry their own counter. */
-  sequence: number
-  /** Heartbeat only: highest state-bearing sequence enqueued before this tick. */
-  headSequence?: number
-}
-
 export type Event =
-  | (EventSessionNextAgentSwitched
+  | EventSessionNextAgentSwitched
   | EventSessionNextModelSwitched
   | EventSessionNextMoved
   | EventSessionNextPrompted
@@ -87,7 +78,9 @@ export type Event =
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
+  | EventGovernanceRecorded
   | EventLspUpdated
+  | EventApprovalUpdated
   | EventVcsBranchUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
@@ -100,8 +93,7 @@ export type Event =
   | EventWorkspaceReady
   | EventWorkspaceFailed
   | EventWorkspaceStatus
-  | EventServerInstanceDisposed)
-  & { transport?: EventTransportEnvelope }
+  | EventServerInstanceDisposed
 
 export type QuestionReplied = {
   sessionID: string
@@ -735,14 +727,36 @@ export type QuestionTool = {
 
 export type QuestionAnswer = Array<string>
 
+export type ApprovalRecord = {
+  approvalId: string
+  version: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  sessionId: string
+  workspaceId: string
+  requestHash: string
+  contractRevision: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  principalId?: string
+  state:
+    | "PENDING"
+    | "APPROVED"
+    | "DENIED"
+    | "CLAIMED"
+    | "CONSUMED"
+    | "EXPIRED"
+    | "INVALIDATED"
+    | "REJECTED"
+    | "RECOVERY_REQUIRED"
+  approvedBy?: string
+  executionId?: string
+  expiresAt: string
+  updatedAt: string
+  createdAt: string
+}
+
 export type GlobalEvent = {
   directory: string
   project?: string
   workspace?: string
-  /** Transport envelope (P12): present on engine streamed events. */
-  transport?: EventTransportEnvelope
   payload:
-    | (
     | {
         id: string
         type: "session.next.agent.switched"
@@ -1547,9 +1561,68 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "governance.recorded"
+        properties: {
+          sessionID: string
+          event: {
+            id: string
+            sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+            sessionId?: string
+            timestamp: string
+            previousHash: string
+            hash: string
+            actor: {
+              kind: "user" | "model" | "tool" | "policy" | "operator"
+              id: string
+            }
+            type:
+              | "session.started"
+              | "session.completed"
+              | "session.crashed"
+              | "contract.proposed"
+              | "contract.activated"
+              | "contract.amended"
+              | "claim.created"
+              | "claim.transitioned"
+              | "evidence.attached"
+              | "obligation.created"
+              | "obligation.resolved"
+              | "completion.attempted"
+              | "completion.resolved"
+              | "intent.enforcement_required"
+              | "intent.binding_created"
+              | "intent.binding_revoked"
+              | "intent.compatibility_mode"
+              | "tool.called"
+              | "tool.returned"
+              | "capability.created"
+              | "capability.revoked"
+              | "capability.exhausted"
+              | "authorization.requested"
+              | "authorization.allowed"
+              | "authorization.denied"
+              | "authorization.approval_required"
+              | "authorization.stale"
+              | "authorization.executed"
+              | "authorization.execution_failed"
+              | "verification.recorded"
+            payload: unknown
+          }
+        }
+      }
+    | {
+        id: string
         type: "lsp.updated"
         properties: {
           [key: string]: unknown
+        }
+      }
+    | {
+        id: string
+        type: "approval.updated"
+        properties: {
+          sessionID: string
+          approval: ApprovalRecord
         }
       }
     | {
@@ -1637,8 +1710,6 @@ export type GlobalEvent = {
     | SyncEventMessageRemoved
     | SyncEventMessagePartUpdated
     | SyncEventMessagePartRemoved
-    )
-    & { transport?: EventTransportEnvelope }
 }
 
 /**
@@ -1647,7 +1718,7 @@ export type GlobalEvent = {
 export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR"
 
 /**
- * Server configuration for opencode serve and web commands
+ * Server configuration for arcana serve and web commands
  */
 export type ServerConfig = {
   port?: number
@@ -2882,6 +2953,31 @@ export type EventTuiSessionSelect2 = {
      */
     sessionID: string
   }
+}
+
+export type ApprovalRecord1 = {
+  approvalId: string
+  version: number | "NaN" | "Infinity" | "-Infinity"
+  sessionId: string
+  workspaceId: string
+  requestHash: string
+  contractRevision: number | "NaN" | "Infinity" | "-Infinity"
+  principalId?: string
+  state:
+    | "PENDING"
+    | "APPROVED"
+    | "DENIED"
+    | "CLAIMED"
+    | "CONSUMED"
+    | "EXPIRED"
+    | "INVALIDATED"
+    | "REJECTED"
+    | "RECOVERY_REQUIRED"
+  approvedBy?: string
+  executionId?: string
+  expiresAt: string
+  updatedAt: string
+  createdAt: string
 }
 
 export type MoveSessionDestination = {
@@ -5088,11 +5184,72 @@ export type EventQuestionRejected = {
   }
 }
 
+export type EventGovernanceRecorded = {
+  id: string
+  type: "governance.recorded"
+  properties: {
+    sessionID: string
+    event: {
+      id: string
+      sequence: number | "NaN" | "Infinity" | "-Infinity"
+      sessionId?: string
+      timestamp: string
+      previousHash: string
+      hash: string
+      actor: {
+        kind: "user" | "model" | "tool" | "policy" | "operator"
+        id: string
+      }
+      type:
+        | "session.started"
+        | "session.completed"
+        | "session.crashed"
+        | "contract.proposed"
+        | "contract.activated"
+        | "contract.amended"
+        | "claim.created"
+        | "claim.transitioned"
+        | "evidence.attached"
+        | "obligation.created"
+        | "obligation.resolved"
+        | "completion.attempted"
+        | "completion.resolved"
+        | "intent.enforcement_required"
+        | "intent.binding_created"
+        | "intent.binding_revoked"
+        | "intent.compatibility_mode"
+        | "tool.called"
+        | "tool.returned"
+        | "capability.created"
+        | "capability.revoked"
+        | "capability.exhausted"
+        | "authorization.requested"
+        | "authorization.allowed"
+        | "authorization.denied"
+        | "authorization.approval_required"
+        | "authorization.stale"
+        | "authorization.executed"
+        | "authorization.execution_failed"
+        | "verification.recorded"
+      payload: unknown
+    }
+  }
+}
+
 export type EventLspUpdated = {
   id: string
   type: "lsp.updated"
   properties: {
     [key: string]: unknown
+  }
+}
+
+export type EventApprovalUpdated = {
+  id: string
+  type: "approval.updated"
+  properties: {
+    sessionID: string
+    approval: ApprovalRecord1
   }
 }
 
@@ -5512,6 +5669,91 @@ export type EventSubscribeResponses = {
 }
 
 export type EventSubscribeResponse = EventSubscribeResponses[keyof EventSubscribeResponses]
+
+export type ApprovalCommandData = {
+  body: {
+    command: "APPROVE_ONCE" | "DENY"
+    expectedVersion: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    expectedRequestHash: string
+    expectedContractRevision: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path: {
+    sessionID: string
+    approvalID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/session/{sessionID}/approval/{approvalID}/command"
+}
+
+export type ApprovalCommandErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type ApprovalCommandError = ApprovalCommandErrors[keyof ApprovalCommandErrors]
+
+export type ApprovalCommandResponses = {
+  /**
+   * Approval command result
+   */
+  200:
+    | {
+        success: true
+        approval: ApprovalRecord
+      }
+    | {
+        success: false
+        reason: string
+        stale?: boolean
+      }
+}
+
+export type ApprovalCommandResponse = ApprovalCommandResponses[keyof ApprovalCommandResponses]
+
+export type ApprovalListData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/session/{sessionID}/approval"
+}
+
+export type ApprovalListErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type ApprovalListError = ApprovalListErrors[keyof ApprovalListErrors]
+
+export type ApprovalListResponses = {
+  /**
+   * Approvals for a session
+   */
+  200: {
+    [key: string]: ApprovalRecord
+  }
+}
+
+export type ApprovalListResponse = ApprovalListResponses[keyof ApprovalListResponses]
 
 export type ConfigGetData = {
   body?: never
@@ -8161,6 +8403,219 @@ export type SessionMessageResponses = {
 }
 
 export type SessionMessageResponse = SessionMessageResponses[keyof SessionMessageResponses]
+
+export type SessionGovernanceData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/governance"
+}
+
+export type SessionGovernanceErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionGovernanceError = SessionGovernanceErrors[keyof SessionGovernanceErrors]
+
+export type SessionGovernanceResponses = {
+  /**
+   * Session governance events and trace health
+   */
+  200: {
+    sessionId: string
+    trace: {
+      status: "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+      expectedCriticalEvents: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      recordedCriticalEvents: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      recordingErrors: Array<{
+        timestamp: string
+        error: string
+      }>
+    }
+    events: Array<{
+      id: string
+      sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      sessionId?: string
+      timestamp: string
+      previousHash: string
+      hash: string
+      actor: {
+        kind: "user" | "model" | "tool" | "policy" | "operator"
+        id: string
+      }
+      type:
+        | "session.started"
+        | "session.completed"
+        | "session.crashed"
+        | "contract.proposed"
+        | "contract.activated"
+        | "contract.amended"
+        | "claim.created"
+        | "claim.transitioned"
+        | "evidence.attached"
+        | "obligation.created"
+        | "obligation.resolved"
+        | "completion.attempted"
+        | "completion.resolved"
+        | "intent.enforcement_required"
+        | "intent.binding_created"
+        | "intent.binding_revoked"
+        | "intent.compatibility_mode"
+        | "tool.called"
+        | "tool.returned"
+        | "capability.created"
+        | "capability.revoked"
+        | "capability.exhausted"
+        | "authorization.requested"
+        | "authorization.allowed"
+        | "authorization.denied"
+        | "authorization.approval_required"
+        | "authorization.stale"
+        | "authorization.executed"
+        | "authorization.execution_failed"
+        | "verification.recorded"
+      payload: unknown
+    }>
+    proof: {
+      proofHash: string
+      runRoot: string
+      derivedAt: string
+      eventCount: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      lastSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      proofLevel: "P0" | "P1" | "P2" | "P3"
+      traceHealth: "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+      integrityStatus: "VALID" | "INVALID" | "UNVERIFIED"
+      lifecycleStatus: "COMPLETE" | "INCOMPLETE" | "CRASHED" | "CANCELLED"
+      completionMethod?: string
+      assuranceProfile: {
+        trace: "NONE" | "RECORDED"
+        integrity: "UNVERIFIED" | "VALID" | "INVALID"
+        verification: "UNVERIFIED" | "VERIFIED"
+        reproducibility: "NONE" | "PARTIAL" | "FULL"
+        reproducibilityDetail?: string
+      }
+      contractStatus?: string
+      claimsByStatus: {
+        [key: string]: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      }
+      obligationsByStatus: {
+        [key: string]: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      }
+      gaps: Array<string>
+      authorizationProfile: {
+        policyVersions: Array<string>
+        requests: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        allowed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        denied: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        approvalsRequired: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        staleDecisions: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        executed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        executionFailures: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        unauthorizedExecutions: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        capabilityViolations: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        authorizationTraceHealth: "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+        orphanExecutions: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        unmatchedAllows: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        unmatchedRequests: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        intentEnforcementMode: "REQUIRED" | "LEGACY_COMPAT" | "UNAVAILABLE"
+        intentBindingsCreated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        intentTraceHealth: "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+      }
+    }
+  }
+}
+
+export type SessionGovernanceResponse = SessionGovernanceResponses[keyof SessionGovernanceResponses]
+
+export type SessionRevokeCapabilityData = {
+  body?: {
+    reason?: string
+  }
+  path: {
+    sessionID: string
+    capabilityID: string
+  }
+  query?: never
+  url: "/session/{sessionID}/capability/{capabilityID}/revoke"
+}
+
+export type SessionRevokeCapabilityErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionRevokeCapabilityError = SessionRevokeCapabilityErrors[keyof SessionRevokeCapabilityErrors]
+
+export type SessionRevokeCapabilityResponses = {
+  /**
+   * Revoked capability ids
+   */
+  200: {
+    revokedIds: Array<string>
+    reason: string
+  }
+}
+
+export type SessionRevokeCapabilityResponse = SessionRevokeCapabilityResponses[keyof SessionRevokeCapabilityResponses]
+
+export type SessionVerifyObligationData = {
+  body?: {
+    outcome: "satisfied" | "failed" | "waived"
+    reason: string
+    details?: {
+      [key: string]: unknown
+    }
+  }
+  path: {
+    sessionID: string
+    obligationID: string
+  }
+  query?: never
+  url: "/session/{sessionID}/obligation/{obligationID}/verify"
+}
+
+export type SessionVerifyObligationErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionVerifyObligationError = SessionVerifyObligationErrors[keyof SessionVerifyObligationErrors]
+
+export type SessionVerifyObligationResponses = {
+  /**
+   * Recorded obligation verification
+   */
+  200: {
+    obligationId: string
+    status: string
+  }
+}
+
+export type SessionVerifyObligationResponse = SessionVerifyObligationResponses[keyof SessionVerifyObligationResponses]
 
 export type SessionForkData = {
   body?: {

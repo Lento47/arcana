@@ -1,4 +1,5 @@
 import { SyntaxStyle, RGBA, type TerminalColors } from "@opentui/core"
+import { ensureMinContrast } from "./contrast"
 import arcana from "./assets/arcana.json" with { type: "json" }
 import bloodmoon from "./assets/bloodmoon.json" with { type: "json" }
 import coven from "./assets/coven.json" with { type: "json" }
@@ -448,54 +449,6 @@ export function tint(base: RGBA, overlay: RGBA, alpha: number): RGBA {
   const g = base.g + (overlay.g - base.g) * alpha
   const b = base.b + (overlay.b - base.b) * alpha
   return RGBA.fromInts(Math.round(r * 255), Math.round(g * 255), Math.round(b * 255))
-}
-
-function linearChannel(value: number) {
-  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
-}
-
-function relativeLuminance(color: RGBA) {
-  return 0.2126 * linearChannel(color.r) + 0.7152 * linearChannel(color.g) + 0.0722 * linearChannel(color.b)
-}
-
-function contrastRatio(foreground: RGBA, background: RGBA) {
-  const lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background))
-  const darker = Math.min(relativeLuminance(foreground), relativeLuminance(background))
-  return (lighter + 0.05) / (darker + 0.05)
-}
-
-function mixColor(base: RGBA, target: RGBA, amount: number) {
-  const clamped = Math.max(0, Math.min(1, amount))
-  return RGBA.fromInts(
-    Math.round((base.r + (target.r - base.r) * clamped) * 255),
-    Math.round((base.g + (target.g - base.g) * clamped) * 255),
-    Math.round((base.b + (target.b - base.b) * clamped) * 255),
-    Math.round((base.a + (target.a - base.a) * clamped) * 255),
-  )
-}
-
-function ensureMinContrast(foreground: RGBA, background: RGBA, minRatio: number) {
-  if (contrastRatio(foreground, background) >= minRatio) return foreground
-
-  const target =
-    relativeLuminance(background) > 0.5
-      ? RGBA.fromInts(0, 0, 0, Math.round(foreground.a * 255))
-      : RGBA.fromInts(255, 255, 255, Math.round(foreground.a * 255))
-
-  let low = 0
-  let high = 1
-  let best = target
-  for (let i = 0; i < 12; i++) {
-    const mid = (low + high) / 2
-    const candidate = mixColor(foreground, target, mid)
-    if (contrastRatio(candidate, background) >= minRatio) {
-      best = candidate
-      high = mid
-    } else {
-      low = mid
-    }
-  }
-  return best
 }
 
 function applyReadabilityFloor(theme: Partial<Record<ThemeColor, RGBA>>) {

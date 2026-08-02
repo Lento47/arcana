@@ -10,6 +10,7 @@ import { SessionBudget } from "./budget"
 import { Session } from "./session"
 import { Agent } from "../agent/agent"
 import { Provider } from "@/provider/provider"
+import * as Locale from "@/util/locale"
 
 import { type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
@@ -57,10 +58,19 @@ import { ProviderV2 } from "@arcana/core/provider"
 import { AgentAttachment, FileAttachment, Prompt, Source } from "@arcana/core/session/prompt"
 import { formatActiveGoalBlock } from "@arcana/core/session/goal"
 import * as DateTime from "effect/DateTime"
-import { eq } from "drizzle-orm"
+import { and, eq, ne, sql } from "drizzle-orm"
 import { ContractTable } from "@arcana/core/epistemic/contract-sql"
 import { ObligationTable } from "@arcana/core/epistemic/obligation-sql"
+import { SqliteIntentBindingStore } from "@arcana/core/capability/intent-binding-store-sqlite"
+import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
 import { EventStore } from "./epistemic/event-store"
+import { ObligationEngine } from "./epistemic/obligation-engine"
+import { CompletionVerifier } from "./epistemic/completion-verifier"
+import { ContractEngine } from "./epistemic/contract-engine"
+import { IntentRuntime } from "./intent-runtime"
+import { ContractAdmission } from "./contract-admission"
+import { CapabilityRevocation } from "./capability-revocation"
+import { revokeWithCascade, type RuntimeGrantStore } from "@arcana/core/capability/runtime-delegation"
 import { deriveCompletionReason } from "./epistemic/completion-reason"
 import { SessionTable } from "@arcana/core/session/sql"
 import { SessionReminders } from "./reminders"
@@ -82,6 +92,21 @@ IMPORTANT:
 - This tool provides your final answer - no further actions are taken after calling it`
 
 const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested structured output. You MUST use the StructuredOutput tool to provide your final response. Do NOT respond with plain text - you MUST call the StructuredOutput tool with your answer formatted according to the schema.`
+
+/**
+ * True when the active contract already has a completion.resolved event.
+ * Completion idempotency is per contract — a later contract in the same
+ * session must still run the gate even after an earlier VERIFIED_COMPLETE.
+ */
+export function contractCompletionAlreadyResolved(
+  resolvedEvents: ReadonlyArray<{ payload: unknown }>,
+  contractId: string,
+): boolean {
+  return resolvedEvents.some((event) => {
+    const payload = event.payload as Record<string, unknown> | undefined
+    return payload?.contractId === contractId
+  })
+}
 
 function isOrphanedInterruptedTool(part: SessionV1.ToolPart) {
   // cleanup() marks abandoned tool_use blocks this way after retries/aborts.
@@ -132,6 +157,8 @@ export const layer = Layer.effect(
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
     const eventStore = yield* EventStore.Service
+    const contracts = yield* ContractEngine.Service
+    const obligations = yield* ObligationEngine.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
@@ -150,6 +177,148 @@ export const layer = Layer.effect(
       }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
       yield* state.cancel(sessionID)
     })
+
+    /**
+     * Epistemic completion gate — the production verified-completion path.
+     *
+     * Runs when the assistant finishes naturally (top-of-loop break) and when
+     * the processor reports a terminal stop. It emits completion.attempted,
+     * resolves pending REQUIRED obligations from durable evidence, and only
+     * emits completion.resolved VERIFIED_COMPLETE (resolving the contract and
+     * revoking its intent bindings) when nothing required remains unresolved.
+     * A session that already reached a terminal completion decision is never
+     * resolved twice (durable idempotency via completion.resolved events).
+     */
+    const epistemicCompletionGate = Effect.fn("SessionPrompt.epistemicCompletionGate")(
+      function* (input: { sessionID: SessionID; step: number; messageID: string }) {
+        const activeContract = yield* db
+          .select({ id: ContractTable.id, revision: ContractTable.revision })
+          .from(ContractTable)
+          .where(
+            and(
+              eq(ContractTable.session_id, input.sessionID),
+              eq(ContractTable.status, "active"),
+            ),
+          )
+          .limit(1)
+          .pipe(
+            Effect.provideService(Database.Service, database),
+            Effect.orElseSucceed(() => []),
+          )
+        const alreadyResolved = yield* eventStore.listType(input.sessionID, "completion.resolved")
+        // Idempotency is PER CONTRACT, not per session: a new active contract
+        // must still run the gate even when an older contract in this session
+        // was already resolved. Without this, the second+ contract's
+        // obligations stayed pending forever after the first VERIFIED_COMPLETE.
+        if (activeContract.length > 0) {
+          const contractId = activeContract[0].id
+          if (contractCompletionAlreadyResolved(alreadyResolved, contractId)) {
+            return true
+          }
+        } else if (alreadyResolved.length > 0) {
+          return true
+        }
+
+        yield* eventStore.append({
+          sessionId: input.sessionID,
+          actor: { kind: "policy", id: "completion-gate" },
+          type: "completion.attempted",
+          payload: { step: input.step, messageID: input.messageID },
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+
+        if (activeContract.length > 0) {
+          // Production verifier: resolve pending required obligations from
+          // durable governance evidence before evaluating the gate.
+          yield* CompletionVerifier.resolveObligationsFromEvidence({
+            sessionId: input.sessionID,
+            contractId: activeContract[0].id,
+            obligations,
+            eventStore,
+          }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+          const unresolved = yield* db
+            .select({ id: ObligationTable.id })
+            .from(ObligationTable)
+            .where(
+              and(
+                eq(ObligationTable.contract_id, activeContract[0].id),
+                eq(ObligationTable.required, 1),
+                ne(ObligationTable.status, "satisfied"),
+              ),
+            )
+            .pipe(
+              Effect.provideService(Database.Service, database),
+              Effect.orElseSucceed(() => []),
+            )
+          if (unresolved.length > 0) {
+            yield* Effect.logWarning("completion gate: blocked", {
+              sessionID: input.sessionID,
+              contractId: activeContract[0].id,
+              unresolvedCount: unresolved.length,
+            })
+            return false
+          }
+          // Mark the contract resolved so RunProof P3 sees a terminal contract
+          // status, then emit verified completion evidence.
+          yield* contracts
+            .resolve(activeContract[0].id, {
+              state: "VERIFIED_COMPLETE",
+              reason: "All required obligations satisfied by durable evidence",
+              unresolved: [],
+            })
+            .pipe(Effect.catch(() => Effect.void), Effect.ignore)
+          yield* eventStore.append({
+            sessionId: input.sessionID,
+            actor: { kind: "policy", id: "completion-gate" },
+            type: "completion.resolved",
+            payload: { contractId: activeContract[0].id, method: "VERIFIED_COMPLETE" },
+          }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+          // The contract is resolved: no further consequential work may be
+          // grounded on its intent bindings. Revoke the durable ACTIVE rows
+          // and record intent.binding_revoked so the governance projection
+          // reflects the lifecycle, not just the SQL read filter.
+          yield* IntentRuntime.revokeBindingsForContract({
+            sessionId: input.sessionID,
+            contractId: activeContract[0].id,
+            contractRevision: String(activeContract[0].revision ?? 1),
+            store: new SqliteIntentBindingStore(database),
+            eventStore,
+          }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+          // Revoke the session's ACTIVE capability grants so no authority
+          // survives the completed objective. A resumed session with a new
+          // objective bootstraps fresh grants on its next tool admission.
+          const grantStore = new SqliteGrantStore(database)
+          const sessionGrants = yield* grantStore
+            .getActiveGrantsForSession(input.sessionID)
+            .pipe(Effect.catch(() => Effect.succeed([] as const)))
+          for (const grant of sessionGrants) {
+            const revoked = yield* grantStore
+              .revokeGrant(grant.id, `evt-capability-revoked:${grant.id}`)
+              .pipe(Effect.catch(() => Effect.succeed(false)))
+            if (!revoked) continue
+            yield* eventStore.append({
+              sessionId: input.sessionID,
+              actor: { kind: "policy", id: "completion-gate" },
+              type: "capability.revoked",
+              payload: {
+                capabilityId: grant.id,
+                principal: grant.principal,
+                reason: "CONTRACT_RESOLVED",
+              },
+            }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+          }
+          return true
+        }
+        // No active contract: free completion (contractless / declined / old
+        // sessions). Explicitly recorded so the projection is not silent.
+        yield* eventStore.append({
+          sessionId: input.sessionID,
+          actor: { kind: "policy", id: "completion-gate" },
+          type: "completion.resolved",
+          payload: { method: "NO_ACTIVE_CONTRACT" },
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+        return true
+      },
+    )
 
     const resolvePromptParts = Effect.fn("SessionPrompt.resolvePromptParts")(function* (template: string) {
       const ctx = yield* InstanceState.context
@@ -303,8 +472,8 @@ export const layer = Layer.effect(
         .find((line) => line.length > 0)
       if (!cleaned) return
       const t =
-        cleaned.length > Session.TITLE_MAX_CHARS
-          ? cleaned.substring(0, Session.TITLE_MAX_CHARS - 3) + "..."
+        Locale.displayWidth(cleaned) > Session.TITLE_MAX_CHARS
+          ? Locale.truncate(cleaned, Session.TITLE_MAX_CHARS)
           : cleaned
 
       // Never clobber a non-default title that landed while we streamed.
@@ -677,9 +846,6 @@ export const layer = Layer.effect(
       modelID: ModelV2.ID,
       sessionID: SessionID,
     ) {
-      // DEBUG
-      const { appendFileSync } = require("node:fs") as typeof import("node:fs")
-      try { appendFileSync("L:/tmp/arcana-ollama.log", `[SessionPrompt.getModel] provider=${String(providerID)} model=${String(modelID)}\n`) } catch {}
       const exit = yield* provider.getModel(providerID, modelID).pipe(Effect.exit)
       if (Exit.isSuccess(exit)) return exit.value
       const err = Cause.squash(exit.cause)
@@ -1271,6 +1437,14 @@ export const layer = Layer.effect(
                 callID: orphan.callID,
               })
             }
+            // Natural finish: the assistant stopped without pending tool calls.
+            // Run the epistemic completion gate so verified completion is
+            // evidence-gated; the loop exits either way.
+            yield* epistemicCompletionGate({
+              sessionID,
+              step,
+              messageID: lastAssistant.id,
+            }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
             yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
             break
           }
@@ -1316,6 +1490,101 @@ export const layer = Layer.effect(
 
           const model = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
           const task = tasks.pop()
+
+          // ── Production contract admission ─────────────────────────
+          // Primary sessions propose and activate an exact completion
+          // contract before consequential work. Declined sessions keep the
+          // explicit LEGACY_COMPAT fallback (visible as degraded); subagent
+          // and compaction turns never ask.
+          if (
+            step === 1
+            && !session.parentID
+            && task?.type !== "subtask"
+            && task?.type !== "compaction"
+            && lastUser.format?.type !== "json_schema"
+          ) {
+            yield* ContractAdmission.ensureContractAdmission(
+              {
+                hasActiveContract: (sessionID) =>
+                  database.db
+                    .get<{ id: string }>(
+                      sql`SELECT id FROM contracts
+                          WHERE session_id = ${sessionID} AND status = 'active'
+                          LIMIT 1`,
+                    )
+                    .pipe(
+                      Effect.map((row) => row !== undefined),
+                      Effect.catch(() => Effect.succeed(false)),
+                    ),
+                wasDeclined: () =>
+                  Effect.sync(() => {
+                    const meta = session.metadata as Record<string, unknown> | undefined
+                    return meta?.["__arcana_contract_declined"] === "1"
+                  }),
+                propose: (admission) =>
+                  contracts
+                    .propose({
+                      sessionId: admission.sessionID,
+                      userRequest: admission.userRequest,
+                      sourceEventId: admission.sourceEventId,
+                      model: admission.model,
+                    })
+                    .pipe(
+                      Effect.map((contract) => ({
+                        id: contract.id,
+                        objective: contract.objective,
+                        revision: contract.revision,
+                        criteria: contract.acceptanceCriteria.map(
+                          (criterion) => criterion.description,
+                        ),
+                      })),
+                    ),
+                ask: (sessionID, contract) =>
+                  permission
+                    .ask({
+                      sessionID,
+                      permission: "contract.accept",
+                      patterns: [sessionID],
+                      metadata: {
+                        kind: "contract_admission",
+                        contractId: contract.id,
+                        objective: contract.objective,
+                        revision: String(contract.revision),
+                        criteria: contract.criteria.slice(0, 3),
+                      },
+                      always: [],
+                      // Honor the session's permission rules: allow-all
+                      // sessions auto-accept admission, default sessions are
+                      // asked, deny rules decline into LEGACY_COMPAT.
+                      ruleset: session.permission ?? [],
+                    })
+                    .pipe(
+                      // Permission reply (allow) = accept; deny/reject/dismiss = decline.
+                      Effect.as(true),
+                      Effect.catch(() => Effect.succeed(false)),
+                    ),
+                activate: (contractId) => contracts.activate(contractId),
+                markDeclined: (sessionID) =>
+                  sessions
+                    .setMetadata({
+                      sessionID,
+                      metadata: {
+                        ...(session.metadata ?? {}),
+                        __arcana_contract_declined: "1",
+                      },
+                    })
+                    .pipe(Effect.catch(() => Effect.void)),
+              },
+              {
+                sessionID,
+                userRequest: textFromUserParts(
+                  msgs.findLast((m) => m.info.role === "user")?.parts ?? [],
+                ),
+                sourceEventId: lastUser.id,
+                model: lastUser.model?.modelID,
+              },
+            ).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+          }
 
           if (task?.type === "subtask") {
             yield* handleSubtask({ task, model, lastUser, sessionID, session, msgs })
@@ -1547,62 +1816,15 @@ export const layer = Layer.effect(
             }
 
             if (result === "stop") {
-              // ── Epistemic completion gate ──────────────────────────
-              // Emit completion.attempted event
-              yield* eventStore.append({
-                sessionId: sessionID,
-                actor: { kind: "model", id: lastUser?.model?.modelID ?? "unknown" },
-                type: "completion.attempted",
-                payload: { step, messageID: handle.message.id },
-              }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
-
-              // Block completion when required obligations remain unresolved.
-              // Uses Drizzle ORM with provideService to avoid layer deps.
-              const activeContract = yield* db
-                .select({ id: ContractTable.id })
-                .from(ContractTable)
-                .where(eq(ContractTable.session_id, sessionID))
-                .limit(1)
-                .pipe(
-                  Effect.provideService(Database.Service, database),
-                  Effect.orElseSucceed(() => []),
-                )
-              if (activeContract.length > 0) {
-                const unresolved = yield* db
-                  .select({ id: ObligationTable.id })
-                  .from(ObligationTable)
-                  .where(eq(ObligationTable.contract_id, activeContract[0].id))
-                  .pipe(
-                    Effect.provideService(Database.Service, database),
-                    Effect.orElseSucceed(() => []),
-                  )
-                if (unresolved.length > 0) {
-                  yield* Effect.logWarning("completion gate: blocked", {
-                    sessionID,
-                    contractId: activeContract[0].id,
-                    unresolvedCount: unresolved.length,
-                  })
-                  // Fall through — let the loop continue
-                } else {
-                  // Emit completion.resolved event — all obligations satisfied
-                  yield* eventStore.append({
-                    sessionId: sessionID,
-                    actor: { kind: "policy", id: "completion-gate" },
-                    type: "completion.resolved",
-                    payload: { contractId: activeContract[0].id, method: "VERIFIED_COMPLETE" },
-                  }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
-                  return "break" as const
-                }
-              } else {
-                // Emit completion.resolved event — no contract, free completion
-                yield* eventStore.append({
-                  sessionId: sessionID,
-                  actor: { kind: "policy", id: "completion-gate" },
-                  type: "completion.resolved",
-                  payload: { method: "NO_ACTIVE_CONTRACT" },
-                }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
-                return "break" as const
-              }
+              // Terminal stop (blocked / error): run the shared completion
+              // gate. Verified completion breaks the loop; an unresolved
+              // contract falls through so the model can continue.
+              const completed = yield* epistemicCompletionGate({
+                sessionID,
+                step,
+                messageID: handle.message.id,
+              })
+              if (completed) return "break" as const
             }
             if (result === "compact") {
               yield* compaction.create({
@@ -1690,6 +1912,115 @@ export const layer = Layer.effect(
         command: input.command,
         agent: input.agent,
       })
+
+      // Built-in operator action: `/capability revoke <capabilityID> [reason]`
+      // runs the production revocation workflow directly (no model involved)
+      // and replies with the revoked grant ids. This is the TUI/CLI command
+      // surface bound to the operator revoke endpoint.
+      if (input.command === "capability") {
+        const match = input.arguments.trim().match(/^revoke\s+(\S+)(?:\s+(.+))?$/)
+        if (!match) {
+          const error = new NamedError.Unknown({
+            message: "Usage: /capability revoke <capabilityID> [reason]",
+          })
+          yield* events.publish(Session.Event.Error, { sessionID: input.sessionID, error: error.toObject() })
+          throw error
+        }
+        const grantStore = new SqliteGrantStore(database)
+        const capabilityId = match[1]!
+        const reason = (match[2]?.trim() || "OPERATOR_REVOKE")
+        const result = yield* CapabilityRevocation.revokeCapabilityWithCascade(
+          {
+            loadGrant: (id) => grantStore.getGrantById(id).pipe(Effect.catch(() => Effect.succeed(null))),
+            revokeCascade: (grantId, revokedEventId) =>
+              revokeWithCascade(grantId, grantStore as unknown as RuntimeGrantStore, revokedEventId).pipe(
+                Effect.catch(() => Effect.succeed({ revokedIds: [] as string[] })),
+              ),
+            emitRevoked: ({ capabilityId: revokedId, reason: revokedReason }) =>
+              eventStore
+                .append({
+                  sessionId: input.sessionID,
+                  actor: { kind: "operator", id: "capability-revocation" },
+                  type: "capability.revoked",
+                  payload: {
+                    capabilityId: revokedId,
+                    reason: revokedReason,
+                    sessionId: input.sessionID,
+                  },
+                })
+                .pipe(Effect.asVoid, Effect.catch(() => Effect.void)),
+          },
+          { sessionId: input.sessionID, capabilityId },
+        )
+        if (result.revokedIds.length === 0) {
+          const error = new NamedError.Unknown({
+            message: `Capability ${capabilityId} is not an active grant of session ${input.sessionID}`,
+          })
+          yield* events.publish(Session.Event.Error, { sessionID: input.sessionID, error: error.toObject() })
+          throw error
+        }
+
+        const text = `Revoked ${result.revokedIds.length} grant(s):\n${result.revokedIds
+          .map((id) => `- ${id}`)
+          .join("\n")}`
+        const ctx = yield* InstanceState.context
+        const model = yield* currentModel(input.sessionID)
+        const rawModelID = model.modelID as string
+        const rawProviderID = model.providerID as string
+        const operatorAgent = input.agent ?? (yield* agents.defaultInfo()).name
+        const userMsg: SessionV1.User = {
+          id: MessageID.ascending(),
+          sessionID: input.sessionID,
+          time: { created: Date.now() },
+          role: "user",
+          agent: operatorAgent,
+          model: {
+            providerID: ProviderV2.ID.make(rawProviderID),
+            modelID: ModelV2.ID.make(rawModelID),
+          },
+        }
+        yield* sessions.updateMessage(userMsg)
+        yield* sessions.updatePart({
+          id: PartID.ascending(),
+          messageID: userMsg.id,
+          sessionID: input.sessionID,
+          type: "text",
+          text: `Capability revocation requested: ${capabilityId}`,
+          synthetic: true,
+        } satisfies SessionV1.TextPart)
+
+        const msg: SessionV1.Assistant = {
+          id: MessageID.ascending(),
+          sessionID: input.sessionID,
+          parentID: userMsg.id,
+          mode: operatorAgent,
+          agent: operatorAgent,
+          cost: 0,
+          path: { cwd: ctx.directory, root: ctx.worktree },
+          time: { created: Date.now() },
+          role: "assistant",
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          modelID: ModelV2.ID.make(rawModelID),
+          providerID: ProviderV2.ID.make(rawProviderID),
+        }
+        yield* sessions.updateMessage(msg)
+        const part: SessionV1.TextPart = {
+          id: PartID.ascending(),
+          messageID: msg.id,
+          sessionID: input.sessionID,
+          type: "text",
+          text,
+        }
+        yield* sessions.updatePart(part)
+        yield* events.publish(Command.Event.Executed, {
+          name: input.command,
+          sessionID: input.sessionID,
+          arguments: input.arguments,
+          messageID: msg.id,
+        })
+        return { info: msg, parts: [part] }
+      }
+
       const cmd = yield* commands.get(input.command)
       if (!cmd) {
         const available = (yield* commands.list()).map((c) => c.name)
@@ -1848,6 +2179,11 @@ export const defaultLayer = Layer.suspend(() =>
     // provides, so the final mergeAll provide goes in a second .pipe() call.
     // Semantically identical: a.pipe(...x).pipe(y) === a.pipe(...x, y).
   ).pipe(
+    // Provided BEFORE the mergeAll so its EventStore requirement is excluded
+    // again by the mergeAll's EventStore.layer below; after the mergeAll it
+    // would leak an unsatisfied EventStore requirement into the layer type.
+    Layer.provide(ContractEngine.layer),
+    Layer.provide(ObligationEngine.layer),
     Layer.provide(
       Layer.mergeAll(
         Agent.defaultLayer,
@@ -2005,6 +2341,8 @@ export const node = LayerNode.make(layer as any, [
   RuntimeFlags.node,
   Database.node,
   EventStore.node,
+  ObligationEngine.node,
+  ContractEngine.node,
 ])
 
 export * as SessionPrompt from "./prompt"

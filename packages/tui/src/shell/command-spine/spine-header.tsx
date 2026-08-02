@@ -1,12 +1,10 @@
 import { For, Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
+import type { Theme } from "../../theme"
 import { spineOuterPadding, type SpineLayout, type StatusSegment, statusToneColor } from "./spine-types"
+import { truncate } from "../../util/locale"
 
-function truncateValue(value: string, max: number): string {
-  if (value.length <= max) return value
-  if (max <= 1) return "…"
-  return value.slice(0, max - 1).trimEnd() + "…"
-}
+// Truncation: shared display-width-aware helper from util/locale (audit T5/O6).
 
 function valueLimit(segment: StatusSegment, layout: SpineLayout): number {
   if (segment.key === "path") {
@@ -30,18 +28,18 @@ function valueLimit(segment: StatusSegment, layout: SpineLayout): number {
 function SegmentView(props: {
   segment: StatusSegment
   divider?: boolean
-  theme: Record<string, unknown>
+  theme: Theme
   layout: SpineLayout
 }) {
   const color = statusToneColor(props.segment.tone, props.theme)
-  const value = createMemo(() => truncateValue(props.segment.value, valueLimit(props.segment, props.layout)))
+  const value = createMemo(() => truncate(props.segment.value, valueLimit(props.segment, props.layout)))
 
   return (
     <>
       <Show when={props.divider}>
-        <text fg={props.theme.borderSubtle as any}> · </text>
+        <text fg={props.theme.borderSubtle}> · </text>
       </Show>
-      <text fg={color as any}>{value()}</text>
+      <text fg={color}>{value()}</text>
     </>
   )
 }
@@ -64,8 +62,7 @@ export function SpineHeader(props: {
   segments: StatusSegment[]
   session: () => { id: string; title?: string } | undefined
 }) {
-  const { theme: themeObj } = useTheme()
-  const t = themeObj as Record<string, unknown>
+  const { theme } = useTheme()
   const pad = createMemo(() => spineOuterPadding(props.layout))
   const isWide = createMemo(() => props.layout === "wide")
   const isMinimal = createMemo(() => props.layout === "minimal")
@@ -78,7 +75,7 @@ export function SpineHeader(props: {
   const SegmentList = () => (
     <box flexDirection="row" minWidth={0} overflow="hidden">
       <For each={segments()}>
-        {(seg, i) => <SegmentView segment={seg} divider={i() > 0} theme={t} layout={props.layout} />}
+        {(seg, i) => <SegmentView segment={seg} divider={i() > 0} theme={theme} layout={props.layout} />}
       </For>
     </box>
   )
@@ -89,8 +86,8 @@ export function SpineHeader(props: {
         <Show when={isWide()}>
           <box flexGrow={1} />
         </Show>
-        <text fg={t.spineContext as any}>
-          {truncateValue(pathSegment()!.value, valueLimit(pathSegment()!, props.layout))}
+        <text fg={theme.spineContext}>
+          {truncate(pathSegment()!.value, valueLimit(pathSegment()!, props.layout))}
         </text>
       </box>
     </Show>
@@ -107,9 +104,9 @@ export function SpineHeader(props: {
           <>
             <Show when={showBrand()}>
               <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()}>
-                <text fg={t.spineBrand as any}>A R C A N A</text>
+                <text fg={theme.spineBrand}>A R C A N A</text>
               </box>
-              <box border={["bottom"]} borderColor={t.spineBrand as any} />
+              <box border={["bottom"]} borderColor={theme.spineBrand} />
             </Show>
             <Show when={segments().length > 0}>
               <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()}>
@@ -121,7 +118,7 @@ export function SpineHeader(props: {
         }
       >
         <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()}>
-          <text fg={t.spineBrand as any}>A R C A N A</text>
+          <text fg={theme.spineBrand}>A R C A N A</text>
           <box flexGrow={1} />
           <Show when={segments().length > 0}>
             <SegmentList />
@@ -131,7 +128,7 @@ export function SpineHeader(props: {
       </Show>
       <Show when={hasContext() || showBrand()}>
         <box height={1} />
-        <box border={["bottom"]} borderColor={t.borderSubtle as any} marginBottom={1} />
+        <box border={["bottom"]} borderColor={theme.borderSubtle} marginBottom={1} />
       </Show>
     </box>
   )

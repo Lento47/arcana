@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import { RGBA, TextAttributes, type KeyEvent, type Renderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
+import { displayWidth } from "../../util/locale"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { useBindings, useKeymapSelector } from "../../keymap"
 import type { ActiveKey } from "@opentui/keymap"
@@ -38,8 +39,8 @@ const COLUMN_GAP = 4
 const TAB_GAP = 3
 const MIN_TAB_GAP = 1
 const TAB_CONTENT_GAP = 1
-const _MIN_COLUMN_WIDTH = 28
 const MAX_COLUMN_WIDTH = 44
+const MORE_TAB_WIDTH = 3 // "⋯" (1 col) + 2 padding — same as the scroll indicator.
 const PANEL_HEIGHT_RATIO = 0.3
 const MIN_PANEL_HEIGHT = 8
 const MAX_PANEL_HEIGHT = 16
@@ -74,7 +75,31 @@ type Group = {
   entries: Entry[]
 }
 
-type HeaderItem = { type: "tab"; group: Group } | { type: "scroll" }
+type HeaderItem = { type: "tab"; group: Group } | { type: "scroll" } | { type: "more" }
+
+/**
+ * B9: greedily fit header tabs into contentWidth (display-width, per-tab pad).
+ * Always shows at least one tab; `overflow` tells the caller to append the ⋯
+ * marker. The old renderer let many tabs overflow the centered row unclipped.
+ */
+export function fitHeaderTabs(
+  labels: readonly string[],
+  contentWidth: number,
+  gap: number,
+  pad = 2,
+): { shown: number; overflow: boolean } {
+  if (labels.length === 0) return { shown: 0, overflow: false }
+  if (contentWidth <= 0) return { shown: 1, overflow: labels.length > 1 }
+  let used = 0
+  let shown = 0
+  for (const label of labels) {
+    const w = displayWidth(label) + pad
+    if (shown > 0 && used + gap + w > contentWidth) break
+    used += w + (shown > 0 ? gap : 0)
+    shown++
+  }
+  return { shown, overflow: shown < labels.length }
+}
 
 type GroupHeader = {
   type: "group"
@@ -189,7 +214,6 @@ function WhichKeyPanel(props: {
   const pendingAutoVisible = createMemo(() => props.mode() === "overlay" && props.pendingPreview() && pendingActive())
   const visible = createMemo(() => props.pinned() || pendingAutoVisible())
   const pendingMode = createMemo(() => visible() && pendingActive())
-  const left = 0
   const width = createMemo(() => Math.max(1, dimensions().width))
   const panelHeight = createMemo(() =>
     Math.max(MIN_PANEL_HEIGHT, Math.min(MAX_PANEL_HEIGHT, Math.floor(dimensions().height * PANEL_HEIGHT_RATIO))),
@@ -243,15 +267,28 @@ function WhichKeyPanel(props: {
   const upActive = createMemo(() => offset() > 0)
   const downActive = createMemo(() => offset() < maxOffset())
   const scrollable = createMemo(() => maxOffset() > 0)
-  const headerItems = createMemo<HeaderItem[]>(() => [
-    ...(tabsVisible() ? groups().map((group) => ({ type: "tab" as const, group })) : []),
-    ...(scrollable() ? [{ type: "scroll" as const }] : []),
-  ])
+  const headerItems = createMemo<HeaderItem[]>(() => {
+    const items: HeaderItem[] = []
+    if (tabsVisible()) {
+      // B9: cap tabs to those that fit contentWidth; ⋯ marks the overflow
+      // (all groups stay reachable via group-prev/next commands).
+      const g = groups()
+      const fit = fitHeaderTabs(
+        g.map((group) => group.label),
+        contentWidth(),
+        MIN_TAB_GAP,
+      )
+      for (const group of g.slice(0, fit.shown)) items.push({ type: "tab" as const, group })
+      if (fit.overflow) items.push({ type: "more" as const })
+    }
+    if (scrollable()) items.push({ type: "scroll" as const })
+    return items
+  })
   const tabGap = createMemo(() => {
     const itemCount = headerItems().length
     if (itemCount <= 1) return 0
     const itemWidth = headerItems().reduce(
-      (sum, item) => sum + (item.type === "tab" ? item.group.label.length + 2 : 3),
+      (sum, item) => sum + (item.type === "tab" ? displayWidth(item.group.label) + 2 : MORE_TAB_WIDTH),
       0,
     )
     return Math.max(MIN_TAB_GAP, Math.min(TAB_GAP, Math.floor((contentWidth() - itemWidth) / (itemCount - 1))))
@@ -388,7 +425,7 @@ function WhichKeyPanel(props: {
       <box
         position={props.layout === "overlay" ? "absolute" : "relative"}
         zIndex={3500}
-        left={left}
+        left={0}
         bottom={props.layout === "overlay" ? 0 : undefined}
         width={dimensions().width}
         height={panelHeight()}
@@ -406,13 +443,19 @@ function WhichKeyPanel(props: {
                 <Show
                   when={item.type === "tab" ? item.group : undefined}
                   fallback={
-                    <box flexShrink={0}>
-                      <text wrapMode="none">
-                        <span style={{ fg: upActive() ? look().text : look().muted }}>↑</span>
-                        <span style={{ fg: look().muted }}> </span>
-                        <span style={{ fg: downActive() ? look().text : look().muted }}>↓</span>
-                      </text>
-                    </box>
+                    item.type === "more" ? (
+                      <box flexShrink={0} paddingLeft={1} paddingRight={1}>
+                        <text fg={look().muted} wrapMode="none">⋯</text>
+                      </box>
+                    ) : (
+                      <box flexShrink={0}>
+                        <text wrapMode="none">
+                          <span style={{ fg: upActive() ? look().text : look().muted }}>↑</span>
+                          <span style={{ fg: look().muted }}> </span>
+                          <span style={{ fg: downActive() ? look().text : look().muted }}>↓</span>
+                        </text>
+                      </box>
+                    )
                   }
                 >
                   {(group) => {

@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { createOpencodeClient } from "@arcana/sdk/v2"
+import { Effect } from "effect"
 import net from "node:net"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
@@ -8,6 +10,8 @@ import { PtyPaths } from "../../src/server/routes/instance/httpapi/groups/pty"
 import { withTimeout } from "../../src/util/timeout"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, tmpdir } from "../fixture/fixture"
+import { TestLLMServer } from "../lib/llm-server"
+import { testProviderConfig } from "../lib/test-provider"
 
 const original = {
   ARCANA_SERVER_PASSWORD: Flag.ARCANA_SERVER_PASSWORD,
@@ -451,6 +455,75 @@ describe("HttpApi Server.listen", () => {
       await stop(listener, "timed out cleaning up no-auth listener").catch(() => undefined)
     }
   })
+
+  test(
+    "serves production PEP governance evidence from a fresh listener",
+    async () => {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const llm = yield* TestLLMServer
+          yield* llm.tool("glob", { pattern: "**/*.txt" })
+          yield* llm.text("governance restart verified")
+
+          const tmp = yield* Effect.acquireRelease(
+            Effect.promise(() => tmpdir({ config: testProviderConfig(llm.url) })),
+            (value) => Effect.promise(() => value[Symbol.asyncDispose]()),
+          )
+
+          const listener = yield* Effect.acquireRelease(
+            Effect.promise(() => startNoAuthListener()),
+            (value) =>
+              Effect.promise(() => stop(value, "timed out cleaning up governance listener")).pipe(Effect.ignore),
+          )
+          const sdk = createOpencodeClient({ baseUrl: listener.url.toString(), directory: tmp.path })
+          const created = yield* Effect.promise(() =>
+            sdk.session.create({
+              title: "governance restart",
+              permission: [{ permission: "*", pattern: "*", action: "allow" }],
+            }),
+          )
+          expect(created.response.status).toBe(200)
+          const sessionID = (created.data as { id: string }).id
+          const prompted = yield* Effect.promise(() =>
+            sdk.session.prompt({
+              sessionID,
+              agent: "build",
+              model: { providerID: "test", modelID: "test-model" },
+              parts: [{ type: "text", text: "find text files" }],
+            }),
+          )
+          expect(prompted.response.status).toBe(200)
+
+          const governance = yield* Effect.promise(() => sdk.session.governance({ sessionID }))
+          expect(governance.response.status).toBe(200)
+
+          const snapshot = governance.data as {
+            sessionId: string
+            trace: { status: string }
+            events: Array<{ type: string }>
+            proof: {
+              integrityStatus: string
+              authorizationProfile: {
+                authorizationTraceHealth: string
+                unauthorizedExecutions: number
+              }
+            }
+          }
+          const eventTypes = snapshot.events.map((event) => event.type)
+          expect(snapshot.sessionId).toBe(sessionID)
+          expect(snapshot.trace.status).toBe("COMPLETE")
+          expect(eventTypes).toContain("capability.created")
+          expect(eventTypes).toContain("authorization.requested")
+          expect(eventTypes).toContain("authorization.allowed")
+          expect(eventTypes).toContain("authorization.executed")
+          expect(snapshot.proof.integrityStatus).toBe("VALID")
+          expect(snapshot.proof.authorizationProfile.authorizationTraceHealth).toBe("COMPLETE")
+          expect(snapshot.proof.authorizationProfile.unauthorizedExecutions).toBe(0)
+        }).pipe(Effect.scoped, Effect.provide(TestLLMServer.layer)),
+      )
+    },
+    60_000,
+  )
 })
 
 function isPortFree(port: number) {

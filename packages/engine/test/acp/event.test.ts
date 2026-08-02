@@ -127,6 +127,21 @@ function textDelta(sessionID: string, messageID: string, partID: string, delta: 
   }
 }
 
+function reasoningDelta(sessionID: string, messageID: string, partID: string, delta: string): Event {
+  return {
+    id: `evt_${sessionID}_${messageID}_${partID}_${delta}`,
+    type: "message.part.delta",
+    properties: {
+      sessionID,
+      messageID,
+      partID,
+      partType: "reasoning",
+      field: "text",
+      delta,
+    },
+  }
+}
+
 function partUpdated(sessionID: string, messageID: string, partID: string, type: DeltaPartType): Event {
   return {
     id: `evt_${sessionID}_${messageID}_${partID}`,
@@ -340,9 +355,9 @@ describe("acp event routing", () => {
     })
 
     await harness.subscription.handle(textDelta("ses_a", "msg_a", "part_a", "A1"))
-    await harness.subscription.handle(textDelta("ses_b", "msg_b", "part_b", "B1"))
+    await harness.subscription.handle(reasoningDelta("ses_b", "msg_b", "part_b", "B1"))
     await harness.subscription.handle(textDelta("ses_a", "msg_a", "part_a", "A2"))
-    await harness.subscription.handle(textDelta("ses_b", "msg_b", "part_b", "B2"))
+    await harness.subscription.handle(reasoningDelta("ses_b", "msg_b", "part_b", "B2"))
 
     expect(
       harness.updates.filter((update) => update.sessionId === "ses_a").map((update) => update.update.sessionUpdate),

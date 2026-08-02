@@ -29,7 +29,7 @@ export class Config extends Context.Service<Config, Info>()("@arcana/ServerAuthC
         return Config.of(
           yield* EffectConfig.all({
             password: EffectConfig.string("ARCANA_SERVER_PASSWORD").pipe(EffectConfig.option),
-            username: EffectConfig.string("ARCANA_SERVER_USERNAME").pipe(EffectConfig.withDefault("opencode")),
+            username: EffectConfig.string("ARCANA_SERVER_USERNAME").pipe(EffectConfig.withDefault("arcana")),
           }),
         )
       }),
@@ -40,7 +40,7 @@ export class Config extends Context.Service<Config, Info>()("@arcana/ServerAuthC
 export function required(config: Info) {
   const ok = Option.isSome(config.password) && config.password.value !== ""
   if (!ok) {
-    console.info("[arcana] Running without server password (localhost-only). Set ARCANA_SERVER_PASSWORD to enable auth.")
+    console.error("[arcana] Running without server password (localhost-only). Set ARCANA_SERVER_PASSWORD to enable auth.")
   }
   return ok
 }
@@ -57,7 +57,7 @@ export function header(credentials?: Credentials) {
   const password = credentials?.password ?? process.env.ARCANA_SERVER_PASSWORD
   if (!password) return undefined
 
-  return `Basic ${Buffer.from(`${credentials?.username ?? process.env.ARCANA_SERVER_USERNAME ?? "opencode"}:${password}`).toString("base64")}`
+  return `Basic ${Buffer.from(`${credentials?.username ?? process.env.ARCANA_SERVER_USERNAME ?? "arcana"}:${password}`).toString("base64")}`
 }
 
 export function headers(credentials?: Credentials) {

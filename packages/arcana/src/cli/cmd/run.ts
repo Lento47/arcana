@@ -57,7 +57,7 @@ const c = {
 
 const STARTUP_MCP_TIMEOUT_MS = Number(process.env.ARCANA_STARTUP_MCP_TIMEOUT_MS ?? "1200")
 const SHARED_MEMORY_TIMEOUT_MS = Number(process.env.ARCANA_SHARED_MEMORY_TIMEOUT_MS ?? "1200")
-const SHARED_MEMORY_BASE_URL = process.env.ARCANA_SHARED_MEMORY_URL ?? "https://api.arcana.otnelhq.com"
+const SHARED_MEMORY_BASE_URL = process.env.ARCANA_SHARED_MEMORY_URL ?? "https://api-arcana.otnelhq.com"
 const EVOLVE_ON_STARTUP = process.env.ARCANA_EVOLVE_ON_STARTUP === "1"
 
 async function withStartupTimeout<T>(label: string, task: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {

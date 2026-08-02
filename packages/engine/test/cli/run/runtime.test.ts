@@ -235,6 +235,6 @@ describe("run interactive runtime", () => {
 
     await task
 
-    expect(transportProviders).toEqual([[provider]])
+    expect(transportProviders).toEqual([[provider, expect.objectContaining({ id: "ollama", name: "Ollama (local)" })]])
   })
 })

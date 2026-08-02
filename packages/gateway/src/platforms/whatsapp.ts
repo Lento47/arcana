@@ -4,6 +4,7 @@
  * Sends/receives text messages through the Cloud API.
  */
 import type { PlatformAdapter, MessageHandler, OutgoingMessage } from "../types.js"
+import { chunkWithHonestTail } from "../chunk.js"
 import { randomUUID, createHmac, timingSafeEqual } from "node:crypto"
 
 type WhatsAppConfig = {
@@ -152,19 +153,21 @@ export class WhatsAppAdapter implements PlatformAdapter {
 
   async send(msg: OutgoingMessage): Promise<void> {
     const url = `https://graph.facebook.com/v21.0/${this.config.phoneNumberId}/messages`
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.config.accessToken}`,
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: msg.chatId,
-        type: "text",
-        text: { body: msg.text.slice(0, 4096) },
-      }),
-    })
-    if (!res.ok) console.error(`[whatsapp] Send error: HTTP ${res.status}`)
+    for (const chunk of chunkWithHonestTail(msg.text, 4096)) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.config.accessToken}`,
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: msg.chatId,
+          type: "text",
+          text: { body: chunk },
+        }),
+      })
+      if (!res.ok) console.error(`[whatsapp] Send error: HTTP ${res.status}`)
+    }
   }
 }

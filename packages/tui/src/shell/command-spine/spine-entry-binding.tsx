@@ -29,6 +29,7 @@ export function SpineEntryBinding(props: SpineEntryBindingProps) {
           sessionID={props.sessionID}
           contentWidth={props.contentWidth}
           thinkContentWidth={props.thinkContentWidth}
+          gutterWidth={props.gutterWidth}
         />
       )}
     </Show>

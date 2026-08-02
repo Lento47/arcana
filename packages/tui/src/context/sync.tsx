@@ -19,6 +19,7 @@ import type {
   VcsInfo,
   SnapshotFileDiff,
   ConsoleState,
+  SessionGovernanceResponse,
 } from "@arcana/sdk/v2"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import { detectLocalOllama } from "@arcana/core/providers/ollama"
@@ -37,7 +38,7 @@ import { batch, onMount } from "solid-js"
 import path from "path"
 import { useKV } from "./kv"
 
-export type ReconcileReason = "heartbeat-gap" | "missing-part" | "reconnect" | "stream-reset" | "manual"
+export type ReconcileReason = "heartbeat-gap" | "missing-part" | "reconnect" | "stream-reset" | "manual" | "turn-end"
 
 /**
  * Part liveness window for hydration merges. An actively-streaming part
@@ -128,6 +129,10 @@ export const {
       approvals: {
         [approvalId: string]: ApprovalRecord
       }
+      /** Durable Phase C governance projection, keyed by session ID. */
+      governance: {
+        [sessionID: string]: SessionGovernanceResponse
+      }
     }>({
       provider_next: {
         all: [],
@@ -158,11 +163,77 @@ export const {
       formatter: [],
       vcs: undefined,
       approvals: {},
+      governance: {},
     })
 
     const event = useEvent()
     const project = useProject()
     const sdk = useSDK()
+
+    const unavailableGovernance = (sessionID: string): SessionGovernanceResponse => ({
+      sessionId: sessionID,
+      trace: {
+        status: "UNAVAILABLE",
+        expectedCriticalEvents: 0,
+        recordedCriticalEvents: 0,
+        recordingErrors: [],
+      },
+      events: [],
+      proof: {
+        proofHash: "",
+        runRoot: "",
+        derivedAt: "1970-01-01T00:00:00.000Z",
+        eventCount: 0,
+        lastSequence: 0,
+        proofLevel: "P0",
+        traceHealth: "UNAVAILABLE",
+        integrityStatus: "UNVERIFIED",
+        lifecycleStatus: "INCOMPLETE",
+        assuranceProfile: {
+          trace: "NONE",
+          integrity: "UNVERIFIED",
+          verification: "UNVERIFIED",
+          reproducibility: "NONE",
+        },
+        claimsByStatus: {},
+        obligationsByStatus: {},
+        gaps: ["Governance projection unavailable"],
+        authorizationProfile: {
+          policyVersions: [],
+          requests: 0,
+          allowed: 0,
+          denied: 0,
+          approvalsRequired: 0,
+          staleDecisions: 0,
+          executed: 0,
+          executionFailures: 0,
+          unauthorizedExecutions: 0,
+          capabilityViolations: 0,
+          authorizationTraceHealth: "UNAVAILABLE",
+          orphanExecutions: 0,
+          unmatchedAllows: 0,
+          unmatchedRequests: 0,
+          intentEnforcementMode: "UNAVAILABLE",
+          intentBindingsCreated: 0,
+          intentTraceHealth: "UNAVAILABLE",
+        },
+      },
+    })
+
+    const loadGovernance = async (sessionID: string, signal?: AbortSignal): Promise<SessionGovernanceResponse> => {
+      try {
+        const response = await sdk.client.session.governance(
+          { sessionID },
+          signal ? ({ throwOnError: true, signal } as never) : { throwOnError: true },
+        )
+        return response.data ?? unavailableGovernance(sessionID)
+      } catch (error) {
+        // Governance evidence is fail-visible, but an unavailable projection
+        // must never make the underlying session or message history unusable.
+        if (signal?.aborted) throw error
+        return unavailableGovernance(sessionID)
+      }
+    }
 
     const bumpPartRevision = (messageID: string) => {
       setStore("part_revision", messageID, (revision) => (revision ?? 0) + 1)
@@ -181,7 +252,39 @@ export const {
      */
     const reconcilingSessions = new Map<string, Promise<void>>()
     const reconcileGeneration = new Map<string, number>()
+    const governanceRefreshGeneration = new Map<string, number>()
     const RECONCILE_TIMEOUT_MS = 15_000
+
+    const mergeGovernanceEvents = (
+      current: readonly SessionGovernanceResponse["events"][number][],
+      authoritative: readonly SessionGovernanceResponse["events"][number][],
+    ): SessionGovernanceResponse["events"] => {
+      const byID = new Map([...current, ...authoritative].map((event) => [event.id, event]))
+      return [...byID.values()]
+        .sort((a, b) => {
+          const aSequence = typeof a.sequence === "number" ? a.sequence : Number.MAX_SAFE_INTEGER
+          const bSequence = typeof b.sequence === "number" ? b.sequence : Number.MAX_SAFE_INTEGER
+          return aSequence - bSequence || a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id)
+        })
+        .slice(-500)
+    }
+
+    const refreshGovernance = (sessionID: string) => {
+      const generation = (governanceRefreshGeneration.get(sessionID) ?? 0) + 1
+      governanceRefreshGeneration.set(sessionID, generation)
+      void loadGovernance(sessionID).then((authoritative) => {
+        if (governanceRefreshGeneration.get(sessionID) !== generation) return
+        const current = store.governance[sessionID]
+        setStore(
+          "governance",
+          sessionID,
+          reconcile({
+            ...authoritative,
+            events: mergeGovernanceEvents(current?.events ?? [], authoritative.events),
+          }),
+        )
+      })
+    }
     /**
      * Missing-part delta diagnostics (P12.5). Deltas that arrive for a part
      * the store does not know are never replayed (authoritative REST content
@@ -339,6 +442,41 @@ export const {
               }),
             )
           }
+          setStore(
+            "governance",
+            produce((draft) => {
+              delete draft[event.properties.info.id]
+            }),
+          )
+          break
+        }
+        case "governance.recorded": {
+          const sessionID = event.properties.sessionID
+          const snapshot = store.governance[sessionID]
+          if (!snapshot) {
+            setStore(
+              "governance",
+              sessionID,
+              reconcile({ ...unavailableGovernance(sessionID), events: [event.properties.event] }),
+            )
+          } else {
+            const next = event.properties.event
+            const existing = snapshot.events.findIndex((item) => item.id === next.id)
+            if (existing >= 0) {
+              setStore("governance", sessionID, "events", existing, reconcile(next))
+            } else {
+              setStore(
+                "governance",
+                sessionID,
+                "events",
+                reconcile(mergeGovernanceEvents(snapshot.events, [next])),
+              )
+            }
+          }
+          // Refresh trace health after the post-commit event. The generation
+          // guard prevents an older request from overwriting a newer status;
+          // durable-ID merging prevents any response from erasing live proof.
+          refreshGovernance(sessionID)
           break
         }
         case "session.updated": {
@@ -374,6 +512,13 @@ export const {
 
         case "session.status": {
           setStore("session_status", event.properties.sessionID, event.properties.status)
+          // Turn-end converge (F2): the engine transitioned to idle, so the
+          // projection must converge to the durable outcome. Generation-
+          // guarded + deduped by reconcile(); a concurrent turn-end
+          // reconcile (from the message.updated trigger) is a no-op here.
+          if (event.properties.status?.type === "idle") {
+            void result.session.reconcile(event.properties.sessionID, "turn-end").catch(() => {})
+          }
           break
         }
 
@@ -395,22 +540,31 @@ export const {
 
         case "message.updated": {
           touchMessage(event.properties.info.sessionID, event.properties.info.id)
+          const info = event.properties.info
+          // Turn-end converge (F2): a terminal finish on the wire must be
+          // reflected in the projection — live deltas can lag the durable
+          // terminal state. Any non-empty finish is terminal (matches
+          // turn-lifecycle.ts messageFinished semantics; covers stop /
+          // tool-calls / length / content-filter / error / unknown).
+          if (info.role === "assistant" && typeof info.finish === "string" && info.finish.length > 0) {
+            void result.session.reconcile(info.sessionID, "turn-end").catch(() => {})
+          }
           const messages = store.message[event.properties.info.sessionID]
           if (!messages) {
             setStore("message", event.properties.info.sessionID, [event.properties.info])
             break
           }
-          const result = search(messages, event.properties.info.id, (m) => m.id)
-          if (result.found) {
+          const match = search(messages, event.properties.info.id, (m) => m.id)
+          if (match.found) {
             const info = event.properties.info
-            setStore("message", event.properties.info.sessionID, result.index, reconcile(info))
+            setStore("message", event.properties.info.sessionID, match.index, reconcile(info))
             break
           }
           setStore(
             "message",
             event.properties.info.sessionID,
             produce((draft) => {
-              draft.splice(result.index, 0, event.properties.info)
+              draft.splice(match.index, 0, event.properties.info)
             }),
           )
           const updated = store.message[event.properties.info.sessionID]
@@ -815,11 +969,12 @@ export const {
           const tracker = { messages: new Set<string>(), parts: new Set<string>() }
           hydratingSessions.set(sessionID, tracker)
           const task = (async () => {
-            const [session, messages, todo, diff] = await Promise.all([
+            const [session, messages, todo, diff, governance] = await Promise.all([
               sdk.client.session.get({ sessionID }, { throwOnError: true }),
               sdk.client.session.messages({ sessionID, limit: 25 }),
               sdk.client.session.todo({ sessionID }),
               sdk.client.session.diff({ sessionID }),
+              loadGovernance(sessionID),
             ])
 
             // Store cursor for lazy-loading older messages
@@ -885,6 +1040,7 @@ export const {
                 }
                 draft.message[sessionID] = visible
                 draft.session_diff[sessionID] = diff.data ?? []
+                draft.governance[sessionID] = governance
               }),
             )
             fullSyncedSessions.add(sessionID)
@@ -945,11 +1101,12 @@ export const {
          * merge precedence. Exposed on the API for tests.
          */
         async reconcileImpl(sessionID: string, reason: ReconcileReason, generation: number, signal: AbortSignal) {
-          const [session, messages, todo, diff] = await Promise.all([
+          const [session, messages, todo, diff, governance] = await Promise.all([
             sdk.client.session.get({ sessionID }, { throwOnError: true, signal } as never),
             sdk.client.session.messages({ sessionID, limit: 25, signal } as never),
             sdk.client.session.todo({ sessionID, signal } as never),
             sdk.client.session.diff({ sessionID, signal } as never),
+            loadGovernance(sessionID, signal),
           ])
           const responseData = (messages as any).data?.items ?? (messages as any).data ?? []
           const oldest = responseData[responseData.length - 1]
@@ -1049,6 +1206,7 @@ export const {
               }
               draft.message[sessionID] = visible
               draft.session_diff[sessionID] = diff.data ?? []
+              draft.governance[sessionID] = governance
             }),
           )
           const changed = changes.filter((c) => c.action === "replaced" || c.action === "added")

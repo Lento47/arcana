@@ -719,13 +719,19 @@ export function fromError(
           const upstreamMessage = parseErrorMessage(body) ?? (e as APICallError).message
           const limitMatch = upstreamMessage.match(/prompt tokens limit exceeded:\s*([0-9,]+)\s*>\s*([0-9,]+)/i)
           if (limitMatch) {
+            // Redact provider-specific billing links (e.g. openrouter.ai) from
+            // the durable error body; Arcana voice points users at Arcana Pro.
+            const sanitizedBody = body.replace(
+              /https?:\/\/openrouter\.ai[^\s"\\]*/g,
+              "https://arcana.otnelhq.com/pricing/",
+            )
             return new APIError(
               {
                 message: `This session is over the proxy token limit (${limitMatch[1]} > ${limitMatch[2]}). Compact or start a new session.`,
                 statusCode: 402,
                 isRetryable: false,
                 responseHeaders: (e as APICallError).responseHeaders,
-                responseBody: body,
+                responseBody: sanitizedBody,
                 metadata: {
                   arcanaCode: "ARC_REQUEST_INVALID",
                   proxyError: "token_limit_exceeded",

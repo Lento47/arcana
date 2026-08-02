@@ -1,32 +1,33 @@
+import type { RGBA } from "@opentui/core"
 import { useTheme } from "../../context/theme"
-import { spineRailWidth, spineTone, type SpineKind, type SpineLayout } from "./spine-types"
+import { spineRailCell, spineRailWidth, spineTone, type SpineKind, type SpineLayout } from "./spine-types"
 
 export function SpineRail(props: {
   layout: SpineLayout
   kind?: SpineKind
   glyph?: string
-  color?: unknown
+  color?: RGBA
   active?: boolean
 }) {
   if (props.kind === "ask" || props.kind === "plan" || props.kind === "ok") return null
-  const { theme: themeObj } = useTheme()
-  const t = themeObj as Record<string, unknown>
+  const { theme } = useTheme()
   const width = spineRailWidth(props.layout)
   const symbol = props.glyph ?? "│"
   const color =
     props.color
     ?? (props.glyph && props.kind
-      ? spineTone(props.kind, t)
+      ? spineTone(props.kind, theme)
       : props.active
-        ? t.spineRailActive
-        : t.spineRail)
+        ? theme.spineRailActive
+        : theme.spineRail)
 
-  // Single glyph + trailing space keeps the rail to 2 cells and aligns content.
-  const cell = (symbol + " ").slice(0, width).padEnd(width)
+  // B8: display-width, grapheme-safe cell — 1-col glyph + trailing space;
+  // a 2-col glyph (◤, ⤷) fills the 2-col rail alone, never split mid-pair.
+  const cell = spineRailCell(symbol, width)
 
   return (
     <box width={width} flexShrink={0}>
-      <text fg={color as any}>{cell}</text>
+      <text fg={color}>{cell}</text>
     </box>
   )
 }

@@ -142,9 +142,9 @@ describe("golden vector positive verification", () => {
   const now = Date.parse("2026-07-29T12:30:00.000Z")
 
   test("cap-v1-001: basic capability grant verifies with real Ed25519", () => {
-    const vec = positiveVectors.find((v: any) => v.vectorId === "cap-v1-001")!
+    const vec = positiveVectors.find((v: any) => v.vectorId === "signed-capability-v1-001")!
     const envelope = buildEnvelopeFromVector(vec)
-    const keys = buildTrustedKeys(["cap-v1-001"])
+    const keys = buildTrustedKeys(["signed-capability-v1-001"])
     const result = verifySignedCapability(envelope, keys, {
       now,
       expectedAudienceNodeId: "node-beta",
@@ -153,9 +153,9 @@ describe("golden vector positive verification", () => {
   })
 
   test("cap-v1-002: capability with delegation ancestry", () => {
-    const vec = positiveVectors.find((v: any) => v.vectorId === "cap-v1-002")!
+    const vec = positiveVectors.find((v: any) => v.vectorId === "signed-capability-v1-002")!
     const envelope = buildEnvelopeFromVector(vec)
-    const keys = buildTrustedKeys(["cap-v1-002"])
+    const keys = buildTrustedKeys(["signed-capability-v1-002"])
     const result = verifySignedCapability(envelope, keys, {
       now,
       expectedAudienceNodeId: "node-gamma",
@@ -164,17 +164,17 @@ describe("golden vector positive verification", () => {
   })
 
   test("policy-v1-001: policy envelope", () => {
-    const vec = positiveVectors.find((v: any) => v.vectorId === "policy-v1-001")!
+    const vec = positiveVectors.find((v: any) => v.vectorId === "signed-policy-v1-001")!
     const envelope = buildEnvelopeFromVector(vec)
-    const keys = buildTrustedKeys(["policy-v1-001"])
+    const keys = buildTrustedKeys(["signed-policy-v1-001"])
     const result = verifySignedPolicy(envelope, keys, new Map(), now)
     expect(result.valid).toBe(true)
   })
 
   test("node-id-v1-001: node identity certificate", () => {
-    const vec = positiveVectors.find((v: any) => v.vectorId === "node-id-v1-001")!
+    const vec = positiveVectors.find((v: any) => v.vectorId === "node-identity-v1-001")!
     const envelope = buildEnvelopeFromVector(vec)
-    const keys = buildTrustedKeys(["node-id-v1-001"])
+    const keys = buildTrustedKeys(["node-identity-v1-001"])
     const result = verifyNodeIdentity(envelope, keys, now)
     expect(result.valid).toBe(true)
   })
@@ -222,9 +222,9 @@ describe("negative mutation vectors", () => {
 
   // Wrong audience: use original envelope, verify with wrong expected audience
   handlers.set("neg-audience", (vec) => {
-    const origVec = positiveVectors.find((v: any) => v.vectorId === "cap-v1-001")!
+    const origVec = positiveVectors.find((v: any) => v.vectorId === "signed-capability-v1-001")!
     const envelope = buildEnvelopeFromVector(origVec)
-    const keys = buildTrustedKeys(["cap-v1-001"])
+    const keys = buildTrustedKeys(["signed-capability-v1-001"])
     return verifySignedCapability(envelope, keys, { now, expectedAudienceNodeId: "node-DELTA" })
   })
 
@@ -240,15 +240,15 @@ describe("negative mutation vectors", () => {
   // Unsupported schema version
   handlers.set("neg-schema-ver", (vec) => {
     const envelope = buildEnvelopeFromVector(vec)
-    const keys = buildTrustedKeys(["cap-v1-001"])
+    const keys = buildTrustedKeys(["signed-capability-v1-001"])
     return verifySignedCapability(envelope, keys, { now })
   })
 
   // Expired envelope: use original with future now
   handlers.set("neg-expired", (vec) => {
-    const origVec = positiveVectors.find((v: any) => v.vectorId === "cap-v1-001")!
+    const origVec = positiveVectors.find((v: any) => v.vectorId === "signed-capability-v1-001")!
     const envelope = buildEnvelopeFromVector(origVec)
-    const keys = buildTrustedKeys(["cap-v1-001"])
+    const keys = buildTrustedKeys(["signed-capability-v1-001"])
     return verifySignedCapability(envelope, keys, { now: vec.nowOverride })
   })
 
@@ -264,15 +264,15 @@ describe("negative mutation vectors", () => {
   // One-byte signature mutation
   handlers.set("neg-sig-mutation", (vec) => {
     const envelope = buildEnvelopeFromVector(vec)
-    const keys = buildTrustedKeys(["cap-v1-001"])
+    const keys = buildTrustedKeys(["signed-capability-v1-001"])
     return verifySignedCapability(envelope, keys, { now })
   })
 
   // Policy sequence rollback: use original policy envelope with high known sequence
   handlers.set("neg-seq-rollback", (vec) => {
-    const origVec = positiveVectors.find((v: any) => v.vectorId === "policy-v1-001")!
+    const origVec = positiveVectors.find((v: any) => v.vectorId === "signed-policy-v1-001")!
     const envelope = buildEnvelopeFromVector(origVec)
-    const keys = buildTrustedKeys(["policy-v1-001"])
+    const keys = buildTrustedKeys(["signed-policy-v1-001"])
     const knownSeqs = new Map([[origVec.unsignedPayload.issuerId, vec.knownSequenceOverride]])
     return verifySignedPolicy(envelope, keys, knownSeqs, now)
   })
@@ -280,21 +280,21 @@ describe("negative mutation vectors", () => {
   // Missing required field (nonce)
   handlers.set("neg-missing-field", (vec) => {
     const envelope = buildEnvelopeFromVector(vec)
-    const keys = buildTrustedKeys(["cap-v1-001"])
+    const keys = buildTrustedKeys(["signed-capability-v1-001"])
     return verifySignedCapability(envelope, keys, { now })
   })
 
   // Unknown field in envelope
   handlers.set("neg-unknown-field", (vec) => {
     const envelope = buildEnvelopeFromVector(vec)
-    const keys = buildTrustedKeys(["cap-v1-001"])
+    const keys = buildTrustedKeys(["signed-capability-v1-001"])
     return verifySignedCapability(envelope, keys, { now })
   })
 
   // Floating-point issuerEpoch
   handlers.set("neg-float-epoch", (vec) => {
     const envelope = buildEnvelopeFromVector(vec)
-    const keys = buildTrustedKeys(["cap-v1-001"])
+    const keys = buildTrustedKeys(["signed-capability-v1-001"])
     return verifySignedCapability(envelope, keys, { now })
   })
 

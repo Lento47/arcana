@@ -81,6 +81,7 @@ export {
   type CapabilityGrantStoreError,
   type SessionPolicyBinding,
   type IntentBindingStoreEffect,
+  type MutableIntentBindingStoreEffect,
   type IntentEnforcementMode,
   type ApprovedScopeSnapshot,
   InMemoryGrantStore,
@@ -91,6 +92,8 @@ export {
 export {
   SqliteGrantStore,
 } from "./grant-store-sqlite"
+
+export { SqliteIntentBindingStore } from "./intent-binding-store-sqlite"
 
 export {
   computeRequestHash,

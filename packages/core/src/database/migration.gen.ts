@@ -40,5 +40,6 @@ export const migrations = (
     import("./migration/20260619000000_add_session_org_id"),
     import("./migration/20260729000000_capability_grants"),
     import("./migration/20260731000000_epistemic_tables"),
+    import("./migration/20260801000000_intent_bindings"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

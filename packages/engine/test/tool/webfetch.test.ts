@@ -8,6 +8,11 @@ import { SessionID, MessageID } from "../../src/session/schema"
 import { Tool } from "@/tool/tool"
 import { testEffect } from "../lib/effect"
 
+// The fixture serves responses from a local Bun server; opt the tool into
+// loopback access for the test process only. Production SSRF protection is
+// unchanged (the env var is never set outside this file).
+process.env.ARCANA_WEBFETCH_ALLOW_LOOPBACK = "1"
+
 const it = testEffect(Layer.mergeAll(FetchHttpClient.layer, Truncate.defaultLayer, Agent.defaultLayer))
 
 const ctx = {

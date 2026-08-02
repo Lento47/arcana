@@ -54,6 +54,7 @@ export function hints(template: string) {
 export const Default = {
   INIT: "init",
   REVIEW: "review",
+  CAPABILITY: "capability",
 } as const
 
 export interface Interface {
@@ -93,6 +94,17 @@ export const layer = Layer.effect(
         },
         subtask: true,
         hints: hints(PROMPT_REVIEW),
+      }
+      // Discoverability entry for the built-in operator action. Execution is
+      // handled directly by SessionPrompt.command (no model prompt); the
+      // registry entry only makes `/capability` show up in TUI completion and
+      // CLI command listing/error hints.
+      commands[Default.CAPABILITY] = {
+        name: Default.CAPABILITY,
+        description: "revoke an active capability grant and its descendants: /capability revoke <capabilityID> [reason]",
+        source: "command",
+        template: "Capability operator action — handled directly by the engine, no model prompt.",
+        hints: ["$ARGUMENTS"],
       }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {

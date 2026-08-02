@@ -29,8 +29,6 @@ function clampPercent(pct: number): number {
   return Math.max(0, Math.min(100, pct))
 }
 
-const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
-
 export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { state?: string; expiresAt?: string } | null }): JSX.Element {
   const { theme } = useTheme()
   const sync = useSync()
@@ -150,7 +148,7 @@ export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { sta
           </Show>
           <Show when={(session()?.cost ?? 0) > 0}>
             <span style={{ fg: theme.textMuted }}>  ·  </span>
-            <span style={{ fg: theme.textMuted }}>{money.format(session()!.cost ?? 0)}</span>
+            <span style={{ fg: theme.textMuted }}>{Locale.currency(session()!.cost ?? 0)}</span>
           </Show>
           <Show when={pressure()}>
             {(label) => (

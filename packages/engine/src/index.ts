@@ -104,7 +104,6 @@ async function prepareRuntime(opts: {
   printLogs?: boolean
   logLevel?: string
   pure?: boolean
-  compatOpencodeEnv?: boolean
   tui?: boolean
 }) {
   if (opts.printLogs) process.env.ARCANA_PRINT_LOGS = "1"
@@ -120,10 +119,10 @@ async function prepareRuntime(opts: {
   process.env.ARCANA_PID = String(process.pid)
   daemonLog(`[boot] pid=${process.pid} args=${args.join(" ")}`)
 
-  // Arcana should not identify as its fork lineage by default. Keep the old
-  // env flag available only as an explicit compatibility shim for legacy
+  // Arcana should not identify as its fork lineage by default. The legacy
+  // env flag remains available as an explicit compatibility shim for old
   // plugins or scripts that still check OPENCODE.
-  if (opts.compatOpencodeEnv || process.env.ARCANA_COMPAT_OPENCODE === "1") {
+  if (process.env.ARCANA_COMPAT_OPENCODE === "1") {
     process.env.OPENCODE = "1"
   }
 
@@ -303,6 +302,7 @@ const commandLoaders = {
   cron: () => import("./cli/cmd/cron").then((m) => m.CronCommand),
   gateway: () => import("./cli/cmd/gateway").then((m) => m.GatewayCommand),
   epistemic: () => import("./cli/cmd/epistemic").then((m) => m.EpistemicCommand),
+  capability: () => import("./cli/cmd/capability").then((m) => m.CapabilityCommand),
 }
 
 async function loadCommandsFor(firstArg: string | undefined): Promise<CommandModule[]> {
@@ -344,16 +344,11 @@ const cli = yargs(args)
     describe: "run without external plugins",
     type: "boolean",
   })
-  .option("compat-opencode-env", {
-    describe: "also expose legacy OPENCODE=1 for compatibility with old plugins",
-    type: "boolean",
-  })
   .middleware(async (opts) => {
     await prepareRuntime({
       printLogs: !!opts.printLogs,
       logLevel: opts.logLevel as string | undefined,
       pure: !!opts.pure,
-      compatOpencodeEnv: !!opts.compatOpencodeEnv,
       tui: !!opts.tui,
     })
   })

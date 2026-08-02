@@ -86,6 +86,8 @@ export interface ToolCallContext {
   principalId: string
   sessionId: string
   contractId?: string
+  contractRevision?: string
+  criterionIds?: string[]
   workspaceId?: string
   args: Record<string, unknown>
   executable?: string
@@ -121,6 +123,8 @@ export function buildAuthorizationRequest(ctx: ToolCallContext): AuthorizationRe
     principalId: ctx.principalId,
     sessionId: ctx.sessionId,
     contractId: ctx.contractId,
+    contractRevision: ctx.contractRevision,
+    criterionIds: ctx.criterionIds,
     workspaceId: ctx.workspaceId,
     tool: ctx.toolName,
     action,

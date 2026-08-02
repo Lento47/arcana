@@ -29,6 +29,29 @@ export function escapeMarkdownUnderscoreEmphasis(text: string): string {
     .join("")
 }
 
+/**
+ * Strip horizontal rules — OpenTUI renders them as full-width dashes — but only
+ * OUTSIDE fenced code blocks: a `---` line inside a triple-backtick fence is real
+ * content (tables, YAML, etc.) and must be preserved. Mirrors the fence-splitting
+ * pattern of `escapeMarkdownUnderscoreEmphasis`.
+ *
+ * Whole lines are filtered out (not blanked), so no empty row is left behind where
+ * the rule was. Note: a `---` directly under a heading is a setext H2 underline,
+ * not an HR — out of scope here (pre-existing behavior), flagged in the audit.
+ */
+export function stripMarkdownHorizontalRules(text: string): string {
+  const parts = text.split(/(```[\s\S]*?```)/)
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 1) return part
+      return part
+        .split("\n")
+        .filter((line) => !/^[-─━═]{3,}\s*$/.test(line))
+        .join("\n")
+    })
+    .join("")
+}
+
 function looksLikeDiff(text: string): boolean {
   return (
     text.includes("@@ ")
@@ -96,7 +119,8 @@ function resolveFiletype(
  * <markdown> still creates Code leaves with width:"100%", so a **numeric**
  * host width at construct time is still required for wrap.
  *
- * Dual-mode: plain <text> while streaming; <markdown streaming={false}> once idle.
+ * Single streaming <markdown streaming={...}>: streaming=true while tokens are
+ * still arriving (trailing block stays unstable), false once idle to finalize.
  */
 export function SpineProse(props: {
   kind: SpineKind
@@ -120,8 +144,10 @@ export function SpineProse(props: {
   /** Always a real column count so Code leaves under <markdown> wrap correctly. */
   const wrapCols = createMemo(() => {
     const w = props.contentWidth
-    if (typeof w === "number" && Number.isFinite(w) && w >= 40) return Math.floor(w)
-    return 80
+    // Clamp to >= 1 — never the bare 80 fallback: a present-but-narrow width is
+    // a real budget. Missing width (first paint) degrades to 1, cannot overflow.
+    if (typeof w === "number" && Number.isFinite(w)) return Math.max(1, Math.floor(w))
+    return 1
   })
 
   const text = createMemo(() => {
@@ -143,8 +169,8 @@ export function SpineProse(props: {
 
   const markdownContent = createMemo(() => {
     const raw = mode() === "markdown" ? escapeMarkdownUnderscoreEmphasis(text()) : text()
-    // Strip horizontal rules — OpenTUI renders them as full-width dashes
-    return raw.replace(/^[-─━═]{3,}\s*$/gm, "")
+    // Strip horizontal rules (full-width dash rows) only outside fenced code blocks
+    return stripMarkdownHorizontalRules(raw)
   })
   const ft = createMemo(() => resolveFiletype(bodyLabel(), hint(), text(), hint()))
   const fg = createMemo(() => {
@@ -159,13 +185,13 @@ export function SpineProse(props: {
     return theme.background as any
   })
   const style = () => (kind() === "think" || kind() === "fail" ? subtleSyntax() : syntax())
-  const codePad = () => (bodyLabel() === "file" ? 1 : 1)
+  const codePad = () => 1
   const codePadY = () => (bodyLabel() === "file" ? 0 : 1)
 
-  const isChatMd = createMemo(
-    () => mode() === "markdown" && (kind() === "plan" || kind() === "ok" || kind() === "ask" || kind() === "think"),
-  )
-  /** Turn still producing — avoid re-parsing incomplete markdown every token. */
+  /**
+   * Turn still producing. Streaming keeps the trailing markdown block unstable
+   * (no per-token layout flip); set false once idle to finalize trailing parsing.
+   */
   const liveStreaming = createMemo(() => props.streaming === true)
 
   const bodyNote = () => (
@@ -177,7 +203,11 @@ export function SpineProse(props: {
   )
 
   /**
-   * Idle chat/think body: real MarkdownRenderable (marked, GFM tables).
+   * Single always-mounted MarkdownRenderable (marked, GFM tables), used for both
+   * live and idle prose — one component, no text↔markdown swap and no
+   * remount-by-key hack (an `id` change does not remount a renderable anyway;
+   * the reconciler just assigns it). `streaming` toggles trailing-block
+   * stability: true while tokens arrive, false once idle to finalize.
    *
    * Width: MarkdownRenderable is a column flex host; paragraph/table leaves use
    * width:"100%" of *this* node. Setting numeric width here (not only on an
@@ -187,14 +217,13 @@ export function SpineProse(props: {
    * Tables: "columns" (not TextPart's "grid") — spine already has card chrome;
    * boxed grid tables double-border in a narrow pane.
    */
-  const IdleMarkdown = () => (
+  const MarkdownBody = () => (
     <box flexShrink={0} minWidth={0} width={wrapCols()}>
       <markdown
-        id={proseId()}
         width={wrapCols()}
         content={markdownContent()}
         syntaxStyle={style()}
-        streaming={false}
+        streaming={liveStreaming()}
         internalBlockMode="top-level"
         tableOptions={{
           style: "columns",
@@ -241,46 +270,18 @@ export function SpineProse(props: {
     </Show>
   )
 
-  // Remount host when columns change so nested Code leaves re-run setWrapWidth
-  // (Markdown onResize does not fix leaf wrap the way a remount does).
-  const proseId = createMemo(() => `spine-prose-${kind()}-${wrapCols()}`)
-
   return (
     <box flexDirection="column" flexShrink={0} minWidth={0} width={wrapCols()}>
       {reminderCallouts()}
       <Switch>
         {/*
-          Dual-mode (Grok-class):
-          - streaming: plain text — stable growth, no incomplete ** / list thrash
-          - idle: <markdown> once — marked GFM (tables, lists, headings)
-          Do NOT use keyed <Show> with a callback that calls the when-value —
-          Solid passes the raw number (e.g. 143), so cols() crashes.
+          Single streaming markdown (audit M2/M8): one <markdown streaming={...}>
+          for both live and idle. While streaming=true the trailing block stays
+          unstable (no incomplete ** / list thrash); flip to false once idle to
+          finalize trailing token parsing. No dual-mode swap, no remount-by-key.
         */}
-        <Match when={isChatMd()}>
-          <Show
-            when={!liveStreaming()}
-            fallback={
-              <text fg={fg() as any} wrapMode="word" width={wrapCols()}>
-                {text()}
-              </text>
-            }
-          >
-            <IdleMarkdown />
-          </Show>
-          {bodyNote()}
-        </Match>
-
         <Match when={mode() === "markdown"}>
-          <Show
-            when={!liveStreaming()}
-            fallback={
-              <text fg={fg() as any} wrapMode="word" width={wrapCols()}>
-                {text()}
-              </text>
-            }
-          >
-            <IdleMarkdown />
-          </Show>
+          <MarkdownBody />
           {bodyNote()}
         </Match>
 
@@ -298,7 +299,6 @@ export function SpineProse(props: {
             borderColor={(bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : (theme.borderSubtle ?? theme.textMuted)) as any}
           >
             <code
-              id={proseId()}
               width={wrapCols()}
               filetype={ft()}
               drawUnstyledText={false}

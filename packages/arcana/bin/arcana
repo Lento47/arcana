@@ -1,0 +1,6 @@
+#!/usr/bin/env bun
+// Dev wrapper for the `arcana` workspace package. Routes every invocation to
+// the engine entry point (TUI when no subcommand matches, modern CLI commands
+// otherwise), matching the published npm launcher's behavior.
+const entry = new URL("../../engine/src/index.ts", import.meta.url).href
+await import(entry)

@@ -196,7 +196,7 @@ describe("cross-spawn spawner", () => {
       Effect.gen(function* () {
         const handle = yield* ChildProcess.make("echo", ["hello from stdout"])
         const all = yield* decodeByteStream(handle.all)
-        expect(all).toBe("hello from stdout")
+        expect(all).toBe(process.platform === "win32" ? '"hello from stdout"' : "hello from stdout")
       }),
     )
 

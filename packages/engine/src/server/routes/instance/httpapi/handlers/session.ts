@@ -14,6 +14,13 @@ import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "@/session/todo"
+import { EventStore } from "@/session/epistemic/event-store"
+import { RunProof } from "@/session/epistemic/run-proof"
+import { ObligationEngine } from "@/session/epistemic/obligation-engine"
+import { CapabilityRevocation } from "@/session/capability-revocation"
+import { Database } from "@arcana/core/database/database"
+import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
+import { revokeWithCascade, type RuntimeGrantStore } from "@arcana/core/capability/runtime-delegation"
 import { MessageID, PartID, SessionID } from "@/session/schema"
 import { NamedError } from "@arcana/core/util/error"
 import { Cause, Effect, Option, Schema, Scope } from "effect"
@@ -34,8 +41,12 @@ import {
   ShellPayload,
   SummarizePayload,
   UpdatePayload,
+  RevokeCapabilityPayload,
+  RevokeCapabilityResult,
+  VerifyObligationPayload,
+  VerifyObligationResult,
 } from "../groups/session"
-import { PermissionNotFoundError } from "../errors"
+import { ApiNotFoundError, PermissionNotFoundError, notFound } from "../errors"
 import * as SessionError from "./session-errors"
 
 const tryParseJson = (text: string) =>
@@ -58,6 +69,10 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const todoSvc = yield* Todo.Service
     const summary = yield* SessionSummary.Service
     const events = yield* EventV2Bridge.Service
+    const eventStore = yield* EventStore.Service
+    const runProof = yield* RunProof.Service
+    const obligations = yield* ObligationEngine.Service
+    const database = yield* Database.Service
     const scope = yield* Scope.Scope
 
     const list = Effect.fn("SessionHttpApi.list")(function* (ctx: { query: typeof ListQuery.Type }) {
@@ -159,6 +174,121 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       )
     })
 
+    const governance = Effect.fn("SessionHttpApi.governance")(function* (ctx: {
+      params: { sessionID: SessionID }
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      const [events, trace, proof] = yield* Effect.all([
+        eventStore.listGovernance(ctx.params.sessionID),
+        eventStore.sessionTraceHealth(ctx.params.sessionID),
+        runProof.derive(ctx.params.sessionID),
+      ])
+      return {
+        sessionId: ctx.params.sessionID,
+        trace,
+        events,
+        proof: {
+          proofHash: proof.proofHash,
+          runRoot: proof.runRoot,
+          derivedAt: proof.derivedAt,
+          eventCount: proof.eventCount,
+          lastSequence: proof.events.at(-1)?.sequence ?? 0,
+          proofLevel: proof.proofLevel,
+          traceHealth: proof.traceHealth,
+          integrityStatus: proof.integrityStatus,
+          lifecycleStatus: proof.lifecycleStatus,
+          ...(proof.completionMethod === null ? {} : { completionMethod: proof.completionMethod }),
+          assuranceProfile: {
+            trace: proof.assuranceProfile.trace,
+            integrity: proof.assuranceProfile.integrity,
+            verification: proof.assuranceProfile.verification,
+            reproducibility: proof.assuranceProfile.reproducibility,
+            ...(proof.assuranceProfile.reproducibilityDetail === null
+              ? {}
+              : { reproducibilityDetail: proof.assuranceProfile.reproducibilityDetail }),
+          },
+          ...(proof.contractStatus === null ? {} : { contractStatus: proof.contractStatus }),
+          claimsByStatus: proof.claimsByStatus,
+          obligationsByStatus: proof.obligationsByStatus,
+          gaps: proof.gaps,
+          authorizationProfile: proof.authorizationProfile,
+        },
+      }
+    })
+
+    const revokeCapability = Effect.fn("SessionHttpApi.revokeCapability")(function* (ctx: {
+      params: { sessionID: SessionID; capabilityID: string }
+      payload?: typeof RevokeCapabilityPayload.Type
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      const grantStore = new SqliteGrantStore(database)
+      const reason = ctx.payload?.reason ?? "OPERATOR_REVOKE"
+      const result = yield* CapabilityRevocation.revokeCapabilityWithCascade(
+        {
+          loadGrant: (capabilityId) =>
+            grantStore
+              .getGrantById(capabilityId)
+              .pipe(Effect.catch(() => Effect.succeed(null))),
+          revokeCascade: (grantId, revokedEventId) =>
+            // CAST BOUNDARY #8 — revokeWithCascade needs the RuntimeGrantStore
+            // transaction member, but only uses getAllGrants + updateStatus.
+            // SqliteGrantStore covers both; the cast is narrow and documented.
+            revokeWithCascade(
+              grantId,
+              grantStore as unknown as RuntimeGrantStore,
+              revokedEventId,
+            ).pipe(Effect.catch(() => Effect.succeed({ revokedIds: [] as string[] }))),
+          emitRevoked: ({ capabilityId, reason: revokedReason }) =>
+            eventStore
+              .append({
+                sessionId: ctx.params.sessionID,
+                actor: { kind: "policy", id: "capability-revocation" },
+                type: "capability.revoked",
+                payload: {
+                  capabilityId,
+                  reason: revokedReason,
+                  sessionId: ctx.params.sessionID,
+                },
+              })
+              .pipe(Effect.asVoid, Effect.catch(() => Effect.void)),
+        },
+        { sessionId: ctx.params.sessionID, capabilityId: ctx.params.capabilityID },
+      ).pipe(Effect.catch(() => Effect.succeed({ revokedIds: [] as string[] })))
+
+      if (result.revokedIds.length === 0) {
+        return yield* notFound(
+          `Capability ${ctx.params.capabilityID} is not an active grant of session ${ctx.params.sessionID}`,
+        )
+      }
+      return { revokedIds: [...result.revokedIds], reason } satisfies typeof RevokeCapabilityResult.Type
+    })
+
+    const verifyObligation = Effect.fn("SessionHttpApi.verifyObligation")(function* (ctx: {
+      params: { sessionID: SessionID; obligationID: string }
+      payload?: typeof VerifyObligationPayload.Type
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      const owningSession = yield* obligations.getOwningSession(ctx.params.obligationID)
+      if (!owningSession || owningSession !== ctx.params.sessionID) {
+        return yield* notFound(
+          `Obligation ${ctx.params.obligationID} does not belong to session ${ctx.params.sessionID}`,
+        )
+      }
+      if (!ctx.payload?.reason.trim()) {
+        return yield* new HttpApiError.BadRequest({})
+      }
+      yield* obligations.recordVerification({
+        obligationId: ctx.params.obligationID,
+        outcome: ctx.payload.outcome,
+        reason: ctx.payload.reason,
+        ...(ctx.payload.details ? { details: ctx.payload.details } : {}),
+      })
+      return {
+        obligationId: ctx.params.obligationID,
+        status: ctx.payload.outcome,
+      } satisfies typeof VerifyObligationResult.Type
+    })
+
     const create = Effect.fn("SessionHttpApi.create")(function* (ctx: { payload?: Session.CreateInput }) {
       return yield* shareSvc.create(ctx.payload)
     })
@@ -237,7 +367,9 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     })
 
     const abort = Effect.fn("SessionHttpApi.abort")(function* (ctx: { params: { sessionID: SessionID } }) {
-      yield* promptSvc.cancel(ctx.params.sessionID)
+      // Abort is a best-effort no-op: cancelling a session that does not exist
+      // (or cannot be reached) must still resolve, never 500.
+      yield* promptSvc.cancel(ctx.params.sessionID).pipe(Effect.catchCause(() => Effect.void))
       return true
     })
 
@@ -426,6 +558,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("diff", diff)
       .handle("messages", messages)
       .handle("message", message)
+      .handle("governance", governance)
       .handleRaw("create", createRaw)
       .handle("remove", remove)
       .handle("update", update)
@@ -445,5 +578,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("deleteMessage", deleteMessage)
       .handle("deletePart", deletePart)
       .handle("updatePart", updatePart)
+      .handle("revokeCapability", revokeCapability)
+      .handle("verifyObligation", verifyObligation)
   }),
 )

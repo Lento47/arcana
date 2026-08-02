@@ -5,6 +5,7 @@ import { SessionV1 } from "@arcana/core/v1/session"
 import { serviceUse } from "@arcana/core/effect/service-use"
 import path from "path"
 import { BackgroundJob } from "@/background/job"
+import * as Locale from "@/util/locale"
 import { Decimal } from "decimal.js"
 import type { ProviderMetadata, Usage } from "@arcana/llm"
 import { InstallationVersion } from "@arcana/core/installation/version"
@@ -75,8 +76,8 @@ export function titleFromUserText(text: string, maxChars = TITLE_MAX_CHARS): str
   // Drop a single leading markdown heading marker if present
   const cleaned = collapsed.replace(/^#{1,6}\s+/, "").replace(/\s+/g, " ").trim()
   if (!cleaned) return undefined
-  if (cleaned.length <= maxChars) return cleaned
-  return cleaned.slice(0, Math.max(1, maxChars - 3)) + "..."
+  if (Locale.displayWidth(cleaned) <= maxChars) return cleaned
+  return Locale.truncate(cleaned, maxChars)
 }
 
 type SessionRow = typeof SessionTable.$inferSelect

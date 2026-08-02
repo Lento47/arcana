@@ -71,7 +71,7 @@ async function resolveModel(config: AgentConfig, tools: ToolDef[]) {
   let proxyURL = profile.baseURL // may be overridden by fallback during discovery
   const isProxyProvider =
     config.provider === "arcana-proxy"
-    || (typeof profile.baseURL === "string" && /arcana-proxy|proxy\.arcana/i.test(profile.baseURL))
+    || (typeof profile.baseURL === "string" && /arcana-proxy|proxy-arcana|proxy\.arcana/i.test(profile.baseURL))
   // arcana-proxy discovers models at runtime — try the proxy catalog cache first,
   // then fetch live from the proxy. Avoids "No model configured" on first run.
   // Always probe bases for licensed proxy so a dead custom domain falls back to workers.dev.

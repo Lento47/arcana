@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { formatDuration } from "../../src/util/format"
+import { duration } from "../../src/util/locale"
 
 describe("util.format", () => {
   describe("formatDuration", () => {
@@ -32,17 +33,23 @@ describe("util.format", () => {
       expect(formatDuration(86399)).toBe("23h 59m")
     })
 
-    test("formats days under a week", () => {
-      expect(formatDuration(86400)).toBe("~1 day")
-      expect(formatDuration(172800)).toBe("~2 days")
-      expect(formatDuration(259200)).toBe("~3 days")
-      expect(formatDuration(604799)).toBe("~6 days")
+    test("formats days and weeks as exact units (consolidated lexicon)", () => {
+      // The "~1 day" / "~1 week" approximations are gone — one exact lexicon.
+      expect(formatDuration(86400)).toBe("1d")
+      expect(formatDuration(172800)).toBe("2d")
+      expect(formatDuration(259200)).toBe("3d")
+      expect(formatDuration(604799)).toBe("6d 23h")
+      expect(formatDuration(604800)).toBe("7d")
+      expect(formatDuration(1209600)).toBe("14d")
+      expect(formatDuration(1609200)).toBe("18d 15h")
     })
 
-    test("formats weeks", () => {
-      expect(formatDuration(604800)).toBe("~1 week")
-      expect(formatDuration(1209600)).toBe("~2 weeks")
-      expect(formatDuration(1609200)).toBe("~2 weeks")
+    test("delegates to Locale.duration — one formatter (M7)", () => {
+      expect(formatDuration(5)).toBe(duration(5000))
+      expect(formatDuration(90)).toBe(duration(90000))
+      expect(formatDuration(3600)).toBe(duration(3600000))
+      expect(formatDuration(86400)).toBe(duration(86400000))
+      expect(formatDuration(0)).toBe(duration(0))
     })
 
     test("handles boundary values correctly", () => {
@@ -51,9 +58,9 @@ describe("util.format", () => {
       expect(formatDuration(3599)).toBe("59m 59s")
       expect(formatDuration(3600)).toBe("1h")
       expect(formatDuration(86399)).toBe("23h 59m")
-      expect(formatDuration(86400)).toBe("~1 day")
-      expect(formatDuration(604799)).toBe("~6 days")
-      expect(formatDuration(604800)).toBe("~1 week")
+      expect(formatDuration(86400)).toBe("1d")
+      expect(formatDuration(604799)).toBe("6d 23h")
+      expect(formatDuration(604800)).toBe("7d")
     })
   })
 })

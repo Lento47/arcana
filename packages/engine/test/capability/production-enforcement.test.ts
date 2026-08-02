@@ -45,6 +45,9 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
       sessionId: "sess-001",
       args: { command: "bun test" },
       executable: "bun",
+      contractId: "contract-001",
+      contractRevision: "8",
+      criterionIds: ["crit-001"],
     })
 
     // Add a valid binding for this request
@@ -53,6 +56,7 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
       sessionId: "sess-001",
       userRequestEventId: "user-req-001",
       contractId: "contract-001",
+      contractRevision: "8",
       criterionIds: ["crit-001"],
       justification: "DIRECT_REQUIREMENT",
       createdBy: "RUNTIME",
@@ -74,7 +78,7 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
     expect(result.status).toBe("EXECUTED")
   })
 
-  test("HIGH action with intent store → DENY when no binding exists", async () => {
+  test("HIGH action with active contract and no binding → requires exact approval", async () => {
     const store = new InMemoryGrantStore()
     const intentStore = new InMemoryIntentBindingStoreEffect()
     await Effect.runPromise(store.putGrant(makeGrant()))
@@ -85,6 +89,9 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
       sessionId: "sess-001",
       args: { command: "bun test" },
       executable: "bun",
+      contractId: "contract-001",
+      contractRevision: "8",
+      criterionIds: ["crit-001"],
     })
 
     // No binding added
@@ -102,9 +109,9 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
       ),
     )
 
-    expect(result.status).toBe("DENIED")
-    if (result.status === "DENIED") {
-      expect(result.decision.reasons.some((r) => r.code === "DENY_NO_INTENT_BINDING")).toBe(true)
+    expect(result.status).toBe("APPROVAL_REQUIRED")
+    if (result.status === "APPROVAL_REQUIRED") {
+      expect(result.decision.reasons.some((r) => r.code === "REQUIRE_APPROVAL_INTENT")).toBe(true)
     }
   })
 
@@ -118,6 +125,9 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
       sessionId: "sess-001",
       args: { command: "bun test" },
       executable: "bun",
+      contractId: "contract-001",
+      contractRevision: "8",
+      criterionIds: ["crit-001"],
     })
 
     // REQUIRED mode without intent store → fail closed
@@ -136,7 +146,7 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
 
     expect(result.status).toBe("DENIED")
     if (result.status === "DENIED") {
-      expect(result.decision.reasons.some((r) => r.code === "DENY_NO_INTENT_BINDING")).toBe(true)
+      expect(result.decision.reasons.some((r) => r.code === "DENY_INTENT_STORE_UNAVAILABLE")).toBe(true)
     }
   })
 
@@ -150,6 +160,9 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
       sessionId: "sess-001",
       args: { command: "bun test" },
       executable: "bun",
+      contractId: "contract-001",
+      contractRevision: "8",
+      criterionIds: ["crit-001"],
     })
 
     // LEGACY_COMPAT without intent store → skip → ALLOW
@@ -180,6 +193,9 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
       sessionId: "sess-001",
       args: { command: "bun test" },
       executable: "bun",
+      contractId: "contract-001",
+      contractRevision: "8",
+      criterionIds: ["crit-001"],
     })
 
     // Binding exists but for a DIFFERENT session
@@ -188,6 +204,7 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
       sessionId: "sess-DIFFERENT",
       userRequestEventId: "user-req-001",
       contractId: "contract-001",
+      contractRevision: "8",
       criterionIds: ["crit-001"],
       justification: "DIRECT_REQUIREMENT",
       createdBy: "RUNTIME",
@@ -206,7 +223,7 @@ describe("Production intent enforcement: mandatory via SessionPolicyProvider", (
       ),
     )
 
-    expect(result.status).toBe("DENIED")
+    expect(result.status).toBe("APPROVAL_REQUIRED")
   })
 
   test("binding store failure → fail closed (empty bindings)", async () => {

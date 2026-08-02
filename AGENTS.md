@@ -178,6 +178,7 @@ All docs live in `.hermes/docs/`:
 | `typescript/` | TypeScript handbook + reference | TS type system questions |
 | `solidjs/` | SolidJS docs (330 files: concepts, reference, guides, router, start) | TUI reactive patterns, signals, memos, JSX |
 | `opentui/` | OpenTUI docs (46 files) | TUI component/API reference |
+| `daemon/` | Daemon docs: process lifecycle, PID files, respawn/supervision (systemd, launchd, SCM, runit, s6, supervisord, pm2) | Daemon/background process design, restart policy, readiness, crash-loop handling |
 | `rust/book/` | The Rust Book | Rust language reference |
 | `rust/reference/` | Rust language reference | Rust specification |
 | `rust/rust-by-example/` | Rust by Example | Rust patterns |

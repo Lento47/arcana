@@ -372,25 +372,24 @@ const mapFinishReason = (finishReason: string | undefined, hasToolCalls: boolean
   return "unknown"
 }
 
-const finish = (state: ParserState): ReadonlyArray<LLMEvent> =>
-  state.finishReason || state.usage
-    ? (() => {
-        const events: LLMEvent[] = []
-        const lifecycle = state.reasoningSignature
-          ? Lifecycle.reasoningEnd(
-              state.lifecycle,
-              events,
-              "reasoning-0",
-              googleMetadata({ thoughtSignature: state.reasoningSignature }),
-            )
-          : state.lifecycle
-        Lifecycle.finish(lifecycle, events, {
-          reason: mapFinishReason(state.finishReason, state.hasToolCalls),
-          usage: state.usage,
-        })
-        return events
-      })()
-    : []
+const finish = (state: ParserState): ReadonlyArray<LLMEvent> => {
+  const events: LLMEvent[] = []
+  const lifecycle = state.reasoningSignature
+    ? Lifecycle.reasoningEnd(
+        state.lifecycle,
+        events,
+        "reasoning-0",
+        googleMetadata({ thoughtSignature: state.reasoningSignature }),
+      )
+    : state.lifecycle
+  // mapFinishReason defaults to "unknown" for a missing reason; the
+  // unconditional emit closes the empty-cut residual (no reason AND no usage).
+  Lifecycle.finish(lifecycle, events, {
+    reason: mapFinishReason(state.finishReason, state.hasToolCalls),
+    usage: state.usage,
+  })
+  return events
+}
 
 const step = (state: ParserState, event: GeminiEvent) => {
   const nextState = {

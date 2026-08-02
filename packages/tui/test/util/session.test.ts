@@ -17,7 +17,7 @@ describe("util.session", () => {
     const long = "a".repeat(80)
     const out = titleFromUserText(long, 60)
     expect(out?.length).toBe(60)
-    expect(out?.endsWith("...")).toBeTrue()
+    expect(out?.endsWith("…")).toBeTrue()
   })
 
   test("displaySessionTitle keeps custom titles", () => {

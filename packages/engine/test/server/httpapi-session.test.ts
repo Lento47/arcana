@@ -306,6 +306,8 @@ describe("session HttpApi", () => {
           headers,
           method: "POST",
         })
+        const abortText = yield* abort.text.pipe(Effect.catch(() => Effect.succeed("")))
+        console.error("ABORT_BODY", String(abortText).slice(0, 300))
         expect(abort.status).toBe(200)
         expect(yield* responseJson(abort)).toBe(true)
 
@@ -362,10 +364,10 @@ describe("session HttpApi", () => {
         const messages = yield* request(`${pathFor(SessionPaths.messages, { sessionID: parent.id })}?limit=1`, {
           headers,
         })
-        const messagePage = yield* json<SessionV1.WithParts[]>(messages)
+        const messagePage = yield* json<{ items: SessionV1.WithParts[] }>(messages)
         const nextCursor = messages.headers["x-next-cursor"]
         expect(nextCursor).toBeTruthy()
-        expect(messagePage[0]?.parts[0]).toMatchObject({ type: "text" })
+        expect(messagePage.items[0]?.parts[0]).toMatchObject({ type: "text" })
 
         expect(
           (yield* request(`${pathFor(SessionPaths.messages, { sessionID: parent.id })}?before=${nextCursor}`, {
@@ -404,7 +406,10 @@ describe("session HttpApi", () => {
       const config = testProviderConfig(llm.url)
       const sessionDirectory = yield* tmpdirScoped({ git: true, config })
       const requestDirectory = yield* tmpdirScoped({ git: true, config })
-      const session = yield* createSession({ title: "directory regression" }).pipe(
+      const session = yield* createSession({
+        title: "directory regression",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      }).pipe(
         provideInstanceEffect(sessionDirectory),
       )
 

@@ -67,7 +67,7 @@ import { SubagentFooter } from "./subagent-footer.tsx"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
 import { errorMessage } from "../../util/error"
-import { Toast, useToast } from "../../ui/toast"
+import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv.tsx"
 import stripAnsi from "strip-ansi"
 import { usePromptRef } from "../../context/prompt"
@@ -1512,14 +1512,15 @@ export function Session() {
       slash: { name: "governance" },
       run: () => {
         dialog.clear()
-        const actions = (sync.data as any).governance?.[route.sessionID] ?? []
-        if (!actions.length) {
-          toast.show({ message: "No pending governance actions", variant: "info" })
+        const snapshot = sync.data.governance[route.sessionID]
+        const events = snapshot?.events ?? []
+        if (!events.length) {
+          toast.show({ message: `Governance trace: ${snapshot?.trace.status ?? "UNAVAILABLE"}`, variant: "info" })
           return
         }
         toast.show({
-          title: "Governance Actions",
-          message: actions.map((a: any) => `${a.label}: ${a.reason}`).join("\n"),
+          title: `Governance · ${snapshot.trace.status}`,
+          message: events.slice(-8).map((event) => `#${event.sequence} ${event.type}`).join("\n"),
           variant: "info",
           duration: 8000,
         })
@@ -1596,6 +1597,8 @@ export function Session() {
   const approvals = createMemo(() =>
     Object.values(sync.data.approvals).filter((a) => a.sessionId === route.sessionID),
   )
+  const governanceSnapshot = createMemo(() => sync.data.governance[route.sessionID])
+  const governance = createMemo(() => governanceSnapshot()?.events ?? [])
   const activeWorkspaceId = () => route.sessionID
   const approvalBridge = new HttpApprovalOperatorService({
     baseUrl: sdk.url,
@@ -1662,6 +1665,9 @@ export function Session() {
         approvalController: approvalIntegration.controller,
         activeSessionId: () => route.sessionID,
         activeWorkspaceId,
+        governance,
+        governanceTrace: () => governanceSnapshot()?.trace,
+        governanceProof: () => governanceSnapshot()?.proof,
 
         toBottom,
         bind,
@@ -1713,7 +1719,6 @@ export function Session() {
             <Show when={session()}>
               <Dynamic component={ShellCmp()} {...shellProps()} />
             </Show>
-            <Toast />
           </box>
         </box>
         <Show when={viewingArtifact()}>
@@ -2951,7 +2956,8 @@ function Task(props: ToolProps) {
     }
 
     if (!isRunning() && props.part.state.status === "completed") {
-      content.push(`↳ ${formatCompletedSubagentDetail(tools().length, Locale.duration(duration()))}`)
+      const dur = Locale.duration(duration())
+      content.push(`↳ ${formatCompletedSubagentDetail(tools().length, dur)}`)
     }
 
     return content.join("\n")
@@ -2993,7 +2999,10 @@ export function formatSubagentRetry(attempt: number, message: string) {
 
 export function formatCompletedSubagentDetail(toolcalls: number, duration: string) {
   if (toolcalls === 0) return duration
-  return `${formatSubagentToolcalls(toolcalls)} ${Glyph.sep} ${duration}`
+  const tools = formatSubagentToolcalls(toolcalls)
+  // duration is "" when timestamps are missing (consolidated Locale.duration) —
+  // don't leave a dangling separator.
+  return duration ? `${tools} ${Glyph.sep} ${duration}` : tools
 }
 
 function Edit(props: ToolProps) {

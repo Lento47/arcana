@@ -136,7 +136,12 @@ const McpRequest = <F extends Schema.Struct.Fields>(args: Schema.Struct<F>) =>
     params: Schema.Struct({ name: Schema.String, arguments: args }),
   })
 
-const exaUrl = (_apiKey: string | undefined) => EXA_URL
+const exaUrl = (apiKey: string | undefined) => {
+  if (!apiKey) return EXA_URL
+  const url = new URL(EXA_URL)
+  url.searchParams.set("exaApiKey", apiKey)
+  return url.toString()
+}
 
 const callMcp = <F extends Schema.Struct.Fields>(
   http: HttpClient.HttpClient,

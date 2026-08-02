@@ -218,4 +218,36 @@ describe("Live Revalidation", () => {
     expect(r1.sourceSessionId).toBe(r2.sourceSessionId)
     expect(r1.revalidationId).not.toBe(r2.revalidationId)
   })
+
+  // ── 15. File-writing commands surface as unverified artifact drift ─
+
+  it("surfaces file-writing commands as unverified artifact drift", () => {
+    insertEvent(db, { id: "e1", sequence: 0, sessionId: "s1", type: "session.started" })
+    insertEvent(db, {
+      id: "e2",
+      sequence: 1,
+      sessionId: "s1",
+      type: "tool.called",
+      payload: {
+        callID: "c1",
+        tool: "terminal",
+        replay: {
+          executable: "bun",
+          arguments: ["write-file", "notes.txt"],
+          cwd: "/tmp",
+        },
+      },
+    })
+    insertEvent(db, { id: "e3", sequence: 2, sessionId: "s1", type: "session.completed", payload: { reason: "normal" }, previousHash: "prev" })
+
+    const result = deriveRevalidation(db, "s1")
+    expect(result.artifactDrift).toHaveLength(1)
+    expect(result.artifactDrift[0]!.kind).toBe("artifact")
+    expect(result.artifactDrift[0]!.severity).toBe("WARNING")
+    expect(result.artifactDrift[0]!.identifier).toContain("write-file")
+    expect(result.artifactDrift[0]!.expected).toBeNull()
+    expect(result.artifactDrift[0]!.actual).toBeNull()
+    // Unverified artifact warnings are informational; they do not invalidate.
+    expect(result.status).toBe("STILL_VALID")
+  })
 })

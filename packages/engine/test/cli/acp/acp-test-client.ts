@@ -23,6 +23,12 @@ type JsonRpcNotification<T = unknown> = {
   readonly params?: T
 }
 
+const isServerRequest = (value: unknown): value is JsonRpcRequest => {
+  if (!value || typeof value !== "object") return false
+  const record = value as Record<string, unknown>
+  return typeof record.method === "string" && typeof record.id === "number" && record.jsonrpc === "2.0"
+}
+
 export type AcpClient = {
   readonly request: <T>(method: string, params?: unknown) => Effect.Effect<JsonRpcResponse<T>, unknown>
   readonly receive: Effect.Effect<unknown>
@@ -36,6 +42,18 @@ export type AcpClient = {
 export function createAcpClient(acp: AcpHandle): AcpClient {
   const state = { nextId: 1 }
 
+  // Server-initiated requests (e.g. session/request_permission) must be
+  // answered or the engine's prompt loop blocks forever. Auto-approve once,
+  // which is what a permissive host would do for a smoke test.
+  const answerServerRequest = (received: JsonRpcRequest) =>
+    received.method === "session/request_permission"
+      ? acp.send({
+          jsonrpc: "2.0",
+          id: received.id,
+          result: { outcome: { outcome: "selected", optionId: "once" } },
+        })
+      : Effect.void
+
   const request = <T>(method: string, params?: unknown) =>
     Effect.gen(function* () {
       const id = state.nextId++
@@ -44,8 +62,20 @@ export function createAcpClient(acp: AcpHandle): AcpClient {
       yield* acp.send(message)
 
       while (true) {
-        const received = yield* acp.receive.pipe(Effect.timeout(Duration.seconds(15)))
+        const received = yield* acp.receive.pipe(
+          Effect.timeoutOrElse({
+            duration: Duration.seconds(15),
+            orElse: () =>
+              Effect.fail(
+                new Error(
+                  `timed out waiting for JSON-RPC response to ${method}\n` +
+                    `child stderr (last 4000):\n${acp.stderr()}`,
+                ),
+              ),
+          }),
+        )
         if (isJsonRpcResponse<T>(received) && received.id === id) return received
+        if (isServerRequest(received)) yield* answerServerRequest(received)
       }
     })
 
@@ -53,6 +83,10 @@ export function createAcpClient(acp: AcpHandle): AcpClient {
     Effect.gen(function* () {
       while (true) {
         const received = yield* acp.receive.pipe(Effect.timeout(Duration.millis(timeoutMs)))
+        if (isServerRequest(received)) {
+          yield* answerServerRequest(received)
+          continue
+        }
         if (!isJsonRpcNotification<T>(received)) continue
         if (received.method === method && predicate(received.params as T)) return received
       }

@@ -1,4 +1,5 @@
 import type { PlatformAdapter, MessageHandler, OutgoingMessage } from "../types.js"
+import { chunkWithHonestTail } from "../chunk.js"
 import { randomUUID } from "node:crypto"
 
 type DiscordConfig = {
@@ -28,7 +29,9 @@ export class DiscordAdapter implements PlatformAdapter {
           text: msg.content,
           timestamp: msg.createdTimestamp,
         })
-        await msg.reply(response.slice(0, 2000))
+        for (const chunk of chunkWithHonestTail(response, 2000)) {
+          await msg.reply(chunk)
+        }
       } catch (err) {
         await msg.reply(`Error: ${String(err)}`)
       }
@@ -44,6 +47,8 @@ export class DiscordAdapter implements PlatformAdapter {
 
   async send(msg: OutgoingMessage): Promise<void> {
     const channel = await this.client?.channels.fetch(msg.chatId)
-    await channel?.send?.(msg.text.slice(0, 2000))
+    for (const chunk of chunkWithHonestTail(msg.text, 2000)) {
+      await channel?.send?.(chunk)
+    }
   }
 }

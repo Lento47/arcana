@@ -58,13 +58,15 @@ export const Prompt = Schema.Struct({
 }).annotate({ description: "Prompt size settings" })
 
 export const Background = Schema.Struct({
-  image: Schema.optional(Schema.String).annotate({ description: "Path to a background image (PNG/JPEG)" }),
+  image: Schema.optional(Schema.String).annotate({
+    description: "Path to a background image (PNG/JPEG); its dominant color is painted once via OSC-11 on truecolor terminals — a later theme switch replaces the terminal background",
+  }),
   enabled: Schema.optional(Schema.Boolean).annotate({ description: "Enable the background image" }),
   opacity: Schema.optional(
     Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
   ).annotate({ description: "Image brightness 0-1 so foreground text stays readable (default 0.5)" }),
   fit: Schema.optional(Schema.Literals(["cover", "contain"])).annotate({
-    description: "How the image fills the screen (default cover)",
+    description: "Accepted for backward compatibility; inert since the truecolor-gated OSC-11 background paints a flat dominant color (audit C1/D6)",
   }),
 })
 export type Background = Schema.Schema.Type<typeof Background>

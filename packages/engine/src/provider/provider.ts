@@ -2002,9 +2002,6 @@ export const layer = Layer.effect(
       const s = yield* InstanceState.get(state)
       const provider = s.providers[providerID]
       if (!provider) {
-        // DEBUG
-        const { appendFileSync } = require("node:fs") as typeof import("node:fs")
-        try { appendFileSync("L:/tmp/arcana-ollama.log", `[getModel-no-provider] provider=${String(providerID)} model=${String(modelID)} providerID===ollama=${String(providerID) === "ollama"}\\n`) } catch {}
         // Ollama fallback — models resolved at runtime via API
         if (String(providerID) === "ollama") {
           const port = process.env.OLLAMA_PORT ?? "11434"
@@ -2056,9 +2053,6 @@ export const layer = Layer.effect(
 
       const info = provider.models[modelID]
       if (!info) {
-        // DEBUG: log providerID for diagnosis
-        const { appendFileSync } = require("node:fs") as typeof import("node:fs")
-        try { appendFileSync("L:/tmp/arcana-ollama.log", `[getModel] provider=${String(providerID)} model=${String(modelID)} provider_exists=${!!provider} providerID===ollama=${String(providerID) === "ollama"}\n`) } catch {}
         // Ollama fallback — any model name is valid
         if (String(providerID) === "ollama") {
           const port = process.env.OLLAMA_PORT ?? "11434"

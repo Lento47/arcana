@@ -3,7 +3,6 @@ import { createEffect, createMemo, createSignal, onCleanup, onMount } from "soli
 import { Logo } from "../component/logo"
 import { Scramble } from "../component/scramble"
 import { useSync } from "../context/sync"
-import { Toast } from "../ui/toast"
 import { useArgs } from "../context/args"
 import { useRouteData } from "../context/route"
 import { usePromptRef } from "../context/prompt"
@@ -14,6 +13,7 @@ import { useTerminalDimensions } from "@opentui/solid"
 import { useTuiConfig } from "../config"
 import { useTheme } from "../context/theme"
 import { WORDMARK_TAGLINE, PLACEHOLDER, IDLE_PHRASES } from "../branding"
+import { homePromptMaxWidth } from "../util/geometry"
 import { HomeSessionDestinationProvider } from "./home/session-destination"
 import { useSessionPrewarm } from "./home/prewarm-session"
 
@@ -33,7 +33,7 @@ export function Home() {
   const tuiConfig = useTuiConfig()
   const promptMaxWidth = createMemo(() => {
     const configured = tuiConfig.prompt?.max_width
-    if (configured === "auto") return Math.max(75, Math.floor(dimensions().width * 0.7))
+    if (configured === "auto") return homePromptMaxWidth(dimensions().width)
     return configured ?? 75
   })
   let sent = false
@@ -105,7 +105,6 @@ export function Home() {
         </box>
         <pluginRuntime.Slot name="home_bottom" />
         <box flexGrow={1} minHeight={0} />
-        <Toast />
       </box>
       <box width="100%" flexShrink={0}>
         <pluginRuntime.Slot name="home_footer" mode="single_winner" />

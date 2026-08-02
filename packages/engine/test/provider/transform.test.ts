@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import path from "node:path"
 import { ProviderTransform } from "@/provider/transform"
 import { LLMRequestPrep } from "@/session/llm/request"
+import { provideInstance, testInstanceStoreLayer } from "../fixture/fixture"
 import { ProviderV2 } from "@arcana/core/provider"
 import { ModelV2 } from "@arcana/core/model"
 
@@ -364,38 +368,46 @@ describe("ProviderTransform.options - gpt-5 textVerbosity", () => {
         },
       },
     }
-    const result = await Effect.runPromise(
-      LLMRequestPrep.prepare({
-        user: {
-          id: "msg_user-test",
-          sessionID,
-          role: "user",
-          time: { created: Date.now() },
-          agent: "test",
-          model: { providerID: "azure", modelID: "gpt-5.4", variant: "high" },
-        } as any,
-        sessionID,
-        model,
-        agent: {
-          name: "test",
-          mode: "primary",
-          options: {},
-          permission: [],
-        } as any,
-        system: [],
-        messages: [{ role: "user", content: "Hello" }],
-        tools: {},
-        provider: { id: "azure", options: { useCompletionUrls: true } } as any,
-        auth: undefined,
-        plugin: {
-          trigger: (_name: string, _input: unknown, output: unknown) => Effect.succeed(output),
-          list: () => Effect.succeed([]),
-          init: () => Effect.void,
-        } as any,
-        flags: { outputTokenMax: 32_000, client: "test" } as any,
-        isWorkflow: false,
-      }),
-    )
+    const dir = await mkdtemp(path.join(tmpdir(), "transform-test-"))
+    let result: LLMRequestPrep.Prepared
+    try {
+      result = await Effect.runPromise(
+        provideInstance(dir)(
+          LLMRequestPrep.prepare({
+            user: {
+              id: "msg_user-test",
+              sessionID,
+              role: "user",
+              time: { created: Date.now() },
+              agent: "test",
+              model: { providerID: "azure", modelID: "gpt-5.4", variant: "high" },
+            } as any,
+            sessionID,
+            model,
+            agent: {
+              name: "test",
+              mode: "primary",
+              options: {},
+              permission: [],
+            } as any,
+            system: [],
+            messages: [{ role: "user", content: "Hello" }],
+            tools: {},
+            provider: { id: "azure", options: { useCompletionUrls: true } } as any,
+            auth: undefined,
+            plugin: {
+              trigger: (_name: string, _input: unknown, output: unknown) => Effect.succeed(output),
+              list: () => Effect.succeed([]),
+              init: () => Effect.void,
+            } as any,
+            flags: { outputTokenMax: 32_000, client: "test" } as any,
+            isWorkflow: false,
+          }),
+        ).pipe(Effect.provide(testInstanceStoreLayer)),
+      )
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
     expect(result.params.options.reasoningEffort).toBe("high")
     expect(result.params.options.reasoningSummary).toBeUndefined()
     expect(result.params.options.include).toBeUndefined()

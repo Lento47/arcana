@@ -61,11 +61,10 @@ export function SubagentFooter() {
     const percent = model?.limit.context ? clampPercent(Math.round((tokens / model.limit.context) * 100)) : undefined
     const pressure = contextPressure(percent)
     const cost = session()?.cost ?? 0
-    const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
     return {
       context: percent !== undefined ? `${Locale.number(tokens)} / ${percent}%` : Locale.number(tokens),
       pressure,
-      cost: cost > 0 ? money.format(cost) : undefined,
+      cost: cost > 0 ? Locale.currency(cost) : undefined,
       urgent: pressure === "compact now",
     }
   })

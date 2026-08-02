@@ -72,7 +72,8 @@ it.instance("build agent has correct default properties", () =>
     expect(build?.mode).toBe("primary")
     expect(build?.native).toBe(true)
     expect(evalPerm(build, "edit")).toBe("allow")
-    expect(evalPerm(build, "bash")).toBe("allow")
+    // ARC-SEC-I01: shell is ask-by-default even for the build agent.
+    expect(evalPerm(build, "bash")).toBe("ask")
   }),
 )
 
@@ -750,12 +751,20 @@ it.instance(
 
 it.instance(
   "defaultAgent throws when all primary agents are disabled",
-  () => expectDefaultAgentError("no primary visible agent found"),
+  () =>
+    Effect.gen(function* () {
+      return yield* expectDefaultAgentError("no primary visible agent found")
+    }),
   {
     config: {
       agent: {
         build: { disable: true },
         plan: { disable: true },
+        client: { disable: true },
+        reviewer: { disable: true },
+        architect: { disable: true },
+        tester: { disable: true },
+        qa: { disable: true },
       },
     },
   },

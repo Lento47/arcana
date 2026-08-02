@@ -114,18 +114,25 @@ function checkArtifactDrift(
 ): DriftRecord[] {
   const drifts: DriftRecord[] = []
 
-  // Extract file operations from tool events
-  const fileOps = new Map<string, { hash: string; eventSequence: number }>()
   for (const event of events) {
     if (event.type !== "tool.called") continue
     try {
       const payload = JSON.parse(event.payload)
       const replay = payload.replay
       if (replay?.executable && Array.isArray(replay.arguments)) {
-        // Check for file-writing commands (not in our allowlist, but recorded)
         const cmd = [replay.executable, ...replay.arguments].join(" ")
-        if (/write|create|modify/i.test(cmd) && replay.cwd) {
-          // Record but don't verify — we don't have the file hashes
+        // File-writing commands cannot be drift-verified from the recorded
+        // trace alone (file hashes are not persisted). Surface them as
+        // unverified artifact-drift warnings so the projection is fail-visible
+        // instead of silently claiming no artifact drift.
+        if (/write|create|modify|patch|edit|remove|delete/i.test(cmd) && replay.cwd) {
+          drifts.push({
+            kind: "artifact",
+            identifier: cmd,
+            expected: null,
+            actual: null,
+            severity: "WARNING",
+          })
         }
       }
     } catch { /* corrupt */ }

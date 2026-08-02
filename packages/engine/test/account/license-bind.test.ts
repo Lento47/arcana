@@ -15,7 +15,7 @@ describe("bindAccessToken — error safety", () => {
 
   test("connection-refused error message is NOT surfaced", async () => {
     // All license-server bases reject — simulates the user's reported
-    // `ConnectionRefused` from `https://api.arcana.otnelhq.com/...`.
+    // `ConnectionRefused` from `https://api-arcana.otnelhq.com/api/...`.
     globalThis.fetch = (() => Promise.reject(new Error("Unable to connect. Is the computer able to access the url?"))) as unknown as typeof fetch
 
     const result = await run(bindAccessToken("fake-token", "u@example.com", "https://arcana.otnelhq.com"))

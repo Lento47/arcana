@@ -1,7 +1,7 @@
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 
-const API = "https://api.arcana.otnelhq.com"
+const API = "https://api-arcana.otnelhq.com"
 const FALLBACK = "https://arcana-license-server.lejzerv.workers.dev"
 const PUBLIC_KEY_HEX = "47405e0f68265602c32bbe26726d7d9d6c93e99915eaa97e9694cf7e23d56a20"
 

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { getArcanaHome } from "./config.js"
 
-/** Prefer working origins first. Multi-level proxy.arcana.otnelhq.com fails TLS (no advanced cert). */
+/** Prefer working origins first. proxy-arcana.otnelhq.com is the canonical AI Gateway API. */
 export const PROXY_BASES = [
   process.env.ARCANA_PROXY_URL?.replace(/\/$/, ""),
   "https://proxy-arcana.otnelhq.com",

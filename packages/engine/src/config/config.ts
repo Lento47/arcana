@@ -251,10 +251,12 @@ export const layer = Layer.effect(
         /^\s*<!doctype|^\s*<html|^\s*<script|^\s*<body|^\s*<div|^\s*<head|^\s*<meta/i.test(body)
       const notJson = !/^\s*[{[]/.test(body)
       if (response.status === 401 || response.status === 403 || response.status === 302) {
-        return yield* Effect.fail(new RemoteAuthError({ url: loginOrigin, remote: url }))
+        // Defect, not a typed failure: config fallback (orElseSucceed) must not
+        // silently swallow an auth wall on the provider gateway.
+        return yield* Effect.die(new RemoteAuthError({ url: loginOrigin, remote: url }))
       }
       if (looksLikeHtml || notJson) {
-        return yield* Effect.fail(new RemoteAuthError({ url: loginOrigin, remote: url }))
+        return yield* Effect.die(new RemoteAuthError({ url: loginOrigin, remote: url }))
       }
       return yield* Schema.decodeEffect(Schema.fromJsonString(schema))(body).pipe(
         Effect.mapError((error) => new Error(`failed to decode remote config from ${url}: ${String(error)}`)),

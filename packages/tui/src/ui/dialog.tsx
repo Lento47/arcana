@@ -1,6 +1,7 @@
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { batch, createContext, createEffect, createMemo, onCleanup, Show, useContext, type JSX, type ParentProps } from "solid-js"
 import { useTheme } from "../context/theme"
+import { dialogContentMaxHeight, dialogMaxHeight, dialogMaxWidth, dialogVerticalPad } from "../util/geometry"
 import { COPY } from "../branding"
 import { MouseButton, Renderable, RGBA } from "@opentui/core"
 import { createStore } from "solid-js/store"
@@ -51,7 +52,7 @@ export function Dialog(
       alignItems="center"
       position="absolute"
       zIndex={3000}
-      paddingTop={dimensions().height / 4}
+      paddingTop={dialogVerticalPad(dimensions().height)}
       left={0}
       top={0}
       backgroundColor={dimmer()}
@@ -62,14 +63,24 @@ export function Dialog(
           e.stopPropagation()
         }}
         width={width()}
-        maxWidth={dimensions().width - 2}
+        maxWidth={dialogMaxWidth(dimensions().width)}
+        maxHeight={dialogMaxHeight(dimensions().height)}
+        flexShrink={1}
         backgroundColor={theme.backgroundPanel}
         border={["top", "bottom", "left", "right"]}
         customBorderChars={RoundBorder}
         borderColor={theme.accent}
         paddingTop={1}
       >
-        {props.children}
+        <scrollbox
+          width="100%"
+          height={dialogContentMaxHeight(dimensions().height)}
+          flexShrink={1}
+          viewportCulling={true}
+          scrollbarOptions={{ visible: true }}
+        >
+          {props.children}
+        </scrollbox>
       </box>
     </box>
   )

@@ -73,7 +73,7 @@ await check("tui wrapper routes", () => {
   const wrapper = join(repoRoot, "packages", "arcana", "bin", "arcana")
   const body = require("node:fs").readFileSync(wrapper, "utf8") as string
   // Wrapper must default to engine when no subcommand matches
-  if (!body.includes("packages/engine/src/index.ts")) {
+  if (!body.includes("packages/engine/src/index.ts") && !body.includes("../../engine/src/index.ts")) {
     throw new Error("wrapper does not fall through to engine")
   }
   return "wrapper routes unknown subcommands to engine"
@@ -106,9 +106,9 @@ await check("web entry exists", () => {
 })
 await check("web build script wired", () => {
   const pkg = require(join(repoRoot, "packages", "enterprise", "package.json")) as { scripts?: Record<string, string> }
-  if (pkg.scripts?.build !== "vite build") throw new Error("enterprise build script not wired")
+  if (pkg.scripts?.build !== "bun ./script/build.ts") throw new Error("enterprise build script not wired")
   if (pkg.scripts?.dev !== "vite dev") throw new Error("enterprise dev script not wired")
-  return "vite dev + vite build"
+  return "vite dev + bun build"
 })
 
 const pass = results.filter((r) => r.ok).length

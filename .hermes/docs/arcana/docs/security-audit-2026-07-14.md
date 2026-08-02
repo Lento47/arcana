@@ -311,7 +311,7 @@ The audit log at `~/.arcana/audit.jsonl` is append-only but not protected agains
 The enterprise audit sync uses `fetch()` without explicit TLS verification. While Node.js verifies TLS by default, there's no certificate pinning.
 
 **Recommendation:**
-- Add certificate pinning for `api.arcana.otnelhq.com`
+- Add certificate pinning for `api-arcana.otnelhq.com`
 - Add request signing with HMAC
 
 ---

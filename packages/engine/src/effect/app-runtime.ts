@@ -51,6 +51,7 @@ import { memoMap } from "@arcana/core/effect/memo-map"
 import { BackgroundJob } from "@/background/job"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
+import { EventStore } from "@/session/epistemic/event-store"
 
 export const AppLayer = Layer.mergeAll(
   Npm.defaultLayer,
@@ -83,6 +84,7 @@ export const AppLayer = Layer.mergeAll(
   SessionRevert.defaultLayer,
   SessionSummary.defaultLayer,
   SessionPrompt.defaultLayer,
+  EventStore.defaultLayer,
   Instruction.defaultLayer,
   LLM.defaultLayer,
   LSP.defaultLayer,

@@ -23,16 +23,14 @@ function rewrite(request: Request, values: { directory?: string; workspace?: str
   const url = new URL(request.url)
   let changed = false
 
-  // TODO: rename to x-arcana-* once server accepts new header names
-  for (const [name, key] of [
-    ["x-opencode-directory", "directory"],
-    ["x-opencode-workspace", "workspace"],
+  for (const [name, legacyName, key] of [
+    ["x-arcana-directory", "x-opencode-directory", "directory"],
+    ["x-arcana-workspace", "x-opencode-workspace", "workspace"],
   ] as const) {
-    const value = pick(
-      request.headers.get(name),
-      key === "directory" ? values.directory : values.workspace,
-      key === "directory" ? encodeURIComponent : undefined,
-    )
+    const fallback = key === "directory" ? values.directory : values.workspace
+    const encode = key === "directory" ? encodeURIComponent : undefined
+    const value =
+      pick(request.headers.get(name), fallback, encode) ?? pick(request.headers.get(legacyName), fallback, encode)
     if (!value) continue
     for (const query of url.pathname.startsWith("/api/") ? [key, `location[${key}]`] : [key]) {
       if (!url.searchParams.has(query)) {
@@ -45,6 +43,8 @@ function rewrite(request: Request, values: { directory?: string; workspace?: str
   if (!changed) return request
 
   const next = new Request(url, request)
+  next.headers.delete("x-arcana-directory")
+  next.headers.delete("x-arcana-workspace")
   next.headers.delete("x-opencode-directory")
   next.headers.delete("x-opencode-workspace")
   return next
@@ -92,14 +92,14 @@ export function createOpencodeClient(
   if (config?.directory) {
     config.headers = {
       ...config.headers,
-      "x-opencode-directory": encodeURIComponent(config.directory),
+      "x-arcana-directory": encodeURIComponent(config.directory),
     }
   }
 
   if (config?.experimental_workspaceID) {
     config.headers = {
       ...config.headers,
-      "x-opencode-workspace": config.experimental_workspaceID,
+      "x-arcana-workspace": config.experimental_workspaceID,
     }
   }
 
@@ -113,7 +113,7 @@ export function createOpencodeClient(
   client.interceptors.response.use((response) => {
     const contentType = response.headers.get("content-type")
     if (contentType === "text/html")
-      throw new Error("Request is not supported by this version of OpenCode Server (Server responded with text/html)")
+      throw new Error("Request is not supported by this version of Arcana Server (Server responded with text/html)")
 
     return response
   })

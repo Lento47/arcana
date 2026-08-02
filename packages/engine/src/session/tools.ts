@@ -31,13 +31,17 @@ import { authorizeAndExecuteEffect } from "@arcana/core/capability/pep"
 import { computeRequestHash } from "@arcana/core/capability/request-hash"
 import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
 import { SessionPolicyProvider } from "@arcana/core/capability/grant-store"
+import type { IntentBindingStoreEffect } from "@arcana/core/capability/grant-store"
 import { ensureSessionAgentGrants, shortPrincipal } from "@arcana/core/capability/session-grants"
 import { Database } from "@arcana/core/database/database"
-import type { PolicyContextProvider, PreparedEffect } from "@arcana/core/capability/pep"
+import type { AuthorizationEventEmitter, PolicyContextProvider, PreparedEffect } from "@arcana/core/capability/pep"
 import type { PolicyContext } from "@arcana/core/capability/pdp"
 import type { AuthorizationRequest, CanonicalResource, ProvenanceLabel, SensitivityLabel } from "@arcana/core/capability/types"
 import type { ScopedApproval } from "@arcana/core/capability/scoped-approval"
 import { SqliteScopedApprovalStore } from "@arcana/core/crypto/scoped-approval-adapter"
+import { EventStore } from "./epistemic/event-store"
+import type { ArcanaEvent } from "@arcana/core/epistemic/event"
+import { IntentRuntime, type IntentAuthority } from "./intent-runtime"
 
 // ── Durable approval pipeline (RB-01) ─────────────────────────────────
 // One sqlite-backed ScopedApprovalStore per workspace (lazily opened).
@@ -120,10 +124,9 @@ function makePendingScopedApproval(input: {
 // SessionPolicyProvider backed by SqliteGrantStore.
 // No grants -> DENY. Storage failure -> DENY.
 //
-// Intent binding store is not production-wired yet. Using LEGACY_COMPAT here
-// means intentBindings stay undefined → PDP skips intent binding (not "allow
-// any principal"). Capability matching + risk/approval rules still apply.
-// When IntentBindingStore is implemented, switch back to REQUIRED.
+// Active-contract sessions use the durable intent store in REQUIRED mode.
+// Contractless sessions retain an explicit, proof-visible compatibility path
+// until production contract admission is complete.
 /**
  * Production policy provider for a session agent.
  * Ensures a session-scoped grant exists for the agent principal so legitimate
@@ -133,6 +136,7 @@ function createPolicyProvider(
   db: Database.Interface,
   sessionID: string,
   agentName: string,
+  intentStore?: IntentBindingStoreEffect,
   scopedApprovalStore?: SqliteScopedApprovalStore,
 ): SessionPolicyProvider {
   const store = new SqliteGrantStore(db)
@@ -143,8 +147,8 @@ function createPolicyProvider(
       sessionId: sessionID,
       workspaceTrust: "TRUSTED",
     },
-    undefined, // IntentBindingStoreEffect: not yet implemented
-    "LEGACY_COMPAT",
+    intentStore,
+    intentStore ? "REQUIRED" : "LEGACY_COMPAT",
     scopedApprovalStore,
   )
 }
@@ -153,14 +157,47 @@ async function preparePolicyProvider(
   db: Database.Interface,
   sessionID: string,
   agentName: string,
+  intentStore?: IntentBindingStoreEffect,
   scopedApprovalStore?: SqliteScopedApprovalStore,
+  eventStore?: EventStore.Interface,
 ): Promise<SessionPolicyProvider> {
   const store = new SqliteGrantStore(db)
   // Bootstrap session agent grants before the first PDP snapshot (idempotent).
   await Effect.runPromise(
-    ensureSessionAgentGrants(store, { agentName, sessionId: sessionID }),
+    ensureSessionAgentGrants(
+      store,
+      { agentName, sessionId: sessionID },
+      eventStore
+        ? (grant) =>
+            eventStore.append({
+              sessionId: grant.constraints.sessionId ?? sessionID,
+              actor: { kind: "policy", id: "session-grant-bootstrap" },
+              type: "capability.created",
+              payload: {
+                capabilityId: grant.id,
+                principal: grant.principal,
+                issuer: grant.issuer,
+                actions: grant.actions,
+                resources: grant.resources,
+                constraints: grant.constraints,
+                delegation: grant.delegation,
+                status: grant.status,
+                createdEventId: grant.createdEventId,
+              },
+            }).pipe(Effect.asVoid)
+        : undefined,
+    ),
   )
-  return createPolicyProvider(db, sessionID, agentName, scopedApprovalStore)
+  return createPolicyProvider(db, sessionID, agentName, intentStore, scopedApprovalStore)
+}
+
+function intentRequestFields(authority: IntentAuthority) {
+  if (authority.mode !== "REQUIRED") return {}
+  return {
+    contractId: authority.contractId,
+    contractRevision: authority.contractRevision,
+    criterionIds: [...authority.criterionIds],
+  }
 }
 
 function formatPepDenial(input: {
@@ -356,6 +393,22 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const db = yield* Database.Service
   const budget = yield* SessionBudget.Service
   const events = yield* EventV2Bridge.Service
+  const eventStore = yield* EventStore.Service
+
+  // GOVERNANCE EVIDENCE BOUNDARY: every production PEP decision must enter the
+  // durable hash-chained EventStore. Passing no emitter keeps enforcement live
+  // but silently erases authorization evidence from REST, SSE, and the TUI.
+  const governanceEmitter: AuthorizationEventEmitter = {
+    emit: (event) =>
+      eventStore
+        .append({
+          sessionId: event.sessionId,
+          actor: event.actor as ArcanaEvent["actor"],
+          type: event.type as ArcanaEvent["type"],
+          payload: event.payload,
+        })
+        .pipe(Effect.asVoid),
+  }
 
   // RB-01 gap fix: the TUI read path is the SSE sync channel
   // (sync.data.approvals) — a fresh PENDING record with no subsequent
@@ -455,20 +508,43 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               // fresh snapshot (approved scope now loaded) and executes.
               const workspaceCwd = input.processor.message.path?.cwd
               const scopedStore = getScopedApprovalStore(workspaceCwd)
+              const intentAuthority = yield* IntentRuntime.resolveIntentAuthority(db, ctx.sessionID)
+              if (intentAuthority.mode === "LEGACY_COMPAT") {
+                yield* IntentRuntime.recordCompatibilityMode(ctx.sessionID, eventStore).pipe(
+                  Effect.catch(() => Effect.void),
+                )
+              } else {
+                yield* IntentRuntime.recordRequiredMode(ctx.sessionID, intentAuthority, eventStore).pipe(
+                  Effect.catch(() => Effect.void),
+                )
+              }
+              // APPROVAL HASH BOUNDARY: construct once and reuse this exact
+              // immutable request across every parked approval retry.
+              const authReq = buildAuthorizationRequest({
+                toolName: item.id,
+                principalId: input.agent.name,
+                sessionId: ctx.sessionID,
+                ...intentRequestFields(intentAuthority),
+                args: args as Record<string, unknown>,
+                provenance: extractProvenance(item.id, args as Record<string, unknown>),
+                sensitivity: extractSensitivity(item.id, args as Record<string, unknown>),
+              })
+              yield* IntentRuntime.ensureRuntimeBinding(authReq, intentAuthority, eventStore).pipe(
+                Effect.catch(() => Effect.succeed(undefined)),
+              )
 
               const runThroughPep = (attempt: number): Effect.Effect<any> =>
                 Effect.gen(function* () {
                   const pepProvider = yield* Effect.promise(() =>
-                    preparePolicyProvider(db, ctx.sessionID, input.agent.name, scopedStore),
+                    preparePolicyProvider(
+                      db,
+                      ctx.sessionID,
+                      input.agent.name,
+                      intentAuthority.mode === "REQUIRED" ? intentAuthority.store : undefined,
+                      scopedStore,
+                      eventStore,
+                    ),
                   )
-                  const authReq = buildAuthorizationRequest({
-                    toolName: item.id,
-                    principalId: input.agent.name,
-                    sessionId: ctx.sessionID,
-                    args: args as Record<string, unknown>,
-                    provenance: extractProvenance(item.id, args as Record<string, unknown>),
-                    sensitivity: extractSensitivity(item.id, args as Record<string, unknown>),
-                  })
                   const pepResult = yield* authorizeAndExecuteEffect(
                     {
                       request: authReq,
@@ -489,7 +565,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                         }),
                     },
                     pepProvider,
-                    undefined,
+                    governanceEmitter,
                     scopedStore,
                   )
                   if (pepResult.status === "DENIED") {
@@ -543,6 +619,21 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                         title: `Denied: ${item.id}`,
                         output: `DENIED by operator\napproval: ${approvalId}\naction: ${authReq.action}\ntool: ${item.id}\nrequest_principal: ${shortPrincipal(authReq.principalId)}`,
                         metadata: { approval_denied: true, approval_id: approvalId, pep_approval_required: true },
+                      }
+                    }
+                    if (intentAuthority.mode === "REQUIRED") {
+                      const binding = yield* IntentRuntime.ensureApprovedBinding(
+                          authReq,
+                          intentAuthority,
+                          scoped.expiresAt,
+                          eventStore,
+                        ).pipe(Effect.catch(() => Effect.succeed(undefined)))
+                      if (!binding) {
+                        return {
+                          title: `Intent binding failed: ${item.id}`,
+                          output: `INTENT_BINDING_FAILED\naction: ${authReq.action}\ntool: ${item.id}\nrequest_hash: ${pepResult.decision.requestHash}`,
+                          metadata: { intent_binding_failed: true, approval_id: approvalId },
+                        }
                       }
                     }
                     // Approved — re-run with a fresh snapshot. The approved
@@ -605,20 +696,41 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           // executeExact; APPROVAL_REQUIRED parks on a durable approval.
           const mcpWorkspaceCwd = input.processor.message.path?.cwd
           const mcpScopedStore = getScopedApprovalStore(mcpWorkspaceCwd)
+          const mcpIntentAuthority = yield* IntentRuntime.resolveIntentAuthority(db, ctx.sessionID)
+          if (mcpIntentAuthority.mode === "LEGACY_COMPAT") {
+            yield* IntentRuntime.recordCompatibilityMode(ctx.sessionID, eventStore).pipe(
+              Effect.catch(() => Effect.void),
+            )
+          } else {
+            yield* IntentRuntime.recordRequiredMode(ctx.sessionID, mcpIntentAuthority, eventStore).pipe(
+              Effect.catch(() => Effect.void),
+            )
+          }
+          const mcpAuthReq = buildAuthorizationRequest({
+            toolName: key,
+            principalId: input.agent.name,
+            sessionId: ctx.sessionID,
+            ...intentRequestFields(mcpIntentAuthority),
+            args: args as Record<string, unknown>,
+            provenance: ["MCP_DESCRIPTION" as ProvenanceLabel],
+            sensitivity: extractSensitivity(key, args as Record<string, unknown>),
+          })
+          yield* IntentRuntime.ensureRuntimeBinding(mcpAuthReq, mcpIntentAuthority, eventStore).pipe(
+            Effect.catch(() => Effect.succeed(undefined)),
+          )
 
           const runMcpThroughPep = (attempt: number): Effect.Effect<any> =>
             Effect.gen(function* () {
               const mcpPepProvider = yield* Effect.promise(() =>
-                preparePolicyProvider(db, ctx.sessionID, input.agent.name, mcpScopedStore),
+                preparePolicyProvider(
+                  db,
+                  ctx.sessionID,
+                  input.agent.name,
+                  mcpIntentAuthority.mode === "REQUIRED" ? mcpIntentAuthority.store : undefined,
+                  mcpScopedStore,
+                  eventStore,
+                ),
               )
-              const mcpAuthReq = buildAuthorizationRequest({
-                toolName: key,
-                principalId: input.agent.name,
-                sessionId: ctx.sessionID,
-                args: args as Record<string, unknown>,
-                provenance: ["MCP_DESCRIPTION" as ProvenanceLabel],
-                sensitivity: extractSensitivity(key, args as Record<string, unknown>),
-              })
               const mcpPepResult = yield* authorizeAndExecuteEffect(
                 {
                   request: mcpAuthReq,
@@ -651,7 +763,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     }),
                 },
                 mcpPepProvider,
-                undefined,
+                governanceEmitter,
                 mcpScopedStore,
               )
               if (mcpPepResult.status === "DENIED") {
@@ -717,6 +829,23 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     ],
                     metadata: { approval_denied: true, approval_id: approvalId, pep_approval_required: true },
                   } as any
+                }
+                if (mcpIntentAuthority.mode === "REQUIRED") {
+                  const binding = yield* IntentRuntime.ensureApprovedBinding(
+                      mcpAuthReq,
+                      mcpIntentAuthority,
+                      scoped.expiresAt,
+                      eventStore,
+                    ).pipe(Effect.catch(() => Effect.succeed(undefined)))
+                  if (!binding) {
+                    return {
+                      content: [{
+                        type: "text",
+                        text: `INTENT_BINDING_FAILED\naction: ${mcpAuthReq.action}\ntool: ${key}\nrequest_hash: ${mcpPepResult.decision.requestHash}`,
+                      }],
+                      metadata: { intent_binding_failed: true, approval_id: approvalId },
+                    } as any
+                  }
                 }
                 if (attempt >= 2) {
                   return {

@@ -1,10 +1,11 @@
 import type { Component, Accessor } from "solid-js"
 import type { ScrollBoxRenderable, ScrollAcceleration } from "@opentui/core"
-import type { Message, Part } from "@arcana/sdk/v2"
+import type { Message, Part, SessionGovernanceResponse } from "@arcana/sdk/v2"
 import type { PromptRef } from "../component/prompt"
 import type { PromptInfo } from "../component/prompt/history"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { ApprovalShellController } from "./command-spine/approval-shell-controller"
+import type { Theme } from "../theme"
 
 export interface RevertInfo {
   messageID: string
@@ -12,6 +13,10 @@ export interface RevertInfo {
   diff?: string
   diffFiles?: Array<{ filename: string; additions: number; deletions: number }>
 }
+
+export type GovernanceEventRecord = SessionGovernanceResponse["events"][number]
+export type GovernanceTraceHealth = SessionGovernanceResponse["trace"]
+export type GovernanceRunProof = SessionGovernanceResponse["proof"]
 
 export interface ShellProps {
   scrollRef: (r: ScrollBoxRenderable) => void
@@ -42,7 +47,7 @@ export interface ShellProps {
   viewingArtifact: Accessor<string | null>
   setViewingArtifact: (id: string | null) => void
 
-  theme: Record<string, unknown>
+  theme: Theme
   transBorder: Accessor<unknown>
 
   // ─── TUI-2.1: Approval integration (optional) ────────────────
@@ -54,6 +59,12 @@ export interface ShellProps {
   activeSessionId?: Accessor<string>
   /** Active workspace ID for isolation checks. */
   activeWorkspaceId?: Accessor<string>
+  /** Durable Phase C governance events for the current session. */
+  governance?: Accessor<readonly GovernanceEventRecord[]>
+  /** Authoritative engine trace health for the current session. */
+  governanceTrace?: Accessor<GovernanceTraceHealth | undefined>
+  /** Canonical read-only RunProof projection for the current session. */
+  governanceProof?: Accessor<GovernanceRunProof | undefined>
 }
 
 export type ShellComponent = Component<ShellProps>

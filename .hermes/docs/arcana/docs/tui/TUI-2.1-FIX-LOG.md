@@ -88,6 +88,95 @@
 - 16/16 packages typecheck ✅
 - 8/8 builds ✅
 
+## Streaming Lifecycle Fixes (Round 2 — found during interactive operator testing)
+
+**Date:** 2026-07-31
+**Commits:** `aedd96dc` … `e7cc8da6` (13 commits, validated by operator)
+
+| ID | File | Defect | Fix |
+|---|---|---|---|
+| SL-01 | packages/engine/src/session.ts:701 | `updateMessage` published `msg` by reference — SolidJS reconcile saw no diff, streaming chrome never updated | `publish("message.updated", { info: structuredClone(msg) })` |
+| SL-02 | command-spine-shell.tsx:263 | `runState` checked `"running"`/`"thinking"` — engine only emits `"busy"`/`"retry"` | Check `"busy"`/`"retry"` |
+| SL-03 | tui-streaming.ts:1670 | `makeInlineThinkEntry` passed no timed `part` — inline thinking shimmer stuck | Pass timed part to `buildTurnLifecycle` |
+| SL-04 | **spine-node.tsx:223** | **ROOT CAUSE: `active={!!thinking()}` always true** — plan entries hardcode `thinking="thinking"`, so `!!"thinking"` is always truthy; shimmer never stopped | `active={streaming()}` |
+| SL-05 | spine-mapper.ts:570 | `thinkingSummary` always returned "Thinking" — no begin/end marker on reasoning | `thinkingSummary(text, seed, streaming)` → `"Thinking"` while open, `"Thought"` when ended; both call sites pass `streaming` |
+| SL-06 | spine-chat.tsx:93-96 | Header shimmer verb `"thinking"` contradicted the flipped `"Thought"` think row | Verb `"writing"` for answer phase (interim) |
+| SL-07 | spine-chat.tsx (header) | **Operator decision:** no shimmer verb or spinner in the `✦ arcana` header at all | Removed `ShimmerText` + `SigilSpinner` from chat header; `streaming` still flows to prose body for markdown stability |
+
+**Regression tests added:** `test/spine-mapper.test.ts` — completed+idle → plan `streaming=false`, think summary `"Thought"`; mid-stream (busy) → think superseded `"Thought"`, plan still `streaming=true`.
+
+**Test totals after Round 2:** TUI 434/434 (was 342 at Round 1 close).
+
+## Reasoning Wrap Fix (Round 3 — found during live WS1 debugging)
+
+**Date:** 2026-07-31
+**Commit:** `ca73e50e` (8 regression tests, `[bump]`)
+
+| ID | File | Defect | Fix |
+|---|---|---|---|
+| RW-01 | packages/tui/src/routes/session/index.tsx:2007 | Reasoning body `<code>` had no numeric width — `CodeRenderable` `wrapMode` defaults to `"word"` (docs `components/code.mdx`; dist `TextBufferRenderable._wrapMode = "word"`), but wrap only engages when `width > 0` (dist: `if (this._wrapMode !== "none" && this.width > 0) setWrapWidth(this.width)`). Width auto → no wrap constraint → intrinsic width → long single-line reasoning **clipped at the terminal right edge** (117 of 133 chars visible at 120 cols). Stored reasoning data was always complete — display-only defect. The spine already passed `wrapMode="word"` + a numeric width; the session route never got the same treatment | `wrapMode="word"` (explicit; matches default) + clamped `reasoningBodyWidth()` memo (`ctx.width − 3 − minimal-indent − 1`, `Math.max(1, …)`) on the `<code>` and its body box — the numeric width is the actual cure; `ReasoningPart` + session context exported for testability; SDK type import aliased `ReasoningPartType` |
+
+**Key finding:** the user-approved literal patch (`streaming={true}` + `drawUnstyledText={false}` constants) cannot render deterministically — per the documented contract, `drawUnstyledText` shows text *before* highlighting completes, so `false` + `streaming` (async tree-sitter highlight) gates ALL rendering on highlight completion (`@opentui/core` `index-7z5n7k9m.js:3156` styled-streaming path skips the synchronous buffer update; never resolves in test env; per-token whole-buffer highlight cost in production). Kept the original dynamic flags (`!isDone()`) — the width fix is the actual defect fix.
+
+**Regression tests added:** `test/reasoning-part-wrap.test.tsx` — 8 tests: 120-col wrap (head + tail on different rows), final words visible, no duplication after `time.end`, streaming partial content, complete after final delta, minimal mode collapsed until click, show mode stays expanded, width sweep 59/80/100/120/180, degenerate-width clamp, in-place `resize()` narrower/wider preserves content. Test harness installs `MockTreeSitterClient` via OpenTUI's singleton registry (`globalThis[Symbol.for("@opentui/core/singleton")]`, key `"tree-sitter-client"`).
+
+**Test totals after Round 3:** TUI 444/444 pass (1 skip), 0 fail.
+
+## SSE Gap-Closer on Reconnect (Round 4 — live WS1 debugging)
+
+**Date:** 2026-07-31
+**Commit:** `aeb89f53` (3 regression tests, `[bump]`)
+
+**Defect:** a new-session exchange froze mid-stream at the last delivered snapshot ("Hello. How") while the engine store was already complete (`time.end` set). Old sessions opened later rendered complete via REST hydration — proving the engine data was intact and the display was stale. Root cause: the daemon re-registered mid-exchange (session lock rewrote at 14:49, SSE connections 7→1), tearing down the TUI's SSE stream. The tail events were never delivered and never recovered: SSE events carry no `id:` (Last-Event-ID replay impossible), the parser discards partial buffered events at stream end (`serverSentEvents.gen.ts`), and the sync store's `fullSyncedSessions` guard marks a session synced once — so no re-fetch ever happened. The gap was permanent until TUI restart.
+
+**Fix (3 files, surgical):**
+| File | Change |
+|---|---|
+| `src/context/sdk.tsx` | After reconnect backoff, before the next fetch, emit a synthetic `sse.reconnected` GlobalEvent through the existing emitter |
+| `src/context/sync.tsx` | New `resync(sessionID)`: clears the `fullSyncedSessions` guard + the older-messages exhausted marker, then re-runs the existing full hydrate (`session.get` + messages + parts + todo + diff). Reuses `sync()` so live-delta tracker merge and race guards are identical. Fail-closed: on fetch failure the guard stays cleared, so the next attempt retries |
+| `src/routes/session/index.tsx` | Listens for `sse.reconnected` (defensive name check, same pattern as `approval.updated`) and calls `resync(route.sessionID)`, errors swallowed |
+
+**Verification:** 3 regression tests in `test/cli/cmd/tui/sync-resync.test.tsx` — (1) resync clears the guard and re-fetches: stale partial "Hello. How" is replaced by the complete REST snapshot, second REST read proven by request counter; (2) live deltas arriving during the resync hydrate are preserved, not clobbered; (3) engine-down failure rejects, guard stays cleared, recovery attempt succeeds. TUI suite 447/448 pass (1 skip), 0 fail. Typecheck clean.
+
+**Operator validation (2026-07-31, live `dev:tui`):** a fresh new-session exchange rendered complete end to end — label flipped `Thinking` → `Thought` with the full reasoning visible, assistant reply complete ("Sure. What do you need help with?"). The exact failure mode that froze at "Hello. How" now resolves to the full reply. WS1 stream-completion checkpoint: PASS.
+
+**Note:** the reconnect *fetch* itself still throws (pre-existing) if the daemon refuses at the exact retry moment, killing the loop; the resync heals the display but live streaming would need a restart. Deferred to WS2 lifecycle robustness.
+
+**SDK contract note (from `packages/sdk/openapi.json`, the SDK's only documentation — no markdown exists):** the API documents an intended catch-up channel — `POST /sync/history` returns sync events with `seq >` the client's last-known per-aggregate sequence, and `POST /sync/replay` replays a full history. The TUI never uses seq bookkeeping; the REST `resync()` achieves the same heal with less state. Revisit `/sync/history` as a WS2 candidate for true event-level catch-up. SSE stream is `GET /global/event` (`sdk.global.event`); `sseMaxRetryAttempts` is a client-side option, not an API parameter.
+
+**Test totals after Round 4:** TUI 447/448 pass (1 skip), 0 fail.
+
+## Destroyed EditBuffer Guard (Round 5 — live WS1 debugging)
+
+**Date:** 2026-07-31
+**Commit:** `27746683` (`[bump]`)
+
+**Defect:** `[command-execution-error] [Keymap] Error running command "prompt.autocomplete.select": EditBuffer is destroyed` — keypress → `select()` (autocomplete.tsx:735) → slash-command option `onSelect` (autocomplete.tsx:614) → `item.onSelect()` executes and navigates (unmounting the composer, destroying the TextareaRenderable's EditBuffer) → `props.clearPrompt()` then calls `input.clear()` on the destroyed buffer. OpenTUI `EditBuffer.guard()` throws on any call after `destroy()`. The keymap command outlives the component it targets.
+
+**Fix (surgical, 2 guards in `packages/tui/src/component/prompt/index.tsx`):** `clearPrompt()` and PromptRef `reset()` skip `input.clear()` / `input.extmarks.clear()` when `input.isDestroyed` (public getter, `Renderable.d.ts:282`). Store reset still runs (idempotent). Covers all 17+ clearPrompt callers (submit, clear command, palette, autocomplete). Fail-closed: clearing a dead composer is a no-op.
+
+**Verification:** typecheck clean; TUI suite 447/448 pass (1 skip), 0 fail (no regressions). **Operator validation (2026-07-31, live `dev:tui`):** slash-command select with navigation no longer logs the error. PASS.
+
+## OPEN DEFECT — Daemon re-registration loses in-memory InstanceRef registry (WS2 lifecycle blocker)
+
+**Date:** 2026-07-31 (second occurrence; first at 14:49)
+**Status:** OPEN — diagnosis complete, fix not implemented
+
+**Symptoms (live):** every tool call (`echo test` included) fails `EXECUTION_FAILED Error: InstanceRef not provided`; the agent churns retrying; the assistant reply freezes mid-stream in the display while the durable store holds the complete text (`step-finish` present, `time.end` set). SSE gap-closer alone cannot heal: the REST re-hydration fails for the same reason the tools fail.
+
+**Evidence:**
+- Two daemon locks in `~/.arcana/daemon/`: `a36c69a17d38.json` (workspace `L:\PROJECTS\arcana`, pid 28124, 15:24 — process DEAD, lock stale) and `97f015ffe189.json` (workspace `packages/engine`, pid 5040, 15:28 — alive, owns port 9142, 4 ESTABLISHED SSE connections).
+- `InstanceRef` is an Effect service (`packages/engine/src/effect/instance-ref`); tool effects `Effect.die("InstanceRef not provided")` when the service is missing (`cli/cmd/agent.ts:65-66`, same pattern in `github.handler.ts:156-157`). The engine middleware provides `InstanceRef` for request-derived context (per `engine_src_server_routes_instance_httpapi_AGENTS.md`).
+- The instance registry is in-memory: a daemon re-registration wipes it. The TUI reconnects SSE (global stream, no instance needed) but never re-bootstraps (the `server.instance.disposed` event never arrives on stream teardown — the same gap the Round 4 fix addresses) → the new daemon never re-registers the session's instance → all instance-scoped requests fail.
+- Ground truth check: durable `part` table shows the turn completed (`step-finish`, reason `stop`) with the full text; the TUI displayed only the first token ("All"). Display stale, engine data intact.
+
+**Blocker chain:** daemon dies (cause still unknown; engine dev process ~557MB) → in-memory instance registry lost → InstanceRef not provided on every tool → agent loops → reply stalls. The Round 4 `resync()` is fail-closed (guard stays cleared) but has no retry trigger when the stream is alive and REST is broken.
+
+**Fix candidates (WS2):**
+1. Persist/restore the instance registry across daemon restarts, or re-register instances lazily on first instance-scoped request (fixes tools AND REST).
+2. TUI: on `sse.reconnected`, if `resync()` rejects, retry with bounded backoff (3 attempts) — heals display even when the daemon is mid-transition.
+3. Root-cause the daemon death (crash logs, OOM, watcher restart).
+
 ## Non-Blocking Items (documented, not fixed)
 
 - Internal "opencode" API names (keymap hooks, SDK client, config values) — breaking refactor, functional identifiers
@@ -97,278 +186,174 @@
 - Empty `cwd.ts` file — dead code
 - WS3 tool lifecycle rendering patterns — deferred to manual smoke test
 
----
+## F-15 — OpenTUI 0.4.5 compiled-binary worker-path crash (TUI would not open)
 
-# Round 2 — SSE Silent-Death Recovery (2026-07-31)
+**Date:** 2026-08-02
+**Status:** FIXED
 
-## Background
+**Symptoms:** `bun run dev:tui` (and the compiled `arcana.exe`) opened for
+miliseconds and closed on Windows. Dev mode crashed natively
+(0xC0000409 / STATUS_STACK_BUFFER_OVERRUN) on Bun 1.3.14; the compiled binary
+exited 1 with `undefined is not an object (evaluating 'loadedPath.startsWith')`
+at OpenTUI `normalizeLoadedFilePath`.
 
-Recurring user reports: a turn renders truncated, verbs stay on `Working` /
-`Thinking`, and the TUI never heals. Investigation (grounded in the AI SDK
-stream-protocol docs, `.hermes/docs/ai-sdk/`) proved the data is safe in the
-durable store (`opencode-local.db`, `finish: "stop"` set) — the TUI simply
-never receives the tail events. The engine streams `server.heartbeat` every
-10 seconds while the SSE stream is open
-(`packages/engine/src/server/routes/instance/httpapi/handlers/event.ts`).
-When the daemon dies without closing the socket (half-open TCP, no FIN/RST),
-the client `for await` hangs forever: no reconnect, no `sse.reconnected`, no
-REST resync, stale UI indefinitely. The verb code was never at fault; the
-completion events (`reasoning-end`, `tool-output-available`, `finish`) died
-in transit and the TUI had no liveness signal.
+**Root cause:** Bun compile bundles `@opentui/core/parser.worker` (imported
+with `with: { type: "file" }`) as a JS module without a default export.
+OpenTUI 0.4.5 eagerly resolves that asset at module load
+(`resolveBundledFilePath`) and `normalizeLoadedFilePath(undefined)` throws. In
+compiled binaries the real worker path is available via the engine's
+`OTUI_TREE_SITTER_WORKER_PATH` define, but the eager call crashes before it is
+used.
 
-## Fix 1: SSE liveness watchdog (silent death → reconnect)
+**Fix:** null guard in `normalizeLoadedFilePath` (undefined → undefined)
+applied by `script/patch-opentui.ts`, version-pinned to @opentui/core 0.4.5
+and wired as the root `postinstall`. OpenTUI stays on 0.4.5 (no revert).
 
-- `packages/tui/src/util/sse-watchdog.ts` — new `createSseWatchdog`:
-  silence window, re-armed on every event, single-fire trip, cancellable.
-- `packages/tui/src/context/sdk.tsx` — watchdog armed on every SSE event
-  (including `server.heartbeat`); trips after `SSE_SILENT_DEATH_MS`
-  (30s = 3 missed heartbeats) by aborting only the current attempt
-  (`sse.abort()`). Loop break conditions now distinguish unmount
-  (`abort.signal.aborted`) and stale loops (generation token) from
-  watchdog trips — a trip falls through to the existing backoff →
-  `sse.reconnected` → session REST resync path.
-- Effect: a silent daemon death now heals within ~35s (30s window + backoff)
-  instead of never. AI SDK protocol alignment: "keep-alive through ping,
-  reconnect capabilities" (50-stream-protocol.mdx).
+**Verification:** rebuilt engine binary runs 5/5 console launches and renders
+(terminal capability output present); `bun run --conditions=browser
+./src/index.ts` stays running in console mode; TUI suite 775/1/0.
 
-## Fix 2: On-view resume resync (stale cache heal)
+## F-16 — Daemon boot crash: obligation_templates seed UNIQUE violation
 
-- `packages/tui/src/routes/session/index.tsx` — after the session-switch
-  sync task, if the cached store holds an assistant message without
-  `time.completed` (pending) AND no SSE event flowed for
-  `SSE_SILENT_DEATH_MS` AND events previously flowed (fresh boots have no
-  prior stream), force one `sync.session.resync(sessionID)`.
-- Effect: navigating back to a session whose stream died silently heals
-  text + verbs from REST. AI SDK resume-streams pattern: the client
-  reconnects to the active stream state on mount/return.
+**Date:** 2026-08-02
+**Status:** FIXED
 
-## Tests
+**Symptoms:** `bun run dev:tui` and the compiled binary did not open. The
+engine daemon exited 1 with repeated `Failed query: insert into
+"obligation_templates" …` across ports 9142–9150, ending in "No available
+port for daemon".
 
-- `packages/tui/test/sse-watchdog.test.ts` — 5 new tests: trip-once,
-  re-arm defers, stop cancels, re-arm after stop, trip-until-re-armed.
-- Full TUI suite: 453 pass / 1 skip / 0 fail (was 449/1/0). Typecheck clean.
+**Root cause:** `ObligationEngine.seedTemplates` inserts the baseline
+templates unconditionally at daemon bootstrap. `rule_id` is the PRIMARY KEY,
+so once seeded, every later boot violates UNIQUE and the daemon bootstrap
+(`Server.listen` → layer init) throws on every port attempt.
 
-## Manual smoke (pending)
+**Fix:** `db.insert(ObligationTemplateTable).values(…).onConflictDoNothing()`
+— idempotent seed.
 
-- Kill the daemon mid-turn → wait ~35s → TUI reconnects, `sse.reconnected`
-  fires, session REST resync heals text + `Done`/`Thought` verbs.
-- Navigate away and back to a session with a stale partial turn → verbs and
-  text restore from REST.
+**Verification:** daemon boots on 9142 with `/health` 200 for both dev
+(`bun run --conditions=browser ./src/index.ts`) and the compiled
+`arcana.exe`; obligation/contract engine tests 35/0; engine typecheck clean.
+Binary rebuilt (0.0.0-phase-d-implementation-202608021008).
 
----
+## F-17 — Governance/proof rows rendered as chat cards when healthy
 
-# Round 2.1 — Ollama Discovery Follows the Doctor (2026-07-31)
+**Date:** 2026-08-02
+**Status:** FIXED
 
-## Background
+**Symptoms:** healthy (`ok`) governance groups and RunProof rows rendered with
+chat-card chrome (label + timestamp + full prose block), making turns far
+taller than needed and forcing long scrolls through expanded event groups.
 
-The TUI unconditionally probed `http://localhost:11434/api/tags` on every
-provider refresh to auto-discover local Ollama models. On machines that never
-run Ollama this fired a failed fetch and a `[ollama] Failed to fetch models
-from localhost:11434` console log on every refresh and in test output. The
-active model was never affected; the probe is a parallel discovery that only
-adds an "Ollama (local)" entry to the provider switcher.
+**Root cause:** `SpineEntry.isChatProse` classified any `kind === "ok"` row as
+chat, including governance-sourced rows.
 
-## Fix
+**Fix:** governance-sourced rows (`source.kind === "governance"`) always use
+the compact operator row. Also added: whole-row left-click expand for
+collapsed toggleable blocks (focus retained), auto-collapse of expanded
+governance groups when a new user turn starts, `H`/`G` scroll-to-top/bottom
+keys, and correct `N pending approval` aggregation labels.
 
-Shared detection, one source of truth:
+**Verification:** spine-entry interaction suite 4/4 (incl. new governance
+left-click test); full TUI suite 777 pass / 1 skip / 0 fail (778 tests).
 
-- `packages/core/src/providers/ollama.ts` — new `detectLocalOllama()`:
-  probes `/api/tags` (honors `OLLAMA_PORT`, defaults 11434), returns
-  `{ port, models }` or `null`. Injectable `fetch` for tests.
-- `packages/engine/src/cli/cmd/doctor.ts` — the doctor's Ollama check now
-  calls the shared detector (was an inline duplicate probe).
-- `packages/tui/src/context/sync.tsx` — discovery follows the doctor:
-  probe via the shared detector; inject the provider **only when a daemon
-  is detected with models**. No detection → no entry, no log. The
-  disconnected-entry injection and the failure `console.log` are gone.
+## F-18 — Completion gate idempotency was per-session, not per-contract
 
-Rules: TUI probes exactly when the doctor would report Ollama as running.
-Detected but empty catalog → silent (nothing to switch to). Engine-side
-ollama handling (`packages/core/src/session/runner/model.ts`,
-`packages/arcana/src/agent/providers.ts`) untouched.
+**Date:** 2026-08-02
+**Status:** FIXED
 
-## Tests
+**Symptoms:** after the first contract resolved (`VERIFIED_COMPLETE`), every
+later contract in the same session stayed open: its obligation remained
+`pending` and RunProof stayed `DEGRADED` / `UNVERIFIED` with the gap
+"1 required obligation(s) unresolved" even after the turn completed with real
+executed effects.
 
-- `packages/core/test/providers/ollama.test.ts` — 7 tests: detect with
-  models, empty catalog, non-OK, network failure, malformed payload,
-  malformed entries filtered, default port.
-- Typecheck clean: core, engine, tui. PEP regression suite 3/3.
+**Root cause:** `SessionPrompt.epistemicCompletionGate` short-circuited when
+the session had ANY `completion.resolved` event. The gate therefore never ran
+for contract 2+ — the obligations were never verified against the durable
+evidence that existed (e.g. `authorization.executed` for the approved `pwd`).
 
-Feature provenance: hermes-plans/2026-07-26_150000-ollama-tui-only.md
-(pure addition, no mixing).
+**Fix:** idempotency is now per contract
+(`contractCompletionAlreadyResolved` checks the active contract's own
+`completion.resolved` event). New contracts always run the gate; re-runs of an
+already-resolved contract are still skipped.
 
----
+**Verification:** engine typecheck clean; new regression suite
+`test/session/completion-gate-idempotency.test.ts` (3 tests); epistemic
+contract/completion/run-proof suites green (36/0 combined). **Live
+confirmation (2026-08-02):** the second+ contract in a real session now
+resolves — RunProof flipped to `P3 · complete · VERIFIED` with
+`Obligations: satisfied 2` after the gate re-ran on the open contract.
 
-# Round 3 — SSE Truncation: Resync Liveness, Delta Durability, Crash Capture (2026-07-31)
+## F-19 — Criteria receipts were never emitted in production
 
-Implements P2/P3/P4 of `TUI-2.1-SSE-TRUNCATION-FIX-PLAN.md`.
+**Date:** 2026-08-02
+**Status:** FIXED
 
-## P2 — Liveness-aware resync merge
+**Symptoms:** an obligation like "Relevant tests and checks pass" stayed
+`pending` forever even after the agent ran `cargo check`/tests. RunProof
+stayed `P1 · degraded · UNVERIFIED` with the gap "1 required obligation(s)
+unresolved".
 
-**Problem:** the hydration merge kept locally-touched parts (`tracker.parts`)
-even when the SSE stream was dead, so a resync after a silent death kept the
-truncated prefix instead of the REST full text.
+**Root cause:** the completion verifier requires a durable `evidence.attached`
+event with kind `test_receipt` (and `build_receipt` for builds), but the only
+`evidence.attached` producer was the claim store. No production path emitted
+criteria receipts, so test/build-aware obligations were unsatisfiable by
+design.
 
-- `packages/tui/src/util/part-merge.ts` — new `shouldKeepLocalPart()`
-  predicate: tracked parts are kept only while their last delta is inside
-  the heartbeat window (30s); silent past the window, REST wins. The legacy
-  empty-REST guard is preserved.
-- `packages/tui/src/context/sync.tsx` — `lastPartDeltaAt` map updated on
-  `message.part.delta` (with opportunistic prune); both merge sites (main
-  hydration :736-750 and `ensureChildMessages` :891-902) use the predicate.
-- Tests: `test/part-merge.test.ts` (9 tests). TUI sync suites still green.
+**Fix:** the PEP now emits `evidence.attached` with kind `test_receipt` /
+`build_receipt` after a successful execution whose command is a recognized
+test/build runner (`cargo|bun|npm|pnpm|yarn|npx|go|node|python|pytest|mvn|…
+` with `test|check|verify|regression|clippy` or `build|compile`). Commands
+like `Test-Path` and the `goal_check` tool never classify as receipts.
 
-## P3 — Throttled delta persistence (engine)
+**Verification:** new classifier suite
+`packages/core/test/capability/receipt-kind.test.ts` (8 tests); core
+typecheck clean; epistemic contract/completion/run-proof suites 36/0.
 
-**Problem:** text/reasoning deltas were SSE-only; the projector persists
-only full `PartUpdated` events. A daemon death before `text-end` left the
-DB itself with only the prefix — permanent truncation, no resync can heal.
+## F-20 — RunProof hid operator-rejected executions
 
-- `packages/engine/src/session/processor.ts` — `text-delta` and
-  `reasoning-delta` now flush the growing part via `session.updatePart`
-  every 500ms or every 64 deltas (`shouldFlushPersist`, exported). State
-  reset at `*-start`, `*-end`, and cleaned up in `finishReasoning`.
-- The existing final flush at `*-end` (and `cleanup()` for interrupted
-  streams) is unchanged, so normal flows persist exactly once more.
-- Tests: `test/session/processor-persist.test.ts` (5 tests).
+**Date:** 2026-08-02
+**Status:** FIXED
 
-## P4 — Daemon crash capture
+**Symptoms:** an effect that was allowed by the PDP then rejected at the
+operator permission gate (`authorization.execution_failed`,
+"PermissionRejectedError") left no trace in the RunProof summary or body —
+the proof read "allowed … executed" with no mention of the refusal, so the
+operator could not tell a rejected call from one that never happened.
 
-**Problem:** 5+ daemon deaths/restarts with zero surviving traces — the
-crash handlers wrote only to stderr, which vanishes with the process.
+**Root cause:** `executionFailures` was computed by the RunProof projection
+and returned in the authorization profile, but the TUI proof entry never
+rendered it.
 
-- `packages/engine/src/index.ts` — `daemonLog()` appends to
-  `L:/tmp/arcana-daemon.log`: `[boot]` (pid + args), `[crash]`
-  (unhandledRejection/uncaughtException stacks), `[shutdown]` (SIGTERM),
-  `[exit]` (code). Sync `appendFileSync` so it survives `process.exit`.
+**Fix:** the proof body now shows `Execution failures: N`, and the summary
+appends `· N failed` when N > 0. Rejected effects are still NOT counted as
+executed, and their allows are accounted as refused (not unmatched) — the
+`unauthorizedExecutions = 0` invariant is unchanged.
 
-## P5 — Deferred
+**Verification:** governance-spine proof suite 10/10 (incl. new
+operator-rejection test); full TUI suite 778 pass / 1 skip / 0 fail.
 
-Visible "Reconnecting…" heal feedback — optional polish, no consumer
-surface yet. Tracked in the plan doc.
+## F-21 — Proof/governed rows swapped order on live updates ("duplicate proof")
 
-## Verification
+**Date:** 2026-08-02
+**Status:** FIXED
 
-- TUI full suite (453 baseline + 9 new part-merge + 5 watchdog): pending in
-  Round 3 run.
-- Core suite + engine session/capability suites: pending.
-- Typecheck clean: tui, engine, core.
+**Symptoms:** while events streamed in, a second "proof-like" row appeared
+next to the persistent proof and vanished immediately. The operator observed
+the governed actions row ending up below the proof, then swapping back.
 
+**Root cause:** the proof row's sort key was `lastSequence + 1`. When the
+proof payload lagged behind the newest governance event sequence, the proof
+sorted BEFORE the newest events — so the aggregated `governed` row and the
+proof swapped positions on every proof update, reading as a transient
+duplicate.
 
+**Fix:** the proof entry now sorts with a stable maximum key
+(`Number.MAX_SAFE_INTEGER`) so it always renders after every governance event;
+display indices are renumbered per frame anyway, so the gutter stays correct.
+Also added a defensive unique-id guard in the shell's row list so a keyed
+`<For>` can never receive a duplicate id.
 
-
-## Round 4 — Daemon idle self-destruct (P7+P8, 2026-08-01)
-
-Root cause found by full audit: `daemon/lifecycle.ts` armed a 5-minute idle
-timer at boot and `resetActivity()` was exported but NEVER called. Every
-daemon died exactly 300s after boot, even with the TUI connected. All day's
-deaths (16:03, 16:05, 16:46, 17:18, 23:38, 23:47, 00:09) were this timer.
-
-Fixes:
-- `daemon/activity.ts` (NEW) — module-level idle control: `armIdle` arms the
-  timer; `resetActivity` re-arms on real activity; `sseConnected`/`sseDisconnected`
-  suspend it while an SSE client is connected (refcounted).
-- `server/server.ts` — request middleware resets activity on EVERY HTTP request.
-- `handlers/event.ts` — SSE connect suspends the idle timer; SSE disconnect
-  restarts the countdown; each 10s heartbeat resets activity.
-- `daemon/lifecycle.ts` — `stopDaemon` logs `[daemon] stop reason=... uptime=Ns`;
-  idle stop exits the daemon process explicitly (ARCANA_DAEMON=1 discriminator)
-  so stream fibers cannot leave a zombie.
-- `daemon/log.ts` (NEW) — shared durable log (`L:/tmp/arcana-daemon.log`);
-  `daemon/entry.ts` now logs boot/stop/crash/exit lines; index.ts uses the
-  shared helper.
-- Tests: `test/daemon/activity.test.ts` 7/7 (idle fires, reset re-arms,
-  cwd mismatch ignored, SSE suspend/resume, refcount, clear).
-
-Live evidence in the log: old-build daemon pid 16156 idle-stopped at exactly
-300s (uptime=300s) with the TUI connected; full-build smoke daemon pid 19040
-idle-stopped at 300s with zero clients and exited cleanly (exit code=0).
-
-Behavior after fix: TUI open = daemon alive (SSE suspends the timer, HTTP and
-heartbeats reset it). TUI closed + no traffic 5 min = clean stop + exit.
-
-## Round 5 — Live-stream reconciliation (P10+P11, 2026-08-01)
-
-The 18:16 live session (ses_04551e419ffeVd3u) froze at 5 chars of the final
-text while the daemon kept streaming (7,962 chars in DB). The engine publish
--> SSE pipeline and the SDK parser were PROVEN clean by new load tests
-(test/server/httpapi-event-load.test.ts 4/4, sdk v2 server-sent-events-load
-3/3). The disease: the TUI trusts the SSE absolutely and only resyncs on
-reconnect/watchdog; the P2 merge's 30s liveness window perpetuates stale
-local parts across resyncs.
-
-Fixes:
-- `routes/session/index.tsx` — heartbeat-driven reconciliation: on every
-  10s `server.heartbeat`, resync the active session from REST. Any delivery
-  gap (missed event, consumer stall, silent freeze) converges within one
-  heartbeat, no watchdog dependence.
-- `context/sync.tsx` — merge liveness window tightened 30s -> 5s
-  (`SSE_PART_LIVENESS_MS`) at both merge sites; live-streaming parts still
-  protected (deltas arrive far faster than 5s).
-- `handlers/event.ts` — per-subscriber SSE queue: unbounded ->
-  `Queue.sliding(512)` (drop-oldest). A slow consumer can never stall the
-  publish path or grow memory; throttled part.updated (500ms) converges
-  dropped deltas.
-- Tests: engine load suite 4/4 (incl. sliding-queue unit), SDK parser 3/3,
-  TUI part-merge 9/9, TUI full suite 463/0. Typecheck clean tui+engine.
-
-## Round 6 — Live-validation failure + divergence repair protocol (P12, 2026-08-01)
-
-The QoS review turn (arcana-proxy, 6:55 PM) reproduced the disease on the
-P10+P11 build: engine finished (full summary in REST), TUI froze at "## Qo".
-Both heartbeat resync AND the reconnect resync (daemon respawned at 6:57:52
-mid-turn, log: [boot] pid=10536) failed to converge. External review
-confirmed the disease class: durable advances, live projection doesn't.
-
-Two real defects confirmed in code:
-1. `sdk.tsx` emitter: bare `for (const handler of handlers) handler(event)` —
-   one throwing subscriber aborts the batch, drops remaining events, forces
-   reconnect. Top micro-cause candidate for a persistent freeze.
-2. `sync.tsx` delta handler: `if (!parts) break` / `if (!result.found) break`
-   — deltas for a missing part vanish silently, no marker, no recovery.
-
-P12 implements the full divergence-detection + repair protocol:
-
-Engine (`handlers/event.ts`):
-- Per-subscriber `streamID` + monotonic wire `sequence` on every event
-  emitted to the wire (numbered AFTER the workspace filter, so clients see
-  gapless sequences over exactly the events they should receive).
-- Heartbeat carries `transport.headSequence` = highest state-bearing
-  sequence enqueued before the tick; heartbeat has its own sequence counter.
-- Drop accounting: offered/delivered/queue-depth estimate logged on
-  overflow; subscriber close logs offered/delivered/estimatedDropped/head.
-- Sliding queue retained (bounded memory); drops are now DETECTABLE by the
-  client instead of silent.
-
-TUI (`sdk.tsx`, `sync.tsx`, `routes/session/index.tsx`, new
-`context/stream-state.ts`, `util/isolated-emitter.ts`,
-`util/missing-delta-tracker.ts`):
-- Emitter: per-subscriber exception isolation (one throw cannot starve the
-  sync store subscriber or abort the batch).
-- Stream state: lastReceived (parser delivered) vs lastApplied (store
-  applied) tracked per streamID; streamID change resets both.
-- Heartbeat hook: reconcile the active session when
-  `headSequence - lastApplied > 4` (grace covers in-flight lag; a real
-  stall converges within one heartbeat).
-- Authoritative `reconcile()`: separate from hydration sync(), bypasses
-  fullSyncedSessions, dedupes via reconcilingSessions, generation token
-  prevents stale late commits, 15s abort, acks lastApplied on convergence.
-- Merge precedence (`shouldKeepLocalAuthoritative`): terminal remote tool
-  state always beats local running; prefix-aware text comparison (remote
-  superset wins; local append wins only while live); divergent text with
-  completed remote message wins; liveness is the last tie-breaker.
-- Missing-part deltas: bounded diagnostics tracker (128/part, 256KB,
-  TTL 15s) + immediate reconcile trigger; never replayed (duplication
-  risk).
-- SDK types: `EventTransportEnvelope` typed on the Event union + GlobalEvent
-  payload; transport mirrored onto payload for useEvent subscribers.
-
-Tests: engine event-sequence 3/3 (monotonic gapless sequences, heartbeat
-headSequence gap detection, per-connection streamID reset), TUI
-part-merge-authoritative 10/10, isolated-emitter 4/4, missing-delta-tracker
-5/5, existing part-merge 9/9, SDK parser 3/3, daemon activity 7/7.
-Typecheck clean: engine, tui, sdk.
-
-Remaining (P13 candidates): server.resync_required on overflow, part
-revisions, live-state endpoint. The headSequence gap subsumes
-resync_required functionally.
+**Verification:** governance-spine suite 17/0 combined with grouping +
+sync-governance tests; full TUI suite 778 pass / 1 skip / 0 fail.

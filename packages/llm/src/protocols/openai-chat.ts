@@ -452,7 +452,10 @@ const finishEvents = (state: ParserState): ReadonlyArray<LLMEvent> => {
   const reason = state.finishReason === "stop" && hasToolCalls ? "tool-calls" : state.finishReason
   const lifecycle = state.toolCallEvents.length ? Lifecycle.stepStart(state.lifecycle, events) : state.lifecycle
   events.push(...state.toolCallEvents)
-  if (reason) Lifecycle.finish(lifecycle, events, { reason, usage: state.usage })
+  // A reason-less stream end is a silent cut: record the indeterminate
+  // outcome (D6) instead of ending without a terminal event. The mapper
+  // already defaults to "unknown", so mapped reasons are unchanged.
+  Lifecycle.finish(lifecycle, events, { reason: reason ?? "unknown", usage: state.usage })
   return events
 }
 

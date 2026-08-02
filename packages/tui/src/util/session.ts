@@ -1,3 +1,5 @@
+import { Locale } from "./locale"
+
 const DEFAULT_TITLE_RE =
   /^(New session - |Child session - )(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)$/
 
@@ -21,8 +23,10 @@ export function titleFromUserText(text: string, maxChars = TITLE_MAX_CHARS): str
   if (!collapsed) return undefined
   const cleaned = collapsed.replace(/^#{1,6}\s+/, "").replace(/\s+/g, " ").trim()
   if (!cleaned) return undefined
-  if (cleaned.length <= maxChars) return cleaned
-  return cleaned.slice(0, Math.max(1, maxChars - 3)) + "..."
+  // T9: truncate by display width — the helper keeps maxChars-1 columns + the
+  // single "…" glyph, so CJK titles stay inside the exact column budget.
+  if (Locale.displayWidth(cleaned) <= maxChars) return cleaned
+  return Locale.truncate(cleaned, maxChars)
 }
 
 /**

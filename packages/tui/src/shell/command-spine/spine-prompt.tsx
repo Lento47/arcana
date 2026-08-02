@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount } from "solid-js"
+import { createEffect, createSignal, onCleanup } from "solid-js"
 import type { PromptRef } from "../../component/prompt"
 import { Prompt } from "../../component/prompt"
 import { PLACEHOLDER } from "../../branding"
@@ -9,6 +9,18 @@ import { SpineRail } from "./spine-rail"
 
 const PROMPT_PULSE_MS = 200
 
+/**
+ * S9: the composer marker pulse is signal-driven, so the interval must run
+ * only while the session is working and stop in idle/stop, where markerColor
+ * returns a static color and a running timer would be pure render-thread
+ * waste. M3: the SDK SessionStatus union is idle|retry|busy (types.gen.ts:672)
+ * — no "thinking" status exists, so the state union and the gate cover
+ * exactly the real statuses (the dead thinking palette branch is deleted).
+ */
+export function pulseActive(state: "idle" | "working" | "stop"): boolean {
+  return state === "working"
+}
+
 export function SpinePrompt(props: {
   bind: (r: PromptRef | undefined) => void
   disabled: () => boolean
@@ -17,32 +29,41 @@ export function SpinePrompt(props: {
   /** Called after send. May receive the submitted text for optimistic UI. */
   toBottom: (text?: string) => void
   layout: () => SpineLayout
-  state: () => "idle" | "working" | "thinking" | "stop"
+  state: () => "idle" | "working" | "stop"
+  /** Session-global gutter width so the composer stays aligned with rows. */
+  gutterWidth?: number
 }) {
-  const { theme: themeObj } = useTheme()
-  const t = themeObj as Record<string, unknown>
+  const { theme } = useTheme()
   const layout = () => props.layout()
-  const metrics = () => spineLeadMetrics(layout())
+  const metrics = () => spineLeadMetrics(layout(), props.gutterWidth)
   const [pulseFrame, setPulseFrame] = createSignal(0)
 
-  // Persistent pulse — runs while component is mounted, not gated on state.
-  // State changes only swap the color palette so there's no destroy/create flicker.
-  onMount(() => {
-    const timer = setInterval(() => setPulseFrame((frame) => (frame + 1) % 4), PROMPT_PULSE_MS)
-    onCleanup(() => clearInterval(timer))
+  // S9: start/stop the interval on session state instead of running it
+  // forever. Idle/stop render a static marker, so freezing pulseFrame there
+  // is invisible — no 5 Hz render-thread wakeups when the session is idle.
+  // The frame is intentionally NOT reset on restart, so the animation
+  // resumes mid-cycle with no color jump to palette[0].
+  let pulseTimer: ReturnType<typeof setInterval> | undefined
+  createEffect(() => {
+    const active = pulseActive(props.state())
+    if (active && !pulseTimer) {
+      pulseTimer = setInterval(() => setPulseFrame((frame) => (frame + 1) % 4), PROMPT_PULSE_MS)
+    } else if (!active && pulseTimer) {
+      clearInterval(pulseTimer)
+      pulseTimer = undefined
+    }
+  })
+  onCleanup(() => {
+    if (pulseTimer) clearInterval(pulseTimer)
   })
 
   const markerColor = () => {
-    if (props.state() === "stop") return (t.spineFail ?? t.error ?? t.spinePrompt) as any
-    if (props.state() === "thinking") {
-      const pulse = [t.spineThink, t.spinePrompt, t.spineBrand, t.spinePrompt]
-      return (pulse[pulseFrame()] ?? t.spinePrompt) as any
-    }
+    if (props.state() === "stop") return theme.spineFail
     if (props.state() === "working") {
-      const pulse = [t.spineRun, t.spinePrompt, t.spineBrand, t.spinePrompt]
-      return (pulse[pulseFrame()] ?? t.spinePrompt) as any
+      const pulse = [theme.spineRun, theme.spinePrompt, theme.spineBrand, theme.spinePrompt]
+      return pulse[pulseFrame()] ?? theme.spinePrompt
     }
-    return (t.spinePrompt ?? t.primary) as any
+    return theme.spinePrompt
   }
 
   // Grok-like composer on the spine: ✶ is the rail terminal (no extra pad / rail-only row).
@@ -56,7 +77,7 @@ export function SpinePrompt(props: {
         alignItems="flex-start"
         width="100%"
       >
-        <SpineGutterSpacer layout={layout()} />
+        <SpineGutterSpacer layout={layout()} width={props.gutterWidth} />
         <SpineRail layout={layout()} glyph={"✶"} color={markerColor()} active />
         {/*
           Positioning host for the slash/@ panel.
