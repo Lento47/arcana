@@ -22,6 +22,7 @@ import { ProjectCopyApi } from "./groups/project-copy"
 import { ProviderApi } from "./groups/provider"
 import { PtyApi, PtyConnectApi } from "./groups/pty"
 import { QuestionApi } from "./groups/question"
+import { RevocationApi } from "./groups/revocations"
 import { SessionApi } from "./groups/session"
 import { SyncApi } from "./groups/sync"
 import { SyncNodeApi } from "./groups/sync-node"
@@ -70,8 +71,9 @@ export const InstanceHttpApi = HttpApi.make("arcana-instance")
   .addHttpApi(SyncNodeApi)
   .addHttpApi(ProjectCopyApi)
   .addHttpApi(PtyApi)
-  .addHttpApi(QuestionApi)
-  .addHttpApi(PermissionApi)
+.addHttpApi(QuestionApi)
+.addHttpApi(RevocationApi)
+.addHttpApi(PermissionApi)
   .addHttpApi(ProviderApi)
   .addHttpApi(SessionApi)
   .addHttpApi(SyncApi)

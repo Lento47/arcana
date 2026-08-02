@@ -104,10 +104,15 @@ export const syncNodeHandlers = HttpApiBuilder.group(InstanceHttpApi, "syncNode"
       const expiresAt = new Date(now.getTime() + 5 * 60 * 1000).toISOString()
 
       const latestPolicy = state.policyStore.latestActive()
+      const latestRevocation = state.revocationStore.last()
       const policyNeedsSnapshot =
         latestPolicy !== undefined &&
         (requestContext.acceptedPolicySequence < latestPolicy.sequence ||
           (requestContext.acceptedPolicyDigest ?? "") !== latestPolicy.digest)
+      const revocationNeedsSnapshot =
+        latestRevocation !== undefined &&
+        (requestContext.acceptedRevocationSequence < latestRevocation.sequence ||
+          (requestContext.acceptedRevocationDigest ?? "") !== latestRevocation.digest)
 
       const base = {
         protocolVersion: 1 as const,
@@ -138,10 +143,19 @@ export const syncNodeHandlers = HttpApiBuilder.group(InstanceHttpApi, "syncNode"
               }
           : {
               ...base,
-              responseKind: "NO_CHANGE",
-              revocationSequence: requestContext.acceptedRevocationSequence,
-              revocationDigest: requestContext.acceptedRevocationDigest ?? "",
-              emergencyEpoch: requestContext.acceptedEmergencyEpoch,
+              ...(revocationNeedsSnapshot
+                ? {
+                    responseKind: "REVOCATION_SNAPSHOT" as const,
+                    revocationSequence: latestRevocation!.sequence,
+                    revocationDigest: latestRevocation!.digest,
+                    envelope: JSON.parse(latestRevocation!.signedStatementJson),
+                  }
+                : {
+                    responseKind: "NO_CHANGE" as const,
+                    revocationSequence: requestContext.acceptedRevocationSequence,
+                    revocationDigest: requestContext.acceptedRevocationDigest ?? "",
+                    emergencyEpoch: requestContext.acceptedEmergencyEpoch,
+                  }),
             }
 
       const envelope = signSyncResponse(responseContext, issuer.context.issuerSecretKey)

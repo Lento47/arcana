@@ -129,7 +129,7 @@ protocol, performance.
 | D2 Signed short-lived grants | IMPLEMENTED | 7-layer verifier, 46 conformance vectors (41 negative), Rust conformance 2/2 | BLK-D-09 |
 | D3 Mutual authentication | PARTIAL | D-6B sync control + **D-6B-T signed-envelope HTTP transport** (15 tests); TLS pending | BLK-D-01 |
 | D4 Policy distribution | PARTIAL | signed bundle store (publish/staged/last-known-good/rollback, 11 tests) + HTTP policy endpoints + POLICY_SNAPSHOT via sync transport (4 engine tests); DELTA + compat negotiation pending | BLK-D-01 |
-| D5 Remote revocation | PARTIAL | envelopes + durable state + authenticated transport; convergence unmeasured | BLK-D-01 |
+| D5 Remote revocation | PARTIAL | revocation store + convergence measurement (p50/p95 bounds, 7 tests) + REVOCATION_SNAPSHOT delivery (3 engine tests); emergency push + hostile-node revocation pending | BLK-D-01 |
 | D6 Replay resistance | PARTIAL | reducers + transport replay protection + **execution ledger + governed distributed PEP** (claim-before-effect, offline gating; 17 tests); hostile-node matrix pending | BLK-D-01 |
 | D7 Proof sync | FROZEN (local) | TAG `arcana-phase-d7-local-distributed-authority` → `017ad998`; D-7.1 containment partial: Linux openat2 scaffold + Windows handle final-path reader (`tools/fs-containment-rust`, 10/10) | BLK-D-02 |
 | D8 Proof composition | PARTIAL | D-8A Merkle batching + gap detection; **D-8B remote registration** (control-plane ledger + HTTP `/api/proof/*`; node-side uploader/outbox + HTTP client; 27 core + 6 engine tests) | BLK-D-04 |
