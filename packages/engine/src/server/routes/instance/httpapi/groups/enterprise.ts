@@ -303,6 +303,117 @@ export const UpgradePolicySchema = Schema.Struct({
   rollbackAllowed: Schema.Boolean,
 })
 
+export const NodeDiagnosticsSchema = Schema.Struct({
+  tenantId: Schema.String,
+  nodeId: Schema.String,
+  organizationId: Schema.String,
+  environment: Schema.String,
+  version: Schema.String,
+  upgradeRing: Schema.Number,
+  nodeKeyEpoch: Schema.Number,
+  enforcementMode: Schema.Literals(["ONLINE", "OFFLINE_RESTRICTED", "OFFLINE_READ_ONLY", "QUARANTINED"]),
+  policySequence: Schema.Number,
+  policyDigest: Schema.String,
+  revocationSequence: Schema.Number,
+  revocationDigest: Schema.String,
+  proofBacklog: Schema.Number,
+  lastSeenAt: Schema.optional(Schema.String),
+  lastSyncAt: Schema.optional(Schema.String),
+  registeredAt: Schema.String,
+  revokedAt: Schema.optional(Schema.String),
+  health: Schema.Literals(["UNKNOWN", "HEALTHY", "STALE", "REVOKED", "QUARANTINED"]),
+})
+
+export const EscalationPolicyInputSchema = Schema.Struct({
+  policyId: Schema.String,
+  maxWaitMs: Schema.Number,
+  fallbackApprovers: Schema.Array(Schema.String),
+  requireBreakGlass: Schema.Boolean,
+})
+
+export const EscalationPolicySchema = Schema.Struct({
+  tenantId: Schema.String,
+  policyId: Schema.String,
+  maxWaitMs: Schema.Number,
+  fallbackApprovers: Schema.Array(Schema.String),
+  requireBreakGlass: Schema.Boolean,
+})
+
+export const EscalationEventSchema = Schema.Struct({
+  tenantId: Schema.String,
+  eventId: Schema.String,
+  approvalId: Schema.String,
+  at: Schema.String,
+  reason: Schema.String,
+  suggestedApprovers: Schema.Array(Schema.String),
+})
+
+export const EscalationCheckSchema = Schema.Union([
+  Schema.Struct({
+    escalated: Schema.Literal(true),
+    reason: Schema.String,
+    suggestedApprovers: Schema.Array(Schema.String),
+    requireBreakGlass: Schema.Boolean,
+  }),
+  Schema.Struct({ escalated: Schema.Literal(false), reason: Schema.String }),
+])
+
+export const AdminEventPayloadSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("approval.pending"),
+    approvalId: Schema.String,
+    requestHash: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("node.revoked"),
+    nodeId: Schema.String,
+    reason: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("policy.promoted"),
+    policyId: Schema.String,
+    sequence: Schema.Number,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("alert.critical"),
+    alertId: Schema.String,
+  }),
+])
+
+export const AdminEventRecordSchema = Schema.Struct({
+  kind: Schema.Literals(["approval.pending", "node.revoked", "policy.promoted", "alert.critical"]),
+  tenantId: Schema.String,
+  at: Schema.String,
+  approvalId: Schema.optional(Schema.String),
+  requestHash: Schema.optional(Schema.String),
+  nodeId: Schema.optional(Schema.String),
+  reason: Schema.optional(Schema.String),
+  policyId: Schema.optional(Schema.String),
+  sequence: Schema.optional(Schema.Number),
+  alertId: Schema.optional(Schema.String),
+  recordedAt: Schema.String,
+})
+
+export const UsageEventSchema = Schema.Struct({
+  tenantId: Schema.String,
+  eventId: Schema.String,
+  feature: Schema.String,
+  units: Schema.Number,
+  at: Schema.String,
+})
+
+export const UsageResponseSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("summary"), feature: Schema.String, units: Schema.Number }),
+  Schema.Struct({ kind: Schema.Literal("events"), events: Schema.Array(UsageEventSchema) }),
+])
+
+export const QuotaStatusSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  used: Schema.Number,
+  limit: Schema.Number,
+  overQuota: Schema.Boolean,
+})
+
 export const AlertsQuery = Schema.Struct({
   ...WorkspaceRoutingQuery.fields,
   severity: Schema.optional(Schema.Literals(["LOW", "MEDIUM", "HIGH", "CRITICAL"])),
@@ -311,6 +422,20 @@ export const AlertsQuery = Schema.Struct({
 export const FederationListQuery = Schema.Struct({
   ...WorkspaceRoutingQuery.fields,
   orgId: Schema.optional(Schema.String),
+})
+
+export const AdminEventsQuery = Schema.Struct({
+  ...WorkspaceRoutingQuery.fields,
+  kind: Schema.optional(
+    Schema.Literals(["approval.pending", "node.revoked", "policy.promoted", "alert.critical"]),
+  ),
+  since: Schema.optional(Schema.String),
+})
+
+export const UsageQuery = Schema.Struct({
+  ...WorkspaceRoutingQuery.fields,
+  feature: Schema.optional(Schema.String),
+  since: Schema.optional(Schema.String),
 })
 
 export const EnterprisePaths = {
@@ -354,6 +479,14 @@ export const EnterprisePaths = {
   meteringCheck: `${root}/organizations/:tenantId/commercial/metering-check`,
   diagnostics: `${root}/organizations/:tenantId/commercial/diagnostics`,
   upgradePolicy: `${root}/organizations/:tenantId/commercial/upgrade-policy`,
+  nodeDetail: `${root}/organizations/:tenantId/fleet/:nodeId`,
+  escalationPolicy: `${root}/organizations/:tenantId/escalations/policy`,
+  escalationCheck: `${root}/organizations/:tenantId/escalations/check`,
+  escalationEvents: `${root}/organizations/:tenantId/escalations`,
+  adminEvents: `${root}/organizations/:tenantId/admin-events`,
+  siemExport: `${root}/organizations/:tenantId/admin-events/siem-export`,
+  usage: `${root}/organizations/:tenantId/commercial/usage`,
+  usageQuota: `${root}/organizations/:tenantId/commercial/usage/quota`,
 } as const
 
 export const EnterpriseApi = HttpApi.make("enterprise").add(
@@ -925,6 +1058,139 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         OpenApi.annotations({
           identifier: "enterprise.upgradePolicy",
           summary: "Read the default upgrade policy (F12)",
+        }),
+      ),
+      HttpApiEndpoint.get("nodeDetail", EnterprisePaths.nodeDetail, {
+        params: { tenantId: Schema.String, nodeId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(
+          Schema.Union([NodeDiagnosticsSchema, Schema.Null]),
+          "Fleet node remote diagnostics (F4)",
+        ),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.nodeDetail",
+          summary: "Read remote diagnostics for a fleet node (F4)",
+        }),
+      ),
+      HttpApiEndpoint.post("putEscalationPolicy", EnterprisePaths.escalationPolicy, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: EscalationPolicyInputSchema,
+        success: described(EscalationPolicySchema, "Escalation policy stored (F5)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.putEscalationPolicy",
+          summary: "Store a tenant escalation policy (F5)",
+        }),
+      ),
+      HttpApiEndpoint.get("getEscalationPolicy", EnterprisePaths.escalationPolicy, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(
+          Schema.Union([EscalationPolicySchema, Schema.Null]),
+          "Escalation policy (F5)",
+        ),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.getEscalationPolicy",
+          summary: "Read a tenant escalation policy (F5)",
+        }),
+      ),
+      HttpApiEndpoint.post("escalationCheck", EnterprisePaths.escalationCheck, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          approvalId: Schema.String,
+          now: Schema.optional(Schema.String),
+        }),
+        success: described(EscalationCheckSchema, "Escalation evaluation (F5)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.escalationCheck",
+          summary: "Evaluate and record approval escalation (F5)",
+        }),
+      ),
+      HttpApiEndpoint.get("escalationEvents", EnterprisePaths.escalationEvents, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(Schema.Array(EscalationEventSchema), "Escalation events (F5)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.escalationEvents",
+          summary: "List recorded escalation events (F5)",
+        }),
+      ),
+      HttpApiEndpoint.post("putAdminEvent", EnterprisePaths.adminEvents, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: AdminEventPayloadSchema,
+        success: described(AdminEventRecordSchema, "Admin event recorded (F11)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.putAdminEvent",
+          summary: "Record a canonical admin event (F11)",
+        }),
+      ),
+      HttpApiEndpoint.get("listAdminEvents", EnterprisePaths.adminEvents, {
+        params: { tenantId: Schema.String },
+        query: AdminEventsQuery,
+        success: described(Schema.Array(AdminEventRecordSchema), "Admin events (F11)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.listAdminEvents",
+          summary: "List canonical admin events (F11)",
+        }),
+      ),
+      HttpApiEndpoint.get("siemExport", EnterprisePaths.siemExport, {
+        params: { tenantId: Schema.String },
+        query: AdminEventsQuery,
+        success: described(Schema.String, "SIEM CEF export (F11)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.siemExport",
+          summary: "Export admin events as ArcSight CEF (F11)",
+        }),
+      ),
+      HttpApiEndpoint.post("putUsage", EnterprisePaths.usage, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          eventId: Schema.String,
+          feature: Schema.String,
+          units: Schema.Number,
+          at: Schema.optional(Schema.String),
+        }),
+        success: described(UsageEventSchema, "Usage event recorded (F12)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.putUsage",
+          summary: "Record a usage-metering event (F12)",
+        }),
+      ),
+      HttpApiEndpoint.get("getUsage", EnterprisePaths.usage, {
+        params: { tenantId: Schema.String },
+        query: UsageQuery,
+        success: described(UsageResponseSchema, "Usage summary or events (F12)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.getUsage",
+          summary: "Read metered usage (F12)",
+        }),
+      ),
+      HttpApiEndpoint.post("usageQuota", EnterprisePaths.usageQuota, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          limit: Schema.Number,
+          feature: Schema.String,
+          since: Schema.optional(Schema.String),
+        }),
+        success: described(QuotaStatusSchema, "Informational quota status (F12)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.usageQuota",
+          summary: "Evaluate quota status; never affects decisions (F12)",
         }),
       ),
     )
