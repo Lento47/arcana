@@ -8,6 +8,8 @@
 
 import { randomUUID } from "node:crypto"
 import type { SyncRequestContext, SyncResponseContext } from "@arcana/core/crypto/sync-auth"
+import type { SignedPolicyDeltaPayload } from "@arcana/core/crypto/sync-protocol"
+import type { SignedPolicyEnvelope } from "@arcana/core/crypto/signed-envelopes"
 import {
   signSyncRequest,
   verifySyncResponse,
@@ -48,6 +50,93 @@ export type SyncClientResult =
       status: number
       message: string
     }
+
+/**
+ * Client-side POLICY_DELTA validation. A node only accepts a delta whose
+ * base digest, sequence, result digest, and carried target envelope are all
+ * consistent with its accepted state; any mismatch fails closed.
+ */
+export function validatePolicyDeltaResponse(
+  context: SyncResponseContext,
+  input: { acceptedPolicySequence: number; acceptedPolicyDigest?: string },
+): { valid: true } | { valid: false; reason: string } {
+  if (context.responseKind !== "POLICY_DELTA") {
+    return { valid: false, reason: `response is ${context.responseKind}, not POLICY_DELTA` }
+  }
+  if (input.acceptedPolicyDigest === undefined) {
+    return { valid: false, reason: "POLICY_DELTA requires a known base digest" }
+  }
+  const delta = context.delta as SignedPolicyDeltaPayload | undefined
+  if (!delta) return { valid: false, reason: "POLICY_DELTA missing delta payload" }
+  if (delta.schemaVersion !== 1) {
+    return { valid: false, reason: `unsupported delta schemaVersion: ${delta.schemaVersion}` }
+  }
+  if (delta.basePolicyDigest !== input.acceptedPolicyDigest) {
+    return {
+      valid: false,
+      reason: `delta base digest ${delta.basePolicyDigest} does not match accepted ${input.acceptedPolicyDigest}`,
+    }
+  }
+  if (delta.sequence !== input.acceptedPolicySequence + 1) {
+    return {
+      valid: false,
+      reason: `delta sequence ${delta.sequence} is not accepted sequence ${input.acceptedPolicySequence} + 1`,
+    }
+  }
+  if (delta.resultPolicyDigest !== context.policyDigest) {
+    return {
+      valid: false,
+      reason: `delta result digest ${delta.resultPolicyDigest} does not match response policyDigest ${context.policyDigest}`,
+    }
+  }
+  const target = context.envelope as SignedPolicyEnvelope | undefined
+  if (!target) return { valid: false, reason: "POLICY_DELTA missing target envelope" }
+  if (target.policyDigest !== context.policyDigest) {
+    return {
+      valid: false,
+      reason: `target envelope digest ${target.policyDigest} does not match response ${context.policyDigest}`,
+    }
+  }
+  if (target.previousPolicyDigest !== input.acceptedPolicyDigest) {
+    return {
+      valid: false,
+      reason: `target envelope previousPolicyDigest ${target.previousPolicyDigest} does not match accepted ${input.acceptedPolicyDigest}`,
+    }
+  }
+  return { valid: true }
+}
+
+/**
+ * Client-side REVOCATION_DELTA validation: non-empty, bounded at 32, and
+ * strictly contiguous starting at accepted sequence + 1.
+ */
+export function validateRevocationDeltaResponse(
+  context: SyncResponseContext,
+  input: { acceptedRevocationSequence: number },
+): { valid: true } | { valid: false; reason: string } {
+  if (context.responseKind !== "REVOCATION_DELTA") {
+    return { valid: false, reason: `response is ${context.responseKind}, not REVOCATION_DELTA` }
+  }
+  const envelopes = context.envelopes ?? []
+  if (envelopes.length === 0) {
+    return { valid: false, reason: "REVOCATION_DELTA carries no statements" }
+  }
+  if (envelopes.length > 32) {
+    return { valid: false, reason: `REVOCATION_DELTA exceeds 32 statements: ${envelopes.length}` }
+  }
+  let expected = input.acceptedRevocationSequence + 1
+  for (const envelope of envelopes) {
+    const sequence = (envelope as { sequence?: unknown }).sequence
+    if (typeof sequence !== "number" || sequence !== expected) {
+      return {
+        valid: false,
+        reason: `revocation delta sequence ${String(sequence)} is not contiguous at ${expected}`,
+      }
+    }
+    expected++
+  }
+  return { valid: true }
+}
 
 export function createSyncClient(options: SyncClientOptions): {
   syncPolicy(input: NodeSyncInput): Promise<SyncClientResult>
@@ -119,6 +208,24 @@ export function createSyncClient(options: SyncClientOptions): {
     })
     if (!verified.valid) {
       return { kind: "ERROR", status: 200, message: `response verification failed: ${verified.reason}` }
+    }
+
+    if (body.envelope.context.responseKind === "POLICY_DELTA") {
+      const deltaCheck = validatePolicyDeltaResponse(body.envelope.context, {
+        acceptedPolicySequence: input.acceptedPolicySequence,
+        acceptedPolicyDigest: input.acceptedPolicyDigest,
+      })
+      if (!deltaCheck.valid) {
+        return { kind: "ERROR", status: 200, message: `delta validation failed: ${deltaCheck.reason}` }
+      }
+    }
+    if (body.envelope.context.responseKind === "REVOCATION_DELTA") {
+      const deltaCheck = validateRevocationDeltaResponse(body.envelope.context, {
+        acceptedRevocationSequence: input.acceptedRevocationSequence,
+      })
+      if (!deltaCheck.valid) {
+        return { kind: "ERROR", status: 200, message: `delta validation failed: ${deltaCheck.reason}` }
+      }
     }
 
     return { kind: "RESPONSE", context: body.envelope.context, envelope: body.envelope }
