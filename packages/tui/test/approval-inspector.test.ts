@@ -58,19 +58,29 @@ describe("approval inspection gate", () => {
         approvalInspectionAllowed({
           hasFocusedApproval: true,
           composerFocused: false,
-          gatesOpen: false,
           submitting: false,
         }),
       ).toBe(true)
     }
   })
 
-  test("blocks inspection while the composer has focus, gates are open, or a submit is in flight", () => {
+  test("allows inspection while an ACTION GATE is open (the gate owns decisions, not inspection)", () => {
+    // The operator can navigate and inspect the pending approval request
+    // while the gate is up; deciding still happens in the gate (←/→ + Enter).
+    expect(
+      approvalInspectionAllowed({
+        hasFocusedApproval: true,
+        composerFocused: false,
+        submitting: false,
+      }),
+    ).toBe(true)
+  })
+
+  test("blocks inspection while the composer has focus or a submit is in flight", () => {
     expect(
       approvalInspectionAllowed({
         hasFocusedApproval: true,
         composerFocused: true,
-        gatesOpen: false,
         submitting: false,
       }),
     ).toBe(false)
@@ -78,15 +88,6 @@ describe("approval inspection gate", () => {
       approvalInspectionAllowed({
         hasFocusedApproval: true,
         composerFocused: false,
-        gatesOpen: true,
-        submitting: false,
-      }),
-    ).toBe(false)
-    expect(
-      approvalInspectionAllowed({
-        hasFocusedApproval: true,
-        composerFocused: false,
-        gatesOpen: false,
         submitting: true,
       }),
     ).toBe(false)
@@ -94,7 +95,6 @@ describe("approval inspection gate", () => {
       approvalInspectionAllowed({
         hasFocusedApproval: false,
         composerFocused: false,
-        gatesOpen: false,
         submitting: false,
       }),
     ).toBe(false)

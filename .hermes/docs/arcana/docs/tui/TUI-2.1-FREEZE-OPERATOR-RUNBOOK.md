@@ -100,7 +100,10 @@ failed, successful, inspector, prompt focus, diff additions, diff deletions.
 > accidental Escape must never reject or decline the request. Resolve the
 > gate explicitly with `←`/`→` + `Enter` (Allow once / Allow always /
 > Reject); Reject is a deliberate two-step choice with its own confirmation
-> stage where `Esc` cancels the rejection.
+> stage where `Esc` cancels the rejection. Spine navigation (`j`/`k`) and
+> `v` inspection stay available while the gate is open (F-27), so the
+> operator can inspect the pending approval row before deciding; `a`/`d`
+> remain disabled until the gate resolves.
 >
 > **Contract gate warning:** on the `contract.accept` ACTION GATE, `Esc`
 > is inert — it can no longer DECLINE the contract. Declining is only

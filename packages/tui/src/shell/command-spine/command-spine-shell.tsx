@@ -599,15 +599,14 @@ export function CommandSpineShell(props: ShellProps) {
 
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
-    // When a permission/question gate is open, Enter must go to Decision confirm
-    // (PermissionPrompt), not expand/collapse the focused spine entry. Gates also
-    // disable the composer, so currentFocusedEditor is null and this layer would
-    // otherwise win over gate bindings (priority 1 vs default 0).
+    // When a permission/question gate is open, Enter/←/→ go to the gate's
+    // Decision prompt (gate bindings are priority 10 and win). Navigation
+    // (j/k), copy (y), details (o), and inspection (v) stay available so the
+    // operator can inspect the pending approval while the gate is open;
+    // decisions are still made exclusively in the gate.
     enabled: () =>
       renderer.currentFocusedEditor === null
-      && displayRows().length > 0
-      && props.permissions().length === 0
-      && props.questions().length === 0,
+      && displayRows().length > 0,
     priority: 1,
     bindings: [
       // Prefer j/k / arrows for spine focus — Tab in the prompt is agent.cycle.
@@ -686,7 +685,6 @@ export function CommandSpineShell(props: ShellProps) {
     approvalInspectionAllowed({
       hasFocusedApproval: focusedApproval() !== undefined,
       composerFocused: composerFocused(),
-      gatesOpen: gatesOpen(),
       submitting: approvalSubmitting(),
     })
 
