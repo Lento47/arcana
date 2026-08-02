@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
-import { fleetView, nodeDiagnostics } from "@arcana/core/enterprise/fleet"
+import { deriveFleetHealth, fleetView, nodeDiagnostics } from "@arcana/core/enterprise/fleet"
 import {
   decideApproval,
   type CentralApprovalRecord,
@@ -31,6 +31,8 @@ import { escalateApproval, type EscalationPolicy } from "@arcana/core/enterprise
 import { quotaStatus, type UsageEvent } from "@arcana/core/enterprise/metering"
 import { siemCef } from "@arcana/core/enterprise/siem-export"
 import type { AdminEvent } from "@arcana/core/enterprise/admin-events"
+import { routeCrossOrgApproval } from "@arcana/core/enterprise/federation-approvals"
+import { planRingRollout, type UpgradeRing } from "@arcana/core/enterprise/upgrade-rings"
 import {
   DEFAULT_RELIABILITY_CONFIG,
   evaluateDrill,
@@ -1111,6 +1113,146 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       return quotaStatus(ctx.payload.limit, used)
     })
 
+    const putFederationRule = Effect.fn("EnterpriseHttpApi.putFederationRule")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        ruleId: string
+        orgB: string
+        agreementId: string
+        actionPatterns: readonly string[]
+        maxPerDay: number
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const rule = {
+        ruleId: ctx.payload.ruleId,
+        orgA: ctx.params.tenantId,
+        orgB: ctx.payload.orgB,
+        agreementId: ctx.payload.agreementId,
+        actionPatterns: [...ctx.payload.actionPatterns],
+        maxPerDay: ctx.payload.maxPerDay,
+      }
+      controlStateFor(directory).crossOrgApprovals.putRule(rule)
+      return rule
+    })
+
+    const listFederationRules = Effect.fn("EnterpriseHttpApi.listFederationRules")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).crossOrgApprovals.listRules(ctx.params.tenantId)
+    })
+
+    const routeCrossOrgApprovalHandler = Effect.fn("EnterpriseHttpApi.routeCrossOrgApproval")(
+      function* (ctx: {
+        params: { tenantId: string }
+        payload: { orgB: string; agreementId: string; approvalId: string; action: string }
+        query: { directory?: string }
+      }) {
+        const directory = yield* resolveDirectory(ctx.query.directory)
+        const state = controlStateFor(directory)
+        const result = routeCrossOrgApproval(
+          {
+            orgA: ctx.params.tenantId,
+            orgB: ctx.payload.orgB,
+            agreementId: ctx.payload.agreementId,
+            approvalId: ctx.payload.approvalId,
+            action: ctx.payload.action,
+            now: new Date(),
+          },
+          state.federation,
+          state.crossOrgApprovals,
+        )
+        if (result.kind === "ROUTED") {
+          return { kind: "ROUTED" as const, record: result.record, rule: result.rule }
+        }
+        return { kind: "REJECTED" as const, reason: result.reason }
+      },
+    )
+
+    const listRoutedApprovals = Effect.fn("EnterpriseHttpApi.listRoutedApprovals")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string; orgId?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).crossOrgApprovals.routedSince(
+        ctx.query.orgId ?? ctx.params.tenantId,
+        "1970-01-01T00:00:00.000Z",
+      )
+    })
+
+    const putUpgradeRing = Effect.fn("EnterpriseHttpApi.putUpgradeRing")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { ringId: string; name: string; targetVersion: string; paused: boolean }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const ring: UpgradeRing = {
+        tenantId: ctx.params.tenantId,
+        ringId: ctx.payload.ringId,
+        name: ctx.payload.name,
+        targetVersion: ctx.payload.targetVersion,
+        paused: ctx.payload.paused,
+        createdAt: new Date().toISOString(),
+      }
+      controlStateFor(directory).upgradeRings.putRing(ring)
+      return ring
+    })
+
+    const listUpgradeRings = Effect.fn("EnterpriseHttpApi.listUpgradeRings")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).upgradeRings.listRings(ctx.params.tenantId)
+    })
+
+    const assignRingNode = Effect.fn("EnterpriseHttpApi.assignRingNode")(function* (ctx: {
+      params: { tenantId: string; ringId: string }
+      payload: { nodeId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      if (!state.upgradeRings.getRing(ctx.params.tenantId, ctx.params.ringId)) {
+        return { ok: false, reason: "ring not found" }
+      }
+      state.upgradeRings.assignNode({
+        tenantId: ctx.params.tenantId,
+        nodeId: ctx.payload.nodeId,
+        ringId: ctx.params.ringId,
+        assignedAt: new Date().toISOString(),
+      })
+      return { ok: true }
+    })
+
+    const ringPlan = Effect.fn("EnterpriseHttpApi.ringPlan")(function* (ctx: {
+      params: { tenantId: string; ringId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      const ring = state.upgradeRings.getRing(ctx.params.tenantId, ctx.params.ringId)
+      if (!ring) return []
+      const now = new Date()
+      const nodes = state.fleet
+        .listNodes(ctx.params.tenantId)
+        .filter(
+          (node) =>
+            state.upgradeRings.nodeRing(ctx.params.tenantId, node.nodeId)?.ringId ===
+            ctx.params.ringId,
+        )
+        .map((node) => ({
+          nodeId: node.nodeId,
+          version: node.version,
+          enforcementMode: node.enforcementMode,
+          health: deriveFleetHealth(node, now),
+        }))
+      return planRingRollout(ring, nodes)
+    })
+
     return handlers
       .handle("createOrganization", createOrganization)
       .handle("assignRole", assignRole)
@@ -1165,5 +1307,13 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       .handle("putUsage", putUsage)
       .handle("getUsage", getUsage)
       .handle("usageQuota", usageQuota)
+      .handle("putFederationRule", putFederationRule)
+      .handle("listFederationRules", listFederationRules)
+      .handle("routeCrossOrgApproval", routeCrossOrgApprovalHandler)
+      .handle("listRoutedApprovals", listRoutedApprovals)
+      .handle("putUpgradeRing", putUpgradeRing)
+      .handle("listUpgradeRings", listUpgradeRings)
+      .handle("assignRingNode", assignRingNode)
+      .handle("ringPlan", ringPlan)
   }),
 )

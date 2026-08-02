@@ -414,6 +414,55 @@ export const QuotaStatusSchema = Schema.Struct({
   overQuota: Schema.Boolean,
 })
 
+export const CrossOrgApprovalRuleSchema = Schema.Struct({
+  ruleId: Schema.String,
+  orgA: Schema.String,
+  orgB: Schema.String,
+  agreementId: Schema.String,
+  actionPatterns: Schema.Array(Schema.String),
+  maxPerDay: Schema.Number,
+})
+
+export const RoutedApprovalSchema = Schema.Struct({
+  routingId: Schema.String,
+  ruleId: Schema.String,
+  orgA: Schema.String,
+  orgB: Schema.String,
+  agreementId: Schema.String,
+  approvalId: Schema.String,
+  action: Schema.String,
+  routedAt: Schema.String,
+})
+
+export const CrossOrgRoutingResponseSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("ROUTED"),
+    record: RoutedApprovalSchema,
+    rule: CrossOrgApprovalRuleSchema,
+  }),
+  Schema.Struct({ kind: Schema.Literal("REJECTED"), reason: Schema.String }),
+])
+
+export const UpgradeRingSchema = Schema.Struct({
+  tenantId: Schema.String,
+  ringId: Schema.String,
+  name: Schema.String,
+  targetVersion: Schema.String,
+  paused: Schema.Boolean,
+  createdAt: Schema.String,
+})
+
+export const RingAssignResponseSchema = Schema.Struct({
+  ok: Schema.Boolean,
+  reason: Schema.optional(Schema.String),
+})
+
+export const RolloutDecisionSchema = Schema.Struct({
+  nodeId: Schema.String,
+  allowed: Schema.Boolean,
+  reason: Schema.String,
+})
+
 export const AlertsQuery = Schema.Struct({
   ...WorkspaceRoutingQuery.fields,
   severity: Schema.optional(Schema.Literals(["LOW", "MEDIUM", "HIGH", "CRITICAL"])),
@@ -487,6 +536,12 @@ export const EnterprisePaths = {
   siemExport: `${root}/organizations/:tenantId/admin-events/siem-export`,
   usage: `${root}/organizations/:tenantId/commercial/usage`,
   usageQuota: `${root}/organizations/:tenantId/commercial/usage/quota`,
+  federationRules: `${root}/organizations/:tenantId/federation/rules`,
+  federationRouteApproval: `${root}/organizations/:tenantId/federation/route-approval`,
+  federationRouted: `${root}/organizations/:tenantId/federation/routed`,
+  rings: `${root}/organizations/:tenantId/fleet/rings`,
+  ringAssign: `${root}/organizations/:tenantId/fleet/rings/:ringId/assign`,
+  ringPlan: `${root}/organizations/:tenantId/fleet/rings/:ringId/plan`,
 } as const
 
 export const EnterpriseApi = HttpApi.make("enterprise").add(
@@ -1191,6 +1246,106 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         OpenApi.annotations({
           identifier: "enterprise.usageQuota",
           summary: "Evaluate quota status; never affects decisions (F12)",
+        }),
+      ),
+      HttpApiEndpoint.post("putFederationRule", EnterprisePaths.federationRules, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          ruleId: Schema.String,
+          orgB: Schema.String,
+          agreementId: Schema.String,
+          actionPatterns: Schema.Array(Schema.String),
+          maxPerDay: Schema.Number,
+        }),
+        success: described(CrossOrgApprovalRuleSchema, "Cross-org approval rule (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.putFederationRule",
+          summary: "Store a bounded cross-org approval rule (F8)",
+        }),
+      ),
+      HttpApiEndpoint.get("listFederationRules", EnterprisePaths.federationRules, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(Schema.Array(CrossOrgApprovalRuleSchema), "Cross-org approval rules (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.listFederationRules",
+          summary: "List cross-org approval rules for an organization (F8)",
+        }),
+      ),
+      HttpApiEndpoint.post("routeCrossOrgApproval", EnterprisePaths.federationRouteApproval, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          orgB: Schema.String,
+          agreementId: Schema.String,
+          approvalId: Schema.String,
+          action: Schema.String,
+        }),
+        success: described(CrossOrgRoutingResponseSchema, "Cross-org approval routing (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.routeCrossOrgApproval",
+          summary: "Route an approval under an active agreement and exact rule (F8)",
+        }),
+      ),
+      HttpApiEndpoint.get("listRoutedApprovals", EnterprisePaths.federationRouted, {
+        params: { tenantId: Schema.String },
+        query: FederationListQuery,
+        success: described(Schema.Array(RoutedApprovalSchema), "Routed approvals (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.listRoutedApprovals",
+          summary: "List routed cross-org approvals (F8)",
+        }),
+      ),
+      HttpApiEndpoint.post("putUpgradeRing", EnterprisePaths.rings, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          ringId: Schema.String,
+          name: Schema.String,
+          targetVersion: Schema.String,
+          paused: Schema.Boolean,
+        }),
+        success: described(UpgradeRingSchema, "Upgrade ring stored (F4)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.putUpgradeRing",
+          summary: "Store an upgrade ring (F4)",
+        }),
+      ),
+      HttpApiEndpoint.get("listUpgradeRings", EnterprisePaths.rings, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(Schema.Array(UpgradeRingSchema), "Upgrade rings (F4)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.listUpgradeRings",
+          summary: "List upgrade rings (F4)",
+        }),
+      ),
+      HttpApiEndpoint.post("assignRingNode", EnterprisePaths.ringAssign, {
+        params: { tenantId: Schema.String, ringId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({ nodeId: Schema.String }),
+        success: described(RingAssignResponseSchema, "Ring node assignment (F4)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.assignRingNode",
+          summary: "Assign a fleet node to an upgrade ring (F4)",
+        }),
+      ),
+      HttpApiEndpoint.get("ringPlan", EnterprisePaths.ringPlan, {
+        params: { tenantId: Schema.String, ringId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(Schema.Array(RolloutDecisionSchema), "Ring rollout plan (F4)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.ringPlan",
+          summary: "Plan ring rollout with per-node gates (F4)",
         }),
       ),
     )
