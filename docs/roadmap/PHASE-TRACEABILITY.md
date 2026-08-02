@@ -4,7 +4,7 @@
 **Authority:** secondary — normative gates in the master spec (Part II),
 status authority `docs/STATUS.md`
 **Created:** 2026-08-02 (Phase A–F completion audit)
-**Audited commit:** `e57c5ca2` (2026-08-02 checkpoint commit; suites verified
+**Audited commit:** `0392ad7b` (2026-08-02 checkpoint commit; suites verified
 on the pre-commit worktree, which the commit reproduces exactly)
 
 This document traces every playbook phase and task to its implementation

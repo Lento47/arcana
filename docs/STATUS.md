@@ -3,7 +3,7 @@ document_class: status
 authority: current_status
 status: current
 status_source: self
-evaluated_commit: cb1a214d
+evaluated_commit: 0392ad7b
 current_branch_at_publication: phase-d-implementation
 last_verified: 2026-08-02
 supersedes: status claims inside Arcana_Project_Master_Specification.md Parts I-III
@@ -25,8 +25,8 @@ secondary; never edit the mirror independently.
 | Field | Value |
 |---|---|
 | Current implementation branch | `phase-d-implementation` |
-| Committed HEAD at last verification | `cb1a214d` (2026-08-02, CLI 1.0 freeze draft + release-flow plan + blocker/task updates) |
-| Uncommitted worktree | clean at checkpoint `cb1a214d` |
+| Committed HEAD at last verification | `0392ad7b` (2026-08-02, external/human gate register consolidation) |
+| Uncommitted worktree | clean at checkpoint `0392ad7b` |
 | Default branch (`master` / `origin/master`) | stale — Phase B/C, D-7, TUI-2 milestone commits not on it; mainline promotion pending (post-sign-off release action) |
 | Release version | pre-release builds only (`0.0.0-phase-d-implementation-*`) |
 | Last verification date | 2026-08-02 (checkpoint; full engine rerun pending) |
