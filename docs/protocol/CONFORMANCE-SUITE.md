@@ -26,6 +26,10 @@ generated once by TypeScript and verified independently in Rust.
 - Golden crypto suite (TypeScript): `packages/core/src/crypto/crypto.test.ts`.
 - Phase D hostile-node matrix: `packages/core/src/crypto/hostile-node-evaluation.test.ts`
   (15 fail-closed fixtures, 0 bypasses).
+- **Certified adapter request-hash vectors**: 4 frozen golden hashes for
+  AI SDK / MCP / Mastra / LangGraph tool naming
+  (`packages/sdk/js/src/v2/adapters/vectors.test.ts`), pinned with a fixed
+  request identity (`GovernanceContext.requestId`/`nonce`/`requestedAt`).
 
 ## Running
 
@@ -38,6 +42,8 @@ The runner executes, in order:
 1. TypeScript golden crypto suite (package-local).
 2. TypeScript D-10 hostile-node matrix.
 3. Rust conformance crate (`cargo test`).
+4. SDK 1.0 governance/proof/error suite.
+5. SDK adapter request-hash vectors.
 
 It exits non-zero if any suite fails and prints a per-suite summary.
 
@@ -48,6 +54,8 @@ It exits non-zero if any suite fails and prints a per-suite summary.
 | TS golden crypto | 100/100 pass (0 fail) |
 | TS D-10 matrix | 15 fail-closed fixtures, 0 bypasses |
 | Rust conformance | 5/5 tests (46 vectors + request-hash golden vector) |
+| SDK governance/proof/error | 10/10 pass (0 fail) |
+| SDK adapter vectors | 4/4 frozen golden hashes (0 fail) |
 
 ## Publication gate
 

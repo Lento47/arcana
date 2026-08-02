@@ -158,7 +158,7 @@ BLK-D set to be closed first.
 | E7 Certification levels | PARTIAL | certification registry doc (A0–A3 + procedure + nonclaims) | BLK-E-07 |
 | E8 DX/examples | PARTIAL | quickstart + enforcement-level guidance | BLK-E-08 |
 | E9 Protocol governance | PARTIAL | governance doc draft (lifecycle/deprecation/advisory/extensions/matrix) | BLK-E-09 |
-| E10 Ecosystem eval/freeze | PARTIAL | ecosystem evaluation matrix (runtimes/languages/OS/levels + gate status) | BLK-E-10 |
+| E10 Ecosystem eval/freeze | PARTIAL | ecosystem evaluation matrix (runtimes/languages/OS/levels + gate status) + certified adapter request-hash vectors (4 golden hashes; conformance 5/5) | BLK-E-10 |
 
 Partial evidence: `tools/acep-conformance-rust` (2/2), SDK client, schema
 registry, market assessment.

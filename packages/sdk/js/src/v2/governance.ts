@@ -39,6 +39,10 @@ export type GovernanceContext = {
   contractId?: string
   contractRevision?: string
   criterionIds?: string[]
+  /** Deterministic request identity for conformance vectors; otherwise random. */
+  requestId?: string
+  nonce?: string
+  requestedAt?: string
   action: CapabilityAction
   resource?: Partial<CanonicalResource>
   executable?: string
@@ -98,6 +102,9 @@ export function toAuthorizationRequest(
     contractRevision: context.contractRevision,
     criterionIds: context.criterionIds,
     workspaceId: context.workspaceId,
+    requestId: context.requestId,
+    nonce: context.nonce,
+    requestedAt: context.requestedAt,
     tool: toolCall.name,
     action: context.action,
     resource,

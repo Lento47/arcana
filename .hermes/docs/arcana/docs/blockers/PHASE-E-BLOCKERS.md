@@ -16,7 +16,7 @@ stable SDK 1.0.**
 | BLK-E-07 | E7 adapter certification levels | **Registry published 2026-08-02** (`ADAPTER-CERTIFICATION.md`: A0–A3, procedure, nonclaims). Remaining: fixtures per adapter | Certification contract (DONE); per-adapter fixture results |
 | BLK-E-08 | E8 developer experience and examples | `docs/protocol/QUICKSTART.md` published; reference apps + test-node/policy samples pending | DX package + security checklist |
 | BLK-E-09 | E9 protocol governance and compatibility | `docs/protocol/PROTOCOL-GOVERNANCE.md` published (lifecycle, deprecation, advisory, extensions, matrix); registry enforcement pending | Governance doc (DRAFT DONE) + registry enforcement |
-| BLK-E-10 | E10 ecosystem evaluation and freeze | **Matrix published 2026-08-02** (`ECOSYSTEM-EVALUATION.md`: runtimes, languages, OSes, levels + freeze-gate status). Remaining: certified adapter fixtures, live PEP transport, Mastra/LangGraph, macOS/Linux, L3 | Matrix (DRAFT DONE); certified fixtures + freeze |
+| BLK-E-10 | E10 ecosystem evaluation and freeze | **Matrix published 2026-08-02** (`ECOSYSTEM-EVALUATION.md`: runtimes, languages, OSes, levels + freeze-gate status). **Certified adapter fixtures DONE 2026-08-02** (`src/v2/adapters/vectors.test.ts`: 4 frozen request-hash golden vectors — AI SDK/MCP/Mastra/LangGraph naming, pinned request identity; wired into `script/conformance.ts` as suite 5/5; `GovernanceContext` gained deterministic `requestId`/`nonce`/`requestedAt`). Remaining: live PEP transport, macOS/Linux validation, L3 | Matrix (DRAFT DONE); certified fixtures DONE; freeze pending live/L3 |
 
 ## Existing partial evidence
 
