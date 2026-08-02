@@ -70,6 +70,9 @@ export type SyncResponseContext = {
   revocationDigest?: string
   emergencyEpoch?: number
 
+  /** Signed policy/revocation envelope for SNAPSHOT/DELTA responses. */
+  envelope?: Record<string, unknown>
+
   issuedAt: string
   expiresAt: string
 }

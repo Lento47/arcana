@@ -92,6 +92,7 @@ import { globalHandlers } from "./handlers/global"
 import { instanceHandlers } from "./handlers/instance"
 import { mcpHandlers } from "./handlers/mcp"
 import { permissionHandlers } from "./handlers/permission"
+import { policyHandlers } from "./handlers/policy"
 import { proofHandlers } from "./handlers/proof"
 import { projectHandlers } from "./handlers/project"
 import { projectCopyHandlers } from "./handlers/project-copy"
@@ -154,6 +155,7 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
   Layer.provide([
     approvalHandlers,
     proofHandlers,
+    policyHandlers,
     enrollmentHandlers,
     configHandlers,
     experimentalHandlers,
