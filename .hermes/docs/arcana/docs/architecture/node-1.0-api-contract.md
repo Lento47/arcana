@@ -94,7 +94,7 @@ arcana node status
 | BLK-D-03 | D-6A-L live Linux workload identity validation | Node identity must be validated against a live Linux workload, not fixtures only |
 | BLK-D-04 | Local proof-store integration feeding the outbox | **DONE 2026-08-02** — `local-proof-source.ts` reads `.arcana/proofs`, builds ordered chained batches, wired into `arcana node proof upload` (2 tests) |
 | D-5 | Emergency push (SSE/WS) beyond pull-based polling | Convergence currently bounded by poll interval; push channel optional for CRITICAL target hardening |
-| D-4 | DELTA bundles + compatibility negotiation | **DELTA transport DONE 2026-08-02** — control plane serves POLICY_DELTA (one-step gap with matching base digest) and REVOCATION_DELTA (statements after accepted sequence, bounded at 32); core verification fails closed to FULL_SNAPSHOT_REQUIRED. Remaining: node-client consumption of declared `compatibleFrom`/`compatibleTo` ranges |
+| D-4 | DELTA bundles + compatibility negotiation | **DELTA transport DONE 2026-08-02** — control plane serves POLICY_DELTA (one-step gap with matching base digest) and REVOCATION_DELTA (statements after accepted sequence, bounded at 32); core verification fails closed to FULL_SNAPSHOT_REQUIRED; **node-side sync client validates deltas before acceptance 2026-08-02** (base/sequence/result/target consistency, contiguous revocation statements). Remaining: node runtime local persistence of applied deltas + consumption of declared `compatibleFrom`/`compatibleTo` ranges |
 | L3 | Independent reproduction of the D-10 matrix | Frozen in-repo suite; external reproduction not yet obtained |
 
 ## 8. Nonclaims
