@@ -179,7 +179,7 @@ registry, market assessment.
 | F8 Federation | PARTIAL | agreements + authority intersection + conflict resolution + proof exchange + revocation propagation (5 tests) | BLK-F-08 |
 | F9 Security operations | PARTIAL | alerts + incident timelines + audited campaigns + forensic exports (3 tests) | BLK-F-09 |
 | F10 Data governance | PARTIAL | classification + regional/CMK + PII export/retention (3 tests) | BLK-F-10 |
-| F11 Enterprise API/automation | PARTIAL | canonical admin event surface (2 tests) | BLK-F-11 |
+| F11 Enterprise API/automation | PARTIAL | `/api/enterprise/*` admin surface (orgs/roles/fleet/approvals/audit) + admin events (3 tests) | BLK-F-11 |
 | F12 Commercial readiness | PARTIAL | entitlements + metering-invariant + redacted diagnostics (4 tests) | BLK-F-12 |
 | F13 Assessment + GA freeze | PENDING | freeze draft with gate evidence; external assessment pending | BLK-F-13 |
 

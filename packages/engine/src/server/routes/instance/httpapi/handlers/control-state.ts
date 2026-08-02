@@ -9,6 +9,11 @@ import { SqliteSyncReplayStore } from "@arcana/core/crypto/sync-replay-store-sql
 import { SqlitePolicyBundleStore } from "@arcana/core/crypto/policy-bundle-store-sqlite"
 import { SqliteExecutionLedger } from "@arcana/core/crypto/execution-ledger-sqlite"
 import { SqliteRevocationStore } from "@arcana/core/crypto/revocation-store-sqlite"
+import { SqliteTenantStore } from "@arcana/core/enterprise/tenant-sqlite"
+import { SqliteIdentityStore } from "@arcana/core/enterprise/identity-sqlite"
+import { SqliteFleetStore } from "@arcana/core/enterprise/fleet-sqlite"
+import { SqliteCentralApprovalStore } from "@arcana/core/enterprise/approvals-sqlite"
+import { SqliteAuditArchiveStore } from "@arcana/core/enterprise/audit-archive-sqlite"
 import type { EnrollmentContext } from "@arcana/core/crypto/node-enrollment"
 
 /**
@@ -22,6 +27,11 @@ export type ControlPlaneState = {
   policyStore: SqlitePolicyBundleStore
   executionLedger: SqliteExecutionLedger
   revocationStore: SqliteRevocationStore
+  tenants: SqliteTenantStore
+  identity: SqliteIdentityStore
+  fleet: SqliteFleetStore
+  approvals: SqliteCentralApprovalStore
+  auditArchive: SqliteAuditArchiveStore
 }
 
 const stateCache = new Map<string, ControlPlaneState>()
@@ -39,6 +49,11 @@ export function controlStateFor(directory: string): ControlPlaneState {
       policyStore: new SqlitePolicyBundleStore(db),
       executionLedger: new SqliteExecutionLedger(db),
       revocationStore: new SqliteRevocationStore(db),
+      tenants: new SqliteTenantStore(db),
+      identity: new SqliteIdentityStore(db),
+      fleet: new SqliteFleetStore(db),
+      approvals: new SqliteCentralApprovalStore(db),
+      auditArchive: new SqliteAuditArchiveStore(db),
     }
     stateCache.set(directory, state)
   }
