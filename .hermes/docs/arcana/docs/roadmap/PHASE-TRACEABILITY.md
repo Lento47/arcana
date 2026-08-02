@@ -152,7 +152,7 @@ BLK-D set to be closed first.
 | E1 Protocol freeze | PARTIAL | `PROTOCOL-1.0-SPEC.md` freeze draft + schema registry | BLK-E-01 |
 | E2 Independent conformance | PARTIAL | TS + Rust independent implementations agree on 46 vectors (`script/conformance.ts` 3/3); L3 pending | BLK-E-02 |
 | E3 JS/TS SDK 1.0 | PARTIAL | `@arcana/sdk/v2/governance|proof|errors` (17/17 SDK suite; conformance 4/4; compat contract) | BLK-E-03 |
-| E4 Additional SDK | PENDING | Rust scaffolding only | BLK-E-04 |
+| E4 Additional SDK | PARTIAL | Rust canonical serializer/verifier + request hashing with TS↔Rust golden vector (5 tests) | BLK-E-04 |
 | E5 CLI adapters | PARTIAL | `arcana launch <runtime>` A1 scaffold (declaration, dry-run, evidence) | BLK-E-05 |
 | E6 Framework adapters | PARTIAL | SDK governedTool hook (canonical request + ALLOW-only execution, 3 tests) | BLK-E-06 |
 | E7 Certification levels | PARTIAL | certification registry doc (A0–A3 + procedure + nonclaims) | BLK-E-07 |

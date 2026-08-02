@@ -20,6 +20,9 @@ generated once by TypeScript and verified independently in Rust.
   PARSE/SCHEMA/SIGNATURE/TRUST/AUDIENCE/FRESHNESS/REVOCATION stages across
   capability, policy, node-identity, and revocation envelopes
   (`tools/acep-conformance-rust/vectors/conformance-vectors.json`).
+- **Cross-language request-hash vector**: the same AuthorizationRequest
+  fixture hashes identically in TypeScript and Rust
+  (`b1e96acf45c7fd998e29679720efb522dfb65463ff8633aae79f8470ed5d4168`).
 - Golden crypto suite (TypeScript): `packages/core/src/crypto/crypto.test.ts`.
 - Phase D hostile-node matrix: `packages/core/src/crypto/hostile-node-evaluation.test.ts`
   (15 fail-closed fixtures, 0 bypasses).
@@ -44,7 +47,7 @@ It exits non-zero if any suite fails and prints a per-suite summary.
 |---|---|
 | TS golden crypto | 100/100 pass (0 fail) |
 | TS D-10 matrix | 15 fail-closed fixtures, 0 bypasses |
-| Rust conformance | 2/2 tests (46 vectors) |
+| Rust conformance | 5/5 tests (46 vectors + request-hash golden vector) |
 
 ## Publication gate
 
