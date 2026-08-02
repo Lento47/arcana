@@ -386,19 +386,19 @@ function verifyFreshness(
   now: number,
 ): VerificationResult {
   const expiresAt = envelope.expiresAt as string | undefined
-  if (!expiresAt) {
-    // No expiresAt (e.g. revocation statements use effectiveAt) — skip freshness
-    return { valid: true }
-  }
-  const expiresAtMs = new Date(expiresAt).getTime()
-  if (now > expiresAtMs) {
-    return {
-      valid: false, stage: "FRESHNESS", reason: "EXPIRED",
-      detail: `expired at ${expiresAt}`,
+  if (expiresAt) {
+    const expiresAtMs = new Date(expiresAt).getTime()
+    if (now > expiresAtMs) {
+      return {
+        valid: false, stage: "FRESHNESS", reason: "EXPIRED",
+        detail: `expired at ${expiresAt}`,
+      }
     }
   }
   // Clock-skew tolerance: envelopes issued more than 5 minutes in the future
-  // are rejected (mirrors the sync transport's freshness rule).
+  // are rejected (mirrors the sync transport's freshness rule). This applies
+  // to every envelope kind, including revocation statements that have no
+  // expiresAt: a future-dated revocation must fail closed.
   const issuedAt = envelope.issuedAt as string | undefined
   if (issuedAt) {
     const issuedAtMs = new Date(issuedAt).getTime()
