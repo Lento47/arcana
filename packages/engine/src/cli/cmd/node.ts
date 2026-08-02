@@ -10,9 +10,8 @@ import {
   createProofOutboxRecord,
   processDueProofUploads,
 } from "@arcana/core/crypto/proof-uploader"
-import { buildProofBatch, type SequencedRunProof } from "@arcana/core/crypto/proof-batching"
-import { signProofBatch } from "@arcana/core/crypto/proof-registration"
 import { createSyncClient } from "@/node/sync-client"
+import { buildOutboxRecords, listLocalProofs } from "@/node/local-proof-source"
 import { loadNodeIdentity, saveNodeIdentity, type NodeIdentityFile } from "@/node/node-identity-file"
 import { cmd } from "./cmd"
 import { CliError, effectCmd, fail } from "../effect-cmd"
@@ -160,29 +159,35 @@ export const NodeProofUploadCommand = effectCmd({
     const db = new Database(join(directory, ".arcana", "node.db"))
     const outbox = new SqliteProofOutbox(db)
 
-    // Seed one pending batch from the next sequence range (the local proof
-    // store integration is next; this makes the upload loop operational).
-    const first = args.firstSequence
-    const proofs: SequencedRunProof[] = [first, first + 1].map((seq) => ({
-      localSequence: seq,
-      runProofHash: `local-proof-${seq}`,
-      evidenceHash: `local-evidence-${seq}`,
-      traceHealth: "COMPLETE",
-      timestamp: new Date().toISOString(),
-    }))
-    const built = buildProofBatch(proofs, {
-      trustDomain: identity.trustDomain,
-      nodeId: identity.nodeId,
-      nodeKeyEpoch: identity.nodeKeyEpoch,
-      policySequence: 1,
-      policyDigest: "policy-local",
-      revocationSequence: 0,
-      revocationDigest: "revocation-local",
-      emergencyEpoch: 0,
-    })
-    if (!built.success) return yield* fail(`batch build failed: ${built.reason}`)
-    const envelope = signProofBatch(built.payload, secretKey)
-    outbox.upsert(createProofOutboxRecord(envelope, new Date()))
+    const localProofs = listLocalProofs(directory)
+    if (localProofs.length === 0) {
+      return yield* fail(`no local proofs found in ${join(directory, ".arcana", "proofs")}`)
+    }
+    const { records, sequences } = buildOutboxRecords(
+      {
+        directory,
+        nodeId: identity.nodeId,
+        trustDomain: identity.trustDomain,
+        nodeKeyEpoch: identity.nodeKeyEpoch,
+        policySequence: 1,
+        policyDigest: "policy-local",
+        revocationSequence: 0,
+        revocationDigest: "revocation-local",
+        emergencyEpoch: 0,
+        firstSequence: args.firstSequence,
+      },
+      secretKey,
+    )
+    for (const record of records) {
+      outbox.upsert(record)
+    }
+    if (records.length === 0) {
+      return yield* fail("no proof batches could be built from local proofs")
+    }
+    console.log(`queued ${localProofs.length} local proof(s) across ${records.length} batch(es)`)
+    for (const entry of sequences) {
+      console.log(`  ${entry.localSequence} → ${entry.id}`)
+    }
 
     const upload = createProofUploadTransport({ endpoint: args.endpoint })
     const summaries = yield* Effect.tryPromise({
