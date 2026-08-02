@@ -136,6 +136,7 @@ worker-path patch; no dependency was downgraded.
 | Phase F started: F1 multi-tenant organization model implemented (tenant-scoped records, zero cross-tenant reads by construction, deletion isolation; 3 tests) | BLK-F-01 | Engineering |
 | F2 RBAC core implemented: tenant-scoped roles + permission matrix, privileged-action audit, immediate deprovisioning, visible time-bounded break-glass (5 tests); SSO/SCIM/MFA service integration pending | BLK-F-02 | Engineering |
 | F3 policy lifecycle implemented: validated approved promotion across environments, structural policy diff, audited approvals (6 tests) on top of the D-4 signed bundle store; authoring/simulation editor pending | BLK-F-03 | Engineering |
+| F4 fleet core + F5 central approvals implemented (tenant-scoped inventory/health/heartbeats; exact-inspection approval queue with separation of duties, expiry, bulk-deny-only, emergency revocation; 7 tests) | BLK-F-04/05 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 
