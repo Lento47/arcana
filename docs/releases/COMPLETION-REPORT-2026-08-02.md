@@ -127,6 +127,7 @@ worker-path patch; no dependency was downgraded.
 | Emergency deny-list implemented (`POST /api/revocations/emergency`: immediate node revocation + signed NODE statement propagation; sync 401) and Node 1.0 API contract draft published; release freeze remains gated on TLS, live Linux validation, proof-store integration, independent reproduction | BLK-D-05/07/09 | Engineering |
 | Local proof store integration completed: `arcana node proof upload` now reads the durable `.arcana/proofs` store, builds deterministic ordered batches (chained across batch boundaries), and runs the upload loop (2 tests) | BLK-D-04 | Engineering |
 | Phase E started: `PROTOCOL-1.0-SPEC.md` freeze draft + independent conformance harness (TS + Rust agree on 46 vectors, `script/conformance.ts` 3/3 suites) | BLK-E-01/02 | Engineering |
+| SDK 1.0 governance surface shipped: canonical authorization request builder, framework-adapter mapping hook, strict envelope verification (`@arcana/sdk/v2/governance`, SDK suite 10/10) | BLK-E-03 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 

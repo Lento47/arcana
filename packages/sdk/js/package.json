@@ -15,6 +15,7 @@
     "./server": "./src/server.ts",
     "./v2": "./src/v2/index.ts",
     "./v2/client": "./src/v2/client.ts",
+    "./v2/governance": "./src/v2/governance.ts",
     "./v2/gen/client": "./src/v2/gen/client/index.ts",
     "./v2/server": "./src/v2/server.ts"
   },
@@ -23,6 +24,7 @@
   ],
   "devDependencies": {
     "@hey-api/openapi-ts": "0.90.10",
+    "@tsconfig/bun": "catalog:",
     "@tsconfig/node22": "catalog:",
     "@types/cross-spawn": "catalog:",
     "@types/node": "catalog:",
@@ -30,6 +32,7 @@
     "@types/bun": "catalog:"
   },
   "dependencies": {
+    "@arcana/core": "workspace:*",
     "cross-spawn": "catalog:"
   }
 }
