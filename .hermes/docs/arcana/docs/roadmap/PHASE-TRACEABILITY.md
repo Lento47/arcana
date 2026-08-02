@@ -175,8 +175,8 @@ registry, market assessment.
 | F4 Fleet ops | PARTIAL | fleet inventory + health derivation + heartbeats (3 tests) | BLK-F-04 |
 | F5 Central approvals | PARTIAL | central queue: exact inspection, separation of duties, expiry, bulk deny, emergency revocation (4 tests) | BLK-F-05 |
 | F6 Audit/compliance archive | PARTIAL | immutable archive + fingerprint export + retention/legal-hold/custody (4 tests) | BLK-F-06 |
-| F7 HA/DR | PENDING | — | BLK-F-07 |
-| F8 Federation | PENDING | — | BLK-F-08 |
+| F7 HA/DR | PARTIAL | targets + digest-verified restore + drill evaluation + degraded fail-closed (3 tests) | BLK-F-07 |
+| F8 Federation | PARTIAL | agreements + authority intersection + conflict resolution + proof exchange + revocation propagation (5 tests) | BLK-F-08 |
 | F9 Security operations | PENDING | — | BLK-F-09 |
 | F10 Data governance | PENDING | — | BLK-F-10 |
 | F11 Enterprise API/automation | PENDING | local HTTP API | BLK-F-11 |

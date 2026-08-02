@@ -138,6 +138,7 @@ worker-path patch; no dependency was downgraded.
 | F3 policy lifecycle implemented: validated approved promotion across environments, structural policy diff, audited approvals (6 tests) on top of the D-4 signed bundle store; authoring/simulation editor pending | BLK-F-03 | Engineering |
 | F4 fleet core + F5 central approvals implemented (tenant-scoped inventory/health/heartbeats; exact-inspection approval queue with separation of duties, expiry, bulk-deny-only, emergency revocation; 7 tests) | BLK-F-04/05 | Engineering |
 | F6 audit/compliance archive implemented: immutable tenant-scoped proof retention, fingerprint-verified export, custody chain, retention with legal hold (4 tests); compliance mappings + auditor console pending | BLK-F-06 | Engineering |
+| F7 HA/DR core (digest-verified backup/restore, drill evaluation vs RPO/RTO, degraded fail-closed; 3 tests) + F8 federation core (authority intersection never broadens, conflict resolution, proof exchange, revocation propagation; 5 tests) implemented | BLK-F-07/08 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 
