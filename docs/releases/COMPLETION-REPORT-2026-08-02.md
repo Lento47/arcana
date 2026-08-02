@@ -131,6 +131,7 @@ worker-path patch; no dependency was downgraded.
 | SDK RunProof verifier shipped: schema/lifecycle/timestamp checks + canonical fingerprint with tamper detection (`@arcana/sdk/v2/proof`, SDK suite 15/15) | BLK-E-03 | Engineering |
 | SDK stable error model + compatibility contract shipped (`@arcana/sdk/v2/errors`, `SDK-1.0-COMPATIBILITY.md`; conformance runner now 4/4 incl. SDK suite 17/17); protocol governance + quickstart docs published | BLK-E-03/08/09 | Engineering |
 | Adapter layer started: `arcana launch <runtime>` A1 scaffold (declaration + dry-run + evidence, no sandbox claim), SDK `governedTool` framework hook (ALLOW-only, exact binding), adapter certification registry published | BLK-E-05/06/07 | Engineering |
+| E4 Rust SDK foundation: canonical request hashing ported byte-for-byte from TypeScript with a cross-language golden vector (identical hash in TS and Rust); Rust crate 5/5 tests | BLK-E-04 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 
