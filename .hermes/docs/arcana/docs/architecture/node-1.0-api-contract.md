@@ -70,6 +70,7 @@ arcana node status
 - `governed-distributed-pep.ts` — offline + revocation + claim gates
 - `proof-registration.ts` / `-sqlite.ts`, `proof-uploader.ts`,
   `proof-outbox-sqlite.ts` — proof registration and upload
+- `local-proof-source.ts` — durable local proof store → outbox integration
 - `hostile-node-evaluation.test.ts` — D-10 frozen matrix
 
 ## 6. Playbook §31 gate evidence
@@ -91,7 +92,7 @@ arcana node status
 |---|---|---|
 | BLK-D-07 | TLS/mTLS transport encryption + channel binding; OS-level key protection | Playbook D3 requires authenticated, encrypted channels; message-layer auth is DONE but passive MITM confidentiality is not |
 | BLK-D-03 | D-6A-L live Linux workload identity validation | Node identity must be validated against a live Linux workload, not fixtures only |
-| BLK-D-04 | Local proof-store integration feeding the outbox | Proof upload currently seeds batches from the CLI; production mounting requires the real local proof store |
+| BLK-D-04 | Local proof-store integration feeding the outbox | **DONE 2026-08-02** — `local-proof-source.ts` reads `.arcana/proofs`, builds ordered chained batches, wired into `arcana node proof upload` (2 tests) |
 | D-5 | Emergency push (SSE/WS) beyond pull-based polling | Convergence currently bounded by poll interval; push channel optional for CRITICAL target hardening |
 | D-4 | DELTA bundles + compatibility negotiation | Snapshot distribution is complete; delta transport remains |
 | L3 | Independent reproduction of the D-10 matrix | Frozen in-repo suite; external reproduction not yet obtained |
