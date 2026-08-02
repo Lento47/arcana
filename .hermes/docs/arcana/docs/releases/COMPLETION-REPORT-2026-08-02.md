@@ -134,6 +134,7 @@ worker-path patch; no dependency was downgraded.
 | E4 Rust SDK foundation: canonical request hashing ported byte-for-byte from TypeScript with a cross-language golden vector (identical hash in TS and Rust); Rust crate 5/5 tests | BLK-E-04 | Engineering |
 | MCP governed-tool hook shipped (`governedMcpTool`, MCP_DESCRIPTION default provenance, ALLOW-only; SDK suite 22/22) + ecosystem evaluation matrix published (E10 draft with freeze-gate status) | BLK-E-06/10 | Engineering |
 | Phase F started: F1 multi-tenant organization model implemented (tenant-scoped records, zero cross-tenant reads by construction, deletion isolation; 3 tests) | BLK-F-01 | Engineering |
+| F2 RBAC core implemented: tenant-scoped roles + permission matrix, privileged-action audit, immediate deprovisioning, visible time-bounded break-glass (5 tests); SSO/SCIM/MFA service integration pending | BLK-F-02 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 
