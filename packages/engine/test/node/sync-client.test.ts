@@ -73,6 +73,8 @@ function policyDeltaContext(
     responseKind: "POLICY_DELTA",
     policySequence: 2,
     policyDigest: "digest-2",
+    compatibleFrom: 1,
+    compatibleTo: 1,
     delta,
     envelope: {
       schemaVersion: 1,
@@ -177,6 +179,7 @@ describe("D-6B-T sync client", () => {
       ...INPUT,
       acceptedPolicySequence: 1,
       acceptedPolicyDigest: "digest-1",
+      supportedCompatibleVersion: 1,
     })
     expect(result.kind).toBe("RESPONSE")
     if (result.kind !== "RESPONSE") return
@@ -216,6 +219,62 @@ describe("D-6B-T sync client", () => {
     expect(result.kind).toBe("ERROR")
     if (result.kind !== "ERROR") return
     expect(result.message).toContain("delta validation failed")
+  })
+
+  it("fails closed when compatibility negotiation fails", async () => {
+    const fakeFetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { context: { requestId: string; clientNonce: string } }
+      const context = policyDeltaContext(body.context.requestId, body.context.clientNonce, {
+        compatibleFrom: 1,
+        compatibleTo: 1,
+      })
+      return new Response(
+        JSON.stringify({ kind: "RESPONSE", envelope: signSyncResponse(context, serverKey.secretKey) }),
+        { status: 200 },
+      )
+    }
+    const client = createSyncClient({
+      endpoint: "http://control.example",
+      serverPublicKey: serverKey.publicKey,
+      fetchImpl: fakeFetch,
+    })
+    const result = await client.syncPolicy({
+      ...INPUT,
+      acceptedPolicySequence: 1,
+      acceptedPolicyDigest: "digest-1",
+      supportedCompatibleVersion: 2,
+    })
+    expect(result.kind).toBe("ERROR")
+    if (result.kind !== "ERROR") return
+    expect(result.message).toContain("compatibility negotiation failed")
+  })
+
+  it("fails closed when a policy response omits the compatibility range", async () => {
+    const fakeFetch = async (input: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { context: { requestId: string; clientNonce: string } }
+      const context = policyDeltaContext(body.context.requestId, body.context.clientNonce, {
+        compatibleFrom: undefined,
+        compatibleTo: undefined,
+      })
+      return new Response(
+        JSON.stringify({ kind: "RESPONSE", envelope: signSyncResponse(context, serverKey.secretKey) }),
+        { status: 200 },
+      )
+    }
+    const client = createSyncClient({
+      endpoint: "http://control.example",
+      serverPublicKey: serverKey.publicKey,
+      fetchImpl: fakeFetch,
+    })
+    const result = await client.syncPolicy({
+      ...INPUT,
+      acceptedPolicySequence: 1,
+      acceptedPolicyDigest: "digest-1",
+      supportedCompatibleVersion: 1,
+    })
+    expect(result.kind).toBe("ERROR")
+    if (result.kind !== "ERROR") return
+    expect(result.message).toContain("missing compatibility range")
   })
 
   it("validates contiguous REVOCATION_DELTA and rejects gaps", async () => {

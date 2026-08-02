@@ -268,6 +268,7 @@ export const NodeSyncCommand = effectCmd({
       acceptedRevocationSequence: persistedRevocation?.sequence ?? 0,
       acceptedRevocationDigest: persistedRevocation?.digest,
       acceptedEmergencyEpoch: 0,
+      supportedCompatibleVersion: 1,
     }
     const result = yield* Effect.tryPromise({
       try: () => (args.kind === "policy" ? client.syncPolicy(input) : client.syncRevocation(input)),

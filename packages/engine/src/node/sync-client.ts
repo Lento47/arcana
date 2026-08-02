@@ -36,6 +36,8 @@ export type NodeSyncInput = {
   acceptedRevocationSequence: number
   acceptedRevocationDigest?: string
   acceptedEmergencyEpoch: number
+  /** Node-supported policy compatibility version (D-4 negotiation). */
+  supportedCompatibleVersion?: number
   requestId?: string
 }
 
@@ -138,6 +140,31 @@ export function validateRevocationDeltaResponse(
   return { valid: true }
 }
 
+/**
+ * D-4 compatibility negotiation: a node that declares a supported
+ * compatible version only accepts policy responses whose served range
+ * covers it. A missing range on a policy response fails closed.
+ */
+export function validateCompatibility(
+  context: SyncResponseContext,
+  supportedVersion: number | undefined,
+): { valid: true } | { valid: false; reason: string } {
+  if (supportedVersion === undefined) return { valid: true }
+  const isPolicyResponse =
+    context.responseKind === "POLICY_SNAPSHOT" || context.responseKind === "POLICY_DELTA"
+  if (!isPolicyResponse) return { valid: true }
+  if (context.compatibleFrom === undefined || context.compatibleTo === undefined) {
+    return { valid: false, reason: "policy response missing compatibility range" }
+  }
+  if (supportedVersion < context.compatibleFrom || supportedVersion > context.compatibleTo) {
+    return {
+      valid: false,
+      reason: `compatibility negotiation failed: supported ${supportedVersion} outside [${context.compatibleFrom}, ${context.compatibleTo}]`,
+    }
+  }
+  return { valid: true }
+}
+
 export function createSyncClient(options: SyncClientOptions): {
   syncPolicy(input: NodeSyncInput): Promise<SyncClientResult>
   syncRevocation(input: NodeSyncInput): Promise<SyncClientResult>
@@ -226,6 +253,13 @@ export function createSyncClient(options: SyncClientOptions): {
       if (!deltaCheck.valid) {
         return { kind: "ERROR", status: 200, message: `delta validation failed: ${deltaCheck.reason}` }
       }
+    }
+    const compatibility = validateCompatibility(
+      body.envelope.context,
+      input.supportedCompatibleVersion,
+    )
+    if (!compatibility.valid) {
+      return { kind: "ERROR", status: 200, message: compatibility.reason }
     }
 
     return { kind: "RESPONSE", context: body.envelope.context, envelope: body.envelope }

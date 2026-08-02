@@ -383,6 +383,8 @@ describe("syncNode HttpApi (D-6B-T)", () => {
           basePolicyDigest: "digest-1",
           resultPolicyDigest: "digest-2",
         })
+        expect(deltaBody.envelope.context.compatibleFrom).toBe(1)
+        expect(deltaBody.envelope.context.compatibleTo).toBe(1)
         expect(deltaBody.envelope.context.envelope?.policyDigest).toBe("digest-2")
         const verifiedDelta = verifySyncResponse(deltaBody.envelope, issuerKey.publicKey, {
           nodeId: "node-alpha",
@@ -408,6 +410,8 @@ describe("syncNode HttpApi (D-6B-T)", () => {
         }
         expect(snapshotBody.envelope.context.responseKind).toBe("POLICY_SNAPSHOT")
         expect(snapshotBody.envelope.context.delta).toBeUndefined()
+        expect(snapshotBody.envelope.context.compatibleFrom).toBe(1)
+        expect(snapshotBody.envelope.context.compatibleTo).toBe(1)
 
         const revDigests: string[] = []
         for (const sequence of [1, 2]) {

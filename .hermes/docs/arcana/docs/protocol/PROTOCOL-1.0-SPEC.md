@@ -78,6 +78,10 @@ the result digest equals the target `policyDigest`; any mismatch fails
 closed to `FULL_SNAPSHOT_REQUIRED`. REVOCATION_DELTA carries
 `envelopes` — the signed statements after the node's accepted sequence,
 bounded at 32 per response.
+Policy responses (POLICY_SNAPSHOT and POLICY_DELTA) also carry
+`compatibleFrom`/`compatibleTo`; a node that declares a supported compatible
+version must reject a bundle whose range excludes it, and fails closed when
+the range is missing.
 
 Execution statuses: PENDING, EXECUTING, COMPLETED, FAILED,
 UNKNOWN_AFTER_CRASH, UNKNOWN_AFTER_NETWORK, REJECTED.
