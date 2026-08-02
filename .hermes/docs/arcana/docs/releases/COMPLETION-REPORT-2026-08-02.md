@@ -143,6 +143,7 @@ worker-path patch; no dependency was downgraded.
 | F7 HA/DR core (digest-verified backup/restore, drill evaluation vs RPO/RTO, degraded fail-closed; 3 tests) + F8 federation core (authority intersection never broadens, conflict resolution, proof exchange, revocation propagation; 5 tests) implemented | BLK-F-07/08 | Engineering |
 | F9 security-ops core (alerts, incident timelines, audited revocation campaigns, forensic exports), F10 data governance (classification, regional/CMK, PII controls), F11 admin event surface (webhook/SIEM/ticketing envelopes) implemented (8 tests) | BLK-F-09/10/11 | Engineering |
 | F12 commercial readiness core (tiered entitlements, metering-never-affects-security invariant, redacted diagnostics, upgrade policy; 4 tests) + Phase F GA freeze draft published (gate evidence; freeze not authorized) | BLK-F-12/13 | Engineering |
+| Enterprise admin HTTP surface mounted (`/api/enterprise/*`: organizations, roles, fleet, approvals with exact inspection, audit; HTTP integration test) — production mounting of F1/F2/F4/F5 cores | BLK-F-01/02/04/05/11 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 

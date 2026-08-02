@@ -8,6 +8,7 @@ import { ConfigApi } from "./groups/config"
 import { ControlApi } from "./groups/control"
 import { ControlPlaneApi } from "./groups/control-plane"
 import { EnrollmentApi } from "./groups/enrollment"
+import { EnterpriseApi } from "./groups/enterprise"
 import { EventApi } from "./groups/event"
 import { ExecutionApi } from "./groups/executions"
 import { ExperimentalApi } from "./groups/experimental"
@@ -60,6 +61,7 @@ export const InstanceHttpApi = HttpApi.make("arcana-instance")
   .addHttpApi(ApprovalApi)
 .addHttpApi(ConfigApi)
 .addHttpApi(EnrollmentApi)
+.addHttpApi(EnterpriseApi)
 .addHttpApi(ExecutionApi)
 .addHttpApi(ExperimentalApi)
   .addHttpApi(FileApi)
