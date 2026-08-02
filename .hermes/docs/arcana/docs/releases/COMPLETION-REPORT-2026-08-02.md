@@ -133,6 +133,7 @@ worker-path patch; no dependency was downgraded.
 | Adapter layer started: `arcana launch <runtime>` A1 scaffold (declaration + dry-run + evidence, no sandbox claim), SDK `governedTool` framework hook (ALLOW-only, exact binding), adapter certification registry published | BLK-E-05/06/07 | Engineering |
 | E4 Rust SDK foundation: canonical request hashing ported byte-for-byte from TypeScript with a cross-language golden vector (identical hash in TS and Rust); Rust crate 5/5 tests | BLK-E-04 | Engineering |
 | MCP governed-tool hook shipped (`governedMcpTool`, MCP_DESCRIPTION default provenance, ALLOW-only; SDK suite 22/22) + ecosystem evaluation matrix published (E10 draft with freeze-gate status) | BLK-E-06/10 | Engineering |
+| Phase F started: F1 multi-tenant organization model implemented (tenant-scoped records, zero cross-tenant reads by construction, deletion isolation; 3 tests) | BLK-F-01 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 
