@@ -72,6 +72,7 @@ export type SignatureDomain =
   | "arcana:node-identity:v1"
   | "arcana:revocation:v1"
   | "arcana:node-proof-batch:v1"
+  | "arcana:join-token:v1"
 
 /**
  * Build the signature input bytes:
