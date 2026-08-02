@@ -149,8 +149,8 @@ BLK-D set to be closed first.
 
 | Task | Status | Evidence | Blocker |
 |---|---|---|---|
-| E1 Protocol freeze | PENDING | `docs/protocol/SCHEMA-VERSION-REGISTRY.md` draft | BLK-E-01 |
-| E2 Independent conformance | PARTIAL | 46 internal vectors; not independent | BLK-E-02 |
+| E1 Protocol freeze | PARTIAL | `PROTOCOL-1.0-SPEC.md` freeze draft + schema registry | BLK-E-01 |
+| E2 Independent conformance | PARTIAL | TS + Rust independent implementations agree on 46 vectors (`script/conformance.ts` 3/3); L3 pending | BLK-E-02 |
 | E3 JS/TS SDK 1.0 | PARTIAL | `packages/sdk/js` 7/7 | BLK-E-03 |
 | E4 Additional SDK | PENDING | Rust scaffolding only | BLK-E-04 |
 | E5 CLI adapters | PENDING | none | BLK-E-05 |
