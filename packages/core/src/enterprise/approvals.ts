@@ -33,6 +33,7 @@ export interface CentralApprovalStore {
   put(record: CentralApprovalRecord): void
   get(tenantId: string, approvalId: string): CentralApprovalRecord | undefined
   list(tenantId: string, status: CentralApprovalStatus): CentralApprovalRecord[]
+  all(tenantId: string): CentralApprovalRecord[]
   updateStatus(tenantId: string, approvalId: string, status: CentralApprovalStatus, decidedAt: string): void
 }
 

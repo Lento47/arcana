@@ -1486,6 +1486,20 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       )
     })
 
+    const listApprovals = Effect.fn("EnterpriseHttpApi.listApprovals")(function* (ctx: {
+      params: { tenantId: string }
+      query: {
+        directory?: string
+        status?: "PENDING" | "APPROVED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "REJECTED"
+      }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const store = controlStateFor(directory).approvals
+      return ctx.query.status
+        ? store.list(ctx.params.tenantId, ctx.query.status)
+        : store.all(ctx.params.tenantId)
+    })
+
     return handlers
       .handle("createOrganization", createOrganization)
       .handle("assignRole", assignRole)
@@ -1560,5 +1574,6 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       .handle("listWebhooks", listWebhooks)
       .handle("listWebhookDeliveries", listWebhookDeliveries)
       .handle("deliverWebhooks", deliverWebhooks)
+      .handle("listApprovals", listApprovals)
   }),
 )

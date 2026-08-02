@@ -153,6 +153,7 @@ worker-path patch; no dependency was downgraded.
 | F3 policy draft validation (schema/signature/chain check without publishing; 2 core + 1 integration test), F9 anomaly-detection heuristics (alert burst, revocation velocity, backlog, stale ratio; 3 core + 1 integration test), and F11 ticketing payloads (deterministic titles/priorities/labels; 1 core + 1 integration test) implemented and mounted | BLK-F-03/09/11 | Engineering |
 | F8 federated revocation transport exchange implemented and mounted (`federation-transport.ts` + SQLite: agreement-validated outbox/inbox, delivery state tracking, deduplicated receive; 3 core + 1 integration test); live network delivery + channel binding remain ops | BLK-F-08 | Engineering |
 | F11 webhook delivery sink implemented and mounted (`webhooks.ts` + SQLite: endpoint registry, auto-enqueue on admin events, bounded retry/backoff, durable delivery state; 4 core + 1 integration test) — closes the F11 webhooks/event-streams item | BLK-F-11 | Engineering |
+| F5 approvals list endpoint added (`CentralApprovalStore.all` + `GET /api/enterprise/*/approvals` with status filter; integration tested) — supports the escalation/auditor consoles | BLK-F-05 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 

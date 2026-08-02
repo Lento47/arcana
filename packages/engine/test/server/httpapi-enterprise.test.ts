@@ -104,4 +104,89 @@ describe("enterprise HttpApi (F1-F6 surface)", () => {
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )
+
+  it.instance(
+    "lists central approvals with optional status filtering",
+    () =>
+      Effect.gen(function* () {
+        Flag.ARCANA_EXPERIMENTAL_WORKSPACES = true
+        const tmp = yield* TestInstance
+        const headers = { "x-opencode-directory": tmp.directory, "content-type": "application/json" }
+
+        const created = yield* requestInDirectory(EnterprisePaths.createOrganization, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ tenantId: "tenant-a", name: "Acme" }),
+        })
+        expect(created.status).toBe(200)
+        yield* requestInDirectory(
+          EnterprisePaths.assignRole.replace(":tenantId", "tenant-a"),
+          tmp.directory,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ userId: "u-admin", role: "ADMIN" }),
+          },
+        )
+
+        for (const approvalId of ["appr-1", "appr-2"]) {
+          const queued = yield* requestInDirectory(
+            EnterprisePaths.createApproval.replace(":tenantId", "tenant-a"),
+            tmp.directory,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                approvalId,
+                requestHash: `hash-${approvalId}`,
+                requesterId: "u-agent",
+                exactRequestJson: JSON.stringify({ requestHash: `hash-${approvalId}` }),
+                expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+              }),
+            },
+          )
+          expect(queued.status).toBe(200)
+        }
+
+        const all = yield* requestInDirectory(
+          EnterprisePaths.approvals.replace(":tenantId", "tenant-a"),
+          tmp.directory,
+          { method: "GET", headers },
+        )
+        const allBody = (yield* all.json) as Array<{ approvalId: string; status: string }>
+        expect(allBody.map((a) => a.approvalId).sort()).toEqual(["appr-1", "appr-2"])
+        expect(allBody.every((a) => a.status === "PENDING")).toBe(true)
+
+        const pending = yield* requestInDirectory(
+          `${EnterprisePaths.approvals.replace(":tenantId", "tenant-a")}?status=PENDING`,
+          tmp.directory,
+          { method: "GET", headers },
+        )
+        expect(yield* pending.json).toHaveLength(2)
+
+        yield* requestInDirectory(
+          EnterprisePaths.decideApproval.replace(":tenantId", "tenant-a").replace(":approvalId", "appr-1"),
+          tmp.directory,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              actorUserId: "u-admin",
+              decision: "APPROVE",
+              inspectedRequestJson: JSON.stringify({ requestHash: "hash-appr-1" }),
+            }),
+          },
+        )
+
+        const approved = yield* requestInDirectory(
+          `${EnterprisePaths.approvals.replace(":tenantId", "tenant-a")}?status=APPROVED`,
+          tmp.directory,
+          { method: "GET", headers },
+        )
+        const approvedBody = (yield* approved.json) as Array<{ approvalId: string }>
+        expect(approvedBody).toHaveLength(1)
+        expect(approvedBody[0]?.approvalId).toBe("appr-1")
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
 })
