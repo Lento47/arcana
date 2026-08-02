@@ -1,4 +1,13 @@
-# Arcana Task Register (living)
+# Arcana Task Register and Phase Traceability (consolidated)
+
+**Document class:** living task register + traceability matrix
+**Authority:** secondary — status decisions live in `docs/STATUS.md`
+**Consolidated:** 2026-08-02 — merges the former `docs/TASKS.md` and `docs/TASKS.md`
+**Applies to commit:** `882ea468` (latest documentation checkpoint)
+
+Part 1 is the living per-task status register (playbook tasks plus AUD-xx campaign tasks). Part 2 is the task → evidence → gate traceability matrix.
+
+## Task register
 
 **Document class:** living task register
 **Authority:** secondary — status authority is `docs/STATUS.md`
@@ -127,7 +136,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | F10 Data governance and privacy | 5% | PARTIAL | **Data governance core IMPLEMENTED 2026-08-02** (`packages/core/src/enterprise/data-governance.ts`): classification (incl. PII), regional + CMK storage constraints, PII export control (telemetry opt-out), PII retention, input classification (3 tests). **HTTP governance checks MOUNTED 2026-08-02** (storable/exportable/classify/PII-retention; integration tested). Remaining: regional-storage plumbing + CMK integration | BLK-F-10 |
 | F11 Enterprise API and automation | 4% | PARTIAL | **Admin HTTP surface MOUNTED 2026-08-02** (`/api/enterprise/*` in the engine server): all F1-F12 cores mounted (see PHASE-TRACEABILITY; 18 HTTP integration tests). **Admin-event store + SIEM CEF export IMPLEMENTED 2026-08-02** (`admin-events-sqlite.ts`, `siem-export.ts`: JSON-lines + ArcSight CEF with escaping; 4 core tests) and MOUNTED (record/list/siem-export endpoints; integration tested). **Ticketing payloads IMPLEMENTED 2026-08-02** (`ticketing.ts`: deterministic titles/priorities/labels per admin event; 1 core test) and MOUNTED (`ticketing/export`; integration tested). **Webhook delivery sink IMPLEMENTED 2026-08-02** (`webhooks.ts` + SQLite: endpoint registry, auto-enqueue on admin events, bounded retry/backoff, durable delivery state; 4 core tests) and MOUNTED (`webhooks`/`webhooks/deliveries`/`webhooks/deliver`; integration tested). **SDK enterprise admin client IMPLEMENTED 2026-08-02** (`packages/sdk/js/src/v2/enterprise.ts`: typed automation; injectable fetch; 4 SDK tests) — satisfies F11 "Terraform/provider or equivalent automation". Remaining: live ticketing transport adapters + optional Terraform provider | BLK-F-11 |
 | F12 Commercial readiness | 4% | PARTIAL | **Core IMPLEMENTED 2026-08-02** (`packages/core/src/enterprise/commercial-readiness.ts`): tiered entitlements (COMMUNITY/TEAM/ENTERPRISE), metering-never-affects-security invariant (explicit + tested), secret-redacted support diagnostics, upgrade policy (4 tests). **Metering pipeline IMPLEMENTED 2026-08-02** (`metering.ts` + SQLite: usage events, per-tenant/feature/window aggregation, informational quota status; 3 core tests) and MOUNTED (record/summary/quota endpoints; integration tested). **Usage export DONE 2026-08-02** (`GET /api/enterprise/*/commercial/usage/export`: per-feature totals; integration tested). Remaining: license text review + live telemetry ingestion from engine events | BLK-F-12 |
-| F13 Independent assessment + GA freeze | 3% | PENDING | `docs/releases/PHASE-F-FREEZE-DRAFT.md` published (gate evidence + operational gates); freeze NOT authorized — external architecture review, penetration test, threat-model review, supply-chain assessment, L3 reproduction pending | BLK-F-13 |
+| F13 Independent assessment + GA freeze | 3% | PENDING | `docs/FREEZE-RELEASE.md` published (gate evidence + operational gates); freeze NOT authorized — external architecture review, penetration test, threat-model review, supply-chain assessment, L3 reproduction pending | BLK-F-13 |
 
 ## Product tracks
 
@@ -193,9 +202,234 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | AUD-48 | Allow spine navigation (j/k) and `v` approval inspection while an ACTION GATE is open — the gate owns decisions (←/→ + Enter), but the operator can inspect the pending approval row before deciding; `a`/`d` remain gated until the gate resolves — DONE (TUI 785 tests, 0 fail) | TUI-2.1 | Engineering |
 | AUD-49 | `v` on a permission-gate row (`permission:<id>`, e.g. the `01◤ approve` contract.accept row) now opens a read-only permission inspector (request ID, session, permission, patterns, tool message/call IDs, description) — DONE (TUI 787 tests, 0 fail) | TUI-2.1 | Engineering |
 | AUD-50 | Document the D-7.1 OS-containment engine integration blocker with explicit owner/artifact/evidence (BLK-D-02 unblock requirements) — DONE | BLK-D-02 | Engineering |
-| AUD-51 | Produce the CLI 1.0 contract freeze draft (`docs/releases/CLI-1.0-FREEZE-DRAFT.md`: command catalog, JSON/NDJSON + exit-code proposal, launch protocol, gate evidence; NO self-sign-off) — DONE | BLK-CLI-01..05 | Engineering |
-| AUD-52 | Produce the release-flow preparation plan (`docs/releases/RELEASE-FLOW-PLAN.md`: verify → freeze/tag → build → sign → installer/update smoke → publish → mainline promotion → post-verify; owners/evidence; NOT executed) — DONE | BLK-1.0-04/05, AUD-19 | Release |
+| AUD-51 | Produce the CLI 1.0 contract freeze draft (`docs/FREEZE-RELEASE.md`: command catalog, JSON/NDJSON + exit-code proposal, launch protocol, gate evidence; NO self-sign-off) — DONE | BLK-CLI-01..05 | Engineering |
+| AUD-52 | Produce the release-flow preparation plan (`docs/FREEZE-RELEASE.md`: verify → freeze/tag → build → sign → installer/update smoke → publish → mainline promotion → post-verify; owners/evidence; NOT executed) — DONE | BLK-1.0-04/05, AUD-19 | Release |
 | AUD-53 | Full verification pass at the campaign checkpoint (core/engine/TUI/SDK/conformance/typechecks; totals recorded) — DONE | — | Engineering |
 | AUD-54 | TUI-2.1 operator consoles (F3 simulation editor, F5 escalation console, F6 auditor console) — design proposed; **PENDING USER DECISION** (implementation requires approval) | TUI-2.1 | Engineering |
 | AUD-55 | Live PEP transport (SDK adapter `authorize()` wired to an engine HTTP PEP endpoint) — design proposed; **PENDING USER DECISION** (implementation requires approval) | BLK-E-06/E-10 | Engineering |
-| AUD-56 | Consolidate the external/human gate register with exact owner/artifact/evidence per gate (TLS, live Linux, live exercises, TUI matrices, F13, L3, license, Node freeze, Phase F freeze, Arcana 1.0 sign-off) — DONE (`docs/blockers/README.md`) | — | All owners |
+| AUD-56 | Consolidate the external/human gate register with exact owner/artifact/evidence per gate (TLS, live Linux, live exercises, TUI matrices, F13, L3, license, Node freeze, Phase F freeze, Arcana 1.0 sign-off) — DONE (`docs/BLOCKERS.md`) | — | All owners |
+
+## Phase traceability
+
+**Document class:** traceability matrix (task → evidence → gate)
+**Authority:** secondary — normative gates in the master spec (Part II),
+status authority `docs/STATUS.md`
+**Created:** 2026-08-02 (Phase A–F completion audit)
+**Audited commit:** `0392ad7b` (2026-08-02 checkpoint commit; suites verified
+on the pre-commit worktree, which the commit reproduces exactly)
+
+This document traces every playbook phase and task to its implementation
+evidence, its release gates, and its open blockers. It is the companion to
+`docs/BLOCKERS.md` (gap register) and `docs/TASKS.md` (living
+task status).
+
+Evidence legend:
+
+```text
+SRC   production source file
+TST   test suite or file (with result)
+TAG   git tag / frozen milestone
+DOC   frozen documentation
+OPS   operator-observed validation
+MSR   measured performance value
+```
+
+---
+
+## Phase A — Epistemic Foundation (COMPLETE / FROZEN)
+
+Trace: `User objective → active contract → criteria/obligations → claims →
+evidence references → events → completion evaluation`.
+
+| Task | Evidence | Trace detail |
+|---|---|---|
+| A1 Typed claim/evidence schemas | SRC `packages/engine/src/session/epistemic/claim-store.ts`; TST claim/evidence suites | Stable IDs, status, evidence references to immutable events |
+| A2 Contracts, criteria, obligations, revisions | SRC `contract-engine.ts`, `obligation-engine.ts`, `contract-admission.ts`; TST `contract-admission.test.ts`, `contract-engine.test.ts` | Revisions, supersession, deterministic status transitions |
+| A3 Append-only event store | SRC `event-store.ts`; TST `event-hash.test.ts`, `event-store-concurrency.test.ts`, `event-store-multi-connection.test.ts`, `failure-injection.test.ts` | Hash chain, transactional sequences, mutation detection |
+| A4 Execution receipts/artifacts | SRC PEP receipt emission; TST `receipt-kind.test.ts`, completion-gate suites | Tool receipts, before/after hashes, redaction |
+| A5 Hard completion gate | SRC `completion-verifier.ts`; TST `completion-verifier.test.ts`, `completion-gate-idempotency.test.ts` | VerifiedComplete ⇒ criteria + obligations + evidence |
+| A6 Inspection commands | SRC `packages/arcana/src/cli/run/*`, proof CLI; TST 116/116 CLI suite | inspect/verify/export/replay |
+| A7 Freeze | DOC `PHASE-B-MILESTONE.md`, `docs/BLOCKERS.md` | — |
+
+Gates (playbook §8): all PASS — see `docs/BLOCKERS.md`.
+
+---
+
+## Phase B — Verification and Replay (COMPLETE / FROZEN)
+
+Trace: `RunProof axes → integrity → verification → reproducibility → trace
+health → replay → live revalidation`.
+
+| Task | Evidence | Trace detail |
+|---|---|---|
+| B1 RunProof schema | SRC `packages/arcana/src/proof/types.ts`, `run-proof.ts` | Versioned, canonicalizable, immutable |
+| B2 Proof gen/verify | SRC `proof-manager.ts`, `proof-runtime.ts`; TST `run-proof.test.ts`, `run-proof-export.test.ts` | Model-independent verification |
+| B3 Audit replay | SRC `audit-replay.ts`; TST `audit-replay.test.ts` | State reconstruction without effects |
+| B4 Deterministic replay | SRC `deterministic-replay.ts`; TST `replay-fixture.test.ts`, `replay-matrix.test.ts` | Structured commands, digests, drift detection |
+| B5 Live revalidation | SRC `live-revalidation.ts`; TST `live-revalidation.test.ts` | New linked result, history immutable |
+| B6 Trace health | SRC RunProof projection; TST degraded-evidence cases | COMPLETE/DEGRADED/UNAVAILABLE semantics |
+| B7 Performance | MSR derive p50 2.89–5.40 ms; audit replay < 500 ms (2026-08-01/02) | Re-measure at final commit (AUD-08) |
+| B8 Freeze | TAG `arcana-epistemic-runtime-phase-b`; DOC milestone | — |
+
+Gates (playbook §14): all PASS — see `docs/BLOCKERS.md`.
+
+---
+
+## Phase C — Local Governed Autonomy (EVALUATION PASS + sign-off)
+
+Trace: `canonical request → capability snapshot → pure PDP → fresh PEP →
+atomic claim → exact effect → receipt → RunProof security profiles`.
+
+| Task | Evidence | Trace detail |
+|---|---|---|
+| C1 Canonical requests | SRC `packages/core/src/capability/request-hash.ts`, `canonical-resource.ts` | Hash covers all consequential fields |
+| C2 Durable grants | SRC `grant-store-sqlite.ts`, `session-grants.ts`; TST `grant-store*.test.ts`, `session-grants.test.ts` | Statuses, atomic use counters, restart |
+| C3 Pure PDP | SRC `pdp.ts`; TST `pdp.test.ts` | Deterministic over immutable snapshot |
+| C4 PEP | SRC `pep.ts`, `pep-integration.ts`, `effect-boundary.ts`; TST `pep.test.ts`, `production-enforcement.test.ts`, `resolve-execute-context.test.ts` | Freshness, atomic claim, exact-once |
+| C5 Intent binding | SRC `intent-binding*.ts`, `intent-runtime.ts`; TST `intent-binding.test.ts`, `intent-runtime.test.ts`, `intent-binding-store-persistence.test.ts` | Session/contract-revision scoped |
+| C6 Provenance/sensitivity | SRC `labels.ts`, `field-lineage.ts`; TST `labels.test.ts`, `information-flow.test.ts`, `field-lineage.test.ts` | Unknown lineage fails closed |
+| C7 Scoped approvals | SRC `scoped-approval.ts`; TST `scoped-approval.test.ts`, `pep-use-claim.test.ts`, `atomic-use-replay.test.ts` | PENDING→APPROVED→CLAIMED→CONSUMED |
+| C8 Delegation | SRC `delegation.ts`, `runtime-delegation.ts`, `child-launch-barrier.ts`; TST `delegation*.test.ts` | Attenuation + ancestor revocation |
+| C9 Trust adapters | SRC `trust-adapters.ts`; TST `trust-adapters.test.ts` | Workspace/MCP identity + schema digest |
+| C10 Security profiles | SRC RunProof profiles; TST profile/trace suites | Zeros meaningful only with COMPLETE trace |
+| C11 Adversarial evaluation | TST 95 fixtures across 8 groups (wave 1–5 + gap closure); result 0 unexpected allows, 0 executor leaks | Frozen suite |
+| C12 Freeze/tag | TAG `arcana-governed-autonomy-phase-c`, `phase-c-production-enforcement`; DOC `docs/security/PHASE-C-MILESTONE.md`; sign-off `docs/audits/ARCANA-SIGNOFF-2026-08-01.md` | Approve with exceptions |
+
+Gates (playbook §19): all PASS within declared scope — see
+`docs/BLOCKERS.md`.
+
+---
+
+## TUI 1.0 track
+
+| Milestone | Status | Evidence | Trace |
+|---|---|---|---|
+| TUI-1 governance visibility | COMPLETE (historical tag) | TAG `arcana-tui-1-governance-observability` | Not in current branch ancestry |
+| TUI-2 interactive authority | COMPLETE (frozen) | TAG `arcana-tui-2-interactive-authority-control` → `e0b14a2d`; approval lifecycle sources | Approval pipeline mounted |
+| TUI-2.1 production polish | PARTIAL — automated green, freeze NOT authorized | TST TUI 781/1/0; SRC spine polish, `approval-inspector.tsx`, daemon respawn; DOC `docs/tui/TUI-2.1-FREEZE-OPERATOR-RUNBOOK.md` | Runbook Gates 1–10 pending (BLK-TUI-01..08) |
+| TUI-3 delegation console | PENDING | — | — |
+| TUI-4 proof/replay/audit UI | PARTIAL | SRC `packages/tui/src/proof-view/run-proof-view.ts` | Full audit UI pending |
+| TUI-5 final polish | PENDING | — | — |
+
+Live manual observations already recorded (2026-08-02, see TUI-2.1 freeze
+sign-off): startup, contract admission, governance aggregation, proof axes,
+tool execution, gate-based approval, denial with zero effects, restart
+durability. Missing: spine-key approval lifecycle, matrices, live-stream
+protocol, performance.
+
+---
+
+## CLI 1.0 track
+
+| Group | Status | Evidence |
+|---|---|---|
+| Session/execution | PARTIAL | `arcana run`, `session list`, `serve`, history |
+| Policy/capability | PARTIAL | `arcana capability`, approval CLI paths |
+| Proof/replay | PARTIAL (not frozen) | 116/116 tests incl. `proof inspect/verify/export`, `replay audit/deterministic`, `revalidate run` |
+| External launch | PARTIAL | `arcana launch <runtime>` A1 scaffold implemented (declaration, `--dry-run`, supervision, evidence); production adapter pending (BLK-CLI-01) |
+| Operations | PARTIAL | doctor/trust/models/providers/daemon/gateway/cron |
+| JSON/exit codes/completion/cross-platform | PARTIAL | `CLI-1.0-FREEZE-DRAFT.md` proposes catalog + JSON/NDJSON + exit-code contract; completion + cross-platform matrix pending (BLK-CLI-02/03/04) |
+
+---
+
+## Phase D — Distributed Governed Autonomy (ACTIVE, ~45–55%)
+
+| Task | Status | Evidence | Blocker |
+|---|---|---|---|
+| D1 Node identity/enrollment | PARTIAL | identity contracts + core registry + HTTP `/api/nodes/*` + `arcana node enroll` CLI + identity file; D-8B registry integrated; optional rotate CLI pending | BLK-D-05 |
+| D2 Signed short-lived grants | IMPLEMENTED | 7-layer verifier, 46 conformance vectors (41 negative), Rust conformance 2/2 | BLK-D-09 |
+| D3 Mutual authentication | PARTIAL | D-6B sync control + **D-6B-T signed-envelope HTTP transport** (15 tests); TLS pending | BLK-D-01 |
+| D4 Policy distribution | PARTIAL | signed bundle store (publish/staged/last-known-good/rollback, 11 tests) + HTTP policy endpoints + POLICY_SNAPSHOT/POLICY_DELTA/REVOCATION_DELTA via sync transport (4 core + 4 engine tests) + node-side delta validation (3 engine tests) + node runtime durable sync state (4 engine tests) + compatibility negotiation (2 client tests) | BLK-D-01 |
+| D5 Remote revocation | PARTIAL | revocation store + convergence bounds + REVOCATION_SNAPSHOT/REVOCATION_DELTA delivery + emergency deny-list (node revoked, sync 401) + emergency push channel (SSE) + `arcana node key rotate` CLI | BLK-D-01 |
+| D6 Replay resistance | PARTIAL | reducers + transport replay protection + **execution ledger + governed distributed PEP** (claim-before-effect, offline gating; 17 tests); hostile-node matrix pending | BLK-D-01 |
+| D7 Proof sync | FROZEN (local) | TAG `arcana-phase-d7-local-distributed-authority` → `017ad998`; D-7.1 containment partial: Linux openat2 scaffold + Windows handle final-path reader (`tools/fs-containment-rust`, 10/10) + runnable hostile-escape fixture suite (`bounded-file-reader.test.ts`, 7/7) | BLK-D-02 |
+| D8 Proof composition | PARTIAL | D-8A batching + **D-8B end-to-end** (control-plane + node side + CLI + local proof store integration, chained batches); ops/L3 outstanding | BLK-D-04 |
+| D9 Offline/partition | PARTIAL | design doc + D-4C reducer + `offline-policy.ts` grant/lease policy (15 tests); PEP wiring + node-level partition tests pending | BLK-D-06 |
+| D10 Adversarial eval/freeze | PARTIAL | hostile-node matrix: 15 fail-closed fixtures / 0 bypasses across all ten categories + revocation hostile suite: 9 fixtures / 0 bypasses (16 tests); Node 1.0 freeze pending | BLK-D-08/09 |
+
+Architecture docs: `docs/architecture/phase-d/` (node-identity, signed-grants,
+policy-synchronization, revocation-protocol, offline-enforcement,
+protocol-state-machines, threat-model, implementation-roadmap).
+
+Gates (playbook §31): NOT YET EVALUABLE — all distributed gates require the
+BLK-D set to be closed first.
+
+---
+
+## Phase E — Protocol, SDKs, and External Adapters (PLANNED / PARTIAL)
+
+| Task | Status | Evidence | Blocker |
+|---|---|---|---|
+| E1 Protocol freeze | PARTIAL | `PROTOCOL-1.0-SPEC.md` freeze draft + schema registry | BLK-E-01 |
+| E2 Independent conformance | PARTIAL | TS + Rust independent implementations agree on 46 vectors (`script/conformance.ts` 3/3); L3 pending | BLK-E-02 |
+| E3 JS/TS SDK 1.0 | PARTIAL | `@arcana/sdk/v2/governance|proof|errors` (17/17 SDK suite; conformance 4/4; compat contract) | BLK-E-03 |
+| E4 Additional SDK | PARTIAL | Rust canonical serializer/verifier + request hashing with TS↔Rust golden vector (5 tests) | BLK-E-04 |
+| E5 CLI adapters | PARTIAL | `arcana launch <runtime>` A1 scaffold (declaration, dry-run, evidence) | BLK-E-05 |
+| E6 Framework adapters | PARTIAL | SDK governedTool + governedMcpTool + governedMastraTool + governedLangGraphTool hooks (11 tests) | BLK-E-06 |
+| E7 Certification levels | PARTIAL | certification registry doc (A0–A3 + procedure + nonclaims) | BLK-E-07 |
+| E8 DX/examples | PARTIAL | quickstart + enforcement-level guidance | BLK-E-08 |
+| E9 Protocol governance | PARTIAL | governance doc draft (lifecycle/deprecation/advisory/extensions/matrix) | BLK-E-09 |
+| E10 Ecosystem eval/freeze | PARTIAL | ecosystem evaluation matrix (runtimes/languages/OS/levels + gate status) + certified adapter request-hash vectors (4 golden hashes; conformance 5/5) | BLK-E-10 |
+
+Partial evidence: `tools/acep-conformance-rust` (2/2), SDK client, schema
+registry, market assessment.
+
+---
+
+## Phase F — Enterprise Control Plane and Federation (PLANNED / PARTIAL)
+
+| Task | Status | Evidence | Blocker |
+|---|---|---|---|
+| F1 Multi-tenant model | PARTIAL | tenant model + SQLite store (tenant-scoped queries, deletion isolation, 3 tests) | BLK-F-01 |
+| F2 Identity and access | PARTIAL | RBAC core: tenant-scoped roles/permissions, privileged audit, immediate deprovisioning, break-glass (5 tests) | BLK-F-02 |
+| F3 Central policy | PARTIAL | D-4 signed store + F3 promotion/diff/approval lifecycle (6 tests) + draft validation without publishing (2 tests) + HTTP promotion/diff/validate-draft (RBAC; integration tested) | BLK-F-03 |
+| F4 Fleet ops | PARTIAL | fleet inventory + health derivation + heartbeats + node diagnostics + upgrade-ring rollout (6 core tests) + HTTP register/heartbeat/view/diagnostics/rings/plan (integration tested) | BLK-F-04 |
+| F5 Central approvals | PARTIAL | central queue: exact inspection, separation of duties, expiry, bulk deny, emergency revocation (4 tests) + escalation core (4 tests) + HTTP revoke/bulk-deny/escalation/approvals-list (RBAC; integration tested) | BLK-F-05 |
+| F6 Audit/compliance archive | PARTIAL | immutable archive + fingerprint export + retention/legal-hold/custody (4 tests) + HTTP archive/export/custody/hold/sweep (integration tested) + compliance crosswalk doc (SOC2/ISO/NIST) | BLK-F-06 |
+| F7 HA/DR | PARTIAL | targets + digest-verified restore + drill evaluation + degraded fail-closed (3 tests) + HTTP backup/restore/drill (integration tested) | BLK-F-07 |
+| F8 Federation | PARTIAL | agreements + authority intersection + conflict resolution + proof exchange + revocation propagation (5 tests) + cross-org approval routing with bounded daily caps (3 tests) + revocation transport outbox/inbox (3 tests) + HTTP agreements/exchange/revocation/intersection/rules/route/outbox/inbox (integration tested) | BLK-F-08 |
+| F9 Security operations | PARTIAL | alerts + incident timelines + audited campaigns + forensic exports (3 tests) + anomaly heuristics (3 tests) + HTTP alerts/timeline/campaign/forensic/anomaly-scan (RBAC; integration tested) | BLK-F-09 |
+| F10 Data governance | PARTIAL | classification + regional/CMK + PII export/retention (3 tests) + HTTP governance checks (integration tested) | BLK-F-10 |
+| F11 Enterprise API/automation | PARTIAL | `/api/enterprise/*` admin surface (F1-F12 cores mounted) + admin-event store + SIEM CEF export (4 core tests) + ticketing payloads (1 core test) + webhook delivery sink (4 core tests) + HTTP record/list/siem-export/ticketing/webhooks (18 HTTP integration tests + 2 event tests) + SDK enterprise admin client (4 SDK tests; equivalent automation) | BLK-F-11 |
+| F12 Commercial readiness | PARTIAL | entitlements + metering-invariant + redacted diagnostics (4 tests) + metering pipeline (3 tests) + HTTP entitlement/metering/usage/quota/usage-export/diagnostics/upgrade (integration tested) | BLK-F-12 |
+| F13 Assessment + GA freeze | PENDING | freeze draft with gate evidence; external assessment pending | BLK-F-13 |
+
+---
+
+## Cross-cutting traces
+
+### Verification checkpoint (2026-08-02, working tree)
+
+| Suite | Result |
+|---|---|
+| TUI | 781 pass / 1 skip / 0 fail (782) |
+| Engine | 4251 pass / 74 skip / 1 todo / 0 fail (4326, 990.6 s) |
+| Core | 1264 pass / 7 skip / 0 fail (1271) |
+| Arcana CLI/proof | 116 pass / 0 fail |
+| SDK JS | 7 pass / 0 fail |
+| Rust conformance | 2 pass / 0 fail |
+| Typecheck | 16/16 packages |
+| Build | 8/8 tasks; engine binary smoke `0.0.0-phase-d-implementation-202608021350` |
+
+### Release-gate bookkeeping
+
+| Gate class | Verdict |
+|---|---|
+| Local unauthorized executions | 0 (Phase C frozen suite) |
+| TUI/CLI authorization disagreements | not yet adversarially frozen (BLK-CLI-05) |
+| Proof verification regressions | 0 (Phase B suites) |
+| Installer/upgrade data loss | N/A — no signed release flow executed (BLK-1.0-04) |
+| Known critical security defects | 0 known in scope; L3+ validation absent (AUD-20) |
+| Benign local workflows | 100% of frozen release suite (Phase C 14/14) |
+| Supported-platform smoke | Windows 100%; Linux/macOS pending (BLK-CLI-04) |
+
+### Chain of authority (trace root)
+
+```text
+Master spec Parts I–IV (architecture/roadmap)
+  → docs/STATUS.md (live status)
+  → docs/BLOCKERS.md (gap register, this audit)
+  → docs/TASKS.md (living task status)
+  → docs/TASKS.md (this file)
+  → docs/COMPLETION-REPORT.md (checkpoint completion summary)
+```

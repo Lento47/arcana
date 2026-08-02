@@ -134,11 +134,10 @@ validation, manual validation, external validation, release.
 The Phase A–F completion audit added a blocker register, a living task
 register, phase/task traceability, and a checkpoint completion report:
 
-- Blockers: `docs/blockers/README.md` + per-phase registers (A/B/C, TUI,
-  CLI, D, E, F, Arcana 1.0).
-- Task register: `docs/roadmap/TASK-REGISTER.md` (living; new `AUD-` tasks).
-- Traceability: `docs/roadmap/PHASE-TRACEABILITY.md`.
-- Completion report (with bugs): `docs/releases/COMPLETION-REPORT-2026-08-02.md`.
+- Blockers: `docs/BLOCKERS.md` (consolidated register, 2026-08-02).
+- Task register + traceability: `docs/TASKS.md` (living; new `AUD-` tasks).
+- Completion report (with bugs): `docs/COMPLETION-REPORT.md`.
+- Freeze drafts + release plan: `docs/FREEZE-RELEASE.md`.
 - Protocol freeze draft: `docs/protocol/PROTOCOL-1.0-SPEC.md`.
 - Conformance suite + runner: `docs/protocol/CONFORMANCE-SUITE.md`,
   `script/conformance.ts` (TS + Rust independent implementations, 46 vectors).
@@ -166,7 +165,7 @@ gaps and evidence explicit.
 2. Engine/core/TUI/CLI/SDK/Rust suite rerun at the exact final commit.
 3. Mainline promotion (`master` fast-forward to `phase-d-implementation`).
 4. Independent validation (L3+ reproduction of the Phase C evaluation).
-5. Phase D/E/F remaining work per `docs/blockers/`: in-repo engineering is
+5. Phase D/E/F remaining work per `docs/BLOCKERS.md`: in-repo engineering is
    complete; remaining gates are ops/external/human — TLS/mTLS, live Linux
    validation, TUI operator consoles, live DR/compromised-node/key exercises,
    F13 external assessment, L3 reproduction, Node 1.0 freeze sign-off,

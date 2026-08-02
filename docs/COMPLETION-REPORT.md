@@ -37,7 +37,7 @@ every hard gate to pass and every phase to be human-approved before "100%".
 The local product core (A + B + C + frozen TUI-2 + working CLI surfaces) is
 the strongest verified portion of the campaign. Everything distributed,
 external, and enterprise remains behind the blockers documented in
-`docs/blockers/`.
+`docs/BLOCKERS.md`.
 
 ## 3. Completed with evidence
 
@@ -45,7 +45,7 @@ external, and enterprise remains behind the blockers documented in
 
 Typed claims/evidence, revisioned contracts/criteria/obligations, transactional
 hash-linked event store, execution receipts, hard completion gate, inspection
-commands, freeze documentation. Gate audit: `docs/blockers/PHASE-A-BLOCKERS.md`.
+commands, freeze documentation. Gate audit: `docs/BLOCKERS.md` (Phase A section).
 
 ### Phase B — Verification and Replay
 
@@ -53,7 +53,7 @@ RunProof with independent assurance axes, model-independent verification,
 audit replay, deterministic replay, live revalidation, trace health,
 performance baselines, frozen milestone tag
 (`arcana-epistemic-runtime-phase-b`). Gate audit:
-`docs/blockers/PHASE-B-BLOCKERS.md`.
+`docs/BLOCKERS.md` (Phase B section).
 
 ### Phase C — Local Governed Autonomy
 
@@ -108,9 +108,9 @@ worker-path patch; no dependency was downgraded.
 | Objective requirement | Evidence | Status |
 |---|---|---|
 | Finish through Phase F per the four master docs | All F1–F13 cores implemented and mounted (`/api/enterprise/*` + SDK client); freeze draft documents remaining gates | INCOMPLETE — external/operator/human gates remain (TUI consoles, live exercises, F13 assessment, L3, Node freeze, license review) |
-| Document blockers in a new folder | `docs/blockers/README.md` + A/B/C/TUI/CLI/D/E/F/1.0 registers | DONE |
+| Document blockers in a new folder | Consolidated `docs/BLOCKERS.md` (all phase/track registers) | DONE |
 | Save current changes as a checkpoint | Git history; HEAD `0392ad7b`; every commit verified green before landing | DONE |
-| Document every trace from each phase and tasks | `docs/roadmap/PHASE-TRACEABILITY.md` + `TASK-REGISTER.md` | DONE |
+| Document every trace from each phase and tasks | `docs/TASKS.md` (task register + traceability) | DONE |
 | Keep tasks updated and add new tasks along the way | TASK-REGISTER AUD-01..44, updated per commit | DONE |
 | Write a NEW completion document even with bugs | This report (fixed + open bugs, residual risks, totals) | DONE (kept current) |
 | No regressions or downgrade versions | Fresh runs 2026-08-02: core 1465/7/0, SDK 30/0, conformance 5/5, typechecks clean; OpenTUI pinned 0.4.5, no dependency downgrades | VERIFIED |
@@ -135,8 +135,8 @@ worker-path patch; no dependency was downgraded.
 | F-26 | ACTION GATE Esc rejected/declined the request (permission, question, and contract gates) | Esc is now inert on gates (`escapeKey` removed from the permission stage, question Esc-reject bindings removed); gates resolve explicitly with ←/→ + Enter, and the Reject confirmation stage keeps Esc=cancel |
 | F-27 | ACTION GATE blocked all spine interaction, so the pending approval row (`01◤ approve`) could not be focused or inspected | Spine navigation (j/k), copy/details, and `v` inspection now remain available while a gate is open; decisions are still made exclusively in the gate (←/→ + Enter), and `a`/`d` stay gated until it resolves |
 | F-28 | `v` on the `01◤ approve` permission-gate row showed the "no approval to inspect" toast (gate entries are `permission:<id>`, not durable approval records) | New read-only permission inspector (`permission-inspector.tsx`): `v` on a gate row shows request ID, session, permission, patterns, tool message/call IDs, and description; pure row builder + regression tests |
-| CLI 1.0 contract freeze draft produced (`docs/releases/CLI-1.0-FREEZE-DRAFT.md`: command catalog, JSON/NDJSON + exit-code proposal, launch protocol, BLK-CLI-01..05 gate evidence; NOT frozen) | BLK-CLI-01..05 | Engineering |
-| Release-flow preparation plan produced (`docs/releases/RELEASE-FLOW-PLAN.md`: verify → freeze/tag → build → sign → installer/update smoke → publish → mainline promotion → post-verify; owners/evidence; NOT executed) | BLK-1.0-04/05, AUD-19 | Release |
+| CLI 1.0 contract freeze draft produced (`docs/FREEZE-RELEASE.md` §CLI 1.0: command catalog, JSON/NDJSON + exit-code proposal, launch protocol, BLK-CLI-01..05 gate evidence; NOT frozen) | BLK-CLI-01..05 | Engineering |
+| Release-flow preparation plan produced (`docs/FREEZE-RELEASE.md` §Release Flow Plan: verify → freeze/tag → build → sign → installer/update smoke → publish → mainline promotion → post-verify; owners/evidence; NOT executed) | BLK-1.0-04/05, AUD-19 | Release |
 | D-7.1 OS-containment engine integration blocker documented with explicit owner/artifact/evidence (BLK-D-02 unblock requirements) | BLK-D-02 | Engineering |
 
 ### Open / residual bugs and risks
@@ -226,9 +226,8 @@ worker-path patch; no dependency was downgraded.
 
 ## 8. Traceability and blocker index
 
-- Blockers: `docs/blockers/README.md` (10 register files).
-- Living task status: `docs/roadmap/TASK-REGISTER.md`.
-- Task → evidence → gate trace: `docs/roadmap/PHASE-TRACEABILITY.md`.
+- Blockers: `docs/BLOCKERS.md` (consolidated register).
+- Living task status + task → evidence → gate trace: `docs/TASKS.md`.
 - Live status authority: `docs/STATUS.md`.
 - TUI-2.1 freeze runbook: `docs/tui/TUI-2.1-FREEZE-OPERATOR-RUNBOOK.md`.
 

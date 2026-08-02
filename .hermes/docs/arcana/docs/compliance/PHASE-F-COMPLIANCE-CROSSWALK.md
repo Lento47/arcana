@@ -24,7 +24,7 @@ external assessment (BLK-F-13) and explicit human sign-off.
 | F10 Data governance and privacy | C1, C2 | A.8.11, A.8.12 | SI-12, SC-28 | `data-governance.ts`: classification, regional/CMK, PII export/retention |
 | F11 Enterprise API and automation | CC7.1 | A.8.15 | AU-6, AU-12 | `admin-events.ts`, `admin-events-sqlite.ts`, `siem-export.ts` + `/api/enterprise/*` |
 | F12 Commercial readiness | CC6.1 | A.5.15 | AC-3 | `commercial-readiness.ts`, `metering.ts` + SQLite: metering never affects decisions |
-| F13 Assessment and GA freeze | CC8.1 | A.8.25, A.5.8 | CA-2 | `docs/releases/PHASE-F-FREEZE-DRAFT.md`; external assessment pending (BLK-F-13) |
+| F13 Assessment and GA freeze | CC8.1 | A.8.25, A.5.8 | CA-2 | `docs/FREEZE-RELEASE.md` (Phase F GA freeze draft); external assessment pending (BLK-F-13) |
 
 ## Known limits
 
