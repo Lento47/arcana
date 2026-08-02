@@ -1,0 +1,292 @@
+import type { Argv } from "yargs"
+import { join } from "node:path"
+import { Database } from "bun:sqlite"
+import { Effect } from "effect"
+import { ed25519 } from "@noble/curves/ed25519.js"
+import { decodeCanonicalBase64url, encodeBase64url } from "@arcana/core/crypto/canonical-serializer"
+import { createProofUploadTransport } from "@/node/proof-upload-client"
+import { SqliteProofOutbox } from "@arcana/core/crypto/proof-outbox-sqlite"
+import {
+  createProofOutboxRecord,
+  processDueProofUploads,
+} from "@arcana/core/crypto/proof-uploader"
+import { buildProofBatch, type SequencedRunProof } from "@arcana/core/crypto/proof-batching"
+import { signProofBatch } from "@arcana/core/crypto/proof-registration"
+import { createSyncClient } from "@/node/sync-client"
+import { loadNodeIdentity, saveNodeIdentity, type NodeIdentityFile } from "@/node/node-identity-file"
+import { cmd } from "./cmd"
+import { CliError, effectCmd, fail } from "../effect-cmd"
+
+export const NodeCommand = cmd({
+  command: "node",
+  describe: "operate a local Arcana Node (enroll, proof upload, sync, status)",
+  builder: (yargs: Argv) =>
+    yargs
+      .command(NodeEnrollCommand)
+      .command(NodeProofUploadCommand)
+      .command(NodeSyncCommand)
+      .command(NodeStatusCommand)
+      .demandCommand(),
+  async handler() {},
+})
+
+function directoryOption(yargs: Argv): Argv {
+  return yargs.option("directory", {
+    describe: "workspace directory holding node state",
+    type: "string",
+  })
+}
+
+function resolveDirectory(args: { directory?: string }): string {
+  return args.directory ? join(process.cwd(), args.directory) : process.cwd()
+}
+
+// ─── enroll ─────────────────────────────────────────────────────────
+
+export const NodeEnrollCommand = effectCmd({
+  command: "enroll",
+  describe: "enroll this node with a join token against a control plane",
+  instance: false,
+  builder: (yargs) =>
+    directoryOption(yargs)
+      .option("token", {
+        describe: "join token JSON (as issued by the control plane)",
+        type: "string",
+        demandOption: true,
+      })
+      .option("key", {
+        describe: "base64url 32-byte Ed25519 secret key seed",
+        type: "string",
+        demandOption: true,
+      })
+      .option("endpoint", {
+        describe: "control-plane base URL",
+        type: "string",
+        demandOption: true,
+      }),
+  handler: Effect.fn("Cli.node.enroll")(function* (args) {
+    const directory = resolveDirectory(args)
+    const existing = loadNodeIdentity(directory)
+    if (existing) {
+      return yield* fail(`node already enrolled as ${existing.nodeId}; rotate via the control plane`)
+    }
+
+    const seed = decodeCanonicalBase64url(args.key)
+    if (!seed || seed.length !== 32) {
+      return yield* fail("--key must be a base64url 32-byte Ed25519 seed")
+    }
+    const keys = ed25519.keygen(seed)
+    const token = JSON.parse(args.token) as Record<string, unknown>
+
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(`${args.endpoint.replace(/\/+$/, "")}/api/nodes/enroll`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            joinToken: token,
+            publicKey: encodeBase64url(keys.publicKey),
+          }),
+        }),
+      catch: (error) => new CliError({ message: `enrollment transport error: ${String(error)}` }),
+    })
+    if (response.status !== 200) {
+      const text = yield* Effect.tryPromise({
+        try: () => response.text().catch(() => ""),
+        catch: (error) => new CliError({ message: `enrollment response error: ${String(error)}` }),
+      })
+      return yield* fail(`enrollment failed: HTTP ${response.status} ${text}`)
+    }
+    const body = (yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: (error) => new CliError({ message: `enrollment response parse error: ${String(error)}` }),
+    })) as {
+      kind: string
+      detail?: string
+      record?: {
+        nodeId: string
+        trustDomain: string
+        publicKey: string
+        nodeKeyEpoch: number
+        certificate: Record<string, unknown>
+        enrolledAt: string
+      }
+    }
+    if (body.kind !== "ENROLLED" || !body.record) {
+      return yield* fail(`enrollment rejected: ${body.detail ?? body.kind}`)
+    }
+
+    const identity: NodeIdentityFile = {
+      nodeId: body.record.nodeId,
+      trustDomain: body.record.trustDomain,
+      secretKeyB64: encodeBase64url(keys.secretKey),
+      publicKeyB64: body.record.publicKey,
+      nodeKeyEpoch: body.record.nodeKeyEpoch,
+      certificate: body.record.certificate,
+      enrolledAt: body.record.enrolledAt,
+    }
+    saveNodeIdentity(directory, identity)
+    console.log(`node ${identity.nodeId} enrolled (epoch ${identity.nodeKeyEpoch})`)
+  }),
+})
+
+// ─── proof upload ───────────────────────────────────────────────────
+
+export const NodeProofUploadCommand = effectCmd({
+  command: "proof upload",
+  describe: "build due proof batches and upload them to the control plane",
+  instance: false,
+  builder: (yargs) =>
+    directoryOption(yargs)
+      .option("endpoint", {
+        describe: "control-plane base URL",
+        type: "string",
+        demandOption: true,
+      })
+      .option("first-sequence", {
+        describe: "first local proof sequence for the batch",
+        type: "number",
+        default: 1,
+      }),
+  handler: Effect.fn("Cli.node.proofUpload")(function* (args) {
+    const directory = resolveDirectory(args)
+    const identity = loadNodeIdentity(directory)
+    if (!identity) {
+      return yield* fail("node is not enrolled; run `arcana node enroll` first")
+    }
+    const secretKey = decodeCanonicalBase64url(identity.secretKeyB64)
+    if (!secretKey) return yield* fail("invalid stored node secret key")
+
+    const db = new Database(join(directory, ".arcana", "node.db"))
+    const outbox = new SqliteProofOutbox(db)
+
+    // Seed one pending batch from the next sequence range (the local proof
+    // store integration is next; this makes the upload loop operational).
+    const first = args.firstSequence
+    const proofs: SequencedRunProof[] = [first, first + 1].map((seq) => ({
+      localSequence: seq,
+      runProofHash: `local-proof-${seq}`,
+      evidenceHash: `local-evidence-${seq}`,
+      traceHealth: "COMPLETE",
+      timestamp: new Date().toISOString(),
+    }))
+    const built = buildProofBatch(proofs, {
+      trustDomain: identity.trustDomain,
+      nodeId: identity.nodeId,
+      nodeKeyEpoch: identity.nodeKeyEpoch,
+      policySequence: 1,
+      policyDigest: "policy-local",
+      revocationSequence: 0,
+      revocationDigest: "revocation-local",
+      emergencyEpoch: 0,
+    })
+    if (!built.success) return yield* fail(`batch build failed: ${built.reason}`)
+    const envelope = signProofBatch(built.payload, secretKey)
+    outbox.upsert(createProofOutboxRecord(envelope, new Date()))
+
+    const upload = createProofUploadTransport({ endpoint: args.endpoint })
+    const summaries = yield* Effect.tryPromise({
+      try: () => processDueProofUploads(outbox, identity.nodeId, upload),
+      catch: (error) => new CliError({ message: `proof upload error: ${String(error)}` }),
+    })
+    db.close()
+
+    for (const summary of summaries) {
+      console.log(`${summary.batchRoot.slice(0, 12)}… → ${summary.outcome} (attempts ${summary.attempts})`)
+    }
+    if (summaries.some((s) => s.outcome === "POISONED")) {
+      return yield* fail("one or more proof batches are poisoned")
+    }
+    console.log(`uploaded ${summaries.length} proof batch(es)`)
+  }),
+})
+
+// ─── sync ───────────────────────────────────────────────────────────
+
+export const NodeSyncCommand = effectCmd({
+  command: "sync <kind>",
+  describe: "run an authenticated policy/revocation sync against the control plane",
+  instance: false,
+  builder: (yargs) =>
+    directoryOption(yargs)
+      .positional("kind", {
+        describe: "policy | revocation",
+        type: "string",
+        choices: ["policy", "revocation"],
+        demandOption: true,
+      })
+      .option("endpoint", {
+        describe: "control-plane base URL",
+        type: "string",
+        demandOption: true,
+      })
+      .option("server-key", {
+        describe: "base64url control-plane issuer public key",
+        type: "string",
+        demandOption: true,
+      }),
+  handler: Effect.fn("Cli.node.sync")(function* (args) {
+    const directory = resolveDirectory(args)
+    const identity = loadNodeIdentity(directory)
+    if (!identity) {
+      return yield* fail("node is not enrolled; run `arcana node enroll` first")
+    }
+    const serverPublicKey = decodeCanonicalBase64url(args.serverKey)
+    if (!serverPublicKey || serverPublicKey.length !== 32) {
+      return yield* fail("--server-key must be a base64url 32-byte Ed25519 public key")
+    }
+    const secretKey = decodeCanonicalBase64url(identity.secretKeyB64)
+    if (!secretKey) return yield* fail("invalid stored node secret key")
+
+    const client = createSyncClient({
+      endpoint: args.endpoint,
+      serverPublicKey,
+    })
+    const input = {
+      nodeId: identity.nodeId,
+      trustDomain: identity.trustDomain,
+      nodeKeyEpoch: identity.nodeKeyEpoch,
+      nodeCertificateFingerprint: String(identity.certificate.nodeId ?? identity.nodeId),
+      secretKey,
+      acceptedPolicySequence: 0,
+      acceptedRevocationSequence: 0,
+      acceptedEmergencyEpoch: 0,
+    }
+    const result = yield* Effect.tryPromise({
+      try: () => (args.kind === "policy" ? client.syncPolicy(input) : client.syncRevocation(input)),
+      catch: (error) => new CliError({ message: `sync error: ${String(error)}` }),
+    })
+    if (result.kind === "ERROR") {
+      return yield* fail(`sync failed: ${result.message}`)
+    }
+    console.log(
+      `sync ${args.kind}: ${result.context.responseKind} (${result.context.revocationSequence ?? result.context.policySequence ?? "?"})`,
+    )
+  }),
+})
+
+// ─── status ─────────────────────────────────────────────────────────
+
+export const NodeStatusCommand = effectCmd({
+  command: "status",
+  describe: "show node enrollment and proof outbox status",
+  instance: false,
+  builder: (yargs) => directoryOption(yargs),
+  handler: Effect.fn("Cli.node.status")(function* (args) {
+    const directory = resolveDirectory(args)
+    const identity = loadNodeIdentity(directory)
+    if (!identity) {
+      console.log("node: not enrolled")
+      return
+    }
+    const db = new Database(join(directory, ".arcana", "node.db"))
+    const outbox = new SqliteProofOutbox(db)
+    const stats = outbox.stats(identity.nodeId)
+    db.close()
+    console.log(`node:        ${identity.nodeId}`)
+    console.log(`trustDomain: ${identity.trustDomain}`)
+    console.log(`keyEpoch:    ${identity.nodeKeyEpoch}`)
+    console.log(`enrolledAt:  ${identity.enrolledAt}`)
+    console.log(`outbox:      ${stats.pending} pending · ${stats.registered} registered · ${stats.poisoned} poisoned`)
+  }),
+})
