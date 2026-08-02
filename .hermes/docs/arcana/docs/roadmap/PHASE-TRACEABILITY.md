@@ -115,9 +115,9 @@ protocol, performance.
 | Session/execution | PARTIAL | `arcana run`, `session list`, `serve`, history |
 | Policy/capability | PARTIAL | `arcana capability`, approval CLI paths |
 | Proof/replay | PARTIAL (not frozen) | 116/116 tests incl. `proof inspect/verify/export`, `replay audit/deterministic`, `revalidate run` |
-| External launch | PENDING | `arcana launch codex/claude/gemini` unimplemented (BLK-CLI-01) |
+| External launch | PARTIAL | `arcana launch <runtime>` A1 scaffold implemented (declaration, `--dry-run`, supervision, evidence); production adapter pending (BLK-CLI-01) |
 | Operations | PARTIAL | doctor/trust/models/providers/daemon/gateway/cron |
-| JSON/exit codes/completion/cross-platform | PENDING | BLK-CLI-02/03/04 |
+| JSON/exit codes/completion/cross-platform | PARTIAL | `CLI-1.0-FREEZE-DRAFT.md` proposes catalog + JSON/NDJSON + exit-code contract; completion + cross-platform matrix pending (BLK-CLI-02/03/04) |
 
 ---
 
