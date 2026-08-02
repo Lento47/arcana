@@ -117,6 +117,7 @@ worker-path patch; no dependency was downgraded.
 | D-7.1 Windows handle-based containment reader implemented (10/10 tests incl. traversal + junction escape); engine integration + live Linux validation pending | BLK-D-02 | Engineering |
 | D-8B proof registration implemented end-to-end (control-plane ledger + HTTP, node-side uploader/outbox + HTTP client, 33 tests); scheduler/CLI wiring + hostile-node matrix pending | BLK-D-04 | Engineering |
 | D-9 offline grant/lease policy implemented (15 tests); distributed PEP wiring + node-level partition tests pending | BLK-D-06 | Engineering |
+| D-1 enrollment ceremony + key rotation implemented (13 tests); enrollment endpoints + node-side ceremony client pending | BLK-D-05 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 

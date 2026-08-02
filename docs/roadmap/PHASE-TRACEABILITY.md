@@ -125,7 +125,7 @@ protocol, performance.
 
 | Task | Status | Evidence | Blocker |
 |---|---|---|---|
-| D1 Node identity/enrollment | PARTIAL | identity envelope/contracts; enrollment pending | BLK-D-05 |
+| D1 Node identity/enrollment | PARTIAL | identity contracts + `node-enrollment.ts`/`node-enrollment-sqlite.ts` (tokens, certificates, rotation, decommissioning; 13 tests); endpoints + node-side client pending | BLK-D-05 |
 | D2 Signed short-lived grants | IMPLEMENTED | 7-layer verifier, 46 conformance vectors (41 negative), Rust conformance 2/2 | BLK-D-09 |
 | D3 Mutual authentication | PARTIAL | D-6B authenticated sync control | BLK-D-01 |
 | D4 Policy distribution | PARTIAL | policy digest chains in envelopes | BLK-D-01 |
