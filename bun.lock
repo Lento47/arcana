@@ -445,7 +445,7 @@
         "@opentui/core": "catalog:",
         "@opentui/keymap": "catalog:",
         "@opentui/solid": "catalog:",
-        "@tsconfig/node22": "catalog:",
+        "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "typescript": "catalog:",
@@ -482,10 +482,12 @@
       "name": "@arcana/sdk",
       "version": "1.17.8",
       "dependencies": {
+        "@arcana/core": "workspace:*",
         "cross-spawn": "catalog:",
       },
       "devDependencies": {
         "@hey-api/openapi-ts": "0.90.10",
+        "@tsconfig/bun": "catalog:",
         "@tsconfig/node22": "catalog:",
         "@types/bun": "catalog:",
         "@types/cross-spawn": "catalog:",

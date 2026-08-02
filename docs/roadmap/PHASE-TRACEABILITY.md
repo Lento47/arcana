@@ -151,7 +151,7 @@ BLK-D set to be closed first.
 |---|---|---|---|
 | E1 Protocol freeze | PARTIAL | `PROTOCOL-1.0-SPEC.md` freeze draft + schema registry | BLK-E-01 |
 | E2 Independent conformance | PARTIAL | TS + Rust independent implementations agree on 46 vectors (`script/conformance.ts` 3/3); L3 pending | BLK-E-02 |
-| E3 JS/TS SDK 1.0 | PARTIAL | `packages/sdk/js` 7/7 | BLK-E-03 |
+| E3 JS/TS SDK 1.0 | PARTIAL | `@arcana/sdk/v2/governance` (request builder, adapter hook, envelope verify; 10/10 SDK suite) | BLK-E-03 |
 | E4 Additional SDK | PENDING | Rust scaffolding only | BLK-E-04 |
 | E5 CLI adapters | PENDING | none | BLK-E-05 |
 | E6 Framework adapters | PENDING | none | BLK-E-06 |

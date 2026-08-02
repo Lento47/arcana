@@ -1,11 +1,11 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig.json",
-  "extends": "@tsconfig/node22/tsconfig.json",
+  "extends": "@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
-    "module": "nodenext",
+    "module": "esnext",
     "declaration": true,
-    "moduleResolution": "nodenext",
+    "moduleResolution": "bundler",
     "lib": [
       "es2022",
       "dom",

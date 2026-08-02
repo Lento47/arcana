@@ -132,12 +132,14 @@ function detectDuplicateKeys(raw: string): void {
       // Check if this is a key (followed by :)
       let j = i
       while (j < len && (raw[j] === " " || raw[j] === "\t" || raw[j] === "\n" || raw[j] === "\r")) j++
-      if (j < len && raw[j] === ":" && stack.length > 0 && stack[stack.length - 1].inObject) {
-        const keySet = stack[stack.length - 1].keys
-        if (keySet.has(decoded)) {
-          throw new Error(`duplicate JSON key: "${decoded}"`)
+      if (j < len && raw[j] === ":" && stack.length > 0) {
+        const top = stack[stack.length - 1]!
+        if (top.inObject) {
+          if (top.keys.has(decoded)) {
+            throw new Error(`duplicate JSON key: "${decoded}"`)
+          }
+          top.keys.add(decoded)
         }
-        keySet.add(decoded)
       }
     } else if (ch === "{") {
       stack.push({ keys: new Set(), inObject: true })
@@ -217,7 +219,7 @@ function validateEnvelopeSchema(
   if (issues.length > 0) {
     return {
       valid: false, stage: "SCHEMA", reason: "SCHEMA_UNSUPPORTED",
-      detail: issues.map(i => `${i.field}: ${i.message}`).join("; "),
+      detail: issues.map((i: { field: string; message: string }) => `${i.field}: ${i.message}`).join("; "),
     }
   }
 
