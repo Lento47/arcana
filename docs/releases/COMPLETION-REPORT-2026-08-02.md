@@ -155,6 +155,7 @@ worker-path patch; no dependency was downgraded.
 | F11 webhook delivery sink implemented and mounted (`webhooks.ts` + SQLite: endpoint registry, auto-enqueue on admin events, bounded retry/backoff, durable delivery state; 4 core + 1 integration test) — closes the F11 webhooks/event-streams item | BLK-F-11 | Engineering |
 | F5 approvals list endpoint added (`CentralApprovalStore.all` + `GET /api/enterprise/*/approvals` with status filter; integration tested) — supports the escalation/auditor consoles | BLK-F-05 | Engineering |
 | Mastra + LangGraph governed-tool adapters added to the SDK (`governedMastraTool`, `governedLangGraphTool`; ALLOW-only execution, MCP_DESCRIPTION default provenance, exact binding; 6 tests, SDK suite 28/28) — closes the E6 adapter gap | BLK-E-06 | Engineering |
+| D-7.1 hostile-escape fixtures made runnable in the core suite (`bounded-file-reader.test.ts`: traversal, absolute path, null byte, directory, size budget, symlink/junction escape; 7/7) — containment adversary evidence is now part of `bun test` | BLK-D-02/E-05 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 
