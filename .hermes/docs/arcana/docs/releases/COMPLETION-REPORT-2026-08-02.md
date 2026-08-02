@@ -128,7 +128,7 @@ worker-path patch; no dependency was downgraded.
 | F-21 | Proof/governed rows swapped order on live updates ("duplicate proof") | stable ordering + regression test |
 | F-22 | Daemon idle-stop left the TUI with "Failed to send prompt / Unable to connect" | daemon respawn in `tui.ts` + `sdk.tsx` + `daemon-respawn.test.ts` |
 | F-23 | Approval inspector invisible + spine keys unreachable from the keyboard | `approval-inspector.tsx` + command-spine keys + `approval-inspector.test.ts` |
-| F-24 | TUI `v` inspect did nothing on non-PENDING approvals and on non-approval rows | Inspection gate decoupled from PENDING-only `a`/`d` gate (`approvalInspectionAllowed`); `v` on non-approval rows falls back to the details view; regression tests |
+| F-24 | TUI `v` inspect did nothing on non-PENDING approvals and was silent on non-approval rows | Inspection gate decoupled from PENDING-only `a`/`d` gate (`approvalInspectionAllowed`); `v` on non-approval rows shows a guidance toast (details view is `o`); regression tests |
 
 ### Open / residual bugs and risks
 
