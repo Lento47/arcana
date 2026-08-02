@@ -484,6 +484,37 @@ export const TicketPayloadSchema = Schema.Struct({
   priority: Schema.Literals(["low", "medium", "high", "urgent"]),
 })
 
+export const PendingRevocationDeliverySchema = Schema.Struct({
+  deliveryId: Schema.String,
+  orgId: Schema.String,
+  agreementId: Schema.String,
+  subjectId: Schema.String,
+  reason: Schema.String,
+  queuedAt: Schema.String,
+  deliveredAt: Schema.optional(Schema.String),
+  failureReason: Schema.optional(Schema.String),
+})
+
+export const ReceivedRevocationSchema = Schema.Struct({
+  receivedId: Schema.String,
+  orgId: Schema.String,
+  agreementId: Schema.String,
+  senderOrgId: Schema.String,
+  subjectId: Schema.String,
+  reason: Schema.String,
+  receivedAt: Schema.String,
+})
+
+export const RevocationDeliveryResponseSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("QUEUED"), record: PendingRevocationDeliverySchema }),
+  Schema.Struct({ kind: Schema.Literal("REJECTED"), reason: Schema.String }),
+])
+
+export const RevocationReceiveResponseSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("RECEIVED"), record: ReceivedRevocationSchema }),
+  Schema.Struct({ kind: Schema.Literal("REJECTED"), reason: Schema.String }),
+])
+
 export const AlertsQuery = Schema.Struct({
   ...WorkspaceRoutingQuery.fields,
   severity: Schema.optional(Schema.Literals(["LOW", "MEDIUM", "HIGH", "CRITICAL"])),
@@ -566,6 +597,9 @@ export const EnterprisePaths = {
   validatePolicyDraft: `${root}/organizations/:tenantId/policies/validate-draft`,
   anomalyScan: `${root}/organizations/:tenantId/anomaly-scan`,
   ticketingExport: `${root}/organizations/:tenantId/ticketing/export`,
+  revocationOutbox: `${root}/organizations/:tenantId/federation/revocations/outbox`,
+  revocationInbox: `${root}/organizations/:tenantId/federation/revocations/inbox`,
+  revocationDelivered: `${root}/organizations/:tenantId/federation/revocations/outbox/:deliveryId/delivered`,
 } as const
 
 export const EnterpriseApi = HttpApi.make("enterprise").add(
@@ -1411,6 +1445,68 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         OpenApi.annotations({
           identifier: "enterprise.ticketingExport",
           summary: "Export admin events as canonical ticketing payloads (F11)",
+        }),
+      ),
+      HttpApiEndpoint.post("queueRevocationDelivery", EnterprisePaths.revocationOutbox, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          agreementId: Schema.String,
+          subjectId: Schema.String,
+          reason: Schema.String,
+        }),
+        success: described(RevocationDeliveryResponseSchema, "Revocation delivery queued (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.queueRevocationDelivery",
+          summary: "Queue a federated revocation delivery (F8)",
+        }),
+      ),
+      HttpApiEndpoint.get("listRevocationOutbox", EnterprisePaths.revocationOutbox, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(Schema.Array(PendingRevocationDeliverySchema), "Pending deliveries (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.listRevocationOutbox",
+          summary: "List pending federated revocation deliveries (F8)",
+        }),
+      ),
+      HttpApiEndpoint.post("receiveRevocationDelivery", EnterprisePaths.revocationInbox, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          agreementId: Schema.String,
+          senderOrgId: Schema.String,
+          subjectId: Schema.String,
+          reason: Schema.String,
+        }),
+        success: described(RevocationReceiveResponseSchema, "Revocation delivery received (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.receiveRevocationDelivery",
+          summary: "Receive and deduplicate a federated revocation (F8)",
+        }),
+      ),
+      HttpApiEndpoint.get("listRevocationInbox", EnterprisePaths.revocationInbox, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(Schema.Array(ReceivedRevocationSchema), "Received revocations (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.listRevocationInbox",
+          summary: "List received federated revocations (F8)",
+        }),
+      ),
+      HttpApiEndpoint.post("markRevocationDelivered", EnterprisePaths.revocationDelivered, {
+        params: { tenantId: Schema.String, deliveryId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({}),
+        success: described(OkResponseSchema, "Delivery marked (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.markRevocationDelivered",
+          summary: "Mark a revocation delivery as delivered (F8)",
         }),
       ),
     )
