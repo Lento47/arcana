@@ -1,51 +1,16 @@
 import { Effect, Option } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
-import { ed25519 } from "@noble/curves/ed25519.js"
 import { decodeCanonicalBase64url } from "@arcana/core/crypto/canonical-serializer"
 import {
   enrollNode,
   rotateNodeKey,
   setNodeStatus,
-  type EnrollmentContext,
   type JoinToken,
 } from "@arcana/core/crypto/node-enrollment"
 import { InstanceHttpApi } from "../api"
 import { WorkspaceRouteContext } from "../middleware/workspace-routing"
 import { JoinTokenSchema } from "../groups/enrollment"
-import { controlStateFor } from "./control-state"
-
-/**
- * Issuer configuration comes from the environment until a secrets-managed
- * issuer store lands:
- *   ARCANA_CONTROL_ISSUER_ID   (default "issuer-arcana")
- *   ARCANA_CONTROL_ISSUER_SEED (base64url 32-byte Ed25519 seed; REQUIRED)
- *   ARCANA_CONTROL_CERT_DURATION_MS (default 365 days)
- * Missing issuer material fails closed: enrollment endpoints report an error.
- */
-function issuerContext(): { ok: true; context: EnrollmentContext } | { ok: false; reason: string } {
-  const seedB64 = process.env.ARCANA_CONTROL_ISSUER_SEED
-  if (!seedB64) {
-    return { ok: false, reason: "ARCANA_CONTROL_ISSUER_SEED is not configured" }
-  }
-  const decoded = decodeCanonicalBase64url(seedB64)
-  if (!decoded || (decoded.length !== 32 && decoded.length !== 64)) {
-    return { ok: false, reason: "ARCANA_CONTROL_ISSUER_SEED must be a 32-byte seed (base64url)" }
-  }
-  const seed = decoded.length === 32 ? decoded : decoded.slice(0, 32)
-  const keys = ed25519.keygen(seed)
-  const issuerId = process.env.ARCANA_CONTROL_ISSUER_ID ?? "issuer-arcana"
-  return {
-    ok: true,
-    context: {
-      issuerId,
-      issuerSecretKey: keys.secretKey,
-      issuerPublicKeys: new Map([[issuerId, keys.publicKey]]),
-      certificateDurationMs: Number(
-        process.env.ARCANA_CONTROL_CERT_DURATION_MS ?? 365 * 24 * 60 * 60 * 1000,
-      ),
-    },
-  }
-}
+import { controlStateFor, issuerContext } from "./control-state"
 
 function trustDomainFromEnv(): string {
   return process.env.ARCANA_CONTROL_TRUST_DOMAIN ?? "arcana.local"

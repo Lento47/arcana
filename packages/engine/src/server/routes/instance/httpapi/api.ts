@@ -22,6 +22,7 @@ import { PtyApi, PtyConnectApi } from "./groups/pty"
 import { QuestionApi } from "./groups/question"
 import { SessionApi } from "./groups/session"
 import { SyncApi } from "./groups/sync"
+import { SyncNodeApi } from "./groups/sync-node"
 import { TuiApi } from "./groups/tui"
 import { WorkspaceApi } from "./groups/workspace"
 import { Api } from "@arcana/server/api"
@@ -62,6 +63,7 @@ export const InstanceHttpApi = HttpApi.make("arcana-instance")
   .addHttpApi(McpApi)
   .addHttpApi(ProjectApi)
   .addHttpApi(ProofApi)
+  .addHttpApi(SyncNodeApi)
   .addHttpApi(ProjectCopyApi)
   .addHttpApi(PtyApi)
   .addHttpApi(QuestionApi)
