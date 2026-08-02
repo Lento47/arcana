@@ -2,7 +2,8 @@
 
 **Status:** DRAFTS / PLANS — none are authorized. Freeze requires the stated acceptance evidence plus explicit human sign-off.
 **Consolidated:** 2026-08-02 — merges the former `docs/releases/CLI-1.0-FREEZE-DRAFT.md`, `docs/releases/PHASE-F-FREEZE-DRAFT.md`, and `docs/releases/RELEASE-FLOW-PLAN.md`
-**Applies to commit:** `882ea468` (latest documentation checkpoint)
+**Implementation checkpoint:** `0392ad7b` (2026-08-02; suites verified on the pre-commit worktree)
+**Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
 
 This file contains: (1) the Phase F GA freeze draft with playbook §40 gate evidence, (2) the CLI 1.0 contract freeze draft (catalog, JSON/NDJSON + exit-code contract, launch protocol), and (3) the release-flow plan (verify → freeze/tag → build → sign → installer/update smoke → publish → mainline promotion → post-verify).
 
@@ -10,7 +11,9 @@ This file contains: (1) the Phase F GA freeze draft with playbook §40 gate evid
 
 **Status:** DRAFT — cores for F1–F12 are implemented and tested in-repo;
 the Phase F/Control 1.0 release freeze is NOT authorized. The outstanding
-gates are operational/external, not code.
+gates include unresolved production security and integration code gaps.
+The remaining work is not exclusively operational or external — notably
+BLK-F-AUTH-01 (authenticated administrative identity binding).
 **Date:** 2026-08-02
 
 ## Playbook §40 gate evidence
@@ -18,7 +21,7 @@ gates are operational/external, not code.
 | Gate | Required | Evidence | Verdict |
 |---|---|---|---|
 | Cross-tenant data leaks | 0 | F1 tenant store (tenant-filtered queries, deletion isolation) | PASS (core) |
-| Unauthorized administrative actions | 0 | F2 RBAC permission matrix + privileged audit | PASS (core) |
+| Unauthorized administrative actions | 0 | RBAC decision core: PASS; Authenticated administrative HTTP boundary: BLOCKED by BLK-F-AUTH-01 | BLOCKED (core PASS; HTTP identity boundary open) |
 | Federation authority amplification | 0 | F8 authority intersection (never broadens) | PASS (core) |
 | Central approval bypass of local PEP | 0 | F5 central queue decides only; local PEP consumes by exact hash | PASS (design + core) |
 | Unverifiable compliance exports | 0 | F6 fingerprint-verified archive exports (SDK verifier) | PASS (core) |
@@ -48,9 +51,12 @@ gates are operational/external, not code.
    **mostly DONE 2026-08-02**: `/api/enterprise/*` now mounts all F1–F12
    cores (17 HTTP integration tests), SIEM CEF export, ticketing payloads,
    and the SDK enterprise admin client (equivalent automation) are shipped.
-   Remaining surfaces are operator-facing consoles/UI: F3 simulation editor,
-   F5 escalation console, F6 auditor console, plus live transport adapters
-   (ticketing delivery, Terraform provider is optional given the SDK client).
+   Remaining surfaces are the authenticated administrative identity binding
+   (BLK-F-AUTH-01 — enterprise mutations must derive actor/tenant identity
+   from the authenticated server context), operator-facing consoles/UI (F3
+   simulation editor, F5 escalation console, F6 auditor console), plus live
+   transport adapters (ticketing delivery, Terraform provider is optional
+   given the SDK client).
 
 ## Nonclaims
 
@@ -107,7 +113,9 @@ The CLI 1.0 contract covers:
 
 ### JSON output
 
-- Every command accepts `--json` (and stream commands accept `--ndjson`).
+- Proposed contract: every command will accept `--json` (and stream commands
+  will accept `--ndjson`). Current implementation coverage is incomplete and
+  must be audited per command.
 - Machine output is emitted **only** on stdout; human copy goes to stderr.
 - Errors are single JSON objects: `{"error":{"code","message","details"?}}`.
 - A successful empty result is `null` or `{}` — never a bare newline.
@@ -143,8 +151,9 @@ production adapter claim requires hostile-escape fixtures (BLK-E-05).
 
 - This draft does not freeze the CLI. It is a proposal for review.
 - No certification level for launch adapters is claimed.
-- CLI 1.0 is not a prerequisite blocker for Arcana 1.0 convergence until the
-  playbook §42 scope says otherwise; see `docs/BLOCKERS.md`.
+- CLI 1.0 is a required Arcana 1.0 convergence gate.
+  This draft does not satisfy it until BLK-CLI-01..05 pass and receive
+  explicit human sign-off.
 
 ## Release Flow Plan
 

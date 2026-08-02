@@ -4,7 +4,8 @@
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Created:** 2026-08-02 (Phase A–F completion audit)
 **Consolidated:** 2026-08-02 — single register replacing the former `docs/blockers/` folder
-**Applies to commit:** `882ea468` (latest documentation checkpoint)
+**Implementation checkpoint:** `0392ad7b` (2026-08-02; suites verified on the pre-commit worktree)
+**Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
 
 This file consolidates every phase and product-track blocker register. Each area below preserves the original rows: the playbook task or gate it blocks, the current evidence of the gap, and the acceptance evidence required to close it.
 
@@ -32,17 +33,17 @@ Each blocker row states:
 
 ## Summary
 
-| Area | Current status | Open blockers | Source doc |
+| Area | Current status | Open blockers | Source section |
 |---|---|---:|---|
-| Phase A — Epistemic Foundation | COMPLETE / FROZEN | 0 | [PHASE-A-BLOCKERS.md](./PHASE-A-BLOCKERS.md) |
-| Phase B — Verification & Replay | COMPLETE / FROZEN | 0 | [PHASE-B-BLOCKERS.md](./PHASE-B-BLOCKERS.md) |
-| Phase C — Local Governed Autonomy | EVALUATION PASS, signed with exceptions | 0 (scope-limited) | [PHASE-C-BLOCKERS.md](./PHASE-C-BLOCKERS.md) |
-| TUI 1.0 (TUI-2.1 freeze) | MOUNTED, automated green, freeze NOT authorized | 8 | [TUI-1.0-BLOCKERS.md](./TUI-1.0-BLOCKERS.md) |
-| CLI 1.0 | PARTIAL — no frozen contract | 5 | [CLI-1.0-BLOCKERS.md](./CLI-1.0-BLOCKERS.md) |
-| Phase D — Distributed Governed Autonomy | FEATURE-COMPLETE in-repo; freeze pending ops/external gates | 9 | [PHASE-D-BLOCKERS.md](./PHASE-D-BLOCKERS.md) |
-| Phase E — Protocol, SDKs, Adapters | PARTIAL — conformance 5/5 + adapters + certified vectors; freeze pending live/L3 | 10 | [PHASE-E-BLOCKERS.md](./PHASE-E-BLOCKERS.md) |
-| Phase F — Enterprise Control Plane | PARTIAL — F1–F13 cores implemented and mounted; freeze pending external assessment/consoles | 13 | [PHASE-F-BLOCKERS.md](./PHASE-F-BLOCKERS.md) |
-| Arcana 1.0 convergence | NOT reached | 5 | [ARCANA-1.0-BLOCKERS.md](./ARCANA-1.0-BLOCKERS.md) |
+| Phase A — Epistemic Foundation | COMPLETE / FROZEN | 0 | [§Phase A](#phase-a--epistemic-foundation) |
+| Phase B — Verification & Replay | COMPLETE / FROZEN | 0 | [§Phase B](#phase-b--verification-and-replay) |
+| Phase C — Local Governed Autonomy | EVALUATION PASS, signed with exceptions | 0 (scope-limited) | [§Phase C](#phase-c--local-governed-autonomy) |
+| TUI 1.0 (TUI-2.1 freeze) | MOUNTED, automated green, freeze NOT authorized | 8 | [§TUI 1.0 / TUI-2.1](#tui-10--tui-21) |
+| CLI 1.0 | PARTIAL — no frozen contract | 5 | [§CLI 1.0](#cli-10) |
+| Phase D — Distributed Governed Autonomy | Implementation coverage: HIGH; release readiness: BLOCKED | 9 | [§Phase D](#phase-d--distributed-governed-autonomy) |
+| Phase E — Protocol, SDKs, Adapters | PARTIAL — conformance 5/5 + adapters + certified vectors; freeze pending live/L3 | 10 | [§Phase E](#phase-e--protocol-sdks-adapters) |
+| Phase F — Enterprise Control Plane | Service cores: HIGH; mounting: SUBSTANTIAL; auth boundary: BLOCKED (BLK-F-AUTH-01); release: BLOCKED | 14 | [§Phase F](#phase-f--enterprise-control-plane) |
+| Arcana 1.0 convergence | NOT reached | 5 | [§Arcana 1.0](#arcana-10-convergence) |
 
 
 ## Phase A — Epistemic Foundation
@@ -259,7 +260,7 @@ tests), but the CLI 1.0 contract is not frozen.**
 
 | ID | Blocks (playbook §26–27) | Gap evidence | Acceptance evidence required |
 |---|---|---|---|
-| BLK-CLI-01 | External-agent launch group (`arcana launch codex/claude/gemini`) | A1 scaffold implemented (`launch.ts`: declaration, `--dry-run`, supervision, durable launch evidence); **no sandbox/enforcement claim**; production adapter pending | One production adapter reaches a declared certification level; others documented |
+| BLK-CLI-01 | External-agent launch group (`arcana launch codex/claude/gemini`) | A1 scaffold implemented (`launch.ts`: declaration, `--dry-run`, supervision, durable launch evidence); **no sandbox/enforcement claim**; production-certified adapter pending | One production adapter reaches a declared certification level; others documented |
 | BLK-CLI-02 | Stable JSON output + deterministic documented exit codes for every command | JSON/exit-code contract not frozen in a spec | Command catalog with JSON schema and exit-code table, tested |
 | BLK-CLI-03 | Shell completion | Not implemented | Completion scripts + test |
 | BLK-CLI-04 | Cross-platform smoke (Windows/Linux/macOS) | Windows primary; Linux scaffold only (D-6A-L pending) | Platform matrix with smoke results |
@@ -279,9 +280,14 @@ tests), but the CLI 1.0 contract is not frozen.**
 
 ## Phase D — Distributed Governed Autonomy
 
-**Status: ACTIVE DEVELOPMENT — ~45–55% by playbook weighting. D-7 FROZEN
-(`arcana-phase-d7-local-distributed-authority`), D-8A proof batching
-implemented.**
+**Status: Implementation coverage HIGH (in-repo) — D-7 FROZEN
+(`arcana-phase-d7-local-distributed-authority`), D-8A proof batching, D-8B
+end-to-end proof registration, D-6B-T delta/sync transport with node
+persistence + compatibility negotiation, D-5 revocation store + emergency
+push channel, D-6 execution ledger + governed distributed PEP, D-10 hostile
+matrices (24 fixtures, 0 bypasses) implemented. Release readiness: BLOCKED —
+TLS/mTLS + channel binding (BLK-D-07), live Linux validation (BLK-D-03),
+offline PEP wiring (BLK-D-06), Node 1.0 freeze (BLK-D-09), L3.**
 
 ## Open blockers
 
@@ -326,8 +332,8 @@ stable SDK 1.0.**
 | ID | Task | Gap evidence | Acceptance evidence required |
 |---|---|---|---|
 | BLK-E-01 | E1 freeze protocol specifications | **Freeze draft published 2026-08-02** (PROTOCOL-1.0-SPEC): serialization rules, signature domains, object registry, labels, reason codes, version negotiation. Remaining: public release, external review, third-party implementation | Versioned public specs (DRAFT DONE); external review + public release |
-| BLK-E-02 | E2 independent conformance suite | **Independent implementations DONE 2026-08-02**: TS production + Rust verifier agree on 46 vectors (`script/conformance.ts` runner, 3/3 suites). Remaining: L3 external reproduction | Two independent implementations produce matching vectors (DONE in-repo); external reproduction |
-| BLK-E-03 | E3 TypeScript/JavaScript SDK 1.0 | **Governance + proof + error model + conformance wiring DONE 2026-08-02** (`@arcana/sdk/v2/*`; SDK suite 17/17; conformance runner 4/4; `SDK-1.0-COMPATIBILITY.md`). Remaining: release freeze + external-vector conformance | SDK 1.0 release + external conformance |
+| BLK-E-02 | E2 independent conformance suite | **Independent implementations DONE 2026-08-02**: TS production + Rust verifier agree on 46 vectors (`script/conformance.ts` runner, now 5/5 suites). Remaining: L3 external reproduction | Two independent implementations produce matching vectors (DONE in-repo); external reproduction |
+| BLK-E-03 | E3 TypeScript/JavaScript SDK 1.0 | **Governance + proof + error model + conformance wiring DONE 2026-08-02** (`@arcana/sdk/v2/*`; SDK suite 34/0 full `src`; conformance runner 5/5; `SDK-1.0-COMPATIBILITY.md`). Remaining: release freeze + external-vector conformance | SDK 1.0 release + external conformance |
 | BLK-E-04 | E4 additional language SDK | **Rust foundation DONE 2026-08-02**: canonical serializer + verifier + request hashing with cross-language golden vector (TS ↔ Rust identical hash). Remaining: full Rust SDK surface | One additional SDK passing the same conformance suite (request-hash vector PASS; full surface pending) |
 | BLK-E-05 | E5 external CLI adapters (Codex/Claude/Gemini) | **A1 launch scaffold DONE 2026-08-02** (`arcana launch <runtime>`: declaration, dry-run, supervision + evidence; no sandbox claim). **Hostile-escape fixtures runnable 2026-08-02** (`bounded-file-reader.test.ts`, 7 fixtures: traversal, absolute path, null byte, directory, size budget, junction escape). Remaining: OS-level containment engine integration + live Linux validation before any enforcement-level claim | Three adapters at declared levels; hostile escape fixtures for the declared boundary |
 | BLK-E-06 | E6 framework adapters (Mastra/AI SDK/LangGraph/MCP apps) | **AI SDK-style + MCP hooks DONE 2026-08-02** (`governedTool` + `governedMcpTool`). **Mastra + LangGraph hooks DONE 2026-08-02** (`governedMastraTool` + `governedLangGraphTool`; 6 new tests, SDK suite 28/28). Remaining: live PEP transport integration | Framework tool calls map to canonical requests (DONE); PEP cannot be bypassed (hook-level DONE for AI SDK/MCP/Mastra/LangGraph, live transport pending) |
@@ -345,9 +351,12 @@ stable SDK 1.0.**
 
 ## Phase F — Enterprise Control Plane
 
-**Status: PLANNED / PARTIAL — `packages/enterprise` is a dashboard scaffold;
-no multi-tenant control plane, identity, fleet operations, federation, or
-compliance archive is production-ready.**
+**Status: Service-core implementation HIGH — F1–F13 cores implemented
+(`packages/core/src/enterprise/*`) and mounted on `/api/enterprise/*` + SDK
+client; Production mounting SUBSTANTIAL; Secure production boundary BLOCKED
+(BLK-F-AUTH-01 — enterprise mutations must bind actor/tenant identity to the
+authenticated server context); Release readiness BLOCKED (operator consoles,
+live exercises, F13 external assessment).**
 
 ## Open blockers
 
@@ -365,15 +374,20 @@ compliance archive is production-ready.**
 | BLK-F-10 | F10 data governance and privacy | **Core DONE 2026-08-02** (classification, regional/CMK constraints, PII export control + retention; 3 tests). **HTTP governance checks MOUNTED 2026-08-02** (storable/exportable/classify/PII-retention; integration tested). Remaining: regional-storage plumbing + CMK integration | Contracts documented (DONE); storage plumbing pending |
 | BLK-F-11 | F11 enterprise API and automation | **Admin HTTP surface MOUNTED 2026-08-02** (`/api/enterprise/*`: F1-F12 cores mounted; 18 HTTP integration tests) + **admin-event store + SIEM CEF export MOUNTED 2026-08-02** (4 core + 1 integration test) + **ticketing payloads IMPLEMENTED + MOUNTED 2026-08-02** (`ticketing.ts`; 1 core + 1 integration test) + **webhook delivery sink IMPLEMENTED + MOUNTED 2026-08-02** (`webhooks.ts` + SQLite: endpoint registry, auto-enqueue on admin events, bounded retry/backoff, durable delivery state; 4 core + 1 integration test) + **SDK enterprise admin client (equivalent automation) DONE 2026-08-02** (`packages/sdk/js/src/v2/enterprise.ts`; 4 SDK tests). Remaining: live ticketing transport adapters + optional Terraform provider | Admin API + webhooks + automation tested (core HTTP surface DONE; SIEM export DONE; ticketing payloads DONE; webhook delivery DONE; equivalent automation DONE via SDK client; live ticketing adapters pending) |
 | BLK-F-12 | F12 commercial readiness | **Core DONE 2026-08-02** (entitlements, metering-never-affects-security invariant, redacted diagnostics, upgrade policy; 4 tests). **Metering pipeline core + HTTP MOUNTED 2026-08-02** (usage aggregation, informational quota; 3 core + 1 integration test). **Usage export endpoint DONE 2026-08-02** (`GET /api/enterprise/*/commercial/usage/export`: per-feature totals; integration tested). Remaining: license text review + live telemetry ingestion from engine events | Metering never affects security decisions (DONE, tested); docs complete (DRAFT) |
-| BLK-F-13 | F13 independent security assessment and GA freeze | **Freeze draft published 2026-08-02** (`PHASE-F-FREEZE-DRAFT.md`: §40 gate evidence + operational gates). Remaining: external architecture review, penetration test, threat-model review, supply-chain assessment, L3 reproduction, live exercises, Control 1.0 mounting | Blockers resolved + milestone frozen (all external/operational) |
+| BLK-F-13 | F13 independent security assessment and GA freeze | **Freeze draft published 2026-08-02** (`docs/FREEZE-RELEASE.md` §Phase F: §40 gate evidence + operational gates). Remaining: authenticated-principal binding (BLK-F-AUTH-01), operator consoles, external architecture review, penetration test, threat-model review, supply-chain assessment, L3 reproduction, live exercises | Blockers resolved + milestone frozen (code, operational, and external gates) |
+| BLK-F-AUTH-01 | P0 authenticated administrative identity binding | Enterprise administrative mutations must derive actor and tenant identity from authenticated server context. Client-supplied `actorUserId`, `approvedBy`, `tenantId`, or equivalent body fields must not establish authority or audit attribution. Current state: enterprise mutation payloads accept client-supplied actor fields; RBAC decision core PASS, authenticated HTTP boundary NOT implemented | Authenticated principal → tenant → role → permission; body actor attribution rejected or ignored; cross-tenant impersonation fixtures fail closed; forged approver fixtures fail closed; audit records use the authenticated principal |
 
-## Phase F hard gates (playbook §40) — all currently unprovable
+## Phase F hard gates (playbook §40)
 
-Cross-tenant data leaks, unauthorized administrative actions, federation
-authority amplification, central approval bypass of local PEP, unverifiable
-compliance exports, restore drills outside RPO/RTO, unresolved critical
-pen-test findings, and false-positive fleet health all require the F1–F13
-implementations above before they can be measured.
+Cross-tenant data leaks, federation authority amplification, central approval
+bypass of local PEP, unverifiable compliance exports, restore drills outside
+RPO/RTO, unresolved critical pen-test findings, and false-positive fleet
+health require the F1–F13 implementations above before they can be measured.
+
+Unauthorized administrative actions: RBAC decision core PASS (F2 permission
+matrix + privileged audit); authenticated administrative HTTP boundary
+BLOCKED by BLK-F-AUTH-01 (client-supplied actor identity must not establish
+authority or audit attribution).
 
 ## Arcana 1.0 Convergence
 
@@ -388,8 +402,8 @@ and signed release artifacts.
 | ID | Blocks | Evidence / gap | Acceptance evidence required |
 |---|---|---|---|
 | BLK-1.0-01 | TUI 1.0 complete | TUI-2.1 freeze not authorized | Runbook Gates 1–10 at the final commit + sign-off |
-| BLK-1.0-02 | CLI 1.0 complete | no frozen JSON/exit-code contract; no launch adapters | CLI 1.0 milestone frozen |
-| BLK-1.0-03 | one production-quality external adapter | `arcana launch *` unimplemented | Adapter at declared certification level with hostile-escape fixture |
+| BLK-1.0-02 | CLI 1.0 complete | no frozen JSON/exit-code contract; A1 launch scaffold exists, no production-certified adapter | CLI 1.0 milestone frozen |
+| BLK-1.0-03 | one production-quality external adapter | A1 launch scaffold implemented (declaration, dry-run, supervision, evidence); no production-certified adapter | Adapter at declared certification level with hostile-escape fixture |
 | BLK-1.0-04 | signed release artifacts + stable installer/update path | pre-release builds only; **release-flow plan published 2026-08-02** (`docs/FREEZE-RELEASE.md`: verify → freeze/tag → build → sign → installer/update smoke → publish → promote → post-verify) but NOT executed | Signed artifacts, installer/upgrade data-loss tests = 0 |
 | BLK-1.0-05 | mainline promotion | `master`/`origin/master` stale; Phase B/C/D-7/TUI-2 commits not on mainline; promotion step defined in the release-flow plan | `master` fast-forwarded to the verified release commit |
 
