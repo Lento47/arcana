@@ -154,7 +154,7 @@ BLK-D set to be closed first.
 | E3 JS/TS SDK 1.0 | PARTIAL | `@arcana/sdk/v2/governance|proof|errors` (17/17 SDK suite; conformance 4/4; compat contract) | BLK-E-03 |
 | E4 Additional SDK | PARTIAL | Rust canonical serializer/verifier + request hashing with TS↔Rust golden vector (5 tests) | BLK-E-04 |
 | E5 CLI adapters | PARTIAL | `arcana launch <runtime>` A1 scaffold (declaration, dry-run, evidence) | BLK-E-05 |
-| E6 Framework adapters | PARTIAL | SDK governedTool + governedMcpTool hooks (5 tests) | BLK-E-06 |
+| E6 Framework adapters | PARTIAL | SDK governedTool + governedMcpTool + governedMastraTool + governedLangGraphTool hooks (11 tests) | BLK-E-06 |
 | E7 Certification levels | PARTIAL | certification registry doc (A0–A3 + procedure + nonclaims) | BLK-E-07 |
 | E8 DX/examples | PARTIAL | quickstart + enforcement-level guidance | BLK-E-08 |
 | E9 Protocol governance | PARTIAL | governance doc draft (lifecycle/deprecation/advisory/extensions/matrix) | BLK-E-09 |
