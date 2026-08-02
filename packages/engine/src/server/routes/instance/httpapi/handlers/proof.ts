@@ -94,6 +94,7 @@ export const proofHandlers = HttpApiBuilder.group(InstanceHttpApi, "proof", (han
           status: result.receipt.status,
           acknowledgedFirstSequence: result.receipt.acknowledgedFirstSequence,
           acknowledgedLastSequence: result.receipt.acknowledgedLastSequence,
+          acknowledgedAt: result.receipt.acknowledgedAt,
         }
       } catch (error) {
         console.error("PROOF HANDLER ERROR", error)
