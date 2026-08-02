@@ -295,6 +295,7 @@ describe("enterprise HttpApi diagnostics, escalation, SIEM, and metering (F4, F5
         for (const [eventId, units, at] of [
           ["usage-1", 3, "2026-08-02T10:00:00.000Z"],
           ["usage-2", 4, "2026-08-02T11:00:00.000Z"],
+          ["usage-3", 2, "2026-08-02T11:30:00.000Z"],
         ] as const) {
           const recorded = yield* requestInDirectory(
             EnterprisePaths.usage.replace(":tenantId", "tenant-c"),
@@ -302,7 +303,12 @@ describe("enterprise HttpApi diagnostics, escalation, SIEM, and metering (F4, F5
             {
               method: "POST",
               headers,
-              body: JSON.stringify({ eventId, feature: "shared_approvals", units, at }),
+              body: JSON.stringify({
+                eventId,
+                feature: eventId === "usage-3" ? "fleet_control" : "shared_approvals",
+                units,
+                at,
+              }),
             },
           )
           expect(((yield* recorded.json) as { eventId?: string }).eventId).toBe(eventId)
@@ -322,7 +328,7 @@ describe("enterprise HttpApi diagnostics, escalation, SIEM, and metering (F4, F5
         )
         const allBody = (yield* all.json) as { kind?: string; events?: Array<{ eventId: string }> }
         expect(allBody.kind).toBe("events")
-        expect(allBody.events).toHaveLength(2)
+        expect(allBody.events).toHaveLength(3)
 
         const over = yield* requestInDirectory(
           EnterprisePaths.usageQuota.replace(":tenantId", "tenant-c"),
@@ -334,6 +340,16 @@ describe("enterprise HttpApi diagnostics, escalation, SIEM, and metering (F4, F5
           },
         )
         expect((yield* over.json)).toEqual({ ok: false, used: 7, limit: 5, overQuota: true })
+
+        const exported = yield* requestInDirectory(
+          EnterprisePaths.usageExport.replace(":tenantId", "tenant-c"),
+          tmp.directory,
+          { method: "GET", headers },
+        )
+        expect(yield* exported.json).toEqual([
+          { feature: "fleet_control", units: 2 },
+          { feature: "shared_approvals", units: 7 },
+        ])
 
         // Quota status is informational: the security decision is unchanged.
         const decision = yield* requestInDirectory(
