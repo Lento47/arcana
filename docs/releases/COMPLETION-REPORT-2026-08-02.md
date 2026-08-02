@@ -120,7 +120,7 @@ worker-path patch; no dependency was downgraded.
 | D-1 enrollment ceremony + key rotation implemented with HTTP endpoints; D-8B proof registry now durable-enrollment-backed; node-side ceremony client pending | BLK-D-05 | Engineering |
 | D-6B-T signed-envelope sync transport implemented (policy + revocation, replay protection, audience/freshness/rotation enforcement; 15 tests); TLS/mTLS + channel binding remain in ops deployment | BLK-D-01 | Engineering |
 | D-4 signed policy bundle store implemented (strict schema, chaining, staged activation, last-known-good, audited rollback) with HTTP endpoints; sync transport now serves POLICY_SNAPSHOT; DELTA bundles + compat negotiation pending | BLK-D-01 | Engineering |
-| D-6 execution ledger implemented (exactly-once claims, cross-node duplicate matrix, UNKNOWN_AFTER_* replay-forbidden, usage-limit interplay; 9 tests); claim-before-effect wiring into distributed PEP pending | BLK-D-01 | Engineering |
+| D-6 execution ledger implemented and wired into the distributed PEP (exactly-once claims, cross-node matrix, UNKNOWN_AFTER_* replay-forbidden, offline gating; 17 tests); hostile-node matrix pending | BLK-D-01 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 
