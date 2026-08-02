@@ -13,8 +13,8 @@ and signed release artifacts.
 | BLK-1.0-01 | TUI 1.0 complete | TUI-2.1 freeze not authorized | Runbook Gates 1–10 at the final commit + sign-off |
 | BLK-1.0-02 | CLI 1.0 complete | no frozen JSON/exit-code contract; no launch adapters | CLI 1.0 milestone frozen |
 | BLK-1.0-03 | one production-quality external adapter | `arcana launch *` unimplemented | Adapter at declared certification level with hostile-escape fixture |
-| BLK-1.0-04 | signed release artifacts + stable installer/update path | pre-release builds only; release flow documented but not executed | Signed artifacts, installer/upgrade data-loss tests = 0 |
-| BLK-1.0-05 | mainline promotion | `master`/`origin/master` stale; Phase B/C/D-7/TUI-2 commits not on mainline | `master` fast-forwarded to the verified release commit |
+| BLK-1.0-04 | signed release artifacts + stable installer/update path | pre-release builds only; **release-flow plan published 2026-08-02** (`docs/releases/RELEASE-FLOW-PLAN.md`: verify → freeze/tag → build → sign → installer/update smoke → publish → promote → post-verify) but NOT executed | Signed artifacts, installer/upgrade data-loss tests = 0 |
+| BLK-1.0-05 | mainline promotion | `master`/`origin/master` stale; Phase B/C/D-7/TUI-2 commits not on mainline; promotion step defined in the release-flow plan | `master` fast-forwarded to the verified release commit |
 
 ## Additional release evidence requirements
 
