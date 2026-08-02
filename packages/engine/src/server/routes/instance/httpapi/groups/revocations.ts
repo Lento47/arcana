@@ -43,6 +43,7 @@ export const RevocationPublishResponse = Schema.Union([
 export const RevocationPaths = {
   publish: `${root}`,
   current: `${root}/current`,
+  emergency: `${root}/emergency`,
 } as const
 
 export const RevocationApi = HttpApi.make("revocations").add(
@@ -70,6 +71,21 @@ export const RevocationApi = HttpApi.make("revocations").add(
         OpenApi.annotations({
           identifier: "revocations.current",
           summary: "Get the latest revocation statement",
+        }),
+      ),
+      HttpApiEndpoint.post("emergency", RevocationPaths.emergency, {
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          nodeId: Schema.String,
+          reason: Schema.String,
+        }),
+        success: described(RevocationPublishResponse, "Emergency node denial result"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "revocations.emergency",
+          summary: "Emergency-deny a node",
+          description:
+            "Immediately revokes the node (enrollment status REVOKED) and publishes a signed NODE revocation statement so the deny-list propagates through the normal sync channel.",
         }),
       ),
     )
