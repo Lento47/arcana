@@ -782,10 +782,11 @@ export function CommandSpineShell(props: ShellProps) {
     ],
   }))
 
-  // Keyboard-only spine mode (Phase 3/4): while the session is idle, Esc
-  // leaves the composer so j/k/v/a/d become active; with nothing focused,
-  // Esc returns to the composer. While busy, Esc keeps its two-press
-  // session.interrupt meaning (this binding is disabled when busy).
+  // Keyboard-only spine mode (Phase 3/4): Esc ALWAYS leaves the composer so
+  // j/k/v/a/d become active — including while the session is busy. Esc from
+  // the composer must never cancel the turn (operators navigate and inspect
+  // during streaming; interrupt remains explicit via the palette command).
+  // With nothing focused, Esc returns to the composer.
   const sessionIdle = () => {
     const status = props.sessionStatus?.()
     return status === undefined || status.type === "idle"
@@ -806,13 +807,12 @@ export function CommandSpineShell(props: ShellProps) {
       composerFocused()
       && !gatesOpen()
       && !approvalSubmitting()
-      && (sessionIdle() || hasPendingApproval())
       && displayRows().length > 0,
     priority: 3,
     bindings: [
       {
         key: "escape",
-        desc: "Leave composer and activate spine keys",
+        desc: "Leave composer and activate spine keys (never interrupts)",
         group: "Command Spine",
         cmd: () => blurComposer(),
       },
