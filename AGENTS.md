@@ -8,6 +8,14 @@
 > Normative release-gate spec. MUST be read and checked before any phase, track, or workstream is declared 100% complete.
 > 100% completion requires evidence against every applicable gate PLUS explicit human approval. Never self-certify.
 
+## Hermes Operating Rules (user-mandated)
+
+Follow my instructions word by word, nothing more.
+Do not make more things.
+If you want, ASK FIRST or make suggestions.
+Never run more than what I ask.
+When told to change memory or AGENTS.md, change ONLY those — NOT any other file.
+
 ## Project Identity
 
 Arcana is a **governed autonomy runtime** — an execution-security kernel, operator console (TUI), and proof system for autonomous agents. The model proposes. The engine decides. The proof records.
