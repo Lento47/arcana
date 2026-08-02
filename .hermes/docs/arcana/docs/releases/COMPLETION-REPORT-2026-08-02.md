@@ -145,6 +145,7 @@ worker-path patch; no dependency was downgraded.
 | F12 commercial readiness core (tiered entitlements, metering-never-affects-security invariant, redacted diagnostics, upgrade policy; 4 tests) + Phase F GA freeze draft published (gate evidence; freeze not authorized) | BLK-F-12/13 | Engineering |
 | Enterprise admin HTTP surface mounted (`/api/enterprise/*`: organizations, roles, fleet, approvals with exact inspection, audit; HTTP integration test) — production mounting of F1/F2/F4/F5 cores | BLK-F-01/02/04/05/11 | Engineering |
 | Enterprise HTTP operations surface mounted (`/api/enterprise/*`: F3 policy promotion/diff with RBAC into per-environment target chains, F4 node register/heartbeat, F5 emergency revoke + bulk deny, F6 archive/export/custody/legal-hold/retention-sweep, F9 alerts/timeline/revocation-campaign/forensics, F10 governance checks; 5 integration tests) | BLK-F-03/04/05/06/09/10/11 | Engineering |
+| Enterprise HTTP reliability/federation/commercial surface mounted (`/api/enterprise/*`: F7 backup/restore/drill evaluation, F8 agreements/proof-exchange/revocation-propagation/authority-intersection, F12 entitlements/metering-invariant/redacted-diagnostics/upgrade-policy; 3 integration tests) | BLK-F-07/08/11/12 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 

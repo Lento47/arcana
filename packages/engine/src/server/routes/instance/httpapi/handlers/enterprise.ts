@@ -27,6 +27,24 @@ import {
   DEFAULT_DATA_GOVERNANCE_POLICY,
 } from "@arcana/core/enterprise/data-governance"
 import { diffPolicyBundles, promotePolicyBundle } from "@arcana/core/enterprise/policy-lifecycle"
+import {
+  DEFAULT_RELIABILITY_CONFIG,
+  evaluateDrill,
+  restoreBackup,
+  type BackupRecord,
+  type DrillRecord,
+} from "@arcana/core/enterprise/reliability"
+import {
+  exchangeProof,
+  intersectAuthority,
+  propagateRevocation,
+} from "@arcana/core/enterprise/federation"
+import {
+  DEFAULT_UPGRADE_POLICY,
+  entitled,
+  meteringNeverAffectsDecision,
+  redactDiagnostics,
+} from "@arcana/core/enterprise/commercial-readiness"
 import { InstanceHttpApi } from "../api"
 import { WorkspaceRouteContext } from "../middleware/workspace-routing"
 import {
@@ -632,6 +650,284 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       )
     })
 
+    const backup = Effect.fn("EnterpriseHttpApi.backup")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { backupId: string; kind: "DATABASE" | "KEYS"; digest: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const record: BackupRecord = {
+        tenantId: ctx.params.tenantId,
+        backupId: ctx.payload.backupId,
+        kind: ctx.payload.kind,
+        createdAt: new Date().toISOString(),
+        digest: ctx.payload.digest,
+      }
+      controlStateFor(directory).reliability.putBackup(record)
+      return record
+    })
+
+    const restore = Effect.fn("EnterpriseHttpApi.restore")(function* (ctx: {
+      params: { tenantId: string; backupId: string }
+      payload: { presentedDigest: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const result = restoreBackup(
+        ctx.params.tenantId,
+        ctx.params.backupId,
+        ctx.payload.presentedDigest,
+        controlStateFor(directory).reliability,
+      )
+      if (result.kind === "RESTORED") {
+        return { kind: "RESTORED" as const, record: result.record }
+      }
+      return { kind: "REJECTED" as const, reason: result.reason }
+    })
+
+    const drill = Effect.fn("EnterpriseHttpApi.drill")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        drillId: string
+        startedAt: string
+        finishedAt: string
+        restoredDigest: string
+        measuredRpoMs: number
+        measuredRtoMs: number
+        config?: {
+          availabilityTarget: number
+          rpoMs: number
+          rtoMs: number
+        }
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const record: DrillRecord = {
+        tenantId: ctx.params.tenantId,
+        drillId: ctx.payload.drillId,
+        startedAt: ctx.payload.startedAt,
+        finishedAt: ctx.payload.finishedAt,
+        restoredDigest: ctx.payload.restoredDigest,
+        measuredRpoMs: ctx.payload.measuredRpoMs,
+        measuredRtoMs: ctx.payload.measuredRtoMs,
+      }
+      const state = controlStateFor(directory)
+      state.reliability.recordDrill(record)
+      const result = evaluateDrill(record, ctx.payload.config ?? DEFAULT_RELIABILITY_CONFIG)
+      return { result, record }
+    })
+
+    const drills = Effect.fn("EnterpriseHttpApi.drills")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).reliability.drills(ctx.params.tenantId)
+    })
+
+    const putFederationAgreement = Effect.fn("EnterpriseHttpApi.putFederationAgreement")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        agreementId: string
+        version: number
+        orgA: string
+        orgB: string
+        audienceRestrictions: readonly string[]
+        validFrom: string
+        validTo: string
+        status: "ACTIVE" | "REVOKED"
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const agreement = {
+        ...ctx.payload,
+        audienceRestrictions: [...ctx.payload.audienceRestrictions],
+      }
+      controlStateFor(directory).federation.putAgreement(agreement)
+      return agreement
+    })
+
+    const getFederationAgreement = Effect.fn("EnterpriseHttpApi.getFederationAgreement")(function* (ctx: {
+      params: { tenantId: string; agreementId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).federation.getAgreement(ctx.params.agreementId) ?? null
+    })
+
+    const federationExchange = Effect.fn("EnterpriseHttpApi.federationExchange")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        agreementId: string
+        orgId: string
+        remoteProofId: string
+        fingerprint: string
+        origin: string
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const result = exchangeProof(
+        {
+          agreementId: ctx.payload.agreementId,
+          orgId: ctx.payload.orgId,
+          remoteProofId: ctx.payload.remoteProofId,
+          fingerprint: ctx.payload.fingerprint,
+          origin: ctx.payload.origin,
+          now: new Date(),
+        },
+        controlStateFor(directory).federation,
+      )
+      if (result.kind === "EXCHANGED") {
+        return { kind: "EXCHANGED" as const, record: result.record }
+      }
+      return { kind: "REJECTED" as const, reason: result.reason }
+    })
+
+    const federationRevoke = Effect.fn("EnterpriseHttpApi.federationRevoke")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        agreementId: string
+        orgId: string
+        subjectId: string
+        reason: string
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const result = propagateRevocation(
+        {
+          agreementId: ctx.payload.agreementId,
+          orgId: ctx.payload.orgId,
+          subjectId: ctx.payload.subjectId,
+          reason: ctx.payload.reason,
+          now: new Date(),
+        },
+        controlStateFor(directory).federation,
+      )
+      if ("kind" in result) return result
+      return result
+    })
+
+    const federationExchanges = Effect.fn("EnterpriseHttpApi.federationExchanges")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string; orgId?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).federation.exchanges(ctx.query.orgId ?? ctx.params.tenantId)
+    })
+
+    const federationRevocations = Effect.fn("EnterpriseHttpApi.federationRevocations")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string; orgId?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).federation.revocations(ctx.query.orgId ?? ctx.params.tenantId)
+    })
+
+    const federationIntersect = Effect.fn("EnterpriseHttpApi.federationIntersect")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        agreementId: string
+        localActions: readonly string[]
+        localResources: readonly string[]
+        remoteActions: readonly string[]
+        remoteResources: readonly string[]
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const result = intersectAuthority(
+        { actions: new Set(ctx.payload.localActions), resources: new Set(ctx.payload.localResources) },
+        { actions: new Set(ctx.payload.remoteActions), resources: new Set(ctx.payload.remoteResources) },
+        controlStateFor(directory).federation.getAgreement(ctx.payload.agreementId),
+        new Date(),
+      )
+      if (result.allowed) {
+        return {
+          allowed: true as const,
+          scope: { actions: [...result.scope.actions], resources: [...result.scope.resources] },
+        }
+      }
+      return { allowed: false as const, reason: result.reason }
+    })
+
+    const entitlement = Effect.fn("EnterpriseHttpApi.entitlement")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        tier: "COMMUNITY" | "TEAM" | "ENTERPRISE"
+        feature:
+          | "local_runtime"
+          | "shared_policy"
+          | "shared_approvals"
+          | "fleet_control"
+          | "sso"
+          | "federation"
+          | "compliance_exports"
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      void directory
+      return { entitled: entitled(ctx.payload.tier, ctx.payload.feature) }
+    })
+
+    const meteringCheck = Effect.fn("EnterpriseHttpApi.meteringCheck")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        decision: "ALLOW" | "DENY" | "REQUIRE_APPROVAL"
+        meteringOk: boolean
+        overQuota?: boolean
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      void directory
+      return {
+        decision: meteringNeverAffectsDecision(ctx.payload.decision, {
+          ok: ctx.payload.meteringOk,
+          overQuota: ctx.payload.overQuota,
+        }),
+      }
+    })
+
+    const diagnostics = Effect.fn("EnterpriseHttpApi.diagnostics")(function* (ctx: {
+      params: { tenantId: string }
+      payload: {
+        diagnostics: {
+          version: string
+          runtime: Readonly<Record<string, string>>
+          config: Readonly<Record<string, string>>
+          logs: readonly string[]
+        }
+        secretFragments: readonly string[]
+      }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      void directory
+      return redactDiagnostics(
+        {
+          version: ctx.payload.diagnostics.version,
+          runtime: { ...ctx.payload.diagnostics.runtime },
+          config: { ...ctx.payload.diagnostics.config },
+          logs: [...ctx.payload.diagnostics.logs],
+        },
+        ctx.payload.secretFragments,
+      )
+    })
+
+    const upgradePolicy = Effect.fn("EnterpriseHttpApi.upgradePolicy")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      void directory
+      return DEFAULT_UPGRADE_POLICY
+    })
+
     return handlers
       .handle("createOrganization", createOrganization)
       .handle("assignRole", assignRole)
@@ -660,5 +956,20 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       .handle("checkExportable", checkExportable)
       .handle("classify", classify)
       .handle("piiRetention", piiRetention)
+      .handle("backup", backup)
+      .handle("restore", restore)
+      .handle("drill", drill)
+      .handle("drills", drills)
+      .handle("putFederationAgreement", putFederationAgreement)
+      .handle("getFederationAgreement", getFederationAgreement)
+      .handle("federationExchange", federationExchange)
+      .handle("federationRevoke", federationRevoke)
+      .handle("federationExchanges", federationExchanges)
+      .handle("federationRevocations", federationRevocations)
+      .handle("federationIntersect", federationIntersect)
+      .handle("entitlement", entitlement)
+      .handle("meteringCheck", meteringCheck)
+      .handle("diagnostics", diagnostics)
+      .handle("upgradePolicy", upgradePolicy)
   }),
 )

@@ -15,6 +15,8 @@ import { SqliteFleetStore } from "@arcana/core/enterprise/fleet-sqlite"
 import { SqliteCentralApprovalStore } from "@arcana/core/enterprise/approvals-sqlite"
 import { SqliteAuditArchiveStore } from "@arcana/core/enterprise/audit-archive-sqlite"
 import { SqliteSecurityOpsStore } from "@arcana/core/enterprise/security-ops-sqlite"
+import { SqliteReliabilityStore } from "@arcana/core/enterprise/reliability-sqlite"
+import { SqliteFederationStore } from "@arcana/core/enterprise/federation-sqlite"
 import type { EnrollmentContext } from "@arcana/core/crypto/node-enrollment"
 
 /**
@@ -34,6 +36,8 @@ export type ControlPlaneState = {
   approvals: SqliteCentralApprovalStore
   auditArchive: SqliteAuditArchiveStore
   securityOps: SqliteSecurityOpsStore
+  reliability: SqliteReliabilityStore
+  federation: SqliteFederationStore
 }
 
 const stateCache = new Map<string, ControlPlaneState>()
@@ -58,6 +62,8 @@ export function controlStateFor(directory: string): ControlPlaneState {
       approvals: new SqliteCentralApprovalStore(db),
       auditArchive: new SqliteAuditArchiveStore(db),
       securityOps: new SqliteSecurityOpsStore(db),
+      reliability: new SqliteReliabilityStore(db),
+      federation: new SqliteFederationStore(db),
     }
     stateCache.set(directory, state)
   }
