@@ -42,6 +42,7 @@ const RegistrationOk = Schema.Struct({
   status: Schema.Literals(["REGISTERED", "DUPLICATE"]),
   acknowledgedFirstSequence: Schema.Number,
   acknowledgedLastSequence: Schema.Number,
+  acknowledgedAt: Schema.String,
 })
 
 const RegistrationRejected = Schema.Struct({

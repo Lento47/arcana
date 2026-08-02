@@ -115,7 +115,7 @@ worker-path patch; no dependency was downgraded.
 | `master` mainline stale vs `phase-d-implementation` | Post-sign-off release action (BLK-1.0-05) | Release |
 | Phase D transport/containment/enrollment/offline/ops/eval gaps | BLK-D-01..09 | Engineering |
 | D-7.1 Windows handle-based containment reader implemented (10/10 tests incl. traversal + junction escape); engine integration + live Linux validation pending | BLK-D-02 | Engineering |
-| D-8B control-plane proof registration implemented (core ledger + SQLite + HTTP + 18 tests); node-side uploader/outbox + hostile-node matrix pending | BLK-D-04 | Engineering |
+| D-8B proof registration implemented end-to-end (control-plane ledger + HTTP, node-side uploader/outbox + HTTP client, 33 tests); scheduler/CLI wiring + hostile-node matrix pending | BLK-D-04 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 
