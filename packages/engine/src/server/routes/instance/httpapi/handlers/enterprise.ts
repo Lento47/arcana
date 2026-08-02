@@ -36,6 +36,10 @@ import { planRingRollout, type UpgradeRing } from "@arcana/core/enterprise/upgra
 import { validatePolicyDraft } from "@arcana/core/enterprise/policy-drafts"
 import { detectAnomalies } from "@arcana/core/enterprise/anomaly"
 import { toTicketPayload } from "@arcana/core/enterprise/ticketing"
+import {
+  queueRevocationDelivery,
+  receiveRevocationDelivery,
+} from "@arcana/core/enterprise/federation-transport"
 import type { SignedPolicyEnvelope } from "@arcana/core/crypto/signed-envelopes"
 import { SignedPolicyEnvelopeSchema } from "../groups/policy"
 import {
@@ -1326,6 +1330,84 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       return events.map((event) => toTicketPayload(event))
     })
 
+    const queueDelivery = Effect.fn("EnterpriseHttpApi.queueRevocationDelivery")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { agreementId: string; subjectId: string; reason: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      const result = queueRevocationDelivery(
+        {
+          orgId: ctx.params.tenantId,
+          agreementId: ctx.payload.agreementId,
+          subjectId: ctx.payload.subjectId,
+          reason: ctx.payload.reason,
+          now: new Date(),
+        },
+        state.federation,
+        state.federationTransport,
+      )
+      if (result.kind === "QUEUED") {
+        return { kind: "QUEUED" as const, record: result.record }
+      }
+      return { kind: "REJECTED" as const, reason: result.reason }
+    })
+
+    const listOutbox = Effect.fn("EnterpriseHttpApi.listRevocationOutbox")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).federationTransport.pending(ctx.params.tenantId)
+    })
+
+    const receiveDelivery = Effect.fn("EnterpriseHttpApi.receiveRevocationDelivery")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { agreementId: string; senderOrgId: string; subjectId: string; reason: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      const result = receiveRevocationDelivery(
+        {
+          orgId: ctx.params.tenantId,
+          agreementId: ctx.payload.agreementId,
+          senderOrgId: ctx.payload.senderOrgId,
+          subjectId: ctx.payload.subjectId,
+          reason: ctx.payload.reason,
+          now: new Date(),
+        },
+        state.federation,
+        state.federationTransport,
+      )
+      if (result.kind === "RECEIVED") {
+        return { kind: "RECEIVED" as const, record: result.record }
+      }
+      return { kind: "REJECTED" as const, reason: result.reason }
+    })
+
+    const listInbox = Effect.fn("EnterpriseHttpApi.listRevocationInbox")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      return controlStateFor(directory).federationTransport.received(ctx.params.tenantId)
+    })
+
+    const markDelivered = Effect.fn("EnterpriseHttpApi.markRevocationDelivered")(function* (ctx: {
+      params: { tenantId: string; deliveryId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      controlStateFor(directory).federationTransport.markDelivered(
+        ctx.params.tenantId,
+        ctx.params.deliveryId,
+        new Date().toISOString(),
+      )
+      return { ok: true }
+    })
+
     return handlers
       .handle("createOrganization", createOrganization)
       .handle("assignRole", assignRole)
@@ -1391,5 +1473,10 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       .handle("validatePolicyDraft", validateDraft)
       .handle("anomalyScan", anomalyScan)
       .handle("ticketingExport", ticketingExport)
+      .handle("queueRevocationDelivery", queueDelivery)
+      .handle("listRevocationOutbox", listOutbox)
+      .handle("receiveRevocationDelivery", receiveDelivery)
+      .handle("listRevocationInbox", listInbox)
+      .handle("markRevocationDelivered", markDelivered)
   }),
 )
