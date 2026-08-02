@@ -39,7 +39,7 @@ secondary; never edit the mirror independently.
 | Phase A — Epistemic Foundation | COMPLETE / FROZEN (declared complete in master spec) |
 | Phase B — Verification and Replay | COMPLETE / FROZEN (`arcana-epistemic-runtime-phase-b`) |
 | Phase C — Local Governed Autonomy | EVALUATION PASS; tags exist (`arcana-governed-autonomy-phase-c`, `phase-c-production-enforcement`); release sign-off = Approve with exceptions (2026-08-01) |
-| Phase D — Distributed Authority | ACTIVE DEVELOPMENT, ~45–55% by playbook weighting; D-7 frozen (`arcana-phase-d7-local-distributed-authority`), D-8A proof batching implemented, **D-8B proof registration implemented end-to-end (control plane + node uploader/outbox, 2026-08-02)**; D-1/D-3–D-6/D-9/D-10 partial or pending |
+| Phase D — Distributed Authority | ACTIVE DEVELOPMENT, ~45–55% by playbook weighting; D-7 frozen (`arcana-phase-d7-local-distributed-authority`), D-8A proof batching implemented, **D-8B proof registration end-to-end + D-9 offline grant/lease policy (2026-08-02)**; D-1/D-3–D-6/D-10 partial or pending |
 | TUI-1 | Historical independent tag (`arcana-tui-1-governance-observability`); not in current branch ancestry |
 | TUI-2 — Interactive Authority Control | FROZEN (`arcana-tui-2-interactive-authority-control`) |
 | TUI-2.1 — Production Integration + Polish | MOUNTED, AUTOMATED GREEN; freeze NOT AUTHORIZED. Manual validation in progress (2026-08-02): contract admission, tool execution, governance aggregation, proof axes, approval via gate, denial with zero effects, restart durability, daemon respawn on idle-stop (F-22) observed, approval inspector + spine keys implemented (F-23) with regression tests; approval lifecycle via spine keys, matrices, stream protocol, and performance pending |
@@ -118,7 +118,7 @@ validation, manual validation, external validation, release.
 | TUI suite | 781 pass / 1 skip / 0 fail (782 tests) — rerun 2026-08-02 |
 | Repo-wide typecheck | 16/16 packages |
 | Build | 8/8 tasks (engine binaries smoke-tested; `0.0.0-phase-d-implementation-202608021350`) |
-| Core suite | 1291 pass / 7 skip / 0 fail (1,298 tests, clean rerun 2026-08-02 incl. D-8B proof-registration + uploader suites) |
+| Core suite | 1306 pass / 7 skip / 0 fail (1,313 tests, clean rerun 2026-08-02 incl. D-8B registration/uploader + D-9 offline-policy suites) |
 | Engine suite | CLEAN full rerun 2026-08-02 at the audit worktree (now committed as `e57c5ca2`): 4251 pass / 74 skip / 1 todo / 0 fail (4,326 tests, 990.6s). Includes post-run fixes: OpenTUI 0.4.5 worker-path patch, daemon obligation-template seed idempotency, completion-gate per-contract idempotency, PEP criteria receipts. Re-verify at the exact final commit |
 | Arcana CLI/proof suite | 116 pass / 0 fail (2026-08-02) |
 | SDK JS suite | 7 pass / 0 fail (2026-08-02) |
