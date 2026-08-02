@@ -31,7 +31,7 @@ every hard gate to pass and every phase to be human-approved before "100%".
 | CLI 1.0 | PARTIAL — contract not frozen |
 | Phase D — Distributed Governed Autonomy | ACTIVE (~45–55%); D-7 frozen, D-8A done |
 | Phase E — Protocol/SDK/Adapters | PLANNED / PARTIAL |
-| Phase F — Enterprise Control Plane | PLANNED / PARTIAL |
+| Phase F — Enterprise Control Plane | PARTIAL — F1–F12 cores implemented (2026-08-02); GA freeze NOT authorized (live exercises + external assessment pending) |
 | Arcana 1.0 convergence | NOT REACHED |
 
 The local product core (A + B + C + frozen TUI-2 + working CLI surfaces) is
@@ -83,6 +83,8 @@ Frozen tag with approval lifecycle, governed executor, and operator surfaces.
 | Build | **8/8 tasks**; engine binary smoke `0.0.0-phase-d-implementation-202608021350` |
 | Denied-path executor calls | 0 (Phase C frozen suite) |
 | Unexpected allows | 0 (95 fixtures) |
+| Core suite (current) | 1419 pass / 7 skip / 0 fail (1,426 tests incl. Phase D/E/F cores) |
+| Conformance runner | 4/4 suites (46 vectors + 15 hostile fixtures + SDK surface) |
 
 No regressions versus the previous checkpoint: TUI 762 → 781 pass, core 1256 →
 1264 pass, engine 4248 → 4251 pass. OpenTUI remains pinned at 0.4.5 with the
@@ -140,6 +142,7 @@ worker-path patch; no dependency was downgraded.
 | F6 audit/compliance archive implemented: immutable tenant-scoped proof retention, fingerprint-verified export, custody chain, retention with legal hold (4 tests); compliance mappings + auditor console pending | BLK-F-06 | Engineering |
 | F7 HA/DR core (digest-verified backup/restore, drill evaluation vs RPO/RTO, degraded fail-closed; 3 tests) + F8 federation core (authority intersection never broadens, conflict resolution, proof exchange, revocation propagation; 5 tests) implemented | BLK-F-07/08 | Engineering |
 | F9 security-ops core (alerts, incident timelines, audited revocation campaigns, forensic exports), F10 data governance (classification, regional/CMK, PII controls), F11 admin event surface (webhook/SIEM/ticketing envelopes) implemented (8 tests) | BLK-F-09/10/11 | Engineering |
+| F12 commercial readiness core (tiered entitlements, metering-never-affects-security invariant, redacted diagnostics, upgrade policy; 4 tests) + Phase F GA freeze draft published (gate evidence; freeze not authorized) | BLK-F-12/13 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 

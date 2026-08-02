@@ -126,8 +126,8 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | F9 Enterprise security operations | 8% | PARTIAL | **Security-ops core IMPLEMENTED 2026-08-02** (`packages/core/src/enterprise/security-ops.ts` + SQLite): tenant-scoped alerts (severity-filtered), incident timelines, audited revocation campaigns (emergency deny propagation, per-node audit), forensic exports (3 tests). Remaining: anomaly-detection heuristics + compromise simulation | BLK-F-09 |
 | F10 Data governance and privacy | 5% | PARTIAL | **Data governance core IMPLEMENTED 2026-08-02** (`packages/core/src/enterprise/data-governance.ts`): classification (incl. PII), regional + CMK storage constraints, PII export control (telemetry opt-out), PII retention, input classification (3 tests). Remaining: regional-storage plumbing + CMK integration | BLK-F-10 |
 | F11 Enterprise API and automation | 4% | PARTIAL | **Admin event surface IMPLEMENTED 2026-08-02** (`packages/core/src/enterprise/admin-events.ts`): canonical tenant-scoped admin events for webhooks/SIEM/ticketing (approval.pending, node.revoked, policy.promoted, alert.critical; round-trip tests). Remaining: HTTP admin API + Terraform provider + SIEM export | BLK-F-11 |
-| F12 Commercial readiness | 4% | PENDING | license review pending | BLK-F-12 |
-| F13 Independent assessment + GA freeze | 3% | PENDING | none | BLK-F-13 |
+| F12 Commercial readiness | 4% | PARTIAL | **Core IMPLEMENTED 2026-08-02** (`packages/core/src/enterprise/commercial-readiness.ts`): tiered entitlements (COMMUNITY/TEAM/ENTERPRISE), metering-never-affects-security invariant (explicit + tested), secret-redacted support diagnostics, upgrade policy (4 tests). Remaining: license text review + metering pipeline | BLK-F-12 |
+| F13 Independent assessment + GA freeze | 3% | PENDING | `docs/releases/PHASE-F-FREEZE-DRAFT.md` published (gate evidence + operational gates); freeze NOT authorized — external architecture review, penetration test, threat-model review, supply-chain assessment, L3 reproduction pending | BLK-F-13 |
 
 ## Product tracks
 

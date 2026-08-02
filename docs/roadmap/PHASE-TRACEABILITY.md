@@ -180,8 +180,8 @@ registry, market assessment.
 | F9 Security operations | PARTIAL | alerts + incident timelines + audited campaigns + forensic exports (3 tests) | BLK-F-09 |
 | F10 Data governance | PARTIAL | classification + regional/CMK + PII export/retention (3 tests) | BLK-F-10 |
 | F11 Enterprise API/automation | PARTIAL | canonical admin event surface (2 tests) | BLK-F-11 |
-| F12 Commercial readiness | PENDING | license review pending | BLK-F-12 |
-| F13 Assessment + GA freeze | PENDING | — | BLK-F-13 |
+| F12 Commercial readiness | PARTIAL | entitlements + metering-invariant + redacted diagnostics (4 tests) | BLK-F-12 |
+| F13 Assessment + GA freeze | PENDING | freeze draft with gate evidence; external assessment pending | BLK-F-13 |
 
 ---
 

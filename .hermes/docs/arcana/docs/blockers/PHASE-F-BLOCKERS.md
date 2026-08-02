@@ -19,8 +19,8 @@ compliance archive is production-ready.**
 | BLK-F-09 | F9 enterprise security operations | **Core DONE 2026-08-02** (alerts, incident timelines, audited revocation campaigns, forensic exports; 3 tests). Remaining: anomaly-detection heuristics + compromise simulation | Compromise simulation pending; emergency deny propagation (DONE, audited) |
 | BLK-F-10 | F10 data governance and privacy | **Core DONE 2026-08-02** (classification, regional/CMK constraints, PII export control + retention; 3 tests). Remaining: regional-storage plumbing + CMK integration | Contracts documented (DONE); storage plumbing pending |
 | BLK-F-11 | F11 enterprise API and automation | **Admin event surface DONE 2026-08-02** (canonical webhook/SIEM/ticketing events; 2 tests). Remaining: HTTP admin API, Terraform provider, SIEM export | Admin API + webhooks + automation tested (event surface DONE; HTTP admin pending) |
-| BLK-F-12 | F12 commercial readiness | no licensing/entitlements/metering/support diagnostics | Metering never affects security decisions; docs complete |
-| BLK-F-13 | F13 independent security assessment and GA freeze | no external architecture review/pen-test/threat model/supply-chain assessment | Blockers resolved; Control 1.0 + Phase F milestone frozen |
+| BLK-F-12 | F12 commercial readiness | **Core DONE 2026-08-02** (entitlements, metering-never-affects-security invariant, redacted diagnostics, upgrade policy; 4 tests). Remaining: license text review + metering pipeline | Metering never affects security decisions (DONE, tested); docs complete (DRAFT) |
+| BLK-F-13 | F13 independent security assessment and GA freeze | **Freeze draft published 2026-08-02** (`PHASE-F-FREEZE-DRAFT.md`: §40 gate evidence + operational gates). Remaining: external architecture review, penetration test, threat-model review, supply-chain assessment, L3 reproduction, live exercises, Control 1.0 mounting | Blockers resolved + milestone frozen (all external/operational) |
 
 ## Phase F hard gates (playbook §40) — all currently unprovable
 
