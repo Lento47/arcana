@@ -194,9 +194,123 @@ export const PiiRetentionResponseSchema = Schema.Struct({
   expired: Schema.Array(Schema.String),
 })
 
+export const BackupRecordSchema = Schema.Struct({
+  tenantId: Schema.String,
+  backupId: Schema.String,
+  kind: Schema.Literals(["DATABASE", "KEYS"]),
+  createdAt: Schema.String,
+  digest: Schema.String,
+  restoredAt: Schema.optional(Schema.String),
+})
+
+export const RestoreResponseSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("RESTORED"), record: BackupRecordSchema }),
+  Schema.Struct({ kind: Schema.Literal("REJECTED"), reason: Schema.String }),
+])
+
+export const ReliabilityConfigSchema = Schema.Struct({
+  availabilityTarget: Schema.Number,
+  rpoMs: Schema.Number,
+  rtoMs: Schema.Number,
+})
+
+export const DrillRecordSchema = Schema.Struct({
+  tenantId: Schema.String,
+  drillId: Schema.String,
+  startedAt: Schema.String,
+  finishedAt: Schema.String,
+  restoredDigest: Schema.String,
+  measuredRpoMs: Schema.Number,
+  measuredRtoMs: Schema.Number,
+})
+
+export const DrillResultSchema = Schema.Struct({
+  pass: Schema.Boolean,
+  violations: Schema.Array(Schema.String),
+  measuredRpoMs: Schema.Number,
+  measuredRtoMs: Schema.Number,
+})
+
+export const DrillResponseSchema = Schema.Struct({
+  result: DrillResultSchema,
+  record: DrillRecordSchema,
+})
+
+export const FederationAgreementSchema = Schema.Struct({
+  agreementId: Schema.String,
+  version: Schema.Number,
+  orgA: Schema.String,
+  orgB: Schema.String,
+  audienceRestrictions: Schema.Array(Schema.String),
+  validFrom: Schema.String,
+  validTo: Schema.String,
+  status: Schema.Literals(["ACTIVE", "REVOKED"]),
+})
+
+export const ProofExchangeRecordSchema = Schema.Struct({
+  agreementId: Schema.String,
+  orgId: Schema.String,
+  remoteProofId: Schema.String,
+  fingerprint: Schema.String,
+  exchangedAt: Schema.String,
+  origin: Schema.String,
+})
+
+export const RevocationPropagationRecordSchema = Schema.Struct({
+  agreementId: Schema.String,
+  orgId: Schema.String,
+  subjectId: Schema.String,
+  reason: Schema.String,
+  propagatedAt: Schema.String,
+})
+
+export const ProofExchangeResponseSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("EXCHANGED"), record: ProofExchangeRecordSchema }),
+  Schema.Struct({ kind: Schema.Literal("REJECTED"), reason: Schema.String }),
+])
+
+export const RevocationPropagationResponseSchema = Schema.Union([
+  RevocationPropagationRecordSchema,
+  Schema.Struct({ kind: Schema.Literal("REJECTED"), reason: Schema.String }),
+])
+
+export const AuthorityScopeSchema = Schema.Struct({
+  actions: Schema.Array(Schema.String),
+  resources: Schema.Array(Schema.String),
+})
+
+export const IntersectionResponseSchema = Schema.Union([
+  Schema.Struct({ allowed: Schema.Literal(true), scope: AuthorityScopeSchema }),
+  Schema.Struct({ allowed: Schema.Literal(false), reason: Schema.String }),
+])
+
+export const EntitlementResponseSchema = Schema.Struct({ entitled: Schema.Boolean })
+
+export const MeteringCheckResponseSchema = Schema.Struct({
+  decision: Schema.Literals(["ALLOW", "DENY", "REQUIRE_APPROVAL"]),
+})
+
+export const DiagnosticsSchema = Schema.Struct({
+  version: Schema.String,
+  runtime: Schema.Record(Schema.String, Schema.String),
+  config: Schema.Record(Schema.String, Schema.String),
+  logs: Schema.Array(Schema.String),
+})
+
+export const UpgradePolicySchema = Schema.Struct({
+  supportedFrom: Schema.String,
+  breakingChangesRequire: Schema.Literals(["major_version", "migration_runbook"]),
+  rollbackAllowed: Schema.Boolean,
+})
+
 export const AlertsQuery = Schema.Struct({
   ...WorkspaceRoutingQuery.fields,
   severity: Schema.optional(Schema.Literals(["LOW", "MEDIUM", "HIGH", "CRITICAL"])),
+})
+
+export const FederationListQuery = Schema.Struct({
+  ...WorkspaceRoutingQuery.fields,
+  orgId: Schema.optional(Schema.String),
 })
 
 export const EnterprisePaths = {
@@ -225,6 +339,21 @@ export const EnterprisePaths = {
   checkExportable: `${root}/organizations/:tenantId/governance/check-exportable`,
   classify: `${root}/organizations/:tenantId/governance/classify`,
   piiRetention: `${root}/organizations/:tenantId/governance/pii-retention`,
+  backup: `${root}/organizations/:tenantId/reliability/backups`,
+  restore: `${root}/organizations/:tenantId/reliability/backups/:backupId/restore`,
+  drill: `${root}/organizations/:tenantId/reliability/drills`,
+  drills: `${root}/organizations/:tenantId/reliability/drills`,
+  federationAgreements: `${root}/organizations/:tenantId/federation/agreements`,
+  federationAgreement: `${root}/organizations/:tenantId/federation/agreements/:agreementId`,
+  federationExchange: `${root}/organizations/:tenantId/federation/exchange`,
+  federationRevoke: `${root}/organizations/:tenantId/federation/revoke`,
+  federationExchanges: `${root}/organizations/:tenantId/federation/exchanges`,
+  federationRevocations: `${root}/organizations/:tenantId/federation/revocations`,
+  federationIntersect: `${root}/organizations/:tenantId/federation/intersect`,
+  entitlement: `${root}/organizations/:tenantId/commercial/entitlement`,
+  meteringCheck: `${root}/organizations/:tenantId/commercial/metering-check`,
+  diagnostics: `${root}/organizations/:tenantId/commercial/diagnostics`,
+  upgradePolicy: `${root}/organizations/:tenantId/commercial/upgrade-policy`,
 } as const
 
 export const EnterpriseApi = HttpApi.make("enterprise").add(
@@ -583,6 +712,219 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         OpenApi.annotations({
           identifier: "enterprise.piiRetention",
           summary: "Evaluate PII retention expiry (F10)",
+        }),
+      ),
+      HttpApiEndpoint.post("backup", EnterprisePaths.backup, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          backupId: Schema.String,
+          kind: Schema.Literals(["DATABASE", "KEYS"]),
+          digest: Schema.String,
+        }),
+        success: described(BackupRecordSchema, "Backup recorded (F7)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.backup",
+          summary: "Record a digest-verified backup (F7)",
+        }),
+      ),
+      HttpApiEndpoint.post("restore", EnterprisePaths.restore, {
+        params: { tenantId: Schema.String, backupId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({ presentedDigest: Schema.String }),
+        success: described(RestoreResponseSchema, "Backup restore result (F7)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.restore",
+          summary: "Restore a backup only when its digest matches (F7)",
+        }),
+      ),
+      HttpApiEndpoint.post("drill", EnterprisePaths.drill, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          drillId: Schema.String,
+          startedAt: Schema.String,
+          finishedAt: Schema.String,
+          restoredDigest: Schema.String,
+          measuredRpoMs: Schema.Number,
+          measuredRtoMs: Schema.Number,
+          config: Schema.optional(ReliabilityConfigSchema),
+        }),
+        success: described(DrillResponseSchema, "Restore drill evaluation (F7)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.drill",
+          summary: "Record and evaluate a restore drill against RPO/RTO (F7)",
+        }),
+      ),
+      HttpApiEndpoint.get("drills", EnterprisePaths.drills, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(Schema.Array(DrillRecordSchema), "Restore drill history (F7)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.drills",
+          summary: "List restore drills (F7)",
+        }),
+      ),
+      HttpApiEndpoint.post("putFederationAgreement", EnterprisePaths.federationAgreements, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: FederationAgreementSchema,
+        success: described(FederationAgreementSchema, "Federation agreement stored (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.putFederationAgreement",
+          summary: "Store a federation agreement (F8)",
+        }),
+      ),
+      HttpApiEndpoint.get("getFederationAgreement", EnterprisePaths.federationAgreement, {
+        params: { tenantId: Schema.String, agreementId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(
+          Schema.Union([FederationAgreementSchema, Schema.Null]),
+          "Federation agreement (F8)",
+        ),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.getFederationAgreement",
+          summary: "Read a federation agreement (F8)",
+        }),
+      ),
+      HttpApiEndpoint.post("federationExchange", EnterprisePaths.federationExchange, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          agreementId: Schema.String,
+          orgId: Schema.String,
+          remoteProofId: Schema.String,
+          fingerprint: Schema.String,
+          origin: Schema.String,
+        }),
+        success: described(ProofExchangeResponseSchema, "Proof exchange result (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.federationExchange",
+          summary: "Exchange a remote proof under an active agreement (F8)",
+        }),
+      ),
+      HttpApiEndpoint.post("federationRevoke", EnterprisePaths.federationRevoke, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          agreementId: Schema.String,
+          orgId: Schema.String,
+          subjectId: Schema.String,
+          reason: Schema.String,
+        }),
+        success: described(RevocationPropagationResponseSchema, "Revocation propagation (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.federationRevoke",
+          summary: "Propagate a revocation under an active agreement (F8)",
+        }),
+      ),
+      HttpApiEndpoint.get("federationExchanges", EnterprisePaths.federationExchanges, {
+        params: { tenantId: Schema.String },
+        query: FederationListQuery,
+        success: described(Schema.Array(ProofExchangeRecordSchema), "Proof exchanges (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.federationExchanges",
+          summary: "List proof exchanges for an organization (F8)",
+        }),
+      ),
+      HttpApiEndpoint.get("federationRevocations", EnterprisePaths.federationRevocations, {
+        params: { tenantId: Schema.String },
+        query: FederationListQuery,
+        success: described(
+          Schema.Array(RevocationPropagationRecordSchema),
+          "Revocation propagations (F8)",
+        ),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.federationRevocations",
+          summary: "List revocation propagations for an organization (F8)",
+        }),
+      ),
+      HttpApiEndpoint.post("federationIntersect", EnterprisePaths.federationIntersect, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          agreementId: Schema.String,
+          localActions: Schema.Array(Schema.String),
+          localResources: Schema.Array(Schema.String),
+          remoteActions: Schema.Array(Schema.String),
+          remoteResources: Schema.Array(Schema.String),
+        }),
+        success: described(IntersectionResponseSchema, "Authority intersection (F8)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.federationIntersect",
+          summary: "Compute federated authority intersection (never broadens) (F8)",
+        }),
+      ),
+      HttpApiEndpoint.post("entitlement", EnterprisePaths.entitlement, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          tier: Schema.Literals(["COMMUNITY", "TEAM", "ENTERPRISE"]),
+          feature: Schema.Literals([
+            "local_runtime",
+            "shared_policy",
+            "shared_approvals",
+            "fleet_control",
+            "sso",
+            "federation",
+            "compliance_exports",
+          ]),
+        }),
+        success: described(EntitlementResponseSchema, "Entitlement check (F12)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.entitlement",
+          summary: "Check license-tier entitlement (F12)",
+        }),
+      ),
+      HttpApiEndpoint.post("meteringCheck", EnterprisePaths.meteringCheck, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          decision: Schema.Literals(["ALLOW", "DENY", "REQUIRE_APPROVAL"]),
+          meteringOk: Schema.Boolean,
+          overQuota: Schema.optional(Schema.Boolean),
+        }),
+        success: described(MeteringCheckResponseSchema, "Metering-never-affects-security (F12)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.meteringCheck",
+          summary: "Verify metering cannot change a security decision (F12)",
+        }),
+      ),
+      HttpApiEndpoint.post("diagnostics", EnterprisePaths.diagnostics, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          diagnostics: DiagnosticsSchema,
+          secretFragments: Schema.Array(Schema.String),
+        }),
+        success: described(DiagnosticsSchema, "Redacted diagnostics (F12)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.diagnostics",
+          summary: "Redact secrets from support diagnostics (F12)",
+        }),
+      ),
+      HttpApiEndpoint.get("upgradePolicy", EnterprisePaths.upgradePolicy, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(UpgradePolicySchema, "Upgrade policy (F12)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.upgradePolicy",
+          summary: "Read the default upgrade policy (F12)",
         }),
       ),
     )
