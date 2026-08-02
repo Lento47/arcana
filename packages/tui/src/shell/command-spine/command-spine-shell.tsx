@@ -20,6 +20,8 @@ import { QuestionPrompt } from "../../routes/session/question"
 import { SubagentFooter } from "../../routes/session/subagent-footer"
 import { DialogMessage } from "../../routes/session/dialog-message"
 import { ApprovalInspector } from "../../routes/session/approval-inspector"
+import { PermissionInspector } from "../../routes/session/permission-inspector"
+import type { PermissionRequest } from "@arcana/sdk/v2"
 import { ARCANA_BASE_MODE, useBindings } from "../../keymap"
 import { usePromptRef } from "../../context/prompt"
 import { useClipboard } from "../../context/clipboard"
@@ -363,6 +365,16 @@ export function CommandSpineShell(props: ShellProps) {
     return getApprovalForEntry(entry)
   })
 
+  // The `01◤ approve` row is a permission-gate entry (`permission:<id>`), not
+  // a durable approval record. `v` on it opens the permission inspector so
+  // the operator can inspect the exact request while the gate is open.
+  const focusedGateRequest = createMemo(() => {
+    const fid = focusedEntryID()
+    if (!fid || !fid.startsWith("permission:")) return undefined
+    const requestID = fid.slice("permission:".length)
+    return (props.permissions() as PermissionRequest[]).find((p) => p?.id === requestID)
+  })
+
   const canApprove = createMemo(() => {
     const approval = focusedApproval()
     if (!approval) return false
@@ -620,10 +632,16 @@ export function CommandSpineShell(props: ShellProps) {
         desc: "Inspect approval",
         group: "Command Spine",
         // Approval rows are handled by the priority-2 approval layer. This
-        // fallback runs only when NO approval is focused: give clear guidance
-        // instead of opening the message-details dialog (v is the approval
-        // inspector, not the generic details view — that is `o`).
+        // fallback runs when no durable approval is focused: permission-gate
+        // rows open the read-only permission inspector; everything else gets
+        // guidance (the generic details view is `o`).
         cmd: () => {
+          const gate = focusedGateRequest()
+          if (gate) {
+            blurComposer()
+            dialog.replace(() => <PermissionInspector request={gate} />)
+            return
+          }
           toast.show({
             message: "No approval to inspect — v inspects approvals; use o for entry details",
             variant: "info",
