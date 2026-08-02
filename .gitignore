@@ -86,6 +86,7 @@ temp/
 
 # Local engine runtime state (approvals DB, session locks)
 packages/engine/.arcana/approvals.db*
+packages/engine/.arcana/
 
 # Claude local worktrees / session junk
 .claude/worktrees/
