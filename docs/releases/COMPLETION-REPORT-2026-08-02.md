@@ -5,8 +5,8 @@ document_class: completion_report
 authority: secondary (status authority: docs/STATUS.md)
 status: checkpoint — NOT a phase F completion declaration
 created: 2026-08-02
-audited_commit: e57c5ca2 (2026-08-02 checkpoint commit; suites verified on the
-pre-commit worktree, which the commit reproduces exactly)
+audited_commit: 9100ac1d (2026-08-02 campaign checkpoint; suites verified on
+the pre-commit worktree, which the commit reproduces exactly)
 supersedes: none
 superseded_by: future final completion report after Phase F freeze
 ---
@@ -29,9 +29,9 @@ every hard gate to pass and every phase to be human-approved before "100%".
 | TUI-2 (interactive authority) | FROZEN (`arcana-tui-2-interactive-authority-control`) |
 | TUI-2.1 (production polish) | MOUNTED + automated green; freeze NOT authorized |
 | CLI 1.0 | PARTIAL — contract not frozen |
-| Phase D — Distributed Governed Autonomy | ACTIVE (~45–55%); D-7 frozen, D-8A done |
-| Phase E — Protocol/SDK/Adapters | PLANNED / PARTIAL |
-| Phase F — Enterprise Control Plane | PARTIAL — F1–F12 cores implemented (2026-08-02); GA freeze NOT authorized (live exercises + external assessment pending) |
+| Phase D — Distributed Governed Autonomy | FEATURE-COMPLETE in-repo (enrollment, revocation store + push, delta transport + node persistence, execution ledger, hostile matrices); remaining: TLS/mTLS, live Linux validation, L3, Node 1.0 freeze |
+| Phase E — Protocol/SDK/Adapters | PARTIAL — protocol draft + conformance 5/5 (TS + Rust + adapter vectors) + adapters (AI SDK/MCP/Mastra/LangGraph) + certified vectors; remaining: live PEP transport, macOS/Linux, L3 |
+| Phase F — Enterprise Control Plane | PARTIAL — F1–F13 cores implemented and mounted (`/api/enterprise/*` + SDK client: admin API, SIEM, ticketing, webhooks, escalation, policy, archive, fleet, federation, metering); GA freeze NOT authorized (TUI consoles, live exercises, external assessment pending) |
 | Arcana 1.0 convergence | NOT REACHED |
 
 The local product core (A + B + C + frozen TUI-2 + working CLI surfaces) is
@@ -89,6 +89,17 @@ Frozen tag with approval lifecycle, governed executor, and operator surfaces.
 No regressions versus the previous checkpoint: TUI 762 → 781 pass, core 1256 →
 1264 pass, engine 4248 → 4251 pass. OpenTUI remains pinned at 0.4.5 with the
 worker-path patch; no dependency was downgraded.
+
+**Current checkpoint totals (2026-08-02, HEAD `9100ac1d`):**
+
+- Core suite: **1465 pass / 7 skip / 0 fail** (1472 tests, 175 files).
+- SDK JS suite: **30 pass / 0 fail** (enterprise client, governance, proof,
+  errors, AI SDK/MCP/Mastra/LangGraph adapters, adapter vectors, SSE).
+- Engine server suites (affected): 43+ pass / 0 fail across sync-node,
+  revocations, push channel, enterprise, OpenAPI, query-drift, instance.
+- Conformance runner: **5/5 suites** (46 crypto vectors + 4 adapter vectors +
+  15 hostile fixtures + Rust verifier + SDK surface).
+- Typecheck: core, engine, SDK all clean.
 
 ## 5. Known bugs
 
@@ -148,6 +159,7 @@ worker-path patch; no dependency was downgraded.
 | Enterprise HTTP operations surface mounted (`/api/enterprise/*`: F3 policy promotion/diff with RBAC into per-environment target chains, F4 node register/heartbeat, F5 emergency revoke + bulk deny, F6 archive/export/custody/legal-hold/retention-sweep, F9 alerts/timeline/revocation-campaign/forensics, F10 governance checks; 5 integration tests) | BLK-F-03/04/05/06/09/10/11 | Engineering |
 | Enterprise HTTP reliability/federation/commercial surface mounted (`/api/enterprise/*`: F7 backup/restore/drill evaluation, F8 agreements/proof-exchange/revocation-propagation/authority-intersection, F12 entitlements/metering-invariant/redacted-diagnostics/upgrade-policy; 3 integration tests) | BLK-F-07/08/11/12 | Engineering |
 | F4 node diagnostics, F5 escalation core, F11 admin-event store + SIEM CEF export, F12 metering pipeline implemented and mounted (`nodeDiagnostics`; `escalation.ts` + SQLite with bounded fallback approvers and audited events that never consume approvals; `admin-events-sqlite.ts` + `siem-export.ts` JSON-lines/CEF; `metering.ts` + SQLite usage aggregation and informational quota; 11 core tests + 3 integration tests) | BLK-F-04/05/11/12 | Engineering |
+| F12 usage export endpoint added (`GET /api/enterprise/*/commercial/usage/export`: per-feature metering totals; integration tested) — closes the metering observability surface; live telemetry ingestion from engine events remains | BLK-F-12 | Engineering |
 | F8 cross-org approval routing (exact action grants, per-rule daily caps, agreement validity; bounded delegated authority), F4 upgrade-ring rollout automation (ring CRUD, node assignment, gated plans), and F6 compliance crosswalk doc (SOC 2 / ISO 27001 / NIST engineering index) implemented and mounted (6 core tests + 2 integration tests) | BLK-F-04/06/08/11 | Engineering |
 | SDK enterprise admin client (`packages/sdk/js/src/v2/enterprise.ts`): typed automation for the `/api/enterprise/*` surface — orgs, roles, fleet, policy promotion, escalation, SIEM export, metering, federation routing (4 SDK tests; satisfies F11 equivalent-automation requirement) | BLK-F-11 | Engineering |
 | F3 policy draft validation (schema/signature/chain check without publishing; 2 core + 1 integration test), F9 anomaly-detection heuristics (alert burst, revocation velocity, backlog, stale ratio; 3 core + 1 integration test), and F11 ticketing payloads (deterministic titles/priorities/labels; 1 core + 1 integration test) implemented and mounted | BLK-F-03/09/11 | Engineering |
