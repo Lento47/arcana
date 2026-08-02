@@ -11,6 +11,11 @@ import {
   processDueProofUploads,
 } from "@arcana/core/crypto/proof-uploader"
 import { createSyncClient } from "@/node/sync-client"
+import {
+  applyPolicySyncResponse,
+  applyRevocationSyncResponse,
+  SqliteSyncStateStore,
+} from "@/node/sync-state"
 import { buildOutboxRecords, listLocalProofs } from "@/node/local-proof-source"
 import { loadNodeIdentity, saveNodeIdentity, type NodeIdentityFile } from "@/node/node-identity-file"
 import { cmd } from "./cmd"
@@ -243,6 +248,11 @@ export const NodeSyncCommand = effectCmd({
     const secretKey = decodeCanonicalBase64url(identity.secretKeyB64)
     if (!secretKey) return yield* fail("invalid stored node secret key")
 
+    const db = new Database(join(directory, ".arcana", "node.db"))
+    const syncState = new SqliteSyncStateStore(db)
+    const persistedPolicy = syncState.get("policy")
+    const persistedRevocation = syncState.get("revocation")
+
     const client = createSyncClient({
       endpoint: args.endpoint,
       serverPublicKey,
@@ -253,8 +263,10 @@ export const NodeSyncCommand = effectCmd({
       nodeKeyEpoch: identity.nodeKeyEpoch,
       nodeCertificateFingerprint: String(identity.certificate.nodeId ?? identity.nodeId),
       secretKey,
-      acceptedPolicySequence: 0,
-      acceptedRevocationSequence: 0,
+      acceptedPolicySequence: persistedPolicy?.sequence ?? 0,
+      acceptedPolicyDigest: persistedPolicy?.digest,
+      acceptedRevocationSequence: persistedRevocation?.sequence ?? 0,
+      acceptedRevocationDigest: persistedRevocation?.digest,
       acceptedEmergencyEpoch: 0,
     }
     const result = yield* Effect.tryPromise({
@@ -262,10 +274,16 @@ export const NodeSyncCommand = effectCmd({
       catch: (error) => new CliError({ message: `sync error: ${String(error)}` }),
     })
     if (result.kind === "ERROR") {
+      db.close()
       return yield* fail(`sync failed: ${result.message}`)
     }
+    const applied =
+      args.kind === "policy"
+        ? applyPolicySyncResponse(result.context, syncState)
+        : applyRevocationSyncResponse(result.context, syncState)
+    db.close()
     console.log(
-      `sync ${args.kind}: ${result.context.responseKind} (${result.context.revocationSequence ?? result.context.policySequence ?? "?"})`,
+      `sync ${args.kind}: ${result.context.responseKind} → ${applied.applied} (sequence ${applied.sequence}, digest ${applied.digest.slice(0, 12)})`,
     )
   }),
 })
@@ -286,12 +304,17 @@ export const NodeStatusCommand = effectCmd({
     }
     const db = new Database(join(directory, ".arcana", "node.db"))
     const outbox = new SqliteProofOutbox(db)
+    const syncState = new SqliteSyncStateStore(db)
     const stats = outbox.stats(identity.nodeId)
+    const policy = syncState.get("policy")
+    const revocation = syncState.get("revocation")
     db.close()
     console.log(`node:        ${identity.nodeId}`)
     console.log(`trustDomain: ${identity.trustDomain}`)
     console.log(`keyEpoch:    ${identity.nodeKeyEpoch}`)
     console.log(`enrolledAt:  ${identity.enrolledAt}`)
+    console.log(`policy:      ${policy ? `seq ${policy.sequence} · ${policy.digest.slice(0, 12)}` : "none"}`)
+    console.log(`revocation:  ${revocation ? `seq ${revocation.sequence} · ${revocation.digest.slice(0, 12)}` : "none"}`)
     console.log(`outbox:      ${stats.pending} pending · ${stats.registered} registered · ${stats.poisoned} poisoned`)
   }),
 })

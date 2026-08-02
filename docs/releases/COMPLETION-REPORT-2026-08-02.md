@@ -159,6 +159,7 @@ worker-path patch; no dependency was downgraded.
 | D-4 DELTA bundles implemented and served (`policy-delta.ts`: deterministic field diffs, dotted-path apply, base/result digest + chain verification; sync control plane serves POLICY_DELTA for exactly-one-step-behind nodes and REVOCATION_DELTA for statements after the accepted sequence, bounded at 32; 4 core + 1 engine test) — closes the D-4 delta-transport gap | BLK-D-01/D-4 | Engineering |
 | D-10 revocation hostile suite added (`revocation-hostile.test.ts`: forged, unknown-issuer, schema-invalid, future-dated, non-genesis, rollback, duplicate-content, resurrection — 9 fixtures, 0 bypasses); verifier freshness now applies the future-issuedAt check to envelopes without `expiresAt` (hardening) | BLK-D-05/D-08 | Engineering |
 | Node-side sync-client delta validation added (`sync-client.ts`: POLICY_DELTA base/sequence/result/target consistency, contiguous REVOCATION_DELTA statements; 3 new engine tests) — the D-4 delta loop now fails closed on both ends of the transport | BLK-D-01/D-04 | Engineering |
+| Node runtime durable sync state added (`sync-state.ts`: persisted policy/revocation accepted state, snapshot/delta apply with idempotent retries and base-mismatch fail-closed; `arcana node sync` resumes from persisted state, `node status` displays it; 4 engine tests) — closes the D-4 node persistence gap | BLK-D-01/D-04 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 
