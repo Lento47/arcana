@@ -4,7 +4,11 @@ import { Flag } from "@arcana/core/flag/flag"
 import { ed25519 } from "@noble/curves/ed25519.js"
 import { encodeBase64url } from "@arcana/core/crypto/canonical-serializer"
 import { createJoinToken } from "@arcana/core/crypto/node-enrollment"
-import { POLICY_DOMAIN, type SignedPolicyEnvelope } from "@arcana/core/crypto/signed-envelopes"
+import {
+  POLICY_DOMAIN,
+  REVOCATION_DOMAIN,
+  type SignedPolicyEnvelope,
+} from "@arcana/core/crypto/signed-envelopes"
 import { signEnvelope } from "@arcana/core/crypto/node-enrollment"
 import {
   signSyncRequest,
@@ -16,6 +20,7 @@ import type { SyncResponseContext } from "@arcana/core/crypto/sync-auth"
 import { SyncNodePaths } from "../../src/server/routes/instance/httpapi/groups/sync-node"
 import { EnrollmentPaths } from "../../src/server/routes/instance/httpapi/groups/enrollment"
 import { PolicyPaths } from "../../src/server/routes/instance/httpapi/groups/policy"
+import { RevocationPaths } from "../../src/server/routes/instance/httpapi/groups/revocations"
 import { Session } from "@/session/session"
 import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
@@ -88,6 +93,21 @@ function policyEnvelope(sequence: number, previousPolicyDigest?: string): Signed
     ...(previousPolicyDigest !== undefined ? { previousPolicyDigest } : {}),
   }
   return signEnvelope(POLICY_DOMAIN, payload, issuerKey.secretKey) as unknown as SignedPolicyEnvelope
+}
+
+function revocationStatement(sequence: number) {
+  const payload = {
+    schemaVersion: 1,
+    issuerId: "issuer-arcana",
+    issuerEpoch: 1,
+    sequence,
+    subjectType: "GRANT",
+    subjectId: "grant-revoked",
+    reason: "compromised",
+    effectiveAt: new Date().toISOString(),
+    issuedAt: new Date().toISOString(),
+  }
+  return signEnvelope(REVOCATION_DOMAIN, payload, issuerKey.secretKey)
 }
 
 describe("syncNode HttpApi (D-6B-T)", () => {
@@ -190,6 +210,45 @@ describe("syncNode HttpApi (D-6B-T)", () => {
           envelope: SignedSyncEnvelope<SyncResponseContext>
         }
         expect(caughtUpBody.envelope.context.responseKind).toBe("NO_CHANGE")
+
+        // Revocation snapshot: publish a statement, then a behind node
+        // receives REVOCATION_SNAPSHOT; a caught-up node receives NO_CHANGE.
+        const publishedRevocation = yield* requestInDirectory(RevocationPaths.publish, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ statement: revocationStatement(1) }),
+        })
+        expect(((yield* publishedRevocation.json) as { kind?: string }).kind).toBe("PUBLISHED")
+
+        const behindRevocation = yield* requestInDirectory(SyncNodePaths.revocation, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            requestEnvelope({ requestId: "req-sync-3", clientNonce: "nonce-4" }),
+          ),
+        })
+        const behindBody = (yield* behindRevocation.json) as {
+          envelope: SignedSyncEnvelope<SyncResponseContext>
+        }
+        expect(behindBody.envelope.context.responseKind).toBe("REVOCATION_SNAPSHOT")
+        expect(behindBody.envelope.context.revocationSequence).toBe(1)
+
+        const caughtUpRevocation = yield* requestInDirectory(SyncNodePaths.revocation, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(
+            requestEnvelope({
+              requestId: "req-sync-4",
+              clientNonce: "nonce-5",
+              acceptedRevocationSequence: 1,
+              acceptedRevocationDigest: behindBody.envelope.context.revocationDigest ?? "",
+            }),
+          ),
+        })
+        const revocationCaughtUpBody = (yield* caughtUpRevocation.json) as {
+          envelope: SignedSyncEnvelope<SyncResponseContext>
+        }
+        expect(revocationCaughtUpBody.envelope.context.responseKind).toBe("NO_CHANGE")
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )
