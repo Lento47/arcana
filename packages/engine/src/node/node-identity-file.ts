@@ -38,3 +38,30 @@ export function saveNodeIdentity(directory: string, identity: NodeIdentityFile):
   mkdirSync(join(directory, ".arcana"), { recursive: true })
   writeFileSync(path, JSON.stringify(identity, null, 2), { mode: 0o600 })
 }
+
+/**
+ * Build the updated identity file after a control-plane key rotation. The
+ * new secret key, public key, epoch, and certificate come from the rotation
+ * response; other identity fields are preserved.
+ */
+export function rotatedIdentity(
+  record: {
+    nodeId: string
+    trustDomain: string
+    publicKey: string
+    nodeKeyEpoch: number
+    certificate: Record<string, unknown>
+    enrolledAt: string
+  },
+  newSecretKeyB64: string,
+): NodeIdentityFile {
+  return {
+    nodeId: record.nodeId,
+    trustDomain: record.trustDomain,
+    secretKeyB64: newSecretKeyB64,
+    publicKeyB64: record.publicKey,
+    nodeKeyEpoch: record.nodeKeyEpoch,
+    certificate: record.certificate,
+    enrolledAt: record.enrolledAt,
+  }
+}
