@@ -111,6 +111,7 @@ worker-path patch; no dependency was downgraded.
 | Bug / risk | Status | Owner |
 |---|---|---|
 | Bun 1.3.14 root-runner segmentation fault on Windows | Workaround: package-local runners; isolated, documented, accepted exception | Bun upstream |
+| Enterprise admin API actor identity is client-supplied in mutation payloads (`actorUserId`/`approvedBy`) rather than bound to the authenticated principal | RBAC permission checks are exercised end-to-end, but the auth-context binding (HTTP auth → principal) is a follow-up before GA (BLK-F-02/11) | Engineering |
 | TUI-2.1 live validation still pending: approval lifecycle via `v`/`a`/`d`, width matrix, theme matrix, restart/session isolation, performance, 6-checkpoint stream protocol | Freeze NOT authorized until passed at the exact commit | Engineering + operator |
 | "Failed to send prompt / Unable to connect" after daemon death | F-22 mitigation implemented; re-verify through the live-stream protocol | Engineering |
 | No L3+ independent reproduction of the Phase C evaluation | Blocker AUD-20 | External |
