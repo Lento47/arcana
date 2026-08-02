@@ -4,7 +4,7 @@ import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
 import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
 import { described } from "./metadata"
-import { PolicyBundleRecordSchema } from "./policy"
+import { PolicyBundleRecordSchema, SignedPolicyEnvelopeSchema } from "./policy"
 
 const root = "/api/enterprise"
 
@@ -463,6 +463,27 @@ export const RolloutDecisionSchema = Schema.Struct({
   reason: Schema.String,
 })
 
+export const PolicyDraftValidationResponseSchema = Schema.Union([
+  Schema.Struct({ valid: Schema.Literal(true), record: PolicyBundleRecordSchema }),
+  Schema.Struct({ valid: Schema.Literal(false), reason: Schema.String }),
+])
+
+export const AnomalySignalSchema = Schema.Struct({
+  signalId: Schema.String,
+  tenantId: Schema.String,
+  kind: Schema.Literals(["alert_burst", "revocation_velocity", "proof_backlog_growth", "stale_node_count"]),
+  severity: Schema.Literals(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+  detail: Schema.String,
+  at: Schema.String,
+})
+
+export const TicketPayloadSchema = Schema.Struct({
+  title: Schema.String,
+  description: Schema.String,
+  labels: Schema.Array(Schema.String),
+  priority: Schema.Literals(["low", "medium", "high", "urgent"]),
+})
+
 export const AlertsQuery = Schema.Struct({
   ...WorkspaceRoutingQuery.fields,
   severity: Schema.optional(Schema.Literals(["LOW", "MEDIUM", "HIGH", "CRITICAL"])),
@@ -542,6 +563,9 @@ export const EnterprisePaths = {
   rings: `${root}/organizations/:tenantId/fleet/rings`,
   ringAssign: `${root}/organizations/:tenantId/fleet/rings/:ringId/assign`,
   ringPlan: `${root}/organizations/:tenantId/fleet/rings/:ringId/plan`,
+  validatePolicyDraft: `${root}/organizations/:tenantId/policies/validate-draft`,
+  anomalyScan: `${root}/organizations/:tenantId/anomaly-scan`,
+  ticketingExport: `${root}/organizations/:tenantId/ticketing/export`,
 } as const
 
 export const EnterpriseApi = HttpApi.make("enterprise").add(
@@ -1346,6 +1370,47 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         OpenApi.annotations({
           identifier: "enterprise.ringPlan",
           summary: "Plan ring rollout with per-node gates (F4)",
+        }),
+      ),
+      HttpApiEndpoint.post("validatePolicyDraft", EnterprisePaths.validatePolicyDraft, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          envelope: SignedPolicyEnvelopeSchema,
+          activationTime: Schema.optional(Schema.String),
+        }),
+        success: described(PolicyDraftValidationResponseSchema, "Policy draft validation (F3)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.validatePolicyDraft",
+          summary: "Validate a signed policy draft without publishing (F3)",
+        }),
+      ),
+      HttpApiEndpoint.post("anomalyScan", EnterprisePaths.anomalyScan, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          alertsLastHour: Schema.Number,
+          revocationsLastHour: Schema.Number,
+          maxProofBacklog: Schema.Number,
+          staleNodeCount: Schema.Number,
+          totalNodeCount: Schema.Number,
+        }),
+        success: described(Schema.Array(AnomalySignalSchema), "Anomaly signals (F9)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.anomalyScan",
+          summary: "Run anomaly heuristics and record signals as alerts (F9)",
+        }),
+      ),
+      HttpApiEndpoint.get("ticketingExport", EnterprisePaths.ticketingExport, {
+        params: { tenantId: Schema.String },
+        query: AdminEventsQuery,
+        success: described(Schema.Array(TicketPayloadSchema), "Ticketing payloads (F11)"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.ticketingExport",
+          summary: "Export admin events as canonical ticketing payloads (F11)",
         }),
       ),
     )
