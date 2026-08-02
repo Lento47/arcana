@@ -161,6 +161,7 @@ worker-path patch; no dependency was downgraded.
 | Node-side sync-client delta validation added (`sync-client.ts`: POLICY_DELTA base/sequence/result/target consistency, contiguous REVOCATION_DELTA statements; 3 new engine tests) — the D-4 delta loop now fails closed on both ends of the transport | BLK-D-01/D-04 | Engineering |
 | Node runtime durable sync state added (`sync-state.ts`: persisted policy/revocation accepted state, snapshot/delta apply with idempotent retries and base-mismatch fail-closed; `arcana node sync` resumes from persisted state, `node status` displays it; 4 engine tests) — closes the D-4 node persistence gap | BLK-D-01/D-04 | Engineering |
 | D-4 compatibility negotiation implemented (`compatibleFrom`/`compatibleTo` served on POLICY_SNAPSHOT/POLICY_DELTA; node client enforces the range against its supported version and fails closed on a missing range; 2 client tests + server assertions) — closes the last D-4 sub-item | BLK-D-01/D-04 | Engineering |
+| Certified adapter request-hash vectors added (`src/v2/adapters/vectors.test.ts`: 4 frozen golden hashes for AI SDK/MCP/Mastra/LangGraph naming with pinned request identity; `GovernanceContext` supports deterministic `requestId`/`nonce`/`requestedAt`; conformance runner now 5/5 suites) — closes the E10 certified-fixture item | BLK-E-10 | Engineering |
 | Phase E protocol/SDK/adapter gaps | BLK-E-01..10 | Engineering |
 | Phase F control-plane gaps | BLK-F-01..13 | Engineering |
 

@@ -7,6 +7,7 @@
  *   2. TypeScript D-10 hostile-node matrix (packages/core)
  *   3. Rust independent verifier (tools/acep-conformance-rust)
  *   4. SDK 1.0 governance/proof/error suite (packages/sdk/js)
+ *   5. SDK adapter request-hash vectors (packages/sdk/js)
  *
  * Exit code 0 only when every surface passes.
  */
@@ -57,6 +58,12 @@ run(
   ["test", "src/v2/governance.test.ts", "src/v2/proof.test.ts", "src/v2/errors.test.ts", "--timeout", "60000"],
   "packages/sdk/js",
 )
+run(
+  "SDK adapter request-hash vectors",
+  "bun",
+  ["test", "src/v2/adapters/vectors.test.ts", "--timeout", "60000"],
+  "packages/sdk/js",
+)
 
 const failed = results.filter((r) => !r.ok)
 console.log(`\nconformance: ${results.length - failed.length}/${results.length} suites passed`)
@@ -64,4 +71,4 @@ if (failed.length > 0) {
   for (const f of failed) console.log(`  ✗ ${f.name}: ${f.detail}`)
   process.exit(1)
 }
-console.log("✓ conformance suites passed (46 vectors + 15 hostile fixtures + SDK surface)")
+console.log("✓ conformance suites passed (46 crypto vectors + 4 adapter vectors + 15 hostile fixtures + SDK surface)")
