@@ -31,6 +31,7 @@ import { spineEntryCopyText } from "./spine-clipboard"
 import { spineEntryDetailMessageID, spineEntryDiffMessageID, spineEntrySessionID } from "./spine-details"
 import {
   approvalIdFromEntryID,
+  approvalInspectionAllowed,
   approvalToSpineEntry,
   isApprovalActionable,
   isApprovalTerminal,
@@ -615,6 +616,15 @@ export function CommandSpineShell(props: ShellProps) {
       { key: "return,space", desc: "Expand or collapse spine entry", group: "Command Spine", cmd: toggleFocusedEntry },
       { key: "y", desc: "Copy focused spine entry", group: "Command Spine", cmd: copyFocusedEntry },
       { key: "o", desc: "Open spine entry details", group: "Command Spine", cmd: openFocusedEntryDetails },
+      {
+        key: "v",
+        desc: "Inspect focused entry (approval inspector or details)",
+        group: "Command Spine",
+        // Approval rows are handled by the priority-2 approval layer; this
+        // fallback makes the documented inspect key produce feedback on every
+        // other row (governance, contract, proof) instead of doing nothing.
+        cmd: openFocusedEntryDetails,
+      },
       { key: "d", desc: "Open focused spine diff", group: "Command Spine", cmd: openFocusedEntryDiff },
       { key: "g", desc: "Go to related spine session", group: "Command Spine", cmd: openFocusedEntrySession },
       {
@@ -662,6 +672,17 @@ export function CommandSpineShell(props: ShellProps) {
     && !approvalSubmitting()
     && focusedApproval() !== undefined
     && isApprovalActionable(focusedApproval()!)
+
+  // Inspection is read-only: it must work for ANY focused approval, including
+  // APPROVED/CLAIMED/CONSUMED/terminal states (runbook: v → a → watch it go
+  // CLAIMED → CONSUMED). Only a/d stay gated on PENDING.
+  const approvalInspectBindingsEnabled = () =>
+    approvalInspectionAllowed({
+      hasFocusedApproval: focusedApproval() !== undefined,
+      composerFocused: composerFocused(),
+      gatesOpen: gatesOpen(),
+      submitting: approvalSubmitting(),
+    })
 
   // Close inspector whenever open; clear selection only when spine has focus.
   const approvalEscapeEnabled = () =>
@@ -719,6 +740,14 @@ export function CommandSpineShell(props: ShellProps) {
           }
         },
       },
+    ],
+  }))
+
+  useBindings(() => ({
+    mode: ARCANA_BASE_MODE,
+    enabled: () => approvalInspectBindingsEnabled(),
+    priority: 2, // Same layer as a/d; beats the priority-1 spine fallback.
+    bindings: [
       {
         key: "v",
         desc: "Inspect approval",

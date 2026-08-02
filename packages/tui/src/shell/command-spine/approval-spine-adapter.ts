@@ -161,6 +161,25 @@ export function isApprovalActionable(approval: ApprovalRecord): boolean {
 }
 
 /**
+ * Inspection is read-only and therefore allowed for ANY focused approval —
+ * PENDING, APPROVED, CLAIMED, CONSUMED, or terminal (runbook: v → a → watch
+ * it go CLAIMED → CONSUMED). Only a/d are gated on PENDING.
+ */
+export function approvalInspectionAllowed(input: {
+  hasFocusedApproval: boolean
+  composerFocused: boolean
+  gatesOpen: boolean
+  submitting: boolean
+}): boolean {
+  return (
+    input.hasFocusedApproval &&
+    !input.composerFocused &&
+    !input.gatesOpen &&
+    !input.submitting
+  )
+}
+
+/**
  * Check if an approval is in a terminal state.
  */
 export function isApprovalTerminal(approval: ApprovalRecord): boolean {

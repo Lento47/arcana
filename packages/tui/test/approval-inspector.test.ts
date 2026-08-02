@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import { approvalInspectorRows } from "../src/routes/session/approval-inspector"
+import { approvalInspectionAllowed } from "../src/shell/command-spine/approval-spine-adapter"
 
 const approval: ApprovalRecord = {
   approvalId: "appr_abcdef0123456789",
@@ -45,5 +46,57 @@ describe("approval inspector rows", () => {
     expect(labels).not.toContain("Principal")
     expect(labels).not.toContain("Operator")
     expect(labels).not.toContain("Execution ID")
+  })
+})
+
+describe("approval inspection gate", () => {
+  test("allows v-inspect for ANY focused approval state, not only PENDING", () => {
+    // The runbook flow is v → a → watch CLAIMED → CONSUMED; inspection must
+    // stay available after approval leaves PENDING (and for terminal rows).
+    for (const state of ["PENDING", "APPROVED", "CLAIMED", "CONSUMED", "EXPIRED", "DENIED"]) {
+      expect(
+        approvalInspectionAllowed({
+          hasFocusedApproval: true,
+          composerFocused: false,
+          gatesOpen: false,
+          submitting: false,
+        }),
+      ).toBe(true)
+    }
+  })
+
+  test("blocks inspection while the composer has focus, gates are open, or a submit is in flight", () => {
+    expect(
+      approvalInspectionAllowed({
+        hasFocusedApproval: true,
+        composerFocused: true,
+        gatesOpen: false,
+        submitting: false,
+      }),
+    ).toBe(false)
+    expect(
+      approvalInspectionAllowed({
+        hasFocusedApproval: true,
+        composerFocused: false,
+        gatesOpen: true,
+        submitting: false,
+      }),
+    ).toBe(false)
+    expect(
+      approvalInspectionAllowed({
+        hasFocusedApproval: true,
+        composerFocused: false,
+        gatesOpen: false,
+        submitting: true,
+      }),
+    ).toBe(false)
+    expect(
+      approvalInspectionAllowed({
+        hasFocusedApproval: false,
+        composerFocused: false,
+        gatesOpen: false,
+        submitting: false,
+      }),
+    ).toBe(false)
   })
 })
