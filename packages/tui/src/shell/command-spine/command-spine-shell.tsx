@@ -618,12 +618,18 @@ export function CommandSpineShell(props: ShellProps) {
       { key: "o", desc: "Open spine entry details", group: "Command Spine", cmd: openFocusedEntryDetails },
       {
         key: "v",
-        desc: "Inspect focused entry (approval inspector or details)",
+        desc: "Inspect approval",
         group: "Command Spine",
-        // Approval rows are handled by the priority-2 approval layer; this
-        // fallback makes the documented inspect key produce feedback on every
-        // other row (governance, contract, proof) instead of doing nothing.
-        cmd: openFocusedEntryDetails,
+        // Approval rows are handled by the priority-2 approval layer. This
+        // fallback runs only when NO approval is focused: give clear guidance
+        // instead of opening the message-details dialog (v is the approval
+        // inspector, not the generic details view — that is `o`).
+        cmd: () => {
+          toast.show({
+            message: "No approval to inspect — v inspects approvals; use o for entry details",
+            variant: "info",
+          })
+        },
       },
       { key: "d", desc: "Open focused spine diff", group: "Command Spine", cmd: openFocusedEntryDiff },
       { key: "g", desc: "Go to related spine session", group: "Command Spine", cmd: openFocusedEntrySession },
