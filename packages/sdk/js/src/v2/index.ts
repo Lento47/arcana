@@ -10,6 +10,7 @@ export {
   TransportError,
   toArcanaError,
 } from "./errors.js"
+export * from "./adapters/index.js"
 
 import { createOpencodeClient } from "./client.js"
 import { createOpencodeServer } from "./server.js"

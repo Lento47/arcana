@@ -304,6 +304,7 @@ const commandLoaders = {
   epistemic: () => import("./cli/cmd/epistemic").then((m) => m.EpistemicCommand),
   capability: () => import("./cli/cmd/capability").then((m) => m.CapabilityCommand),
   node: () => import("./cli/cmd/node").then((m) => m.NodeCommand),
+  launch: () => import("./cli/cmd/launch").then((m) => m.LaunchCommand),
 }
 
 async function loadCommandsFor(firstArg: string | undefined): Promise<CommandModule[]> {
