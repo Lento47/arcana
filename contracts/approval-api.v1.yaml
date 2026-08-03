@@ -1,0 +1,429 @@
+openapi: 3.0.3
+info:
+  title: Arcana Runtime Contract
+  version: 1.0.0
+  description: >
+    Narrow runtime contract consumed by Arcana Desktop and CLI/TUI.
+    Runtime owns all authority. Clients render projections and submit commands.
+    Operator identity is always derived from authenticated server context,
+    never from the request body.
+servers:
+  - url: http://127.0.0.1:{port}
+    variables:
+      port:
+        enum: [9142, 9143, 9144, 9145, 9146, 9147, 9148, 9149, 9150]
+        default: "9142"
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Runtime health and protocol revision
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /sessions:
+    get:
+      operationId: listSessions
+      summary: List agent sessions
+      responses:
+        "200":
+          description: Session list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+  /sessions/{sessionId}:
+    get:
+      operationId: getSession
+      summary: Get one session
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Session detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /approvals:
+    get:
+      operationId: listApprovals
+      summary: List durable approval records
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ApprovalStatus"
+        - name: sessionId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Approval list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApprovalRecord"
+  /approvals/{approvalId}:
+    get:
+      operationId: getApproval
+      summary: Get exact approval request and lifecycle state
+      parameters:
+        - $ref: "#/components/parameters/ApprovalId"
+      responses:
+        "200":
+          description: Approval record with exact request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRecord"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /approvals/{approvalId}/approve:
+    post:
+      operationId: approveRequest
+      summary: Approve the exact request. Identity from server context.
+      parameters:
+        - $ref: "#/components/parameters/ApprovalId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecisionBody"
+      responses:
+        "200":
+          description: Transitioned to APPROVED, CLAIMED, or CONSUMED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalTransition"
+        "409":
+          description: Request changed, expired, revoked, or already consumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Operator not authorized to decide
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /approvals/{approvalId}/deny:
+    post:
+      operationId: denyRequest
+      summary: Deny the exact request. Identity from server context.
+      parameters:
+        - $ref: "#/components/parameters/ApprovalId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecisionBody"
+      responses:
+        "200":
+          description: Transitioned to DENIED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalTransition"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /approvals/{approvalId}/revoke:
+    post:
+      operationId: revokeApproval
+      summary: Revoke an approval. Identity from server context.
+      parameters:
+        - $ref: "#/components/parameters/ApprovalId"
+      responses:
+        "200":
+          description: Transitioned to REVOKED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalTransition"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /event:
+    get:
+      operationId: subscribeEvents
+      summary: SSE stream of governance events
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          schema:
+            type: integer
+            format: int64
+          description: Resume after this sequence number
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/EventEnvelope"
+  /events/since/{sequence}:
+    get:
+      operationId: eventsSince
+      summary: REST resync after a detected gap
+      parameters:
+        - name: sequence
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Ordered event range for replay
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventEnvelope"
+  /proofs/{sessionId}:
+    get:
+      operationId: getRunProof
+      summary: RunProof for a session
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: RunProof projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunProof"
+        "404":
+          $ref: "#/components/responses/NotFound"
+components:
+  parameters:
+    ApprovalId:
+      name: approvalId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: State conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    Health:
+      type: object
+      required: [status, protocolRevision, version]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded]
+        protocolRevision:
+          type: integer
+        version:
+          type: string
+        workspaceId:
+          type: string
+    Session:
+      type: object
+      required: [sessionId, workspaceId, state]
+      properties:
+        sessionId:
+          type: string
+        workspaceId:
+          type: string
+        agentPrincipal:
+          type: string
+        state:
+          type: string
+          enum: [active, paused, ended]
+        createdAt:
+          type: string
+          format: date-time
+    ApprovalStatus:
+      type: string
+      enum: [PENDING, APPROVED, CLAIMED, CONSUMED, DENIED, REVOKED, EXPIRED]
+    ApprovalRecord:
+      type: object
+      required:
+        - approvalId
+        - sessionId
+        - workspaceId
+        - status
+        - request
+      properties:
+        approvalId:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+        workspaceId:
+          type: string
+        agentPrincipal:
+          type: string
+        action:
+          type: string
+        resource:
+          type: string
+        riskClass:
+          type: string
+          enum: [low, medium, high, critical]
+        route:
+          type: string
+          enum: [LOCAL_TUI, DESKTOP_PREFERRED, DESKTOP_REQUIRED, CENTRAL_REQUIRED]
+        policyReason:
+          type: string
+        capability:
+          type: string
+        provenance:
+          type: string
+        status:
+          $ref: "#/components/schemas/ApprovalStatus"
+        request:
+          $ref: "#/components/schemas/AuthorizationRequest"
+        requestHash:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: string
+          format: date-time
+        decidedBy:
+          type: string
+          description: Operator identity assigned by the server. Never client-supplied.
+        evidenceLinks:
+          type: array
+          items:
+            type: string
+    AuthorizationRequest:
+      type: object
+      required: [requestId, nonce, action, resource, arguments, capability, policyVersion, intentContractRevision]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        nonce:
+          type: string
+        action:
+          type: string
+        resource:
+          type: string
+        arguments:
+          type: object
+          additionalProperties: true
+        capability:
+          type: string
+        policyVersion:
+          type: string
+        intentContractRevision:
+          type: string
+        workspaceTrust:
+          type: boolean
+        diffPreview:
+          type: string
+        artifactPreview:
+          type: string
+    DecisionBody:
+      type: object
+      description: Optional. No authority fields are accepted. approvedBy is rejected.
+      properties:
+        note:
+          type: string
+    ApprovalTransition:
+      type: object
+      required: [approvalId, from, to, eventSequence]
+      properties:
+        approvalId:
+          type: string
+          format: uuid
+        from:
+          $ref: "#/components/schemas/ApprovalStatus"
+        to:
+          $ref: "#/components/schemas/ApprovalStatus"
+        eventSequence:
+          type: integer
+          format: int64
+    EventEnvelope:
+      type: object
+      required: [transport, event]
+      properties:
+        transport:
+          type: object
+          required: [streamId, sequence, nextHeartbeat]
+          properties:
+            streamId:
+              type: string
+            sequence:
+              type: integer
+              format: int64
+            nextHeartbeat:
+              type: integer
+        event:
+          type: object
+          required: [type, payload]
+          properties:
+            type:
+              type: string
+            payload:
+              type: object
+              additionalProperties: true
+    RunProof:
+      type: object
+      required: [sessionId, axes]
+      properties:
+        sessionId:
+          type: string
+        axes:
+          type: object
+          additionalProperties: true
+        evidenceGaps:
+          type: array
+          items:
+            type: string
+        verificationState:
+          type: string
+          enum: [verified, degraded, incomplete]
+    ErrorEnvelope:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: ARC_* for runtime errors, DTSK_* for desktop-host failures
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
