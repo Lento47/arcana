@@ -163,7 +163,7 @@ describe("6-checkpoint live stream protocol (SSE)", () => {
           properties: { sessionID, time: 2, part: part("Hello") },
         }),
       )
-      await wait(() => sync.data.part[assistantMessageID]?.[0]?.text === "Hello")
+      await wait(() => (sync.data.part[assistantMessageID]?.[0] as { text?: string } | undefined)?.text === "Hello")
       expect(sync.data.part_revision[assistantMessageID]).toBe(1)
       // Streaming must not trigger REST traffic.
       expect(messageRequests).toBe(requestsAfterHydrate)
@@ -183,7 +183,9 @@ describe("6-checkpoint live stream protocol (SSE)", () => {
           properties: { sessionID, messageID: assistantMessageID, partID, partType: "text", field: "text", delta: "!" },
         }),
       )
-      await wait(() => sync.data.part[assistantMessageID]?.[0]?.text === "Hello world!")
+      await wait(
+        () => (sync.data.part[assistantMessageID]?.[0] as { text?: string } | undefined)?.text === "Hello world!",
+      )
       expect(sync.data.part_revision[assistantMessageID]).toBe(3)
       expect(messageRequests).toBe(requestsAfterHydrate)
 
@@ -214,10 +216,12 @@ describe("6-checkpoint live stream protocol (SSE)", () => {
       )
       await wait(() => sync.data.session_status[sessionID]?.type === "idle")
       const terminal = sync.data.message[sessionID]?.find((message) => message.id === assistantMessageID)
-      expect(terminal?.finish).toBe("stop")
+      expect((terminal as { finish?: string } | undefined)?.finish).toBe("stop")
       expect((terminal?.time as { completed?: number })?.completed).toBe(3)
       // Turn-end converge: the durable superset replaces the streamed prefix.
-      expect(sync.data.part[assistantMessageID]?.[0]?.text).toBe("Hello world! (durable)")
+      expect((sync.data.part[assistantMessageID]?.[0] as { text?: string } | undefined)?.text).toBe(
+        "Hello world! (durable)",
+      )
 
       // Checkpoint 5 -- heartbeat-gap repair converges to durable REST truth.
       // The engine gained a durable message while the stream was down; the
@@ -234,13 +238,18 @@ describe("6-checkpoint live stream protocol (SSE)", () => {
       const idsAfterResync = sync.data.message[sessionID]!.map((message) => message.id)
       expect(idsAfterResync).toContain("msg_live_durable")
       expect(new Set(idsAfterResync).size).toBe(idsAfterResync.length)
-      expect(sync.data.part[assistantMessageID]?.[0]?.text).toBe("Hello world! (durable)")
+      expect((sync.data.part[assistantMessageID]?.[0] as { text?: string } | undefined)?.text).toBe(
+        "Hello world! (durable)",
+      )
       // Idempotent converge: a resync with no new content does not churn revisions.
       expect(sync.data.part_revision[assistantMessageID]).toBe(revisionBeforeResync!)
 
       // Checkpoint 6 -- durable approval + governance evidence over the same channel.
       emit(
-        global({
+        {
+          directory: session.directory,
+          project: "proj_test",
+          payload: {
           id: "evt_approval",
           type: "approval.updated",
           properties: {
@@ -258,10 +267,14 @@ describe("6-checkpoint live stream protocol (SSE)", () => {
               createdAt: new Date().toISOString(),
             },
           },
-        } as unknown as GlobalEvent),
+          },
+        } as unknown as GlobalEvent,
       )
       emit(
-        global({
+        {
+          directory: session.directory,
+          project: "proj_test",
+          payload: {
           id: "evt_gov",
           type: "governance.recorded",
           properties: {
@@ -276,7 +289,8 @@ describe("6-checkpoint live stream protocol (SSE)", () => {
               payload: { requestId: "req-live-1" },
             },
           },
-        } as unknown as GlobalEvent),
+          },
+        } as unknown as GlobalEvent,
       )
       await wait(() => sync.data.approvals?.["appr_live_1"] !== undefined)
       await wait(() => sync.data.governance[sessionID]?.events.some((event) => event.id === "evt_gov_live_1") ?? false)
