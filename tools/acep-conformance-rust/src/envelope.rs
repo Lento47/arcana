@@ -274,3 +274,167 @@ impl fmt::Display for EnvelopeError {
 }
 
 impl std::error::Error for EnvelopeError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::canonical;
+
+    fn fixture_signing_key() -> SigningKey {
+        let mut seed = [0u8; 32];
+        seed[0] = 0x42;
+        SigningKey::from_bytes(&seed)
+    }
+
+    #[test]
+    fn sign_verify_capability_envelope() {
+        let envelope = SignedCapabilityEnvelope {
+            grant_id: "grant-001".into(),
+            principal_id: "agent:build".into(),
+            actions: vec!["process.execute".into()],
+            resources: vec!["*".into()],
+            workspace_id: "workspace-1".into(),
+            contract_id: "contract-1".into(),
+            contract_revision: 3,
+            max_uses: Some(10),
+            remaining_uses: Some(10),
+            delegation_depth: 0,
+            expires_at: "2099-12-31T23:59:59.999Z".into(),
+            status: GrantStatus::Active,
+        };
+        let signing_key = fixture_signing_key();
+        let env = envelope.sign(&signing_key);
+        let pk = signing_key.verifying_key();
+        assert!(env.verify(&pk).is_ok(), "capability envelope should verify");
+    }
+
+    #[test]
+    fn sign_verify_policy_envelope() {
+        let envelope = SignedPolicyEnvelope {
+            policy_id: "policy-001".into(),
+            version: "1.0.0".into(),
+            rules: vec![PolicyRule {
+                rule_id: "rule-001".into(),
+                kind: RuleKind::Deny,
+                description: "Deny process.execute".into(),
+                conditions: RuleConditions {
+                    actions: Some(vec!["process.execute".into()]),
+                    provenance: None,
+                    sensitivity: None,
+                    resource_kinds: None,
+                    network_hosts: None,
+                    principal_ids: None,
+                },
+            }],
+            effective_at: "2026-08-02T12:00:00.000Z".into(),
+            expires_at: "2099-12-31T23:59:59.999Z".into(),
+        };
+        let signing_key = fixture_signing_key();
+        let env = envelope.sign(&signing_key);
+        let pk = signing_key.verifying_key();
+        assert!(env.verify(&pk).is_ok(), "policy envelope should verify");
+    }
+
+    #[test]
+    fn sign_verify_node_identity() {
+        let cert = NodeIdentityCertificate {
+            node_id: "node-001".into(),
+            operator_id: "operator-001".into(),
+            workspace_id: "workspace-1".into(),
+            public_key: canonical::encode_base64url(
+                &fixture_signing_key().verifying_key().to_bytes().as_ref(),
+            ),
+            issued_at: "2026-08-02T12:00:00.000Z".into(),
+            expires_at: "2099-12-31T23:59:59.999Z".into(),
+            proof_chain: vec![],
+        };
+        let signing_key = fixture_signing_key();
+        let env = cert.sign(&signing_key);
+        let pk = signing_key.verifying_key();
+        assert!(env.verify(&pk).is_ok(), "node identity should verify");
+    }
+
+    #[test]
+    fn sign_verify_revocation() {
+        let revocation = RevocationStatement {
+            revocation_id: "rev-001".into(),
+            grant_id: "grant-001".into(),
+            reason: "compromised key".into(),
+            revoked_by: "operator-001".into(),
+            revoked_at: "2026-08-02T12:00:00.000Z".into(),
+            effective_immediately: true,
+        };
+        let signing_key = fixture_signing_key();
+        let env = revocation.sign(&signing_key);
+        let pk = signing_key.verifying_key();
+        assert!(env.verify(&pk).is_ok(), "revocation should verify");
+    }
+
+    #[test]
+    fn verify_fails_with_wrong_key() {
+        let envelope = SignedCapabilityEnvelope {
+            grant_id: "grant-001".into(),
+            principal_id: "agent:build".into(),
+            actions: vec!["process.execute".into()],
+            resources: vec!["*".into()],
+            workspace_id: "workspace-1".into(),
+            contract_id: "contract-1".into(),
+            contract_revision: 3,
+            max_uses: Some(10),
+            remaining_uses: Some(10),
+            delegation_depth: 0,
+            expires_at: "2099-12-31T23:59:59.999Z".into(),
+            status: GrantStatus::Active,
+        };
+        let signing_key = fixture_signing_key();
+        let env = envelope.sign(&signing_key);
+        let mut seed2 = [0u8; 32];
+        seed2[0] = 0x99;
+        let wrong_key = SigningKey::from_bytes(&seed2);
+        let wrong_pk = wrong_key.verifying_key();
+        assert!(env.verify(&wrong_pk).is_err(), "should fail with wrong key");
+    }
+
+    #[test]
+    fn envelope_domain_is_correct() {
+        let envelope = SignedCapabilityEnvelope {
+            grant_id: "grant-001".into(),
+            principal_id: "agent:build".into(),
+            actions: vec!["process.execute".into()],
+            resources: vec!["*".into()],
+            workspace_id: "workspace-1".into(),
+            contract_id: "contract-1".into(),
+            contract_revision: 3,
+            max_uses: Some(10),
+            remaining_uses: Some(10),
+            delegation_depth: 0,
+            expires_at: "2099-12-31T23:59:59.999Z".into(),
+            status: GrantStatus::Active,
+        };
+        let signing_key = fixture_signing_key();
+        let env = envelope.sign(&signing_key);
+        assert_eq!(env.domain, DOMAIN_SIGNED_CAPABILITY);
+    }
+
+    #[test]
+    fn envelope_signature_is_deterministic() {
+        let envelope = SignedCapabilityEnvelope {
+            grant_id: "grant-001".into(),
+            principal_id: "agent:build".into(),
+            actions: vec!["process.execute".into()],
+            resources: vec!["*".into()],
+            workspace_id: "workspace-1".into(),
+            contract_id: "contract-1".into(),
+            contract_revision: 3,
+            max_uses: Some(10),
+            remaining_uses: Some(10),
+            delegation_depth: 0,
+            expires_at: "2099-12-31T23:59:59.999Z".into(),
+            status: GrantStatus::Active,
+        };
+        let signing_key = fixture_signing_key();
+        let env1 = envelope.sign(&signing_key);
+        let env2 = envelope.sign(&signing_key);
+        assert_eq!(env1.signature, env2.signature, "signatures should be deterministic");
+    }
+}
