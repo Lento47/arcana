@@ -11,9 +11,9 @@ const root = "/api/session"
 
 export const ApprovalCommandPayload = Schema.Struct({
   command: Schema.Literals(["APPROVE_ONCE", "DENY", "REVOKE"]),
-  expectedVersion: Schema.Number,
+  expectedVersion: Schema.Int,
   expectedRequestHash: Schema.String,
-  expectedContractRevision: Schema.Number,
+  expectedContractRevision: Schema.Int,
 })
 
 export const ApprovalCommandSuccess = Schema.Struct({
