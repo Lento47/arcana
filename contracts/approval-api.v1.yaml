@@ -7,6 +7,20 @@ info:
     Runtime owns all authority. Clients render projections and submit commands.
     Operator identity is always derived from authenticated server context,
     never from the request body.
+
+    PRE-RELEASE CORRECTION (2026-08-02): the first publication of this artifact
+    was never consumed by an external client (Arcana Desktop is specification
+    only). This revision corrects that binding to match the mounted runtime
+    surface exactly: the approval decision body carries expectedVersion,
+    expectedRequestHash and expectedContractRevision; decision failures are a
+    200 success/failure union with a machine-readable stale flag; the revoke
+    endpoint requires the same decision body; and the paths reflect the mounted
+    runtime API. Event-stream transport reconciliation is tracked separately
+    (see docs/ROADMAP.md, Now item 1).
+x-arcana-contract:
+  status: pre-release
+  corrected_at: "2026-08-02"
+  runtime_surface: packages/engine/src/server/routes/instance/httpapi/groups/runtime.ts
 servers:
   - url: http://127.0.0.1:{port}
     variables:
@@ -14,326 +28,346 @@ servers:
         enum: [9142, 9143, 9144, 9145, 9146, 9147, 9148, 9149, 9150]
         default: "9142"
 paths:
-  /health:
-    get:
-      operationId: getHealth
-      summary: Runtime health and protocol revision
-      responses:
-        "200":
-          description: Healthy
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Health"
-  /sessions:
-    get:
-      operationId: listSessions
-      summary: List agent sessions
-      responses:
-        "200":
-          description: Session list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Session"
-  /sessions/{sessionId}:
-    get:
-      operationId: getSession
-      summary: Get one session
-      parameters:
-        - $ref: "#/components/parameters/SessionId"
-      responses:
-        "200":
-          description: Session detail
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Session"
-        "404":
-          $ref: "#/components/responses/NotFound"
   /approvals:
     get:
       operationId: listApprovals
-      summary: List durable approval records
+      summary: List approvals
+      description: All durable approval records for the routed workspace.
       parameters:
-        - name: status
-          in: query
-          schema:
-            $ref: "#/components/schemas/ApprovalStatus"
-        - name: sessionId
-          in: query
-          schema:
-            type: string
+        - $ref: "#/components/parameters/DirectoryQuery"
+        - $ref: "#/components/parameters/WorkspaceQuery"
       responses:
         "200":
-          description: Approval list
+          description: Approval records in this workspace
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/ApprovalRecord"
-  /approvals/{approvalId}:
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /approvals/{approvalID}:
     get:
       operationId: getApproval
-      summary: Get exact approval request and lifecycle state
+      summary: Get approval
+      description: Load one durable approval record by id from the routed workspace store.
       parameters:
-        - $ref: "#/components/parameters/ApprovalId"
+        - $ref: "#/components/parameters/ApprovalID"
+        - $ref: "#/components/parameters/DirectoryQuery"
+        - $ref: "#/components/parameters/WorkspaceQuery"
       responses:
         "200":
-          description: Approval record with exact request
+          description: Approval record
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApprovalRecord"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
-  /approvals/{approvalId}/approve:
+  /approvals/{approvalID}/approve:
     post:
       operationId: approveRequest
-      summary: Approve the exact request. Identity from server context.
+      summary: Approve an approval
+      description: >
+        Approve a durable PENDING approval after exact-request revalidation.
+        The operator identity is derived from the authenticated server
+        context; client-supplied approver fields are never accepted. The
+        approval itself never executes an effect - the PEP revalidates and
+        executes after the decision.
       parameters:
-        - $ref: "#/components/parameters/ApprovalId"
+        - $ref: "#/components/parameters/ApprovalID"
+        - $ref: "#/components/parameters/DirectoryQuery"
+        - $ref: "#/components/parameters/WorkspaceQuery"
+        - $ref: "#/components/parameters/SessionRestrictionHeader"
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/DecisionBody"
       responses:
         "200":
-          description: Transitioned to APPROVED, CLAIMED, or CONSUMED
+          description: Approval command result (success or deterministic refusal)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ApprovalTransition"
-        "409":
-          description: Request changed, expired, revoked, or already consumed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "403":
-          description: Operator not authorized to decide
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-  /approvals/{approvalId}/deny:
+                $ref: "#/components/schemas/ApprovalCommandResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /approvals/{approvalID}/deny:
     post:
       operationId: denyRequest
-      summary: Deny the exact request. Identity from server context.
+      summary: Deny an approval
+      description: Deny a durable PENDING approval. The parked tool call fails closed with zero effects.
       parameters:
-        - $ref: "#/components/parameters/ApprovalId"
+        - $ref: "#/components/parameters/ApprovalID"
+        - $ref: "#/components/parameters/DirectoryQuery"
+        - $ref: "#/components/parameters/WorkspaceQuery"
+        - $ref: "#/components/parameters/SessionRestrictionHeader"
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/DecisionBody"
       responses:
         "200":
-          description: Transitioned to DENIED
+          description: Approval command result (success or deterministic refusal)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ApprovalTransition"
-        "409":
-          $ref: "#/components/responses/Conflict"
-  /approvals/{approvalId}/revoke:
+                $ref: "#/components/schemas/ApprovalCommandResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /approvals/{approvalID}/revoke:
     post:
       operationId: revokeApproval
-      summary: Revoke an approval. Identity from server context.
+      summary: Revoke an approval
+      description: >
+        Invalidate a PENDING or APPROVED-but-unclaimed approval. A revoked
+        approval can never claim or execute; any parked gate fails closed.
+        Requires the same exact-request decision body as approve/deny.
       parameters:
-        - $ref: "#/components/parameters/ApprovalId"
+        - $ref: "#/components/parameters/ApprovalID"
+        - $ref: "#/components/parameters/DirectoryQuery"
+        - $ref: "#/components/parameters/WorkspaceQuery"
+        - $ref: "#/components/parameters/SessionRestrictionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecisionBody"
       responses:
         "200":
-          description: Transitioned to REVOKED
+          description: Approval command result (success or deterministic refusal)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ApprovalTransition"
-        "409":
-          $ref: "#/components/responses/Conflict"
-  /event:
+                $ref: "#/components/schemas/ApprovalCommandResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /sessions:
     get:
-      operationId: subscribeEvents
-      summary: SSE stream of governance events
+      operationId: listSessions
+      summary: List sessions
+      description: List sessions for the routed workspace.
       parameters:
-        - name: Last-Event-ID
-          in: header
-          schema:
-            type: integer
-            format: int64
-          description: Resume after this sequence number
+        - $ref: "#/components/parameters/DirectoryQuery"
+        - $ref: "#/components/parameters/WorkspaceQuery"
       responses:
         "200":
-          description: SSE stream
-          content:
-            text/event-stream:
-              schema:
-                $ref: "#/components/schemas/EventEnvelope"
-  /events/since/{sequence}:
-    get:
-      operationId: eventsSince
-      summary: REST resync after a detected gap
-      parameters:
-        - name: sequence
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        "200":
-          description: Ordered event range for replay
+          description: Sessions in this workspace
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/EventEnvelope"
-  /proofs/{sessionId}:
+                  $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /sessions/{sessionID}:
     get:
-      operationId: getRunProof
-      summary: RunProof for a session
+      operationId: getSession
+      summary: Get session
+      description: Load one session record by id.
       parameters:
-        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/SessionID"
+        - $ref: "#/components/parameters/DirectoryQuery"
+        - $ref: "#/components/parameters/WorkspaceQuery"
       responses:
         "200":
-          description: RunProof projection
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /proofs/{sessionID}:
+    get:
+      operationId: getRunProof
+      summary: Get RunProof snapshot
+      description: >
+        Derive the current RunProof snapshot for a session (proof hash, trace
+        health, integrity, authorization profile).
+      parameters:
+        - $ref: "#/components/parameters/SessionID"
+        - $ref: "#/components/parameters/DirectoryQuery"
+        - $ref: "#/components/parameters/WorkspaceQuery"
+      responses:
+        "200":
+          description: RunProof snapshot
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/RunProof"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+  /desktop/heartbeat:
+    post:
+      operationId: desktopHeartbeat
+      summary: Desktop subscriber heartbeat
+      description: >
+        Advisory liveness announcement for a Desktop operator surface. The
+        subscription expires automatically if not renewed. Heartbeat state
+        never authorizes an action, extends approval expiry, fabricates
+        operator identity, consumes an approval, changes a PDP result, or
+        executes an effect.
+      parameters:
+        - $ref: "#/components/parameters/DirectoryQuery"
+        - $ref: "#/components/parameters/WorkspaceQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DesktopHeartbeatRequest"
+      responses:
+        "200":
+          description: Desktop subscriber heartbeat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DesktopHeartbeatResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
 components:
   parameters:
-    ApprovalId:
-      name: approvalId
+    ApprovalID:
+      name: approvalID
       in: path
       required: true
       schema:
         type: string
-        format: uuid
-    SessionId:
-      name: sessionId
+    SessionID:
+      name: sessionID
       in: path
       required: true
+      schema:
+        type: string
+    DirectoryQuery:
+      name: directory
+      in: query
+      required: false
+      description: >
+        Directory narrowing selector. The runtime resolves the authoritative
+        workspace from server context first; a query value is only a narrowing
+        selector and never grants authority.
+      schema:
+        type: string
+    WorkspaceQuery:
+      name: workspace
+      in: query
+      required: false
+      description: >
+        Workspace narrowing selector. The runtime resolves the authoritative
+        workspace from server context first; a query value is only a narrowing
+        selector and never grants authority.
+      schema:
+        type: string
+    SessionRestrictionHeader:
+      name: x-arcana-session
+      in: header
+      required: false
+      description: >
+        Optional restriction: when present, the command must target this
+        session's approval. It grants nothing.
       schema:
         type: string
   responses:
+    BadRequest:
+      description: Malformed request or invalid workspace query
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/InvalidRequestError"
     NotFound:
-      description: Not found
+      description: Record not found in the routed workspace
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    Conflict:
-      description: State conflict
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
+            $ref: "#/components/schemas/NotFoundError"
   schemas:
-    Health:
-      type: object
-      required: [status, protocolRevision, version]
-      properties:
-        status:
-          type: string
-          enum: [healthy, degraded]
-        protocolRevision:
-          type: integer
-        version:
-          type: string
-        workspaceId:
-          type: string
-    Session:
-      type: object
-      required: [sessionId, workspaceId, state]
-      properties:
-        sessionId:
-          type: string
-        workspaceId:
-          type: string
-        agentPrincipal:
-          type: string
-        state:
-          type: string
-          enum: [active, paused, ended]
-        createdAt:
-          type: string
-          format: date-time
     ApprovalStatus:
       type: string
-      enum: [PENDING, APPROVED, CLAIMED, CONSUMED, DENIED, REVOKED, EXPIRED]
+      enum: [PENDING, APPROVED, DENIED, CLAIMED, CONSUMED, EXPIRED, INVALIDATED, REJECTED, RECOVERY_REQUIRED]
     ApprovalRecord:
       type: object
+      description: Durable approval record as emitted by the mounted runtime.
       required:
         - approvalId
+        - version
         - sessionId
         - workspaceId
-        - status
-        - request
+        - requestHash
+        - contractRevision
+        - state
+        - expiresAt
+        - updatedAt
+        - createdAt
       properties:
         approvalId:
           type: string
-          format: uuid
+        version:
+          type: integer
+          description: Optimistic-concurrency version; expectedVersion must match.
         sessionId:
           type: string
         workspaceId:
           type: string
-        agentPrincipal:
+        requestHash:
           type: string
-        action:
+          description: Canonical hash of the exact immutable request that was reviewed.
+        contractRevision:
+          type: integer
+          description: Contract revision the request was evaluated against.
+        principalId:
           type: string
-        resource:
+        state:
+          $ref: "#/components/schemas/ApprovalStatus"
+        approvedBy:
           type: string
-        riskClass:
+          description: Operator identity assigned by the server. Never client-supplied.
+        revokedBy:
           type: string
-          enum: [low, medium, high, critical]
+        executionId:
+          type: string
         route:
           type: string
           enum: [LOCAL_TUI, DESKTOP_PREFERRED, DESKTOP_REQUIRED, CENTRAL_REQUIRED]
-        policyReason:
+        routingPolicyVersion:
           type: string
-        capability:
+        localFallbackAllowed:
+          type: boolean
+        riskClass:
           type: string
-        provenance:
-          type: string
-        status:
-          $ref: "#/components/schemas/ApprovalStatus"
-        request:
-          $ref: "#/components/schemas/AuthorizationRequest"
-        requestHash:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
+          enum: [LOW, MODERATE, HIGH, CRITICAL]
         expiresAt:
           type: string
           format: date-time
-        decidedAt:
+        updatedAt:
           type: string
           format: date-time
-        decidedBy:
+        createdAt:
           type: string
-          description: Operator identity assigned by the server. Never client-supplied.
-        evidenceLinks:
-          type: array
-          items:
-            type: string
+          format: date-time
     AuthorizationRequest:
       type: object
+      description: >
+        Reserved. Documents the canonical request shape that requestHash
+        commits to. Not returned inline by approval records.
       required: [requestId, nonce, action, resource, arguments, capability, policyVersion, intentContractRevision]
       properties:
         requestId:
           type: string
-          format: uuid
         nonce:
           type: string
         action:
@@ -357,73 +391,345 @@ components:
           type: string
     DecisionBody:
       type: object
-      description: Optional. No authority fields are accepted. approvedBy is rejected.
+      description: >
+        Exact-request and optimistic-concurrency fields the operator reviewed.
+        No authority fields are accepted; client-supplied approver identity is
+        rejected. The runtime derives operator identity from server context.
+      required: [expectedVersion, expectedRequestHash, expectedContractRevision]
       properties:
-        note:
-          type: string
-    ApprovalTransition:
-      type: object
-      required: [approvalId, from, to, eventSequence]
-      properties:
-        approvalId:
-          type: string
-          format: uuid
-        from:
-          $ref: "#/components/schemas/ApprovalStatus"
-        to:
-          $ref: "#/components/schemas/ApprovalStatus"
-        eventSequence:
+        expectedVersion:
           type: integer
-          format: int64
-    EventEnvelope:
-      type: object
-      required: [transport, event]
-      properties:
-        transport:
-          type: object
-          required: [streamId, sequence, nextHeartbeat]
-          properties:
-            streamId:
-              type: string
-            sequence:
-              type: integer
-              format: int64
-            nextHeartbeat:
-              type: integer
-        event:
-          type: object
-          required: [type, payload]
-          properties:
-            type:
-              type: string
-            payload:
-              type: object
-              additionalProperties: true
-    RunProof:
-      type: object
-      required: [sessionId, axes]
-      properties:
-        sessionId:
+          description: The approval.version the operator saw.
+        expectedRequestHash:
           type: string
-        axes:
+          description: The requestHash the operator reviewed.
+        expectedContractRevision:
+          type: integer
+          description: The contractRevision the operator reviewed.
+    ApprovalCommandSuccess:
+      type: object
+      required: [success, approval]
+      properties:
+        success:
+          type: boolean
+          const: true
+        approval:
+          $ref: "#/components/schemas/ApprovalRecord"
+    ApprovalCommandFailure:
+      type: object
+      required: [success, reason]
+      properties:
+        success:
+          type: boolean
+          const: false
+        reason:
+          type: string
+          description: Machine-readable reason; stable phrases such as approval not found.
+        stale:
+          type: boolean
+          description: >
+            true when version, request hash, or contract revision no longer
+            match the durable record. Stale commands execute zero protected
+            effects. Transport status stays 200: the command was well-formed
+            and deterministically refused.
+    ApprovalCommandResult:
+      oneOf:
+        - $ref: "#/components/schemas/ApprovalCommandSuccess"
+        - $ref: "#/components/schemas/ApprovalCommandFailure"
+    Session:
+      type: object
+      description: Session record as emitted by the mounted runtime.
+      required: [id, slug, projectID, directory, title, version, time]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        projectID:
+          type: string
+        workspaceID:
+          type: string
+        directory:
+          type: string
+        path:
+          type: string
+        parentID:
+          type: string
+        summary:
+          type: object
+          properties:
+            additions:
+              type: integer
+            deletions:
+              type: integer
+            files:
+              type: integer
+            diffs:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+        cost:
+          type: number
+        tokens:
+          type: object
+          properties:
+            input:
+              type: integer
+            output:
+              type: integer
+            reasoning:
+              type: integer
+            cache:
+              type: object
+              required: [read, write]
+              properties:
+                read:
+                  type: integer
+                write:
+                  type: integer
+        share:
+          type: object
+          properties:
+            url:
+              type: string
+        title:
+          type: string
+        agent:
+          type: string
+        model:
+          type: object
+          properties:
+            id:
+              type: string
+            providerID:
+              type: string
+            variant:
+              type: string
+        version:
+          type: string
+        metadata:
           type: object
           additionalProperties: true
-        evidenceGaps:
+        time:
+          type: object
+          required: [created, updated]
+          properties:
+            created:
+              type: integer
+            updated:
+              type: integer
+            compacting:
+              type: integer
+            archived:
+              type: integer
+        permission:
+          type: array
+          items:
+            type: object
+            required: [permission, pattern, action]
+            properties:
+              permission:
+                type: string
+              pattern:
+                type: string
+              action:
+                type: string
+                enum: [allow, deny, ask]
+        revert:
+          type: object
+          properties:
+            messageID:
+              type: string
+            partID:
+              type: string
+            snapshot:
+              type: string
+            diff:
+              type: string
+    RunProof:
+      type: object
+      description: RunProof snapshot as derived by the mounted runtime.
+      required:
+        - proofHash
+        - runRoot
+        - derivedAt
+        - eventCount
+        - lastSequence
+        - proofLevel
+        - traceHealth
+        - integrityStatus
+        - lifecycleStatus
+        - assuranceProfile
+        - claimsByStatus
+        - obligationsByStatus
+        - gaps
+        - authorizationProfile
+      properties:
+        proofHash:
+          type: string
+        runRoot:
+          type: string
+        derivedAt:
+          type: string
+          format: date-time
+        eventCount:
+          type: integer
+        lastSequence:
+          type: integer
+        proofLevel:
+          type: string
+          enum: [P0, P1, P2, P3]
+        traceHealth:
+          type: string
+          enum: [COMPLETE, DEGRADED, UNAVAILABLE]
+        integrityStatus:
+          type: string
+          enum: [VALID, INVALID, UNVERIFIED]
+        lifecycleStatus:
+          type: string
+          enum: [COMPLETE, INCOMPLETE, CRASHED, CANCELLED]
+        completionMethod:
+          type: string
+        assuranceProfile:
+          type: object
+          required: [trace, integrity, verification, reproducibility]
+          properties:
+            trace:
+              type: string
+              enum: [NONE, RECORDED]
+            integrity:
+              type: string
+              enum: [UNVERIFIED, VALID, INVALID]
+            verification:
+              type: string
+              enum: [UNVERIFIED, VERIFIED]
+            reproducibility:
+              type: string
+              enum: [NONE, PARTIAL, FULL]
+            reproducibilityDetail:
+              type: string
+        contractStatus:
+          type: string
+        claimsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+        obligationsByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+        gaps:
           type: array
           items:
             type: string
-        verificationState:
-          type: string
-          enum: [verified, degraded, incomplete]
-    ErrorEnvelope:
+        authorizationProfile:
+          type: object
+          required:
+            - policyVersions
+            - requests
+            - allowed
+            - denied
+            - approvalsRequired
+            - staleDecisions
+            - executed
+            - executionFailures
+            - unauthorizedExecutions
+            - capabilityViolations
+            - authorizationTraceHealth
+            - orphanExecutions
+            - unmatchedAllows
+            - unmatchedRequests
+            - intentEnforcementMode
+            - intentBindingsCreated
+            - intentTraceHealth
+          properties:
+            policyVersions:
+              type: array
+              items:
+                type: string
+            requests:
+              type: integer
+            allowed:
+              type: integer
+            denied:
+              type: integer
+            approvalsRequired:
+              type: integer
+            staleDecisions:
+              type: integer
+            executed:
+              type: integer
+            executionFailures:
+              type: integer
+            unauthorizedExecutions:
+              type: integer
+            capabilityViolations:
+              type: integer
+            authorizationTraceHealth:
+              type: string
+              enum: [COMPLETE, DEGRADED, UNAVAILABLE]
+            orphanExecutions:
+              type: integer
+            unmatchedAllows:
+              type: integer
+            unmatchedRequests:
+              type: integer
+            intentEnforcementMode:
+              type: string
+              enum: [REQUIRED, LEGACY_COMPAT, UNAVAILABLE]
+            intentBindingsCreated:
+              type: integer
+            intentTraceHealth:
+              type: string
+              enum: [COMPLETE, DEGRADED, UNAVAILABLE]
+    DesktopHeartbeatRequest:
       type: object
-      required: [code, message]
+      required: [subscriberId]
       properties:
-        code:
+        subscriberId:
           type: string
-          description: ARC_* for runtime errors, DTSK_* for desktop-host failures
+        deploymentMode:
+          type: string
+          enum: [LOCAL, HYBRID, ENTERPRISE]
+    DesktopHeartbeatResult:
+      type: object
+      required: [subscriberId, workspaceId, expiresAt, ttlMs]
+      properties:
+        subscriberId:
+          type: string
+        workspaceId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        ttlMs:
+          type: integer
+    InvalidRequestError:
+      type: object
+      required: [message]
+      properties:
         message:
           type: string
-        details:
+        kind:
+          type: string
+        field:
+          type: string
+    NotFoundError:
+      type: object
+      required: [name, data]
+      properties:
+        name:
+          type: string
+          const: NotFoundError
+        data:
           type: object
-          additionalProperties: true
+          required: [message]
+          properties:
+            message:
+              type: string
+    ErrorEnvelope:
+      description: Named transport error envelope emitted by the mounted runtime.
+      oneOf:
+        - $ref: "#/components/schemas/InvalidRequestError"
+        - $ref: "#/components/schemas/NotFoundError"

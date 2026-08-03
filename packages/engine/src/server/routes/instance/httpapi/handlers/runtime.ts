@@ -53,9 +53,12 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
     })
 
     const operatorIdentity = Effect.fn("RuntimeHttpApi.operatorIdentity")(function* () {
-      const config = yield* ServerAuth.Config.pipe(Effect.orDie)
+      // Auth config is optional at the handler boundary: when the server has
+      // no configured password, the trusted local runtime context is the
+      // operator. Missing service must not turn a decision into a 500.
+      const config = yield* Effect.serviceOption(ServerAuth.Config)
       let operatorId = "local-operator"
-      if (ServerAuth.required(config)) {
+      if (Option.isSome(config) && ServerAuth.required(config.value)) {
         const request = yield* HttpServerRequest.HttpServerRequest
         const match = /^Basic\s+(.+)$/i.exec(request.headers.authorization ?? "")
         if (match) {
