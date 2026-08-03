@@ -44,7 +44,12 @@ const passthroughInstanceContext = Layer.succeed(
 const testWorkspaceRouting = Layer.succeed(
   WorkspaceRoutingMiddleware,
   WorkspaceRoutingMiddleware.of((effect) =>
-    effect.pipe(Effect.provideService(WorkspaceRouteContext, WorkspaceRouteContext.of({ directory: process.cwd() }))),
+    effect.pipe(
+      Effect.provideService(
+        WorkspaceRouteContext,
+        WorkspaceRouteContext.of({ directory: process.cwd(), directoryAuthoritative: true }),
+      ),
+    ),
   ),
 )
 

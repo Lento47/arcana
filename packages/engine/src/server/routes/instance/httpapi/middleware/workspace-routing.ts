@@ -31,7 +31,17 @@ type RemoteTarget = Extract<Target, { type: "remote" }>
 type RequestPlan = Data.TaggedEnum<{
   InvalidWorkspace: {}
   MissingWorkspace: { readonly workspaceID: WorkspaceV2.ID }
-  Local: { readonly directory: string; readonly workspaceID?: WorkspaceV2.ID }
+  Local: {
+    readonly directory: string
+    readonly workspaceID?: WorkspaceV2.ID
+    /**
+     * True when the directory came from an authenticated/session-bound or
+     * registry-validated source. Query/header-supplied directories are never
+     * authoritative: they may narrow within an authorized scope, but they can
+     * never grant workspace authority.
+     */
+    readonly directoryAuthoritative: boolean
+  }
   Remote: {
     readonly request: HttpServerRequest.HttpServerRequest
     readonly workspace: Workspace.Info
@@ -47,6 +57,7 @@ export class WorkspaceRouteContext extends Context.Service<
   {
     readonly directory: string
     readonly workspaceID?: WorkspaceV2.ID
+    readonly directoryAuthoritative: boolean
   }
 >()("@arcana/ExperimentalHttpApiWorkspaceRouteContext") {}
 
@@ -158,7 +169,11 @@ function planWorkspaceRequest(
   return Effect.gen(function* () {
     const target = yield* resolveTarget(workspace)
     if (target.type === "remote") return RequestPlan.Remote({ request, workspace, target, url })
-    return RequestPlan.Local({ directory: target.directory, workspaceID: workspace.id })
+    return RequestPlan.Local({
+      directory: target.directory,
+      workspaceID: workspace.id,
+      directoryAuthoritative: true,
+    })
   })
 }
 
@@ -186,6 +201,7 @@ function planRequest(
     return RequestPlan.Local({
       directory: session?.directory || defaultDirectory(request, url),
       workspaceID: envWorkspaceID ?? workspaceID,
+      directoryAuthoritative: session?.directory !== undefined || workspace !== undefined || envWorkspaceID !== undefined,
     })
   })
 }
@@ -209,8 +225,13 @@ function routeWorkspace<E>(
       ),
     MissingWorkspace: ({ workspaceID }) => Effect.succeed(missingWorkspaceResponse(workspaceID)),
     Remote: ({ request, workspace, target, url }) => proxyRemote(client, request, workspace, target, url),
-    Local: ({ directory, workspaceID }) =>
-      effect.pipe(Effect.provideService(WorkspaceRouteContext, WorkspaceRouteContext.of({ directory, workspaceID }))),
+    Local: ({ directory, workspaceID, directoryAuthoritative }) =>
+      effect.pipe(
+        Effect.provideService(
+          WorkspaceRouteContext,
+          WorkspaceRouteContext.of({ directory, workspaceID, directoryAuthoritative }),
+        ),
+      ),
   })
 }
 
