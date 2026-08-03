@@ -86,6 +86,50 @@ export type PermissionCheck =
   | { allowed: false; reason: string }
 
 /**
+ * Authenticated enterprise admin principal, resolved exclusively from the
+ * server context (Basic auth username when the server requires auth, else
+ * the trusted local runtime context). Client-supplied actor fields never
+ * flow into this value.
+ */
+export type AdminPrincipal = {
+  userId: string
+  authenticatedAt: string
+}
+
+/**
+ * Combined tenant-authority decision for enterprise admin mutations.
+ *
+ * The decision chain is: authenticated principal -> tenant binding -> role
+ * -> permission. A principal is bound to a tenant only when the server-side
+ * identity store assigns them a role there; the client cannot claim a
+ * tenant or an actor. Fail closed: no role in the tenant denies the
+ * mutation before any permission is consulted.
+ */
+export function authorizeAdminAction(
+  input: {
+    tenantId: string
+    userId: string
+    action: Permission
+    active: boolean
+    roles: Role[]
+  },
+): PermissionCheck {
+  if (input.roles.length === 0) {
+    return {
+      allowed: false,
+      reason: `principal ${input.userId} is not bound to tenant ${input.tenantId}`,
+    }
+  }
+  return checkPermission({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    action: input.action,
+    active: input.active,
+    roles: input.roles,
+  })
+}
+
+/**
  * Pure RBAC decision: user must be active, assigned a role in the tenant,
  * and the role must carry the permission.
  */

@@ -320,6 +320,103 @@ export default {
           CONSTRAINT \`fk_session_share_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE
         );
       `)
+      yield* tx.run(`
+        CREATE TABLE \`contract_acceptance_criteria\` (
+          \`id\` text PRIMARY KEY,
+          \`contract_id\` text NOT NULL,
+          \`description\` text NOT NULL,
+          \`required\` integer DEFAULT 1 NOT NULL,
+          \`verification\` text NOT NULL,
+          \`status\` text DEFAULT 'pending' NOT NULL,
+          \`evidence_event_id\` text,
+          CONSTRAINT \`fk_contract_acceptance_criteria_contract_id_contracts_id_fk\` FOREIGN KEY (\`contract_id\`) REFERENCES \`contracts\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`contract_assumptions\` (
+          \`contract_id\` text NOT NULL,
+          \`claim_id\` text NOT NULL,
+          CONSTRAINT \`contract_assumptions_pk\` PRIMARY KEY(\`contract_id\`, \`claim_id\`),
+          CONSTRAINT \`fk_contract_assumptions_contract_id_contracts_id_fk\` FOREIGN KEY (\`contract_id\`) REFERENCES \`contracts\`(\`id\`) ON DELETE CASCADE,
+          CONSTRAINT \`fk_contract_assumptions_claim_id_claims_id_fk\` FOREIGN KEY (\`claim_id\`) REFERENCES \`claims\`(\`id\`)
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`contract_forbidden_outcomes\` (
+          \`contract_id\` text NOT NULL,
+          \`description\` text NOT NULL,
+          CONSTRAINT \`contract_forbidden_outcomes_pk\` PRIMARY KEY(\`contract_id\`, \`description\`),
+          CONSTRAINT \`fk_contract_forbidden_outcomes_contract_id_contracts_id_fk\` FOREIGN KEY (\`contract_id\`) REFERENCES \`contracts\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`contracts\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text NOT NULL,
+          \`objective\` text NOT NULL,
+          \`risk_class\` text NOT NULL,
+          \`source_event_id\` text NOT NULL,
+          \`compiler_model\` text,
+          \`revision\` integer DEFAULT 1,
+          \`status\` text DEFAULT 'proposed' NOT NULL,
+          \`created_at\` text NOT NULL,
+          \`resolved_at\` text,
+          \`resolution_state\` text,
+          \`resolution_reason\` text
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`events\` (
+          \`id\` text PRIMARY KEY,
+          \`sequence\` integer NOT NULL UNIQUE,
+          \`session_id\` text,
+          \`timestamp\` text NOT NULL,
+          \`previous_hash\` text,
+          \`hash\` text NOT NULL,
+          \`actor_kind\` text NOT NULL,
+          \`actor_id\` text NOT NULL,
+          \`type\` text NOT NULL,
+          \`payload\` text NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`obligations\` (
+          \`id\` text PRIMARY KEY,
+          \`contract_id\` text NOT NULL,
+          \`source_kind\` text NOT NULL,
+          \`source_rule_id\` text,
+          \`source_criterion_id\` text,
+          \`source_reason\` text,
+          \`description\` text NOT NULL,
+          \`required\` integer DEFAULT 1 NOT NULL,
+          \`verification\` text NOT NULL,
+          \`status\` text DEFAULT 'pending' NOT NULL,
+          \`created_at\` text NOT NULL,
+          \`resolved_at\` text,
+          \`waived_by_event_id\` text,
+          \`waiver_reason\` text,
+          CONSTRAINT \`fk_obligations_contract_id_contracts_id_fk\` FOREIGN KEY (\`contract_id\`) REFERENCES \`contracts\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`obligation_templates\` (
+          \`rule_id\` text PRIMARY KEY,
+          \`description\` text NOT NULL,
+          \`trigger\` text NOT NULL,
+          \`verification\` text NOT NULL,
+          \`required\` integer DEFAULT 1 NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`trace_health\` (
+          \`session_id\` text PRIMARY KEY,
+          \`status\` text DEFAULT 'COMPLETE' NOT NULL,
+          \`error_count\` integer DEFAULT 0 NOT NULL,
+          \`last_error\` text,
+          \`recorded_events\` integer DEFAULT 0 NOT NULL,
+          \`updated_at\` text NOT NULL
+        );
+      `)
       yield* tx.run(`CREATE INDEX \`audit_org_action_idx\` ON \`audit_event\` (\`org_id\`,\`action\`);`)
       yield* tx.run(`CREATE INDEX \`audit_org_time_idx\` ON \`audit_event\` (\`org_id\`,\`time_created\`);`)
       yield* tx.run(`CREATE INDEX \`audit_actor_idx\` ON \`audit_event\` (\`actor\`);`)

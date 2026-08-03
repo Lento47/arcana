@@ -6,6 +6,7 @@ import { describe, expect, it } from "bun:test"
 import { Database } from "bun:sqlite"
 import { SqliteIdentityStore } from "./identity-sqlite"
 import {
+  authorizeAdminAction,
   checkPermission,
   isBreakGlassExpired,
   type BreakGlassSession,
@@ -94,5 +95,63 @@ describe("F2 RBAC", () => {
 
     s.endBreakGlass("tenant-a", "bg-1")
     expect(s.activeBreakGlass("tenant-a")).toBeUndefined()
+  })
+})
+
+describe("F2 admin authorization boundary (BLK-F-AUTH-01)", () => {
+  it("denies a principal with no server-side binding in the tenant (fail closed)", () => {
+    // A principal cannot claim a tenant: no role assignment in the tenant
+    // store means no tenant authority, regardless of any client claim.
+    const s = store()
+    s.assignRole({ tenantId: "tenant-a", userId: "alice", role: "ADMIN", assignedAt: NOW.toISOString() })
+    const decision = authorizeAdminAction({
+      tenantId: "tenant-b",
+      userId: "alice",
+      action: "approval.decide",
+      active: s.isUserActive("tenant-b", "alice"),
+      roles: s.rolesFor("tenant-b", "alice"),
+    })
+    expect(decision.allowed).toBe(false)
+    expect(decision.allowed === false && decision.reason).toContain("not bound to tenant tenant-b")
+  })
+
+  it("denies a bound principal whose role lacks the permission", () => {
+    const s = store()
+    s.assignRole({ tenantId: "tenant-a", userId: "bob", role: "MEMBER", assignedAt: NOW.toISOString() })
+    const decision = authorizeAdminAction({
+      tenantId: "tenant-a",
+      userId: "bob",
+      action: "policy.publish",
+      active: s.isUserActive("tenant-a", "bob"),
+      roles: s.rolesFor("tenant-a", "bob"),
+    })
+    expect(decision.allowed).toBe(false)
+  })
+
+  it("denies a deprovisioned principal even with a role", () => {
+    const s = store()
+    s.assignRole({ tenantId: "tenant-a", userId: "carol", role: "ADMIN", assignedAt: NOW.toISOString() })
+    s.setUserStatus("tenant-a", "carol", "DISABLED")
+    const decision = authorizeAdminAction({
+      tenantId: "tenant-a",
+      userId: "carol",
+      action: "approval.decide",
+      active: s.isUserActive("tenant-a", "carol"),
+      roles: s.rolesFor("tenant-a", "carol"),
+    })
+    expect(decision.allowed).toBe(false)
+  })
+
+  it("allows a bound principal whose role grants the permission", () => {
+    const s = store()
+    s.assignRole({ tenantId: "tenant-a", userId: "dave", role: "OWNER", assignedAt: NOW.toISOString() })
+    const decision = authorizeAdminAction({
+      tenantId: "tenant-a",
+      userId: "dave",
+      action: "node.manage",
+      active: s.isUserActive("tenant-a", "dave"),
+      roles: s.rolesFor("tenant-a", "dave"),
+    })
+    expect(decision.allowed).toBe(true)
   })
 })
