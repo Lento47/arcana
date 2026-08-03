@@ -147,4 +147,3 @@ jobs:
 
       - name: Performance regression check
         run: bun run scripts/perf-check.ts --skip-startup
-        continue-on-error: true
