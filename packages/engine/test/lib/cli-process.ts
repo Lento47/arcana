@@ -24,6 +24,7 @@ import { Deferred, Duration, Effect, Layer, Queue, Scope, Stream } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import { ChildProcess } from "effect/unstable/process"
 import path from "node:path"
+import * as nodeFs from "node:fs/promises"
 import { TestLLMServer } from "./llm-server"
 import { testProviderConfig } from "./test-provider"
 import { it } from "./effect"
@@ -191,10 +192,32 @@ export function withCliFixture<A, E>(
     const fs = yield* FSUtil.Service
     const appProc = yield* AppProcess.Service
 
-    // FileSystem.makeTempDirectoryScoped handles both creation and scope-tied
-    // cleanup — replaces the old mkdir + addFinalizer pair.
-    const home = yield* fs.makeTempDirectoryScoped({ prefix: "oc-cli-" })
-
+    // Temp dir with scope-tied cleanup. Windows child handles can briefly
+    // outlive proc.exited, so a plain rm in the finalizer fails with EBUSY
+    // (observed on the opencode run subprocess tests). Retry with GC pressure
+    // like the engine test preload instead of failing the test on a cleanup race.
+    const home = yield* Effect.gen(function* () {
+      const dir = yield* fs.makeTempDirectory({ prefix: "oc-cli-" })
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(async () => {
+          const busy = (error: unknown) =>
+            typeof error === "object" && error !== null && "code" in error && error.code === "EBUSY"
+          const rm = async (left: number): Promise<void> => {
+            try {
+              await nodeFs.rm(dir, { recursive: true, force: true })
+            } catch (error) {
+              if (!busy(error)) throw error
+              if (left <= 1) throw error
+              Bun.gc(true)
+              await new Promise((resolve) => setTimeout(resolve, 100))
+              return rm(left - 1)
+            }
+          }
+          await rm(10)
+        }),
+      )
+      return dir
+    })
     const configJson = JSON.stringify(testProviderConfig(llm.url))
     const env = isolatedEnv(home, configJson)
 
