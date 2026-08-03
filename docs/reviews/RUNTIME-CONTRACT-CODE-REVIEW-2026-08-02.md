@@ -16,7 +16,7 @@ This review records concrete correctness and security findings from the current 
 |---|---|---|---|
 | ARC-REV-001 | P0 | Binding OpenAPI and mounted approval command disagree | Generated Desktop client cannot safely interoperate |
 | ARC-REV-002 | P0 | Approval lifecycle mutation and outbox write are not atomic | State can commit without its authoritative event |
-| ARC-REV-003 | P0 | `APPROVE` can create a missing approval record | Decision path can fabricate the record it should only decide |
+| ARC-REV-003 | P1 | Lower-level `APPROVE` processing can create a missing record | Unsafe invariant if the lifecycle processor is called without the operator-service guard |
 | ARC-REV-004 | P1 | Outbox event IDs use wall-clock time and randomness inside lifecycle logic | Replay and deterministic evidence are weakened |
 | ARC-REV-005 | P1 | Runtime API workspace/operator scoping is broader than its documentation | Cross-workspace reads or decisions may be possible under shared runtime exposure |
 | ARC-REV-006 | P1 | Runtime session listing is not filtered by routed workspace | Endpoint description and behavior disagree |
@@ -55,19 +55,21 @@ A crash or SQLite error after the state update but before the outbox insert leav
 
 Introduce a single transactional transition operation that commits the approval record, optional execution record, and outbox event in one SQLite transaction. Add injected-failure and restart tests at every statement boundary.
 
-## ARC-REV-003 — Approve can fabricate a missing record
+## ARC-REV-003 — Lower-level approve can fabricate a missing record
 
 ### Evidence
 
 `handleApprove` creates a new `PENDING` record when `loadApproval()` returns `null`, then immediately transitions it to `APPROVED`.
 
+The currently mounted path has an upstream guard: `RealApprovalOperatorService.submitCommand()` loads the approval and returns `approval not found` before calling `processApprovalCommand`. Therefore this is not presently demonstrated as a mounted API bypass.
+
 ### Risk
 
-The operator decision path is able to create the durable object it is supposed to inspect and decide. This violates the contract-first architecture and makes provenance of the original authorization request ambiguous.
+The lower-level lifecycle processor does not enforce the invariant that approval creation and approval decision are separate operations. A future or alternate call site that invokes `processApprovalCommand` directly could create the durable object it is supposed to decide, weakening provenance of the original authorization request.
 
 ### Required fix
 
-Return `approval not found` when the record does not exist. Approval creation must occur only in the PDP/approval-required path with the canonical request already persisted. Add a regression test proving an unknown approval ID cannot be approved or create any record/event.
+Make the invariant local to the lifecycle boundary: return `approval not found` when the record does not exist. Approval creation must occur only in the PDP/approval-required path with the canonical request already persisted. Add direct lifecycle and mounted-service regression tests proving an unknown approval ID cannot create any record or event.
 
 ## ARC-REV-004 — Nondeterministic event identity
 
@@ -113,12 +115,12 @@ Filter sessions by the authorized routed workspace and test multi-workspace isol
 
 ## Positive finding already addressed
 
-Approval routing previously used Desktop liveness without binding the submitting surface. PR #30 added explicit `LOCAL_TUI`, `DESKTOP`, and `CENTRAL` decision surfaces. Draft PR #31 adds regression tests for that boundary.
+Approval routing previously used Desktop liveness without binding the submitting surface. PR #30 added explicit `LOCAL_TUI`, `DESKTOP`, and `CENTRAL` decision surfaces. PR #31 merged regression tests for that boundary.
 
 ## Recommended PR sequence
 
 1. Contract parity and protocol revision.
-2. Existing-record-only approval decisions.
+2. Existing-record-only lifecycle invariant.
 3. Atomic lifecycle transaction and deterministic event identity.
 4. Workspace/operator/session isolation.
 5. End-to-end Desktop generated-client conformance test.
