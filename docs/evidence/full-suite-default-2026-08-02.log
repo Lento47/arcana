@@ -1,0 +1,727 @@
+bun test v1.3.14 (0d9b296a)
+[02:52:40.954] WARN (#475): oauth-bind: network error {
+  base: "https://api-arcana.otnelhq.com",
+  error: "An error occurred in Effect.tryPromise",
+}
+[02:52:40.955] WARN (#475): oauth-bind: network error {
+  base: "https://arcana-license-server.lejzerv.workers.dev",
+  error: "An error occurred in Effect.tryPromise",
+}
+[02:52:41.729] ERROR (#1586): failed to abort ACP backing session {
+  error: {
+    safeMessage: "OpenCode service failure",
+    service: "session",
+    _tag: "ACPServiceFailureError",
+  },
+  sessionID: "ses_new",
+}
+[02:52:41.730] ERROR (#1587): failed to abort ACP backing session {
+  error: {
+    safeMessage: "OpenCode service failure",
+    service: "session",
+    _tag: "ACPServiceFailureError",
+  },
+  sessionID: "ses_new",
+}
+[perf] intent binding lookup request p50=0.10ms p95=0.15ms max=0.21ms
+[perf] intent binding lookup session p50=2.06ms p95=6.90ms max=7.85ms
+[perf] governance listGovernance(500) p50=0.36ms p95=0.60ms max=0.84ms
+[02:53:17.828] INFO (#166282): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-gex3ssireok\\config.json",
+}
+[02:53:17.828] INFO (#166283): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-gex3ssireok\\opencode.json",
+}
+[02:53:17.829] INFO (#166284): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-gex3ssireok\\opencode.jsonc",
+}
+[02:53:17.829] INFO (#166285): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-gex3ssireok\\arcana.json",
+}
+[02:53:17.829] INFO (#166286): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-gex3ssireok\\arcana.jsonc",
+}
+[02:53:17.851] INFO (#166280): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-ahx0himndgl\\opencode.json",
+}
+[02:53:18.300] INFO (#166386): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-4uqyorpozte\\config.json",
+}
+[02:53:18.300] INFO (#166387): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-4uqyorpozte\\opencode.json",
+}
+[02:53:18.301] INFO (#166388): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-4uqyorpozte\\opencode.jsonc",
+}
+[02:53:18.301] INFO (#166389): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-4uqyorpozte\\arcana.json",
+}
+[02:53:18.301] INFO (#166390): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-4uqyorpozte\\arcana.jsonc",
+}
+[02:53:18.312] INFO (#166384): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-fsmnlzm6u3k\\opencode.json",
+}
+[02:53:21.421] INFO (#171399): creating instance {
+  directory: "C:\\Windows\\Temp\\opencode-test-cours14jhtk",
+}
+[02:53:21.421] INFO (#171399): fromDirectory {
+  directory: "C:\\Windows\\Temp\\opencode-test-cours14jhtk",
+}
+[02:53:21.561] INFO (#171413): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\config.json",
+}
+[02:53:21.561] INFO (#171414): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\opencode.json",
+}
+[02:53:21.562] INFO (#171415): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\opencode.jsonc",
+}
+[02:53:21.562] INFO (#171416): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\arcana.json",
+}
+[02:53:21.562] INFO (#171417): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\arcana.jsonc",
+}
+[02:53:21.572] INFO (#171418): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\opencode.json",
+}
+[02:53:21.572] INFO (#171419): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\opencode.jsonc",
+}
+[02:53:21.573] INFO (#171420): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\arcana.json",
+}
+[02:53:21.573] INFO (#171421): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\arcana.jsonc",
+}
+[02:53:21.613] INFO (#171446): disposing all instances
+[02:53:21.613] INFO (#171446): disposing instance {
+  directory: "C:\\Windows\\Temp\\opencode-test-cours14jhtk",
+}
+[02:53:38.586] INFO (#221856): disposing all instances
+[perf] RunProof derive(500 events) p50=6.08ms p95=15.11ms max=25.70ms
+[02:57:19.441] INFO (#327062): creating instance {
+  directory: "C:\\Windows\\Temp\\transform-test-gq8GQr",
+}
+[02:57:19.441] INFO (#327062): fromDirectory {
+  directory: "C:\\Windows\\Temp\\transform-test-gq8GQr",
+}
+[02:57:19.444] INFO (#327040): disposing all instances
+[02:57:19.444] INFO (#327040): disposing instance {
+  directory: "C:\\Windows\\Temp\\transform-test-gq8GQr",
+}
+[02:57:30.521] INFO (#339579): [sse] subscriber closed stream=stm_evt_fc58e13960017vvwocnAdsetix offered=0 delivered=0 estimatedDropped=0 head=0
+[02:57:30.534] INFO (#339612): global event disconnected
+[02:58:33.440] INFO (#1606745): [sse] subscriber closed stream=stm_evt_fc58f095f0011V8pwLcwgKvJc7 offered=0 delivered=0 estimatedDropped=0 head=0
+[02:58:45.557] WARN (#1960256): mDNS enabled but hostname is loopback; skipping mDNS publish
+[03:01:19.003] INFO (#4616440): stream {
+  providerID: "openai",
+  modelID: "gpt-5.2",
+  "session.id": "session-test-native-flag-off",
+  small: "false",
+  agent: "test",
+  mode: "primary",
+}
+[03:01:19.004] INFO (#4616487): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\config.json",
+}
+[03:01:19.004] INFO (#4616488): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\opencode.json",
+}
+[03:01:19.005] INFO (#4616489): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\opencode.jsonc",
+}
+[03:01:19.005] INFO (#4616490): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\arcana.json",
+}
+[03:01:19.005] INFO (#4616491): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\arcana.jsonc",
+}
+[03:01:19.006] INFO (#4616483): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-bcqxfeh0hn\\opencode.json",
+}
+[03:01:19.020] INFO (#4616492): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\opencode.json",
+}
+[03:01:19.020] INFO (#4616493): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\opencode.jsonc",
+}
+[03:01:19.020] INFO (#4616494): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\arcana.json",
+}
+[03:01:19.021] INFO (#4616495): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\arcana.jsonc",
+}
+[03:01:19.118] INFO (#4616440): llm runtime selected {
+  "llm.runtime": "ai-sdk",
+  "llm.provider": "openai",
+  "llm.model": "gpt-5.2",
+}
+[03:01:19.323] INFO (#4616866): stream {
+  providerID: "openai",
+  modelID: "gpt-5.2",
+  "session.id": "session-test-native",
+  small: "false",
+  agent: "test",
+  mode: "primary",
+}
+[03:01:19.324] INFO (#4616914): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\config.json",
+}
+[03:01:19.325] INFO (#4616915): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\opencode.json",
+}
+[03:01:19.325] INFO (#4616916): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\opencode.jsonc",
+}
+[03:01:19.325] INFO (#4616917): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\arcana.json",
+}
+[03:01:19.325] INFO (#4616918): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\arcana.jsonc",
+}
+[03:01:19.336] INFO (#4616910): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-nziulewlx1\\opencode.json",
+}
+[03:01:19.340] INFO (#4616919): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\opencode.json",
+}
+[03:01:19.340] INFO (#4616920): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\opencode.jsonc",
+}
+[03:01:19.341] INFO (#4616921): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\arcana.json",
+}
+[03:01:19.341] INFO (#4616922): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\arcana.jsonc",
+}
+[03:01:19.448] INFO (#4616866): llm runtime selected {
+  "llm.runtime": "native",
+  "llm.provider": "openai",
+  "llm.model": "gpt-5.2",
+}
+[03:01:19.640] INFO (#4617297): stream {
+  providerID: "openai",
+  modelID: "gpt-5.2",
+  "session.id": "session-test-native-injected-tool",
+  small: "false",
+  agent: "test",
+  mode: "primary",
+}
+[03:01:19.641] INFO (#4617344): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\config.json",
+}
+[03:01:19.642] INFO (#4617345): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\opencode.json",
+}
+[03:01:19.642] INFO (#4617346): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\opencode.jsonc",
+}
+[03:01:19.642] INFO (#4617347): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\arcana.json",
+}
+[03:01:19.643] INFO (#4617348): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\arcana.jsonc",
+}
+[03:01:19.662] INFO (#4617340): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-4nx4d1j7acn\\opencode.json",
+}
+[03:01:19.676] INFO (#4617349): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\opencode.json",
+}
+[03:01:19.676] INFO (#4617350): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\opencode.jsonc",
+}
+[03:01:19.677] INFO (#4617351): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\arcana.json",
+}
+[03:01:19.677] INFO (#4617352): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\arcana.jsonc",
+}
+[03:01:19.810] INFO (#4617297): llm runtime selected {
+  "llm.runtime": "native",
+  "llm.provider": "openai",
+  "llm.model": "gpt-5.2",
+}
+[03:01:20.000] INFO (#4617729): stream {
+  providerID: "openai",
+  modelID: "gpt-5.2",
+  "session.id": "session-test-native-tool",
+  small: "false",
+  agent: "test",
+  mode: "primary",
+}
+[03:01:20.001] INFO (#4617777): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\config.json",
+}
+[03:01:20.001] INFO (#4617778): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\opencode.json",
+}
+[03:01:20.002] INFO (#4617779): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\opencode.jsonc",
+}
+[03:01:20.002] INFO (#4617780): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\arcana.json",
+}
+[03:01:20.002] INFO (#4617781): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\config\\arcana\\arcana.jsonc",
+}
+[03:01:20.003] INFO (#4617773): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-x7nd3j8mttf\\opencode.json",
+}
+[03:01:20.016] INFO (#4617782): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\opencode.json",
+}
+[03:01:20.017] INFO (#4617783): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\opencode.jsonc",
+}
+[03:01:20.017] INFO (#4617784): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\arcana.json",
+}
+[03:01:20.017] INFO (#4617785): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-19112\\managed\\arcana.jsonc",
+}
+[03:01:20.115] INFO (#4617729): llm runtime selected {
+  "llm.runtime": "native",
+  "llm.provider": "openai",
+  "llm.model": "gpt-5.2",
+}
+[03:05:40.267] ERROR (#5242739): 826 |                   capture(requests, err),
+827 |                 ),
+828 |               ).toMatchObject({ message: err.message })
+829 | 
+830 |               const extDirReq = requests.find((r) => r.permission === "external_directory")
+831 |               expect({ dir, patterns: extDirReq?.patterns, always: extDirReq?.always }).toEqual({
+      ^
+error: expect(received).toEqual(expected)
+
+  {
+    "always": [
+-     "C:\Windows\Temp\opencode-test-xkh54wtj6k7\*",
++     "D:\Program Files\Git\Windows\Temp\opencode-test-xkh54wtj6k7\*",
+    ],
+    "dir": "/Windows/Temp/opencode-test-xkh54wtj6k7",
+    "patterns": [
+-     "C:\Windows\Temp\opencode-test-xkh54wtj6k7\*",
++     "D:\Program Files\Git\Windows\Temp\opencode-test-xkh54wtj6k7\*",
+    ],
+  }
+
+- Expected  - 2
++ Received  + 2
+
+      at toEqual (native:1:1)
+      at L:\PROJECTS\arcana\packages\engine\test\tool\shell.test.ts:831:89
+
+[03:06:19.292] ERROR (#5390679): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.337] ERROR (#5390710): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.383] ERROR (#5390741): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.427] ERROR (#5390772): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.491] ERROR (#5390803): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.537] ERROR (#5390834): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.583] ERROR (#5390865): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.646] ERROR (#5390896): 13 | describe("opencode acp lifecycle subprocess", () => {
+14 |   cliIt.live(
+15 |     "stdin EOF exits cleanly",
+16 |     ({ opencode }) =>
+17 |       Effect.gen(function* () {
+18 |         const acp = yield* opencode.acp()
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\lifecycle.test.ts:18:37)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.692] ERROR (#5390927): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.740] ERROR (#5390958): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.778] ERROR (#5390989): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.817] ERROR (#5391020): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.866] ERROR (#5391051): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.929] ERROR (#5391082): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:19.990] ERROR (#5391113): 11 |   type AcpClient,
+12 | } from "./acp-test-client"
+13 | 
+14 | export function createAcpClient(input: Pick<CliFixture, "opencode">, env?: Record<string, string>) {
+15 |   return Effect.gen(function* () {
+16 |     return createJsonRpcAcpClient(yield* input.opencode.acp(env ? { env } : undefined))
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.acp (L:\PROJECTS\arcana\packages\engine\test\cli\acp\helpers.ts:16:57)
+      at opencode.acp (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:328:24)
+
+[03:06:20.110] ERROR (#5391144):  99 |   cliIt.live(
+100 |     "every documented command emits stable help text",
+101 |     ({ opencode }) =>
+102 |       Effect.gen(function* () {
+103 |         const topLevel = yield* opencode.spawn(["--help"], { env: SNAPSHOT_ENV })
+104 |         expect(topLevel.exitCode).toBe(0)
+      ^
+error: expect(received).toBe(expected)
+
+Expected: 0
+Received: 1
+
+      at toBe (native:1:1)
+      at L:\PROJECTS\arcana\packages\engine\test\cli\help\help-snapshots.test.ts:104:35
+
+[03:06:33.295] ERROR (#5391811): 15 |   // If this fails, all other serve tests likely will too — debug here first.
+16 |   cliIt.live(
+17 |     "starts, binds a port, and serves /global/health",
+18 |     ({ opencode }) =>
+19 |       Effect.gen(function* () {
+20 |         const server = yield* opencode.serve()
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.serve (L:\PROJECTS\arcana\packages\engine\test\cli\serve\serve-process.test.ts:20:40)
+      at opencode.serve (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:254:26)
+
+[03:06:33.342] ERROR (#5391842): 41 |     ({ opencode }) =>
+42 |       Effect.gen(function* () {
+43 |         // Inner scope so we can observe `.exited` resolving after it closes.
+44 |         const exitedPromise = yield* Effect.scoped(
+45 |           Effect.gen(function* () {
+46 |             const server = yield* opencode.serve()
+     ^
+error: Executable not found in $PATH: "bun"
+  path: "bun",
+ errno: -4058,
+  code: "ENOENT"
+
+      at spawn (native:1:1)
+      at opencode.serve (L:\PROJECTS\arcana\packages\engine\test\cli\serve\serve-process.test.ts:46:44)
+      at opencode.serve (definition) (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:254:26)
+
+[03:06:33.483] ERROR (#5391873): 434 |   console.error(`[${label}] expected exit ${expected}, got ${result.exitCode} after ${result.durationMs}ms`)
+435 |   // eslint-disable-next-line no-console
+436 |   console.error(`[${label}] stderr (last 2000):\n${tail(result.stderr, 2000)}`)
+437 |   // eslint-disable-next-line no-console
+438 |   console.error(`[${label}] stdout (last 500):\n${tail(result.stdout, 500)}`)
+439 |   throw new Error(`${label}: expected exit ${expected}, got ${result.exitCode}`)
+                  ^
+error: mcp list: expected exit 0, got 1
+      at expectExit (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:439:13)
+      at L:\PROJECTS\arcana\packages\engine\test\cli\smokes\read-only.test.ts:99:3
+
+[03:06:33.625] ERROR (#5391909): 434 |   console.error(`[${label}] expected exit ${expected}, got ${result.exitCode} after ${result.durationMs}ms`)
+435 |   // eslint-disable-next-line no-console
+436 |   console.error(`[${label}] stderr (last 2000):\n${tail(result.stderr, 2000)}`)
+437 |   // eslint-disable-next-line no-console
+438 |   console.error(`[${label}] stdout (last 500):\n${tail(result.stdout, 500)}`)
+439 |   throw new Error(`${label}: expected exit ${expected}, got ${result.exitCode}`)
+                  ^
+error: providers list: expected exit 0, got 1
+      at expectExit (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:439:13)
+      at L:\PROJECTS\arcana\packages\engine\test\cli\smokes\read-only.test.ts:46:18
+
+[03:06:33.722] ERROR (#5391945): 434 |   console.error(`[${label}] expected exit ${expected}, got ${result.exitCode} after ${result.durationMs}ms`)
+435 |   // eslint-disable-next-line no-console
+436 |   console.error(`[${label}] stderr (last 2000):\n${tail(result.stderr, 2000)}`)
+437 |   // eslint-disable-next-line no-console
+438 |   console.error(`[${label}] stdout (last 500):\n${tail(result.stdout, 500)}`)
+439 |   throw new Error(`${label}: expected exit ${expected}, got ${result.exitCode}`)
+                  ^
+error: models: expected exit 0, got 1
+      at expectExit (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:439:13)
+      at L:\PROJECTS\arcana\packages\engine\test\cli\smokes\read-only.test.ts:59:18
+
+[03:06:33.843] ERROR (#5391981): 434 |   console.error(`[${label}] expected exit ${expected}, got ${result.exitCode} after ${result.durationMs}ms`)
+435 |   // eslint-disable-next-line no-console
+436 |   console.error(`[${label}] stderr (last 2000):\n${tail(result.stderr, 2000)}`)
+437 |   // eslint-disable-next-line no-console
+438 |   console.error(`[${label}] stdout (last 500):\n${tail(result.stdout, 500)}`)
+439 |   throw new Error(`${label}: expected exit ${expected}, got ${result.exitCode}`)
+                  ^
+error: agent list: expected exit 0, got 1
+      at expectExit (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:439:13)
+      at L:\PROJECTS\arcana\packages\engine\test\cli\smokes\read-only.test.ts:73:18
+
+[03:06:33.943] ERROR (#5392017): 434 |   console.error(`[${label}] expected exit ${expected}, got ${result.exitCode} after ${result.durationMs}ms`)
+435 |   // eslint-disable-next-line no-console
+436 |   console.error(`[${label}] stderr (last 2000):\n${tail(result.stderr, 2000)}`)
+437 |   // eslint-disable-next-line no-console
+438 |   console.error(`[${label}] stdout (last 500):\n${tail(result.stdout, 500)}`)
+439 |   throw new Error(`${label}: expected exit ${expected}, got ${result.exitCode}`)
+                  ^
+error: session list: expected exit 0, got 1
+      at expectExit (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:439:13)
+      at L:\PROJECTS\arcana\packages\engine\test\cli\smokes\read-only.test.ts:85:18
+
+[03:06:34.056] ERROR (#5392053): 434 |   console.error(`[${label}] expected exit ${expected}, got ${result.exitCode} after ${result.durationMs}ms`)
+435 |   // eslint-disable-next-line no-console
+436 |   console.error(`[${label}] stderr (last 2000):\n${tail(result.stderr, 2000)}`)
+437 |   // eslint-disable-next-line no-console
+438 |   console.error(`[${label}] stdout (last 500):\n${tail(result.stdout, 500)}`)
+439 |   throw new Error(`${label}: expected exit ${expected}, got ${result.exitCode}`)
+                  ^
+error: stats: expected exit 0, got 1
+      at expectExit (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:439:13)
+      at L:\PROJECTS\arcana\packages\engine\test\cli\smokes\read-only.test.ts:96:18
+
+[03:06:34.166] ERROR (#5392089): 434 |   console.error(`[${label}] expected exit ${expected}, got ${result.exitCode} after ${result.durationMs}ms`)
+435 |   // eslint-disable-next-line no-console
+436 |   console.error(`[${label}] stderr (last 2000):\n${tail(result.stderr, 2000)}`)
+437 |   // eslint-disable-next-line no-console
+438 |   console.error(`[${label}] stdout (last 500):\n${tail(result.stdout, 500)}`)
+439 |   throw new Error(`${label}: expected exit ${expected}, got ${result.exitCode}`)
+                  ^
+error: db path: expected exit 0, got 1
+      at expectExit (L:\PROJECTS\arcana\packages\engine\test\lib\cli-process.ts:439:13)
+      at L:\PROJECTS\arcana\packages\engine\test\cli\smokes\read-only.test.ts:110:18
+
+failed to load attention sound {
+  file: "/tmp/bad-question.mp3",
+  error: 53 |   rejectPaths = new Set<string>()
+54 | 
+55 |   async loadSoundFile(path: string) {
+56 |     this.loadCalls += 1
+57 |     this.loadPaths.push(path)
+58 |     if (this.rejectLoad || this.rejectPaths.has(path)) throw new Error("decode failed")
+                                                                      ^
+error: decode failed
+      at loadSoundFile (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:58:66)
+      at playSound (L:\PROJECTS\arcana\packages\tui\src\attention.ts:157:37)
+      at notify (L:\PROJECTS\arcana\packages\tui\src\attention.ts:203:73)
+      at <anonymous> (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:408:28)
+,
+}
+failed to trigger attention notification {
+  error: 34 |   listenerCount(event: FocusEvent) {
+35 |     return this.listeners[event].size
+36 |   }
+37 | 
+38 |   triggerNotification(message: string, title?: string) {
+39 |     if (this.notificationThrows) throw new Error("notification failed")
+                                                ^
+error: notification failed
+      at triggerNotification (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:39:44)
+      at <anonymous> (L:\PROJECTS\arcana\packages\tui\src\attention.ts:188:39)
+      at notify (L:\PROJECTS\arcana\packages\tui\src\attention.ts:194:24)
+      at <anonymous> (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:441:28)
+,
+}
+failed to load attention sound {
+  file: "L:\\PROJECTS\\arcana\\packages\\tui\\audio\\bip-bop-01.mp3",
+  error: 53 |   rejectPaths = new Set<string>()
+54 | 
+55 |   async loadSoundFile(path: string) {
+56 |     this.loadCalls += 1
+57 |     this.loadPaths.push(path)
+58 |     if (this.rejectLoad || this.rejectPaths.has(path)) throw new Error("decode failed")
+                                                                      ^
+error: decode failed
+      at loadSoundFile (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:58:66)
+      at playSound (L:\PROJECTS\arcana\packages\tui\src\attention.ts:157:37)
+      at notify (L:\PROJECTS\arcana\packages\tui\src\attention.ts:203:73)
+      at <anonymous> (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:441:28)
+,
+}
