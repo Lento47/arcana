@@ -81,13 +81,13 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
       return process.cwd()
     })
 
-    const operatorIdentity = Effect.fn("RuntimeHttpApi.operatorIdentity")(function* (workspaceScope: string) {
-      // Auth config is optional at the handler boundary: when the server has
-      // no configured password, the trusted local runtime context is the
-      // operator. Missing service must not turn a decision into a 500.
-      const config = yield* Effect.serviceOption(ServerAuth.Config)
+    const operatorIdentity = Effect.fn("RuntimeHttpApi.operatorIdentity")(function* () {
+      // Read the auth config as an optional service: when the server has no
+      // auth configured (or the harness omits the layer), the local runtime
+      // context is the trusted operator surface.
+      const config = Option.getOrUndefined(yield* Effect.serviceOption(ServerAuth.Config))
       let operatorId = "local-operator"
-      if (Option.isSome(config) && ServerAuth.required(config.value)) {
+      if (config && ServerAuth.required(config)) {
         const request = yield* HttpServerRequest.HttpServerRequest
         const match = /^Basic\s+(.+)$/i.exec(request.headers.authorization ?? "")
         if (match) {
@@ -163,7 +163,10 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
       if (response.success) {
         yield* events
           .publish(ApprovalEvent, { sessionID: record.sessionId as SessionID, approval: response.approval })
-          .pipe(Effect.ignore)
+          // Best-effort sync-channel push: publishing must never fail the
+          // operator command (e.g. missing InstanceRef in a bare workspace
+          // request). catchCause covers defects as well as typed errors.
+          .pipe(Effect.catchCause(() => Effect.void))
       }
 
       return response

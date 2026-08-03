@@ -66,7 +66,10 @@ export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval"
       if (response.success) {
         yield* events
           .publish(ApprovalEvent, { sessionID: ctx.params.sessionID, approval: response.approval })
-          .pipe(Effect.ignore)
+          // Best-effort sync-channel push: publishing must never fail the
+          // operator command. catchCause covers defects as well as typed
+          // errors.
+          .pipe(Effect.catchCause(() => Effect.void))
       }
 
       return response
