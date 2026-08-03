@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Arcana Governance Event Catalog v1",
+  "description": "Every governance event emitted on the runtime SSE stream. Clients deduplicate by transport.sequence. Clients never invent events.",
+  "version": "1.0.0",
+  "type": "object",
+  "required": ["events", "aggregation", "securityBreakthrough"],
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "summary", "payload"],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string",
+            "description": "Human summary for compact projections"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "example": [
+        {
+          "type": "authorization.requested",
+          "summary": "modify deployment/config.yaml",
+          "payload": {
+            "approvalId": "uuid",
+            "sessionId": "string",
+            "workspaceId": "string",
+            "action": "write",
+            "resource": "deployment/config.yaml",
+            "riskClass": "high",
+            "route": "DESKTOP_PREFERRED",
+            "requestHash": "string",
+            "policyVersion": "string"
+          }
+        },
+        {
+          "type": "authorization.allowed",
+          "summary": "write authorized",
+          "payload": {
+            "requestId": "uuid",
+            "capability": "string",
+            "policyVersion": "string"
+          }
+        },
+        {
+          "type": "approval.required",
+          "summary": "waiting for approval",
+          "payload": {
+            "approvalId": "uuid",
+            "expiresAt": "date-time"
+          }
+        },
+        {
+          "type": "approval.updated",
+          "summary": "approved by operator",
+          "payload": {
+            "approvalId": "uuid",
+            "status": "APPROVED",
+            "decidedBy": "string",
+            "eventSequence": 1
+          }
+        },
+        {
+          "type": "approval.denied",
+          "summary": "denied by operator",
+          "payload": {
+            "approvalId": "uuid",
+            "status": "DENIED"
+          }
+        },
+        {
+          "type": "approval.expired",
+          "summary": "approval expired",
+          "payload": {
+            "approvalId": "uuid",
+            "status": "EXPIRED"
+          }
+        },
+        {
+          "type": "capability.revoked",
+          "summary": "capability revoked",
+          "payload": {
+            "capability": "string",
+            "workspaceId": "string"
+          }
+        },
+        {
+          "type": "request.mutated",
+          "summary": "request changed after approval",
+          "payload": {
+            "approvalId": "uuid",
+            "oldHash": "string",
+            "newHash": "string"
+          }
+        },
+        {
+          "type": "effect.executed",
+          "summary": "governed write executed 184ms",
+          "payload": {
+            "requestId": "uuid",
+            "effect": "string",
+            "durationMs": 184
+          }
+        },
+        {
+          "type": "receipt.recorded",
+          "summary": "receipt recorded",
+          "payload": {
+            "requestId": "uuid",
+            "receiptId": "string",
+            "proofId": "string"
+          }
+        },
+        {
+          "type": "proof.updated",
+          "summary": "proof P1 5 authorized 1 approved 0 unauthorized",
+          "payload": {
+            "proofId": "string",
+            "authorized": 5,
+            "approved": 1,
+            "unauthorized": 0
+          }
+        },
+        {
+          "type": "runtime.disconnected",
+          "summary": "runtime disconnected",
+          "payload": {
+            "streamId": "string",
+            "lastSequence": 1
+          }
+        },
+        {
+          "type": "evidence.degraded",
+          "summary": "evidence degraded",
+          "payload": {
+            "proofId": "string",
+            "missing": ["string"]
+          }
+        },
+        {
+          "type": "execution.unknown",
+          "summary": "unknown execution state after crash",
+          "payload": {
+            "requestId": "uuid",
+            "effect": "string"
+          }
+        },
+        {
+          "type": "revalidation.failed",
+          "summary": "revalidation failed",
+          "payload": {
+            "approvalId": "uuid",
+            "reason": "string"
+          }
+        },
+        {
+          "type": "governance.recorded",
+          "summary": "durable governance event",
+          "payload": {
+            "recordId": "string",
+            "sequence": 1
+          }
+        }
+      ]
+    },
+    "aggregation": {
+      "type": "object",
+      "description": "Default projection groups these types into one compact lifecycle line.",
+      "properties": {
+        "groups": {
+          "type": "object",
+          "properties": {
+            "inspection": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["authorization.requested"] }
+            },
+            "governedLifecycle": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "authorization.allowed",
+                  "effect.executed",
+                  "receipt.recorded"
+                ]
+              }
+            },
+            "approvalWait": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["approval.required"] }
+            },
+            "decision": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["approval.updated", "approval.denied"]
+              }
+            },
+            "proofSummary": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["proof.updated"] }
+            }
+          }
+        }
+      }
+    },
+    "securityBreakthrough": {
+      "type": "array",
+      "description": "These event types ALWAYS render individually in every visibility mode.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "approval.required",
+          "approval.denied",
+          "capability.revoked",
+          "request.mutated",
+          "runtime.disconnected",
+          "evidence.degraded",
+          "execution.unknown",
+          "revalidation.failed"
+        ]
+      }
+    }
+  }
+}
