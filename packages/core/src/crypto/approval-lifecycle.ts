@@ -127,6 +127,20 @@ export type ApprovalTransition = {
   event: ApprovalOutboxEvent
 }
 
+/**
+ * Deterministic outbox event identity (ARC-REV-004).
+ *
+ * The identity derives only from the durable transition: transition kind,
+ * approval id, and the resulting approval version. Replaying the same
+ * transition reproduces the same id, different transitions cannot collide
+ * (version is monotonic per approval), and replay never depends on wall-clock
+ * time or randomness. The outbox treats the id as the dedupe key: a retried
+ * transition resolves to the same event or is deterministically rejected.
+ */
+export function transitionEventId(kind: string, approvalId: string, version: number): string {
+  return `evt-${kind}-${approvalId}-v${version}`
+}
+
 // ─── Command Types ──────────────────────────────────────────────────
 
 export type ApprovalCommand =
@@ -266,11 +280,16 @@ function handleApprove(
 
   // Verify not expired
   if (new Date(record.expiresAt).getTime() < now.getTime()) {
-    const expired: ApprovalRecord = { ...record, state: "EXPIRED", updatedAt: nowIso }
+    const expired: ApprovalRecord = {
+      ...record,
+      version: record.version + 1,
+      state: "EXPIRED",
+      updatedAt: nowIso,
+    }
     store.commitTransition({
       approval: expired,
       event: {
-        eventId: `evt-expire-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        eventId: transitionEventId("APPROVAL_EXPIRED", command.approvalId, expired.version),
         approvalId: command.approvalId,
         kind: "APPROVAL_EXPIRED",
         timestamp: nowIso,
@@ -298,7 +317,7 @@ function handleApprove(
   store.commitTransition({
     approval: next,
     event: {
-      eventId: `evt-approve-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      eventId: transitionEventId("APPROVAL_DECIDED", command.approvalId, next.version),
       approvalId: command.approvalId,
       kind: "APPROVAL_DECIDED",
       timestamp: nowIso,
@@ -358,7 +377,7 @@ function handleDeny(
   store.commitTransition({
     approval: next,
     event: {
-      eventId: `evt-deny-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      eventId: transitionEventId("APPROVAL_DECIDED", command.approvalId, next.version),
       approvalId: command.approvalId,
       kind: "APPROVAL_DECIDED",
       timestamp: nowIso,
@@ -419,7 +438,7 @@ function handleRevoke(
   store.commitTransition({
     approval: next,
     event: {
-      eventId: `evt-revoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      eventId: transitionEventId("APPROVAL_REVOKED", command.approvalId, next.version),
       approvalId: command.approvalId,
       kind: "APPROVAL_REVOKED",
       timestamp: nowIso,
@@ -469,11 +488,16 @@ function handleClaim(
 
   // Verify not expired
   if (new Date(record.expiresAt).getTime() < now.getTime()) {
-    const expired: ApprovalRecord = { ...record, state: "EXPIRED", updatedAt: nowIso }
+    const expired: ApprovalRecord = {
+      ...record,
+      version: record.version + 1,
+      state: "EXPIRED",
+      updatedAt: nowIso,
+    }
     store.commitTransition({
       approval: expired,
       event: {
-        eventId: `evt-expire-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        eventId: transitionEventId("APPROVAL_EXPIRED", command.approvalId, expired.version),
         approvalId: command.approvalId,
         kind: "APPROVAL_EXPIRED",
         timestamp: nowIso,
@@ -505,7 +529,7 @@ function handleClaim(
     approval: claimed,
     execution,
     event: {
-      eventId: `evt-claim-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      eventId: transitionEventId("APPROVAL_CLAIMED", command.approvalId, claimed.version),
       approvalId: command.approvalId,
       kind: "APPROVAL_CLAIMED",
       timestamp: nowIso,
@@ -575,7 +599,7 @@ function handleConsume(
     approval: consumed,
     execution: updatedExec,
     event: {
-      eventId: `evt-consume-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      eventId: transitionEventId("APPROVAL_CONSUMED", command.approvalId, consumed.version),
       approvalId: command.approvalId,
       kind: "APPROVAL_CONSUMED",
       timestamp: nowIso,
