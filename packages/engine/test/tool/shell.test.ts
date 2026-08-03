@@ -812,9 +812,23 @@ describe("tool.shell permissions", () => {
         yield* runIn(
           tmp,
           Effect.gen(function* () {
+            const config = yield* Config.Service
+            const shell = Shell.acceptable(config.shell)
             const want = Filesystem.normalizePathPattern(path.join(outerTmp, "*"))
+            const variants = forms(outerTmp).filter((dir) => {
+              // Drive-stripped forms (e.g. /Windows/Temp/...) are POSIX paths
+              // in a POSIX shell: the tool resolves them through cygpath
+              // relative to the Git/MSYS installation root, which is
+              // machine-dependent (Git Bash at D:\Program Files\Git maps them
+              // into the Git root). They are only unambiguous Windows-path
+              // variants when the active shell is not POSIX.
+              if (process.platform !== "win32") return true
+              if (!Shell.posix(shell)) return true
+              return /^[A-Za-z]:/.test(dir)
+            })
+            let baseline: { patterns: readonly string[]; always: readonly string[] } | undefined
 
-            for (const dir of forms(outerTmp)) {
+            for (const dir of variants) {
               const requests: Array<Omit<PermissionV1.Request, "id" | "sessionID" | "tool">> = []
               expect(
                 yield* fail(
@@ -828,11 +842,25 @@ describe("tool.shell permissions", () => {
               ).toMatchObject({ message: err.message })
 
               const extDirReq = requests.find((r) => r.permission === "external_directory")
-              expect({ dir, patterns: extDirReq?.patterns, always: extDirReq?.always }).toEqual({
+              expect(extDirReq).toBeDefined()
+              const observed = {
                 dir,
-                patterns: [want],
-                always: [want],
-              })
+                patterns: extDirReq?.patterns ?? [],
+                always: extDirReq?.always ?? [],
+              }
+              if (!baseline) {
+                // The canonical full form must match the lexical expectation.
+                baseline = { patterns: observed.patterns, always: observed.always }
+                expect(observed).toEqual({ dir, patterns: [want], always: [want] })
+              } else {
+                // Every Windows variant must normalize to the SAME permission
+                // request. The expected pattern is intentionally derived from
+                // the canonical form rather than hardcoded: with Git Bash
+                // installed, the drive-stripped variant resolves through
+                // cygpath relative to the Git installation root, so an
+                // absolute C:\Windows\Temp expectation is machine-dependent.
+                expect(observed).toEqual({ dir, ...baseline })
+              }
             }
           }),
         )

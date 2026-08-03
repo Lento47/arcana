@@ -21,18 +21,11 @@ import type {
   ScopedApprovalStore,
   ScopedApprovalDecision,
 } from "../capability/scoped-approval"
+import type { ApprovalRoute } from "./approval-routing"
+import type { RiskClass } from "../capability/types"
 import type { ApprovalRecord } from "./approval-lifecycle"
 import { ScopedApprovalStoreError } from "../capability/scoped-approval"
-import { APPROVAL_SCHEMA } from "./approval-store-sqlite"
-
-const MIGRATIONS = [
-  `ALTER TABLE approval_records ADD COLUMN actions_json TEXT`,
-  `ALTER TABLE approval_records ADD COLUMN resource_json TEXT`,
-  `ALTER TABLE approval_records ADD COLUMN uses_consumed INTEGER NOT NULL DEFAULT 0`,
-  `ALTER TABLE approval_records ADD COLUMN claim_execution_id TEXT`,
-  `ALTER TABLE approval_records ADD COLUMN lease_expires_at TEXT`,
-  `ALTER TABLE approval_records ADD COLUMN decided_at TEXT`,
-]
+import { APPROVAL_RECORD_MIGRATIONS, APPROVAL_SCHEMA } from "./approval-store-sqlite"
 
 type ApprovalRow = {
   approval_id: string
@@ -44,7 +37,12 @@ type ApprovalRow = {
   principal_id: string | null
   state: string
   approved_by: string | null
+  revoked_by: string | null
   execution_id: string | null
+  route: string | null
+  routing_policy_version: string | null
+  local_fallback_allowed: number | null
+  risk_class: string | null
   expires_at: string | null
   created_at: string
   updated_at: string
@@ -88,6 +86,11 @@ function rowToScoped(row: ApprovalRow): ScopedApproval {
     maxUses: 1,
     usesConsumed: usesConsumed,
     expiresAt: row.expires_at ?? new Date(0).toISOString(),
+    route: row.route ? (row.route as ApprovalRoute) : undefined,
+    routingPolicyVersion: row.routing_policy_version ?? undefined,
+    localFallbackAllowed:
+      row.local_fallback_allowed === null ? undefined : row.local_fallback_allowed === 1,
+    riskClass: row.risk_class ? (row.risk_class as RiskClass) : undefined,
     createdEventId: `evt-approval-created:${row.approval_id}`,
     decidedEventId: row.decided_at ? `evt-approval-decided:${row.approval_id}` : undefined,
     claimedEventId: row.claim_execution_id ? `evt-approval-claim:${row.approval_id}` : undefined,
@@ -109,7 +112,13 @@ function rowToApprovalRecord(row: ApprovalRow): ApprovalRecord {
     principalId: row.principal_id ?? undefined,
     state: (row.state as ApprovalRecord["state"]) ?? "PENDING",
     approvedBy: row.approved_by ?? undefined,
+    revokedBy: row.revoked_by ?? undefined,
     executionId: row.execution_id ?? undefined,
+    route: row.route ? (row.route as ApprovalRoute) : undefined,
+    routingPolicyVersion: row.routing_policy_version ?? undefined,
+    localFallbackAllowed:
+      row.local_fallback_allowed === null ? undefined : row.local_fallback_allowed === 1,
+    riskClass: row.risk_class ? (row.risk_class as RiskClass) : undefined,
     expiresAt: row.expires_at ?? new Date(0).toISOString(),
     updatedAt: row.updated_at,
     createdAt: row.created_at,
@@ -134,7 +143,7 @@ export class SqliteScopedApprovalStore implements ScopedApprovalStore {
     const cols = new Set<string>()
     const rows = this.db.query("PRAGMA table_info(approval_records)").all() as { name: string }[]
     for (const r of rows) cols.add(r.name)
-    for (const migration of MIGRATIONS) {
+    for (const migration of APPROVAL_RECORD_MIGRATIONS) {
       const colName = migration.match(/ADD COLUMN (\w+)/)?.[1]
       if (colName && !cols.has(colName)) {
         this.db.run(migration)
@@ -199,8 +208,9 @@ export class SqliteScopedApprovalStore implements ScopedApprovalStore {
           `INSERT INTO approval_records (
              approval_id, version, session_id, workspace_id, request_hash, contract_revision,
              principal_id, state, expires_at, actions_json, resource_json, uses_consumed,
-             claim_execution_id, lease_expires_at, decided_at, updated_at, created_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             claim_execution_id, lease_expires_at, decided_at, route, routing_policy_version,
+             local_fallback_allowed, risk_class, updated_at, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(approval_id) DO UPDATE SET
              version = excluded.version,
              state = excluded.state,
@@ -212,6 +222,10 @@ export class SqliteScopedApprovalStore implements ScopedApprovalStore {
              claim_execution_id = excluded.claim_execution_id,
              lease_expires_at = excluded.lease_expires_at,
              decided_at = excluded.decided_at,
+             route = excluded.route,
+             routing_policy_version = excluded.routing_policy_version,
+             local_fallback_allowed = excluded.local_fallback_allowed,
+             risk_class = excluded.risk_class,
              updated_at = excluded.updated_at`,
           [
             approval.id,
@@ -229,6 +243,10 @@ export class SqliteScopedApprovalStore implements ScopedApprovalStore {
             approval.claimExecutionId ?? null,
             approval.leaseExpiresAt ?? null,
             approval.decidedEventId ? now : null,
+            approval.route ?? null,
+            approval.routingPolicyVersion ?? null,
+            approval.localFallbackAllowed === false ? 0 : 1,
+            approval.riskClass ?? null,
             now,
             now,
           ],

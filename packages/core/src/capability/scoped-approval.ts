@@ -23,6 +23,8 @@ import type {
   CanonicalResource,
   CapabilityGrant,
 } from "./types"
+import type { ApprovalRoute } from "../crypto/approval-routing"
+import type { RiskClass } from "./types"
 import { POLICY_VERSION } from "./types"
 import { computeRequestHash } from "./request-hash"
 import type { AuthorizationRequest } from "./types"
@@ -75,6 +77,15 @@ export interface ScopedApproval {
    * If the claim is not consumed before this time, it becomes RECOVERY_REQUIRED.
    */
   readonly leaseExpiresAt?: string
+
+  /**
+   * Advisory routing metadata (Phase D). The routing decision only selects
+   * the operator surface; it never affects the PDP/PEP.
+   */
+  readonly route?: ApprovalRoute
+  readonly routingPolicyVersion?: string
+  readonly localFallbackAllowed?: boolean
+  readonly riskClass?: RiskClass
 }
 
 /**

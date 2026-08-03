@@ -30,6 +30,9 @@ import { it } from "./effect"
 
 const opencodeRoot = path.resolve(import.meta.dir, "../../")
 const cliEntry = path.join(opencodeRoot, "src/index.ts")
+// Use the running Bun executable explicitly: the harness must not depend on
+// `bun` being on PATH (CI shells and Windows dev machines frequently lack it).
+const bunExecutable = process.execPath
 
 export const testModelID = "test/test-model"
 
@@ -202,7 +205,7 @@ export function withCliFixture<A, E>(
       // on `Bun.stdin.text()` (see src/cli/cmd/run.ts — non-TTY stdin is
       // consumed as the prompt). The old Process.run wrapper defaulted to
       // ignore; ChildProcess.make defaults to pipe, so we set it explicitly.
-      const command = ChildProcess.make("bun", ["run", "--conditions=browser", cliEntry, ...args], {
+      const command = ChildProcess.make(bunExecutable, ["run", "--conditions=browser", cliEntry, ...args], {
         cwd: home,
         env: { ...env, ...opts?.env },
         extendEnv: true,
@@ -264,7 +267,7 @@ export function withCliFixture<A, E>(
       // as a finalizer error during test teardown.
       const proc = yield* Effect.acquireRelease(
         Effect.sync(() =>
-          Bun.spawn(["bun", "run", "--conditions=browser", cliEntry, ...argv], {
+          Bun.spawn([bunExecutable, "run", "--conditions=browser", cliEntry, ...argv], {
             cwd: home,
             env: { ...process.env, ...env, ...opts?.env },
             stdout: "pipe",
@@ -335,7 +338,7 @@ export function withCliFixture<A, E>(
       // Either way we await proc.exited so the test scope doesn't leak.
       const proc = yield* Effect.acquireRelease(
         Effect.sync(() =>
-          Bun.spawn(["bun", "run", "--conditions=browser", cliEntry, ...argv], {
+          Bun.spawn([bunExecutable, "run", "--conditions=browser", cliEntry, ...argv], {
             cwd: opts?.cwd ?? home,
             env: { ...process.env, ...env, ...opts?.env },
             stdin: "pipe",

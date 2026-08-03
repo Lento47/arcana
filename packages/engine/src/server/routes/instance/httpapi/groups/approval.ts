@@ -10,7 +10,7 @@ import { described } from "./metadata"
 const root = "/api/session"
 
 export const ApprovalCommandPayload = Schema.Struct({
-  command: Schema.Literals(["APPROVE_ONCE", "DENY"]),
+  command: Schema.Literals(["APPROVE_ONCE", "DENY", "REVOKE"]),
   expectedVersion: Schema.Number,
   expectedRequestHash: Schema.String,
   expectedContractRevision: Schema.Number,

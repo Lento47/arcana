@@ -613,6 +613,9 @@ it.live(
       expect((yield* snapshot.patch(before!)).files).toContain(worktreeFile)
     }).pipe(provideInstance(worktreePath))
   }),
+  // Git worktree + snapshot track measures ~2.2s in isolation; near 5s under
+  // full-suite load on 2026-08-02. Legitimate load-bound duration, not a hang.
+  { timeout: 10_000 },
 )
 
 it.live(
@@ -640,6 +643,9 @@ it.live(
     }).pipe(provideInstance(worktreePath))
     expect(yield* readText(primaryFile)).toBe("primary content")
   }),
+  // Git worktree + snapshot revert measures ~2.3s in isolation; near 5s under
+  // full-suite load on 2026-08-02. Legitimate load-bound duration, not a hang.
+  { timeout: 10_000 },
 )
 
 it.live(
@@ -669,6 +675,9 @@ it.live(
       expect(diff).not.toContain("primary-only.txt")
     }).pipe(provideInstance(worktreePath))
   }),
+  // Git worktree diff measures ~2.1s in isolation; near 5s under full-suite
+  // load on 2026-08-02. Legitimate load-bound duration, not a hang.
+  { timeout: 10_000 },
 )
 
 it.instance(
@@ -864,6 +873,8 @@ it.instance(
     }
   }),
   { git: true },
+  // ~2.8s in isolation; near 5s under full-suite load on 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.instance(
@@ -1065,6 +1076,8 @@ it.instance(
     expect(yield* readText(`${tmp.path}/shared.txt`)).toBe("v1")
   }),
   { git: true },
+  // ~1.8s in isolation; flaked near 5s under full-suite load on 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.instance(
@@ -1122,4 +1135,6 @@ it.instance(
     for (const file of fresh) expect(yield* exists(file)).toBe(false)
   }),
   { git: true },
+  // ~2.9s in isolation; near 5s under full-suite load on 2026-08-02.
+  { timeout: 10_000 },
 )

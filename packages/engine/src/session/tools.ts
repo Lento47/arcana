@@ -39,6 +39,9 @@ import type { PolicyContext } from "@arcana/core/capability/pdp"
 import type { AuthorizationRequest, CanonicalResource, ProvenanceLabel, SensitivityLabel } from "@arcana/core/capability/types"
 import type { ScopedApproval } from "@arcana/core/capability/scoped-approval"
 import { SqliteScopedApprovalStore } from "@arcana/core/crypto/scoped-approval-adapter"
+import type { RiskClass } from "@arcana/core/capability/types"
+import { loadApprovalRoutingPolicy, deploymentModeFromEnv, resolveApprovalRoute } from "@/approval/routing"
+import { desktopOnline } from "@/approval/desktop-subscribers"
 import { EventStore } from "./epistemic/event-store"
 import type { ArcanaEvent } from "@arcana/core/epistemic/event"
 import { IntentRuntime, type IntentAuthority } from "./intent-runtime"
@@ -103,6 +106,10 @@ function makePendingScopedApproval(input: {
   sessionId: string
   action: string
   resource: CanonicalResource
+  route?: import("@arcana/core/crypto/approval-routing").ApprovalRoute
+  routingPolicyVersion?: string
+  localFallbackAllowed?: boolean
+  riskClass?: import("@arcana/core/capability/types").RiskClass
 }): ScopedApproval {
   return {
     id: input.approvalId,
@@ -117,7 +124,52 @@ function makePendingScopedApproval(input: {
     usesConsumed: 0,
     expiresAt: new Date(Date.now() + APPROVAL_TTL_MS).toISOString(),
     createdEventId: `evt-approval-created:${input.approvalId}`,
+    route: input.route,
+    routingPolicyVersion: input.routingPolicyVersion,
+    localFallbackAllowed: input.localFallbackAllowed,
+    riskClass: input.riskClass,
   }
+}
+
+/**
+ * Phase D: resolve the advisory routing decision for a REQUIRE_APPROVAL
+ * request and return the metadata persisted on the durable approval record.
+ * Failures fall back to LOCAL_TUI metadata (undefined fields), preserving
+ * the pre-routing behavior.
+ */
+function resolveApprovalRoutingForRequest(input: {
+  workspaceCwd?: string
+  sessionId: string
+  action: string
+  riskClass: RiskClass
+  requestId: string
+  requestHash: string
+}): Effect.Effect<{
+  route: import("@arcana/core/crypto/approval-routing").ApprovalRoute | undefined
+  routingPolicyVersion: string | undefined
+  localFallbackAllowed: boolean | undefined
+  riskClass: RiskClass
+}> {
+  const workspaceCwd = input.workspaceCwd ?? process.cwd()
+  return Effect.sync(() => {
+    const policy = loadApprovalRoutingPolicy(workspaceCwd)
+      const resolution = resolveApprovalRoute(policy, {
+        sessionId: input.sessionId,
+        workspaceId: workspaceCwd,
+        action: input.action,
+        riskClass: input.riskClass,
+        deploymentMode: deploymentModeFromEnv(),
+        desktopOnline: desktopOnline(workspaceCwd),
+        requestId: input.requestId,
+        requestHash: input.requestHash,
+      })
+      return {
+        route: resolution.route,
+        routingPolicyVersion: resolution.policyVersion,
+        localFallbackAllowed: resolution.localFallbackAllowed,
+        riskClass: input.riskClass,
+      }
+  })
 }
 
 // ── Phase C PEP: Fail-closed production provider ──────────────────────
@@ -601,6 +653,14 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                   if (pepResult.status === "APPROVAL_REQUIRED") {
                     const reasons = pepResult.decision.reasons.map((r) => r.code).join(", ")
                     const approvalId = `appr_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+                    const routing = yield* resolveApprovalRoutingForRequest({
+                      workspaceCwd,
+                      sessionId: ctx.sessionID,
+                      action: authReq.action,
+                      riskClass: pepResult.decision.riskClass,
+                      requestId: authReq.requestId,
+                      requestHash: pepResult.decision.requestHash,
+                    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
                     const scoped = makePendingScopedApproval({
                       approvalId,
                       requestHash: pepResult.decision.requestHash,
@@ -608,6 +668,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                       sessionId: ctx.sessionID,
                       action: authReq.action ?? item.id,
                       resource: authReq.resource,
+                      ...(routing ?? {}),
                     })
                     yield* Effect.promise(() => Effect.runPromise(scopedStore.putApproval(scoped)))
                     yield* publishApprovalCreated(ctx.sessionID, scopedStore, approvalId)
@@ -806,6 +867,14 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               if (mcpPepResult.status === "APPROVAL_REQUIRED") {
                 const reasons = mcpPepResult.decision.reasons.map((r) => r.code).join(", ")
                 const approvalId = `appr_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+                const mcpRouting = yield* resolveApprovalRoutingForRequest({
+                  workspaceCwd: mcpWorkspaceCwd,
+                  sessionId: ctx.sessionID,
+                  action: mcpAuthReq.action,
+                  riskClass: mcpPepResult.decision.riskClass,
+                  requestId: mcpAuthReq.requestId,
+                  requestHash: mcpPepResult.decision.requestHash,
+                }).pipe(Effect.catch(() => Effect.succeed(undefined)))
                 const scoped = makePendingScopedApproval({
                   approvalId,
                   requestHash: mcpPepResult.decision.requestHash,
@@ -813,6 +882,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                   sessionId: ctx.sessionID,
                   action: mcpAuthReq.action ?? key,
                   resource: mcpAuthReq.resource,
+                  ...(mcpRouting ?? {}),
                 })
                 yield* Effect.promise(() => Effect.runPromise(mcpScopedStore.putApproval(scoped)))
                 yield* publishApprovalCreated(ctx.sessionID, mcpScopedStore, approvalId)

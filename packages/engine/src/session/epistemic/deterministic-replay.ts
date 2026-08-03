@@ -161,9 +161,12 @@ export function checkEnvironmentCompatibility(
   let result: "COMPATIBLE" | "DRIFTED" | "UNKNOWN"
   try {
     if (process.platform === "win32") {
-      execSync(`where ${executable}`, { stdio: "pipe", timeout: 5000 })
+      // Pass env explicitly: Bun's execSync does not pick up runtime
+      // process.env.PATH changes on Windows, which made PATH-bootstrapped
+      // test harnesses (and dynamic PATH updates) report DRIFTED.
+      execSync(`where ${executable}`, { env: { ...process.env }, stdio: "pipe", timeout: 5000 })
     } else {
-      execSync(`which ${executable}`, { stdio: "pipe", timeout: 5000 })
+      execSync(`which ${executable}`, { env: { ...process.env }, stdio: "pipe", timeout: 5000 })
     }
     result = "COMPATIBLE"
   } catch {
@@ -190,6 +193,9 @@ function executeBoundedCommand(
     stdout = execSync(command, {
       cwd: workingDirectory ?? process.cwd(),
       timeout: timeoutMs,
+      // Explicit env: Bun's execSync does not honor runtime process.env
+      // updates on Windows (PATH bootstrapping in tests, dynamic tool PATHs).
+      env: { ...process.env },
       stdio: ["pipe", "pipe", "pipe"],
       encoding: "utf-8",
       maxBuffer: 10 * 1024 * 1024,

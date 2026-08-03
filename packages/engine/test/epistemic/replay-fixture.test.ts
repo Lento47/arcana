@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
 import { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
+import path from "node:path"
 import {
   deriveDeterministicReplay,
 } from "@arcana/engine/session/epistemic/deterministic-replay"
@@ -66,9 +67,20 @@ function insertEvent(db: Database, opts: {
 
 describe("P2 End-to-End Replay Fixture", () => {
   let db: Database
+  const originalPath = process.env.PATH
 
-  beforeEach(() => { db = makeTestDB() })
-  afterEach(() => { db.close() })
+  beforeEach(() => {
+    db = makeTestDB()
+    // The fixture re-executes `bun test ...` and the replay environment check
+    // resolves `bun` via PATH. Bootstrap it from the running executable so the
+    // suite does not depend on bun being on PATH.
+    process.env.PATH = `${path.dirname(process.execPath)}${path.delimiter}${originalPath ?? ""}`
+  })
+  afterEach(() => {
+    db.close()
+    if (originalPath === undefined) delete process.env.PATH
+    else process.env.PATH = originalPath
+  })
 
   it("earns P2 for a real bounded command with structured invocation", () => {
     // ── Step 1: Record the session events as they would have been emitted ──
@@ -126,7 +138,15 @@ describe("P2 End-to-End Replay Fixture", () => {
     let realExitCode = 0
     const replayCommand = [executable, ...args].join(" ")
     try {
-      realOutput = execSync(replayCommand, { cwd, timeout: 30000, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] })
+      realOutput = execSync(replayCommand, {
+        cwd,
+        timeout: 30000,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        // Explicit env: Bun's execSync does not honor runtime process.env
+        // PATH updates on Windows.
+        env: { ...process.env },
+      })
     } catch (err: any) {
       realExitCode = err.status ?? 1
       realOutput = err.stdout ?? ""
@@ -299,7 +319,14 @@ describe("P2 End-to-End Replay Fixture", () => {
     const { execSync } = require("child_process")
     let output = ""
     const nodeCmd = ["node", "-e", "console.log(42)"].join(" ")
-    try { output = execSync(nodeCmd, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }) } catch {}
+    try {
+      output = execSync(nodeCmd, {
+        cwd,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env },
+      })
+    } catch {}
     const norm = output.replace(/\s+$/g, "").replace(/\n{3,}/g, "\n\n")
     insertEvent(db, { id: "e5", sequence: 4, sessionId: "fixture-s4", type: "tool.returned", payload: {
       callID: "c3", title: "terminal", hasOutput: true,
