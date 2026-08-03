@@ -589,6 +589,8 @@ it.live(
       expect(patch2.files).not.toContain(fwd(tmp1.path, "project1.txt"))
     }).pipe(provideInstance(tmp2.path))
   }),
+  // ~4s in isolation; 5.0s under full-suite load on 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.live(
@@ -888,6 +890,8 @@ it.instance(
     )
   }),
   { git: true },
+  // ~4s in isolation; 5.0s under full-suite load on 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.instance(

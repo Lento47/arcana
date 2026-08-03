@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 30000 --only-failures",
     "test:httpapi": "bun run script/httpapi-exercise.ts --mode coverage --fail-on-missing --fail-on-skip && bun run script/httpapi-exercise.ts --mode auth --fail-on-missing --fail-on-skip && bun run script/httpapi-exercise.ts --mode effect --fail-on-missing --fail-on-skip",
+    "test:engine:stability": "bun test test/session/revert-compact.test.ts test/snapshot/snapshot.test.ts --rerun-each 100 --randomize",
     "bench:test": "bun run script/bench-test-suite.ts",
     "profile:test": "bun run script/profile-test-files.ts",
     "build": "bun run script/build.ts --skip-embed-web-ui",

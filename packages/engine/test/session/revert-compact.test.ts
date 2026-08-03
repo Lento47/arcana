@@ -546,6 +546,8 @@ describe("revert + compact workflow", () => {
         }),
       { git: true },
     ),
+    // Full-suite load on this machine measures 6-7s; timed out at 5s on 2026-08-02.
+    { timeout: 15_000 },
   )
 
   it.live(
@@ -634,5 +636,7 @@ describe("revert + compact workflow", () => {
         }),
       { git: true },
     ),
+    // Full-suite load on this machine measures 6-7s; timed out at 5s on 2026-08-02.
+    { timeout: 15_000 },
   )
 })
