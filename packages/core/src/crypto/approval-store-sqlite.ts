@@ -202,6 +202,10 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
   }
 
   private insertOutboxEvent(event: ApprovalOutboxEvent): void {
+    // Deterministic identity: a retried transition resolves to the same event
+    // id, so the insert is idempotent instead of throwing on the primary key.
+    const exists = this.db.query("SELECT 1 FROM approval_outbox WHERE event_id = ?").get(event.eventId)
+    if (exists) return
     this.db.run(
       `INSERT INTO approval_outbox (event_id, approval_id, kind, timestamp, detail, status)
        VALUES (?, ?, ?, ?, ?, ?)`,
