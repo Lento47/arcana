@@ -235,6 +235,61 @@ describe("SqliteApprovalStore compare-and-swap (two connections, one file)", () 
     }
   })
 
+  test("an existing outbox event with CONFLICTING content fails loudly, never a silent no-op", () => {
+    const { dir, dbPath } = dbPathPair()
+    try {
+      const storeA = new SqliteApprovalStore(dbPath)
+      const storeB = new SqliteApprovalStore(dbPath)
+      seedPending(storeA)
+
+      // A approves v1 PENDING -> v2 APPROVED, event evt-...-v2 decision APPROVED.
+      storeA.commitTransition({
+        approval: { ...storeA.loadApproval("appr_cas")!, version: 2, state: "APPROVED", approvedBy: operator.operatorId, updatedAt: now.toISOString() },
+        event: {
+          eventId: "evt-APPROVAL_DECIDED-appr_cas-v2",
+          approvalId: "appr_cas",
+          kind: "APPROVAL_DECIDED",
+          timestamp: now.toISOString(),
+          detail: { decision: "APPROVED", operatorId: operator.operatorId },
+          status: "PENDING",
+        },
+        expected: { version: 1, state: "PENDING" },
+      })
+
+      // B replays the SAME target (v2/APPROVED) so the CAS idempotent branch
+      // passes — but supplies a DIFFERENT event detail (decision DENIED) under
+      // the SAME deterministic event id. The existing event is authoritative;
+      // the conflicting content must fail loudly, never be silently ignored.
+      expect(() =>
+        storeB.commitTransition({
+          approval: { ...storeB.loadApproval("appr_cas")!, version: 2, state: "APPROVED", approvedBy: operator.operatorId, updatedAt: now.toISOString() },
+          event: {
+            eventId: "evt-APPROVAL_DECIDED-appr_cas-v2",
+            approvalId: "appr_cas",
+            kind: "APPROVAL_DECIDED",
+            timestamp: now.toISOString(),
+            detail: { decision: "DENIED", operatorId: operator.operatorId },
+            status: "PENDING",
+          },
+          expected: { version: 1, state: "PENDING" },
+        }),
+      ).toThrow(/outbox event conflict/)
+
+      // The authoritative APPROVED event and state are untouched.
+      const final = storeA.loadApproval("appr_cas")!
+      expect(final.state).toBe("APPROVED")
+      expect(final.version).toBe(2)
+      const outbox = storeA.getPendingOutbox()
+      expect(outbox).toHaveLength(1)
+      expect(outbox[0]!.detail.decision).toBe("APPROVED")
+
+      storeA.close()
+      storeB.close()
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test("processApprovalCommand surfaces the deterministic refusal to the caller", () => {
     const { dir, dbPath } = dbPathPair()
     try {
