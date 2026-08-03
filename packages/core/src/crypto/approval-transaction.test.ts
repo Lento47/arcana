@@ -66,7 +66,7 @@ function claimTransition(overrides: Partial<ApprovalTransition> = {}): ApprovalT
       updatedAt: NOW.toISOString(),
     },
     event: {
-      eventId: "evt-claim-appr_tx_1-v2",
+      eventId: "evt-APPROVAL_CLAIMED-appr_tx_1-v2",
       approvalId: "appr_tx_1",
       kind: "APPROVAL_CLAIMED",
       timestamp: NOW.toISOString(),
@@ -184,6 +184,46 @@ describe("SqliteApprovalStore.commitTransition atomicity", () => {
       expect(reopened.loadApproval("appr_tx_1")!.state).toBe("PENDING")
       expect(reopened.getPendingOutbox()).toHaveLength(0)
       reopened.close()
+    } finally {
+      cleanup(dir)
+    }
+  })
+
+  test("retrying the same transition is idempotent and never duplicates the event", () => {
+    const { dir, path } = freshDbPath()
+    try {
+      const store = new SqliteApprovalStore(path)
+      store.commitTransition(claimTransition())
+      // Same logical transition, same deterministic event identity.
+      store.commitTransition(claimTransition())
+
+      expect(store.loadApproval("appr_tx_1")!.version).toBe(2)
+      expect(store.getPendingOutbox()).toHaveLength(1)
+      expect(store.getPendingOutbox()[0]!.eventId).toBe("evt-APPROVAL_CLAIMED-appr_tx_1-v2")
+      store.close()
+    } finally {
+      cleanup(dir)
+    }
+  })
+
+  test("different resulting versions cannot collide on event identity", () => {
+    const { dir, path } = freshDbPath()
+    try {
+      const store = new SqliteApprovalStore(path)
+      store.commitTransition(claimTransition())
+      store.commitTransition(
+        claimTransition({
+          approval: { ...claimTransition().approval, version: 3 },
+          event: { ...claimTransition().event, eventId: "evt-APPROVAL_CLAIMED-appr_tx_1-v3" },
+        }),
+      )
+
+      const events = store.getPendingOutbox()
+      expect(events.map((event) => event.eventId).sort()).toEqual([
+        "evt-APPROVAL_CLAIMED-appr_tx_1-v2",
+        "evt-APPROVAL_CLAIMED-appr_tx_1-v3",
+      ])
+      store.close()
     } finally {
       cleanup(dir)
     }

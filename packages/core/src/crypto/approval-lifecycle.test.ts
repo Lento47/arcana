@@ -184,3 +184,69 @@ describe("durable approval lifecycle (PENDING → APPROVED → CLAIMED → CONSU
     expect(store.loadApproval("a1")!.state).toBe("EXPIRED")
   })
 })
+
+describe("deterministic outbox event identity", () => {
+  test("identical replays produce identical event ids without wall-clock randomness", () => {
+    const storeA = new InMemoryApprovalStore()
+    storeA.saveApproval(pendingRecord())
+    const storeB = new InMemoryApprovalStore()
+    storeB.saveApproval(pendingRecord())
+
+    const resultA = processApprovalCommand(approveCommand(), storeA, operator(), NOW)
+    const resultB = processApprovalCommand(approveCommand(), storeB, operator(), NOW)
+    expect(resultA.success).toBe(true)
+    expect(resultB.success).toBe(true)
+
+    const eventA = storeA.getOutboxEvents()[0]!
+    const eventB = storeB.getOutboxEvents()[0]!
+    expect(eventA.eventId).toBe(eventB.eventId)
+    expect(eventA.eventId).toBe("evt-APPROVAL_DECIDED-appr_1-v2")
+    expect(eventA.eventId).toMatch(/^evt-[A-Z_]+-[a-z0-9_-]+-v\d+$/)
+    expect(eventA.eventId).not.toMatch(/\d{13}/)
+  })
+
+  test("a retried APPROVE transition cannot duplicate the event", () => {
+    const store = new InMemoryApprovalStore()
+    store.saveApproval(pendingRecord())
+
+    expect(runApprove(store).success).toBe(true)
+    const second = runApprove(store)
+    expect(second.success).toBe(false)
+    expect(store.getOutboxEvents()).toHaveLength(1)
+  })
+
+  test("different transition kinds produce distinct identities at the same version", () => {
+    const approveStore = new InMemoryApprovalStore()
+    approveStore.saveApproval(pendingRecord())
+    runApprove(approveStore)
+
+    const revokeStore = new InMemoryApprovalStore()
+    revokeStore.saveApproval(pendingRecord())
+    processApprovalCommand(
+      {
+        kind: "REVOKE",
+        approvalId: "appr_1",
+        operatorId: "op-a",
+        sessionId: "sess-a",
+        workspaceId: "workspace-a",
+      },
+      revokeStore,
+      operator(),
+      NOW,
+    )
+
+    expect(approveStore.getOutboxEvents()[0]!.eventId).toBe("evt-APPROVAL_DECIDED-appr_1-v2")
+    expect(revokeStore.getOutboxEvents()[0]!.eventId).toBe("evt-APPROVAL_REVOKED-appr_1-v2")
+    expect(approveStore.getOutboxEvents()[0]!.eventId).not.toBe(revokeStore.getOutboxEvents()[0]!.eventId)
+  })
+
+  test("expiry bumps the version so the expired transition has a unique identity", () => {
+    const store = new InMemoryApprovalStore()
+    store.saveApproval(pendingRecord({ expiresAt: "2020-01-01T00:00:00.000Z" }))
+
+    const result = runApprove(store)
+    expect(result.success).toBe(false)
+    expect(store.loadApproval("appr_1")!.version).toBe(2)
+    expect(store.getOutboxEvents()[0]!.eventId).toBe("evt-APPROVAL_EXPIRED-appr_1-v2")
+  })
+})
