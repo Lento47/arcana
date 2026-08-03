@@ -14,7 +14,7 @@ import { buildStatusSegments } from "./spine-segments"
 import { useSpineLayout } from "./use-spine-layout"
 import { SpineEntryBinding } from "./spine-entry-binding"
 import { SpinePrompt } from "./spine-prompt"
-import { pendingGateEntries } from "./spine-gates"
+import { pendingGateEntries, spineEscInert, spineNavigationEnabled } from "./spine-gates"
 import { PermissionPrompt } from "../../routes/session/permission"
 import { QuestionPrompt } from "../../routes/session/question"
 import { SubagentFooter } from "../../routes/session/subagent-footer"
@@ -33,6 +33,8 @@ import { spineEntryCopyText } from "./spine-clipboard"
 import { spineEntryDetailMessageID, spineEntryDiffMessageID, spineEntrySessionID } from "./spine-details"
 import {
   approvalIdFromEntryID,
+  approvalActionBindingsEnabled as approvalActionBindingsEnabledPolicy,
+  approvalEscapeEnabled as approvalEscapeEnabledPolicy,
   approvalInspectionAllowed,
   approvalToSpineEntry,
   isApprovalActionable,
@@ -609,6 +611,11 @@ export function CommandSpineShell(props: ShellProps) {
     }
   })
 
+  // Focus/gate state shared by every spine binding group. Defined before the
+  // first useBindings so enabled() closures never read a TDZ binding.
+  const composerFocused = () => renderer.currentFocusedEditor !== null
+  const gatesOpen = () => props.permissions().length > 0 || props.questions().length > 0
+
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
     // When a permission/question gate is open, Enter/←/→ go to the gate's
@@ -617,8 +624,10 @@ export function CommandSpineShell(props: ShellProps) {
     // operator can inspect the pending approval while the gate is open;
     // decisions are still made exclusively in the gate.
     enabled: () =>
-      renderer.currentFocusedEditor === null
-      && displayRows().length > 0,
+      spineNavigationEnabled({
+        composerFocused: composerFocused(),
+        hasRows: displayRows().length > 0,
+      }),
     priority: 1,
     bindings: [
       // Prefer j/k / arrows for spine focus — Tab in the prompt is agent.cycle.
@@ -686,15 +695,13 @@ export function CommandSpineShell(props: ShellProps) {
   // a/d/v only when an approval is SELECTED and the composer is not typing (Phase 6).
   // esc is split out so INSPECTING can always close the inspector (including when
   // the composer still has focus — otherwise session.interrupt steals Escape).
-  const gatesOpen = () => props.permissions().length > 0 || props.questions().length > 0
-  const composerFocused = () => renderer.currentFocusedEditor !== null
-
   const approvalActionBindingsEnabled = () =>
-    !composerFocused()
-    && !gatesOpen()
-    && !approvalSubmitting()
-    && focusedApproval() !== undefined
-    && isApprovalActionable(focusedApproval()!)
+    approvalActionBindingsEnabledPolicy({
+      composerFocused: composerFocused(),
+      gatesOpen: gatesOpen(),
+      submitting: approvalSubmitting(),
+      focusedApproval: focusedApproval(),
+    })
 
   // Inspection is read-only: it must work for ANY focused approval, including
   // APPROVED/CLAIMED/CONSUMED/terminal states (runbook: v → a → watch it go
@@ -708,12 +715,13 @@ export function CommandSpineShell(props: ShellProps) {
 
   // Close inspector whenever open; clear selection only when spine has focus.
   const approvalEscapeEnabled = () =>
-    !gatesOpen()
-    && !approvalSubmitting()
-    && (
-      inspectorApprovalId() !== undefined
-      || (focusedApproval() !== undefined && !composerFocused())
-    )
+    approvalEscapeEnabledPolicy({
+      gatesOpen: gatesOpen(),
+      submitting: approvalSubmitting(),
+      inspectorOpen: inspectorApprovalId() !== undefined,
+      composerFocused: composerFocused(),
+      focusedApproval: focusedApproval(),
+    })
 
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
@@ -820,9 +828,8 @@ export function CommandSpineShell(props: ShellProps) {
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
     enabled: () =>
-      composerFocused()
-      && !gatesOpen()
-      && !approvalSubmitting()
+      spineEscInert({ gatesOpen: gatesOpen(), submitting: approvalSubmitting() })
+      && composerFocused()
       && displayRows().length > 0,
     priority: 3,
     bindings: [
@@ -838,9 +845,8 @@ export function CommandSpineShell(props: ShellProps) {
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
     enabled: () =>
-      !composerFocused()
-      && !gatesOpen()
-      && !approvalSubmitting()
+      spineEscInert({ gatesOpen: gatesOpen(), submitting: approvalSubmitting() })
+      && !composerFocused()
       && inspectorApprovalId() === undefined
       && focusedApproval() === undefined
       && (sessionIdle() || hasPendingApproval()),

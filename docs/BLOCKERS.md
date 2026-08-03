@@ -4,7 +4,7 @@
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Created:** 2026-08-02 (Phase A–F completion audit)
 **Consolidated:** 2026-08-02 — single register replacing the former `docs/blockers/` folder
-**Implementation checkpoint:** `0392ad7b` (2026-08-02; suites verified on the pre-commit worktree)
+**Implementation checkpoint:** `63d71f07` (2026-08-03; upstream advanced from `0392ad7b` via merged PRs #43–47)
 **Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
 
 This file consolidates every phase and product-track blocker register. Each area below preserves the original rows: the playbook task or gate it blocks, the current evidence of the gap, and the acceptance evidence required to close it.
@@ -211,7 +211,11 @@ TUI-2.1 MOUNTED and AUTOMATED GREEN, freeze NOT AUTHORIZED.**
 The open blockers below are exactly the TUI-2.1 freeze gates
 (TUI-2.1-FREEZE-OPERATOR-RUNBOOK) plus the remaining product-track
 items (TUI-3 delegation console, TUI-4 proof/replay/audit views, TUI-5
-final polish) that are outside the TUI-2.1 scope.
+final polish) that are outside the TUI-2.1 scope. The 2026-08-03 upstream
+advance to `63d71f07` (merged PRs #43–47: ci base green, ci split
+verification gates, ml-eval script routing, enterprise tailwind import fix,
+shared governance projection contract docs) closed no TUI-2.1 freeze blocker;
+all eight (`BLK-TUI-01..08`) remain open.
 
 ## Open blockers
 
@@ -264,7 +268,7 @@ tests), but the CLI 1.0 contract is not frozen.**
 | BLK-CLI-02 | Stable JSON output + deterministic documented exit codes for every command | JSON/exit-code contract not frozen in a spec | Command catalog with JSON schema and exit-code table, tested |
 | BLK-CLI-03 | Shell completion | Not implemented | Completion scripts + test |
 | BLK-CLI-04 | Cross-platform smoke (Windows/Linux/macOS) | Windows primary; Linux scaffold only (D-6A-L pending) | Platform matrix with smoke results |
-| BLK-CLI-05 | CLI/TUI share the same runtime APIs with no CLI-only bypass | `arcana` CLI and TUI both route through the engine PEP; bypass audit not yet a frozen adversarial suite | CLI-only-bypass adversarial suite = 0 |
+| BLK-CLI-05 | CLI/TUI share the same runtime APIs with no CLI-only bypass | `arcana` CLI and TUI both route through the engine PEP. 2026-08-03: runtime approval API + session command surface both drive the same `submitApprovalCommand` service with a surface-bound routing gate; TUI HTTP bridge test pins the command endpoint and body; adversarial tests cover client-supplied identity rejection and session isolation. Bypass audit as one frozen cross-surface suite still pending | CLI-only-bypass adversarial suite = 0 |
 
 ## Existing evidence
 
@@ -375,7 +379,7 @@ live exercises, F13 external assessment).**
 | BLK-F-11 | F11 enterprise API and automation | **Admin HTTP surface MOUNTED 2026-08-02** (`/api/enterprise/*`: F1-F12 cores mounted; 18 HTTP integration tests) + **admin-event store + SIEM CEF export MOUNTED 2026-08-02** (4 core + 1 integration test) + **ticketing payloads IMPLEMENTED + MOUNTED 2026-08-02** (`ticketing.ts`; 1 core + 1 integration test) + **webhook delivery sink IMPLEMENTED + MOUNTED 2026-08-02** (`webhooks.ts` + SQLite: endpoint registry, auto-enqueue on admin events, bounded retry/backoff, durable delivery state; 4 core + 1 integration test) + **SDK enterprise admin client (equivalent automation) DONE 2026-08-02** (`packages/sdk/js/src/v2/enterprise.ts`; 4 SDK tests). Remaining: live ticketing transport adapters + optional Terraform provider | Admin API + webhooks + automation tested (core HTTP surface DONE; SIEM export DONE; ticketing payloads DONE; webhook delivery DONE; equivalent automation DONE via SDK client; live ticketing adapters pending) |
 | BLK-F-12 | F12 commercial readiness | **Core DONE 2026-08-02** (entitlements, metering-never-affects-security invariant, redacted diagnostics, upgrade policy; 4 tests). **Metering pipeline core + HTTP MOUNTED 2026-08-02** (usage aggregation, informational quota; 3 core + 1 integration test). **Usage export endpoint DONE 2026-08-02** (`GET /api/enterprise/*/commercial/usage/export`: per-feature totals; integration tested). Remaining: license text review + live telemetry ingestion from engine events | Metering never affects security decisions (DONE, tested); docs complete (DRAFT) |
 | BLK-F-13 | F13 independent security assessment and GA freeze | **Freeze draft published 2026-08-02** (`docs/FREEZE-RELEASE.md` §Phase F: §40 gate evidence + operational gates). Remaining: authenticated-principal binding (BLK-F-AUTH-01), operator consoles, external architecture review, penetration test, threat-model review, supply-chain assessment, L3 reproduction, live exercises | Blockers resolved + milestone frozen (code, operational, and external gates) |
-| BLK-F-AUTH-01 | P0 authenticated administrative identity binding | Enterprise administrative mutations must derive actor and tenant identity from authenticated server context. Client-supplied `actorUserId`, `approvedBy`, `tenantId`, or equivalent body fields must not establish authority or audit attribution. Current state: enterprise mutation payloads accept client-supplied actor fields; RBAC decision core PASS, authenticated HTTP boundary NOT implemented | Authenticated principal → tenant → role → permission; body actor attribution rejected or ignored; cross-tenant impersonation fixtures fail closed; forged approver fixtures fail closed; audit records use the authenticated principal |
+| BLK-F-AUTH-01 | P0 authenticated administrative identity binding | Enterprise administrative mutations must derive actor and tenant identity from authenticated server context. Client-supplied `actorUserId`, `approvedBy`, `tenantId`, or equivalent body fields must not establish authority or audit attribution. Current state: enterprise mutation payloads accept client-supplied actor fields; RBAC decision core PASS, authenticated HTTP boundary NOT implemented. 2026-08-03: the runtime approval surface (approve/deny/revoke) closed the same pattern: operator identity is derived from the authenticated server context and body fields are rejected/ignored; the enterprise admin surface remains open | Authenticated principal → tenant → role → permission; body actor attribution rejected or ignored; cross-tenant impersonation fixtures fail closed; forged approver fixtures fail closed; audit records use the authenticated principal |
 
 ## Phase F hard gates (playbook §40)
 

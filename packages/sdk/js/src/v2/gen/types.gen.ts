@@ -746,7 +746,12 @@ export type ApprovalRecord = {
     | "REJECTED"
     | "RECOVERY_REQUIRED"
   approvedBy?: string
+  revokedBy?: string
   executionId?: string
+  route?: "LOCAL_TUI" | "DESKTOP_PREFERRED" | "DESKTOP_REQUIRED" | "CENTRAL_REQUIRED"
+  routingPolicyVersion?: string
+  localFallbackAllowed?: boolean
+  riskClass?: "LOW" | "MODERATE" | "HIGH" | "CRITICAL"
   expiresAt: string
   updatedAt: string
   createdAt: string
@@ -2588,6 +2593,11 @@ export type ProjectNotFoundError = {
   message: string
 }
 
+export type SyncNodeUnauthorized = {
+  name: "SyncNodeUnauthorized"
+  message: string
+}
+
 export type PtyNotFoundError = {
   _tag: "PtyNotFoundError"
   ptyID: string
@@ -2613,6 +2623,13 @@ export type QuestionNotFoundError = {
   _tag: "QuestionNotFoundError"
   requestID: string
   message: string
+}
+
+export type NotFoundError = {
+  name: "NotFoundError"
+  data: {
+    message: string
+  }
 }
 
 export type PermissionRequest = {
@@ -2687,13 +2704,6 @@ export type ProviderAuthError1 = {
     field?: string
     message?: string
     kind?: string
-  }
-}
-
-export type NotFoundError = {
-  name: "NotFoundError"
-  data: {
-    message: string
   }
 }
 
@@ -2955,7 +2965,7 @@ export type EventTuiSessionSelect2 = {
   }
 }
 
-export type ApprovalRecord1 = {
+export type ApprovalRecord2 = {
   approvalId: string
   version: number | "NaN" | "Infinity" | "-Infinity"
   sessionId: string
@@ -2974,7 +2984,12 @@ export type ApprovalRecord1 = {
     | "REJECTED"
     | "RECOVERY_REQUIRED"
   approvedBy?: string
+  revokedBy?: string
   executionId?: string
+  route?: "LOCAL_TUI" | "DESKTOP_PREFERRED" | "DESKTOP_REQUIRED" | "CENTRAL_REQUIRED"
+  routingPolicyVersion?: string
+  localFallbackAllowed?: boolean
+  riskClass?: "LOW" | "MODERATE" | "HIGH" | "CRITICAL"
   expiresAt: string
   updatedAt: string
   createdAt: string
@@ -5249,7 +5264,7 @@ export type EventApprovalUpdated = {
   type: "approval.updated"
   properties: {
     sessionID: string
-    approval: ApprovalRecord1
+    approval: ApprovalRecord2
   }
 }
 
@@ -5672,10 +5687,10 @@ export type EventSubscribeResponse = EventSubscribeResponses[keyof EventSubscrib
 
 export type ApprovalCommandData = {
   body: {
-    command: "APPROVE_ONCE" | "DENY"
-    expectedVersion: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    command: "APPROVE_ONCE" | "DENY" | "REVOKE"
+    expectedVersion: number
     expectedRequestHash: string
-    expectedContractRevision: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    expectedContractRevision: number
   }
   path: {
     sessionID: string
@@ -5843,6 +5858,4025 @@ export type ConfigProvidersResponses = {
 }
 
 export type ConfigProvidersResponse = ConfigProvidersResponses[keyof ConfigProvidersResponses]
+
+export type EnrollmentEnrollData = {
+  body: {
+    joinToken: {
+      schemaVersion: 1
+      tokenId: string
+      organizationId: string
+      trustDomain: string
+      nodeId: string
+      issuedAt: string
+      expiresAt: string
+      signatureAlgorithm: "Ed25519"
+      signature: string
+    }
+    publicKey: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/nodes/enroll"
+}
+
+export type EnrollmentEnrollErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnrollmentEnrollError = EnrollmentEnrollErrors[keyof EnrollmentEnrollErrors]
+
+export type EnrollmentEnrollResponses = {
+  /**
+   * Node enrollment result
+   */
+  200:
+    | {
+        kind: "ENROLLED"
+        record: {
+          nodeId: string
+          organizationId: string
+          trustDomain: string
+          status: "UNREGISTERED" | "PENDING" | "TRUSTED" | "SUSPENDED" | "REVOKED"
+          publicKey: string
+          nodeKeyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          certificate: {
+            schemaVersion: 1
+            nodeId: string
+            organizationId: string
+            publicKey: string
+            issuerId: string
+            issuerEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+            issuedAt: string
+            expiresAt: string
+            capabilities: Array<string>
+            signatureAlgorithm: "Ed25519"
+            signature: string
+          }
+          enrolledAt: string
+          lastKeyRotatedAt?: string
+          decommissionedAt?: string
+        }
+      }
+    | {
+        kind: "REJECTED" | "DUPLICATE_ENROLLMENT"
+        detail: string
+      }
+}
+
+export type EnrollmentEnrollResponse = EnrollmentEnrollResponses[keyof EnrollmentEnrollResponses]
+
+export type EnrollmentRotateData = {
+  body: {
+    publicKey: string
+  }
+  path: {
+    nodeId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/nodes/{nodeId}/rotate"
+}
+
+export type EnrollmentRotateErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnrollmentRotateError = EnrollmentRotateErrors[keyof EnrollmentRotateErrors]
+
+export type EnrollmentRotateResponses = {
+  /**
+   * Node key rotation result
+   */
+  200:
+    | {
+        kind: "ROTATED"
+        record: {
+          nodeId: string
+          organizationId: string
+          trustDomain: string
+          status: "UNREGISTERED" | "PENDING" | "TRUSTED" | "SUSPENDED" | "REVOKED"
+          publicKey: string
+          nodeKeyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          certificate: {
+            schemaVersion: 1
+            nodeId: string
+            organizationId: string
+            publicKey: string
+            issuerId: string
+            issuerEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+            issuedAt: string
+            expiresAt: string
+            capabilities: Array<string>
+            signatureAlgorithm: "Ed25519"
+            signature: string
+          }
+          enrolledAt: string
+          lastKeyRotatedAt?: string
+          decommissionedAt?: string
+        }
+      }
+    | {
+        kind: "REJECTED" | "DUPLICATE_ENROLLMENT"
+        detail: string
+      }
+}
+
+export type EnrollmentRotateResponse = EnrollmentRotateResponses[keyof EnrollmentRotateResponses]
+
+export type EnrollmentStatusData = {
+  body: {
+    status: "TRUSTED" | "SUSPENDED" | "REVOKED"
+  }
+  path: {
+    nodeId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/nodes/{nodeId}/status"
+}
+
+export type EnrollmentStatusErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnrollmentStatusError = EnrollmentStatusErrors[keyof EnrollmentStatusErrors]
+
+export type EnrollmentStatusResponses = {
+  /**
+   * Node status transition result
+   */
+  200:
+    | {
+        ok: true
+        record: {
+          nodeId: string
+          organizationId: string
+          trustDomain: string
+          status: "UNREGISTERED" | "PENDING" | "TRUSTED" | "SUSPENDED" | "REVOKED"
+          publicKey: string
+          nodeKeyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          certificate: {
+            schemaVersion: 1
+            nodeId: string
+            organizationId: string
+            publicKey: string
+            issuerId: string
+            issuerEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+            issuedAt: string
+            expiresAt: string
+            capabilities: Array<string>
+            signatureAlgorithm: "Ed25519"
+            signature: string
+          }
+          enrolledAt: string
+          lastKeyRotatedAt?: string
+          decommissionedAt?: string
+        }
+      }
+    | {
+        ok: false
+        reason: string
+      }
+}
+
+export type EnrollmentStatusResponse = EnrollmentStatusResponses[keyof EnrollmentStatusResponses]
+
+export type EnrollmentGetData = {
+  body?: never
+  path: {
+    nodeId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/nodes/{nodeId}"
+}
+
+export type EnrollmentGetErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnrollmentGetError = EnrollmentGetErrors[keyof EnrollmentGetErrors]
+
+export type EnrollmentGetResponses = {
+  /**
+   * Enrolled node record
+   */
+  200:
+    | {
+        nodeId: string
+        organizationId: string
+        trustDomain: string
+        status: "UNREGISTERED" | "PENDING" | "TRUSTED" | "SUSPENDED" | "REVOKED"
+        publicKey: string
+        nodeKeyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        certificate: {
+          schemaVersion: 1
+          nodeId: string
+          organizationId: string
+          publicKey: string
+          issuerId: string
+          issuerEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          issuedAt: string
+          expiresAt: string
+          capabilities: Array<string>
+          signatureAlgorithm: "Ed25519"
+          signature: string
+        }
+        enrolledAt: string
+        lastKeyRotatedAt?: string
+        decommissionedAt?: string
+      }
+    | string
+}
+
+export type EnrollmentGetResponse = EnrollmentGetResponses[keyof EnrollmentGetResponses]
+
+export type EnterpriseCreateOrganizationData = {
+  body: {
+    tenantId: string
+    name: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations"
+}
+
+export type EnterpriseCreateOrganizationErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseCreateOrganizationError =
+  EnterpriseCreateOrganizationErrors[keyof EnterpriseCreateOrganizationErrors]
+
+export type EnterpriseCreateOrganizationResponses = {
+  /**
+   * Created organization
+   */
+  200: {
+    tenantId: string
+    id: string
+    name: string
+    createdAt: string
+  }
+}
+
+export type EnterpriseCreateOrganizationResponse =
+  EnterpriseCreateOrganizationResponses[keyof EnterpriseCreateOrganizationResponses]
+
+export type EnterpriseAssignRoleData = {
+  body: {
+    userId: string
+    role: "OWNER" | "ADMIN" | "OPERATOR" | "AUDITOR" | "MEMBER"
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/roles"
+}
+
+export type EnterpriseAssignRoleErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseAssignRoleError = EnterpriseAssignRoleErrors[keyof EnterpriseAssignRoleErrors]
+
+export type EnterpriseAssignRoleResponses = {
+  /**
+   * Role assigned
+   */
+  200: boolean
+}
+
+export type EnterpriseAssignRoleResponse = EnterpriseAssignRoleResponses[keyof EnterpriseAssignRoleResponses]
+
+export type EnterpriseFleetData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/fleet"
+}
+
+export type EnterpriseFleetErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseFleetError = EnterpriseFleetErrors[keyof EnterpriseFleetErrors]
+
+export type EnterpriseFleetResponses = {
+  /**
+   * Fleet summary (F4)
+   */
+  200: Array<{
+    nodeId: string
+    health: "UNKNOWN" | "HEALTHY" | "STALE" | "REVOKED" | "QUARANTINED"
+    version: string
+    enforcementMode: string
+    proofBacklog: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    lastSeenAt?: string
+  }>
+}
+
+export type EnterpriseFleetResponse = EnterpriseFleetResponses[keyof EnterpriseFleetResponses]
+
+export type EnterpriseListApprovalsData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    status?: "PENDING" | "APPROVED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "REJECTED"
+  }
+  url: "/api/enterprise/organizations/{tenantId}/approvals"
+}
+
+export type EnterpriseListApprovalsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseListApprovalsError = EnterpriseListApprovalsErrors[keyof EnterpriseListApprovalsErrors]
+
+export type EnterpriseListApprovalsResponses = {
+  /**
+   * Central approvals (F5)
+   */
+  200: Array<{
+    tenantId: string
+    approvalId: string
+    requestHash: string
+    requesterId: string
+    approverId?: string
+    status: "PENDING" | "APPROVED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "REJECTED"
+    exactRequestJson: string
+    createdAt: string
+    expiresAt: string
+    decidedAt?: string
+  }>
+}
+
+export type EnterpriseListApprovalsResponse = EnterpriseListApprovalsResponses[keyof EnterpriseListApprovalsResponses]
+
+export type EnterpriseCreateApprovalData = {
+  body: {
+    approvalId: string
+    requestHash: string
+    requesterId: string
+    exactRequestJson: string
+    expiresAt: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/approvals"
+}
+
+export type EnterpriseCreateApprovalErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseCreateApprovalError = EnterpriseCreateApprovalErrors[keyof EnterpriseCreateApprovalErrors]
+
+export type EnterpriseCreateApprovalResponses = {
+  /**
+   * Approval queued (F5)
+   */
+  200: boolean
+}
+
+export type EnterpriseCreateApprovalResponse =
+  EnterpriseCreateApprovalResponses[keyof EnterpriseCreateApprovalResponses]
+
+export type EnterpriseDecideApprovalData = {
+  body: {
+    actorUserId: string
+    decision: "APPROVE" | "DENY"
+    inspectedRequestJson?: string
+  }
+  path: {
+    tenantId: string
+    approvalId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/approvals/{approvalId}/decide"
+}
+
+export type EnterpriseDecideApprovalErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseDecideApprovalError = EnterpriseDecideApprovalErrors[keyof EnterpriseDecideApprovalErrors]
+
+export type EnterpriseDecideApprovalResponses = {
+  /**
+   * Approval decision result
+   */
+  200:
+    | {
+        kind: "DECIDED"
+        status: string
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseDecideApprovalResponse =
+  EnterpriseDecideApprovalResponses[keyof EnterpriseDecideApprovalResponses]
+
+export type EnterpriseAuditData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/audit"
+}
+
+export type EnterpriseAuditErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseAuditError = EnterpriseAuditErrors[keyof EnterpriseAuditErrors]
+
+export type EnterpriseAuditResponses = {
+  /**
+   * Privileged audit log (F2)
+   */
+  200: Array<{
+    id: string
+    actorUserId: string
+    action: string
+    resource: string
+    outcome: string
+    at: string
+  }>
+}
+
+export type EnterpriseAuditResponse = EnterpriseAuditResponses[keyof EnterpriseAuditResponses]
+
+export type EnterpriseRegisterNodeData = {
+  body: {
+    nodeId: string
+    organizationId: string
+    environment: string
+    version: string
+    upgradeRing: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    nodeKeyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    enforcementMode: "ONLINE" | "OFFLINE_RESTRICTED" | "OFFLINE_READ_ONLY" | "QUARANTINED"
+    policySequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    policyDigest: string
+    revocationSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    revocationDigest: string
+    proofBacklog: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    registeredAt?: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/fleet/register"
+}
+
+export type EnterpriseRegisterNodeErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseRegisterNodeError = EnterpriseRegisterNodeErrors[keyof EnterpriseRegisterNodeErrors]
+
+export type EnterpriseRegisterNodeResponses = {
+  /**
+   * Fleet node registered (F4)
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type EnterpriseRegisterNodeResponse = EnterpriseRegisterNodeResponses[keyof EnterpriseRegisterNodeResponses]
+
+export type EnterpriseHeartbeatData = {
+  body: {
+    enforcementMode?: "ONLINE" | "OFFLINE_RESTRICTED" | "OFFLINE_READ_ONLY" | "QUARANTINED"
+    policySequence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    policyDigest?: string
+    revocationSequence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    revocationDigest?: string
+    proofBacklog?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    lastSyncAt?: string
+  }
+  path: {
+    tenantId: string
+    nodeId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/fleet/{nodeId}/heartbeat"
+}
+
+export type EnterpriseHeartbeatErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseHeartbeatError = EnterpriseHeartbeatErrors[keyof EnterpriseHeartbeatErrors]
+
+export type EnterpriseHeartbeatResponses = {
+  /**
+   * Fleet heartbeat recorded (F4)
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type EnterpriseHeartbeatResponse = EnterpriseHeartbeatResponses[keyof EnterpriseHeartbeatResponses]
+
+export type EnterprisePromotePolicyData = {
+  body: {
+    sourceSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    targetEnvironment: string
+    requestedBy: string
+    approvedBy: string
+    activationTime?: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/policies/promote"
+}
+
+export type EnterprisePromotePolicyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterprisePromotePolicyError = EnterprisePromotePolicyErrors[keyof EnterprisePromotePolicyErrors]
+
+export type EnterprisePromotePolicyResponses = {
+  /**
+   * Policy promotion result (F3)
+   */
+  200:
+    | {
+        kind: "PROMOTED"
+        record: {
+          sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          policyId: string
+          policyVersion: string
+          digest: string
+          previousDigest?: string
+          signedEnvelopeJson: string
+          activationTime: string
+          compatibleFrom: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          compatibleTo: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          status: "STAGED" | "ACTIVE" | "SUPERSEDED" | "ROLLED_BACK" | "FAILED"
+          lastKnownGood: boolean
+          publishedAt: string
+          supersedes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          rollbackOf?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+        promotionId: string
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterprisePromotePolicyResponse = EnterprisePromotePolicyResponses[keyof EnterprisePromotePolicyResponses]
+
+export type EnterpriseDiffPolicyData = {
+  body: {
+    beforeSequence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    afterSequence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/policies/diff"
+}
+
+export type EnterpriseDiffPolicyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseDiffPolicyError = EnterpriseDiffPolicyErrors[keyof EnterpriseDiffPolicyErrors]
+
+export type EnterpriseDiffPolicyResponses = {
+  /**
+   * Policy bundle diff (F3)
+   */
+  200: {
+    sequenceChanged: boolean
+    versionChanged: boolean
+    digestChanged: boolean
+    activationChanged: boolean
+    previousDigestChanged: boolean
+    changes: Array<string>
+  }
+}
+
+export type EnterpriseDiffPolicyResponse = EnterpriseDiffPolicyResponses[keyof EnterpriseDiffPolicyResponses]
+
+export type EnterpriseRevokeApprovalData = {
+  body: {
+    approvalId: string
+    actorUserId: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/approvals/revoke"
+}
+
+export type EnterpriseRevokeApprovalErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseRevokeApprovalError = EnterpriseRevokeApprovalErrors[keyof EnterpriseRevokeApprovalErrors]
+
+export type EnterpriseRevokeApprovalResponses = {
+  /**
+   * Emergency approval revocation (F5)
+   */
+  200:
+    | {
+        kind: "DECIDED"
+        status: string
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseRevokeApprovalResponse =
+  EnterpriseRevokeApprovalResponses[keyof EnterpriseRevokeApprovalResponses]
+
+export type EnterpriseBulkDenyApprovalsData = {
+  body: {
+    approvalIds: Array<string>
+    actorUserId: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/approvals/bulk-deny"
+}
+
+export type EnterpriseBulkDenyApprovalsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseBulkDenyApprovalsError =
+  EnterpriseBulkDenyApprovalsErrors[keyof EnterpriseBulkDenyApprovalsErrors]
+
+export type EnterpriseBulkDenyApprovalsResponses = {
+  /**
+   * Bulk denial result (F5)
+   */
+  200: {
+    denied: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    skipped: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type EnterpriseBulkDenyApprovalsResponse =
+  EnterpriseBulkDenyApprovalsResponses[keyof EnterpriseBulkDenyApprovalsResponses]
+
+export type EnterpriseArchiveProofData = {
+  body: {
+    proofId: string
+    proofJson: string
+    source: string
+    retentionUntil: string
+    archiveId?: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/audit-archive"
+}
+
+export type EnterpriseArchiveProofErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseArchiveProofError = EnterpriseArchiveProofErrors[keyof EnterpriseArchiveProofErrors]
+
+export type EnterpriseArchiveProofResponses = {
+  /**
+   * Archive a proof (F6)
+   */
+  200:
+    | {
+        kind: "ARCHIVED"
+        record: {
+          tenantId: string
+          archiveId: string
+          proofId: string
+          proofJson: string
+          fingerprint: string
+          source: string
+          ingestedAt: string
+          retentionUntil: string
+          legalHold: boolean
+          custody: Array<{
+            who: string
+            action: string
+            at: string
+          }>
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseArchiveProofResponse = EnterpriseArchiveProofResponses[keyof EnterpriseArchiveProofResponses]
+
+export type EnterpriseExportArchiveData = {
+  body?: never
+  path: {
+    tenantId: string
+    archiveId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/audit-archive/{archiveId}/export"
+}
+
+export type EnterpriseExportArchiveErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseExportArchiveError = EnterpriseExportArchiveErrors[keyof EnterpriseExportArchiveErrors]
+
+export type EnterpriseExportArchiveResponses = {
+  /**
+   * Export an archived proof (F6)
+   */
+  200:
+    | {
+        kind: "EXPORTED"
+        proofJson: string
+        fingerprint: string
+        custody: Array<{
+          who: string
+          action: string
+          at: string
+        }>
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseExportArchiveResponse = EnterpriseExportArchiveResponses[keyof EnterpriseExportArchiveResponses]
+
+export type EnterpriseCustodyData = {
+  body: {
+    who: string
+    action: string
+  }
+  path: {
+    tenantId: string
+    archiveId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/audit-archive/{archiveId}/custody"
+}
+
+export type EnterpriseCustodyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseCustodyError = EnterpriseCustodyErrors[keyof EnterpriseCustodyErrors]
+
+export type EnterpriseCustodyResponses = {
+  /**
+   * Append chain-of-custody event (F6)
+   */
+  200: {
+    ok: boolean
+    reason?: string
+  }
+}
+
+export type EnterpriseCustodyResponse = EnterpriseCustodyResponses[keyof EnterpriseCustodyResponses]
+
+export type EnterpriseLegalHoldData = {
+  body: {
+    action: "PLACE" | "REMOVE"
+  }
+  path: {
+    tenantId: string
+    archiveId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/audit-archive/{archiveId}/legal-hold"
+}
+
+export type EnterpriseLegalHoldErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseLegalHoldError = EnterpriseLegalHoldErrors[keyof EnterpriseLegalHoldErrors]
+
+export type EnterpriseLegalHoldResponses = {
+  /**
+   * Place or remove a legal hold (F6)
+   */
+  200: {
+    ok: boolean
+    reason?: string
+  }
+}
+
+export type EnterpriseLegalHoldResponse = EnterpriseLegalHoldResponses[keyof EnterpriseLegalHoldResponses]
+
+export type EnterpriseRetentionSweepData = {
+  body: {
+    now?: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/audit-archive/retention-sweep"
+}
+
+export type EnterpriseRetentionSweepErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseRetentionSweepError = EnterpriseRetentionSweepErrors[keyof EnterpriseRetentionSweepErrors]
+
+export type EnterpriseRetentionSweepResponses = {
+  /**
+   * Retention sweep result (F6)
+   */
+  200: {
+    deleted: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    retainedByHold: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type EnterpriseRetentionSweepResponse =
+  EnterpriseRetentionSweepResponses[keyof EnterpriseRetentionSweepResponses]
+
+export type EnterpriseListAlertsData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    severity?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+  }
+  url: "/api/enterprise/organizations/{tenantId}/alerts"
+}
+
+export type EnterpriseListAlertsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseListAlertsError = EnterpriseListAlertsErrors[keyof EnterpriseListAlertsErrors]
+
+export type EnterpriseListAlertsResponses = {
+  /**
+   * Security alerts (F9)
+   */
+  200: Array<{
+    tenantId: string
+    alertId: string
+    severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+    kind: string
+    subjectId?: string
+    detail: string
+    at: string
+  }>
+}
+
+export type EnterpriseListAlertsResponse = EnterpriseListAlertsResponses[keyof EnterpriseListAlertsResponses]
+
+export type EnterprisePutAlertData = {
+  body: {
+    alertId: string
+    severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+    kind: string
+    subjectId?: string
+    detail: string
+    at?: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/alerts"
+}
+
+export type EnterprisePutAlertErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterprisePutAlertError = EnterprisePutAlertErrors[keyof EnterprisePutAlertErrors]
+
+export type EnterprisePutAlertResponses = {
+  /**
+   * Security alert recorded (F9)
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type EnterprisePutAlertResponse = EnterprisePutAlertResponses[keyof EnterprisePutAlertResponses]
+
+export type EnterpriseListTimelineData = {
+  body?: never
+  path: {
+    tenantId: string
+    incidentId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/incidents/{incidentId}/timeline"
+}
+
+export type EnterpriseListTimelineErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseListTimelineError = EnterpriseListTimelineErrors[keyof EnterpriseListTimelineErrors]
+
+export type EnterpriseListTimelineResponses = {
+  /**
+   * Incident timeline (F9)
+   */
+  200: Array<{
+    tenantId: string
+    incidentId: string
+    at: string
+    actor: string
+    event: string
+  }>
+}
+
+export type EnterpriseListTimelineResponse = EnterpriseListTimelineResponses[keyof EnterpriseListTimelineResponses]
+
+export type EnterpriseAppendTimelineData = {
+  body: {
+    actor: string
+    event: string
+    at?: string
+  }
+  path: {
+    tenantId: string
+    incidentId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/incidents/{incidentId}/timeline"
+}
+
+export type EnterpriseAppendTimelineErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseAppendTimelineError = EnterpriseAppendTimelineErrors[keyof EnterpriseAppendTimelineErrors]
+
+export type EnterpriseAppendTimelineResponses = {
+  /**
+   * Incident timeline event appended (F9)
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type EnterpriseAppendTimelineResponse =
+  EnterpriseAppendTimelineResponses[keyof EnterpriseAppendTimelineResponses]
+
+export type EnterpriseRevocationCampaignData = {
+  body: {
+    nodeIds: Array<string>
+    reason: string
+    actorUserId: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/revocation-campaigns"
+}
+
+export type EnterpriseRevocationCampaignErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseRevocationCampaignError =
+  EnterpriseRevocationCampaignErrors[keyof EnterpriseRevocationCampaignErrors]
+
+export type EnterpriseRevocationCampaignResponses = {
+  /**
+   * Audited revocation campaign (F9)
+   */
+  200:
+    | {
+        kind: "RUN"
+        revokedNodes: Array<string>
+        auditEvents: Array<{
+          nodeId: string
+          at: string
+          reason: string
+        }>
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseRevocationCampaignResponse =
+  EnterpriseRevocationCampaignResponses[keyof EnterpriseRevocationCampaignResponses]
+
+export type EnterpriseForensicExportData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/forensic-export"
+}
+
+export type EnterpriseForensicExportErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseForensicExportError = EnterpriseForensicExportErrors[keyof EnterpriseForensicExportErrors]
+
+export type EnterpriseForensicExportResponses = {
+  /**
+   * Forensic export (F9)
+   */
+  200: {
+    tenantId: string
+    exportedAt: string
+    alerts: Array<{
+      tenantId: string
+      alertId: string
+      severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+      kind: string
+      subjectId?: string
+      detail: string
+      at: string
+    }>
+    timeline: Array<{
+      tenantId: string
+      incidentId: string
+      at: string
+      actor: string
+      event: string
+    }>
+  }
+}
+
+export type EnterpriseForensicExportResponse =
+  EnterpriseForensicExportResponses[keyof EnterpriseForensicExportResponses]
+
+export type EnterpriseCheckStorableData = {
+  body: {
+    record: {
+      id: string
+      classification: "PUBLIC" | "INTERNAL" | "PRIVATE" | "SECRET" | "PII"
+      region: string
+      createdAt: string
+    }
+    policy?: {
+      allowedRegions: Array<string>
+      customerManagedKeys: boolean
+      telemetryOptOut: boolean
+      piiRetentionMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    }
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/governance/check-storable"
+}
+
+export type EnterpriseCheckStorableErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseCheckStorableError = EnterpriseCheckStorableErrors[keyof EnterpriseCheckStorableErrors]
+
+export type EnterpriseCheckStorableResponses = {
+  /**
+   * Storability governance check (F10)
+   */
+  200:
+    | {
+        allowed: true
+        reason: string
+      }
+    | {
+        allowed: false
+        reason: string
+      }
+}
+
+export type EnterpriseCheckStorableResponse = EnterpriseCheckStorableResponses[keyof EnterpriseCheckStorableResponses]
+
+export type EnterpriseCheckExportableData = {
+  body: {
+    classification: "PUBLIC" | "INTERNAL" | "PRIVATE" | "SECRET" | "PII"
+    policy?: {
+      allowedRegions: Array<string>
+      customerManagedKeys: boolean
+      telemetryOptOut: boolean
+      piiRetentionMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    }
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/governance/check-exportable"
+}
+
+export type EnterpriseCheckExportableErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseCheckExportableError = EnterpriseCheckExportableErrors[keyof EnterpriseCheckExportableErrors]
+
+export type EnterpriseCheckExportableResponses = {
+  /**
+   * Exportability governance check (F10)
+   */
+  200:
+    | {
+        allowed: true
+        reason: string
+      }
+    | {
+        allowed: false
+        reason: string
+      }
+}
+
+export type EnterpriseCheckExportableResponse =
+  EnterpriseCheckExportableResponses[keyof EnterpriseCheckExportableResponses]
+
+export type EnterpriseClassifyData = {
+  body: {
+    containsPii: boolean
+    sensitivity: "PUBLIC" | "INTERNAL" | "PRIVATE" | "SECRET"
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/governance/classify"
+}
+
+export type EnterpriseClassifyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseClassifyError = EnterpriseClassifyErrors[keyof EnterpriseClassifyErrors]
+
+export type EnterpriseClassifyResponses = {
+  /**
+   * Input classification (F10)
+   */
+  200: {
+    classification: "PUBLIC" | "INTERNAL" | "PRIVATE" | "SECRET" | "PII"
+  }
+}
+
+export type EnterpriseClassifyResponse = EnterpriseClassifyResponses[keyof EnterpriseClassifyResponses]
+
+export type EnterprisePiiRetentionData = {
+  body: {
+    records: Array<{
+      id: string
+      classification: "PUBLIC" | "INTERNAL" | "PRIVATE" | "SECRET" | "PII"
+      region: string
+      createdAt: string
+    }>
+    policy?: {
+      allowedRegions: Array<string>
+      customerManagedKeys: boolean
+      telemetryOptOut: boolean
+      piiRetentionMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    }
+    now?: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/governance/pii-retention"
+}
+
+export type EnterprisePiiRetentionErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterprisePiiRetentionError = EnterprisePiiRetentionErrors[keyof EnterprisePiiRetentionErrors]
+
+export type EnterprisePiiRetentionResponses = {
+  /**
+   * PII retention evaluation (F10)
+   */
+  200: {
+    retained: Array<{
+      id: string
+      classification: "PUBLIC" | "INTERNAL" | "PRIVATE" | "SECRET" | "PII"
+      region: string
+      createdAt: string
+    }>
+    expired: Array<string>
+  }
+}
+
+export type EnterprisePiiRetentionResponse = EnterprisePiiRetentionResponses[keyof EnterprisePiiRetentionResponses]
+
+export type EnterpriseBackupData = {
+  body: {
+    backupId: string
+    kind: "DATABASE" | "KEYS"
+    digest: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/reliability/backups"
+}
+
+export type EnterpriseBackupErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseBackupError = EnterpriseBackupErrors[keyof EnterpriseBackupErrors]
+
+export type EnterpriseBackupResponses = {
+  /**
+   * Backup recorded (F7)
+   */
+  200: {
+    tenantId: string
+    backupId: string
+    kind: "DATABASE" | "KEYS"
+    createdAt: string
+    digest: string
+    restoredAt?: string
+  }
+}
+
+export type EnterpriseBackupResponse = EnterpriseBackupResponses[keyof EnterpriseBackupResponses]
+
+export type EnterpriseRestoreData = {
+  body: {
+    presentedDigest: string
+  }
+  path: {
+    tenantId: string
+    backupId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/reliability/backups/{backupId}/restore"
+}
+
+export type EnterpriseRestoreErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseRestoreError = EnterpriseRestoreErrors[keyof EnterpriseRestoreErrors]
+
+export type EnterpriseRestoreResponses = {
+  /**
+   * Backup restore result (F7)
+   */
+  200:
+    | {
+        kind: "RESTORED"
+        record: {
+          tenantId: string
+          backupId: string
+          kind: "DATABASE" | "KEYS"
+          createdAt: string
+          digest: string
+          restoredAt?: string
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseRestoreResponse = EnterpriseRestoreResponses[keyof EnterpriseRestoreResponses]
+
+export type EnterpriseDrillsData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/reliability/drills"
+}
+
+export type EnterpriseDrillsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseDrillsError = EnterpriseDrillsErrors[keyof EnterpriseDrillsErrors]
+
+export type EnterpriseDrillsResponses = {
+  /**
+   * Restore drill history (F7)
+   */
+  200: Array<{
+    tenantId: string
+    drillId: string
+    startedAt: string
+    finishedAt: string
+    restoredDigest: string
+    measuredRpoMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    measuredRtoMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }>
+}
+
+export type EnterpriseDrillsResponse = EnterpriseDrillsResponses[keyof EnterpriseDrillsResponses]
+
+export type EnterpriseDrillData = {
+  body: {
+    drillId: string
+    startedAt: string
+    finishedAt: string
+    restoredDigest: string
+    measuredRpoMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    measuredRtoMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    config?: {
+      availabilityTarget: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      rpoMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      rtoMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    }
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/reliability/drills"
+}
+
+export type EnterpriseDrillErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseDrillError = EnterpriseDrillErrors[keyof EnterpriseDrillErrors]
+
+export type EnterpriseDrillResponses = {
+  /**
+   * Restore drill evaluation (F7)
+   */
+  200: {
+    result: {
+      pass: boolean
+      violations: Array<string>
+      measuredRpoMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      measuredRtoMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    }
+    record: {
+      tenantId: string
+      drillId: string
+      startedAt: string
+      finishedAt: string
+      restoredDigest: string
+      measuredRpoMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      measuredRtoMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    }
+  }
+}
+
+export type EnterpriseDrillResponse = EnterpriseDrillResponses[keyof EnterpriseDrillResponses]
+
+export type EnterprisePutFederationAgreementData = {
+  body: {
+    agreementId: string
+    version: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    orgA: string
+    orgB: string
+    audienceRestrictions: Array<string>
+    validFrom: string
+    validTo: string
+    status: "ACTIVE" | "REVOKED"
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/agreements"
+}
+
+export type EnterprisePutFederationAgreementErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterprisePutFederationAgreementError =
+  EnterprisePutFederationAgreementErrors[keyof EnterprisePutFederationAgreementErrors]
+
+export type EnterprisePutFederationAgreementResponses = {
+  /**
+   * Federation agreement stored (F8)
+   */
+  200: {
+    agreementId: string
+    version: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    orgA: string
+    orgB: string
+    audienceRestrictions: Array<string>
+    validFrom: string
+    validTo: string
+    status: "ACTIVE" | "REVOKED"
+  }
+}
+
+export type EnterprisePutFederationAgreementResponse =
+  EnterprisePutFederationAgreementResponses[keyof EnterprisePutFederationAgreementResponses]
+
+export type EnterpriseGetFederationAgreementData = {
+  body?: never
+  path: {
+    tenantId: string
+    agreementId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/agreements/{agreementId}"
+}
+
+export type EnterpriseGetFederationAgreementErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseGetFederationAgreementError =
+  EnterpriseGetFederationAgreementErrors[keyof EnterpriseGetFederationAgreementErrors]
+
+export type EnterpriseGetFederationAgreementResponses = {
+  /**
+   * Federation agreement (F8)
+   */
+  200: {
+    agreementId: string
+    version: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    orgA: string
+    orgB: string
+    audienceRestrictions: Array<string>
+    validFrom: string
+    validTo: string
+    status: "ACTIVE" | "REVOKED"
+  }
+}
+
+export type EnterpriseGetFederationAgreementResponse =
+  EnterpriseGetFederationAgreementResponses[keyof EnterpriseGetFederationAgreementResponses]
+
+export type EnterpriseFederationExchangeData = {
+  body: {
+    agreementId: string
+    orgId: string
+    remoteProofId: string
+    fingerprint: string
+    origin: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/exchange"
+}
+
+export type EnterpriseFederationExchangeErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseFederationExchangeError =
+  EnterpriseFederationExchangeErrors[keyof EnterpriseFederationExchangeErrors]
+
+export type EnterpriseFederationExchangeResponses = {
+  /**
+   * Proof exchange result (F8)
+   */
+  200:
+    | {
+        kind: "EXCHANGED"
+        record: {
+          agreementId: string
+          orgId: string
+          remoteProofId: string
+          fingerprint: string
+          exchangedAt: string
+          origin: string
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseFederationExchangeResponse =
+  EnterpriseFederationExchangeResponses[keyof EnterpriseFederationExchangeResponses]
+
+export type EnterpriseFederationRevokeData = {
+  body: {
+    agreementId: string
+    orgId: string
+    subjectId: string
+    reason: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/revoke"
+}
+
+export type EnterpriseFederationRevokeErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseFederationRevokeError = EnterpriseFederationRevokeErrors[keyof EnterpriseFederationRevokeErrors]
+
+export type EnterpriseFederationRevokeResponses = {
+  /**
+   * Revocation propagation (F8)
+   */
+  200:
+    | {
+        agreementId: string
+        orgId: string
+        subjectId: string
+        reason: string
+        propagatedAt: string
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseFederationRevokeResponse =
+  EnterpriseFederationRevokeResponses[keyof EnterpriseFederationRevokeResponses]
+
+export type EnterpriseFederationExchangesData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    orgId?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/exchanges"
+}
+
+export type EnterpriseFederationExchangesErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseFederationExchangesError =
+  EnterpriseFederationExchangesErrors[keyof EnterpriseFederationExchangesErrors]
+
+export type EnterpriseFederationExchangesResponses = {
+  /**
+   * Proof exchanges (F8)
+   */
+  200: Array<{
+    agreementId: string
+    orgId: string
+    remoteProofId: string
+    fingerprint: string
+    exchangedAt: string
+    origin: string
+  }>
+}
+
+export type EnterpriseFederationExchangesResponse =
+  EnterpriseFederationExchangesResponses[keyof EnterpriseFederationExchangesResponses]
+
+export type EnterpriseFederationRevocationsData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    orgId?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/revocations"
+}
+
+export type EnterpriseFederationRevocationsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseFederationRevocationsError =
+  EnterpriseFederationRevocationsErrors[keyof EnterpriseFederationRevocationsErrors]
+
+export type EnterpriseFederationRevocationsResponses = {
+  /**
+   * Revocation propagations (F8)
+   */
+  200: Array<{
+    agreementId: string
+    orgId: string
+    subjectId: string
+    reason: string
+    propagatedAt: string
+  }>
+}
+
+export type EnterpriseFederationRevocationsResponse =
+  EnterpriseFederationRevocationsResponses[keyof EnterpriseFederationRevocationsResponses]
+
+export type EnterpriseFederationIntersectData = {
+  body: {
+    agreementId: string
+    localActions: Array<string>
+    localResources: Array<string>
+    remoteActions: Array<string>
+    remoteResources: Array<string>
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/intersect"
+}
+
+export type EnterpriseFederationIntersectErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseFederationIntersectError =
+  EnterpriseFederationIntersectErrors[keyof EnterpriseFederationIntersectErrors]
+
+export type EnterpriseFederationIntersectResponses = {
+  /**
+   * Authority intersection (F8)
+   */
+  200:
+    | {
+        allowed: true
+        scope: {
+          actions: Array<string>
+          resources: Array<string>
+        }
+      }
+    | {
+        allowed: false
+        reason: string
+      }
+}
+
+export type EnterpriseFederationIntersectResponse =
+  EnterpriseFederationIntersectResponses[keyof EnterpriseFederationIntersectResponses]
+
+export type EnterpriseEntitlementData = {
+  body: {
+    tier: "COMMUNITY" | "TEAM" | "ENTERPRISE"
+    feature:
+      | "local_runtime"
+      | "shared_policy"
+      | "shared_approvals"
+      | "fleet_control"
+      | "sso"
+      | "federation"
+      | "compliance_exports"
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/commercial/entitlement"
+}
+
+export type EnterpriseEntitlementErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseEntitlementError = EnterpriseEntitlementErrors[keyof EnterpriseEntitlementErrors]
+
+export type EnterpriseEntitlementResponses = {
+  /**
+   * Entitlement check (F12)
+   */
+  200: {
+    entitled: boolean
+  }
+}
+
+export type EnterpriseEntitlementResponse = EnterpriseEntitlementResponses[keyof EnterpriseEntitlementResponses]
+
+export type EnterpriseMeteringCheckData = {
+  body: {
+    decision: "ALLOW" | "DENY" | "REQUIRE_APPROVAL"
+    meteringOk: boolean
+    overQuota?: boolean
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/commercial/metering-check"
+}
+
+export type EnterpriseMeteringCheckErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseMeteringCheckError = EnterpriseMeteringCheckErrors[keyof EnterpriseMeteringCheckErrors]
+
+export type EnterpriseMeteringCheckResponses = {
+  /**
+   * Metering-never-affects-security (F12)
+   */
+  200: {
+    decision: "ALLOW" | "DENY" | "REQUIRE_APPROVAL"
+  }
+}
+
+export type EnterpriseMeteringCheckResponse = EnterpriseMeteringCheckResponses[keyof EnterpriseMeteringCheckResponses]
+
+export type EnterpriseDiagnosticsData = {
+  body: {
+    diagnostics: {
+      version: string
+      runtime: {
+        [key: string]: string
+      }
+      config: {
+        [key: string]: string
+      }
+      logs: Array<string>
+    }
+    secretFragments: Array<string>
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/commercial/diagnostics"
+}
+
+export type EnterpriseDiagnosticsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseDiagnosticsError = EnterpriseDiagnosticsErrors[keyof EnterpriseDiagnosticsErrors]
+
+export type EnterpriseDiagnosticsResponses = {
+  /**
+   * Redacted diagnostics (F12)
+   */
+  200: {
+    version: string
+    runtime: {
+      [key: string]: string
+    }
+    config: {
+      [key: string]: string
+    }
+    logs: Array<string>
+  }
+}
+
+export type EnterpriseDiagnosticsResponse = EnterpriseDiagnosticsResponses[keyof EnterpriseDiagnosticsResponses]
+
+export type EnterpriseUpgradePolicyData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/commercial/upgrade-policy"
+}
+
+export type EnterpriseUpgradePolicyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseUpgradePolicyError = EnterpriseUpgradePolicyErrors[keyof EnterpriseUpgradePolicyErrors]
+
+export type EnterpriseUpgradePolicyResponses = {
+  /**
+   * Upgrade policy (F12)
+   */
+  200: {
+    supportedFrom: string
+    breakingChangesRequire: "major_version" | "migration_runbook"
+    rollbackAllowed: boolean
+  }
+}
+
+export type EnterpriseUpgradePolicyResponse = EnterpriseUpgradePolicyResponses[keyof EnterpriseUpgradePolicyResponses]
+
+export type EnterpriseNodeDetailData = {
+  body?: never
+  path: {
+    tenantId: string
+    nodeId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/fleet/{nodeId}"
+}
+
+export type EnterpriseNodeDetailErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseNodeDetailError = EnterpriseNodeDetailErrors[keyof EnterpriseNodeDetailErrors]
+
+export type EnterpriseNodeDetailResponses = {
+  /**
+   * Fleet node remote diagnostics (F4)
+   */
+  200: {
+    tenantId: string
+    nodeId: string
+    organizationId: string
+    environment: string
+    version: string
+    upgradeRing: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    nodeKeyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    enforcementMode: "ONLINE" | "OFFLINE_RESTRICTED" | "OFFLINE_READ_ONLY" | "QUARANTINED"
+    policySequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    policyDigest: string
+    revocationSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    revocationDigest: string
+    proofBacklog: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    lastSeenAt?: string
+    lastSyncAt?: string
+    registeredAt: string
+    revokedAt?: string
+    health: "UNKNOWN" | "HEALTHY" | "STALE" | "REVOKED" | "QUARANTINED"
+  }
+}
+
+export type EnterpriseNodeDetailResponse = EnterpriseNodeDetailResponses[keyof EnterpriseNodeDetailResponses]
+
+export type EnterpriseGetEscalationPolicyData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/escalations/policy"
+}
+
+export type EnterpriseGetEscalationPolicyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseGetEscalationPolicyError =
+  EnterpriseGetEscalationPolicyErrors[keyof EnterpriseGetEscalationPolicyErrors]
+
+export type EnterpriseGetEscalationPolicyResponses = {
+  /**
+   * Escalation policy (F5)
+   */
+  200: {
+    tenantId: string
+    policyId: string
+    maxWaitMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    fallbackApprovers: Array<string>
+    requireBreakGlass: boolean
+  }
+}
+
+export type EnterpriseGetEscalationPolicyResponse =
+  EnterpriseGetEscalationPolicyResponses[keyof EnterpriseGetEscalationPolicyResponses]
+
+export type EnterprisePutEscalationPolicyData = {
+  body: {
+    policyId: string
+    maxWaitMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    fallbackApprovers: Array<string>
+    requireBreakGlass: boolean
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/escalations/policy"
+}
+
+export type EnterprisePutEscalationPolicyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterprisePutEscalationPolicyError =
+  EnterprisePutEscalationPolicyErrors[keyof EnterprisePutEscalationPolicyErrors]
+
+export type EnterprisePutEscalationPolicyResponses = {
+  /**
+   * Escalation policy stored (F5)
+   */
+  200: {
+    tenantId: string
+    policyId: string
+    maxWaitMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    fallbackApprovers: Array<string>
+    requireBreakGlass: boolean
+  }
+}
+
+export type EnterprisePutEscalationPolicyResponse =
+  EnterprisePutEscalationPolicyResponses[keyof EnterprisePutEscalationPolicyResponses]
+
+export type EnterpriseEscalationCheckData = {
+  body: {
+    approvalId: string
+    now?: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/escalations/check"
+}
+
+export type EnterpriseEscalationCheckErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseEscalationCheckError = EnterpriseEscalationCheckErrors[keyof EnterpriseEscalationCheckErrors]
+
+export type EnterpriseEscalationCheckResponses = {
+  /**
+   * Escalation evaluation (F5)
+   */
+  200:
+    | {
+        escalated: true
+        reason: string
+        suggestedApprovers: Array<string>
+        requireBreakGlass: boolean
+      }
+    | {
+        escalated: false
+        reason: string
+      }
+}
+
+export type EnterpriseEscalationCheckResponse =
+  EnterpriseEscalationCheckResponses[keyof EnterpriseEscalationCheckResponses]
+
+export type EnterpriseEscalationEventsData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/escalations"
+}
+
+export type EnterpriseEscalationEventsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseEscalationEventsError = EnterpriseEscalationEventsErrors[keyof EnterpriseEscalationEventsErrors]
+
+export type EnterpriseEscalationEventsResponses = {
+  /**
+   * Escalation events (F5)
+   */
+  200: Array<{
+    tenantId: string
+    eventId: string
+    approvalId: string
+    at: string
+    reason: string
+    suggestedApprovers: Array<string>
+  }>
+}
+
+export type EnterpriseEscalationEventsResponse =
+  EnterpriseEscalationEventsResponses[keyof EnterpriseEscalationEventsResponses]
+
+export type EnterpriseListAdminEventsData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    kind?: "approval.pending" | "node.revoked" | "policy.promoted" | "alert.critical"
+    since?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/admin-events"
+}
+
+export type EnterpriseListAdminEventsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseListAdminEventsError = EnterpriseListAdminEventsErrors[keyof EnterpriseListAdminEventsErrors]
+
+export type EnterpriseListAdminEventsResponses = {
+  /**
+   * Admin events (F11)
+   */
+  200: Array<{
+    kind: "approval.pending" | "node.revoked" | "policy.promoted" | "alert.critical"
+    tenantId: string
+    at: string
+    approvalId?: string
+    requestHash?: string
+    nodeId?: string
+    reason?: string
+    policyId?: string
+    sequence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    alertId?: string
+    recordedAt: string
+  }>
+}
+
+export type EnterpriseListAdminEventsResponse =
+  EnterpriseListAdminEventsResponses[keyof EnterpriseListAdminEventsResponses]
+
+export type EnterprisePutAdminEventData = {
+  body:
+    | {
+        kind: "approval.pending"
+        approvalId: string
+        requestHash: string
+      }
+    | {
+        kind: "node.revoked"
+        nodeId: string
+        reason: string
+      }
+    | {
+        kind: "policy.promoted"
+        policyId: string
+        sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      }
+    | {
+        kind: "alert.critical"
+        alertId: string
+      }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/admin-events"
+}
+
+export type EnterprisePutAdminEventErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterprisePutAdminEventError = EnterprisePutAdminEventErrors[keyof EnterprisePutAdminEventErrors]
+
+export type EnterprisePutAdminEventResponses = {
+  /**
+   * Admin event recorded (F11)
+   */
+  200: {
+    kind: "approval.pending" | "node.revoked" | "policy.promoted" | "alert.critical"
+    tenantId: string
+    at: string
+    approvalId?: string
+    requestHash?: string
+    nodeId?: string
+    reason?: string
+    policyId?: string
+    sequence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    alertId?: string
+    recordedAt: string
+  }
+}
+
+export type EnterprisePutAdminEventResponse = EnterprisePutAdminEventResponses[keyof EnterprisePutAdminEventResponses]
+
+export type EnterpriseSiemExportData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    kind?: "approval.pending" | "node.revoked" | "policy.promoted" | "alert.critical"
+    since?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/admin-events/siem-export"
+}
+
+export type EnterpriseSiemExportErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseSiemExportError = EnterpriseSiemExportErrors[keyof EnterpriseSiemExportErrors]
+
+export type EnterpriseSiemExportResponses = {
+  /**
+   * SIEM CEF export (F11)
+   */
+  200: string
+}
+
+export type EnterpriseSiemExportResponse = EnterpriseSiemExportResponses[keyof EnterpriseSiemExportResponses]
+
+export type EnterpriseGetUsageData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    feature?: string
+    since?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/commercial/usage"
+}
+
+export type EnterpriseGetUsageErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseGetUsageError = EnterpriseGetUsageErrors[keyof EnterpriseGetUsageErrors]
+
+export type EnterpriseGetUsageResponses = {
+  /**
+   * Usage summary or events (F12)
+   */
+  200:
+    | {
+        kind: "summary"
+        feature: string
+        units: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      }
+    | {
+        kind: "events"
+        events: Array<{
+          tenantId: string
+          eventId: string
+          feature: string
+          units: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          at: string
+        }>
+      }
+}
+
+export type EnterpriseGetUsageResponse = EnterpriseGetUsageResponses[keyof EnterpriseGetUsageResponses]
+
+export type EnterprisePutUsageData = {
+  body: {
+    eventId: string
+    feature: string
+    units: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    at?: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/commercial/usage"
+}
+
+export type EnterprisePutUsageErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterprisePutUsageError = EnterprisePutUsageErrors[keyof EnterprisePutUsageErrors]
+
+export type EnterprisePutUsageResponses = {
+  /**
+   * Usage event recorded (F12)
+   */
+  200: {
+    tenantId: string
+    eventId: string
+    feature: string
+    units: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    at: string
+  }
+}
+
+export type EnterprisePutUsageResponse = EnterprisePutUsageResponses[keyof EnterprisePutUsageResponses]
+
+export type EnterpriseUsageQuotaData = {
+  body: {
+    limit: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    feature: string
+    since?: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/commercial/usage/quota"
+}
+
+export type EnterpriseUsageQuotaErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseUsageQuotaError = EnterpriseUsageQuotaErrors[keyof EnterpriseUsageQuotaErrors]
+
+export type EnterpriseUsageQuotaResponses = {
+  /**
+   * Informational quota status (F12)
+   */
+  200: {
+    ok: boolean
+    used: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    limit: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    overQuota: boolean
+  }
+}
+
+export type EnterpriseUsageQuotaResponse = EnterpriseUsageQuotaResponses[keyof EnterpriseUsageQuotaResponses]
+
+export type EnterpriseUsageExportData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/commercial/usage/export"
+}
+
+export type EnterpriseUsageExportErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseUsageExportError = EnterpriseUsageExportErrors[keyof EnterpriseUsageExportErrors]
+
+export type EnterpriseUsageExportResponses = {
+  /**
+   * Usage export (F12)
+   */
+  200: Array<{
+    feature: string
+    units: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }>
+}
+
+export type EnterpriseUsageExportResponse = EnterpriseUsageExportResponses[keyof EnterpriseUsageExportResponses]
+
+export type EnterpriseListFederationRulesData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/rules"
+}
+
+export type EnterpriseListFederationRulesErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseListFederationRulesError =
+  EnterpriseListFederationRulesErrors[keyof EnterpriseListFederationRulesErrors]
+
+export type EnterpriseListFederationRulesResponses = {
+  /**
+   * Cross-org approval rules (F8)
+   */
+  200: Array<{
+    ruleId: string
+    orgA: string
+    orgB: string
+    agreementId: string
+    actionPatterns: Array<string>
+    maxPerDay: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }>
+}
+
+export type EnterpriseListFederationRulesResponse =
+  EnterpriseListFederationRulesResponses[keyof EnterpriseListFederationRulesResponses]
+
+export type EnterprisePutFederationRuleData = {
+  body: {
+    ruleId: string
+    orgB: string
+    agreementId: string
+    actionPatterns: Array<string>
+    maxPerDay: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/rules"
+}
+
+export type EnterprisePutFederationRuleErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterprisePutFederationRuleError =
+  EnterprisePutFederationRuleErrors[keyof EnterprisePutFederationRuleErrors]
+
+export type EnterprisePutFederationRuleResponses = {
+  /**
+   * Cross-org approval rule (F8)
+   */
+  200: {
+    ruleId: string
+    orgA: string
+    orgB: string
+    agreementId: string
+    actionPatterns: Array<string>
+    maxPerDay: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type EnterprisePutFederationRuleResponse =
+  EnterprisePutFederationRuleResponses[keyof EnterprisePutFederationRuleResponses]
+
+export type EnterpriseRouteCrossOrgApprovalData = {
+  body: {
+    orgB: string
+    agreementId: string
+    approvalId: string
+    action: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/route-approval"
+}
+
+export type EnterpriseRouteCrossOrgApprovalErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseRouteCrossOrgApprovalError =
+  EnterpriseRouteCrossOrgApprovalErrors[keyof EnterpriseRouteCrossOrgApprovalErrors]
+
+export type EnterpriseRouteCrossOrgApprovalResponses = {
+  /**
+   * Cross-org approval routing (F8)
+   */
+  200:
+    | {
+        kind: "ROUTED"
+        record: {
+          routingId: string
+          ruleId: string
+          orgA: string
+          orgB: string
+          agreementId: string
+          approvalId: string
+          action: string
+          routedAt: string
+        }
+        rule: {
+          ruleId: string
+          orgA: string
+          orgB: string
+          agreementId: string
+          actionPatterns: Array<string>
+          maxPerDay: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseRouteCrossOrgApprovalResponse =
+  EnterpriseRouteCrossOrgApprovalResponses[keyof EnterpriseRouteCrossOrgApprovalResponses]
+
+export type EnterpriseListRoutedApprovalsData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    orgId?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/routed"
+}
+
+export type EnterpriseListRoutedApprovalsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseListRoutedApprovalsError =
+  EnterpriseListRoutedApprovalsErrors[keyof EnterpriseListRoutedApprovalsErrors]
+
+export type EnterpriseListRoutedApprovalsResponses = {
+  /**
+   * Routed approvals (F8)
+   */
+  200: Array<{
+    routingId: string
+    ruleId: string
+    orgA: string
+    orgB: string
+    agreementId: string
+    approvalId: string
+    action: string
+    routedAt: string
+  }>
+}
+
+export type EnterpriseListRoutedApprovalsResponse =
+  EnterpriseListRoutedApprovalsResponses[keyof EnterpriseListRoutedApprovalsResponses]
+
+export type EnterpriseListUpgradeRingsData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/fleet/rings"
+}
+
+export type EnterpriseListUpgradeRingsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseListUpgradeRingsError = EnterpriseListUpgradeRingsErrors[keyof EnterpriseListUpgradeRingsErrors]
+
+export type EnterpriseListUpgradeRingsResponses = {
+  /**
+   * Upgrade rings (F4)
+   */
+  200: Array<{
+    tenantId: string
+    ringId: string
+    name: string
+    targetVersion: string
+    paused: boolean
+    createdAt: string
+  }>
+}
+
+export type EnterpriseListUpgradeRingsResponse =
+  EnterpriseListUpgradeRingsResponses[keyof EnterpriseListUpgradeRingsResponses]
+
+export type EnterprisePutUpgradeRingData = {
+  body: {
+    ringId: string
+    name: string
+    targetVersion: string
+    paused: boolean
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/fleet/rings"
+}
+
+export type EnterprisePutUpgradeRingErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterprisePutUpgradeRingError = EnterprisePutUpgradeRingErrors[keyof EnterprisePutUpgradeRingErrors]
+
+export type EnterprisePutUpgradeRingResponses = {
+  /**
+   * Upgrade ring stored (F4)
+   */
+  200: {
+    tenantId: string
+    ringId: string
+    name: string
+    targetVersion: string
+    paused: boolean
+    createdAt: string
+  }
+}
+
+export type EnterprisePutUpgradeRingResponse =
+  EnterprisePutUpgradeRingResponses[keyof EnterprisePutUpgradeRingResponses]
+
+export type EnterpriseAssignRingNodeData = {
+  body: {
+    nodeId: string
+  }
+  path: {
+    tenantId: string
+    ringId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/fleet/rings/{ringId}/assign"
+}
+
+export type EnterpriseAssignRingNodeErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseAssignRingNodeError = EnterpriseAssignRingNodeErrors[keyof EnterpriseAssignRingNodeErrors]
+
+export type EnterpriseAssignRingNodeResponses = {
+  /**
+   * Ring node assignment (F4)
+   */
+  200: {
+    ok: boolean
+    reason?: string
+  }
+}
+
+export type EnterpriseAssignRingNodeResponse =
+  EnterpriseAssignRingNodeResponses[keyof EnterpriseAssignRingNodeResponses]
+
+export type EnterpriseRingPlanData = {
+  body?: never
+  path: {
+    tenantId: string
+    ringId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/fleet/rings/{ringId}/plan"
+}
+
+export type EnterpriseRingPlanErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseRingPlanError = EnterpriseRingPlanErrors[keyof EnterpriseRingPlanErrors]
+
+export type EnterpriseRingPlanResponses = {
+  /**
+   * Ring rollout plan (F4)
+   */
+  200: Array<{
+    nodeId: string
+    allowed: boolean
+    reason: string
+  }>
+}
+
+export type EnterpriseRingPlanResponse = EnterpriseRingPlanResponses[keyof EnterpriseRingPlanResponses]
+
+export type EnterpriseValidatePolicyDraftData = {
+  body: {
+    envelope: {
+      schemaVersion: 1
+      issuerId: string
+      issuerEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      policyId: string
+      policyVersion: string
+      policyDigest: string
+      previousPolicyDigest?: string
+      issuedAt: string
+      expiresAt: string
+      signatureAlgorithm: "Ed25519"
+      signature: string
+    }
+    activationTime?: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/policies/validate-draft"
+}
+
+export type EnterpriseValidatePolicyDraftErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseValidatePolicyDraftError =
+  EnterpriseValidatePolicyDraftErrors[keyof EnterpriseValidatePolicyDraftErrors]
+
+export type EnterpriseValidatePolicyDraftResponses = {
+  /**
+   * Policy draft validation (F3)
+   */
+  200:
+    | {
+        valid: true
+        record: {
+          sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          policyId: string
+          policyVersion: string
+          digest: string
+          previousDigest?: string
+          signedEnvelopeJson: string
+          activationTime: string
+          compatibleFrom: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          compatibleTo: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          status: "STAGED" | "ACTIVE" | "SUPERSEDED" | "ROLLED_BACK" | "FAILED"
+          lastKnownGood: boolean
+          publishedAt: string
+          supersedes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          rollbackOf?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }
+    | {
+        valid: false
+        reason: string
+      }
+}
+
+export type EnterpriseValidatePolicyDraftResponse =
+  EnterpriseValidatePolicyDraftResponses[keyof EnterpriseValidatePolicyDraftResponses]
+
+export type EnterpriseAnomalyScanData = {
+  body: {
+    alertsLastHour: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    revocationsLastHour: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    maxProofBacklog: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    staleNodeCount: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    totalNodeCount: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/anomaly-scan"
+}
+
+export type EnterpriseAnomalyScanErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseAnomalyScanError = EnterpriseAnomalyScanErrors[keyof EnterpriseAnomalyScanErrors]
+
+export type EnterpriseAnomalyScanResponses = {
+  /**
+   * Anomaly signals (F9)
+   */
+  200: Array<{
+    signalId: string
+    tenantId: string
+    kind: "alert_burst" | "revocation_velocity" | "proof_backlog_growth" | "stale_node_count"
+    severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+    detail: string
+    at: string
+  }>
+}
+
+export type EnterpriseAnomalyScanResponse = EnterpriseAnomalyScanResponses[keyof EnterpriseAnomalyScanResponses]
+
+export type EnterpriseTicketingExportData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    kind?: "approval.pending" | "node.revoked" | "policy.promoted" | "alert.critical"
+    since?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/ticketing/export"
+}
+
+export type EnterpriseTicketingExportErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseTicketingExportError = EnterpriseTicketingExportErrors[keyof EnterpriseTicketingExportErrors]
+
+export type EnterpriseTicketingExportResponses = {
+  /**
+   * Ticketing payloads (F11)
+   */
+  200: Array<{
+    title: string
+    description: string
+    labels: Array<string>
+    priority: "low" | "medium" | "high" | "urgent"
+  }>
+}
+
+export type EnterpriseTicketingExportResponse =
+  EnterpriseTicketingExportResponses[keyof EnterpriseTicketingExportResponses]
+
+export type EnterpriseListRevocationOutboxData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/revocations/outbox"
+}
+
+export type EnterpriseListRevocationOutboxErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseListRevocationOutboxError =
+  EnterpriseListRevocationOutboxErrors[keyof EnterpriseListRevocationOutboxErrors]
+
+export type EnterpriseListRevocationOutboxResponses = {
+  /**
+   * Pending deliveries (F8)
+   */
+  200: Array<{
+    deliveryId: string
+    orgId: string
+    agreementId: string
+    subjectId: string
+    reason: string
+    queuedAt: string
+    deliveredAt?: string
+    failureReason?: string
+  }>
+}
+
+export type EnterpriseListRevocationOutboxResponse =
+  EnterpriseListRevocationOutboxResponses[keyof EnterpriseListRevocationOutboxResponses]
+
+export type EnterpriseQueueRevocationDeliveryData = {
+  body: {
+    agreementId: string
+    subjectId: string
+    reason: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/revocations/outbox"
+}
+
+export type EnterpriseQueueRevocationDeliveryErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseQueueRevocationDeliveryError =
+  EnterpriseQueueRevocationDeliveryErrors[keyof EnterpriseQueueRevocationDeliveryErrors]
+
+export type EnterpriseQueueRevocationDeliveryResponses = {
+  /**
+   * Revocation delivery queued (F8)
+   */
+  200:
+    | {
+        kind: "QUEUED"
+        record: {
+          deliveryId: string
+          orgId: string
+          agreementId: string
+          subjectId: string
+          reason: string
+          queuedAt: string
+          deliveredAt?: string
+          failureReason?: string
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseQueueRevocationDeliveryResponse =
+  EnterpriseQueueRevocationDeliveryResponses[keyof EnterpriseQueueRevocationDeliveryResponses]
+
+export type EnterpriseListRevocationInboxData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/revocations/inbox"
+}
+
+export type EnterpriseListRevocationInboxErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseListRevocationInboxError =
+  EnterpriseListRevocationInboxErrors[keyof EnterpriseListRevocationInboxErrors]
+
+export type EnterpriseListRevocationInboxResponses = {
+  /**
+   * Received revocations (F8)
+   */
+  200: Array<{
+    receivedId: string
+    orgId: string
+    agreementId: string
+    senderOrgId: string
+    subjectId: string
+    reason: string
+    receivedAt: string
+  }>
+}
+
+export type EnterpriseListRevocationInboxResponse =
+  EnterpriseListRevocationInboxResponses[keyof EnterpriseListRevocationInboxResponses]
+
+export type EnterpriseReceiveRevocationDeliveryData = {
+  body: {
+    agreementId: string
+    senderOrgId: string
+    subjectId: string
+    reason: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/revocations/inbox"
+}
+
+export type EnterpriseReceiveRevocationDeliveryErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseReceiveRevocationDeliveryError =
+  EnterpriseReceiveRevocationDeliveryErrors[keyof EnterpriseReceiveRevocationDeliveryErrors]
+
+export type EnterpriseReceiveRevocationDeliveryResponses = {
+  /**
+   * Revocation delivery received (F8)
+   */
+  200:
+    | {
+        kind: "RECEIVED"
+        record: {
+          receivedId: string
+          orgId: string
+          agreementId: string
+          senderOrgId: string
+          subjectId: string
+          reason: string
+          receivedAt: string
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseReceiveRevocationDeliveryResponse =
+  EnterpriseReceiveRevocationDeliveryResponses[keyof EnterpriseReceiveRevocationDeliveryResponses]
+
+export type EnterpriseMarkRevocationDeliveredData = {
+  body: {
+    [key: string]: unknown
+  }
+  path: {
+    tenantId: string
+    deliveryId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/federation/revocations/outbox/{deliveryId}/delivered"
+}
+
+export type EnterpriseMarkRevocationDeliveredErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseMarkRevocationDeliveredError =
+  EnterpriseMarkRevocationDeliveredErrors[keyof EnterpriseMarkRevocationDeliveredErrors]
+
+export type EnterpriseMarkRevocationDeliveredResponses = {
+  /**
+   * Delivery marked (F8)
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type EnterpriseMarkRevocationDeliveredResponse =
+  EnterpriseMarkRevocationDeliveredResponses[keyof EnterpriseMarkRevocationDeliveredResponses]
+
+export type EnterpriseListWebhooksData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/webhooks"
+}
+
+export type EnterpriseListWebhooksErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseListWebhooksError = EnterpriseListWebhooksErrors[keyof EnterpriseListWebhooksErrors]
+
+export type EnterpriseListWebhooksResponses = {
+  /**
+   * Webhook endpoints (F11)
+   */
+  200: Array<{
+    tenantId: string
+    webhookId: string
+    url: string
+    active: boolean
+    createdAt: string
+  }>
+}
+
+export type EnterpriseListWebhooksResponse = EnterpriseListWebhooksResponses[keyof EnterpriseListWebhooksResponses]
+
+export type EnterprisePutWebhookData = {
+  body: {
+    webhookId: string
+    url: string
+    active: boolean
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/webhooks"
+}
+
+export type EnterprisePutWebhookErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterprisePutWebhookError = EnterprisePutWebhookErrors[keyof EnterprisePutWebhookErrors]
+
+export type EnterprisePutWebhookResponses = {
+  /**
+   * Webhook endpoint stored (F11)
+   */
+  200: {
+    tenantId: string
+    webhookId: string
+    url: string
+    active: boolean
+    createdAt: string
+  }
+}
+
+export type EnterprisePutWebhookResponse = EnterprisePutWebhookResponses[keyof EnterprisePutWebhookResponses]
+
+export type EnterpriseListWebhookDeliveriesData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/webhooks/deliveries"
+}
+
+export type EnterpriseListWebhookDeliveriesErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseListWebhookDeliveriesError =
+  EnterpriseListWebhookDeliveriesErrors[keyof EnterpriseListWebhookDeliveriesErrors]
+
+export type EnterpriseListWebhookDeliveriesResponses = {
+  /**
+   * Webhook deliveries (F11)
+   */
+  200: Array<{
+    tenantId: string
+    deliveryId: string
+    webhookId: string
+    payloadJson: string
+    status: "PENDING" | "DELIVERED" | "FAILED"
+    attempts: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    nextAttemptAt: string
+    createdAt: string
+    deliveredAt?: string
+    lastError?: string
+  }>
+}
+
+export type EnterpriseListWebhookDeliveriesResponse =
+  EnterpriseListWebhookDeliveriesResponses[keyof EnterpriseListWebhookDeliveriesResponses]
+
+export type EnterpriseDeliverWebhooksData = {
+  body: {
+    maxAttempts?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/webhooks/deliver"
+}
+
+export type EnterpriseDeliverWebhooksErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type EnterpriseDeliverWebhooksError = EnterpriseDeliverWebhooksErrors[keyof EnterpriseDeliverWebhooksErrors]
+
+export type EnterpriseDeliverWebhooksResponses = {
+  /**
+   * Webhook delivery summary (F11)
+   */
+  200: {
+    delivered: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    failed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    pending: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type EnterpriseDeliverWebhooksResponse =
+  EnterpriseDeliverWebhooksResponses[keyof EnterpriseDeliverWebhooksResponses]
+
+export type ExecutionsClaimData = {
+  body: {
+    key: {
+      executionId: string
+      nodeId: string
+      sessionId: string
+      requestHash: string
+      grantId: string
+      nonce: string
+    }
+    irreversible?: boolean
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/executions/claim"
+}
+
+export type ExecutionsClaimErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type ExecutionsClaimError = ExecutionsClaimErrors[keyof ExecutionsClaimErrors]
+
+export type ExecutionsClaimResponses = {
+  /**
+   * Execution claim result
+   */
+  200:
+    | {
+        kind: "CLAIMED"
+        record: {
+          key: {
+            executionId: string
+            nodeId: string
+            sessionId: string
+            requestHash: string
+            grantId: string
+            nonce: string
+          }
+          status:
+            | "PENDING"
+            | "EXECUTING"
+            | "COMPLETED"
+            | "FAILED"
+            | "UNKNOWN_AFTER_CRASH"
+            | "UNKNOWN_AFTER_NETWORK"
+            | "REJECTED"
+          effectOutcomeJson?: string
+          firstSeenAt: string
+          updatedAt: string
+        }
+      }
+    | {
+        kind: "DUPLICATE"
+        record: {
+          key: {
+            executionId: string
+            nodeId: string
+            sessionId: string
+            requestHash: string
+            grantId: string
+            nonce: string
+          }
+          status:
+            | "PENDING"
+            | "EXECUTING"
+            | "COMPLETED"
+            | "FAILED"
+            | "UNKNOWN_AFTER_CRASH"
+            | "UNKNOWN_AFTER_NETWORK"
+            | "REJECTED"
+          effectOutcomeJson?: string
+          firstSeenAt: string
+          updatedAt: string
+        }
+        detail: string
+      }
+    | {
+        kind: "CONFLICT"
+        record: {
+          key: {
+            executionId: string
+            nodeId: string
+            sessionId: string
+            requestHash: string
+            grantId: string
+            nonce: string
+          }
+          status:
+            | "PENDING"
+            | "EXECUTING"
+            | "COMPLETED"
+            | "FAILED"
+            | "UNKNOWN_AFTER_CRASH"
+            | "UNKNOWN_AFTER_NETWORK"
+            | "REJECTED"
+          effectOutcomeJson?: string
+          firstSeenAt: string
+          updatedAt: string
+        }
+        detail: string
+      }
+    | {
+        kind: "REPLAY_FORBIDDEN"
+        record: {
+          key: {
+            executionId: string
+            nodeId: string
+            sessionId: string
+            requestHash: string
+            grantId: string
+            nonce: string
+          }
+          status:
+            | "PENDING"
+            | "EXECUTING"
+            | "COMPLETED"
+            | "FAILED"
+            | "UNKNOWN_AFTER_CRASH"
+            | "UNKNOWN_AFTER_NETWORK"
+            | "REJECTED"
+          effectOutcomeJson?: string
+          firstSeenAt: string
+          updatedAt: string
+        }
+        detail: string
+      }
+}
+
+export type ExecutionsClaimResponse = ExecutionsClaimResponses[keyof ExecutionsClaimResponses]
+
+export type ExecutionsCompleteData = {
+  body: {
+    outcome: string
+  }
+  path: {
+    executionId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/executions/{executionId}/complete"
+}
+
+export type ExecutionsCompleteErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type ExecutionsCompleteError = ExecutionsCompleteErrors[keyof ExecutionsCompleteErrors]
+
+export type ExecutionsCompleteResponses = {
+  /**
+   * Execution marked completed
+   */
+  200: boolean
+}
+
+export type ExecutionsCompleteResponse = ExecutionsCompleteResponses[keyof ExecutionsCompleteResponses]
+
+export type ExecutionsUnknownData = {
+  body: {
+    reason: "CRASH" | "NETWORK"
+  }
+  path: {
+    executionId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/executions/{executionId}/unknown"
+}
+
+export type ExecutionsUnknownErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type ExecutionsUnknownError = ExecutionsUnknownErrors[keyof ExecutionsUnknownErrors]
+
+export type ExecutionsUnknownResponses = {
+  /**
+   * Execution marked outcome-ambiguous
+   */
+  200: boolean
+}
+
+export type ExecutionsUnknownResponse = ExecutionsUnknownResponses[keyof ExecutionsUnknownResponses]
 
 export type ExperimentalConsoleGetData = {
   body?: never
@@ -7332,6 +11366,529 @@ export type ProjectDirectoriesResponses = {
 
 export type ProjectDirectoriesResponse = ProjectDirectoriesResponses[keyof ProjectDirectoriesResponses]
 
+export type ProofRegisterBatchData = {
+  body: {
+    payload: {
+      schemaVersion: 1
+      trustDomain: string
+      nodeId: string
+      nodeKeyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      firstLocalSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      lastLocalSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      previousBatchRoot?: string
+      eventMerkleRoot: string
+      runProofHashes: Array<string>
+      policySequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      policyDigest: string
+      revocationSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      revocationDigest: string
+      emergencyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      issuedAt: string
+    }
+    batchRoot: string
+    signatureAlgorithm: "Ed25519"
+    signature: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/proof/batches"
+}
+
+export type ProofRegisterBatchErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type ProofRegisterBatchError = ProofRegisterBatchErrors[keyof ProofRegisterBatchErrors]
+
+export type ProofRegisterBatchResponses = {
+  /**
+   * Proof batch registration result
+   */
+  200:
+    | {
+        kind: "REGISTERED" | "DUPLICATE"
+        receiptId: string
+        nodeId: string
+        batchRoot: string
+        status: "REGISTERED" | "DUPLICATE"
+        acknowledgedFirstSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        acknowledgedLastSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        acknowledgedAt: string
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+        detail: string
+      }
+}
+
+export type ProofRegisterBatchResponse = ProofRegisterBatchResponses[keyof ProofRegisterBatchResponses]
+
+export type ProofReconcileData = {
+  body?: never
+  path: {
+    nodeId: string
+  }
+  query: {
+    directory?: string
+    workspace?: string
+    firstLocalSequence: string | "Infinity" | "-Infinity" | "NaN"
+    lastLocalSequence: string | "Infinity" | "-Infinity" | "NaN"
+    lastBatchRoot?: string
+  }
+  url: "/api/proof/nodes/{nodeId}/reconcile"
+}
+
+export type ProofReconcileErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type ProofReconcileError = ProofReconcileErrors[keyof ProofReconcileErrors]
+
+export type ProofReconcileResponses = {
+  /**
+   * Node/server proof reconciliation
+   */
+  200:
+    | {
+        status: "RECONCILED"
+        nodeId: string
+        batchCount: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        firstLocalSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        lastLocalSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        lastBatchRoot?: string
+      }
+    | {
+        status: "GAPS_DETECTED"
+        nodeId: string
+        batchCount: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        gaps: Array<{
+          from: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          to: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }>
+        nextExpected: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      }
+    | {
+        status: "MISMATCH"
+        nodeId: string
+        batchCount: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        reason: string
+      }
+}
+
+export type ProofReconcileResponse = ProofReconcileResponses[keyof ProofReconcileResponses]
+
+export type PolicyPublishData = {
+  body: {
+    envelope: {
+      schemaVersion: 1
+      issuerId: string
+      issuerEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      policyId: string
+      policyVersion: string
+      policyDigest: string
+      previousPolicyDigest?: string
+      issuedAt: string
+      expiresAt: string
+      signatureAlgorithm: "Ed25519"
+      signature: string
+    }
+    activationTime: string
+    compatibleFrom?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    compatibleTo?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/policy/bundles"
+}
+
+export type PolicyPublishErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type PolicyPublishError = PolicyPublishErrors[keyof PolicyPublishErrors]
+
+export type PolicyPublishResponses = {
+  /**
+   * Policy bundle publish result
+   */
+  200:
+    | {
+        kind: "PUBLISHED"
+        record: {
+          sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          policyId: string
+          policyVersion: string
+          digest: string
+          previousDigest?: string
+          signedEnvelopeJson: string
+          activationTime: string
+          compatibleFrom: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          compatibleTo: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          status: "STAGED" | "ACTIVE" | "SUPERSEDED" | "ROLLED_BACK" | "FAILED"
+          lastKnownGood: boolean
+          publishedAt: string
+          supersedes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          rollbackOf?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type PolicyPublishResponse = PolicyPublishResponses[keyof PolicyPublishResponses]
+
+export type PolicyCurrentData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/policy/current"
+}
+
+export type PolicyCurrentErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type PolicyCurrentError = PolicyCurrentErrors[keyof PolicyCurrentErrors]
+
+export type PolicyCurrentResponses = {
+  /**
+   * Latest active policy bundle (or null)
+   */
+  200: {
+    sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    policyId: string
+    policyVersion: string
+    digest: string
+    previousDigest?: string
+    signedEnvelopeJson: string
+    activationTime: string
+    compatibleFrom: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    compatibleTo: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    status: "STAGED" | "ACTIVE" | "SUPERSEDED" | "ROLLED_BACK" | "FAILED"
+    lastKnownGood: boolean
+    publishedAt: string
+    supersedes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    rollbackOf?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type PolicyCurrentResponse = PolicyCurrentResponses[keyof PolicyCurrentResponses]
+
+export type PolicyRollbackData = {
+  body: {
+    toSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/policy/rollback"
+}
+
+export type PolicyRollbackErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type PolicyRollbackError = PolicyRollbackErrors[keyof PolicyRollbackErrors]
+
+export type PolicyRollbackResponses = {
+  /**
+   * Policy rollback result
+   */
+  200:
+    | {
+        kind: "ROLLED_BACK"
+        record: {
+          sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          policyId: string
+          policyVersion: string
+          digest: string
+          previousDigest?: string
+          signedEnvelopeJson: string
+          activationTime: string
+          compatibleFrom: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          compatibleTo: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          status: "STAGED" | "ACTIVE" | "SUPERSEDED" | "ROLLED_BACK" | "FAILED"
+          lastKnownGood: boolean
+          publishedAt: string
+          supersedes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          rollbackOf?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type PolicyRollbackResponse = PolicyRollbackResponses[keyof PolicyRollbackResponses]
+
+export type SyncNodePolicyData = {
+  body: {
+    context: {
+      protocolVersion: 1
+      requestId: string
+      clientNonce: string
+      trustDomain: string
+      nodeId: string
+      nodeCertificateFingerprint: string
+      nodeKeyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      acceptedPolicySequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      acceptedPolicyDigest?: string
+      acceptedRevocationSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      acceptedRevocationDigest?: string
+      acceptedEmergencyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      issuedAt: string
+      expiresAt: string
+    }
+    signatureAlgorithm: "Ed25519"
+    signature: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/sync/policy"
+}
+
+export type SyncNodePolicyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * SyncNodeUnauthorized | Unauthorized
+   */
+  401: SyncNodeUnauthorized
+}
+
+export type SyncNodePolicyError = SyncNodePolicyErrors[keyof SyncNodePolicyErrors]
+
+export type SyncNodePolicyResponses = {
+  /**
+   * Signed policy sync response
+   */
+  200: {
+    kind: "RESPONSE"
+    envelope: {
+      context: {
+        protocolVersion: 1
+        requestId: string
+        clientNonce: string
+        serverNonce: string
+        nodeId: string
+        serverIdentity: string
+        responseKind:
+          | "NO_CHANGE"
+          | "POLICY_SNAPSHOT"
+          | "POLICY_DELTA"
+          | "REVOCATION_SNAPSHOT"
+          | "REVOCATION_DELTA"
+          | "FULL_SNAPSHOT_REQUIRED"
+          | "QUARANTINE"
+          | "RETRY_LATER"
+        policySequence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        policyDigest?: string
+        revocationSequence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        revocationDigest?: string
+        emergencyEpoch?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        envelope?: {
+          [key: string]: unknown
+        }
+        delta?: {
+          [key: string]: unknown
+        }
+        envelopes?: Array<{
+          [key: string]: unknown
+        }>
+        compatibleFrom?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        compatibleTo?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        issuedAt: string
+        expiresAt: string
+      }
+      signatureAlgorithm: "Ed25519"
+      signature: string
+    }
+  }
+}
+
+export type SyncNodePolicyResponse = SyncNodePolicyResponses[keyof SyncNodePolicyResponses]
+
+export type SyncNodeRevocationData = {
+  body: {
+    context: {
+      protocolVersion: 1
+      requestId: string
+      clientNonce: string
+      trustDomain: string
+      nodeId: string
+      nodeCertificateFingerprint: string
+      nodeKeyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      acceptedPolicySequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      acceptedPolicyDigest?: string
+      acceptedRevocationSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      acceptedRevocationDigest?: string
+      acceptedEmergencyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      issuedAt: string
+      expiresAt: string
+    }
+    signatureAlgorithm: "Ed25519"
+    signature: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/sync/revocation"
+}
+
+export type SyncNodeRevocationErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * SyncNodeUnauthorized | Unauthorized
+   */
+  401: SyncNodeUnauthorized
+}
+
+export type SyncNodeRevocationError = SyncNodeRevocationErrors[keyof SyncNodeRevocationErrors]
+
+export type SyncNodeRevocationResponses = {
+  /**
+   * Signed revocation sync response
+   */
+  200: {
+    kind: "RESPONSE"
+    envelope: {
+      context: {
+        protocolVersion: 1
+        requestId: string
+        clientNonce: string
+        serverNonce: string
+        nodeId: string
+        serverIdentity: string
+        responseKind:
+          | "NO_CHANGE"
+          | "POLICY_SNAPSHOT"
+          | "POLICY_DELTA"
+          | "REVOCATION_SNAPSHOT"
+          | "REVOCATION_DELTA"
+          | "FULL_SNAPSHOT_REQUIRED"
+          | "QUARANTINE"
+          | "RETRY_LATER"
+        policySequence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        policyDigest?: string
+        revocationSequence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        revocationDigest?: string
+        emergencyEpoch?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        envelope?: {
+          [key: string]: unknown
+        }
+        delta?: {
+          [key: string]: unknown
+        }
+        envelopes?: Array<{
+          [key: string]: unknown
+        }>
+        compatibleFrom?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        compatibleTo?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        issuedAt: string
+        expiresAt: string
+      }
+      signatureAlgorithm: "Ed25519"
+      signature: string
+    }
+  }
+}
+
+export type SyncNodeRevocationResponse = SyncNodeRevocationResponses[keyof SyncNodeRevocationResponses]
+
+export type SyncNodeRevocationStreamData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/sync/revocations/stream"
+}
+
+export type SyncNodeRevocationStreamErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type SyncNodeRevocationStreamError = SyncNodeRevocationStreamErrors[keyof SyncNodeRevocationStreamErrors]
+
+export type SyncNodeRevocationStreamResponses = {
+  /**
+   * Success
+   */
+  200: string
+}
+
+export type SyncNodeRevocationStreamResponse =
+  SyncNodeRevocationStreamResponses[keyof SyncNodeRevocationStreamResponses]
+
 export type ExperimentalProjectCopyGenerateNameData = {
   body?: {
     context?: string
@@ -7713,6 +12270,539 @@ export type QuestionRejectResponses = {
 }
 
 export type QuestionRejectResponse = QuestionRejectResponses[keyof QuestionRejectResponses]
+
+export type RevocationsPublishData = {
+  body: {
+    statement: {
+      schemaVersion: 1
+      issuerId: string
+      issuerEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      subjectType: "GRANT" | "NODE" | "ISSUER_KEY" | "POLICY"
+      subjectId: string
+      reason: string
+      effectiveAt: string
+      issuedAt: string
+      signatureAlgorithm: "Ed25519"
+      signature: string
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/revocations"
+}
+
+export type RevocationsPublishErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type RevocationsPublishError = RevocationsPublishErrors[keyof RevocationsPublishErrors]
+
+export type RevocationsPublishResponses = {
+  /**
+   * Revocation publish result
+   */
+  200:
+    | {
+        kind: "PUBLISHED"
+        record: {
+          sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          issuerId: string
+          issuerEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          subjectType: string
+          subjectId: string
+          reason: string
+          effectiveAt: string
+          issuedAt: string
+          signedStatementJson: string
+          digest: string
+          publishedAt: string
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type RevocationsPublishResponse = RevocationsPublishResponses[keyof RevocationsPublishResponses]
+
+export type RevocationsCurrentData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/revocations/current"
+}
+
+export type RevocationsCurrentErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type RevocationsCurrentError = RevocationsCurrentErrors[keyof RevocationsCurrentErrors]
+
+export type RevocationsCurrentResponses = {
+  /**
+   * Latest revocation statement (or null)
+   */
+  200: {
+    sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    issuerId: string
+    issuerEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    subjectType: string
+    subjectId: string
+    reason: string
+    effectiveAt: string
+    issuedAt: string
+    signedStatementJson: string
+    digest: string
+    publishedAt: string
+  }
+}
+
+export type RevocationsCurrentResponse = RevocationsCurrentResponses[keyof RevocationsCurrentResponses]
+
+export type RevocationsEmergencyData = {
+  body: {
+    nodeId: string
+    reason: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/revocations/emergency"
+}
+
+export type RevocationsEmergencyErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type RevocationsEmergencyError = RevocationsEmergencyErrors[keyof RevocationsEmergencyErrors]
+
+export type RevocationsEmergencyResponses = {
+  /**
+   * Emergency node denial result
+   */
+  200:
+    | {
+        kind: "PUBLISHED"
+        record: {
+          sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          issuerId: string
+          issuerEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          subjectType: string
+          subjectId: string
+          reason: string
+          effectiveAt: string
+          issuedAt: string
+          signedStatementJson: string
+          digest: string
+          publishedAt: string
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type RevocationsEmergencyResponse = RevocationsEmergencyResponses[keyof RevocationsEmergencyResponses]
+
+export type RuntimeApprovalsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/approvals"
+}
+
+export type RuntimeApprovalsListErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RuntimeApprovalsListError = RuntimeApprovalsListErrors[keyof RuntimeApprovalsListErrors]
+
+export type RuntimeApprovalsListResponses = {
+  /**
+   * Approval records in this workspace
+   */
+  200: Array<ApprovalRecord>
+}
+
+export type RuntimeApprovalsListResponse = RuntimeApprovalsListResponses[keyof RuntimeApprovalsListResponses]
+
+export type RuntimeApprovalsGetData = {
+  body?: never
+  path: {
+    approvalID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/approvals/{approvalID}"
+}
+
+export type RuntimeApprovalsGetErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type RuntimeApprovalsGetError = RuntimeApprovalsGetErrors[keyof RuntimeApprovalsGetErrors]
+
+export type RuntimeApprovalsGetResponses = {
+  /**
+   * Approval record
+   */
+  200: ApprovalRecord
+}
+
+export type RuntimeApprovalsGetResponse = RuntimeApprovalsGetResponses[keyof RuntimeApprovalsGetResponses]
+
+export type RuntimeApprovalsApproveData = {
+  body?: {
+    expectedVersion: number
+    expectedRequestHash: string
+    expectedContractRevision: number
+  }
+  path: {
+    approvalID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/approvals/{approvalID}/approve"
+}
+
+export type RuntimeApprovalsApproveErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RuntimeApprovalsApproveError = RuntimeApprovalsApproveErrors[keyof RuntimeApprovalsApproveErrors]
+
+export type RuntimeApprovalsApproveResponses = {
+  /**
+   * Approval command result
+   */
+  200:
+    | {
+        success: true
+        approval: ApprovalRecord
+      }
+    | {
+        success: false
+        reason: string
+        stale?: boolean
+      }
+}
+
+export type RuntimeApprovalsApproveResponse = RuntimeApprovalsApproveResponses[keyof RuntimeApprovalsApproveResponses]
+
+export type RuntimeApprovalsDenyData = {
+  body?: {
+    expectedVersion: number
+    expectedRequestHash: string
+    expectedContractRevision: number
+  }
+  path: {
+    approvalID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/approvals/{approvalID}/deny"
+}
+
+export type RuntimeApprovalsDenyErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RuntimeApprovalsDenyError = RuntimeApprovalsDenyErrors[keyof RuntimeApprovalsDenyErrors]
+
+export type RuntimeApprovalsDenyResponses = {
+  /**
+   * Approval command result
+   */
+  200:
+    | {
+        success: true
+        approval: ApprovalRecord
+      }
+    | {
+        success: false
+        reason: string
+        stale?: boolean
+      }
+}
+
+export type RuntimeApprovalsDenyResponse = RuntimeApprovalsDenyResponses[keyof RuntimeApprovalsDenyResponses]
+
+export type RuntimeApprovalsRevokeData = {
+  body?: {
+    expectedVersion: number
+    expectedRequestHash: string
+    expectedContractRevision: number
+  }
+  path: {
+    approvalID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/approvals/{approvalID}/revoke"
+}
+
+export type RuntimeApprovalsRevokeErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RuntimeApprovalsRevokeError = RuntimeApprovalsRevokeErrors[keyof RuntimeApprovalsRevokeErrors]
+
+export type RuntimeApprovalsRevokeResponses = {
+  /**
+   * Approval command result
+   */
+  200:
+    | {
+        success: true
+        approval: ApprovalRecord
+      }
+    | {
+        success: false
+        reason: string
+        stale?: boolean
+      }
+}
+
+export type RuntimeApprovalsRevokeResponse = RuntimeApprovalsRevokeResponses[keyof RuntimeApprovalsRevokeResponses]
+
+export type RuntimeSessionsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/sessions"
+}
+
+export type RuntimeSessionsListErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RuntimeSessionsListError = RuntimeSessionsListErrors[keyof RuntimeSessionsListErrors]
+
+export type RuntimeSessionsListResponses = {
+  /**
+   * Sessions in this workspace
+   */
+  200: Array<Session>
+}
+
+export type RuntimeSessionsListResponse = RuntimeSessionsListResponses[keyof RuntimeSessionsListResponses]
+
+export type RuntimeSessionsGetData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/sessions/{sessionID}"
+}
+
+export type RuntimeSessionsGetErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type RuntimeSessionsGetError = RuntimeSessionsGetErrors[keyof RuntimeSessionsGetErrors]
+
+export type RuntimeSessionsGetResponses = {
+  /**
+   * Session
+   */
+  200: Session
+}
+
+export type RuntimeSessionsGetResponse = RuntimeSessionsGetResponses[keyof RuntimeSessionsGetResponses]
+
+export type RuntimeProofsGetData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/proofs/{sessionID}"
+}
+
+export type RuntimeProofsGetErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type RuntimeProofsGetError = RuntimeProofsGetErrors[keyof RuntimeProofsGetErrors]
+
+export type RuntimeProofsGetResponses = {
+  /**
+   * RunProof snapshot
+   */
+  200: {
+    proofHash: string
+    runRoot: string
+    derivedAt: string
+    eventCount: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    lastSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    proofLevel: "P0" | "P1" | "P2" | "P3"
+    traceHealth: "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+    integrityStatus: "VALID" | "INVALID" | "UNVERIFIED"
+    lifecycleStatus: "COMPLETE" | "INCOMPLETE" | "CRASHED" | "CANCELLED"
+    completionMethod?: string
+    assuranceProfile: {
+      trace: "NONE" | "RECORDED"
+      integrity: "UNVERIFIED" | "VALID" | "INVALID"
+      verification: "UNVERIFIED" | "VERIFIED"
+      reproducibility: "NONE" | "PARTIAL" | "FULL"
+      reproducibilityDetail?: string
+    }
+    contractStatus?: string
+    claimsByStatus: {
+      [key: string]: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    }
+    obligationsByStatus: {
+      [key: string]: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    }
+    gaps: Array<string>
+    authorizationProfile: {
+      policyVersions: Array<string>
+      requests: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      allowed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      denied: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      approvalsRequired: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      staleDecisions: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      executed: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      executionFailures: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      unauthorizedExecutions: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      capabilityViolations: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      authorizationTraceHealth: "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+      orphanExecutions: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      unmatchedAllows: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      unmatchedRequests: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      intentEnforcementMode: "REQUIRED" | "LEGACY_COMPAT" | "UNAVAILABLE"
+      intentBindingsCreated: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      intentTraceHealth: "COMPLETE" | "DEGRADED" | "UNAVAILABLE"
+    }
+  }
+}
+
+export type RuntimeProofsGetResponse = RuntimeProofsGetResponses[keyof RuntimeProofsGetResponses]
+
+export type RuntimeDesktopHeartbeatData = {
+  body?: {
+    subscriberId: string
+    deploymentMode?: "LOCAL" | "HYBRID" | "ENTERPRISE"
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/desktop/heartbeat"
+}
+
+export type RuntimeDesktopHeartbeatErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type RuntimeDesktopHeartbeatError = RuntimeDesktopHeartbeatErrors[keyof RuntimeDesktopHeartbeatErrors]
+
+export type RuntimeDesktopHeartbeatResponses = {
+  /**
+   * Desktop subscriber heartbeat
+   */
+  200: {
+    subscriberId: string
+    workspaceId: string
+    expiresAt: string
+    ttlMs: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+}
+
+export type RuntimeDesktopHeartbeatResponse = RuntimeDesktopHeartbeatResponses[keyof RuntimeDesktopHeartbeatResponses]
 
 export type PermissionListData = {
   body?: never
