@@ -1,6 +1,28 @@
 # Arcana documentation map
 
-Arcana documentation is organized by authority and lifecycle. A document must not silently compete with another document that answers the same question.
+Arcana documentation is organized by authority and lifecycle. A document must
+not silently compete with another document that answers the same question.
+
+## Layout
+
+```text
+docs/
+├── README.md                      ← this index
+├── PRODUCT.md                     product definition
+├── STATUS.md                      current checkpoint truth
+├── ROADMAP.md                     what to work on now/next/later
+├── TASKS.md                       work-item register
+├── BLOCKERS.md                    blocker register
+├── FREEZE-RELEASE.md              release gates
+├── REPOSITORY-STRUCTURE.md        repo map
+├── COMPLETION-REPORT.md           campaign checkpoint report (evidence)
+├── design/                        architecture & design docs
+│   ├── README.md                  ← section index
+│   └── contract-first-architecture.md
+├── releases/                      release-boundary records (evidence)
+├── reviews/                       code/contract review records (evidence)
+└── archive/                       superseded & scratch docs (see archive/README.md)
+```
 
 ## Current authorities
 
@@ -16,7 +38,10 @@ Arcana documentation is organized by authority and lifecycle. A document must no
 
 ## Evidence, not authority
 
-Milestone reports, sign-offs, test totals, security evaluations, and historical phase documents are evidence for a particular commit or tag. They do not override current product scope, current status, the active roadmap, or machine-readable contracts.
+Milestone reports, sign-offs, test totals, security evaluations, and
+historical phase documents are evidence for a particular commit or tag. They
+do not override current product scope, current status, the active roadmap, or
+machine-readable contracts.
 
 When a historical document is retained:
 
@@ -49,27 +74,10 @@ Use one of these values in front matter for living or formal documents:
 4. Completed work moves from active planning into evidence or history instead of remaining duplicated across several living documents.
 5. Generated, vendored, agent-cache, and mirrored documentation must not become a second editable authority.
 
-## Target layout
+## Archive policy
 
-```text
-docs/
-├── README.md
-├── PRODUCT.md
-├── STATUS.md
-├── ROADMAP.md
-├── RELEASE.md
-├── SECURITY.md
-├── architecture/
-│   ├── current.md
-│   └── decisions/
-├── evidence/
-│   ├── milestones/
-│   ├── signoffs/
-│   └── test-runs/
-└── archive/
-    ├── phases/
-    ├── superseded-designs/
-    └── historical-reports/
-```
-
-The migration to this layout should happen incrementally through reviewable pull requests. Do not bulk-delete evidence during the first pass.
+Documents that are stale, superseded, or were accidental scratch (raw session
+dumps, dated change-notes for already-committed work, one-off handoffs, stray
+files) live in [`archive/`](archive/README.md). They are retained for history
+and provenance, never edited as living plans. When in doubt, archive rather
+than delete.
