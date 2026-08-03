@@ -1,0 +1,336 @@
+bun test v1.3.14 (0d9b296a)
+[06:04:34.942] WARN (#475): oauth-bind: network error {
+  base: "https://api-arcana.otnelhq.com",
+  error: "An error occurred in Effect.tryPromise",
+}
+[06:04:34.943] WARN (#475): oauth-bind: network error {
+  base: "https://arcana-license-server.lejzerv.workers.dev",
+  error: "An error occurred in Effect.tryPromise",
+}
+[06:04:35.730] ERROR (#1586): failed to abort ACP backing session {
+  error: {
+    safeMessage: "OpenCode service failure",
+    service: "session",
+    _tag: "ACPServiceFailureError",
+  },
+  sessionID: "ses_new",
+}
+[06:04:35.731] ERROR (#1587): failed to abort ACP backing session {
+  error: {
+    safeMessage: "OpenCode service failure",
+    service: "session",
+    _tag: "ACPServiceFailureError",
+  },
+  sessionID: "ses_new",
+}
+[perf] intent binding lookup request p50=0.11ms p95=0.15ms max=0.25ms
+[perf] intent binding lookup session p50=2.19ms p95=8.57ms max=9.94ms
+[perf] governance listGovernance(500) p50=0.39ms p95=0.69ms max=7.34ms
+[06:05:18.163] INFO (#532771): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-jyd4uuq3zyg\\config.json",
+}
+[06:05:18.163] INFO (#532772): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-jyd4uuq3zyg\\opencode.json",
+}
+[06:05:18.164] INFO (#532773): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-jyd4uuq3zyg\\opencode.jsonc",
+}
+[06:05:18.164] INFO (#532774): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-jyd4uuq3zyg\\arcana.json",
+}
+[06:05:18.164] INFO (#532775): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-jyd4uuq3zyg\\arcana.jsonc",
+}
+[06:05:18.177] INFO (#532769): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-ox8lp84a8zq\\opencode.json",
+}
+[06:05:18.591] INFO (#532875): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-fh78ccaebua\\config.json",
+}
+[06:05:18.592] INFO (#532876): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-fh78ccaebua\\opencode.json",
+}
+[06:05:18.592] INFO (#532877): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-fh78ccaebua\\opencode.jsonc",
+}
+[06:05:18.592] INFO (#532878): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-fh78ccaebua\\arcana.json",
+}
+[06:05:18.592] INFO (#532879): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-fh78ccaebua\\arcana.jsonc",
+}
+[06:05:18.610] INFO (#532873): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-9ujg9a7ltd\\opencode.json",
+}
+[06:05:21.456] INFO (#537888): creating instance {
+  directory: "C:\\Windows\\Temp\\opencode-test-hm2xmwnu9jc",
+}
+[06:05:21.456] INFO (#537888): fromDirectory {
+  directory: "C:\\Windows\\Temp\\opencode-test-hm2xmwnu9jc",
+}
+[06:05:21.602] INFO (#537902): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\config.json",
+}
+[06:05:21.602] INFO (#537903): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\opencode.json",
+}
+[06:05:21.603] INFO (#537904): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\opencode.jsonc",
+}
+[06:05:21.603] INFO (#537905): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\arcana.json",
+}
+[06:05:21.604] INFO (#537906): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\arcana.jsonc",
+}
+[06:05:21.614] INFO (#537907): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\opencode.json",
+}
+[06:05:21.614] INFO (#537908): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\opencode.jsonc",
+}
+[06:05:21.614] INFO (#537909): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\arcana.json",
+}
+[06:05:21.615] INFO (#537910): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\arcana.jsonc",
+}
+[06:05:21.649] INFO (#537935): disposing all instances
+[06:05:21.649] INFO (#537935): disposing instance {
+  directory: "C:\\Windows\\Temp\\opencode-test-hm2xmwnu9jc",
+}
+[06:05:38.805] INFO (#588354): disposing all instances
+[perf] RunProof derive(500 events) p50=3.05ms p95=11.03ms max=14.50ms
+[06:08:07.483] INFO (#693560): creating instance {
+  directory: "C:\\Windows\\Temp\\transform-test-GI7grL",
+}
+[06:08:07.484] INFO (#693560): fromDirectory {
+  directory: "C:\\Windows\\Temp\\transform-test-GI7grL",
+}
+[06:08:07.487] INFO (#693538): disposing all instances
+[06:08:07.487] INFO (#693538): disposing instance {
+  directory: "C:\\Windows\\Temp\\transform-test-GI7grL",
+}
+[06:08:17.889] INFO (#706078): [sse] subscriber closed stream=stm_evt_fc63cbfde001zMk67MQRJDaGRf offered=0 delivered=0 estimatedDropped=0 head=0
+[06:08:17.901] INFO (#706111): global event disconnected
+[06:09:17.528] INFO (#1973344): [sse] subscriber closed stream=stm_evt_fc63da8d7001xgZe3kygZTiDIa offered=0 delivered=0 estimatedDropped=0 head=0
+[06:09:29.180] WARN (#2326865): mDNS enabled but hostname is loopback; skipping mDNS publish
+[06:11:52.602] INFO (#4983265): stream {
+  providerID: "openai",
+  modelID: "gpt-5.2",
+  "session.id": "session-test-native-flag-off",
+  small: "false",
+  agent: "test",
+  mode: "primary",
+}
+[06:11:52.603] INFO (#4983312): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\config.json",
+}
+[06:11:52.604] INFO (#4983313): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\opencode.json",
+}
+[06:11:52.604] INFO (#4983314): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\opencode.jsonc",
+}
+[06:11:52.604] INFO (#4983315): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\arcana.json",
+}
+[06:11:52.604] INFO (#4983316): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\arcana.jsonc",
+}
+[06:11:52.605] INFO (#4983308): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-cyyhfb256n\\opencode.json",
+}
+[06:11:52.618] INFO (#4983317): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\opencode.json",
+}
+[06:11:52.619] INFO (#4983318): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\opencode.jsonc",
+}
+[06:11:52.619] INFO (#4983319): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\arcana.json",
+}
+[06:11:52.619] INFO (#4983320): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\arcana.jsonc",
+}
+[06:11:52.718] INFO (#4983265): llm runtime selected {
+  "llm.runtime": "ai-sdk",
+  "llm.provider": "openai",
+  "llm.model": "gpt-5.2",
+}
+[06:11:52.896] INFO (#4983691): stream {
+  providerID: "openai",
+  modelID: "gpt-5.2",
+  "session.id": "session-test-native",
+  small: "false",
+  agent: "test",
+  mode: "primary",
+}
+[06:11:52.897] INFO (#4983739): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\config.json",
+}
+[06:11:52.898] INFO (#4983740): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\opencode.json",
+}
+[06:11:52.898] INFO (#4983741): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\opencode.jsonc",
+}
+[06:11:52.898] INFO (#4983742): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\arcana.json",
+}
+[06:11:52.898] INFO (#4983743): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\arcana.jsonc",
+}
+[06:11:52.900] INFO (#4983735): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-dn1rsoiqv05\\opencode.json",
+}
+[06:11:52.904] INFO (#4983744): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\opencode.json",
+}
+[06:11:52.905] INFO (#4983745): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\opencode.jsonc",
+}
+[06:11:52.905] INFO (#4983746): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\arcana.json",
+}
+[06:11:52.905] INFO (#4983747): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\arcana.jsonc",
+}
+[06:11:53.076] INFO (#4983691): llm runtime selected {
+  "llm.runtime": "native",
+  "llm.provider": "openai",
+  "llm.model": "gpt-5.2",
+}
+[06:11:53.260] INFO (#4984122): stream {
+  providerID: "openai",
+  modelID: "gpt-5.2",
+  "session.id": "session-test-native-injected-tool",
+  small: "false",
+  agent: "test",
+  mode: "primary",
+}
+[06:11:53.261] INFO (#4984169): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\config.json",
+}
+[06:11:53.261] INFO (#4984170): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\opencode.json",
+}
+[06:11:53.261] INFO (#4984171): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\opencode.jsonc",
+}
+[06:11:53.261] INFO (#4984172): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\arcana.json",
+}
+[06:11:53.261] INFO (#4984173): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\arcana.jsonc",
+}
+[06:11:53.263] INFO (#4984165): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-s3vzlylj8sk\\opencode.json",
+}
+[06:11:53.275] INFO (#4984174): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\opencode.json",
+}
+[06:11:53.275] INFO (#4984175): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\opencode.jsonc",
+}
+[06:11:53.276] INFO (#4984176): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\arcana.json",
+}
+[06:11:53.276] INFO (#4984177): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\arcana.jsonc",
+}
+[06:11:53.374] INFO (#4984122): llm runtime selected {
+  "llm.runtime": "native",
+  "llm.provider": "openai",
+  "llm.model": "gpt-5.2",
+}
+[06:11:53.569] INFO (#4984554): stream {
+  providerID: "openai",
+  modelID: "gpt-5.2",
+  "session.id": "session-test-native-tool",
+  small: "false",
+  agent: "test",
+  mode: "primary",
+}
+[06:11:53.569] INFO (#4984602): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\config.json",
+}
+[06:11:53.570] INFO (#4984603): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\opencode.json",
+}
+[06:11:53.570] INFO (#4984604): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\opencode.jsonc",
+}
+[06:11:53.570] INFO (#4984605): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\arcana.json",
+}
+[06:11:53.570] INFO (#4984606): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\config\\arcana\\arcana.jsonc",
+}
+[06:11:53.583] INFO (#4984598): loading {
+  path: "C:\\Windows\\Temp\\opencode-test-xdqyb5syh3\\opencode.json",
+}
+[06:11:53.595] INFO (#4984607): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\opencode.json",
+}
+[06:11:53.596] INFO (#4984608): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\opencode.jsonc",
+}
+[06:11:53.596] INFO (#4984609): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\arcana.json",
+}
+[06:11:53.596] INFO (#4984610): loading {
+  path: "C:\\WINDOWS\\TEMP\\opencode-test-data-27204\\managed\\arcana.jsonc",
+}
+[06:11:53.705] INFO (#4984554): llm runtime selected {
+  "llm.runtime": "native",
+  "llm.provider": "openai",
+  "llm.model": "gpt-5.2",
+}
+failed to load attention sound {
+  file: "/tmp/bad-question.mp3",
+  error: 53 |   rejectPaths = new Set<string>()
+54 | 
+55 |   async loadSoundFile(path: string) {
+56 |     this.loadCalls += 1
+57 |     this.loadPaths.push(path)
+58 |     if (this.rejectLoad || this.rejectPaths.has(path)) throw new Error("decode failed")
+                                                                      ^
+error: decode failed
+      at loadSoundFile (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:58:66)
+      at playSound (L:\PROJECTS\arcana\packages\tui\src\attention.ts:157:37)
+      at notify (L:\PROJECTS\arcana\packages\tui\src\attention.ts:203:73)
+      at <anonymous> (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:408:28)
+,
+}
+failed to trigger attention notification {
+  error: 34 |   listenerCount(event: FocusEvent) {
+35 |     return this.listeners[event].size
+36 |   }
+37 | 
+38 |   triggerNotification(message: string, title?: string) {
+39 |     if (this.notificationThrows) throw new Error("notification failed")
+                                                ^
+error: notification failed
+      at triggerNotification (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:39:44)
+      at <anonymous> (L:\PROJECTS\arcana\packages\tui\src\attention.ts:188:39)
+      at notify (L:\PROJECTS\arcana\packages\tui\src\attention.ts:194:24)
+      at <anonymous> (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:441:28)
+,
+}
+failed to load attention sound {
+  file: "L:\\PROJECTS\\arcana\\packages\\tui\\audio\\bip-bop-01.mp3",
+  error: 53 |   rejectPaths = new Set<string>()
+54 | 
+55 |   async loadSoundFile(path: string) {
+56 |     this.loadCalls += 1
+57 |     this.loadPaths.push(path)
+58 |     if (this.rejectLoad || this.rejectPaths.has(path)) throw new Error("decode failed")
+                                                                      ^
+error: decode failed
+      at loadSoundFile (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:58:66)
+      at playSound (L:\PROJECTS\arcana\packages\tui\src\attention.ts:157:37)
+      at notify (L:\PROJECTS\arcana\packages\tui\src\attention.ts:203:73)
+      at <anonymous> (L:\PROJECTS\arcana\packages\engine\test\cli\cmd\tui\attention.test.ts:441:28)
+,
+}
