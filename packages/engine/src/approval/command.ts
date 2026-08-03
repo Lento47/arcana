@@ -38,6 +38,9 @@ export type ApprovalCommandBody = {
   expectedContractRevision: number
 }
 
+/** The authenticated operator surface submitting the decision. */
+export type ApprovalDecisionSurface = "LOCAL_TUI" | "DESKTOP" | "CENTRAL"
+
 // ─── Store access ─────────────────────────────────────────────────────
 
 const approvalStores = new Map<string, SqliteApprovalStore>()
@@ -85,6 +88,12 @@ export type SubmitApprovalCommandInput = {
   approvalId: string
   command: ApprovalCommandBody
   /**
+   * Surface that authenticated and submitted this command. Routing decisions
+   * must bind to the caller surface; Desktop liveness alone is never proof
+   * that the current command came from Desktop.
+   */
+  surface?: ApprovalDecisionSurface
+  /**
    * Workspace cwd used to derive the approvals db path. The HTTP layer
    * derives it from the session record; falls back to process.cwd().
    */
@@ -119,11 +128,11 @@ export type SubmitApprovalCommandInput = {
  * created. It NEVER changes the PDP result; it only restricts which surface
  * may submit the approve/deny/revoke command:
  *
- *   LOCAL_TUI          -> local operators may decide.
- *   DESKTOP_PREFERRED  -> Desktop when online; TUI only when the policy
- *                         explicitly permits local fallback.
- *   DESKTOP_REQUIRED   -> Desktop only; no silent local fallback.
- *   CENTRAL_REQUIRED   -> no local/desktop decision; Arcana Control owns it.
+ *   LOCAL_TUI          -> local TUI only.
+ *   DESKTOP_PREFERRED  -> Desktop when online; TUI only when Desktop is
+ *                         offline and policy explicitly permits fallback.
+ *   DESKTOP_REQUIRED   -> authenticated Desktop surface only while online.
+ *   CENTRAL_REQUIRED   -> authenticated Arcana Control surface only.
  *
  * Approvals created before Phase D routing (route undefined) remain
  * LOCAL_TUI-equivalent, preserving existing behavior.
@@ -131,24 +140,48 @@ export type SubmitApprovalCommandInput = {
 export function routingGate(
   record: ApprovalRecord,
   workspaceKey: string,
+  surface: ApprovalDecisionSurface,
   online: (workspaceKey: string) => boolean,
 ): { allowed: boolean; reason?: string } {
-  const route = record.route
-  if (!route || route === "LOCAL_TUI") return { allowed: true }
+  const route = record.route ?? "LOCAL_TUI"
 
-  const desktopIsOnline = online(workspaceKey)
   switch (route) {
+    case "LOCAL_TUI":
+      return surface === "LOCAL_TUI"
+        ? { allowed: true }
+        : { allowed: false, reason: "approval requires the local TUI" }
+
     case "CENTRAL_REQUIRED":
-      return { allowed: false, reason: "approval requires central authority" }
-    case "DESKTOP_REQUIRED":
-      return desktopIsOnline
+      return surface === "CENTRAL"
+        ? { allowed: true }
+        : { allowed: false, reason: "approval requires central authority" }
+
+    case "DESKTOP_REQUIRED": {
+      if (surface !== "DESKTOP") {
+        return { allowed: false, reason: "approval requires the desktop surface" }
+      }
+      return online(workspaceKey)
         ? { allowed: true }
         : { allowed: false, reason: "desktop required and offline" }
-    case "DESKTOP_PREFERRED":
-      if (desktopIsOnline) return { allowed: false, reason: "approval routed to desktop" }
-      return record.localFallbackAllowed === false
-        ? { allowed: false, reason: "desktop fallback forbidden by policy" }
-        : { allowed: true }
+    }
+
+    case "DESKTOP_PREFERRED": {
+      const desktopIsOnline = online(workspaceKey)
+      if (surface === "DESKTOP") {
+        return desktopIsOnline
+          ? { allowed: true }
+          : { allowed: false, reason: "desktop surface is offline" }
+      }
+      if (surface === "LOCAL_TUI") {
+        if (desktopIsOnline) {
+          return { allowed: false, reason: "approval routed to desktop" }
+        }
+        return record.localFallbackAllowed === false
+          ? { allowed: false, reason: "desktop fallback forbidden by policy" }
+          : { allowed: true }
+      }
+      return { allowed: false, reason: "approval is not routed to central authority" }
+    }
   }
 }
 
@@ -157,17 +190,18 @@ export function submitApprovalCommand(input: SubmitApprovalCommandInput): Operat
   const workspaceCwd = resolveApprovalWorkspaceCwd(input.workspaceCwd)
   const store = input.store ?? approvalStoreForWorkspace(workspaceCwd)
   const workspaceId = input.workspaceId ?? sessionId
+  const surface = input.surface ?? "LOCAL_TUI"
 
   const record = store.loadApproval(approvalId)
   if (!record) {
     return { success: false, reason: "approval not found" }
   }
 
-  // Enforce the routing gate on the shared runtime service so every surface
-  // (session-scoped TUI/CLI endpoint and the workspace-scoped runtime API)
-  // is covered by the same policy.
+  // Enforce the route against the authenticated caller surface. A live
+  // Desktop heartbeat is advisory availability, not evidence that this
+  // command originated from Desktop.
   const online = input.desktopOnline ?? ((workspace: string) => desktopOnline(workspace))
-  const gate = routingGate(record, workspaceCwd, online)
+  const gate = routingGate(record, workspaceCwd, surface, online)
   if (!gate.allowed) {
     return { success: false, reason: gate.reason ?? "approval not routable to this surface" }
   }
