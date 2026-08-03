@@ -5,6 +5,7 @@ import { InstanceContextMiddleware } from "../middleware/instance-context"
 import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
 import { described } from "./metadata"
 import { PolicyBundleRecordSchema, SignedPolicyEnvelopeSchema } from "./policy"
+import { ForbiddenError } from "../errors"
 
 const root = "/api/enterprise"
 
@@ -673,6 +674,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: Schema.Struct({ tenantId: Schema.String, name: Schema.String }),
         success: described(OrganizationSchema, "Created organization"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.createOrganization",
@@ -687,6 +689,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           role: Schema.Literals(["OWNER", "ADMIN", "OPERATOR", "AUDITOR", "MEMBER"]),
         }),
         success: described(Schema.Boolean, "Role assigned"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.assignRole",
@@ -714,6 +717,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           expiresAt: Schema.String,
         }),
         success: described(Schema.Boolean, "Approval queued (F5)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.createApproval",
@@ -724,11 +728,11 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         params: { tenantId: Schema.String, approvalId: Schema.String },
         query: WorkspaceRoutingQuery,
         payload: Schema.Struct({
-          actorUserId: Schema.String,
           decision: Schema.Literals(["APPROVE", "DENY"]),
           inspectedRequestJson: Schema.optional(Schema.String),
         }),
         success: described(ApprovalDecisionResponseSchema, "Approval decision result"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.decideApproval",
@@ -750,6 +754,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: FleetRegistrationSchema,
         success: described(OkResponseSchema, "Fleet node registered (F4)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.registerNode",
@@ -761,6 +766,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: FleetHeartbeatSchema,
         success: described(OkResponseSchema, "Fleet heartbeat recorded (F4)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.heartbeat",
@@ -773,11 +779,10 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         payload: Schema.Struct({
           sourceSequence: Schema.Number,
           targetEnvironment: Schema.String,
-          requestedBy: Schema.String,
-          approvedBy: Schema.String,
           activationTime: Schema.optional(Schema.String),
         }),
         success: described(PolicyPromotionResponseSchema, "Policy promotion result (F3)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.promotePolicy",
@@ -803,9 +808,9 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: Schema.Struct({
           approvalId: Schema.String,
-          actorUserId: Schema.String,
         }),
         success: described(ApprovalDecisionResponseSchema, "Emergency approval revocation (F5)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.revokeApproval",
@@ -817,12 +822,12 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: Schema.Struct({
           approvalIds: Schema.Array(Schema.String),
-          actorUserId: Schema.String,
         }),
         success: described(
           Schema.Struct({ denied: Schema.Number, skipped: Schema.Number }),
           "Bulk denial result (F5)",
         ),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.bulkDenyApprovals",
@@ -840,6 +845,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           archiveId: Schema.optional(Schema.String),
         }),
         success: described(ArchiveResponseSchema, "Archive a proof (F6)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.archiveProof",
@@ -859,8 +865,9 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
       HttpApiEndpoint.post("custody", EnterprisePaths.custody, {
         params: { tenantId: Schema.String, archiveId: Schema.String },
         query: WorkspaceRoutingQuery,
-        payload: Schema.Struct({ who: Schema.String, action: Schema.String }),
+        payload: Schema.Struct({ action: Schema.String }),
         success: described(LegalHoldResponseSchema, "Append chain-of-custody event (F6)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.custody",
@@ -872,6 +879,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: Schema.Struct({ action: Schema.Literals(["PLACE", "REMOVE"]) }),
         success: described(LegalHoldResponseSchema, "Place or remove a legal hold (F6)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.legalHold",
@@ -883,6 +891,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: Schema.Struct({ now: Schema.optional(Schema.String) }),
         success: described(RetentionSweepResponseSchema, "Retention sweep result (F6)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.retentionSweep",
@@ -901,6 +910,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           at: Schema.optional(Schema.String),
         }),
         success: described(OkResponseSchema, "Security alert recorded (F9)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.putAlert",
@@ -921,11 +931,11 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         params: { tenantId: Schema.String, incidentId: Schema.String },
         query: WorkspaceRoutingQuery,
         payload: Schema.Struct({
-          actor: Schema.String,
           event: Schema.String,
           at: Schema.optional(Schema.String),
         }),
         success: described(OkResponseSchema, "Incident timeline event appended (F9)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.appendTimeline",
@@ -948,9 +958,9 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         payload: Schema.Struct({
           nodeIds: Schema.Array(Schema.String),
           reason: Schema.String,
-          actorUserId: Schema.String,
         }),
         success: described(RevocationCampaignResponseSchema, "Audited revocation campaign (F9)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.revocationCampaign",
@@ -1033,6 +1043,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           digest: Schema.String,
         }),
         success: described(BackupRecordSchema, "Backup recorded (F7)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.backup",
@@ -1044,6 +1055,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: Schema.Struct({ presentedDigest: Schema.String }),
         success: described(RestoreResponseSchema, "Backup restore result (F7)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.restore",
@@ -1063,6 +1075,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           config: Schema.optional(ReliabilityConfigSchema),
         }),
         success: described(DrillResponseSchema, "Restore drill evaluation (F7)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.drill",
@@ -1084,6 +1097,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: FederationAgreementSchema,
         success: described(FederationAgreementSchema, "Federation agreement stored (F8)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.putFederationAgreement",
@@ -1114,6 +1128,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           origin: Schema.String,
         }),
         success: described(ProofExchangeResponseSchema, "Proof exchange result (F8)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.federationExchange",
@@ -1130,6 +1145,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           reason: Schema.String,
         }),
         success: described(RevocationPropagationResponseSchema, "Revocation propagation (F8)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.federationRevoke",
@@ -1255,6 +1271,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: EscalationPolicyInputSchema,
         success: described(EscalationPolicySchema, "Escalation policy stored (F5)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.putEscalationPolicy",
@@ -1282,6 +1299,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           now: Schema.optional(Schema.String),
         }),
         success: described(EscalationCheckSchema, "Escalation evaluation (F5)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.escalationCheck",
@@ -1303,6 +1321,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: AdminEventPayloadSchema,
         success: described(AdminEventRecordSchema, "Admin event recorded (F11)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.putAdminEvent",
@@ -1339,6 +1358,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           at: Schema.optional(Schema.String),
         }),
         success: described(UsageEventSchema, "Usage event recorded (F12)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.putUsage",
@@ -1391,6 +1411,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           maxPerDay: Schema.Number,
         }),
         success: described(CrossOrgApprovalRuleSchema, "Cross-org approval rule (F8)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.putFederationRule",
@@ -1417,6 +1438,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           action: Schema.String,
         }),
         success: described(CrossOrgRoutingResponseSchema, "Cross-org approval routing (F8)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.routeCrossOrgApproval",
@@ -1443,6 +1465,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           paused: Schema.Boolean,
         }),
         success: described(UpgradeRingSchema, "Upgrade ring stored (F4)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.putUpgradeRing",
@@ -1464,6 +1487,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: Schema.Struct({ nodeId: Schema.String }),
         success: described(RingAssignResponseSchema, "Ring node assignment (F4)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.assignRingNode",
@@ -1505,6 +1529,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           totalNodeCount: Schema.Number,
         }),
         success: described(Schema.Array(AnomalySignalSchema), "Anomaly signals (F9)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.anomalyScan",
@@ -1530,6 +1555,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           reason: Schema.String,
         }),
         success: described(RevocationDeliveryResponseSchema, "Revocation delivery queued (F8)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.queueRevocationDelivery",
@@ -1556,6 +1582,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           reason: Schema.String,
         }),
         success: described(RevocationReceiveResponseSchema, "Revocation delivery received (F8)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.receiveRevocationDelivery",
@@ -1577,6 +1604,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: Schema.Struct({}),
         success: described(OkResponseSchema, "Delivery marked (F8)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.markRevocationDelivered",
@@ -1592,6 +1620,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
           active: Schema.Boolean,
         }),
         success: described(WebhookEndpointSchema, "Webhook endpoint stored (F11)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.putWebhook",
@@ -1623,6 +1652,7 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         query: WorkspaceRoutingQuery,
         payload: Schema.Struct({ maxAttempts: Schema.optional(Schema.Number) }),
         success: described(WebhookDeliverySummarySchema, "Webhook delivery summary (F11)"),
+        error: [ForbiddenError],
       }).annotateMerge(
         OpenApi.annotations({
           identifier: "enterprise.deliverWebhooks",

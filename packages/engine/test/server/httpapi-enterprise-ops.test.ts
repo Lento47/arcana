@@ -176,21 +176,9 @@ describe("enterprise HttpApi operations (F3-F6, F9, F10)", () => {
         )
         expect((yield* alerts.json) as Array<{ alertId: string }>).toMatchObject([{ alertId: "alert-1" }])
 
-        const deniedCampaign = yield* requestInDirectory(
-          EnterprisePaths.revocationCampaign.replace(":tenantId", "tenant-a"),
-          tmp.directory,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              nodeIds: ["node-1"],
-              reason: "compromised",
-              actorUserId: "u-stranger",
-            }),
-          },
-        )
-        expect(((yield* deniedCampaign.json) as { kind?: string }).kind).toBe("REJECTED")
-
+        // Forged actor attribution is ignored: the campaign is decided by the
+        // AUTHENTICATED principal (local-operator), never by the
+        // body-supplied actorUserId.
         const campaign = yield* requestInDirectory(
           EnterprisePaths.revocationCampaign.replace(":tenantId", "tenant-a"),
           tmp.directory,
@@ -200,7 +188,7 @@ describe("enterprise HttpApi operations (F3-F6, F9, F10)", () => {
             body: JSON.stringify({
               nodeIds: ["node-1"],
               reason: "compromised",
-              actorUserId: "u-ops",
+              actorUserId: "u-stranger",
             }),
           },
         )
@@ -229,10 +217,14 @@ describe("enterprise HttpApi operations (F3-F6, F9, F10)", () => {
         )
         const forensicBody = (yield* forensic.json) as {
           alerts: Array<{ alertId: string }>
-          timeline: Array<{ event: string }>
+          timeline: Array<{ event: string; actor: string }>
         }
         expect(forensicBody.alerts).toMatchObject([{ alertId: "alert-1" }])
-        expect(forensicBody.timeline.some((e) => e.event.includes("emergency revocation"))).toBe(true)
+        expect(
+          forensicBody.timeline.some(
+            (e) => e.event.includes("emergency revocation") && e.actor === "local-operator",
+          ),
+        ).toBe(true)
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )
@@ -271,7 +263,9 @@ describe("enterprise HttpApi operations (F3-F6, F9, F10)", () => {
           expect(queued.status).toBe(200)
         }
 
-        const unauthorized = yield* requestInDirectory(
+        // Forged actor fields are ignored: the decision is bound to the
+        // authenticated principal (local-operator), not the body actor.
+        const revoked1 = yield* requestInDirectory(
           EnterprisePaths.revokeApproval.replace(":tenantId", "tenant-b"),
           tmp.directory,
           {
@@ -280,18 +274,18 @@ describe("enterprise HttpApi operations (F3-F6, F9, F10)", () => {
             body: JSON.stringify({ approvalId: "appr-1", actorUserId: "u-member" }),
           },
         )
-        expect(((yield* unauthorized.json) as { kind?: string }).kind).toBe("REJECTED")
+        expect(((yield* revoked1.json) as { kind?: string }).kind).toBe("DECIDED")
 
-        const revoked = yield* requestInDirectory(
+        const revoked2 = yield* requestInDirectory(
           EnterprisePaths.revokeApproval.replace(":tenantId", "tenant-b"),
           tmp.directory,
           {
             method: "POST",
             headers,
-            body: JSON.stringify({ approvalId: "appr-1", actorUserId: "u-admin" }),
+            body: JSON.stringify({ approvalId: "appr-2", actorUserId: "u-admin" }),
           },
         )
-        expect(((yield* revoked.json) as { kind?: string }).kind).toBe("DECIDED")
+        expect(((yield* revoked2.json) as { kind?: string }).kind).toBe("DECIDED")
 
         const bulk = yield* requestInDirectory(
           EnterprisePaths.bulkDenyApprovals.replace(":tenantId", "tenant-b"),
@@ -300,14 +294,16 @@ describe("enterprise HttpApi operations (F3-F6, F9, F10)", () => {
             method: "POST",
             headers,
             body: JSON.stringify({
-              approvalIds: ["appr-2", "appr-3"],
+              approvalIds: ["appr-3"],
               actorUserId: "u-admin",
             }),
           },
         )
         const bulkBody = (yield* bulk.json) as { denied: number; skipped: number }
+        // appr-3's requester is "u-admin"; the forged body actor "u-admin"
+        // is ignored, so the derived principal (local-operator) denies it.
         expect(bulkBody.denied).toBe(1)
-        expect(bulkBody.skipped).toBe(1)
+        expect(bulkBody.skipped).toBe(0)
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )
@@ -510,21 +506,34 @@ describe("enterprise HttpApi operations (F3-F6, F9, F10)", () => {
         expect(promotedBody.record?.sequence).toBe(2)
         expect(promotedBody.promotionId).toBeTruthy()
 
-        const denied = yield* requestInDirectory(
+        const published3 = yield* requestInDirectory(PolicyPaths.publish, tmp.directory, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            envelope: policyEnvelope(3, "digest-2"),
+            activationTime: new Date().toISOString(),
+          }),
+        })
+        expect(((yield* published3.json) as { kind?: string }).kind).toBe("PUBLISHED")
+
+        // Forged approver attribution is ignored: promotion is decided by the
+        // AUTHENTICATED principal (local-operator), never by the body-supplied
+        // approvedBy/requestedBy fields.
+        const forged = yield* requestInDirectory(
           EnterprisePaths.promotePolicy.replace(":tenantId", "tenant-d"),
           tmp.directory,
           {
             method: "POST",
             headers,
             body: JSON.stringify({
-              sourceSequence: 2,
+              sourceSequence: 3,
               targetEnvironment: "prod",
               requestedBy: "u-agent",
               approvedBy: "u-member",
             }),
           },
         )
-        expect(((yield* denied.json) as { kind?: string }).kind).toBe("REJECTED")
+        expect(((yield* forged.json) as { kind?: string }).kind).toBe("PROMOTED")
 
         const audit = yield* requestInDirectory(
           EnterprisePaths.audit.replace(":tenantId", "tenant-d"),
@@ -538,9 +547,14 @@ describe("enterprise HttpApi operations (F3-F6, F9, F10)", () => {
         }>
         expect(
           auditBody.some(
-            (e) => e.action === "policy.publish" && e.outcome === "DENIED" && e.actorUserId === "u-member",
+            (e) =>
+              e.action === "policy.publish"
+              && e.outcome === "ALLOWED"
+              && e.actorUserId === "local-operator",
           ),
         ).toBe(true)
+        // No audit record may carry the forged body actor.
+        expect(auditBody.some((e) => e.action === "policy.publish" && e.actorUserId === "u-member")).toBe(false)
 
         const diff = yield* requestInDirectory(
           EnterprisePaths.diffPolicy.replace(":tenantId", "tenant-d"),
