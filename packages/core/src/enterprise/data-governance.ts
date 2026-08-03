@@ -80,3 +80,67 @@ export function classifyInput(input: { containsPii: boolean; sensitivity: "PUBLI
   if (input.containsPii) return "PII"
   return input.sensitivity
 }
+
+// ---------------------------------------------------------------------------
+// Regional storage plumbing
+// ---------------------------------------------------------------------------
+
+export type RegionDataClass = { region: string; dataClass: DataClassification }
+
+export interface RegionRegistry {
+  setAllowedClasses(region: string, dataClasses: DataClassification[]): void
+  getAllowedClasses(region: string): DataClassification[]
+  hasAllowedClass(region: string, dataClass: DataClassification): boolean
+}
+
+export function resolveRegion(registry: RegionRegistry, region: string): DataClassification[] {
+  return registry.getAllowedClasses(region)
+}
+
+export function assertStorageAction(
+  registry: RegionRegistry,
+  region: string,
+  dataClass: DataClassification,
+  encrypted: boolean,
+): GovernanceCheck {
+  if (!registry.hasAllowedClass(region, dataClass)) {
+    return { allowed: false, reason: `region ${region} does not allow data class ${dataClass}` }
+  }
+  if (dataClass === "PII" && !encrypted) {
+    return { allowed: false, reason: "PII data must be encrypted at rest" }
+  }
+  return { allowed: true, reason: "storage action allowed" }
+}
+
+// ---------------------------------------------------------------------------
+// Customer-managed key (CMK) integration
+// ---------------------------------------------------------------------------
+
+export type CmkRotationStatus = "ACTIVE" | "ROTATING" | "EXPIRED"
+
+export type CmkReference = {
+  keyId: string
+  region: string
+  rotationStatus: CmkRotationStatus
+  verifiedAt: string
+}
+
+export interface CmkRegistry {
+  put(key: CmkReference): void
+  get(keyId: string): CmkReference | undefined
+  listByRegion(region: string): CmkReference[]
+  hasActiveCmk(region: string): boolean
+}
+
+export function assertCmkRequired(
+  cmkRegistry: CmkRegistry,
+  region: string,
+  dataClass: DataClassification,
+): GovernanceCheck {
+  if (dataClass === "PII" || dataClass === "SECRET") {
+    if (!cmkRegistry.hasActiveCmk(region)) {
+      return { allowed: false, reason: `${dataClass} data in region ${region} requires an active CMK` }
+    }
+  }
+  return { allowed: true, reason: "CMK requirement satisfied" }
+}
