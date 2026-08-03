@@ -78,7 +78,8 @@ BLK-F-AUTH-01 (authenticated administrative identity binding).
    and the SDK enterprise admin client (equivalent automation) are shipped.
    Remaining surfaces are the authenticated administrative identity binding
    (BLK-F-AUTH-01 — enterprise mutations must derive actor/tenant identity
-   from the authenticated server context), operator-facing consoles/UI (F3
+   from the authenticated server context; fix PR merged: #53 (enterprise auth
+   boundary), 2026-08-03), operator-facing consoles/UI (F3
    simulation editor, F5 escalation console, F6 auditor console), plus live
    transport adapters (ticketing delivery, Terraform provider is optional
    given the SDK client).

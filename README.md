@@ -222,6 +222,7 @@ Set a custom full-screen background image (truecolor terminals — Kitty, iTerm2
 
 ## Recent Changes
 
+- **v0.3.6** — Enterprise admin identity boundary (authenticated principal → tenant → RBAC; client-supplied actor fields rejected), approval durability hardening (SQL-level CAS transitions, fail-closed CONSUME with explicit recovery, deterministic stale refusal), operator workspace binding, runtime API routing fixes. See [STATUS.md](docs/STATUS.md).
 - **v0.3.5** — Workspace trust (`arcana trust`), console login ceremony + device-flow resilience, security hardenings (gateway allowlists, WhatsApp signatures, non-loopback serve auth, env_write sandbox), command-spine + theme polish, goals MVP. Public docs: https://arcana.otnelhq.com/docs
 - **v0.3.4** — QA fixes: session locking, secret redaction, streaming timeouts, command-spine UX. See [qa-fixes-2026-07-10.md](.hermes/docs/arcana/docs/qa-fixes-2026-07-10.md).
 - **v0.3.0** — Command Spine shell, OpenTUI pin, plugin system, cron daemon, web dashboard.
