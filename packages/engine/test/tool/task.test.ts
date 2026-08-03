@@ -172,6 +172,8 @@ describe("tool.task", () => {
         },
       },
     },
+    // ~0.6s in isolation; timed out at 5s under full-suite load on 2026-08-03.
+    { timeout: 10_000 },
   )
 
   it.instance(
@@ -246,6 +248,8 @@ describe("tool.task", () => {
       expect(seen?.sessionID).toBe(child.id)
       expect(seen?.variant).toBe("xhigh")
     }),
+    // ~0.6s in isolation; timed out at 5s under full-suite load on 2026-08-03.
+    { timeout: 10_000 },
   )
 
   it.instance("execute asks by default and skips checks when bypassed", () =>
@@ -293,6 +297,8 @@ describe("tool.task", () => {
         },
       })
     }),
+    // ~0.6s in isolation; timed out at 5s under full-suite load on 2026-08-03.
+    { timeout: 10_000 },
   )
 
   it.instance("execute cancels child session when abort signal fires", () =>
@@ -343,6 +349,8 @@ describe("tool.task", () => {
       const exit = yield* Fiber.await(fiber)
       expect(Exit.isSuccess(exit)).toBe(true)
     }),
+    // ~0.6s in isolation; timed out at 5s under full-suite load on 2026-08-03.
+    { timeout: 10_000 },
   )
 
   it.instance("execute creates a child when task_id does not exist", () =>

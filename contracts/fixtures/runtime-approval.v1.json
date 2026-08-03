@@ -1,0 +1,99 @@
+{
+  "contractRevision": 1,
+  "record": {
+    "approvalId": "appr_fixture_1",
+    "version": 1,
+    "sessionId": "sess-fixture-a",
+    "workspaceId": "sess-fixture-a",
+    "requestHash": "hash-fixture-abc-123",
+    "contractRevision": 1,
+    "principalId": "agent:default",
+    "state": "PENDING",
+    "route": "LOCAL_TUI",
+    "routingPolicyVersion": "routing.v1",
+    "localFallbackAllowed": true,
+    "riskClass": "MODERATE",
+    "expiresAt": "2099-01-01T00:00:00.000Z",
+    "updatedAt": "2026-08-02T00:00:00.000Z",
+    "createdAt": "2026-08-02T00:00:00.000Z"
+  },
+  "requests": {
+    "approve": {
+      "expectedVersion": 1,
+      "expectedRequestHash": "hash-fixture-abc-123",
+      "expectedContractRevision": 1
+    },
+    "deny": {
+      "expectedVersion": 1,
+      "expectedRequestHash": "hash-fixture-abc-123",
+      "expectedContractRevision": 1
+    },
+    "revoke": {
+      "expectedVersion": 1,
+      "expectedRequestHash": "hash-fixture-abc-123",
+      "expectedContractRevision": 1
+    }
+  },
+  "responses": {
+    "success": {
+      "success": true,
+      "approval": {
+        "approvalId": "appr_fixture_1",
+        "version": 2,
+        "sessionId": "sess-fixture-a",
+        "workspaceId": "sess-fixture-a",
+        "requestHash": "hash-fixture-abc-123",
+        "contractRevision": 1,
+        "principalId": "agent:default",
+        "state": "APPROVED",
+        "approvedBy": "local-operator",
+        "route": "LOCAL_TUI",
+        "routingPolicyVersion": "routing.v1",
+        "localFallbackAllowed": true,
+        "riskClass": "MODERATE",
+        "expiresAt": "2099-01-01T00:00:00.000Z",
+        "updatedAt": "2026-08-02T00:01:00.000Z",
+        "createdAt": "2026-08-02T00:00:00.000Z"
+      }
+    },
+    "staleHash": {
+      "success": false,
+      "reason": "request hash changed - STALE",
+      "stale": true
+    },
+    "staleVersion": {
+      "success": false,
+      "reason": "approval version changed - STALE",
+      "stale": true
+    },
+    "staleRevision": {
+      "success": false,
+      "reason": "contract revision changed - STALE",
+      "stale": true
+    },
+    "notFound": {
+      "success": false,
+      "reason": "approval not found"
+    },
+    "notActionable": {
+      "success": false,
+      "reason": "approval is CONSUMED, not actionable"
+    },
+    "wrongSession": {
+      "success": false,
+      "reason": "approval belongs to another session"
+    },
+    "wrongWorkspace": {
+      "success": false,
+      "reason": "approval belongs to another workspace"
+    },
+    "unauthorized": {
+      "success": false,
+      "reason": "operator op-a not authorized for workspace sess-fixture-b"
+    },
+    "routeDenied": {
+      "success": false,
+      "reason": "approval requires central authority"
+    }
+  }
+}

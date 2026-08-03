@@ -127,16 +127,16 @@ export function defaultApprovalRoutingPolicy(deploymentMode: DeploymentMode): Ap
         defaultLocalFallbackAllowed: true,
         rules: [
           {
-            id: "hybrid-high-risk-desktop-preferred",
-            route: "DESKTOP_PREFERRED",
-            riskClass: ["HIGH", "CRITICAL"],
-            localFallbackAllowed: true,
-          },
-          {
             id: "hybrid-deploy-desktop-required",
             route: "DESKTOP_REQUIRED",
             action: ["deploy", "publish", "policy.modify"],
             localFallbackAllowed: false,
+          },
+          {
+            id: "hybrid-high-risk-desktop-preferred",
+            route: "DESKTOP_PREFERRED",
+            riskClass: ["HIGH", "CRITICAL"],
+            localFallbackAllowed: true,
           },
         ],
       }

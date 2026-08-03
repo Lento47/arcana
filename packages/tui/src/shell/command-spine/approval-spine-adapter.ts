@@ -181,6 +181,47 @@ export function approvalInspectionAllowed(input: {
 }
 
 /**
+ * F-25/F-26/F-27: approval action keys (a approve / d deny) are enabled only
+ * when the composer is not focused, no permission/question gate is open (the
+ * gate owns decisions via its own keys), no command is in flight, and the
+ * focused entry is a still-actionable PENDING approval.
+ */
+export function approvalActionBindingsEnabled(input: {
+  composerFocused: boolean
+  gatesOpen: boolean
+  submitting: boolean
+  focusedApproval: ApprovalRecord | undefined
+}): boolean {
+  return (
+    !input.composerFocused &&
+    !input.gatesOpen &&
+    !input.submitting &&
+    input.focusedApproval !== undefined &&
+    isApprovalActionable(input.focusedApproval)
+  )
+}
+
+/**
+ * F-25/F-26: Esc may close the inspector or clear the approval selection only
+ * outside an open gate (Esc is inert while a gate owns the keys) and while no
+ * approval command is in flight. Inspector close must work for ANY approval
+ * state (runbook: v -> a -> CLAIMED -> CONSUMED).
+ */
+export function approvalEscapeEnabled(input: {
+  gatesOpen: boolean
+  submitting: boolean
+  inspectorOpen: boolean
+  composerFocused: boolean
+  focusedApproval: ApprovalRecord | undefined
+}): boolean {
+  return (
+    !input.gatesOpen &&
+    !input.submitting &&
+    (input.inspectorOpen || (input.focusedApproval !== undefined && !input.composerFocused))
+  )
+}
+
+/**
  * Check if an approval is in a terminal state.
  */
 export function isApprovalTerminal(approval: ApprovalRecord): boolean {

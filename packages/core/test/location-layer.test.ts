@@ -57,6 +57,8 @@ describe("LocationServiceMap", () => {
     }),
   )
 
+  // Category E timing: plugin boot + catalog transform + provider writes
+  // exceed the 5s default on loaded CI runners (measured 5.35s). Per-test only.
   it.live("isolates location state while sharing location policy with catalog", () =>
     Effect.acquireRelease(
       Effect.promise(() => Promise.all([tmpdir(), tmpdir()])),
@@ -134,5 +136,6 @@ describe("LocationServiceMap", () => {
         }),
       ),
     ),
+    { timeout: 15_000 },
   )
 })

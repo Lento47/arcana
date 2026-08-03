@@ -66,6 +66,8 @@ describe("public native OpenCode API", () => {
     ),
   )
 
+  // Category E timing: real tmpdir + plugin boot + provider writes exceed the
+  // 5s default on loaded CI runners (measured 5.35s). Bumped per-test only.
   it.effect("rejects missing and Location-disabled models without changing the Session", () =>
     Effect.acquireRelease(
       Effect.promise(() => Promise.all([tmpdir(), tmpdir()])),
@@ -102,6 +104,7 @@ describe("public native OpenCode API", () => {
         }),
       ),
     ),
+    { timeout: 15_000 },
   )
 
   it.effect("rejects an unavailable variant without changing the Session", () =>
