@@ -120,11 +120,42 @@ export type ApprovalOutboxEvent = {
  * execution record, and the authoritative outbox event commit or roll back
  * together. A state transition must never become visible without its
  * corresponding event.
+ *
+ * The `expected` guard makes the commit a compare-and-swap (CAS): the
+ * transition only applies if the persisted approval row still carries the
+ * expected version and state. A concurrent decision that already committed
+ * (bumping the version) makes the CAS miss; the store must refuse
+ * deterministically instead of silently overwriting.
  */
 export type ApprovalTransition = {
   approval: ApprovalRecord
   execution?: ApprovalExecutionRecord
   event: ApprovalOutboxEvent
+  /**
+   * Optimistic-concurrency guard. The persisted approval row must still be at
+   * this exact version and state for the transition to apply.
+   */
+  expected: { version: number; state: ApprovalState }
+}
+
+/**
+ * Raised by a store's commitTransition when the CAS guard fails: the persisted
+ * approval row is no longer at the expected version/state, so a concurrent
+ * decision already won. This is distinct from "approval not found" and must
+ * surface as a deterministic stale/already-decided refusal, never a silent
+ * overwrite.
+ */
+export class ApprovalStaleTransitionError extends Error {
+  readonly expectedVersion: number
+  readonly expectedState: string
+  constructor(expectedVersion: number, expectedState: string) {
+    super(
+      `approval transition refused: record is not at version ${expectedVersion}/${expectedState} — CAS miss, ALREADY_DECIDED`,
+    )
+    this.name = "ApprovalStaleTransitionError"
+    this.expectedVersion = expectedVersion
+    this.expectedState = expectedState
+  }
 }
 
 /**
@@ -296,6 +327,7 @@ function handleApprove(
         detail: { decision: "EXPIRED", operatorId: operator.operatorId },
         status: "PENDING",
       },
+      expected: { version: record.version, state: record.state },
     })
     return {
       success: false,
@@ -329,6 +361,7 @@ function handleApprove(
       },
       status: "PENDING",
     },
+    expected: { version: record.version, state: record.state },
   })
 
   return {
@@ -387,6 +420,7 @@ function handleDeny(
       },
       status: "PENDING",
     },
+    expected: { version: record.version, state: record.state },
   })
 
   return {
@@ -449,6 +483,7 @@ function handleRevoke(
       },
       status: "PENDING",
     },
+    expected: { version: record.version, state: record.state },
   })
 
   return {
@@ -504,6 +539,7 @@ function handleClaim(
         detail: { decision: "EXPIRED" },
         status: "PENDING",
       },
+      expected: { version: record.version, state: record.state },
     })
     return { success: false, reason: "approval expired before claim" }
   }
@@ -539,6 +575,7 @@ function handleClaim(
       },
       status: "PENDING",
     },
+    expected: { version: record.version, state: record.state },
   })
 
   return {
@@ -577,6 +614,72 @@ function handleConsume(
     }
   }
 
+  // ── Fail-closed execution + receipt binding (ARC-FC-CONSUME) ──────────
+  // Consumption proves an effect happened. That proof is the durable
+  // execution record bound to the approval plus a newly-bound effect receipt.
+  // If any part of that binding is missing or mismatched, consumption MUST
+  // NOT commit CONSUMED — the claimed effect has no durable receipt proof and
+  // enters an explicit recovery path instead.
+  const execution = store.loadExecution(command.approvalId)
+
+  // No execution record at all after a claimed effect is a recovery condition,
+  // never a silent success.
+  if (!execution) {
+    return {
+      success: false,
+      reason: "execution record missing for claimed approval — RECOVERY_REQUIRED",
+    }
+  }
+
+  // Execution must be in a progressed-but-not-terminal state: it must have been
+  // claimed (CLAIMED), started (STARTED), or already marked succeeded
+  // (SUCCEEDED). A FAILED or RECOVERY_REQUIRED execution proves the effect did
+  // not complete and must not be consumed as if it had.
+  if (execution.state !== "CLAIMED" && execution.state !== "STARTED" && execution.state !== "SUCCEEDED") {
+    return {
+      success: false,
+      reason: `execution is ${execution.state}, not CLAIMED/STARTED/SUCCEEDED — RECOVERY_REQUIRED`,
+    }
+  }
+
+  // The execution must belong to THIS approval and request, at THIS approval
+  // version. A stale or foreign execution record must not authorize
+  // consumption of a different approval.
+  if (execution.approvalId !== command.approvalId) {
+    return {
+      success: false,
+      reason: "execution approvalId mismatch — RECOVERY_REQUIRED",
+    }
+  }
+  if (execution.requestHash !== record.requestHash) {
+    return {
+      success: false,
+      reason: "execution request hash mismatch — RECOVERY_REQUIRED",
+    }
+  }
+  if (execution.approvalVersion !== record.version) {
+    return {
+      success: false,
+      reason: "execution approval version mismatch — RECOVERY_REQUIRED",
+    }
+  }
+
+  // The receipt must be present and must not already be bound. Binding the
+  // same receipt twice (or a missing receipt) means there is no fresh proof
+  // of THIS effect — refuse, never replay.
+  if (!command.effectReceiptHash || command.effectReceiptHash.length === 0) {
+    return {
+      success: false,
+      reason: "effect receipt missing — RECOVERY_REQUIRED",
+    }
+  }
+  if (execution.effectReceiptHash) {
+    return {
+      success: false,
+      reason: "effect receipt already bound — duplicate receipt refused",
+    }
+  }
+
   // CAS: atomic consume transition
   const consumed: ApprovalRecord = {
     ...record,
@@ -584,16 +687,13 @@ function handleConsume(
     state: "CONSUMED",
     updatedAt: nowIso,
   }
-  // Update execution record
-  const execution = store.loadExecution(command.approvalId)
-  const updatedExec: ApprovalExecutionRecord | undefined = execution
-    ? {
-        ...execution,
-        state: "SUCCEEDED",
-        effectReceiptHash: command.effectReceiptHash,
-        updatedAt: nowIso,
-      }
-    : undefined
+  // Update execution record, binding the newly-supplied receipt.
+  const updatedExec: ApprovalExecutionRecord = {
+    ...execution,
+    state: "SUCCEEDED",
+    effectReceiptHash: command.effectReceiptHash,
+    updatedAt: nowIso,
+  }
 
   store.commitTransition({
     approval: consumed,
@@ -609,12 +709,14 @@ function handleConsume(
       },
       status: "PENDING",
     },
+    expected: { version: record.version, state: record.state },
   })
 
   return {
     success: true,
     reason: "consumed",
     approval: consumed,
+    execution: updatedExec,
   }
 }
 
@@ -646,6 +748,13 @@ export class InMemoryApprovalStore implements ApprovalLifecycleStore {
   }
 
   commitTransition(transition: ApprovalTransition): void {
+    // Compare-and-swap guard (parity with the SQLite store): only apply when
+    // the persisted approval is still at the expected version/state.
+    const current = this.approvals.get(transition.approval.approvalId)
+    if (!current) throw new ApprovalStaleTransitionError(transition.expected.version, transition.expected.state)
+    if (current.version !== transition.expected.version || current.state !== transition.expected.state) {
+      throw new ApprovalStaleTransitionError(transition.expected.version, transition.expected.state)
+    }
     this.approvals.set(transition.approval.approvalId, { ...transition.approval })
     if (transition.execution) {
       this.executions.set(transition.execution.approvalId, { ...transition.execution })

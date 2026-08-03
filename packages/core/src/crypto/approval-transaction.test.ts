@@ -73,6 +73,7 @@ function claimTransition(overrides: Partial<ApprovalTransition> = {}): ApprovalT
       detail: { executionId: "exec-1", requestHash: "hash-1" },
       status: "PENDING",
     },
+    expected: { version: 1, state: "PENDING" },
     ...overrides,
   }
 }
@@ -95,11 +96,16 @@ describe("SqliteApprovalStore.commitTransition atomicity", () => {
     const { dir, path } = freshDbPath()
     try {
       const store = new SqliteApprovalStore(path)
+      // In production the lifecycle always persists the PENDING record before
+      // any transition (existing-record-only invariant); the CAS guard then
+      // requires the row to still be at the expected version/state.
+      store.saveApproval(pendingRecord())
       store.commitTransition(claimTransition())
       store.close()
 
       const reopened = new SqliteApprovalStore(path)
       expect(reopened.loadApproval("appr_tx_1")?.state).toBe("CLAIMED")
+      expect(reopened.loadApproval("appr_tx_1")?.version).toBe(2)
       expect(reopened.loadExecution("appr_tx_1")?.state).toBe("CLAIMED")
       expect(reopened.getPendingOutbox()).toHaveLength(1)
       expect(reopened.getPendingOutbox()[0]!.kind).toBe("APPROVAL_CLAIMED")
@@ -126,17 +132,22 @@ describe("SqliteApprovalStore.commitTransition atomicity", () => {
             if (current === step) throw new Error(`injected failure at ${step}`)
           },
         })
+        // Seed the pre-transition PENDING record exactly as the lifecycle does.
+        store.saveApproval(pendingRecord())
         expect(() => store.commitTransition(claimTransition())).toThrow(`injected failure at ${step}`)
 
-        // The still-open connection must not expose the transition.
-        expect(store.loadApproval("appr_tx_1")).toBeNull()
+        // The still-open connection must not expose the transition: the
+        // approval stays PENDING at version 1, no execution, no event.
+        expect(store.loadApproval("appr_tx_1")!.state).toBe("PENDING")
+        expect(store.loadApproval("appr_tx_1")!.version).toBe(1)
         expect(store.loadExecution("appr_tx_1")).toBeNull()
         expect(store.getPendingOutbox()).toHaveLength(0)
         store.close()
 
         // Restart: a fresh store on the same file sees no trace of the transition.
         const reopened = new SqliteApprovalStore(path)
-        expect(reopened.loadApproval("appr_tx_1")).toBeNull()
+        expect(reopened.loadApproval("appr_tx_1")!.state).toBe("PENDING")
+        expect(reopened.loadApproval("appr_tx_1")!.version).toBe(1)
         expect(reopened.loadExecution("appr_tx_1")).toBeNull()
         expect(reopened.getPendingOutbox()).toHaveLength(0)
         reopened.close()
@@ -193,8 +204,11 @@ describe("SqliteApprovalStore.commitTransition atomicity", () => {
     const { dir, path } = freshDbPath()
     try {
       const store = new SqliteApprovalStore(path)
+      store.saveApproval(pendingRecord())
       store.commitTransition(claimTransition())
-      // Same logical transition, same deterministic event identity.
+      // Same logical transition, same deterministic event identity. The CAS
+      // guard treats the already-durable target version+state as an
+      // idempotent replay (exactly one authoritative win).
       store.commitTransition(claimTransition())
 
       expect(store.loadApproval("appr_tx_1")!.version).toBe(2)
@@ -206,23 +220,30 @@ describe("SqliteApprovalStore.commitTransition atomicity", () => {
     }
   })
 
-  test("different resulting versions cannot collide on event identity", () => {
+  test("a conflicting second transition with the same base is refused (CAS), no duplicate event", () => {
     const { dir, path } = freshDbPath()
     try {
       const store = new SqliteApprovalStore(path)
+      store.saveApproval(pendingRecord())
       store.commitTransition(claimTransition())
-      store.commitTransition(
-        claimTransition({
-          approval: { ...claimTransition().approval, version: 3 },
-          event: { ...claimTransition().event, eventId: "evt-APPROVAL_CLAIMED-appr_tx_1-v3" },
-        }),
-      )
 
+      // The persisted row is now CLAIMED/v2. A DIFFERENT transition that still
+      // claims from the same expected base (PENDING/v1) must be refused as a
+      // CAS miss — it would otherwise overwrite the authoritative event.
+      expect(() =>
+        store.commitTransition(
+          claimTransition({
+            approval: { ...claimTransition().approval, version: 3 },
+            event: { ...claimTransition().event, eventId: "evt-APPROVAL_CLAIMED-appr_tx_1-v3" },
+          }),
+        ),
+      ).toThrow(/CAS miss|ALREADY_DECIDED/)
+
+      // Only the authoritative v2 event remains — the conflicting transition
+      // never became visible and no v3 event exists.
       const events = store.getPendingOutbox()
-      expect(events.map((event) => event.eventId).sort()).toEqual([
-        "evt-APPROVAL_CLAIMED-appr_tx_1-v2",
-        "evt-APPROVAL_CLAIMED-appr_tx_1-v3",
-      ])
+      expect(events.map((event) => event.eventId)).toEqual(["evt-APPROVAL_CLAIMED-appr_tx_1-v2"])
+      expect(store.loadApproval("appr_tx_1")!.version).toBe(2)
       store.close()
     } finally {
       cleanup(dir)

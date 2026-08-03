@@ -13,6 +13,8 @@ import type {
   ApprovalLifecycleStore,
   ApprovalTransition,
 } from "./approval-lifecycle"
+import { ApprovalStaleTransitionError } from "./approval-lifecycle"
+import type { ApprovalState } from "./approval-lifecycle"
 
 // ─── Schema ─────────────────────────────────────────────────────────
 
@@ -204,8 +206,28 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
   private insertOutboxEvent(event: ApprovalOutboxEvent): void {
     // Deterministic identity: a retried transition resolves to the same event
     // id, so the insert is idempotent instead of throwing on the primary key.
-    const exists = this.db.query("SELECT 1 FROM approval_outbox WHERE event_id = ?").get(event.eventId)
-    if (exists) return
+    const exists = this.db.query("SELECT * FROM approval_outbox WHERE event_id = ?").get(event.eventId) as
+      | { approval_id: string; kind: string; timestamp: string; detail: string }
+      | undefined
+    if (exists) {
+      // An existing outbox event with the same id must carry the canonical
+      // content. If two transitions produced the same deterministic id but
+      // DIFFERENT content, that is a genuine conflict that must fail loudly —
+      // never a silent no-op. (With the CAS guard above, a concurrent decision
+      // already bumps the version, so a second transition with the same id is
+      // an identical replay and passes; a different one is a hard error.)
+      if (
+        exists.approval_id !== event.approvalId
+        || exists.kind !== event.kind
+        || exists.timestamp !== event.timestamp
+        || exists.detail !== JSON.stringify(event.detail)
+      ) {
+        throw new Error(
+          `outbox event conflict: event_id ${event.eventId} already exists with different content`,
+        )
+      }
+      return
+    }
     this.db.run(
       `INSERT INTO approval_outbox (event_id, approval_id, kind, timestamp, detail, status)
        VALUES (?, ?, ?, ?, ?, ?)`,
@@ -218,13 +240,23 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
    * outbox event in ONE SQLite transaction. Any statement failure rolls back
    * the whole transition, so the database never exposes a state transition
    * without its corresponding event.
+   *
+   * The approval upsert is a compare-and-swap (CAS): it only updates the
+   * persisted row when it is still at the expected version and state. A
+   * concurrent decision that already committed bumps the version, so this
+   * transition's CAS misses and commitTransition throws a deterministic
+   * stale/already-decided refusal (ApprovalStaleTransitionError) instead of
+   * silently overwriting the authoritative event.
    */
   commitTransition(transition: ApprovalTransition): void {
-    const { approval, execution, event } = transition
+    const { approval, execution, event, expected } = transition
     this.hooks.onStep?.("begin")
     this.db.exec("BEGIN IMMEDIATE")
     try {
-      this.upsertApproval(approval)
+      const changed = this.casUpdateApproval(approval, expected)
+      if (changed !== 1) {
+        throw new ApprovalStaleTransitionError(expected.version, expected.state)
+      }
       this.hooks.onStep?.("approval")
       this.hooks.onStep?.("execution")
       if (execution) this.upsertExecution(execution)
@@ -240,6 +272,73 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
       }
       throw error
     }
+  }
+
+  /**
+   * Compare-and-swap upsert of the approval record. Returns the number of rows
+   * "won" (1 = the caller's transition is authoritative).
+   *
+   * Two cases return 1:
+   *   1. The persisted row is still at `expected.version`/`expected.state` and
+   *      is updated to the transition's target — a genuine win.
+   *   2. The persisted row ALREADY carries the transition's target version and
+   *      state — an identical replay of a transition that already committed.
+   *      This is idempotent success, NOT a silent overwrite, because the
+   *      transition's content is identical to what is already durable.
+   *
+   * Any other persisted state (a concurrent decision bumped the version to a
+   * DIFFERENT target) returns 0 rows: the caller must refuse deterministically
+   * (ApprovalStaleTransitionError), never overwrite the authoritative event.
+   */
+  private casUpdateApproval(
+    record: ApprovalRecord,
+    expected: { version: number; state: ApprovalState },
+  ): number {
+    const current = this.db
+      .query("SELECT version, state FROM approval_records WHERE approval_id = ?")
+      .get(record.approvalId) as { version: number; state: string } | undefined
+    // Missing row: nothing to update (distinct refusal handled by caller).
+    if (!current) return 0
+    // Idempotent replay: the exact target version+state is already durable.
+    if (current.version === record.version && current.state === record.state) return 1
+    // Otherwise enforce the CAS: only win if the row is still at the expected
+    // (pre-transition) version and state.
+    const result = this.db.run(
+      `UPDATE approval_records SET
+         version = ?,
+         principal_id = ?,
+         state = ?,
+         approved_by = ?,
+         revoked_by = ?,
+         execution_id = ?,
+         route = ?,
+         routing_policy_version = ?,
+         local_fallback_allowed = ?,
+         risk_class = ?,
+         expires_at = ?,
+         updated_at = ?
+       WHERE approval_id = ?
+         AND version = ?
+         AND state = ?`,
+      [
+        record.version,
+        record.principalId ?? "",
+        record.state,
+        record.approvedBy ?? null,
+        record.revokedBy ?? null,
+        record.executionId ?? null,
+        record.route ?? null,
+        record.routingPolicyVersion ?? null,
+        record.localFallbackAllowed === false ? 0 : 1,
+        record.riskClass ?? null,
+        record.expiresAt,
+        record.updatedAt,
+        record.approvalId,
+        expected.version,
+        expected.state,
+      ],
+    )
+    return result.changes
   }
 
   loadPendingApprovals(sessionId: string): ApprovalRecord[] {

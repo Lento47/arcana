@@ -81,7 +81,7 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
       return process.cwd()
     })
 
-    const operatorIdentity = Effect.fn("RuntimeHttpApi.operatorIdentity")(function* () {
+    const operatorIdentity = Effect.fn("RuntimeHttpApi.operatorIdentity")(function* (workspaceScope: string) {
       // Read the auth config as an optional service: when the server has no
       // auth configured (or the harness omits the layer), the local runtime
       // context is the trusted operator surface.
@@ -101,6 +101,12 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
           if (username.length > 0) operatorId = username
         }
       }
+      // The operator's authorized workspace scope is EXACTLY the workspace that
+      // was authoritatively resolved for this request — never "*", never the
+      // raw query directory, and never process.cwd() when a directory was
+      // authorized. resolveAuthorizedWorkspace() already applied the authority
+      // order, so binding the identity to its resolved value keeps the decision
+      // scope identical to the durable store scope the command is routed to.
       return {
         operatorId,
         authenticatedAt: new Date().toISOString(),

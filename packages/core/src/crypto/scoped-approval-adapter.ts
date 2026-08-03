@@ -265,11 +265,16 @@ export class SqliteScopedApprovalStore implements ScopedApprovalStore {
         if (!existing) return
         const now = new Date().toISOString()
         const next: ScopedApproval = { ...rowToScoped(existing), ...updates } as ScopedApproval
-        this.db.run(
+        // Compare-and-swap (same discipline as the lifecycle store over the
+        // shared approval_records table): only update the row if it is still at
+        // the version this caller read. A concurrent transition that already
+        // bumped the version must fail loudly, never silently overwrite the
+        // durable source of truth.
+        const result = this.db.run(
           `UPDATE approval_records SET
              state = ?, uses_consumed = ?, claim_execution_id = ?, lease_expires_at = ?,
              decided_at = ?, updated_at = ?
-           WHERE approval_id = ?`,
+           WHERE approval_id = ? AND version = ?`,
           [
             next.decision,
             next.decision === "CONSUMED" ? 1 : 0,
@@ -280,8 +285,14 @@ export class SqliteScopedApprovalStore implements ScopedApprovalStore {
               : existing.decided_at,
             now,
             id,
+            existing.version,
           ],
         )
+        if (result.changes !== 1) {
+          throw new Error(
+            `approval transition refused: record ${id} is no longer at version ${existing.version} — CAS miss, ALREADY_DECIDED`,
+          )
+        }
       },
       catch: (cause) => new ScopedApprovalStoreError("updateApproval", cause),
     })
