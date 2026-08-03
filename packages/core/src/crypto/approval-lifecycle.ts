@@ -115,6 +115,18 @@ export type ApprovalOutboxEvent = {
   status: "PENDING" | "CLAIMED" | "DELIVERED" | "POISONED"
 }
 
+/**
+ * One atomic lifecycle transition: the approval record, the optional
+ * execution record, and the authoritative outbox event commit or roll back
+ * together. A state transition must never become visible without its
+ * corresponding event.
+ */
+export type ApprovalTransition = {
+  approval: ApprovalRecord
+  execution?: ApprovalExecutionRecord
+  event: ApprovalOutboxEvent
+}
+
 // ─── Command Types ──────────────────────────────────────────────────
 
 export type ApprovalCommand =
@@ -184,6 +196,12 @@ export interface ApprovalLifecycleStore {
   loadExecution(approvalId: string): ApprovalExecutionRecord | null
   saveExecution(record: ApprovalExecutionRecord): void
   appendOutboxEvent(event: ApprovalOutboxEvent): void
+  /**
+   * Commit approval state, optional execution state, and the authoritative
+   * outbox event in one store-level transaction. Implementations must roll
+   * back every record when any statement fails.
+   */
+  commitTransition(transition: ApprovalTransition): void
   loadPendingApprovals(sessionId: string): ApprovalRecord[]
 }
 
@@ -249,7 +267,17 @@ function handleApprove(
   // Verify not expired
   if (new Date(record.expiresAt).getTime() < now.getTime()) {
     const expired: ApprovalRecord = { ...record, state: "EXPIRED", updatedAt: nowIso }
-    store.saveApproval(expired)
+    store.commitTransition({
+      approval: expired,
+      event: {
+        eventId: `evt-expire-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        approvalId: command.approvalId,
+        kind: "APPROVAL_EXPIRED",
+        timestamp: nowIso,
+        detail: { decision: "EXPIRED", operatorId: operator.operatorId },
+        status: "PENDING",
+      },
+    })
     return {
       success: false,
       reason: "approval expired",
@@ -266,21 +294,22 @@ function handleApprove(
     updatedAt: nowIso,
   }
 
-  store.saveApproval(next)
-
-  // Emit outbox event (transactional with state change)
-  store.appendOutboxEvent({
-    eventId: `evt-approve-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    approvalId: command.approvalId,
-    kind: "APPROVAL_DECIDED",
-    timestamp: nowIso,
-    detail: {
-      decision: "APPROVED",
-      operatorId: operator.operatorId,
-      requestHash: command.requestHash,
-      contractRevision: command.contractRevision,
+  // State and authoritative event commit atomically.
+  store.commitTransition({
+    approval: next,
+    event: {
+      eventId: `evt-approve-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      approvalId: command.approvalId,
+      kind: "APPROVAL_DECIDED",
+      timestamp: nowIso,
+      detail: {
+        decision: "APPROVED",
+        operatorId: operator.operatorId,
+        requestHash: command.requestHash,
+        contractRevision: command.contractRevision,
+      },
+      status: "PENDING",
     },
-    status: "PENDING",
   })
 
   return {
@@ -326,18 +355,19 @@ function handleDeny(
     updatedAt: nowIso,
   }
 
-  store.saveApproval(next)
-
-  store.appendOutboxEvent({
-    eventId: `evt-deny-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    approvalId: command.approvalId,
-    kind: "APPROVAL_DECIDED",
-    timestamp: nowIso,
-    detail: {
-      decision: "DENIED",
-      operatorId: operator.operatorId,
+  store.commitTransition({
+    approval: next,
+    event: {
+      eventId: `evt-deny-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      approvalId: command.approvalId,
+      kind: "APPROVAL_DECIDED",
+      timestamp: nowIso,
+      detail: {
+        decision: "DENIED",
+        operatorId: operator.operatorId,
+      },
+      status: "PENDING",
     },
-    status: "PENDING",
   })
 
   return {
@@ -386,19 +416,20 @@ function handleRevoke(
     updatedAt: nowIso,
   }
 
-  store.saveApproval(next)
-
-  store.appendOutboxEvent({
-    eventId: `evt-revoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    approvalId: command.approvalId,
-    kind: "APPROVAL_REVOKED",
-    timestamp: nowIso,
-    detail: {
-      decision: "REVOKED",
-      operatorId: operator.operatorId,
-      previousState: record.state,
+  store.commitTransition({
+    approval: next,
+    event: {
+      eventId: `evt-revoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      approvalId: command.approvalId,
+      kind: "APPROVAL_REVOKED",
+      timestamp: nowIso,
+      detail: {
+        decision: "REVOKED",
+        operatorId: operator.operatorId,
+        previousState: record.state,
+      },
+      status: "PENDING",
     },
-    status: "PENDING",
   })
 
   return {
@@ -439,7 +470,17 @@ function handleClaim(
   // Verify not expired
   if (new Date(record.expiresAt).getTime() < now.getTime()) {
     const expired: ApprovalRecord = { ...record, state: "EXPIRED", updatedAt: nowIso }
-    store.saveApproval(expired)
+    store.commitTransition({
+      approval: expired,
+      event: {
+        eventId: `evt-expire-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        approvalId: command.approvalId,
+        kind: "APPROVAL_EXPIRED",
+        timestamp: nowIso,
+        detail: { decision: "EXPIRED" },
+        status: "PENDING",
+      },
+    })
     return { success: false, reason: "approval expired before claim" }
   }
 
@@ -451,8 +492,6 @@ function handleClaim(
     executionId: command.executionId,
     updatedAt: nowIso,
   }
-  store.saveApproval(claimed)
-
   const execution: ApprovalExecutionRecord = {
     executionId: command.executionId,
     approvalId: command.approvalId,
@@ -462,18 +501,20 @@ function handleClaim(
     createdAt: nowIso,
     updatedAt: nowIso,
   }
-  store.saveExecution(execution)
-
-  store.appendOutboxEvent({
-    eventId: `evt-claim-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    approvalId: command.approvalId,
-    kind: "APPROVAL_CLAIMED",
-    timestamp: nowIso,
-    detail: {
-      executionId: command.executionId,
-      requestHash: command.requestHash,
+  store.commitTransition({
+    approval: claimed,
+    execution,
+    event: {
+      eventId: `evt-claim-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      approvalId: command.approvalId,
+      kind: "APPROVAL_CLAIMED",
+      timestamp: nowIso,
+      detail: {
+        executionId: command.executionId,
+        requestHash: command.requestHash,
+      },
+      status: "PENDING",
     },
-    status: "PENDING",
   })
 
   return {
@@ -519,30 +560,31 @@ function handleConsume(
     state: "CONSUMED",
     updatedAt: nowIso,
   }
-  store.saveApproval(consumed)
-
   // Update execution record
   const execution = store.loadExecution(command.approvalId)
-  if (execution) {
-    const updatedExec: ApprovalExecutionRecord = {
-      ...execution,
-      state: "SUCCEEDED",
-      effectReceiptHash: command.effectReceiptHash,
-      updatedAt: nowIso,
-    }
-    store.saveExecution(updatedExec)
-  }
+  const updatedExec: ApprovalExecutionRecord | undefined = execution
+    ? {
+        ...execution,
+        state: "SUCCEEDED",
+        effectReceiptHash: command.effectReceiptHash,
+        updatedAt: nowIso,
+      }
+    : undefined
 
-  store.appendOutboxEvent({
-    eventId: `evt-consume-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    approvalId: command.approvalId,
-    kind: "APPROVAL_CONSUMED",
-    timestamp: nowIso,
-    detail: {
-      executionId: command.executionId,
-      effectReceiptHash: command.effectReceiptHash,
+  store.commitTransition({
+    approval: consumed,
+    execution: updatedExec,
+    event: {
+      eventId: `evt-consume-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      approvalId: command.approvalId,
+      kind: "APPROVAL_CONSUMED",
+      timestamp: nowIso,
+      detail: {
+        executionId: command.executionId,
+        effectReceiptHash: command.effectReceiptHash,
+      },
+      status: "PENDING",
     },
-    status: "PENDING",
   })
 
   return {
@@ -577,6 +619,14 @@ export class InMemoryApprovalStore implements ApprovalLifecycleStore {
 
   appendOutboxEvent(event: ApprovalOutboxEvent): void {
     this.outbox.push({ ...event })
+  }
+
+  commitTransition(transition: ApprovalTransition): void {
+    this.approvals.set(transition.approval.approvalId, { ...transition.approval })
+    if (transition.execution) {
+      this.executions.set(transition.execution.approvalId, { ...transition.execution })
+    }
+    this.outbox.push({ ...transition.event })
   }
 
   loadPendingApprovals(sessionId: string): ApprovalRecord[] {
