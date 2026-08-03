@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - master
+      - phase-d-implementation
   push:
     branches:
       - master
+      - phase-d-implementation
   workflow_dispatch:
 
 permissions:
