@@ -91,3 +91,7 @@ packages/engine/.arcana/
 # Claude local worktrees / session junk
 .claude/worktrees/
 packages/core/src/crypto/.test-crash-recovery/
+
+# Raw test evidence is committed for the completion gate.
+!docs/evidence/*.log
+!docs/evidence/*.log.err
