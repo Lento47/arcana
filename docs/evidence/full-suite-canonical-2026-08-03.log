@@ -1,0 +1,25 @@
+bun test v1.3.14 (0d9b296a)
+[05:22:08.360] WARN (#475): oauth-bind: network error {
+  base: "https://api-arcana.otnelhq.com",
+  error: "An error occurred in Effect.tryPromise",
+}
+[05:22:08.361] WARN (#475): oauth-bind: network error {
+  base: "https://arcana-license-server.lejzerv.workers.dev",
+  error: "An error occurred in Effect.tryPromise",
+}
+[05:22:09.005] ERROR (#1586): failed to abort ACP backing session {
+  error: {
+    safeMessage: "OpenCode service failure",
+    service: "session",
+    _tag: "ACPServiceFailureError",
+  },
+  sessionID: "ses_new",
+}
+[05:22:09.005] ERROR (#1587): failed to abort ACP backing session {
+  error: {
+    safeMessage: "OpenCode service failure",
+    service: "session",
+    _tag: "ACPServiceFailureError",
+  },
+  sessionID: "ses_new",
+}
