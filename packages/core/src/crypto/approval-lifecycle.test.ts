@@ -3,6 +3,9 @@ import {
   InMemoryApprovalStore,
   processApprovalCommand,
   type ApprovalCommand,
+  type ApprovalCommandResult,
+  type ApprovalExecutionRecord,
+  type ApprovalRecord,
   type AuthenticatedOperator,
 } from "./approval-lifecycle"
 
@@ -14,6 +17,50 @@ const operator: AuthenticatedOperator = {
 }
 
 const now = new Date("2026-08-02T12:00:00.000Z")
+
+const NOW = new Date("2026-08-02T12:00:00.000Z")
+
+function pendingRecord(overrides: Partial<ApprovalRecord> = {}): ApprovalRecord {
+  return {
+    approvalId: "appr_1",
+    version: 1,
+    sessionId: "sess-a",
+    workspaceId: "workspace-a",
+    requestHash: "hash-a",
+    contractRevision: 1,
+    state: "PENDING",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    updatedAt: "2026-08-02T00:00:00.000Z",
+    createdAt: "2026-08-02T00:00:00.000Z",
+    ...overrides,
+  }
+}
+
+function deterministicOperator(): AuthenticatedOperator {
+  return {
+    operatorId: "operator-a",
+    authenticatedAt: NOW.toISOString(),
+    roles: ["operator"],
+    workspaceScope: ["workspace-a"],
+  }
+}
+
+/** Second-describe helper: approve appr_1 (workspace-a / hash-a). */
+function approveDeterminism(): ApprovalCommand {
+  return {
+    kind: "APPROVE",
+    approvalId: "appr_1",
+    requestHash: "hash-a",
+    contractRevision: 1,
+    operatorId: "operator-a",
+    sessionId: "sess-a",
+    workspaceId: "workspace-a",
+  }
+}
+
+function runApprove(store: InMemoryApprovalStore): ApprovalCommandResult {
+  return processApprovalCommand(approveDeterminism(), store, deterministicOperator(), NOW)
+}
 
 function approveCommand(approvalId: string): ApprovalCommand {
   return {
@@ -56,18 +103,43 @@ function claimCommand(approvalId: string, executionId = "exec-1", requestHash = 
   }
 }
 
-function consumeCommand(approvalId: string, executionId = "exec-1"): ApprovalCommand {
+function consumeCommand(approvalId: string, executionId = "exec-1", effectReceiptHash = "receipt-1"): ApprovalCommand {
   return {
     kind: "CONSUME",
     approvalId,
     executionId,
-    effectReceiptHash: "receipt-1",
+    effectReceiptHash,
   }
+}
+
+/**
+ * Seed a PENDING record in the first-describe convention (ws-a / req-hash-1).
+ * The durable lifecycle is existing-record-only: approvals are created by the
+ * PDP/approval-required path, so every decision test starts from a persisted
+ * PENDING record.
+ */
+function seedPending(store: InMemoryApprovalStore, overrides: Partial<ApprovalRecord> = {}): ApprovalRecord {
+  const record: ApprovalRecord = {
+    approvalId: "a1",
+    version: 1,
+    sessionId: "sess-a",
+    workspaceId: "ws-a",
+    requestHash: "req-hash-1",
+    contractRevision: 1,
+    state: "PENDING",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    updatedAt: "2026-08-02T00:00:00.000Z",
+    createdAt: "2026-08-02T00:00:00.000Z",
+    ...overrides,
+  }
+  store.saveApproval(record)
+  return record
 }
 
 describe("durable approval lifecycle (PENDING → APPROVED → CLAIMED → CONSUMED)", () => {
   test("approve requires PENDING and records the authenticated operator", () => {
     const store = new InMemoryApprovalStore()
+    seedPending(store)
     const created = processApprovalCommand(approveCommand("a1"), store, operator, now)
     expect(created.success).toBe(true)
 
@@ -79,6 +151,7 @@ describe("durable approval lifecycle (PENDING → APPROVED → CLAIMED → CONSU
 
   test("full lifecycle: approve → claim → consume, then duplicate consume fails", () => {
     const store = new InMemoryApprovalStore()
+    seedPending(store)
     expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
 
     const claim = processApprovalCommand(claimCommand("a1"), store, operator, now)
@@ -98,6 +171,7 @@ describe("durable approval lifecycle (PENDING → APPROVED → CLAIMED → CONSU
 
   test("claim fails when the request hash changed after approval", () => {
     const store = new InMemoryApprovalStore()
+    seedPending(store)
     expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
 
     const claim = processApprovalCommand(claimCommand("a1", "exec-1", "CHANGED-HASH"), store, operator, now)
@@ -108,6 +182,8 @@ describe("durable approval lifecycle (PENDING → APPROVED → CLAIMED → CONSU
 
   test("claim fails when the approval expired before claim", () => {
     const store = new InMemoryApprovalStore()
+    // Expires between `now` and `later` so the claim happens after expiry.
+    seedPending(store, { expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString() })
     expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
     const later = new Date(now.getTime() + 10 * 60 * 1000)
     const claim = processApprovalCommand(claimCommand("a1"), store, operator, later)
@@ -117,9 +193,7 @@ describe("durable approval lifecycle (PENDING → APPROVED → CLAIMED → CONSU
 
   test("deny fails the approval closed", () => {
     const store = new InMemoryApprovalStore()
-    expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
-    const pending = store.loadApproval("a1")!
-    store.saveApproval({ ...pending, state: "PENDING", version: 1, approvedBy: undefined })
+    seedPending(store)
     const denied = processApprovalCommand(denyCommand("a1"), store, operator, now)
     expect(denied.success).toBe(true)
     expect(store.loadApproval("a1")!.state).toBe("DENIED")
@@ -131,12 +205,9 @@ describe("durable approval lifecycle (PENDING → APPROVED → CLAIMED → CONSU
     for (const state of ["PENDING", "APPROVED"] as const) {
       const store = new InMemoryApprovalStore()
       if (state === "PENDING") {
-        // Create the record via an initial approve so the store has it.
-        expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
-        // Put it back to PENDING to test the PENDING path.
-        const pending = store.loadApproval("a1")!
-        store.saveApproval({ ...pending, state: "PENDING", version: 1, approvedBy: undefined })
+        seedPending(store)
       } else {
+        seedPending(store)
         expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
       }
 
@@ -152,6 +223,7 @@ describe("durable approval lifecycle (PENDING → APPROVED → CLAIMED → CONSU
 
   test("REVOKE refuses claimed, consumed, and denied approvals", () => {
     const store = new InMemoryApprovalStore()
+    seedPending(store)
     expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
     expect(processApprovalCommand(claimCommand("a1"), store, operator, now).success).toBe(true)
     const revoked = processApprovalCommand(revokeCommand("a1"), store, operator, now)
@@ -162,6 +234,7 @@ describe("durable approval lifecycle (PENDING → APPROVED → CLAIMED → CONSU
 
   test("operator workspace scope is enforced for every decision", () => {
     const store = new InMemoryApprovalStore()
+    seedPending(store)
     const foreignOperator: AuthenticatedOperator = {
       operatorId: "operator-b",
       authenticatedAt: now.toISOString(),
@@ -175,9 +248,7 @@ describe("durable approval lifecycle (PENDING → APPROVED → CLAIMED → CONSU
 
   test("approve on an expired PENDING record transitions to EXPIRED", () => {
     const store = new InMemoryApprovalStore()
-    expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
-    const pending = store.loadApproval("a1")!
-    store.saveApproval({ ...pending, state: "PENDING", version: 1, expiresAt: new Date(now.getTime() - 1000).toISOString() })
+    seedPending(store, { expiresAt: new Date(now.getTime() - 1000).toISOString() })
 
     const result = processApprovalCommand(approveCommand("a1"), store, operator, now)
     expect(result.success).toBe(false)
@@ -192,8 +263,8 @@ describe("deterministic outbox event identity", () => {
     const storeB = new InMemoryApprovalStore()
     storeB.saveApproval(pendingRecord())
 
-    const resultA = processApprovalCommand(approveCommand(), storeA, operator(), NOW)
-    const resultB = processApprovalCommand(approveCommand(), storeB, operator(), NOW)
+    const resultA = processApprovalCommand(approveDeterminism(), storeA, deterministicOperator(), NOW)
+    const resultB = processApprovalCommand(approveDeterminism(), storeB, deterministicOperator(), NOW)
     expect(resultA.success).toBe(true)
     expect(resultB.success).toBe(true)
 
@@ -231,7 +302,7 @@ describe("deterministic outbox event identity", () => {
         workspaceId: "workspace-a",
       },
       revokeStore,
-      operator(),
+      deterministicOperator(),
       NOW,
     )
 
@@ -250,3 +321,162 @@ describe("deterministic outbox event identity", () => {
     expect(store.getOutboxEvents()[0]!.eventId).toBe("evt-APPROVAL_EXPIRED-appr_1-v2")
   })
 })
+
+describe("CONSUME fails closed without a durable execution + receipt binding", () => {
+  /** Seed a CLAIMED approval plus a CLAIMED execution record (post-claim state). */
+  function seedClaimed(store: InMemoryApprovalStore): void {
+    seedPending(store)
+    expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
+    expect(processApprovalCommand(claimCommand("a1"), store, operator, now).success).toBe(true)
+    expect(store.loadApproval("a1")!.state).toBe("CLAIMED")
+    expect(store.loadExecution("a1")).not.toBeNull()
+  }
+
+  test("consume without an execution record is refused (RECOVERY_REQUIRED), approval stays CLAIMED", () => {
+    const store = new InMemoryApprovalStore()
+    seedPending(store)
+    expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
+    expect(processApprovalCommand(claimCommand("a1"), store, operator, now).success).toBe(true)
+    // Simulate a missing execution record via a store wrapper: a claimed
+    // effect with no durable execution must never silently produce CONSUMED.
+    const brokenStore = new MissingExecutionStore(store)
+    const result = processApprovalCommand(consumeCommand("a1"), brokenStore, operator, now)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("execution record missing")
+    expect(result.reason).toContain("RECOVERY_REQUIRED")
+    expect(brokenStore.loadApproval("a1")!.state).toBe("CLAIMED")
+  })
+
+  test("consume refuses a mismatched execution id (approval-level check first)", () => {
+    const store = new InMemoryApprovalStore()
+    seedClaimed(store)
+    const result = processApprovalCommand(consumeCommand("a1", "exec-WRONG"), store, operator, now)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("executionId mismatch")
+    expect(store.loadApproval("a1")!.state).toBe("CLAIMED")
+  })
+
+  test("consume refuses when the execution record belongs to another approval", () => {
+    const store = new InMemoryApprovalStore()
+    seedClaimed(store)
+    store.saveExecution({
+      executionId: "exec-1",
+      approvalId: "a1",
+      approvalVersion: 2,
+      requestHash: "req-hash-1",
+      state: "CLAIMED",
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    })
+    const mismatched = new MutatedExecutionStore(store, { approvalId: "a-foreign-approval" })
+    const result = processApprovalCommand(consumeCommand("a1"), mismatched, operator, now)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("execution approvalId mismatch")
+    expect(mismatched.loadApproval("a1")!.state).toBe("CLAIMED")
+  })
+
+  test("consume refuses when the execution request hash does not match the approval", () => {
+    const store = new InMemoryApprovalStore()
+    seedClaimed(store)
+    const mismatched = new MutatedExecutionStore(store, { requestHash: "req-CHANGED" })
+    const result = processApprovalCommand(consumeCommand("a1"), mismatched, operator, now)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("execution request hash mismatch")
+    expect(mismatched.loadApproval("a1")!.state).toBe("CLAIMED")
+  })
+
+  test("consume refuses when the execution approval version does not match the approval", () => {
+    const store = new InMemoryApprovalStore()
+    seedClaimed(store)
+    const mismatched = new MutatedExecutionStore(store, { approvalVersion: 99 })
+    const result = processApprovalCommand(consumeCommand("a1"), mismatched, operator, now)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("execution approval version mismatch")
+    expect(mismatched.loadApproval("a1")!.state).toBe("CLAIMED")
+  })
+
+  test("consume refuses an execution in a terminal/failed state (RECOVERY_REQUIRED)", () => {
+    const store = new InMemoryApprovalStore()
+    seedClaimed(store)
+    const failed = new MutatedExecutionStore(store, { state: "FAILED" as const })
+    const result = processApprovalCommand(consumeCommand("a1"), failed, operator, now)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("RECOVERY_REQUIRED")
+    expect(failed.loadApproval("a1")!.state).toBe("CLAIMED")
+  })
+
+  test("consume refuses a missing effect receipt", () => {
+    const store = new InMemoryApprovalStore()
+    seedClaimed(store)
+    const result = processApprovalCommand(consumeCommand("a1", "exec-1", ""), store, operator, now)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("effect receipt missing")
+    expect(store.loadApproval("a1")!.state).toBe("CLAIMED")
+  })
+
+  test("consume refuses a duplicate (already-bound) effect receipt", () => {
+    const store = new InMemoryApprovalStore()
+    seedClaimed(store)
+    // Bind the receipt already (as if a prior consume had succeeded), keeping
+    // every other field identical to the real post-claim execution record.
+    const claimed = store.loadExecution("a1")!
+    store.saveExecution({
+      ...claimed,
+      state: "CLAIMED",
+      effectReceiptHash: "receipt-1",
+    })
+    const result = processApprovalCommand(consumeCommand("a1"), store, operator, now)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("effect receipt already bound")
+    expect(store.loadApproval("a1")!.state).toBe("CLAIMED")
+  })
+
+  test("happy path: consume commits CONSUMED with the receipt newly bound", () => {
+    const store = new InMemoryApprovalStore()
+    seedClaimed(store)
+    const result = processApprovalCommand(consumeCommand("a1"), store, operator, now)
+    expect(result.success).toBe(true)
+    expect(result.reason).toBe("consumed")
+    expect(store.loadApproval("a1")!.state).toBe("CONSUMED")
+    expect(store.loadExecution("a1")!.state).toBe("SUCCEEDED")
+    expect(store.loadExecution("a1")!.effectReceiptHash).toBe("receipt-1")
+  })
+})
+
+/** Store wrapper that reports a missing execution record (loadExecution → null). */
+class MissingExecutionStore extends InMemoryApprovalStore {
+  constructor(base: InMemoryApprovalStore) {
+    super()
+    for (const record of [base.loadApproval("a1")]) {
+      if (record) this.saveApproval(record)
+    }
+    const execution = base.loadExecution("a1")
+    if (execution) this.saveExecution(execution)
+  }
+
+  override loadExecution(): ApprovalExecutionRecord | null {
+    return null
+  }
+}
+
+/** Store wrapper that mutates the loaded execution record for mismatch tests. */
+class MutatedExecutionStore extends InMemoryApprovalStore {
+  constructor(
+    base: InMemoryApprovalStore,
+    private readonly mutation: Partial<ApprovalExecutionRecord>,
+  ) {
+    super()
+    // Copy the underlying in-memory state so the wrapper sees the same records.
+    for (const record of [base.loadApproval("a1")]) {
+      if (record) this.saveApproval(record)
+    }
+    const execution = base.loadExecution("a1")
+    if (execution) this.saveExecution(execution)
+  }
+
+  override loadExecution(approvalId: string): ApprovalExecutionRecord | null {
+    const record = super.loadExecution(approvalId)
+    if (!record) return null
+    return { ...record, ...this.mutation }
+  }
+}
