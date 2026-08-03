@@ -4,7 +4,7 @@
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Created:** 2026-08-02 (Phase A–F completion audit)
 **Consolidated:** 2026-08-02 — single register replacing the former `docs/blockers/` folder
-**Implementation checkpoint:** `0392ad7b` (2026-08-02; suites verified on the pre-commit worktree)
+**Implementation checkpoint:** `63d71f07` (2026-08-03; upstream advanced from `0392ad7b` via merged PRs #43–47)
 **Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
 
 This file consolidates every phase and product-track blocker register. Each area below preserves the original rows: the playbook task or gate it blocks, the current evidence of the gap, and the acceptance evidence required to close it.
@@ -211,7 +211,11 @@ TUI-2.1 MOUNTED and AUTOMATED GREEN, freeze NOT AUTHORIZED.**
 The open blockers below are exactly the TUI-2.1 freeze gates
 (TUI-2.1-FREEZE-OPERATOR-RUNBOOK) plus the remaining product-track
 items (TUI-3 delegation console, TUI-4 proof/replay/audit views, TUI-5
-final polish) that are outside the TUI-2.1 scope.
+final polish) that are outside the TUI-2.1 scope. The 2026-08-03 upstream
+advance to `63d71f07` (merged PRs #43–47: ci base green, ci split
+verification gates, ml-eval script routing, enterprise tailwind import fix,
+shared governance projection contract docs) closed no TUI-2.1 freeze blocker;
+all eight (`BLK-TUI-01..08`) remain open.
 
 ## Open blockers
 
