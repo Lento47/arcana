@@ -1,7 +1,7 @@
 export * as FileSystemSearch from "./search"
 
 import path from "path"
-import { Context, Effect, Layer, Scope } from "effect"
+import { Context, Deferred, Effect, Layer, Scope } from "effect"
 import { Fff } from "#fff"
 import fuzzysort from "fuzzysort"
 import { FileSystem } from "../filesystem"
@@ -31,6 +31,10 @@ export const ripgrepLayer = Layer.effect(
       directories: [] as string[],
     }
     const directories = new Set<string>()
+    // Deferred signals that the initial index scan finished. forkIn does not
+    // return the fiber in this Effect beta, so completion is bridged through
+    // the Deferred (completed with the scan's exit, success or failure).
+    const scanDone = yield* Deferred.make<void, unknown>()
     yield* ripgrep
       .find({
         cwd: location.directory,
@@ -44,7 +48,13 @@ export const ripgrepLayer = Layer.effect(
             state.directories = Array.from(directories)
           }),
       })
-      .pipe(Effect.orDie, Effect.asVoid, Effect.forkIn(scope))
+      .pipe(
+        Effect.orDie,
+        Effect.asVoid,
+        Effect.exit,
+        Effect.tap((exit) => Deferred.complete(scanDone, exit)),
+        Effect.forkIn(scope),
+      )
     return Service.of({
       glob: (input) =>
         Effect.gen(function* () {
@@ -101,6 +111,15 @@ export const ripgrepLayer = Layer.effect(
         }),
       find: (input) =>
         Effect.gen(function* () {
+          // The file index is built by a background ripgrep scan forked at
+          // layer creation. Querying state.files before that scan finishes
+          // returns empty results, so await scan completion (bounded) before
+          // the first query. The Deferred resolves immediately once the scan
+          // finished; subsequent calls pass through without waiting.
+          yield* Deferred.await(scanDone).pipe(
+            Effect.option,
+            Effect.timeoutOption("10 seconds"),
+          )
           const items =
             input.type === "file"
               ? state.files
@@ -187,7 +206,15 @@ export const fffLayer = Layer.effect(
           })
         }),
       find: (input) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
+          // The fff picker indexes the filesystem asynchronously after
+          // creation. Search before the initial scan completes returns
+          // empty results, so wait for the scan (bounded) before the
+          // first query. waitForScan resolves immediately once scanning
+          // has finished on subsequent calls.
+          yield* Effect.promise(() => result.value.waitForScan(10_000)).pipe(
+            Effect.flatMap((waited) => (waited.ok ? Effect.void : Effect.die(new Error(waited.error)))),
+          )
           const options = { pageIndex: 0, pageSize: input.limit ?? 50 }
           const items = (() => {
             if (input.type === "file") {
