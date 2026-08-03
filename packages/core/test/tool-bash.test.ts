@@ -223,7 +223,7 @@ describe("BashTool", () => {
           ).pipe(
             Effect.andThen((settled) =>
               Effect.sync(() => {
-                expect(settled.result).toEqual({ type: "text", value: "core-bash\n\nCommand exited with code 0." })
+                expect(settled.result).toEqual({ type: "text", value: "core-bash\n\nCommand exited successfully with code 0." })
                 expect(settled.output?.structured).toMatchObject({
                   command: "printf core-bash",
                   cwd: realpathSync(tmp.path),

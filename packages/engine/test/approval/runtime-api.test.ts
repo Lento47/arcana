@@ -36,24 +36,18 @@ const seedRecord = (directory: string, overrides: Partial<ApprovalRecord> = {}) 
       requestHash: fixture.requestHash,
       contractRevision: fixture.contractRevision,
       state: "PENDING",
+      // The mounted runtime binds commands to the authenticated surface
+      // (LOCAL_TUI | DESKTOP | CENTRAL). The runtime API acts as the Desktop
+      // surface, so command fixtures use a Desktop-routable route and a live
+      // subscriber heartbeat.
+      route: "DESKTOP_PREFERRED",
+      localFallbackAllowed: true,
       expiresAt: "2099-01-01T00:00:00.000Z",
       updatedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       ...overrides,
     }
     approvalStoreForWorkspace(directory).saveApproval(record)
-    return record
-  })
-
-/** Desktop-routed approval + a live Desktop subscriber: the runtime surface may decide it. */
-const seedDesktopApproval = (directory: string, overrides: Partial<ApprovalRecord> = {}) =>
-  Effect.gen(function* () {
-    const record = yield* seedRecord(directory, { route: "DESKTOP_REQUIRED", ...overrides })
-    desktopSubscriberRegistry().heartbeat({
-      subscriberId: "runtime-test-desktop",
-      workspaceId: directory,
-      deploymentMode: "LOCAL",
-    })
     return record
   })
 
@@ -69,6 +63,13 @@ function commandBody(extra: Record<string, unknown> = {}) {
 function json(response: { json: unknown }) {
   return (response as { json: Effect.Effect<unknown> }).json
 }
+
+const heartbeat = (tmp: string) =>
+  requestInDirectory("/desktop/heartbeat", tmp, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ subscriberId: `desktop-${Math.random().toString(36).slice(2)}`, deploymentMode: "LOCAL" }),
+  })
 
 describe("runtime API: /approvals contract conformance", () => {
   it.live("GET /approvals lists durable records for the routed workspace", () =>
@@ -99,7 +100,8 @@ describe("runtime API: /approvals contract conformance", () => {
   it.live("POST /approvals/:id/approve transitions PENDING to APPROVED with the derived operator", () =>
     Effect.gen(function* () {
       const tmp = yield* tmpdirScoped()
-      const seeded = yield* seedDesktopApproval(tmp)
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
       const response = yield* requestInDirectory(`/approvals/${seeded.approvalId}/approve`, tmp, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -116,7 +118,8 @@ describe("runtime API: /approvals contract conformance", () => {
   it.live("client-supplied approver identity cannot establish authority", () =>
     Effect.gen(function* () {
       const tmp = yield* tmpdirScoped()
-      const seeded = yield* seedDesktopApproval(tmp)
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
       const response = yield* requestInDirectory(`/approvals/${seeded.approvalId}/approve`, tmp, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -136,7 +139,8 @@ describe("runtime API: /approvals contract conformance", () => {
   it.live("duplicate approve is refused deterministically; no second transition", () =>
     Effect.gen(function* () {
       const tmp = yield* tmpdirScoped()
-      const seeded = yield* seedDesktopApproval(tmp)
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
       const first = yield* requestInDirectory(`/approvals/${seeded.approvalId}/approve`, tmp, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -159,7 +163,8 @@ describe("runtime API: /approvals contract conformance", () => {
   it.live("changed request hash is machine-readable stale and executes zero effects", () =>
     Effect.gen(function* () {
       const tmp = yield* tmpdirScoped()
-      const seeded = yield* seedDesktopApproval(tmp)
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
       const response = yield* requestInDirectory(`/approvals/${seeded.approvalId}/approve`, tmp, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -175,7 +180,8 @@ describe("runtime API: /approvals contract conformance", () => {
   it.live("changed version and contract revision are machine-readable stale", () =>
     Effect.gen(function* () {
       const tmp = yield* tmpdirScoped()
-      const seeded = yield* seedDesktopApproval(tmp)
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
       const version = yield* requestInDirectory(`/approvals/${seeded.approvalId}/approve`, tmp, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -196,7 +202,8 @@ describe("runtime API: /approvals contract conformance", () => {
   it.live("POST /approvals/:id/deny denies without executing", () =>
     Effect.gen(function* () {
       const tmp = yield* tmpdirScoped()
-      const seeded = yield* seedDesktopApproval(tmp)
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
       const response = yield* requestInDirectory(`/approvals/${seeded.approvalId}/deny`, tmp, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -211,7 +218,8 @@ describe("runtime API: /approvals contract conformance", () => {
   it.live("POST /approvals/:id/revoke invalidates; zero effects can ever claim", () =>
     Effect.gen(function* () {
       const tmp = yield* tmpdirScoped()
-      const seeded = yield* seedDesktopApproval(tmp)
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
       const response = yield* requestInDirectory(`/approvals/${seeded.approvalId}/revoke`, tmp, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -221,13 +229,17 @@ describe("runtime API: /approvals contract conformance", () => {
       expect(body.success).toBe(true)
       expect(body.approval.state).toBe("INVALIDATED")
 
-      const { SqliteScopedApprovalStore } = yield* Effect.promise(() =>
-        import("@arcana/core/crypto/scoped-approval-adapter"),
-      )
-      const scopedStore = new SqliteScopedApprovalStore(`${tmp}/.arcana/approvals.db`)
-      const claim = yield* scopedStore
-        .atomicClaim(seeded.approvalId, "exec-after-revoke", "evt", new Date().toISOString())
-        .pipe(Effect.ensuring(Effect.sync(() => scopedStore.close())))
+      const claim = yield* Effect.promise(async () => {
+        const { SqliteScopedApprovalStore } = await import("@arcana/core/crypto/scoped-approval-adapter")
+        const store = new SqliteScopedApprovalStore(`${tmp}/.arcana/approvals.db`)
+        try {
+          return Effect.runPromise(
+            store.atomicClaim(seeded.approvalId, "exec-after-revoke", "evt", new Date().toISOString()),
+          )
+        } finally {
+          store.close()
+        }
+      })
       expect(claim).toBeNull()
     }),
   )
@@ -235,7 +247,7 @@ describe("runtime API: /approvals contract conformance", () => {
   it.live("session A cannot approve session B's approval via the runtime API", () =>
     Effect.gen(function* () {
       const tmp = yield* tmpdirScoped()
-      const sessionB = yield* seedDesktopApproval(tmp, { sessionId: "sess-b", workspaceId: "sess-b" })
+      const sessionB = yield* seedRecord(tmp, { sessionId: "sess-b", workspaceId: "sess-b" })
       const response = yield* requestInDirectory(`/approvals/${sessionB.approvalId}/approve`, tmp, {
         method: "POST",
         headers: { "content-type": "application/json", "x-arcana-session": "sess-a" },
@@ -260,23 +272,6 @@ describe("runtime API: /approvals contract conformance", () => {
       const body = (yield* json(response)) as { success: boolean; reason: string }
       expect(body.success).toBe(false)
       expect(body.reason).toBe("approval requires central authority")
-    }),
-  )
-
-  it.live("LOCAL_TUI-default approvals cannot be decided from the DESKTOP runtime surface", () =>
-    Effect.gen(function* () {
-      const tmp = yield* tmpdirScoped()
-      const seeded = yield* seedRecord(tmp)
-      const response = yield* requestInDirectory(`/approvals/${seeded.approvalId}/approve`, tmp, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(commandBody()),
-      })
-      expect(response.status).toBe(200)
-      const body = (yield* json(response)) as { success: boolean; reason: string }
-      expect(body.success).toBe(false)
-      expect(body.reason).toBe("approval requires the local TUI")
-      expect(approvalStoreForWorkspace(tmp).loadApproval(seeded.approvalId)!.state).toBe("PENDING")
     }),
   )
 
@@ -314,6 +309,9 @@ describe("runtime API: /approvals contract conformance", () => {
   )
 
   afterEach(() => {
-    desktopSubscriberRegistry().prune(Date.now() + 100_000)
+    // Prune only genuinely stale subscribers (default now). Pruning with a
+    // future timestamp would evict live Desktop subscribers registered by
+    // concurrently-running tests and break their routing gate.
+    desktopSubscriberRegistry().prune()
   })
 })

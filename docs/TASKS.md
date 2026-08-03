@@ -3,7 +3,7 @@
 **Document class:** living task register + traceability matrix
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Consolidated:** 2026-08-02 — merges the former `docs/roadmap/TASK-REGISTER.md` and `docs/roadmap/PHASE-TRACEABILITY.md`
-**Implementation checkpoint:** `0392ad7b` (2026-08-02; suites verified on the pre-commit worktree)
+**Implementation checkpoint:** `63d71f07` (2026-08-03; upstream advanced from `0392ad7b` via merged PRs #43–47)
 **Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
 
 Part 1 is the living per-task status register (playbook tasks plus AUD-xx campaign tasks). Part 2 is the task → evidence → gate traceability matrix.
@@ -209,6 +209,8 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | AUD-54 | TUI-2.1 operator consoles (F3 simulation editor, F5 escalation console, F6 auditor console) — design proposed; **PENDING USER DECISION** (implementation requires approval) | TUI-2.1 | Engineering |
 | AUD-55 | Live PEP transport (SDK adapter `authorize()` wired to an engine HTTP PEP endpoint) — design proposed; **PENDING USER DECISION** (implementation requires approval) | BLK-E-06/E-10 | Engineering |
 | AUD-56 | Consolidate the external/human gate register with exact owner/artifact/evidence per gate (TLS, live Linux, live exercises, TUI matrices, F13, L3, license, Node freeze, Phase F freeze, Arcana 1.0 sign-off) — DONE (`docs/BLOCKERS.md`) | — | All owners |
+| AUD-57 | Obtain the explicit human freeze sign-off for TUI-2.1 (required before the milestone tag) | TUI-2.1 | Maintainer + operator |
+| AUD-58 | Create the immutable TUI-2.1 milestone tag at the verified exact final commit after human sign-off (release-flow Phase 1) | TUI-2.1 | Maintainer |
 
 ## Phase traceability
 
@@ -217,7 +219,11 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 status authority `docs/STATUS.md`
 **Created:** 2026-08-02 (Phase A–F completion audit)
 **Audited commit:** `0392ad7b` (2026-08-02 checkpoint commit; suites verified
-on the pre-commit worktree, which the commit reproduces exactly)
+on the pre-commit worktree, which the commit reproduces exactly). Upstream
+advanced to `63d71f07` (2026-08-03) via merged PRs #43–47; the checkpoint
+below reflects the pre-advance audit. The TUI-2.1 freeze gates tracked by
+`AUD-01..08` remain open at the new checkpoint, plus `AUD-57` (human freeze
+sign-off) and `AUD-58` (immutable tag) added below.
 
 This document traces every playbook phase and task to its implementation
 evidence, its release gates, and its open blockers. It is the companion to
@@ -437,3 +443,13 @@ Master spec Parts I–IV (architecture/roadmap)
   → docs/TASKS.md (this file)
   → docs/COMPLETION-REPORT.md (checkpoint completion summary)
 ```
+
+## AUD-2x: Runtime approval routing and engine stability closure (2026-08-03)
+
+| Task | Status | Evidence | Blockers |
+|---|---|---|---|
+| AUD-21 Engine stability closure: classify and fix the 33 full-suite failures | COMPLETE | Baseline rerun 2026-08-02: 4250 pass / 33 fail. Classification: 30 subprocess harness failures (bun not on PATH; fixed with process.execPath in test/lib/cli-process.ts), 2 replay fixtures (PATH bootstrap + explicit execSync env), 1 Windows shell test (Git Bash cygpath root assumption; test now asserts cross-variant normalization). Repro runs: all pass with bun removed from PATH | - |
+| AUD-22 Load-bound snapshot/revert test timeouts + stability gate | COMPLETE | Justified per-test timeouts (15s revert/compact restore, 10s snapshot) with comments; test:engine:stability rewritten as fresh-process iterations (script/stability-run.ts); 3/3 clean; concurrency 1/4/8, randomize, seeded randomize all 0 fail | - |
+| AUD-23 Approval routing model + REVOKE lifecycle | COMPLETE | approval-routing.ts (LOCAL_TUI/DESKTOP_PREFERRED/DESKTOP_REQUIRED/CENTRAL_REQUIRED, policy-driven); REVOKE (PENDING/APPROVED -> INVALIDATED, zero execution path); surface-bound routing gate in approval/command.ts; 17 core routing/lifecycle tests + 15 engine gate tests | - |
+| AUD-24 Runtime/Desktop API contract | COMPLETE (pre-release) | Runtime API mounted (/approvals, approve/deny/revoke, /sessions, /proofs, /desktop/heartbeat); operator identity from server context; exact-request revalidation; OpenAPI contracts/approval-api.v1.yaml; doc docs/RUNTIME-API-CONTRACT.md; 19 engine approval tests | Desktop client itself is spec-only (external track) |
+| AUD-25 Low-noise TUI governance projection | COMPLETE | Three visibility modes (conversation default / operations / forensic); healthy governance aggregated into compact lifecycle rows; forensic expands raw evidence; security-critical rows always visible; 18 TUI tests | - |

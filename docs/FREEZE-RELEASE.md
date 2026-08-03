@@ -2,10 +2,35 @@
 
 **Status:** DRAFTS / PLANS — none are authorized. Freeze requires the stated acceptance evidence plus explicit human sign-off.
 **Consolidated:** 2026-08-02 — merges the former `docs/releases/CLI-1.0-FREEZE-DRAFT.md`, `docs/releases/PHASE-F-FREEZE-DRAFT.md`, and `docs/releases/RELEASE-FLOW-PLAN.md`
-**Implementation checkpoint:** `0392ad7b` (2026-08-02; suites verified on the pre-commit worktree)
+**Implementation checkpoint:** `63d71f07` (2026-08-03; upstream advanced from `0392ad7b` via merged PRs #43–47)
 **Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
 
 This file contains: (1) the Phase F GA freeze draft with playbook §40 gate evidence, (2) the CLI 1.0 contract freeze draft (catalog, JSON/NDJSON + exit-code contract, launch protocol), and (3) the release-flow plan (verify → freeze/tag → build → sign → installer/update smoke → publish → mainline promotion → post-verify).
+
+## TUI-2.1 freeze gates
+
+**Status:** OPEN — every gate below remains to be passed at the exact final
+commit. Freeze is NOT authorized until each gate records its acceptance
+evidence and receives explicit human sign-off. These map to runbook Gates 1–10
+(`TUI-2.1-FREEZE-OPERATOR-RUNBOOK`), blocker register `BLK-TUI-01..08`
+(`docs/BLOCKERS.md` §TUI 1.0 / TUI-2.1), and tasks `AUD-01..08`
+(`docs/TASKS.md`).
+
+| # | Gate | Owner | Evidence location / required evidence |
+|---|---|---|---|
+| 1 | 11-phase manual Windows Terminal smoke (>50 checkpoints) | Operator + engineering | Signed 11-phase checklist at the exact final commit (`TUI-2.1-FREEZE-OPERATOR-RUNBOOK`; BLK-TUI-01; AUD-01) |
+| 2 | Width matrix 59–180 | Engineering | Matrix at 59/60/79/80/99/100/119/120/180 with zero right-edge clipping (BLK-TUI-02; AUD-02) |
+| 3 | Dark/light theme matrix | Engineering | All approval/tool/spine states in both themes; security states never color-only (BLK-TUI-03; AUD-03) |
+| 4 | Approval lifecycle observation via spine keys (`v`/`a`/`d`) | Operator + engineering | PENDING→APPROVED→CLAIMED→CONSUMED observed in a live session incl. exact request inspector and prompt-conflict check (BLK-TUI-04; AUD-04) |
+| 5 | Restart recovery + session isolation | Operator + engineering | Restart + per-session isolation checkpoints passed (durable approval re-hydration, per-session isolation) (BLK-TUI-05; AUD-05) |
+| 6 | Performance measurements | Engineering | p95 input echo < 16.7 ms, session-open to input-ready < 500 ms (warm daemon), no redundant requests/reconnect storms/idle traffic (BLK-TUI-07; AUD-07) |
+| 7 | 6-checkpoint live stream protocol (probe SSE) | Engineering | 6/6 checkpoints PASS at the final commit (BLK-TUI-06; AUD-06) |
+| 8 | Suite rerun at the exact final commit | Engineering | Full core/engine/TUI/CLI/SDK/Rust suite rerun green at the tagged commit; totals recorded (BLK-TUI-08; AUD-08) |
+| 9 | Human freeze sign-off | Maintainer + operator | Explicit human approval recorded (freeze NOT authorized without it) |
+| 10 | Immutable milestone tag | Maintainer | Immutable tag created at the verified final commit after sign-off (release-flow Phase 1) |
+
+Evidence for every gate must be recorded with a date, commit, and verification
+command per `docs/BLOCKERS.md` closing rules before the freeze is declared.
 
 ## Phase F — GA Freeze Draft
 
