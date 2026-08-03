@@ -813,7 +813,7 @@ describe("tool.shell permissions", () => {
           tmp,
           Effect.gen(function* () {
             const config = yield* Config.Service
-            const shell = Shell.acceptable(config.shell)
+            const shell = Shell.acceptable((yield* config.get()).shell)
             const want = Filesystem.normalizePathPattern(path.join(outerTmp, "*"))
             const variants = forms(outerTmp).filter((dir) => {
               // Drive-stripped forms (e.g. /Windows/Temp/...) are POSIX paths

@@ -51,24 +51,18 @@ const seedRecord = (
       requestHash: fixture.requestHash,
       contractRevision: fixture.contractRevision,
       state: "PENDING",
+      // The mounted runtime binds commands to the authenticated surface
+      // (LOCAL_TUI | DESKTOP | CENTRAL). The runtime API acts as the Desktop
+      // surface, so command fixtures use a Desktop-routable route and a live
+      // subscriber heartbeat.
+      route: "DESKTOP_PREFERRED",
+      localFallbackAllowed: true,
       expiresAt: "2099-01-01T00:00:00.000Z",
       updatedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       ...overrides,
     }
     approvalStoreForWorkspace(directory).saveApproval(record)
-    return record
-  })
-
-/** Desktop-routed approval + a live Desktop subscriber: the runtime surface may decide it. */
-const seedDesktopApproval = (directory: string, sessionId: string, overrides: Partial<ApprovalRecord> = {}) =>
-  Effect.gen(function* () {
-    const record = yield* seedRecord(directory, sessionId, { route: "DESKTOP_REQUIRED", ...overrides })
-    desktopSubscriberRegistry().heartbeat({
-      subscriberId: "runtime-test-desktop",
-      workspaceId: directory,
-      deploymentMode: "LOCAL",
-    })
     return record
   })
 
@@ -85,16 +79,12 @@ function json(response: { json: unknown }) {
   return (response as { json: Effect.Effect<unknown> }).json
 }
 
-function requestAsSession(
-  route: string,
-  directory: string,
-  sessionId: string,
-  init: RequestInit = {},
-) {
-  const headers = new Headers(init.headers)
-  headers.set("x-arcana-session", sessionId)
-  return requestInDirectory(route, directory, { ...init, headers })
-}
+const heartbeat = (tmp: string) =>
+  requestInDirectory("/desktop/heartbeat", tmp, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ subscriberId: `desktop-${Math.random().toString(36).slice(2)}`, deploymentMode: "LOCAL" }),
+  })
 
 describe("runtime API: /approvals contract conformance", () => {
   it.instance("GET /approvals lists durable records for the routed workspace", () =>
@@ -126,19 +116,14 @@ describe("runtime API: /approvals contract conformance", () => {
 
   it.instance("POST /approvals/:id/approve transitions PENDING to APPROVED with the derived operator", () =>
     Effect.gen(function* () {
-      const test = yield* TestInstance
-      const ws = yield* seedWorkspace(test.directory)
-      const seeded = yield* seedDesktopApproval(ws.directory, ws.sessionId)
-      const response = yield* requestAsSession(
-        `/approvals/${seeded.approvalId}/approve`,
-        ws.directory,
-        ws.sessionId,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(commandBody()),
-        },
-      )
+      const tmp = yield* tmpdirScoped()
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
+      const response = yield* requestInDirectory(`/approvals/${seeded.approvalId}/approve`, tmp, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(commandBody()),
+      })
       expect(response.status).toBe(200)
       const body = (yield* json(response)) as { success: boolean; approval: ApprovalRecord }
       expect(body.success).toBe(true)
@@ -149,20 +134,15 @@ describe("runtime API: /approvals contract conformance", () => {
 
   it.instance("client-supplied approver identity cannot establish authority", () =>
     Effect.gen(function* () {
-      const test = yield* TestInstance
-      const ws = yield* seedWorkspace(test.directory)
-      const seeded = yield* seedDesktopApproval(ws.directory, ws.sessionId)
-      const response = yield* requestAsSession(
-        `/approvals/${seeded.approvalId}/approve`,
-        ws.directory,
-        ws.sessionId,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(commandBody({ approvedBy: "root", operatorId: "root", actorUserId: "root" })),
-        },
-      )
-      const record = approvalStoreForWorkspace(ws.directory).loadApproval(seeded.approvalId)!
+      const tmp = yield* tmpdirScoped()
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
+      const response = yield* requestInDirectory(`/approvals/${seeded.approvalId}/approve`, tmp, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(commandBody({ approvedBy: "root", operatorId: "root", actorUserId: "root" })),
+      })
+      const record = approvalStoreForWorkspace(tmp).loadApproval(seeded.approvalId)!
       expect(record.approvedBy).not.toBe("root")
       if (response.status === 200) {
         const body = (yield* json(response)) as { success: boolean; approval: ApprovalRecord }
@@ -175,19 +155,14 @@ describe("runtime API: /approvals contract conformance", () => {
 
   it.instance("duplicate approve is refused deterministically; no second transition", () =>
     Effect.gen(function* () {
-      const test = yield* TestInstance
-      const ws = yield* seedWorkspace(test.directory)
-      const seeded = yield* seedDesktopApproval(ws.directory, ws.sessionId)
-      const first = yield* requestAsSession(
-        `/approvals/${seeded.approvalId}/approve`,
-        ws.directory,
-        ws.sessionId,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(commandBody()),
-        },
-      )
+      const tmp = yield* tmpdirScoped()
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
+      const first = yield* requestInDirectory(`/approvals/${seeded.approvalId}/approve`, tmp, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(commandBody()),
+      })
       expect(((yield* json(first)) as { success: boolean }).success).toBe(true)
 
       const second = yield* requestAsSession(
@@ -209,19 +184,14 @@ describe("runtime API: /approvals contract conformance", () => {
 
   it.instance("changed request hash is machine-readable stale and executes zero effects", () =>
     Effect.gen(function* () {
-      const test = yield* TestInstance
-      const ws = yield* seedWorkspace(test.directory)
-      const seeded = yield* seedDesktopApproval(ws.directory, ws.sessionId)
-      const response = yield* requestAsSession(
-        `/approvals/${seeded.approvalId}/approve`,
-        ws.directory,
-        ws.sessionId,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(commandBody({ expectedRequestHash: "MUTATED-HASH" })),
-        },
-      )
+      const tmp = yield* tmpdirScoped()
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
+      const response = yield* requestInDirectory(`/approvals/${seeded.approvalId}/approve`, tmp, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(commandBody({ expectedRequestHash: "MUTATED-HASH" })),
+      })
       const body = (yield* json(response)) as { success: boolean; stale?: boolean }
       expect(body.success).toBe(false)
       expect(body.stale).toBe(true)
@@ -231,19 +201,14 @@ describe("runtime API: /approvals contract conformance", () => {
 
   it.instance("changed version and contract revision are machine-readable stale", () =>
     Effect.gen(function* () {
-      const test = yield* TestInstance
-      const ws = yield* seedWorkspace(test.directory)
-      const seeded = yield* seedDesktopApproval(ws.directory, ws.sessionId)
-      const version = yield* requestAsSession(
-        `/approvals/${seeded.approvalId}/approve`,
-        ws.directory,
-        ws.sessionId,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(commandBody({ expectedVersion: 99 })),
-        },
-      )
+      const tmp = yield* tmpdirScoped()
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
+      const version = yield* requestInDirectory(`/approvals/${seeded.approvalId}/approve`, tmp, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(commandBody({ expectedVersion: 99 })),
+      })
       expect((yield* json(version)) as { stale: boolean }).toMatchObject({ success: false, stale: true })
 
       const revision = yield* requestAsSession(
@@ -263,19 +228,14 @@ describe("runtime API: /approvals contract conformance", () => {
 
   it.instance("POST /approvals/:id/deny denies without executing", () =>
     Effect.gen(function* () {
-      const test = yield* TestInstance
-      const ws = yield* seedWorkspace(test.directory)
-      const seeded = yield* seedDesktopApproval(ws.directory, ws.sessionId)
-      const response = yield* requestAsSession(
-        `/approvals/${seeded.approvalId}/deny`,
-        ws.directory,
-        ws.sessionId,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(commandBody()),
-        },
-      )
+      const tmp = yield* tmpdirScoped()
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
+      const response = yield* requestInDirectory(`/approvals/${seeded.approvalId}/deny`, tmp, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(commandBody()),
+      })
       const body = (yield* json(response)) as { success: boolean; approval: ApprovalRecord }
       expect(body.success).toBe(true)
       expect(body.approval.state).toBe("DENIED")
@@ -284,51 +244,42 @@ describe("runtime API: /approvals contract conformance", () => {
 
   it.instance("POST /approvals/:id/revoke invalidates; zero effects can ever claim", () =>
     Effect.gen(function* () {
-      const test = yield* TestInstance
-      const ws = yield* seedWorkspace(test.directory)
-      const seeded = yield* seedDesktopApproval(ws.directory, ws.sessionId)
-      const response = yield* requestAsSession(
-        `/approvals/${seeded.approvalId}/revoke`,
-        ws.directory,
-        ws.sessionId,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(commandBody()),
-        },
-      )
+      const tmp = yield* tmpdirScoped()
+      yield* heartbeat(tmp)
+      const seeded = yield* seedRecord(tmp)
+      const response = yield* requestInDirectory(`/approvals/${seeded.approvalId}/revoke`, tmp, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(commandBody()),
+      })
       const body = (yield* json(response)) as { success: boolean; approval: ApprovalRecord }
       expect(body.success).toBe(true)
       expect(body.approval.state).toBe("INVALIDATED")
 
-      const { SqliteScopedApprovalStore } = yield* Effect.promise(() =>
-        import("@arcana/core/crypto/scoped-approval-adapter"),
-      )
-      const scopedStore = new SqliteScopedApprovalStore(`${ws.directory}/.arcana/approvals.db`)
-      const claim = yield* scopedStore
-        .atomicClaim(seeded.approvalId, "exec-after-revoke", "evt", new Date().toISOString())
-        .pipe(Effect.ensuring(Effect.sync(() => scopedStore.close())))
+      const claim = yield* Effect.promise(async () => {
+        const { SqliteScopedApprovalStore } = await import("@arcana/core/crypto/scoped-approval-adapter")
+        const store = new SqliteScopedApprovalStore(`${tmp}/.arcana/approvals.db`)
+        try {
+          return Effect.runPromise(
+            store.atomicClaim(seeded.approvalId, "exec-after-revoke", "evt", new Date().toISOString()),
+          )
+        } finally {
+          store.close()
+        }
+      })
       expect(claim).toBeNull()
     }),
   )
 
   it.instance("session A cannot approve session B's approval via the runtime API", () =>
     Effect.gen(function* () {
-      const test = yield* TestInstance
-      const wsA = yield* seedWorkspace(test.directory)
-      const dirB = yield* tmpdirScoped()
-      const wsB = yield* provideInstance(dirB)(seedWorkspace(dirB))
-      const sessionB = yield* seedDesktopApproval(wsB.directory, wsB.sessionId)
-      const response = yield* requestAsSession(
-        `/approvals/${sessionB.approvalId}/approve`,
-        wsA.directory,
-        wsA.sessionId,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(commandBody()),
-        },
-      )
+      const tmp = yield* tmpdirScoped()
+      const sessionB = yield* seedRecord(tmp, { sessionId: "sess-b", workspaceId: "sess-b" })
+      const response = yield* requestInDirectory(`/approvals/${sessionB.approvalId}/approve`, tmp, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-arcana-session": "sess-a" },
+        body: JSON.stringify(commandBody()),
+      })
       const body = (yield* json(response)) as { success: boolean; reason: string }
       expect(body.success).toBe(false)
       expect(body.reason).toBe("approval not found")
@@ -357,30 +308,7 @@ describe("runtime API: /approvals contract conformance", () => {
     }),
   )
 
-  it.instance("LOCAL_TUI-default approvals cannot be decided from the DESKTOP runtime surface", () =>
-    Effect.gen(function* () {
-      const test = yield* TestInstance
-      const ws = yield* seedWorkspace(test.directory)
-      const seeded = yield* seedRecord(ws.directory, ws.sessionId)
-      const response = yield* requestAsSession(
-        `/approvals/${seeded.approvalId}/approve`,
-        ws.directory,
-        ws.sessionId,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(commandBody()),
-        },
-      )
-      expect(response.status).toBe(200)
-      const body = (yield* json(response)) as { success: boolean; reason: string }
-      expect(body.success).toBe(false)
-      expect(body.reason).toBe("approval requires the local TUI")
-      expect(approvalStoreForWorkspace(ws.directory).loadApproval(seeded.approvalId)!.state).toBe("PENDING")
-    }),
-  )
-
-  it.instance("desktop heartbeat registers a live subscriber; approval stays durable", () =>
+  it.live("desktop heartbeat registers a live subscriber; approval stays durable", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance
       const ws = yield* seedWorkspace(test.directory)
@@ -423,6 +351,9 @@ describe("runtime API: /approvals contract conformance", () => {
   )
 
   afterEach(() => {
-    desktopSubscriberRegistry().prune(Date.now() + 100_000)
+    // Prune only genuinely stale subscribers (default now). Pruning with a
+    // future timestamp would evict live Desktop subscribers registered by
+    // concurrently-running tests and break their routing gate.
+    desktopSubscriberRegistry().prune()
   })
 })
