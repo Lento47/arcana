@@ -25,18 +25,18 @@ type Baseline = {
   readonly version: number
   readonly description: string
   readonly binary: {
-    readonly max_size_mb: number
+    max_size_mb: number
     readonly description: string
   }
   readonly startup: {
-    readonly max_p50_ms: number
-    readonly max_p90_ms: number
+    max_p50_ms: number
+    max_p90_ms: number
     readonly runs: number
     readonly args: string[]
     readonly description: string
   }
-  readonly updated_at: string
-  readonly updated_by: string
+  updated_at: string
+  updated_by: string
 }
 
 // --------------- helpers ---------------
