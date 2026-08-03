@@ -14,6 +14,37 @@ All contributors must agree to the [Contributor License Agreement](CLA.md). By s
 - Add a changelog entry for user-facing changes
 - Skills: each `SKILL.md` must have valid YAML frontmatter
 
+## Repository authority and scope
+
+Before changing behavior, read:
+
+- `docs/PRODUCT.md` — the product and M1 boundary
+- `docs/STATUS.md` — what is currently mounted and verified
+- `docs/ROADMAP.md` — what is Now, Next, and Later
+- `docs/REPOSITORY-STRUCTURE.md` — package ownership and dependency direction
+- `contracts/` — the machine-readable Runtime/Desktop interface
+
+The runtime owns governance authority. CLI, TUI, Desktop, and SDK surfaces consume runtime contracts; they must not create competing approval state machines, policy decisions, proof semantics, or event schemas.
+
+Historical phase reports, sign-offs, and test totals are evidence for their evaluated commit. They do not override the current product definition, status, roadmap, or machine-readable contracts.
+
+## Change scope
+
+Choose one primary category for each PR:
+
+- security boundary
+- runtime contract
+- product surface
+- reliability
+- documentation / evidence
+- later product track
+
+Do not combine a contract change, security-boundary refactor, UI redesign, broad documentation cleanup, and release work in one PR.
+
+Contract changes must update the machine-readable artifact and implementation together, regenerate or update clients, document compatibility/protocol impact, and add conformance tests.
+
+Security-boundary changes must include negative tests proving denied, stale, expired, revoked, or unauthorized paths execute zero protected effects.
+
 ## Development
 
 ```sh
@@ -85,13 +116,20 @@ test("example", async () => {
 })
 ```
 
+## Evidence
+
+Record exact commands, totals, platform, and evaluated commit. A previous test result does not validate a later commit.
+
+Do not mark behavior complete solely because types compile or unit tests exist. Release claims require production mounting, restart behavior, failure-path validation, and explicit sign-off where defined.
+
 ## PR process
 
-1. Fork the repo and create a feature branch
-2. Make your changes following the code style
-3. Run `bun run verify` to ensure all checks pass
-4. Write clear commit messages
-5. Open a PR with a description of what changed and why
+1. Fork the repo and create a focused branch
+2. Make one bounded change following the code style and ownership rules
+3. Run the most relevant targeted tests, then `bun run verify` when practical
+4. Record exact commands and results in the PR template
+5. Open a draft PR for security-boundary, contract, or broad structural changes
+6. Resolve reviewer concerns before marking ready
 
 ## Code style
 
