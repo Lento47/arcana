@@ -26,6 +26,7 @@ import { EventStore } from "@/session/epistemic/event-store"
 import { RunProof } from "@/session/epistemic/run-proof"
 import { ServerAuth } from "@/server/auth"
 import { Effect, Encoding, Option } from "effect"
+import path from "node:path"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { HttpServerRequest } from "effect/unstable/http"
 import { InstanceHttpApi } from "../api"
@@ -43,13 +44,41 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
     const eventStore = yield* EventStore.Service
     const runProof = yield* RunProof.Service
 
-    const resolveDirectory = Effect.fn("RuntimeHttpApi.resolveDirectory")(function* (
-      queryDirectory?: string,
-    ) {
-      const routeDirectory = Option.getOrUndefined(
-        (yield* Effect.serviceOption(WorkspaceRouteContext)).pipe(Option.map((ctx) => ctx.directory)),
-      )
-      return routeDirectory ?? queryDirectory ?? process.cwd()
+    const sameDirectory = (a: string, b: string) => {
+      const normalized = (value: string) => {
+        const resolved = path.resolve(value)
+        return process.platform === "win32" ? resolved.toLowerCase() : resolved
+      }
+      return normalized(a) === normalized(b)
+    }
+
+    /**
+     * Resolve the AUTHORITATIVE workspace directory for this request.
+     *
+     * Order of authority:
+     *   1. The routing middleware's directory when it came from a validated
+     *      source (session record, workspace registry, or configured flag).
+     *   2. The session named by the x-arcana-session header: the session
+     *      record binds the operator to its workspace directory.
+     *   3. The trusted local runtime directory (process.cwd()).
+     *
+     * A query-supplied `directory` is never authoritative: it can narrow
+     * within an authorized scope but can never grant workspace authority.
+     */
+    const resolveAuthorizedWorkspace = Effect.fn("RuntimeHttpApi.resolveAuthorizedWorkspace")(function* () {
+      const route = yield* Effect.serviceOption(WorkspaceRouteContext)
+      if (Option.isSome(route)) {
+        const ctx = route.value
+        if (ctx.directoryAuthoritative) return ctx.directory
+      }
+      const sessionScope = yield* sessionScopeFromRequest()
+      if (sessionScope) {
+        const info = yield* session.get(sessionScope as SessionID).pipe(
+          Effect.catch(() => Effect.succeed(undefined)),
+        )
+        if (info) return info.directory
+      }
+      return process.cwd()
     })
 
     const operatorIdentity = Effect.fn("RuntimeHttpApi.operatorIdentity")(function* () {
@@ -76,7 +105,7 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
         operatorId,
         authenticatedAt: new Date().toISOString(),
         roles: ["operator"] as const,
-        workspaceScope: ["*"] as const,
+        workspaceScope: [workspaceScope] as const,
       }
     })
 
@@ -102,7 +131,7 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
       query: { directory?: string }
       command: ApprovalCommandKind
     }) {
-      const directory = yield* resolveDirectory(ctx.query.directory)
+      const directory = yield* resolveAuthorizedWorkspace()
       const record = approvalStoreForWorkspace(directory).loadApproval(ctx.params.approvalID)
       if (!record) {
         return { success: false as const, reason: "approval not found" }
@@ -115,7 +144,7 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
         return { success: false as const, reason: "approval belongs to another session" }
       }
 
-      const operator = yield* operatorIdentity()
+      const operator = yield* operatorIdentity(directory)
       const response = submitApprovalCommand({
         sessionId: record.sessionId,
         approvalId: ctx.params.approvalID,
@@ -127,7 +156,7 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
         },
         surface: "DESKTOP",
         workspaceCwd: directory,
-        workspaceId: record.workspaceId,
+        workspaceId: directory,
         operator,
       })
 
@@ -144,7 +173,7 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
     })
 
     const list = Effect.fn("RuntimeHttpApi.list")(function* (ctx: { query: { directory?: string } }) {
-      const directory = yield* resolveDirectory(ctx.query.directory)
+      const directory = yield* resolveAuthorizedWorkspace()
       return approvalStoreForWorkspace(directory).loadAllApprovals()
     })
 
@@ -152,20 +181,27 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
       params: { approvalID: string }
       query: { directory?: string }
     }) {
-      const directory = yield* resolveDirectory(ctx.query.directory)
+      const directory = yield* resolveAuthorizedWorkspace()
       return yield* requireApproval(ctx.params.approvalID, directory)
     })
 
     const listSessions = Effect.fn("RuntimeHttpApi.listSessions")(function* () {
-      return yield* session.list()
+      const directory = yield* resolveAuthorizedWorkspace()
+      const sessions = yield* session.list()
+      return sessions.filter((info) => sameDirectory(info.directory, directory))
     })
 
     const getSession = Effect.fn("RuntimeHttpApi.getSession")(function* (ctx: {
       params: { sessionID: SessionID }
     }) {
-      return yield* session.get(ctx.params.sessionID).pipe(
+      const directory = yield* resolveAuthorizedWorkspace()
+      const info = yield* session.get(ctx.params.sessionID).pipe(
         Effect.catch(() => notFound(`session ${ctx.params.sessionID} not found`)),
       )
+      if (!sameDirectory(info.directory, directory)) {
+        return yield* Effect.fail(notFound(`session ${ctx.params.sessionID} not found`))
+      }
+      return info
     })
 
     const proof = Effect.fn("RuntimeHttpApi.proof")(function* (ctx: {
@@ -205,7 +241,7 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
       payload: typeof DesktopHeartbeatPayload.Type
       query: { directory?: string }
     }) {
-      const directory = yield* resolveDirectory(ctx.query.directory)
+      const directory = yield* resolveAuthorizedWorkspace()
       const subscriber = desktopSubscriberRegistry().heartbeat({
         subscriberId: ctx.payload.subscriberId,
         workspaceId: directory,
