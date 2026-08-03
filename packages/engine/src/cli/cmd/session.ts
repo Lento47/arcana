@@ -13,6 +13,7 @@ import { NotFoundError } from "@/storage/storage"
 import { EOL } from "os"
 import path from "path"
 import { which } from "@arcana/core/util/which"
+import { outputJson, isJsonMode, jsonOption, ExitCode } from "../json-output"
 
 function pagerCmd(): string[] {
   const lessOptions = ["-R", "-S"]
@@ -77,6 +78,11 @@ export const SessionListCommand = effectCmd({
         describe: "limit to N most recent sessions",
         type: "number",
       })
+      .option("json", {
+        describe: "output machine-readable JSON to stdout",
+        type: "boolean",
+        default: false,
+      })
       .option("format", {
         describe: "output format",
         type: "string",
@@ -87,6 +93,18 @@ export const SessionListCommand = effectCmd({
     const sessions = yield* Session.Service.use((svc) => svc.list({ roots: true, limit: args.maxCount }))
 
     if (sessions.length === 0) return
+
+    if (isJsonMode(args)) {
+      outputJson(sessions.map((session) => ({
+        id: session.id,
+        title: session.title,
+        updated: session.time.updated,
+        created: session.time.created,
+        projectId: session.projectID,
+        directory: session.directory,
+      })))
+      return
+    }
 
     const output = args.format === "json" ? formatSessionJSON(sessions) : formatSessionTable(sessions)
 
