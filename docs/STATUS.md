@@ -3,10 +3,10 @@ document_class: status
 authority: current_status
 status: current
 status_source: self
-implementation_checkpoint: 0392ad7b
+implementation_checkpoint: 63d71f07
 documentation_reconciliation_commit: 882ea468
 current_branch_at_publication: phase-d-implementation
-last_verified: 2026-08-02
+last_verified: 2026-08-03
 supersedes: status claims inside Arcana_Project_Master_Specification.md Parts I-III
 ---
 
@@ -26,12 +26,12 @@ secondary; never edit the mirror independently.
 | Field | Value |
 |---|---|
 | Current implementation branch | `phase-d-implementation` |
-| Implementation checkpoint | `0392ad7b` (2026-08-02; suites verified on the pre-commit worktree) |
+| Implementation checkpoint | `63d71f07` (2026-08-03; upstream advanced from `0392ad7b` via merged PRs #43–47) |
 | Documentation reconciliation commit | `882ea468` (baseline for the consolidated files) |
-| Uncommitted worktree | clean at implementation checkpoint `0392ad7b` |
+| Uncommitted worktree | clean at implementation checkpoint `63d71f07` |
 | Default branch (`master` / `origin/master`) | stale — Phase B/C, D-7, TUI-2 milestone commits not on it; mainline promotion pending (post-sign-off release action) |
 | Release version | pre-release builds only (`0.0.0-phase-d-implementation-*`) |
-| Last verification date | 2026-08-02 (checkpoint; full engine rerun pending) |
+| Last verification date | 2026-08-03 (canonical full-suite rerun; engine 4302 pass / 74 skip / 1 todo / 0 fail) |
 | Supported platforms | Windows 10/11 (primary, tested); Linux (D-6A-L identity scaffold; live validation pending) |
 
 ## Milestone matrix
@@ -46,7 +46,7 @@ secondary; never edit the mirror independently.
 | Phase F — Enterprise Control Plane | Service-core implementation: HIGH — F1–F13 cores implemented and mounted (`/api/enterprise/*` + SDK client: orgs, RBAC, fleet + rings + diagnostics, approvals + escalation, policy promotion/drafts, audit archive, security ops + anomaly, governance, reliability, federation + routing + revocation transport, SIEM, ticketing, webhooks, metering + usage export, entitlements). Production mounting: SUBSTANTIAL. Secure production boundary: BLOCKED (BLK-F-AUTH-01). Release readiness: BLOCKED — TUI consoles, live exercises, external assessment (F13) pending |
 | TUI-1 | Historical independent tag (`arcana-tui-1-governance-observability`); not in current branch ancestry |
 | TUI-2 — Interactive Authority Control | FROZEN (`arcana-tui-2-interactive-authority-control`) |
-| TUI-2.1 — Production Integration + Polish | MOUNTED, AUTOMATED GREEN (TUI 787 tests, 0 fail); freeze NOT AUTHORIZED. Manual validation in progress (2026-08-02): contract admission, tool execution, governance aggregation, proof axes, approval via gate, denial with zero effects, restart durability, daemon respawn on idle-stop (F-22), approval inspector + spine keys (F-23), `v` inspect for any approval state + guidance toast (F-24), Esc always leaves the composer without interrupting (F-25), Esc inert on ACTION GATES (F-26), spine navigation + `v` inspection available while a gate is open (F-27), permission-gate `v` inspector (F-28); approval lifecycle via spine keys, matrices, stream protocol, and performance pending |
+| TUI-2.1 — Production Integration + Polish | MOUNTED, AUTOMATED GREEN (TUI 787 tests, 0 fail); freeze NOT AUTHORIZED. F-22..F-28 manual items verified per the 2026-08-02 status: daemon respawn on idle-stop (F-22), approval inspector + spine keys (F-23), `v` inspect for any approval state + guidance toast (F-24), Esc always leaves the composer without interrupting (F-25), Esc inert on ACTION GATES (F-26), spine navigation + `v` inspection available while a gate is open (F-27), permission-gate `v` inspector (F-28), plus contract admission, tool execution, governance aggregation, proof axes, approval via gate, denial with zero effects, restart durability. PENDING: approval lifecycle via spine keys, routing matrices, live stream protocol, and performance |
 
 ## Product tracks and roadmap (2026-08-02)
 
@@ -136,6 +136,13 @@ production-certified adapter: no (BLK-CLI-01).
 | Conformance runner | 5/5 suites (TS golden vectors + D-10 matrix + Rust verifier + SDK surface + adapter vectors; 46 crypto + 4 adapter vectors + 15 hostile fixtures) |
 | ML eval / smoke | Earlier baseline: ml:eval 13/13, smoke 8/8 |
 | Validation level | Strongest at L1–L2 (production-path integration + internal adversarial); L3+ independent validation not obtained |
+
+**Checkpoint note (2026-08-03):** the implementation checkpoint advanced to
+`63d71f07` via five merged upstream PRs — #43 (ci base green), #44 (ci split
+verification gates), #45 (ml-eval script routing), #46 (enterprise tailwind
+import fix), #47 (shared governance projection contract docs). These are
+engineering/build/CI and documentation changes; they do not alter the test
+counts above, which remain the 2026-08-02/03 figures recorded in this file.
 
 ## Phase A–F audit artifacts (2026-08-02)
 
