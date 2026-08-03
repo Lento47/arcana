@@ -1,0 +1,119 @@
+name: Contract guards
+
+on:
+  pull_request:
+    branches:
+      - master
+      - phase-d-implementation
+    paths:
+      - "contracts/**"
+      - "packages/engine/src/approval/**"
+      - "packages/engine/src/server/routes/instance/httpapi/groups/runtime.ts"
+      - "packages/engine/src/server/routes/instance/httpapi/handlers/runtime.ts"
+      - ".github/workflows/contracts.yml"
+  push:
+    branches:
+      - master
+      - phase-d-implementation
+    paths:
+      - "contracts/**"
+      - "packages/engine/src/approval/**"
+      - "packages/engine/src/server/routes/instance/httpapi/groups/runtime.ts"
+      - "packages/engine/src/server/routes/instance/httpapi/handlers/runtime.ts"
+      - ".github/workflows/contracts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contracts-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate contract artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate OpenAPI syntax and required paths
+        shell: bash
+        run: |
+          ruby <<'RUBY'
+          require "yaml"
+
+          path = "contracts/approval-api.v1.yaml"
+          document = YAML.safe_load_file(path, aliases: true)
+          abort "#{path}: expected a mapping" unless document.is_a?(Hash)
+          abort "#{path}: expected OpenAPI 3.x" unless document.fetch("openapi", "").start_with?("3.")
+
+          paths = document.fetch("paths", {})
+          required_paths = %w[
+            /health
+            /sessions
+            /sessions/{sessionId}
+            /approvals
+            /approvals/{approvalId}
+            /approvals/{approvalId}/approve
+            /approvals/{approvalId}/deny
+            /approvals/{approvalId}/revoke
+            /event
+            /events/since/{sequence}
+            /proofs/{sessionId}
+          ]
+          missing = required_paths.reject { |required| paths.key?(required) }
+          abort "#{path}: missing required paths: #{missing.join(', ')}" unless missing.empty?
+
+          schemas = document.dig("components", "schemas") || {}
+          required_schemas = %w[
+            ApprovalRecord
+            ApprovalStatus
+            AuthorizationRequest
+            DecisionBody
+            EventEnvelope
+            RunProof
+            ErrorEnvelope
+          ]
+          missing_schemas = required_schemas.reject { |required| schemas.key?(required) }
+          abort "#{path}: missing required schemas: #{missing_schemas.join(', ')}" unless missing_schemas.empty?
+
+          puts "#{path}: syntax and required surface OK"
+          RUBY
+
+      - name: Validate governance event schema shape
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs")
+          const path = "contracts/events.v1.json"
+          const document = JSON.parse(fs.readFileSync(path, "utf8"))
+
+          if (document.type !== "object") {
+            throw new Error(`${path}: top-level type must be object`)
+          }
+
+          const required = new Set(document.required ?? [])
+          for (const key of ["events", "aggregation", "securityBreakthrough"]) {
+            if (!required.has(key)) {
+              throw new Error(`${path}: missing required key declaration ${key}`)
+            }
+            if (!document.properties?.[key]) {
+              throw new Error(`${path}: missing property schema ${key}`)
+            }
+          }
+
+          if (!document.$schema?.includes("2020-12")) {
+            throw new Error(`${path}: expected JSON Schema draft 2020-12`)
+          }
+
+          console.log(`${path}: syntax and top-level shape OK`)
+          NODE
+
+      - name: Conformance scope notice
+        run: |
+          echo "This workflow validates artifact syntax and the required surface only."
+          echo "Runtime payload/response parity and generated-client conformance require dedicated tests."
