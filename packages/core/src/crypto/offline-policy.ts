@@ -55,6 +55,49 @@ export type OfflineRequestContext = {
   approvalRequired: boolean
 }
 
+// ─── D-7 request classification ────────────────────────────────────────────
+
+/**
+ * Deterministically classify a distributed request for the D-9 offline gate.
+ *
+ * The D-7 model (`distributed-pep.ts`) exposes a single action today
+ * (`filesystem.read`) and its derived grants carry no sensitivity/approval
+ * metadata, so this function derives the offline request context from the
+ * action id alone:
+ *
+ *   action id            riskClass    consequential    approvalRequired
+ *   "filesystem.read"    LOW          false            false
+ *   anything else        CRITICAL     true             true
+ *
+ * Rationale:
+ * - `filesystem.read` is a bounded, read-only, non-consequential effect. It
+ *   matches the OFFLINE_READ_ONLY carve-out and the offline policy oracle
+ *   (non-consequential reads need no new operator approval).
+ * - Every other action id is unknown to the D-7 model. Because the model
+ *   cannot prove the effect is bounded, harmless, or pre-approved, the
+ *   classification fails closed: CRITICAL + consequential +
+ *   approval-required. `evaluateOfflineRequest` then denies such effects in
+ *   every offline enforcement mode, and no new approvals can be created
+ *   while offline. Unknown actions must never slip through a partition.
+ *
+ * `grant` is accepted (and must be the grant the PEP matched — the PEP
+ * guarantees `grant.action === action.action` before this gate runs) so the
+ * derivation has access to grant-level metadata once the model grows. Today
+ * the derived grant carries none, so the action id alone is deterministic
+ * and sufficient.
+ */
+export function classifyOfflineRequest(
+  action: { action: string },
+  _grant: { action: string; resource: string },
+): OfflineRequestContext {
+  switch (action.action) {
+    case "filesystem.read":
+      return { riskClass: "LOW", consequential: false, approvalRequired: false }
+    default:
+      return { riskClass: "CRITICAL", consequential: true, approvalRequired: true }
+  }
+}
+
 export type OfflineCapableGrant = {
   offlineEnabled: boolean
   expiresAt: string

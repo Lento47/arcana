@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from "bun:test"
 import {
+  classifyOfflineRequest,
   computeEffectiveOfflineExpiry,
   DEFAULT_OFFLINE_LEASE_CONFIG,
   evaluateOfflineRequest,
@@ -228,5 +229,63 @@ describe("D-9 effective offline expiry", () => {
       CONFIG,
     )
     expect(earlyExpiry).toBe("2026-08-02T12:10:00.000Z")
+  })
+})
+
+describe("D-9 offline request classification (D-7 model)", () => {
+  it("classifies filesystem.read as LOW, non-consequential, not approval-required", () => {
+    const classification = classifyOfflineRequest(
+      { action: "filesystem.read" },
+      { action: "filesystem.read", resource: "packages/arcana" },
+    )
+    expect(classification).toEqual({
+      riskClass: "LOW",
+      consequential: false,
+      approvalRequired: false,
+    })
+  })
+
+  it("classifies unknown actions conservatively as CRITICAL, consequential, approval-required", () => {
+    const classification = classifyOfflineRequest(
+      { action: "process.execute" },
+      { action: "process.execute", resource: "packages/arcana" },
+    )
+    expect(classification).toEqual({
+      riskClass: "CRITICAL",
+      consequential: true,
+      approvalRequired: true,
+    })
+  })
+
+  it("keeps every non-read action id on the conservative path (no silent allowlist)", () => {
+    for (const actionId of [
+      "filesystem.write",
+      "process.execute",
+      "network.write",
+      "secret.read",
+      "git.push",
+    ]) {
+      const classification = classifyOfflineRequest(
+        { action: actionId },
+        { action: actionId, resource: "packages/arcana" },
+      )
+      expect(classification).toMatchObject({
+        riskClass: "CRITICAL",
+        consequential: true,
+        approvalRequired: true,
+      })
+    }
+  })
+
+  it("is deterministic and ignores grant metadata the D-7 model does not carry", () => {
+    const a = classifyOfflineRequest(
+      { action: "filesystem.read" },
+      { action: "filesystem.read", resource: "a" },
+    )
+    const b = classifyOfflineRequest(
+      { action: "filesystem.read" },
+      { action: "filesystem.read", resource: "b" },
+    )
+    expect(a).toEqual(b)
   })
 })
