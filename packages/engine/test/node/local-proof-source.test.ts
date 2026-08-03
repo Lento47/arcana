@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { ed25519 } from "@noble/curves/ed25519.js"
@@ -23,7 +23,7 @@ function writeProof(dir: string, id: string, createdAt: string): void {
 }
 
 describe("local proof source (D-8B)", () => {
-  it("lists, orders, and batches local proofs with deterministic sequences", () => {
+  it("lists, orders, and batches local proofs with deterministic sequences", async () => {
     const dir = mkdtempSync(join(tmpdir(), "arcana-proof-source-"))
     try {
       writeProof(dir, "proof-b", "2026-08-02T12:00:00.000Z")
@@ -31,11 +31,11 @@ describe("local proof source (D-8B)", () => {
       writeProof(dir, "proof-c", "2026-08-02T13:00:00.000Z")
       writeFileSync(join(dir, ".arcana", "proofs", "corrupt.json"), "{not json")
 
-      const entries = listLocalProofs(dir)
+      const entries = await listLocalProofs(dir)
       expect(entries.map((e) => e.id)).toEqual(["proof-a", "proof-b", "proof-c"])
       expect(entries.every((e) => e.hash.length === 64)).toBe(true)
 
-      const { records, sequences } = buildOutboxRecords(
+      const { records, sequences } = await buildOutboxRecords(
         {
           directory: dir,
           nodeId: "node-alpha",
@@ -64,13 +64,13 @@ describe("local proof source (D-8B)", () => {
     }
   })
 
-  it("splits large proof sets into chained batches", () => {
+  it("splits large proof sets into chained batches", async () => {
     const dir = mkdtempSync(join(tmpdir(), "arcana-proof-source-many-"))
     try {
       for (let i = 0; i < 5; i++) {
         writeProof(dir, `proof-${i}`, `2026-08-02T11:00:0${i}.000Z`)
       }
-      const { records } = buildOutboxRecords(
+      const { records } = await buildOutboxRecords(
         {
           directory: dir,
           nodeId: "node-alpha",
@@ -90,6 +90,69 @@ describe("local proof source (D-8B)", () => {
       expect(records.map((r) => r.firstLocalSequence)).toEqual([1, 3, 5])
       expect(records[1].previousBatchRoot).toBe(records[0].batchRoot)
       expect(records[2].previousBatchRoot).toBe(records[1].batchRoot)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("local proof source D-7.1 kernel containment", () => {
+  function writeProofAt(proofsDir: string, id: string, createdAt: string): void {
+    mkdirSync(proofsDir, { recursive: true })
+    writeFileSync(
+      join(proofsDir, `${id}.json`),
+      JSON.stringify({ id, created_at: createdAt, events: [] }),
+    )
+  }
+
+  it("reads contained proofs through the bounded reader", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "arcana-proof-contained-"))
+    try {
+      writeProofAt(join(dir, ".arcana", "proofs"), "proof-in", "2026-08-02T10:00:00.000Z")
+      const entries = await listLocalProofs(dir)
+      expect(entries.map((e) => e.id)).toEqual(["proof-in"])
+      expect(entries[0].hash).toHaveLength(64)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("skips proof files that escape the workspace via a symlink/junction", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "arcana-proof-escape-"))
+    const outside = mkdtempSync(join(tmpdir(), "arcana-proof-outside-"))
+    try {
+      writeProofAt(join(outside, "secret"), "hostile", "2026-08-02T09:00:00.000Z")
+      // Point a .json entry inside the proofs dir at a hostile file outside it.
+      try {
+        symlinkSync(
+          join(outside, "secret", "hostile.json"),
+          join(dir, ".arcana", "proofs", "escaped.json"),
+          "file",
+        )
+      } catch {
+        // Platform/CI disallows symlinks; without a link there is nothing to escape through.
+        return
+      }
+      const entries = await listLocalProofs(dir)
+      // The escape must fail closed: the hostile proof is never read or batched.
+      expect(entries.some((e) => e.id === "escaped" || e.id === "hostile")).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
+  it("fails closed when a proof exceeds the bounded byte budget", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "arcana-proof-size-"))
+    try {
+      const proofsDir = join(dir, ".arcana", "proofs")
+      mkdirSync(proofsDir, { recursive: true })
+      writeFileSync(
+        join(proofsDir, "big.json"),
+        JSON.stringify({ id: "big", created_at: "2026-08-02T08:00:00.000Z", events: [] }),
+      )
+      const entries = await listLocalProofs(dir, 1)
+      expect(entries).toEqual([])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
