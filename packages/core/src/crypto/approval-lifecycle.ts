@@ -222,23 +222,12 @@ function handleApprove(
   now: Date,
   nowIso: string,
 ): ApprovalCommandResult {
-  // Load existing record
-  let record = store.loadApproval(command.approvalId)
-
+  // Existing-record-only invariant: a decision can never fabricate the durable
+  // object it is supposed to decide. Approval creation happens only in the
+  // PDP/approval-required path with the canonical request persisted first.
+  const record = store.loadApproval(command.approvalId)
   if (!record) {
-    // New approval — create PENDING record first
-    record = {
-      approvalId: command.approvalId,
-      version: 1,
-      sessionId: command.sessionId,
-      workspaceId: command.workspaceId,
-      requestHash: command.requestHash,
-      contractRevision: command.contractRevision,
-      state: "PENDING",
-      expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    }
+    return { success: false, reason: "approval not found" }
   }
 
   // Must be PENDING to approve
@@ -259,12 +248,12 @@ function handleApprove(
 
   // Verify not expired
   if (new Date(record.expiresAt).getTime() < now.getTime()) {
-    record = { ...record, state: "EXPIRED", updatedAt: nowIso }
-    store.saveApproval(record)
+    const expired: ApprovalRecord = { ...record, state: "EXPIRED", updatedAt: nowIso }
+    store.saveApproval(expired)
     return {
       success: false,
       reason: "approval expired",
-      approval: record,
+      approval: expired,
     }
   }
 
