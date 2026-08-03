@@ -6,7 +6,7 @@ import {
   type CentralApprovalRecord,
 } from "@arcana/core/enterprise/approvals"
 import { bulkDeny, emergencyRevokeApproval } from "@arcana/core/enterprise/approvals"
-import { checkPermission, type Permission } from "@arcana/core/enterprise/identity"
+import { authorizeAdminAction, type Permission } from "@arcana/core/enterprise/identity"
 import {
   applyRetention,
   appendCustody,
@@ -73,21 +73,69 @@ import {
   policyTargetStoreFor,
   type ControlPlaneState,
 } from "./control-state"
+import { ForbiddenError } from "../errors"
+import { AdminPrincipal } from "../middleware/authorization"
 
-function hasPermission(
-  state: ControlPlaneState,
-  tenantId: string,
-  userId: string,
-  action: Permission,
-): boolean {
-  return checkPermission({
-    tenantId,
-    userId,
-    action,
-    active: state.identity.isUserActive(tenantId, userId),
-    roles: state.identity.rolesFor(tenantId, userId),
-  }).allowed
-}
+/**
+ * Resolve the authenticated admin principal from the server context,
+ * attached by the authorization middleware after credential validation:
+ * Basic auth username when the server requires auth, otherwise the trusted
+ * local runtime context. Client-supplied actor fields never participate.
+ */
+const adminPrincipal = Effect.fn("EnterpriseHttpApi.adminPrincipal")(function* () {
+  const principal = Option.getOrUndefined(yield* Effect.serviceOption(AdminPrincipal))
+  if (principal) {
+    return { userId: principal.userId, authenticatedAt: principal.authenticatedAt }
+  }
+  // Defensive fallback: the group always runs the authorization middleware,
+  // so this branch is unreachable in the mounted surface.
+  return { userId: "local-operator", authenticatedAt: new Date().toISOString() }
+})
+
+/**
+ * Tenant authority gate: the path tenant is a selector, never a grant. The
+ * authenticated principal must be bound to the tenant by a server-side role
+ * assignment, otherwise the mutation is rejected with 403 (fail closed).
+ */
+const gateTenant = Effect.fn("EnterpriseHttpApi.gateTenant")(function* (ctx: {
+  state: ControlPlaneState
+  tenantId: string
+}) {
+  const principal = yield* adminPrincipal()
+  if (ctx.state.identity.rolesFor(ctx.tenantId, principal.userId).length === 0) {
+    return yield* Effect.fail(
+      new ForbiddenError({
+        message: `principal ${principal.userId} is not bound to tenant ${ctx.tenantId}`,
+      }),
+    )
+  }
+  return principal
+})
+
+/**
+ * Admin mutation gate: tenant binding plus the RBAC permission decision for
+ * the AUTHENTICATED principal. Client-supplied actor identity is never
+ * consulted, so forged actorUserId/approvedBy/operatorId body fields can
+ * neither grant authority nor change audit attribution.
+ */
+const gateAdmin = Effect.fn("EnterpriseHttpApi.gateAdmin")(function* (ctx: {
+  state: ControlPlaneState
+  tenantId: string
+  action: Permission
+}) {
+  const principal = yield* gateTenant(ctx)
+  const decision = authorizeAdminAction({
+    tenantId: ctx.tenantId,
+    userId: principal.userId,
+    action: ctx.action,
+    active: ctx.state.identity.isUserActive(ctx.tenantId, principal.userId),
+    roles: ctx.state.identity.rolesFor(ctx.tenantId, principal.userId),
+  })
+  if (!decision.allowed) {
+    return yield* Effect.fail(new ForbiddenError({ message: decision.reason }))
+  }
+  return principal
+})
 
 export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterprise", (handlers) =>
   Effect.gen(function* () {
@@ -106,11 +154,28 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       payload: { tenantId: string; name: string }
       query: { directory?: string }
     }) {
+      const principal = yield* adminPrincipal()
       const directory = yield* resolveDirectory(ctx.query.directory)
       const state = controlStateFor(directory)
+      // A client cannot claim an existing tenant: creating an organization
+      // fails closed when the tenant id already exists.
+      if (state.tenants.getOrganization(ctx.payload.tenantId)) {
+        return yield* Effect.fail(
+          new ForbiddenError({ message: `tenant ${ctx.payload.tenantId} already exists` }),
+        )
+      }
       const now = new Date().toISOString()
       const org = { tenantId: ctx.payload.tenantId, id: `org-${ctx.payload.tenantId}`, name: ctx.payload.name, createdAt: now }
       state.tenants.putOrganization(org)
+      // Authority in the new tenant derives from the authenticated
+      // principal: the server binds the creator as OWNER; a body claim
+      // grants nothing.
+      state.identity.assignRole({
+        tenantId: ctx.payload.tenantId,
+        userId: principal.userId,
+        role: "OWNER",
+        assignedAt: now,
+      })
       return org
     })
 
@@ -120,7 +185,14 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
-      controlStateFor(directory).identity.assignRole({
+      const state = controlStateFor(directory)
+      const principal = yield* gateAdmin({
+        state,
+        tenantId: ctx.params.tenantId,
+        action: "identity.manage",
+      })
+      void principal
+      state.identity.assignRole({
         tenantId: ctx.params.tenantId,
         userId: ctx.payload.userId,
         role: ctx.payload.role,
@@ -157,6 +229,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const record: CentralApprovalRecord = {
         tenantId: ctx.params.tenantId,
         approvalId: ctx.payload.approvalId,
@@ -167,14 +241,13 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
         createdAt: new Date().toISOString(),
         expiresAt: ctx.payload.expiresAt,
       }
-      controlStateFor(directory).approvals.put(record)
+      state.approvals.put(record)
       return true
     })
 
     const decide = Effect.fn("EnterpriseHttpApi.decideApproval")(function* (ctx: {
       params: { tenantId: string; approvalId: string }
       payload: {
-        actorUserId: string
         decision: "APPROVE" | "DENY"
         inspectedRequestJson?: string
       }
@@ -182,12 +255,17 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
       const state = controlStateFor(directory)
+      const principal = yield* gateAdmin({
+        state,
+        tenantId: ctx.params.tenantId,
+        action: "approval.decide",
+      })
       const record = state.approvals.get(ctx.params.tenantId, ctx.params.approvalId)
       if (!record) {
         return { kind: "REJECTED" as const, reason: "approval not found" }
       }
       const result = decideApproval(record, {
-        actorUserId: ctx.payload.actorUserId,
+        actorUserId: principal.userId,
         decision: ctx.payload.decision === "APPROVE" ? { decision: "APPROVE" } : { decision: "DENY" },
         inspectedRequestJson: ctx.payload.inspectedRequestJson,
         now: new Date(),
@@ -226,8 +304,10 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const now = new Date().toISOString()
-      controlStateFor(directory).fleet.putNode({
+      state.fleet.putNode({
         tenantId: ctx.params.tenantId,
         nodeId: ctx.payload.nodeId,
         organizationId: ctx.payload.organizationId,
@@ -261,7 +341,9 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
-      controlStateFor(directory).fleet.updateHeartbeat(ctx.params.tenantId, ctx.params.nodeId, {
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
+      state.fleet.updateHeartbeat(ctx.params.tenantId, ctx.params.nodeId, {
         ...ctx.payload,
         lastSeenAt: new Date().toISOString(),
       })
@@ -273,8 +355,6 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       payload: {
         sourceSequence: number
         targetEnvironment: string
-        requestedBy: string
-        approvedBy: string
         activationTime?: string
       }
       query: { directory?: string }
@@ -285,6 +365,11 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
         return { kind: "REJECTED" as const, reason: `issuer not configured: ${issuer.reason}` }
       }
       const state = controlStateFor(directory)
+      const principal = yield* gateAdmin({
+        state,
+        tenantId: ctx.params.tenantId,
+        action: "policy.publish",
+      })
       const result = promotePolicyBundle(
         {
           tenantId: ctx.params.tenantId,
@@ -292,14 +377,11 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
           targetStore: policyTargetStoreFor(directory, ctx.payload.targetEnvironment),
           sourceSequence: ctx.payload.sourceSequence,
           targetEnvironment: ctx.payload.targetEnvironment,
-          requestedBy: ctx.payload.requestedBy,
-          approvedBy: ctx.payload.approvedBy,
-          approverHasPermission: hasPermission(
-            state,
-            ctx.params.tenantId,
-            ctx.payload.approvedBy,
-            "policy.publish",
-          ),
+          // Attribution is the authenticated principal: forged
+          // requestedBy/approvedBy body fields are ignored.
+          requestedBy: principal.userId,
+          approvedBy: principal.userId,
+          approverHasPermission: true,
           activationTime: ctx.payload.activationTime,
           trustedIssuerPublicKeys: issuer.context.issuerPublicKeys,
         },
@@ -331,21 +413,20 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
 
     const revokeApproval = Effect.fn("EnterpriseHttpApi.revokeApproval")(function* (ctx: {
       params: { tenantId: string }
-      payload: { approvalId: string; actorUserId: string }
+      payload: { approvalId: string }
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
       const state = controlStateFor(directory)
-      if (!hasPermission(state, ctx.params.tenantId, ctx.payload.actorUserId, "approval.decide")) {
-        return {
-          kind: "REJECTED" as const,
-          reason: `actor ${ctx.payload.actorUserId} lacks approval.decide`,
-        }
-      }
+      const principal = yield* gateAdmin({
+        state,
+        tenantId: ctx.params.tenantId,
+        action: "approval.decide",
+      })
       const result = emergencyRevokeApproval(
         ctx.params.tenantId,
         ctx.payload.approvalId,
-        ctx.payload.actorUserId,
+        principal.userId,
         state.approvals,
         new Date(),
       )
@@ -357,18 +438,20 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
 
     const bulkDenyApprovals = Effect.fn("EnterpriseHttpApi.bulkDenyApprovals")(function* (ctx: {
       params: { tenantId: string }
-      payload: { approvalIds: readonly string[]; actorUserId: string }
+      payload: { approvalIds: readonly string[] }
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
       const state = controlStateFor(directory)
-      if (!hasPermission(state, ctx.params.tenantId, ctx.payload.actorUserId, "approval.decide")) {
-        return { denied: 0, skipped: ctx.payload.approvalIds.length }
-      }
+      const principal = yield* gateAdmin({
+        state,
+        tenantId: ctx.params.tenantId,
+        action: "approval.decide",
+      })
       const result = bulkDeny(
         ctx.params.tenantId,
         [...ctx.payload.approvalIds],
-        ctx.payload.actorUserId,
+        principal.userId,
         state.approvals,
         new Date(),
       )
@@ -387,6 +470,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const result = archiveProof(
         {
           tenantId: ctx.params.tenantId,
@@ -396,7 +481,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
           retentionUntil: ctx.payload.retentionUntil,
           archiveId: ctx.payload.archiveId,
         },
-        controlStateFor(directory).auditArchive,
+        state.auditArchive,
       )
       if (result.kind === "ARCHIVED") {
         return { kind: "ARCHIVED" as const, record: result.record }
@@ -427,15 +512,17 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
 
     const custody = Effect.fn("EnterpriseHttpApi.custody")(function* (ctx: {
       params: { tenantId: string; archiveId: string }
-      payload: { who: string; action: string }
+      payload: { action: string }
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      const principal = yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const result = appendCustody(
         ctx.params.tenantId,
         ctx.params.archiveId,
-        { who: ctx.payload.who, action: ctx.payload.action, at: new Date().toISOString() },
-        controlStateFor(directory).auditArchive,
+        { who: principal.userId, action: ctx.payload.action, at: new Date().toISOString() },
+        state.auditArchive,
       )
       return { ok: result.ok, reason: result.reason }
     })
@@ -446,7 +533,9 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
-      const store = controlStateFor(directory).auditArchive
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
+      const store = state.auditArchive
       const result =
         ctx.payload.action === "PLACE"
           ? placeLegalHold(ctx.params.tenantId, ctx.params.archiveId, store)
@@ -460,8 +549,10 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const now = ctx.payload.now ? new Date(ctx.payload.now) : new Date()
-      return applyRetention(ctx.params.tenantId, controlStateFor(directory).auditArchive, now)
+      return applyRetention(ctx.params.tenantId, state.auditArchive, now)
     })
 
     const putAlert = Effect.fn("EnterpriseHttpApi.putAlert")(function* (ctx: {
@@ -477,7 +568,9 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
-      controlStateFor(directory).securityOps.putAlert({
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
+      state.securityOps.putAlert({
         tenantId: ctx.params.tenantId,
         alertId: ctx.payload.alertId,
         severity: ctx.payload.severity,
@@ -502,15 +595,17 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
 
     const appendTimeline = Effect.fn("EnterpriseHttpApi.appendTimeline")(function* (ctx: {
       params: { tenantId: string; incidentId: string }
-      payload: { actor: string; event: string; at?: string }
+      payload: { event: string; at?: string }
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
-      controlStateFor(directory).securityOps.appendTimeline({
+      const state = controlStateFor(directory)
+      const principal = yield* gateTenant({ state, tenantId: ctx.params.tenantId })
+      state.securityOps.appendTimeline({
         tenantId: ctx.params.tenantId,
         incidentId: ctx.params.incidentId,
         at: ctx.payload.at ?? new Date().toISOString(),
-        actor: ctx.payload.actor,
+        actor: principal.userId,
         event: ctx.payload.event,
       })
       return { ok: true }
@@ -529,17 +624,16 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
 
     const revocationCampaign = Effect.fn("EnterpriseHttpApi.revocationCampaign")(function* (ctx: {
       params: { tenantId: string }
-      payload: { nodeIds: readonly string[]; reason: string; actorUserId: string }
+      payload: { nodeIds: readonly string[]; reason: string }
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
       const state = controlStateFor(directory)
-      if (!hasPermission(state, ctx.params.tenantId, ctx.payload.actorUserId, "node.manage")) {
-        return {
-          kind: "REJECTED" as const,
-          reason: `actor ${ctx.payload.actorUserId} lacks node.manage`,
-        }
-      }
+      const principal = yield* gateAdmin({
+        state,
+        tenantId: ctx.params.tenantId,
+        action: "node.manage",
+      })
       const now = new Date()
       const result = runRevocationCampaign(
         ctx.params.tenantId,
@@ -554,7 +648,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
             tenantId: ctx.params.tenantId,
             incidentId: `revocation-campaign-${now.getTime()}`,
             at: now.toISOString(),
-            actor: ctx.payload.actorUserId,
+            actor: principal.userId,
             event: `emergency revocation: ${nodeId} (${ctx.payload.reason})`,
           })
           return { ok: true }
@@ -676,6 +770,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const record: BackupRecord = {
         tenantId: ctx.params.tenantId,
         backupId: ctx.payload.backupId,
@@ -683,7 +779,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
         createdAt: new Date().toISOString(),
         digest: ctx.payload.digest,
       }
-      controlStateFor(directory).reliability.putBackup(record)
+      state.reliability.putBackup(record)
       return record
     })
 
@@ -693,11 +789,13 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const result = restoreBackup(
         ctx.params.tenantId,
         ctx.params.backupId,
         ctx.payload.presentedDigest,
-        controlStateFor(directory).reliability,
+        state.reliability,
       )
       if (result.kind === "RESTORED") {
         return { kind: "RESTORED" as const, record: result.record }
@@ -723,6 +821,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const record: DrillRecord = {
         tenantId: ctx.params.tenantId,
         drillId: ctx.payload.drillId,
@@ -732,7 +832,6 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
         measuredRpoMs: ctx.payload.measuredRpoMs,
         measuredRtoMs: ctx.payload.measuredRtoMs,
       }
-      const state = controlStateFor(directory)
       state.reliability.recordDrill(record)
       const result = evaluateDrill(record, ctx.payload.config ?? DEFAULT_RELIABILITY_CONFIG)
       return { result, record }
@@ -761,11 +860,13 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const agreement = {
         ...ctx.payload,
         audienceRestrictions: [...ctx.payload.audienceRestrictions],
       }
-      controlStateFor(directory).federation.putAgreement(agreement)
+      state.federation.putAgreement(agreement)
       return agreement
     })
 
@@ -789,6 +890,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const result = exchangeProof(
         {
           agreementId: ctx.payload.agreementId,
@@ -798,7 +901,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
           origin: ctx.payload.origin,
           now: new Date(),
         },
-        controlStateFor(directory).federation,
+        state.federation,
       )
       if (result.kind === "EXCHANGED") {
         return { kind: "EXCHANGED" as const, record: result.record }
@@ -817,6 +920,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const result = propagateRevocation(
         {
           agreementId: ctx.payload.agreementId,
@@ -825,7 +930,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
           reason: ctx.payload.reason,
           now: new Date(),
         },
-        controlStateFor(directory).federation,
+        state.federation,
       )
       if ("kind" in result) return result
       return result
@@ -974,6 +1079,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const policy: EscalationPolicy = {
         tenantId: ctx.params.tenantId,
         policyId: ctx.payload.policyId,
@@ -981,7 +1088,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
         fallbackApprovers: [...ctx.payload.fallbackApprovers],
         requireBreakGlass: ctx.payload.requireBreakGlass,
       }
-      controlStateFor(directory).escalations.putPolicy(policy)
+      state.escalations.putPolicy(policy)
       return policy
     })
 
@@ -1000,6 +1107,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
       const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const approval = state.approvals.get(ctx.params.tenantId, ctx.payload.approvalId)
       if (!approval) {
         return { escalated: false as const, reason: "approval not found" }
@@ -1045,6 +1153,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       } as unknown as AdminEvent
       const record = { ...event, recordedAt }
       const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       state.adminEvents.put(record)
       enqueueWebhookDeliveries(
         ctx.params.tenantId,
@@ -1093,6 +1202,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const event: UsageEvent = {
         tenantId: ctx.params.tenantId,
         eventId: ctx.payload.eventId,
@@ -1100,7 +1211,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
         units: ctx.payload.units,
         at: ctx.payload.at ?? new Date().toISOString(),
       }
-      controlStateFor(directory).metering.putUsage(event)
+      state.metering.putUsage(event)
       return event
     })
 
@@ -1162,6 +1273,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const rule = {
         ruleId: ctx.payload.ruleId,
         orgA: ctx.params.tenantId,
@@ -1170,7 +1283,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
         actionPatterns: [...ctx.payload.actionPatterns],
         maxPerDay: ctx.payload.maxPerDay,
       }
-      controlStateFor(directory).crossOrgApprovals.putRule(rule)
+      state.crossOrgApprovals.putRule(rule)
       return rule
     })
 
@@ -1190,6 +1303,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       }) {
         const directory = yield* resolveDirectory(ctx.query.directory)
         const state = controlStateFor(directory)
+        yield* gateTenant({ state, tenantId: ctx.params.tenantId })
         const result = routeCrossOrgApproval(
           {
             orgA: ctx.params.tenantId,
@@ -1226,6 +1340,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const ring: UpgradeRing = {
         tenantId: ctx.params.tenantId,
         ringId: ctx.payload.ringId,
@@ -1234,7 +1350,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
         paused: ctx.payload.paused,
         createdAt: new Date().toISOString(),
       }
-      controlStateFor(directory).upgradeRings.putRing(ring)
+      state.upgradeRings.putRing(ring)
       return ring
     })
 
@@ -1253,6 +1369,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
       const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       if (!state.upgradeRings.getRing(ctx.params.tenantId, ctx.params.ringId)) {
         return { ok: false, reason: "ring not found" }
       }
@@ -1328,6 +1445,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
       const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const signals = detectAnomalies({ ...ctx.payload, tenantId: ctx.params.tenantId })
       for (const signal of signals) {
         state.securityOps.putAlert({
@@ -1365,6 +1483,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
       const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const result = queueRevocationDelivery(
         {
           orgId: ctx.params.tenantId,
@@ -1397,6 +1516,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
       const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const result = receiveRevocationDelivery(
         {
           orgId: ctx.params.tenantId,
@@ -1428,7 +1548,9 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
-      controlStateFor(directory).federationTransport.markDelivered(
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
+      state.federationTransport.markDelivered(
         ctx.params.tenantId,
         ctx.params.deliveryId,
         new Date().toISOString(),
@@ -1442,6 +1564,8 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
       const endpoint: WebhookEndpoint = {
         tenantId: ctx.params.tenantId,
         webhookId: ctx.payload.webhookId,
@@ -1449,7 +1573,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
         active: ctx.payload.active,
         createdAt: new Date().toISOString(),
       }
-      controlStateFor(directory).webhooks.putEndpoint(endpoint)
+      state.webhooks.putEndpoint(endpoint)
       return endpoint
     })
 
@@ -1477,7 +1601,9 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       query: { directory?: string }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
-      const store = controlStateFor(directory).webhooks
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
+      const store = state.webhooks
       const deliver = async (url: string, payloadJson: string) => {
         try {
           const response = await fetch(url, {

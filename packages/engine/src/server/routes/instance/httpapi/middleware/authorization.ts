@@ -1,5 +1,5 @@
 import { ServerAuth } from "@/server/auth"
-import { Effect, Encoding, Layer, Redacted } from "effect"
+import { Context, Effect, Encoding, Layer, Redacted } from "effect"
 import { HttpEffect, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiError, HttpApiMiddleware } from "effect/unstable/httpapi"
 import { hasPtyConnectTicketURL } from "@/server/shared/pty-ticket"
@@ -21,6 +21,23 @@ export class Authorization extends HttpApiMiddleware.Service<Authorization>()(
   {
     error: HttpApiError.UnauthorizedNoContent,
   },
+) {}
+
+export type AuthenticatedAdminPrincipal = {
+  userId: string
+  authenticatedAt: string
+  source: "SERVER_AUTH" | "LOCAL_CONTEXT"
+}
+
+/**
+ * Request-scoped authenticated admin principal, attached by the
+ * authorization middleware after credential validation. Handlers derive
+ * actor identity exclusively from this service; client-supplied actor/tenant
+ * body fields are never consulted. Without a configured server password the
+ * trusted local runtime context is the principal ("local-operator").
+ */
+export class AdminPrincipal extends Context.Service<AdminPrincipal, AuthenticatedAdminPrincipal>()(
+  "@arcana/HttpApiAdminPrincipal",
 ) {}
 
 export class PtyConnectAuthorization extends HttpApiMiddleware.Service<PtyConnectAuthorization>()(
@@ -119,12 +136,33 @@ export const authorizationLayer = Layer.effect(
   Authorization,
   Effect.gen(function* () {
     const config = yield* ServerAuth.Config
-    if (!ServerAuth.required(config)) return Authorization.of((effect) => effect)
+    if (!ServerAuth.required(config)) {
+      // Trusted local runtime context: the authenticated admin principal is
+      // the local operator. Handlers derive identity from this request-scoped
+      // service, never from client-supplied body fields.
+      return Authorization.of((effect) =>
+        Effect.provideService(effect, AdminPrincipal, {
+          userId: "local-operator",
+          authenticatedAt: new Date().toISOString(),
+          source: "LOCAL_CONTEXT",
+        }),
+      )
+    }
     return Authorization.of((effect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
         return yield* credentialFromRequest(request).pipe(
-          Effect.flatMap((credential) => validateCredential(effect, credential, config)),
+          Effect.flatMap((credential) =>
+            validateCredential(
+              Effect.provideService(effect, AdminPrincipal, {
+                userId: credential.username,
+                authenticatedAt: new Date().toISOString(),
+                source: "SERVER_AUTH",
+              }),
+              credential,
+              config,
+            ),
+          ),
         )
       }),
     )
