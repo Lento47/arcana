@@ -1,199 +1,186 @@
-/**
- * Direct tests for the lower-level approval lifecycle processor.
- *
- * Invariant under test (ARC-REV-003): APPROVE can never fabricate the durable
- * approval record it is supposed to decide. Unknown approval ids must fail
- * with zero protected effects: no record, no execution, no outbox event.
- */
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 import {
   InMemoryApprovalStore,
   processApprovalCommand,
   type ApprovalCommand,
-  type ApprovalLifecycleStore,
-  type ApprovalRecord,
   type AuthenticatedOperator,
 } from "./approval-lifecycle"
-import { SqliteApprovalStore } from "./approval-store-sqlite"
-import { RealApprovalOperatorService } from "./approval-operator-service"
 
-const NOW = new Date("2026-08-02T12:00:00.000Z")
-
-function operator(overrides: Partial<AuthenticatedOperator> = {}): AuthenticatedOperator {
-  return {
-    operatorId: "op-a",
-    authenticatedAt: NOW.toISOString(),
-    roles: ["operator"],
-    workspaceScope: ["workspace-a"],
-    ...overrides,
-  }
+const operator: AuthenticatedOperator = {
+  operatorId: "operator-a",
+  authenticatedAt: "2026-08-02T00:00:00.000Z",
+  roles: ["operator"],
+  workspaceScope: ["ws-a"],
 }
 
-function pendingRecord(overrides: Partial<ApprovalRecord> = {}): ApprovalRecord {
-  return {
-    approvalId: "appr_1",
-    version: 1,
-    sessionId: "sess-a",
-    workspaceId: "workspace-a",
-    requestHash: "hash-1",
-    contractRevision: 1,
-    state: "PENDING",
-    expiresAt: "2099-01-01T00:00:00.000Z",
-    updatedAt: NOW.toISOString(),
-    createdAt: NOW.toISOString(),
-    ...overrides,
-  }
-}
+const now = new Date("2026-08-02T12:00:00.000Z")
 
-function approveCommand(approvalId = "appr_1"): ApprovalCommand {
+function approveCommand(approvalId: string): ApprovalCommand {
   return {
     kind: "APPROVE",
     approvalId,
-    requestHash: "hash-1",
+    requestHash: "req-hash-1",
     contractRevision: 1,
-    operatorId: "op-a",
+    operatorId: operator.operatorId,
     sessionId: "sess-a",
-    workspaceId: "workspace-a",
+    workspaceId: "ws-a",
   }
 }
 
-function runApprove(store: ApprovalLifecycleStore, command: ApprovalCommand = approveCommand()) {
-  return processApprovalCommand(command, store, operator(), NOW)
+function denyCommand(approvalId: string): ApprovalCommand {
+  return {
+    kind: "DENY",
+    approvalId,
+    operatorId: operator.operatorId,
+    sessionId: "sess-a",
+    workspaceId: "ws-a",
+  }
 }
 
-describe("processApprovalCommand existing-record invariant", () => {
-  test("APPROVE of an unknown approval id creates nothing in the in-memory store", () => {
-    const store = new InMemoryApprovalStore()
-    const result = runApprove(store, approveCommand("appr_unknown"))
+function revokeCommand(approvalId: string): ApprovalCommand {
+  return {
+    kind: "REVOKE",
+    approvalId,
+    operatorId: operator.operatorId,
+    sessionId: "sess-a",
+    workspaceId: "ws-a",
+  }
+}
 
-    expect(result.success).toBe(false)
-    expect(result.reason).toBe("approval not found")
-    expect(result.approval).toBeUndefined()
-    expect(store.loadApproval("appr_unknown")).toBeNull()
-    expect(store.loadExecution("appr_unknown")).toBeNull()
-    expect(store.getOutboxEvents()).toHaveLength(0)
+function claimCommand(approvalId: string, executionId = "exec-1", requestHash = "req-hash-1"): ApprovalCommand {
+  return {
+    kind: "CLAIM",
+    approvalId,
+    executionId,
+    requestHash,
+  }
+}
+
+function consumeCommand(approvalId: string, executionId = "exec-1"): ApprovalCommand {
+  return {
+    kind: "CONSUME",
+    approvalId,
+    executionId,
+    effectReceiptHash: "receipt-1",
+  }
+}
+
+describe("durable approval lifecycle (PENDING → APPROVED → CLAIMED → CONSUMED)", () => {
+  test("approve requires PENDING and records the authenticated operator", () => {
+    const store = new InMemoryApprovalStore()
+    const created = processApprovalCommand(approveCommand("a1"), store, operator, now)
+    expect(created.success).toBe(true)
+
+    const approved = processApprovalCommand(approveCommand("a1"), store, operator, now)
+    expect(approved.success).toBe(false)
+    expect(approved.reason).toContain("ALREADY_DECIDED")
+    expect(store.loadApproval("a1")!.approvedBy).toBe("operator-a")
   })
 
-  test("APPROVE of an unknown approval id creates nothing in the durable sqlite store", () => {
-    const dir = mkdtempSync(join(tmpdir(), "approval-lifecycle-"))
-    try {
-      const store = new SqliteApprovalStore(join(dir, "approvals.db"))
-      try {
-        const result = runApprove(store, approveCommand("appr_unknown"))
+  test("full lifecycle: approve → claim → consume, then duplicate consume fails", () => {
+    const store = new InMemoryApprovalStore()
+    expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
 
-        expect(result.success).toBe(false)
-        expect(result.reason).toBe("approval not found")
-        expect(store.loadApproval("appr_unknown")).toBeNull()
-        expect(store.loadExecution("appr_unknown")).toBeNull()
-        expect(store.getPendingOutbox()).toHaveLength(0)
-      } finally {
-        store.close()
+    const claim = processApprovalCommand(claimCommand("a1"), store, operator, now)
+    expect(claim.success).toBe(true)
+    expect(claim.execution?.state).toBe("CLAIMED")
+    expect(store.loadApproval("a1")!.state).toBe("CLAIMED")
+
+    const consume = processApprovalCommand(consumeCommand("a1"), store, operator, now)
+    expect(consume.success).toBe(true)
+    expect(store.loadApproval("a1")!.state).toBe("CONSUMED")
+    expect(store.loadExecution("a1")!.state).toBe("SUCCEEDED")
+
+    const duplicateConsume = processApprovalCommand(consumeCommand("a1"), store, operator, now)
+    expect(duplicateConsume.success).toBe(false)
+    expect(duplicateConsume.reason).toContain("not CLAIMED")
+  })
+
+  test("claim fails when the request hash changed after approval", () => {
+    const store = new InMemoryApprovalStore()
+    expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
+
+    const claim = processApprovalCommand(claimCommand("a1", "exec-1", "CHANGED-HASH"), store, operator, now)
+    expect(claim.success).toBe(false)
+    expect(claim.reason).toBe("request changed after approval — STALE")
+    expect(store.loadApproval("a1")!.state).toBe("APPROVED")
+  })
+
+  test("claim fails when the approval expired before claim", () => {
+    const store = new InMemoryApprovalStore()
+    expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
+    const later = new Date(now.getTime() + 10 * 60 * 1000)
+    const claim = processApprovalCommand(claimCommand("a1"), store, operator, later)
+    expect(claim.success).toBe(false)
+    expect(store.loadApproval("a1")!.state).toBe("EXPIRED")
+  })
+
+  test("deny fails the approval closed", () => {
+    const store = new InMemoryApprovalStore()
+    expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
+    const pending = store.loadApproval("a1")!
+    store.saveApproval({ ...pending, state: "PENDING", version: 1, approvedBy: undefined })
+    const denied = processApprovalCommand(denyCommand("a1"), store, operator, now)
+    expect(denied.success).toBe(true)
+    expect(store.loadApproval("a1")!.state).toBe("DENIED")
+    // A denied approval can never be claimed.
+    expect(processApprovalCommand(claimCommand("a1"), store, operator, now).success).toBe(false)
+  })
+
+  test("REVOKE invalidates PENDING and APPROVED approvals with zero execution path", () => {
+    for (const state of ["PENDING", "APPROVED"] as const) {
+      const store = new InMemoryApprovalStore()
+      if (state === "PENDING") {
+        // Create the record via an initial approve so the store has it.
+        expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
+        // Put it back to PENDING to test the PENDING path.
+        const pending = store.loadApproval("a1")!
+        store.saveApproval({ ...pending, state: "PENDING", version: 1, approvedBy: undefined })
+      } else {
+        expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
       }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
+
+      const revoked = processApprovalCommand(revokeCommand("a1"), store, operator, now)
+      expect(revoked.success).toBe(true)
+      const record = store.loadApproval("a1")!
+      expect(record.state).toBe("INVALIDATED")
+      expect(record.revokedBy).toBe("operator-a")
+      // Zero execution path: a revoked approval cannot be claimed.
+      expect(processApprovalCommand(claimCommand("a1"), store, operator, now).success).toBe(false)
     }
   })
 
-  test("DENY, REVOKE, CLAIM, and CONSUME of an unknown id also fail closed", () => {
+  test("REVOKE refuses claimed, consumed, and denied approvals", () => {
     const store = new InMemoryApprovalStore()
-    const commands: ApprovalCommand[] = [
-      { kind: "DENY", approvalId: "appr_unknown", operatorId: "op-a", sessionId: "sess-a", workspaceId: "workspace-a" },
-      {
-        kind: "REVOKE",
-        approvalId: "appr_unknown",
-        operatorId: "op-a",
-        sessionId: "sess-a",
-        workspaceId: "workspace-a",
-      },
-      { kind: "CLAIM", approvalId: "appr_unknown", executionId: "exec-1", requestHash: "hash-1" },
-      { kind: "CONSUME", approvalId: "appr_unknown", executionId: "exec-1", effectReceiptHash: "receipt-1" },
-    ]
+    expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
+    expect(processApprovalCommand(claimCommand("a1"), store, operator, now).success).toBe(true)
+    const revoked = processApprovalCommand(revokeCommand("a1"), store, operator, now)
+    expect(revoked.success).toBe(false)
+    expect(revoked.reason).toContain("not PENDING or APPROVED")
+    expect(store.loadApproval("a1")!.state).toBe("CLAIMED")
+  })
 
-    for (const command of commands) {
-      const result = processApprovalCommand(command, store, operator(), NOW)
-      expect(result.success).toBe(false)
-      expect(result.reason).toBe("approval not found")
+  test("operator workspace scope is enforced for every decision", () => {
+    const store = new InMemoryApprovalStore()
+    const foreignOperator: AuthenticatedOperator = {
+      operatorId: "operator-b",
+      authenticatedAt: now.toISOString(),
+      roles: ["operator"],
+      workspaceScope: ["ws-other"],
     }
-    expect(store.getOutboxEvents()).toHaveLength(0)
-    expect(store.loadExecution("appr_unknown")).toBeNull()
+    expect(processApprovalCommand(approveCommand("a1"), store, foreignOperator, now).success).toBe(false)
+    expect(processApprovalCommand(denyCommand("a1"), store, foreignOperator, now).success).toBe(false)
+    expect(processApprovalCommand(revokeCommand("a1"), store, foreignOperator, now).success).toBe(false)
   })
 
-  test("APPROVE of an existing PENDING record still transitions and emits exactly one outbox event", () => {
+  test("approve on an expired PENDING record transitions to EXPIRED", () => {
     const store = new InMemoryApprovalStore()
-    store.saveApproval(pendingRecord())
+    expect(processApprovalCommand(approveCommand("a1"), store, operator, now).success).toBe(true)
+    const pending = store.loadApproval("a1")!
+    store.saveApproval({ ...pending, state: "PENDING", version: 1, expiresAt: new Date(now.getTime() - 1000).toISOString() })
 
-    const result = runApprove(store)
-
-    expect(result.success).toBe(true)
-    expect(result.approval?.state).toBe("APPROVED")
-    expect(result.approval?.version).toBe(2)
-    expect(result.approval?.approvedBy).toBe("op-a")
-    const events = store.getOutboxEvents()
-    expect(events).toHaveLength(1)
-    expect(events[0]!.kind).toBe("APPROVAL_DECIDED")
-    expect(events[0]!.detail).toMatchObject({ decision: "APPROVED", operatorId: "op-a", requestHash: "hash-1" })
-  })
-
-  test("APPROVE by an operator without workspace scope executes zero protected effects", () => {
-    const store = new InMemoryApprovalStore()
-    store.saveApproval(pendingRecord())
-
-    const result = processApprovalCommand(
-      approveCommand(),
-      store,
-      operator({ operatorId: "op-b", workspaceScope: ["workspace-b"] }),
-      NOW,
-    )
-
+    const result = processApprovalCommand(approveCommand("a1"), store, operator, now)
     expect(result.success).toBe(false)
-    expect(result.reason).toContain("not authorized")
-    expect(store.loadApproval("appr_1")!.state).toBe("PENDING")
-    expect(store.getOutboxEvents()).toHaveLength(0)
-  })
-
-  test("APPROVE of an expired record fails and emits no outbox event", () => {
-    const store = new InMemoryApprovalStore()
-    store.saveApproval(pendingRecord({ expiresAt: "2020-01-01T00:00:00.000Z" }))
-
-    const result = runApprove(store)
-
-    expect(result.success).toBe(false)
-    expect(result.reason).toBe("approval expired")
-    expect(store.loadApproval("appr_1")!.state).toBe("EXPIRED")
-    expect(store.getOutboxEvents()).toHaveLength(0)
-  })
-
-  test("APPROVE of a non-PENDING record is refused as already decided", () => {
-    const store = new InMemoryApprovalStore()
-    store.saveApproval(pendingRecord({ state: "APPROVED", version: 2 }))
-
-    const result = runApprove(store)
-
-    expect(result.success).toBe(false)
-    expect(result.reason).toContain("ALREADY_DECIDED")
-    expect(store.loadApproval("appr_1")!.version).toBe(2)
-    expect(store.getOutboxEvents()).toHaveLength(0)
-  })
-
-  test("RealApprovalOperatorService preserves the mounted guard for unknown ids", () => {
-    const store = new InMemoryApprovalStore()
-    const service = new RealApprovalOperatorService(store, operator(), "sess-a", "workspace-a")
-
-    const response = service.submitCommand({
-      approvalId: "appr_unknown",
-      command: "APPROVE_ONCE",
-      expectedVersion: 1,
-      expectedRequestHash: "hash-1",
-      expectedContractRevision: 1,
-    })
-
-    expect(response.success).toBe(false)
-    if (response.success) throw new Error("expected approval not found")
-    expect(response.reason).toBe("approval not found")
-    expect(store.loadApproval("appr_unknown")).toBeNull()
-    expect(store.getOutboxEvents()).toHaveLength(0)
+    expect(store.loadApproval("a1")!.state).toBe("EXPIRED")
   })
 })

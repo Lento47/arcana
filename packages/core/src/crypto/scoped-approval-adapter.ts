@@ -210,7 +210,7 @@ export class SqliteScopedApprovalStore implements ScopedApprovalStore {
              principal_id, state, expires_at, actions_json, resource_json, uses_consumed,
              claim_execution_id, lease_expires_at, decided_at, route, routing_policy_version,
              local_fallback_allowed, risk_class, updated_at, created_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(approval_id) DO UPDATE SET
              version = excluded.version,
              state = excluded.state,

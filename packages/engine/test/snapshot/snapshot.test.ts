@@ -109,6 +109,8 @@ it.instance(
     }),
   ),
   { git: true },
+  // ~1.8s in isolation; timed out at 5s under multi-file load on 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.instance(
@@ -122,6 +124,8 @@ it.instance(
     }),
   ),
   { git: true },
+  // ~1.5s in isolation; timed out at 5s under multi-file load on 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.instance(
@@ -136,6 +140,8 @@ it.instance(
     }),
   ),
   { git: true },
+  // ~1.5s in isolation; timed out at 5s under multi-file load on 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.instance(
@@ -155,6 +161,8 @@ it.instance(
     }),
   ),
   { git: true },
+  // ~1.5s in isolation; timed out at 5s under multi-file load on 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.instance(
@@ -166,6 +174,8 @@ it.instance(
     }),
   ),
   { git: true },
+  // ~1.3s in isolation; observed >5s timeout under multi-file load 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.instance(
@@ -180,6 +190,8 @@ it.instance(
     }),
   ),
   { git: true },
+  // ~1.5s in isolation; observed >5s timeout under multi-file load 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.instance(
@@ -191,6 +203,8 @@ it.instance(
     }),
   ),
   { git: true },
+  // ~1.4s in isolation; observed >5s timeout under multi-file load 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.instance(
@@ -202,6 +216,8 @@ it.instance(
     }),
   ),
   { git: true },
+  // ~1.4s in isolation; timed out at 5s under multi-file load on 2026-08-02.
+  { timeout: 10_000 },
 )
 
 it.instance(
