@@ -207,13 +207,20 @@ export function withCliFixture<A, E>(
               await nodeFs.rm(dir, { recursive: true, force: true })
             } catch (error) {
               if (!busy(error)) throw error
-              if (left <= 1) throw error
+              if (left <= 1) {
+                // Windows can keep SQLite/child handles alive past the test
+                // boundary (same convention as the engine test preload):
+                // after retrying, tolerate the orphaned OS temp dir instead
+                // of failing an otherwise-passing test on cleanup.
+                if (process.platform !== "win32") throw error
+                return
+              }
               Bun.gc(true)
               await new Promise((resolve) => setTimeout(resolve, 100))
               return rm(left - 1)
             }
           }
-          await rm(10)
+          await rm(30)
         }),
       )
       return dir
