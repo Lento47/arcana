@@ -245,25 +245,32 @@ export const NodeProofUploadCommand = effectCmd({
     const db = new Database(join(directory, ".arcana", "node.db"))
     const outbox = new SqliteProofOutbox(db)
 
-    const localProofs = listLocalProofs(directory)
+    const localProofs = yield* Effect.tryPromise({
+      try: () => listLocalProofs(directory),
+      catch: (error) => new CliError({ message: `local proof read error: ${String(error)}` }),
+    })
     if (localProofs.length === 0) {
       return yield* fail(`no local proofs found in ${join(directory, ".arcana", "proofs")}`)
     }
-    const { records, sequences } = buildOutboxRecords(
-      {
-        directory,
-        nodeId: identity.nodeId,
-        trustDomain: identity.trustDomain,
-        nodeKeyEpoch: identity.nodeKeyEpoch,
-        policySequence: 1,
-        policyDigest: "policy-local",
-        revocationSequence: 0,
-        revocationDigest: "revocation-local",
-        emergencyEpoch: 0,
-        firstSequence: args.firstSequence,
-      },
-      secretKey,
-    )
+    const { records, sequences } = yield* Effect.tryPromise({
+      try: () =>
+        buildOutboxRecords(
+          {
+            directory,
+            nodeId: identity.nodeId,
+            trustDomain: identity.trustDomain,
+            nodeKeyEpoch: identity.nodeKeyEpoch,
+            policySequence: 1,
+            policyDigest: "policy-local",
+            revocationSequence: 0,
+            revocationDigest: "revocation-local",
+            emergencyEpoch: 0,
+            firstSequence: args.firstSequence,
+          },
+          secretKey,
+        ),
+      catch: (error) => new CliError({ message: `proof batch build error: ${String(error)}` }),
+    })
     for (const record of records) {
       outbox.upsert(record)
     }
