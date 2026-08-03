@@ -812,7 +812,8 @@ describe("tool.shell permissions", () => {
         yield* runIn(
           tmp,
           Effect.gen(function* () {
-            const config = yield* Config.Service
+            const configService = yield* Config.Service
+            const config = yield* configService.get()
             const shell = Shell.acceptable(config.shell)
             const want = Filesystem.normalizePathPattern(path.join(outerTmp, "*"))
             const variants = forms(outerTmp).filter((dir) => {
