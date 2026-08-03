@@ -21,6 +21,8 @@
  */
 
 import { createHash } from "node:crypto"
+import type { ApprovalRoute } from "./approval-routing"
+import type { RiskClass } from "../capability/types"
 
 // ─── Approval State Machine ─────────────────────────────────────────
 
@@ -49,7 +51,18 @@ export type ApprovalRecord = {
   state: ApprovalState
 
   approvedBy?: string
+  /** Operator who revoked the approval (PENDING/APPROVED -> INVALIDATED). */
+  revokedBy?: string
   executionId?: string
+
+  /**
+   * Advisory routing metadata (Phase D). The routing decision never affects
+   * the PDP/PEP; it selects the operator surface that may decide.
+   */
+  route?: ApprovalRoute
+  routingPolicyVersion?: string
+  localFallbackAllowed?: boolean
+  riskClass?: RiskClass
 
   expiresAt: string
   updatedAt: string
@@ -122,6 +135,13 @@ export type ApprovalCommand =
       workspaceId: string
     }
   | {
+      kind: "REVOKE"
+      approvalId: string
+      operatorId: string
+      sessionId: string
+      workspaceId: string
+    }
+  | {
       kind: "CLAIM"
       approvalId: string
       executionId: string
@@ -186,6 +206,8 @@ export function processApprovalCommand(
       return handleApprove(command, store, authenticatedOperator, now, nowIso)
     case "DENY":
       return handleDeny(command, store, authenticatedOperator, now, nowIso)
+    case "REVOKE":
+      return handleRevoke(command, store, authenticatedOperator, now, nowIso)
     case "CLAIM":
       return handleClaim(command, store, now, nowIso)
     case "CONSUME":
@@ -332,6 +354,67 @@ function handleDeny(
   return {
     success: true,
     reason: "denied",
+    approval: next,
+  }
+}
+
+function handleRevoke(
+  command: Extract<ApprovalCommand, { kind: "REVOKE" }>,
+  store: ApprovalLifecycleStore,
+  operator: AuthenticatedOperator,
+  now: Date,
+  nowIso: string,
+): ApprovalCommandResult {
+  const record = store.loadApproval(command.approvalId)
+
+  if (!record) {
+    return { success: false, reason: "approval not found" }
+  }
+
+  // Revocation is only meaningful while the approval is still pending or
+  // approved but not yet claimed. A claimed approval is bound to an execution
+  // in progress and must not be revoked mid-flight.
+  if (record.state !== "PENDING" && record.state !== "APPROVED") {
+    return {
+      success: false,
+      reason: `approval ${record.approvalId} is ${record.state}, not PENDING or APPROVED`,
+    }
+  }
+
+  // Verify operator authorization
+  if (!operator.workspaceScope.includes(record.workspaceId) && !operator.workspaceScope.includes("*")) {
+    return {
+      success: false,
+      reason: `operator ${operator.operatorId} not authorized for workspace ${record.workspaceId}`,
+    }
+  }
+
+  const next: ApprovalRecord = {
+    ...record,
+    version: record.version + 1,
+    state: "INVALIDATED",
+    revokedBy: operator.operatorId,
+    updatedAt: nowIso,
+  }
+
+  store.saveApproval(next)
+
+  store.appendOutboxEvent({
+    eventId: `evt-revoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    approvalId: command.approvalId,
+    kind: "APPROVAL_REVOKED",
+    timestamp: nowIso,
+    detail: {
+      decision: "REVOKED",
+      operatorId: operator.operatorId,
+      previousState: record.state,
+    },
+    status: "PENDING",
+  })
+
+  return {
+    success: true,
+    reason: "revoked",
     approval: next,
   }
 }

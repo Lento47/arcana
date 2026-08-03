@@ -54,6 +54,27 @@ CREATE TABLE IF NOT EXISTS approval_outbox (
 );
 `
 
+/**
+ * Shared additive migrations for approval_records. Both stores that open the
+ * table (SqliteApprovalStore and SqliteScopedApprovalStore) apply the same
+ * list idempotently so the schema converges regardless of which store runs
+ * first.
+ */
+export const APPROVAL_RECORD_MIGRATIONS = [
+  `ALTER TABLE approval_records ADD COLUMN actions_json TEXT`,
+  `ALTER TABLE approval_records ADD COLUMN resource_json TEXT`,
+  `ALTER TABLE approval_records ADD COLUMN uses_consumed INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE approval_records ADD COLUMN claim_execution_id TEXT`,
+  `ALTER TABLE approval_records ADD COLUMN lease_expires_at TEXT`,
+  `ALTER TABLE approval_records ADD COLUMN decided_at TEXT`,
+  // Phase D advisory routing metadata.
+  `ALTER TABLE approval_records ADD COLUMN route TEXT`,
+  `ALTER TABLE approval_records ADD COLUMN routing_policy_version TEXT`,
+  `ALTER TABLE approval_records ADD COLUMN local_fallback_allowed INTEGER NOT NULL DEFAULT 1`,
+  `ALTER TABLE approval_records ADD COLUMN risk_class TEXT`,
+  `ALTER TABLE approval_records ADD COLUMN revoked_by TEXT`,
+]
+
 // ─── SQLite Store ───────────────────────────────────────────────────
 
 export class SqliteApprovalStore implements ApprovalLifecycleStore {
@@ -70,6 +91,7 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
 
     this.verifyPragmas()
     this.db.run(APPROVAL_SCHEMA)
+    this.migrate()
   }
 
   private verifyPragmas(): void {
@@ -77,6 +99,19 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
     const val = syncResult?.synchronous ?? syncResult?.[Object.keys(syncResult ?? {})[0]]
     if (val !== 2) {
       throw new Error(`SQLite configuration error: synchronous=${val}, expected 2 (FULL)`)
+    }
+  }
+
+  private migrate(): void {
+    const cols = new Set<string>()
+    const rows = this.db.query("PRAGMA table_info(approval_records)").all() as { name: string }[]
+    for (const r of rows) cols.add(r.name)
+    for (const migration of APPROVAL_RECORD_MIGRATIONS) {
+      const colName = migration.match(/ADD COLUMN (\w+)/)?.[1]
+      if (colName && !cols.has(colName)) {
+        this.db.run(migration)
+        cols.add(colName)
+      }
     }
   }
 
@@ -88,21 +123,28 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
 
   saveApproval(record: ApprovalRecord): void {
     this.db.run(
-      `INSERT INTO approval_records (approval_id, version, session_id, workspace_id, request_hash, contract_revision, principal_id, state, approved_by, execution_id, expires_at, updated_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO approval_records (approval_id, version, session_id, workspace_id, request_hash, contract_revision, principal_id, state, approved_by, revoked_by, execution_id, route, routing_policy_version, local_fallback_allowed, risk_class, expires_at, updated_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(approval_id) DO UPDATE SET
          version = excluded.version,
          principal_id = excluded.principal_id,
          state = excluded.state,
          approved_by = excluded.approved_by,
+         revoked_by = excluded.revoked_by,
          execution_id = excluded.execution_id,
+         route = excluded.route,
+         routing_policy_version = excluded.routing_policy_version,
+         local_fallback_allowed = excluded.local_fallback_allowed,
+         risk_class = excluded.risk_class,
          expires_at = excluded.expires_at,
          updated_at = excluded.updated_at`,
       [
         record.approvalId, record.version, record.sessionId, record.workspaceId,
         record.requestHash, record.contractRevision, record.principalId ?? "",
         record.state,
-        record.approvedBy ?? null, record.executionId ?? null,
+        record.approvedBy ?? null, record.revokedBy ?? null, record.executionId ?? null,
+        record.route ?? null, record.routingPolicyVersion ?? null,
+        record.localFallbackAllowed === false ? 0 : 1, record.riskClass ?? null,
         record.expiresAt, record.updatedAt, record.createdAt,
       ],
     )
@@ -218,7 +260,13 @@ function rowToApproval(row: any): ApprovalRecord {
     principalId: row.principal_id || undefined,
     state: row.state,
     approvedBy: row.approved_by ?? undefined,
+    revokedBy: row.revoked_by ?? undefined,
     executionId: row.execution_id ?? undefined,
+    route: row.route ?? undefined,
+    routingPolicyVersion: row.routing_policy_version ?? undefined,
+    localFallbackAllowed:
+      row.local_fallback_allowed === undefined ? undefined : row.local_fallback_allowed === 1,
+    riskClass: row.risk_class ?? undefined,
     expiresAt: row.expires_at,
     updatedAt: row.updated_at,
     createdAt: row.created_at,

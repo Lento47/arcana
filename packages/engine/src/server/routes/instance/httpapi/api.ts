@@ -24,6 +24,7 @@ import { ProviderApi } from "./groups/provider"
 import { PtyApi, PtyConnectApi } from "./groups/pty"
 import { QuestionApi } from "./groups/question"
 import { RevocationApi } from "./groups/revocations"
+import { RuntimeApi } from "./groups/runtime"
 import { SessionApi } from "./groups/session"
 import { SyncApi } from "./groups/sync"
 import { SyncNodeApi } from "./groups/sync-node"
@@ -75,6 +76,7 @@ export const InstanceHttpApi = HttpApi.make("arcana-instance")
   .addHttpApi(PtyApi)
 .addHttpApi(QuestionApi)
 .addHttpApi(RevocationApi)
+.addHttpApi(RuntimeApi)
 .addHttpApi(PermissionApi)
   .addHttpApi(ProviderApi)
   .addHttpApi(SessionApi)

@@ -22,7 +22,7 @@ import {
 
 // ─── Service Types ──────────────────────────────────────────────────
 
-export type ApprovalCommandKind = "APPROVE_ONCE" | "DENY"
+export type ApprovalCommandKind = "APPROVE_ONCE" | "DENY" | "REVOKE"
 
 export type OperatorCommandRequest = {
   approvalId: string
@@ -62,9 +62,14 @@ export class RealApprovalOperatorService implements ApprovalOperatorService {
       return { success: false, reason: "approval not found" }
     }
 
-    // Verify it's actionable
-    if (approval.state !== "PENDING") {
-      return { success: false, reason: `approval is ${approval.state}, not PENDING` }
+    // Verify it's actionable: approve/deny require PENDING; revoke may also
+    // invalidate an APPROVED-but-unclaimed approval (claimed approvals are
+    // execution-bound and cannot be revoked mid-flight).
+    const actionable =
+      approval.state === "PENDING"
+      || (command === "REVOKE" && approval.state === "APPROVED")
+    if (!actionable) {
+      return { success: false, reason: `approval is ${approval.state}, not actionable` }
     }
 
     // Verify version (optimistic concurrency)
@@ -107,10 +112,23 @@ export class RealApprovalOperatorService implements ApprovalOperatorService {
         this.authenticatedOperator,
         now,
       )
-    } else {
+    } else if (command === "DENY") {
       cmdResult = processApprovalCommand(
         {
           kind: "DENY",
+          approvalId,
+          operatorId: this.authenticatedOperator.operatorId,
+          sessionId: this.sessionId,
+          workspaceId: this.workspaceId,
+        },
+        this.store,
+        this.authenticatedOperator,
+        now,
+      )
+    } else {
+      cmdResult = processApprovalCommand(
+        {
+          kind: "REVOKE",
           approvalId,
           operatorId: this.authenticatedOperator.operatorId,
           sessionId: this.sessionId,

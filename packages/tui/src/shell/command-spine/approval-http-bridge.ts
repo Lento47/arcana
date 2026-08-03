@@ -26,7 +26,11 @@
  */
 
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
-import type { OperatorCommandRequest, OperatorCommandResponse } from "@arcana/core/crypto/approval-operator-service"
+import type {
+  ApprovalCommandKind,
+  OperatorCommandRequest,
+  OperatorCommandResponse,
+} from "@arcana/core/crypto/approval-operator-service"
 import type {
   ApprovalCommandInput,
   ApprovalCommandResult,
@@ -68,7 +72,7 @@ export class HttpApprovalOperatorService implements ApprovalOperatorService {
 
   private async postCommand(
     input: ApprovalCommandInput,
-    command: "APPROVE_ONCE" | "DENY",
+    command: Extract<ApprovalCommandKind, "APPROVE_ONCE" | "DENY">,
   ): Promise<ApprovalCommandResult> {
     const url = this.commandUrl(input.approvalId)
     const body = {
@@ -132,6 +136,12 @@ export class HttpApprovalOperatorService implements ApprovalOperatorService {
   // ─── Core interface (async adaptation of the engine operator service) ─
 
   async submitCommand(request: OperatorCommandRequest): Promise<OperatorCommandResponse> {
+    // The TUI surface currently decides via APPROVE_ONCE/DENY only; REVOKE is
+    // a workspace-operator/Desktop command and is refused here so the surface
+    // never widens silently.
+    if (request.command === "REVOKE") {
+      return { success: false, reason: "REVOKE is not available from the TUI surface" }
+    }
     const result = await this.postCommand(
       {
         approvalId: request.approvalId,

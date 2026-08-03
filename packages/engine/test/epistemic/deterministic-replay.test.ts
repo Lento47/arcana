@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
 import { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
+import path from "node:path"
 import {
   deriveDeterministicReplay,
   checkEnvironmentCompatibility,
@@ -166,9 +167,20 @@ describe("extractReplayReturnMetadata", () => {
 
 describe("Deterministic Replay", () => {
   let db: Database
+  const originalPath = process.env.PATH
 
-  beforeEach(() => { db = makeTestDB() })
-  afterEach(() => { db.close() })
+  beforeEach(() => {
+    db = makeTestDB()
+    // The replay environment-compatibility check resolves `bun` via PATH.
+    // Bootstrap it from the running executable so the suite does not depend
+    // on bun being on PATH.
+    process.env.PATH = `${path.dirname(process.execPath)}${path.delimiter}${originalPath ?? ""}`
+  })
+  afterEach(() => {
+    db.close()
+    if (originalPath === undefined) delete process.env.PATH
+    else process.env.PATH = originalPath
+  })
 
   // ── 1. Events without replay metadata → EXCLUDED ─────────────────
 

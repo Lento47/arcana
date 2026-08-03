@@ -49,7 +49,7 @@ const MessagesResponse = Schema.Struct({
   cursor: Schema.optional(Schema.String),
 })
 const TraceHealth = Schema.Literals(["COMPLETE", "DEGRADED", "UNAVAILABLE"])
-const RunProofSnapshot = Schema.Struct({
+export const RunProofSnapshot = Schema.Struct({
   proofHash: Schema.String,
   runRoot: Schema.String,
   derivedAt: Schema.String,

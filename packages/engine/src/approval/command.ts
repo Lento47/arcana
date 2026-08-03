@@ -25,10 +25,11 @@ import type {
   AuthenticatedOperator,
 } from "@arcana/core/crypto/approval-lifecycle"
 import { notifyApprovalDecision } from "@/session/tools"
+import { desktopOnline } from "./desktop-subscribers"
 
 // ─── Command body (matches the HTTP transport contract) ───────────────
 
-export type ApprovalCommandKind = "APPROVE_ONCE" | "DENY"
+export type ApprovalCommandKind = "APPROVE_ONCE" | "DENY" | "REVOKE"
 
 export type ApprovalCommandBody = {
   command: ApprovalCommandKind
@@ -104,12 +105,73 @@ export type SubmitApprovalCommandInput = {
    * the PEP resumes execution, or fails the call closed on DENY).
    */
   notify?: (approvalId: string, approved: boolean) => boolean
+  /**
+   * Test seam: Desktop liveness for the routing gate. Defaults to the
+   * process-scoped expiring registry.
+   */
+  desktopOnline?: (workspaceId: string) => boolean
+}
+
+/**
+ * Routing gate: where may an operator decide this approval?
+ *
+ * The stored route is advisory metadata captured when the approval was
+ * created. It NEVER changes the PDP result; it only restricts which surface
+ * may submit the approve/deny/revoke command:
+ *
+ *   LOCAL_TUI          -> local operators may decide.
+ *   DESKTOP_PREFERRED  -> Desktop when online; TUI only when the policy
+ *                         explicitly permits local fallback.
+ *   DESKTOP_REQUIRED   -> Desktop only; no silent local fallback.
+ *   CENTRAL_REQUIRED   -> no local/desktop decision; Arcana Control owns it.
+ *
+ * Approvals created before Phase D routing (route undefined) remain
+ * LOCAL_TUI-equivalent, preserving existing behavior.
+ */
+export function routingGate(
+  record: ApprovalRecord,
+  workspaceKey: string,
+  online: (workspaceKey: string) => boolean,
+): { allowed: boolean; reason?: string } {
+  const route = record.route
+  if (!route || route === "LOCAL_TUI") return { allowed: true }
+
+  const desktopIsOnline = online(workspaceKey)
+  switch (route) {
+    case "CENTRAL_REQUIRED":
+      return { allowed: false, reason: "approval requires central authority" }
+    case "DESKTOP_REQUIRED":
+      return desktopIsOnline
+        ? { allowed: true }
+        : { allowed: false, reason: "desktop required and offline" }
+    case "DESKTOP_PREFERRED":
+      if (desktopIsOnline) return { allowed: false, reason: "approval routed to desktop" }
+      return record.localFallbackAllowed === false
+        ? { allowed: false, reason: "desktop fallback forbidden by policy" }
+        : { allowed: true }
+  }
 }
 
 export function submitApprovalCommand(input: SubmitApprovalCommandInput): OperatorCommandResponse {
   const { sessionId, approvalId, command } = input
-  const store = input.store ?? approvalStoreForWorkspace(resolveApprovalWorkspaceCwd(input.workspaceCwd))
+  const workspaceCwd = resolveApprovalWorkspaceCwd(input.workspaceCwd)
+  const store = input.store ?? approvalStoreForWorkspace(workspaceCwd)
   const workspaceId = input.workspaceId ?? sessionId
+
+  const record = store.loadApproval(approvalId)
+  if (!record) {
+    return { success: false, reason: "approval not found" }
+  }
+
+  // Enforce the routing gate on the shared runtime service so every surface
+  // (session-scoped TUI/CLI endpoint and the workspace-scoped runtime API)
+  // is covered by the same policy.
+  const online = input.desktopOnline ?? ((workspace: string) => desktopOnline(workspace))
+  const gate = routingGate(record, workspaceCwd, online)
+  if (!gate.allowed) {
+    return { success: false, reason: gate.reason ?? "approval not routable to this surface" }
+  }
+
   const operator: AuthenticatedOperator = input.operator ?? {
     operatorId: "operator",
     authenticatedAt: new Date().toISOString(),
@@ -128,6 +190,7 @@ export function submitApprovalCommand(input: SubmitApprovalCommandInput): Operat
 
   if (response.success) {
     const notify = input.notify ?? notifyApprovalDecision
+    // REVOKE resolves any parked gate closed (zero effects), like DENY.
     notify(approvalId, command.command === "APPROVE_ONCE")
   }
 

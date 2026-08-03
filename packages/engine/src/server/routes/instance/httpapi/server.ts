@@ -102,6 +102,7 @@ import { providerHandlers } from "./handlers/provider"
 import { ptyConnectHandlers, ptyHandlers } from "./handlers/pty"
 import { questionHandlers } from "./handlers/question"
 import { revocationHandlers } from "./handlers/revocations"
+import { runtimeHandlers } from "./handlers/runtime"
 import { sessionHandlers } from "./handlers/session"
 import { syncHandlers } from "./handlers/sync"
 import { syncNodeHandlers } from "./handlers/sync-node"
@@ -172,6 +173,7 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
     ptyHandlers,
     questionHandlers,
     revocationHandlers,
+    runtimeHandlers,
     permissionHandlers,
     providerHandlers,
     sessionHandlers,
