@@ -128,3 +128,27 @@ export function pendingGateEntries(input: {
 
   return entries
 }
+
+/**
+ * F-27: spine navigation (j/k/up/down) stays enabled while a permission or
+ * question gate is open. The gate owns the decision keys; the operator can
+ * still move focus (and inspect with `v`) before deciding inside the gate.
+ */
+export function spineNavigationEnabled(input: {
+  composerFocused: boolean
+  hasRows: boolean
+}): boolean {
+  return !input.composerFocused && input.hasRows
+}
+
+/**
+ * F-26: while any action gate is open, every spine Esc binding is inert (no
+ * leave-composer, no close-inspector, no clear-selection). The gate owns all
+ * keys until the request is decided or dismissed.
+ */
+export function spineEscInert(input: {
+  gatesOpen: boolean
+  submitting: boolean
+}): boolean {
+  return !input.gatesOpen && !input.submitting
+}
