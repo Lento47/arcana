@@ -1107,6 +1107,9 @@ describe("session.compaction.process", () => {
       }).pipe(withCompaction({ llm: stub.layer, config: cfg({ tail_turns: 1, preserve_recent_tokens: 100 }) }))
     },
     { git: true },
+    // Compaction + LLM round trip measures ~2-4s in isolation; timed out at
+    // 5s under full-suite load on 2026-08-03. Legitimate load-bound duration.
+    { timeout: 10_000 },
   )
 
   itCompaction.instance(
@@ -1158,6 +1161,9 @@ describe("session.compaction.process", () => {
       }).pipe(withCompaction({ llm: stub.layer, config: cfg({ tail_turns: 1, preserve_recent_tokens: 100 }) }))
     },
     { git: true },
+    // Compaction + LLM round trip measures ~2-4s in isolation; timed out at
+    // 5s under full-suite load on 2026-08-03. Legitimate load-bound duration.
+    { timeout: 10_000 },
   )
 
   itCompaction.instance(
