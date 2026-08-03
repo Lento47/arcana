@@ -154,7 +154,7 @@ describe("processApprovalCommand existing-record invariant", () => {
     expect(store.getOutboxEvents()).toHaveLength(0)
   })
 
-  test("APPROVE of an expired record fails and emits no outbox event", () => {
+  test("APPROVE of an expired record fails and records the expiry transition atomically", () => {
     const store = new InMemoryApprovalStore()
     store.saveApproval(pendingRecord({ expiresAt: "2020-01-01T00:00:00.000Z" }))
 
@@ -163,7 +163,9 @@ describe("processApprovalCommand existing-record invariant", () => {
     expect(result.success).toBe(false)
     expect(result.reason).toBe("approval expired")
     expect(store.loadApproval("appr_1")!.state).toBe("EXPIRED")
-    expect(store.getOutboxEvents()).toHaveLength(0)
+    const events = store.getOutboxEvents()
+    expect(events).toHaveLength(1)
+    expect(events[0]!.kind).toBe("APPROVAL_EXPIRED")
   })
 
   test("APPROVE of a non-PENDING record is refused as already decided", () => {
