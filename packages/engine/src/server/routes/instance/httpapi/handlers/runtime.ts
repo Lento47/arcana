@@ -60,7 +60,13 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
      *      source (session record, workspace registry, or configured flag).
      *   2. The session named by the x-arcana-session header: the session
      *      record binds the operator to its workspace directory.
-     *   3. The trusted local runtime directory (process.cwd()).
+     *   3. A non-authoritative routed directory (e.g. the x-opencode-directory
+     *      header): a workspace selection, not a grant. It never overrides
+     *      (1) or (2), but it binds header-only requests (Desktop heartbeats,
+     *      direct runtime commands) to the same workspace key the
+     *      session-bound paths use, so the subscriber registry and command
+     *      routing cannot disagree.
+     *   4. The trusted local runtime directory (process.cwd()).
      *
      * A query-supplied `directory` is never authoritative: it can narrow
      * within an authorized scope but can never grant workspace authority.
@@ -77,6 +83,18 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
           Effect.catch(() => Effect.succeed(undefined)),
         )
         if (info) return info.directory
+      }
+      // A non-authoritative routed directory (e.g. the x-opencode-directory
+      // header) is a workspace selection, not a grant: it must never
+      // override an authoritative route or a session binding, but it is a
+      // better answer than process.cwd() for requests that carry an
+      // explicit workspace (Desktop heartbeats, direct runtime commands).
+      // Without this fallback the subscriber registry and the command
+      // routing disagree on the workspace key whenever one side is
+      // session-bound and the other is header-bound.
+      if (Option.isSome(route)) {
+        const ctx = route.value
+        if (ctx.directory) return ctx.directory
       }
       return process.cwd()
     })

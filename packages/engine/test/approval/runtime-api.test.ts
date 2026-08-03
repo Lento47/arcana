@@ -44,6 +44,9 @@ const seedRecord = (
   overrides: Partial<ApprovalRecord> = {},
 ) =>
   Effect.gen(function* () {
+    // The store lives at <workspace>/.arcana/approvals.db; bare tmpdirs do
+    // not carry the .arcana dir, so create it (seedWorkspace does the same).
+    yield* Effect.promise(() => fs.mkdir(path.join(directory, ".arcana"), { recursive: true }))
     const record: ApprovalRecord = {
       approvalId: fixture.approvalId,
       version: fixture.version,
@@ -319,7 +322,10 @@ describe("runtime API: /approvals contract conformance", () => {
       })
       const body = (yield* json(response)) as { success: boolean; reason: string }
       expect(body.success).toBe(false)
-      expect(body.reason).toBe("approval not found")
+      // The record lives in the routed workspace and is found; the session
+      // header is a restriction, so the command is refused with the precise
+      // session-isolation reason (same contract as workspace-isolation).
+      expect(body.reason).toBe("approval belongs to another session")
       expect(approvalStoreForWorkspace(tmp).loadApproval(sessionB.approvalId)!.state).toBe("PENDING")
     }),
   )
