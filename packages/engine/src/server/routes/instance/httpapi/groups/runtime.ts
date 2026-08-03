@@ -38,9 +38,9 @@ export const RuntimePaths = {
 } as const
 
 export const RuntimeApprovalCommandPayload = Schema.Struct({
-  expectedVersion: Schema.Number,
+  expectedVersion: Schema.Int,
   expectedRequestHash: Schema.String,
-  expectedContractRevision: Schema.Number,
+  expectedContractRevision: Schema.Int,
 })
 
 export const RuntimeApprovalCommandResponse = Schema.Union([ApprovalCommandSuccess, ApprovalCommandFailure])
