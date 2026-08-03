@@ -111,7 +111,8 @@ validation, manual validation, external validation, release.
 | Durable capabilities, use-limits, cascade revocation | Yes | Yes | Yes | Partial | No | No |
 | Durable approvals (PENDING→APPROVED→CLAIMED→CONSUMED) | Yes | Yes | Yes | Pending (WS1) | No | No |
 | RunProof + verified completion | Yes | Yes | Yes | Partial | No | No |
-| Governance projection + Command Spine | Yes | Yes | Yes | Partial | No | No |
+| Governance projection + Command Spine (conversation/operations/forensic) | Yes | Yes | Yes | Partial | No | No |
+| Approval routing (LOCAL_TUI/DESKTOP_PREFERRED/DESKTOP_REQUIRED/CENTRAL_REQUIRED) + Desktop heartbeat awareness | Yes | Yes | Yes | Partial | No | No |
 | TUI-2.1 spine polish (grouping, aggregation, filters, compact rows, click-toggle) | Yes | Yes | Yes | In progress | No | No |
 | Distributed authority (signed envelopes, sync, D-7) | Partial | Partial | Partial | No | No | No |
 | Host containment (filesystem/process/network) | Partial | Partial | Partial | No | No | No |
@@ -129,7 +130,7 @@ production-certified adapter: no (BLK-CLI-01).
 | Repo-wide typecheck | 16/16 packages |
 | Build | 8/8 tasks (engine binaries smoke-tested; `0.0.0-phase-d-implementation-202608021350`) |
 | Core suite | 1465 pass / 7 skip / 0 fail (1,472 tests, 175 files — clean rerun 2026-08-02 incl. enterprise cores, delta bundles, revocation hostile fixtures, containment fixtures) |
-| Engine suite | Full rerun 2026-08-02: 4305 pass / 1 todo / 4 fail under the default 5s per-test timeout (4384 tests). The 4 failures are timing-bound: `revert + compact restore` ×2 pass at 6–7s (`--timeout 30000`), `snapshot state isolation` + `diffFull batch order` pass in isolation (~4s, load flakiness). Engine code unchanged since `e57c5ca2` verified run (4251/74/1/0) — no logic regression. Affected server/node suites: 83 pass / 0 fail |
+| Engine suite | 2026-08-02 baseline rerun: 4250 pass / 33 fail / 1 skip (4358 tests). All 33 classified and fixed as harness/environment issues: 30 CLI subprocess tests spawned bun by name while it is not on PATH (fixed: process.execPath in test/lib/cli-process.ts); 2 replay fixtures needed bun on PATH (fixed: PATH bootstrap + explicit execSync env); 1 Windows shell test assumed Git Bash cygpath maps drive-stripped paths to C:\Windows\Temp (fixed: assert cross-variant normalization instead of a machine-specific root). Load-bound snapshot tests received justified 10s per-test timeouts. Stability gate rewritten as fresh-process iterations (test:engine:stability); 3/3 clean. Concurrency 1/4/8, randomize, and seeded randomize all 0 fail. Canonical full-suite rerun 2026-08-03 in progress (docs/evidence/full-suite-canonical-2026-08-03.log.err) |
 | Arcana CLI/proof suite | 116 pass / 0 fail (2026-08-02) |
 | SDK JS suite | 34 pass / 0 fail (2026-08-02, full `src` run incl. enterprise client, adapters, vectors, SSE) |
 | Conformance runner | 5/5 suites (TS golden vectors + D-10 matrix + Rust verifier + SDK surface + adapter vectors; 46 crypto + 4 adapter vectors + 15 hostile fixtures) |
@@ -137,6 +138,29 @@ production-certified adapter: no (BLK-CLI-01).
 | Validation level | Strongest at L1–L2 (production-path integration + internal adversarial); L3+ independent validation not obtained |
 
 ## Phase A–F audit artifacts (2026-08-02)
+
+## Runtime approval routing & Desktop contract (2026-08-03)
+
+- Routing model implemented and durable: LOCAL_TUI, DESKTOP_PREFERRED,
+  DESKTOP_REQUIRED, CENTRAL_REQUIRED; policy-driven by workspace, action,
+  capability, risk class, deployment mode; persisted on approval records.
+- Decision surface is bound to the authenticated caller (local TUI session
+  endpoint vs workspace/Desktop runtime API); a live Desktop heartbeat is
+  advisory availability, never proof of origin.
+- Runtime API mounted: /approvals, /approvals/:id, approve/deny/revoke,
+  /sessions, /sessions/:id, /proofs/:id, /desktop/heartbeat
+  (plus existing /event, /health). OpenAPI: contracts/approval-api.v1.yaml;
+  runtime contract doc: docs/RUNTIME-API-CONTRACT.md.
+- REVOKE lifecycle added (PENDING|APPROVED -> INVALIDATED); revoked
+  approvals can never claim (zero effects). Duplicate decisions/consumes are
+  refused; changed request hash/version/revision fail machine-readable stale.
+- Operator identity is derived from authenticated server context; client
+  body fields (approvedBy/actorUserId/operatorId) cannot establish
+  authority; x-arcana-session is a restriction only.
+- TUI projection: default conversation mode aggregates healthy governance
+  events into compact lifecycle rows; operations and forensic modes expose
+  grouped tool/governance and exact durable evidence; security-critical rows
+  always break through.
 
 The Phase A–F completion audit added a blocker register, a living task
 register, phase/task traceability, and a checkpoint completion report:

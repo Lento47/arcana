@@ -437,3 +437,13 @@ Master spec Parts I–IV (architecture/roadmap)
   → docs/TASKS.md (this file)
   → docs/COMPLETION-REPORT.md (checkpoint completion summary)
 ```
+
+## AUD-2x: Runtime approval routing and engine stability closure (2026-08-03)
+
+| Task | Status | Evidence | Blockers |
+|---|---|---|---|
+| AUD-21 Engine stability closure: classify and fix the 33 full-suite failures | COMPLETE | Baseline rerun 2026-08-02: 4250 pass / 33 fail. Classification: 30 subprocess harness failures (bun not on PATH; fixed with process.execPath in test/lib/cli-process.ts), 2 replay fixtures (PATH bootstrap + explicit execSync env), 1 Windows shell test (Git Bash cygpath root assumption; test now asserts cross-variant normalization). Repro runs: all pass with bun removed from PATH | - |
+| AUD-22 Load-bound snapshot/revert test timeouts + stability gate | COMPLETE | Justified per-test timeouts (15s revert/compact restore, 10s snapshot) with comments; test:engine:stability rewritten as fresh-process iterations (script/stability-run.ts); 3/3 clean; concurrency 1/4/8, randomize, seeded randomize all 0 fail | - |
+| AUD-23 Approval routing model + REVOKE lifecycle | COMPLETE | approval-routing.ts (LOCAL_TUI/DESKTOP_PREFERRED/DESKTOP_REQUIRED/CENTRAL_REQUIRED, policy-driven); REVOKE (PENDING/APPROVED -> INVALIDATED, zero execution path); surface-bound routing gate in approval/command.ts; 17 core routing/lifecycle tests + 15 engine gate tests | - |
+| AUD-24 Runtime/Desktop API contract | COMPLETE (pre-release) | Runtime API mounted (/approvals, approve/deny/revoke, /sessions, /proofs, /desktop/heartbeat); operator identity from server context; exact-request revalidation; OpenAPI contracts/approval-api.v1.yaml; doc docs/RUNTIME-API-CONTRACT.md; 19 engine approval tests | Desktop client itself is spec-only (external track) |
+| AUD-25 Low-noise TUI governance projection | COMPLETE | Three visibility modes (conversation default / operations / forensic); healthy governance aggregated into compact lifecycle rows; forensic expands raw evidence; security-critical rows always visible; 18 TUI tests | - |
