@@ -50,6 +50,7 @@ export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval"
         sessionId: ctx.params.sessionID,
         approvalId: ctx.params.approvalID,
         command: ctx.payload,
+        surface: "LOCAL_TUI",
         workspaceCwd: directory,
         workspaceId: ctx.params.sessionID,
         operator: {
