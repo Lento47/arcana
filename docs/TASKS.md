@@ -3,7 +3,7 @@
 **Document class:** living task register + traceability matrix
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Consolidated:** 2026-08-02 — merges the former `docs/roadmap/TASK-REGISTER.md` and `docs/roadmap/PHASE-TRACEABILITY.md`
-**Implementation checkpoint:** `0392ad7b` (2026-08-02; suites verified on the pre-commit worktree)
+**Implementation checkpoint:** `63d71f07` (2026-08-03; upstream advanced from `0392ad7b` via merged PRs #43–47)
 **Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
 
 Part 1 is the living per-task status register (playbook tasks plus AUD-xx campaign tasks). Part 2 is the task → evidence → gate traceability matrix.
@@ -209,6 +209,8 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | AUD-54 | TUI-2.1 operator consoles (F3 simulation editor, F5 escalation console, F6 auditor console) — design proposed; **PENDING USER DECISION** (implementation requires approval) | TUI-2.1 | Engineering |
 | AUD-55 | Live PEP transport (SDK adapter `authorize()` wired to an engine HTTP PEP endpoint) — design proposed; **PENDING USER DECISION** (implementation requires approval) | BLK-E-06/E-10 | Engineering |
 | AUD-56 | Consolidate the external/human gate register with exact owner/artifact/evidence per gate (TLS, live Linux, live exercises, TUI matrices, F13, L3, license, Node freeze, Phase F freeze, Arcana 1.0 sign-off) — DONE (`docs/BLOCKERS.md`) | — | All owners |
+| AUD-57 | Obtain the explicit human freeze sign-off for TUI-2.1 (required before the milestone tag) | TUI-2.1 | Maintainer + operator |
+| AUD-58 | Create the immutable TUI-2.1 milestone tag at the verified exact final commit after human sign-off (release-flow Phase 1) | TUI-2.1 | Maintainer |
 
 ## Phase traceability
 
@@ -217,7 +219,11 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 status authority `docs/STATUS.md`
 **Created:** 2026-08-02 (Phase A–F completion audit)
 **Audited commit:** `0392ad7b` (2026-08-02 checkpoint commit; suites verified
-on the pre-commit worktree, which the commit reproduces exactly)
+on the pre-commit worktree, which the commit reproduces exactly). Upstream
+advanced to `63d71f07` (2026-08-03) via merged PRs #43–47; the checkpoint
+below reflects the pre-advance audit. The TUI-2.1 freeze gates tracked by
+`AUD-01..08` remain open at the new checkpoint, plus `AUD-57` (human freeze
+sign-off) and `AUD-58` (immutable tag) added below.
 
 This document traces every playbook phase and task to its implementation
 evidence, its release gates, and its open blockers. It is the companion to
