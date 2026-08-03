@@ -41,5 +41,6 @@ export const migrations = (
     import("./migration/20260729000000_capability_grants"),
     import("./migration/20260731000000_epistemic_tables"),
     import("./migration/20260801000000_intent_bindings"),
+    import("./migration/20260803060131_tense_agent_brand"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]
