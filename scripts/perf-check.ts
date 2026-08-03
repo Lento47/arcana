@@ -64,8 +64,8 @@ async function checkBinarySize(baseline: Baseline, updateBaseline: boolean): Pro
   let maxSeenName = ""
 
   if (!existsSync(distDir)) {
-    console.log("[perf] ⚠️  No dist directory found — skipping binary size check")
-    return true
+    console.log("[perf] ❌ No dist directory found — binary size was not measured")
+    return false
   }
 
   // Look for compiled binaries in dist/*/bin/arcana or dist/*/bin/arcana.exe
@@ -103,8 +103,8 @@ async function checkBinarySize(baseline: Baseline, updateBaseline: boolean): Pro
   }
 
   if (!foundAny) {
-    console.log("[perf] ⚠️  No compiled binaries found in dist/ — skipping binary size check")
-    return true
+    console.log("[perf] ❌ No compiled binaries found in dist/ — binary size was not measured")
+    return false
   }
 
   if (updateBaseline && maxSeenBytes > 0) {
