@@ -11,6 +11,7 @@ import type {
   ApprovalExecutionRecord,
   ApprovalOutboxEvent,
   ApprovalLifecycleStore,
+  ApprovalTransition,
 } from "./approval-lifecycle"
 
 // ─── Schema ─────────────────────────────────────────────────────────
@@ -75,12 +76,25 @@ export const APPROVAL_RECORD_MIGRATIONS = [
   `ALTER TABLE approval_records ADD COLUMN revoked_by TEXT`,
 ]
 
+export type ApprovalTransitionStep = "begin" | "approval" | "execution" | "outbox" | "commit"
+
+export type ApprovalTransitionHooks = {
+  /**
+   * Test seam called at every transaction boundary inside commitTransition.
+   * Throwing from a hook simulates a crash or SQLite failure at that point;
+   * production callers leave it unset.
+   */
+  onStep?: (step: ApprovalTransitionStep) => void
+}
+
 // ─── SQLite Store ───────────────────────────────────────────────────
 
 export class SqliteApprovalStore implements ApprovalLifecycleStore {
   private db: Database
+  private readonly hooks: ApprovalTransitionHooks
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, hooks: ApprovalTransitionHooks = {}) {
+    this.hooks = hooks
     this.db = new Database(dbPath)
 
     // Same durability configuration as D-5H
@@ -122,6 +136,10 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
   }
 
   saveApproval(record: ApprovalRecord): void {
+    this.upsertApproval(record)
+  }
+
+  private upsertApproval(record: ApprovalRecord): void {
     this.db.run(
       `INSERT INTO approval_records (approval_id, version, session_id, workspace_id, request_hash, contract_revision, principal_id, state, approved_by, revoked_by, execution_id, route, routing_policy_version, local_fallback_allowed, risk_class, expires_at, updated_at, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -157,6 +175,10 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
   }
 
   saveExecution(record: ApprovalExecutionRecord): void {
+    this.upsertExecution(record)
+  }
+
+  private upsertExecution(record: ApprovalExecutionRecord): void {
     this.db.run(
       `INSERT INTO approval_executions (approval_id, execution_id, approval_version, request_hash, state, effect_receipt_hash, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -176,11 +198,44 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
   }
 
   appendOutboxEvent(event: ApprovalOutboxEvent): void {
+    this.insertOutboxEvent(event)
+  }
+
+  private insertOutboxEvent(event: ApprovalOutboxEvent): void {
     this.db.run(
       `INSERT INTO approval_outbox (event_id, approval_id, kind, timestamp, detail, status)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [event.eventId, event.approvalId, event.kind, event.timestamp, JSON.stringify(event.detail), event.status],
     )
+  }
+
+  /**
+   * Commit approval state, optional execution state, and the authoritative
+   * outbox event in ONE SQLite transaction. Any statement failure rolls back
+   * the whole transition, so the database never exposes a state transition
+   * without its corresponding event.
+   */
+  commitTransition(transition: ApprovalTransition): void {
+    const { approval, execution, event } = transition
+    this.hooks.onStep?.("begin")
+    this.db.exec("BEGIN IMMEDIATE")
+    try {
+      this.upsertApproval(approval)
+      this.hooks.onStep?.("approval")
+      this.hooks.onStep?.("execution")
+      if (execution) this.upsertExecution(execution)
+      this.hooks.onStep?.("outbox")
+      this.insertOutboxEvent(event)
+      this.hooks.onStep?.("commit")
+      this.db.exec("COMMIT")
+    } catch (error) {
+      try {
+        this.db.exec("ROLLBACK")
+      } catch {
+        // The transaction may already have been rolled back by SQLite.
+      }
+      throw error
+    }
   }
 
   loadPendingApprovals(sessionId: string): ApprovalRecord[] {
