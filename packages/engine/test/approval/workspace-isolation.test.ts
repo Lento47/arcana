@@ -63,7 +63,7 @@ function json(response: { json: unknown }) {
   return (response as { json: Effect.Effect<unknown> }).json
 }
 
-function requestAsSession(route: string, directory: string, sessionId: string, init: RequestInit = {}) {
+export function requestAsSession(route: string, directory: string, sessionId: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers)
   headers.set("x-arcana-session", sessionId)
   return requestInDirectory(route, directory, { ...init, headers })

@@ -9,6 +9,7 @@
  *  - Decisions carry the operator's authorized workspace scope (never wildcard).
  */
 import { afterEach, describe, expect } from "bun:test"
+import { requestAsSession } from "./workspace-isolation.test"
 import { Effect, Layer } from "effect"
 import fs from "fs/promises"
 import path from "path"
@@ -129,6 +130,35 @@ describe("runtime API: /approvals contract conformance", () => {
       expect(body.success).toBe(true)
       expect(body.approval.state).toBe("APPROVED")
       expect(body.approval.approvedBy).toBe("local-operator")
+    }),
+  )
+
+  it.instance("operator receives exactly the authorized workspace, bound durably to the decision", () =>
+    Effect.gen(function* () {
+      // Regression for the release-blocking operatorIdentity defect: the
+      // identity must carry the authoritatively resolved workspace (never the
+      // undefined variable, never a wildcard fallback). The lifecycle refuses a
+      // decision when operator.workspaceScope does not include the record's
+      // workspaceId, so a passing approve proves the scope matched the
+      // authorized workspace, and the durable record proves where it landed.
+      const test = yield* TestInstance
+      const ws = yield* seedWorkspace(test.directory)
+      const seeded = yield* seedRecord(ws.directory, ws.sessionId)
+      yield* heartbeat(ws.directory)
+      const response = yield* requestAsSession(`/approvals/${seeded.approvalId}/approve`, ws.directory, ws.sessionId, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(commandBody()),
+      })
+      const body = (yield* json(response)) as { success: boolean; reason?: string; approval?: ApprovalRecord }
+      expect(body.success, `approve refused: reason=${body.reason}`).toBe(true)
+      expect(body.approval?.state).toBe("APPROVED")
+      // The authorized workspace is the session's directory (a tmpdir), never
+      // the process cwd and never a wildcard: assert the durable binding.
+      expect(ws.directory).not.toBe(process.cwd())
+      const record = approvalStoreForWorkspace(ws.directory).loadApproval(seeded.approvalId)!
+      expect(record.state).toBe("APPROVED")
+      expect(record.workspaceId).toBe(ws.directory)
     }),
   )
 
