@@ -6,7 +6,7 @@
 import path from "node:path"
 import { createRequire } from "node:module"
 import { currentDir } from "./util/path.js"
-
+import { getCompletionScript } from "./cli/completion.js"
 const PROFILE = !!process.env["ARCANA_PROFILE_STARTUP"]
 const PROFILE_PID = process.pid
 function profileEmit(phase: string, ts_ms: number) {
@@ -16,14 +16,12 @@ function profileEmit(phase: string, ts_ms: number) {
   process.stderr.write(JSON.stringify({ phase, ts_ms, pid: PROFILE_PID }) + "\n")
 }
 profileEmit("arcana_entry", performance.now())
-
 const args = process.argv.slice(2)
 const HELP_FLAGS = new Set(["--help", "-h", "--version", "-v"])
 const SUBCOMMANDS = ["run", "skills", "cron", "memory", "gateway", "completion", "config", "learn", "doctor", "history", "theme", "feedback", "web", "daemon"]
 const firstArg = args[0]
 const DAEMON_FLAG = args.includes("--daemon")
 const isArcanaSubcommand = firstArg && (SUBCOMMANDS.includes(firstArg) || HELP_FLAGS.has(firstArg))
-
 if (DAEMON_FLAG) {
   // Spawn daemon detached — CLI exits immediately, daemon persists
   const engineDir = path.join(currentDir(import.meta), "../../engine")
@@ -41,7 +39,6 @@ if (DAEMON_FLAG) {
   }).unref()
   process.exit(0)
 }
-
 if (!isArcanaSubcommand) {
   // === TUI fast path ===
   profileEmit("fast_path_enter", performance.now())
@@ -53,10 +50,8 @@ if (!isArcanaSubcommand) {
     : await generateBridgeConfig()
   profileEmit("bridge_config_done", performance.now())
   profileEmit("bridge_config_ms", Math.round(performance.now() - t0))
-
   const engineDir = path.join(currentDir(import.meta), "../../engine")
   const engineEntry = path.join(engineDir, "src/index.ts")
-
   const tSpawn = performance.now()
   const child = Bun.spawn({
     cmd: ["bun", "--conditions=browser", engineEntry, ...args],
@@ -79,30 +74,25 @@ if (!isArcanaSubcommand) {
   process.exitCode = await child.exited
   process.exit()
 }
-
 // === Subcommand path (lazy — only loaded when needed) ===
 profileEmit("subcommand_path_enter", performance.now())
 const yargsImportStart = performance.now()
 const { default: yargs } = await import("yargs")
 profileEmit("subcommand_yargs_import_done", performance.now())
 profileEmit("subcommand_yargs_import_ms", Math.round(performance.now() - yargsImportStart))
-
 const LOGO = `
   ╔═══════════════════════════════╗
   ║          ◆ ARCANA ◆           ║
   ║  self-improving AI agent CLI  ║
   ╚═══════════════════════════════╝
 `.trimStart()
-
 function show(out: string) {
   const text = out.trimStart()
   if (!text.startsWith("arcana")) process.stderr.write(LOGO + "\n")
   process.stderr.write(text + "\n")
 }
-
 const _require = createRequire(import.meta.url)
 const VERSION: string = _require("../../../package.json").version
-
 const commandLoaders = {
   run: () => import("./cli/cmd/run.js").then((m) => m.RunCommand),
   skills: () => import("./cli/cmd/skills.js").then((m) => m.SkillsCommand),
@@ -118,19 +108,16 @@ const commandLoaders = {
   feedback: () => import("./cli/cmd/feedback.js").then((m) => m.FeedbackCommand),
   web: () => import("./cli/cmd/web.js").then((m) => m.WebCommand),
 }
-
 async function loadCommandsFor(arg: string | undefined) {
   if (arg === "completion") return []
   if (arg && HELP_FLAGS.has(arg)) return Promise.all(Object.values(commandLoaders).map((load) => load()))
   const loader = arg ? commandLoaders[arg as keyof typeof commandLoaders] : undefined
   return loader ? [await loader()] : []
 }
-
 const commandLoadStart = performance.now()
 const cmds = await loadCommandsFor(firstArg)
 profileEmit("subcommand_commands_loaded", performance.now())
 profileEmit("subcommand_command_load_ms", Math.round(performance.now() - commandLoadStart))
-
 const cli = yargs(args)
   .parserConfiguration({ "populate--": true })
   .scriptName("arcana")
@@ -165,8 +152,19 @@ const cli = yargs(args)
   })
   .demandCommand(1, "")
   .strict(false)
-
 for (const cmd of cmds) cli.command(cmd)
+// Intercept zsh and fish completion before yargs handles them
+// (yargs built-in .completion() only generates bash scripts)
+if (firstArg === "completion" && args.length >= 2) {
+  const shell = args[1]
+  if (shell === "zsh" || shell === "fish") {
+    const script = getCompletionScript(shell)
+    if (script) {
+      process.stdout.write(script + "\n")
+      process.exit(0)
+    }
+  }
+}
 try {
   if (args.includes("-h") || args.includes("--help")) {
     await cli.parse(args, (err: Error | undefined, _argv: unknown, out: string) => {
