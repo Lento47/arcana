@@ -71,8 +71,8 @@ describe("F5 central approvals", () => {
 
     const bulk = bulkDeny("tenant-a", ["appr-2", "appr-3"], "u-admin", store, NOW)
     expect(bulk.denied).toBe(2)
-    expect(store.get("tenant-a", "appr-2")?.status).toBe("REJECTED")
-    expect(store.get("tenant-a", "appr-3")?.status).toBe("REJECTED")
+    expect(store.get("tenant-a", "appr-2")?.status).toBe("DENIED")
+    expect(store.get("tenant-a", "appr-3")?.status).toBe("DENIED")
   })
 
   it("emergency revocation blocks an approved but unconsumed approval", () => {
@@ -80,7 +80,7 @@ describe("F5 central approvals", () => {
     store.put(record({ status: "APPROVED", approverId: "u-admin" }))
     const revoked = emergencyRevokeApproval("tenant-a", "appr-1", "u-owner", store, NOW)
     expect(revoked.kind).toBe("DECIDED")
-    expect(store.get("tenant-a", "appr-1")?.status).toBe("REJECTED")
+    expect(store.get("tenant-a", "appr-1")?.status).toBe("INVALIDATED")
 
     store.put(record({ approvalId: "appr-2", status: "CONSUMED" }))
     expect(emergencyRevokeApproval("tenant-a", "appr-2", "u-owner", store, NOW)).toMatchObject({

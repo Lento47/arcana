@@ -557,10 +557,11 @@ export const CentralApprovalRecordSchema = Schema.Struct({
   status: Schema.Literals([
     "PENDING",
     "APPROVED",
+    "DENIED",
     "CLAIMED",
     "CONSUMED",
     "EXPIRED",
-    "REJECTED",
+    "INVALIDATED",
   ]),
   exactRequestJson: Schema.String,
   createdAt: Schema.String,
@@ -571,7 +572,7 @@ export const CentralApprovalRecordSchema = Schema.Struct({
 export const ApprovalListQuery = Schema.Struct({
   ...WorkspaceRoutingQuery.fields,
   status: Schema.optional(
-    Schema.Literals(["PENDING", "APPROVED", "CLAIMED", "CONSUMED", "EXPIRED", "REJECTED"]),
+    Schema.Literals(["PENDING", "APPROVED", "DENIED", "CLAIMED", "CONSUMED", "EXPIRED", "INVALIDATED"]),
   ),
 })
 

@@ -88,11 +88,11 @@ describe("F5 escalation console view mapping", () => {
       { status: "PENDING" },
       { status: "APPROVED" },
       { status: "PENDING" },
-      { status: "REJECTED" },
+      { status: "DENIED" },
     ]
     expect(filterApprovals(list, "PENDING")).toHaveLength(2)
     expect(filterApprovals(list, "APPROVED")).toHaveLength(1)
-    expect(filterApprovals(list, "REJECTED")).toHaveLength(1)
+    expect(filterApprovals(list, "DENIED")).toHaveLength(1)
   })
 
   it("returns all approvals when no status filter is given", () => {

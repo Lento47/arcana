@@ -1631,7 +1631,7 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       params: { tenantId: string }
       query: {
         directory?: string
-        status?: "PENDING" | "APPROVED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "REJECTED"
+        status?: "PENDING" | "APPROVED" | "DENIED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "INVALIDATED"
       }
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
