@@ -13,7 +13,9 @@
       "@arcana/core/*": ["../../packages/core/src/*"],
       "@arcana/engine/*": ["../../packages/engine/src/*"],
       "@arcana/sdk": ["../../packages/sdk/js/src/index.ts"],
-      "@arcana/sdk/v2/*": ["../../packages/sdk/js/src/v2/*"]
+      "@arcana/sdk/v2/*": ["../../packages/sdk/js/src/v2/*"],
+      "effect": ["../../packages/engine/node_modules/effect"],
+      "effect/*": ["../../packages/engine/node_modules/effect/*"]
     }
   },
   "include": ["index.ts"]
