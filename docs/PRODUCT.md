@@ -3,7 +3,7 @@ document_class: product_definition
 authority: product_scope
 status: proposed
 owner: maintainer
-last_updated: 2026-08-02
+last_updated: 2026-08-05
 ---
 
 # Arcana product definition
@@ -25,7 +25,38 @@ The initial user is a developer or security-conscious operator running coding ag
 
 ## M1 / Arcana 1.0 scope
 
-The first releasable product is intentionally narrow:
+The first releasable product is intentionally narrow. Per
+`docs/design/ADR-004-m1-product-surface-boundary.md` (ratified via PR #79),
+Arcana M1 has **exactly one product journey and two user-facing clients**. The
+Arcana Runtime is not a third user-facing product surface: it is the
+authoritative local service used by both clients.
+
+1. **CLI/TUI — primary AI work surface**
+   - launches or attaches to the certified external agent;
+   - presents conversation, tool execution, compact governance lifecycle, and
+     local approval controls when routing permits;
+   - remains the canonical operator path for developing and diagnosing the
+     governed agent session.
+
+2. **Arcana Desktop — local approval and forensic companion**
+   - supervises the local runtime lifecycle;
+   - renders the same canonical governance semantics;
+   - presents routed approvals, evidence, proofs, restart recovery, and native
+     notifications;
+   - never becomes an independent policy, approval, execution, or evidence
+     authority.
+
+The minimal M1 Desktop surface is: runtime lifecycle, reconnect/resync,
+pending-approval notification, exact-request inspection, approve/deny through
+the authoritative runtime, proof inspection, and restart recovery.
+
+Arcana Manager is a transport/discovery adapter name, not a separate product
+or authority surface; it must converge on the same runtime contract and
+approval commands used by Desktop and TUI. Enterprise consoles are preserved
+implementation tracks, not M1 release surfaces; they do not add requirements
+to the M1 golden path.
+
+The M1 scope includes:
 
 - local authoritative runtime;
 - durable governance and approval state;
@@ -38,6 +69,21 @@ The first releasable product is intentionally narrow:
 - RunProof derivation and verification;
 - one production-certified external agent integration;
 - Windows packaging, restart recovery, and exact-commit sign-off.
+
+The M1 golden path is:
+
+```text
+launch one certified agent
+  -> consequential request
+  -> PDP decision
+  -> durable approval when required
+  -> routed inspection and approve/deny
+  -> exact-request PEP revalidation
+  -> at-most-once execution
+  -> receipt and durable evidence
+  -> RunProof inspection and verification
+  -> restart/reconnect recovery without loss or duplication
+```
 
 ## Product invariants
 
@@ -53,10 +99,10 @@ The first releasable product is intentionally narrow:
 
 These are valuable but are not Arcana 1.0 release requirements:
 
+- Arcana Control, central approval, and enterprise fleet governance;
 - Arcana Node and distributed authority;
-- Arcana Control and enterprise fleet governance;
 - federation and central policy distribution;
-- multi-language SDK expansion;
+- additional SDKs beyond the frozen first contract and multi-language SDK expansion;
 - protocol standardization beyond the first stable contract;
 - broad gateway, cron, memory, skills, and ML expansion;
 - additional external-agent adapters beyond the first certified integration.

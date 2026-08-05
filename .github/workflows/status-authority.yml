@@ -1,0 +1,76 @@
+name: Status authority
+
+# Guard: the machine-readable status snapshot must agree with the real commit.
+#
+# For freeze/release/milestone PRs (anything touching the status or release
+# documents), docs/CURRENT-STATE.json's status.implementationCheckpoint (or
+# top-level commit) must equal the implementation commit the PR builds on
+# (the base commit of the branch it merges into). Forward-referencing an
+# unmerged commit as "current" fails the check, which is the stale-status
+# failure mode this guard exists to catch.
+#
+# Use `workflow_dispatch` to re-assert a merged/release commit: the expected
+# SHA is then the commit the workflow runs on.
+on:
+  pull_request:
+    branches:
+      - master
+      - phase-d-implementation
+    paths:
+      - "docs/STATUS.md"
+      - "docs/CURRENT-STATE.json"
+      - "docs/BLOCKERS.md"
+      - "docs/PRODUCT.md"
+      - "docs/ROADMAP.md"
+      - "docs/FREEZE-RELEASE.md"
+      - "docs/COMPLETION-REPORT.md"
+      - "docs/releases/**"
+      - ".github/workflows/status-authority.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: status-authority-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  assert-current-state:
+    name: Assert status.implementationCheckpoint == implementation commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assert CURRENT-STATE.json matches the implementation commit
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -f docs/CURRENT-STATE.json ]; then
+            echo "::error::docs/CURRENT-STATE.json is missing — run \`bun run scripts/generate-current-state.ts\` and commit the generated file."
+            exit 1
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            expected="${{ github.event.pull_request.base.sha }}"
+            echo "event=pull_request (base sha)"
+          else
+            expected="${{ github.sha }}"
+            echo "event=${{ github.event_name }} (workflow sha)"
+          fi
+
+          actual="$(node -p "const s=require('./docs/CURRENT-STATE.json'); s.status && s.status.implementationCheckpoint ? s.status.implementationCheckpoint : s.commit")"
+
+          echo "expected (implementation commit): $expected"
+          echo "actual   (CURRENT-STATE.json):    $actual"
+
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::docs/CURRENT-STATE.json records $actual but the implementation commit is $expected. Regenerate the snapshot with \`bun run scripts/generate-current-state.ts\`; never hand-edit the checkpoint."
+            exit 1
+          fi
+
+          echo "OK: status.implementationCheckpoint == implementation commit"

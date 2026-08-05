@@ -3,7 +3,7 @@ document_class: roadmap
 authority: execution_priority
 status: current
 owner: maintainer
-last_updated: 2026-08-02
+last_updated: 2026-08-05
 ---
 
 # Arcana roadmap
@@ -13,6 +13,16 @@ This document answers only **what should be worked on next**. Detailed implement
 ## Now — M1 convergence
 
 Work in this section is release-critical. New work must close one of these outcomes.
+
+Per `docs/design/ADR-004-m1-product-surface-boundary.md` (ratified via
+PR #79), M1 is exactly: the authoritative local runtime (not a user-facing
+surface) + CLI/TUI (primary AI work surface) + Arcana Desktop (local approval
+and forensic companion) + one certified external-agent integration. Arcana
+Manager is a transport/discovery adapter name, not a separate product or
+authority surface. Enterprise consoles are preserved implementation tracks,
+not M1 release surfaces; no new named operator surface enters M1 without an
+explicit roadmap change and a separate ADR showing why TUI or Desktop cannot
+satisfy the user outcome.
 
 1. **Contract/runtime parity**
    - Reconcile `contracts/approval-api.v1.yaml` with the mounted runtime API.
