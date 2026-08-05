@@ -164,21 +164,24 @@ fn test_conformance_vectors() {
             map.insert("signature".to_string(), Value::String(vector.signature.clone()));
         }
 
+        let opts = verifier::VerifyOptions {
+            now_ms,
+            expected_audience: vector.expected_audience.as_deref(),
+            known_sequences: Some(&known_sequences),
+        };
+
         let result = if !raw_json.is_empty() {
             // PARSE stage: try to parse, then run schema if parse succeeds
             match parse_strict_envelope(raw_json) {
                 Ok(parsed) => {
                     // Parse succeeded — if expected stage is SCHEMA, run verification
                     if vector.expected_stage.as_deref() == Some("SCHEMA") {
-                        let envelope_json = serde_json::to_string(&parsed).unwrap_or_default();
                         verifier::verify_envelope(
-                            &envelope_json,
+                            &parsed,
                             domain_from_str(&vector.domain),
                             required_fields,
                             &trusted_keys,
-                            vector.expected_audience.as_deref(),
-                            &known_sequences,
-                            now_ms,
+                            &opts,
                         )
                     } else {
                         // Expected PARSE rejection but parse succeeded
@@ -192,17 +195,22 @@ fn test_conformance_vectors() {
                 },
             }
         } else {
-            // Serialize full envelope to JSON for verification
+            // Serialize full envelope to JSON, strictly parse, then verify
             let envelope_json = serde_json::to_string(&full_envelope).unwrap_or_default();
-            verifier::verify_envelope(
-                &envelope_json,
-                domain_from_str(&vector.domain),
-                required_fields,
-                &trusted_keys,
-                vector.expected_audience.as_deref(),
-                &known_sequences,
-                now_ms,
-            )
+            match parse_strict_envelope(&envelope_json) {
+                Ok(parsed) => verifier::verify_envelope(
+                    &parsed,
+                    domain_from_str(&vector.domain),
+                    required_fields,
+                    &trusted_keys,
+                    &opts,
+                ),
+                Err(_) => VerificationResult::Rejected {
+                    stage: VerificationStage::Parse,
+                    reason: RejectionReason::SchemaUnsupported,
+                    detail: "parse error".to_string(),
+                },
+            }
         };
 
         // Compare results
