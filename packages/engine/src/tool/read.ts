@@ -1,4 +1,4 @@
-import { Effect, Option, Schema, Scope, Stream } from "effect"
+import { Effect, Schema, Scope, Stream } from "effect"
 import { NonNegativeInt } from "@arcana/core/schema"
 import * as path from "path"
 import * as Tool from "./tool"
@@ -7,6 +7,13 @@ import { LSP } from "@/lsp/lsp"
 import DESCRIPTION from "./read.txt"
 import { InstanceState } from "@/effect/instance-state"
 import { assertExternalDirectoryEffect } from "./external-directory"
+import { containsPath, isFilesystemRoot } from "@/project/instance-context"
+import {
+  BoundedFileReadRejected,
+  boundedReadRejected,
+  readBoundedFile,
+  validateBoundedPath,
+} from "@/util/bounded-file-read"
 import { Instruction } from "../session/instruction"
 import { isPdfAttachment, sniffAttachmentMime } from "@/util/media"
 
@@ -17,6 +24,14 @@ const MAX_BYTES = 50 * 1024
 const MAX_BYTES_LABEL = `${MAX_BYTES / 1024} KB`
 const SAMPLE_BYTES = 4096
 const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
+
+/**
+ * D-7.1: byte budget for the SafeBoundedFileReader-backed content read.
+ * Files larger than this fail closed with a typed rejection instead of being
+ * partially read through a raw path. Text output is still capped at MAX_BYTES;
+ * this budget covers the full attachment/sample content a read may serve.
+ */
+const MAX_FILE_READ_BYTES = 64 * 1024 * 1024
 
 class ReadStop extends Schema.TaggedErrorClass<ReadStop>()("ReadStop", {}) {}
 
@@ -119,22 +134,7 @@ export const ReadTool = Tool.define<
       yield* lsp.touchFile(filepath).pipe(Effect.ignoreCause, Effect.forkIn(scope))
     })
 
-    const readSample = Effect.fn("ReadTool.readSample")(function* (
-      filepath: string,
-      fileSize: number,
-      sampleSize: number,
-    ) {
-      if (fileSize === 0) return new Uint8Array()
-
-      return yield* Effect.scoped(
-        Effect.gen(function* () {
-          const file = yield* fs.open(filepath, { flag: "r" })
-          return Option.getOrElse(yield* file.readAlloc(Math.min(sampleSize, fileSize)), () => new Uint8Array())
-        }),
-      )
-    })
-
-    const lines = Effect.fn("ReadTool.lines")(function* (filepath: string, opts: { limit: number; offset: number }) {
+    const lines = Effect.fn("ReadTool.lines")(function* (content: Buffer, opts: { limit: number; offset: number }) {
       const start = opts.offset - 1
       const raw: string[] = []
       const flags = { bytes: 0, count: 0, cut: false, more: false, done: false }
@@ -143,9 +143,10 @@ export const ReadTool = Tool.define<
       // ends without flushing, decodeText drops the final unterminated line. We also
       // avoid Stream.runForEachWhile (it currently swallows the final unterminated
       // line of the upstream splitLines pipeline) and use a tagged error to stop the
-      // upstream file stream as soon as the byte cap is reached.
+      // pipeline as soon as the byte cap is reached. The content is the buffer that
+      // was read through SafeBoundedFileReader (the same opened handle).
       const decoder = new TextDecoder("utf-8")
-      yield* fs.stream(filepath).pipe(
+      yield* Stream.succeed(content).pipe(
         Stream.map((bytes) => decoder.decode(bytes, { stream: true })),
         Stream.splitLines,
         Stream.runForEach((text) =>
@@ -235,6 +236,15 @@ export const ReadTool = Tool.define<
       if (!path.isAbsolute(filepath)) {
         filepath = path.resolve(instance.directory, filepath)
       }
+      // D-7.1: boundary decisions and the bounded read use the pre-realpath path
+      // so a junction/reparse point inside the workspace cannot silently redirect
+      // the read to an outside object. Normalization (which resolves reparse
+      // points on Windows) is only used for permission patterns and display.
+      const rawPath = filepath
+      const pathCheck = validateBoundedPath(rawPath)
+      if (!pathCheck.valid) {
+        return yield* Effect.fail(boundedReadRejected(pathCheck.reason, "PATH_VALIDATION"))
+      }
       if (process.platform === "win32") {
         filepath = FSUtil.normalizePath(filepath)
       }
@@ -247,10 +257,17 @@ export const ReadTool = Tool.define<
         ),
       )
 
-      yield* assertExternalDirectoryEffect(ctx, filepath, {
-        bypass: Boolean(ctx.extra?.["bypassCwdCheck"]),
-        kind: stat?.type === "Directory" ? "directory" : "file",
-      })
+      // The containment decision is made on the raw (pre-realpath) path: a path
+      // that is lexically inside the project boundary must never be treated as an
+      // external read just because a junction would resolve it elsewhere. The
+      // bounded reader realpaths the target itself and rejects the escape.
+      const inside = containsPath(rawPath, instance)
+      if (!inside) {
+        yield* assertExternalDirectoryEffect(ctx, filepath, {
+          bypass: Boolean(ctx.extra?.["bypassCwdCheck"]),
+          kind: stat?.type === "Directory" ? "directory" : "file",
+        })
+      }
 
       yield* ctx.ask({
         permission: "read",
@@ -298,13 +315,43 @@ export const ReadTool = Tool.define<
       }
 
       const loaded = yield* instruction.resolve(ctx.messages, filepath, ctx.messageID)
-      const sample = yield* readSample(filepath, Number(stat.size), SAMPLE_BYTES)
+
+      // D-7.1: the file content is served exclusively through SafeBoundedFileReader.
+      // Lexical traversal in the raw request is rejected here (after the permission
+      // asks so relative external paths still reach the external_directory gate).
+      const traversalCheck = validateBoundedPath(params.filePath)
+      if (!traversalCheck.valid) {
+        return yield* Effect.fail(boundedReadRejected(traversalCheck.reason, "PATH_VALIDATION"))
+      }
+      const boundaryRoot =
+        !isFilesystemRoot(instance.worktree) && FSUtil.contains(instance.worktree, rawPath)
+          ? instance.worktree
+          : inside
+            ? instance.directory
+            : path.dirname(rawPath)
+      const requestedPath = inside ? path.relative(boundaryRoot, rawPath) : path.basename(rawPath)
+      const content = yield* readBoundedFile({
+        boundaryRoot,
+        requestedPath,
+        maximumBytes: MAX_FILE_READ_BYTES,
+      }).pipe(
+        // A file that vanished between stat and the bounded read gets the usual
+        // "file not found" UX; every other bounded-read failure fails closed.
+        Effect.catchIf(
+          (error) =>
+            error instanceof BoundedFileReadRejected &&
+            error.stage === "RESOLUTION" &&
+            /ENOENT|no such file|does not exist/i.test(error.reason),
+          () => miss(filepath),
+        ),
+      )
+
+      const sample = content.subarray(0, SAMPLE_BYTES)
 
       const mime = sniffAttachmentMime(sample, FSUtil.mimeType(filepath))
       const isImage = SUPPORTED_IMAGE_MIMES.has(mime)
 
       if (isImage || isPdfAttachment(mime)) {
-        const bytes = yield* fs.readFile(filepath)
         const msg = isPdfAttachment(mime) ? "PDF read successfully" : "Image read successfully"
         return {
           title,
@@ -318,7 +365,7 @@ export const ReadTool = Tool.define<
             {
               type: "file" as const,
               mime,
-              url: `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`,
+              url: `data:${mime};base64,${Buffer.from(content).toString("base64")}`,
             },
           ],
         }
@@ -328,7 +375,7 @@ export const ReadTool = Tool.define<
         return yield* Effect.fail(new Error(`Cannot read binary file: ${filepath}`))
       }
 
-      const file = yield* lines(filepath, { limit: params.limit ?? DEFAULT_READ_LIMIT, offset: params.offset || 1 })
+      const file = yield* lines(content, { limit: params.limit ?? DEFAULT_READ_LIMIT, offset: params.offset || 1 })
       if (file.count < file.offset && !(file.count === 0 && file.offset === 1)) {
         return yield* Effect.fail(
           new Error(`Offset ${file.offset} is out of range for this file (${file.count} lines)`),
