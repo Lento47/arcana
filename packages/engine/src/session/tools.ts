@@ -40,6 +40,7 @@ import type { AuthorizationRequest, CanonicalResource, ProvenanceLabel, Sensitiv
 import type { ScopedApproval } from "@arcana/core/capability/scoped-approval"
 import { SqliteScopedApprovalStore } from "@arcana/core/crypto/scoped-approval-adapter"
 import type { RiskClass } from "@arcana/core/capability/types"
+import { buildApprovalRequestSnapshot } from "@arcana/core/crypto/approval-request-snapshot"
 import { loadApprovalRoutingPolicy, deploymentModeFromEnv, resolveApprovalRoute } from "@/approval/routing"
 import { desktopOnline } from "@/approval/desktop-subscribers"
 import { EventStore } from "./epistemic/event-store"
@@ -106,6 +107,7 @@ function makePendingScopedApproval(input: {
   sessionId: string
   action: string
   resource: CanonicalResource
+  contractRevision?: number
   route?: import("@arcana/core/crypto/approval-routing").ApprovalRoute
   routingPolicyVersion?: string
   localFallbackAllowed?: boolean
@@ -117,6 +119,7 @@ function makePendingScopedApproval(input: {
     requestHash: input.requestHash,
     principalId: input.principalId,
     sessionId: input.sessionId,
+    contractRevision: input.contractRevision,
     decision: "PENDING",
     actions: [input.action as ScopedApproval["actions"][number]],
     resource: input.resource,
@@ -129,6 +132,47 @@ function makePendingScopedApproval(input: {
     localFallbackAllowed: input.localFallbackAllowed,
     riskClass: input.riskClass,
   }
+}
+
+/**
+ * Audit PR-2: persist the durable approval row AND its immutable request
+ * snapshot in ONE store transaction (when the store supports it). The
+ * snapshot lets the operator review the exact action/resource/arguments the
+ * request hash commits to; it is written at creation and never mutated.
+ */
+function persistApprovalWithSnapshot(input: {
+  store: SqliteScopedApprovalStore
+  scoped: ScopedApproval
+  request: AuthorizationRequest
+  args: Record<string, unknown>
+  requestHash: string
+  contractRevision: number
+  riskClass: RiskClass
+}): Effect.Effect<void> {
+  const snapshotRow = {
+    request: input.request,
+    args: input.args,
+    snapshot: buildApprovalRequestSnapshot(
+      input.request,
+      {
+        approvalId: input.scoped.id,
+        requestHash: input.requestHash,
+        contractRevision: input.contractRevision,
+        riskClass: input.riskClass,
+      },
+      input.args,
+    ),
+  }
+  return Effect.promise(() =>
+    input.store.putApprovalWithSnapshot
+      ? Effect.runPromise(input.store.putApprovalWithSnapshot(input.scoped, snapshotRow))
+      : Effect.runPromise(input.store.putApproval(input.scoped)),
+  )
+}
+
+/** Numeric contract revision bound to an authorization request (string on the wire). */
+function contractRevisionOf(request: AuthorizationRequest): number {
+  return request.contractRevision ? Number(request.contractRevision) : 0
 }
 
 /**
@@ -668,9 +712,18 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                       sessionId: ctx.sessionID,
                       action: authReq.action ?? item.id,
                       resource: authReq.resource,
+                      contractRevision: contractRevisionOf(authReq),
                       ...(routing ?? {}),
                     })
-                    yield* Effect.promise(() => Effect.runPromise(scopedStore.putApproval(scoped)))
+                    yield* persistApprovalWithSnapshot({
+                      store: scopedStore,
+                      scoped,
+                      request: authReq,
+                      args: args as Record<string, unknown>,
+                      requestHash: pepResult.decision.requestHash,
+                      contractRevision: contractRevisionOf(authReq),
+                      riskClass: scoped.riskClass ?? pepResult.decision.riskClass,
+                    })
                     yield* publishApprovalCreated(ctx.sessionID, scopedStore, approvalId)
                     const gate = createApprovalGate()
                     parkedApprovals.set(approvalId, gate)
@@ -882,9 +935,18 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                   sessionId: ctx.sessionID,
                   action: mcpAuthReq.action ?? key,
                   resource: mcpAuthReq.resource,
+                  contractRevision: contractRevisionOf(mcpAuthReq),
                   ...(mcpRouting ?? {}),
                 })
-                yield* Effect.promise(() => Effect.runPromise(mcpScopedStore.putApproval(scoped)))
+                yield* persistApprovalWithSnapshot({
+                  store: mcpScopedStore,
+                  scoped,
+                  request: mcpAuthReq,
+                  args: args as Record<string, unknown>,
+                  requestHash: mcpPepResult.decision.requestHash,
+                  contractRevision: contractRevisionOf(mcpAuthReq),
+                  riskClass: scoped.riskClass ?? mcpPepResult.decision.riskClass,
+                })
                 yield* publishApprovalCreated(ctx.sessionID, mcpScopedStore, approvalId)
                 const gate = createApprovalGate()
                 parkedApprovals.set(approvalId, gate)

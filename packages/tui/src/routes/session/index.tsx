@@ -1663,6 +1663,8 @@ export function Session() {
         // TUI-2.1 (RB-01): durable approval shell props
         approvals,
         approvalController: approvalIntegration.controller,
+        // Audit PR-2: verified immutable request snapshot for the inspector.
+        approvalDetailLoader: (approvalId) => approvalBridge.fetchApprovalSnapshot(approvalId),
         activeSessionId: () => route.sessionID,
         activeWorkspaceId,
         governance,

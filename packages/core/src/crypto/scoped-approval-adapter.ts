@@ -15,6 +15,7 @@
  * which is atomic in SQLite: exactly one caller wins.
  */
 import { Database } from "bun:sqlite"
+import { createHash } from "node:crypto"
 import { Effect } from "effect"
 import type {
   ScopedApproval,
@@ -26,6 +27,9 @@ import type { RiskClass } from "../capability/types"
 import type { ApprovalRecord } from "./approval-lifecycle"
 import { ScopedApprovalStoreError } from "../capability/scoped-approval"
 import { APPROVAL_RECORD_MIGRATIONS, APPROVAL_SCHEMA } from "./approval-store-sqlite"
+import type { ApprovalRequestSnapshot } from "./approval-request-snapshot"
+import { canonicalJson } from "./approval-request-snapshot"
+import type { AuthorizationRequest } from "../capability/types"
 
 type ApprovalRow = {
   approval_id: string
@@ -203,57 +207,109 @@ export class SqliteScopedApprovalStore implements ScopedApprovalStore {
   putApproval(approval: ScopedApproval): Effect.Effect<void, ScopedApprovalStoreError> {
     return Effect.try({
       try: () => {
-        const now = new Date().toISOString()
-        this.db.run(
-          `INSERT INTO approval_records (
-             approval_id, version, session_id, workspace_id, request_hash, contract_revision,
-             principal_id, state, expires_at, actions_json, resource_json, uses_consumed,
-             claim_execution_id, lease_expires_at, decided_at, route, routing_policy_version,
-             local_fallback_allowed, risk_class, updated_at, created_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(approval_id) DO UPDATE SET
-             version = excluded.version,
-             state = excluded.state,
-             principal_id = excluded.principal_id,
-             expires_at = excluded.expires_at,
-             actions_json = excluded.actions_json,
-             resource_json = excluded.resource_json,
-             uses_consumed = excluded.uses_consumed,
-             claim_execution_id = excluded.claim_execution_id,
-             lease_expires_at = excluded.lease_expires_at,
-             decided_at = excluded.decided_at,
-             route = excluded.route,
-             routing_policy_version = excluded.routing_policy_version,
-             local_fallback_allowed = excluded.local_fallback_allowed,
-             risk_class = excluded.risk_class,
-             updated_at = excluded.updated_at`,
-          [
-            approval.id,
-            1,
-            approval.sessionId,
-            approval.sessionId, // workspace = session-scoped in the engine path
-            approval.requestHash,
-            approval.contractRevision ?? 0,
-            approval.principalId,
-            approval.decision,
-            approval.expiresAt,
-            approval.actions.length ? JSON.stringify(approval.actions) : null,
-            approval.resource ? JSON.stringify(approval.resource) : null,
-            approval.usesConsumed,
-            approval.claimExecutionId ?? null,
-            approval.leaseExpiresAt ?? null,
-            approval.decidedEventId ? now : null,
-            approval.route ?? null,
-            approval.routingPolicyVersion ?? null,
-            approval.localFallbackAllowed === false ? 0 : 1,
-            approval.riskClass ?? null,
-            now,
-            now,
-          ],
-        )
+        this.insertApprovalRow(approval)
       },
       catch: (cause) => new ScopedApprovalStoreError("putApproval", cause),
     })
+  }
+
+  /**
+   * Write the durable approval row AND its immutable request snapshot in ONE
+   * SQLite transaction (audit PR-2). The snapshot is written at creation and
+   * never mutated; a crash before COMMIT rolls both rows back, so an approval
+   * can never exist without its reviewable snapshot or vice versa.
+   */
+  putApprovalWithSnapshot(
+    approval: ScopedApproval,
+    snapshot: { request: AuthorizationRequest; args: unknown; snapshot: ApprovalRequestSnapshot },
+  ): Effect.Effect<void, ScopedApprovalStoreError> {
+    return Effect.try({
+      try: () => {
+        this.db.exec("BEGIN IMMEDIATE")
+        try {
+          this.insertApprovalRow(approval)
+          const snapshotJson = canonicalJson(snapshot.snapshot)
+          const snapshotHash = createHash("sha256").update(snapshotJson, "utf-8").digest("hex")
+          this.db.run(
+            `INSERT INTO approval_request_snapshots (approval_id, request_json, args_json, snapshot_json, snapshot_hash, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(approval_id) DO UPDATE SET
+               request_json = excluded.request_json,
+               args_json = excluded.args_json,
+               snapshot_json = excluded.snapshot_json,
+               snapshot_hash = excluded.snapshot_hash`,
+            [
+              approval.id,
+              canonicalJson(snapshot.request),
+              canonicalJson(snapshot.args),
+              snapshotJson,
+              snapshotHash,
+              new Date().toISOString(),
+            ],
+          )
+          this.db.exec("COMMIT")
+        } catch (error) {
+          try {
+            this.db.exec("ROLLBACK")
+          } catch {
+            // The transaction may already have been rolled back by SQLite.
+          }
+          throw error
+        }
+      },
+      catch: (cause) => new ScopedApprovalStoreError("putApprovalWithSnapshot", cause),
+    })
+  }
+
+  private insertApprovalRow(approval: ScopedApproval): void {
+    const now = new Date().toISOString()
+    this.db.run(
+      `INSERT INTO approval_records (
+         approval_id, version, session_id, workspace_id, request_hash, contract_revision,
+         principal_id, state, expires_at, actions_json, resource_json, uses_consumed,
+         claim_execution_id, lease_expires_at, decided_at, route, routing_policy_version,
+         local_fallback_allowed, risk_class, updated_at, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(approval_id) DO UPDATE SET
+         version = excluded.version,
+         state = excluded.state,
+         principal_id = excluded.principal_id,
+         expires_at = excluded.expires_at,
+         actions_json = excluded.actions_json,
+         resource_json = excluded.resource_json,
+         uses_consumed = excluded.uses_consumed,
+         claim_execution_id = excluded.claim_execution_id,
+         lease_expires_at = excluded.lease_expires_at,
+         decided_at = excluded.decided_at,
+         route = excluded.route,
+         routing_policy_version = excluded.routing_policy_version,
+         local_fallback_allowed = excluded.local_fallback_allowed,
+         risk_class = excluded.risk_class,
+         updated_at = excluded.updated_at`,
+      [
+        approval.id,
+        1,
+        approval.sessionId,
+        approval.sessionId, // workspace = session-scoped in the engine path
+        approval.requestHash,
+        approval.contractRevision ?? 0,
+        approval.principalId,
+        approval.decision,
+        approval.expiresAt,
+        approval.actions.length ? JSON.stringify(approval.actions) : null,
+        approval.resource ? JSON.stringify(approval.resource) : null,
+        approval.usesConsumed,
+        approval.claimExecutionId ?? null,
+        approval.leaseExpiresAt ?? null,
+        approval.decidedEventId ? now : null,
+        approval.route ?? null,
+        approval.routingPolicyVersion ?? null,
+        approval.localFallbackAllowed === false ? 0 : 1,
+        approval.riskClass ?? null,
+        now,
+        now,
+      ],
+    )
   }
 
   updateApproval(id: string, updates: Partial<ScopedApproval>): Effect.Effect<void, ScopedApprovalStoreError> {

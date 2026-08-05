@@ -41,6 +41,7 @@ import {
   isApprovalTerminal,
 } from "./approval-spine-adapter"
 import { createApprovalShellController, type ApprovalShellController, type ApprovalCommandInput } from "./approval-shell-controller"
+import type { ApprovalSnapshotDetail } from "./approval-http-bridge"
 import { createDedupeKey, dedupeKeyToString, compareOrderingKeys, createOrderingKey } from "./spine-ordering"
 import {
   governanceProofToSpineEntry,
@@ -342,6 +343,13 @@ export function CommandSpineShell(props: ShellProps) {
   // Approval-specific ephemeral state
   const [approvalSubmitting, setApprovalSubmitting] = createSignal(false)
   const [inspectorApprovalId, setInspectorApprovalId] = createSignal<string | undefined>()
+  // Audit PR-2: verified immutable request snapshot for the open inspector.
+  // Additive state — the inspector still renders hash-only metadata when the
+  // snapshot is unavailable (no loader, loading, missing, or transport error).
+  const [inspectorSnapshot, setInspectorSnapshot] = createSignal<ApprovalSnapshotDetail | undefined>()
+  const [inspectorSnapshotStatus, setInspectorSnapshotStatus] = createSignal<
+    "loading" | "ready" | "missing" | "error" | undefined
+  >()
   // Focus/expand state MUST be declared before any memo that reads focusedEntryID
   // (TDZ: createMemo callbacks close over const bindings; using them earlier throws
   // "Cannot access 'focusedEntryID' before initialization").
@@ -788,14 +796,48 @@ export function CommandSpineShell(props: ShellProps) {
           blurComposer()
           setInspectorApprovalId(approval.approvalId)
           controller()?.inspect(approval.approvalId)
+          // Audit PR-2: fetch the VERIFIED immutable request snapshot for the
+          // record (additive read — the inspector shows hash-only metadata when
+          // the engine has none). Guarded so a late resolution for a different
+          // approval (opened then quickly replaced) never leaks into this one.
+          setInspectorSnapshot(undefined)
+          setInspectorSnapshotStatus("loading")
+          const loader = props.approvalDetailLoader
+          if (loader) {
+            loader(approval.approvalId).then(
+              (snapshot) => {
+                if (inspectorApprovalId() !== approval.approvalId) return
+                if (snapshot) {
+                  setInspectorSnapshot(snapshot)
+                  setInspectorSnapshotStatus("ready")
+                } else {
+                  setInspectorSnapshot(undefined)
+                  setInspectorSnapshotStatus("missing")
+                }
+              },
+              () => {
+                if (inspectorApprovalId() === approval.approvalId) setInspectorSnapshotStatus("error")
+              },
+            )
+          } else {
+            setInspectorSnapshotStatus(undefined)
+          }
           // Render from the live approvals store so the inspector stays
           // truthful if the record transitions (CLAIMED/CONSUMED) while open.
           const liveApproval = () =>
             approvals().find((x) => x.approvalId === approval.approvalId) ?? approval
           dialog.replace(
-            () => <ApprovalInspector approval={liveApproval()} />,
+            () => (
+              <ApprovalInspector
+                approval={liveApproval()}
+                snapshot={inspectorSnapshot}
+                snapshotStatus={inspectorSnapshotStatus}
+              />
+            ),
             () => {
               setInspectorApprovalId(undefined)
+              setInspectorSnapshot(undefined)
+              setInspectorSnapshotStatus(undefined)
               // Phase 3.2: closing the inspector leaves the entry SELECTED.
               const still = focusedApproval()
               if (still) controller()?.select(still.approvalId)
