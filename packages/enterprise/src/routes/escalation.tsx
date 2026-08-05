@@ -7,10 +7,11 @@ const bg = "#0d0a14"
 const STATUS_COLORS: Record<string, string> = {
   PENDING: gold,
   APPROVED: "#4caf50",
+  DENIED: "#f44336",
   CLAIMED: "#2196f3",
   CONSUMED: "#9e9e9e",
   EXPIRED: "#f44336",
-  REJECTED: "#f44336",
+  INVALIDATED: "#f44336",
 }
 
 export default function EscalationConsole() {
@@ -46,7 +47,7 @@ export default function EscalationConsole() {
 
   onMount(fetchApprovals)
 
-  const handleAction = async (approvalId: string, decision: "APPROVE" | "DENY") => {
+  const handleEvaluate = async (approvalId: string) => {
     setError(null)
     setActionResult(null)
     try {
@@ -136,10 +137,11 @@ export default function EscalationConsole() {
           >
             <option value="PENDING">PENDING</option>
             <option value="APPROVED">APPROVED</option>
+            <option value="DENIED">DENIED</option>
             <option value="CLAIMED">CLAIMED</option>
             <option value="CONSUMED">CONSUMED</option>
             <option value="EXPIRED">EXPIRED</option>
-            <option value="REJECTED">REJECTED</option>
+            <option value="INVALIDATED">INVALIDATED</option>
           </select>
         </label>
         <button
@@ -194,7 +196,7 @@ export default function EscalationConsole() {
         {approvals().map((a) => (
           <ApprovalCard
             approval={a}
-            onAction={handleAction}
+            onEvaluate={handleEvaluate}
           />
         ))}
         {approvals().length === 0 && !loading() && (
@@ -209,7 +211,7 @@ export default function EscalationConsole() {
 
 function ApprovalCard(props: {
   approval: any
-  onAction: (approvalId: string, decision: "APPROVE" | "DENY") => void
+  onEvaluate: (approvalId: string) => void
 }) {
   const a = props.approval
   const statusColor = STATUS_COLORS[a.status] ?? "#666"
@@ -257,9 +259,9 @@ function ApprovalCard(props: {
 
       <div style={{ display: "flex", gap: "0.5rem" }}>
         <button
-          onClick={() => props.onAction(a.approvalId, "APPROVE")}
+          onClick={() => props.onEvaluate(a.approvalId)}
           style={{
-            background: "#4caf50",
+            background: violet,
             color: "#fff",
             border: "none",
             padding: "0.4rem 1rem",
@@ -268,21 +270,7 @@ function ApprovalCard(props: {
             cursor: "pointer",
           }}
         >
-          approve
-        </button>
-        <button
-          onClick={() => props.onAction(a.approvalId, "DENY")}
-          style={{
-            background: "#f44336",
-            color: "#fff",
-            border: "none",
-            padding: "0.4rem 1rem",
-            "border-radius": "4px",
-            "font-family": "inherit",
-            cursor: "pointer",
-          }}
-        >
-          deny
+          evaluate escalation
         </button>
       </div>
     </div>
