@@ -19,8 +19,6 @@ export const ApprovalStateSchema = Schema.Literals([
   "CONSUMED",
   "EXPIRED",
   "INVALIDATED",
-  "REJECTED",
-  "RECOVERY_REQUIRED",
 ])
 
 export const ApprovalRecordSchema = Schema.Struct({
