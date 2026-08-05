@@ -92,6 +92,7 @@ import { experimentalHandlers } from "./handlers/experimental"
 import { fileHandlers } from "./handlers/file"
 import { globalHandlers } from "./handlers/global"
 import { instanceHandlers } from "./handlers/instance"
+import { managerHandlers } from "./handlers/manager"
 import { mcpHandlers } from "./handlers/mcp"
 import { permissionHandlers } from "./handlers/permission"
 import { policyHandlers } from "./handlers/policy"
@@ -131,12 +132,6 @@ const cors = (corsOptions?: CorsOptions) =>
     { global: true },
   )
 
-// Route tree:
-// - rootApiRoutes: typed /global/* and control routes; auth is declared by RootHttpApi.
-// - eventApiRoutes: typed SSE route with instance routing context and its existing API contract.
-// - ptyConnectApiRoutes: typed WebSocket upgrade route with ticket-aware auth.
-// - instanceApiRoutes: remaining typed instance routes.
-// - uiRoute: raw catch-all fallback; auth is router middleware so public static assets can bypass it.
 const authOnlyRouterLayer = authorizationRouterMiddleware.layer.pipe(Layer.provide(ServerAuth.Config.defaultLayer))
 const httpApiAuthLayer = authorizationLayer.pipe(Layer.provide(ServerAuth.Config.defaultLayer))
 const ptyConnectHttpApiAuthLayer = ptyConnectAuthorizationLayer.pipe(Layer.provide(ServerAuth.Config.defaultLayer))
@@ -167,6 +162,7 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
     experimentalHandlers,
     fileHandlers,
     instanceHandlers,
+    managerHandlers,
     mcpHandlers,
     projectHandlers,
     projectCopyHandlers,
@@ -193,11 +189,6 @@ const serverRoutes = HttpApiBuilder.layer(Api).pipe(
   Layer.provide([serverHttpApiAuthLayer, v2SchemaErrorLayer]),
 )
 
-// `OpenApi.fromApi` is non-trivial; defer until /doc is actually hit so
-// processes that never serve it (CLI, scripts) don't pay at module load.
-// `HttpServerResponse.jsonUnsafe` runs JSON.stringify eagerly, so caching
-// the response also caches the serialized body — every /doc request reuses
-// the same Uint8Array instead of re-stringifying the spec.
 const docResponse = lazy(() => HttpServerResponse.jsonUnsafe(OpenApi.fromApi(PublicApi)))
 
 const healthRoute = HttpRouter.use((router) =>
@@ -316,13 +307,6 @@ export function createRoutes(
     Layer.provide(Layer.succeed(CorsConfig)(corsOptions)),
     Layer.provide(Observability.layer),
   ) as any
-  // CAST BOUNDARY #8 — createRoutes return type
-  // Upstream: Layer.mergeAll + .pipe(Layer.provide(...)) chain produces a Layer type
-  // that doesn't match the expected return type of createRoutes. The chain has
-  // 4+ .pipe(Layer.provide(...)) calls, each of which transforms the type parameter.
-  // Runtime: the returned layer is fully self-contained.
-  // Removal condition: Layer.mergeAll + provide chain preserves type through composition.
-  // Scope: narrow (entire return value of createRoutes)
 }
 
 export const routes = createRoutes()
