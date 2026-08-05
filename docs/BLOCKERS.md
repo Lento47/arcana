@@ -266,7 +266,7 @@ tests), but the CLI 1.0 contract is not frozen.**
 |---|---|---|---|
 | BLK-CLI-01 | External-agent launch group (`arcana launch codex/claude/gemini`) | A1 scaffold implemented (`launch.ts`: declaration, `--dry-run`, supervision, durable launch evidence); **no sandbox/enforcement claim**; production-certified adapter pending | One production adapter reaches a declared certification level; others documented |
 | BLK-CLI-02 | Stable JSON output + deterministic documented exit codes for every command | JSON/exit-code contract not frozen in a spec | Command catalog with JSON schema and exit-code table, tested |
-| BLK-CLI-03 | Shell completion | Not implemented | Completion scripts + test |
+| BLK-CLI-03 | Shell completion | Implemented — bash (yargs built-in), zsh and fish (custom scripts) | Completion scripts for bash/zsh/fish + 8 tests in completion.test.ts |
 | BLK-CLI-04 | Cross-platform smoke (Windows/Linux/macOS) | Windows primary; Linux scaffold only (D-6A-L pending) | Platform matrix with smoke results |
 | BLK-CLI-05 | CLI/TUI share the same runtime APIs with no CLI-only bypass | `arcana` CLI and TUI both route through the engine PEP. 2026-08-03: runtime approval API + session command surface both drive the same `submitApprovalCommand` service with a surface-bound routing gate; TUI HTTP bridge test pins the command endpoint and body; adversarial tests cover client-supplied identity rejection and session isolation. Bypass audit as one frozen cross-surface suite still pending | CLI-only-bypass adversarial suite = 0 |
 
@@ -281,6 +281,7 @@ tests), but the CLI 1.0 contract is not frozen.**
   approval CLI paths.
 - Operations: `doctor`, `trust`, `models`, `providers`, `session list`,
   `daemon status/stop`, `serve`, `gateway`, `cron`, `memory`, `skills`.
+- Shell completion: `arcana completion bash` (yargs built-in), `arcana completion zsh` (custom zsh script), `arcana completion fish` (custom fish script) — all three produce valid shell-specific completion scripts. Test suite: 8 pass / 0 fail in `src/cli/completion.test.ts`.
 
 ## Phase D — Distributed Governed Autonomy
 
