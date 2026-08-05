@@ -6,7 +6,7 @@ import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
 import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
 import { described } from "./metadata"
-import { ApiNotFoundError } from "../errors"
+import { ApprovalNotFoundError } from "../errors"
 
 const root = "/api/session"
 
@@ -132,7 +132,7 @@ export const ApprovalApi = HttpApi.make("approval")
           params: { sessionID: SessionID, approvalID: Schema.String },
           query: WorkspaceRoutingQuery,
           success: described(ApprovalDetailSuccess, "Approval record + verified immutable request snapshot"),
-          error: [HttpApiError.BadRequest, ApiNotFoundError, ApprovalSnapshotUnavailableError],
+          error: [HttpApiError.BadRequest, ApprovalNotFoundError, ApprovalSnapshotUnavailableError],
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "approval.detail",
