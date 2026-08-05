@@ -9,6 +9,7 @@ import {
   trustWorkspace,
 } from "@arcana/core/workspace/trust"
 import path from "node:path"
+import { outputJson, isJsonMode, jsonOption, ExitCode } from "../json-output"
 
 const resolveTarget = (input?: string) => path.resolve(input?.trim() || process.cwd())
 
@@ -80,8 +81,17 @@ const TrustListCommand = effectCmd({
   command: "list",
   describe: false,
   instance: false,
-  handler: Effect.fn("Cli.trust.list")(function* () {
+  builder: (yargs) => yargs.option("json", {
+    describe: "output machine-readable JSON to stdout",
+    type: "boolean",
+    default: false,
+  }),
+  handler: Effect.fn("Cli.trust.list")(function* (args) {
     const rows = listTrustedWorkspaces()
+    if (isJsonMode(args)) {
+      outputJson(rows.map((row) => ({ worktree: row.worktree, trustedAt: row.trustedAt, fingerprint: row.fingerprint })))
+      return
+    }
     UI.println("")
     if (rows.length === 0) {
       UI.println(UI.Style.TEXT_DIM + "  no trusted workspaces" + UI.Style.TEXT_NORMAL)

@@ -23,6 +23,7 @@ import {
   saveNodeIdentity,
   type NodeIdentityFile,
 } from "@/node/node-identity-file"
+import { outputJson, isJsonMode, jsonOption, ExitCode } from "../json-output"
 import { cmd } from "./cmd"
 import { CliError, effectCmd, fail } from "../effect-cmd"
 
@@ -383,12 +384,20 @@ export const NodeStatusCommand = effectCmd({
   command: "status",
   describe: "show node enrollment and proof outbox status",
   instance: false,
-  builder: (yargs) => directoryOption(yargs),
+  builder: (yargs) => directoryOption(yargs).option("json", {
+    describe: "output machine-readable JSON to stdout",
+    type: "boolean",
+    default: false,
+  }),
   handler: Effect.fn("Cli.node.status")(function* (args) {
     const directory = resolveDirectory(args)
     const identity = loadNodeIdentity(directory)
     if (!identity) {
-      console.log("node: not enrolled")
+      if (isJsonMode(args)) {
+        outputJson({ enrolled: false })
+      } else {
+        console.log("node: not enrolled")
+      }
       return
     }
     const db = new Database(join(directory, ".arcana", "node.db"))
@@ -398,6 +407,18 @@ export const NodeStatusCommand = effectCmd({
     const policy = syncState.get("policy")
     const revocation = syncState.get("revocation")
     db.close()
+    if (isJsonMode(args)) {
+      outputJson({
+        nodeId: identity.nodeId,
+        trustDomain: identity.trustDomain,
+        keyEpoch: identity.nodeKeyEpoch,
+        enrolledAt: identity.enrolledAt,
+        policy: policy ? { sequence: policy.sequence, digest: policy.digest.slice(0, 12) } : null,
+        revocation: revocation ? { sequence: revocation.sequence, digest: revocation.digest.slice(0, 12) } : null,
+        outbox: { pending: stats.pending, registered: stats.registered, poisoned: stats.poisoned },
+      })
+      return
+    }
     console.log(`node:        ${identity.nodeId}`)
     console.log(`trustDomain: ${identity.trustDomain}`)
     console.log(`keyEpoch:    ${identity.nodeKeyEpoch}`)
