@@ -21,6 +21,7 @@ function pagerCmd(): string[] {
     return ["less", ...lessOptions]
   }
 
+  // user could have less installed via other options
   const lessOnPath = which("less")
   if (lessOnPath) {
     if (Filesystem.stat(lessOnPath)?.size) return [lessOnPath, ...lessOptions]
@@ -37,6 +38,7 @@ function pagerCmd(): string[] {
     if (Filesystem.stat(less)?.size) return [less, ...lessOptions]
   }
 
+  // Fall back to Windows built-in more (via cmd.exe)
   return ["cmd", "/c", "more"]
 }
 
@@ -100,6 +102,7 @@ export const SessionListCommand = effectCmd({
     }
 
     const output = args.format === "json" ? formatSessionJSON(sessions) : formatSessionTable(sessions)
+
     const shouldPaginate = process.stdout.isTTY && !args.maxCount && args.format === "table"
 
     if (shouldPaginate) {
@@ -127,8 +130,10 @@ export const SessionListCommand = effectCmd({
 
 function formatSessionTable(sessions: Session.Info[]): string {
   const lines: string[] = []
+
   const maxIdWidth = Math.max(20, ...sessions.map((s) => s.id.length))
   const maxTitleWidth = Math.max(25, ...sessions.map((s) => s.title.length))
+
   const header = `Session ID${" ".repeat(maxIdWidth - 10)}  Title${" ".repeat(maxTitleWidth - 5)}  Updated`
   lines.push(header)
   lines.push("─".repeat(header.length))
@@ -138,6 +143,7 @@ function formatSessionTable(sessions: Session.Info[]): string {
     const line = `${session.id.padEnd(maxIdWidth)}  ${truncatedTitle.padEnd(maxTitleWidth)}  ${timeStr}`
     lines.push(line)
   }
+
   return lines.join(EOL)
 }
 
