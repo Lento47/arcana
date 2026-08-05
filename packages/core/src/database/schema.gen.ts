@@ -417,6 +417,41 @@ export default {
           \`updated_at\` text NOT NULL
         );
       `)
+      yield* tx.run(`
+        CREATE TABLE \`capability_grants\` (
+          \`id\` text PRIMARY KEY,
+          \`schema_version\` text DEFAULT '1' NOT NULL,
+          \`principal_kind\` text NOT NULL,
+          \`principal_id\` text NOT NULL,
+          \`issuer_kind\` text NOT NULL,
+          \`issuer_id\` text NOT NULL,
+          \`actions\` text NOT NULL,
+          \`resources\` text NOT NULL,
+          \`constraints\` text NOT NULL,
+          \`delegation\` text NOT NULL,
+          \`status\` text DEFAULT 'ACTIVE' NOT NULL,
+          \`created_event_id\` text NOT NULL,
+          \`revoked_event_id\` text,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`intent_bindings\` (
+          \`id\` text PRIMARY KEY,
+          \`request_hash\` text NOT NULL,
+          \`session_id\` text NOT NULL,
+          \`user_request_event_id\` text NOT NULL,
+          \`contract_id\` text,
+          \`contract_revision\` text,
+          \`criterion_ids\` text NOT NULL,
+          \`justification\` text NOT NULL,
+          \`created_by\` text NOT NULL,
+          \`status\` text DEFAULT 'ACTIVE' NOT NULL,
+          \`created_at\` text NOT NULL,
+          \`expires_at\` text
+        );
+      `)
       yield* tx.run(`CREATE INDEX \`audit_org_action_idx\` ON \`audit_event\` (\`org_id\`,\`action\`);`)
       yield* tx.run(`CREATE INDEX \`audit_org_time_idx\` ON \`audit_event\` (\`org_id\`,\`time_created\`);`)
       yield* tx.run(`CREATE INDEX \`audit_actor_idx\` ON \`audit_event\` (\`actor\`);`)
@@ -439,6 +474,11 @@ export default {
       yield* tx.run(`CREATE INDEX \`session_workspace_idx\` ON \`session\` (\`workspace_id\`);`)
       yield* tx.run(`CREATE INDEX \`session_parent_idx\` ON \`session\` (\`parent_id\`);`)
       yield* tx.run(`CREATE INDEX \`todo_session_idx\` ON \`todo\` (\`session_id\`);`)
+      yield* tx.run(`CREATE INDEX \`idx_capability_grants_principal\` ON \`capability_grants\` (\`principal_id\`,\`principal_kind\`);`)
+      yield* tx.run(`CREATE INDEX \`idx_capability_grants_status\` ON \`capability_grants\` (\`status\`);`)
+      yield* tx.run(`CREATE INDEX \`intent_bindings_session_status_idx\` ON \`intent_bindings\` (\`session_id\`,\`status\`);`)
+      yield* tx.run(`CREATE INDEX \`intent_bindings_request_status_idx\` ON \`intent_bindings\` (\`request_hash\`,\`status\`);`)
+      yield* tx.run(`CREATE INDEX \`intent_bindings_contract_revision_idx\` ON \`intent_bindings\` (\`contract_id\`,\`contract_revision\`,\`status\`);`)
     })
   },
 } satisfies Omit<DatabaseMigration.Migration, "id">
