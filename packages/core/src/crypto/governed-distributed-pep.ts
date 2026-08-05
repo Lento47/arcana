@@ -17,6 +17,7 @@ import {
   type ExecutionLedger,
 } from "./execution-ledger"
 import {
+  classifyOfflineRequest,
   evaluateOfflineRequest,
   type OfflineCapableGrant,
   type OfflineLeaseConfig,
@@ -95,11 +96,7 @@ export function governedDistributedPep(
   // D-9: offline policy gates (only when the node is disconnected).
   if (input.offline) {
     const offlineDecision = evaluateOfflineRequest(
-      {
-        riskClass: "LOW",
-        consequential: input.action.action !== "filesystem.read",
-        approvalRequired: false,
-      },
+      classifyOfflineRequest(input.action, input.grant),
       input.offline.grant,
       input.offline.nodeState,
       input.execution?.now ?? new Date(),
