@@ -6,6 +6,7 @@ import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
 import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
 import { described } from "./metadata"
+import { ApprovalNotFoundError } from "../errors"
 
 const root = "/api/session"
 
@@ -29,9 +30,71 @@ export const ApprovalCommandResponse = Schema.Union([ApprovalCommandSuccess, App
 
 export const ApprovalMapResponse = Schema.Record(Schema.String, ApprovalRecordSchema)
 
+export const DiffPreviewSchema = Schema.Struct({
+  filePath: Schema.String,
+  kind: Schema.Literals(["add", "delete", "modify", "rename", "unknown"]),
+  additions: Schema.optional(Schema.Number),
+  deletions: Schema.optional(Schema.Number),
+  content: Schema.optional(Schema.String),
+})
+
+export const ArtifactPreviewSchema = Schema.Struct({
+  kind: Schema.String,
+  name: Schema.String,
+  contentType: Schema.optional(Schema.String),
+  size: Schema.optional(Schema.Number),
+  url: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+})
+
+/**
+ * Immutable reviewable request projection (audit PR-2). Mirrors
+ * ApprovalRequestSnapshot in @arcana/core/crypto/approval-request-snapshot.
+ * The runtime recomputes the canonical request hash and verifies it against
+ * the approval record before this is ever returned.
+ */
+export const ApprovalRequestSnapshotSchema = Schema.Struct({
+  schemaVersion: Schema.Literal("1"),
+  approvalId: Schema.String,
+  requestHash: Schema.String,
+  action: Schema.String,
+  resource: Schema.String,
+  arguments: Schema.String,
+  capability: Schema.String,
+  principalId: Schema.String,
+  intentId: Schema.optional(Schema.String),
+  policyVersion: Schema.String,
+  contractRevision: Schema.Number,
+  riskClass: Schema.Literals(["LOW", "MODERATE", "HIGH", "CRITICAL"]),
+  diffPreview: Schema.optional(DiffPreviewSchema),
+  artifactPreview: Schema.optional(ArtifactPreviewSchema),
+}).annotate({ identifier: "ApprovalRequestSnapshot" })
+
+export const ApprovalDetailSuccess = Schema.Struct({
+  approval: ApprovalRecordSchema,
+  snapshot: ApprovalRequestSnapshotSchema,
+  snapshotVerified: Schema.Literal(true),
+})
+
+/**
+ * Fail-closed: the approval exists but its immutable request snapshot is
+ * missing or failed hash verification. The operator must NOT review a
+ * hash-associated record without the verified exact request.
+ */
+export class ApprovalSnapshotUnavailableError extends Schema.TaggedErrorClass<ApprovalSnapshotUnavailableError>()(
+  "ApprovalSnapshotUnavailableError",
+  {
+    message: Schema.String,
+    reason: Schema.Literals(["snapshot_missing", "snapshot_tampered"]),
+    approvalId: Schema.String,
+  },
+  { httpApiStatus: 422 },
+) {}
+
 export const ApprovalPaths = {
   command: `${root}/:sessionID/approval/:approvalID/command`,
   list: `${root}/:sessionID/approval`,
+  detail: `${root}/:sessionID/approval/:approvalID/detail`,
 } as const
 
 export const ApprovalApi = HttpApi.make("approval")
@@ -63,6 +126,19 @@ export const ApprovalApi = HttpApi.make("approval")
             summary: "List approvals for a session",
             description:
               "Snapshot of all durable approval records for a session, keyed by approvalId. Used by the TUI to hydrate the approvals sync store.",
+          }),
+        ),
+        HttpApiEndpoint.get("detail", ApprovalPaths.detail, {
+          params: { sessionID: SessionID, approvalID: Schema.String },
+          query: WorkspaceRoutingQuery,
+          success: described(ApprovalDetailSuccess, "Approval record + verified immutable request snapshot"),
+          error: [HttpApiError.BadRequest, ApprovalNotFoundError, ApprovalSnapshotUnavailableError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "approval.detail",
+            summary: "Get an approval with its verified request snapshot",
+            description:
+              "Return the durable approval record plus its immutable, hash-verified request snapshot (action, resource, arguments, capability, policy version, previews). The runtime recomputes the canonical request hash and verifies it equals the record's requestHash before responding; a missing or changed snapshot returns a fail-closed ApprovalSnapshotUnavailableError — never a silently stale snapshot.",
           }),
         ),
       )
