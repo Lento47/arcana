@@ -48,10 +48,13 @@ export const LaunchRuntimeCommand = effectCmd({
     const declaration = launchDeclaration(runtime)
 
     console.log(`[arcana launch] ${runtime}`)
-    console.log(`  level:            ${declaration.level}`)
-    console.log(`  protocol:         ${declaration.protocolVersion}`)
-    console.log(`  boundaries:       ${declaration.boundariesCovered.join("; ")}`)
-    console.log(`  known bypasses:   ${declaration.knownBypasses.join("; ")}`)
+    console.log(`  certification level: ${declaration.certificationLevel}`)
+    console.log(`  protocol:             ${declaration.protocolVersion}`)
+    console.log(`  test version:         ${declaration.testVersion}`)
+    console.log(`  boundaries:           ${declaration.boundariesCovered.join("; ")}`)
+    console.log(`  known bypasses:       ${declaration.knownBypasses.join("; ")}`)
+    console.log(`  evidence:             ${declaration.evidence.join("; ")}`)
+    console.log(`  nonclaims:            ${declaration.nonclaims.join("; ")}`)
 
     if (args.dryRun) {
       console.log("  [dry-run] no process launched")
@@ -72,7 +75,7 @@ export const LaunchRuntimeCommand = effectCmd({
         const record = {
           runId: `launch_${randomUUID()}`,
           runtime,
-          level: declaration.level,
+          certificationLevel: declaration.certificationLevel,
           protocolVersion: declaration.protocolVersion,
           directory,
           startedAt,
@@ -93,7 +96,8 @@ export const LaunchRuntimeCommand = effectCmd({
           message:
             `launch failed: ${String(error)}. ` +
             `Ensure the '${runtime}' executable is installed and on PATH. ` +
-            "This adapter is A1 (supervision + evidence), not a sandbox.",
+            `This adapter is ${declaration.certificationLevel} (${declaration.boundariesCovered[0] ?? "no enforcement claim"}); ` +
+            "see the declaration for exact boundaries. It is not a sandbox.",
         }),
     })
     return launched
