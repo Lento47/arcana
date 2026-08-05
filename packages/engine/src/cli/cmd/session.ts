@@ -13,7 +13,7 @@ import { NotFoundError } from "@/storage/storage"
 import { EOL } from "os"
 import path from "path"
 import { which } from "@arcana/core/util/which"
-import { outputJson, isJsonMode, jsonOption, ExitCode } from "../json-output"
+import { outputJson, isJsonMode, jsonOption } from "../json-output"
 
 function pagerCmd(): string[] {
   const lessOptions = ["-R", "-S"]
@@ -72,23 +72,18 @@ export const SessionListCommand = effectCmd({
   command: "list",
   describe: "list sessions",
   builder: (yargs) =>
-    yargs
-      .option("max-count", {
+    jsonOption(
+      yargs.option("max-count", {
         alias: "n",
         describe: "limit to N most recent sessions",
         type: "number",
-      })
-      .option("json", {
-        describe: "output machine-readable JSON to stdout",
-        type: "boolean",
-        default: false,
-      })
-      .option("format", {
-        describe: "output format",
-        type: "string",
-        choices: ["table", "json"],
-        default: "table",
       }),
+    ).option("format", {
+      describe: "output format",
+      type: "string",
+      choices: ["table", "json"],
+      default: "table",
+    }),
   handler: Effect.fn("Cli.session.list")(function* (args) {
     const sessions = yield* Session.Service.use((svc) => svc.list({ roots: true, limit: args.maxCount }))
 
