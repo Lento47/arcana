@@ -3,7 +3,7 @@ document_class: status
 authority: current_status
 status: current
 status_source: self
-implementation_checkpoint: 4984d154
+implementation_checkpoint: b5d192a1
 documentation_reconciliation_commit: 882ea468
 current_branch_at_publication: phase-d-implementation
 last_verified: 2026-08-05
@@ -26,9 +26,9 @@ secondary; never edit the mirror independently.
 | Field | Value |
 |---|---|
 | Current implementation branch | `phase-d-implementation` |
-| Implementation checkpoint | `4984d154` (2026-08-05; merged via PRs #79/#80) |
+| Implementation checkpoint | `b5d192a1` (2026-08-05; merged via PRs #79–#82) |
 | Documentation reconciliation commit | `882ea468` (baseline for the consolidated files) |
-| Uncommitted worktree | clean at implementation checkpoint `4984d154` |
+| Uncommitted worktree | clean at implementation checkpoint `b5d192a1` |
 | Default branch (`master` / `origin/master`) | stale — Phase B/C, D-7, TUI-2 milestone commits not on it; mainline promotion pending (post-sign-off release action) |
 | Release version | pre-release builds only (`0.0.0-phase-d-implementation-*`) |
 | Last verification date | 2026-08-05 (fresh partial rerun at `4984d154`: TUI 819 pass / 1 skip / 0 fail, Arcana CLI 124 pass / 0 fail, SDK 37 pass / 0 fail; core and engine fresh runs had host-environment-specific failures (config loading, HTTP, subprocess/timing classes) so the documented canonical 2026-08-03 figures are retained — engine 4302 pass / 74 skip / 1 todo / 0 fail; per-suite detail in `docs/CURRENT-STATE.json`) |
@@ -155,11 +155,12 @@ engineering/build/CI and documentation changes; they do not alter the test
 counts above, which remain the 2026-08-02/03 figures recorded in this file.
 
 **Checkpoint note (2026-08-05):** the current implementation checkpoint is
-`4984d154` — the HEAD of `phase-d-implementation` after merged PRs #79
-(ADR-004 M1 product-surface boundary) and #80 (D-7 deployment runbook). This
-is the authoritative "current" commit. Earlier checkpoints (`0392ad7b`,
-`63d71f07`, `a2491be5`) are historical milestones in the branch ancestry and
-must not be read as current.
+`b5d192a1` — the HEAD of `phase-d-implementation` after merged PRs #79–#82
+(#81 codex launch adapter A1 certification, #82 DX examples). The status
+snapshot and evidence log were generated at `4984d154` before #81/#82
+merged; the checkpoint field was advanced to `b5d192a1` on rebase. Earlier
+checkpoints (`0392ad7b`, `63d71f07`, `a2491be5`) are historical milestones
+in the branch ancestry and must not be read as current.
 
 ## Phase A–F audit artifacts (2026-08-02)
 
