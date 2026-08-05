@@ -28,6 +28,7 @@ import type { RiskClass } from "./types"
 import { POLICY_VERSION } from "./types"
 import { computeRequestHash } from "./request-hash"
 import type { AuthorizationRequest } from "./types"
+import type { ApprovalRequestSnapshot } from "../crypto/approval-request-snapshot"
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -114,6 +115,16 @@ export interface ScopedApprovalStore {
   readonly getApproval: (id: string) => Effect.Effect<ScopedApproval | undefined, ScopedApprovalStoreError>
   readonly getApprovalForRequest: (requestHash: string) => Effect.Effect<ScopedApproval | undefined, ScopedApprovalStoreError>
   readonly putApproval: (approval: ScopedApproval) => Effect.Effect<void, ScopedApprovalStoreError>
+  /**
+   * Write the approval row and its immutable request snapshot atomically
+   * (audit PR-2). Optional on the interface so legacy/alternate implementers
+   * can keep writing approval rows without a snapshot; production stores that
+   * back the operator surface implement it. Callers MUST feature-detect.
+   */
+  readonly putApprovalWithSnapshot?: (
+    approval: ScopedApproval,
+    snapshot: { request: AuthorizationRequest; args: unknown; snapshot: ApprovalRequestSnapshot },
+  ) => Effect.Effect<void, ScopedApprovalStoreError>
   readonly updateApproval: (id: string, updates: Partial<ScopedApproval>) => Effect.Effect<void, ScopedApprovalStoreError>
   /** Return all approvals for snapshot-time pre-computation. */
   readonly allApprovals: () => Effect.Effect<readonly ScopedApproval[], ScopedApprovalStoreError>
@@ -139,6 +150,15 @@ export interface ScopedApprovalStore {
 
 export class InMemoryScopedApprovalStore implements ScopedApprovalStore {
   private approvals = new Map<string, ScopedApproval>()
+  private snapshots = new Map<
+    string,
+    { request: AuthorizationRequest; args: unknown; snapshot: ApprovalRequestSnapshot }
+  >()
+
+  /** Read the raw stored snapshot payload (test/observer seam). */
+  getStoredSnapshot(approvalId: string) {
+    return this.snapshots.get(approvalId)
+  }
 
   getApproval(id: string): Effect.Effect<ScopedApproval | undefined, ScopedApprovalStoreError> {
     return Effect.succeed(this.approvals.get(id))
@@ -153,6 +173,15 @@ export class InMemoryScopedApprovalStore implements ScopedApprovalStore {
 
   putApproval(approval: ScopedApproval): Effect.Effect<void, ScopedApprovalStoreError> {
     this.approvals.set(approval.id, approval)
+    return Effect.void
+  }
+
+  putApprovalWithSnapshot(
+    approval: ScopedApproval,
+    snapshot: { request: AuthorizationRequest; args: unknown; snapshot: ApprovalRequestSnapshot },
+  ): Effect.Effect<void, ScopedApprovalStoreError> {
+    this.approvals.set(approval.id, approval)
+    this.snapshots.set(approval.id, snapshot)
     return Effect.void
   }
 
