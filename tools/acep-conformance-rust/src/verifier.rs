@@ -1,6 +1,28 @@
-/// ACEP-1 Layered Verifier
+/// ACEP-1 Layered Verifier — TS-faithful mirror of `verifier.ts`
 ///
-/// 7-layer verification: PARSE → SCHEMA → SIGNATURE → TRUST → AUDIENCE → FRESHNESS → REVOCATION
+/// Layered verification of signed envelopes without accessing networks or
+/// databases, mirroring `packages/core/src/crypto/verifier.ts`:
+///
+///   1. PARSE      — strict JSON parse, duplicate-key rejection
+///   2. SCHEMA     — required fields, schema version, field types
+///   3. SIGNATURE  — Ed25519 cryptographic verification
+///   4. TRUST      — issuer in trusted set
+///   5. AUDIENCE   — envelope targets this node
+///   6. FRESHNESS  — not expired
+///   7. REVOCATION — sequence rollback check (policy/revocation only)
+///
+/// The four public verifiers operate on the FLAT TS-model envelope JSON
+/// (`schemaVersion`, `issuerId`, `grant`/`policy`/`statement`, `signature`, …)
+/// exactly like the TypeScript reference — NOT on the internal snake_case wire
+/// structs in `envelope.rs`. The required-field sets mirror
+/// `signed-envelopes.ts` (`CAPABILITY_REQUIRED_FIELDS`, …).
+///
+/// DOCUMENTED DEVIATION (coordinator ruling, keep): the TS `issuedAt`-future
+/// (>5 min) freshness check in `verifyFreshness` is intentionally NOT ported.
+/// Every conformance vector carries `issuedAt=2026-07-29` while the golden
+/// suite fixes the test clock to 2025-01-01, so the future-dated check would
+/// reject all 46 vectors and break the golden suite. Only the `expiresAt`
+/// freshness check is applied (see `verify_freshness`).
 
 use serde_json::Value;
 use std::collections::HashMap;
@@ -63,13 +85,46 @@ impl VerificationResult {
     }
 }
 
-/// Domain separators
+fn rejected(stage: VerificationStage, reason: RejectionReason, detail: impl Into<String>) -> VerificationResult {
+    VerificationResult::Rejected {
+        stage,
+        reason,
+        detail: detail.into(),
+    }
+}
+
+/// Domain separators (mirror `SignatureDomain` / signed-envelopes.ts).
 pub const CAPABILITY_DOMAIN: &str = "arcana:signed-capability:v1";
 pub const POLICY_DOMAIN: &str = "arcana:signed-policy:v1";
 pub const NODE_IDENTITY_DOMAIN: &str = "arcana:node-identity:v1";
 pub const REVOCATION_DOMAIN: &str = "arcana:revocation:v1";
 
-/// Allowed fields per envelope type
+/// Required fields per envelope type (mirror signed-envelopes.ts).
+pub const CAPABILITY_REQUIRED_FIELDS: &[&str] = &[
+    "schemaVersion", "issuerId", "issuerEpoch", "audienceNodeId",
+    "grant", "issuedAt", "expiresAt", "nonce",
+    "signatureAlgorithm", "signature",
+];
+
+pub const POLICY_REQUIRED_FIELDS: &[&str] = &[
+    "schemaVersion", "issuerId", "issuerEpoch", "sequence",
+    "policyId", "policyVersion", "policyDigest",
+    "issuedAt", "expiresAt", "signatureAlgorithm", "signature",
+];
+
+pub const NODE_IDENTITY_REQUIRED_FIELDS: &[&str] = &[
+    "schemaVersion", "nodeId", "organizationId", "publicKey",
+    "issuerId", "issuerEpoch", "issuedAt", "expiresAt",
+    "capabilities", "signatureAlgorithm", "signature",
+];
+
+pub const REVOCATION_REQUIRED_FIELDS: &[&str] = &[
+    "schemaVersion", "issuerId", "issuerEpoch", "sequence",
+    "subjectType", "subjectId", "reason", "effectiveAt",
+    "issuedAt", "signatureAlgorithm", "signature",
+];
+
+/// Allowed fields per envelope type.
 fn capability_allowed() -> &'static [&'static str] {
     &[
         "schemaVersion", "issuerId", "issuerEpoch", "audienceNodeId",
@@ -112,93 +167,30 @@ fn get_allowed_fields(domain: &str) -> &'static [&'static str] {
     }
 }
 
-/// Verify a signed envelope through all 7 layers.
-pub fn verify_envelope(
-    raw_json: &str,
-    domain: &str,
-    required_fields: &[&str],
-    trusted_keys: &HashMap<String, [u8; 32]>,
-    expected_audience: Option<&str>,
-    known_sequences: &HashMap<String, u64>,
-    now_ms: u64,
-) -> VerificationResult {
-    // Layer 1: PARSE
-    let envelope = match strict_json::parse_strict_envelope(raw_json) {
-        Ok(v) => v,
-        Err(e) => {
-            return VerificationResult::Rejected {
-                stage: VerificationStage::Parse,
-                reason: RejectionReason::SchemaUnsupported,
-                detail: e.to_string(),
-            }
-        }
-    };
-
-    // Layer 2: SCHEMA
-    if let Some(r) = validate_schema(&envelope, domain, required_fields) {
-        return r;
-    }
-
-    // Layer 4: TRUST (before signature to get public key)
-    let issuer_id = envelope.get("issuerId").and_then(|v| v.as_str()).unwrap_or("");
-    let public_key = match trusted_keys.get(issuer_id) {
-        Some(pk) => *pk,
-        None => {
-            return VerificationResult::Rejected {
-                stage: VerificationStage::Trust,
-                reason: RejectionReason::UnknownIssuer,
-                detail: format!("issuer {} not in trusted set", issuer_id),
-            }
-        }
-    };
-
-    // Layer 3: SIGNATURE
-    if let Some(r) = verify_signature(&envelope, domain, &public_key) {
-        return r;
-    }
-
-    // Layer 5: AUDIENCE
-    if let Some(expected) = expected_audience {
-        let audience = envelope.get("audienceNodeId").and_then(|v| v.as_str()).unwrap_or("");
-        if audience != expected {
-            return VerificationResult::Rejected {
-                stage: VerificationStage::Audience,
-                reason: RejectionReason::WrongAudience,
-                detail: format!("audience {} does not match expected {}", audience, expected),
-            }
-        }
-    }
-
-    // Layer 6: FRESHNESS
-    if let Some(expires_at) = envelope.get("expiresAt").and_then(|v| v.as_str()) {
-        if let Ok(expires_ms) = chrono_parse(expires_at) {
-            if now_ms > expires_ms {
-                return VerificationResult::Rejected {
-                    stage: VerificationStage::Freshness,
-                    reason: RejectionReason::Expired,
-                    detail: format!("expired at {}", expires_at),
-                }
-            }
-        }
-    }
-
-    // Layer 7: REVOCATION
-    if let Some(sequence) = envelope.get("sequence").and_then(|v| v.as_u64()) {
-        if let Some(known_seq) = known_sequences.get(issuer_id) {
-            if sequence <= *known_seq {
-                return VerificationResult::Rejected {
-                    stage: VerificationStage::Revocation,
-                    reason: RejectionReason::SequenceRollback,
-                    detail: format!("sequence {} <= known {}", sequence, known_seq),
-                }
-            }
-        }
-    }
-
-    VerificationResult::Valid
+/// Options passed to `verify_envelope` (mirrors the TS `verifyEnvelope` options
+/// object `{ now?, expectedAudienceNodeId?, knownSequences? }`).
+#[derive(Debug, Clone)]
+pub struct VerifyOptions<'a> {
+    pub now_ms: u64,
+    pub expected_audience: Option<&'a str>,
+    pub known_sequences: Option<&'a HashMap<String, u64>>,
 }
 
-fn validate_schema(
+impl<'a> VerifyOptions<'a> {
+    pub fn new(now_ms: u64) -> Self {
+        Self {
+            now_ms,
+            expected_audience: None,
+            known_sequences: None,
+        }
+    }
+}
+
+// ─── Layer 1+2: Schema validation ──────────────────────────────────────
+
+/// Layer 1+2: Schema validation (fields, types, unknown fields).
+/// Mirrors `validateEnvelopeSchema` in verifier.ts.
+pub fn validate_envelope_schema(
     envelope: &Value,
     domain: &str,
     required_fields: &[&str],
@@ -206,22 +198,26 @@ fn validate_schema(
     // Schema version
     let sv = envelope.get("schemaVersion").and_then(|v| v.as_u64());
     if sv != Some(1) {
-        return Some(VerificationResult::Rejected {
-            stage: VerificationStage::Schema,
-            reason: RejectionReason::SchemaUnsupported,
-            detail: format!("schemaVersion: {:?}", sv),
-        });
+        return Some(rejected(
+            VerificationStage::Schema,
+            RejectionReason::SchemaUnsupported,
+            format!("schemaVersion: {:?}", sv),
+        ));
     }
 
-    // Required fields
+    // Required fields (mirror validateEnvelopePayload: missing field issues).
+    let mut issues: Vec<String> = Vec::new();
     for field in required_fields {
-        if envelope.get(field).is_none() {
-            return Some(VerificationResult::Rejected {
-                stage: VerificationStage::Schema,
-                reason: RejectionReason::SchemaUnsupported,
-                detail: format!("missing required field: {}", field),
-            });
+        if envelope.get(*field).is_none() {
+            issues.push(format!("{}: missing required field", field));
         }
+    }
+    if !issues.is_empty() {
+        return Some(rejected(
+            VerificationStage::Schema,
+            RejectionReason::SchemaUnsupported,
+            issues.join("; "),
+        ));
     }
 
     // Unknown fields
@@ -229,46 +225,81 @@ fn validate_schema(
     if let Some(obj) = envelope.as_object() {
         for key in obj.keys() {
             if !allowed.contains(&key.as_str()) {
-                return Some(VerificationResult::Rejected {
-                    stage: VerificationStage::Schema,
-                    reason: RejectionReason::SchemaUnsupported,
-                    detail: format!("unknown field: {}", key),
-                });
+                return Some(rejected(
+                    VerificationStage::Schema,
+                    RejectionReason::SchemaUnsupported,
+                    format!("unknown field: {}", key),
+                ));
             }
         }
     }
 
-    // Timestamp format
-    if let Some(issued_at) = envelope.get("issuedAt").and_then(|v| v.as_str()) {
-        if !validate_timestamp(issued_at) {
-            return Some(VerificationResult::Rejected {
-                stage: VerificationStage::Schema,
-                reason: RejectionReason::SchemaUnsupported,
-                detail: "issuedAt must be UTC RFC 3339 with milliseconds".into(),
-            });
+    // issuedAt must be a strict UTC RFC 3339 timestamp with milliseconds.
+    match envelope.get("issuedAt").and_then(|v| v.as_str()) {
+        Some(s) if validate_timestamp(s) => {}
+        _ => {
+            return Some(rejected(
+                VerificationStage::Schema,
+                RejectionReason::SchemaUnsupported,
+                "issuedAt must be UTC RFC 3339 with milliseconds",
+            ))
         }
     }
 
-    // Safe integer validation
-    for field in &["issuerEpoch", "sequence"] {
-        if let Some(val) = envelope.get(*field) {
-            if val.is_number() {
-                // Reject floating-point numbers
-                if let Some(f) = val.as_f64() {
-                    if f.fract() != 0.0 {
-                        return Some(VerificationResult::Rejected {
-                            stage: VerificationStage::Schema,
-                            reason: RejectionReason::SchemaUnsupported,
-                            detail: format!("field {} must be an integer, got float: {}", field, f),
-                        });
-                    }
-                }
-                if !validate_safe_integer(val) {
-                    return Some(VerificationResult::Rejected {
-                        stage: VerificationStage::Schema,
-                        reason: RejectionReason::SchemaUnsupported,
-                        detail: format!("field {} must be a safe integer", field),
-                    });
+    // expiresAt is optional (revocation statements use effectiveAt instead).
+    if let Some(expires_at) = envelope.get("expiresAt") {
+        let valid = expires_at
+            .as_str()
+            .map(validate_timestamp)
+            .unwrap_or(false);
+        if !valid {
+            return Some(rejected(
+                VerificationStage::Schema,
+                RejectionReason::SchemaUnsupported,
+                "expiresAt must be UTC RFC 3339 with milliseconds",
+            ));
+        }
+    }
+
+    // effectiveAt is optional (revocation statements).
+    if let Some(effective_at) = envelope.get("effectiveAt") {
+        let valid = effective_at
+            .as_str()
+            .map(validate_timestamp)
+            .unwrap_or(false);
+        if !valid {
+            return Some(rejected(
+                VerificationStage::Schema,
+                RejectionReason::SchemaUnsupported,
+                "effectiveAt must be UTC RFC 3339 with milliseconds",
+            ));
+        }
+    }
+
+    // Safe integer validation for numeric fields (mirrors the TS numeric list).
+    let numeric_fields = ["issuerEpoch", "sequence", "contractRevision", "maxUses", "delegationDepth"];
+    for field in &numeric_fields {
+        if let Some(value) = envelope.get(*field) {
+            if value.is_number() && !validate_safe_integer(value) {
+                return Some(rejected(
+                    VerificationStage::Schema,
+                    RejectionReason::SchemaUnsupported,
+                    format!("field {} must be a safe integer, got: {}", field, value),
+                ));
+            }
+        }
+    }
+
+    // Check nested grant object if present.
+    if let Some(grant) = envelope.get("grant") {
+        for field in ["contractRevision", "maxUses", "delegationDepth"] {
+            if let Some(value) = grant.get(field) {
+                if value.is_number() && !validate_safe_integer(value) {
+                    return Some(rejected(
+                        VerificationStage::Schema,
+                        RejectionReason::SchemaUnsupported,
+                        format!("grant.{} must be a safe integer, got: {}", field, value),
+                    ));
                 }
             }
         }
@@ -277,7 +308,11 @@ fn validate_schema(
     None
 }
 
-fn verify_signature(
+// ─── Layer 3: Signature verification ──────────────────────────────────
+
+/// Layer 3: Ed25519 signature verification.
+/// Mirrors `verifyEnvelopeSignature` in verifier.ts.
+pub fn verify_envelope_signature(
     envelope: &Value,
     domain: &str,
     public_key: &[u8; 32],
@@ -287,31 +322,32 @@ fn verify_signature(
     let sig_str = match envelope.get("signature").and_then(|v| v.as_str()) {
         Some(s) => s,
         None => {
-            return Some(VerificationResult::Rejected {
-                stage: VerificationStage::Signature,
-                reason: RejectionReason::InvalidSignature,
-                detail: "missing signature".into(),
-            })
+            return Some(rejected(
+                VerificationStage::Signature,
+                RejectionReason::InvalidSignature,
+                "missing signature field",
+            ))
         }
     };
 
     let sig_bytes = match decode_canonical_base64url(sig_str) {
         Some(b) if b.len() == 64 => b,
         _ => {
-            return Some(VerificationResult::Rejected {
-                stage: VerificationStage::Signature,
-                reason: RejectionReason::InvalidSignature,
-                detail: "signature must be 64 bytes base64url".into(),
-            })
+            let got = decode_canonical_base64url(sig_str).map(|b| b.len()).unwrap_or(0);
+            return Some(rejected(
+                VerificationStage::Signature,
+                RejectionReason::InvalidSignature,
+                format!("signature must be 64 bytes base64url, got {} bytes", got),
+            ))
         }
     };
 
     if public_key.len() != 32 {
-        return Some(VerificationResult::Rejected {
-            stage: VerificationStage::Signature,
-            reason: RejectionReason::InvalidSignature,
-            detail: "public key must be 32 bytes".into(),
-        });
+        return Some(rejected(
+            VerificationStage::Signature,
+            RejectionReason::InvalidSignature,
+            format!("public key must be 32 bytes, got {} bytes", public_key.len()),
+        ));
     }
 
     let unsigned = canonical::unsigned_payload(envelope);
@@ -320,29 +356,252 @@ fn verify_signature(
     let verifying_key = match VerifyingKey::from_bytes(public_key) {
         Ok(k) => k,
         Err(_) => {
-            return Some(VerificationResult::Rejected {
-                stage: VerificationStage::Signature,
-                reason: RejectionReason::InvalidSignature,
-                detail: "invalid public key".into(),
-            })
+            return Some(rejected(
+                VerificationStage::Signature,
+                RejectionReason::InvalidSignature,
+                "invalid public key",
+            ))
         }
     };
 
     let signature = Signature::from_slice(&sig_bytes).unwrap();
     if verifying_key.verify(&sig_input, &signature).is_err() {
-        return Some(VerificationResult::Rejected {
-            stage: VerificationStage::Signature,
-            reason: RejectionReason::InvalidSignature,
-            detail: "Ed25519 verification failed".into(),
-        });
+        return Some(rejected(
+            VerificationStage::Signature,
+            RejectionReason::InvalidSignature,
+            "Ed25519 signature verification failed",
+        ));
     }
 
     None
 }
 
-/// Simple ISO 8601 parser → milliseconds since epoch
+// ─── Layer 4: Issuer trust check ──────────────────────────────────────
+
+/// Layer 4: Issuer trust check.
+/// Mirrors `verifyIssuerTrust` in verifier.ts.
+pub fn verify_issuer_trust(
+    envelope: &Value,
+    trusted_keys: &HashMap<String, [u8; 32]>,
+) -> Option<VerificationResult> {
+    let issuer_id = envelope.get("issuerId").and_then(|v| v.as_str()).unwrap_or("");
+    if !trusted_keys.contains_key(issuer_id) {
+        return Some(rejected(
+            VerificationStage::Trust,
+            RejectionReason::UnknownIssuer,
+            format!("issuer {} not in trusted set", issuer_id),
+        ));
+    }
+    None
+}
+
+// ─── Layer 5: Audience check ──────────────────────────────────────────
+
+/// Layer 5: Audience check (capability envelopes only).
+/// Mirrors `verifyAudience` in verifier.ts.
+pub fn verify_audience(envelope: &Value, expected_audience: Option<&str>) -> Option<VerificationResult> {
+    if expected_audience.is_none() {
+        return None;
+    }
+    let expected = expected_audience.unwrap();
+    let audience_node_id = envelope.get("audienceNodeId").and_then(|v| v.as_str()).unwrap_or("");
+    if audience_node_id != expected {
+        return Some(rejected(
+            VerificationStage::Audience,
+            RejectionReason::WrongAudience,
+            format!("audience {} does not match expected {}", audience_node_id, expected),
+        ));
+    }
+    None
+}
+
+// ─── Layer 6: Freshness check ─────────────────────────────────────────
+
+/// Layer 6: Freshness check.
+///
+/// Mirrors `verifyFreshness` in verifier.ts EXCEPT for the TS `issuedAt`-future
+/// (>5 min) clock-skew check, which is deliberately omitted: it would reject
+/// every conformance vector (issuedAt=2026-07-29 vs the golden test clock of
+/// 2025-01-01) and break the golden suite. Only the `expiresAt` check applies.
+pub fn verify_freshness(envelope: &Value, now_ms: u64) -> Option<VerificationResult> {
+    if let Some(expires_at) = envelope.get("expiresAt").and_then(|v| v.as_str()) {
+        if let Ok(expires_ms) = chrono_parse(expires_at) {
+            if now_ms > expires_ms {
+                return Some(rejected(
+                    VerificationStage::Freshness,
+                    RejectionReason::Expired,
+                    format!("expired at {}", expires_at),
+                ));
+            }
+        }
+    }
+    None
+}
+
+// ─── Layer 7: Revocation/sequence rollback check ──────────────────────
+
+/// Layer 7: Revocation/sequence rollback check.
+/// Mirrors `verifyRevocationStatus` in verifier.ts.
+pub fn verify_revocation_status(
+    envelope: &Value,
+    known_sequences: &HashMap<String, u64>,
+) -> Option<VerificationResult> {
+    let issuer_id = envelope.get("issuerId").and_then(|v| v.as_str()).unwrap_or("");
+    let sequence = envelope.get("sequence").and_then(|v| v.as_u64());
+    let sequence = sequence?;
+
+    if let Some(known_seq) = known_sequences.get(issuer_id) {
+        if sequence <= *known_seq {
+            return Some(rejected(
+                VerificationStage::Revocation,
+                RejectionReason::SequenceRollback,
+                format!("sequence {} <= known {}", sequence, known_seq),
+            ));
+        }
+    }
+    None
+}
+
+// ─── Full Envelope Verification ───────────────────────────────────────
+
+/// Verify an already-parsed envelope through all applicable layers.
+/// Mirrors `verifyEnvelope` in verifier.ts (layer order included).
+pub fn verify_envelope(
+    envelope: &Value,
+    domain: &str,
+    required_fields: &[&str],
+    trusted_keys: &HashMap<String, [u8; 32]>,
+    options: &VerifyOptions<'_>,
+) -> VerificationResult {
+    // Layer 2: Schema
+    if let Some(r) = validate_envelope_schema(envelope, domain, required_fields) {
+        return r;
+    }
+
+    // Layer 4: Trust (before signature to get public key)
+    let issuer_id = envelope.get("issuerId").and_then(|v| v.as_str()).unwrap_or("");
+    let public_key = match trusted_keys.get(issuer_id) {
+        Some(pk) => *pk,
+        None => {
+            return rejected(
+                VerificationStage::Trust,
+                RejectionReason::UnknownIssuer,
+                format!("issuer {} not in trusted set", issuer_id),
+            )
+        }
+    };
+
+    // Layer 3: Signature
+    if let Some(r) = verify_envelope_signature(envelope, domain, &public_key) {
+        return r;
+    }
+
+    // Layer 5: Audience
+    if let Some(r) = verify_audience(envelope, options.expected_audience) {
+        return r;
+    }
+
+    // Layer 6: Freshness
+    if let Some(r) = verify_freshness(envelope, options.now_ms) {
+        return r;
+    }
+
+    // Layer 7: Revocation (policy/revocation only — set by the caller)
+    if let Some(known_sequences) = options.known_sequences {
+        if let Some(r) = verify_revocation_status(envelope, known_sequences) {
+            return r;
+        }
+    }
+
+    VerificationResult::Valid
+}
+
+// ─── Public Verifiers ─────────────────────────────────────────────────
+
+/// Verify a signed capability envelope (flat TS-model JSON).
+/// Mirrors `verifySignedCapability` in verifier.ts.
+pub fn verify_signed_capability(
+    envelope: &Value,
+    trusted_keys: &HashMap<String, [u8; 32]>,
+    options: &VerifyOptions<'_>,
+) -> VerificationResult {
+    verify_envelope(
+        envelope,
+        CAPABILITY_DOMAIN,
+        CAPABILITY_REQUIRED_FIELDS,
+        trusted_keys,
+        options,
+    )
+}
+
+/// Verify a signed policy envelope (flat TS-model JSON).
+/// Mirrors `verifySignedPolicy` in verifier.ts.
+pub fn verify_signed_policy(
+    envelope: &Value,
+    trusted_keys: &HashMap<String, [u8; 32]>,
+    known_sequences: &HashMap<String, u64>,
+    now_ms: u64,
+) -> VerificationResult {
+    verify_envelope(
+        envelope,
+        POLICY_DOMAIN,
+        POLICY_REQUIRED_FIELDS,
+        trusted_keys,
+        &VerifyOptions {
+            now_ms,
+            expected_audience: None,
+            known_sequences: Some(known_sequences),
+        },
+    )
+}
+
+/// Verify a node identity certificate (flat TS-model JSON).
+/// Mirrors `verifyNodeIdentity` in verifier.ts.
+pub fn verify_node_identity(
+    certificate: &Value,
+    trusted_keys: &HashMap<String, [u8; 32]>,
+    now_ms: u64,
+) -> VerificationResult {
+    verify_envelope(
+        certificate,
+        NODE_IDENTITY_DOMAIN,
+        NODE_IDENTITY_REQUIRED_FIELDS,
+        trusted_keys,
+        &VerifyOptions::new(now_ms),
+    )
+}
+
+/// Verify a revocation statement (flat TS-model JSON).
+/// Mirrors `verifyRevocationStatement` in verifier.ts.
+pub fn verify_revocation_statement(
+    statement: &Value,
+    trusted_keys: &HashMap<String, [u8; 32]>,
+    known_sequences: &HashMap<String, u64>,
+    now_ms: u64,
+) -> VerificationResult {
+    verify_envelope(
+        statement,
+        REVOCATION_DOMAIN,
+        REVOCATION_REQUIRED_FIELDS,
+        trusted_keys,
+        &VerifyOptions {
+            now_ms,
+            expected_audience: None,
+            known_sequences: Some(known_sequences),
+        },
+    )
+}
+
+// ─── Strict Wire Parsing ──────────────────────────────────────────────
+
+/// Parse raw JSON bytes with duplicate-key rejection (mirrors `parseStrictEnvelope`).
+pub fn parse_strict_envelope(raw: &str) -> Result<Value, strict_json::ParseError> {
+    strict_json::parse_strict_envelope(raw)
+}
+
+/// Simple ISO 8601 parser → milliseconds since epoch.
+/// Format: `YYYY-MM-DDTHH:mm:ss.sssZ` (24 chars).
 fn chrono_parse(s: &str) -> Result<u64, ()> {
-    // "2026-07-29T12:00:00.000Z" → milliseconds
     if s.len() != 24 || !s.ends_with('Z') {
         return Err(());
     }
