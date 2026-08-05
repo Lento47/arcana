@@ -8,7 +8,7 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import { WorkspaceRouteContext } from "../middleware/workspace-routing"
 import { ApprovalCommandPayload, ApprovalSnapshotUnavailableError } from "../groups/approval"
-import { notFound } from "../errors"
+import { ApprovalNotFoundError } from "../errors"
 
 export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval", (handlers) =>
   Effect.gen(function* () {
@@ -100,7 +100,12 @@ export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval"
       const store = approvalStoreForWorkspace(directory)
       const record = store.loadApproval(ctx.params.approvalID)
       if (!record) {
-        return yield* Effect.fail(notFound(`approval ${ctx.params.approvalID} not found`))
+        return yield* Effect.fail(
+          new ApprovalNotFoundError({
+            approvalID: ctx.params.approvalID,
+            message: `approval ${ctx.params.approvalID} not found`,
+          }),
+        )
       }
       const verification = store.getVerifiedSnapshot(ctx.params.approvalID, record)
       if (verification.status === "missing") {
