@@ -1,4 +1,5 @@
 pub mod canonical;
+pub mod envelope;
 pub mod strict_json;
 pub mod verifier;
 
