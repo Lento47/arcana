@@ -5,11 +5,18 @@
 import { describe, expect, it } from "bun:test"
 import {
   applyPiiRetention,
+  assertCmkRequired,
   assertExportable,
   assertStorable,
+  assertStorageAction,
   classifyInput,
   DEFAULT_DATA_GOVERNANCE_POLICY,
+  type CmkReference,
+  type CmkRegistry,
+  type CmkRotationStatus,
+  type DataClassification,
   type DataGovernancePolicy,
+  type RegionRegistry,
 } from "./data-governance"
 
 const NOW = new Date("2026-08-02T12:00:00.000Z")
@@ -51,5 +58,32 @@ describe("F10 data governance", () => {
   it("defaults match the published contract", () => {
     expect(DEFAULT_DATA_GOVERNANCE_POLICY.allowedRegions).toEqual(["US", "EU"])
     expect(DEFAULT_DATA_GOVERNANCE_POLICY.customerManagedKeys).toBe(false)
+  })
+
+  it("enforces regional storage constraints", () => {
+    const registry: RegionRegistry = {
+      setAllowedClasses: () => {},
+      getAllowedClasses: () => ["PUBLIC", "INTERNAL", "PRIVATE", "SECRET", "PII"],
+      hasAllowedClass: (region, dataClass) => region === "US" && dataClass === "PII",
+    }
+
+    expect(assertStorageAction(registry, "US", "PII", true).allowed).toBe(true)
+    expect(assertStorageAction(registry, "US", "PII", false).allowed).toBe(false)
+    expect(assertStorageAction(registry, "US", "SECRET", true).allowed).toBe(false)
+    expect(assertStorageAction(registry, "UNKNOWN", "PII", true).allowed).toBe(false)
+  })
+
+  it("enforces CMK requirement for classified data", () => {
+    const cmkRegistry: CmkRegistry = {
+      put: () => {},
+      get: () => undefined,
+      listByRegion: () => [],
+      hasActiveCmk: (region) => region === "US",
+    }
+
+    expect(assertCmkRequired(cmkRegistry, "US", "PII").allowed).toBe(true)
+    expect(assertCmkRequired(cmkRegistry, "US", "SECRET").allowed).toBe(true)
+    expect(assertCmkRequired(cmkRegistry, "EU", "PII").allowed).toBe(false)
+    expect(assertCmkRequired(cmkRegistry, "EU", "PUBLIC").allowed).toBe(true)
   })
 })
