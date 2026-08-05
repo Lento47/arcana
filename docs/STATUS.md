@@ -3,10 +3,10 @@ document_class: status
 authority: current_status
 status: current
 status_source: self
-implementation_checkpoint: 63d71f07
+implementation_checkpoint: b5d192a1
 documentation_reconciliation_commit: 882ea468
 current_branch_at_publication: phase-d-implementation
-last_verified: 2026-08-03
+last_verified: 2026-08-05
 supersedes: status claims inside Arcana_Project_Master_Specification.md Parts I-III
 ---
 
@@ -26,12 +26,12 @@ secondary; never edit the mirror independently.
 | Field | Value |
 |---|---|
 | Current implementation branch | `phase-d-implementation` |
-| Implementation checkpoint | `63d71f07` (2026-08-03; upstream advanced from `0392ad7b` via merged PRs #43–47) |
+| Implementation checkpoint | `b5d192a1` (2026-08-05; merged via PRs #79–#82) |
 | Documentation reconciliation commit | `882ea468` (baseline for the consolidated files) |
-| Uncommitted worktree | clean at implementation checkpoint `63d71f07` |
+| Uncommitted worktree | clean at implementation checkpoint `b5d192a1` |
 | Default branch (`master` / `origin/master`) | stale — Phase B/C, D-7, TUI-2 milestone commits not on it; mainline promotion pending (post-sign-off release action) |
 | Release version | pre-release builds only (`0.0.0-phase-d-implementation-*`) |
-| Last verification date | 2026-08-03 (canonical full-suite rerun; engine 4302 pass / 74 skip / 1 todo / 0 fail) |
+| Last verification date | 2026-08-05 (fresh partial rerun at `4984d154`: TUI 819 pass / 1 skip / 0 fail, Arcana CLI 124 pass / 0 fail, SDK 37 pass / 0 fail; core and engine fresh runs had host-environment-specific failures (config loading, HTTP, subprocess/timing classes) so the documented canonical 2026-08-03 figures are retained — engine 4302 pass / 74 skip / 1 todo / 0 fail; per-suite detail in `docs/CURRENT-STATE.json`) |
 | Supported platforms | Windows 10/11 (primary, tested); Linux (D-6A-L identity scaffold; live validation pending) |
 
 ## Milestone matrix
@@ -62,8 +62,14 @@ Arcana Runtime
 └── Arcana Control
 ```
 
-- **Arcana Desktop** = local operator workstation. Formalized as a parallel
-  track; specification only, NOT implemented. Not required for Arcana 1.0.
+- **Arcana Desktop** = local approval and forensic companion (M1, per
+  ADR-004). It supervises the local runtime lifecycle; renders the same
+  canonical governance semantics; presents routed approvals, evidence,
+  proofs, restart recovery, and native notifications; and never becomes an
+  independent policy, approval, execution, or evidence authority. The minimal
+  M1 Desktop surface: runtime lifecycle, reconnect/resync, pending-approval
+  notification, exact-request inspection, approve/deny through the
+  authoritative runtime, proof inspection, restart recovery.
 - **Arcana Control** = remote enterprise governance plane (fleet, policy
   distribution, central approvals, remote revocation, compliance).
   **Service cores IMPLEMENTED and MOUNTED as `/api/enterprise/*` + SDK
@@ -71,7 +77,9 @@ Arcana Runtime
   (2026-08-04); broader operator console UI pending; secure
   authenticated-principal binding resolved (BLK-F-AUTH-01 via PR #53,
   2026-08-03).
-- **Arcana 1.0** = secure local runtime + CLI/TUI + one external adapter.
+- **Arcana 1.0 (M1)** = authoritative local runtime + CLI/TUI (primary AI
+  work surface) + Arcana Desktop (local approval and forensic companion) +
+  one certified external-agent integration, per ADR-004.
 
 Immediate roadmap:
 
@@ -95,7 +103,8 @@ immutable tag).
 
 Explicitly **outside** the active goal and NOT started by this sprint:
 
-- Arcana Desktop implementation (spec-only)
+- Arcana Desktop implementation (M1 companion per ADR-004; outside the
+  TUI-2.1 freeze sprint goal)
 - Node 1.0 work
 - Phase D expansion beyond the TUI-2.1 freeze prerequisites
 - New product features beyond TUI-2.1 polish
@@ -144,6 +153,14 @@ verification gates), #45 (ml-eval script routing), #46 (enterprise tailwind
 import fix), #47 (shared governance projection contract docs). These are
 engineering/build/CI and documentation changes; they do not alter the test
 counts above, which remain the 2026-08-02/03 figures recorded in this file.
+
+**Checkpoint note (2026-08-05):** the current implementation checkpoint is
+`b5d192a1` — the HEAD of `phase-d-implementation` after merged PRs #79–#82
+(#81 codex launch adapter A1 certification, #82 DX examples). The status
+snapshot and evidence log were generated at `4984d154` before #81/#82
+merged; the checkpoint field was advanced to `b5d192a1` on rebase. Earlier
+checkpoints (`0392ad7b`, `63d71f07`, `a2491be5`) are historical milestones
+in the branch ancestry and must not be read as current.
 
 ## Phase A–F audit artifacts (2026-08-02)
 
