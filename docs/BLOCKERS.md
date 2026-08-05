@@ -4,7 +4,7 @@
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Created:** 2026-08-02 (Phase A–F completion audit)
 **Consolidated:** 2026-08-02 — single register replacing the former `docs/blockers/` folder
-**Implementation checkpoint:** `4984d154` (2026-08-05; current HEAD of `phase-d-implementation` via merged PRs #79/#80)
+**Implementation checkpoint:** `b5d192a1` (2026-08-05; current HEAD of `phase-d-implementation` via merged PRs #79–#82)
 **Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
 
 This file consolidates every phase and product-track blocker register. Each area below preserves the original rows: the playbook task or gate it blocks, the current evidence of the gap, and the acceptance evidence required to close it.
