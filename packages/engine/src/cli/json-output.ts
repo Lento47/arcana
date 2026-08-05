@@ -5,6 +5,8 @@
 // Used by CLI commands that need machine-readable output and standardized
 // exit codes.
 
+import type { Argv } from "yargs"
+
 /** Deterministic exit codes for the arcana CLI. */
 export const ExitCode = {
   SUCCESS: 0,
@@ -28,9 +30,10 @@ export function isJsonMode(args: { json?: boolean }): boolean {
 }
 
 /**
- * Build a --json boolean option for yargs builders.
+ * Build a --json boolean option for yargs builders while preserving the
+ * command-specific argument type accumulated by earlier builder calls.
  */
-export function jsonOption(yargs: { option: (name: string, opts: object) => unknown }) {
+export function jsonOption<T extends object>(yargs: Argv<T>) {
   return yargs.option("json", {
     describe: "output machine-readable JSON to stdout",
     type: "boolean",
