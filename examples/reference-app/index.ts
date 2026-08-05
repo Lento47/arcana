@@ -22,12 +22,11 @@
  * Compile in-repo with:  bunx tsc --noEmit        (tsconfig maps workspace packages)
  */
 
-import { createArcana } from "@arcana/sdk"
+import { createOpencodeClient } from "@arcana/sdk/v2/client"
 import { proofFingerprint, verifyRunProofExport, type RunProofLike } from "@arcana/sdk/v2/proof"
 import { Schema } from "effect"
 import { ApprovalCommandPayload } from "@arcana/engine/server/routes/instance/httpapi/groups/approval"
 import { RuntimeApprovalCommandPayload } from "@arcana/engine/server/routes/instance/httpapi/groups/runtime"
-import type { ApprovalRecordWire } from "@arcana/engine/approval/events"
 import type { ApprovalRecord, AuthenticatedOperator } from "@arcana/core/crypto/approval-lifecycle"
 
 /**
@@ -49,8 +48,10 @@ function describeOperator(operator: AuthenticatedOperator): string {
 }
 
 async function main() {
-  // 1. Connect. createArcana spawns `arcana serve` and returns a typed client.
-  const { client, server } = await createArcana({ hostname: "127.0.0.1", port: 4096, timeout: 5000 })
+  // 1. Connect. Requires `arcana serve` running (e.g. `arcana serve --hostname 127.0.0.1 --port 4096`).
+  //    createOpencodeClient returns the v2 typed client — every getter used below is
+  //    the REAL generated surface of @arcana/sdk/v2/client (OpencodeClient).
+  const client = createOpencodeClient({ baseUrl: "http://127.0.0.1:4096", timeoutMs: 30_000 })
   try {
     // 2. Create a session and prompt it.
     const created = await client.session.create({ title: "reference-app", permission: [] })
@@ -68,14 +69,16 @@ async function main() {
     // 3. Answer any `ask` permission gates the agent ran into.
     const pending = await client.permission.list()
     for (const request of pending.data ?? []) {
-      await client.permission.reply({ requestID: request.requestID, reply: "once" })
+      await client.permission.reply({ requestID: request.id, reply: "once" })
     }
 
     // 4. Durable approval commands.
     // Session-scoped surface: POST /api/session/:sessionID/approval/:approvalID/command
     const approvals = await client.approval.list({ sessionID })
     for (const [approvalID, record] of Object.entries(approvals.data ?? {})) {
-      const wire = record satisfies ApprovalRecordWire
+      // record is typed by the generated client (gen types) — the wire schemas
+      // (ApprovalRecordWire) are used below for the command payloads.
+      const wire = record
       // Typed against the real ApprovalCommandPayload schema (groups/approval.ts).
       const sessionCommand: SessionApprovalCommand = {
         command: "APPROVE_ONCE",
@@ -166,7 +169,7 @@ async function main() {
     console.log(describeOperator(localOperator))
     console.log(describeRecord(domainRecord))
   } finally {
-    server?.close()
+    // No server handle here — `arcana serve` is an external process (see header).
   }
 }
 
@@ -174,3 +177,6 @@ main().catch((error) => {
   console.error(error)
   process.exitCode = 1
 })
+// `process` is a Bun global at runtime; node types are not pulled into this
+// tsconfig (lib: ESNext+DOM) — Bun provides the ambient declaration when run
+// with `bun run index.ts`.

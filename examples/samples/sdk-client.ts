@@ -44,7 +44,7 @@ async function main() {
   // Answer any `ask` permission gates raised while the agent ran.
   const pending = await client.permission.list()
   for (const request of pending.data ?? []) {
-    await client.permission.reply({ requestID: request.requestID, reply: "once" })
+    await client.permission.reply({ requestID: request.id, reply: "once" })
   }
 
   // Durable approvals for this session, typed with the wire schema (engine/approval/events.ts).

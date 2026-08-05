@@ -21,6 +21,7 @@ import {
   type GovernanceContext,
 } from "@arcana/sdk/v2/governance"
 import type { AuthorizationRequest } from "@arcana/core/capability/types"
+import { computeRequestHash } from "@arcana/core/capability/request-hash"
 
 // 1. Build a canonical authorization request. Every consequential field is bound
 //    into the exact request hash H(q) the PEP evaluates.
@@ -54,7 +55,7 @@ const mapped: AuthorizationRequest = toAuthorizationRequest(
   { name: "read", arguments: { file_path: "src/main.ts" } },
   context,
 )
-console.log("tool-call requestHash:", mapped.requestHash)
+console.log("tool-call requestHash:", computeRequestHash(mapped))
 
 // 3. Envelope verification. A signed policy envelope is canonicalized, strict-parsed,
 //    and verified against the issuer's 32-byte Ed25519 public key.
