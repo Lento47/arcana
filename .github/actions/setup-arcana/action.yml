@@ -1,0 +1,23 @@
+name: Setup Arcana
+
+description: Checkout the repository and install the pinned Node, Bun, and workspace dependencies.
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Setup Node 24
+      uses: actions/setup-node@v5
+      with:
+        node-version: "24"
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: 1.3.14
+
+    - name: Install dependencies
+      shell: bash
+      run: bun install --frozen-lockfile
