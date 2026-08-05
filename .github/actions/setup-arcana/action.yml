@@ -1,13 +1,10 @@
 name: Setup Arcana
 
-description: Checkout the repository and install the pinned Node, Bun, and workspace dependencies.
+description: Install the pinned Node, Bun, and workspace dependencies after checkout.
 
 runs:
   using: composite
   steps:
-    - name: Checkout
-      uses: actions/checkout@v5
-
     - name: Setup Node 24
       uses: actions/setup-node@v5
       with:
