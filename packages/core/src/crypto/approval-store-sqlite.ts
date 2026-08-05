@@ -6,6 +6,7 @@
  */
 
 import { Database } from "bun:sqlite"
+import { createHash } from "node:crypto"
 import type {
   ApprovalRecord,
   ApprovalExecutionRecord,
@@ -15,6 +16,9 @@ import type {
 } from "./approval-lifecycle"
 import { ApprovalStaleTransitionError } from "./approval-lifecycle"
 import type { ApprovalState } from "./approval-lifecycle"
+import type { AuthorizationRequest, RiskClass } from "../capability/types"
+import type { ApprovalRequestSnapshot, CanonicalJson, StoredSnapshotContent } from "./approval-request-snapshot"
+import { canonicalJson, verifyApprovalRequestSnapshot, type SnapshotVerification } from "./approval-request-snapshot"
 
 // ─── Schema ─────────────────────────────────────────────────────────
 
@@ -53,6 +57,19 @@ CREATE TABLE IF NOT EXISTS approval_outbox (
   timestamp TEXT NOT NULL,
   detail TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'PENDING',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Audit PR-2: immutable reviewable request snapshot, written atomically with
+-- the approval record and never mutated after creation. request_json carries
+-- the full AuthorizationRequest so the runtime can recompute its canonical
+-- hash and verify it against approval_records.request_hash (fail closed).
+CREATE TABLE IF NOT EXISTS approval_request_snapshots (
+  approval_id TEXT PRIMARY KEY,
+  request_json TEXT NOT NULL,
+  args_json TEXT NOT NULL,
+  snapshot_json TEXT NOT NULL,
+  snapshot_hash TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `
@@ -139,6 +156,79 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
 
   saveApproval(record: ApprovalRecord): void {
     this.upsertApproval(record)
+  }
+
+  // ─── Approval Request Snapshot (audit PR-2) ──────────────────────
+  // The immutable reviewable request is stored alongside the approval record
+  // (side table, same DB file). It is written once at approval creation and
+  // never mutated; reads are fail-closed verified.
+
+  /**
+   * Persist the immutable request snapshot for an approval. Written atomically
+   * with approval creation by the scoped store's putApprovalWithSnapshot;
+   * this method is the idempotent row-level upsert both stores share.
+   */
+  saveApprovalSnapshot(input: {
+    approvalId: string
+    request: AuthorizationRequest
+    args: unknown
+    snapshot: ApprovalRequestSnapshot
+  }): void {
+    const snapshotJson = canonicalJson(input.snapshot)
+    const snapshotHash = createHash("sha256").update(snapshotJson, "utf-8").digest("hex")
+    this.db.run(
+      `INSERT INTO approval_request_snapshots (approval_id, request_json, args_json, snapshot_json, snapshot_hash, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(approval_id) DO UPDATE SET
+         request_json = excluded.request_json,
+         args_json = excluded.args_json,
+         snapshot_json = excluded.snapshot_json,
+         snapshot_hash = excluded.snapshot_hash`,
+      [
+        input.approvalId,
+        canonicalJson(input.request),
+        canonicalJson(input.args),
+        snapshotJson,
+        snapshotHash,
+        new Date().toISOString(),
+      ],
+    )
+  }
+
+  /** Load the raw stored snapshot content for an approval, or null. */
+  loadStoredSnapshot(approvalId: string): StoredSnapshotContent | null {
+    const row = this.db
+      .query("SELECT request_json, args_json, snapshot_json, snapshot_hash FROM approval_request_snapshots WHERE approval_id = ?")
+      .get(approvalId) as
+      | { request_json: string; args_json: string; snapshot_json: string; snapshot_hash: string }
+      | undefined
+    if (!row) return null
+    return {
+      request: JSON.parse(row.request_json) as AuthorizationRequest,
+      args: JSON.parse(row.args_json) as unknown,
+      snapshotJson: row.snapshot_json as CanonicalJson,
+      snapshotHash: row.snapshot_hash,
+    }
+  }
+
+  /**
+   * Fail-closed read: recompute the canonical hash of the stored request and
+   * verify it matches the approval record's requestHash, then verify the
+   * stored projection is the exact projection of that immutable request.
+   * Missing or changed snapshots FAIL CLOSED — never a silently stale
+   * snapshot.
+   */
+  getVerifiedSnapshot(approvalId: string, record: ApprovalRecord): SnapshotVerification {
+    const content = this.loadStoredSnapshot(approvalId)
+    if (!content) return { status: "missing" }
+    const riskClass = (record.riskClass ?? "MODERATE") as RiskClass
+    return verifyApprovalRequestSnapshot({
+      approvalId,
+      content,
+      expectedRequestHash: record.requestHash,
+      contractRevision: record.contractRevision,
+      riskClass,
+    })
   }
 
   private upsertApproval(record: ApprovalRecord): void {

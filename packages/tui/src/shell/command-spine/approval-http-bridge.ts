@@ -37,6 +37,44 @@ import type {
   ApprovalOperatorService,
 } from "./approval-shell-controller"
 
+/**
+ * Verified immutable request snapshot (audit PR-2), wire shape of the engine's
+ * approval.detail endpoint. The engine recomputes the canonical request hash
+ * and verifies it equals the record's requestHash before responding; a missing
+ * or tampered snapshot returns 422 (ApprovalSnapshotUnavailableError), which
+ * the TUI surfaces as "snapshot unavailable" — never a stale projection.
+ */
+export type ApprovalSnapshotDetail = {
+  schemaVersion: "1"
+  approvalId: string
+  requestHash: string
+  action: string
+  resource: string
+  /** Canonical JSON of the request arguments (sensitive values redacted). */
+  arguments: string
+  capability: string
+  principalId: string
+  intentId?: string
+  policyVersion: string
+  contractRevision: number
+  riskClass: string
+  diffPreview?: {
+    filePath: string
+    kind: string
+    additions?: number
+    deletions?: number
+    content?: string
+  }
+  artifactPreview?: {
+    kind: string
+    name: string
+    contentType?: string
+    size?: number
+    url?: string
+    description?: string
+  }
+}
+
 export type HttpApprovalBridgeOptions = {
   /** Engine base URL (sdk.url). */
   baseUrl: string
@@ -68,6 +106,11 @@ export class HttpApprovalOperatorService implements ApprovalOperatorService {
   private commandUrl(approvalId: string): string {
     const base = this.options.baseUrl.replace(/\/+$/, "")
     return `${base}/api/session/${encodeURIComponent(this.sessionId)}/approval/${encodeURIComponent(approvalId)}/command`
+  }
+
+  private detailUrl(approvalId: string): string {
+    const base = this.options.baseUrl.replace(/\/+$/, "")
+    return `${base}/api/session/${encodeURIComponent(this.sessionId)}/approval/${encodeURIComponent(approvalId)}/detail`
   }
 
   private async postCommand(
@@ -120,6 +163,37 @@ export class HttpApprovalOperatorService implements ApprovalOperatorService {
       status: command === "APPROVE_ONCE" ? "APPROVED" : "DENIED",
       approvalId: input.approvalId,
       newVersion: payload.approval.version,
+    }
+  }
+
+  /**
+   * Fetch the VERIFIED immutable request snapshot for an approval (audit PR-2).
+   * Read-only; additive to the operator service surface. Returns the snapshot,
+   * or null when the engine has no verified snapshot for the record (404,
+   * 422 snapshot_missing/tampered, or transport failure) — the TUI then shows
+   * an explicit "snapshot unavailable" note rather than any stale projection.
+   */
+  async fetchApprovalSnapshot(approvalId: string): Promise<ApprovalSnapshotDetail | null> {
+    let response: Response
+    try {
+      response = await this.fetchImpl(this.detailUrl(approvalId), {
+        method: "GET",
+        headers: { "content-type": "application/json" },
+      })
+    } catch {
+      return null
+    }
+    if (response.status !== 200) return null
+    try {
+      const payload = (await response.json()) as {
+        approval: unknown
+        snapshot: ApprovalSnapshotDetail
+        snapshotVerified: boolean
+      }
+      if (payload.snapshotVerified !== true || !payload.snapshot) return null
+      return payload.snapshot
+    } catch {
+      return null
     }
   }
 

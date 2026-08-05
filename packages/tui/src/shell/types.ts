@@ -5,6 +5,7 @@ import type { PromptRef } from "../component/prompt"
 import type { PromptInfo } from "../component/prompt/history"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { ApprovalShellController } from "./command-spine/approval-shell-controller"
+import type { ApprovalSnapshotDetail } from "./command-spine/approval-http-bridge"
 import type { Theme } from "../theme"
 
 export interface RevertInfo {
@@ -55,6 +56,12 @@ export interface ShellProps {
   approvals?: Accessor<readonly ApprovalRecord[]>
   /** The approval shell controller. */
   approvalController?: ApprovalShellController
+  /**
+   * Fetch the VERIFIED immutable request snapshot for an approval (audit PR-2).
+   * Returns null when the engine has no verified snapshot (missing/tampered or
+   * transport failure). Additive: absent loader → inspector shows hash-only.
+   */
+  approvalDetailLoader?: (approvalId: string) => Promise<ApprovalSnapshotDetail | null>
   /** Active session ID for isolation checks. */
   activeSessionId?: Accessor<string>
   /** Active workspace ID for isolation checks. */

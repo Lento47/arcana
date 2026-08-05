@@ -2,12 +2,13 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { Session } from "@/session/session"
 import type { SessionID } from "@/session/schema"
 import { ApprovalEvent } from "@/approval/events"
-import { loadSessionApprovals, submitApprovalCommand } from "@/approval/command"
+import { approvalStoreForWorkspace, loadSessionApprovals, submitApprovalCommand } from "@/approval/command"
 import { Effect, Option } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import { WorkspaceRouteContext } from "../middleware/workspace-routing"
-import { ApprovalCommandPayload } from "../groups/approval"
+import { ApprovalCommandPayload, ApprovalSnapshotUnavailableError } from "../groups/approval"
+import { notFound } from "../errors"
 
 export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval", (handlers) =>
   Effect.gen(function* () {
@@ -83,6 +84,50 @@ export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval"
       return loadSessionApprovals(ctx.params.sessionID, directory)
     })
 
-    return handlers.handle("command", command).handle("list", list)
+    /**
+     * Audit PR-2: detail = durable approval record + its VERIFIED immutable
+     * request snapshot. The runtime recomputes the canonical request hash and
+     * requires it to equal the record's requestHash. Missing or tampered
+     * snapshots FAIL CLOSED with an explicit ApprovalSnapshotUnavailableError
+     * — the operator is never shown a hash-associated record without the
+     * verified exact request.
+     */
+    const detail = Effect.fn("ApprovalHttpApi.detail")(function* (ctx: {
+      params: { sessionID: SessionID; approvalID: string }
+      query: { directory?: string }
+    }) {
+      const { directory } = yield* resolveWorkspace(ctx.params.sessionID, ctx.query.directory)
+      const store = approvalStoreForWorkspace(directory)
+      const record = store.loadApproval(ctx.params.approvalID)
+      if (!record) {
+        return yield* Effect.fail(notFound(`approval ${ctx.params.approvalID} not found`))
+      }
+      const verification = store.getVerifiedSnapshot(ctx.params.approvalID, record)
+      if (verification.status === "missing") {
+        return yield* Effect.fail(
+          new ApprovalSnapshotUnavailableError({
+            message: `approval ${ctx.params.approvalID} has no reviewable request snapshot`,
+            reason: "snapshot_missing",
+            approvalId: ctx.params.approvalID,
+          }),
+        )
+      }
+      if (verification.status === "tampered") {
+        return yield* Effect.fail(
+          new ApprovalSnapshotUnavailableError({
+            message: `approval ${ctx.params.approvalID} snapshot failed verification: ${verification.reason}`,
+            reason: "snapshot_tampered",
+            approvalId: ctx.params.approvalID,
+          }),
+        )
+      }
+      return {
+        approval: record,
+        snapshot: verification.snapshot,
+        snapshotVerified: true as const,
+      }
+    })
+
+    return handlers.handle("command", command).handle("list", list).handle("detail", detail)
   }),
 )
