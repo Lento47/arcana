@@ -5,8 +5,6 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import { WorkspaceRouteContext } from "../middleware/workspace-routing"
 
-const statusKey = (status: string) => status.toUpperCase()
-
 export const managerHandlers = HttpApiBuilder.group(InstanceHttpApi, "manager", (handlers) =>
   Effect.gen(function* () {
     const resolveWorkspace = Effect.fn("ManagerHttpApi.resolveWorkspace")(function* () {
@@ -30,7 +28,7 @@ export const managerHandlers = HttpApiBuilder.group(InstanceHttpApi, "manager", 
       }
 
       for (const approval of approvals) {
-        switch (statusKey(approval.status)) {
+        switch (approval.state) {
           case "PENDING":
             counts.pending++
             break
@@ -44,10 +42,9 @@ export const managerHandlers = HttpApiBuilder.group(InstanceHttpApi, "manager", 
             counts.consumed++
             break
           case "DENIED":
-          case "REJECTED":
             counts.denied++
             break
-          case "REVOKED":
+          case "INVALIDATED":
             counts.revoked++
             break
           case "EXPIRED":
