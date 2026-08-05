@@ -189,7 +189,7 @@ describe("ApprovalRequestSnapshot verification (fail closed)", () => {
 
     // Corrupt the stored projection through an independent connection.
     const raw = new Database(dbPath)
-    raw.run("UPDATE approval_request_snapshots SET snapshot_json = ? WHERE approval_id = 'appr_1'", '{"schemaVersion":"1","approvalId":"appr_1","forged":true}')
+    raw.run("UPDATE approval_request_snapshots SET snapshot_json = ? WHERE approval_id = 'appr_1'", ['{"schemaVersion":"1","approvalId":"appr_1","forged":true}'])
     raw.close()
 
     const store = new SqliteApprovalStore(dbPath)
@@ -207,7 +207,7 @@ describe("ApprovalRequestSnapshot verification (fail closed)", () => {
     const { record } = seed(dbPath)
 
     const raw = new Database(dbPath)
-    raw.run("UPDATE approval_request_snapshots SET args_json = ? WHERE approval_id = 'appr_1'", JSON.stringify({ branch: "pwned" }))
+    raw.run("UPDATE approval_request_snapshots SET args_json = ? WHERE approval_id = 'appr_1'", [JSON.stringify({ branch: "pwned" })])
     raw.close()
 
     const store = new SqliteApprovalStore(dbPath)
