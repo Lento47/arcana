@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "paths": {
+      "@/*": ["../../packages/engine/src/*"],
+      "@arcana/core/*": ["../../packages/core/src/*"],
+      "@arcana/engine/*": ["../../packages/engine/src/*"],
+      "@arcana/sdk": ["../../packages/sdk/js/src/index.ts"],
+      "@arcana/sdk/v2/*": ["../../packages/sdk/js/src/v2/*"]
+    }
+  },
+  "include": ["index.ts"]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "@arcana/examples-samples",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@arcana/core": "1.17.8",
+    "@arcana/engine": "0.3.67",
+    "@arcana/sdk": "1.17.8"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.2",
+    "typescript": "7.0.2"
+  }
+}
