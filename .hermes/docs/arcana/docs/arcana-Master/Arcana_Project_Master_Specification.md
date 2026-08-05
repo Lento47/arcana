@@ -109,17 +109,24 @@ Resistance ∧ Complete Evidence. A TypeScript wrapper is not kernel-enforced
 containment; `docs/security/EFFECT-COVERAGE.md` records which boundary each
 effect path actually has.
 
-### Product tracks (2026-08-02)
+### Product tracks (2026-08-05)
 
-Arcana Desktop is formalized as a parallel local-operator-workstation track —
-specification only, NOT implemented, and not required for Arcana 1.0
-(Arcana 1.0 = secure local runtime + CLI/TUI + one external adapter). Desktop
-is a client of the local Arcana API and stays outside the trusted computing
-base: it can request, inspect, approve, deny and revoke; it cannot authorize,
-execute, or fabricate proof. Specification:
-`docs/roadmap/DESKTOP-1.0-SPEC.md`. Immediate roadmap: TUI-2.1 freeze → CLI
-1.0 → local daemon/API/event contract → first external adapter → Desktop 1.0
-→ Node 1.0 → Control 1.0.
+Per `docs/design/ADR-004-m1-product-surface-boundary.md` (ratified via
+PR #79), Arcana M1 has exactly one product journey and two user-facing
+clients: CLI/TUI (primary AI work surface) and Arcana Desktop (local approval
+and forensic companion). The Arcana Runtime is the authoritative local service
+used by both clients, not a third user-facing surface. Desktop supervises the
+local runtime lifecycle, renders the same canonical governance semantics, and
+presents routed approvals, evidence, proofs, restart recovery, and native
+notifications; it never becomes an independent policy, approval, execution, or
+evidence authority. The minimal M1 Desktop surface: runtime lifecycle,
+reconnect/resync, pending-approval notification, exact-request inspection,
+approve/deny through the authoritative runtime, proof inspection, and restart
+recovery. Arcana Manager is a transport/discovery adapter name, not a separate
+product or authority surface. Enterprise consoles are preserved implementation
+tracks, not M1 release surfaces. Immediate roadmap: TUI-2.1 freeze → CLI 1.0 →
+local daemon/API/event contract → first external adapter → Desktop 1.0 → Node
+1.0 → Control 1.0.
 
 
 ---
