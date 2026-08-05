@@ -298,7 +298,7 @@ components:
   schemas:
     ApprovalStatus:
       type: string
-      enum: [PENDING, APPROVED, DENIED, CLAIMED, CONSUMED, EXPIRED, INVALIDATED, REJECTED, RECOVERY_REQUIRED]
+      enum: [PENDING, APPROVED, DENIED, CLAIMED, CONSUMED, EXPIRED, INVALIDATED]
     ApprovalRecord:
       type: object
       description: Durable approval record as emitted by the mounted runtime.

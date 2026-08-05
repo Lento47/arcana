@@ -11,10 +11,11 @@
 export type CentralApprovalStatus =
   | "PENDING"
   | "APPROVED"
+  | "DENIED"
   | "CLAIMED"
   | "CONSUMED"
   | "EXPIRED"
-  | "REJECTED"
+  | "INVALIDATED"
 
 export type CentralApprovalRecord = {
   tenantId: string
@@ -69,7 +70,7 @@ export function decideApproval(
     return { kind: "REJECTED", reason: "inspected request does not match the exact request hash" }
   }
 
-  const status: CentralApprovalStatus = input.decision.decision === "APPROVE" ? "APPROVED" : "REJECTED"
+  const status: CentralApprovalStatus = input.decision.decision === "APPROVE" ? "APPROVED" : "DENIED"
   store.updateStatus(record.tenantId, record.approvalId, status, input.now.toISOString())
   const updated = store.get(record.tenantId, record.approvalId)!
   return { kind: "DECIDED", record: updated }
@@ -104,7 +105,7 @@ export function bulkDeny(
       skipped++
       continue
     }
-    store.updateStatus(tenantId, approvalId, "REJECTED", now.toISOString())
+    store.updateStatus(tenantId, approvalId, "DENIED", now.toISOString())
     denied++
   }
   return { denied, skipped }
@@ -129,7 +130,7 @@ export function emergencyRevokeApproval(
   if (record.status !== "APPROVED" && record.status !== "PENDING" && record.status !== "CLAIMED") {
     return { kind: "REJECTED", reason: `approval is ${record.status}` }
   }
-  store.updateStatus(tenantId, approvalId, "REJECTED", now.toISOString())
+  store.updateStatus(tenantId, approvalId, "INVALIDATED", now.toISOString())
   const updated = store.get(tenantId, approvalId)!
   return { kind: "DECIDED", record: updated }
 }
