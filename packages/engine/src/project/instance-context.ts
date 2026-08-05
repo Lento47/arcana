@@ -26,7 +26,7 @@ export function containsPath(filepath: string, ctx: InstanceContext): boolean {
   return FSUtil.contains(ctx.worktree, filepath)
 }
 
-function isFilesystemRoot(path: string): boolean {
+export function isFilesystemRoot(path: string): boolean {
   if (path === "/") return true
   // Windows drive root: "C:\\", "c:/", etc.
   return /^[A-Za-z]:[\\/]?$/.test(path)
