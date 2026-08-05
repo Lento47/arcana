@@ -1,0 +1,230 @@
+{
+  "status": {
+    "documentClass": "current_state",
+    "authority": "generated_from_repo",
+    "generatedBy": "scripts/generate-current-state.ts",
+    "generatedAt": "2026-08-05T15:49:46.111Z",
+    "implementationCheckpoint": "4984d154101d1bb4f86d79ca13daa46c88e8a66d",
+    "verificationDate": "2026-08-05",
+    "currentMilestone": "M1"
+  },
+  "commit": "4984d154101d1bb4f86d79ca13daa46c88e8a66d",
+  "verificationDate": "2026-08-05",
+  "currentMilestone": "M1",
+  "branchAncestry": [
+    "4984d154 Merge pull request #80 from Lento47/feat/d7-deploy-runbook",
+    "5169a56b Merge pull request #79 from Lento47/docs/m1-product-surface-boundary",
+    "bb494fed docs(architecture): define M1 product surface boundary",
+    "a17f1b6a docs: deployment runbook + topology exercise (BLK-D-07)",
+    "dc400cb5 Merge pull request #78 from Lento47/feat/e5-cli-tui-bypass-suite",
+    "1c11bee1 test(cli): cross-surface bypass adversarial suite (BLK-CLI-05)",
+    "4c6b7eb9 Merge pull request #77 from Lento47/fix/manager-approval-state",
+    "704ad818 Merge pull request #76 from Lento47/feat/d7.1-fs-containment-engine",
+    "82433d95 Merge pull request #75 from Lento47/feat/e4-rust-proofs",
+    "d6a6bf10 Merge pull request #74 from Lento47/feat/docs-post-merge-reconcile",
+    "93d577ca fix(engine): use ApprovalRecord.state in manager governance status (BLK-CLI-05 follow-up)",
+    "011e0420 feat: wire engine read tool to SafeBoundedFileReader (BLK-D-02)",
+    "0c4ea261 feat(rust): RunProof surface + verifier parity (BLK-E-04)",
+    "3b4b1925 docs(blockers): reconcile registers to merged PR wave #60/#62-71",
+    "a2491be5 Merge pull request #73 from Lento47/feat/f11-ticketing-transport",
+    "4f2008bf feat(core): live ticketing transport adapters (Jira + webhook)",
+    "f757fa9f Merge pull request #72 from Lento47/feat/f12-telemetry-ingestion",
+    "7a269fa0 docs: mark F12 telemetry ingestion DONE with commit ea5b922f",
+    "52436443 feat: add engine telemetry ingestion adapter for F12",
+    "1cb05640 Merge pull request #71 from Lento47/feat/f1-tenant-http-isolation"
+  ],
+  "testTotals": {
+    "source": "mixed",
+    "summaryFile": "docs\\evidence\\full-suite-fresh-2026-08-05.log",
+    "documentedAt": "2026-08-02/03 (docs/STATUS.md Test checkpoint table)",
+    "suites": {
+      "TUI suite": {
+        "pass": 819,
+        "skip": 1,
+        "fail": 0,
+        "source": "fresh_run"
+      },
+      "Repo-wide typecheck": {
+        "note": "non-numeric row in the STATUS.md test table",
+        "evidence": "16/16 packages",
+        "source": "documented"
+      },
+      "Build": {
+        "note": "non-numeric row in the STATUS.md test table",
+        "evidence": "8/8 tasks (engine binaries smoke-tested; `0.0.0-phase-d-implementation-202608021350`)",
+        "source": "documented"
+      },
+      "Core suite": {
+        "pass": 1465,
+        "skip": 7,
+        "fail": 0,
+        "evidence": "1465 pass / 7 skip / 0 fail (1,472 tests, 175 files — clean rerun 2026-08-02 incl. enterprise cores, delta bundles, revocation hostile fixtures, containment fixtures)",
+        "source": "documented",
+        "freshAttempt": {
+          "pass": 1564,
+          "skip": 7,
+          "fail": 1,
+          "exitCode": 1
+        }
+      },
+      "Engine suite": {
+        "pass": 4302,
+        "skip": 74,
+        "todo": 1,
+        "fail": 0,
+        "tests": 4377,
+        "evidence": "2026-08-02 baseline rerun: 4250 pass / 33 fail / 1 skip (4358 tests). All 33 classified and fixed as harness/environment issues: 30 CLI subprocess tests spawned bun by name while it is not on PATH (fixed: process.execPat",
+        "source": "documented",
+        "freshAttempt": {
+          "pass": 4249,
+          "skip": 74,
+          "todo": 1,
+          "fail": 109,
+          "exitCode": 1
+        }
+      },
+      "Arcana CLI/proof suite": {
+        "pass": 124,
+        "fail": 0,
+        "source": "fresh_run"
+      },
+      "SDK JS suite": {
+        "pass": 37,
+        "fail": 0,
+        "source": "fresh_run"
+      },
+      "Conformance runner": {
+        "note": "non-numeric row in the STATUS.md test table",
+        "evidence": "5/5 suites (TS golden vectors + D-10 matrix + Rust verifier + SDK surface + adapter vectors; 46 crypto + 4 adapter vectors + 15 hostile fixtures)",
+        "source": "documented"
+      },
+      "ML eval / smoke": {
+        "note": "non-numeric row in the STATUS.md test table",
+        "evidence": "Earlier baseline: ml:eval 13/13, smoke 8/8",
+        "source": "documented"
+      },
+      "Validation level": {
+        "note": "non-numeric row in the STATUS.md test table",
+        "evidence": "Strongest at L1–L2 (production-path integration + internal adversarial); L3+ independent validation not obtained",
+        "source": "documented"
+      }
+    },
+    "failures": [
+      "Core suite (exit=1)",
+      "Engine suite (exit=1)"
+    ],
+    "note": "Suites with a clean fresh run (exit 0) use source: fresh_run; suites whose fresh run was not clean or that were not part of the fresh run retain source: documented with a freshAttempt record where one exists. Non-zero exit suites: Core suite (exit=1), Engine suite (exit=1) — see summaryFile for the failing test details. No numbers were invented."
+  },
+  "contractRevisions": {
+    "approvalApi": {
+      "file": "contracts/approval-api.v1.yaml",
+      "title": "Arcana Runtime Contract",
+      "version": "1.0.0",
+      "contractStatus": "pre-release",
+      "correctedAt": "2026-08-02",
+      "runtimeSurface": "packages/engine/src/server/routes/instance/httpapi/groups/runtime.ts"
+    },
+    "events": {
+      "file": "contracts/events.v1.json",
+      "title": "Arcana Governance Event Catalog v1",
+      "version": "1.0.0"
+    }
+  },
+  "openReleaseGates": {
+    "source": "docs/BLOCKERS.md summary rows (open blockers > 0)",
+    "gates": [
+      {
+        "area": "TUI 1.0 (TUI-2.1 freeze)",
+        "status": "MOUNTED, automated green, freeze NOT authorized",
+        "openBlockers": 8
+      },
+      {
+        "area": "CLI 1.0",
+        "status": "PARTIAL — no frozen contract",
+        "openBlockers": 5
+      },
+      {
+        "area": "Phase D — Distributed Governed Autonomy",
+        "status": "Implementation coverage: HIGH; release readiness: BLOCKED",
+        "openBlockers": 9
+      },
+      {
+        "area": "Phase E — Protocol, SDKs, Adapters",
+        "status": "PARTIAL — conformance 5/5 + adapters + certified vectors; freeze pending live/L3",
+        "openBlockers": 10
+      },
+      {
+        "area": "Phase F — Enterprise Control Plane",
+        "status": "Service cores: HIGH; mounting: SUBSTANTIAL; auth boundary: RESOLVED (PR #53); release: BLOCKED",
+        "openBlockers": 14
+      },
+      {
+        "area": "Arcana 1.0 convergence",
+        "status": "NOT reached",
+        "openBlockers": 5
+      }
+    ],
+    "note": "Acceptance evidence and closing rules for each gate live in docs/BLOCKERS.md."
+  },
+  "mountedProductSurfaces": [
+    {
+      "name": "CLI",
+      "mounted": true,
+      "basis": "packages/arcana + packages/engine CLI (repo layout). CLI/TUI is the M1 primary AI work surface (ADR-004).",
+      "source": "docs/PRODUCT.md M1 scope + ADR-004 + repo layout"
+    },
+    {
+      "name": "TUI",
+      "mounted": true,
+      "basis": "packages/tui (repo layout). CLI/TUI is the M1 primary AI work surface (ADR-004).",
+      "source": "docs/PRODUCT.md M1 scope + ADR-004 + repo layout"
+    },
+    {
+      "name": "SDK",
+      "mounted": true,
+      "basis": "packages/sdk/js (repo layout). SDK consumers use the runtime contract (ADR-004).",
+      "source": "docs/PRODUCT.md M1 scope + ADR-004 + repo layout"
+    },
+    {
+      "name": "Desktop",
+      "mounted": false,
+      "basis": "M1 local approval and forensic companion per ADR-004 (runtime lifecycle, reconnect/resync, pending-approval notification, exact-request inspection, approve/deny through the authoritative runtime, proof inspection, restart recovery). No standalone desktop package exists in the repo layout; the runtime API + /desktop/heartbeat endpoints it consumes are mounted (contracts/approval-api.v1.yaml).",
+      "source": "docs/PRODUCT.md M1 scope + ADR-004 + repo layout"
+    },
+    {
+      "name": "Control",
+      "mounted": true,
+      "basis": "packages/enterprise + /api/enterprise/* (repo layout). Enterprise consoles are preserved implementation tracks, NOT M1 release surfaces (ADR-004).",
+      "source": "docs/PRODUCT.md M1 scope + ADR-004 + repo layout"
+    }
+  ],
+  "ciWorkflows": {
+    "workflows": [
+      {
+        "file": "build.yml",
+        "name": "Build arcana"
+      },
+      {
+        "file": "ci.yml",
+        "name": "CI"
+      },
+      {
+        "file": "contracts.yml",
+        "name": "Contract guards"
+      },
+      {
+        "file": "release.yml",
+        "name": "Release"
+      },
+      {
+        "file": "security-audit.yml",
+        "name": "Security Audit"
+      },
+      {
+        "file": "status-authority.yml",
+        "name": "Status authority"
+      }
+    ],
+    "note": "Run IDs are not fabricated. See workflow runs in GitHub Actions for concrete run IDs."
+  }
+}
