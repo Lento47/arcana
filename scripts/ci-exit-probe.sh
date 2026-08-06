@@ -1,18 +1,21 @@
 #!/bin/bash
 # Exit-code contract probe
-# Verifies that bun test + turbo propagate nonzero exit codes on failure.
+# Verifies that bun test and bun run propagate expected exit codes.
 #
 # Run: bash scripts/ci-exit-probe.sh
 #
 # Tests:
 # 1. Direct bun test with failing test → exit != 0
 # 2. Direct bun test with passing test → exit == 0
+# 3. Direct bun run script with process.exit(1) → exit != 0
 
-set -e
+set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TEMP_DIR=$(mktemp -d)
-trap "rm -rf $TEMP_DIR" EXIT
+TEMP_DIR="$(mktemp -d)"
+cleanup() {
+  rm -rf -- "$TEMP_DIR"
+}
+trap cleanup EXIT
 
 echo "=== Exit-code contract probe ==="
 echo "Bun version: $(bun --version)"
@@ -35,7 +38,7 @@ bun test "$TEMP_DIR/fail.test.ts" > /dev/null 2>&1
 FAIL_EXIT=$?
 set -e
 
-if [ $FAIL_EXIT -ne 0 ]; then
+if (( FAIL_EXIT != 0 )); then
   echo "  ✓ bun test exits $FAIL_EXIT (nonzero) on failure"
 else
   echo "  ✗ bun test exits 0 on failure — VIOLATION"
@@ -58,7 +61,7 @@ bun test "$TEMP_DIR/pass.test.ts" > /dev/null 2>&1
 PASS_EXIT=$?
 set -e
 
-if [ $PASS_EXIT -eq 0 ]; then
+if (( PASS_EXIT == 0 )); then
   echo "  ✓ bun test exits 0 on success"
 else
   echo "  ✗ bun test exits $PASS_EXIT on success — VIOLATION"
@@ -76,7 +79,7 @@ bun run "$TEMP_DIR/fail-script.ts" > /dev/null 2>&1
 SCRIPT_EXIT=$?
 set -e
 
-if [ $SCRIPT_EXIT -ne 0 ]; then
+if (( SCRIPT_EXIT != 0 )); then
   echo "  ✓ bun run exits $SCRIPT_EXIT (nonzero) on process.exit(1)"
 else
   echo "  ✗ bun run exits 0 on process.exit(1) — VIOLATION"
