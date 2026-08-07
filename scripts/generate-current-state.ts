@@ -295,6 +295,19 @@ function readTestTotals(): unknown {
     }
   }
 
+  // Fresh logs can contain suites that have not yet been added to STATUS.md.
+  // Keep those suites in the generated snapshot instead of silently dropping
+  // them just because the documented checkpoint table predates the fresh run.
+  for (const [name, freshEntry] of Object.entries(fresh.suites)) {
+    if (name in merged) continue
+    merged[name] = {
+      ...(freshEntry.totals ?? {}),
+      source: "fresh_run",
+      exitCode: freshEntry.exitCode,
+      ...(freshEntry.totals ? {} : { note: "Fresh suite did not expose parseable Bun totals." }),
+    }
+  }
+
   return {
     source: "mixed",
     summaryFile: fresh.summaryFile,
@@ -302,7 +315,7 @@ function readTestTotals(): unknown {
     suites: merged,
     failures: fresh.failures,
     note:
-      "Suites with a clean fresh run (exit 0) use source: fresh_run; suites whose fresh run was not clean or that were not part of the fresh run retain source: documented with a freshAttempt record where one exists. " +
+      "Suites with a clean fresh run (exit 0) use source: fresh_run; suites whose fresh run was not clean or that were not part of the fresh run retain source: documented with a freshAttempt record where one exists. Fresh-only suites are retained directly from the fresh run. " +
       (fresh.failures.length > 0
         ? `Non-zero exit suites: ${fresh.failures.join(", ")} — see summaryFile for the failing test details. `
         : "") +
