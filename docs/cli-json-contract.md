@@ -44,6 +44,35 @@ Exports:
 | `arcana session list --json` | Array of session objects |
 | `arcana node status --json` | Single node status object |
 | `arcana trust list --json` | Array of trusted workspace objects |
+| `arcana run --json` | Shorthand for `--format json` (line-delimited event objects); wins when both are given |
+| `arcana serve --json` | `{ "status": "listening", "hostname", "port" }` emitted once the server binds (long-running) |
+| `arcana history list --json` | Array of session objects |
+| `arcana history show --json` | Single session detail object incl. last 10 messages |
+| `arcana history resume --json` | `{ "command", "sessionId" }` |
+| `arcana capability revoke --json` | `{ "revoked", "sessionID", "capabilityID", "reason", "revokedIds" }` |
+| `arcana doctor --json` | Array of `{ label, ok, detail }` check objects |
+| `arcana models --json` | Object keyed by provider ID; values are arrays of model objects |
+| `arcana providers list --json` | `{ "credentials": [{ provider, name, type }], "environment": [{ provider, envVar }] }` — never includes keys/tokens |
+| `arcana daemon status --json` | `{ "running", "daemons": [{ workspace, pid, port, startedAt, version }] }` |
+| `arcana daemon stop --json` | `{ "stopping": [pid] }` / `{ "running": false }` |
+| `arcana daemon start --json` | `{ "started": false, "message" }` |
+| `arcana cron list --json` | Array of job objects |
+| `arcana cron add/remove/pause/resume --json` | Job object / `{ "removed" }` / `{ "paused" }` / `{ "resumed" }` |
+| `arcana cron run --json` | `{ "jobId", "success", "output", "error" }` |
+
+Exemptions (documented per command in the BLK-CLI-02 PR body):
+
+- `arcana gateway` (start/install) — long-running daemon / interactive package
+  installer; no tabular result to serialize. Error paths still use exit codes
+  0/1/2.
+- `arcana cron start` / `arcana serve` completion — long-running processes with
+  no completion result; `serve --json` emits a one-line startup acknowledgment,
+  `cron start` rejects `--json` with exit 1.
+- Approval CLI — no standalone approval command exists in the CLI surface
+  (approvals are server HTTP routes + TUI cockpit surfaces), so there is
+  nothing to convert.
+- Legacy `packages/arcana` `run` handler — interactive REPL only, superseded by
+  the engine `run` command which supports `--json`.
 
 ## Redaction rule
 
