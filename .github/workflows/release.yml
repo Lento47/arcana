@@ -83,13 +83,13 @@ jobs:
           TAG="v$NEW_VERSION"
 
           git commit -am "release: bump to $TAG"
+          # Rebase before creating the tag so it always points at the final release commit.
+          git pull --rebase origin master
           git tag "$TAG"
-          # Pull to avoid race with concurrent pushes, then push atomically
-          git pull --rebase origin master || true
-          git push origin master && git push origin "$TAG" || {
-            echo "Failed to push to master — another release may be in progress"
-            git push origin --delete "$TAG" 2>/dev/null || true
-            git tag -d "$TAG"
+          # Publish the release commit and tag together so neither can land without the other.
+          git push --atomic origin master "$TAG" || {
+            echo "Failed to atomically push release commit and tag — another release may be in progress"
+            git tag -d "$TAG" 2>/dev/null || true
             exit 1
           }
           echo "Tagged $TAG — build.yml will publish to npm after binaries are ready"
