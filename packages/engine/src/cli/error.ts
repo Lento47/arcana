@@ -128,3 +128,33 @@ export function FormatError(input: unknown): string | undefined {
 export function FormatUnknownError(input: unknown): string {
   return errorFormat(input)
 }
+
+/**
+ * True when `input` is a known user/validation error (CliError or one of the
+ * formatted domain errors) rather than an unexpected internal defect. Used by
+ * the CLI entry point to map failures onto the deterministic exit-code scheme
+ * (1 = user error, 2 = internal error).
+ */
+export function isUserError(input: unknown): boolean {
+  if (isTaggedError(input, "CliError")) return true
+  if (isRecord(input)) {
+    const name = typeof input.name === "string" ? input.name : undefined
+    if (name) {
+      if (name.startsWith("Account") && name.endsWith("Error")) return true
+      if (
+        name === "ProviderModelNotFoundError" ||
+        name === "ProviderInitError" ||
+        name === "ConfigJsonError" ||
+        name === "ConfigDirectoryTypoError" ||
+        name === "ConfigFrontmatterError" ||
+        name === "ConfigRemoteAuthError" ||
+        name === "ConfigInvalidError" ||
+        name === "UICancelledError" ||
+        name === "MCPFailed"
+      ) {
+        return true
+      }
+    }
+  }
+  return FormatError(input) !== undefined
+}

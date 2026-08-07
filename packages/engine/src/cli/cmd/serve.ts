@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { effectCmd } from "../effect-cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { Flag } from "@arcana/core/flag/flag"
+import { outputJson, isJsonMode, jsonOption } from "../json-output"
 
 /** Hostnames that never leave the local machine (ARC-SEC-I08). */
 export function isLoopbackHostname(hostname: string): boolean {
@@ -11,7 +12,7 @@ export function isLoopbackHostname(hostname: string): boolean {
 
 export const ServeCommand = effectCmd({
   command: "serve",
-  builder: (yargs) => withNetworkOptions(yargs),
+  builder: (yargs) => jsonOption(withNetworkOptions(yargs)),
   describe: "starts a headless arcana server",
   // Server loads instances per-request via x-opencode-directory header — no
   // need for an ambient project InstanceContext at startup.
@@ -32,12 +33,16 @@ export const ServeCommand = effectCmd({
       return
     }
 
-    if (!Flag.ARCANA_SERVER_PASSWORD) {
+    if (!Flag.ARCANA_SERVER_PASSWORD && !isJsonMode(args)) {
       console.log("Warning: ARCANA_SERVER_PASSWORD is not set; server is unsecured (loopback only).")
     }
 
     const server = yield* Effect.promise(() => Server.listen(opts))
-    console.log(`arcana server listening on http://${server.hostname}:${server.port}`)
+    if (isJsonMode(args)) {
+      outputJson({ status: "listening", hostname: server.hostname, port: server.port })
+    } else {
+      console.log(`arcana server listening on http://${server.hostname}:${server.port}`)
+    }
 
     yield* Effect.never
   }),
