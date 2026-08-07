@@ -68,10 +68,11 @@ async function checkBinarySize(baseline: Baseline, updateBaseline: boolean): Pro
     return false
   }
 
-  // Look for compiled binaries in dist/*/bin/arcana or dist/*/bin/arcana.exe
+  // Scoped package names add an extra path segment (`@arcana/engine-*`),
+  // so binaries must be discovered recursively beneath dist.
   const patterns = [
-    "*/bin/arcana",
-    "*/bin/arcana.exe",
+    "**/bin/arcana",
+    "**/bin/arcana.exe",
   ]
 
   let foundAny = false
