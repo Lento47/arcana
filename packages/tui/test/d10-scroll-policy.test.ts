@@ -17,6 +17,14 @@ const shellSrc = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/command-spine-shell.tsx"),
   "utf8",
 )
+const scrollSrc = readFileSync(
+  join(import.meta.dir, "../src/shell/command-spine/use-spine-scroll.ts"),
+  "utf8",
+)
+const viewportSrc = readFileSync(
+  join(import.meta.dir, "../src/shell/command-spine/spine-viewport.tsx"),
+  "utf8",
+)
 const entrySrc = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/spine-entry.tsx"),
   "utf8",
@@ -71,16 +79,16 @@ describe("D10 source contract", () => {
     expect(shellSrc).not.toContain("entryNodes")
   })
 
-  test("shell wires onMouseScroll to the scrollbox", () => {
-    expect(shellSrc).toContain("onMouseScroll={handleMouseScroll}")
+  test("viewport wires onMouseScroll to the scrollbox (PR5 split)", () => {
+    expect(viewportSrc).toContain("onMouseScroll={props.handleMouseScroll}")
   })
 
-  test("shell scrolls focused entries via native scrollChildIntoView", () => {
-    expect(shellSrc).toContain("scroll.scrollChildIntoView(entryID)")
+  test("scroll hook scrolls focused entries via native scrollChildIntoView", () => {
+    expect(scrollSrc).toContain("scrollChildIntoView(entryID)")
   })
 
-  test("shell recomputes the button from geometry (refreshScrollButton)", () => {
-    expect(shellSrc).toContain("refreshScrollButton")
+  test("scroll hook recomputes the button from geometry (refreshScrollButton)", () => {
+    expect(scrollSrc).toContain("refreshScrollButton")
   })
 
   test("entry root boxes carry id={entry().id} for findDescendantById", () => {

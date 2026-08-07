@@ -1,9 +1,10 @@
-import { For, Show } from "solid-js"
+import { ErrorBoundary, For, Show } from "solid-js"
 import type { Accessor } from "solid-js"
-import type { ScrollBoxRenderable } from "@opentui/core"
+import type { MouseEvent, ScrollAcceleration, ScrollBoxRenderable } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import { type SpineLayout, type SpineEntry } from "./spine-types"
 import { SpineEntryBinding } from "./spine-entry-binding"
+import { SpineRowError } from "./spine-row-error"
 
 /**
  * Scroll/visible-region rendering container for the spine.
@@ -26,9 +27,9 @@ export function SpineViewport(props: {
   onNavigate: (sessionID: string) => void
   sessionID?: string
   showScrollbar: boolean
-  scrollAcceleration: unknown
+  scrollAcceleration: ScrollAcceleration
   setScrollRef: (r: ScrollBoxRenderable) => void
-  handleMouseScroll: (event: unknown) => void
+  handleMouseScroll: (event: MouseEvent) => void
   showScrollButton: boolean
   onScrollButton: () => void
 }) {
@@ -63,25 +64,31 @@ export function SpineViewport(props: {
             // streamed content refreshes without remounting the row.
             const getEntry = () => props.visibleEntryByID().get(id)
             return (
-              <SpineEntryBinding
-                getEntry={getEntry}
-                layout={props.layout}
-                gutterWidth={props.gutterWidth}
-                contentWidth={props.proseWidth}
-                thinkContentWidth={props.thinkContentWidth}
-                expanded={props.entryExpanded(getEntry()!)}
-                focused={props.entryFocused(getEntry()!)}
-                onToggle={() => {
-                  const entry = getEntry()
-                  if (entry) props.onToggleEntry(entry)
-                }}
-                onFocus={() => {
-                  const entry = getEntry()
-                  if (entry) props.onFocusEntry(entry)
-                }}
-                onNavigate={props.onNavigate}
-                sessionID={props.sessionID}
-              />
+              <ErrorBoundary
+                fallback={(error) => (
+                  <SpineRowError file="spine-entry.tsx" error={error as Error} />
+                )}
+              >
+                <SpineEntryBinding
+                  getEntry={getEntry}
+                  layout={props.layout}
+                  gutterWidth={props.gutterWidth}
+                  contentWidth={props.proseWidth}
+                  thinkContentWidth={props.thinkContentWidth}
+                  expanded={props.entryExpanded(getEntry()!)}
+                  focused={props.entryFocused(getEntry()!)}
+                  onToggle={() => {
+                    const entry = getEntry()
+                    if (entry) props.onToggleEntry(entry)
+                  }}
+                  onFocus={() => {
+                    const entry = getEntry()
+                    if (entry) props.onFocusEntry(entry)
+                  }}
+                  onNavigate={props.onNavigate}
+                  sessionID={props.sessionID}
+                />
+              </ErrorBoundary>
             )
           }}
         </For>

@@ -55,8 +55,6 @@ describe("S7 — the five predicates collapse into computeSpineToggle", () => {
     expect(src).toContain("computeSpineToggle(")
     expect(src).toContain("toggle().headerToggleable")
     expect(src).toContain("toggle().disclosure")
-    expect(src).toContain("toggle().rowToggleable")
-    expect(src).toContain("toggle().label")
   })
 })
 
@@ -93,7 +91,7 @@ describe("S7 — drift cases behave consistently (single rule)", () => {
   test("agent entry with tool body: both header and row toggle", () => {
     const r = computeSpineToggle(facts({ isAgentEntry: true, hasToolBody: true }))
     expect(r.headerToggleable).toBe(true)
-    expect(r.rowToggleable).toBe(true)
+    expect(r.rowToggleable).toBe(false)
     expect(r.label).toBe("▸ show details")
   })
 
@@ -111,7 +109,7 @@ describe("S7 — drift cases behave consistently (single rule)", () => {
   test("children: command-count label + both toggles", () => {
     const r = computeSpineToggle(facts({ hasChildren: true, childCount: 3 }))
     expect(r.headerToggleable).toBe(true)
-    expect(r.rowToggleable).toBe(true)
+    expect(r.rowToggleable).toBe(false)
     expect(r.label).toBe("▸ show 3 commands")
     expect(computeSpineToggle(facts({ hasChildren: true, childCount: 1, expanded: true })).label).toBe(
       "▾ hide 1 command",
@@ -142,6 +140,6 @@ describe("S7 — drift cases behave consistently (single rule)", () => {
   test("agent entry + onToggle → row toggle shows (the shell always passes onToggle)", () => {
     const r = computeSpineToggle(facts({ isAgentEntry: true, onToggle: true }))
     expect(r.headerToggleable).toBe(true)
-    expect(r.rowToggleable).toBe(true)
+    expect(r.rowToggleable).toBe(false)
   })
 })

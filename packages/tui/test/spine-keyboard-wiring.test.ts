@@ -6,6 +6,10 @@ const shellSource = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/command-spine-shell.tsx"),
   "utf8",
 )
+const authorityActionsSource = readFileSync(
+  join(import.meta.dir, "../src/shell/command-spine/use-authority-actions.ts"),
+  "utf8",
+)
 
 /**
  * Source-contract guards for the F-24..F-28 keyboard wiring inside the
@@ -30,7 +34,9 @@ describe("spine keyboard wiring source contract (F-24..F-28)", () => {
     // Leave-composer, return-to-composer, and close-inspector bindings all gate on it.
     const occurrences = shellSource.split("spineEscInert(").length - 1
     expect(occurrences).toBeGreaterThanOrEqual(2)
-    expect(shellSource).toContain("approvalActionBindingsEnabledPolicy")
+    // The approval action policy moved into the extracted authority-actions
+    // hook (PR5 split); the shell delegates through authority.approvalActionBindingsEnabled().
+    expect(authorityActionsSource).toContain("approvalActionBindingsEnabledPolicy")
     expect(shellSource).toContain("gatesOpen: gatesOpen()")
   })
 

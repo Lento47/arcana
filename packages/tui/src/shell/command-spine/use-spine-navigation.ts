@@ -1,4 +1,4 @@
-import { createMemo, createSignal } from "solid-js"
+import { createEffect, createMemo, createSignal } from "solid-js"
 import type { Accessor } from "solid-js"
 import type { SpineEntry } from "./spine-types"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
@@ -57,6 +57,14 @@ export function useSpineNavigation(input: {
   })
 
   const navigableEntries = createMemo(() => navigableSpineEntries(input.filteredRows()))
+
+  // A focused entry that leaves the navigable set (filtered out, removed by a
+  // live update) drops focus instead of pointing at a ghost row.
+  createEffect(() => {
+    const focused = focusedEntryID()
+    if (!focused) return
+    if (!navigableEntries().some((entry) => entry.id === focused)) setFocusedEntryID(undefined)
+  })
 
   const resolveFocusedEntry = (preferToggleable = false) => {
     const focused = focusedEntry()

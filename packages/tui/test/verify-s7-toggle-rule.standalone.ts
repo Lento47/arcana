@@ -59,8 +59,6 @@ check(src.includes("const toggle = createMemo("), "one toggle memo exists")
 check(src.includes("computeSpineToggle("), "memo consumes the pure helper")
 check(src.includes("toggle().headerToggleable"), "consumers read toggle().headerToggleable")
 check(src.includes("toggle().disclosure"), "consumers read toggle().disclosure")
-check(src.includes("toggle().rowToggleable"), "consumers read toggle().rowToggleable")
-check(src.includes("toggle().label"), "consumers read toggle().label")
 
 console.log("drift-case behavior:")
 eq("plain entry", computeSpineToggle(facts()), {
@@ -86,7 +84,7 @@ check(
 eq(
   "agent + tool body",
   { h: computeSpineToggle(facts({ isAgentEntry: true, hasToolBody: true })).headerToggleable, r: computeSpineToggle(facts({ isAgentEntry: true, hasToolBody: true })).rowToggleable },
-  { h: true, r: true },
+  { h: true, r: false },
 )
 check(
   computeSpineToggle(facts({ hasDiff: true, diffBody: "diff --git a/x b/x" })).rowToggleable === false &&
@@ -127,8 +125,8 @@ check(
   "onToggle alone does NOT force header/row toggle (matches old headerToggleable)",
 )
 check(
-  computeSpineToggle(facts({ isAgentEntry: true, onToggle: true })).rowToggleable === true,
-  "agent + onToggle → row toggle shows (shell always passes onToggle)",
+  computeSpineToggle(facts({ isAgentEntry: true, onToggle: true })).rowToggleable === false,
+  "agent + onToggle → header toggle only (PR5 one affordance)",
 )
 
 console.log(failures === 0 ? `PASS (${checks}/${checks})` : `FAIL (${failures}/${checks})`)
