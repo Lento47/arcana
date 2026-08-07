@@ -68,6 +68,8 @@ function versionOf(chunkPath: string): string | undefined {
   }
 }
 
+let targets = 0
+let ready = 0
 let patched = 0
 let skipped = 0
 
@@ -79,9 +81,11 @@ for (const chunk of collectChunks()) {
     continue
   }
 
+  targets++
   const source = readFileSync(chunk, "utf-8")
   if (source.includes(MARKER)) {
     console.log(`[patch-opentui] already patched ${chunk}`)
+    ready++
     skipped++
     continue
   }
@@ -98,10 +102,14 @@ for (const chunk of collectChunks()) {
     + source.slice(index + SIGNATURE.length)
   writeFileSync(chunk, inserted, "utf-8")
   console.log(`[patch-opentui] patched ${chunk}`)
+  ready++
   patched++
 }
 
-if (patched === 0) {
+if (targets === 0) {
   console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} chunks found to patch`)
+} else if (ready === 0) {
+  console.error(`[patch-opentui] found ${targets} @opentui/core ${TARGET_VERSION} chunk(s), but none could be patched`)
+  process.exitCode = 1
 }
 console.log(`[patch-opentui] patched=${patched} skipped=${skipped}`)
