@@ -3,7 +3,7 @@
 **Document class:** living task register + traceability matrix
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Consolidated:** 2026-08-02 — merges the former `docs/roadmap/TASK-REGISTER.md` and `docs/roadmap/PHASE-TRACEABILITY.md`
-**Implementation checkpoint:** `a2491be5` (2026-08-05; upstream advanced from `63d71f07` via merged PRs #60, #62–74)
+**Implementation checkpoint:** `4e954e5a` (2026-08-06; HEAD of `phase-d-implementation` at the PR-7 freeze-evidence audit; upstream advanced from `b5d192a1` via merged PRs #83–#91)
 **Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
 
 Part 1 is the living per-task status register (playbook tasks plus AUD-xx campaign tasks). Part 2 is the task → evidence → gate traceability matrix.
@@ -146,7 +146,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | Node 1.0 | PARTIAL | D-7 frozen, D-8A done; **API contract draft node-1.0-api-contract (2026-08-02)**; release freeze NOT authorized — TLS (BLK-D-07), live Linux validation (BLK-D-03), local proof-store integration (BLK-D-04), independent reproduction pending | BLK-D-01..09 |
 | SDK 1.0 | PARTIAL — governance, proof, errors, enterprise client and framework hooks implemented; release freeze, live PEP transport, full Rust surface and L3 validation pending | BLK-E-02/03/04/06, BLK-F-11 |
 | Control 1.0 | PARTIAL — service cores and enterprise APIs substantially implemented; authenticated-principal binding (BLK-F-AUTH-01), operator consoles, production integrations, live exercises and external assessment pending | BLK-F-01..13 |
-| Arcana Desktop | SPEC ONLY (not required for 1.0) | DESKTOP-1.0-SPEC (spec only) | — |
+| Arcana Desktop | PARTIAL — local approval and forensic companion (M1, per ADR-004); runtime API + `/desktop/heartbeat` mounted; Desktop client implementation not yet built | Runtime API mounted (contracts/approval-api.v1.yaml) + ADR-004 M1 surface | — |
 | Arcana 1.0 convergence | NOT REACHED | — | BLK-1.0-01..05 |
 
 ## New tasks added during this audit (2026-08-02)
@@ -451,5 +451,5 @@ Master spec Parts I–IV (architecture/roadmap)
 | AUD-21 Engine stability closure: classify and fix the 33 full-suite failures | COMPLETE | Baseline rerun 2026-08-02: 4250 pass / 33 fail. Classification: 30 subprocess harness failures (bun not on PATH; fixed with process.execPath in test/lib/cli-process.ts), 2 replay fixtures (PATH bootstrap + explicit execSync env), 1 Windows shell test (Git Bash cygpath root assumption; test now asserts cross-variant normalization). Repro runs: all pass with bun removed from PATH | - |
 | AUD-22 Load-bound snapshot/revert test timeouts + stability gate | COMPLETE | Justified per-test timeouts (15s revert/compact restore, 10s snapshot) with comments; test:engine:stability rewritten as fresh-process iterations (script/stability-run.ts); 3/3 clean; concurrency 1/4/8, randomize, seeded randomize all 0 fail | - |
 | AUD-23 Approval routing model + REVOKE lifecycle | COMPLETE | approval-routing.ts (LOCAL_TUI/DESKTOP_PREFERRED/DESKTOP_REQUIRED/CENTRAL_REQUIRED, policy-driven); REVOKE (PENDING/APPROVED -> INVALIDATED, zero execution path); surface-bound routing gate in approval/command.ts; 17 core routing/lifecycle tests + 15 engine gate tests | - |
-| AUD-24 Runtime/Desktop API contract | COMPLETE (pre-release) | Runtime API mounted (/approvals, approve/deny/revoke, /sessions, /proofs, /desktop/heartbeat); operator identity from server context; exact-request revalidation; OpenAPI contracts/approval-api.v1.yaml; doc docs/RUNTIME-API-CONTRACT.md; 19 engine approval tests | Desktop client itself is spec-only (external track) |
+| AUD-24 Runtime/Desktop API contract | COMPLETE (pre-release) | Runtime API mounted (/approvals, approve/deny/revoke, /sessions, /proofs, /desktop/heartbeat); operator identity from server context; exact-request revalidation; OpenAPI contracts/approval-api.v1.yaml; doc docs/RUNTIME-API-CONTRACT.md; 19 engine approval tests | Desktop client implementation not yet built; the runtime surface it consumes is mounted (ADR-004 M1 local approval companion) |
 | AUD-25 Low-noise TUI governance projection | COMPLETE | Three visibility modes (conversation default / operations / forensic); healthy governance aggregated into compact lifecycle rows; forensic expands raw evidence; security-critical rows always visible; 18 TUI tests | - |
