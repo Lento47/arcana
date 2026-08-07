@@ -6,6 +6,7 @@ import type {
   SpineReceipt,
   SpineReportData,
 } from "./spine-types"
+import { joinSpineProse } from "./spine-prose"
 
 /**
  * Discriminated-union render view for a spine row.
@@ -61,6 +62,7 @@ export type ToolEntry = SpineEntryViewBase & {
   bodyLabel?: string
   bodyHint?: string
   bodyNote?: string
+  reminders?: string[]
   receipt?: SpineReceipt
   diff?: SpineDiffExcerpt
   report?: SpineReportData
@@ -120,6 +122,11 @@ export type SubagentEntry = SpineEntryViewBase & {
   elapsed?: string
   streaming?: boolean
   body?: string
+  bodyLabel?: string
+  bodyHint?: string
+  bodyNote?: string
+  table?: { headers: string[]; rows: string[][] }
+  listing?: string[]
   children?: SpineChildView[]
   childSessionID?: string
 }
@@ -136,6 +143,8 @@ export type RecoveryEntry = SpineEntryViewBase & {
   streaming?: boolean
   body?: string
   bodyLabel?: string
+  bodyHint?: string
+  bodyNote?: string
   receipt?: SpineReceipt
 }
 
@@ -150,6 +159,8 @@ export type SpineChildView = {
   bodyLabel?: string
   bodyHint?: string
   bodyNote?: string
+  /** True when the child is a governance event (drives the disclosure noun). */
+  governance?: boolean
 }
 
 export type SpineEntryView =
@@ -172,6 +183,7 @@ function childView(child: SpineEntry): SpineChildView {
     bodyLabel: child.bodyLabel,
     bodyHint: child.bodyHint,
     bodyNote: child.bodyNote,
+    governance: child.source?.kind === "governance",
   }
 }
 
@@ -216,9 +228,7 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
       type: "chat",
       kind: entry.kind as "ask" | "plan" | "ok",
       label: entry.label,
-      text: [entry.summary, entry.body].filter((s) => s && s.trim()).join(
-        entry.body ? "\n\n" : "",
-      ),
+      text: joinSpineProse(entry.summary, entry.body),
       elapsed: entry.elapsed,
       timestamp: entry.timestamp,
       streaming: entry.streaming === true,
@@ -239,6 +249,11 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
       elapsed: entry.elapsed,
       streaming: entry.streaming === true,
       body: entry.body,
+      bodyLabel: entry.bodyLabel,
+      bodyHint: entry.bodyHint,
+      bodyNote: entry.bodyNote,
+      table: entry.table,
+      listing: entry.listing,
       children: childrenViews(entry.children),
       childSessionID: ctx.childSessionID,
     }
@@ -286,7 +301,9 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
       body: entry.body,
       bodyLabel: entry.bodyLabel,
       pending,
-      requester: pending ? (entry as unknown as { requester?: string }).requester : undefined,
+      // The adapter puts the requester (principal agent identity) in `actor`
+      // for PENDING records - no operator has acted yet.
+      requester: pending ? entry.actor : undefined,
     }
   }
 
@@ -303,6 +320,8 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
       streaming: entry.streaming === true,
       body: entry.body,
       bodyLabel: entry.bodyLabel,
+      bodyHint: entry.bodyHint,
+      bodyNote: entry.bodyNote,
       receipt: entry.receipt,
     }
   }
@@ -322,6 +341,7 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
     bodyLabel: entry.bodyLabel,
     bodyHint: entry.bodyHint,
     bodyNote: entry.bodyNote,
+    reminders: entry.reminders,
     receipt: entry.receipt,
     diff: entry.diff,
     report: entry.report,

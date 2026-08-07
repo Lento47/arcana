@@ -1,6 +1,6 @@
 import { createSignal, onMount } from "solid-js"
 import type { Accessor, Setter } from "solid-js"
-import type { ScrollBoxRenderable } from "@opentui/core"
+import type { MouseEvent, ScrollBoxRenderable } from "@opentui/core"
 import { shouldShowScrollButton } from "../../util/geometry"
 
 /**
@@ -30,8 +30,8 @@ export function useSpineScroll(input: {
     setShowScrollButton(shouldShowScrollButton(s.scrollHeight, s.y, s.height))
   }
 
-  const handleMouseScroll = (_event: unknown) => {
-    const direction = (_event as { scroll?: { direction?: string } })?.scroll?.direction
+  const handleMouseScroll = (event: MouseEvent) => {
+    const direction = event.scroll?.direction
     if (direction !== "up" && direction !== "down") return
     queueMicrotask(refreshScrollButton)
   }

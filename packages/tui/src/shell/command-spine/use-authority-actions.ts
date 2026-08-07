@@ -1,12 +1,13 @@
 import { createEffect, createMemo, createSignal } from "solid-js"
 import type { Accessor } from "solid-js"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
+import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import {
+  approvalActionAvailable,
   approvalActionBindingsEnabled as approvalActionBindingsEnabledPolicy,
   approvalEscapeEnabled as approvalEscapeEnabledPolicy,
   approvalInspectionAllowed,
-  isApprovalActionable,
   isApprovalTerminal,
 } from "./approval-spine-adapter"
 import type { ApprovalShellController } from "./approval-shell-controller"
@@ -21,6 +22,8 @@ export function useAuthorityActions(input: {
   focusedEntryID: Accessor<string | undefined>
   focusedApproval: Accessor<ApprovalRecord | undefined>
   approvals: Accessor<readonly ApprovalRecord[]>
+  /** Runtime-derived affordances for an approval (keyed by approvalId). */
+  getAffordancesForApproval: (approval: ApprovalRecord) => readonly AuthorityAffordance[]
   permissions: Accessor<readonly unknown[]>
   controller: Accessor<ApprovalShellController | undefined>
   activeSessionId: Accessor<string>
@@ -43,6 +46,7 @@ export function useAuthorityActions(input: {
   const controller = input.controller
   const approvals = input.approvals
   const focusedApproval = input.focusedApproval
+  const getAffordancesForApproval = input.getAffordancesForApproval
 
   // M10: permission-gate rows open the read-only permission inspector.
   const focusedGateRequest = createMemo(() => {
@@ -55,13 +59,14 @@ export function useAuthorityActions(input: {
   const canApprove = createMemo(() => {
     const approval = focusedApproval()
     if (!approval) return false
-    if (!isApprovalActionable(approval)) return false
-    if (approval.sessionId !== activeSessionId()) return false
-    if (approvalSubmitting()) return false
-    return true
+    return approvalActionAvailable(getAffordancesForApproval(approval), "approve")
   })
 
-  const canDeny = createMemo(() => canApprove())
+  const canDeny = createMemo(() => {
+    const approval = focusedApproval()
+    if (!approval) return false
+    return approvalActionAvailable(getAffordancesForApproval(approval), "deny")
+  })
 
   const canInspectApproval = createMemo(() => focusedApproval() !== undefined)
 
@@ -70,7 +75,9 @@ export function useAuthorityActions(input: {
       composerFocused: input.composerFocused(),
       gatesOpen: input.gatesOpen(),
       submitting: approvalSubmitting(),
-      focusedApproval: focusedApproval(),
+      focusedAffordances: focusedApproval()
+        ? getAffordancesForApproval(focusedApproval()!)
+        : [],
     })
 
   const approvalInspectBindingsEnabled = () =>
@@ -177,10 +184,14 @@ export function useAuthorityActions(input: {
     }
   })
 
-  // A parked durable approval keeps the turn BUSY while it waits.
+  // A parked durable approval keeps the turn BUSY while it waits. Same
+  // affordance-based rule as the inline shell logic: only still-actionable
+  // approvals (a/d available) count as pending operator work.
   const hasPendingApproval = createMemo(() =>
     approvals().some(
-      (a) => a.state === "PENDING" && a.sessionId === activeSessionId(),
+      (a) =>
+        approvalActionAvailable(getAffordancesForApproval(a), "approve") ||
+        approvalActionAvailable(getAffordancesForApproval(a), "deny"),
     ),
   )
 

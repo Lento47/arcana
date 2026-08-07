@@ -1,6 +1,8 @@
 import { Show } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { spineOuterPadding, type SpineLayout } from "./spine-types"
+import type { SpineViewFilter } from "./spine-view-filter"
+import type { PromptRef } from "../../component/prompt"
 import { SubagentFooter } from "../../routes/session/subagent-footer"
 import { SpinePrompt } from "./spine-prompt"
 
@@ -11,9 +13,9 @@ import { SpinePrompt } from "./spine-prompt"
 export function SpineComposer(props: {
   layout: SpineLayout
   parentID?: string
-  viewFilter: string
-  filterLabel: (filter: string) => string
-  bind: (r: unknown) => void
+  viewFilter: SpineViewFilter
+  filterLabel: (filter: SpineViewFilter) => string
+  bind: (r: PromptRef | undefined) => void
   disabled: () => boolean
   visible: () => boolean
   sessionID: string
@@ -26,15 +28,15 @@ export function SpineComposer(props: {
 
   return (
     <>
-      <Show when={props.parentID}>
-        <SubagentFooter />
-      </Show>
       <Show when={props.viewFilter !== "all"}>
         <box flexDirection="row" flexShrink={0} paddingLeft={pad + 2}>
           <text fg={theme.spineDiffMuted}>
             view: {props.filterLabel(props.viewFilter)} · f cycles · security states always visible
           </text>
         </box>
+      </Show>
+      <Show when={props.parentID}>
+        <SubagentFooter />
       </Show>
       <SpinePrompt
         bind={props.bind as any}

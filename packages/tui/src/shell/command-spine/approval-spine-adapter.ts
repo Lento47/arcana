@@ -65,7 +65,10 @@ export function approvalToSpineEntry(approval: ApprovalRecord): SpineEntry {
     elapsed: "",
     kind,
     label,
-    actor: approval.approvedBy ?? "operator",
+    // PENDING approvals have no operator yet - never claim one. The requester
+    // (principal agent identity) is the actor until a human decides; absent
+    // that, render nothing rather than a fabricated "operator".
+    actor: approval.approvedBy ?? (approval.state === "PENDING" ? approval.principalId : undefined),
     glyph: approvalGlyph(approval.state),
     summary: approvalSummary(approval),
     body: approvalBody(approval),
