@@ -33,10 +33,11 @@ describe("intentional failure", () => {
 })
 EOF
 
-set +e
-bun test "$TEMP_DIR/fail.test.ts" > /dev/null 2>&1
-FAIL_EXIT=$?
-set -e
+if bun test "$TEMP_DIR/fail.test.ts" > /dev/null 2>&1; then
+  FAIL_EXIT=0
+else
+  FAIL_EXIT=$?
+fi
 
 if (( FAIL_EXIT != 0 )); then
   echo "  ✓ bun test exits $FAIL_EXIT (nonzero) on failure"
@@ -56,10 +57,11 @@ describe("intentional pass", () => {
 })
 EOF
 
-set +e
-bun test "$TEMP_DIR/pass.test.ts" > /dev/null 2>&1
-PASS_EXIT=$?
-set -e
+if bun test "$TEMP_DIR/pass.test.ts" > /dev/null 2>&1; then
+  PASS_EXIT=0
+else
+  PASS_EXIT=$?
+fi
 
 if (( PASS_EXIT == 0 )); then
   echo "  ✓ bun test exits 0 on success"
@@ -74,10 +76,11 @@ cat > "$TEMP_DIR/fail-script.ts" << 'EOF'
 process.exit(1)
 EOF
 
-set +e
-bun run "$TEMP_DIR/fail-script.ts" > /dev/null 2>&1
-SCRIPT_EXIT=$?
-set -e
+if bun run "$TEMP_DIR/fail-script.ts" > /dev/null 2>&1; then
+  SCRIPT_EXIT=0
+else
+  SCRIPT_EXIT=$?
+fi
 
 if (( SCRIPT_EXIT != 0 )); then
   echo "  ✓ bun run exits $SCRIPT_EXIT (nonzero) on process.exit(1)"
