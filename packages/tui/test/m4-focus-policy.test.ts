@@ -47,8 +47,11 @@ describe("M4 source contract — one focus per physical click", () => {
     expect(entrySrc).toContain("now - lastToggleAt < 120")
   })
 
-  test("header toggle handlers still wired (handleHeaderMouseDown/Up)", () => {
-    expect(entrySrc).toContain("handleHeaderMouseDown")
+  test("PR5: header toggles on mouseup only - no mousedown toggle handler", () => {
+    // Conventional left-click timing: both left- and right-click toggle on
+    // release. The old right-click-on-mousedown path (handleHeaderMouseDown)
+    // is gone, so right-click no longer differs from left-click.
     expect(entrySrc).toContain("handleHeaderMouseUp")
+    expect(entrySrc).not.toContain("handleHeaderMouseDown")
   })
 })

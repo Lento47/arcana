@@ -34,6 +34,14 @@ const shellSrc = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/command-spine-shell.tsx"),
   "utf8",
 )
+const scrollSrc = readFileSync(
+  join(import.meta.dir, "../src/shell/command-spine/use-spine-scroll.ts"),
+  "utf8",
+)
+const viewportSrc = readFileSync(
+  join(import.meta.dir, "../src/shell/command-spine/spine-viewport.tsx"),
+  "utf8",
+)
 const entrySrc = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/spine-entry.tsx"),
   "utf8",
@@ -41,9 +49,9 @@ const entrySrc = readFileSync(
 
 check("shell has no scrollPollInterval", shellSrc.includes("scrollPollInterval"), false)
 check("shell has no entryNodes map", shellSrc.includes("entryNodes"), false)
-check("shell wires onMouseScroll={handleMouseScroll}", shellSrc.includes("onMouseScroll={handleMouseScroll}"), true)
-check("shell uses scroll.scrollChildIntoView(entryID)", shellSrc.includes("scroll.scrollChildIntoView(entryID)"), true)
-check("shell has refreshScrollButton", shellSrc.includes("refreshScrollButton"), true)
+check("viewport wires onMouseScroll={props.handleMouseScroll}", viewportSrc.includes("onMouseScroll={props.handleMouseScroll}"), true)
+check("scroll hook uses scrollChildIntoView(entryID)", scrollSrc.includes("scrollChildIntoView(entryID)"), true)
+check("scroll hook has refreshScrollButton", scrollSrc.includes("refreshScrollButton"), true)
 check("entry boxes carry id={entry().id}", entrySrc.includes("id={entry().id}"), true)
 check("entry has no nodeRef prop", entrySrc.includes("nodeRef"), false)
 

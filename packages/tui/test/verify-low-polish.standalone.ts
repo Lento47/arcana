@@ -82,10 +82,11 @@ check("approval empty → undefined", approvalIdFromEntryID(""), undefined)
 check("approval no version → undefined", approvalIdFromEntryID("approval:abc"), undefined)
 
 const shellSrc = readFileSync(join(import.meta.dir, "../src/shell/command-spine/command-spine-shell.tsx"), "utf8")
+const navigationSrc = readFileSync(join(import.meta.dir, "../src/shell/command-spine/use-spine-navigation.ts"), "utf8")
 const adapterSrc = readFileSync(join(import.meta.dir, "../src/shell/command-spine/approval-spine-adapter.ts"), "utf8")
 check("shell no slice-based approval parse", shellSrc.includes('.slice("approval:".length)'), false)
 check("shell no entryID.slice", shellSrc.includes("entryID.slice("), false)
-check("shell uses approvalIdFromEntryID", shellSrc.includes("approvalIdFromEntryID"), true)
+check("navigation hook uses approvalIdFromEntryID (PR5 split)", navigationSrc.includes("approvalIdFromEntryID"), true)
 check("adapter exports approvalIdFromEntryID", adapterSrc.includes("export function approvalIdFromEntryID"), true)
 
 // ─── C4 statusbar chip edge ──────────────────────────────────────────
