@@ -11,9 +11,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ALLOWLIST="$SCRIPT_DIR/typecheck-allowlist.txt"
-CURRENT=$(mktemp)
+CURRENT="$(mktemp)"
 
-trap "rm -f $CURRENT" EXIT
+cleanup() {
+  rm -f -- "$CURRENT"
+}
+trap cleanup EXIT
 
 # Capture current diagnostics
 cd "$REPO_ROOT"
@@ -24,7 +27,6 @@ bun turbo typecheck 2>&1 \
   > "$CURRENT"
 
 CURRENT_COUNT=$(wc -l < "$CURRENT")
-ALLOWLIST_COUNT=$(wc -l < "$ALLOWLIST")
 
 # Fingerprint comparison
 ADDED=$(comm -23 "$CURRENT" "$ALLOWLIST" || true)
@@ -47,16 +49,16 @@ if [ -n "$REMOVED" ]; then
 fi
 
 # Secondary guard: count threshold
-if [ "$CURRENT_COUNT" -gt 66 ]; then
+if (( CURRENT_COUNT > 66 )); then
   echo "❌ Error count $CURRENT_COUNT exceeds threshold 66"
   FAIL=1
 fi
 
-if [ "$CURRENT_COUNT" -lt 66 ]; then
+if (( CURRENT_COUNT < 66 )); then
   echo "⚠️  Error count $CURRENT_COUNT below baseline 66 — update allowlist and threshold"
 fi
 
-if [ "$FAIL" -eq 0 ]; then
+if (( FAIL == 0 )); then
   echo "✅ Typecheck fingerprint guard passed ($CURRENT_COUNT errors, all in allowlist)"
   if [ -n "$REMOVED" ]; then
     echo "   ($REMOVED_COUNT removed — consider updating allowlist)"
