@@ -43,7 +43,6 @@ import {
   isApprovalTerminal,
 } from "./approval-spine-adapter"
 import { createApprovalShellController, type ApprovalShellController, type ApprovalCommandInput } from "./approval-shell-controller"
-import { resolveApprovalSnapshot, snapshotFromDetail } from "./approval-snapshot"
 import { createDedupeKey, dedupeKeyToString, compareOrderingKeys, createOrderingKey } from "./spine-ordering"
 import {
   governanceProofToSpineEntry,
