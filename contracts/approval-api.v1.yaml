@@ -3,14 +3,20 @@ info:
   title: Arcana Runtime Contract
   version: 1.0.0
   description: >
-    Narrow runtime contract consumed by Arcana Desktop and CLI/TUI.
+    Narrow runtime contract consumed by Arcana Desktop and CLI/TUI. Arcana
+    Desktop is the M1 local approval and forensic companion (ADR-004): a
+    minimal M1 surface (runtime lifecycle, reconnect/resync, pending-approval
+    notification, exact-request inspection, approve/deny through the
+    authoritative runtime, proof inspection, restart recovery) that never
+    becomes an independent policy, approval, execution, or evidence authority.
     Runtime owns all authority. Clients render projections and submit commands.
     Operator identity is always derived from authenticated server context,
     never from the request body.
 
     PRE-RELEASE CORRECTION (2026-08-02): the first publication of this artifact
-    was never consumed by an external client (Arcana Desktop is specification
-    only). This revision corrects that binding to match the mounted runtime
+    was never consumed by a mounted external client (the Desktop client itself
+    was not yet implemented; its runtime surface is defined here). This
+    revision corrects that binding to match the mounted runtime
     surface exactly: the approval decision body carries expectedVersion,
     expectedRequestHash and expectedContractRevision; decision failures are a
     200 success/failure union with a machine-readable stale flag; the revoke

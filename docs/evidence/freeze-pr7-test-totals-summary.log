@@ -1,0 +1,28 @@
+﻿===SUITE:Engine suite===
+exit=1
+ 4369 pass
+ 74 skip
+ 1 todo
+ 3 fail
+Ran 4447 tests across 398 files.
+===SUITE_END:Engine suite===
+===SUITE:Core suite===
+exit=1
+ 1590 pass
+ 7 skip
+ 1 fail
+Ran 1598 tests across 184 files.
+===SUITE_END:Core suite===
+===SUITE:TUI suite===
+exit=0
+ 819 pass
+ 1 skip
+ 0 fail
+Ran 820 tests across 111 files.
+===SUITE_END:TUI suite===
+===SUITE:Arcana CLI/proof suite===
+exit=0
+ 124 pass
+ 0 fail
+Ran 124 tests across 13 files.
+===SUITE_END:Arcana CLI/proof suite===
