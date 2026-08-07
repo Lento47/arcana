@@ -34,6 +34,7 @@ denial/revocation/expiry/staleness).
 |---|---|---|
 | GET | `/approvals` | Durable approval records for the routed workspace |
 | GET | `/approvals/:approvalId` | One approval record |
+| GET | `/approvals/:approvalId/affordances` | Runtime-derived authority affordances for the authenticated surface |
 | POST | `/approvals/:approvalId/approve` | Approve after exact-request revalidation |
 | POST | `/approvals/:approvalId/deny` | Deny; parked call fails closed with zero effects |
 | POST | `/approvals/:approvalId/revoke` | Invalidate PENDING/APPROVED; zero effects can ever claim |

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import {
+  deriveAuthorityAffordances,
+  type AuthorityAffordance,
+} from "@arcana/core/crypto/authority-affordance"
+import {
   approvalActionBindingsEnabled,
   approvalEscapeEnabled,
   approvalInspectionAllowed,
@@ -23,6 +27,26 @@ function approval(state: ApprovalRecord["state"]): ApprovalRecord {
     updatedAt: "2026-08-02T00:00:00.000Z",
     createdAt: "2026-08-02T00:00:00.000Z",
   }
+}
+
+function runtimeAffordances(record: ApprovalRecord): AuthorityAffordance[] {
+  return deriveAuthorityAffordances({
+    approval: record,
+    operator: {
+      operatorId: "local-operator",
+      authenticatedAt: "2026-08-02T00:00:00.000Z",
+      roles: ["operator"],
+      workspaceScope: [record.workspaceId],
+    },
+    surface: "LOCAL_TUI",
+    workspaceId: record.workspaceId,
+    freshness: "FRESH",
+    connected: true,
+    protocolCompatible: true,
+    resyncRequired: false,
+    desktopOnline: false,
+    now: new Date("2026-08-02T00:00:00.000Z"),
+  })
 }
 
 describe("F-25: Esc always leaves the composer (never interrupts)", () => {
@@ -90,7 +114,7 @@ describe("F-26: Esc is inert on ACTION GATES", () => {
         composerFocused: false,
         gatesOpen: true,
         submitting: false,
-        focusedApproval: approval("PENDING"),
+        focusedAffordances: runtimeAffordances(approval("PENDING")),
       }),
     ).toBe(false)
     expect(
@@ -98,7 +122,7 @@ describe("F-26: Esc is inert on ACTION GATES", () => {
         composerFocused: false,
         gatesOpen: false,
         submitting: false,
-        focusedApproval: approval("PENDING"),
+        focusedAffordances: runtimeAffordances(approval("PENDING")),
       }),
     ).toBe(true)
   })

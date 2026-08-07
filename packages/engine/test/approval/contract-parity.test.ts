@@ -149,6 +149,7 @@ describe("runtime approval contract parity", () => {
         [
           "/approvals",
           "/approvals/{approvalID}",
+          "/approvals/{approvalID}/affordances",
           "/approvals/{approvalID}/approve",
           "/approvals/{approvalID}/deny",
           "/approvals/{approvalID}/revoke",

@@ -26,6 +26,7 @@
  */
 
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
+import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import type {
   ApprovalCommandKind,
   OperatorCommandRequest,
@@ -86,6 +87,8 @@ export type HttpApprovalBridgeOptions = {
   getWorkspaceId: () => string
   /** Latest known approval records (sync-fed). Read path for load*. */
   getApprovals?: () => readonly ApprovalRecord[]
+  /** Runtime-derived authority affordances, keyed by approvalId. */
+  getAffordances?: (approvalId: string) => readonly AuthorityAffordance[] | undefined
 }
 
 export class HttpApprovalOperatorService implements ApprovalOperatorService {
@@ -242,8 +245,13 @@ export class HttpApprovalOperatorService implements ApprovalOperatorService {
 
   loadPendingApprovals(): ApprovalRecord[] {
     const approvals = this.options.getApprovals?.() ?? []
-    return approvals.filter(
-      (a) => a.sessionId === this.sessionId && a.workspaceId === this.workspaceId && a.state === "PENDING",
-    )
+    return approvals.filter((approval) => {
+      const affordances = this.options.getAffordances?.(approval.approvalId) ?? []
+      return affordances.some(
+        (item) =>
+          (item.action === "approve" || item.action === "deny") &&
+          item.state === "available",
+      )
+    })
   }
 }

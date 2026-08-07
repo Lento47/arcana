@@ -67,6 +67,48 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+  /approvals/{approvalID}/affordances:
+    get:
+      operationId: getApprovalAffordances
+      summary: Get authority affordances for an approval
+      description: >
+        Runtime-derived, principal- and surface-sensitive read model for the
+        authenticated Desktop/SDK caller. Clients render these affordances;
+        they never infer actionability from approval state, route text, or
+        local fallback eligibility. Optional viewed exact-request fields are
+        compared against the durable record and can only fail closed.
+      parameters:
+        - $ref: "#/components/parameters/ApprovalID"
+        - $ref: "#/components/parameters/DirectoryQuery"
+        - $ref: "#/components/parameters/WorkspaceQuery"
+        - name: viewedVersion
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: viewedRequestHash
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: viewedContractRevision
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Runtime-derived authority affordances for an approval
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuthorityAffordance"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /approvals/{approvalID}/approve:
     post:
       operationId: approveRequest
@@ -296,6 +338,71 @@ components:
           schema:
             $ref: "#/components/schemas/NotFoundError"
   schemas:
+    AuthorityAffordance:
+      type: object
+      description: >
+        One runtime-derived authority action for the authenticated surface.
+        `available` only means the surface may submit the bounded command;
+        it is never an authorization result and never replaces command-time
+        revalidation.
+      required:
+        - action
+        - state
+        - surface
+        - requiresFreshRecord
+        - destructive
+      properties:
+        action:
+          type: string
+          enum: [inspect, approve, deny, revoke, retry_refresh, open_forensic]
+        state:
+          type: string
+          enum: [available, unavailable, in_flight, completed]
+        reasonCode:
+          type: string
+          enum: [
+            OFFLINE,
+            STALE_RECORD,
+            RESYNC_REQUIRED,
+            PROTOCOL_MISMATCH,
+            ROUTE_LOCAL_TUI_ONLY,
+            ROUTE_DESKTOP_REQUIRED,
+            ROUTE_CENTRAL_REQUIRED,
+            LOCAL_FALLBACK_NOT_ALLOWED,
+            SURFACE_NOT_AUTHORIZED,
+            SESSION_RESTRICTION,
+            WORKSPACE_MISMATCH,
+            AUTHENTICATION_REQUIRED,
+            APPROVAL_EXPIRED,
+            APPROVAL_REVOKED,
+            ALREADY_DECIDED,
+            ALREADY_CLAIMED,
+            ALREADY_CONSUMED,
+            REQUEST_CHANGED,
+            CONTRACT_REVISION_CHANGED,
+            CAPABILITY_REVOKED,
+            POLICY_CHANGED,
+            EVIDENCE_DEGRADED,
+            UNKNOWN_RUNTIME_STATE
+          ]
+        expectedVersion:
+          type: integer
+          description: The durable approval.version the command must carry.
+        expectedRequestHash:
+          type: string
+          description: The durable requestHash the command must carry.
+        expectedContractRevision:
+          type: integer
+          description: The durable contractRevision the command must carry.
+        surface:
+          type: string
+          enum: [LOCAL_TUI, DESKTOP, CONTROL, SDK]
+        requiresFreshRecord:
+          type: boolean
+          description: True when the action must not be attempted from a stale record.
+        destructive:
+          type: boolean
+          description: True for deny/revoke so clients can apply distinguishable treatment.
     ApprovalStatus:
       type: string
       enum: [PENDING, APPROVED, DENIED, CLAIMED, CONSUMED, EXPIRED, INVALIDATED]

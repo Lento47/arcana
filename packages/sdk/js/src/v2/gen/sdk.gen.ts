@@ -10,6 +10,8 @@ import type {
   AppLogResponses,
   ApprovalCommandErrors,
   ApprovalCommandResponses,
+  ApprovalAffordancesErrors,
+  ApprovalAffordancesResponses,
   ApprovalListErrors,
   ApprovalListResponses,
   AppSkillsErrors,
@@ -369,6 +371,8 @@ import type {
   RevocationsPublishResponses,
   RuntimeApprovalsApproveErrors,
   RuntimeApprovalsApproveResponses,
+  RuntimeApprovalsAffordancesErrors,
+  RuntimeApprovalsAffordancesResponses,
   RuntimeApprovalsDenyErrors,
   RuntimeApprovalsDenyResponses,
   RuntimeApprovalsGetErrors,
@@ -1771,6 +1775,50 @@ export class Approval extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<ApprovalListResponses, ApprovalListErrors, ThrowOnError>({
       url: "/api/session/{sessionID}/approval",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get authority affordances for an approval
+   *
+   * Runtime-derived, principal- and surface-sensitive read model for the authenticated LOCAL_TUI operator. Clients render these affordances; they never infer actionability from approval state, route, or local fallback eligibility. Exact-request viewed fields are compared against the durable record and can only fail closed.
+   */
+  public affordances<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      approvalID: string
+      directory?: string
+      workspace?: string
+      viewedVersion?: number
+      viewedRequestHash?: string
+      viewedContractRevision?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "approvalID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "viewedVersion" },
+            { in: "query", key: "viewedRequestHash" },
+            { in: "query", key: "viewedContractRevision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ApprovalAffordancesResponses,
+      ApprovalAffordancesErrors,
+      ThrowOnError
+    >({
+      url: "/api/session/{sessionID}/approval/{approvalID}/affordances",
       ...options,
       ...params,
     })
@@ -7475,6 +7523,48 @@ export class Approvals extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<RuntimeApprovalsGetResponses, RuntimeApprovalsGetErrors, ThrowOnError>({
       url: "/approvals/{approvalID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get authority affordances for an approval
+   *
+   * Runtime-derived, principal- and surface-sensitive read model for the authenticated Desktop/SDK caller. Clients render these affordances; they never infer actionability from approval state, route, or local fallback eligibility. Exact-request viewed fields are compared against the durable record and can only fail closed.
+   */
+  public affordances<ThrowOnError extends boolean = false>(
+    parameters: {
+      approvalID: string
+      directory?: string
+      workspace?: string
+      viewedVersion?: number
+      viewedRequestHash?: string
+      viewedContractRevision?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "approvalID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "viewedVersion" },
+            { in: "query", key: "viewedRequestHash" },
+            { in: "query", key: "viewedContractRevision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      RuntimeApprovalsAffordancesResponses,
+      RuntimeApprovalsAffordancesErrors,
+      ThrowOnError
+    >({
+      url: "/approvals/{approvalID}/affordances",
       ...options,
       ...params,
     })

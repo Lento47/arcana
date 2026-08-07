@@ -4,6 +4,7 @@ import type { Message, Part, SessionGovernanceResponse } from "@arcana/sdk/v2"
 import type { PromptRef } from "../component/prompt"
 import type { PromptInfo } from "../component/prompt/history"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
+import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import type { ApprovalShellController } from "./command-spine/approval-shell-controller"
 import type { ApprovalSnapshotDetail } from "./command-spine/approval-http-bridge"
 import type { Theme } from "../theme"
@@ -54,6 +55,8 @@ export interface ShellProps {
   // ─── TUI-2.1: Approval integration (optional) ────────────────
   /** Reactive approval records for the current session. */
   approvals?: Accessor<readonly ApprovalRecord[]>
+  /** Runtime-derived authority affordances, keyed by approvalId. */
+  approvalAffordances?: Accessor<ReadonlyMap<string, readonly AuthorityAffordance[]>>
   /** The approval shell controller. */
   approvalController?: ApprovalShellController
   /**
