@@ -13,7 +13,8 @@
  *   Phase C execution functions
  */
 
-import type { ApprovalRecord, ApprovalState } from "@arcana/core/crypto/approval-lifecycle"
+import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
+import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -84,6 +85,7 @@ export function createApprovalShellController(input: {
   service: ApprovalOperatorService
   session: SessionContext
   getApproval: (id: string) => ApprovalRecord | undefined
+  getAffordances?: (approvalId: string) => readonly AuthorityAffordance[] | undefined
   onStateChange?: (approvalId: string, state: ApprovalShellState | undefined) => void
 }): ApprovalShellController {
   let selectedId: string | undefined
@@ -101,16 +103,22 @@ export function createApprovalShellController(input: {
     if (!approval) {
       throw new Error(`Approval ${approvalId} not found`)
     }
-    if (approval.state !== "PENDING") {
-      throw new Error(`Approval ${approvalId} is not actionable (state: ${approval.state})`)
-    }
-    if (approval.sessionId !== input.session.sessionId) {
-      throw new Error(`Approval ${approvalId} belongs to different session`)
-    }
-    if (approval.workspaceId !== input.session.workspaceId) {
-      throw new Error(`Approval ${approvalId} belongs to different workspace`)
-    }
     return approval
+  }
+
+  function verifyRuntimeAffordance(
+    approvalId: string,
+    action: "approve" | "deny",
+  ): void {
+    const affordances = input.getAffordances?.(approvalId)
+    if (!affordances || affordances.length === 0) {
+      throw new Error(`Approval ${approvalId} has no runtime authority affordances`)
+    }
+    const item = affordances.find((candidate) => candidate.action === action)
+    if (!item || item.state !== "available") {
+      const reason = item?.reasonCode ?? "unavailable"
+      throw new Error(`Approval ${approvalId} ${action} is not available (${reason})`)
+    }
   }
 
   async function executeCommand(
@@ -128,6 +136,7 @@ export function createApprovalShellController(input: {
     // Verify selected approval is actionable
     try {
       verifyActionable(input_.approvalId)
+      verifyRuntimeAffordance(input_.approvalId, command === "approveOnce" ? "approve" : "deny")
     } catch (err) {
       return {
         status: "ERROR",
