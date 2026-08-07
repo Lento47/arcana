@@ -27,6 +27,7 @@ const read = (p: string) => readFileSync(join(import.meta.dir, p), "utf8")
 const statusbarSrc = read("../src/feature-plugins/system/statusbar.tsx")
 const mapperSrc = read("../src/shell/command-spine/spine-mapper.ts")
 const shellSrc = read("../src/shell/command-spine/command-spine-shell.tsx")
+const navigationSrc = read("../src/shell/command-spine/use-spine-navigation.ts")
 const adapterSrc = read("../src/shell/command-spine/approval-spine-adapter.ts")
 
 // ─── B8 spineRailCell ────────────────────────────────────────────────
@@ -167,7 +168,8 @@ describe("M10 approvalIdFromEntryID", () => {
   test("shell uses the shared parse — no second slice-based parsing", () => {
     expect(shellSrc.includes('.slice("approval:".length)')).toBe(false)
     expect(shellSrc.includes("entryID.slice(")).toBe(false)
-    expect(shellSrc.includes("approvalIdFromEntryID")).toBe(true)
+    // PR5 split: the focus/select parse moved into use-spine-navigation.
+    expect(navigationSrc.includes("approvalIdFromEntryID")).toBe(true)
   })
 })
 

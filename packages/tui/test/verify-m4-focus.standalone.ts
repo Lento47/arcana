@@ -28,7 +28,7 @@ check("suppressNextFocusMouseUp removed", entrySrc.includes("suppressNextFocusMo
 check("releaseFocusSuppression removed", entrySrc.includes("releaseFocusSuppression"), false)
 check("handleToggle keeps lastToggleAt debounce", entrySrc.includes("lastToggleAt"), true)
 check("120ms debounce threshold kept", entrySrc.includes("now - lastToggleAt < 120"), true)
-check("handleHeaderMouseDown still wired", entrySrc.includes("handleHeaderMouseDown"), true)
+check("handleHeaderMouseDown removed (PR5: mouseup-only toggle)", entrySrc.includes("handleHeaderMouseDown"), false)
 check("handleHeaderMouseUp still wired", entrySrc.includes("handleHeaderMouseUp"), true)
 
 if (failures > 0) {
