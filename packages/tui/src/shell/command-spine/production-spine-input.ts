@@ -17,6 +17,7 @@ import type { SpineEntry, SpineKind } from "./spine-types"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import { approvalToSpineEntry } from "./approval-spine-adapter"
 import { Locale } from "../../util/locale"
+import { shortHash } from "./approval-snapshot"
 import type { GovernanceRunProof } from "../types"
 
 // ─── Input Union ──────────────────────────────────────────────────
@@ -74,6 +75,9 @@ export function productionInputToSpineEntry(
 }
 
 function governanceToSpineEntry(view: GovernanceView): SpineEntry {
+  if (view.eventType === "authorization.executed" || view.eventType === "authorization.execution_failed") {
+    return governanceExecutedToSpineEntry({ view })
+  }
   const presentation = governancePresentation(view)
   const payload = JSON.stringify(view.payload, null, 2) ?? String(view.payload)
   const metadata = [
@@ -100,10 +104,81 @@ function governanceToSpineEntry(view: GovernanceView): SpineEntry {
     bodyLabel: "governance event",
     collapsible: true,
     expandedByDefault: presentation.expandedByDefault,
+    breakthrough: presentation.breakthrough,
     source: {
       messageID: view.id,
       kind: "governance",
     },
+  }
+}
+
+/**
+ * PR6: proof continuation for an executed (or failed) effect.
+ *
+ * Rendered directly beneath the completed tool row when the shell can match
+ * the effect (by command), and as a standalone proof row otherwise. The
+ * receipt is the request hash (the only durable effect hash the governance
+ * projection exposes); evidence counts matching `evidence.attached` events;
+ * proof level/integrity come from the canonical RunProof snapshot.
+ */
+export function governanceExecutedToSpineEntry(input: {
+  view: GovernanceView
+  proof?: GovernanceRunProof
+  evidenceCount?: number
+}): SpineEntry {
+  const { view, proof, evidenceCount } = input
+  const payload = asRecord(view.payload)
+  const decision = asRecord(payload.decision)
+  const failed = view.eventType === "authorization.execution_failed"
+  const tool = firstText(payload.tool) ?? "effect"
+  const requestHash = firstText(payload.requestHash) ?? "unavailable"
+  const executionId = firstText(payload.executionId)
+  const policy = firstText(decision.policyVersion) ?? proof?.authorizationProfile.policyVersions?.[0]
+  const evidence = typeof evidenceCount === "number" && Number.isFinite(evidenceCount) ? evidenceCount : 0
+  const integrity = proof?.integrityStatus ?? "UNVERIFIED"
+  const proofLevel = proof?.proofLevel ?? "P0"
+
+  const body = [
+    `Receipt: ${shortHash(requestHash)}`,
+    `Evidence: ${evidence} artifact${evidence === 1 ? "" : "s"}`,
+    `Proof: ${proofLevel} · integrity ${integrity.toLowerCase()}`,
+    `Policy: ${policy ?? "unavailable"}`,
+    `Request: ${requestHash}`,
+    `Tool: ${tool}`,
+    `Action: ${firstText(payload.action) ?? "unavailable"}`,
+    `Execution: ${executionId ?? "unavailable"}`,
+    `Started: ${firstText(payload.startedAt) ?? "unavailable"}`,
+    `Completed: ${firstText(payload.completedAt) ?? "unavailable"}`,
+  ].join("\n")
+
+  return {
+    id: `proof-continuation:${view.id}`,
+    index: view.sequence ?? 0,
+    elapsed: "",
+    occurredAt: view.timestamp,
+    timestamp: formatWallClock(view.timestamp),
+    kind: failed ? "fail" : "ok",
+    glyph: failed ? "×" : "◎",
+    label: failed ? "effect failed" : "verified effect",
+    summary: `${failed ? "EFFECT FAILED" : "VERIFIED EFFECT"} · ${tool}`,
+    body,
+    bodyLabel: "execution proof",
+    collapsible: true,
+    expandedByDefault: failed,
+    proof: {
+      receipt: shortHash(requestHash),
+      evidence,
+      proofLevel,
+      integrity,
+      policy,
+      executionId,
+      requestHash,
+      tool,
+      action: firstText(payload.action),
+      startedAt: firstText(payload.startedAt),
+      completedAt: firstText(payload.completedAt),
+    },
+    source: { messageID: view.id, sessionID: view.sessionId, kind: "governance" },
   }
 }
 
@@ -127,6 +202,7 @@ export function governanceTraceToSpineEntry(view: GovernanceTraceView): SpineEnt
     bodyLabel: "governance evidence",
     collapsible: true,
     expandedByDefault: true,
+    breakthrough: true,
     source: { messageID: view.sessionId, sessionID: view.sessionId, kind: "governance" },
   }
 }
@@ -212,6 +288,7 @@ export function governanceProofToSpineEntry(sessionId: string, proof: Governance
     // The proof is a summary row by default; the axes + raw events live in
     // the expanded inspector body (progressive disclosure).
     expandedByDefault: false,
+    breakthrough: evidenceUnhealthy,
     source: { messageID: sessionId, sessionID: sessionId, kind: "governance" },
   }
 }
@@ -222,6 +299,7 @@ function governancePresentation(view: GovernanceView): {
   label: string
   summary: string
   expandedByDefault: boolean
+  breakthrough?: boolean
 } {
   const payload = asRecord(view.payload)
   const subject = firstText(
@@ -285,29 +363,29 @@ function governancePresentation(view: GovernanceView): {
       return { kind: "ok", glyph: "✓", label: "intent", summary: `Exact intent binding created · ${justification}${suffix(subject)}`, expandedByDefault: false }
     }
     case "intent.binding_revoked":
-      return { kind: "fail", glyph: "×", label: "intent revoked", summary: `Intent binding revoked${suffix(reason ?? subject)}`, expandedByDefault: true }
+      return { kind: "fail", glyph: "×", label: "intent revoked", summary: `Intent binding revoked${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
     case "intent.compatibility_mode":
-      return { kind: "fail", glyph: "!", label: "intent degraded", summary: `Intent enforcement is LEGACY_COMPAT${suffix(reason ?? subject)}`, expandedByDefault: true }
+      return { kind: "fail", glyph: "!", label: "intent degraded", summary: `Intent enforcement is LEGACY_COMPAT${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
     case "authorization.requested":
       return { kind: "inspect", glyph: "◇", label: "authorization", summary: `Authorization requested${suffix(subject)}`, expandedByDefault: false }
     case "authorization.allowed":
       return { kind: "ok", glyph: "✓", label: "authorized", summary: `Authorization allowed${suffix(subject)}`, expandedByDefault: false }
     case "authorization.denied":
-      return { kind: "fail", glyph: "✗", label: "denied", summary: `Authorization denied${suffix(reason ?? subject ?? "reason unavailable")}`, expandedByDefault: true }
+      return { kind: "fail", glyph: "✗", label: "denied", summary: `Authorization denied${suffix(reason ?? subject ?? "reason unavailable")}`, expandedByDefault: true, breakthrough: true }
     case "authorization.approval_required":
       return { kind: "approve", glyph: "◤", label: "approval required", summary: `Approval required${suffix(reason ?? subject)}`, expandedByDefault: true }
     case "authorization.stale":
-      return { kind: "fail", glyph: "!", label: "stale decision", summary: `Authorization became stale${suffix(reason ?? subject)}`, expandedByDefault: true }
+      return { kind: "fail", glyph: "!", label: "stale decision", summary: `Authorization became stale${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
     case "authorization.executed":
       return { kind: "ok", glyph: "✓", label: "executed", summary: `Authorized effect executed${suffix(subject)}`, expandedByDefault: false }
     case "authorization.execution_failed":
-      return { kind: "fail", glyph: "✗", label: "execution failed", summary: `Authorized effect failed${suffix(reason ?? subject)}`, expandedByDefault: true }
+      return { kind: "fail", glyph: "✗", label: "execution failed", summary: `Authorized effect failed${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
     case "capability.created":
       return { kind: "ok", glyph: "+", label: "capability", summary: `Capability created${suffix(subject)}`, expandedByDefault: false }
     case "capability.revoked":
-      return { kind: "fail", glyph: "×", label: "revoked", summary: `Capability revoked${suffix(reason ?? subject)}`, expandedByDefault: true }
+      return { kind: "fail", glyph: "×", label: "revoked", summary: `Capability revoked${suffix(reason ?? subject)}`, expandedByDefault: true, breakthrough: true }
     case "capability.exhausted":
-      return { kind: "fail", glyph: "×", label: "exhausted", summary: `Capability exhausted${suffix(subject)}`, expandedByDefault: true }
+      return { kind: "fail", glyph: "×", label: "exhausted", summary: `Capability exhausted${suffix(subject)}`, expandedByDefault: true, breakthrough: true }
     case "verification.recorded": {
       const outcome = firstText(payload.outcome) ?? "recorded"
       const verification = firstText(payload.verification) ?? "verification"

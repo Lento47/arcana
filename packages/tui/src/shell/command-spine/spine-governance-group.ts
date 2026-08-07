@@ -15,7 +15,7 @@
 import type { SpineEntry } from "./spine-types"
 import { formatElapsedMs } from "./spine-types"
 
-const STANDALONE_PREFIXES = ["governance-proof:", "governance-trace:"]
+const STANDALONE_PREFIXES = ["governance-proof:", "governance-trace:", "proof-continuation:"]
 
 /** Merge consecutive governance event rows; proof/trace rows stay standalone. */
 export function groupGovernanceEntries(entries: readonly SpineEntry[]): SpineEntry[] {
@@ -31,7 +31,8 @@ export function groupGovernanceEntries(entries: readonly SpineEntry[]): SpineEnt
   for (const entry of entries) {
     const isGovernance = entry.source?.kind === "governance"
     const isStandalone =
-      isGovernance && STANDALONE_PREFIXES.some((prefix) => entry.id.startsWith(prefix))
+      isGovernance &&
+      (STANDALONE_PREFIXES.some((prefix) => entry.id.startsWith(prefix)) || entry.breakthrough === true)
     if (!isGovernance || isStandalone) {
       flush()
       result.push(entry)
