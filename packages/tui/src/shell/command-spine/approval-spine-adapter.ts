@@ -15,9 +15,10 @@
 
 import type { ApprovalRecord, ApprovalState } from "@arcana/core/crypto/approval-lifecycle"
 import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
-import type { SpineEntry, SpineKind, StatusTone } from "./spine-types"
+import type { SpineApprovalSnapshot, SpineEntry, SpineKind, StatusTone } from "./spine-types"
 import { SPINE_GLYPH } from "./spine-types"
 import { Locale } from "../../util/locale"
+import { shortHash } from "./approval-snapshot"
 
 // ─── Approval → SpineEntry ──────────────────────────────────────────
 
@@ -54,7 +55,10 @@ const APPROVAL_STATE_LABEL: Record<ApprovalState, string> = {
 /**
  * Convert an ApprovalRecord to a SpineEntry for rendering.
  */
-export function approvalToSpineEntry(approval: ApprovalRecord): SpineEntry {
+export function approvalToSpineEntry(
+  approval: ApprovalRecord,
+  snapshot?: SpineApprovalSnapshot,
+): SpineEntry {
   const kind = APPROVAL_STATE_KIND[approval.state]
   const tone = APPROVAL_STATE_TONE[approval.state]
   const label = APPROVAL_STATE_LABEL[approval.state]
@@ -67,11 +71,13 @@ export function approvalToSpineEntry(approval: ApprovalRecord): SpineEntry {
     label,
     actor: approval.approvedBy ?? "operator",
     glyph: approvalGlyph(approval.state),
-    summary: approvalSummary(approval),
-    body: approvalBody(approval),
+    summary: approvalSummary(approval, snapshot),
+    body: approvalBody(approval, snapshot),
     bodyLabel: "approval gate",
     collapsible: true,
     expandedByDefault: approval.state === "PENDING",
+    breakthrough: approval.state === "INVALIDATED",
+    approval: snapshot,
     source: {
       messageID: approval.approvalId,
       kind: "approve",
@@ -92,11 +98,11 @@ function approvalGlyph(state: ApprovalState): string {
   }
 }
 
-function approvalSummary(approval: ApprovalRecord): string {
-  const action = approval.requestHash.slice(0, 8)
+function approvalSummary(approval: ApprovalRecord, snapshot?: SpineApprovalSnapshot): string {
+  const action = snapshot?.tool ?? shortHash(approval.requestHash)
   switch (approval.state) {
     case "PENDING":
-      return `${action} · exact request required`
+      return `approval required · ${action}`
     case "APPROVED":
       return `approved once · operator ${approval.approvedBy ?? "unknown"}`
     case "DENIED":
@@ -114,7 +120,7 @@ function approvalSummary(approval: ApprovalRecord): string {
   }
 }
 
-function approvalBody(approval: ApprovalRecord): string {
+function approvalBody(approval: ApprovalRecord, snapshot?: SpineApprovalSnapshot): string {
   // T9: truncate by display width (n + 1 = n cols + the "…" glyph) so CJK
   // approval bodies don't overflow the receipt row.
   const short = (s: string, n = 12) => Locale.truncate(s, n + 1)
@@ -124,10 +130,23 @@ function approvalBody(approval: ApprovalRecord): string {
     `State: ${approval.state}`,
     `Session: ${short(approval.sessionId, 12)}`,
     `Workspace: ${short(approval.workspaceId, 12)}`,
-    `Request: ${short(approval.requestHash, 16)}`,
+    `Request: ${approval.requestHash}`,
     `Contract: ${String(approval.contractRevision)}`,
     `Expires: ${approval.expiresAt}`,
   ]
+
+  if (snapshot) {
+    if (snapshot.tool) lines.push(`Tool: ${snapshot.tool}`)
+    if (snapshot.action) lines.push(`Action: ${snapshot.action}`)
+    if (snapshot.capability) lines.push(`Capability: ${snapshot.capability}`)
+    if (snapshot.principal) lines.push(`Principal: ${snapshot.principal}`)
+    if (snapshot.policy) lines.push(`Policy: ${snapshot.policy}`)
+    if (snapshot.change) lines.push(`Change: ${snapshot.change}`)
+    if (snapshot.route) lines.push(`Route: ${snapshot.route}`)
+    if (snapshot.risk) lines.push(`Risk: ${snapshot.risk}`)
+    if (snapshot.executionId) lines.push(`Execution: ${snapshot.executionId}`)
+    if (!snapshot.available) lines.push("Snapshot: unavailable — fail-closed")
+  }
 
   if (approval.approvedBy) {
     lines.push(`Operator: ${approval.approvedBy}`)
@@ -195,11 +214,14 @@ export function approvalActionBindingsEnabled(input: {
   gatesOpen: boolean
   submitting: boolean
   focusedAffordances: readonly AuthorityAffordance[]
+  /** PR6: authority actions are disabled while governance evidence is unhealthy. */
+  governanceHealthy?: boolean
 }): boolean {
   return (
     !input.composerFocused &&
     !input.gatesOpen &&
     !input.submitting &&
+    input.governanceHealthy !== false &&
     (approvalActionAvailable(input.focusedAffordances, "approve") ||
       approvalActionAvailable(input.focusedAffordances, "deny"))
   )
