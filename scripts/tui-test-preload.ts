@@ -1,6 +1,7 @@
 import { plugin as registerBunPlugin, type BunPlugin } from "bun"
 
-const pluginPath = import.meta.resolve("../packages/tui/node_modules/@opentui/solid/scripts/solid-plugin.js")
+const parent = import.meta.resolve("../packages/tui/src/app.tsx")
+const pluginPath = import.meta.resolve("@opentui/solid/scripts/solid-plugin.js", parent)
 
 const { createSolidTransformPlugin } = (await import(pluginPath)) as {
   createSolidTransformPlugin: () => BunPlugin
