@@ -3,39 +3,39 @@
     "documentClass": "current_state",
     "authority": "generated_from_repo",
     "generatedBy": "scripts/generate-current-state.ts",
-    "generatedAt": "2026-08-05T15:49:46.111Z",
-    "implementationCheckpoint": "b5d192a1b8324db3dca196f16e1c0fd067da6778",
-    "verificationDate": "2026-08-05",
+    "generatedAt": "2026-08-07T04:22:00.767Z",
+    "implementationCheckpoint": "4e954e5a5da2684cb315dd6d65973857cbe3307e",
+    "verificationDate": "2026-08-07",
     "currentMilestone": "M1"
   },
-  "commit": "b5d192a1b8324db3dca196f16e1c0fd067da6778",
-  "verificationDate": "2026-08-05",
+  "commit": "4e954e5a5da2684cb315dd6d65973857cbe3307e",
+  "verificationDate": "2026-08-07",
   "currentMilestone": "M1",
   "branchAncestry": [
-    "4984d154 Merge pull request #80 from Lento47/feat/d7-deploy-runbook",
-    "5169a56b Merge pull request #79 from Lento47/docs/m1-product-surface-boundary",
-    "bb494fed docs(architecture): define M1 product surface boundary",
-    "a17f1b6a docs: deployment runbook + topology exercise (BLK-D-07)",
-    "dc400cb5 Merge pull request #78 from Lento47/feat/e5-cli-tui-bypass-suite",
-    "1c11bee1 test(cli): cross-surface bypass adversarial suite (BLK-CLI-05)",
-    "4c6b7eb9 Merge pull request #77 from Lento47/fix/manager-approval-state",
-    "704ad818 Merge pull request #76 from Lento47/feat/d7.1-fs-containment-engine",
-    "82433d95 Merge pull request #75 from Lento47/feat/e4-rust-proofs",
-    "d6a6bf10 Merge pull request #74 from Lento47/feat/docs-post-merge-reconcile",
-    "93d577ca fix(engine): use ApprovalRecord.state in manager governance status (BLK-CLI-05 follow-up)",
-    "011e0420 feat: wire engine read tool to SafeBoundedFileReader (BLK-D-02)",
-    "0c4ea261 feat(rust): RunProof surface + verifier parity (BLK-E-04)",
-    "3b4b1925 docs(blockers): reconcile registers to merged PR wave #60/#62-71",
-    "a2491be5 Merge pull request #73 from Lento47/feat/f11-ticketing-transport",
-    "4f2008bf feat(core): live ticketing transport adapters (Jira + webhook)",
-    "f757fa9f Merge pull request #72 from Lento47/feat/f12-telemetry-ingestion",
-    "7a269fa0 docs: mark F12 telemetry ingestion DONE with commit ea5b922f",
-    "52436443 feat: add engine telemetry ingestion adapter for F12",
-    "1cb05640 Merge pull request #71 from Lento47/feat/f1-tenant-http-isolation"
+    "4e954e5a Merge pull request #87 from Lento47/feat/audit-pr3-affordances",
+    "fc18e3da Merge pull request #89 from Lento47/refactor/ci-shared-setup-action",
+    "900fd07f Merge pull request #90 from Lento47/fix/perf-scoped-binary-glob",
+    "1a5e24e9 Merge pull request #91 from Lento47/refactor/ci-exit-probe-shell-safety",
+    "f460c419 feat: runtime authority affordances per ADR-003",
+    "96911a99 refactor(ci): harden typecheck fingerprint cleanup",
+    "20258cde refactor(ci): harden exit-code probe shell handling",
+    "c97955f4 fix(perf): discover scoped engine binaries recursively",
+    "05dbfe98 fix(ci): checkout before invoking local setup action",
+    "b35b2fba fix(ci): require checkout before local setup action",
+    "791a2529 refactor(ci): reuse shared setup action",
+    "e4f31120 refactor(ci): add shared Arcana setup action",
+    "3a271c0a Merge pull request #83 from Lento47/agent/reuse-json-option-helper",
+    "f78f8bc2 Merge pull request #88 from Lento47/fix/ci-failure-isolation",
+    "64ef99a2 Merge pull request #86 from Lento47/feat/audit-pr2-exact-request",
+    "3a8241b5 Merge pull request #85 from Lento47/feat/audit-pr1-truth",
+    "c1d5b7dd Merge pull request #84 from Lento47/feat/audit-pr4-contract-vocab",
+    "9403a73a fix(ci): isolate enterprise build and report test failures accurately",
+    "2f989ec2 fix: detail endpoint uses v2 ApprovalNotFoundError, not legacy component",
+    "59cdfda0 fix(cli): preserve yargs types in json option builder"
   ],
   "testTotals": {
     "source": "mixed",
-    "summaryFile": "docs\\evidence\\full-suite-fresh-2026-08-05.log",
+    "summaryFile": "docs\\evidence\\freeze-pr7-test-totals-summary.log",
     "documentedAt": "2026-08-02/03 (docs/STATUS.md Test checkpoint table)",
     "suites": {
       "TUI suite": {
@@ -61,7 +61,7 @@
         "evidence": "1465 pass / 7 skip / 0 fail (1,472 tests, 175 files — clean rerun 2026-08-02 incl. enterprise cores, delta bundles, revocation hostile fixtures, containment fixtures)",
         "source": "documented",
         "freshAttempt": {
-          "pass": 1564,
+          "pass": 1590,
           "skip": 7,
           "fail": 1,
           "exitCode": 1
@@ -76,10 +76,10 @@
         "evidence": "2026-08-02 baseline rerun: 4250 pass / 33 fail / 1 skip (4358 tests). All 33 classified and fixed as harness/environment issues: 30 CLI subprocess tests spawned bun by name while it is not on PATH (fixed: process.execPat",
         "source": "documented",
         "freshAttempt": {
-          "pass": 4249,
+          "pass": 4369,
           "skip": 74,
           "todo": 1,
-          "fail": 109,
+          "fail": 3,
           "exitCode": 1
         }
       },
@@ -89,9 +89,11 @@
         "source": "fresh_run"
       },
       "SDK JS suite": {
-        "pass": 37,
+        "pass": 34,
+        "skip": 0,
         "fail": 0,
-        "source": "fresh_run"
+        "evidence": "34 pass / 0 fail (2026-08-02, full `src` run incl. enterprise client, adapters, vectors, SSE)",
+        "source": "documented"
       },
       "Conformance runner": {
         "note": "non-numeric row in the STATUS.md test table",
@@ -110,10 +112,10 @@
       }
     },
     "failures": [
-      "Core suite (exit=1)",
-      "Engine suite (exit=1)"
+      "Engine suite (exit=1)",
+      "Core suite (exit=1)"
     ],
-    "note": "Suites with a clean fresh run (exit 0) use source: fresh_run; suites whose fresh run was not clean or that were not part of the fresh run retain source: documented with a freshAttempt record where one exists. Non-zero exit suites: Core suite (exit=1), Engine suite (exit=1) — see summaryFile for the failing test details. No numbers were invented."
+    "note": "Suites with a clean fresh run (exit 0) use source: fresh_run; suites whose fresh run was not clean or that were not part of the fresh run retain source: documented with a freshAttempt record where one exists. Non-zero exit suites: Engine suite (exit=1), Core suite (exit=1) — see summaryFile for the failing test details. No numbers were invented."
   },
   "contractRevisions": {
     "approvalApi": {
@@ -211,6 +213,10 @@
       {
         "file": "contracts.yml",
         "name": "Contract guards"
+      },
+      {
+        "file": "freeze-evidence.yml",
+        "name": "Freeze evidence"
       },
       {
         "file": "release.yml",

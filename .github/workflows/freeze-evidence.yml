@@ -1,0 +1,179 @@
+name: Freeze evidence
+
+# Release-freeze evidence gate for phase-d-implementation:
+#   - typecheck the four freeze-relevant packages (engine, core, tui, enterprise)
+#   - run the full engine test suite at the exact commit
+#   - reconcile docs/CURRENT-STATE.json's testTotals section with the measured
+#     engine numbers and commit them back (push made by GITHUB_TOKEN does not
+#     re-trigger workflows, so this cannot loop).
+#
+# Modeled on ci.yml / status-authority.yml. The Status authority guard keeps
+# enforcing implementationCheckpoint == branch HEAD; this workflow only
+# updates the testTotals section, never the checkpoint.
+on:
+  push:
+    branches:
+      - phase-d-implementation
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: freeze-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  typecheck:
+    name: Typecheck (engine, core, tui, enterprise)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Arcana
+        uses: ./.github/actions/setup-arcana
+
+      - name: Typecheck engine
+        run: |
+          cd packages/engine
+          bun run typecheck
+
+      - name: Typecheck core
+        run: |
+          cd packages/core
+          bun run typecheck
+
+      - name: Typecheck tui
+        run: |
+          cd packages/tui
+          bun run typecheck
+
+      - name: Typecheck enterprise
+        run: |
+          cd packages/enterprise
+          bun run typecheck
+
+  engine-tests:
+    name: Full engine suite at exact commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Arcana
+        uses: ./.github/actions/setup-arcana
+
+      - name: Run full engine suite
+        id: engine
+        run: |
+          set +e
+          cd packages/engine
+          bun test --timeout 30000 2>&1 | tee engine-test.log
+          status=${PIPESTATUS[0]}
+          echo "exit=$status" >> "$GITHUB_OUTPUT"
+          tail -n 12 engine-test.log
+          exit "$status"
+
+      - name: Upload engine test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-test-log-${{ github.sha }}
+          path: packages/engine/engine-test.log
+          retention-days: 90
+
+  reconcile-current-state:
+    name: Reconcile CURRENT-STATE.json testTotals
+    runs-on: ubuntu-24.04
+    needs: [typecheck, engine-tests]
+    if: always()
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download engine test log
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          name: engine-test-log-${{ github.sha }}
+          path: engine-log
+
+      - name: Reconcile testTotals from measured engine run
+        id: reconcile
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Engine log may be missing when the test job was skipped entirely.
+          LOG="engine-log/engine-test.log"
+          if [ ! -f "$LOG" ]; then
+            echo "::warning::No engine test log found; leaving CURRENT-STATE.json unchanged."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          node <<'NODE'
+          const fs = require("node:fs")
+          const log = fs.readFileSync("engine-log/engine-test.log", "utf8").split(/\r?\n/)
+          const tail = log.slice(-80)
+          const nums = {}
+          for (const line of tail) {
+            const m = line.match(/^\s*(\d+)\s+(pass|fail|skip|todo)\s*$/)
+            if (m) nums[m[2]] = Number(m[1])
+          }
+          const ran = tail.map((l) => l.match(/^Ran (\d+) tests/)).filter(Boolean).pop()
+          if (nums.pass === undefined || nums.fail === undefined) {
+            throw new Error(`could not parse bun summary from engine log tail:\n${tail.slice(-12).join("\n")}`)
+          }
+
+          const statePath = "docs/CURRENT-STATE.json"
+          const state = JSON.parse(fs.readFileSync(statePath, "utf8"))
+          state.testTotals = state.testTotals ?? {}
+          state.testTotals.source = "fresh_run_ci"
+          state.testTotals.summaryFile = "docs/evidence/ci-engine-tests.log"
+          state.testTotals.documentedAt = new Date().toISOString()
+          state.testTotals.suites = state.testTotals.suites ?? {}
+          state.testTotals.suites["Engine suite"] = {
+            pass: nums.pass,
+            skip: nums.skip ?? 0,
+            ...(nums.todo !== undefined ? { todo: nums.todo } : {}),
+            fail: nums.fail,
+            ...(ran ? { tests: Number(ran[1]) } : {}),
+            source: "fresh_run_ci",
+            evidence: `freeze-evidence workflow at ${process.env.GITHUB_SHA} (full engine suite, bun test --timeout 30000)`,
+          }
+          state.testTotals.failures =
+            nums.fail > 0 ? [`Engine suite (exit=1, ${nums.fail} failures at ${process.env.GITHUB_SHA})`] : []
+          fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n")
+          console.log(`reconciled Engine suite: ${nums.pass} pass / ${nums.skip ?? 0} skip / ${nums.fail} fail`)
+          NODE
+
+          cp engine-log/engine-test.log docs/evidence/ci-engine-tests.log
+          if git diff --quiet -- docs/CURRENT-STATE.json docs/evidence/ci-engine-tests.log; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit reconciled testTotals
+        if: steps.reconcile.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add docs/CURRENT-STATE.json docs/evidence/ci-engine-tests.log
+          git commit -m "chore(ci): reconcile CURRENT-STATE testTotals at $GITHUB_SHA"
+          git push origin HEAD:phase-d-implementation
+          echo "Pushed reconciled testTotals at $GITHUB_SHA"
