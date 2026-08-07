@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { createRequire } from "node:module"
 import { loadConfig } from "../../config.js"
 import { currentDir } from "../../util/path.js"
+import { outputJson, isJsonMode, jsonOption } from "../json-output.js"
 
 const require = createRequire(import.meta.url)
 
@@ -109,12 +110,21 @@ export const DoctorCommand: CommandModule = {
       type: "boolean",
       default: false,
       describe: "include web app checks (packages/enterprise, vite, port, build)",
+    })
+    .option("json", {
+      type: "boolean",
+      default: false,
+      describe: "output machine-readable JSON to stdout",
     }),
   async handler(args) {
     const checks = await runBaseChecks()
     const webFlag = Boolean((args as { web?: unknown }).web)
     if (webFlag) {
       checks.push(...runWebChecks())
+    }
+    if (isJsonMode(args)) {
+      outputJson(checks.map((c) => ({ label: c.label, ok: c.ok, detail: c.detail })))
+      return
     }
     printChecks(webFlag ? "--web " : "", checks)
   },
