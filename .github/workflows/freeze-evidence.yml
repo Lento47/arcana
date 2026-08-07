@@ -140,7 +140,7 @@ jobs:
           const statePath = "docs/CURRENT-STATE.json"
           const state = JSON.parse(fs.readFileSync(statePath, "utf8"))
           state.testTotals = state.testTotals ?? {}
-          state.testTotals.source = "fresh_run_ci"
+          state.testTotals.source = "mixed"
           state.testTotals.summaryFile = "docs/evidence/ci-engine-tests.log"
           state.testTotals.documentedAt = new Date().toISOString()
           state.testTotals.suites = state.testTotals.suites ?? {}
@@ -155,6 +155,12 @@ jobs:
           }
           state.testTotals.failures =
             nums.fail > 0 ? [`Engine suite (exit=1, ${nums.fail} failures at ${process.env.GITHUB_SHA})`] : []
+          state.testTotals.note =
+            "Engine suite totals were refreshed from freeze-evidence CI; all other suite entries retain their existing provenance. " +
+            (nums.fail > 0
+              ? `Engine suite recorded ${nums.fail} failing tests at ${process.env.GITHUB_SHA}; see summaryFile for details. `
+              : "Engine suite completed without test failures. ") +
+            "No numbers were invented."
           fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n")
           console.log(`reconciled Engine suite: ${nums.pass} pass / ${nums.skip ?? 0} skip / ${nums.fail} fail`)
           NODE
