@@ -7,7 +7,7 @@ import { useThinkingMode } from "../../context/thinking"
 import { useSync } from "../../context/sync"
 import type { ShellProps } from "../types"
 import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
-import { spineProseWidth, spineGutterDigits, spineOuterPadding, type SpineEntry } from "./spine-types"
+import { spineProseWidth, spineGutterDigits, spineOuterPadding, type SpineApprovalSnapshot, type SpineBraidChild, type SpineEntry } from "./spine-types"
 import { shouldShowScrollButton } from "../../util/geometry"
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
 import { SpineHeader } from "./spine-header"
@@ -20,7 +20,6 @@ import { PermissionPrompt } from "../../routes/session/permission"
 import { QuestionPrompt } from "../../routes/session/question"
 import { SubagentFooter } from "../../routes/session/subagent-footer"
 import { DialogMessage } from "../../routes/session/dialog-message"
-import { ApprovalInspector } from "../../routes/session/approval-inspector"
 import { PermissionInspector } from "../../routes/session/permission-inspector"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { ARCANA_BASE_MODE, useBindings } from "../../keymap"
@@ -29,9 +28,11 @@ import { useClipboard } from "../../context/clipboard"
 import { useToast } from "../../ui/toast"
 import { useDialog } from "../../ui/dialog"
 import { useRoute } from "../../context/route"
+import { getLastSseEventMeta, SSE_SILENT_DEATH_MS } from "../../context/sdk"
+import { streamState } from "../../context/stream-state"
 import { canToggleSpineEntry, nextSpineFocusID, navigableSpineEntries } from "./spine-navigation"
 import { spineEntryCopyText } from "./spine-clipboard"
-import { spineEntryDetailMessageID, spineEntryDiffMessageID, spineEntrySessionID } from "./spine-details"
+import { spineEntryDetailMessageID, spineEntrySessionID } from "./spine-details"
 import {
   approvalIdFromEntryID,
   approvalActionBindingsEnabled as approvalActionBindingsEnabledPolicy,
@@ -42,17 +43,20 @@ import {
   isApprovalTerminal,
 } from "./approval-spine-adapter"
 import { createApprovalShellController, type ApprovalShellController, type ApprovalCommandInput } from "./approval-shell-controller"
-import type { ApprovalSnapshotDetail } from "./approval-http-bridge"
 import { createDedupeKey, dedupeKeyToString, compareOrderingKeys, createOrderingKey } from "./spine-ordering"
 import {
   governanceProofToSpineEntry,
   governanceTraceToSpineEntry,
   productionInputToSpineEntry,
 } from "./production-spine-input"
+import { resolveApprovalSnapshot, snapshotFromDetail } from "./approval-snapshot"
+import { attachProofContinuations } from "./spine-proof-attach"
+import { buildSubagentBraid } from "./spine-braid.ts"
+import { buildTrustStatus, eventGapFromTrace } from "./spine-trust"
+import { SpineInspector } from "./spine-inspector.tsx"
 import { groupGovernanceEntries } from "./spine-governance-group"
 import {
   applyViewFilter,
-  nextSpineViewFilter,
   spineFilterLabel,
   type SpineViewFilter,
 } from "./spine-view-filter"
@@ -163,7 +167,6 @@ export function CommandSpineShell(props: ShellProps) {
   // pending approval. Declared before any eager memo reads it (a later
   // declaration would be in the TDZ during component setup).
   const [viewFilter, setViewFilter] = createSignal<SpineViewFilter>("all")
-  const cycleViewFilter = () => setViewFilter((current) => nextSpineViewFilter(current))
   const refreshScrollButton = () => {
     const s = scroll
     if (!s || s.isDestroyed) return
@@ -227,6 +230,16 @@ export function CommandSpineShell(props: ShellProps) {
   const affordancesForApproval = (approval: { approvalId: string }): readonly AuthorityAffordance[] =>
     approvalAffordances().get(approval.approvalId) ?? []
 
+  // PR6: exact-request snapshots correlated from governance events.
+  const approvalSnapshots = createMemo(() => {
+    const events = props.governance?.() ?? []
+    const map = new Map<string, ReturnType<typeof resolveApprovalSnapshot>>()
+    for (const approval of approvals()) {
+      map.set(approval.approvalId, resolveApprovalSnapshot(approval, events))
+    }
+    return map
+  })
+
   // Approval entries derived from durable records with deduplication
   const approvalEntries = createMemo(() => {
     const seen = new Set<string>()
@@ -238,7 +251,7 @@ export function CommandSpineShell(props: ShellProps) {
       }))
       if (seen.has(key)) continue
       seen.add(key)
-      result.push(approvalToSpineEntry(approval))
+      result.push(approvalToSpineEntry(approval, approvalSnapshots().get(approval.approvalId)))
     }
     return result
   })
@@ -313,12 +326,40 @@ export function CommandSpineShell(props: ShellProps) {
     return merged
   })
 
+  // PR6: proof continuation pipeline. Executed-effect events from the
+  // governance projection are attached directly beneath the matching tool
+  // row (normalized command equality); unmatched effects stay as standalone
+  // proof rows. Evidence counts come from real evidence.attached events.
+  const executedEvents = createMemo(() =>
+    (props.governance?.() ?? []).filter(
+      (event) => event.type === "authorization.executed" || event.type === "authorization.execution_failed",
+    ),
+  )
+  const evidenceCountByRequestHash = createMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const event of props.governance?.() ?? []) {
+      if (event.type !== "evidence.attached") continue
+      const payload = (event.payload ?? {}) as Record<string, unknown>
+      const hash = typeof payload.requestHash === "string" ? payload.requestHash : undefined
+      if (hash) counts[hash] = (counts[hash] ?? 0) + 1
+    }
+    return counts
+  })
+  const proofAttachedEntries = createMemo(() =>
+    attachProofContinuations({
+      entries: allVisibleEntries(),
+      executedEvents: executedEvents(),
+      evidenceCountByRequestHash: evidenceCountByRequestHash(),
+      proof: props.governanceProof?.(),
+    }),
+  )
+
   // ─── TUI-2.1: turn grouping + progressive disclosure ────────────
   // Consecutive governance events collapse into one "governed" summary row
   // (children stay as the forensic inspector). Display indices are then
   // assigned to the collapsed top-level rows, so the gutter is real and
   // monotonic — never a repeated "99" cap.
-  const groupedVisibleEntries = createMemo(() => groupGovernanceEntries(allVisibleEntries()))
+  const groupedVisibleEntries = createMemo(() => groupGovernanceEntries(proofAttachedEntries()))
   const displayRows = createMemo(() => {
     let next = 1
     return groupedVisibleEntries().map((entry) => {
@@ -328,6 +369,31 @@ export function CommandSpineShell(props: ShellProps) {
       return withIndex
     })
   })
+
+  // PR6: subagent braids — isolated child sessions render as branches under
+  // their agent row. Each agent entry carries the child session's real
+  // status/activity derived from sync data (pid is not exposed by the API).
+  const braidBySessionID = createMemo(() => {
+    const map = new Map<string, SpineBraidChild[]>()
+    const children = sync.data.session.filter((s) => s.parentID === props.sessionID)
+    if (!children.length) return map
+    const braid = buildSubagentBraid({
+      sessions: children,
+      statusBySessionID: sync.data.session_status,
+      messagesBySessionID: sync.data.message,
+      partsByMessageID: sync.data.part,
+    })
+    for (const child of braid) map.set(child.sessionID, [child])
+    return map
+  })
+  const braidedRows = createMemo(() =>
+    displayRows().map((entry) => {
+      const sid = entry.source?.sessionID
+      const braid = sid ? braidBySessionID().get(sid) : undefined
+      if (!braid?.length || entry.braid) return entry
+      return { ...entry, braid }
+    }),
+  )
   // Gutter width grows with the session (2-col minimum, 3+ for 100+ rows).
   const gutterWidth = createMemo(() =>
     spineGutterDigits(displayRows().reduce((max, entry) => Math.max(max, entry.index), 0)),
@@ -337,7 +403,7 @@ export function CommandSpineShell(props: ShellProps) {
   const thinkWidth = createMemo(() => spineProseWidth(viewportWidth(), layout(), "think", gutterWidth()))
   // @deprecated — kept for backward compat with SpineEntry prop
   const thinkContentWidth = createMemo(() => thinkWidth())
-  const filteredRows = createMemo(() => applyViewFilter(displayRows(), viewFilter()))
+  const filteredRows = createMemo(() => applyViewFilter(braidedRows(), viewFilter()))
 
   // Controller: use provided or create default no-op
   const controller = createMemo(() => props.approvalController)
@@ -346,13 +412,40 @@ export function CommandSpineShell(props: ShellProps) {
   const activeSessionId = createMemo(() => props.activeSessionId?.() ?? props.sessionID)
   const activeWorkspaceId = createMemo(() => props.activeWorkspaceId?.() ?? "")
 
+  // PR6: trust-first header state. Real runtime sources: sync bootstrap
+  // status + SSE liveness (connection), session governance trace + RunProof
+  // snapshot (evidence), durable approval records (pending count).
+  const trust = createMemo(() => {
+    const trace = props.governanceTrace?.()
+    const proof = props.governanceProof?.()
+    const sse = getLastSseEventMeta()
+    const streamActive =
+      streamState.lastReceived > 0 || (sse.at > 0 && Date.now() - sse.at < SSE_SILENT_DEATH_MS)
+    const pendingApprovals = approvals().filter(
+      (a) => a.state === "PENDING" && a.sessionId === activeSessionId(),
+    ).length
+    return buildTrustStatus({
+      syncStatus: sync.data.status,
+      streamActive,
+      trace: trace?.status,
+      integrity: proof?.integrityStatus,
+      proofLevel: proof?.proofLevel,
+      pendingApprovals,
+      eventGap: eventGapFromTrace({
+        trace: trace?.status,
+        expectedCriticalEvents: Number(trace?.expectedCriticalEvents),
+        recordedCriticalEvents: Number(trace?.recordedCriticalEvents),
+      }),
+    })
+  })
+
   // Approval-specific ephemeral state
   const [approvalSubmitting, setApprovalSubmitting] = createSignal(false)
   const [inspectorApprovalId, setInspectorApprovalId] = createSignal<string | undefined>()
   // Audit PR-2: verified immutable request snapshot for the open inspector.
   // Additive state — the inspector still renders hash-only metadata when the
   // snapshot is unavailable (no loader, loading, missing, or transport error).
-  const [inspectorSnapshot, setInspectorSnapshot] = createSignal<ApprovalSnapshotDetail | undefined>()
+  const [inspectorSnapshot, setInspectorSnapshot] = createSignal<SpineApprovalSnapshot | undefined>()
   const [inspectorSnapshotStatus, setInspectorSnapshotStatus] = createSignal<
     "loading" | "ready" | "missing" | "error" | undefined
   >()
@@ -521,29 +614,6 @@ export function CommandSpineShell(props: ShellProps) {
 
     dialog.replace(() => <DialogMessage messageID={messageID} sessionID={props.sessionID} setPrompt={props.setPrompt} />)
   }
-  const openFocusedEntryDiff = () => {
-    const focused = focusedEntryID()
-    const entry = focused ? filteredRows().find((item) => item.id === focused) : undefined
-        const messageID = spineEntryDiffMessageID(entry)
-    if (!messageID) {
-      const first = navigableEntries()[0]
-      if (!entry && first) focusEntry(first, true)
-      toast.show({ message: "No full diff is attached to this spine entry", variant: "info" })
-      return
-    }
-
-    dialog.clear()
-    route.navigate({
-      type: "plugin",
-      id: "diff",
-      data: {
-        mode: "last-turn",
-        sessionID: props.sessionID,
-        messageID,
-        returnRoute: { name: "session", params: { sessionID: props.sessionID } },
-      },
-    })
-  }
   const openFocusedEntrySession = () => {
     const focused = focusedEntryID()
     const entry = focused ? filteredRows().find((item) => item.id === focused) : undefined
@@ -557,6 +627,72 @@ export function CommandSpineShell(props: ShellProps) {
 
     dialog.clear()
     route.navigate({ type: "session", sessionID })
+  }
+
+  // PR6: one universal [v] forensic command. The inspector adapts to the
+  // focused row (conversation/tool/approval/effect/proof/subagent/error).
+  const openUniversalInspector = (entryOverride?: SpineEntry) => {
+    const entry = entryOverride ?? resolveFocusedEntry()
+    if (!entry) {
+      toast.show({ message: "No spine entry to inspect", variant: "info" })
+      return
+    }
+    const approval = getApprovalForEntry(entry)
+    const messageID = entry.source?.messageID
+    const message = messageID ? props.messages().find((m) => m.id === messageID) : undefined
+    const parts = messageID ? props.getParts(messageID) : undefined
+    const childSessionID = entry.source?.sessionID
+    const childSession = childSessionID
+      ? sync.data.session.find((s) => s.id === childSessionID)
+      : undefined
+    blurComposer()
+    dialog.replace(() => (
+      <SpineInspector
+        entry={entry}
+        approval={approval}
+        snapshot={approval ? approvalSnapshots().get(approval.approvalId) : undefined}
+        proof={props.governanceProof?.()}
+        message={message}
+        parts={parts}
+        subagent={
+          childSession
+            ? {
+                id: childSession.id,
+                title: childSession.title,
+                agent: childSession.agent,
+                directory: childSession.directory,
+              }
+            : undefined
+        }
+      />
+    ))
+  }
+
+  const inspectFocusedProof = () => {
+    const entry = resolveFocusedEntry()
+    if (!entry) {
+      toast.show({ message: "No spine entry to inspect", variant: "info" })
+      return
+    }
+    if (!entry.proof && !entry.id.startsWith("governance-proof:") && !entry.id.startsWith("proof-continuation:")) {
+      toast.show({ message: "Focused row has no proof chain — v inspects the row context", variant: "info" })
+      return
+    }
+    openUniversalInspector(entry)
+  }
+
+  const replayFocusedEffect = () => {
+    const entry = resolveFocusedEntry()
+    if (!entry) {
+      toast.show({ message: "No spine entry to replay", variant: "info" })
+      return
+    }
+    // Fail-closed: the runtime exposes no effect-replay endpoint from the TUI.
+    // Automatic replay of an executed effect must never be synthesized.
+    toast.show({
+      message: "Replay unavailable — no replay API is exposed; reconcile manually from the proof row",
+      variant: "info",
+    })
   }
 
   createEffect(() => {
@@ -653,12 +789,12 @@ export function CommandSpineShell(props: ShellProps) {
       { key: "o", desc: "Open spine entry details", group: "Command Spine", cmd: openFocusedEntryDetails },
       {
         key: "v",
-        desc: "Inspect approval",
+        desc: "Inspect focused spine row (universal inspector)",
         group: "Command Spine",
         // Approval rows are handled by the priority-2 approval layer. This
         // fallback runs when no durable approval is focused: permission-gate
         // rows open the read-only permission inspector; everything else gets
-        // guidance (the generic details view is `o`).
+        // the universal row-adaptive inspector.
         cmd: () => {
           const gate = focusedGateRequest()
           if (gate) {
@@ -666,13 +802,24 @@ export function CommandSpineShell(props: ShellProps) {
             dialog.replace(() => <PermissionInspector request={gate} />)
             return
           }
-          toast.show({
-            message: "No approval to inspect — v inspects approvals; use o for entry details",
-            variant: "info",
-          })
+          openUniversalInspector()
         },
       },
-      { key: "d", desc: "Open focused spine diff", group: "Command Spine", cmd: openFocusedEntryDiff },
+      { key: "p", desc: "Inspect focused proof chain", group: "Command Spine", cmd: inspectFocusedProof },
+      {
+        key: "e",
+        desc: "Inspect evidence for focused proof/effect",
+        group: "Command Spine",
+        cmd: () => {
+          const entry = resolveFocusedEntry()
+          if (!entry) {
+            toast.show({ message: "No spine entry to inspect", variant: "info" })
+            return
+          }
+          openUniversalInspector(entry)
+        },
+      },
+      { key: "r", desc: "Replay focused effect (fail-closed)", group: "Command Spine", cmd: replayFocusedEffect },
       { key: "g", desc: "Go to related spine session", group: "Command Spine", cmd: openFocusedEntrySession },
       {
         key: "H",
@@ -697,10 +844,34 @@ export function CommandSpineShell(props: ShellProps) {
         },
       },
       {
-        key: "f",
-        desc: "Cycle view filter: all → conversation → tools → governance → proof",
+        key: "1",
+        desc: "View conversation",
         group: "Command Spine",
-        cmd: cycleViewFilter,
+        cmd: () => setViewFilter("conversation"),
+      },
+      {
+        key: "2",
+        desc: "View operations",
+        group: "Command Spine",
+        cmd: () => setViewFilter("tools"),
+      },
+      {
+        key: "3",
+        desc: "View authority",
+        group: "Command Spine",
+        cmd: () => setViewFilter("governance"),
+      },
+      {
+        key: "4",
+        desc: "View proof",
+        group: "Command Spine",
+        cmd: () => setViewFilter("proof"),
+      },
+      {
+        key: "0",
+        desc: "View everything",
+        group: "Command Spine",
+        cmd: () => setViewFilter("all"),
       },
     ],
   }))
@@ -716,6 +887,9 @@ export function CommandSpineShell(props: ShellProps) {
       gatesOpen: gatesOpen(),
       submitting: approvalSubmitting(),
       focusedAffordances: focusedApproval() ? affordancesForApproval(focusedApproval()!) : [],
+      // PR6: authority actions are disabled while governance evidence is
+      // unhealthy (trace gaps, invalid proof, disconnected stream).
+      governanceHealthy: trust().workspaceTrusted,
     })
 
   // Inspection is read-only: it must work for ANY focused approval, including
@@ -765,8 +939,8 @@ export function CommandSpineShell(props: ShellProps) {
         },
       },
       {
-        key: "d",
-        desc: "Deny approval",
+        key: "x,d",
+        desc: "Deny approval (x primary, d legacy)",
         group: "Approval",
         cmd: async () => {
           const approval = focusedApproval()
@@ -800,13 +974,12 @@ export function CommandSpineShell(props: ShellProps) {
         cmd: () => {
           const approval = focusedApproval()
           if (!approval || !canInspectApproval()) return
-          blurComposer()
-          setInspectorApprovalId(approval.approvalId)
           controller()?.inspect(approval.approvalId)
           // Audit PR-2: fetch the VERIFIED immutable request snapshot for the
           // record (additive read — the inspector shows hash-only metadata when
           // the engine has none). Guarded so a late resolution for a different
           // approval (opened then quickly replaced) never leaks into this one.
+          setInspectorApprovalId(approval.approvalId)
           setInspectorSnapshot(undefined)
           setInspectorSnapshotStatus("loading")
           const loader = props.approvalDetailLoader
@@ -815,7 +988,7 @@ export function CommandSpineShell(props: ShellProps) {
               (snapshot) => {
                 if (inspectorApprovalId() !== approval.approvalId) return
                 if (snapshot) {
-                  setInspectorSnapshot(snapshot)
+                  setInspectorSnapshot(snapshotFromDetail(snapshot, approvalSnapshots().get(approval.approvalId)))
                   setInspectorSnapshotStatus("ready")
                 } else {
                   setInspectorSnapshot(undefined)
@@ -833,12 +1006,16 @@ export function CommandSpineShell(props: ShellProps) {
           // truthful if the record transitions (CLAIMED/CONSUMED) while open.
           const liveApproval = () =>
             approvals().find((x) => x.approvalId === approval.approvalId) ?? approval
+          const entry = resolveFocusedEntry()
+          if (!entry) return
+          blurComposer()
           dialog.replace(
             () => (
-              <ApprovalInspector
+              <SpineInspector
+                entry={entry}
                 approval={liveApproval()}
-                snapshot={inspectorSnapshot}
-                snapshotStatus={inspectorSnapshotStatus}
+                snapshot={inspectorSnapshot() ?? approvalSnapshots().get(approval.approvalId)}
+                proof={props.governanceProof?.()}
               />
             ),
             () => {
@@ -950,7 +1127,7 @@ export function CommandSpineShell(props: ShellProps) {
         </box>
       )}>
       <box flexDirection="column" flexGrow={1} minHeight={0}>
-        <SpineHeader session={props.session} layout={layout()} segments={headerSegments()} />
+        <SpineHeader session={props.session} layout={layout()} segments={headerSegments()} trust={trust()} />
         <box position="relative" flexDirection="column" flexGrow={1}>
           <scrollbox
             ref={(r) => {
@@ -1033,7 +1210,7 @@ export function CommandSpineShell(props: ShellProps) {
         <Show when={viewFilter() !== "all"}>
           <box flexDirection="row" flexShrink={0} paddingLeft={spineOuterPadding(layout()) + 2}>
             <text fg={theme.spineDiffMuted}>
-              view: {spineFilterLabel(viewFilter())} · f cycles · security states always visible
+              view: {spineFilterLabel(viewFilter())} · 0-4 direct views · security states always visible
             </text>
           </box>
         </Show>

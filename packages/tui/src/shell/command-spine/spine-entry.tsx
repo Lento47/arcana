@@ -14,6 +14,10 @@ import { SpineChatCard } from "./spine-chat"
 import { SpineReport } from "./spine-report"
 import { SpineListArtifact } from "./spine-list-artifact"
 import { SpineListing } from "./spine-listing"
+import { SpineApprovalGate } from "./spine-approval-gate"
+import { SpineProof } from "./spine-proof"
+import { SpineBreakthrough } from "./spine-breakthrough"
+import { SpineBraid } from "./spine-braid.tsx"
 
 /**
  * S7: single source of truth for a row's expand/toggle affordances.
@@ -172,6 +176,10 @@ export function SpineEntry(props: {
   const hasListing = createMemo(() => !!entry().listing?.length)
   const hasToolBody = createMemo(() => {
     if (isChatProse() || isThink()) return false
+    // PR6: approval gates and proof continuations render their own canonical
+    // blocks; the raw text body stays in the inspector instead.
+    if (entry().approval && entry().kind === "approve") return false
+    if (entry().id.startsWith("proof-continuation:")) return false
     return !!entry().body?.trim() || hasListing()
   })
   const hasThinkBody = createMemo(() => isThink() && !!entry().body?.trim())
@@ -345,6 +353,31 @@ export function SpineEntry(props: {
             </box>
           </Show>
 
+          {/* PR6: security breakthrough rows visually interrupt the spine. */}
+          <Show when={entry().breakthrough}>
+            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0} flexShrink={1}>
+                <SpineBreakthrough entry={entry()} />
+              </box>
+            </box>
+          </Show>
+
+          {/* PR6: inline exact-request gate — full decision context inline. */}
+          <Show when={entry().approval && kind() === "approve" && bodyExpanded()}>
+            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0} flexShrink={1}>
+                <SpineApprovalGate
+                  entry={entry()}
+                  snapshot={entry().approval}
+                  layout={props.layout}
+                  focused={props.focused}
+                />
+              </box>
+            </box>
+          </Show>
+
           {/* Grok-style chat card: speaker chip + soft panel + full markdown.
               Tools stay on the compact header path above — never share this chrome.
               OpenTUI MarkdownRenderable keeps trailing blocks unstable while
@@ -389,6 +422,16 @@ export function SpineEntry(props: {
               <SpineRail layout={props.layout} active={props.focused} />
               <box flexGrow={1} minWidth={0}>
                 <SpineReceipt kind={kind()} receipt={entry().receipt!} layout={props.layout} />
+              </box>
+            </box>
+          </Show>
+
+          {/* PR6: proof continuation directly beneath the completed effect. */}
+          <Show when={entry().proof && !hasChildren()}>
+            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0} flexShrink={1}>
+                <SpineProof proof={entry().proof!} layout={props.layout} failed={kind() === "fail"} />
               </box>
             </box>
           </Show>
@@ -455,6 +498,17 @@ export function SpineEntry(props: {
                 onMouseUp={() => props.onNavigate?.(childSessionID()!)}
               >
                 <text>{`⤷ Open subagent ${childSessionID()!.slice(0,8)}`}</text>
+              </box>
+            </box>
+          </Show>
+
+          {/* PR6: subagent braids — isolated child sessions as spine branches. */}
+          <Show when={entry().braid?.length && bodyExpanded()}>
+            <box paddingTop={1} flexShrink={0} />
+            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+              <SpineRail layout={props.layout} active={props.focused} />
+              <box flexGrow={1} minWidth={0} flexShrink={1}>
+                <SpineBraid braid={entry().braid!} layout={props.layout} onNavigate={props.onNavigate} />
               </box>
             </box>
           </Show>
