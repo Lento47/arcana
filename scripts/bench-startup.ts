@@ -212,6 +212,16 @@ async function main() {
     }
   }
 
+  const failedRuns = results.filter((r) => r.exitCode !== 0)
+  if (failedRuns.length > 0) {
+    for (const r of failedRuns) {
+      process.stderr.write(`[bench] run ${r.runIndex}/${runs} failed with exit=${r.exitCode}\n`)
+      if (r.rawStderr) process.stderr.write(r.rawStderr)
+    }
+    process.exitCode = 1
+    return
+  }
+
   // Group markers by phase. For start/end pairs (e.g. resolveModelInfo_start/_end),
   // compute derived duration. For absolute-phase markers, use ts_raw (wall-clock
   // within the spawned process).
