@@ -1,10 +1,10 @@
 import { plugin as registerBunPlugin, type BunPlugin } from "bun"
 
 const parent = import.meta.resolve("../packages/tui/src/app.tsx")
-const pluginPath = import.meta.resolve("@opentui/solid/scripts/solid-plugin.js", parent)
+const pluginPath = import.meta.resolve("@opentui/solid/bun-plugin", parent)
 
-const { createSolidTransformPlugin } = (await import(pluginPath)) as {
-  createSolidTransformPlugin: () => BunPlugin
+const { default: solidPlugin } = (await import(pluginPath)) as {
+  default: BunPlugin
 }
 
 function sourcePath(path: string): string {
@@ -38,7 +38,7 @@ registerBunPlugin({
         return handler(args)
       }
 
-    createSolidTransformPlugin().setup({
+    solidPlugin.setup({
       ...build,
       onLoad(filter, handler) {
         return build.onLoad(filter, wrapHandler(handler))
