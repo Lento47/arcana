@@ -17,6 +17,7 @@ import { Process } from "@/util/process"
 import { errorMessage } from "@/util/error"
 import { text } from "node:stream/consumers"
 import { Effect, Option } from "effect"
+import { outputJson, isJsonMode, jsonOption } from "../json-output"
 
 type PluginAuth = NonNullable<Hooks["auth"]>
 
@@ -251,9 +252,30 @@ export const ProvidersListCommand = effectCmd({
   describe: "list providers and credentials",
   // Lists global credentials + provider env vars; no project instance needed.
   instance: false,
+  builder: jsonOption,
   handler: Effect.fn("Cli.providers.list")(function* (_args) {
     const authSvc = yield* Auth.Service
     const modelsDev = yield* ModelsDev.Service
+
+    if (isJsonMode(_args)) {
+      const authResults = Object.entries(yield* Effect.orDie(authSvc.all()))
+      const database = yield* modelsDev.get()
+      outputJson({
+        credentials: authResults.map(([providerID, result]) => ({
+          provider: providerID,
+          name: database[providerID]?.name || providerID,
+          type: result.type,
+        })),
+        environment: Object.entries(database)
+          .flatMap(([providerID, provider]) =>
+            provider.env.filter((envVar) => process.env[envVar]).map((envVar) => ({
+              provider: provider.name || providerID,
+              envVar,
+            })),
+          ),
+      })
+      return
+    }
 
     UI.empty()
     const authPath = path.join(Global.Path.data, "auth.json")

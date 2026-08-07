@@ -4,6 +4,29 @@ import { ModelsDev } from "@arcana/core/models-dev"
 import { effectCmd, fail } from "../effect-cmd"
 import { UI } from "../ui"
 import { ProviderV2 } from "@arcana/core/provider"
+import { outputJson, isJsonMode, jsonOption } from "../json-output"
+
+const SECRET_KEY_PATTERN = /api[-_]?key|secret|token|password|authorization|bearer/i
+
+/**
+ * Recursively redact credential-shaped fields before serializing model
+ * metadata to --json output (contract rule: no secrets in JSON).
+ */
+function redactSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSecrets)
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {}
+    for (const [key, child] of Object.entries(value)) {
+      if (SECRET_KEY_PATTERN.test(key)) {
+        out[key] = "[redacted]"
+      } else {
+        out[key] = redactSecrets(child)
+      }
+    }
+    return out
+  }
+  return value
+}
 
 export const ModelsCommand = effectCmd({
   command: "models [provider]",
@@ -22,6 +45,11 @@ export const ModelsCommand = effectCmd({
       .option("refresh", {
         describe: "refresh the models cache from models.dev",
         type: "boolean",
+      })
+      .option("json", {
+        describe: "output machine-readable JSON to stdout",
+        type: "boolean",
+        default: false,
       }),
   handler: Effect.fn("Cli.models")(function* (args) {
     const { Provider } = yield* Effect.promise(() => import("@/provider/provider"))
@@ -32,6 +60,15 @@ export const ModelsCommand = effectCmd({
 
     const provider = yield* Provider.Service
     const providers = yield* provider.list()
+
+    const jsonFor = (providerID: ProviderV2.ID, verbose?: boolean) => {
+      const p = providers[providerID]
+      const sorted = Object.entries(p.models).sort(([a], [b]) => a.localeCompare(b))
+      return sorted.map(([modelID, model]) => ({
+        id: modelID,
+        ...(verbose ? (redactSecrets(model) as object) : { name: model.name }),
+      }))
+    }
 
     const print = (providerID: ProviderV2.ID, verbose?: boolean) => {
       const p = providers[providerID]
@@ -49,6 +86,10 @@ export const ModelsCommand = effectCmd({
     if (args.provider) {
       const providerID = ProviderV2.ID.make(args.provider)
       if (!providers[providerID]) return yield* fail(`Provider not found: ${args.provider}`)
+      if (isJsonMode(args)) {
+        outputJson({ [args.provider]: jsonFor(providerID, args.verbose) })
+        return
+      }
       print(providerID, args.verbose)
       return
     }
@@ -60,6 +101,13 @@ export const ModelsCommand = effectCmd({
       if (!aIsOpencode && bIsOpencode) return 1
       return a.localeCompare(b)
     })
+
+    if (isJsonMode(args)) {
+      const out: Record<string, unknown> = {}
+      for (const providerID of ids) out[providerID] = jsonFor(ProviderV2.ID.make(providerID), args.verbose)
+      outputJson(out)
+      return
+    }
 
     for (const providerID of ids) print(ProviderV2.ID.make(providerID), args.verbose)
   }),
