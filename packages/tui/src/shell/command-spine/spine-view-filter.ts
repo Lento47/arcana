@@ -41,7 +41,7 @@ export function spineFilterLabel(filter: SpineViewFilter): string {
 
 /** Fail / approval-required rows are never hidden by a view filter. */
 export function isSecurityCritical(entry: SpineEntry): boolean {
-  return entry.kind === "fail" || entry.kind === "approve"
+  return entry.kind === "fail" || entry.kind === "approve" || entry.breakthrough === true
 }
 
 export function entryMatchesViewFilter(entry: SpineEntry, filter: SpineViewFilter): boolean {
