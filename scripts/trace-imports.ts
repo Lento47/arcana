@@ -134,11 +134,12 @@ console.log(
 if (errorMessage) {
   console.log(`\nEntry module error (partial results shown below):`);
   console.log(`  ${errorMessage}`);
+  process.exitCode = 1;
 }
 
 if (records.length === 0) {
   console.log(`\nNo module details available — require.cache is not accessible.`);
-  process.exit(0);
+  process.exit(errorMessage ? 1 : 0);
 }
 
 // Sort descending by firstSeenMs (modules that appeared latest are displayed
