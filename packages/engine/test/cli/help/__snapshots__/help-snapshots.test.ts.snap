@@ -104,6 +104,8 @@ Options:
       --agent                         agent to use                                          [string]
       --format                        format: default (formatted) or json (raw JSON events)
                                           [string] [choices: "default", "json"] [default: "default"]
+      --json                          shorthand for --format json (wins when both are provided)
+                                                                          [boolean] [default: false]
   -f, --file                          file(s) to attach to message                           [array]
       --title                         title for the session (uses truncated prompt if no value
                                       provided)                                             [string]
@@ -249,7 +251,8 @@ Options:
                                                                           [boolean] [default: false]
       --mdns-domain  custom domain name for mDNS service (default: arcana.local)
                                                                   [string] [default: "arcana.local"]
-      --cors         additional domains to allow for CORS                      [array] [default: []]"
+      --cors         additional domains to allow for CORS                      [array] [default: []]
+      --json         output machine-readable JSON to stdout               [boolean] [default: false]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode web --help 1`] = `
@@ -287,7 +290,8 @@ Options:
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
       --verbose     use more verbose model output (includes metadata like costs)           [boolean]
-      --refresh     refresh the models cache from models.dev                               [boolean]"
+      --refresh     refresh the models cache from models.dev                               [boolean]
+      --json        output machine-readable JSON to stdout                [boolean] [default: false]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode stats --help 1`] = `
@@ -507,7 +511,8 @@ Options:
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --json        output machine-readable JSON to stdout                [boolean] [default: false]"
 `;
 
 exports[`opencode CLI help-text snapshots every documented command emits stable help text: opencode providers login --help 1`] = `
@@ -589,6 +594,7 @@ Options:
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
   -n, --max-count   limit to N most recent sessions                                         [number]
+      --json        output machine-readable JSON to stdout                [boolean] [default: false]
       --format      output format             [string] [choices: "table", "json"] [default: "table"]"
 `;
 

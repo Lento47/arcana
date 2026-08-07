@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { AccountTransportError } from "../../src/account/schema"
-import { FormatError } from "../../src/cli/error"
+import { FormatError, isUserError } from "../../src/cli/error"
 import { UI } from "../../src/cli/ui"
+import { CliError } from "../../src/cli/effect-cmd"
 
 describe("cli.error", () => {
   test("formats legacy and tagged config errors the same way", () => {
@@ -91,5 +92,14 @@ describe("cli.error", () => {
 
   test("formats cancelled UI errors as empty output", () => {
     expect(FormatError(new UI.CancelledError())).toBe("")
+  })
+
+  test("isUserError classifies domain errors as user errors and defects as internal", () => {
+    expect(isUserError(new CliError({ message: "not found" }))).toBe(true)
+    expect(isUserError({ _tag: "ConfigInvalidError", message: "bad config" })).toBe(true)
+    expect(isUserError({ name: "ProviderModelNotFoundError", providerID: "x", modelID: "y" })).toBe(true)
+    expect(isUserError(new UI.CancelledError())).toBe(true)
+    expect(isUserError(new Error("unexpected defect"))).toBe(false)
+    expect(isUserError({ name: "SomeInternalError", data: {} })).toBe(false)
   })
 })
