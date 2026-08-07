@@ -62,15 +62,23 @@ Arcana Runtime
 └── Arcana Control
 ```
 
-- **Arcana Desktop** = local operator workstation. Formalized as a parallel
-  track; specification only, NOT implemented. Not required for Arcana 1.0.
+- **Arcana Desktop** = local approval and forensic companion (M1, per
+  ADR-004). It supervises the local runtime lifecycle; renders the same
+  canonical governance semantics; presents routed approvals, evidence,
+  proofs, restart recovery, and native notifications; and never becomes an
+  independent policy, approval, execution, or evidence authority. The minimal
+  M1 Desktop surface: runtime lifecycle, reconnect/resync, pending-approval
+  notification, exact-request inspection, approve/deny through the
+  authoritative runtime, proof inspection, restart recovery.
 - **Arcana Control** = remote enterprise governance plane (fleet, policy
   distribution, central approvals, remote revocation, compliance).
   **Service cores IMPLEMENTED and MOUNTED as `/api/enterprise/*` + SDK
   client (2026-08-02)**; operator console UI (TUI/web dashboard) pending;
   secure authenticated-principal binding unresolved (BLK-F-AUTH-01) — the
   mounted surface is not a production-ready boundary until that P0 closes.
-- **Arcana 1.0** = secure local runtime + CLI/TUI + one external adapter.
+- **Arcana 1.0 (M1)** = authoritative local runtime + CLI/TUI (primary AI
+  work surface) + Arcana Desktop (local approval and forensic companion) +
+  one certified external-agent integration, per ADR-004.
 
 Immediate roadmap:
 
@@ -94,7 +102,8 @@ immutable tag).
 
 Explicitly **outside** the active goal and NOT started by this sprint:
 
-- Arcana Desktop implementation (spec-only)
+- Arcana Desktop implementation (M1 companion per ADR-004; outside the
+  TUI-2.1 freeze sprint goal)
 - Node 1.0 work
 - Phase D expansion beyond the TUI-2.1 freeze prerequisites
 - New product features beyond TUI-2.1 polish
