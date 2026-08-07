@@ -6,6 +6,7 @@ import { useTheme } from "../../context/theme"
 import { useThinkingMode } from "../../context/thinking"
 import { useSync } from "../../context/sync"
 import type { ShellProps } from "../types"
+import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import { spineProseWidth, spineGutterDigits, spineOuterPadding, type SpineEntry } from "./spine-types"
 import { shouldShowScrollButton } from "../../util/geometry"
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
@@ -34,10 +35,10 @@ import { spineEntryDetailMessageID, spineEntryDiffMessageID, spineEntrySessionID
 import {
   approvalIdFromEntryID,
   approvalActionBindingsEnabled as approvalActionBindingsEnabledPolicy,
+  approvalActionAvailable,
   approvalEscapeEnabled as approvalEscapeEnabledPolicy,
   approvalInspectionAllowed,
   approvalToSpineEntry,
-  isApprovalActionable,
   isApprovalTerminal,
 } from "./approval-spine-adapter"
 import { createApprovalShellController, type ApprovalShellController, type ApprovalCommandInput } from "./approval-shell-controller"
@@ -220,6 +221,11 @@ export function CommandSpineShell(props: ShellProps) {
   // ─── TUI-2.1: Approval integration ──────────────────────────────
   // Reactive accessor for approval records — never destructure reactive props
   const approvals = createMemo(() => props.approvals?.() ?? [])
+  const approvalAffordances = createMemo(
+    () => props.approvalAffordances?.() ?? new Map<string, readonly AuthorityAffordance[]>(),
+  )
+  const affordancesForApproval = (approval: { approvalId: string }): readonly AuthorityAffordance[] =>
+    approvalAffordances().get(approval.approvalId) ?? []
 
   // Approval entries derived from durable records with deduplication
   const approvalEntries = createMemo(() => {
@@ -388,13 +394,14 @@ export function CommandSpineShell(props: ShellProps) {
   const canApprove = createMemo(() => {
     const approval = focusedApproval()
     if (!approval) return false
-    if (!isApprovalActionable(approval)) return false
-    if (approval.sessionId !== activeSessionId()) return false
-    if (approvalSubmitting()) return false
-    return true
+    return approvalActionAvailable(affordancesForApproval(approval), "approve")
   })
 
-  const canDeny = createMemo(() => canApprove())
+  const canDeny = createMemo(() => {
+    const approval = focusedApproval()
+    if (!approval) return false
+    return approvalActionAvailable(affordancesForApproval(approval), "deny")
+  })
 
   const canInspectApproval = createMemo(() => {
     const approval = focusedApproval()
@@ -708,7 +715,7 @@ export function CommandSpineShell(props: ShellProps) {
       composerFocused: composerFocused(),
       gatesOpen: gatesOpen(),
       submitting: approvalSubmitting(),
-      focusedApproval: focusedApproval(),
+      focusedAffordances: focusedApproval() ? affordancesForApproval(focusedApproval()!) : [],
     })
 
   // Inspection is read-only: it must work for ANY focused approval, including
@@ -863,7 +870,9 @@ export function CommandSpineShell(props: ShellProps) {
   // the approval keys (a/d/v) are unreachable exactly when they matter.
   const hasPendingApproval = createMemo(() =>
     approvals().some(
-      (a) => a.state === "PENDING" && a.sessionId === activeSessionId(),
+      (a) =>
+        approvalActionAvailable(affordancesForApproval(a), "approve") ||
+        approvalActionAvailable(affordancesForApproval(a), "deny"),
     ),
   )
 

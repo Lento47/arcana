@@ -118,6 +118,36 @@ describe("runtime API: /approvals contract conformance", () => {
     }),
   )
 
+  it.instance("GET /approvals/:id/affordances returns the runtime-derived read model", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const ws = yield* seedWorkspace(test.directory)
+      const seeded = yield* seedRecord(ws.directory, ws.sessionId)
+      yield* heartbeat(ws.directory)
+      const response = yield* requestInDirectory(
+        `/approvals/${seeded.approvalId}/affordances`,
+        ws.directory,
+      )
+      expect(response.status).toBe(200)
+      const body = (yield* json(response)) as Array<{
+        action: string
+        state: string
+        surface: string
+        expectedVersion?: number
+        destructive?: boolean
+      }>
+      const approve = body.find((item) => item.action === "approve")
+      expect(approve?.state).toBe("available")
+      expect(approve?.surface).toBe("DESKTOP")
+      expect(approve?.expectedVersion).toBe(fixture.version)
+      expect(approve?.destructive).toBe(false)
+      const revoke = body.find((item) => item.action === "revoke")
+      expect(revoke?.destructive).toBe(true)
+      const inspect = body.find((item) => item.action === "inspect")
+      expect(inspect?.state).toBe("available")
+    }),
+  )
+
   it.instance("POST /approvals/:id/approve transitions PENDING to APPROVED with the derived operator", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance

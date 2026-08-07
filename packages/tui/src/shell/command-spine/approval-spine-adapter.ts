@@ -14,6 +14,7 @@
  */
 
 import type { ApprovalRecord, ApprovalState } from "@arcana/core/crypto/approval-lifecycle"
+import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import type { SpineEntry, SpineKind, StatusTone } from "./spine-types"
 import { SPINE_GLYPH } from "./spine-types"
 import { Locale } from "../../util/locale"
@@ -156,8 +157,11 @@ export function approvalIdFromEntryID(entryID: string): string | undefined {
   return parts.slice(1, -1).join(":")
 }
 
-export function isApprovalActionable(approval: ApprovalRecord): boolean {
-  return approval.state === "PENDING"
+export function approvalActionAvailable(
+  affordances: readonly AuthorityAffordance[],
+  action: "approve" | "deny",
+): boolean {
+  return affordances.some((item) => item.action === action && item.state === "available")
 }
 
 /**
@@ -190,14 +194,14 @@ export function approvalActionBindingsEnabled(input: {
   composerFocused: boolean
   gatesOpen: boolean
   submitting: boolean
-  focusedApproval: ApprovalRecord | undefined
+  focusedAffordances: readonly AuthorityAffordance[]
 }): boolean {
   return (
     !input.composerFocused &&
     !input.gatesOpen &&
     !input.submitting &&
-    input.focusedApproval !== undefined &&
-    isApprovalActionable(input.focusedApproval)
+    (approvalActionAvailable(input.focusedAffordances, "approve") ||
+      approvalActionAvailable(input.focusedAffordances, "deny"))
   )
 }
 

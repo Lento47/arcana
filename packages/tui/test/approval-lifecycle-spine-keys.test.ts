@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
+import {
+  deriveAuthorityAffordances,
+  type AuthorityAffordance,
+} from "@arcana/core/crypto/authority-affordance"
 import { HttpApprovalOperatorService } from "../src/shell/command-spine/approval-http-bridge"
 import { createApprovalShellController } from "../src/shell/command-spine/approval-shell-controller"
 import {
+  approvalActionAvailable,
   approvalActionBindingsEnabled,
   approvalToSpineEntry,
-  isApprovalActionable,
   isApprovalTerminal,
 } from "../src/shell/command-spine/approval-spine-adapter"
 
@@ -107,6 +111,26 @@ function json(data: unknown): Response {
   return new Response(JSON.stringify(data), { headers: { "content-type": "application/json" } })
 }
 
+function runtimeAffordances(approval: ApprovalRecord): AuthorityAffordance[] {
+  return deriveAuthorityAffordances({
+    approval,
+    operator: {
+      operatorId: SESSION.operatorId,
+      authenticatedAt: "2026-08-02T00:00:00.000Z",
+      roles: ["operator"],
+      workspaceScope: [approval.workspaceId],
+    },
+    surface: "LOCAL_TUI",
+    workspaceId: approval.workspaceId,
+    freshness: "FRESH",
+    connected: true,
+    protocolCompatible: true,
+    resyncRequired: false,
+    desktopOnline: false,
+    now: new Date("2026-08-02T00:00:00.000Z"),
+  })
+}
+
 describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", () => {
   test("a on a focused PENDING approval drives PENDING -> APPROVED and renders the approved row", async () => {
     const engine = makeEngineTwin()
@@ -114,6 +138,7 @@ describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", (
       service: engine.bridge,
       session: SESSION,
       getApproval: () => engine.record,
+      getAffordances: (approvalId) => (approvalId === engine.record.approvalId ? runtimeAffordances(engine.record) : undefined),
     })
 
     // The shell's `a` handler sends exactly the focused record's revalidation fields.
@@ -134,7 +159,7 @@ describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", (
     expect(entry.summary).toContain("approved once")
     expect(entry.summary).toContain("local-operator")
     expect(entry.id).toBe(`approval:${engine.record.approvalId}:2`)
-    expect(isApprovalActionable(engine.record)).toBe(false)
+    expect(approvalActionAvailable(runtimeAffordances(engine.record), "approve")).toBe(false)
   })
 
   test("d on a focused PENDING approval drives PENDING -> DENIED with zero effects and renders the denied row", async () => {
@@ -143,6 +168,7 @@ describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", (
       service: engine.bridge,
       session: SESSION,
       getApproval: () => engine.record,
+      getAffordances: (approvalId) => (approvalId === engine.record.approvalId ? runtimeAffordances(engine.record) : undefined),
     })
 
     const result = await controller.deny({
@@ -168,6 +194,7 @@ describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", (
       service: engine.bridge,
       session: SESSION,
       getApproval: () => engine.record,
+      getAffordances: (approvalId) => (approvalId === engine.record.approvalId ? runtimeAffordances(engine.record) : undefined),
     })
 
     // v: inspection is read-only and available before the decision.
@@ -178,7 +205,7 @@ describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", (
         composerFocused: false,
         gatesOpen: false,
         submitting: false,
-        focusedApproval: engine.record,
+        focusedAffordances: runtimeAffordances(engine.record),
       }),
     ).toBe(true)
 
@@ -212,7 +239,7 @@ describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", (
           composerFocused: false,
           gatesOpen: false,
           submitting: false,
-          focusedApproval: { ...engine.record, state },
+          focusedAffordances: runtimeAffordances({ ...engine.record, state }),
         }),
       ).toBe(false)
     }
@@ -224,6 +251,7 @@ describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", (
       service: engine.bridge,
       session: SESSION,
       getApproval: () => engine.record,
+      getAffordances: (approvalId) => (approvalId === engine.record.approvalId ? runtimeAffordances(engine.record) : undefined),
     })
 
     // REVOKE is a workspace-operator/Desktop command; the TUI surface refuses it.
@@ -245,7 +273,7 @@ describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", (
     expect(entry.kind).toBe("fail")
     expect(entry.label).toBe("invalidated")
     expect(entry.summary).toContain("invalidated")
-    expect(isApprovalActionable(engine.record)).toBe(false)
+    expect(approvalActionAvailable(runtimeAffordances(engine.record), "approve")).toBe(false)
     expect(isApprovalTerminal(engine.record)).toBe(true)
 
     // a/d must never reach the engine for a revoked approval: the shell gate blocks it.
@@ -254,7 +282,7 @@ describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", (
         composerFocused: false,
         gatesOpen: false,
         submitting: false,
-        focusedApproval: engine.record,
+        focusedAffordances: runtimeAffordances(engine.record),
       }),
     ).toBe(false)
     const retry = await controller.approveOnce({
@@ -264,7 +292,7 @@ describe("approval lifecycle via spine keys (a approve / d deny / v inspect)", (
       expectedContractRevision: engine.record.contractRevision,
     })
     expect(retry.status).toBe("ERROR")
-    expect(retry.error).toContain("not actionable")
+    expect(retry.error).toContain("not available")
   })
 
   test("stale exact-request fields surface the engine reason without inventing success", async () => {

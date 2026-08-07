@@ -13,11 +13,10 @@
 
 import { createMemo, createSignal, type Accessor } from "solid-js"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
+import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import type { SpineEntry } from "./spine-types"
 import {
   approvalToSpineEntry,
-  isApprovalActionable,
-  isApprovalTerminal,
 } from "./approval-spine-adapter"
 import {
   createApprovalShellController,
@@ -41,6 +40,8 @@ import {
 export type ApprovalIntegrationInput = {
   /** Durable approval records for the current session. */
   approvals: Accessor<ApprovalRecord[]>
+  /** Runtime-derived authority affordances, keyed by approvalId. */
+  approvalAffordances?: Accessor<ReadonlyMap<string, readonly AuthorityAffordance[]>>
   /** The approval operator service (real or mock). */
   service: ApprovalOperatorService
   /** Current session context. */
@@ -74,6 +75,7 @@ export function useApprovalIntegration(
     service: input.service,
     session: input.session,
     getApproval: (id) => input.approvals().find((a) => a.approvalId === id),
+    getAffordances: (id) => input.approvalAffordances?.().get(id),
     onStateChange: input.onShellStateChange,
   })
 

@@ -757,6 +757,41 @@ export type ApprovalRecord = {
   createdAt: string
 }
 
+export type AuthorityAffordance = {
+  action: "inspect" | "approve" | "deny" | "revoke" | "retry_refresh" | "open_forensic"
+  state: "available" | "unavailable" | "in_flight" | "completed"
+  reasonCode?:
+    | "OFFLINE"
+    | "STALE_RECORD"
+    | "RESYNC_REQUIRED"
+    | "PROTOCOL_MISMATCH"
+    | "ROUTE_LOCAL_TUI_ONLY"
+    | "ROUTE_DESKTOP_REQUIRED"
+    | "ROUTE_CENTRAL_REQUIRED"
+    | "LOCAL_FALLBACK_NOT_ALLOWED"
+    | "SURFACE_NOT_AUTHORIZED"
+    | "SESSION_RESTRICTION"
+    | "WORKSPACE_MISMATCH"
+    | "AUTHENTICATION_REQUIRED"
+    | "APPROVAL_EXPIRED"
+    | "APPROVAL_REVOKED"
+    | "ALREADY_DECIDED"
+    | "ALREADY_CLAIMED"
+    | "ALREADY_CONSUMED"
+    | "REQUEST_CHANGED"
+    | "CONTRACT_REVISION_CHANGED"
+    | "CAPABILITY_REVOKED"
+    | "POLICY_CHANGED"
+    | "EVIDENCE_DEGRADED"
+    | "UNKNOWN_RUNTIME_STATE"
+  expectedVersion?: number
+  expectedRequestHash?: string
+  expectedContractRevision?: number
+  surface: "LOCAL_TUI" | "DESKTOP" | "CONTROL" | "SDK"
+  requiresFreshRecord: boolean
+  destructive: boolean
+}
+
 export type GlobalEvent = {
   directory: string
   project?: string
@@ -5769,6 +5804,44 @@ export type ApprovalListResponses = {
 }
 
 export type ApprovalListResponse = ApprovalListResponses[keyof ApprovalListResponses]
+
+export type ApprovalAffordancesData = {
+  body?: never
+  path: {
+    sessionID: string
+    approvalID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    viewedVersion?: number
+    viewedRequestHash?: string
+    viewedContractRevision?: number
+  }
+  url: "/api/session/{sessionID}/approval/{approvalID}/affordances"
+}
+
+export type ApprovalAffordancesErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type ApprovalAffordancesError = ApprovalAffordancesErrors[keyof ApprovalAffordancesErrors]
+
+export type ApprovalAffordancesResponses = {
+  /**
+   * Runtime-derived authority affordances for an approval
+   */
+  200: Array<AuthorityAffordance>
+}
+
+export type ApprovalAffordancesResponse = ApprovalAffordancesResponses[keyof ApprovalAffordancesResponses]
 
 export type ConfigGetData = {
   body?: never
@@ -12497,6 +12570,44 @@ export type RuntimeApprovalsGetResponses = {
 }
 
 export type RuntimeApprovalsGetResponse = RuntimeApprovalsGetResponses[keyof RuntimeApprovalsGetResponses]
+
+export type RuntimeApprovalsAffordancesData = {
+  body?: never
+  path: {
+    approvalID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+    viewedVersion?: number
+    viewedRequestHash?: string
+    viewedContractRevision?: number
+  }
+  url: "/approvals/{approvalID}/affordances"
+}
+
+export type RuntimeApprovalsAffordancesErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type RuntimeApprovalsAffordancesError = RuntimeApprovalsAffordancesErrors[keyof RuntimeApprovalsAffordancesErrors]
+
+export type RuntimeApprovalsAffordancesResponses = {
+  /**
+   * Runtime-derived authority affordances for an approval
+   */
+  200: Array<AuthorityAffordance>
+}
+
+export type RuntimeApprovalsAffordancesResponse =
+  RuntimeApprovalsAffordancesResponses[keyof RuntimeApprovalsAffordancesResponses]
 
 export type RuntimeApprovalsApproveData = {
   body?: {

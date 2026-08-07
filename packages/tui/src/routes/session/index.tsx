@@ -19,6 +19,7 @@ import path from "node:path"
 import { mkdir, writeFile } from "node:fs/promises"
 import { recordTuiFeedback } from "../../feedback"
 import { Flag } from "@arcana/core/flag/flag"
+import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import { isDefaultTitle, titleFromUserText } from "../../util/session"
 import { useRoute, useRouteData } from "../../context/route"
 import { Lexicon, Glyph, AgentSigil, VerbPool } from "../../branding"
@@ -1597,6 +1598,51 @@ export function Session() {
   const approvals = createMemo(() =>
     Object.values(sync.data.approvals).filter((a) => a.sessionId === route.sessionID),
   )
+  const [approvalAffordances, setApprovalAffordances] = createSignal<
+    ReadonlyMap<string, readonly AuthorityAffordance[]>
+  >(new Map())
+
+  // Runtime-owned affordances: fetch the per-approval read model with the
+  // exact-request fields this surface displayed. The runtime decides stale,
+  // route, surface, workspace, and fallback eligibility; this component only
+  // renders the result. Fail-closed: any fetch error yields no affordances,
+  // so no action can be inferred locally.
+  createEffect(() => {
+    const list = approvals()
+    if (list.length === 0) {
+      setApprovalAffordances(new Map())
+      return
+    }
+    const sid = route.sessionID
+    let cancelled = false
+    const tasks = list.map(async (approval) => {
+      try {
+        const response = await sdk.client.approval.affordances(
+          {
+            sessionID: sid,
+            approvalID: approval.approvalId,
+            viewedVersion: approval.version,
+            viewedRequestHash: approval.requestHash,
+            viewedContractRevision: approval.contractRevision,
+          },
+          { throwOnError: true } as never,
+        )
+        return { approvalId: approval.approvalId, affordances: response.data ?? [] } as const
+      } catch {
+        return { approvalId: approval.approvalId, affordances: [] } as const
+      }
+    })
+    void Promise.all(tasks).then((entries) => {
+      if (cancelled) return
+      const next = new Map<string, readonly AuthorityAffordance[]>()
+      for (const entry of entries) next.set(entry.approvalId, entry.affordances)
+      setApprovalAffordances(next)
+    })
+    onCleanup(() => {
+      cancelled = true
+    })
+  })
+
   const governanceSnapshot = createMemo(() => sync.data.governance[route.sessionID])
   const governance = createMemo(() => governanceSnapshot()?.events ?? [])
   const activeWorkspaceId = () => route.sessionID
@@ -1605,9 +1651,11 @@ export function Session() {
     getSessionId: () => route.sessionID,
     getWorkspaceId: activeWorkspaceId,
     getApprovals: approvals,
+    getAffordances: (approvalId) => approvalAffordances().get(approvalId),
   })
   const approvalIntegration = useApprovalIntegration({
     approvals,
+    approvalAffordances,
     service: approvalBridge,
     session: { sessionId: route.sessionID, workspaceId: activeWorkspaceId(), operatorId: "operator" },
     onShellStateChange: () => {},
@@ -1662,6 +1710,7 @@ export function Session() {
 
         // TUI-2.1 (RB-01): durable approval shell props
         approvals,
+        approvalAffordances,
         approvalController: approvalIntegration.controller,
         // Audit PR-2: verified immutable request snapshot for the inspector.
         approvalDetailLoader: (approvalId) => approvalBridge.fetchApprovalSnapshot(approvalId),
