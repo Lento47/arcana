@@ -90,6 +90,66 @@ export type SpineSourceRef = {
   kind: "message" | "text" | "tool" | "patch" | "reasoning" | "subtask" | "agent" | "approve" | "question" | "governance"
 }
 
+/**
+ * PR6: immutable exact-request projection for an approval gate.
+ *
+ * PR2's `ApprovalRequestSnapshot` is not merged into this base, so the TUI
+ * derives the closest real projection from the durable ApprovalRecord plus
+ * the engine's governance events (authorization.requested /
+ * authorization.approval_required / authorization.executed) correlated by
+ * requestHash. When no event carries the fields, `available` is false and
+ * the gate renders fail-closed ("snapshot unavailable") — never an invented
+ * tool/capability/policy.
+ */
+export type SpineApprovalSnapshot = {
+  requestHash: string
+  available: boolean
+  tool?: string
+  action?: string
+  capability?: string
+  principal?: string
+  policy?: string
+  change?: string
+  route?: string
+  risk?: string
+  expires?: string
+  contractRevision?: number
+  executionId?: string
+  arguments?: string[]
+}
+
+/**
+ * PR6: proof continuation shown directly beneath a completed effect.
+ * `receipt` is the shortened effect/receipt hash, `evidence` counts attached
+ * evidence artifacts, and the remaining fields come from the canonical
+ * RunProof snapshot when it is available.
+ */
+export type SpineProofContinuation = {
+  receipt?: string
+  evidence?: number
+  proofLevel?: string
+  integrity?: string
+  policy?: string
+  executionId?: string
+  requestHash?: string
+  tool?: string
+  action?: string
+  startedAt?: string
+  completedAt?: string
+}
+
+/** PR6: subagent session branch state on the execution spine. */
+export type SpineBraidStatus = "running" | "completed" | "crashed"
+
+export type SpineBraidChild = {
+  sessionID: string
+  agent: string
+  title: string
+  status: SpineBraidStatus
+  line: string
+  detail?: string
+}
+
 export type SpineEntry = {
   id: string
   index: number
@@ -129,6 +189,17 @@ export type SpineEntry = {
   reminders?: string[]
   /** Structured subagent report data — when kind is "report". */
   report?: SpineReportData
+  /**
+   * PR6: security breakthrough rows. Important governance events visually
+   * interrupt the spine and stay visible under every view filter.
+   */
+  breakthrough?: boolean
+  /** PR6: inline exact-request gate context (approval rows). */
+  approval?: SpineApprovalSnapshot
+  /** PR6: proof continuation beneath a completed effect. */
+  proof?: SpineProofContinuation
+  /** PR6: subagent braid branches for agent rows. */
+  braid?: SpineBraidChild[]
   /** Parsed CLI table data — rendered as stacked rows instead of raw text. */
   table?: { headers: string[]; rows: string[][] }
   /**
