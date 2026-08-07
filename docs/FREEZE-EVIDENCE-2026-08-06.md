@@ -7,7 +7,8 @@ at the time this pack was produced; all commands in this document ran on that
 exact tree.
 **Branch:** `feat/audit-pr7-freeze-evidence` (created at `4e954e5a`)
 **Host:** Windows (PowerShell), Bun 1.3.14 (`L:/DevData/.bun/bin/bun.exe`)
-**Evidence pack commit:** `PACK_COMMIT` (filled by the commit that adds this file)
+**Evidence pack commit:** `674fa41a` (the commit that adds this file; final
+branch HEAD at push is recorded in the PR description)
 
 Every claim below has a command + output pair. Raw logs are committed under
 `docs/evidence/` and referenced per section. No number in this document is
