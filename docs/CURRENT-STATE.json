@@ -34,9 +34,9 @@
     "59cdfda0 fix(cli): preserve yargs types in json option builder"
   ],
   "testTotals": {
-    "source": "mixed",
-    "summaryFile": "docs\\evidence\\freeze-pr7-test-totals-summary.log",
-    "documentedAt": "2026-08-02/03 (docs/STATUS.md Test checkpoint table)",
+    "source": "fresh_run_ci",
+    "summaryFile": "docs/evidence/ci-engine-tests.log",
+    "documentedAt": "2026-08-07T18:24:48.156Z",
     "suites": {
       "TUI suite": {
         "pass": 819,
@@ -68,20 +68,13 @@
         }
       },
       "Engine suite": {
-        "pass": 4302,
-        "skip": 74,
+        "pass": 4353,
+        "skip": 38,
         "todo": 1,
-        "fail": 0,
-        "tests": 4377,
-        "evidence": "2026-08-02 baseline rerun: 4250 pass / 33 fail / 1 skip (4358 tests). All 33 classified and fixed as harness/environment issues: 30 CLI subprocess tests spawned bun by name while it is not on PATH (fixed: process.execPat",
-        "source": "documented",
-        "freshAttempt": {
-          "pass": 4369,
-          "skip": 74,
-          "todo": 1,
-          "fail": 3,
-          "exitCode": 1
-        }
+        "fail": 10,
+        "tests": 4402,
+        "source": "fresh_run_ci",
+        "evidence": "freeze-evidence workflow at b8336d6354bb373fd638a8388c592e51f3e4930f (full engine suite, bun test --timeout 30000)"
       },
       "Arcana CLI/proof suite": {
         "pass": 124,
@@ -112,8 +105,7 @@
       }
     },
     "failures": [
-      "Engine suite (exit=1)",
-      "Core suite (exit=1)"
+      "Engine suite (exit=1, 10 failures at b8336d6354bb373fd638a8388c592e51f3e4930f)"
     ],
     "note": "Suites with a clean fresh run (exit 0) use source: fresh_run; suites whose fresh run was not clean or that were not part of the fresh run retain source: documented with a freshAttempt record where one exists. Non-zero exit suites: Engine suite (exit=1), Core suite (exit=1) — see summaryFile for the failing test details. No numbers were invented."
   },
