@@ -53,17 +53,16 @@ jobs:
 
           paths = document.fetch("paths", {})
           required_paths = %w[
-            /health
-            /sessions
-            /sessions/{sessionId}
             /approvals
-            /approvals/{approvalId}
-            /approvals/{approvalId}/approve
-            /approvals/{approvalId}/deny
-            /approvals/{approvalId}/revoke
-            /event
-            /events/since/{sequence}
-            /proofs/{sessionId}
+            /approvals/{approvalID}
+            /approvals/{approvalID}/affordances
+            /approvals/{approvalID}/approve
+            /approvals/{approvalID}/deny
+            /approvals/{approvalID}/revoke
+            /sessions
+            /sessions/{sessionID}
+            /proofs/{sessionID}
+            /desktop/heartbeat
           ]
           missing = required_paths.reject { |required| paths.key?(required) }
           abort "#{path}: missing required paths: #{missing.join(', ')}" unless missing.empty?
@@ -74,7 +73,6 @@ jobs:
             ApprovalStatus
             AuthorizationRequest
             DecisionBody
-            EventEnvelope
             RunProof
             ErrorEnvelope
           ]
