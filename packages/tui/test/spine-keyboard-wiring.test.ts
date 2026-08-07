@@ -14,10 +14,11 @@ const shellSource = readFileSync(
  * bindings cannot drift back to inline conditions.
  */
 describe("spine keyboard wiring source contract (F-24..F-28)", () => {
-  test("F-24: v on a non-approval row shows guidance toast instead of failing silently", () => {
-    expect(shellSource).toContain("No approval to inspect")
-    expect(shellSource).toContain("use o for entry details")
-    expect(shellSource).toContain("toast.show")
+  test("F-24: v on a non-approval row opens the universal inspector instead of failing silently", () => {
+    expect(shellSource).toContain("SpineInspector")
+    expect(shellSource).toContain("openUniversalInspector")
+    expect(shellSource).toContain("<PermissionInspector request={gate} />")
+    expect(shellSource).toContain("No spine entry to inspect")
   })
 
   test("F-25: Esc leave-composer binding is wired through the inert policy and never interrupts", () => {
@@ -47,8 +48,23 @@ describe("spine keyboard wiring source contract (F-24..F-28)", () => {
 
   test("F-23: approval inspect/approve/deny bindings exist on the approval layer", () => {
     expect(shellSource).toContain('desc: "Approve once"')
-    expect(shellSource).toContain('desc: "Deny approval"')
+    expect(shellSource).toContain('desc: "Deny approval (x primary, d legacy)"')
+    expect(shellSource).toContain('key: "x,d"')
     expect(shellSource).toContain('desc: "Inspect approval"')
     expect(shellSource).toContain("priority: 2")
+  })
+
+  test("PR6: direct view keys replace the f cycle; proof/replay keys exist", () => {
+    expect(shellSource).toContain('key: "1"')
+    expect(shellSource).toContain('key: "2"')
+    expect(shellSource).toContain('key: "3"')
+    expect(shellSource).toContain('key: "4"')
+    expect(shellSource).toContain('key: "0"')
+    expect(shellSource).toContain('key: "p"')
+    expect(shellSource).toContain('key: "e"')
+    expect(shellSource).toContain('key: "r"')
+    expect(shellSource).toContain('desc: "Inspect focused spine row (universal inspector)"')
+    expect(shellSource).not.toContain("Cycle view filter")
+    expect(shellSource).not.toContain("Open focused spine diff")
   })
 })

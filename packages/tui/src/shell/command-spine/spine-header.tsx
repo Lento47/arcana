@@ -1,8 +1,10 @@
 import { For, Show, createMemo } from "solid-js"
+import { TextAttributes } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import { spineOuterPadding, type SpineLayout, type StatusSegment, statusToneColor } from "./spine-types"
 import { truncate } from "../../util/locale"
+import type { SpineTrustStatus } from "./spine-trust"
 
 // Truncation: shared display-width-aware helper from util/locale (audit T5/O6).
 
@@ -57,10 +59,71 @@ function prioritizeSegments(segments: StatusSegment[], layout: SpineLayout): Sta
   return ranked.slice(0, 5)
 }
 
+function trustWord(trust: SpineTrustStatus): string {
+  if (trust.state === "disconnected") return "DISCONNECTED"
+  if (trust.state === "degraded") return "DEGRADED"
+  return "LIVE"
+}
+
+function trustProof(trust: SpineTrustStatus): string {
+  if (!trust.proofLevel) return "PROOF UNVERIFIED"
+  return `PROOF ${trust.proofLevel}`
+}
+
+function TrustBanner(props: { trust: SpineTrustStatus; pad: number; theme: Theme; layout: SpineLayout }) {
+  const t = props.trust
+  const healthy = t.state === "healthy"
+  const gap = t.eventGap ? `EVENT GAP ${t.eventGap.from}–${t.eventGap.to} · RESYNC REQUIRED` : undefined
+
+  const lineOne = () => {
+    const parts = [
+      trustWord(t),
+      t.trace === "UNAVAILABLE" ? "UNGOVERNED" : "GOVERNED",
+      gap ?? (t.trace === "COMPLETE" ? "TRACE COMPLETE" : `TRACE ${t.trace}`),
+      trustProof(t),
+    ]
+    return parts.join(" · ")
+  }
+
+  const lineTwo = () => {
+    if (healthy) {
+      const pending = t.pendingApprovals === 1 ? "1 pending approval" : `${t.pendingApprovals} pending approvals`
+      return `workspace trusted · ${pending}`
+    }
+    const reason =
+      gap
+        ? "event gap"
+        : t.trace === "DEGRADED" || t.trace === "UNAVAILABLE"
+          ? `trace ${t.trace.toLowerCase()}`
+          : t.integrity === "INVALID" || t.integrity === "UNVERIFIED"
+            ? `proof ${t.integrity.toLowerCase()}`
+            : "connection degraded"
+    return `authority actions disabled · ${reason}`
+  }
+
+  return (
+    <box flexDirection="column" flexShrink={0}>
+      <box flexDirection="row" paddingLeft={props.pad} paddingRight={props.pad}>
+        <text fg={props.theme.spineBrand} attributes={TextAttributes.BOLD}>A R C A N A</text>
+        <text fg={healthy ? props.theme.spineOk : props.theme.error}>
+          {"  "}{lineOne()}
+        </text>
+      </box>
+      <box flexDirection="row" paddingLeft={props.pad} paddingRight={props.pad}>
+        <text fg={healthy ? props.theme.spineContext : props.theme.warning}>
+          {lineTwo()}
+        </text>
+      </box>
+    </box>
+  )
+}
+
 export function SpineHeader(props: {
   layout: SpineLayout
   segments: StatusSegment[]
   session: () => { id: string; title?: string } | undefined
+  /** PR6: trust-first runtime status (connection, trace, proof, approvals). */
+  trust?: SpineTrustStatus
 }) {
   const { theme } = useTheme()
   const pad = createMemo(() => spineOuterPadding(props.layout))
@@ -71,6 +134,7 @@ export function SpineHeader(props: {
   const segments = createMemo(() => prioritizeSegments(props.segments, props.layout))
   const pathSegment = createMemo(() => props.segments.find((segment) => segment.key === "path"))
   const showPath = createMemo(() => !!pathSegment() && (isWide() || isCompact()))
+  const trust = createMemo(() => props.trust)
 
   const SegmentList = () => (
     <box flexDirection="row" minWidth={0} overflow="hidden">
@@ -98,6 +162,16 @@ export function SpineHeader(props: {
 
   return (
     <box flexDirection="column" flexShrink={0}>
+      <Show when={trust()}>
+        {(t) => (
+          <>
+            <TrustBanner trust={t()} pad={pad()} theme={theme} layout={props.layout} />
+            <Show when={hasContext()}>
+              <box height={1} />
+            </Show>
+          </>
+        )}
+      </Show>
       <Show
         when={isWide()}
         fallback={
