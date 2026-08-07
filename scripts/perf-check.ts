@@ -166,11 +166,16 @@ async function checkStartupTime(baseline: Baseline, updateBaseline: boolean): Pr
       return true
     }
 
-    // Use the p50/p90 of the latest wall-clock phase as the overall duration indicator.
-    // The last row from bench-startup.ts is typically the last measured phase timestamp.
-    const lastPhase = result.rows[result.rows.length - 1]
-    measuredP50 = lastPhase?.p50 ?? 0
-    measuredP90 = lastPhase?.p90 ?? 0
+    // The benchmark emits an explicit TOTAL duration from the engine profiler.
+    // Row order is presentation-oriented, so the final row is not guaranteed
+    // to represent total startup time.
+    const totalRow = result.rows.find((row) => row.phase === "TOTAL" && row.kind === "duration")
+    if (!totalRow) {
+      console.log("[perf] ⚠️  No TOTAL startup duration returned — skipping startup time check")
+      return true
+    }
+    measuredP50 = totalRow.p50
+    measuredP90 = totalRow.p90
 
     console.log(`[perf] Startup phases (${result.rows.length} total):`)
     for (const row of result.rows.slice(0, 8)) {
