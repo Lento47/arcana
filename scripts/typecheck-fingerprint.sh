@@ -12,21 +12,36 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ALLOWLIST="$SCRIPT_DIR/typecheck-allowlist.txt"
 CURRENT="$(mktemp)"
+TYPECHECK_LOG="$(mktemp)"
 
 cleanup() {
-  rm -f -- "$CURRENT"
+  rm -f -- "$CURRENT" "$TYPECHECK_LOG"
 }
 trap cleanup EXIT
 
-# Capture current diagnostics
+# Capture current diagnostics. TypeScript diagnostics make turbo exit nonzero,
+# so record the status separately instead of letting pipefail abort before the
+# allowlist comparison can run.
 cd "$REPO_ROOT"
-bun turbo typecheck 2>&1 \
-  | grep ": error TS" \
+set +e
+bun turbo typecheck > "$TYPECHECK_LOG" 2>&1
+TYPECHECK_EXIT=$?
+set -e
+
+grep ": error TS" "$TYPECHECK_LOG" \
   | sed 's/.*engine:typecheck: //' \
   | sort \
-  > "$CURRENT"
+  > "$CURRENT" || true
 
 CURRENT_COUNT=$(wc -l < "$CURRENT")
+
+# A nonzero typecheck with no TypeScript diagnostics indicates an execution or
+# infrastructure failure rather than the known diagnostic baseline.
+if (( TYPECHECK_EXIT != 0 && CURRENT_COUNT == 0 )); then
+  echo "❌ Typecheck command failed without TypeScript diagnostics (exit $TYPECHECK_EXIT)"
+  cat "$TYPECHECK_LOG"
+  exit 1
+fi
 
 # Fingerprint comparison
 ADDED=$(comm -23 "$CURRENT" "$ALLOWLIST" || true)
