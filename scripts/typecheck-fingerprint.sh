@@ -21,12 +21,14 @@ trap cleanup EXIT
 
 # Capture current diagnostics. TypeScript diagnostics make turbo exit nonzero,
 # so record the status separately instead of letting pipefail abort before the
-# allowlist comparison can run.
+# allowlist comparison can run. Use an if-condition so expected diagnostics do
+# not require disabling errexit for the surrounding shell.
 cd "$REPO_ROOT"
-set +e
-bun turbo typecheck > "$TYPECHECK_LOG" 2>&1
-TYPECHECK_EXIT=$?
-set -e
+if bun turbo typecheck > "$TYPECHECK_LOG" 2>&1; then
+  TYPECHECK_EXIT=0
+else
+  TYPECHECK_EXIT=$?
+fi
 
 grep ": error TS" "$TYPECHECK_LOG" \
   | sed 's/.*engine:typecheck: //' \
