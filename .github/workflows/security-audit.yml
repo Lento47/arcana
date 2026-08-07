@@ -43,28 +43,32 @@ jobs:
           path: arcana-sbom.json
           retention-days: 90
 
-      - name: Run npm audit
-        # Fail-loud on master pushes and the weekly schedule so high/critical
-        # advisories block the pipeline. PRs are softer — we don't want a
-        # WIP contributor to be blocked by an upstream advisory, but we do
-        # want the warning visible in the step summary.
+      - name: Run dependency audit
+        # Use Bun's lockfile-aware audit directly. High/critical advisories
+        # fail master pushes and the weekly schedule; PRs remain soft-warning.
         id: audit
+        shell: bash
         run: |
-          echo "## Dependency Audit" >> $GITHUB_STEP_SUMMARY
-          bun audit --json 2>/dev/null || true
-          # Check for high/critical advisories
-          VULNS=$(npm audit --json 2>/dev/null | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');try{const j=JSON.parse(d);const c=(j.metadata?.vulnerabilities?.critical||0)+(j.metadata?.vulnerabilities?.high||0);console.log(c)}catch(e){console.log(0)}")
-          echo "High+Critical vulns: $VULNS"
-          echo "- High+Critical advisories: $VULNS" >> $GITHUB_STEP_SUMMARY
-          echo "vulns=$VULNS" >> "$GITHUB_OUTPUT"
-          if [ "$VULNS" -gt 0 ]; then
-            echo "::warning::Found $VULNS high/critical vulnerabilities. Review in Security tab."
+          set -euo pipefail
+          echo "## Dependency Audit" >> "$GITHUB_STEP_SUMMARY"
+
+          set +e
+          AUDIT_OUTPUT="$(bun audit --audit-level=high 2>&1)"
+          AUDIT_EXIT=$?
+          set -e
+
+          printf '%s\n' "$AUDIT_OUTPUT"
+          if (( AUDIT_EXIT == 0 )); then
+            echo "- High/critical dependency audit: clean" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- High/critical dependency audit: attention required" >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::bun audit reported high/critical vulnerabilities or failed to complete."
             # Block the build on master pushes and the weekly schedule; allow
             # PRs to proceed with a soft warning so contributors aren't blocked
             # by upstream advisories.
             if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "schedule" ]; then
-              echo "::error::Failing build: $VULNS high/critical vulnerabilities on master/schedule" >&2
-              exit 1
+              echo "::error::Dependency audit failed on master/schedule; inspect the audit output above." >&2
+              exit "$AUDIT_EXIT"
             fi
           fi
 
