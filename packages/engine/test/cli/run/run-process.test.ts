@@ -81,4 +81,22 @@ describe("opencode run (non-interactive subprocess)", () => {
       }),
     60_000,
   )
+
+  // --json is the contract shorthand for --format json and must win when
+  // both are provided (docs/cli-json-contract.md rule 6).
+  cliIt.concurrent(
+    "--json is an alias for --format json and wins when both are given",
+    ({ llm, opencode }) =>
+      Effect.gen(function* () {
+        yield* llm.text("structured output via --json")
+        const result = yield* opencode.run("say hi", { extraArgs: ["--json", "--format", "default"] })
+        opencode.expectExit(result, 0)
+
+        const events = opencode.parseJsonEvents(result.stdout)
+        expect(events.length).toBeGreaterThan(0)
+        const text = events.find((e) => e.type === "text")
+        expect(text).toBeDefined()
+      }),
+    60_000,
+  )
 })

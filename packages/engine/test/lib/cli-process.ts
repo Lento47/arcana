@@ -65,6 +65,9 @@ function isolatedEnv(home: string, configJson: string): Record<string, string> {
   return {
     ARCANA_TEST_HOME: home,
     HOME: home,
+    // Windows os.homedir() prefers USERPROFILE over HOME; pin it so the
+    // daemon lock dir and other homedir-derived paths stay isolated.
+    USERPROFILE: home,
     XDG_CONFIG_HOME: path.join(home, ".config"),
     XDG_DATA_HOME: path.join(home, ".local/share"),
     XDG_STATE_HOME: path.join(home, ".local/state"),
