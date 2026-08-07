@@ -6,7 +6,8 @@ import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
 import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
 import { described } from "./metadata"
-import { ApprovalNotFoundError } from "../errors"
+import { ApprovalAffordanceQuery, AuthorityAffordanceSchema } from "./affordance"
+import { ApprovalNotFoundError, ApiNotFoundError } from "../errors"
 
 const root = "/api/session"
 
@@ -95,6 +96,7 @@ export const ApprovalPaths = {
   command: `${root}/:sessionID/approval/:approvalID/command`,
   list: `${root}/:sessionID/approval`,
   detail: `${root}/:sessionID/approval/:approvalID/detail`,
+  affordances: `${root}/:sessionID/approval/:approvalID/affordances`,
 } as const
 
 export const ApprovalApi = HttpApi.make("approval")
@@ -139,6 +141,22 @@ export const ApprovalApi = HttpApi.make("approval")
             summary: "Get an approval with its verified request snapshot",
             description:
               "Return the durable approval record plus its immutable, hash-verified request snapshot (action, resource, arguments, capability, policy version, previews). The runtime recomputes the canonical request hash and verifies it equals the record's requestHash before responding; a missing or changed snapshot returns a fail-closed ApprovalSnapshotUnavailableError — never a silently stale snapshot.",
+          }),
+        ),
+        HttpApiEndpoint.get("affordances", ApprovalPaths.affordances, {
+          params: { sessionID: SessionID, approvalID: Schema.String },
+          query: ApprovalAffordanceQuery,
+          success: described(
+            Schema.Array(AuthorityAffordanceSchema),
+            "Runtime-derived authority affordances for an approval",
+          ),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "approval.affordances",
+            summary: "Get authority affordances for an approval",
+            description:
+              "Runtime-derived, principal- and surface-sensitive read model for the authenticated LOCAL_TUI operator. Clients render these affordances; they never infer actionability from approval state, route, or local fallback eligibility. Exact-request viewed fields are compared against the durable record and can only fail closed.",
           }),
         ),
       )

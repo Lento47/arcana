@@ -3,12 +3,13 @@ import { Session } from "@/session/session"
 import type { SessionID } from "@/session/schema"
 import { ApprovalEvent } from "@/approval/events"
 import { approvalStoreForWorkspace, loadSessionApprovals, submitApprovalCommand } from "@/approval/command"
+import { affordancesForApproval } from "@/approval/affordances"
 import { Effect, Option } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import { WorkspaceRouteContext } from "../middleware/workspace-routing"
 import { ApprovalCommandPayload, ApprovalSnapshotUnavailableError } from "../groups/approval"
-import { ApprovalNotFoundError } from "../errors"
+import { ApprovalNotFoundError, notFound } from "../errors"
 
 export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval", (handlers) =>
   Effect.gen(function* () {
@@ -133,6 +134,55 @@ export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval"
       }
     })
 
-    return handlers.handle("command", command).handle("list", list).handle("detail", detail)
+    const affordances = Effect.fn("ApprovalHttpApi.affordances")(function* (ctx: {
+      params: { sessionID: SessionID; approvalID: string }
+      query: {
+        directory?: string
+        viewedVersion?: number
+        viewedRequestHash?: string
+        viewedContractRevision?: number
+      }
+    }) {
+      const { directory, sessionInfo } = yield* resolveWorkspace(ctx.params.sessionID, ctx.query.directory)
+      const approval = approvalStoreForWorkspace(directory).loadApproval(ctx.params.approvalID)
+      if (!approval || approval.sessionId !== ctx.params.sessionID) {
+        return yield* Effect.fail(notFound(`approval ${ctx.params.approvalID} not found`))
+      }
+
+      const metadata = sessionInfo?.metadata
+      const owner = typeof metadata?.owner === "string" ? metadata.owner : undefined
+      const user = typeof metadata?.user === "string" ? metadata.user : undefined
+      const operatorId = owner ?? user ?? "operator"
+      const viewed =
+        ctx.query.viewedVersion !== undefined &&
+        ctx.query.viewedRequestHash !== undefined &&
+        ctx.query.viewedContractRevision !== undefined
+          ? {
+              expectedVersion: ctx.query.viewedVersion,
+              expectedRequestHash: ctx.query.viewedRequestHash,
+              expectedContractRevision: ctx.query.viewedContractRevision,
+            }
+          : undefined
+
+      return affordancesForApproval({
+        approval,
+        operator: {
+          operatorId,
+          authenticatedAt: new Date().toISOString(),
+          roles: ["operator"],
+          workspaceScope: [ctx.params.sessionID],
+        },
+        surface: "LOCAL_TUI",
+        workspaceId: ctx.params.sessionID,
+        routingWorkspaceKey: directory,
+        viewed,
+      })
+    })
+
+    return handlers
+      .handle("command", command)
+      .handle("list", list)
+      .handle("detail", detail)
+      .handle("affordances", affordances)
   }),
 )

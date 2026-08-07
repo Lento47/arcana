@@ -20,6 +20,7 @@ import { Session } from "@/session/session"
 import type { SessionID } from "@/session/schema"
 import { ApprovalEvent } from "@/approval/events"
 import { approvalStoreForWorkspace, submitApprovalCommand, type ApprovalCommandKind } from "@/approval/command"
+import { affordancesForApproval } from "@/approval/affordances"
 import { desktopSubscriberRegistry } from "@/approval/desktop-subscribers"
 import { deploymentModeFromEnv } from "@/approval/routing"
 import { EventStore } from "@/session/epistemic/event-store"
@@ -209,6 +210,41 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
       return yield* requireApproval(ctx.params.approvalID, directory)
     })
 
+    const affordances = Effect.fn("RuntimeHttpApi.affordances")(function* (ctx: {
+      params: { approvalID: string }
+      query: {
+        directory?: string
+        viewedVersion?: number
+        viewedRequestHash?: string
+        viewedContractRevision?: number
+      }
+    }) {
+      const directory = yield* resolveAuthorizedWorkspace()
+      const record = yield* requireApproval(ctx.params.approvalID, directory)
+      const sessionScope = yield* sessionScopeFromRequest()
+      const operator = yield* operatorIdentity(directory)
+      const viewed =
+        ctx.query.viewedVersion !== undefined &&
+        ctx.query.viewedRequestHash !== undefined &&
+        ctx.query.viewedContractRevision !== undefined
+          ? {
+              expectedVersion: ctx.query.viewedVersion,
+              expectedRequestHash: ctx.query.viewedRequestHash,
+              expectedContractRevision: ctx.query.viewedContractRevision,
+            }
+          : undefined
+
+      return affordancesForApproval({
+        approval: record,
+        operator,
+        surface: "DESKTOP",
+        workspaceId: directory,
+        routingWorkspaceKey: directory,
+        sessionRestriction: sessionScope,
+        viewed,
+      })
+    })
+
     const listSessions = Effect.fn("RuntimeHttpApi.listSessions")(function* () {
       const directory = yield* resolveAuthorizedWorkspace()
       const sessions = yield* session.list()
@@ -282,6 +318,7 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
     return handlers
       .handle("listApprovals", list)
       .handle("getApproval", get)
+      .handle("affordances", affordances)
       .handle("approve", (ctx) => command({ ...ctx, command: "APPROVE_ONCE" }))
       .handle("deny", (ctx) => command({ ...ctx, command: "DENY" }))
       .handle("revoke", (ctx) => command({ ...ctx, command: "REVOKE" }))

@@ -22,12 +22,14 @@ import { SessionID } from "@/session/schema"
 import { Session } from "@/session/session"
 import { RunProofSnapshot } from "./session"
 import { ApiNotFoundError } from "../errors"
+import { ApprovalAffordanceQuery, AuthorityAffordanceSchema } from "./affordance"
 
 const root = ""
 
 export const RuntimePaths = {
   approvals: `${root}/approvals`,
   approval: `${root}/approvals/:approvalID`,
+  affordances: `${root}/approvals/:approvalID/affordances`,
   approve: `${root}/approvals/:approvalID/approve`,
   deny: `${root}/approvals/:approvalID/deny`,
   revoke: `${root}/approvals/:approvalID/revoke`,
@@ -82,6 +84,22 @@ export const RuntimeApi = HttpApi.make("runtime").add(
           identifier: "runtime.approvals.get",
           summary: "Get approval",
           description: "Load one durable approval record by id from the routed workspace store.",
+        }),
+      ),
+      HttpApiEndpoint.get("affordances", RuntimePaths.affordances, {
+        params: { approvalID: Schema.String },
+        query: ApprovalAffordanceQuery,
+        success: described(
+          Schema.Array(AuthorityAffordanceSchema),
+          "Runtime-derived authority affordances for an approval",
+        ),
+        error: [HttpApiError.BadRequest, ApiNotFoundError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "runtime.approvals.affordances",
+          summary: "Get authority affordances for an approval",
+          description:
+            "Runtime-derived, principal- and surface-sensitive read model for the authenticated Desktop/SDK caller. Clients render these affordances; they never infer actionability from approval state, route, or local fallback eligibility. Exact-request viewed fields are compared against the durable record and can only fail closed.",
         }),
       ),
       HttpApiEndpoint.post("approve", RuntimePaths.approve, {
