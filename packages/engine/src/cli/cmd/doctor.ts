@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { detectLocalOllama } from "@arcana/core/providers/ollama"
+import { outputJson, isJsonMode, jsonOption } from "../json-output"
 
 const PASS = "✅"
 const FAIL = "❌"
@@ -56,9 +57,14 @@ async function runAsyncChecks(checks: Check[]): Promise<void> {
 export const DoctorCommand: CommandModule = {
   command: "doctor",
   describe: "check arcana system health",
-  async handler() {
+  builder: jsonOption,
+  async handler(args) {
     const checks = runChecks()
     await runAsyncChecks(checks)
+    if (isJsonMode(args as { json?: boolean })) {
+      outputJson(checks.map((c) => ({ label: c.label, ok: c.ok, detail: c.detail })))
+      return
+    }
     const ok = checks.filter((c) => c.ok).length
     const total = checks.length
     console.log(`\n  arcana doctor — ${ok}/${total} checks pass\n`)

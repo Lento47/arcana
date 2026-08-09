@@ -3,7 +3,7 @@ mark("cli-import-start")
 import type { CommandModule } from "yargs"
 import { UI } from "./cli/ui"
 import { InstallationVersion } from "@arcana/core/installation/version"
-import { FormatError } from "./cli/error"
+import { FormatError, isUserError } from "./cli/error"
 import { TuiThreadCommand } from "./cli/cmd/tui"
 import { EOL } from "os"
 import { errorMessage } from "./util/error"
@@ -391,7 +391,10 @@ try {
     UI.error("Unexpected error" + EOL)
     process.stderr.write(errorMessage(e) + EOL)
   }
-  process.exitCode = 1
+  // Deterministic exit-code scheme: 1 = user/validation error, 2 = internal
+  // error. CliError (and other recognized domain errors) set exitCode 1 via
+  // FormatError; everything else is an internal defect.
+  process.exitCode = isUserError(e) ? 1 : 2
 } finally {
   flushSync()
   // Some subprocesses don't react properly to SIGTERM and similar signals.

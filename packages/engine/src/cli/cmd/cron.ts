@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join, dirname, relative } from "node:path"
 import { homedir } from "node:os"
+import { outputJson, isJsonMode, jsonOption } from "../json-output"
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -100,11 +101,17 @@ export const CronCommand: CommandModule = {
       .option("schedule", { alias: "s", type: "string", describe: "cron schedule (e.g. '0 9 * * *' or @daily)" })
       .option("prompt", { alias: "p", type: "string", describe: "prompt to run" })
       .option("id", { alias: "i", type: "string", describe: "job ID" })
-      .option("skill", { type: "string", describe: "skill to activate for this job" }),
+      .option("skill", { type: "string", describe: "skill to activate for this job" })
+      .option("json", {
+        type: "boolean",
+        default: false,
+        describe: "output machine-readable JSON to stdout",
+      }),
   async handler(args) {
     const dataDir = getCronDataDir()
     const store = new JobStore(dataDir)
     const action = String(args.action)
+    const json = isJsonMode(args as { json?: boolean })
 
     async function resolveJobId(partial: string): Promise<string | null> {
       if (partial.length >= 36) return partial
@@ -125,6 +132,10 @@ export const CronCommand: CommandModule = {
     switch (action) {
       case "list": {
         const jobs = await store.list()
+        if (json) {
+          outputJson(jobs.map((j) => ({ ...j })))
+          return
+        }
         if (!jobs.length) { console.log("No scheduled jobs."); return }
         console.log(`${jobs.length} job(s):\n`)
         for (const j of jobs) {
@@ -142,12 +153,14 @@ export const CronCommand: CommandModule = {
       case "add": {
         if (!args.schedule || !args.prompt) {
           console.error("--schedule and --prompt required")
-          process.exit(1)
+          process.exitCode = 1
+          return
         }
         const skill = args.skill ? String(args.skill) : undefined
         if (skill && !findSkillBody(skill)) {
           console.error(`Skill not found: ${skill}`)
-          process.exit(1)
+          process.exitCode = 1
+          return
         }
         const job = await store.create({
           schedule: String(args.schedule),
@@ -155,54 +168,118 @@ export const CronCommand: CommandModule = {
           name: args.name ? String(args.name) : undefined,
           skill,
         })
+        if (json) {
+          outputJson({ ...job })
+          return
+        }
         console.log(`Job created: ${job.id.slice(0, 8)}  schedule: ${job.schedule}${skill ? `  skill: ${skill}` : ""}`)
         break
       }
       case "remove": {
-        if (!args.id) { console.error("--id required"); process.exit(1) }
+        if (!args.id) {
+          console.error("--id required")
+          process.exitCode = 1
+          return
+        }
         const removeId = await resolveJobId(String(args.id))
-        if (!removeId) { console.error(`Job not found: ${args.id}`); process.exit(1) }
+        if (!removeId) {
+          console.error(`Job not found: ${args.id}`)
+          process.exitCode = 1
+          return
+        }
         await store.remove(removeId)
+        if (json) {
+          outputJson({ removed: removeId })
+          return
+        }
         console.log(`Removed ${removeId.slice(0, 8)}`)
         break
       }
       case "pause": {
-        if (!args.id) { console.error("--id required"); process.exit(1) }
+        if (!args.id) {
+          console.error("--id required")
+          process.exitCode = 1
+          return
+        }
         const pauseId = await resolveJobId(String(args.id))
-        if (!pauseId) { console.error(`Job not found: ${args.id}`); process.exit(1) }
+        if (!pauseId) {
+          console.error(`Job not found: ${args.id}`)
+          process.exitCode = 1
+          return
+        }
         await store.update(pauseId, { enabled: false })
+        if (json) {
+          outputJson({ paused: pauseId })
+          return
+        }
         console.log(`Paused ${pauseId.slice(0, 8)}`)
         break
       }
       case "resume": {
-        if (!args.id) { console.error("--id required"); process.exit(1) }
+        if (!args.id) {
+          console.error("--id required")
+          process.exitCode = 1
+          return
+        }
         const resumeId = await resolveJobId(String(args.id))
-        if (!resumeId) { console.error(`Job not found: ${args.id}`); process.exit(1) }
+        if (!resumeId) {
+          console.error(`Job not found: ${args.id}`)
+          process.exitCode = 1
+          return
+        }
         await store.update(resumeId, { enabled: true })
+        if (json) {
+          outputJson({ resumed: resumeId })
+          return
+        }
         console.log(`Resumed ${resumeId.slice(0, 8)}`)
         break
       }
       case "run": {
-        if (!args.id) { console.error("--id required"); process.exit(1) }
+        if (!args.id) {
+          console.error("--id required")
+          process.exitCode = 1
+          return
+        }
         const runId = await resolveJobId(String(args.id))
-        if (!runId) { console.error(`Job not found: ${args.id}`); process.exit(1) }
+        if (!runId) {
+          console.error(`Job not found: ${args.id}`)
+          process.exitCode = 1
+          return
+        }
         const job = await store.get(runId)
-        if (!job) { console.error(`Job not found: ${args.id}`); process.exit(1) }
+        if (!job) {
+          console.error(`Job not found: ${args.id}`)
+          process.exitCode = 1
+          return
+        }
         const prompt = effectivePrompt(job)
         const skillName = job.skill ? ` [skill: ${job.skill}]` : ""
-        console.log(`Running: ${job.name ?? job.prompt.slice(0, 60)}${skillName}`)
+        if (json) outputJson({ running: job.id, prompt })
+        else console.log(`Running: ${job.name ?? job.prompt.slice(0, 60)}${skillName}`)
         try {
           const result = await spawnArcanaRun(prompt)
           await store.markRan(job.id)
-          if (result.output) console.log(result.output)
-          if (result.error) console.error(`Error: ${result.error}`)
-          else console.log("Done.")
+          if (json) {
+            outputJson({ jobId: job.id, success: result.success, output: result.output ?? null, error: result.error ?? null })
+            if (result.error) process.exitCode = 1
+          } else {
+            if (result.output) console.log(result.output)
+            if (result.error) console.error(`Error: ${result.error}`)
+            else console.log("Done.")
+          }
         } catch (e) {
           console.error(`Failed: ${e}`)
+          process.exitCode = 1
         }
         break
       }
       case "start": {
+        if (json) {
+          console.error("cron start is a long-running process; --json is not supported")
+          process.exitCode = 1
+          return
+        }
         const intervalMs = getCronIntervalSeconds() * 1000
         console.log(`Starting cron scheduler (interval: ${getCronIntervalSeconds()}s). Ctrl+C to stop.`)
         const scheduler = new Scheduler(store, async (job: Job) => {

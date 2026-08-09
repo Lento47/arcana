@@ -23,6 +23,7 @@ import { Filesystem } from "@/util/filesystem"
 import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@arcana/sdk/v2"
 import { FormatError, FormatUnknownError } from "../error"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
+import { isJsonMode, jsonOption } from "../json-output"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
 
@@ -173,6 +174,11 @@ export const RunCommand = effectCmd({
         default: "default",
         describe: "format: default (formatted) or json (raw JSON events)",
       })
+      .option("json", {
+        type: "boolean",
+        default: false,
+        describe: "shorthand for --format json (wins when both are provided)",
+      })
       .option("file", {
         alias: ["f"],
         type: "string",
@@ -255,13 +261,16 @@ export const RunCommand = effectCmd({
     yield* Effect.promise(async () => {
       const rawMessage = [...args.message, ...(args["--"] || [])].join(" ")
       const thinking = args.interactive ? (args.thinking ?? true) : (args.thinking ?? false)
-      const die = (message: string): never => {
+      // --json is a shorthand for --format json and wins when both are given.
+      const effectiveFormat = isJsonMode(args) ? "json" : args.format
+      const die = (message: string): void => {
         UI.error(message)
-        process.exit(1)
+        process.exitCode = 1
       }
-      const dieInteractive = (error: unknown): never => {
+      const dieInteractive = (error: unknown): void => {
         if (error instanceof Error && error.message === INTERACTIVE_INPUT_ERROR) {
           die(error.message)
+          return
         }
 
         throw error
@@ -273,18 +282,22 @@ export const RunCommand = effectCmd({
 
       if (args.interactive && args.command) {
         die("--interactive cannot be used with --command")
+        return
       }
 
       if (args.demo && !args.interactive) {
         die("--demo requires --interactive")
+        return
       }
 
-      if (args.interactive && args.format === "json") {
+      if (args.interactive && effectiveFormat === "json") {
         die("--interactive cannot be used with --format json")
+        return
       }
 
       if (args["replay-limit"] !== undefined && !args.interactive) {
         die("--replay-limit requires --interactive")
+        return
       }
 
       if (
@@ -292,10 +305,12 @@ export const RunCommand = effectCmd({
         (!Number.isInteger(args["replay-limit"]) || args["replay-limit"] <= 0)
       ) {
         die("--replay-limit must be a positive integer")
+        return
       }
 
       if (args.interactive && !process.stdout.isTTY) {
         die("--interactive requires a TTY stdout")
+        return
       }
 
       if (args.interactive) {
@@ -305,6 +320,8 @@ export const RunCommand = effectCmd({
           dieInteractive(error)
         }
       }
+
+      if (effectiveFormat === "json" && process.exitCode === 1) return
 
       const replay = args.replay || args["replay-limit"] !== undefined
 
@@ -318,7 +335,8 @@ export const RunCommand = effectCmd({
           return process.cwd()
         } catch {
           UI.error("Failed to change directory to " + args.dir)
-          process.exit(1)
+          process.exitCode = 1
+          return undefined
         }
       })()
       const attachHeaders = args.attach
@@ -340,7 +358,8 @@ export const RunCommand = effectCmd({
           const resolvedPath = path.resolve(args.attach ? root : (directory ?? root), filePath)
           if (!(await Filesystem.exists(resolvedPath))) {
             UI.error(`File not found: ${filePath}`)
-            process.exit(1)
+            process.exitCode = 1
+            return
           }
 
           const mime = (await Filesystem.isDir(resolvedPath)) ? "application/x-directory" : "text/plain"
@@ -360,12 +379,14 @@ export const RunCommand = effectCmd({
 
       if (message.trim().length === 0 && !args.command && !args.interactive) {
         UI.error("You must provide a message or a command")
-        process.exit(1)
+        process.exitCode = 1
+        return
       }
 
       if (args.fork && !args.continue && !args.session) {
         UI.error("--fork requires --continue or --session")
-        process.exit(1)
+        process.exitCode = 1
+        return
       }
 
       const rules: PermissionV1.Ruleset = args.interactive
@@ -404,7 +425,8 @@ export const RunCommand = effectCmd({
 
           if (!current?.data) {
             UI.error("Session not found")
-            process.exit(1)
+            process.exitCode = 1
+            return
           }
 
           if (args.fork) {
@@ -530,7 +552,8 @@ export const RunCommand = effectCmd({
         }
 
         UI.error("Failed to resolve remote directory")
-        process.exit(1)
+        process.exitCode = 1
+        return process.cwd()
       }
 
       async function localAgent() {
@@ -612,12 +635,13 @@ export const RunCommand = effectCmd({
         const sess = await session(sdk)
         if (!sess?.id) {
           UI.error("Session not found")
-          process.exit(1)
+          process.exitCode = 1
+          return
         }
         const sessionID = sess.id
 
         function emit(type: string, data: Record<string, unknown>) {
-          if (args.format === "json") {
+          if (effectiveFormat === "json") {
             process.stdout.write(
               JSON.stringify({
                 type,
@@ -648,10 +672,10 @@ export const RunCommand = effectCmd({
               // Detect task completion: finish reason set and not tool-calls
               const finish = event.properties.info.finish
               if (finish && finish !== "tool-calls" && finish !== "unknown") {
-                if (args.format !== "json") UI.println(UI.Style.TEXT_SUCCESS + "✓" + UI.Style.TEXT_NORMAL + " done")
+                if (effectiveFormat !== "json") UI.println(UI.Style.TEXT_SUCCESS + "✓" + UI.Style.TEXT_NORMAL + " done")
                 break
               }
-              if (args.format !== "json" && toggles.get("start") !== true) {
+              if (effectiveFormat !== "json" && toggles.get("start") !== true) {
                 UI.empty()
                 UI.println(`> ${event.properties.info.agent} · ${event.properties.info.modelID}`)
                 UI.empty()
@@ -677,7 +701,7 @@ export const RunCommand = effectCmd({
                 part.type === "tool" &&
                 part.tool === "task" &&
                 part.state.status === "running" &&
-                args.format !== "json"
+                effectiveFormat !== "json"
               ) {
                 if (toggles.get(part.id) === true) continue
                 await tool(part)
@@ -738,7 +762,7 @@ export const RunCommand = effectCmd({
               event.properties.status.type === "idle"
             ) {
               if (error) UI.error("Session ended with errors")
-              else if (args.format !== "json") UI.println(UI.Style.TEXT_SUCCESS + "✓" + UI.Style.TEXT_NORMAL + " done")
+              else if (effectiveFormat !== "json") UI.println(UI.Style.TEXT_SUCCESS + "✓" + UI.Style.TEXT_NORMAL + " done")
               break
             }
 

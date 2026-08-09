@@ -11,6 +11,7 @@ import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
 import { revokeWithCascade, type RuntimeGrantStore } from "@arcana/core/capability/runtime-delegation"
 import { CapabilityRevocation } from "@/session/capability-revocation"
 import { NotFoundError } from "@/storage/storage"
+import { outputJson, isJsonMode, jsonOption } from "../json-output"
 
 export const CapabilityCommand = cmd({
   command: "capability",
@@ -37,6 +38,11 @@ export const CapabilityRevokeCommand = effectCmd({
       .option("reason", {
         describe: "revocation reason recorded in governance evidence",
         type: "string",
+      })
+      .option("json", {
+        describe: "output machine-readable JSON to stdout",
+        type: "boolean",
+        default: false,
       }),
   handler: Effect.fn("Cli.capability.revoke")(function* (args) {
     const sessions = yield* Session.Service
@@ -80,6 +86,17 @@ export const CapabilityRevokeCommand = effectCmd({
       return yield* fail(
         `Capability ${args.capabilityID} is not an active grant of session ${args.sessionID}`,
       )
+    }
+
+    if (isJsonMode(args)) {
+      outputJson({
+        revoked: result.revokedIds.length,
+        sessionID: args.sessionID,
+        capabilityID: args.capabilityID,
+        reason,
+        revokedIds: result.revokedIds,
+      })
+      return
     }
 
     UI.println(
