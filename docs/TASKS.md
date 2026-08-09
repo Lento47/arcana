@@ -87,7 +87,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | Operations group | PARTIAL | doctor/trust/models/providers/daemon/gateway/cron | BLK-CLI-02/04 |
 | JSON output + deterministic exit codes | PARTIAL | **`--json` + exit codes IMPLEMENTED 2026-08-05 (PR #65)**: `docs/cli-json-contract.md` + `packages/engine/src/cli/json-output.ts` + tests; session/node/trust converted. Remaining: every command + contract freeze | BLK-CLI-02 |
 | Shell completion | COMPLETE | **bash/zsh/fish scripts + 8 tests (PR #67, merged 2026-08-05)**: `packages/arcana/src/cli/completion.ts` + `completion.test.ts` | - |
-| Cross-platform smoke | PARTIAL | Windows only | BLK-CLI-04 |
+| Cross-platform smoke | PARTIAL | Windows executed: 10 checks, 10 pass, 0 fail at 5263b6fa (`script/platform-smoke.sh`, `docs/PLATFORM-SMOKE-MATRIX.md`); Linux/macOS NOT EXERCISED (no host; BLK-D-03 separate) | BLK-CLI-04 |
 | No CLI-only authorization bypass | PARTIAL | PEP-shared path; adversarial cross-surface suite pending | BLK-CLI-05 |
 
 ## Phase D — Distributed Governed Autonomy
@@ -335,7 +335,7 @@ protocol, performance.
 | Proof/replay | PARTIAL (not frozen) | 116/116 tests incl. `proof inspect/verify/export`, `replay audit/deterministic`, `revalidate run` |
 | External launch | PARTIAL | `arcana launch <runtime>` A1 scaffold implemented (declaration, `--dry-run`, supervision, evidence); production adapter pending (BLK-CLI-01) |
 | Operations | PARTIAL | doctor/trust/models/providers/daemon/gateway/cron |
-| JSON/exit codes/completion/cross-platform | PARTIAL | `docs/cli-json-contract.md` + `--json` for session/node/trust (PR #65); bash/zsh/fish completion (PR #67); cross-platform matrix + contract freeze pending (BLK-CLI-02/04) |
+| JSON/exit codes/completion/cross-platform | PARTIAL | **BLK-CLI-02 merged (PR #65)**: `docs/cli-json-contract.md` + `--json` for session/node/trust; **BLK-CLI-03 merged (PR #67)**: bash/zsh/fish completion; **BLK-CLI-04 matrix executed 2026-08-05** (`docs/PLATFORM-SMOKE-MATRIX.md`, `script/platform-smoke.sh`, Windows 10/10); remaining: every-command JSON coverage + CLI 1.0 contract freeze |
 
 ---
 
