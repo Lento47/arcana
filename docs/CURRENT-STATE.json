@@ -34,9 +34,9 @@
     "00689a50 fix(postinstall): fail when OpenTUI patch cannot apply"
   ],
   "testTotals": {
-    "source": "fresh_run_ci",
+    "source": "mixed",
     "summaryFile": "docs/evidence/ci-engine-tests.log",
-    "documentedAt": "2026-08-07T18:24:48.156Z",
+    "documentedAt": "2026-08-09T20:15:14.616Z",
     "suites": {
       "TUI suite": {
         "pass": 819,
@@ -68,13 +68,13 @@
         }
       },
       "Engine suite": {
-        "pass": 4353,
+        "pass": 4365,
         "skip": 38,
         "todo": 1,
-        "fail": 10,
-        "tests": 4402,
+        "fail": 8,
+        "tests": 4412,
         "source": "fresh_run_ci",
-        "evidence": "freeze-evidence workflow at b8336d6354bb373fd638a8388c592e51f3e4930f (full engine suite, bun test --timeout 30000)"
+        "evidence": "freeze-evidence workflow at 0501f33c54b0d43b24d1cb3f8bc876cd607064fc (full engine suite, bun test --timeout 30000)"
       },
       "Arcana CLI/proof suite": {
         "pass": 124,
@@ -105,9 +105,9 @@
       }
     },
     "failures": [
-      "Engine suite (exit=1, 10 failures at b8336d6354bb373fd638a8388c592e51f3e4930f)"
+      "Engine suite (exit=1, 8 failures at 0501f33c54b0d43b24d1cb3f8bc876cd607064fc)"
     ],
-    "note": "Suites with a clean fresh run (exit 0) use source: fresh_run; suites whose fresh run was not clean or that were not part of the fresh run retain source: documented with a freshAttempt record where one exists. Non-zero exit suites: Engine suite (exit=1), Core suite (exit=1) — see summaryFile for the failing test details. No numbers were invented."
+    "note": "Engine suite totals were refreshed from freeze-evidence CI; all other suite entries retain their existing provenance. Engine suite recorded 8 failing tests at 0501f33c54b0d43b24d1cb3f8bc876cd607064fc; see summaryFile for details. No numbers were invented."
   },
   "contractRevisions": {
     "approvalApi": {
