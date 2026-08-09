@@ -7,6 +7,7 @@ import { createDelegatedRunner } from "../../agent/delegated.js"
 import { loadConfig, getDataDir } from "../../config.js"
 import { mkdir } from "node:fs/promises"
 import type { Job } from "@arcana/cron"
+import { outputJson, isJsonMode, jsonOption } from "../json-output.js"
 
 const CRON_SYSTEM = `You are Arcana running a scheduled job. Complete the task described in the user message, then stop. Be concise. Prefer read-only tools; avoid destructive shell or writes unless the job prompt explicitly requires them.`
 
@@ -64,7 +65,8 @@ export const CronCommand: CommandModule = {
       .option("name", { alias: "n", type: "string", describe: "job name" })
       .option("skill", { type: "string", describe: "activate this skill for the job" })
       .option("id", { type: "string", describe: "job id" })
-      .option("timezone", { alias: "tz", type: "string", default: "UTC" }),
+      .option("timezone", { alias: "tz", type: "string", default: "UTC" })
+      .option("json", { type: "boolean", default: false, describe: "output machine-readable JSON to stdout" }),
 
   async handler(args) {
     const config = await loadConfig()
@@ -73,9 +75,14 @@ export const CronCommand: CommandModule = {
 
     const store = new JobStore(dataDir)
     const action = String(args.action)
+    const json = isJsonMode(args)
 
     if (action === "list") {
       const jobs = await store.list()
+      if (json) {
+        outputJson(jobs.map((j) => ({ ...j })))
+        return
+      }
       if (!jobs.length) { console.log("No scheduled jobs."); return }
       console.log(`${"ID".padEnd(10)} ${"NAME/PROMPT".padEnd(34)} ${"SCHEDULE".padEnd(16)} ${"STATUS".padEnd(8)} RUNS  LAST RUN`)
       console.log("─".repeat(100))
@@ -89,7 +96,11 @@ export const CronCommand: CommandModule = {
     }
 
     if (action === "add") {
-      if (!args.schedule || !args.prompt) { console.error("--schedule and --prompt required"); process.exit(1) }
+      if (!args.schedule || !args.prompt) {
+        console.error("--schedule and --prompt required")
+        process.exitCode = 1
+        return
+      }
       const job = await store.create({
         schedule: String(args.schedule),
         prompt: String(args.prompt),
@@ -97,13 +108,26 @@ export const CronCommand: CommandModule = {
         skill: args.skill ? String(args.skill) : undefined,
         timezone: String(args.timezone),
       })
+      if (json) {
+        outputJson({ ...job })
+        return
+      }
       console.log(`Created job ${job.id}`)
       console.log(`Schedule: ${job.schedule}  Next: ${job.next_run}`)
       return
     }
 
     if (action === "start") {
-      if (!config.apiKey) { console.error("No API key — set ARCANA_API_KEY"); process.exit(1) }
+      if (json) {
+        console.error("cron start is a long-running process; --json is not supported")
+        process.exitCode = 1
+        return
+      }
+      if (!config.apiKey) {
+        console.error("No API key set. Set ARCANA_API_KEY")
+        process.exitCode = 1
+        return
+      }
       const db = openMemoryDB(dataDir)
       const memory = new MemoryStore(db)
       const skills = await loadSkills(config.skillsDirs)
@@ -129,27 +153,61 @@ export const CronCommand: CommandModule = {
     }
 
     if (action === "run") {
-      if (!args.id) { console.error("--id required"); process.exit(1) }
+      if (!args.id) {
+        console.error("--id required")
+        process.exitCode = 1
+        return
+      }
       const job = await store.get(String(args.id))
-      if (!job) { console.error(`Job not found: ${args.id}`); process.exit(1) }
-      if (!config.apiKey) { console.error("No API key — set ARCANA_API_KEY"); process.exit(1) }
+      if (!job) {
+        console.error(`Job not found: ${args.id}`)
+        process.exitCode = 1
+        return
+      }
+      if (!config.apiKey) {
+        console.error("No API key set. Set ARCANA_API_KEY")
+        process.exitCode = 1
+        return
+      }
 
       const db = openMemoryDB(dataDir)
       const memory = new MemoryStore(db)
       const skills = await loadSkills(config.skillsDirs)
 
-      console.log(`Running: ${job.name ?? job.prompt}`)
+      if (json) outputJson({ running: job.id })
+      else console.log(`Running: ${job.name ?? job.prompt}`)
       const output = await runJob(job, config, memory, skills)
       await store.markRan(String(args.id))
-      console.log("\n" + output)
+      if (json) outputJson({ jobId: job.id, output })
+      else console.log("\n" + output)
       return
     }
 
-    if (!args.id) { console.error("--id required"); process.exit(1) }
+    if (!args.id) {
+      console.error("--id required")
+      process.exitCode = 1
+      return
+    }
     const id = String(args.id)
 
-    if (action === "remove") { const ok = await store.remove(id); console.log(ok ? `Removed ${id}` : `Not found: ${id}`); return }
-    if (action === "pause") { await store.update(id, { enabled: false }); console.log(`Paused ${id}`); return }
-    if (action === "resume") { await store.update(id, { enabled: true }); console.log(`Resumed ${id}`); return }
+    if (action === "remove") {
+      const ok = await store.remove(id)
+      if (json) outputJson({ removed: ok ? id : null, found: ok })
+      else console.log(ok ? `Removed ${id}` : `Not found: ${id}`)
+      if (!ok) process.exitCode = 1
+      return
+    }
+    if (action === "pause") {
+      await store.update(id, { enabled: false })
+      if (json) outputJson({ paused: id })
+      else console.log(`Paused ${id}`)
+      return
+    }
+    if (action === "resume") {
+      await store.update(id, { enabled: true })
+      if (json) outputJson({ resumed: id })
+      else console.log(`Resumed ${id}`)
+      return
+    }
   },
 }

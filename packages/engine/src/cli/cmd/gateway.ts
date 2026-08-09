@@ -125,10 +125,12 @@ export const GatewayCommand: CommandModule = {
     if (action === "install") {
       if (!args.platform) {
         console.error("--platform required. Choices: telegram, discord, slack")
-        process.exit(1)
+        process.exitCode = 1
+        return
       }
       const ok = await installPlatform(String(args.platform))
-      process.exit(ok ? 0 : 1)
+      if (!ok) process.exitCode = 1
+      return
     }
 
     // ── start ────────────────────────────────────────────────────
@@ -140,7 +142,8 @@ export const GatewayCommand: CommandModule = {
       console.error("")
       console.error("This installs the messaging libraries needed to run the gateway.")
       console.error("After install, run: arcana gateway")
-      process.exit(1)
+      process.exitCode = 1
+      return
     }
 
     const { Gateway } = gatewayMod
@@ -153,7 +156,8 @@ export const GatewayCommand: CommandModule = {
 
     if (!gatewayConfig.telegram && !gatewayConfig.discord && !(gatewayConfig as any).slack && !(gatewayConfig as any).whatsapp) {
       console.error("No platform configured. Set gateway config or pass --telegram-token / --discord-token.")
-      process.exit(1)
+      process.exitCode = 1
+      return
     }
 
     const gateway = new Gateway()
