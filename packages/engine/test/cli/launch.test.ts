@@ -26,28 +26,36 @@ describe("arcana launch declaration (E5)", () => {
   )
 
   cliIt.live(
-    "launch claude --dry-run prints the A0 declaration",
+    "launch claude --dry-run prints the A1 declaration",
     ({ opencode }) =>
       Effect.gen(function* () {
         const r = yield* opencode.spawn(["launch", "claude", "--dry-run"])
         opencode.expectExit(r, 0, "launch claude --dry-run")
         expect(r.stdout).toContain("[arcana launch] claude")
-        expect(r.stdout).toContain("certification level: A0")
-        expect(r.stdout).toContain("no enforcement claim")
+        expect(r.stdout).toContain("certification level: A1")
+        expect(r.stdout).toContain("test version:")
+        expect(r.stdout).toContain("evidence:")
+        expect(r.stdout).toContain("nonclaims:")
+        expect(r.stdout).toContain("no sandbox claim")
+        expect(r.stdout).toContain("no exact-effect PEP claim")
         expect(r.stdout).toContain("[dry-run] no process launched")
       }),
     60_000,
   )
 
   cliIt.live(
-    "launch gemini --dry-run prints the A0 declaration",
+    "launch gemini --dry-run prints the A1 declaration",
     ({ opencode }) =>
       Effect.gen(function* () {
         const r = yield* opencode.spawn(["launch", "gemini", "--dry-run"])
         opencode.expectExit(r, 0, "launch gemini --dry-run")
         expect(r.stdout).toContain("[arcana launch] gemini")
-        expect(r.stdout).toContain("certification level: A0")
-        expect(r.stdout).toContain("no enforcement claim")
+        expect(r.stdout).toContain("certification level: A1")
+        expect(r.stdout).toContain("test version:")
+        expect(r.stdout).toContain("evidence:")
+        expect(r.stdout).toContain("nonclaims:")
+        expect(r.stdout).toContain("no sandbox claim")
+        expect(r.stdout).toContain("no exact-effect PEP claim")
         expect(r.stdout).toContain("[dry-run] no process launched")
       }),
     60_000,
