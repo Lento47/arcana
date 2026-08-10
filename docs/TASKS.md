@@ -80,15 +80,15 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 
 | Task | Status | Evidence | Blockers |
 |---|---|---|---|
-| Session/execution group | PARTIAL | `run`, `session list`, `serve`, history | BLK-CLI-02 |
-| Policy/capability group | PARTIAL | `capability.ts`, approval CLI | BLK-CLI-02 |
+| Session/execution group | COMPLETE (not frozen) | `run`, `session list`, `serve`, history — `--json` + exit codes via PR #113 | BLK-CLI-02 |
+| Policy/capability group | COMPLETE (not frozen) | `capability.ts`, approval CLI — `--json` + exit codes via PR #113 | BLK-CLI-02 |
 | Proof/replay group | COMPLETE (not frozen) | 116/116 proof/CLI tests | BLK-CLI-02 |
-| External-agent launch group | PARTIAL | A1 scaffold implemented (`arcana launch codex|claude|gemini`: declaration, `--dry-run`, supervision, durable evidence; no sandbox claim); production-certified adapter pending | BLK-CLI-01 |
-| Operations group | PARTIAL | doctor/trust/models/providers/daemon/gateway/cron | BLK-CLI-02/04 |
-| JSON output + deterministic exit codes | PARTIAL | **`--json` + exit codes IMPLEMENTED 2026-08-05 (PR #65)**: `docs/cli-json-contract.md` + `packages/engine/src/cli/json-output.ts` + tests; session/node/trust converted. Remaining: every command + contract freeze | BLK-CLI-02 |
+| External-agent launch group | COMPLETE (not frozen) | All three adapters certified A1 (`arcana launch codex|claude|gemini`: declaration, `--dry-run`, supervision, durable evidence; no sandbox claim) — codex A1 2026-08-05, claude/gemini A1 via PR #118 | BLK-CLI-01 |
+| Operations group | COMPLETE (not frozen) | doctor/trust/models/providers/daemon/gateway/cron — `--json` + exit codes via PR #113 | BLK-CLI-02/04 |
+| JSON output + deterministic exit codes | COMPLETE (not frozen) | **`--json` + exit codes IMPLEMENTED 2026-08-05 (PR #65)**: `docs/cli-json-contract.md` + `packages/engine/src/cli/json-output.ts` + tests; session/node/trust converted. **Every-command coverage DONE 2026-08-09 (PR #113)**: engine CLI commands (capability, cron, daemon, doctor, gateway, history, models, providers, run, serve) + legacy arcana handlers; converted-commands table frozen; `json-contract.test.ts` 8/0. Remaining: CLI 1.0 milestone freeze | BLK-CLI-02 |
 | Shell completion | COMPLETE | **bash/zsh/fish scripts + 8 tests (PR #67, merged 2026-08-05)**: `packages/arcana/src/cli/completion.ts` + `completion.test.ts` | - |
-| Cross-platform smoke | PARTIAL | Windows executed: 10 checks, 10 pass, 0 fail at 5263b6fa (`script/platform-smoke.sh`, `docs/PLATFORM-SMOKE-MATRIX.md`); Linux/macOS NOT EXERCISED (no host; BLK-D-03 separate) | BLK-CLI-04 |
-| No CLI-only authorization bypass | PARTIAL | PEP-shared path; adversarial cross-surface suite pending | BLK-CLI-05 |
+| Cross-platform smoke | PARTIAL | Windows executed: 10 checks, 10 pass, 0 fail at 5263b6fa (`script/platform-smoke.sh`, `docs/PLATFORM-SMOKE-MATRIX.md` published via PR #114); Linux/macOS NOT EXERCISED (no host; BLK-D-03 separate) | BLK-CLI-04 |
+| No CLI-only authorization bypass | COMPLETE (not frozen) | PEP-shared path; frozen cross-surface adversarial suite `cross-surface-bypass.test.ts` — 18 fixtures, 18 pass / 0 fail, 0 bypasses (2026-08-05) | BLK-CLI-05 |
 
 ## Phase D — Distributed Governed Autonomy
 
@@ -330,12 +330,12 @@ protocol, performance.
 
 | Group | Status | Evidence |
 |---|---|---|
-| Session/execution | PARTIAL | `arcana run`, `session list`, `serve`, history |
-| Policy/capability | PARTIAL | `arcana capability`, approval CLI paths |
-| Proof/replay | PARTIAL (not frozen) | 116/116 tests incl. `proof inspect/verify/export`, `replay audit/deterministic`, `revalidate run` |
-| External launch | PARTIAL | `arcana launch <runtime>` A1 scaffold implemented (declaration, `--dry-run`, supervision, evidence); production adapter pending (BLK-CLI-01) |
-| Operations | PARTIAL | doctor/trust/models/providers/daemon/gateway/cron |
-| JSON/exit codes/completion/cross-platform | PARTIAL | **BLK-CLI-02 merged (PR #65)**: `docs/cli-json-contract.md` + `--json` for session/node/trust; **BLK-CLI-03 merged (PR #67)**: bash/zsh/fish completion; **BLK-CLI-04 matrix executed 2026-08-05** (`docs/PLATFORM-SMOKE-MATRIX.md`, `script/platform-smoke.sh`, Windows 10/10); remaining: every-command JSON coverage + CLI 1.0 contract freeze |
+| Session/execution | COMPLETE (not frozen) | `arcana run`, `session list`, `serve`, history — `--json` + exit codes via PR #113 |
+| Policy/capability | COMPLETE (not frozen) | `arcana capability`, approval CLI paths — `--json` + exit codes via PR #113 |
+| Proof/replay | COMPLETE (not frozen) | 116/116 tests incl. `proof inspect/verify/export`, `replay audit/deterministic`, `revalidate run` |
+| External launch | COMPLETE (not frozen) | `arcana launch <runtime>` all three adapters certified A1 (declaration, `--dry-run`, supervision, evidence; no sandbox claim) — codex A1 2026-08-05, claude/gemini A1 via PR #118 (BLK-CLI-01) |
+| Operations | COMPLETE (not frozen) | doctor/trust/models/providers/daemon/gateway/cron — `--json` + exit codes via PR #113 |
+| JSON/exit codes/completion/cross-platform | COMPLETE (not frozen) | **BLK-CLI-02 merged (PR #65)**: `docs/cli-json-contract.md` + `--json` for session/node/trust; **every-command coverage via PR #113**; **BLK-CLI-03 merged (PR #67)**: bash/zsh/fish completion; **BLK-CLI-04 matrix published (PR #114)** (`docs/PLATFORM-SMOKE-MATRIX.md`, `script/platform-smoke.sh`, Windows 10/10); remaining: CLI 1.0 contract freeze |
 
 ---
 
