@@ -26,12 +26,12 @@ secondary; never edit the mirror independently.
 | Field | Value |
 |---|---|
 | Current implementation branch | `phase-d-implementation` |
-| Implementation checkpoint | `b5d192a1` (2026-08-05; merged via PRs #79–#82) |
+| Implementation checkpoint | `f3c935e6` (2026-08-09; merged via PRs #109–#118 — CLI JSON every-command coverage, platform smoke matrix, CURRENT-STATE reconciliation, cleanup PRs, Rust proof-batching parity, claude/gemini A1 certification) |
 | Documentation reconciliation commit | `882ea468` (baseline for the consolidated files) |
-| Uncommitted worktree | clean at implementation checkpoint `b5d192a1` |
+| Uncommitted worktree | clean at implementation checkpoint `f3c935e6` |
 | Default branch (`master` / `origin/master`) | stale — Phase B/C, D-7, TUI-2 milestone commits not on it; mainline promotion pending (post-sign-off release action) |
 | Release version | pre-release builds only (`0.0.0-phase-d-implementation-*`) |
-| Last verification date | 2026-08-05 (fresh partial rerun at `4984d154`: TUI 819 pass / 1 skip / 0 fail, Arcana CLI 124 pass / 0 fail, SDK 37 pass / 0 fail; core and engine fresh runs had host-environment-specific failures (config loading, HTTP, subprocess/timing classes) so the documented canonical 2026-08-03 figures are retained — engine 4302 pass / 74 skip / 1 todo / 0 fail; per-suite detail in `docs/CURRENT-STATE.json`) |
+| Last verification date | 2026-08-09 (freeze-evidence CI at `0501f33c`: engine 4365 pass / 8 fail / 38 skip / 4412 tests; TUI 819 pass / 0 fail; core 1465 pass / 0 fail; Arcana CLI 124 pass / 0 fail; SDK 34 pass / 0 fail — per-suite detail in `docs/CURRENT-STATE.json`; the engine failures are the CI flake class (spine hover/right-click, ReasoningPart wrap, DiffViewerFileTree), green on local Windows re-runs) |
 | Supported platforms | Windows 10/11 (primary, tested); Linux (D-6A-L identity scaffold; live validation pending) |
 
 ## Milestone matrix
