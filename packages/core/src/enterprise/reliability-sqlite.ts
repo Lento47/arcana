@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS reliability_backups (
   created_at TEXT NOT NULL,
   digest TEXT NOT NULL,
   restored_at TEXT,
+  fingerprint TEXT,
   PRIMARY KEY (tenant_id, backup_id)
 );
 
@@ -34,14 +35,22 @@ export class SqliteReliabilityStore implements ReliabilityStore {
   constructor(db: Database) {
     this.db = db
     this.db.exec(SCHEMA_SQL)
+    // Migration guard: control-plane databases created before the key
+    // backup surface gained the fingerprint column keep working.
+    const columns = this.db.query("PRAGMA table_info(reliability_backups)").all() as Array<{
+      name: string
+    }>
+    if (!columns.some((column) => column.name === "fingerprint")) {
+      this.db.exec("ALTER TABLE reliability_backups ADD COLUMN fingerprint TEXT")
+    }
   }
 
   putBackup(record: BackupRecord): void {
     this.db
       .query(
         `INSERT OR REPLACE INTO reliability_backups (
-          tenant_id, backup_id, kind, created_at, digest, restored_at
-        ) VALUES ($tenantId, $backupId, $kind, $createdAt, $digest, $restoredAt)`,
+          tenant_id, backup_id, kind, created_at, digest, restored_at, fingerprint
+        ) VALUES ($tenantId, $backupId, $kind, $createdAt, $digest, $restoredAt, $fingerprint)`,
       )
       .run({
         $tenantId: record.tenantId,
@@ -50,6 +59,7 @@ export class SqliteReliabilityStore implements ReliabilityStore {
         $createdAt: record.createdAt,
         $digest: record.digest,
         $restoredAt: record.restoredAt ?? null,
+        $fingerprint: record.fingerprint ?? null,
       })
   }
 
@@ -65,6 +75,7 @@ export class SqliteReliabilityStore implements ReliabilityStore {
           created_at: string
           digest: string
           restored_at: string | null
+          fingerprint: string | null
         }
       | null
     return row
@@ -75,6 +86,7 @@ export class SqliteReliabilityStore implements ReliabilityStore {
           createdAt: row.created_at,
           digest: row.digest,
           restoredAt: row.restored_at ?? undefined,
+          fingerprint: row.fingerprint ?? undefined,
         }
       : undefined
   }
