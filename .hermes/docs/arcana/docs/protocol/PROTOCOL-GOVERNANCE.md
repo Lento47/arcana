@@ -29,6 +29,13 @@
 - Optional extensions must be namespaced (`x-<vendor>-<name>`), documented in
   the schema registry, and never alter security semantics.
 - Unknown mandatory fields are rejected (strict schema).
+- Enforcement (registry owner artifact):
+  `packages/core/src/protocol/extension-registry.ts`, with tests in
+  `packages/core/src/protocol/extension-registry.test.ts`. On the wire, every
+  `x-*` envelope field must parse, come from a known vendor, be registered,
+  and pass the security-semantics inspection; anything else fails closed at
+  schema validation (`packages/core/src/crypto/verifier.ts`) and at policy
+  bundle admission (`packages/core/src/crypto/policy-bundle-store.ts`).
 
 ## Compatibility matrix
 
