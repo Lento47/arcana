@@ -107,7 +107,7 @@ function operationErrors(operation: {
   const errorComponents: Record<string, string[]> = {}
   for (const [status, response] of Object.entries(operation.responses ?? {})) {
     const code = Number(status)
-    if (Number.isNaN(code) || code >= 300 || status === AUTH_STATUS) continue
+    if (Number.isNaN(code) || (code >= 200 && code < 300) || status === AUTH_STATUS) continue
     errorStatuses.push(status)
     const schema = response?.content?.["application/json"]?.schema
     errorComponents[status] = componentNamesFromSchema(schema)
