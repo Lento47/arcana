@@ -116,6 +116,53 @@ describe("D-4 policy bundle publishing", () => {
     expect(result).toMatchObject({ kind: "REJECTED" })
   })
 
+  it("accepts a registered extension field (E-9 registry gate)", () => {
+    const s = store()
+    const ext = envelope(1, undefined, { "x-arcana-session": { sessionId: "s-1" } } as Partial<SignedPolicyEnvelope>)
+    const result = publishPolicyBundle(
+      {
+        envelope: ext,
+        activationTime: NOW.toISOString(),
+        now: NOW,
+        trustedIssuerPublicKeys: ISSUER_KEYS,
+      },
+      s,
+    )
+    expect(result).toMatchObject({ kind: "PUBLISHED" })
+  })
+
+  it("rejects an unregistered extension field (E-9 registry gate)", () => {
+    const s = store()
+    const ext = envelope(1, undefined, { "x-arcana-widget": {} } as Partial<SignedPolicyEnvelope>)
+    const result = publishPolicyBundle(
+      {
+        envelope: ext,
+        activationTime: NOW.toISOString(),
+        now: NOW,
+        trustedIssuerPublicKeys: ISSUER_KEYS,
+      },
+      s,
+    )
+    expect(result).toMatchObject({ kind: "REJECTED" })
+    if (result.kind === "REJECTED") expect(result.reason).toContain("not registered")
+  })
+
+  it("rejects an extension field that alters security semantics (E-9 registry gate)", () => {
+    const s = store()
+    const ext = envelope(1, undefined, { "x-arcana-session": { revoke: true } } as Partial<SignedPolicyEnvelope>)
+    const result = publishPolicyBundle(
+      {
+        envelope: ext,
+        activationTime: NOW.toISOString(),
+        now: NOW,
+        trustedIssuerPublicKeys: ISSUER_KEYS,
+      },
+      s,
+    )
+    expect(result).toMatchObject({ kind: "REJECTED" })
+    if (result.kind === "REJECTED") expect(result.reason).toContain("security")
+  })
+
   it("rejects a forged signature", () => {
     const s = store()
     const forged = envelope(1)

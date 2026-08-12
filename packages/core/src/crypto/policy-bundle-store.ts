@@ -15,6 +15,7 @@
 import { verifySignedPolicy } from "./verifier"
 import { POLICY_REQUIRED_FIELDS, type SignedPolicyEnvelope } from "./signed-envelopes"
 import { validateEnvelopePayload } from "./canonical-serializer"
+import { validateEnvelopeExtensionFields } from "../protocol/extension-registry"
 
 export type PolicyBundleStatus = "STAGED" | "ACTIVE" | "SUPERSEDED" | "ROLLED_BACK" | "FAILED"
 
@@ -70,13 +71,21 @@ export function publishPolicyBundle(
   const envelope = input.envelope
 
   // Strict schema: unknown fields are rejected so a node can never silently
-  // ignore a mandatory semantic it does not understand.
-  const unknownFields = Object.keys(envelope).filter((key) => !ALLOWED_POLICY_FIELDS.has(key))
+  // ignore a mandatory semantic it does not understand. Extension fields
+  // (x-*) are exempt from the flat allowlist but must pass the extension
+  // registry gate below (E-9).
+  const unknownFields = Object.keys(envelope).filter(
+    (key) => !ALLOWED_POLICY_FIELDS.has(key) && !key.startsWith("x-"),
+  )
   if (unknownFields.length > 0) {
     return {
       kind: "REJECTED",
       reason: `unsupported policy fields: ${unknownFields.join(", ")}`,
     }
+  }
+  const extensionGate = validateEnvelopeExtensionFields(envelope as unknown as Record<string, unknown>)
+  if (!extensionGate.valid) {
+    return { kind: "REJECTED", reason: extensionGate.reason }
   }
   const schemaIssues = validateEnvelopePayload(
     envelope as unknown as Record<string, unknown>,
