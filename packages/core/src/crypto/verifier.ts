@@ -33,6 +33,7 @@ import {
   REVOCATION_REQUIRED_FIELDS,
   type RejectionReason,
 } from "./signed-envelopes"
+import { validateEnvelopeExtensionFields } from "../protocol/extension-registry"
 import { ed25519 } from "@noble/curves/ed25519.js"
 
 // ─── Named Ed25519 Wrapper ───────────────────────────────────────────
@@ -223,14 +224,28 @@ function validateEnvelopeSchema(
     }
   }
 
-  // Unknown fields
+  // Unknown fields. Extension fields (x-*) are exempt from the flat allowlist
+  // but must pass the extension registry gate below (E-9). Any other unknown
+  // field is rejected so a node can never silently ignore a mandatory
+  // semantic it does not understand.
   const allowed = getAllowedFields(domain)
   for (const key of Object.keys(envelope)) {
-    if (!allowed.has(key)) {
-      return {
-        valid: false, stage: "SCHEMA", reason: "SCHEMA_UNSUPPORTED",
-        detail: `unknown field: ${key}`,
-      }
+    if (allowed.has(key)) continue
+    if (key.startsWith("x-")) continue
+    return {
+      valid: false, stage: "SCHEMA", reason: "SCHEMA_UNSUPPORTED",
+      detail: `unknown field: ${key}`,
+    }
+  }
+
+  // E-9 extension registry: every x-* field must be namespaced, come from a
+  // known vendor, be registered, and never alter security semantics.
+  // Unknown extensions fail closed.
+  const extensionGate = validateEnvelopeExtensionFields(envelope)
+  if (!extensionGate.valid) {
+    return {
+      valid: false, stage: "SCHEMA", reason: "SCHEMA_UNSUPPORTED",
+      detail: extensionGate.reason,
     }
   }
 
