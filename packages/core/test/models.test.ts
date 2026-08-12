@@ -159,19 +159,18 @@ describe("ModelsDev Service", () => {
     Effect.gen(function* () {
       yield* writeCacheText("{")
       const state = yield* Ref.make({ ...initialState, body: JSON.stringify(fetchedFixture) })
-      const result = yield* Effect.acquireUseRelease(
-        Effect.sync(() => {
-          Flag.ARCANA_DISABLE_MODELS_FETCH = false
-        }),
-        () =>
-          provided(
-            state,
-            ModelsDev.Service.use((s) => s.get()),
-          ),
-        () =>
+      const result = yield* provided(
+        state,
+        Effect.acquireUseRelease(
           Effect.sync(() => {
-            Flag.ARCANA_DISABLE_MODELS_FETCH = true
+            Flag.ARCANA_DISABLE_MODELS_FETCH = false
           }),
+          () => ModelsDev.Service.use((s) => s.get()),
+          () =>
+            Effect.sync(() => {
+              Flag.ARCANA_DISABLE_MODELS_FETCH = true
+            }),
+        ),
       )
       expect(result.zeta).toBeDefined()
       expect(result.zeta.id).toBe("zeta")
