@@ -115,3 +115,18 @@ jobs:
         run: |
           echo "This workflow validates artifact syntax and the required surface only."
           echo "Runtime payload/response parity and generated-client conformance require dedicated tests."
+
+  parity:
+    name: Contract parity lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Arcana
+        uses: ./.github/actions/setup-arcana
+
+      - name: Run contract parity lint
+        run: bun run --filter @arcana/engine contract:check
