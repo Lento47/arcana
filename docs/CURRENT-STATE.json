@@ -36,7 +36,7 @@
   "testTotals": {
     "source": "mixed",
     "summaryFile": "docs/evidence/ci-engine-tests.log",
-    "documentedAt": "2026-08-11T02:30:47.025Z",
+    "documentedAt": "2026-08-13T07:21:25.920Z",
     "suites": {
       "TUI suite": {
         "pass": 819,
@@ -68,13 +68,13 @@
         }
       },
       "Engine suite": {
-        "pass": 4364,
+        "pass": 4382,
         "skip": 38,
         "todo": 1,
-        "fail": 9,
-        "tests": 4412,
+        "fail": 10,
+        "tests": 4431,
         "source": "fresh_run_ci",
-        "evidence": "freeze-evidence workflow at 32304cbb0f822b58af761a80fb52e745ea5171b1 (full engine suite, bun test --timeout 30000)"
+        "evidence": "freeze-evidence workflow at 2ddd4fc3d8d93150dd539cb4e86f3ae99a0d378d (full engine suite, bun test --timeout 30000)"
       },
       "Arcana CLI/proof suite": {
         "pass": 124,
@@ -105,9 +105,9 @@
       }
     },
     "failures": [
-      "Engine suite (exit=1, 9 failures at 32304cbb0f822b58af761a80fb52e745ea5171b1)"
+      "Engine suite (exit=1, 10 failures at 2ddd4fc3d8d93150dd539cb4e86f3ae99a0d378d)"
     ],
-    "note": "Engine suite totals were refreshed from freeze-evidence CI; all other suite entries retain their existing provenance. Engine suite recorded 9 failing tests at 32304cbb0f822b58af761a80fb52e745ea5171b1; see summaryFile for details. No numbers were invented."
+    "note": "Engine suite totals were refreshed from freeze-evidence CI; all other suite entries retain their existing provenance. Engine suite recorded 10 failing tests at 2ddd4fc3d8d93150dd539cb4e86f3ae99a0d378d; see summaryFile for details. No numbers were invented."
   },
   "contractRevisions": {
     "approvalApi": {
