@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
 import { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
+import { spawnSync } from "node:child_process"
 import path from "node:path"
 import {
   deriveDeterministicReplay,
@@ -132,25 +133,17 @@ describe("P2 End-to-End Replay Fixture", () => {
     // the digest from the real output. Here, we pre-compute what the replay
     // will produce by running the command ourselves.
 
-    // Run the command now to get the real output for digest computation
-    const { execSync } = require("child_process")
-    let realOutput = ""
-    let realExitCode = 0
-    const replayCommand = [executable, ...args].join(" ")
-    try {
-      realOutput = execSync(replayCommand, {
-        cwd,
-        timeout: 30000,
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        // Explicit env: Bun's execSync does not honor runtime process.env
-        // PATH updates on Windows.
-        env: { ...process.env },
-      })
-    } catch (err: any) {
-      realExitCode = err.status ?? 1
-      realOutput = err.stdout ?? ""
-    }
+    // Run the exact structured invocation now to get the real output for digest computation.
+    const recorded = spawnSync(executable, args, {
+      cwd,
+      timeout: 30000,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env },
+    })
+    const realOutput = recorded.stdout ?? ""
+    const realStderr = recorded.stderr ?? ""
+    const realExitCode = recorded.status ?? 1
 
     const rawStdoutDigest = createHash("sha256").update(realOutput).digest("hex")
     const normalized = realOutput.replace(/\s+$/g, "").replace(/\n{3,}/g, "\n\n")
@@ -165,7 +158,7 @@ describe("P2 End-to-End Replay Fixture", () => {
         replay: {
           exitCode: realExitCode,
           rawStdoutDigest,
-          rawStderrDigest: createHash("sha256").update("").digest("hex"),
+          rawStderrDigest: createHash("sha256").update(realStderr).digest("hex"),
           normalizedOutputDigest,
           normalizationProfile: "terminal-output-v1",
           duration: 424,
@@ -315,25 +308,22 @@ describe("P2 End-to-End Replay Fixture", () => {
         executable: "node", arguments: ["-e", "console.log(42)"], cwd, timeout: 5000, command: "node -e 'console.log(42)'",
       }),
     } })
-    // Run the command to get real output
-    const { execSync } = require("child_process")
-    let output = ""
-    const nodeCmd = ["node", "-e", "console.log(42)"].join(" ")
-    try {
-      output = execSync(nodeCmd, {
-        cwd,
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env },
-      })
-    } catch {}
+    // Run the exact structured invocation to get real output.
+    const nodeResult = spawnSync("node", ["-e", "console.log(42)"], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env },
+    })
+    const output = nodeResult.stdout ?? ""
+    const stderr = nodeResult.stderr ?? ""
     const norm = output.replace(/\s+$/g, "").replace(/\n{3,}/g, "\n\n")
     insertEvent(db, { id: "e5", sequence: 4, sessionId: "fixture-s4", type: "tool.returned", payload: {
-      callID: "c3", title: "terminal", hasOutput: true,
+      callID: "c3", title: "terminal", hasOutput: output.length > 0,
       replay: {
-        exitCode: 0,
+        exitCode: nodeResult.status ?? 1,
         rawStdoutDigest: createHash("sha256").update(output).digest("hex"),
-        rawStderrDigest: createHash("sha256").update("").digest("hex"),
+        rawStderrDigest: createHash("sha256").update(stderr).digest("hex"),
         normalizedOutputDigest: createHash("sha256").update(norm).digest("hex"),
         normalizationProfile: "terminal-output-v1",
         duration: 50,
