@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test"
 import { Database } from "bun:sqlite"
 import { createHash, randomUUID } from "node:crypto"
-import { execSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
 import {
   deriveDeterministicReplay,
 } from "@arcana/engine/session/epistemic/deterministic-replay"
@@ -52,12 +52,17 @@ function insertEvent(db: Database, opts: {
   return { hash, ts }
 }
 
-function runCommand(command: string, cwd: string): { exitCode: number; stdout: string; stderr: string } {
-  try {
-    const stdout = execSync(command, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 30000 })
-    return { exitCode: 0, stdout, stderr: "" }
-  } catch (err: any) {
-    return { exitCode: err.status ?? 1, stdout: err.stdout ?? "", stderr: err.stderr ?? "" }
+function runCommand(executable: string, args: string[], cwd: string): { exitCode: number; stdout: string; stderr: string } {
+  const result = spawnSync(executable, args, {
+    cwd,
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "pipe"],
+    timeout: 30000,
+  })
+  return {
+    exitCode: result.status ?? 1,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
   }
 }
 
@@ -79,8 +84,7 @@ function buildSession(
 
   for (let i = 0; i < commands.length; i++) {
     const cmd = commands[i]!
-    const fullCommand = [cmd.executable, ...cmd.args].join(" ")
-    const result = runCommand(fullCommand, cmd.cwd)
+    const result = runCommand(cmd.executable, cmd.args, cmd.cwd)
     const digests = computeDigests(result.stdout, result.stderr)
 
     // tool.called
@@ -211,7 +215,7 @@ describe("Multi-Tool Replay Matrix", () => {
     insertEvent(db, { id: "mixed-s0", sequence: seq++, sessionId: "mixed", type: "session.started" })
 
     // Structured → ELIGIBLE
-    const cmd1 = runCommand("node -e console.log(42)", cwd)
+    const cmd1 = runCommand("node", ["-e", "console.log(42)"], cwd)
     const d1 = computeDigests(cmd1.stdout, cmd1.stderr)
     insertEvent(db, { id: "mixed-s1", sequence: seq++, sessionId: "mixed", type: "tool.called", payload: {
       callID: "c1", tool: "terminal",
