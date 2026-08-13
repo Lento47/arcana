@@ -9,7 +9,7 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import { WorkspaceRouteContext } from "../middleware/workspace-routing"
 import { ApprovalCommandPayload, ApprovalSnapshotUnavailableError } from "../groups/approval"
-import { ApprovalNotFoundError, notFound } from "../errors"
+import { ApprovalNotFoundError } from "../errors"
 
 export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval", (handlers) =>
   Effect.gen(function* () {
@@ -146,7 +146,12 @@ export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval"
       const { directory, sessionInfo } = yield* resolveWorkspace(ctx.params.sessionID, ctx.query.directory)
       const approval = approvalStoreForWorkspace(directory).loadApproval(ctx.params.approvalID)
       if (!approval || approval.sessionId !== ctx.params.sessionID) {
-        return yield* Effect.fail(notFound(`approval ${ctx.params.approvalID} not found`))
+        return yield* Effect.fail(
+          new ApprovalNotFoundError({
+            approvalID: ctx.params.approvalID,
+            message: `approval ${ctx.params.approvalID} not found`,
+          }),
+        )
       }
 
       const metadata = sessionInfo?.metadata
