@@ -53,21 +53,11 @@ jobs:
       - name: Setup Arcana
         uses: ./.github/actions/setup-arcana
 
-      - name: Run full test suite
-        run: |
-          set +e
-          bun run test 2>&1 | tee full-test.log
-          status=${PIPESTATUS[0]}
+      - name: Run workspace tests
+        run: bun turbo test --filter='!@arcana/tui'
 
-          if [ "$status" -ne 0 ]; then
-            echo "::group::Serial TUI diagnostic rerun"
-            bun test packages/tui --max-concurrency=1 2>&1 | tee serial-tui-test.log
-            diagnostic_status=${PIPESTATUS[0]}
-            echo "::endgroup::"
-            echo "::error::The full test suite failed (exit $status). Serial TUI diagnostic exit: $diagnostic_status."
-          fi
-
-          exit "$status"
+      - name: Run TUI tests in isolation
+        run: bun run --cwd packages/tui test
 
   build-and-release-gates:
     name: Build and release gates
