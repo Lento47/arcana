@@ -72,7 +72,6 @@ let targets = 0
 let ready = 0
 let patched = 0
 let skipped = 0
-let failed = 0
 
 for (const chunk of collectChunks()) {
   const version = versionOf(chunk)
@@ -91,8 +90,10 @@ for (const chunk of collectChunks()) {
     continue
   }
   if (!source.includes(SIGNATURE)) {
-    console.error(`[patch-opentui] no target signature in ${chunk}`)
-    failed++
+    // OpenTUI ships multiple chunk-bun files; only the chunk containing
+    // normalizeLoadedFilePath is a patch target. Unrelated chunks are valid.
+    console.log(`[patch-opentui] no target signature in ${chunk} — skipping`)
+    skipped++
     continue
   }
 
@@ -109,8 +110,8 @@ for (const chunk of collectChunks()) {
 
 if (targets === 0) {
   console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} chunks found to patch`)
-} else if (failed > 0 || ready !== targets) {
-  console.error(`[patch-opentui] failed to patch ${failed || targets - ready} of ${targets} @opentui/core ${TARGET_VERSION} chunk(s)`)
+} else if (ready === 0) {
+  console.error(`[patch-opentui] found ${targets} @opentui/core ${TARGET_VERSION} chunk(s), but none could be patched`)
   process.exitCode = 1
 }
-console.log(`[patch-opentui] patched=${patched} skipped=${skipped} failed=${failed}`)
+console.log(`[patch-opentui] patched=${patched} skipped=${skipped}`)
