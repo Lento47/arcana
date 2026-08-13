@@ -15,7 +15,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import * as fs from "node:fs"
 import * as path from "node:path"
-import { execSync } from "node:child_process"
+import { execFileSync } from "node:child_process"
 import type { Database } from "bun:sqlite"
 
 import {
@@ -160,14 +160,11 @@ export function checkEnvironmentCompatibility(
   if (cached) return cached
   let result: "COMPATIBLE" | "DRIFTED" | "UNKNOWN"
   try {
-    if (process.platform === "win32") {
-      // Pass env explicitly: Bun's execSync does not pick up runtime
-      // process.env.PATH changes on Windows, which made PATH-bootstrapped
-      // test harnesses (and dynamic PATH updates) report DRIFTED.
-      execSync(`where ${executable}`, { env: { ...process.env }, stdio: "pipe", timeout: 5000 })
-    } else {
-      execSync(`which ${executable}`, { env: { ...process.env }, stdio: "pipe", timeout: 5000 })
-    }
+    const resolver = process.platform === "win32" ? "where" : "which"
+    // Pass env explicitly: Bun's child-process helpers do not pick up runtime
+    // process.env.PATH changes on Windows, which made PATH-bootstrapped
+    // test harnesses (and dynamic PATH updates) report DRIFTED.
+    execFileSync(resolver, [executable], { env: { ...process.env }, stdio: "pipe", timeout: 5000 })
     result = "COMPATIBLE"
   } catch {
     result = "DRIFTED"
@@ -181,7 +178,8 @@ export function checkEnvironmentCompatibility(
 // ────────────────────────────────────────────────────────────────
 
 function executeBoundedCommand(
-  command: string,
+  executable: string,
+  args: ReadonlyArray<string>,
   workingDirectory: string | null,
   timeoutMs: number = 30_000,
 ): { exitCode: number; stdout: string; stderr: string; durationMs: number } {
@@ -190,11 +188,11 @@ function executeBoundedCommand(
   let stdout = ""
   let stderr = ""
   try {
-    stdout = execSync(command, {
+    stdout = execFileSync(executable, args, {
       cwd: workingDirectory ?? process.cwd(),
       timeout: timeoutMs,
-      // Explicit env: Bun's execSync does not honor runtime process.env
-      // updates on Windows (PATH bootstrapping in tests, dynamic tool PATHs).
+      // Explicit env: Bun's child-process helpers do not honor runtime
+      // process.env updates on Windows (PATH bootstrapping, dynamic tool PATHs).
       env: { ...process.env },
       stdio: ["pipe", "pipe", "pipe"],
       encoding: "utf-8",
@@ -453,7 +451,7 @@ export function deriveDeterministicReplay(
     // Execute
     try {
       const timeout = cr.timeout ?? 30_000
-      const result = executeBoundedCommand(command!, cr.cwd, timeout)
+      const result = executeBoundedCommand(cr.executable!, cr.arguments, cr.cwd, timeout)
 
       // Snapshot after
       const afterSnap = snapshotWorkspace(cr.cwd)
