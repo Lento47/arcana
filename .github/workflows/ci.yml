@@ -54,10 +54,13 @@ jobs:
         uses: ./.github/actions/setup-arcana
 
       - name: Run workspace tests
+        id: workspace_tests
         run: bun turbo test --filter='!@arcana/tui'
 
       # OpenTUI renderer tests are stable alone but flaky beside other workspace test processes.
+      # Preserve their signal even when another workspace package fails first.
       - name: Run TUI tests in isolation
+        if: ${{ always() && steps.workspace_tests.outcome != 'skipped' }}
         run: bun run --cwd packages/tui test
 
   build-and-release-gates:
