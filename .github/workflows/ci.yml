@@ -56,6 +56,7 @@ jobs:
       - name: Run workspace tests
         run: bun turbo test --filter='!@arcana/tui'
 
+      # OpenTUI renderer tests are stable alone but flaky beside other workspace test processes.
       - name: Run TUI tests in isolation
         run: bun run --cwd packages/tui test
 
