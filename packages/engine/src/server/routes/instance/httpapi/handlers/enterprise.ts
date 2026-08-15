@@ -47,12 +47,22 @@ import {
 } from "@arcana/core/enterprise/webhooks"
 import type { SignedPolicyEnvelope } from "@arcana/core/crypto/signed-envelopes"
 import { SignedPolicyEnvelopeSchema } from "../groups/policy"
+import { decodeCanonicalBase64url } from "@arcana/core/crypto/canonical-serializer"
+import {
+  executeNodeKeyRotation,
+  keyFingerprintFromB64,
+  listRotationEvidence,
+  previewNodeKeyRotation,
+} from "@arcana/core/enterprise/key-rotation"
 import {
   DEFAULT_RELIABILITY_CONFIG,
   evaluateDrill,
+  backupKeyMaterial,
   restoreBackup,
+  restoreKeyMaterial,
   type BackupRecord,
   type DrillRecord,
+  type KeyBackupMaterial,
 } from "@arcana/core/enterprise/reliability"
 import {
   exchangeProof,
@@ -843,6 +853,226 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
     }) {
       const directory = yield* resolveDirectory(ctx.query.directory)
       return controlStateFor(directory).reliability.drills(ctx.params.tenantId)
+    })
+
+    /**
+     * Privileged-action audit helper for key automation (F2 pattern:
+     * ALLOWED/DENIED recorded against the authenticated principal).
+     */
+    const recordKeyAudit = Effect.fn("EnterpriseHttpApi.recordKeyAudit")(function* (ctx: {
+      state: ControlPlaneState
+      tenantId: string
+      actorUserId: string
+      resource: string
+      outcome: "ALLOWED" | "DENIED"
+    }) {
+      const now = new Date().toISOString()
+      ctx.state.identity.recordAudit({
+        tenantId: ctx.tenantId,
+        id: `key-${ctx.resource}-${now}-${Math.random().toString(36).slice(2, 10)}`,
+        actorUserId: ctx.actorUserId,
+        action: "node.manage",
+        resource: ctx.resource,
+        outcome: ctx.outcome,
+        at: now,
+      })
+    })
+
+    const keyRotationPreview = Effect.fn("EnterpriseHttpApi.keyRotationPreview")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { nodeId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
+      const result = previewNodeKeyRotation({
+        tenantId: ctx.params.tenantId,
+        nodeId: ctx.payload.nodeId,
+        registry: state.registry,
+        store: state.keyRotation,
+      })
+      if (result.kind === "PREVIEW") {
+        return {
+          kind: "PREVIEW" as const,
+          record: result.record,
+          currentEpoch: result.currentEpoch,
+          nextEpoch: result.nextEpoch,
+          currentFingerprint: result.currentFingerprint,
+          nextFingerprint: result.nextFingerprint,
+        }
+      }
+      return { kind: "REJECTED" as const, reason: result.reason }
+    })
+
+    const keyRotation = Effect.fn("EnterpriseHttpApi.keyRotation")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { nodeId: string; mode?: "GENERATE" | "RECEIVE"; publicKey?: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      const principal = yield* gateAdmin({
+        state,
+        tenantId: ctx.params.tenantId,
+        action: "node.manage",
+      })
+      const resource = `key-rotate:${ctx.payload.nodeId}`
+      const issuer = issuerContext()
+      if (!issuer.ok) {
+        yield* recordKeyAudit({
+          state,
+          tenantId: ctx.params.tenantId,
+          actorUserId: principal.userId,
+          resource,
+          outcome: "DENIED",
+        })
+        return { kind: "REJECTED" as const, reason: issuer.reason }
+      }
+      const mode = ctx.payload.mode ?? "GENERATE"
+      let newPublicKey: Uint8Array | undefined
+      if (mode === "RECEIVE") {
+        if (!ctx.payload.publicKey) {
+          yield* recordKeyAudit({
+            state,
+            tenantId: ctx.params.tenantId,
+            actorUserId: principal.userId,
+            resource,
+            outcome: "DENIED",
+          })
+          return { kind: "REJECTED" as const, reason: "publicKey is required in RECEIVE mode" }
+        }
+        const decoded = decodeCanonicalBase64url(ctx.payload.publicKey)
+        if (!decoded || decoded.length !== 32) {
+          yield* recordKeyAudit({
+            state,
+            tenantId: ctx.params.tenantId,
+            actorUserId: principal.userId,
+            resource,
+            outcome: "DENIED",
+          })
+          return { kind: "REJECTED" as const, reason: "publicKey must be a base64url 32-byte Ed25519 key" }
+        }
+        newPublicKey = decoded
+      }
+      const result = executeNodeKeyRotation({
+        tenantId: ctx.params.tenantId,
+        nodeId: ctx.payload.nodeId,
+        registry: state.registry,
+        store: state.keyRotation,
+        context: issuer.context,
+        newPublicKey,
+      })
+      yield* recordKeyAudit({
+        state,
+        tenantId: ctx.params.tenantId,
+        actorUserId: principal.userId,
+        resource,
+        outcome: result.kind === "ROTATED" ? "ALLOWED" : "DENIED",
+      })
+      if (result.kind === "ROTATED") {
+        return {
+          kind: "ROTATED" as const,
+          record: result.record,
+          nodeRecord: result.nodeRecord,
+          newSecretKeyB64: result.newSecretKeyB64,
+        }
+      }
+      return { kind: "REJECTED" as const, reason: result.reason }
+    })
+
+    const keyRotations = Effect.fn("EnterpriseHttpApi.keyRotations")(function* (ctx: {
+      params: { tenantId: string }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      yield* gateTenant({ state, tenantId: ctx.params.tenantId })
+      return listRotationEvidence(ctx.params.tenantId, state.keyRotation)
+    })
+
+    const backupKeys = Effect.fn("EnterpriseHttpApi.backupKeys")(function* (ctx: {
+      params: { tenantId: string }
+      payload: { backupId: string; material: KeyBackupMaterial }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      const principal = yield* gateAdmin({
+        state,
+        tenantId: ctx.params.tenantId,
+        action: "node.manage",
+      })
+      const result = backupKeyMaterial(
+        {
+          tenantId: ctx.params.tenantId,
+          backupId: ctx.payload.backupId,
+          material: ctx.payload.material,
+        },
+        state.reliability,
+      )
+      yield* recordKeyAudit({
+        state,
+        tenantId: ctx.params.tenantId,
+        actorUserId: principal.userId,
+        resource: `key-backup:${ctx.payload.backupId}`,
+        outcome: result.kind === "BACKED_UP" ? "ALLOWED" : "DENIED",
+      })
+      if (result.kind === "BACKED_UP") {
+        return { kind: "BACKED_UP" as const, record: result.record }
+      }
+      return { kind: "REJECTED" as const, reason: result.reason }
+    })
+
+    const restoreKeys = Effect.fn("EnterpriseHttpApi.restoreKeys")(function* (ctx: {
+      params: { tenantId: string; backupId: string }
+      payload: { presentedMaterial: KeyBackupMaterial }
+      query: { directory?: string }
+    }) {
+      const directory = yield* resolveDirectory(ctx.query.directory)
+      const state = controlStateFor(directory)
+      const principal = yield* gateAdmin({
+        state,
+        tenantId: ctx.params.tenantId,
+        action: "node.manage",
+      })
+      const resource = `key-restore:${ctx.params.backupId}`
+      // The restored key must match the key that is active in the enrollment
+      // registry before it can become active; an unknown node fails closed.
+      const node = state.registry.get(ctx.payload.presentedMaterial.nodeId)
+      if (!node) {
+        yield* recordKeyAudit({
+          state,
+          tenantId: ctx.params.tenantId,
+          actorUserId: principal.userId,
+          resource,
+          outcome: "DENIED",
+        })
+        return {
+          kind: "REJECTED" as const,
+          reason: `node ${ctx.payload.presentedMaterial.nodeId} is not enrolled; cannot verify the restored key against the active key store`,
+        }
+      }
+      const result = restoreKeyMaterial(
+        {
+          tenantId: ctx.params.tenantId,
+          backupId: ctx.params.backupId,
+          presentedMaterial: ctx.payload.presentedMaterial,
+          activeKeyFingerprint: keyFingerprintFromB64(node.publicKey),
+        },
+        state.reliability,
+      )
+      yield* recordKeyAudit({
+        state,
+        tenantId: ctx.params.tenantId,
+        actorUserId: principal.userId,
+        resource,
+        outcome: result.kind === "RESTORED" ? "ALLOWED" : "DENIED",
+      })
+      if (result.kind === "RESTORED") {
+        return { kind: "RESTORED" as const, record: result.record }
+      }
+      return { kind: "REJECTED" as const, reason: result.reason }
     })
 
     const putFederationAgreement = Effect.fn("EnterpriseHttpApi.putFederationAgreement")(function* (ctx: {
@@ -1673,6 +1903,11 @@ export const enterpriseHandlers = HttpApiBuilder.group(InstanceHttpApi, "enterpr
       .handle("restore", restore)
       .handle("drill", drill)
       .handle("drills", drills)
+      .handle("keyRotationPreview", keyRotationPreview)
+      .handle("keyRotation", keyRotation)
+      .handle("keyRotations", keyRotations)
+      .handle("backupKeys", backupKeys)
+      .handle("restoreKeys", restoreKeys)
       .handle("putFederationAgreement", putFederationAgreement)
       .handle("getFederationAgreement", getFederationAgreement)
       .handle("federationExchange", federationExchange)

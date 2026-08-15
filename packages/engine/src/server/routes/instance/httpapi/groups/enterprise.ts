@@ -5,6 +5,7 @@ import { InstanceContextMiddleware } from "../middleware/instance-context"
 import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
 import { described } from "./metadata"
 import { PolicyBundleRecordSchema, SignedPolicyEnvelopeSchema } from "./policy"
+import { EnrolledNodeSchema } from "./enrollment"
 import { ForbiddenError } from "../errors"
 
 const root = "/api/enterprise"
@@ -201,11 +202,57 @@ export const BackupRecordSchema = Schema.Struct({
   kind: Schema.Literals(["DATABASE", "KEYS"]),
   createdAt: Schema.String,
   digest: Schema.String,
+  fingerprint: Schema.optional(Schema.String),
   restoredAt: Schema.optional(Schema.String),
 })
 
 export const RestoreResponseSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("RESTORED"), record: BackupRecordSchema }),
+  Schema.Struct({ kind: Schema.Literal("REJECTED"), reason: Schema.String }),
+])
+
+export const KeyRotationRecordSchema = Schema.Struct({
+  tenantId: Schema.String,
+  rotationId: Schema.String,
+  nodeId: Schema.String,
+  mode: Schema.Literals(["DRY_RUN", "CONFIRMED"]),
+  previousEpoch: Schema.Number,
+  nextEpoch: Schema.Number,
+  previousFingerprint: Schema.String,
+  nextFingerprint: Schema.String,
+  rotatedAt: Schema.String,
+})
+
+export const KeyRotationPreviewResponseSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("PREVIEW"),
+    record: KeyRotationRecordSchema,
+    currentEpoch: Schema.Number,
+    nextEpoch: Schema.Number,
+    currentFingerprint: Schema.String,
+    nextFingerprint: Schema.String,
+  }),
+  Schema.Struct({ kind: Schema.Literal("REJECTED"), reason: Schema.String }),
+])
+
+export const KeyRotationResponseSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("ROTATED"),
+    record: KeyRotationRecordSchema,
+    nodeRecord: EnrolledNodeSchema,
+    newSecretKeyB64: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({ kind: Schema.Literal("REJECTED"), reason: Schema.String }),
+])
+
+export const KeyBackupMaterialSchema = Schema.Struct({
+  nodeId: Schema.String,
+  publicKey: Schema.String,
+  secretKey: Schema.optional(Schema.String),
+})
+
+export const KeyBackupResponseSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("BACKED_UP"), record: BackupRecordSchema }),
   Schema.Struct({ kind: Schema.Literal("REJECTED"), reason: Schema.String }),
 ])
 
@@ -628,6 +675,11 @@ export const EnterprisePaths = {
   piiRetention: `${root}/organizations/:tenantId/governance/pii-retention`,
   backup: `${root}/organizations/:tenantId/reliability/backups`,
   restore: `${root}/organizations/:tenantId/reliability/backups/:backupId/restore`,
+  backupKeys: `${root}/organizations/:tenantId/reliability/backups/keys`,
+  restoreKeys: `${root}/organizations/:tenantId/reliability/backups/keys/:backupId/restore`,
+  keyRotationPreview: `${root}/organizations/:tenantId/keys/rotation/preview`,
+  keyRotation: `${root}/organizations/:tenantId/keys/rotation`,
+  keyRotations: `${root}/organizations/:tenantId/keys/rotation/evidence`,
   drill: `${root}/organizations/:tenantId/reliability/drills`,
   drills: `${root}/organizations/:tenantId/reliability/drills`,
   federationAgreements: `${root}/organizations/:tenantId/federation/agreements`,
@@ -1091,6 +1143,80 @@ export const EnterpriseApi = HttpApi.make("enterprise").add(
         OpenApi.annotations({
           identifier: "enterprise.drills",
           summary: "List restore drills (F7)",
+        }),
+      ),
+      HttpApiEndpoint.post("keyRotationPreview", EnterprisePaths.keyRotationPreview, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({ nodeId: Schema.String }),
+        success: described(KeyRotationPreviewResponseSchema, "Key rotation preview (F7)"),
+        error: [ForbiddenError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.keyRotationPreview",
+          summary: "Dry-run preview of a node key rotation (F7)",
+          description:
+            "Reports what a confirmed rotation would do (current epoch, next epoch, key fingerprints) and records a DRY_RUN evidence row. Never touches the key store.",
+        }),
+      ),
+      HttpApiEndpoint.post("keyRotation", EnterprisePaths.keyRotation, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          nodeId: Schema.String,
+          mode: Schema.optional(Schema.Literals(["GENERATE", "RECEIVE"])),
+          publicKey: Schema.optional(Schema.String),
+        }),
+        success: described(KeyRotationResponseSchema, "Node key rotation result (F7)"),
+        error: [ForbiddenError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.keyRotation",
+          summary: "Execute a node key rotation (F7)",
+          description:
+            "GENERATE creates a fresh Ed25519 key pair (secret returned once for out-of-band delivery); RECEIVE accepts an operator-submitted public key. Advances the epoch in the D-1 enrollment registry and records CONFIRMED rotation evidence.",
+        }),
+      ),
+      HttpApiEndpoint.get("keyRotations", EnterprisePaths.keyRotations, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        success: described(Schema.Array(KeyRotationRecordSchema), "Key rotation evidence (F7)"),
+        error: [ForbiddenError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.keyRotations",
+          summary: "List key rotation evidence for a tenant (F7)",
+        }),
+      ),
+      HttpApiEndpoint.post("backupKeys", EnterprisePaths.backupKeys, {
+        params: { tenantId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({
+          backupId: Schema.String,
+          material: KeyBackupMaterialSchema,
+        }),
+        success: described(KeyBackupResponseSchema, "Key backup recorded (F7)"),
+        error: [ForbiddenError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.backupKeys",
+          summary: "Record a digest-verified key backup (F7)",
+          description:
+            "Computes the digest from the key material itself and records the key fingerprint; tampered key backups are rejected at restore time.",
+        }),
+      ),
+      HttpApiEndpoint.post("restoreKeys", EnterprisePaths.restoreKeys, {
+        params: { tenantId: Schema.String, backupId: Schema.String },
+        query: WorkspaceRoutingQuery,
+        payload: Schema.Struct({ presentedMaterial: KeyBackupMaterialSchema }),
+        success: described(RestoreResponseSchema, "Key restore result (F7)"),
+        error: [ForbiddenError],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "enterprise.restoreKeys",
+          summary: "Restore key material only when digest and fingerprint match (F7)",
+          description:
+            "Rejects tampered key backups (digest mismatch) and backups whose key fingerprint does not match the recorded or active key; a restored key activates only after both gates pass.",
         }),
       ),
       HttpApiEndpoint.post("putFederationAgreement", EnterprisePaths.federationAgreements, {

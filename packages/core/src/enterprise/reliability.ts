@@ -4,8 +4,14 @@
  * Availability/RPO/RTO targets, digest-verified backups and restores, and
  * restore drills that must land inside the published targets. Degraded local
  * enforcement during an outage follows the D-9 offline policy (fail closed,
- * never permissive).
+ * never permissive). Key material rides the same digest-verified backup
+ * surface (kind "KEYS"): the digest protects content, the fingerprint gates
+ * which key a restore may activate.
  */
+
+import { createHash } from "node:crypto"
+import { canonicalize, decodeCanonicalBase64url } from "../crypto/canonical-serializer"
+import { keyFingerprint } from "./key-rotation"
 
 export type ReliabilityConfig = {
   availabilityTarget: number // e.g. 0.999
@@ -25,6 +31,8 @@ export type BackupRecord = {
   kind: "DATABASE" | "KEYS"
   createdAt: string
   digest: string
+  /** Key fingerprint recorded at backup time (KEYS backups only). */
+  fingerprint?: string
   restoredAt?: string
 }
 
@@ -67,6 +75,113 @@ export function restoreBackup(
   }
   store.putBackup({ ...backup, restoredAt: now.toISOString() })
   return { kind: "RESTORED", record: { ...backup, restoredAt: now.toISOString() } }
+}
+
+/**
+ * Key material carried by a KEYS backup. `publicKey` identifies the key;
+ * `secretKey` is the matching Ed25519 secret seed (base64url, 32 bytes).
+ */
+export type KeyBackupMaterial = {
+  nodeId: string
+  publicKey: string // base64url Ed25519 public key
+  secretKey?: string // base64url Ed25519 secret seed
+}
+
+/** Canonical digest over the full key material: tampering changes it. */
+export function keyMaterialDigest(material: KeyBackupMaterial): string {
+  return createHash("sha256").update(canonicalize(material)).digest("hex")
+}
+
+export type KeyBackupResult =
+  | { kind: "BACKED_UP"; record: BackupRecord }
+  | { kind: "REJECTED"; reason: string }
+
+/**
+ * Record a digest-verified key backup. The digest is computed from the key
+ * material itself (never client-asserted), and the key fingerprint is
+ * recorded so a restore can gate which key becomes active.
+ */
+export function backupKeyMaterial(
+  input: {
+    tenantId: string
+    backupId: string
+    material: KeyBackupMaterial
+    now?: Date
+  },
+  store: ReliabilityStore,
+): KeyBackupResult {
+  const publicKey = decodeCanonicalBase64url(input.material.publicKey)
+  if (!publicKey || publicKey.length !== 32) {
+    return { kind: "REJECTED", reason: "publicKey must be a base64url 32-byte Ed25519 key" }
+  }
+  if (input.material.secretKey !== undefined) {
+    const secret = decodeCanonicalBase64url(input.material.secretKey)
+    if (!secret || secret.length !== 32) {
+      return { kind: "REJECTED", reason: "secretKey must be a base64url 32-byte Ed25519 seed" }
+    }
+  }
+  const record: BackupRecord = {
+    tenantId: input.tenantId,
+    backupId: input.backupId,
+    kind: "KEYS",
+    createdAt: (input.now ?? new Date()).toISOString(),
+    digest: keyMaterialDigest(input.material),
+    fingerprint: keyFingerprint(publicKey),
+  }
+  store.putBackup(record)
+  return { kind: "BACKED_UP", record }
+}
+
+export type KeyRestoreResult =
+  | { kind: "RESTORED"; record: BackupRecord }
+  | { kind: "REJECTED"; reason: string }
+
+/**
+ * Restore key material only when (1) the presented material's digest matches
+ * the recorded digest (tamper → reject, fail closed) and (2) the restored
+ * key's fingerprint matches the fingerprint recorded at backup time. When
+ * `activeKeyFingerprint` is supplied (the current key in the active key
+ * store), the restored fingerprint must also match it before the key is
+ * accepted as active — a rotated or wrong-epoch key backup never activates.
+ */
+export function restoreKeyMaterial(
+  input: {
+    tenantId: string
+    backupId: string
+    presentedMaterial: KeyBackupMaterial
+    activeKeyFingerprint?: string
+    now?: Date
+  },
+  store: ReliabilityStore,
+): KeyRestoreResult {
+  const backup = store.getBackup(input.tenantId, input.backupId)
+  if (!backup) return { kind: "REJECTED", reason: "key backup not found" }
+  if (backup.kind !== "KEYS") {
+    return { kind: "REJECTED", reason: "backup is not a key backup" }
+  }
+  const publicKey = decodeCanonicalBase64url(input.presentedMaterial.publicKey)
+  if (!publicKey || publicKey.length !== 32) {
+    return { kind: "REJECTED", reason: "publicKey must be a base64url 32-byte Ed25519 key" }
+  }
+  if (keyMaterialDigest(input.presentedMaterial) !== backup.digest) {
+    return { kind: "REJECTED", reason: "key backup digest mismatch — content is tampered" }
+  }
+  const presentedFingerprint = keyFingerprint(publicKey)
+  if (backup.fingerprint && presentedFingerprint !== backup.fingerprint) {
+    return {
+      kind: "REJECTED",
+      reason: "restored key fingerprint does not match the recorded fingerprint",
+    }
+  }
+  if (input.activeKeyFingerprint && presentedFingerprint !== input.activeKeyFingerprint) {
+    return {
+      kind: "REJECTED",
+      reason: "restored key fingerprint does not match the active key; not activated",
+    }
+  }
+  const now = (input.now ?? new Date()).toISOString()
+  store.putBackup({ ...backup, restoredAt: now })
+  return { kind: "RESTORED", record: { ...backup, restoredAt: now } }
 }
 
 export type DrillResult = {
