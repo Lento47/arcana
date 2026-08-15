@@ -7,7 +7,7 @@ import { InstanceContextMiddleware } from "../middleware/instance-context"
 import { WorkspaceRoutingMiddleware, WorkspaceRoutingQuery } from "../middleware/workspace-routing"
 import { described } from "./metadata"
 import { ApprovalAffordanceQuery, AuthorityAffordanceSchema } from "./affordance"
-import { ApprovalNotFoundError, ApiNotFoundError } from "../errors"
+import { ApprovalNotFoundError } from "../errors"
 
 const root = "/api/session"
 
@@ -150,7 +150,7 @@ export const ApprovalApi = HttpApi.make("approval")
             Schema.Array(AuthorityAffordanceSchema),
             "Runtime-derived authority affordances for an approval",
           ),
-          error: [HttpApiError.BadRequest, ApiNotFoundError],
+          error: [HttpApiError.BadRequest, ApprovalNotFoundError],
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "approval.affordances",
