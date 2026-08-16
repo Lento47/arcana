@@ -1,6 +1,8 @@
 import { PermissionV1 } from "@arcana/core/v1/permission"
 import { test, expect } from "bun:test"
 import os from "os"
+import fs from "node:fs/promises"
+import path from "node:path"
 import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { CrossSpawnSpawner } from "@arcana/core/cross-spawn-spawner"
@@ -736,6 +738,55 @@ it.instance(
       yield* Fiber.await(fiber)
     }),
   { git: true },
+)
+
+it.instance(
+  "ask - stays pending for Desktop when DESKTOP_REQUIRED and Desktop is offline",
+  () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2Bridge.Service
+      const seen = yield* Deferred.make<PermissionV1.Request>()
+      const unsub = yield* events.listen((event) => {
+        if (event.type === Permission.Event.Asked.type)
+          Deferred.doneUnsafe(seen, Effect.succeed(event.data as PermissionV1.Request))
+        return Effect.void
+      })
+      yield* Effect.addFinalizer(() => unsub)
+
+      const fiber = yield* ask({
+        sessionID: SessionID.make("session_test"),
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: {},
+        always: [],
+        ruleset: [],
+      }).pipe(Effect.forkScoped)
+
+      expect(yield* waitForPending(1)).toHaveLength(1)
+      const outcome = yield* Deferred.await(seen).pipe(Effect.timeoutOption("150 millis"))
+      expect(outcome._tag).toBe("None")
+
+      yield* rejectAll()
+      yield* Fiber.await(fiber)
+    }),
+  {
+    git: true,
+    init: (directory) =>
+      Effect.promise(async () => {
+        await fs.mkdir(path.join(directory, ".arcana"), { recursive: true })
+        await fs.writeFile(
+          path.join(directory, ".arcana", "governance.yml"),
+          [
+            "version: 1",
+            "policy:",
+            "  approvalRoute: DESKTOP_REQUIRED",
+            "  localFallbackAllowed: false",
+            "",
+          ].join("\n"),
+          "utf8",
+        )
+      }),
+  },
 )
 
 // reply tests

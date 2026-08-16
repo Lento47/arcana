@@ -8,6 +8,11 @@ import { PermissionV1 } from "@arcana/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { EventV2 } from "@arcana/core/event"
 import { desktopOnline } from "@/approval/desktop-subscribers"
+import {
+  deploymentModeFromEnv,
+  loadApprovalRoutingPolicy,
+  resolveApprovalRoute,
+} from "@/approval/routing"
 import { riskFromMetadata, riskRequiresFreshAsk, riskRequiresInitialAsk } from "./risk-policy"
 
 export const Event = {
@@ -137,12 +142,35 @@ export const layer = Layer.effect(
       })
 
       // A live Arcana Desktop owns the ACTION GATE. Keep the TUI quiet and
-      // let Desktop discover the pending request through /permission; when
-      // no Desktop heartbeat is active, publish for the TUI as usual. This
-      // must be the ONLY permission.asked publication — a second unconditional
-      // publish would re-open the gate in the TUI even while Desktop is live.
+      // let Desktop discover the pending request through /permission. When
+      // no Desktop heartbeat is active, the TUI may decide only if the
+      // workspace routing policy resolves to LOCAL_TUI (LOCAL_TUI default,
+      // or DESKTOP_PREFERRED with local fallback). Under DESKTOP_REQUIRED /
+      // CENTRAL_REQUIRED the gate stays pending for Desktop even during an
+      // outage. This must be the ONLY permission.asked publication.
       const directory = yield* InstanceState.directory
-      if (!desktopOnline(directory)) {
+      const online = desktopOnline(directory)
+      let localGate = false
+      if (!online) {
+        const policy = loadApprovalRoutingPolicy(directory)
+        const resolution = resolveApprovalRoute(policy, {
+          sessionId: request.sessionID,
+          workspaceId: directory,
+          action: request.permission,
+          riskClass: engineRisk
+            ? ({
+                low: "LOW",
+                medium: "MODERATE",
+                high: "HIGH",
+                critical: "CRITICAL",
+              } as const)[engineRisk.level]
+            : "LOW",
+          deploymentMode: deploymentModeFromEnv(),
+          desktopOnline: false,
+        })
+        localGate = resolution.decisionSurface === "LOCAL_TUI"
+      }
+      if (localGate) {
         yield* events.publish(Event.Asked, info)
       }
 
