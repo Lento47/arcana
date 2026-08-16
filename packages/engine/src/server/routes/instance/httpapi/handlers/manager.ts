@@ -101,6 +101,9 @@ export const managerHandlers = HttpApiBuilder.group(InstanceHttpApi, "manager", 
       }
       const current = loadGovernanceConfig(directory).config
       const config = resolveGovernanceConfig(current, parsed)
+      if (!config) {
+        return yield* new HttpApiError.BadRequest({})
+      }
       const savedPath = writeGovernanceConfigYaml(directory, config)
       return { path: savedPath, config }
     })

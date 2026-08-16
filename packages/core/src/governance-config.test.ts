@@ -179,11 +179,19 @@ describe("governance config", () => {
     const next = resolveGovernanceConfig(base, {
       policy: { approvalRoute: "DESKTOP_REQUIRED" },
     })
+    expect(next).toBeDefined()
 
-    expect(next.display.tui.enabled).toBe(true)
-    expect(next.display.tui.hideEventTypes).toEqual(["contract.proposed"])
-    expect(next.display.desktop.enabled).toBe(false)
-    expect(next.display.desktop.includePrefixes).toEqual(["claim."])
-    expect(next.policy.approvalRoute).toBe("DESKTOP_REQUIRED")
+    expect(next!.display.tui.enabled).toBe(true)
+    expect(next!.display.tui.hideEventTypes).toEqual(["contract.proposed"])
+    expect(next!.display.desktop.enabled).toBe(false)
+    expect(next!.display.desktop.includePrefixes).toEqual(["claim."])
+    expect(next!.policy.approvalRoute).toBe("DESKTOP_REQUIRED")
+  })
+
+  test("rejects non-object governance updates", () => {
+    const base = normalizeGovernanceConfig({})
+    expect(resolveGovernanceConfig(base, "not-an-object")).toBeUndefined()
+    expect(resolveGovernanceConfig(base, 42)).toBeUndefined()
+    expect(resolveGovernanceConfig(base, null)).toBeUndefined()
   })
 })
