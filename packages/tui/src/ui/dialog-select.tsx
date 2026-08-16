@@ -520,7 +520,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
       flexGrow={1}
       border={["top", "bottom", "left", "right"]}
       customBorderChars={RoundBorder}
-      borderColor={theme.accent}
+      borderColor={theme.borderActive}
       backgroundColor={theme.background}
     >
       {/* Header — background panel, gold title, sigil close */}

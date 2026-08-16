@@ -178,7 +178,7 @@ export function DialogMessage(props: {
       flexGrow={1}
       border={["top", "bottom", "left", "right"]}
       customBorderChars={DoubleBorder}
-      borderColor={theme.accent}
+      borderColor={theme.borderActive}
       backgroundColor={theme.background}
     >
       {/* Header — compact single line */}

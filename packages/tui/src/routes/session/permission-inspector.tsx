@@ -27,7 +27,7 @@ export function PermissionInspector(props: { request: PermissionRequest }) {
     <box
       flexGrow={1}
       border={["top", "bottom", "left", "right"]}
-      borderColor={theme.accent}
+      borderColor={theme.borderActive}
       backgroundColor={theme.background}
     >
       <box

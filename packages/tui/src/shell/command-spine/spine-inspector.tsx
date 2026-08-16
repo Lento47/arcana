@@ -44,7 +44,7 @@ export function SpineInspector(props: {
     })
 
   return (
-    <box flexGrow={1} border={["top", "bottom", "left", "right"]} borderColor={theme.accent} backgroundColor={theme.background}>
+    <box flexGrow={1} border={["top", "bottom", "left", "right"]} borderColor={theme.borderActive} backgroundColor={theme.background}>
       <box
         paddingLeft={2}
         paddingRight={2}

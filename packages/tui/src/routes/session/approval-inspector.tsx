@@ -50,7 +50,7 @@ export function ApprovalInspector(props: {
     <box
       flexGrow={1}
       border={["top", "bottom", "left", "right"]}
-      borderColor={theme.accent}
+      borderColor={theme.borderActive}
       backgroundColor={theme.background}
     >
       <box
@@ -97,7 +97,7 @@ export function ApprovalInspector(props: {
             paddingLeft={1}
             backgroundColor={theme.backgroundPanel}
             border={["top", "bottom"]}
-            borderColor={theme.accent}
+            borderColor={theme.borderActive}
           >
             <text fg={theme.accent} attributes={TextAttributes.BOLD}>
               REQUEST SNAPSHOT · verified {snapshot()?.requestHash === a().requestHash ? "✓" : "✗"}

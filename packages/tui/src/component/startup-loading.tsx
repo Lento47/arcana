@@ -66,7 +66,7 @@ export function StartupLoading(props: { ready: () => boolean }) {
           backgroundColor={theme.backgroundPanel}
           border={["top", "bottom", "left", "right"]}
           customBorderChars={FrameBorder}
-          borderColor={theme.accent}
+          borderColor={theme.borderActive}
           paddingLeft={1}
           paddingRight={1}
         >
