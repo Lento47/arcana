@@ -6,6 +6,9 @@ import { onCleanup } from "solid-js"
 
 export function DialogThemeList() {
   const theme = useTheme()
+  const mode = () => (theme.mode() === "dark" ? "Dark" : "Light")
+  const modeAction = () => (theme.mode() === "dark" ? "Switch to light" : "Switch to dark")
+  const lockAction = () => (theme.locked() ? "Unlock mode" : "Lock mode")
   const options = Object.keys(theme.all())
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
     .map((value) => ({
@@ -24,6 +27,11 @@ export function DialogThemeList() {
   return (
     <DialogSelect
       title={`${Glyph.sigil} Themes`}
+      footer={
+        <text fg={theme.theme.textMuted}>
+          {mode()} mode{theme.locked() ? " · locked" : " · following terminal"}
+        </text>
+      }
       options={options}
       current={initial}
       onMove={(opt) => {
@@ -46,6 +54,21 @@ export function DialogThemeList() {
         const first = ref.filtered[0]
         if (first) theme.set(first.value)
       }}
+      actions={[
+        {
+          command: "theme.switch_mode",
+          title: modeAction(),
+          onTrigger: () => theme.setMode(theme.mode() === "dark" ? "light" : "dark"),
+        },
+        {
+          command: "theme.mode.lock",
+          title: lockAction(),
+          onTrigger: () => {
+            if (theme.locked()) theme.unlock()
+            else theme.lock()
+          },
+        },
+      ]}
     />
   )
 }

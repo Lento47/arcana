@@ -69,7 +69,7 @@ export function Dialog(
         backgroundColor={theme.backgroundPanel}
         border={["top", "bottom", "left", "right"]}
         customBorderChars={RoundBorder}
-        borderColor={theme.accent}
+        borderColor={theme.borderActive}
         paddingTop={1}
       >
         <scrollbox
