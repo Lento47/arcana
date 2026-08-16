@@ -143,6 +143,23 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
     const sendStored = async (item: QueuedPrompt): Promise<void> => {
       setInFlightID(item.id)
       try {
+        if (item.payload.messageID) {
+          const existing = await sdk.client.session
+            .message({
+              sessionID: item.payload.sessionID,
+              messageID: item.payload.messageID,
+            })
+            .catch(() => undefined)
+          if (existing?.data) {
+            remove(item.id)
+            toast.show({
+              title: "Message already delivered",
+              message: item.label,
+              variant: "info",
+            })
+            return
+          }
+        }
         await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
         remove(item.id)
         toast.show({
