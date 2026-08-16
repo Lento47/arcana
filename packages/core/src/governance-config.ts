@@ -66,16 +66,37 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
-function asBoolean(value: unknown, fallback: boolean): boolean {
-  return typeof value === "boolean" ? value : fallback
+type GovernanceOverride = {
+  display: {
+    tui: {
+      enabled?: boolean
+      collapseGovernanceGroups?: boolean
+      collapseThreshold?: number
+      hideEventTypes?: string[]
+    }
+    desktop: {
+      enabled?: boolean
+      includePrefixes?: string[]
+      excludePrefixes?: string[]
+    }
+  }
+  policy: {
+    approvalRoute?: ApprovalRoute
+    localFallbackAllowed?: boolean
+  }
 }
 
-function asNumber(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback
+function optionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined
 }
 
-function asStrings(value: unknown, fallback: string[]): string[] {
-  if (!Array.isArray(value)) return fallback
+function optionalThreshold(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined
+  return Math.max(1, Math.floor(value))
+}
+
+function optionalStrings(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
   return value.filter((item): item is string => typeof item === "string" && item.length > 0)
 }
 
@@ -88,42 +109,40 @@ function asApprovalRoute(value: unknown): ApprovalRoute | undefined {
     : undefined
 }
 
-export function normalizeGovernanceConfig(input: unknown): GovernanceConfig {
-  if (!isRecord(input)) return structuredClone(DEFAULT_GOVERNANCE_CONFIG)
+function parseGovernanceOverride(input: unknown): GovernanceOverride {
+  if (!isRecord(input)) {
+    return { display: { tui: {}, desktop: {} }, policy: {} }
+  }
   const display = isRecord(input.display) ? input.display : {}
   const tui = isRecord(display.tui) ? display.tui : {}
   const desktop = isRecord(display.desktop) ? display.desktop : {}
   const policy = isRecord(input.policy) ? input.policy : {}
-  const approvalRoute = asApprovalRoute(policy.approvalRoute)
-  const localFallbackAllowed =
-    typeof policy.localFallbackAllowed === "boolean" ? policy.localFallbackAllowed : undefined
 
   return {
-    version: 1,
     display: {
       tui: {
-        enabled: asBoolean(tui.enabled, DEFAULT_GOVERNANCE_CONFIG.display.tui.enabled),
-        collapseGovernanceGroups: asBoolean(
-          tui.collapseGovernanceGroups,
-          DEFAULT_GOVERNANCE_CONFIG.display.tui.collapseGovernanceGroups,
-        ),
-        collapseThreshold: Math.max(
-          1,
-          Math.floor(asNumber(tui.collapseThreshold, DEFAULT_GOVERNANCE_CONFIG.display.tui.collapseThreshold)),
-        ),
-        hideEventTypes: asStrings(tui.hideEventTypes, DEFAULT_GOVERNANCE_CONFIG.display.tui.hideEventTypes),
+        enabled: optionalBoolean(tui.enabled),
+        collapseGovernanceGroups: optionalBoolean(tui.collapseGovernanceGroups),
+        collapseThreshold: optionalThreshold(tui.collapseThreshold),
+        hideEventTypes: optionalStrings(tui.hideEventTypes),
       },
       desktop: {
-        enabled: asBoolean(desktop.enabled, DEFAULT_GOVERNANCE_CONFIG.display.desktop.enabled),
-        includePrefixes: asStrings(desktop.includePrefixes, DEFAULT_GOVERNANCE_CONFIG.display.desktop.includePrefixes),
-        excludePrefixes: asStrings(desktop.excludePrefixes, DEFAULT_GOVERNANCE_CONFIG.display.desktop.excludePrefixes),
+        enabled: optionalBoolean(desktop.enabled),
+        includePrefixes: optionalStrings(desktop.includePrefixes),
+        excludePrefixes: optionalStrings(desktop.excludePrefixes),
       },
     },
     policy: {
-      ...(approvalRoute ? { approvalRoute } : {}),
-      ...(localFallbackAllowed === undefined ? {} : { localFallbackAllowed }),
+      approvalRoute: asApprovalRoute(policy.approvalRoute),
+      localFallbackAllowed:
+        typeof policy.localFallbackAllowed === "boolean" ? policy.localFallbackAllowed : undefined,
     },
   }
+}
+
+/** Parse and normalize to a complete concrete config against defaults. */
+export function normalizeGovernanceConfig(input: unknown): GovernanceConfig {
+  return mergeConfig(DEFAULT_GOVERNANCE_CONFIG, parseGovernanceOverride(input))
 }
 
 function parseContent(content: string, filename: string): unknown {
@@ -131,25 +150,26 @@ function parseContent(content: string, filename: string): unknown {
   return parseYaml(content)
 }
 
-function mergeConfig(base: GovernanceConfig, override: GovernanceConfig): GovernanceConfig {
+function mergeConfig(base: GovernanceConfig, override: GovernanceOverride): GovernanceConfig {
   const tui = override.display.tui
   const desktop = override.display.desktop
   return {
     version: 1,
     display: {
       tui: {
-        enabled: tui.enabled,
-        collapseGovernanceGroups: tui.collapseGovernanceGroups,
-        collapseThreshold: tui.collapseThreshold,
+        enabled: tui.enabled ?? base.display.tui.enabled,
+        collapseGovernanceGroups:
+          tui.collapseGovernanceGroups ?? base.display.tui.collapseGovernanceGroups,
+        collapseThreshold: tui.collapseThreshold ?? base.display.tui.collapseThreshold,
         // Empty is an explicit "show everything / hide nothing" choice and
         // must not be silently replaced with the default suppression list.
-        hideEventTypes: tui.hideEventTypes,
+        hideEventTypes: tui.hideEventTypes ?? base.display.tui.hideEventTypes,
       },
       desktop: {
-        enabled: desktop.enabled,
+        enabled: desktop.enabled ?? base.display.desktop.enabled,
         // Empty is an explicit "forward nothing" choice.
-        includePrefixes: desktop.includePrefixes,
-        excludePrefixes: desktop.excludePrefixes,
+        includePrefixes: desktop.includePrefixes ?? base.display.desktop.includePrefixes,
+        excludePrefixes: desktop.excludePrefixes ?? base.display.desktop.excludePrefixes,
       },
     },
     policy: {
@@ -175,7 +195,7 @@ export function loadGovernanceConfig(workspaceDir: string, globalDir?: string): 
   for (const candidate of globalCandidates) {
     if (!existsSync(candidate)) continue
     try {
-      config = mergeConfig(config, normalizeGovernanceConfig(parseContent(readFileSync(candidate, "utf8"), candidate)))
+      config = mergeConfig(config, parseGovernanceOverride(parseContent(readFileSync(candidate, "utf8"), candidate)))
       path = candidate
     } catch {
       // Invalid global config is advisory only; keep the last valid config.
@@ -187,7 +207,7 @@ export function loadGovernanceConfig(workspaceDir: string, globalDir?: string): 
     try {
       config = mergeConfig(
         config,
-        normalizeGovernanceConfig(parseContent(readFileSync(workspacePath, "utf8"), workspacePath)),
+        parseGovernanceOverride(parseContent(readFileSync(workspacePath, "utf8"), workspacePath)),
       )
       path = workspacePath
     } catch {

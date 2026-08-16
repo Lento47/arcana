@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
@@ -112,5 +112,45 @@ describe("governance config", () => {
       )
       expect(loaded.config.policy.approvalRoute).toBe("DESKTOP_REQUIRED")
     })
+  })
+
+  test("preserves global display overrides when a workspace config omits them", () => {
+    const globalDir = mkdtempSync(join(tmpdir(), "arcana-governance-global-"))
+    try {
+      writeFileSync(
+        join(globalDir, "governance.yml"),
+        [
+          "version: 1",
+          "display:",
+          "  tui:",
+          "    enabled: true",
+          "    collapseGovernanceGroups: false",
+          "  desktop:",
+          "    enabled: false",
+          "    includePrefixes:",
+          '      - "contract."',
+          "",
+        ].join("\n"),
+        "utf8",
+      )
+
+      withTempWorkspace((directory) => {
+        mkdirSync(join(directory, ".arcana"), { recursive: true })
+        writeFileSync(
+          join(directory, ".arcana", "governance.yml"),
+          "version: 1\npolicy:\n  approvalRoute: DESKTOP_REQUIRED\n",
+          "utf8",
+        )
+        const loaded = loadGovernanceConfig(directory, globalDir)
+
+        expect(loaded.config.display.tui.enabled).toBe(true)
+        expect(loaded.config.display.tui.collapseGovernanceGroups).toBe(false)
+        expect(loaded.config.display.desktop.enabled).toBe(false)
+        expect(loaded.config.display.desktop.includePrefixes).toEqual(["contract."])
+        expect(loaded.config.policy.approvalRoute).toBe("DESKTOP_REQUIRED")
+      })
+    } finally {
+      rmSync(globalDir, { recursive: true, force: true })
+    }
   })
 })
