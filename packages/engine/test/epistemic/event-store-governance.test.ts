@@ -328,4 +328,81 @@ describe("GovernanceEventBridge", () => {
       }
     }),
   )
+
+  bridgeIt.live("reloads governance.yml edits for subsequent events", () =>
+    Effect.gen(function* () {
+      const directory = mkdtempSync(join(tmpdir(), "arcana-governance-bridge-edit-"))
+      try {
+        mkdirSync(join(directory, ".arcana"), { recursive: true })
+        const configPath = join(directory, ".arcana", "governance.yml")
+        const writeConfig = (content: string) => writeFileSync(configPath, content, "utf8")
+        writeConfig(
+          [
+            "version: 1",
+            "display:",
+            "  desktop:",
+            "    enabled: true",
+            "    includePrefixes:",
+            '      - "contract."',
+            "",
+          ].join("\n"),
+        )
+        const instance: InstanceContext = {
+          directory,
+          worktree: directory,
+          project: {
+            id: Project.ID.make("proj-governance-bridge-edit"),
+            worktree: directory,
+            time: { created: 0, updated: 0 },
+            sandboxes: [],
+          },
+          startedAt: 0,
+        }
+
+        yield* createTables
+        const store = yield* EventStore.Service
+        const events = yield* EventV2.Service
+        const observed: Array<EventV2.Data<typeof GovernanceEvent.Recorded>> = []
+        const unsubscribe = yield* events.listen((event) =>
+          Effect.sync(() => {
+            if (event.type === GovernanceEvent.Recorded.type) {
+              observed.push(event.data as EventV2.Data<typeof GovernanceEvent.Recorded>)
+            }
+          }),
+        )
+
+        const appendContract = (id: string) =>
+          store.append({
+            sessionId: "session-live-edit",
+            actor: { kind: "policy", id: "contract-engine" },
+            type: "contract.proposed",
+            payload: { contractId: id },
+          }).pipe(Effect.provideService(InstanceRef, instance))
+
+        yield* appendContract("before-edit")
+        expect(observed).toHaveLength(1)
+
+        // Ensure the mtime advances beyond the cache's resolution.
+        yield* Effect.sleep("30 millis")
+        writeConfig(
+          [
+            "version: 1",
+            "display:",
+            "  desktop:",
+            "    enabled: true",
+            "    includePrefixes:",
+            '      - "claim."',
+            "",
+          ].join("\n"),
+        )
+        yield* appendContract("after-edit")
+        yield* unsubscribe
+
+        expect(observed).toHaveLength(1)
+        expect(observed[0]!.event.payload).toMatchObject({ contractId: "before-edit" })
+      } finally {
+        rmSync(directory, { recursive: true, force: true })
+      }
+    }),
+  )
 })
