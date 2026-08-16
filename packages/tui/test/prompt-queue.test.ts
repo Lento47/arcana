@@ -20,6 +20,7 @@ describe("prompt queue retry policy", () => {
     expect(isSessionWorking({ type: "busy" })).toBeTrue()
     expect(isSessionWorking({ type: "retry" })).toBeTrue()
     expect(isSessionWorking({ type: "idle" })).toBeFalse()
+    expect(isSessionWorking({ type: "error" })).toBeFalse()
     expect(isSessionWorking(undefined)).toBeFalse()
   })
 })

@@ -104,7 +104,7 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
     createEffect(() => {
       for (const [sessionID, status] of Object.entries(sync.data.session_status)) {
         if (isSessionWorking(status)) activeSessions.add(sessionID)
-        else if (status?.type === "idle") activeSessions.delete(sessionID)
+        else activeSessions.delete(sessionID)
       }
     })
 
