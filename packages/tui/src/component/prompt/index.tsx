@@ -26,6 +26,7 @@ import { useSDK } from "../../context/sdk"
 import { useRoute } from "../../context/route"
 import { useProject } from "../../context/project"
 import { useSync } from "../../context/sync"
+import { type QueuedPromptPayload, usePromptQueue } from "../../context/prompt-queue"
 import { useEvent } from "../../context/event"
 import { editorSelectionKey, useEditorContext, type EditorSelection } from "../../context/editor"
 import { normalizePromptContent, openEditor } from "../../editor"
@@ -172,6 +173,7 @@ export function Prompt(props: PromptProps) {
   const route = useRoute()
   const project = useProject()
   const sync = useSync()
+  const promptQueue = usePromptQueue()
   const tuiConfig = useTuiConfig()
   const dialog = useDialog()
   const toast = useToast()
@@ -1340,58 +1342,48 @@ export function Prompt(props: PromptProps) {
       })
       move.startSubmit()
       // promptAsync returns immediately; agent loop runs server-side (SSE updates).
-      void sdk.client.session
-        .promptAsync(
-          {
-            sessionID: targetSessionID,
-            agent: agent.name,
-            model: {
-              providerID: selectedModel.providerID,
-              modelID: selectedModel.modelID,
-            },
-            variant,
-            parts: [
-              ...editorParts,
-              ...(instruction
-                ? [
-                    {
-                      type: "text" as const,
-                      text: instruction,
-                      synthetic: true,
-                      metadata: {
-                        arcana: {
-                          command: arcanaPromptCommand.command,
-                          instruction: true,
-                        },
-                      },
+      const payload: QueuedPromptPayload = {
+        sessionID: targetSessionID,
+        agent: agent.name,
+        model: {
+          providerID: selectedModel.providerID,
+          modelID: selectedModel.modelID,
+        },
+        variant,
+        parts: [
+          ...editorParts,
+          ...(instruction
+            ? [
+                {
+                  type: "text" as const,
+                  text: instruction,
+                  synthetic: true,
+                  metadata: {
+                    arcana: {
+                      command: arcanaPromptCommand.command,
+                      instruction: true,
                     },
-                  ]
-                : []),
-              {
-                type: "text",
-                text: task,
-                metadata: {
-                  arcana: {
-                    command: arcanaPromptCommand.command,
-                    risk: risk.level,
-                    approval_required: risk.approval_required,
-                    approval_status: approvalStatus,
-                    risk_reasons: risk.reasons,
                   },
                 },
+              ]
+            : []),
+          {
+            type: "text",
+            text: task,
+            metadata: {
+              arcana: {
+                command: arcanaPromptCommand.command,
+                risk: risk.level,
+                approval_required: risk.approval_required,
+                approval_status: approvalStatus,
+                risk_reasons: risk.reasons,
               },
-              ...nonTextParts,
-            ],
+            },
           },
-          { throwOnError: true },
-        )
-        .catch((error) => {
-          toast.show({
-            title: `Failed to send /${arcanaPromptCommand.command}`,
-            message: errorMessage(error),
-            variant: "error",
-          })
-        })
+          ...nonTextParts,
+        ],
+      }
+      void promptQueue.submit(payload, task)
       addOptimisticMessage({
         id: `optimistic-${crypto.randomUUID()}`,
         sessionID: targetSessionID,
@@ -1594,34 +1586,24 @@ export function Prompt(props: PromptProps) {
       }
       // promptAsync: 204 + forked agent loop (same as workspace move path).
       // Avoids holding HTTP open for the full turn (session.prompt waits on loop).
-      void sdk.client.session
-        .promptAsync(
+      const payload: QueuedPromptPayload = {
+        sessionID: targetSessionID,
+        agent: agent.name,
+        model: {
+          providerID: selectedModel.providerID,
+          modelID: selectedModel.modelID,
+        },
+        variant,
+        parts: [
+          ...editorParts,
           {
-            sessionID: targetSessionID,
-            agent: agent.name,
-            model: {
-              providerID: selectedModel.providerID,
-              modelID: selectedModel.modelID,
-            },
-            variant,
-            parts: [
-              ...editorParts,
-              {
-                type: "text",
-                text: inputText,
-              },
-              ...nonTextParts,
-            ],
+            type: "text",
+            text: inputText,
           },
-          { throwOnError: true },
-        )
-        .catch((error) => {
-          toast.show({
-            title: "Failed to send prompt",
-            message: errorMessage(error),
-            variant: "error",
-          })
-        })
+          ...nonTextParts,
+        ],
+      }
+      void promptQueue.submit(payload, inputText)
       if (editorParts.length > 0) editor.markSelectionSent()
       // Agent tip is non-blocking UX chrome — never delay the send path.
       void import("@arcana/core/session/goal")

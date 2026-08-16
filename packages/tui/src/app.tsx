@@ -71,6 +71,7 @@ import { Session } from "./routes/session"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
+import { PromptQueueProvider, usePromptQueue } from "./context/prompt-queue"
 import { DialogAlert } from "./ui/dialog-alert"
 import { DialogConfirm } from "./ui/dialog-confirm"
 import { ToastProvider, Toast, useToast } from "./ui/toast"
@@ -1293,31 +1294,33 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                         >
                                           <ProjectProvider>
                                             <SyncProvider>
-                                              <DataProvider>
-                                                <ThemeProvider mode={mode}>
-                                                  <LocalProvider>
-                                                    {/* Grok NewAuto-style: one spare session ready before first Home Enter. */}
-                                                    <SessionPrewarmProvider>
-                                                      <PromptStashProvider>
-                                                        <DialogProvider>
-                                                          <FrecencyProvider>
-                                                            <PromptHistoryProvider>
-                                                              <PromptRefProvider>
-                                                                <EditorContextProvider>
-                                                                  <App
-                                                                    onSnapshot={input.onSnapshot}
-                                                                    pluginHost={input.pluginHost}
-                                                                  />
-                                                                </EditorContextProvider>
-                                                              </PromptRefProvider>
-                                                            </PromptHistoryProvider>
-                                                          </FrecencyProvider>
-                                                        </DialogProvider>
-                                                      </PromptStashProvider>
-                                                    </SessionPrewarmProvider>
-                                                  </LocalProvider>
-                                                </ThemeProvider>
-                                              </DataProvider>
+                                              <PromptQueueProvider>
+                                                <DataProvider>
+                                                  <ThemeProvider mode={mode}>
+                                                    <LocalProvider>
+                                                      {/* Grok NewAuto-style: one spare session ready before first Home Enter. */}
+                                                      <SessionPrewarmProvider>
+                                                        <PromptStashProvider>
+                                                          <DialogProvider>
+                                                            <FrecencyProvider>
+                                                              <PromptHistoryProvider>
+                                                                <PromptRefProvider>
+                                                                  <EditorContextProvider>
+                                                                    <App
+                                                                      onSnapshot={input.onSnapshot}
+                                                                      pluginHost={input.pluginHost}
+                                                                    />
+                                                                  </EditorContextProvider>
+                                                                </PromptRefProvider>
+                                                              </PromptHistoryProvider>
+                                                            </FrecencyProvider>
+                                                          </DialogProvider>
+                                                        </PromptStashProvider>
+                                                      </SessionPrewarmProvider>
+                                                    </LocalProvider>
+                                                  </ThemeProvider>
+                                                </DataProvider>
+                                              </PromptQueueProvider>
                                             </SyncProvider>
                                           </ProjectProvider>
                                         </SDKProvider>
@@ -1366,6 +1369,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const themeState = useTheme()
   const { theme, mode, setMode, locked, lock, unlock } = themeState
   const sync = useSync()
+  const promptQueue = usePromptQueue()
   const project = useProject()
   const exit = useExit()
   const promptRef = usePromptRef()
@@ -1709,6 +1713,24 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         slashAliases: ["resume", "continue"],
         run: () => {
           dialog.replace(() => <DialogSessionList />)
+        },
+      },
+      {
+        name: "session.queued_prompts",
+        title: "Retry queued prompts",
+        category: "Session",
+        hidden: promptQueue.list().length === 0,
+        run: () => {
+          const queued = promptQueue.list()
+          if (queued.length === 0) {
+            toast.show({ message: "No queued prompts", variant: "info" })
+            return
+          }
+          for (const item of queued) promptQueue.retry(item.id)
+          toast.show({
+            message: `Retrying ${queued.length} queued prompt${queued.length === 1 ? "" : "s"}`,
+            variant: "info",
+          })
         },
       },
       {
