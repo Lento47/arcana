@@ -124,7 +124,12 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       if (retryTimer) clearTimeout(retryTimer)
       retryTimer = undefined
       const next = store.items
-        .filter((item) => !item.failed && item.nextRetryAt <= Number.MAX_SAFE_INTEGER)
+        .filter(
+          (item) =>
+            !item.failed
+            && item.nextRetryAt <= Number.MAX_SAFE_INTEGER
+            && !sessionWorking(item.payload.sessionID),
+        )
         .sort((a, b) => a.nextRetryAt - b.nextRetryAt)[0]
       if (!next) return
       const delay = Math.max(250, next.nextRetryAt - Date.now())
