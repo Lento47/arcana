@@ -141,12 +141,14 @@ function mergeConfig(base: GovernanceConfig, override: GovernanceConfig): Govern
         enabled: tui.enabled,
         collapseGovernanceGroups: tui.collapseGovernanceGroups,
         collapseThreshold: tui.collapseThreshold,
-        hideEventTypes: tui.hideEventTypes.length > 0 ? tui.hideEventTypes : base.display.tui.hideEventTypes,
+        // Empty is an explicit "show everything / hide nothing" choice and
+        // must not be silently replaced with the default suppression list.
+        hideEventTypes: tui.hideEventTypes,
       },
       desktop: {
         enabled: desktop.enabled,
-        includePrefixes:
-          desktop.includePrefixes.length > 0 ? desktop.includePrefixes : base.display.desktop.includePrefixes,
+        // Empty is an explicit "forward nothing" choice.
+        includePrefixes: desktop.includePrefixes,
         excludePrefixes: desktop.excludePrefixes,
       },
     },

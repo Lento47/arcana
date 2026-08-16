@@ -76,4 +76,41 @@ describe("governance config", () => {
       expect(loaded.config.display.desktop.includePrefixes).toEqual(["contract.", "claim."])
     })
   })
+
+  test("keeps explicitly cleared TUI and desktop filters empty after reload", () => {
+    withTempWorkspace((directory) => {
+      const config = normalizeGovernanceConfig({
+        display: {
+          tui: { enabled: true, hideEventTypes: [] },
+          desktop: { enabled: true, includePrefixes: [], excludePrefixes: [] },
+        },
+      })
+      writeGovernanceConfigYaml(directory, config)
+      const loaded = loadGovernanceConfig(directory)
+
+      expect(loaded.config.display.tui.hideEventTypes).toEqual([])
+      expect(loaded.config.display.desktop.includePrefixes).toEqual([])
+      expect(loaded.config.display.desktop.excludePrefixes).toEqual([])
+      expect(shouldShowGovernanceEvent(loaded.config, "authorization.executed")).toBe(true)
+      expect(shouldForwardGovernanceEventToDesktop(loaded.config, "contract.proposed")).toBe(false)
+    })
+  })
+
+  test("fills omitted filters from defaults while preserving policy overrides", () => {
+    withTempWorkspace((directory) => {
+      const config = normalizeGovernanceConfig({
+        policy: { approvalRoute: "DESKTOP_REQUIRED" },
+      })
+      writeGovernanceConfigYaml(directory, config)
+      const loaded = loadGovernanceConfig(directory)
+
+      expect(loaded.config.display.tui.hideEventTypes).toEqual(
+        DEFAULT_GOVERNANCE_CONFIG.display.tui.hideEventTypes,
+      )
+      expect(loaded.config.display.desktop.includePrefixes).toEqual(
+        DEFAULT_GOVERNANCE_CONFIG.display.desktop.includePrefixes,
+      )
+      expect(loaded.config.policy.approvalRoute).toBe("DESKTOP_REQUIRED")
+    })
+  })
 })
