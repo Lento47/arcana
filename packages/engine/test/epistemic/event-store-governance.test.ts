@@ -271,4 +271,61 @@ describe("GovernanceEventBridge", () => {
       }
     }),
   )
+
+  bridgeIt.live("keeps governance records durable but unpublished when desktop is disabled", () =>
+    Effect.gen(function* () {
+      const directory = mkdtempSync(join(tmpdir(), "arcana-governance-bridge-off-"))
+      try {
+        mkdirSync(join(directory, ".arcana"), { recursive: true })
+        writeFileSync(
+          join(directory, ".arcana", "governance.yml"),
+          [
+            "version: 1",
+            "display:",
+            "  desktop:",
+            "    enabled: false",
+            "",
+          ].join("\n"),
+          "utf8",
+        )
+        const instance: InstanceContext = {
+          directory,
+          worktree: directory,
+          project: {
+            id: Project.ID.make("proj-governance-bridge-off"),
+            worktree: directory,
+            time: { created: 0, updated: 0 },
+            sandboxes: [],
+          },
+          startedAt: 0,
+        }
+
+        yield* createTables
+        const store = yield* EventStore.Service
+        const events = yield* EventV2.Service
+        const observed: Array<EventV2.Data<typeof GovernanceEvent.Recorded>> = []
+        const unsubscribe = yield* events.listen((event) =>
+          Effect.sync(() => {
+            if (event.type === GovernanceEvent.Recorded.type) {
+              observed.push(event.data as EventV2.Data<typeof GovernanceEvent.Recorded>)
+            }
+          }),
+        )
+
+        yield* store.append({
+          sessionId: "session-disabled",
+          actor: { kind: "policy", id: "contract-engine" },
+          type: "contract.proposed",
+          payload: { contractId: "durable-but-unpublished" },
+        }).pipe(Effect.provideService(InstanceRef, instance))
+        yield* unsubscribe
+
+        expect(observed).toHaveLength(0)
+        const durable = yield* store.listGovernance("session-disabled")
+        expect(durable.map((event) => event.type)).toEqual(["contract.proposed"])
+      } finally {
+        rmSync(directory, { recursive: true, force: true })
+      }
+    }),
+  )
 })
