@@ -55,6 +55,18 @@ const emptyConsoleState: ConsoleState = {
   switchableOrgCount: 0,
 }
 
+/**
+ * Merge a fetched session list into the local store.
+ * A stale list fetch started before session.create must not delete the
+ * session the user just opened (Solid reconcile of the whole array would).
+ */
+export function mergeSessionList(current: Session[], incoming: Session[]): Session[] {
+  const byId = new Map<string, Session>()
+  for (const session of current) byId.set(session.id, session)
+  for (const session of incoming) byId.set(session.id, session)
+  return [...byId.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+}
+
 function search<T>(items: T[], target: string, key: (item: T) => string) {
   let left = 0
   let right = items.length - 1
@@ -479,6 +491,7 @@ export const {
           refreshGovernance(sessionID)
           break
         }
+        case "session.created":
         case "session.updated": {
           const result = search(store.session, event.properties.info.id, (s) => s.id)
           if (result.found) {
@@ -789,7 +802,7 @@ export const {
               setStore("provider_default", reconcile(providers.default))
               setStore("provider_next", reconcile(providerList))
               setStore("console_state", reconcile(consoleState))
-              if (sessions !== undefined) setStore("session", reconcile(sessions))
+              if (sessions !== undefined) setStore("session", mergeSessionList(store.session, sessions))
             })
 
             // Local Ollama discovery follows the arcana doctor: both use the
@@ -831,7 +844,7 @@ export const {
           // Keep startup completion tied to data that affects the initial route
           // and command surface. Slower catalogs can settle after the TUI is usable.
           const startupTasks = [
-            ...(args.continue ? [] : [sessionListPromise.then((sessions) => setStore("session", reconcile(sessions)))]),
+            ...(args.continue ? [] : [sessionListPromise.then((sessions) => setStore("session", mergeSessionList(store.session, sessions)))]),
             consoleStatePromise.then((consoleState) => setStore("console_state", reconcile(consoleState))),
             sdk.client.app.agents({ workspace }).then((x) => setStore("agent", reconcile(x.data ?? []))),
             sdk.client.config.get({ workspace }).then((x) => setStore("config", reconcile(x.data!))),
@@ -926,12 +939,22 @@ export const {
             }),
           )
         },
+        /** Drop a local-only stub (pending-* ids) after the real session exists. */
+        forget(sessionID: string) {
+          setStore(
+            "session",
+            produce((draft) => {
+              const match = search(draft, sessionID, (s) => s.id)
+              if (match.found) draft.splice(match.index, 1)
+            }),
+          )
+        },
         query() {
           return sessionListQuery()
         },
         async refresh() {
           const list = await listSessions()
-          setStore("session", reconcile(list))
+          setStore("session", mergeSessionList(store.session, list))
         },
         status(sessionID: string) {
           const session = result.session.get(sessionID)

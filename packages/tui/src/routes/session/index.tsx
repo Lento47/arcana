@@ -420,7 +420,7 @@ export function Session() {
       // sync.session.sync() fetches session.get, messages, todo, and diff in
       // parallel — no need for a separate blocking session.get call.
       // Warm sessions (already fullSynced) return immediately without network.
-      const syncTask = sync.session.sync(sessionID)
+      const syncTask = sync.session.sync(sessionID).catch(() => undefined)
 
       // Optimistic setup: use cached session data (from session list loaded
       // during bootstrap) to fire workspace/bootstrap and editor reconnect
@@ -457,8 +457,21 @@ export function Session() {
         }
       }
 
-      const session = sync.session.get(sessionID)
+      let session = sync.session.get(sessionID)
       if (!session) {
+        for (let attempt = 0; attempt < 3 && !session; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)))
+          try {
+            await sync.session.resync(sessionID)
+          } catch {
+            // keep retrying — create+navigate can race the first GET
+          }
+          session = sync.session.get(sessionID)
+        }
+      }
+      if (!session) {
+        const pendingEcho = allOptimisticMessages().some((item) => item.sessionID === sessionID)
+        if (pendingEcho) return
         toast.show({
           message: `Session not found: ${sessionID}`,
           variant: "error",
@@ -1767,7 +1780,7 @@ export function Session() {
             border={["left", "right"]}
             borderColor={transBorder()}
           >
-            <Show when={session()}>
+            <Show when={session() || allOptimisticMessages().some((item) => item.sessionID === route.sessionID)}>
               <Dynamic component={ShellCmp()} {...shellProps()} />
             </Show>
           </box>

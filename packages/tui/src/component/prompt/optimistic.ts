@@ -32,6 +32,14 @@ export function addOptimisticMessage(msg: OptimisticUserMessage) {
   setState((prev) => [...prev, msg])
 }
 
+/** Move local echo onto the real session id after create finishes. */
+export function remapOptimisticSession(fromSessionID: string, toSessionID: string) {
+  if (!fromSessionID || fromSessionID === toSessionID) return
+  setState((prev) =>
+    prev.map((msg) => (msg.sessionID === fromSessionID ? { ...msg, sessionID: toSessionID } : msg)),
+  )
+}
+
 /**
  * Remove optimistic messages. Pass a sessionID to clear only that session;
  * pass nothing to clear all (e.g. on app teardown).

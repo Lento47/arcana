@@ -67,7 +67,7 @@ import { useTuiConfig } from "../../config"
 import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
-import { addOptimisticMessage } from "./optimistic"
+import { addOptimisticMessage, clearOptimisticMessages, remapOptimisticSession } from "./optimistic"
 import { arcanaTaskInstruction, assessArcanaTaskRisk, parseArcanaPromptCommand } from "../../arcana/task"
 import { useSessionPrewarm } from "../../routes/home/prewarm-session"
 
@@ -1155,33 +1155,90 @@ export function Prompt(props: PromptProps) {
     props.onSubmit?.()
     markSubmit("T1 clear", t0)
 
-    let sessionID = props.sessionID
+    let sessionID: string | undefined = props.sessionID
     let finishMoveProgress = false
-    if (sessionID == null) {
-      const selectedWorkspace = workspace.selection()
-      const workspaceID = selectedWorkspace?.type === "existing" ? selectedWorkspace.workspaceID : undefined
+    let pendingStubID: string | undefined
+    const isHomeSend = !props.sessionID
+    const selectedWorkspace = workspace.selection()
+    const workspaceID = selectedWorkspace?.type === "existing" ? selectedWorkspace.workspaceID : undefined
+    const needsDestination = Boolean(move.pending())
 
-      // Prefer prewarmed session (app-level) so Enter is not blocked on create.
-      // Skip prewarm when user selected a custom destination (worktree/directory).
-      const needsDestination = Boolean(move.pending())
-      let prewarmed: string | undefined
+    if (sessionID == null) {
+      // Prefer a ready prewarm so Enter is not blocked on create.
       if (!needsDestination && sessionPrewarm) {
-        prewarmed = sessionPrewarm.consume()
-        if (!prewarmed) {
-          // Creating or idle — waitAndConsume kicks create if needed (no double create).
-          prewarmed = await sessionPrewarm.waitAndConsume()
+        const ready = sessionPrewarm.consume()
+        if (ready) {
+          sessionID = ready
+          markSubmit("T3 prewarm hit", t0, { sessionID })
         }
       }
-      if (prewarmed) {
-        sessionID = prewarmed
-        markSubmit("T3 prewarm hit", t0, { sessionID })
-      } else {
+    }
+
+    // From Home: open the session view immediately — do not wait for create.
+    if (isHomeSend) {
+      if (!sessionID) {
+        pendingStubID = `pending-${crypto.randomUUID()}`
+        sessionID = pendingStubID
+        const now = Date.now()
+        const title = inputText.trim().split("\n")[0]?.slice(0, 80) || "New session"
+        sync.session.upsert({
+          id: pendingStubID,
+          slug: pendingStubID,
+          projectID: "",
+          directory: "",
+          title,
+          version: "0",
+          time: { created: now, updated: now },
+        } as any)
+      }
+      if (store.mode !== "shell" && !arcanaPromptCommand) {
+        const isGoalCmd =
+          inputText.startsWith("/")
+          && (() => {
+            const cmd = inputText.split("\n")[0].split(" ")[0].slice(1).toLowerCase()
+            return cmd === "goal" || cmd === "loop"
+          })()
+        const isServerSlash =
+          inputText.startsWith("/")
+          && sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
+        if (!isGoalCmd && !isServerSlash) {
+          addOptimisticMessage({
+            id: `optimistic-${crypto.randomUUID()}`,
+            sessionID,
+            text: inputText,
+            timestamp: Date.now(),
+            agent: agent.name,
+            model: {
+              providerID: selectedModel.providerID,
+              modelID: selectedModel.modelID,
+              variant,
+            },
+          })
+          markSubmit("T3.4 optimistic", t0)
+        }
+      }
+      if (editorParts.length > 0) editor.preserveSelectionFromNewSession()
+      route.navigate({
+        type: "session",
+        sessionID,
+      })
+      markSubmit("T3.5 early navigate", t0, { sessionID })
+    }
+
+    if (pendingStubID) {
+      let createdID: string | undefined
+      if (!needsDestination && sessionPrewarm) {
+        createdID = await sessionPrewarm.waitAndConsume()
+      }
+      if (!createdID) {
         const directory = await move.getDirectory(inputText)
         markSubmit("T2 getDirectory", t0)
         if (move.pending() && !directory) {
-          // Restore composer so the user can retry
+          clearOptimisticMessages(pendingStubID)
+          sync.session.forget(pendingStubID)
           setStore("prompt", { input: inputText, parts: nonTextParts })
           input.setText(inputText)
+          route.navigate({ type: "home" })
           return false
         }
         finishMoveProgress = Boolean(move.progress())
@@ -1198,8 +1255,10 @@ export function Prompt(props: PromptProps) {
         })
         markSubmit("T3 session.create", t0, { error: Boolean(res.error) })
 
-        if (res.error) {
+        if (res.error || !res.data?.id) {
           if (finishMoveProgress) move.finishSubmit()
+          clearOptimisticMessages(pendingStubID)
+          sync.session.forget(pendingStubID)
           console.log("Creating a session failed:", res.error)
           setStore("prompt", { input: inputText, parts: nonTextParts })
           input.setText(inputText)
@@ -1207,59 +1266,37 @@ export function Prompt(props: PromptProps) {
             message: "Creating a session failed. Open console for more details.",
             variant: "error",
           })
+          route.navigate({ type: "home" })
           return true
         }
 
-        sessionID = res.data.id
-        // Seed local store so session view has metadata before SSE.
-        if (res.data) sync.session.upsert(res.data as any)
+        createdID = res.data.id
+        sync.session.upsert(res.data as any)
       }
-    }
 
-    // Grok order: optimistic user bubble *before* navigate so the session view
-    // mounts with content already present (no empty flash).
-    const isHomeSend = !props.sessionID && !!sessionID
-    if (isHomeSend && store.mode !== "shell" && !arcanaPromptCommand) {
-      const isGoalCmd =
-        inputText.startsWith("/")
-        && (() => {
-          const cmd = inputText.split("\n")[0].split(" ")[0].slice(1).toLowerCase()
-          return cmd === "goal" || cmd === "loop"
-        })()
-      const isServerSlash =
-        inputText.startsWith("/")
-        && sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
-      if (!isGoalCmd && !isServerSlash) {
-        addOptimisticMessage({
-          id: `optimistic-${crypto.randomUUID()}`,
-          sessionID,
-          text: inputText,
-          timestamp: Date.now(),
-          agent: agent.name,
-          model: {
-            providerID: selectedModel.providerID,
-            modelID: selectedModel.modelID,
-            variant,
-          },
-        })
-        markSubmit("T3.4 optimistic", t0)
-      }
-    }
-
-    // From Home: navigate as soon as we have an id (bubble already queued).
-    if (isHomeSend) {
-      if (editorParts.length > 0) editor.preserveSelectionFromNewSession()
+      remapOptimisticSession(pendingStubID, createdID)
+      sync.session.forget(pendingStubID)
+      sessionID = createdID
       route.navigate({
         type: "session",
         sessionID,
       })
-      markSubmit("T3.5 early navigate", t0, { sessionID })
     }
+
+    if (!sessionID) {
+      if (pendingStubID) {
+        clearOptimisticMessages(pendingStubID)
+        sync.session.forget(pendingStubID)
+      }
+      route.navigate({ type: "home" })
+      return false
+    }
+    const targetSessionID = sessionID
 
     if (store.mode === "shell") {
       move.startSubmit()
       void sdk.client.session.shell({
-        sessionID,
+        sessionID: targetSessionID,
         agent: agent.name,
         model: {
           providerID: selectedModel.providerID,
@@ -1304,7 +1341,7 @@ export function Prompt(props: PromptProps) {
       void sdk.client.session
         .promptAsync(
           {
-            sessionID,
+            sessionID: targetSessionID,
             agent: agent.name,
             model: {
               providerID: selectedModel.providerID,
@@ -1355,7 +1392,7 @@ export function Prompt(props: PromptProps) {
         })
       addOptimisticMessage({
         id: `optimistic-${crypto.randomUUID()}`,
-        sessionID,
+        sessionID: targetSessionID,
         text: task,
         timestamp: Date.now(),
         agent: agent.name,
@@ -1394,7 +1431,7 @@ export function Prompt(props: PromptProps) {
       }
       void import("@arcana/core/session/goal")
         .then(({ setSessionGoal }) => {
-          setSessionGoal(sessionID, { goal: args, status: "in_progress" })
+          setSessionGoal(targetSessionID, { goal: args, status: "in_progress" })
           toast.show({
             title: "Goal set",
             // T9: helper appends "…" only when it truncated.
@@ -1435,7 +1472,7 @@ export function Prompt(props: PromptProps) {
         // /loop — show goal + kanban status
         void import("@arcana/core/session/goal")
           .then(({ getSessionGoal, formatActiveGoalBlock }) => {
-            const snap = getSessionGoal(sessionID)
+            const snap = getSessionGoal(targetSessionID)
             if (snap.status === "unset") {
               toast.show({
                 title: "No active goal",
@@ -1447,7 +1484,7 @@ export function Prompt(props: PromptProps) {
             toast.show({
               title: "Goal status",
               message: formatActiveGoalBlock({
-                sessionID,
+                sessionID: targetSessionID,
                 sessionAgent: agent.name,
                 actorAgent: agent.name,
               }).replace(/<\/?active-goal>/g, "").trim(),
@@ -1467,7 +1504,7 @@ export function Prompt(props: PromptProps) {
         }
         void import("@arcana/core/session/goal")
           .then(({ setSessionGoal }) => {
-            setSessionGoal(sessionID, { goal: description, status: "in_progress" })
+            setSessionGoal(targetSessionID, { goal: description, status: "in_progress" })
             toast.show({ title: "Goal set", message: description, variant: "success" })
           })
           .catch((error) => {
@@ -1477,7 +1514,7 @@ export function Prompt(props: PromptProps) {
         // /loop done|blocked|stale — mark goal status
         void import("@arcana/core/session/goal")
           .then(({ getSessionGoal, setSessionGoal }) => {
-            const snap = getSessionGoal(sessionID)
+            const snap = getSessionGoal(targetSessionID)
             if (snap.status === "unset") {
               toast.show({
                 title: "No active goal",
@@ -1490,7 +1527,7 @@ export function Prompt(props: PromptProps) {
               subcommand === "done" ? "complete_unverified"
               : subcommand === "blocked" ? "blocked"
               : "stale"
-            setSessionGoal(sessionID, { goal: snap.goal, status: mapped })
+            setSessionGoal(targetSessionID, { goal: snap.goal, status: mapped })
             toast.show({ title: "Goal marked", message: mapped, variant: "success" })
           })
           .catch((error) => {
@@ -1504,10 +1541,10 @@ export function Prompt(props: PromptProps) {
         }
         void import("@arcana/core/session/goal")
           .then(({ getSessionGoal, setSessionGoal }) => {
-            const snap = getSessionGoal(sessionID)
+            const snap = getSessionGoal(targetSessionID)
             if (snap.status === "unset") {
               const goal = rest.split(/[.,;]/)[0]?.trim() || rest.slice(0, 80)
-              setSessionGoal(sessionID, { goal, status: "in_progress" })
+              setSessionGoal(targetSessionID, { goal, status: "in_progress" })
               toast.show({ title: "Goal auto-set", message: goal, variant: "success" })
             }
           })
@@ -1528,7 +1565,7 @@ export function Prompt(props: PromptProps) {
       const args = firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")
 
       void sdk.client.session.command({
-        sessionID,
+        sessionID: targetSessionID,
         command: command.slice(1),
         arguments: args,
         agent: agent.name,
@@ -1542,7 +1579,7 @@ export function Prompt(props: PromptProps) {
       if (!isHomeSend) {
         addOptimisticMessage({
           id: `optimistic-${crypto.randomUUID()}`,
-          sessionID,
+          sessionID: targetSessionID,
           text: inputText,
           timestamp: Date.now(),
           agent: agent.name,
@@ -1558,7 +1595,7 @@ export function Prompt(props: PromptProps) {
       void sdk.client.session
         .promptAsync(
           {
-            sessionID,
+            sessionID: targetSessionID,
             agent: agent.name,
             model: {
               providerID: selectedModel.providerID,
@@ -1619,7 +1656,7 @@ export function Prompt(props: PromptProps) {
     }
 
     markSubmit("T4 prompt+optimistic done", t0, {
-      sessionID,
+      sessionID: targetSessionID,
       fromHome: isHomeSend,
       prewarm: Boolean(sessionPrewarm),
     })

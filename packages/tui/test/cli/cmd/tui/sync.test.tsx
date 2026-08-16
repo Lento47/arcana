@@ -3,6 +3,17 @@ import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../../../fixture/fixture"
 import { mount, wait } from "./sync-fixture"
 import type { GlobalEvent } from "@arcana/sdk/v2"
+import { mergeSessionList } from "../../../../src/context/sync"
+
+function makeSession(id: string, title = id) {
+  return {
+    id,
+    title,
+    directory: "/tmp/arcana",
+    version: "0",
+    time: { created: 1, updated: 1 },
+  }
+}
 
 function branchEvent(branch: string, workspace?: string): GlobalEvent {
   return {
@@ -18,6 +29,54 @@ function branchEvent(branch: string, workspace?: string): GlobalEvent {
 }
 
 describe("tui sync", () => {
+  test("mergeSessionList keeps local sessions missing from a stale fetch", () => {
+    const current = [makeSession("a", "old-a"), makeSession("b", "local-only")]
+    const incoming = [makeSession("a", "new-a"), makeSession("c", "incoming")]
+
+    const merged = mergeSessionList(current as any, incoming as any)
+
+    expect(merged.map((item) => item.id)).toEqual(["a", "b", "c"])
+    expect(merged.find((item) => item.id === "a")?.title).toBe("new-a")
+    expect(merged.find((item) => item.id === "b")?.title).toBe("local-only")
+  })
+
+  test("session.created and session.updated events keep the list authoritative", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(`${tmp.path}/kv.json`, "{}")
+    const { app, emit, sync } = await mount(undefined, tmp.path)
+
+    try {
+      emit({
+        directory: "/tmp/other",
+        project: "proj_test",
+        payload: {
+          id: "evt_session_created",
+          type: "session.created",
+          properties: { info: makeSession("ses_new", "created") },
+        },
+      } as unknown as GlobalEvent)
+      await wait(() => sync.data.session.some((item) => item.id === "ses_new"))
+
+      emit({
+        directory: "/tmp/other",
+        project: "proj_test",
+        payload: {
+          id: "evt_session_updated",
+          type: "session.updated",
+          properties: { info: makeSession("ses_new", "renamed") },
+        },
+      } as unknown as GlobalEvent)
+      await wait(() => sync.data.session.find((item) => item.id === "ses_new")?.title === "renamed")
+
+      expect(sync.data.session.find((item) => item.id === "ses_new")).toMatchObject({
+        id: "ses_new",
+        title: "renamed",
+      })
+    } finally {
+      app.renderer.destroy()
+    }
+  })
+
   test("refresh scopes sessions by default and lists project sessions when disabled", async () => {
     await using tmp = await tmpdir()
     await Bun.write(`${tmp.path}/kv.json`, "{}")

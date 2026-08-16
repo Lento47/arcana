@@ -1,14 +1,22 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import {
+  addOptimisticMessage,
+  allOptimisticMessages,
+  clearOptimisticMessages,
   filterCoveredOptimistics,
   normalizeOptimisticText,
   realUserMessageHasText,
+  remapOptimisticSession,
   type OptimisticUserMessage,
 } from "../src/component/prompt/optimistic"
 import { messagesToSpineEntries } from "../src/shell/command-spine/spine-mapper"
 import type { Message, Part } from "@arcana/sdk/v2"
 
 describe("optimistic merge helpers", () => {
+  afterEach(() => {
+    clearOptimisticMessages()
+  })
+
   test("realUserMessageHasText is false without text parts", () => {
     expect(realUserMessageHasText({ id: "u1", role: "user" }, [])).toBe(false)
     expect(
@@ -45,6 +53,45 @@ describe("optimistic merge helpers", () => {
 
   test("normalizeOptimisticText trims", () => {
     expect(normalizeOptimisticText("  hi\r\n")).toBe("hi")
+  })
+
+  test("remapOptimisticSession moves only the pending stub's local echo", () => {
+    const message = {
+      id: "optimistic-1",
+      sessionID: "pending-stub",
+      text: "hello",
+      timestamp: 1,
+      agent: "build",
+      model: { providerID: "x", modelID: "y" },
+    } satisfies OptimisticUserMessage
+    const unrelated = { ...message, id: "optimistic-2", sessionID: "other-session" }
+    addOptimisticMessage(message)
+    addOptimisticMessage(unrelated)
+
+    remapOptimisticSession("pending-stub", "real-session")
+
+    const messages = allOptimisticMessages()
+    expect(messages.find((item) => item.id === "optimistic-1")?.sessionID).toBe("real-session")
+    expect(messages.find((item) => item.id === "optimistic-2")?.sessionID).toBe("other-session")
+  })
+
+  test("clearOptimisticMessages removes only the requested session's echo", () => {
+    const message = {
+      id: "optimistic-1",
+      sessionID: "session-a",
+      text: "hello",
+      timestamp: 1,
+      agent: "build",
+      model: { providerID: "x", modelID: "y" },
+    } satisfies OptimisticUserMessage
+    addOptimisticMessage(message)
+    addOptimisticMessage({ ...message, id: "optimistic-2", sessionID: "session-b" })
+
+    clearOptimisticMessages("session-a")
+
+    expect(allOptimisticMessages()).toEqual([
+      { ...message, id: "optimistic-2", sessionID: "session-b" },
+    ])
   })
 })
 
