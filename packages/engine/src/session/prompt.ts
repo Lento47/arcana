@@ -1420,11 +1420,18 @@ export const layer = Layer.effect(
               (part) => part.type === "tool" && !part.metadata?.providerExecuted && !isOrphanedInterruptedTool(part),
             ) ?? false
 
+          // Exit only when the most recent message in the stream is this
+          // terminal assistant. Id comparison across roles is unreliable:
+          // clients may supply arbitrary ids (e.g. TUI UUIDs) that sort after
+          // the engine's time-based ids. msgs is chronological unless
+          // compaction reordered it, in which case it ends on a user message.
+          const lastMsg = msgs[msgs.length - 1]
           if (
             lastAssistant?.finish &&
             !["tool-calls"].includes(lastAssistant.finish) &&
             !hasToolCalls &&
-            lastUser.id < lastAssistant.id
+            lastMsg?.info.role === "assistant" &&
+            lastMsg.info.id === lastAssistant.id
           ) {
             const orphan = lastAssistantMsg?.parts.find(
               (part): part is SessionV1.ToolPart => part.type === "tool" && isOrphanedInterruptedTool(part),

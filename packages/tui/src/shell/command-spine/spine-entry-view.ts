@@ -34,7 +34,7 @@ export type SpineEntryViewBase = {
   gutterWidth?: number
 }
 
-/** User / assistant prose (ask/plan/ok) — no card chrome, plain prose. */
+/** User / assistant prose (ask/plan/ok) — rendered as SpineChatCard. */
 export type ChatEntry = SpineEntryViewBase & {
   type: "chat"
   kind: "ask" | "plan" | "ok"

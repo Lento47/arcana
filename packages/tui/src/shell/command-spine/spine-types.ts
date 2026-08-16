@@ -284,6 +284,20 @@ export function spineRailCell(symbol: string, width: number): string {
 }
 
 /**
+ * Soft-card chrome inside the content column. Must stay in lockstep with
+ * `SpineChatCard` (left accent + padL + padR). Do not invent a second pad.
+ */
+export const SPINE_CHAT_CARD_CHROME = {
+  border: 1,
+  padL: 2,
+  padR: 1,
+} as const
+
+export function spineChatCardChrome(): number {
+  return SPINE_CHAT_CARD_CHROME.border + SPINE_CHAT_CARD_CHROME.padL + SPINE_CHAT_CARD_CHROME.padR
+}
+
+/**
  * Measured content width for chat/think prose (Grok-class wrap width).
  *
  * Terminal columns minus outer pad + gutter + variant chrome + safety,
@@ -308,7 +322,7 @@ export function spineProseWidth(
   const chrome =
     spineOuterPadding(layout)
     + gutter
-    + (variant === "chat" ? 1 /* border */ + 2 /* padL */ + 1 /* padR */ : variant === "think" ? spineRailWidth(layout) + 1 : 1)
+    + (variant === "chat" ? spineChatCardChrome() : variant === "think" ? spineRailWidth(layout) + 1 : 1)
     + 2 // scrollbar / safety
   // Clamp to >= 1 so a tiny/narrow terminal never yields negative or 80-wide prose.
   return Math.max(1, term - chrome)

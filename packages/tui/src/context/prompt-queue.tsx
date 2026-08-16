@@ -36,6 +36,18 @@ export function isSessionWorking(status: unknown): boolean {
   return isRecord(status) && (status.type === "busy" || status.type === "retry")
 }
 
+export function releaseStaleSessions(
+  activeSince: Map<string, number>,
+  graceMs: number,
+  now: number,
+): string[] {
+  const stale: string[] = []
+  for (const [sessionID, since] of activeSince) {
+    if (now - since > graceMs) stale.push(sessionID)
+  }
+  return stale
+}
+
 export function isRetryablePromptError(error: unknown): boolean {
   if (isRecord(error) && error.retryable === true) return true
   if (isRecord(error) && isRecord(error.data) && error.data.retryable === true) return true
@@ -90,8 +102,30 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
     const [inFlightID, setInFlightID] = createSignal<string | undefined>()
     // Server-reported status can lag a few frames behind the 204 response
     // from promptAsync. This set fills that gap so a queued retry can never
-    // start a second turn while the first turn is still ramping up.
+    // start a second turn while the first turn is still ramping up. It is
+    // also self-healing: a session that stops reporting (its idle event was
+    // missed, or the engine dropped it from its status map when it went
+    // idle) is released after a short grace period so the queue can never
+    // wedge forever.
     const activeSessions = new Set<string>()
+    const activeSince = new Map<string, number>()
+    const SESSION_STATUS_GRACE_MS = 5_000
+
+    const markActive = (sessionID: string) => {
+      activeSessions.add(sessionID)
+      activeSince.set(sessionID, Date.now())
+    }
+
+    const releaseStale = () => {
+      const now = Date.now()
+      let released = false
+      for (const sessionID of releaseStaleSessions(activeSince, SESSION_STATUS_GRACE_MS, now)) {
+        activeSessions.delete(sessionID)
+        activeSince.delete(sessionID)
+        released = true
+      }
+      return released
+    }
 
     let loaded = false
     let draining = false
@@ -103,9 +137,13 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
 
     createEffect(() => {
       for (const [sessionID, status] of Object.entries(sync.data.session_status)) {
-        if (isSessionWorking(status)) activeSessions.add(sessionID)
-        else activeSessions.delete(sessionID)
+        if (isSessionWorking(status)) markActive(sessionID)
+        else {
+          activeSessions.delete(sessionID)
+          activeSince.delete(sessionID)
+        }
       }
+      if (releaseStale()) void drain()
     })
 
     const sessionWorking = (sessionID: string) =>
@@ -184,7 +222,7 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
           }
         }
         await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
-        activeSessions.add(item.payload.sessionID)
+        markActive(item.payload.sessionID)
         remove(item.id)
         toast.show({
           title: "Queued message sent",
@@ -217,6 +255,7 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
     const drain = async (): Promise<void> => {
       if (draining) return
       draining = true
+      releaseStale()
       try {
         while (true) {
           const now = Date.now()
@@ -261,6 +300,12 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
 
       // A live query owns the session. Queue the new message and let the
       // status observer drain it as soon as the turn returns to idle.
+      if (releaseStale()) {
+        // A stale session was just released (its turn is no longer ours to
+        // wait on). Defer to drain instead of racing it with a direct send.
+        queueMicrotask(() => void drain())
+        return "queued"
+      }
       if (sessionWorking(payload.sessionID)) {
         queueMicrotask(() => void drain())
         return "queued"
@@ -269,7 +314,7 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       setInFlightID(item.id)
       try {
         await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
-        activeSessions.add(payload.sessionID)
+        markActive(payload.sessionID)
         remove(item.id)
         return "sent"
       } catch (error) {

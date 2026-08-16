@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { isRetryablePromptError, isSessionWorking } from "../src/context/prompt-queue"
+import { isRetryablePromptError, isSessionWorking, releaseStaleSessions } from "../src/context/prompt-queue"
 
 describe("prompt queue retry policy", () => {
   test("retries transient server/network failures", () => {
@@ -22,5 +22,21 @@ describe("prompt queue retry policy", () => {
     expect(isSessionWorking({ type: "idle" })).toBeFalse()
     expect(isSessionWorking({ type: "error" })).toBeFalse()
     expect(isSessionWorking(undefined)).toBeFalse()
+  })
+
+  test("releases sessions whose last active timestamp went stale", () => {
+    const now = 10_000
+    const activeSince = new Map<string, number>([
+      ["ses-stale", now - 6_000],
+      ["ses-just-sent", now - 1_000],
+      ["ses-fresh", now],
+    ])
+    expect(releaseStaleSessions(activeSince, 5_000, now)).toEqual(["ses-stale"])
+  })
+
+  test("keeps a session that is still inside the grace window", () => {
+    const now = 10_000
+    const activeSince = new Map<string, number>([["ses-ramping", now - 4_999]])
+    expect(releaseStaleSessions(activeSince, 5_000, now)).toEqual([])
   })
 })

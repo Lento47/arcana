@@ -30,6 +30,9 @@ const fixture = {
   version: 1,
 }
 
+/** Normalize a workspace path the way the subscriber registry stores it. */
+const workspaceKey = (value: string) => value.replaceAll("\\", "/").replace(/\/+$/, "")
+
 /** Boot the instance for `directory` and create a session bound to it. */
 const seedWorkspace = (directory: string) =>
   Effect.gen(function* () {
@@ -398,7 +401,7 @@ describe("runtime API: /approvals contract conformance", () => {
       )
       expect(heartbeat.status).toBe(200)
       const result = (yield* json(heartbeat)) as { workspaceId: string; ttlMs: number }
-      expect(result.workspaceId).toBe(ws.directory)
+      expect(result.workspaceId).toBe(workspaceKey(ws.directory))
       expect(result.ttlMs).toBeGreaterThan(0)
       expect(desktopSubscriberRegistry().isOnline(ws.directory)).toBe(true)
       expect(approvalStoreForWorkspace(ws.directory).loadApproval(seeded.approvalId)!.state).toBe("PENDING")

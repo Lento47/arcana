@@ -552,6 +552,50 @@ it.instance("loop calls LLM and returns assistant message", () =>
   }),
 )
 
+it.instance("loop exits after one turn when a client-supplied user id sorts after engine ids", () =>
+  Effect.gen(function* () {
+    // The TUI submits user messages with client-generated UUID ids
+    // (msg_<32 hex>) which lexicographically sort after the engine's
+    // time-based assistant ids. The loop must not derive turn ordering from
+    // id comparison, or it never exits and keeps responding to the same turn.
+    const uuid = "msg_bf98bc69bc03408caf6b2e05d24ab8bb" as MessageID
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({
+      title: "Pinned",
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    })
+    const session = yield* Session.Service
+    const msg = yield* session.updateMessage({
+      id: uuid,
+      role: "user",
+      sessionID: chat.id,
+      agent: "build",
+      model: ref,
+      time: { created: Date.now() },
+    })
+    yield* session.updatePart({
+      id: PartID.ascending(),
+      messageID: msg.id,
+      sessionID: chat.id,
+      type: "text",
+      text: "hello",
+    })
+
+    yield* llm.text("world")
+
+    const result = yield* prompt.loop({ sessionID: chat.id })
+    expect(yield* llm.calls).toBe(1)
+    expect(result.info.role).toBe("assistant")
+    if (result.info.role === "assistant") {
+      expect(result.info.finish).toBe("stop")
+      expect(result.info.parentID).toBe(uuid)
+      expect(result.parts.some((part) => part.type === "text" && part.text === "world")).toBe(true)
+    }
+  }),
+)
+
 it.instance("loop surfaces content-filter finishes as session errors", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)

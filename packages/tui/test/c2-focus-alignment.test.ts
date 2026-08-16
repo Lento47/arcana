@@ -59,3 +59,12 @@ describe("C2 — rowFocusHighlight policy", () => {
     expect(rowFocusHighlight(false, true)).toBe("none")
   })
 })
+
+describe("C2 — chat voice uses SpineChatCard", () => {
+  test("prose rows render the shared card, not a second inline chrome tree", () => {
+    const src = entry()
+    expect(src).toContain("<SpineChatCard")
+    expect(src).not.toContain("const chatSpeaker")
+    expect(src).not.toContain("const chatGlyph")
+  })
+})

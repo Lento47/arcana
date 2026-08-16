@@ -8,6 +8,7 @@ import { Database } from "@arcana/core/database/database"
 import { Permission } from "../../src/permission"
 import { InstanceBootstrap } from "../../src/project/bootstrap-service"
 import { InstanceStore } from "../../src/project/instance-store"
+import { desktopSubscriberRegistry } from "../../src/approval/desktop-subscribers"
 import { TestInstance, tmpdirScoped } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { MessageID, SessionID } from "../../src/session/schema"
@@ -689,6 +690,47 @@ it.instance(
         permission: "bash",
         patterns: ["ls"],
       })
+
+      yield* rejectAll()
+      yield* Fiber.await(fiber)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - keeps TUI quiet when a desktop subscriber is online",
+  () =>
+    Effect.gen(function* () {
+      const instance = yield* TestInstance
+      desktopSubscriberRegistry().heartbeat({
+        subscriberId: "test-desktop-online",
+        workspaceId: instance.directory,
+      })
+      // Prune only genuinely stale subscribers. A future timestamp would evict
+      // live Desktop subscribers registered by concurrently-running tests.
+      yield* Effect.addFinalizer(() => Effect.sync(() => desktopSubscriberRegistry().prune()))
+
+      const events = yield* EventV2Bridge.Service
+      const seen = yield* Deferred.make<PermissionV1.Request>()
+      const unsub = yield* events.listen((event) => {
+        if (event.type === Permission.Event.Asked.type)
+          Deferred.doneUnsafe(seen, Effect.succeed(event.data as PermissionV1.Request))
+        return Effect.void
+      })
+      yield* Effect.addFinalizer(() => unsub)
+
+      const fiber = yield* ask({
+        sessionID: SessionID.make("session_test"),
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: {},
+        always: [],
+        ruleset: [],
+      }).pipe(Effect.forkScoped)
+
+      expect(yield* waitForPending(1)).toHaveLength(1)
+      const outcome = yield* Deferred.await(seen).pipe(Effect.timeoutOption("150 millis"))
+      expect(outcome._tag).toBe("None")
 
       yield* rejectAll()
       yield* Fiber.await(fiber)

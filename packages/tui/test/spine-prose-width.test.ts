@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { getSpineLayout, spineProseWidth } from "../src/shell/command-spine/spine-types"
+import { getSpineLayout, spineChatCardChrome, spineProseWidth } from "../src/shell/command-spine/spine-types"
 
 describe("spineProseWidth", () => {
   test("present-but-narrow width gets its real budget — never the bare 80 fallback", () => {
@@ -47,6 +47,7 @@ describe("spineProseWidth", () => {
 
   test("known chrome arithmetic per layout and variant", () => {
     // wide: outerPad 1 + gutter 2 + scrollbar 2
+    expect(spineChatCardChrome()).toBe(4) // border + padL + padR
     expect(spineProseWidth(120, "wide", "chat")).toBe(111) // + 4 chat chrome
     expect(spineProseWidth(120, "wide", "think")).toBe(112) // + rail 2 + 1
     expect(spineProseWidth(120, "wide", "inline")).toBe(114) // + 1

@@ -1,23 +1,29 @@
 import { Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { APP_NAME, Glyph } from "../../branding"
+import { DashBorder } from "../../ui/chrome"
 import {
   compactSpineElapsed,
+  SPINE_CHAT_CARD_CHROME,
   spineElapsedMax,
+  spineRailCell,
   spineRailWidth,
-  spineTone,
   type SpineKind,
   type SpineLayout,
 } from "./spine-types"
 import { SpineProse } from "./spine-prose"
 
 /**
- * Grok-style chat voice block.
+ * Chat voice card — one column, one accent line.
  *
- * CRITICAL layout rule (proven against mid-word wrap):
- * Legacy session TextPart works because markdown sits in a SINGLE column with
- * paddingLeft — NOT a row of [rail | markdown]. A rail sibling + width% war
- * collapses wrap width. Body uses pad-as-rail + numeric contentWidth.
+ *   [┃][pad 2][ ✦ speaker          +1.2s ]
+ *   [┃][pad 2][ ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈ ]
+ *   [┃][pad 2][ prose…                 ]
+ *
+ * CRITICAL wrap rule: markdown sits in a SINGLE column with paddingLeft —
+ * never a row of [rail | markdown]. A rail sibling + width% collapses wrap.
+ * The left accent is the card border; the glyph occupies a 2-col rail cell
+ * so it lines up with tool glyphs in the same content column.
  */
 export function SpineChatCard(props: {
   kind: SpineKind
@@ -30,7 +36,7 @@ export function SpineChatCard(props: {
   focused?: boolean
   reminders?: string[]
   bodyLabel?: string
-  /** Full measured wrap width for the answer body (terminal − gutters). */
+  /** Measured wrap width for the answer body (terminal − gutters − card chrome). */
   contentWidth?: number
 }) {
   const { theme } = useTheme()
@@ -66,9 +72,14 @@ export function SpineChatCard(props: {
     return theme.spineBrand
   })
 
-  const railColor = createMemo(() => speakerColor())
+  const lineColor = createMemo(() => {
+    if (focused()) return theme.accent
+    return speakerColor()
+  })
   const timeColor = createMemo(() => theme.spineGutterElapsed)
   const railW = createMemo(() => spineRailWidth(props.layout))
+  const accentGlyph = createMemo(() => (isUser() ? Glyph.diamond : Glyph.star))
+  const glyphCell = createMemo(() => spineRailCell(accentGlyph(), railW()))
 
   const cardBg = createMemo(() => {
     if (!isAssistant()) return undefined
@@ -90,35 +101,45 @@ export function SpineChatCard(props: {
     return undefined
   })
 
-  const accentGlyph = createMemo(() => (isUser() ? Glyph.diamond : Glyph.star))
+  const hairline = () => (
+    <box
+      width="100%"
+      flexShrink={0}
+      border={["top"]}
+      borderColor={theme.borderSubtle}
+      customBorderChars={DashBorder}
+    />
+  )
 
   return (
     <box
       flexDirection="column"
       flexShrink={0}
-      width={bodyWidth() ?? ("100%" as any)}
+      width="100%"
       minWidth={0}
       marginTop={isAssistant() ? 1 : 0}
       marginBottom={1}
       backgroundColor={cardBg()}
-      border={isAssistant() ? ["left"] : undefined}
-      borderColor={isAssistant() ? railColor() : undefined}
-      paddingLeft={isAssistant() ? 3 : 1}
-      paddingRight={1}
+      border={["left"]}
+      borderColor={lineColor()}
+      paddingLeft={SPINE_CHAT_CARD_CHROME.padL}
+      paddingRight={SPINE_CHAT_CARD_CHROME.padR}
       paddingTop={isAssistant() ? 1 : 0}
       paddingBottom={isAssistant() ? 1 : 0}
     >
-      {/* Turn separator — thin line above user messages */}
-      <Show when={isUser()}>
-        <box border={["bottom"]} borderColor={theme.borderSubtle} width="100%" />
-      </Show>
-      {/* Header — single row, no markdown here */}
+      {/* Turn rule — sits above the user card so turns read as separate beats. */}
+      <Show when={isUser()}>{hairline()}</Show>
+
+      {/* Header: glyph rail (2) + speaker … elapsed / clock */}
       <box flexDirection="row" flexShrink={0} alignItems="center" width="100%">
-        <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
+        <box width={railW()} flexShrink={0}>
           <text fg={speakerColor()} wrapMode="none">
-            {accentGlyph()} {speaker()}
+            {glyphCell()}
           </text>
         </box>
+        <text fg={speakerColor()} wrapMode="none">
+          {speaker()}
+        </text>
         <box flexGrow={1} minWidth={1} />
         <Show when={hasRightTime()}>
           <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
@@ -135,6 +156,9 @@ export function SpineChatCard(props: {
           </box>
         </Show>
       </box>
+
+      {/* Title rule — assistant only: separates speaker from prose. */}
+      <Show when={isAssistant()}>{hairline()}</Show>
 
       {/*
         BODY — exact legacy TextPart pattern:

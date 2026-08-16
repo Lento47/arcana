@@ -138,7 +138,9 @@ export const layer = Layer.effect(
 
       // A live Arcana Desktop owns the ACTION GATE. Keep the TUI quiet and
       // let Desktop discover the pending request through /permission; when
-      // no Desktop heartbeat is active, publish for the TUI as usual.
+      // no Desktop heartbeat is active, publish for the TUI as usual. This
+      // must be the ONLY permission.asked publication — a second unconditional
+      // publish would re-open the gate in the TUI even while Desktop is live.
       const directory = yield* InstanceState.directory
       if (!desktopOnline(directory)) {
         yield* events.publish(Event.Asked, info)
@@ -146,7 +148,6 @@ export const layer = Layer.effect(
 
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
       pending.set(id, { info, deferred })
-      yield* events.publish(Event.Asked, info)
       return yield* Effect.ensuring(
         Deferred.await(deferred),
         Effect.sync(() => {

@@ -5,8 +5,7 @@ import type {
   SpineKind,
   SpineLayout,
 } from "./spine-types"
-import { compactSpineElapsed, spineElapsedMax, spineOuterPadding, spineRailWidth } from "./spine-types"
-import { APP_NAME, Glyph } from "../../branding"
+import { spineOuterPadding, spineRailWidth } from "./spine-types"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
 import { SpineGutter } from "./spine-gutter"
@@ -18,6 +17,7 @@ import { SpineProse } from "./spine-prose"
 import { SpineReport } from "./spine-report"
 import { SpineListArtifact } from "./spine-list-artifact"
 import { SpineListing } from "./spine-listing"
+import { SpineChatCard } from "./spine-chat"
 import {
   toSpineEntryView,
   type ApprovalEntry,
@@ -105,7 +105,7 @@ export function computeSpineToggle(facts: SpineToggleFacts): SpineToggle {
  * C2: a focused row's highlight must be ROW-ALIGNED. The fill + left accent
  * border live on the OUTER row box (gutter + header + body) so the highlight
  * spans the whole row. Chat prose rows are gated out: the chat voice owns its
- * own chrome (speaker typography + prose), so painting the row again would
+ * own chrome (soft card + left accent), so painting the row again would
  * double-fill.
  */
 export function rowFocusHighlight(focused: boolean, isChatProse: boolean): "row" | "none" {
@@ -420,34 +420,9 @@ export function SpineEntry(props: {
     handleToggle(event)
   }
 
-  // ----- Chat voice (PR5: card-free) -----
-  // No card/panel visual: speaker typography + prose attached directly to the
-  // spine, indented under the rail column (matching the think-body host).
-  const chatBodyWidth = createMemo(() => {
-    if (typeof props.contentWidth === "number" && Number.isFinite(props.contentWidth)) {
-      return Math.max(1, Math.floor(props.contentWidth))
-    }
-    return undefined
-  })
-  const isUserChat = (v: ChatEntry) => v.kind === "ask"
-  const isAssistantChat = (v: ChatEntry) => v.kind === "plan" || v.kind === "ok"
-  const chatSpeaker = (v: ChatEntry) => {
-    if (isUserChat(v)) return "you"
-    const raw = (v.label ?? "").trim().toLowerCase()
-    if (raw && raw !== "assistant" && raw !== "plan" && raw !== "ok" && raw !== "coda" && raw !== "insight") {
-      return raw
-    }
-    return APP_NAME
-  }
-  const chatGlyph = (v: ChatEntry) => (isUserChat(v) ? Glyph.diamond : Glyph.star)
-  const chatColor = (v: ChatEntry) => (isUserChat(v) ? theme.spineAsk : theme.spineBrand)
-  const chatElapsed = (v: ChatEntry) => {
-    if (props.layout === "minimal" || !isAssistantChat(v)) return ""
-    return compactSpineElapsed(v.elapsed, spineElapsedMax(props.layout))
-  }
-  const chatTimestamp = (v: ChatEntry) => (props.layout === "minimal" ? "" : (v.timestamp ?? "").trim())
-  const hasChatTime = (v: ChatEntry) => !!(chatElapsed(v) || chatTimestamp(v))
-  const chatBodyLabel = (v: ChatEntry) => v.bodyLabel ?? (isUserChat(v) ? "prompt" : "assistant")
+  // Chat voice lives in SpineChatCard (panel + accent line + title rule).
+  // Empty prose still falls back to the compact RowHeader so a blank ask/ok
+  // row does not render an empty card.
 
   return (
     <Show when={!entry().hidden}>
@@ -482,7 +457,7 @@ export function SpineEntry(props: {
           gutter. Chat/think markdown need a stable full remaining width.
         */}
         <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={0}>
-          {/* Chat prose - speaker typography + markdown, no card chrome. */}
+          {/* Chat prose — soft card, accent line, column-aligned speaker. */}
           <Show when={chatView()}>
             {(v) => (
               <>
@@ -497,48 +472,19 @@ export function SpineEntry(props: {
                   />
                 </Show>
                 <Show when={hasProse()}>
-                  <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={0}>
-                    <box flexDirection="row" flexShrink={0} alignItems="center" width="100%">
-                      <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
-                        <text fg={chatColor(v())} wrapMode="none">
-                          {chatGlyph(v())} {chatSpeaker(v())}
-                        </text>
-                      </box>
-                      <box flexGrow={1} minWidth={1} />
-                      <Show when={hasChatTime(v())}>
-                        <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
-                          <Show when={chatElapsed(v())}>
-                            <text fg={theme.spineGutterElapsed} wrapMode="none">
-                              {chatElapsed(v())}
-                            </text>
-                          </Show>
-                          <Show when={chatTimestamp(v())}>
-                            <text fg={theme.spineGutterElapsed} wrapMode="none">
-                              {chatTimestamp(v())}
-                            </text>
-                          </Show>
-                        </box>
-                      </Show>
-                    </box>
-                    <box
-                      flexShrink={0}
-                      minWidth={0}
-                      width={chatBodyWidth() ?? ("100%" as any)}
-                      marginTop={isAssistantChat(v()) ? 1 : 0}
-                      paddingLeft={3}
-                    >
-                      <SpineProse
-                        kind={v().kind}
-                        text={v().text}
-                        contentWidth={chatBodyWidth()}
-                        bodyLabel={chatBodyLabel(v())}
-                        streaming={v().streaming === true}
-                        focused={props.focused}
-                        reminders={v().reminders}
-                        chatVoice
-                      />
-                    </box>
-                  </box>
+                  <SpineChatCard
+                    kind={v().kind}
+                    label={v().label}
+                    text={v().text}
+                    layout={props.layout}
+                    elapsed={v().elapsed}
+                    timestamp={v().timestamp}
+                    streaming={v().streaming === true}
+                    focused={props.focused}
+                    reminders={v().reminders}
+                    bodyLabel={v().bodyLabel}
+                    contentWidth={props.contentWidth}
+                  />
                 </Show>
               </>
             )}

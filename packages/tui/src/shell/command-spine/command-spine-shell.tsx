@@ -463,7 +463,9 @@ export function CommandSpineShell(props: ShellProps) {
   // TUI-2.1 section 7 / smoke Phase 3.2: Esc closes inspector or clears selection.
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
-    enabled: () => authority.approvalEscapeEnabled(),
+    enabled: () =>
+      spineEscInert({ gatesOpen: gatesOpen(), submitting: authority.approvalSubmitting() })
+      && authority.approvalEscapeEnabled(),
     // Above session.interrupt (default 0) so Esc does not become "again to
     // interrupt" while the exact-request inspector is open.
     priority: 3,

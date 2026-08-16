@@ -52,5 +52,10 @@ eq("focused + chat prose → none (card owns chrome)", rowFocusHighlight(true, t
 eq("unfocused + tool row → none", rowFocusHighlight(false, false), "none")
 eq("unfocused + chat prose → none", rowFocusHighlight(false, true), "none")
 
+console.log("chat card chrome:")
+check(src.includes("<SpineChatCard"), "prose rows render SpineChatCard")
+check(!src.includes("const chatSpeaker"), "inline chatSpeaker gone")
+check(!src.includes("const chatGlyph"), "inline chatGlyph gone")
+
 console.log(failures === 0 ? `PASS (${checks}/${checks})` : `FAIL (${failures}/${checks})`)
 process.exit(failures === 0 ? 0 : 1)
