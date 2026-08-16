@@ -1,7 +1,7 @@
 import { approvalStoreForWorkspace } from "@/approval/command"
 import {
   loadGovernanceConfig,
-  normalizeGovernanceConfig,
+  resolveGovernanceConfig,
   writeGovernanceConfigYaml,
 } from "@arcana/core/governance-config"
 import { Effect, Option } from "effect"
@@ -99,7 +99,8 @@ export const managerHandlers = HttpApiBuilder.group(InstanceHttpApi, "manager", 
       if (parsed === undefined) {
         return yield* new HttpApiError.BadRequest({})
       }
-      const config = normalizeGovernanceConfig(parsed)
+      const current = loadGovernanceConfig(directory).config
+      const config = resolveGovernanceConfig(current, parsed)
       const savedPath = writeGovernanceConfigYaml(directory, config)
       return { path: savedPath, config }
     })

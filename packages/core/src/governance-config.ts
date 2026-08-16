@@ -145,6 +145,11 @@ export function normalizeGovernanceConfig(input: unknown): GovernanceConfig {
   return mergeConfig(DEFAULT_GOVERNANCE_CONFIG, parseGovernanceOverride(input))
 }
 
+/** Merge a parsed partial update over an existing config without overwriting omitted fields. */
+export function resolveGovernanceConfig(base: GovernanceConfig, input: unknown): GovernanceConfig {
+  return mergeConfig(base, parseGovernanceOverride(input))
+}
+
 function parseContent(content: string, filename: string): unknown {
   if (filename.endsWith(".json")) return JSON.parse(content)
   return parseYaml(content)

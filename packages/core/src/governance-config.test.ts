@@ -6,6 +6,7 @@ import {
   DEFAULT_GOVERNANCE_CONFIG,
   loadGovernanceConfig,
   normalizeGovernanceConfig,
+  resolveGovernanceConfig,
   shouldForwardGovernanceEventToDesktop,
   shouldShowGovernanceEvent,
   writeGovernanceConfigYaml,
@@ -152,5 +153,23 @@ describe("governance config", () => {
     } finally {
       rmSync(globalDir, { recursive: true, force: true })
     }
+  })
+
+  test("resolves a partial update over the existing config without resetting fields", () => {
+    const base = normalizeGovernanceConfig({
+      display: {
+        tui: { enabled: true, hideEventTypes: ["contract.proposed"] },
+        desktop: { enabled: false, includePrefixes: ["claim."] },
+      },
+    })
+    const next = resolveGovernanceConfig(base, {
+      policy: { approvalRoute: "DESKTOP_REQUIRED" },
+    })
+
+    expect(next.display.tui.enabled).toBe(true)
+    expect(next.display.tui.hideEventTypes).toEqual(["contract.proposed"])
+    expect(next.display.desktop.enabled).toBe(false)
+    expect(next.display.desktop.includePrefixes).toEqual(["claim."])
+    expect(next.policy.approvalRoute).toBe("DESKTOP_REQUIRED")
   })
 })
