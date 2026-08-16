@@ -1,7 +1,19 @@
 import { describe, expect, test } from "bun:test"
-import { displaySessionTitle, isDefaultTitle, titleFromUserText } from "../../src/util/session"
+import {
+  createPendingSessionID,
+  displaySessionTitle,
+  isDefaultTitle,
+  isPendingSessionID,
+  titleFromUserText,
+} from "../../src/util/session"
 
 describe("util.session", () => {
+  test("pending session helpers isolate local stubs from engine session IDs", () => {
+    expect(isPendingSessionID("pending-1234")).toBeTrue()
+    expect(isPendingSessionID("ses_1234")).toBeFalse()
+    expect(createPendingSessionID()).toMatch(/^pending-[0-9a-f-]{36}$/)
+  })
+
   test("recognizes generated parent and child titles", () => {
     expect(isDefaultTitle("New session - 2026-06-06T12:34:56.789Z")).toBeTrue()
     expect(isDefaultTitle("Child session - 2026-06-06T12:34:56.789Z")).toBeTrue()

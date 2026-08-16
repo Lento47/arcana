@@ -3,6 +3,17 @@ import { Locale } from "./locale"
 const DEFAULT_TITLE_RE =
   /^(New session - |Child session - )(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)$/
 
+/** Local-only session IDs used while `session.create` is still in flight. */
+export const PENDING_SESSION_PREFIX = "pending-"
+
+export function isPendingSessionID(sessionID: string): boolean {
+  return sessionID.startsWith(PENDING_SESSION_PREFIX)
+}
+
+export function createPendingSessionID(): string {
+  return `${PENDING_SESSION_PREFIX}${crypto.randomUUID()}`
+}
+
 export function isDefaultTitle(title: string) {
   return DEFAULT_TITLE_RE.test(title)
 }

@@ -28,6 +28,7 @@ import { useProject } from "./project"
 import { useEvent } from "./event"
 import { useSDK, SSE_SILENT_DEATH_MS } from "./sdk"
 import { shouldKeepLocalPart, shouldKeepLocalAuthoritative } from "../util/part-merge"
+import { isPendingSessionID } from "../util/session"
 import { streamState, type TransportEnvelope } from "./stream-state"
 import { createMissingDeltaTracker } from "../util/missing-delta-tracker"
 import { useTuiStartup } from "./runtime"
@@ -233,6 +234,7 @@ export const {
     })
 
     const loadGovernance = async (sessionID: string, signal?: AbortSignal): Promise<SessionGovernanceResponse> => {
+      if (isPendingSessionID(sessionID)) return unavailableGovernance(sessionID)
       try {
         const response = await sdk.client.session.governance(
           { sessionID },
@@ -978,6 +980,7 @@ export const {
         prefetch(sessionIDs: string[]) {
           for (const id of sessionIDs) {
             if (!id) continue
+            if (isPendingSessionID(id)) continue
             if (fullSyncedSessions.has(id)) continue
             if (syncingSessions.has(id)) continue
             if (prefetchQueue.includes(id)) continue
@@ -986,6 +989,7 @@ export const {
           void drainPrefetchQueue()
         },
         async sync(sessionID: string) {
+          if (isPendingSessionID(sessionID)) return
           if (fullSyncedSessions.has(sessionID)) return
           const syncing = syncingSessions.get(sessionID)
           if (syncing) return syncing
@@ -1088,6 +1092,7 @@ export const {
          * heartbeat does not re-trigger.
          */
         async reconcile(sessionID: string, reason: ReconcileReason, head?: number) {
+          if (isPendingSessionID(sessionID)) return
           const generation = (reconcileGeneration.get(sessionID) ?? 0) + 1
           reconcileGeneration.set(sessionID, generation)
           const running = reconcilingSessions.get(sessionID)
@@ -1246,6 +1251,7 @@ export const {
          * projection from durable state, not from the tracker merge.
          */
         async resync(sessionID: string) {
+          if (isPendingSessionID(sessionID)) return
           fullSyncedSessions.delete(sessionID)
           // The fresh hydrate resets the older-messages cursor; un-exhaust so
           // scrolled-up history stays reachable after the reconnect trim.

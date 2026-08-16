@@ -43,6 +43,7 @@ import type { FilePart, UserMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
 import { errorMessage } from "../../util/error"
 import { formatDuration } from "../../util/format"
+import { createPendingSessionID } from "../../util/session"
 import { promptMaxHeight } from "../../util/geometry"
 import { useDialog } from "../../ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
@@ -1177,7 +1178,7 @@ export function Prompt(props: PromptProps) {
     // From Home: open the session view immediately — do not wait for create.
     if (isHomeSend) {
       if (!sessionID) {
-        pendingStubID = `pending-${crypto.randomUUID()}`
+        pendingStubID = createPendingSessionID()
         sessionID = pendingStubID
         const now = Date.now()
         const title = inputText.trim().split("\n")[0]?.slice(0, 80) || "New session"

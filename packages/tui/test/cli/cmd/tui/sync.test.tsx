@@ -77,6 +77,23 @@ describe("tui sync", () => {
     }
   })
 
+  test("pending session ids never trigger engine hydration requests", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(`${tmp.path}/kv.json`, "{}")
+    const { app, sync, session } = await mount(undefined, tmp.path)
+
+    try {
+      const before = session.length
+      await sync.session.sync("pending-5fbfd23a")
+      await sync.session.resync("pending-5fbfd23a")
+
+      expect(session.length).toBe(before)
+      expect(session.slice(before).filter((request) => request.href.includes("pending-5fbfd23a"))).toEqual([])
+    } finally {
+      app.renderer.destroy()
+    }
+  })
+
   test("refresh scopes sessions by default and lists project sessions when disabled", async () => {
     await using tmp = await tmpdir()
     await Bun.write(`${tmp.path}/kv.json`, "{}")
