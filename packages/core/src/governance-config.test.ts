@@ -25,6 +25,8 @@ describe("governance config", () => {
   test("keeps governance rows out of the TUI by default while the desktop stream stays on", () => {
     expect(DEFAULT_GOVERNANCE_CONFIG.display.tui.enabled).toBe(false)
     expect(DEFAULT_GOVERNANCE_CONFIG.display.desktop.enabled).toBe(true)
+    expect(DEFAULT_GOVERNANCE_CONFIG.policy.approvalRoute).toBe("DESKTOP_PREFERRED")
+    expect(DEFAULT_GOVERNANCE_CONFIG.policy.localFallbackAllowed).toBe(true)
     expect(shouldShowGovernanceEvent(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(false)
     expect(shouldForwardGovernanceEventToDesktop(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(true)
   })

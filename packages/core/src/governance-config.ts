@@ -57,7 +57,10 @@ export const DEFAULT_GOVERNANCE_CONFIG: GovernanceConfig = {
       excludePrefixes: [],
     },
   },
-  policy: {},
+  policy: {
+    approvalRoute: "DESKTOP_PREFERRED",
+    localFallbackAllowed: true,
+  },
 }
 
 const FILE_NAMES = ["governance.yml", "governance.yaml", "governance.json"] as const
