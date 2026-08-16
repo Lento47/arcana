@@ -686,6 +686,7 @@ export function Prompt(props: PromptProps) {
     if (store.prompt.input) {
       stashed = { prompt: unwrap(store.prompt), cursor: input.cursorOffset }
     }
+    if (input && !input.isDestroyed && input.focused) input.blur()
     setInputTarget(undefined)
     props.ref?.(undefined)
   })

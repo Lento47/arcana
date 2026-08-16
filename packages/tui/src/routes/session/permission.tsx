@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store"
 import { dirname } from "node:path"
-import { createMemo, For, Match, Show, Switch } from "solid-js"
+import { createMemo, For, Match, onCleanup, onMount, Show, Switch } from "solid-js"
 import { Portal, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import type { RGBA, TextareaRenderable } from "@opentui/core"
 import { useTheme, selectedForeground } from "../../context/theme"
@@ -13,13 +13,15 @@ import { Locale } from "../../util/locale"
 import { webSearchProviderLabel } from "../../util/tool-display"
 import { getScrollAcceleration } from "../../util/scroll"
 import { useTuiConfig } from "../../config"
-import { ARCANA_BASE_MODE, useBindings, useCommandShortcut } from "../../keymap"
+import { useBindings, useCommandShortcut, useOpencodeModeStack } from "../../keymap"
 import { usePathFormatter } from "../../context/path-format"
 import { SpineGutterSpacer, spineLeadMetrics } from "../../shell/command-spine/spine-lead"
 import { useSpineLayout } from "../../shell/command-spine/use-spine-layout"
 import { SpineRail } from "../../shell/command-spine/spine-rail"
 
 type PermissionStage = "permission" | "always" | "reject"
+
+const PERMISSION_MODE = "permission"
 
 function EditBody(props: { request: PermissionRequest }) {
   const themeState = useTheme()
@@ -114,6 +116,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   const sdk = useSDK()
   const project = useProject()
   const sync = useSync()
+  const modeStack = useOpencodeModeStack()
   const [store, setStore] = createStore({
     stage: "permission" as PermissionStage,
   })
@@ -134,6 +137,13 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   })
 
   const { theme } = useTheme()
+
+  // The gate owns decision keys. Push an explicit mode so base-mode
+  // bindings from the spine/composer cannot compete with left/right/Enter.
+  onMount(() => {
+    const popMode = modeStack.push(PERMISSION_MODE)
+    onCleanup(popMode)
+  })
 
   return (
     <Switch>
@@ -523,7 +533,7 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
   const dimensions = useTerminalDimensions()
   const narrow = createMemo(() => dimensions().width < 80)
   useBindings(() => ({
-    mode: ARCANA_BASE_MODE,
+    mode: PERMISSION_MODE,
     // Same as Decision Prompt: outrank command-spine enter:toggle (priority 1).
     priority: 10,
     commands: [
@@ -616,7 +626,7 @@ function Prompt<const T extends Record<string, string>>(props: {
   const fullscreenHint = useCommandShortcut("permission.prompt.fullscreen")
 
   useBindings(() => ({
-    mode: ARCANA_BASE_MODE,
+    mode: PERMISSION_MODE,
     // Above command-spine entry toggle (priority 1) so Enter confirms Decision,
     // including Always allow → Confirm, instead of expand/collapse on a message.
     priority: 10,

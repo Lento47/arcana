@@ -41,4 +41,34 @@ describe("tui sync (#26560)", () => {
       app.renderer.destroy()
     }
   })
+
+  test("transport failure on optional projections still keeps the session visible", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(`${tmp.path}/kv.json`, "{}")
+
+    const sessionPayload = {
+      id: sessionID,
+      title: "transport-failure",
+      time: { created: 0, updated: 0 },
+      version: "1.14.42",
+      directory,
+      project_id: "proj_test",
+    }
+    const { app, sync } = await mount((url) => {
+      if (url.pathname === `/session/${sessionID}`) return json(sessionPayload)
+      if (url.pathname === `/session/${sessionID}/messages`) throw new Error("transport failure")
+      if (url.pathname === `/session/${sessionID}/todo`) return json([])
+      if (url.pathname === `/session/${sessionID}/diff`) return json([])
+      if (url.pathname === "/session") return json([sessionPayload])
+      return undefined
+    }, tmp.path)
+
+    try {
+      await expect(sync.session.sync(sessionID)).resolves.toBeUndefined()
+      expect(sync.session.get(sessionID)?.id).toBe(sessionID)
+      expect(sync.data.governance[sessionID]?.trace.status).toBe("UNAVAILABLE")
+    } finally {
+      app.renderer.destroy()
+    }
+  })
 })

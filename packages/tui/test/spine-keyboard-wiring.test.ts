@@ -10,6 +10,14 @@ const authorityActionsSource = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/use-authority-actions.ts"),
   "utf8",
 )
+const permissionSource = readFileSync(
+  join(import.meta.dir, "../src/routes/session/permission.tsx"),
+  "utf8",
+)
+const promptSource = readFileSync(
+  join(import.meta.dir, "../src/component/prompt/index.tsx"),
+  "utf8",
+)
 
 /**
  * Source-contract guards for the F-24..F-28 keyboard wiring inside the
@@ -56,5 +64,15 @@ describe("spine keyboard wiring source contract (F-24..F-28)", () => {
     expect(shellSource).toContain('desc: "Deny approval"')
     expect(shellSource).toContain('desc: "Inspect approval"')
     expect(shellSource).toContain("priority: 2")
+  })
+
+  test("permission gates own their mode and decision keys", () => {
+    expect(permissionSource).toContain('const PERMISSION_MODE = "permission"')
+    expect(permissionSource).toContain("modeStack.push(PERMISSION_MODE)")
+    expect(permissionSource.split("mode: PERMISSION_MODE").length - 1).toBeGreaterThanOrEqual(2)
+  })
+
+  test("the composer blurs on unmount so gate keys cannot be stolen", () => {
+    expect(promptSource).toContain("if (input && !input.isDestroyed && input.focused) input.blur()")
   })
 })

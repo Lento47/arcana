@@ -996,11 +996,22 @@ export const {
           const tracker = { messages: new Set<string>(), parts: new Set<string>() }
           hydratingSessions.set(sessionID, tracker)
           const task = (async () => {
-            const [session, messages, todo, diff, governance] = await Promise.all([
-              sdk.client.session.get({ sessionID }, { throwOnError: true }),
-              sdk.client.session.messages({ sessionID, limit: 25 }),
-              sdk.client.session.todo({ sessionID }),
-              sdk.client.session.diff({ sessionID }),
+            const session = await sdk.client.session.get({ sessionID }, { throwOnError: true })
+            // Make the session metadata visible before optional projections
+            // finish. A messages/todo/diff transport failure must never turn a
+            // successfully-fetched session into "Session not found".
+            setStore(
+              "session",
+              produce((draft) => {
+                const match = search(draft, sessionID, (s) => s.id)
+                if (match.found) draft[match.index] = session.data!
+                else draft.splice(match.index, 0, session.data!)
+              }),
+            )
+            const [messages, todo, diff, governance] = await Promise.all([
+              sdk.client.session.messages({ sessionID, limit: 25 }).catch(() => undefined),
+              sdk.client.session.todo({ sessionID }).catch(() => undefined),
+              sdk.client.session.diff({ sessionID }).catch(() => undefined),
               loadGovernance(sessionID),
             ])
 
@@ -1011,10 +1022,7 @@ export const {
 
             setStore(
               produce((draft) => {
-                const match = search(draft.session, sessionID, (s) => s.id)
-                if (match.found) draft.session[match.index] = session.data!
-                if (!match.found) draft.session.splice(match.index, 0, session.data!)
-                draft.todo[sessionID] = todo.data ?? []
+                draft.todo[sessionID] = todo?.data ?? []
                 const currentMessages = draft.message[sessionID] ?? []
                 const infos = responseData.flatMap((message: any) => {
                   if (!tracker.messages.has(message.info.id)) return [message.info]
@@ -1066,7 +1074,7 @@ export const {
                   delete draft.part_revision[message.id]
                 }
                 draft.message[sessionID] = visible
-                draft.session_diff[sessionID] = diff.data ?? []
+                draft.session_diff[sessionID] = diff?.data ?? []
                 draft.governance[sessionID] = governance
               }),
             )
@@ -1129,11 +1137,33 @@ export const {
          * merge precedence. Exposed on the API for tests.
          */
         async reconcileImpl(sessionID: string, reason: ReconcileReason, generation: number, signal: AbortSignal) {
-          const [session, messages, todo, diff, governance] = await Promise.all([
-            sdk.client.session.get({ sessionID }, { throwOnError: true, signal } as never),
-            sdk.client.session.messages({ sessionID, limit: 25, signal } as never),
-            sdk.client.session.todo({ sessionID, signal } as never),
-            sdk.client.session.diff({ sessionID, signal } as never),
+          const session = await sdk.client.session.get(
+            { sessionID },
+            { throwOnError: true, signal } as never,
+          )
+          // Same fail-open rule as initial hydration: the session row exists
+          // as soon as GET succeeds, even if an optional projection fails.
+          setStore(
+            "session",
+            produce((draft) => {
+              const match = search(draft, sessionID, (s) => s.id)
+              if (match.found) draft[match.index] = session.data!
+              else draft.splice(match.index, 0, session.data!)
+            }),
+          )
+          const [messages, todo, diff, governance] = await Promise.all([
+            sdk.client.session.messages({ sessionID, limit: 25, signal } as never).catch((error) => {
+              if (signal.aborted) throw error
+              return undefined
+            }),
+            sdk.client.session.todo({ sessionID, signal } as never).catch((error) => {
+              if (signal.aborted) throw error
+              return undefined
+            }),
+            sdk.client.session.diff({ sessionID, signal } as never).catch((error) => {
+              if (signal.aborted) throw error
+              return undefined
+            }),
             loadGovernance(sessionID, signal),
           ])
           const responseData = (messages as any).data?.items ?? (messages as any).data ?? []
@@ -1156,10 +1186,7 @@ export const {
           }
           setStore(
             produce((draft) => {
-              const match = search(draft.session, sessionID, (s) => s.id)
-              if (match.found) draft.session[match.index] = session.data!
-              if (!match.found) draft.session.splice(match.index, 0, session.data!)
-              draft.todo[sessionID] = todo.data ?? []
+              draft.todo[sessionID] = todo?.data ?? []
               const infos = responseData.map((message: any) => message.info)
               const removed = infos.slice(0, -100)
               const visible: any[] = infos.slice(-100)
@@ -1233,7 +1260,7 @@ export const {
                 delete draft.part_revision[message.id]
               }
               draft.message[sessionID] = visible
-              draft.session_diff[sessionID] = diff.data ?? []
+              draft.session_diff[sessionID] = diff?.data ?? []
               draft.governance[sessionID] = governance
             }),
           )
