@@ -1277,12 +1277,12 @@ export function Prompt(props: PromptProps) {
       }
 
       remapOptimisticSession(pendingStubID, createdID)
-      sync.session.forget(pendingStubID)
       sessionID = createdID
       route.navigate({
         type: "session",
         sessionID,
       })
+      sync.session.forget(pendingStubID)
     }
 
     if (!sessionID) {

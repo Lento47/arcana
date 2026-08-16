@@ -440,6 +440,10 @@ export function Session() {
 
       await syncTask
       const tSync = profile ? performance.now() : 0
+      // The pending-stub handoff can navigate to the real session while this
+      // effect is still suspended. A stale effect must never toast "Session
+      // not found" for the old pending id or navigate away from the new one.
+      if (route.sessionID !== sessionID) return
 
       // Resume pattern (AI SDK resume-streams): a cached assistant message
       // that never completed, combined with SSE silence beyond the heartbeat
