@@ -14,6 +14,7 @@ export type GovernanceConfig = {
     }
     desktop: {
       enabled: boolean
+      syncChat: boolean
       includePrefixes: string[]
       excludePrefixes: string[]
     }
@@ -43,6 +44,7 @@ export const DEFAULT_GOVERNANCE_CONFIG: GovernanceConfig = {
     },
     desktop: {
       enabled: true,
+      syncChat: true,
       includePrefixes: [
         "contract.",
         "claim.",
@@ -79,6 +81,7 @@ type GovernanceOverride = {
     }
     desktop: {
       enabled?: boolean
+      syncChat?: boolean
       includePrefixes?: string[]
       excludePrefixes?: string[]
     }
@@ -131,6 +134,7 @@ function parseGovernanceOverride(input: unknown): GovernanceOverride {
       },
       desktop: {
         enabled: optionalBoolean(desktop.enabled),
+        syncChat: optionalBoolean(desktop.syncChat),
         includePrefixes: optionalStrings(desktop.includePrefixes),
         excludePrefixes: optionalStrings(desktop.excludePrefixes),
       },
@@ -179,6 +183,7 @@ function mergeConfig(base: GovernanceConfig, override: GovernanceOverride): Gove
       },
       desktop: {
         enabled: desktop.enabled ?? base.display.desktop.enabled,
+        syncChat: desktop.syncChat ?? base.display.desktop.syncChat,
         // Empty is an explicit "forward nothing" choice.
         includePrefixes:
           desktop.includePrefixes ?? [...base.display.desktop.includePrefixes],

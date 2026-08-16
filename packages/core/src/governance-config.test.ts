@@ -25,6 +25,7 @@ describe("governance config", () => {
   test("keeps governance rows out of the TUI by default while the desktop stream stays on", () => {
     expect(DEFAULT_GOVERNANCE_CONFIG.display.tui.enabled).toBe(false)
     expect(DEFAULT_GOVERNANCE_CONFIG.display.desktop.enabled).toBe(true)
+    expect(DEFAULT_GOVERNANCE_CONFIG.display.desktop.syncChat).toBe(true)
     expect(DEFAULT_GOVERNANCE_CONFIG.policy.approvalRoute).toBe("DESKTOP_PREFERRED")
     expect(DEFAULT_GOVERNANCE_CONFIG.policy.localFallbackAllowed).toBe(true)
     expect(shouldShowGovernanceEvent(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(false)
@@ -56,7 +57,20 @@ describe("governance config", () => {
     expect(config.display.tui.collapseGovernanceGroups).toBe(true)
     expect(config.display.tui.collapseThreshold).toBe(12)
     expect(config.display.desktop.enabled).toBe(true)
+    expect(config.display.desktop.syncChat).toBe(true)
     expect(config.policy.approvalRoute).toBe("DESKTOP_REQUIRED")
+  })
+
+  test("syncChat can be disabled per workspace and survives partial updates", () => {
+    const config = normalizeGovernanceConfig({
+      display: { desktop: { syncChat: false } },
+    })
+    expect(config.display.desktop.syncChat).toBe(false)
+    const resolved = resolveGovernanceConfig(config, {
+      display: { desktop: { includePrefixes: ["contract."] } },
+    })
+    expect(resolved?.display.desktop.syncChat).toBe(false)
+    expect(resolved?.display.desktop.includePrefixes).toEqual(["contract."])
   })
 
   test("applies exact, prefix, trailing-star, and catch-all display filters", () => {
