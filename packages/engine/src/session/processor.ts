@@ -82,6 +82,7 @@ type ToolCall = {
 
 interface ProcessorContext extends Input {
   toolcalls: Record<string, ToolCall>
+  completedToolCalls: Set<string>
   shouldBreak: boolean
   snapshot: string | undefined
   blocked: boolean
@@ -151,6 +152,7 @@ export const layer = Layer.effect(
         sessionID: input.sessionID,
         model: input.model,
         toolcalls: {},
+        completedToolCalls: new Set<string>(),
         shouldBreak: false,
         snapshot: initialSnapshot,
         blocked: false,
@@ -197,6 +199,7 @@ export const layer = Layer.effect(
       const settleToolCall = Effect.fn("SessionProcessor.settleToolCall")(function* (toolCallID: string) {
         const done = ctx.toolcalls[toolCallID]?.done
         delete ctx.toolcalls[toolCallID]
+        ctx.completedToolCalls.add(toolCallID)
         if (done) yield* Deferred.succeed(done, undefined).pipe(Effect.ignore)
       })
 
@@ -229,6 +232,10 @@ export const layer = Layer.effect(
           : Effect.succeed(ctx.v2AssistantMessageID)
 
       const readToolCall = Effect.fn("SessionProcessor.readToolCall")(function* (toolCallID: string) {
+        if (ctx.completedToolCalls.has(toolCallID)) {
+          delete ctx.toolcalls[toolCallID]
+          return undefined
+        }
         const call = ctx.toolcalls[toolCallID]
         if (!call) return undefined
         const part = yield* session.getPart({

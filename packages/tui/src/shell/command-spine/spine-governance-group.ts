@@ -51,6 +51,15 @@ export function groupGovernanceEntries(
   return result
 }
 
+/** Apply the TUI grouping preference without mutating the source entries. */
+export function collapseGovernanceEntries(
+  entries: readonly SpineEntry[],
+  options: { enabled: boolean; maxGroupSize: number },
+): SpineEntry[] {
+  if (!options.enabled) return [...entries]
+  return groupGovernanceEntries(entries, options.maxGroupSize)
+}
+
 /** Build the collapsed aggregate row for a burst of governance events. */
 export function buildGovernanceGroup(children: SpineEntry[]): SpineEntry {
   let requested = 0

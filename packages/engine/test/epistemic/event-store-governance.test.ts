@@ -1,10 +1,16 @@
 import { describe, expect } from "bun:test"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { Database } from "@arcana/core/database/database"
+import { Project } from "@arcana/core/project"
 import { EventStore } from "@arcana/engine/session/epistemic/event-store"
 import { GovernanceEvent } from "@arcana/engine/session/epistemic/governance-event"
 import { GovernanceEventBridge } from "@arcana/engine/session/epistemic/governance-event-bridge"
 import { EventV2Bridge } from "@arcana/engine/event-v2-bridge"
 import { EventV2 } from "@arcana/core/event"
+import { InstanceRef } from "@/effect/instance-ref"
+import type { InstanceContext } from "@/project/instance-context"
 import { Effect, Layer } from "effect"
 import { testEffect } from "../lib/effect"
 
@@ -196,6 +202,73 @@ describe("GovernanceEventBridge", () => {
       expect(observed[0]!.event.type).toBe("authorization.denied")
       expect(observed[1]!.event.id).toBe(contract.id)
       expect(observed[1]!.event.type).toBe("contract.proposed")
+    }),
+  )
+
+  bridgeIt.live("honors desktop include/exclude prefixes from governance.yml", () =>
+    Effect.gen(function* () {
+      const directory = mkdtempSync(join(tmpdir(), "arcana-governance-bridge-"))
+      try {
+        mkdirSync(join(directory, ".arcana"), { recursive: true })
+        writeFileSync(
+          join(directory, ".arcana", "governance.yml"),
+          [
+            "version: 1",
+            "display:",
+            "  tui:",
+            "    enabled: false",
+            "  desktop:",
+            "    enabled: true",
+            "    includePrefixes:",
+            '      - "contract."',
+            "    excludePrefixes: []",
+            "",
+          ].join("\n"),
+          "utf8",
+        )
+
+        const instance: InstanceContext = {
+          directory,
+          worktree: directory,
+          project: {
+            id: Project.ID.make("proj-governance-bridge"),
+            worktree: directory,
+            time: { created: 0, updated: 0 },
+            sandboxes: [],
+          },
+          startedAt: 0,
+        }
+
+        yield* createTables
+        const store = yield* EventStore.Service
+        const events = yield* EventV2.Service
+        const observed: Array<EventV2.Data<typeof GovernanceEvent.Recorded>> = []
+        const unsubscribe = yield* events.listen((event) =>
+          Effect.sync(() => {
+            if (event.type === GovernanceEvent.Recorded.type) {
+              observed.push(event.data as EventV2.Data<typeof GovernanceEvent.Recorded>)
+            }
+          }),
+        )
+
+        yield* store.append({
+          sessionId: "session-filtered",
+          actor: { kind: "policy", id: "pdp" },
+          type: "authorization.denied",
+          payload: { requestId: "not-for-desktop" },
+        }).pipe(Effect.provideService(InstanceRef, instance))
+        yield* store.append({
+          sessionId: "session-filtered",
+          actor: { kind: "policy", id: "contract-engine" },
+          type: "contract.proposed",
+          payload: { contractId: "for-desktop" },
+        }).pipe(Effect.provideService(InstanceRef, instance))
+        yield* unsubscribe
+
+        expect(observed.map((item) => item.event.type)).toEqual(["contract.proposed"])
+      } finally {
+        rmSync(directory, { recursive: true, force: true })
+      }
     }),
   )
 })

@@ -20,7 +20,7 @@ import {
   governanceTraceToSpineEntry,
   productionInputToSpineEntry,
 } from "./production-spine-input"
-import { groupGovernanceEntries } from "./spine-governance-group"
+import { collapseGovernanceEntries } from "./spine-governance-group"
 
 // Cross-session cache: keyed by sessionID so back-switching to a session
 // reuses the already-computed entries + per-message cache instead of
@@ -220,12 +220,13 @@ export function useSpineProjection(props: ShellProps, input: {
   })
 
   // ── Turn grouping + display indices + geometry ───────────────────
-  const groupedVisibleEntries = createMemo(() =>
-    groupGovernanceEntries(
-      allVisibleEntries(),
-      governanceConfig.config().display.tui.collapseThreshold,
-    ),
-  )
+  const groupedVisibleEntries = createMemo(() => {
+    const tui = governanceConfig.config().display.tui
+    return collapseGovernanceEntries(allVisibleEntries(), {
+      enabled: tui.collapseGovernanceGroups,
+      maxGroupSize: tui.collapseThreshold,
+    })
+  })
   const displayRows = createMemo(() => {
     let next = 1
     return groupedVisibleEntries().map((entry) => {

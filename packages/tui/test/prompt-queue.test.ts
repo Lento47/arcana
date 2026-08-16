@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { isRetryablePromptError } from "../src/context/prompt-queue"
+import { isRetryablePromptError, isSessionWorking } from "../src/context/prompt-queue"
 
 describe("prompt queue retry policy", () => {
   test("retries transient server/network failures", () => {
@@ -14,5 +14,12 @@ describe("prompt queue retry policy", () => {
     expect(isRetryablePromptError(new Error("Invalid request"))).toBeFalse()
     expect(isRetryablePromptError(new Error("No credits remaining"))).toBeFalse()
     expect(isRetryablePromptError(new Error("Model not found"))).toBeFalse()
+  })
+
+  test("treats only a live turn as working", () => {
+    expect(isSessionWorking({ type: "busy" })).toBeTrue()
+    expect(isSessionWorking({ type: "retry" })).toBeTrue()
+    expect(isSessionWorking({ type: "idle" })).toBeFalse()
+    expect(isSessionWorking(undefined)).toBeFalse()
   })
 })

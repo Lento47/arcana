@@ -32,6 +32,10 @@ const BASE_RETRY_MS = 1_000
 const MAX_RETRY_MS = 30_000
 const MAX_ATTEMPTS = 5
 
+export function isSessionWorking(status: unknown): boolean {
+  return isRecord(status) && (status.type === "busy" || status.type === "retry")
+}
+
 export function isRetryablePromptError(error: unknown): boolean {
   if (isRecord(error) && error.retryable === true) return true
   if (isRecord(error) && isRecord(error.data) && error.data.retryable === true) return true
@@ -84,6 +88,10 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
     const toast = useToast()
     const [store, setStore] = createStore<QueueStore>({ items: [] })
     const [inFlightID, setInFlightID] = createSignal<string | undefined>()
+    // Server-reported status can lag a few frames behind the 204 response
+    // from promptAsync. This set fills that gap so a queued retry can never
+    // start a second turn while the first turn is still ramping up.
+    const activeSessions = new Set<string>()
 
     let loaded = false
     let draining = false
@@ -92,6 +100,16 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
     const persist = () => {
       kv.set(KV_KEY, unwrap(store.items))
     }
+
+    createEffect(() => {
+      for (const [sessionID, status] of Object.entries(sync.data.session_status)) {
+        if (isSessionWorking(status)) activeSessions.add(sessionID)
+        else if (status?.type === "idle") activeSessions.delete(sessionID)
+      }
+    })
+
+    const sessionWorking = (sessionID: string) =>
+      activeSessions.has(sessionID) || isSessionWorking(sync.data.session_status[sessionID])
 
     createEffect(() => {
       const stored = kv.get(KV_KEY, undefined)
@@ -161,6 +179,7 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
           }
         }
         await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
+        activeSessions.add(item.payload.sessionID)
         remove(item.id)
         toast.show({
           title: "Queued message sent",
@@ -196,12 +215,12 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       try {
         while (true) {
           const now = Date.now()
-          const busy = Object.values(sync.data.session_status).some(
-            (status) => status?.type === "busy" || status?.type === "retry",
-          )
-          if (busy) break
           const item = store.items.find(
-            (entry) => !entry.failed && entry.nextRetryAt <= now && entry.id !== inFlightID(),
+            (entry) =>
+              !entry.failed
+              && entry.nextRetryAt <= now
+              && entry.id !== inFlightID()
+              && !sessionWorking(entry.payload.sessionID),
           )
           if (!item) break
           await sendStored(item)
@@ -235,9 +254,17 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       )
       persist()
 
+      // A live query owns the session. Queue the new message and let the
+      // status observer drain it as soon as the turn returns to idle.
+      if (sessionWorking(payload.sessionID)) {
+        queueMicrotask(() => void drain())
+        return "queued"
+      }
+
       setInFlightID(item.id)
       try {
         await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
+        activeSessions.add(payload.sessionID)
         remove(item.id)
         return "sent"
       } catch (error) {
@@ -301,10 +328,10 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
     createEffect(() => {
       const hasPending = store.items.some((item) => !item.failed)
       if (!hasPending) return
-      const busy = Object.values(sync.data.session_status).some(
-        (status) => status?.type === "busy" || status?.type === "retry",
+      const next = store.items.some(
+        (item) => !item.failed && !sessionWorking(item.payload.sessionID),
       )
-      if (!busy) void drain()
+      if (next) void drain()
     })
 
     onCleanup(() => {

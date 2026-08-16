@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { SpineEntry } from "../src/shell/command-spine/spine-types"
 import {
   buildGovernanceGroup,
+  collapseGovernanceEntries,
   groupGovernanceEntries,
 } from "../src/shell/command-spine/spine-governance-group"
 
@@ -45,6 +46,19 @@ function proofEntry(id = "proof-1"): SpineEntry {
 }
 
 describe("spine governance aggregation (TUI-2.1)", () => {
+  test("honors the collapse preference without mutating the source rows", () => {
+    const first = governanceEntry("e1", "authorization", "inspect", 1000)
+    const second = governanceEntry("e2", "authorized", "ok", 1002)
+    const entries = [first, second]
+    expect(collapseGovernanceEntries(entries, { enabled: false, maxGroupSize: 12 })).toEqual(entries)
+    expect(entries).toEqual([first, second])
+    expect(
+      collapseGovernanceEntries(entries, { enabled: true, maxGroupSize: 12 }).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(["governance-group:governance:e1"])
+  })
+
   test("collapses consecutive authorization events into one summary row", () => {
     const requested = governanceEntry("e1", "authorization", "inspect", 1000, "Authorization requested")
     const allowed = governanceEntry("e2", "authorized", "ok", 1002, "Authorization allowed")

@@ -33,7 +33,10 @@ export const DEFAULT_GOVERNANCE_CONFIG: GovernanceConfig = {
   version: 1,
   display: {
     tui: {
-      enabled: true,
+      // Governance noise belongs in Arcana Desktop, not the conversation
+      // spine. Operators can re-enable TUI rows explicitly; the desktop
+      // stream remains enabled independently.
+      enabled: false,
       collapseGovernanceGroups: true,
       collapseThreshold: 12,
       hideEventTypes: ["authorization.executed", "verification.recorded"],
@@ -204,8 +207,13 @@ export function shouldShowGovernanceEvent(config: GovernanceConfig, eventType: s
 export function shouldForwardGovernanceEventToDesktop(config: GovernanceConfig, eventType: string): boolean {
   const desktop = config.display.desktop
   if (!desktop.enabled) return false
-  if (desktop.excludePrefixes.some((prefix) => eventType.startsWith(prefix))) return false
-  return desktop.includePrefixes.some((prefix) => eventType.startsWith(prefix))
+  const matches = (pattern: string) =>
+    pattern === "*"
+      || eventType === pattern
+      || (pattern.endsWith("*") && eventType.startsWith(pattern.slice(0, -1)))
+      || eventType.startsWith(pattern)
+  if (desktop.excludePrefixes.some(matches)) return false
+  return desktop.includePrefixes.some(matches)
 }
 
 export function writeGovernanceConfigYaml(workspaceDir: string, config: GovernanceConfig): string {
