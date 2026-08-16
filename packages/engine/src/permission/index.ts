@@ -7,6 +7,7 @@ import os from "os"
 import { PermissionV1 } from "@arcana/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { EventV2 } from "@arcana/core/event"
+import { desktopOnline } from "@/approval/desktop-subscribers"
 import { riskFromMetadata, riskRequiresFreshAsk, riskRequiresInitialAsk } from "./risk-policy"
 
 export const Event = {
@@ -134,6 +135,14 @@ export const layer = Layer.effect(
         engineRisk: engineRisk?.level,
         riskReasons: engineRisk?.reasons,
       })
+
+      // A live Arcana Desktop owns the ACTION GATE. Keep the TUI quiet and
+      // let Desktop discover the pending request through /permission; when
+      // no Desktop heartbeat is active, publish for the TUI as usual.
+      const directory = yield* InstanceState.directory
+      if (!desktopOnline(directory)) {
+        yield* events.publish(Event.Asked, info)
+      }
 
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
       pending.set(id, { info, deferred })

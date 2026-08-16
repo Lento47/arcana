@@ -17,6 +17,11 @@
 
 import type { DeploymentMode } from "@arcana/core/crypto/approval-routing"
 
+/** Canonical workspace key: forward slashes, no trailing separator. */
+function workspaceKey(value: string): string {
+  return value.replaceAll("\\", "/").replace(/\/+$/, "")
+}
+
 export interface DesktopSubscriber {
   subscriberId: string
   workspaceId: string
@@ -54,7 +59,7 @@ export class ExpiringDesktopSubscriberRegistry implements DesktopSubscriberRegis
     const now = input.now ?? Date.now()
     const subscriber: DesktopSubscriber = {
       subscriberId: input.subscriberId,
-      workspaceId: input.workspaceId,
+      workspaceId: workspaceKey(input.workspaceId),
       deploymentMode: input.deploymentMode ?? "LOCAL",
       lastSeenAt: now,
       expiresAt: now + this.ttlMs,
@@ -66,7 +71,12 @@ export class ExpiringDesktopSubscriberRegistry implements DesktopSubscriberRegis
   isOnline(workspaceId: string, now?: number): boolean {
     const current = now ?? Date.now()
     for (const subscriber of this.subscribers.values()) {
-      if (subscriber.workspaceId === workspaceId && subscriber.expiresAt > current) return true
+      if (
+        subscriber.workspaceId === workspaceKey(workspaceId)
+        && subscriber.expiresAt > current
+      ) {
+        return true
+      }
     }
     return false
   }
@@ -88,7 +98,12 @@ export class ExpiringDesktopSubscriberRegistry implements DesktopSubscriberRegis
     const result: DesktopSubscriber[] = []
     for (const subscriber of this.subscribers.values()) {
       if (subscriber.expiresAt <= current) continue
-      if (workspaceId !== undefined && subscriber.workspaceId !== workspaceId) continue
+      if (
+        workspaceId !== undefined
+        && subscriber.workspaceId !== workspaceKey(workspaceId)
+      ) {
+        continue
+      }
       result.push({ ...subscriber })
     }
     return result
