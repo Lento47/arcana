@@ -4,6 +4,8 @@ import type { AssistantMessage } from "@arcana/sdk/v2"
 import type { ShellProps } from "../types"
 import { useThinkingMode } from "../../context/thinking"
 import { useSync } from "../../context/sync"
+import { useGovernanceConfig } from "../../context/governance-config"
+import { shouldShowGovernanceEvent } from "@arcana/core/governance-config"
 import { spineProseWidth, spineGutterDigits, type SpineLayout, type SpineEntry } from "./spine-types"
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
 import { buildStatusSegments } from "./spine-segments"
@@ -54,6 +56,7 @@ export function useSpineProjection(props: ShellProps, input: {
 }) {
   const thinking = useThinkingMode()
   const sync = useSync()
+  const governanceConfig = useGovernanceConfig()
   const layout = input.layout
   const viewportWidth = input.viewportWidth
 
@@ -162,6 +165,7 @@ export function useSpineProjection(props: ShellProps, input: {
       if (traceEntry) result.push(traceEntry)
     }
     for (const event of props.governance?.() ?? []) {
+      if (!shouldShowGovernanceEvent(governanceConfig.config(), event.type)) continue
       const key = dedupeKeyToString(createDedupeKey({ governanceEventId: event.id }))
       if (seen.has(key)) continue
       seen.add(key)
@@ -216,7 +220,12 @@ export function useSpineProjection(props: ShellProps, input: {
   })
 
   // ── Turn grouping + display indices + geometry ───────────────────
-  const groupedVisibleEntries = createMemo(() => groupGovernanceEntries(allVisibleEntries()))
+  const groupedVisibleEntries = createMemo(() =>
+    groupGovernanceEntries(
+      allVisibleEntries(),
+      governanceConfig.config().display.tui.collapseThreshold,
+    ),
+  )
   const displayRows = createMemo(() => {
     let next = 1
     return groupedVisibleEntries().map((entry) => {

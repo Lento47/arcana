@@ -25,6 +25,7 @@ import {
   type ApprovalRouteResolution,
   type DeploymentMode,
 } from "@arcana/core/crypto/approval-routing"
+import { loadGovernanceConfig } from "@arcana/core/governance-config"
 
 export type {
   ApprovalRoute,
@@ -87,23 +88,42 @@ export function loadApprovalRoutingPolicy(
 ): ApprovalRoutingPolicy {
   const mode = deploymentMode ?? deploymentModeFromEnv()
   const path = join(workspaceCwd, POLICY_FILE)
-  if (!existsSync(path)) return defaultApprovalRoutingPolicy(mode)
+  let base = defaultApprovalRoutingPolicy(mode)
 
-  try {
-    const raw = readFileSync(path, "utf8")
-    if (raw.trim() === "") return defaultApprovalRoutingPolicy(mode)
-    const parsed = JSON.parse(raw) as unknown
-    const decoded = Schema.decodeUnknownSync(PolicyFileSchema)(parsed)
-    const fileMode = decoded.deploymentMode ?? mode
-    return {
-      policyVersion: decoded.policyVersion,
-      defaultRoute: decoded.defaultRoute,
-      defaultLocalFallbackAllowed: decoded.defaultLocalFallbackAllowed,
-      rules: decoded.rules,
+  if (existsSync(path)) {
+    try {
+      const raw = readFileSync(path, "utf8")
+      if (raw.trim() !== "") {
+        const parsed = JSON.parse(raw) as unknown
+        const decoded = Schema.decodeUnknownSync(PolicyFileSchema)(parsed)
+        base = {
+          policyVersion: decoded.policyVersion,
+          defaultRoute: decoded.defaultRoute,
+          defaultLocalFallbackAllowed: decoded.defaultLocalFallbackAllowed,
+          rules: decoded.rules,
+        }
+      }
+    } catch {
+      // Invalid approval-routing.json fails closed to the deployment default.
     }
-  } catch {
-    return defaultApprovalRoutingPolicy(mode)
   }
+
+  // governance.yml is the desktop-editable governance surface. Its policy
+  // section overrides the default route/fallback while retaining explicit
+  // approval-routing rules (rules remain the more specific selector layer).
+  const governance = loadGovernanceConfig(workspaceCwd)
+  const policy = governance.config.policy
+  if (policy.approvalRoute || policy.localFallbackAllowed !== undefined) {
+    base = {
+      policyVersion: "governance-yml-v1",
+      defaultRoute: policy.approvalRoute ?? base.defaultRoute,
+      defaultLocalFallbackAllowed:
+        policy.localFallbackAllowed ?? base.defaultLocalFallbackAllowed,
+      rules: base.rules,
+    }
+  }
+
+  return base
 }
 
 export { resolveApprovalRoute }

@@ -18,13 +18,20 @@ import { formatElapsedMs } from "./spine-types"
 const STANDALONE_PREFIXES = ["governance-proof:", "governance-trace:", "proof-continuation:"]
 
 /** Merge consecutive governance event rows; proof/trace rows stay standalone. */
-export function groupGovernanceEntries(entries: readonly SpineEntry[]): SpineEntry[] {
+export function groupGovernanceEntries(
+  entries: readonly SpineEntry[],
+  maxGroupSize = Number.POSITIVE_INFINITY,
+): SpineEntry[] {
   const result: SpineEntry[] = []
   let burst: SpineEntry[] = []
 
   const flush = () => {
     if (burst.length === 1) result.push(burst[0]!)
-    else if (burst.length > 1) result.push(buildGovernanceGroup(burst))
+    else if (burst.length > 1) {
+      for (let index = 0; index < burst.length; index += maxGroupSize) {
+        result.push(buildGovernanceGroup(burst.slice(index, index + maxGroupSize)))
+      }
+    }
     burst = []
   }
 

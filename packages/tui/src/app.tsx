@@ -72,6 +72,7 @@ import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
 import { PromptQueueProvider, usePromptQueue } from "./context/prompt-queue"
+import { GovernanceConfigProvider } from "./context/governance-config"
 import { DialogAlert } from "./ui/dialog-alert"
 import { DialogConfirm } from "./ui/dialog-confirm"
 import { ToastProvider, Toast, useToast } from "./ui/toast"
@@ -1293,8 +1294,9 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                           events={input.events}
                                         >
                                           <ProjectProvider>
-                                            <SyncProvider>
-                                              <PromptQueueProvider>
+                                            <GovernanceConfigProvider>
+                                              <SyncProvider>
+                                                <PromptQueueProvider>
                                                 <DataProvider>
                                                   <ThemeProvider mode={mode}>
                                                     <LocalProvider>
@@ -1320,8 +1322,9 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                     </LocalProvider>
                                                   </ThemeProvider>
                                                 </DataProvider>
-                                              </PromptQueueProvider>
-                                            </SyncProvider>
+                                                </PromptQueueProvider>
+                                              </SyncProvider>
+                                            </GovernanceConfigProvider>
                                           </ProjectProvider>
                                         </SDKProvider>
                                       </PluginRuntimeProvider>

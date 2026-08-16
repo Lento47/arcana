@@ -1,4 +1,4 @@
-import { ErrorBoundary, Show, createEffect, createMemo, createSignal } from "solid-js"
+import { ErrorBoundary, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
@@ -26,6 +26,7 @@ import { ApprovalInspector } from "../../routes/session/approval-inspector"
 import { DialogMessage } from "../../routes/session/dialog-message"
 import { ARCANA_BASE_MODE, useBindings } from "../../keymap"
 import { usePromptRef } from "../../context/prompt"
+import { useSDK } from "../../context/sdk"
 import { useClipboard } from "../../context/clipboard"
 import { useToast } from "../../ui/toast"
 import { useDialog } from "../../ui/dialog"
@@ -39,7 +40,36 @@ export function CommandSpineShell(props: ShellProps) {
   const dialog = useDialog()
   const route = useRoute()
   const promptRef = usePromptRef()
+  const sdk = useSDK()
   const dims = useTerminalDimensions()
+  const [escapeStage, setEscapeStage] = createSignal<0 | 1 | 2>(0)
+  let escapeResetTimer: ReturnType<typeof setTimeout> | undefined
+
+  const advanceEscape = () => {
+    const next = escapeStage() + 1
+    if (next === 1) {
+      promptRef.current?.focus()
+    } else if (next === 2) {
+      blurComposer()
+      navigation.focusRelativeEntry(1)
+    } else {
+      if (sessionIdle()) {
+        toast.show({ message: "Session is already idle", variant: "info" })
+      } else {
+        void sdk.client.session.abort({ sessionID: props.sessionID })
+        toast.show({ message: "Interrupting session", variant: "info" })
+      }
+      setEscapeStage(0)
+      return
+    }
+    setEscapeStage(next)
+    if (escapeResetTimer) clearTimeout(escapeResetTimer)
+    escapeResetTimer = setTimeout(() => setEscapeStage(0), 800)
+  }
+
+  onCleanup(() => {
+    if (escapeResetTimer) clearTimeout(escapeResetTimer)
+  })
   // Hysteresis (audit S4): feed the current layout back into getSpineLayout so
   // the dead zone engages at the 80/100/120 breakpoints - no layout flapping.
   const layout = useSpineLayout(() => dims().width)
@@ -408,41 +438,24 @@ export function CommandSpineShell(props: ShellProps) {
     ],
   }))
 
-  // Esc ALWAYS leaves the composer so j/k/v/a/d become active - including
-  // while the session is busy. Esc from the composer must never cancel the
-  // turn. With nothing focused, Esc returns to the composer.
+  // Esc is a three-stage operator gesture:
+  //   1 -> return focus to the input prompt
+  //   2 -> leave the composer and navigate the chat/spine
+  //   3 -> interrupt the active session
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
     enabled: () =>
       spineEscInert({ gatesOpen: gatesOpen(), submitting: authority.approvalSubmitting() })
-      && composerFocused()
-      && projection.displayRows().length > 0,
-    priority: 3,
-    bindings: [
-      {
-        key: "escape",
-        desc: "Leave composer and activate spine keys (never interrupts)",
-        group: "Command Spine",
-        cmd: () => blurComposer(),
-      },
-    ],
-  }))
-
-  useBindings(() => ({
-    mode: ARCANA_BASE_MODE,
-    enabled: () =>
-      spineEscInert({ gatesOpen: gatesOpen(), submitting: authority.approvalSubmitting() })
-      && !composerFocused()
       && inspectorApprovalId() === undefined
       && navigation.focusedApproval() === undefined
-      && (sessionIdle() || authority.hasPendingApproval()),
+      && dialog.stack.length === 0,
     priority: 3,
     bindings: [
       {
         key: "escape",
-        desc: "Return focus to composer",
+        desc: "Return to prompt, navigate chat, or interrupt",
         group: "Command Spine",
-        cmd: () => promptRef.current?.focus(),
+        cmd: advanceEscape,
       },
     ],
   }))

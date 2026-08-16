@@ -7,6 +7,7 @@ import { described } from "./metadata"
 
 export const ManagerPaths = {
   governance: "/manager/governance",
+  governanceConfig: "/manager/governance/config",
 } as const
 
 export const ManagerApprovalCounts = Schema.Struct({
@@ -34,6 +35,15 @@ export const ManagerGovernanceStatus = Schema.Struct({
   }),
 })
 
+export const ManagerGovernanceConfigUpdate = Schema.Struct({
+  content: Schema.String,
+})
+
+export const ManagerGovernanceConfigResponse = Schema.Struct({
+  path: Schema.String,
+  config: Schema.Unknown,
+})
+
 export const ManagerApi = HttpApi.make("manager").add(
   HttpApiGroup.make("manager")
     .add(
@@ -47,6 +57,31 @@ export const ManagerApi = HttpApi.make("manager").add(
           summary: "Get Arcana Manager governance status",
           description:
             "Discover the authenticated governance endpoints exposed by this runtime and summarize durable approval state for the routed workspace. This endpoint grants no authority and does not decide approvals; Arcana Runtime remains the sole authority.",
+        }),
+      ),
+      HttpApiEndpoint.get("governanceConfig", ManagerPaths.governanceConfig, {
+        query: WorkspaceRoutingQuery,
+        success: described(ManagerGovernanceConfigResponse, "Arcana governance configuration"),
+        error: [HttpApiError.BadRequest],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "manager.governance.config.get",
+          summary: "Get Arcana governance configuration",
+          description:
+            "Read the validated workspace governance display/policy configuration. This endpoint grants no authority.",
+        }),
+      ),
+      HttpApiEndpoint.put("updateGovernanceConfig", ManagerPaths.governanceConfig, {
+        query: WorkspaceRoutingQuery,
+        payload: ManagerGovernanceConfigUpdate,
+        success: described(ManagerGovernanceConfigResponse, "Saved Arcana governance configuration"),
+        error: [HttpApiError.BadRequest],
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "manager.governance.config.update",
+          summary: "Update Arcana governance configuration",
+          description:
+            "Validate and persist a workspace governance YAML/JSON configuration. Arcana Runtime remains the enforcement authority.",
         }),
       ),
     )

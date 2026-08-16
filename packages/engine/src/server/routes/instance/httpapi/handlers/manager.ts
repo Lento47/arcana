@@ -1,7 +1,13 @@
 import { approvalStoreForWorkspace } from "@/approval/command"
+import {
+  loadGovernanceConfig,
+  normalizeGovernanceConfig,
+  writeGovernanceConfigYaml,
+} from "@arcana/core/governance-config"
 import { Effect, Option } from "effect"
 import path from "node:path"
-import { HttpApiBuilder } from "effect/unstable/httpapi"
+import { parse as parseYaml } from "yaml"
+import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import { WorkspaceRouteContext } from "../middleware/workspace-routing"
 
@@ -68,6 +74,39 @@ export const managerHandlers = HttpApiBuilder.group(InstanceHttpApi, "manager", 
       }
     })
 
-    return handlers.handle("governanceStatus", governanceStatus)
+    const governanceConfig = Effect.fn("ManagerHttpApi.governanceConfig")(function* () {
+      const directory = yield* resolveWorkspace()
+      const loaded = loadGovernanceConfig(directory)
+      return {
+        path: loaded.path ?? path.join(directory, ".arcana", "governance.yml"),
+        config: loaded.config,
+      }
+    })
+
+    const updateGovernanceConfig = Effect.fn("ManagerHttpApi.updateGovernanceConfig")(function* (ctx: {
+      payload: { content: string }
+    }) {
+      const directory = yield* resolveWorkspace()
+      const parsed = (() => {
+        try {
+          return ctx.payload.content.trim().startsWith("{")
+            ? JSON.parse(ctx.payload.content)
+            : parseYaml(ctx.payload.content)
+        } catch {
+          return undefined
+        }
+      })()
+      if (parsed === undefined) {
+        return yield* new HttpApiError.BadRequest({})
+      }
+      const config = normalizeGovernanceConfig(parsed)
+      const savedPath = writeGovernanceConfigYaml(directory, config)
+      return { path: savedPath, config }
+    })
+
+    return handlers
+      .handle("governanceStatus", governanceStatus)
+      .handle("governanceConfig", governanceConfig)
+      .handle("updateGovernanceConfig", updateGovernanceConfig)
   }),
 )

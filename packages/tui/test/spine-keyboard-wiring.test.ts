@@ -33,9 +33,11 @@ describe("spine keyboard wiring source contract (F-24..F-28)", () => {
   })
 
   test("F-25: Esc leave-composer binding is wired through the inert policy and never interrupts", () => {
-    expect(shellSource).toContain("Leave composer and activate spine keys (never interrupts)")
+    expect(shellSource).toContain("Return to prompt, navigate chat, or interrupt")
     expect(shellSource).toContain("spineEscInert")
     expect(shellSource).toContain("blurComposer()")
+    expect(shellSource).toContain("escapeStage")
+    expect(shellSource).toContain("sdk.client.session.abort")
   })
 
   test("F-26: every spine Esc binding routes through spineEscInert (gates + submitting disable them)", () => {

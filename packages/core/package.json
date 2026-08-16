@@ -78,6 +78,7 @@
     "effect": "catalog:",
     "fuzzysort": "3.1.0",
     "glob": "13.0.5",
+    "yaml": "catalog:",
     "gray-matter": "4.0.3",
     "htmlparser2": "8.0.2",
     "immer": "11.1.4",
