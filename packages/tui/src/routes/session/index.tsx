@@ -602,8 +602,14 @@ export function Session() {
 
   event.on("message.part.updated", (evt) => {
     const part = evt.properties.part
-    if (part.type !== "tool") return
     if (part.sessionID !== route.sessionID) return
+    // Follow streaming text: keep the view pinned to the newest content
+    // while the operator is already at the bottom (same behavior as the
+    // Desktop chat). Never yank the viewport when the user scrolled up.
+    if (part.type !== "tool") {
+      followIfAtBottom()
+      return
+    }
     if (part.state.status !== "completed") return
     if (part.id === lastSwitch) return
 
@@ -760,6 +766,16 @@ export function Session() {
     setTimeout(() => {
       if (!scroll || scroll.isDestroyed) return
       scroll.scrollTo(scroll.scrollHeight)
+    }, 50)
+  }
+
+  function followIfAtBottom() {
+    setTimeout(() => {
+      if (!scroll || scroll.isDestroyed) return
+      const s = scroll
+      const remaining = s.scrollHeight - s.y - s.height
+      if (remaining > 3) return
+      s.scrollTo(s.scrollHeight)
     }, 50)
   }
 
