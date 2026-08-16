@@ -29,6 +29,20 @@ describe("governance config", () => {
     expect(shouldForwardGovernanceEventToDesktop(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(true)
   })
 
+  test("does not share mutable default arrays with normalized configs", () => {
+    const defaultsBefore = {
+      hidden: [...DEFAULT_GOVERNANCE_CONFIG.display.tui.hideEventTypes],
+      included: [...DEFAULT_GOVERNANCE_CONFIG.display.desktop.includePrefixes],
+    }
+    const config = normalizeGovernanceConfig({})
+
+    config.display.tui.hideEventTypes.push("mutated.type")
+    config.display.desktop.includePrefixes.length = 0
+
+    expect(DEFAULT_GOVERNANCE_CONFIG.display.tui.hideEventTypes).toEqual(defaultsBefore.hidden)
+    expect(DEFAULT_GOVERNANCE_CONFIG.display.desktop.includePrefixes).toEqual(defaultsBefore.included)
+  })
+
   test("normalizes partial YAML/JSON input back to a complete config", () => {
     const config = normalizeGovernanceConfig({
       display: {

@@ -168,13 +168,15 @@ function mergeConfig(base: GovernanceConfig, override: GovernanceOverride): Gove
         collapseThreshold: tui.collapseThreshold ?? base.display.tui.collapseThreshold,
         // Empty is an explicit "show everything / hide nothing" choice and
         // must not be silently replaced with the default suppression list.
-        hideEventTypes: tui.hideEventTypes ?? base.display.tui.hideEventTypes,
+        hideEventTypes: tui.hideEventTypes ?? [...base.display.tui.hideEventTypes],
       },
       desktop: {
         enabled: desktop.enabled ?? base.display.desktop.enabled,
         // Empty is an explicit "forward nothing" choice.
-        includePrefixes: desktop.includePrefixes ?? base.display.desktop.includePrefixes,
-        excludePrefixes: desktop.excludePrefixes ?? base.display.desktop.excludePrefixes,
+        includePrefixes:
+          desktop.includePrefixes ?? [...base.display.desktop.includePrefixes],
+        excludePrefixes:
+          desktop.excludePrefixes ?? [...base.display.desktop.excludePrefixes],
       },
     },
     policy: {
