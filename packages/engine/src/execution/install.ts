@@ -44,6 +44,29 @@ const INSTALL_COMMAND = new RegExp(
     String.raw`\bnuget\s+install\b`,
     String.raw`\bdeno\s+install\b`,
     String.raw`\bmake\s+install\b`,
+    // Ruby / ecosystem gaps
+    String.raw`\bbundle\s+install\b`,
+    // uv tool install (uvx-style managed tools)
+    String.raw`\buv\s+tool\s+install\b`,
+    // Desktop / system storefronts
+    String.raw`\bsnap\s+install\b`,
+    String.raw`\bflatpak\s+install\b`,
+    String.raw`\bmas\s+install\b`,
+    String.raw`\bwinget\s+upgrade\b`,
+    String.raw`\bchoco(?:latey)?\s+upgrade\b`,
+    String.raw`\bscoop\s+update\b`,
+    // Rust / Dart / Flutter / Elixir / OCaml / Haskell / Java
+    String.raw`\bcargo\s+binstall\b`,
+    String.raw`\bdart\s+pub\s+(?:add|get|upgrade)\b`,
+    String.raw`\bflutter\s+pub\s+(?:add|get|upgrade)\b`,
+    String.raw`\bmix\s+deps\.(?:get|update)\b`,
+    String.raw`\bopam\s+install\b`,
+    String.raw`\bcabal\s+install\b`,
+    String.raw`\bmvn\s+(?:install|dependency:get|dependency:go-offline)\b`,
+    // PHP + Python setup + CMake
+    String.raw`\bcomposer\s+update\b`,
+    String.raw`\bpython(?:3)?\s+setup\.py\s+install\b`,
+    String.raw`\bcmake\s+--install\b`,
   ].join("|"),
   "i",
 )
@@ -140,8 +163,23 @@ export function extractInstallPackages(command: string): string[] {
   const match = text.match(
     /\b(?:npm|npx|pnpm|yarn|bun|bunx|pip|pip3|pipx|uv|poetry|cargo|go|composer|gem|brew|choco|scoop|winget)\s+(?:install|i|add|update|upgrade|dlx|exec|x|get)?\s*(.*)$/i,
   )
-  if (!match?.[1]) return []
-  return match[1]
+  const alt = !match?.[1]
+    ? text.match(
+        new RegExp(
+          [
+            String.raw`\b(?:bundle|snap|flatpak|mas|opam|cabal|mvn|cmake)\s+(?:install|add|update|upgrade|--install|dependency:(?:get|go-offline))\s+(.*)$`,
+            String.raw`\b(?:apt|apt-get|yum|dnf|zypper|pacman|apk)\s+install\s+(.*)$`,
+            String.raw`\buv\s+tool\s+install\s+(.*)$`,
+            String.raw`\b(?:dart|flutter)\s+pub\s+(?:add|get|upgrade)\s+(.*)$`,
+            String.raw`\bmix\s+deps\.(?:get|update)\s+(.*)$`,
+          ].join("|"),
+          "i",
+        ),
+      )
+    : undefined
+  const tail = match?.[1] ?? alt?.slice(1).find((group) => group !== undefined)
+  if (!tail) return []
+  return tail
     .split(/\s+/)
     .map((token) => token.trim())
     .filter((token) => token.length > 0 && !token.startsWith("-") && token !== "." && token !== "./")

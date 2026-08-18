@@ -9,6 +9,12 @@ describe("inspectEffect", () => {
     expect(report.findings).toEqual([])
   })
 
+  test("benign shell stays benign by default", () => {
+    const report = inspectEffect({ tool: "bash", args: { command: "ls -la" } })
+    expect(report.verdict).toBe("benign")
+    expect(report.findings).toEqual([])
+  })
+
   test("package install is review and lists the package", () => {
     const report = inspectEffect({ tool: "bash", args: { command: "bun add left-pad" } })
     expect(report.verdict).toBe("review")

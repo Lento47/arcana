@@ -105,6 +105,15 @@ export const layer = Layer.effect(
       const forceInitialAskFromRisk = riskRequiresInitialAsk(engineRisk) || installAttempt || opaqueAttempt
       const forceFreshAskFromRisk = riskRequiresFreshAsk(engineRisk) || installAttempt || opaqueAttempt
       let needsAsk = false
+      // Local-firewall benign: allow by default unless this is an install or
+      // opaque exec (which always need analysis), a configured deny matches,
+      // or the coarse kernel risk disagrees at high/critical (fail closed).
+      const benignAutoAllowed =
+        inspect?.verdict === "benign" &&
+        !installAttempt &&
+        !opaqueAttempt &&
+        engineRisk?.level !== "high" &&
+        engineRisk?.level !== "critical"
 
       if (inspect?.verdict === "block") {
         return yield* new PermissionV1.DeniedError({
@@ -133,6 +142,7 @@ export const layer = Layer.effect(
         }
         if (approvedRule.action === "allow" && !forceFreshAskFromRisk) continue
         if (rule.action === "allow" && !forceInitialAskFromRisk) continue
+        if (benignAutoAllowed) continue
         needsAsk = true
       }
 

@@ -1217,6 +1217,103 @@ it.instance(
 )
 
 it.instance(
+  "ask - benign verdict auto-allows without configured rules",
+  () =>
+    Effect.gen(function* () {
+      const result = yield* ask({
+        sessionID: SessionID.make("session_benign"),
+        permission: "bash",
+        patterns: ["ls -la"],
+        metadata: {
+          command: "ls -la",
+          engine_action: {
+            inspect: {
+              verdict: "benign",
+              risk: "medium",
+              findings: [],
+              subjects: [{ kind: "command", value: "ls -la" }],
+              controls: ["approval"],
+            },
+          },
+        },
+        always: [],
+        ruleset: [],
+      })
+      expect(result).toBeUndefined()
+      expect(yield* list()).toHaveLength(0)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - configured deny still blocks a benign verdict",
+  () =>
+    Effect.gen(function* () {
+      const err = yield* fail(
+        ask({
+          sessionID: SessionID.make("session_benign_deny"),
+          permission: "bash",
+          patterns: ["rm file.txt"],
+          metadata: {
+            command: "rm file.txt",
+            engine_action: {
+              inspect: {
+                verdict: "benign",
+                risk: "low",
+                findings: [],
+                subjects: [],
+                controls: [],
+              },
+            },
+          },
+          always: [],
+          ruleset: [{ permission: "bash", pattern: "rm *", action: "deny" }],
+        }),
+      )
+      expect(err).toBeInstanceOf(PermissionV1.DeniedError)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - installs always require analysis even with an allow rule",
+  () =>
+    Effect.gen(function* () {
+      const fiber = yield* ask({
+        sessionID: SessionID.make("session_install"),
+        permission: "bash",
+        patterns: ["bun add left-pad"],
+        metadata: {
+          command: "bun add left-pad",
+          engine_action: {
+            inspect: {
+              verdict: "review",
+              risk: "high",
+              findings: [
+                {
+                  code: "PACKAGE_MUTATION",
+                  severity: "high",
+                  title: "Package install or update",
+                  detail: "Would change dependencies: left-pad",
+                },
+              ],
+              subjects: [{ kind: "package", value: "left-pad" }],
+              controls: ["approval", "verifier", "osv_scan", "sbom_scan"],
+            },
+          },
+        },
+        always: [],
+        ruleset: [{ permission: "bash", pattern: "*", action: "allow" }],
+      }).pipe(Effect.forkScoped)
+
+      expect(yield* waitForPending(1)).toHaveLength(1)
+      yield* rejectAll()
+      yield* Fiber.await(fiber)
+    }),
+  { git: true },
+)
+
+it.instance(
   "ask - should deny even when an earlier pattern is ask",
   () =>
     Effect.gen(function* () {

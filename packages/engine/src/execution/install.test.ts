@@ -50,8 +50,45 @@ describe("commandLooksLikeInstall", () => {
     expect(commandLooksLikeInstall("npm run build")).toBe(false)
   })
 
+  test("matches additional installer families", () => {
+    const commands = [
+      "bundle install",
+      "uv tool install ruff",
+      "snap install htop",
+      "flatpak install flathub org.videolan.VLC",
+      "mas install 497799835",
+      "cargo binstall ripgrep",
+      "dart pub add http",
+      "flutter pub get",
+      "mix deps.get",
+      "opam install ocamlformat",
+      "cabal install aeson",
+      "mvn install -DskipTests",
+      "winget upgrade Git.Git",
+      "composer update",
+      "python setup.py install",
+      "cmake --install build",
+    ]
+    for (const command of commands) {
+      expect(commandLooksLikeInstall(command)).toBe(true)
+    }
+  })
+
+  test("does not over-match run/test/build verbs", () => {
+    expect(commandLooksLikeInstall("bundle exec rspec")).toBe(false)
+    expect(commandLooksLikeInstall("flutter test")).toBe(false)
+    expect(commandLooksLikeInstall("mix test")).toBe(false)
+    expect(commandLooksLikeInstall("cmake --build build")).toBe(false)
+    expect(commandLooksLikeInstall("mvn test")).toBe(false)
+  })
+
   test("extracts package names and ignores flags", () => {
     expect(extractInstallPackages("npm install -g opencode")).toContain("opencode")
+    expect(extractInstallPackages("uv tool install ruff")).toContain("ruff")
+    expect(extractInstallPackages("snap install htop")).toContain("htop")
+    expect(extractInstallPackages("dart pub add http")).toContain("http")
+    expect(extractInstallPackages("apt-get install nginx")).toContain("nginx")
+    expect(extractInstallPackages("bundle install")).toEqual([])
   })
 
   test("detects dependency manifests on any path", () => {
