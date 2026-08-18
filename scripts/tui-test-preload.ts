@@ -1,7 +1,20 @@
 import { plugin as registerBunPlugin, type BunPlugin } from "bun"
+import { existsSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 
 const parent = import.meta.resolve("../packages/tui/src/app.tsx")
-const pluginPath = import.meta.resolve("@opentui/solid/bun-plugin", parent)
+
+// Resolve the Solid plugin from the TUI package's own node_modules first:
+// `import.meta.resolve` in workspace mode does not walk the parent package's
+// local node_modules, so a package-local install (Bun workspaces keep catalog
+// deps under packages/tui/node_modules) would otherwise be invisible here.
+const localPlugin = new URL(
+  "../node_modules/@opentui/solid/scripts/solid-plugin.js",
+  parent,
+)
+const pluginPath = existsSync(fileURLToPath(localPlugin))
+  ? localPlugin.href
+  : import.meta.resolve("@opentui/solid/bun-plugin", parent)
 
 const { default: solidPlugin } = (await import(pluginPath)) as {
   default: BunPlugin
