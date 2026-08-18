@@ -21,6 +21,14 @@ delegating lets multiple agents work in parallel without exhausting your limit.
 - Use subagent_type: "qa" for bug-finding and edge-case analysis
 - Use subagent_type: "anti-ai-slop" for code quality review
 
+## Explicit subagent requests
+- "use subagents", "delegate", "in parallel", and "split this up" are
+  directives: delegate the requested work across subagents even when it would
+  otherwise be quick, and do not keep it inline.
+- Distribute one self-contained task per work item (goal, context, deliverable,
+  verification, what to return) and synthesize the results into a single
+  final answer with per-subagent attribution.
+
 ## When to use the workflow tool
 - Multi-step tasks with parallel, independent work items
 - Tasks with conditional branching (e.g., "if X exists, do A; else do B")

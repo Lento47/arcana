@@ -258,7 +258,7 @@ export const layer = Layer.effect(
             native: true,
             steps: 20,
             routing: {
-              keywords: ["implement","refactor","debug","fix","create","write","test","change","build"],
+              keywords: ["implement","refactor","debug","fix","create","write","test","change","build","subagents","subagent","parallel","delegate","split"],
               capabilities: ["code","review","implement","debug","test"],
               priority: 1,
             },

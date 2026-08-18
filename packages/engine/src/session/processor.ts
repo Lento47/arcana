@@ -72,6 +72,8 @@ export interface Interface {
 
 type ToolCall = {
   assistantMessageID?: SessionMessage.ID
+  /** Latest in-memory part for this call; authoritative within the turn. */
+  part?: SessionV1.ToolPart
   partID: SessionV1.ToolPart["id"]
   messageID: SessionV1.ToolPart["messageID"]
   sessionID: SessionV1.ToolPart["sessionID"]
@@ -238,6 +240,11 @@ export const layer = Layer.effect(
         }
         const call = ctx.toolcalls[toolCallID]
         if (!call) return undefined
+        // In-memory part is authoritative within this turn: the durable read
+        // lags behind event publication, so a second concurrent update would
+        // otherwise re-read a stale pending state and overwrite fields the
+        // first update just set (e.g. task-tool metadata.sessionId).
+        if (call.part) return { call, part: call.part }
         const part = yield* session.getPart({
           partID: call.partID,
           messageID: call.messageID,
@@ -256,9 +263,11 @@ export const layer = Layer.effect(
       ) {
         const match = yield* readToolCall(toolCallID)
         if (!match) return undefined
-        const part = yield* session.updatePart(update(match.part))
+        const next = update(match.part)
+        const part = yield* session.updatePart(next)
         ctx.toolcalls[toolCallID] = {
           ...match.call,
+          part,
           partID: part.id,
           messageID: part.messageID,
           sessionID: part.sessionID,
@@ -423,6 +432,7 @@ export const layer = Layer.effect(
         ctx.toolcalls[input.id] = {
           assistantMessageID,
           done: yield* Deferred.make<void>(),
+          part,
           partID: part.id,
           messageID: part.messageID,
           sessionID: part.sessionID,

@@ -53,7 +53,9 @@ const waitForPending = (count: number) =>
       }
     }).pipe(
       Effect.timeoutOrElse({
-        duration: "1 second",
+        // Full-suite load can push an install-analysis ask past 1s; keep the
+        // wait generous so the suite stays deterministic.
+        duration: "3 seconds",
         orElse: () => Effect.fail(new Error(`timed out waiting for ${count} pending permission request(s)`)),
       }),
     )

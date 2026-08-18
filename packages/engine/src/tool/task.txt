@@ -14,3 +14,15 @@ Usage:
 - isolation: "worktree" — isolated git worktree for the subagent. Auto-cleaned if unchanged.
 - timeout: max milliseconds. Subagent aborted on timeout, error returned.
 
+## Explicit subagent requests
+- If the user asks to "use subagents", "delegate", "run in parallel", or
+  "split this up": delegate immediately, even for smaller tasks. Do not keep
+  the work inline or answer with a refusal to parallelize.
+- Launch ONE task call per work item in the same message so the subagents run
+  concurrently.
+- Each prompt must be self-contained (handover): restate the parent goal,
+  include context the subagent cannot see, name the exact deliverable, say how
+  to verify the work, and list exactly what to return.
+- After ALL subagents return, write ONE synthesized final answer that merges
+  the findings with per-subagent attribution. Never reply with only
+  "subagents finished" or a bare list of results.
