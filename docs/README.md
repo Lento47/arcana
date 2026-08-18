@@ -15,6 +15,7 @@ docs/
 ├── BLOCKERS.md                    blocker register
 ├── FREEZE-RELEASE.md              release gates
 ├── REPOSITORY-STRUCTURE.md        repo map
+├── customizing-arcana.md          themes, interface voice, arcana.json config
 ├── COMPLETION-REPORT.md           campaign checkpoint report (evidence)
 ├── design/                        architecture & design docs
 │   ├── README.md                  ← section index

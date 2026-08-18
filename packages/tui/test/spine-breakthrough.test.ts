@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { productionInputToSpineEntry, type GovernanceView } from "../src/shell/command-spine/production-spine-input"
-import { applyViewFilter } from "../src/shell/command-spine/spine-view-filter"
+import { applyViewFilter, isSettledGovernanceRecord } from "../src/shell/command-spine/spine-view-filter"
 import { groupGovernanceEntries } from "../src/shell/command-spine/spine-governance-group"
 
 function governance(eventType: string, payload: Record<string, unknown>): GovernanceView {
@@ -42,13 +42,67 @@ describe("PR6 security breakthrough rows", () => {
     expect(grouped.find((entry) => entry.id === "governance:evt-capability.revoked")).toBeDefined()
   })
 
-  test("breakthrough rows stay visible under every view filter", () => {
-    const breakthrough = productionInputToSpineEntry({
+  test("capability revoke stays in the ledger, not default chat", () => {
+    const revoked = productionInputToSpineEntry({
       source: "GOVERNANCE",
-      value: governance("capability.revoked", { capabilityId: "c1" }),
+      value: governance("capability.revoked", { capabilityId: "c1", reason: "CONTRACT_RESOLVED" }),
     })
-    for (const filter of ["conversation", "tools", "governance", "proof", "all"] as const) {
-      expect(applyViewFilter([breakthrough], filter)).toHaveLength(1)
+    expect(revoked.label).toBe("revoked")
+    expect(revoked.breakthrough).toBe(true)
+    expect(isSettledGovernanceRecord(revoked)).toBe(true)
+    expect(applyViewFilter([revoked], "all")).toHaveLength(0)
+    expect(applyViewFilter([revoked], "conversation")).toHaveLength(0)
+    expect(applyViewFilter([revoked], "tools")).toHaveLength(0)
+    expect(applyViewFilter([revoked], "governance").map((row) => row.id)).toEqual([revoked.id])
+  })
+
+  test("every governance event type except pending approval leaves default chat", () => {
+    const eventTypes = [
+      "contract.proposed",
+      "contract.activated",
+      "contract.amended",
+      "claim.created",
+      "claim.transitioned",
+      "evidence.attached",
+      "obligation.created",
+      "obligation.resolved",
+      "completion.attempted",
+      "completion.resolved",
+      "intent.enforcement_required",
+      "intent.binding_created",
+      "intent.binding_revoked",
+      "intent.compatibility_mode",
+      "authorization.requested",
+      "authorization.allowed",
+      "authorization.denied",
+      "authorization.stale",
+      "authorization.executed",
+      "authorization.execution_failed",
+      "capability.created",
+      "capability.revoked",
+      "capability.exhausted",
+      "verification.recorded",
+      "unknown.ledger_event",
+    ] as const
+
+    for (const eventType of eventTypes) {
+      const entry = productionInputToSpineEntry({
+        source: "GOVERNANCE",
+        value: governance(eventType, { reason: "CONTRACT_RESOLVED", capabilityId: "c1" }),
+      })
+      expect(isSettledGovernanceRecord(entry)).toBe(true)
+      expect(applyViewFilter([entry], "all").map((row) => row.id)).toEqual([])
+      expect(applyViewFilter([entry], "governance").map((row) => row.id)).toEqual([entry.id])
+    }
+  })
+
+  test("pending approval still breaks through every view filter", () => {
+    const pending = productionInputToSpineEntry({
+      source: "GOVERNANCE",
+      value: governance("authorization.approval_required", { requestId: "r1" }),
+    })
+    for (const filter of ["conversation", "tools", "governance", "all"] as const) {
+      expect(applyViewFilter([pending], filter)).toHaveLength(1)
     }
   })
 })

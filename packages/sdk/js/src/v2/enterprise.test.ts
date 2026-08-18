@@ -15,10 +15,7 @@ function jsonResponse(payload: unknown): Response {
   })
 }
 
-function stubFetch(
-  calls: CapturedCall[],
-  responder: (call: CapturedCall) => Response,
-): typeof fetch {
+function stubFetch(calls: CapturedCall[], responder: (call: CapturedCall) => Response): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const call: CapturedCall = {
       url: String(input),

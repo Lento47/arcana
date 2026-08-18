@@ -1,4 +1,5 @@
-import { createSignal, onMount } from "solid-js"
+import { createEffect, createSignal } from "solid-js"
+import { readApiError } from "~/core/auditor-console"
 
 const gold = "#d4a853"
 const violet = "#9d7cd8"
@@ -15,7 +16,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function EscalationConsole() {
-  const [tenantId, setTenantId] = createSignal("tenant-a")
+  const [tenantId, setTenantId] = createSignal("org-1")
   const [statusFilter, setStatusFilter] = createSignal("PENDING")
   const [approvals, setApprovals] = createSignal<any[]>([])
   const [loading, setLoading] = createSignal(false)
@@ -28,10 +29,10 @@ export default function EscalationConsole() {
     setActionResult(null)
     try {
       const res = await fetch(
-        `/api/enterprise/organizations/${tenantId()}/approvals?status=${statusFilter()}`,
+        `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/approvals?status=${encodeURIComponent(statusFilter())}`,
       )
       if (!res.ok) {
-        setError(`failed to load approvals (${res.status})`)
+        setError(await readApiError(res))
         setApprovals([])
         return
       }
@@ -45,14 +46,18 @@ export default function EscalationConsole() {
     }
   }
 
-  onMount(fetchApprovals)
+  createEffect(() => {
+    void tenantId()
+    void statusFilter()
+    void fetchApprovals()
+  })
 
   const handleEvaluate = async (approvalId: string) => {
     setError(null)
     setActionResult(null)
     try {
       const res = await fetch(
-        `/api/enterprise/organizations/${tenantId()}/escalations/check`,
+        `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/escalations/check`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -60,7 +65,7 @@ export default function EscalationConsole() {
         },
       )
       if (!res.ok) {
-        setError(`escalation check failed (${res.status})`)
+        setError(await readApiError(res))
         return
       }
       const data = (await res.json()) as any

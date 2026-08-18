@@ -517,7 +517,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
 
   return (
     <box
-      flexGrow={1}
+      width="100%"
       border={["top", "bottom", "left", "right"]}
       customBorderChars={RoundBorder}
       borderColor={theme.borderActive}

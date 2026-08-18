@@ -18,6 +18,8 @@ import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import { WorkflowTool } from "../workflow/tool"
+import { McpTool } from "./mcp"
+import { MCP } from "@/mcp"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@arcana/plugin"
@@ -110,6 +112,7 @@ export const layer = Layer.effect(
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
     const workflowtool = yield* WorkflowTool
+    const mcptool = yield* McpTool
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
@@ -224,6 +227,7 @@ export const layer = Layer.effect(
           goal_check: Tool.init(goalCheck),
           search: Tool.init(websearch),
           skill: Tool.init(skilltool),
+          mcp: Tool.init(mcptool),
           workflow: Tool.init(workflowtool),
           patch: Tool.init(patchtool),
           question: Tool.init(question),
@@ -249,6 +253,7 @@ export const layer = Layer.effect(
             tool.goal_check,
             tool.search,
             tool.skill,
+            tool.mcp,
             tool.workflow,
             tool.patch,
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
@@ -352,6 +357,7 @@ export const defaultLayer = Layer.suspend(() =>
       Layer.provide(Question.defaultLayer),
       Layer.provide(Todo.defaultLayer),
       Layer.provide(Skill.defaultLayer),
+      Layer.provide(MCP.defaultLayer),
       Layer.provide(Agent.defaultLayer),
       Layer.provide(Session.defaultLayer),
       Layer.provide(BackgroundJob.defaultLayer),
@@ -446,6 +452,7 @@ function isJsonSchemaObject(value: unknown): value is Record<string, unknown> {
 
 export const node = LayerNode.make(layer.pipe(Layer.provide(Ripgrep.defaultLayer)), [
   Config.node,
+  MCP.node,
   Plugin.node,
   Question.node,
   Todo.node,

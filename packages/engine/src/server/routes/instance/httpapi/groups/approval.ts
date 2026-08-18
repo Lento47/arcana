@@ -92,11 +92,27 @@ export class ApprovalSnapshotUnavailableError extends Schema.TaggedErrorClass<Ap
   { httpApiStatus: 422 },
 ) {}
 
+export const ApprovalResendSuccess = Schema.Struct({
+  success: Schema.Literal(true),
+  approval: ApprovalRecordSchema,
+  resendAt: Schema.String,
+  /** Whether a live Desktop subscriber exists for this workspace right now. */
+  desktopOnline: Schema.Boolean,
+})
+
+export const ApprovalResendFailure = Schema.Struct({
+  success: Schema.Literal(false),
+  reason: Schema.String,
+})
+
+export const ApprovalResendResponse = Schema.Union([ApprovalResendSuccess, ApprovalResendFailure])
+
 export const ApprovalPaths = {
   command: `${root}/:sessionID/approval/:approvalID/command`,
   list: `${root}/:sessionID/approval`,
   detail: `${root}/:sessionID/approval/:approvalID/detail`,
   affordances: `${root}/:sessionID/approval/:approvalID/affordances`,
+  resend: `${root}/:sessionID/approval/:approvalID/resend`,
 } as const
 
 export const ApprovalApi = HttpApi.make("approval")
@@ -157,6 +173,19 @@ export const ApprovalApi = HttpApi.make("approval")
             summary: "Get authority affordances for an approval",
             description:
               "Runtime-derived, principal- and surface-sensitive read model for the authenticated LOCAL_TUI operator. Clients render these affordances; they never infer actionability from approval state, route, or local fallback eligibility. Exact-request viewed fields are compared against the durable record and can only fail closed.",
+          }),
+        ),
+        HttpApiEndpoint.post("resend", ApprovalPaths.resend, {
+          params: { sessionID: SessionID, approvalID: Schema.String },
+          query: WorkspaceRoutingQuery,
+          success: described(ApprovalResendResponse, "Approval re-notification result"),
+          error: [HttpApiError.BadRequest, ApprovalNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "approval.resend",
+            summary: "Re-send a pending approval to the decision surface",
+            description:
+              "Re-publish the approval.updated sync event for a PENDING approval so a decision surface that missed the original notification (for example Arcana Desktop reconnecting) receives the exact same request again. Strictly idempotent: the durable record is never mutated, never versioned, and never duplicated — only the notification is re-broadcast. Settled approvals (APPROVED/DENIED/CONSUMED/EXPIRED/INVALIDATED) return success:false and are never re-sent.",
           }),
         ),
       )

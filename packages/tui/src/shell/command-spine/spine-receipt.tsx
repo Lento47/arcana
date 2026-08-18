@@ -1,9 +1,11 @@
-import { For } from "solid-js"
+import { For, Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import { ShimmerText } from "../../component/shimmer-text"
 import type { SpineKind, SpineReceipt as SpineReceiptType, SpineLayout } from "./spine-types"
 import { truncate } from "../../util/locale"
+import { projectInsightCard } from "./spine-insight"
+import { SpineInsightCard } from "./spine-insight-card"
 
 function extractErrorCode(msg: string): { code?: string; cause: string } {
   const match = msg.match(/^(?:error)?\[?([A-Z]\d{4})\]/)
@@ -177,31 +179,37 @@ export function SpineReceipt(props: {
   layout: SpineLayout
 }) {
   const { theme } = useTheme()
-  const { kind, receipt: r, layout } = props
-
-  if (!r) return null
+  const kind = () => props.kind
+  const r = () => props.receipt
+  const layout = () => props.layout
+  const insight = createMemo(() => projectInsightCard({ receipt: props.receipt }))
 
   const content = () => {
-    switch (kind) {
+    const receipt = r()
+    if (!receipt) return null
+    switch (kind()) {
       case "run":
-        return renderRunReceipt(r, layout, theme)
+        return renderRunReceipt(receipt, layout(), theme)
       case "fail":
-        return renderFailReceipt(r, layout, theme)
+        return renderFailReceipt(receipt, layout(), theme)
       case "patch":
       case "fix":
-        return renderPatchReceipt(r, layout, theme)
+        return renderPatchReceipt(receipt, layout(), theme)
       case "inspect":
-        return renderInspectReceipt(r, layout, theme)
+        return renderInspectReceipt(receipt, layout(), theme)
       default:
-        return renderFallbackReceipt(r, layout, theme)
+        return renderFallbackReceipt(receipt, layout(), theme)
     }
   }
 
   const rendered = content()
-  if (!rendered) return null
+  if (!rendered && !insight()) return null
 
   return (
-    <box>
+    <box flexDirection="column" flexShrink={0} minWidth={0}>
+      <Show when={insight()}>
+        {(card) => <SpineInsightCard card={card()} />}
+      </Show>
       {rendered}
     </box>
   )

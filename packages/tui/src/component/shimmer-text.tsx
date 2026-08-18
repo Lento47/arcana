@@ -1,4 +1,5 @@
 import { For, createEffect, createSignal, onCleanup } from "solid-js"
+import { useKV } from "../context/kv"
 import type { ColorInput, RGBA } from "@opentui/core"
 
 type Stop = readonly [position: number, color: readonly [number, number, number]]
@@ -52,6 +53,8 @@ function makeStops(base: readonly [number, number, number], highlight: readonly 
 }
 
 export function ShimmerText(props: ShimmerTextProps) {
+  const kv = useKV()
+  const animationsEnabled = () => kv.get("animations_enabled", true)
   const accent = props.accent ? rgbaToRgb(props.accent) : ([224, 166, 75] as const)
   // Base = dimmed accent (~40% brightness)
   const base: [number, number, number] = [
@@ -64,7 +67,7 @@ export function ShimmerText(props: ShimmerTextProps) {
   const [head, setHead] = createSignal(-4)
 
   createEffect(() => {
-    if (props.active === false) {
+    if (props.active === false || !animationsEnabled()) {
       setHead(-4)
       return
     }

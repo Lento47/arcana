@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.11] - 2026-08-15
+
+### Added
+- **P1 Exact request** — The JavaScript SDK can ask a running Arcana engine whether an action is allowed, and only run it after that check. Approvals still bind to the exact request you reviewed.
+- **P2 Decision path** — The enterprise console forwards its API to the engine, so allow / deny / wait-for-approval come from the same authority as the CLI and TUI.
+- **P3 Effect control** — Node keys can be backed up and rotated with a dry-run preview first. A rotated key cannot be reused.
+- **P4 Evidence** — A read-only auditor console for the event archive: export a proof, follow custody, place or release a legal hold, and run retention.
+
+### Fixed
+- Approval API returns a clear not-found error instead of a generic failure.
+- Session replay runs the original recorded command, so replayed sessions match what actually happened.
+
+### Changed
+- Development and source builds use the `arcanagov` branch. Clone with `git clone -b arcanagov https://github.com/Lento47/arcana`.
+
 ## [0.3.5] - 2026-07-20
 
 ### Added
@@ -71,14 +86,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Arcana updates v0.3.5** (`docs/arcana-updates-v0.3.5.md`): Comprehensive updates document covering v0.3.0–v0.3.5, RunProof architecture, TUI performance, git PII redaction, and security hardening.
 - **Git PII redaction architecture** (`docs/architecture/git-pii-redaction.md`): Architecture document for the PII redaction layer covering threat model, pipeline design, guard functions, extension points, and testing.
 - **Providers comparison** (`docs/providers-comparison.md`): LLM provider comparison covering 33+ providers with pricing tiers, speed rankings, quality assessments, feature matrix, cost optimization guide, and recommended use cases.
-<<<<<<< Updated upstream
 - **Model recommendations** (`docs/model-recommendations.md`): Task-specific model recommendations for coding, writing, analysis, creative, and general use with benchmarks, cost estimates, Arcana-specific guidance, benchmark/cost disclaimers, and `@arcana/ml` signal engine section (env: `ARCANA_ML_RUNTIME`).
 - **Team onboarding** (`docs/onboarding.md`): Step-by-step team onboarding checklist covering install, provider config, workspace trust, shared skills, gateway setup, and a reusable onboarding template.
 - **Provider setup guides** (`docs/providers/`): Individual setup guides for the top 5 providers — OpenAI, Anthropic, Google Gemini, xAI Grok, and Amazon Bedrock — with env vars, model lists, pricing, custom base URLs, provider options, and troubleshooting.
 - **Database schema** (`docs/architecture/database-schema.md`): Complete SQLite schema documentation with Drizzle ORM tables, FTS5 indexes, trigger SQL examples, PRAGMA timing, and entity relationship diagrams.
-=======
-- **Team onboarding** (`docs/onboarding.md`): Step-by-step team onboarding checklist covering install, provider config, workspace trust, shared skills, gateway setup, and a reusable onboarding template.
->>>>>>> Stashed changes
 
 ### Changed
 - **Docs index update** (`docs/README.md`): Updated with links to all new documentation files.

@@ -1,4 +1,5 @@
 import { createEffect, createSignal, onCleanup } from "solid-js"
+import { useKV } from "../../context/kv"
 import type { PromptRef } from "../../component/prompt"
 import { Prompt } from "../../component/prompt"
 import { PLACEHOLDER } from "../../branding"
@@ -34,6 +35,8 @@ export function SpinePrompt(props: {
   gutterWidth?: number
 }) {
   const { theme } = useTheme()
+  const kv = useKV()
+  const animationsEnabled = () => kv.get("animations_enabled", true)
   const layout = () => props.layout()
   const metrics = () => spineLeadMetrics(layout(), props.gutterWidth)
   const [pulseFrame, setPulseFrame] = createSignal(0)
@@ -45,7 +48,7 @@ export function SpinePrompt(props: {
   // resumes mid-cycle with no color jump to palette[0].
   let pulseTimer: ReturnType<typeof setInterval> | undefined
   createEffect(() => {
-    const active = pulseActive(props.state())
+    const active = pulseActive(props.state()) && animationsEnabled()
     if (active && !pulseTimer) {
       pulseTimer = setInterval(() => setPulseFrame((frame) => (frame + 1) % 4), PROMPT_PULSE_MS)
     } else if (!active && pulseTimer) {

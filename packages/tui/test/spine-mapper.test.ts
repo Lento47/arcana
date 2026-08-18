@@ -2080,3 +2080,79 @@ Diff excerpts can be improved later.`,
     expect(ok.streaming).toBe(false)
   })
 })
+
+describe("shell metadata stays out of the operator body", () => {
+  test("strips <shell_metadata> and does not turn the footer into table rows", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-shell")
+    parts.push({
+      id: "p-bash",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-bash",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "Get-ChildItem" },
+        output: [
+          "Path                                LineNumber",
+          "----                                ----------",
+          "L:\\PROJECTS\\arcana\\pdp.test.ts    822",
+          "",
+          "<shell_metadata>",
+          "Command exited successfully with code 0.",
+          "</shell_metadata>",
+        ].join("\n"),
+        title: "bash",
+        metadata: { exit: 0, failed: false },
+        time: { start: 1000, end: 1100 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    const run = result.find((entry) => entry.kind === "run")!
+    expect(run.body).not.toContain("shell_metadata")
+    expect(run.body).not.toContain("Command exited successfully")
+    expect(run.table?.rows).toEqual([["L:\\PROJECTS\\arcana\\pdp.test.ts", "822"]])
+  })
+
+  test("failed command keeps stderr and drops the metadata block", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-fail")
+    parts.push({
+      id: "p-fail",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-fail",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "Get-ChildItem" },
+        output: [
+          "Get-ChildItem: Cannot bind parameter because parameter 'Include' is specified more than once.",
+          "",
+          "<shell_metadata>",
+          "Command failed with exit code 1.",
+          "</shell_metadata>",
+        ].join("\n"),
+        title: "bash",
+        metadata: { exit: 1, failed: true },
+        time: { start: 1000, end: 1100 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    const run = result.find((entry) => entry.kind === "run")!
+    expect(run.body).toContain("Cannot bind parameter")
+    expect(run.body).not.toContain("<shell_metadata>")
+    expect(run.body).not.toContain("Command failed with exit code")
+  })
+})

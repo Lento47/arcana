@@ -1,0 +1,253 @@
+/**
+ * Presentation helpers for command-spine chrome.
+ * Pure: tests feed fixtures and assert labels/cues without mounting the TUI.
+ */
+
+import type { SpineApprovalSnapshot, SpineKind, SpineLayout } from "./spine-types"
+import { selectionActions } from "../../util/selection"
+import { displayWidth } from "../../util/locale"
+
+/** Label column shared by approval / proof key-value rows. */
+export const FACT_LABEL_WIDTH = 12
+const CHIP_PAD = 2
+const CHIP_GAP = 1
+
+/** Display width of a padded chip: pad + label + pad. */
+export function chipCellWidth(label: string): number {
+  return displayWidth(label) + CHIP_PAD
+}
+
+/**
+ * Greedy row pack so chips wrap instead of overflowing the content column.
+ * A chip wider than the budget keeps its own row (render truncates).
+ */
+export function packChipRows<T>(
+  items: readonly T[],
+  contentWidth: number,
+  itemWidth: (item: T) => number,
+  gap = CHIP_GAP,
+): T[][] {
+  const budget = Math.max(1, Math.floor(contentWidth))
+  const rows: T[][] = []
+  let row: T[] = []
+  let used = 0
+  for (const item of items) {
+    const w = itemWidth(item)
+    if (row.length > 0 && used + gap + w > budget) {
+      rows.push(row)
+      row = []
+      used = 0
+    }
+    row.push(item)
+    used += (row.length > 1 ? gap : 0) + w
+  }
+  if (row.length > 0) rows.push(row)
+  return rows
+}
+
+export function headerChipBudget(layout: SpineLayout): number {
+  if (layout === "minimal") return 24
+  if (layout === "narrow") return 40
+  if (layout === "compact") return 56
+  return 72
+}
+
+export type ToolChipStatus = "live" | "done" | "fail" | "idle"
+
+export function toolChipStatus(input: { kind: string; streaming?: boolean }): ToolChipStatus {
+  if (input.kind === "fail") return "fail"
+  if (input.streaming === true) return "live"
+  if (
+    input.kind === "inspect"
+    || input.kind === "run"
+    || input.kind === "patch"
+    || input.kind === "agent"
+    || input.kind === "fix"
+    || input.kind === "report"
+  ) {
+    return "done"
+  }
+  return "idle"
+}
+
+export function toolChipChrome(input: {
+  kind: string
+  label?: string
+  streaming?: boolean
+}) {
+  const status = toolChipStatus(input)
+  const label = (input.label ?? input.kind).trim()
+  const glyph = status === "live" ? "●" : status === "fail" ? "✗" : status === "done" ? "✓" : "·"
+  // Done is implied by the check glyph — don't paint a leftover "done" label.
+  const cue = status === "live" ? "live" : status === "fail" ? "fail" : ""
+  return { label, status, glyph, cue }
+}
+
+export function thinkingRowChrome(input: {
+  streaming?: boolean
+  expanded?: boolean
+  title?: string
+}) {
+  const streaming = input.streaming === true
+  const verb = streaming ? "Thinking" : "Thought"
+  const title = input.title?.trim() || verb
+  return {
+    verb,
+    title,
+    cue: streaming ? "live" : "done",
+    badge: "",
+    disclosure: (input.expanded ? "▾" : "▸") as "▸" | "▾",
+    streaming,
+  }
+}
+
+export function streamTextCue(streaming?: boolean) {
+  const live = streaming === true
+  return {
+    live,
+    label: live ? "streaming" : "complete",
+    badge: "",
+  }
+}
+
+export type ApprovalGateKey = { key: "a" | "d" | "v"; action: string }
+
+export function approvalGateFacts(
+  snapshot?: Partial<Pick<SpineApprovalSnapshot, "tool" | "risk" | "action" | "available">>,
+  layout?: SpineLayout,
+) {
+  const inspect = layout === "minimal" || layout === "narrow" ? "inspect" : "full inspection"
+  const keys: readonly ApprovalGateKey[] = [
+    { key: "a", action: "approve once" },
+    { key: "d", action: "deny" },
+    { key: "v", action: inspect },
+  ]
+  return {
+    title: "Approval",
+    tool: snapshot?.tool,
+    risk: snapshot?.risk ?? "HIGH",
+    action: snapshot?.action,
+    available: snapshot?.available !== false,
+    keys,
+  }
+}
+
+export function formatApprovalActionKeys(facts: { keys: readonly ApprovalGateKey[] }): string {
+  return facts.keys.map((item) => `[${item.key}] ${item.action}`).join("  ")
+}
+
+export type ApprovalFactRow = { label: string; value: string; group: "primary" | "meta" }
+
+export function approvalFactGroups(
+  snapshot?: Partial<SpineApprovalSnapshot>,
+  layout?: SpineLayout,
+): { primary: ApprovalFactRow[]; meta: ApprovalFactRow[] } {
+  const compact = layout === "compact" || layout === "wide"
+  const wide = layout === "wide"
+  const primary: ApprovalFactRow[] = []
+  const meta: ApprovalFactRow[] = []
+  const push = (group: "primary" | "meta", label: string, value?: string) => {
+    const text = value?.trim()
+    if (!text) return
+    ;(group === "primary" ? primary : meta).push({ label, value: text, group })
+  }
+  push("primary", "tool", snapshot?.tool)
+  push("primary", "action", snapshot?.action)
+  if (snapshot?.contractRevision !== undefined && snapshot.contractRevision !== null) {
+    push("primary", "contract", `r${snapshot.contractRevision}`)
+  }
+  if (compact || snapshot?.capability) push(compact ? "primary" : "meta", "capability", snapshot?.capability)
+  if (compact) {
+    push("meta", "policy", snapshot?.policy)
+    push("meta", "route", snapshot?.route)
+    push("meta", "change", snapshot?.change ?? "unavailable · fail-closed")
+  }
+  push("meta", "principal", snapshot?.principal)
+  if (wide && snapshot?.arguments?.length) {
+    push("meta", "args", snapshot.arguments.join(" "))
+  }
+  push("meta", "expires", snapshot?.expires ?? "unknown")
+  return { primary, meta }
+}
+
+export function taskRowChrome(input: {
+  streaming?: boolean
+  childCount?: number
+  expanded?: boolean
+}) {
+  const n = input.childCount ?? 0
+  return {
+    kind: "task",
+    status: input.streaming === true ? "running" : "done",
+    cue: input.streaming === true ? "live" : "done",
+    childHint: n > 0 ? `${n} ${n === 1 ? "step" : "steps"}` : "",
+    disclosure: (input.expanded ? "▾" : "▸") as "▸" | "▾",
+  }
+}
+
+export function chatCardChrome(input: {
+  speaker: string
+  streaming?: boolean
+  isUser?: boolean
+}) {
+  const isUser = input.isUser === true
+  return {
+    speaker: input.speaker,
+    live: input.streaming === true,
+    badge: "",
+    role: isUser ? "you" : "assistant",
+    meta: isUser ? "you" : "assistant",
+  }
+}
+
+export function promptBarState(state: "idle" | "working" | "stop") {
+  if (state === "working") return { pulse: true, label: "working", hint: "" }
+  if (state === "stop") return { pulse: false, label: "stop", hint: "halted" }
+  return { pulse: false, label: "idle", hint: "" }
+}
+
+export function codeBlockChrome(input: {
+  bodyLabel?: string
+  filetype?: string
+  streaming?: boolean
+}) {
+  const language = (input.filetype || input.bodyLabel || "code").trim() || "code"
+  return {
+    language,
+    header: language,
+    live: input.streaming === true,
+    badge: "",
+  }
+}
+
+export function insightHeaderChrome(input: { title: string; severity?: string }) {
+  const severity = (input.severity ?? "NONE").trim() || "NONE"
+  return {
+    title: input.title.trim() || "Insight",
+    severity,
+    showSeverity: severity !== "NONE",
+  }
+}
+
+export function listingEntryChrome(name: string) {
+  const raw = name ?? ""
+  const dir = raw.endsWith("/")
+  return {
+    kind: (dir ? "dir" : "file") as "dir" | "file",
+    name: dir ? raw.slice(0, -1) : raw,
+    mark: dir ? "/" : "",
+  }
+}
+
+export function selectionHintChrome() {
+  const actions = selectionActions()
+  const copy = `${actions.copy.modifiers[0]}+${actions.copy.key} ${actions.copy.label}`
+  const clear = `${actions.clear.key} ${actions.clear.label}`
+  return { hint: `${copy} · ${clear}`, copy, clear }
+}
+
+export { selectionActions }
+
+export function isToolKind(kind: SpineKind): boolean {
+  return kind === "inspect" || kind === "run" || kind === "patch" || kind === "fail" || kind === "agent"
+}

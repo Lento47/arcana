@@ -12,6 +12,7 @@ import type { Message, Part, ToolPart } from "@arcana/sdk/v2"
 import type { GovernanceRunProof } from "../types"
 import type { SpineApprovalSnapshot, SpineEntry } from "./spine-types"
 import { shortHash } from "./approval-snapshot"
+import { projectSessionCharter } from "./session-charter"
 
 export type SpineInspectionSection = {
   title: string
@@ -67,6 +68,20 @@ function recoveryAdvice(entry: SpineEntry): string {
 export function buildSpineInspection(input: SpineInspectionInput): SpineInspectionSection[] {
   const { entry, approval, snapshot, proof } = input
   const sections: SpineInspectionSection[] = []
+
+  const charter = projectSessionCharter(proof)
+  if (charter && proof) {
+    sections.push({
+      title: "Session charter",
+      rows: [
+        ["Contract", proof.contractStatus ?? "none"],
+        ["Proof", charter.proof.label],
+        ["Integrity", proof.integrityStatus],
+        ["Trace", proof.traceHealth],
+        ["Proof hash", proof.proofHash || "unavailable"],
+      ],
+    })
+  }
 
   // Approval -> immutable exact request.
   if (entry.source?.kind === "approve" && (entry.id.startsWith("approval:") || entry.approval)) {

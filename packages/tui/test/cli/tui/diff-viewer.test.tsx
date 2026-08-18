@@ -7,6 +7,7 @@ import type { TuiPluginApi, TuiPluginMeta, TuiRouteCurrent, TuiRouteDefinition }
 import type { Session } from "@arcana/sdk/v2"
 import { KVProvider } from "../../../src/context/kv"
 import { ThemeProvider } from "../../../src/context/theme"
+import { ToastProvider } from "../../../src/ui/toast"
 import { TuiConfigProvider } from "../../../src/config"
 import { TuiKeybind } from "../../../src/config/keybind"
 import { OpencodeKeymapProvider } from "../../../src/keymap"
@@ -156,9 +157,11 @@ async function renderDiffViewer(vcsDiff: unknown[], height = 20) {
         <OpencodeKeymapProvider keymap={keymap}>
           <TuiConfigProvider config={config}>
             <KVProvider>
-              <ThemeProvider mode="dark">
-                {renderDiff?.({ params: "params" in current ? current.params : undefined })}
-              </ThemeProvider>
+              <ToastProvider>
+                <ThemeProvider mode="dark">
+                  {renderDiff?.({ params: "params" in current ? current.params : undefined })}
+                </ThemeProvider>
+              </ToastProvider>
             </KVProvider>
           </TuiConfigProvider>
         </OpencodeKeymapProvider>

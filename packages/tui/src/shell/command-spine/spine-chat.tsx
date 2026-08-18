@@ -1,7 +1,6 @@
 import { Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { APP_NAME, Glyph } from "../../branding"
-import { DashBorder } from "../../ui/chrome"
 import {
   compactSpineElapsed,
   SPINE_CHAT_CARD_CHROME,
@@ -12,13 +11,13 @@ import {
   type SpineLayout,
 } from "./spine-types"
 import { SpineProse } from "./spine-prose"
+import { chatCardChrome } from "./spine-chrome"
 
 /**
  * Chat voice card — one column, one accent line.
  *
- *   [┃][pad 2][ ✦ speaker          +1.2s ]
- *   [┃][pad 2][ ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈ ]
- *   [┃][pad 2][ prose…                 ]
+ *   [┃][pad 2][ ✦ speaker  assistant  live     +1.2s ]
+ *   [┃][pad 2][ prose…                                   ]
  *
  * CRITICAL wrap rule: markdown sits in a SINGLE column with paddingLeft —
  * never a row of [rail | markdown]. A rail sibling + width% collapses wrap.
@@ -71,6 +70,9 @@ export function SpineChatCard(props: {
     if (isUser()) return theme.spineAsk
     return theme.spineBrand
   })
+  const chrome = createMemo(() =>
+    chatCardChrome({ speaker: speaker(), streaming: streaming(), isUser: isUser() }),
+  )
 
   const lineColor = createMemo(() => {
     if (focused()) return theme.accent
@@ -82,8 +84,9 @@ export function SpineChatCard(props: {
   const glyphCell = createMemo(() => spineRailCell(accentGlyph(), railW()))
 
   const cardBg = createMemo(() => {
-    if (!isAssistant()) return undefined
-    return theme.backgroundPanel
+    if (isAssistant()) return theme.backgroundPanel
+    if (isUser()) return theme.backgroundElement
+    return undefined
   })
 
   const bodyLabel = createMemo(
@@ -101,16 +104,6 @@ export function SpineChatCard(props: {
     return undefined
   })
 
-  const hairline = () => (
-    <box
-      width="100%"
-      flexShrink={0}
-      border={["top"]}
-      borderColor={theme.borderSubtle}
-      customBorderChars={DashBorder}
-    />
-  )
-
   return (
     <box
       flexDirection="column"
@@ -124,22 +117,31 @@ export function SpineChatCard(props: {
       borderColor={lineColor()}
       paddingLeft={SPINE_CHAT_CARD_CHROME.padL}
       paddingRight={SPINE_CHAT_CARD_CHROME.padR}
-      paddingTop={isAssistant() ? 1 : 0}
-      paddingBottom={isAssistant() ? 1 : 0}
+      paddingTop={1}
+      paddingBottom={1}
     >
-      {/* Turn rule — sits above the user card so turns read as separate beats. */}
-      <Show when={isUser()}>{hairline()}</Show>
-
-      {/* Header: glyph rail (2) + speaker … elapsed / clock */}
-      <box flexDirection="row" flexShrink={0} alignItems="center" width="100%">
+      {/* Header: glyph + speaker · role, live badge, elapsed */}
+      <box flexDirection="row" flexShrink={0} alignItems="center" width="100%" gap={1}>
         <box width={railW()} flexShrink={0}>
           <text fg={speakerColor()} wrapMode="none">
             {glyphCell()}
           </text>
         </box>
         <text fg={speakerColor()} wrapMode="none">
-          {speaker()}
+          {chrome().speaker}
         </text>
+        <Show when={!isUser()}>
+          <text fg={theme.spineDiffMuted} wrapMode="none">
+            {chrome().meta}
+          </text>
+        </Show>
+        <Show when={chrome().badge}>
+          <box flexShrink={0} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
+            <text fg={theme.accent} wrapMode="none">
+              {chrome().badge}
+            </text>
+          </box>
+        </Show>
         <box flexGrow={1} minWidth={1} />
         <Show when={hasRightTime()}>
           <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
@@ -156,9 +158,6 @@ export function SpineChatCard(props: {
           </box>
         </Show>
       </box>
-
-      {/* Title rule — assistant only: separates speaker from prose. */}
-      <Show when={isAssistant()}>{hairline()}</Show>
 
       {/*
         BODY — exact legacy TextPart pattern:

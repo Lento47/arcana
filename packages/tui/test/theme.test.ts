@@ -89,7 +89,19 @@ test("custom theme precedence follows directory order", async () => {
   await expect(discoverThemes([global, project])).resolves.toEqual({ custom: { source: "project" } })
 })
 
-const BRAND_THEMES: string[] = ["arcana", "bloodmoon", "coven", "crypt", "dragon", "lich", "wraith"]
+const BRAND_THEMES: string[] = [
+  "arcana",
+  "bloodmoon",
+  "coven",
+  "crypt",
+  "dragon",
+  "grimoire",
+  "jade",
+  "lich",
+  "oracle",
+  "sakura",
+  "wraith",
+]
 
 function linearChannel(value: number) {
   return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4

@@ -1,0 +1,16 @@
+Configure and connect Arcana to an MCP (Model Context Protocol) server. Use this whenever the user asks to connect, add, enable, or use an MCP / external tool server.
+
+Do not say you lack external-API tools. This tool writes the MCP config and connects immediately. Tools from a connected server appear on the next turn.
+
+Actions:
+- connect: persist + connect. Pass `target` (URL or command line), or `url` / `command`.
+- list / status: show configured servers and connection state.
+- disconnect: disable a named server for this session.
+
+Examples:
+- User: "connect to this MCP https://mcp.exa.ai/mcp"
+  → mcp({ action: "connect", target: "https://mcp.exa.ai/mcp" })
+- User: "add playwright MCP"
+  → mcp({ action: "connect", target: "npx -y @playwright/mcp" })
+
+Remote URLs use HTTP/SSE. Local servers use a command (npx, bunx, uvx). If the server needs OAuth, return the authorization URL to the user — do not invent credentials.

@@ -1,5 +1,42 @@
 import { describe, expect, test } from "bun:test"
-import { looksLikeMarkdown, normalizeChatProse } from "../src/shell/command-spine/chat-prose"
+import {
+  looksLikeMarkdown,
+  normalizeChatProse,
+  stripMarkdownEmphasis,
+} from "../src/shell/command-spine/chat-prose"
+
+describe("stripMarkdownEmphasis", () => {
+  test("removes bold markers", () => {
+    expect(stripMarkdownEmphasis("200,000,000,000 + 20 = **200,000,000,020**.")).toBe(
+      "200,000,000,000 + 20 = 200,000,000,020.",
+    )
+  })
+
+  test("removes bold-italic and strikethrough markers", () => {
+    expect(stripMarkdownEmphasis("***both*** and ~~gone~~")).toBe("both and gone")
+  })
+
+  test("leaves single asterisks alone (arithmetic)", () => {
+    expect(stripMarkdownEmphasis("3 * 4 = 12")).toBe("3 * 4 = 12")
+  })
+
+  test("preserves inline code spans", () => {
+    expect(stripMarkdownEmphasis("use `a ** b` or **bold**")).toBe("use `a ** b` or bold")
+  })
+
+  test("preserves fenced code blocks", () => {
+    const input = "before **bold**\n```\nconst x = 1 ** 2\n```\nafter **bold**"
+    const out = stripMarkdownEmphasis(input)
+    expect(out).toContain("before bold")
+    expect(out).toContain("const x = 1 ** 2")
+    expect(out).toContain("after bold")
+  })
+
+  test("is a no-op on empty and plain text", () => {
+    expect(stripMarkdownEmphasis("")).toBe("")
+    expect(stripMarkdownEmphasis("plain text")).toBe("plain text")
+  })
+})
 
 describe("normalizeChatProse", () => {
   test("joins soft-wrapped plain prose into one paragraph", () => {

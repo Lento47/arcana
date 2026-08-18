@@ -29,6 +29,7 @@ describe("LangGraph governed tool adapter (E6)", () => {
           expect(request.provenance).toContain("MCP_DESCRIPTION")
           return { decision: "ALLOW" }
         },
+        executeExact: async (_request, execute) => execute(),
       },
     )
     expect(await tool.invoke({ query: "arcana" })).toEqual(["result"])

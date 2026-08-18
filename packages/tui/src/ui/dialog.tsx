@@ -1,5 +1,17 @@
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { batch, createContext, createEffect, createMemo, onCleanup, Show, useContext, type JSX, type ParentProps } from "solid-js"
+import {
+  batch,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+  Show,
+  useContext,
+  type JSX,
+  type ParentProps,
+} from "solid-js"
 import { useTheme } from "../context/theme"
 import { dialogContentMaxHeight, dialogMaxHeight, dialogMaxWidth, dialogVerticalPad } from "../util/geometry"
 import { COPY } from "../branding"
@@ -33,6 +45,39 @@ export function Dialog(
     if (props.size === "xlarge") return Size.dialogXLarge
     if (props.size === "large") return Size.dialogLarge
     return Size.dialogMedium
+  }
+  const contentCap = createMemo(() => dialogContentMaxHeight(dimensions().height))
+
+  // The scrollbox's internal content node forces minHeight "100%", so a bare
+  // maxHeight scrollbox claims the whole viewport even for short content.
+  // Measure the real content height through a wrapper ref and drive the
+  // scrollbox from it: short dialogs hug their rows, long dialogs cap at
+  // contentCap and scroll (the O3 bounded-scroll invariant, preserved).
+  const [contentHeight, setContentHeight] = createSignal<number | null>(null)
+  let contentBox: Renderable | null = null
+  const measureContent = () => {
+    const el = contentBox
+    if (!el || el.isDestroyed) return
+    const h = el.height
+    if (h > 0 && h !== contentHeight()) setContentHeight(h)
+  }
+  onMount(() => {
+    // The ref fires before layout; re-measure after the first frames so short
+    // dialogs hug their content instead of the cap. A slow poll keeps the card
+    // tight when content changes after mount (palette filtering, async loads).
+    const t0 = setTimeout(measureContent, 0)
+    const t1 = setTimeout(measureContent, 60)
+    const poll = setInterval(measureContent, 250)
+    onCleanup(() => {
+      clearTimeout(t0)
+      clearTimeout(t1)
+      clearInterval(poll)
+    })
+  })
+  const bodyHeight = () => {
+    const measured = contentHeight()
+    if (measured == null || measured <= 0) return contentCap()
+    return Math.min(measured, contentCap())
   }
 
   return (
@@ -74,12 +119,12 @@ export function Dialog(
       >
         <scrollbox
           width="100%"
-          height={dialogContentMaxHeight(dimensions().height)}
+          height={bodyHeight()}
+          maxHeight={contentCap()}
           flexShrink={1}
           viewportCulling={true}
-          scrollbarOptions={{ visible: true }}
         >
-          {props.children}
+          <box ref={(el) => { contentBox = el }}>{props.children}</box>
         </scrollbox>
       </box>
     </box>

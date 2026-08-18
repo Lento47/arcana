@@ -21,6 +21,8 @@ import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { ShellPrompt, type Parameters } from "./shell/prompt"
 import { BashArity } from "@/permission/arity"
+import { commandLooksLikeInstall, commandRequiresExactAlways } from "@/execution/install"
+import { formatInstallApprovedNotice } from "@/execution/install-notice"
 
 export { Parameters } from "./shell/prompt"
 
@@ -285,10 +287,13 @@ const ask = Effect.fn("ShellTool.ask")(function* (
   }
 
   if (scan.patterns.size === 0) return
+  const always = commandRequiresExactAlways(input.command)
+    ? [input.command]
+    : Array.from(scan.always)
   yield* ctx.ask({
     permission: ShellID.ToolID,
     patterns: Array.from(scan.patterns),
-    always: Array.from(scan.always),
+    always,
     metadata: {
       command: input.command,
       description: input.description,
@@ -716,11 +721,17 @@ export const ShellTool = Tool.define(
                   )
                   const scan = yield* collect(tree.rootNode, cwd, ps, shell, instanceCtx)
                   if (!containsPath(cwd, instanceCtx)) scan.dirs.add(cwd)
+                  if (commandLooksLikeInstall(params.command)) {
+                    yield* ctx.metadata({
+                      title: "Awaiting desktop approval",
+                      metadata: { awaiting_desktop_approval: true, command: params.command },
+                    })
+                  }
                   yield* ask(ctx, scan, params)
                 }),
               )
 
-              return yield* run(
+              const result = yield* run(
                 {
                   shell,
                   command: params.command,
@@ -731,6 +742,11 @@ export const ShellTool = Tool.define(
                 },
                 ctx,
               )
+              if (!commandLooksLikeInstall(params.command)) return result
+              return {
+                ...result,
+                output: `${formatInstallApprovedNotice(params.command)}\n\n${result.output}`,
+              }
             }),
         }
       })

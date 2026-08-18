@@ -8,10 +8,12 @@ import type {
   AppAgentsResponses,
   AppLogErrors,
   AppLogResponses,
-  ApprovalCommandErrors,
-  ApprovalCommandResponses,
   ApprovalAffordancesErrors,
   ApprovalAffordancesResponses,
+  ApprovalCommandErrors,
+  ApprovalCommandResponses,
+  ApprovalDetailErrors,
+  ApprovalDetailResponses,
   ApprovalListErrors,
   ApprovalListResponses,
   AppSkillsErrors,
@@ -275,6 +277,8 @@ import type {
   LocationRef,
   LspStatusErrors,
   LspStatusResponses,
+  ManagerGovernanceStatusErrors,
+  ManagerGovernanceStatusResponses,
   McpAddErrors,
   McpAddResponses,
   McpAuthAuthenticateErrors,
@@ -369,10 +373,10 @@ import type {
   RevocationsEmergencyResponses,
   RevocationsPublishErrors,
   RevocationsPublishResponses,
-  RuntimeApprovalsApproveErrors,
-  RuntimeApprovalsApproveResponses,
   RuntimeApprovalsAffordancesErrors,
   RuntimeApprovalsAffordancesResponses,
+  RuntimeApprovalsApproveErrors,
+  RuntimeApprovalsApproveResponses,
   RuntimeApprovalsDenyErrors,
   RuntimeApprovalsDenyResponses,
   RuntimeApprovalsGetErrors,
@@ -1781,6 +1785,40 @@ export class Approval extends HeyApiClient {
   }
 
   /**
+   * Get an approval with its verified request snapshot
+   *
+   * Return the durable approval record plus its immutable, hash-verified request snapshot (action, resource, arguments, capability, policy version, previews). The runtime recomputes the canonical request hash and verifies it equals the record's requestHash before responding; a missing or changed snapshot returns a fail-closed ApprovalSnapshotUnavailableError — never a silently stale snapshot.
+   */
+  public detail<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      approvalID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "approvalID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ApprovalDetailResponses, ApprovalDetailErrors, ThrowOnError>({
+      url: "/api/session/{sessionID}/approval/{approvalID}/detail",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Get authority affordances for an approval
    *
    * Runtime-derived, principal- and surface-sensitive read model for the authenticated LOCAL_TUI operator. Clients render these affordances; they never infer actionability from approval state, route, or local fallback eligibility. Exact-request viewed fields are compared against the durable record and can only fail closed.
@@ -1813,11 +1851,7 @@ export class Approval extends HeyApiClient {
         },
       ],
     )
-    return (options?.client ?? this.client).get<
-      ApprovalAffordancesResponses,
-      ApprovalAffordancesErrors,
-      ThrowOnError
-    >({
+    return (options?.client ?? this.client).get<ApprovalAffordancesResponses, ApprovalAffordancesErrors, ThrowOnError>({
       url: "/api/session/{sessionID}/approval/{approvalID}/affordances",
       ...options,
       ...params,
@@ -2206,7 +2240,7 @@ export class Enterprise extends HeyApiClient {
       tenantId: string
       directory?: string
       workspace?: string
-      status?: "PENDING" | "APPROVED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "REJECTED"
+      status?: "PENDING" | "APPROVED" | "DENIED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "INVALIDATED"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2292,7 +2326,6 @@ export class Enterprise extends HeyApiClient {
       approvalId: string
       directory?: string
       workspace?: string
-      actorUserId?: string
       decision?: "APPROVE" | "DENY"
       inspectedRequestJson?: string
     },
@@ -2307,7 +2340,6 @@ export class Enterprise extends HeyApiClient {
             { in: "path", key: "approvalId" },
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
-            { in: "body", key: "actorUserId" },
             { in: "body", key: "decision" },
             { in: "body", key: "inspectedRequestJson" },
           ],
@@ -2488,8 +2520,6 @@ export class Enterprise extends HeyApiClient {
       workspace?: string
       sourceSequence?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
       targetEnvironment?: string
-      requestedBy?: string
-      approvedBy?: string
       activationTime?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -2504,8 +2534,6 @@ export class Enterprise extends HeyApiClient {
             { in: "query", key: "workspace" },
             { in: "body", key: "sourceSequence" },
             { in: "body", key: "targetEnvironment" },
-            { in: "body", key: "requestedBy" },
-            { in: "body", key: "approvedBy" },
             { in: "body", key: "activationTime" },
           ],
         },
@@ -2579,7 +2607,6 @@ export class Enterprise extends HeyApiClient {
       directory?: string
       workspace?: string
       approvalId?: string
-      actorUserId?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2592,7 +2619,6 @@ export class Enterprise extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
             { in: "body", key: "approvalId" },
-            { in: "body", key: "actorUserId" },
           ],
         },
       ],
@@ -2622,7 +2648,6 @@ export class Enterprise extends HeyApiClient {
       directory?: string
       workspace?: string
       approvalIds?: Array<string>
-      actorUserId?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -2635,7 +2660,6 @@ export class Enterprise extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
             { in: "body", key: "approvalIds" },
-            { in: "body", key: "actorUserId" },
           ],
         },
       ],
@@ -2750,7 +2774,6 @@ export class Enterprise extends HeyApiClient {
       archiveId: string
       directory?: string
       workspace?: string
-      who?: string
       action?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -2764,7 +2787,6 @@ export class Enterprise extends HeyApiClient {
             { in: "path", key: "archiveId" },
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
-            { in: "body", key: "who" },
             { in: "body", key: "action" },
           ],
         },
@@ -2992,7 +3014,6 @@ export class Enterprise extends HeyApiClient {
       incidentId: string
       directory?: string
       workspace?: string
-      actor?: string
       event?: string
       at?: string
     },
@@ -3007,7 +3028,6 @@ export class Enterprise extends HeyApiClient {
             { in: "path", key: "incidentId" },
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
-            { in: "body", key: "actor" },
             { in: "body", key: "event" },
             { in: "body", key: "at" },
           ],
@@ -3040,7 +3060,6 @@ export class Enterprise extends HeyApiClient {
       workspace?: string
       nodeIds?: Array<string>
       reason?: string
-      actorUserId?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3054,7 +3073,6 @@ export class Enterprise extends HeyApiClient {
             { in: "query", key: "workspace" },
             { in: "body", key: "nodeIds" },
             { in: "body", key: "reason" },
-            { in: "body", key: "actorUserId" },
           ],
         },
       ],
@@ -6127,6 +6145,49 @@ export class Formatter extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+}
+
+export class Governance extends HeyApiClient {
+  /**
+   * Get Arcana Manager governance status
+   *
+   * Discover the authenticated governance endpoints exposed by this runtime and summarize durable approval state for the routed workspace. This endpoint grants no authority and does not decide approvals; Arcana Runtime remains the sole authority.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ManagerGovernanceStatusResponses,
+      ManagerGovernanceStatusErrors,
+      ThrowOnError
+    >({
+      url: "/manager/governance",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Manager extends HeyApiClient {
+  private _governance?: Governance
+  get governance(): Governance {
+    return (this._governance ??= new Governance({ client: this.client }))
   }
 }
 
@@ -11731,6 +11792,11 @@ export class OpencodeClient extends HeyApiClient {
   private _formatter?: Formatter
   get formatter(): Formatter {
     return (this._formatter ??= new Formatter({ client: this.client }))
+  }
+
+  private _manager?: Manager
+  get manager(): Manager {
+    return (this._manager ??= new Manager({ client: this.client }))
   }
 
   private _mcp?: Mcp

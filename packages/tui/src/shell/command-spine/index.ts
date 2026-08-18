@@ -42,10 +42,32 @@ export type {
 export { resolveApprovalSnapshot, changeForExecuted, shortHash } from "./approval-snapshot"
 export type { SpineApprovalSnapshot, SpineProofContinuation, SpineBraidChild, SpineBraidStatus } from "./spine-types"
 export { buildTrustStatus, eventGapFromTrace } from "./spine-trust"
+export { projectSessionCharter, projectGovernedTally, buildHeaderStatusItems, joinHeaderStatus } from "./session-charter"
+export type { SessionCharter, SessionCharterChip } from "./session-charter"
 export type { SpineTrustStatus, SpineTrustInput, SpineTrustState, SpineTrustConnection } from "./spine-trust"
 export { buildSubagentBraid, braidStatusFor } from "./spine-braid.ts"
 export type { SpineBraidInput } from "./spine-braid.ts"
 export { attachProofContinuations } from "./spine-proof-attach"
+export { projectInsightCard } from "./spine-insight"
+export type { InsightCardModel, InsightMetric } from "./spine-insight"
+export {
+  toolChipChrome,
+  thinkingRowChrome,
+  streamTextCue,
+  approvalGateFacts,
+  approvalFactGroups,
+  taskRowChrome,
+  chatCardChrome,
+  promptBarState,
+  codeBlockChrome,
+  insightHeaderChrome,
+  listingEntryChrome,
+  selectionHintChrome,
+  selectionActions,
+  packChipRows,
+  chipCellWidth,
+  FACT_LABEL_WIDTH,
+} from "./spine-chrome"
 export { buildSpineInspection } from "./spine-inspector.ts"
 export type { SpineInspectionSection, SpineInspectionInput } from "./spine-inspector.ts"
 export { SpineInspector } from "./spine-inspector.tsx"

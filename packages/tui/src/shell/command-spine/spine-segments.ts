@@ -1,5 +1,6 @@
 import { COMPACT_NOW_PERCENT, COMPACT_SOON_PERCENT } from "../../util/context-pressure"
 import type { StatusSegment, StatusTone } from "./spine-types"
+import type { StatusSegmentKey } from "../../config"
 
 /**
  * Data available to the command-spine header (audit S3).
@@ -53,4 +54,23 @@ export function buildStatusSegments(src: SpineSegmentSource): StatusSegment[] {
     segments.push({ key: "path", label: "path", value: src.path, tone: "muted" })
   }
   return segments
+}
+
+/**
+ * Apply a user-configured segment pick list: return only the picked keys in
+ * the user's order, dropping anything that has no segment available.
+ * Returns undefined when the pick list is empty so callers keep auto behavior.
+ */
+export function applyConfiguredSegments(
+  segments: StatusSegment[],
+  picked: readonly StatusSegmentKey[] | undefined,
+): StatusSegment[] | undefined {
+  if (!picked || picked.length === 0) return undefined
+  const byKey = new Map(segments.map((segment) => [segment.key, segment]))
+  const ordered: StatusSegment[] = []
+  for (const key of picked) {
+    const segment = byKey.get(key)
+    if (segment) ordered.push(segment)
+  }
+  return ordered
 }

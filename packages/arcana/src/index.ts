@@ -104,6 +104,7 @@ const commandLoaders = {
   doctor: () => import("./cli/cmd/doctor.js").then((m) => m.DoctorCommand),
   history: () => import("./cli/cmd/history.js").then((m) => m.HistoryCommand),
   theme: () => import("./cli/cmd/theme.js").then((m) => m.ThemeCommand),
+  lexicon: () => import("./cli/cmd/lexicon.js").then((m) => m.LexiconCommand),
   daemon: () => import("./cli/cmd/daemon.js").then((m) => m.DaemonCommand),
   feedback: () => import("./cli/cmd/feedback.js").then((m) => m.FeedbackCommand),
   web: () => import("./cli/cmd/web.js").then((m) => m.WebCommand),

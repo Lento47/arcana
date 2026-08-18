@@ -208,7 +208,8 @@ export function governanceTraceToSpineEntry(view: GovernanceTraceView): SpineEnt
 }
 
 /**
- * Render the canonical read-only RunProof projection. A zero is shown as a
+ * Project the canonical RunProof for inspector / tests.
+ * Session proof is header chrome (projectSessionCharter), not a timeline row.
  * security claim only when its own authorization trace is COMPLETE; otherwise
  * the row is fail-visible and explicitly says the evidence is unavailable.
  */

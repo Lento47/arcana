@@ -735,16 +735,7 @@ export type ApprovalRecord = {
   requestHash: string
   contractRevision: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   principalId?: string
-  state:
-    | "PENDING"
-    | "APPROVED"
-    | "DENIED"
-    | "CLAIMED"
-    | "CONSUMED"
-    | "EXPIRED"
-    | "INVALIDATED"
-    | "REJECTED"
-    | "RECOVERY_REQUIRED"
+  state: "PENDING" | "APPROVED" | "DENIED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "INVALIDATED"
   approvedBy?: string
   revokedBy?: string
   executionId?: string
@@ -755,41 +746,6 @@ export type ApprovalRecord = {
   expiresAt: string
   updatedAt: string
   createdAt: string
-}
-
-export type AuthorityAffordance = {
-  action: "inspect" | "approve" | "deny" | "revoke" | "retry_refresh" | "open_forensic"
-  state: "available" | "unavailable" | "in_flight" | "completed"
-  reasonCode?:
-    | "OFFLINE"
-    | "STALE_RECORD"
-    | "RESYNC_REQUIRED"
-    | "PROTOCOL_MISMATCH"
-    | "ROUTE_LOCAL_TUI_ONLY"
-    | "ROUTE_DESKTOP_REQUIRED"
-    | "ROUTE_CENTRAL_REQUIRED"
-    | "LOCAL_FALLBACK_NOT_ALLOWED"
-    | "SURFACE_NOT_AUTHORIZED"
-    | "SESSION_RESTRICTION"
-    | "WORKSPACE_MISMATCH"
-    | "AUTHENTICATION_REQUIRED"
-    | "APPROVAL_EXPIRED"
-    | "APPROVAL_REVOKED"
-    | "ALREADY_DECIDED"
-    | "ALREADY_CLAIMED"
-    | "ALREADY_CONSUMED"
-    | "REQUEST_CHANGED"
-    | "CONTRACT_REVISION_CHANGED"
-    | "CAPABILITY_REVOKED"
-    | "POLICY_CHANGED"
-    | "EVIDENCE_DEGRADED"
-    | "UNKNOWN_RUNTIME_STATE"
-  expectedVersion?: number
-  expectedRequestHash?: string
-  expectedContractRevision?: number
-  surface: "LOCAL_TUI" | "DESKTOP" | "CONTROL" | "SDK"
-  requiresFreshRecord: boolean
-  destructive: boolean
 }
 
 export type GlobalEvent = {
@@ -2150,6 +2106,91 @@ export type Config = {
   mlRuntime?: boolean
 }
 
+export type ApprovalRequestSnapshot = {
+  schemaVersion: "1"
+  approvalId: string
+  requestHash: string
+  action: string
+  resource: string
+  arguments: string
+  capability: string
+  principalId: string
+  intentId?: string
+  policyVersion: string
+  contractRevision: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  riskClass: "LOW" | "MODERATE" | "HIGH" | "CRITICAL"
+  diffPreview?: {
+    filePath: string
+    kind: "add" | "delete" | "modify" | "rename" | "unknown"
+    additions?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    deletions?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    content?: string
+  }
+  artifactPreview?: {
+    kind: string
+    name: string
+    contentType?: string
+    size?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    url?: string
+    description?: string
+  }
+}
+
+export type ApprovalNotFoundError = {
+  _tag: "ApprovalNotFoundError"
+  approvalID: string
+  message: string
+}
+
+export type ApprovalSnapshotUnavailableError = {
+  _tag: "ApprovalSnapshotUnavailableError"
+  message: string
+  reason: "snapshot_missing" | "snapshot_tampered"
+  approvalId: string
+}
+
+export type AuthorityAffordance = {
+  action: "inspect" | "approve" | "deny" | "revoke" | "retry_refresh" | "open_forensic"
+  state: "available" | "unavailable" | "in_flight" | "completed"
+  reasonCode?:
+    | "OFFLINE"
+    | "STALE_RECORD"
+    | "RESYNC_REQUIRED"
+    | "PROTOCOL_MISMATCH"
+    | "ROUTE_LOCAL_TUI_ONLY"
+    | "ROUTE_DESKTOP_REQUIRED"
+    | "ROUTE_CENTRAL_REQUIRED"
+    | "LOCAL_FALLBACK_NOT_ALLOWED"
+    | "SURFACE_NOT_AUTHORIZED"
+    | "SESSION_RESTRICTION"
+    | "WORKSPACE_MISMATCH"
+    | "AUTHENTICATION_REQUIRED"
+    | "APPROVAL_EXPIRED"
+    | "APPROVAL_REVOKED"
+    | "ALREADY_DECIDED"
+    | "ALREADY_CLAIMED"
+    | "ALREADY_CONSUMED"
+    | "REQUEST_CHANGED"
+    | "CONTRACT_REVISION_CHANGED"
+    | "CAPABILITY_REVOKED"
+    | "POLICY_CHANGED"
+    | "EVIDENCE_DEGRADED"
+    | "UNKNOWN_RUNTIME_STATE"
+  expectedVersion?: number
+  expectedRequestHash?: string
+  expectedContractRevision?: number
+  surface: "LOCAL_TUI" | "DESKTOP" | "CONTROL" | "SDK"
+  requiresFreshRecord: boolean
+  destructive: boolean
+}
+
+export type NotFoundError = {
+  name: "NotFoundError"
+  data: {
+    message: string
+  }
+}
+
 export type Model = {
   id: string
   providerID: string
@@ -2246,6 +2287,11 @@ export type Provider = {
   models: {
     [key: string]: Model
   }
+}
+
+export type ForbiddenError = {
+  _tag: "ForbiddenError"
+  message: string
 }
 
 export type ConsoleState = {
@@ -2660,13 +2706,6 @@ export type QuestionNotFoundError = {
   message: string
 }
 
-export type NotFoundError = {
-  name: "NotFoundError"
-  data: {
-    message: string
-  }
-}
-
 export type PermissionRequest = {
   id: string
   sessionID: string
@@ -2928,11 +2967,6 @@ export type ProviderNotFoundError = {
   message: string
 }
 
-export type ForbiddenError = {
-  _tag: "ForbiddenError"
-  message: string
-}
-
 export type ProjectCopyError = {
   name: "ProjectCopyError"
   data: {
@@ -3008,16 +3042,7 @@ export type ApprovalRecord2 = {
   requestHash: string
   contractRevision: number | "NaN" | "Infinity" | "-Infinity"
   principalId?: string
-  state:
-    | "PENDING"
-    | "APPROVED"
-    | "DENIED"
-    | "CLAIMED"
-    | "CONSUMED"
-    | "EXPIRED"
-    | "INVALIDATED"
-    | "REJECTED"
-    | "RECOVERY_REQUIRED"
+  state: "PENDING" | "APPROVED" | "DENIED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "INVALIDATED"
   approvedBy?: string
   revokedBy?: string
   executionId?: string
@@ -5805,6 +5830,53 @@ export type ApprovalListResponses = {
 
 export type ApprovalListResponse = ApprovalListResponses[keyof ApprovalListResponses]
 
+export type ApprovalDetailData = {
+  body?: never
+  path: {
+    sessionID: string
+    approvalID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/session/{sessionID}/approval/{approvalID}/detail"
+}
+
+export type ApprovalDetailErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * ApprovalNotFoundError
+   */
+  404: ApprovalNotFoundError
+  /**
+   * ApprovalSnapshotUnavailableError
+   */
+  422: ApprovalSnapshotUnavailableError
+}
+
+export type ApprovalDetailError = ApprovalDetailErrors[keyof ApprovalDetailErrors]
+
+export type ApprovalDetailResponses = {
+  /**
+   * Approval record + verified immutable request snapshot
+   */
+  200: {
+    approval: ApprovalRecord
+    snapshot: ApprovalRequestSnapshot
+    snapshotVerified: true
+  }
+}
+
+export type ApprovalDetailResponse = ApprovalDetailResponses[keyof ApprovalDetailResponses]
+
 export type ApprovalAffordancesData = {
   body?: never
   path: {
@@ -5830,6 +5902,10 @@ export type ApprovalAffordancesErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
 }
 
 export type ApprovalAffordancesError = ApprovalAffordancesErrors[keyof ApprovalAffordancesErrors]
@@ -6223,6 +6299,10 @@ export type EnterpriseCreateOrganizationErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseCreateOrganizationError =
@@ -6267,6 +6347,10 @@ export type EnterpriseAssignRoleErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseAssignRoleError = EnterpriseAssignRoleErrors[keyof EnterpriseAssignRoleErrors]
@@ -6329,7 +6413,7 @@ export type EnterpriseListApprovalsData = {
   query?: {
     directory?: string
     workspace?: string
-    status?: "PENDING" | "APPROVED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "REJECTED"
+    status?: "PENDING" | "APPROVED" | "DENIED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "INVALIDATED"
   }
   url: "/api/enterprise/organizations/{tenantId}/approvals"
 }
@@ -6357,7 +6441,7 @@ export type EnterpriseListApprovalsResponses = {
     requestHash: string
     requesterId: string
     approverId?: string
-    status: "PENDING" | "APPROVED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "REJECTED"
+    status: "PENDING" | "APPROVED" | "DENIED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "INVALIDATED"
     exactRequestJson: string
     createdAt: string
     expiresAt: string
@@ -6394,6 +6478,10 @@ export type EnterpriseCreateApprovalErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseCreateApprovalError = EnterpriseCreateApprovalErrors[keyof EnterpriseCreateApprovalErrors]
@@ -6410,7 +6498,6 @@ export type EnterpriseCreateApprovalResponse =
 
 export type EnterpriseDecideApprovalData = {
   body: {
-    actorUserId: string
     decision: "APPROVE" | "DENY"
     inspectedRequestJson?: string
   }
@@ -6434,6 +6521,10 @@ export type EnterpriseDecideApprovalErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseDecideApprovalError = EnterpriseDecideApprovalErrors[keyof EnterpriseDecideApprovalErrors]
@@ -6532,6 +6623,10 @@ export type EnterpriseRegisterNodeErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseRegisterNodeError = EnterpriseRegisterNodeErrors[keyof EnterpriseRegisterNodeErrors]
@@ -6577,6 +6672,10 @@ export type EnterpriseHeartbeatErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseHeartbeatError = EnterpriseHeartbeatErrors[keyof EnterpriseHeartbeatErrors]
@@ -6596,8 +6695,6 @@ export type EnterprisePromotePolicyData = {
   body: {
     sourceSequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
     targetEnvironment: string
-    requestedBy: string
-    approvedBy: string
     activationTime?: string
   }
   path: {
@@ -6619,6 +6716,10 @@ export type EnterprisePromotePolicyErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterprisePromotePolicyError = EnterprisePromotePolicyErrors[keyof EnterprisePromotePolicyErrors]
@@ -6703,7 +6804,6 @@ export type EnterpriseDiffPolicyResponse = EnterpriseDiffPolicyResponses[keyof E
 export type EnterpriseRevokeApprovalData = {
   body: {
     approvalId: string
-    actorUserId: string
   }
   path: {
     tenantId: string
@@ -6724,6 +6824,10 @@ export type EnterpriseRevokeApprovalErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseRevokeApprovalError = EnterpriseRevokeApprovalErrors[keyof EnterpriseRevokeApprovalErrors]
@@ -6749,7 +6853,6 @@ export type EnterpriseRevokeApprovalResponse =
 export type EnterpriseBulkDenyApprovalsData = {
   body: {
     approvalIds: Array<string>
-    actorUserId: string
   }
   path: {
     tenantId: string
@@ -6770,6 +6873,10 @@ export type EnterpriseBulkDenyApprovalsErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseBulkDenyApprovalsError =
@@ -6815,6 +6922,10 @@ export type EnterpriseArchiveProofErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseArchiveProofError = EnterpriseArchiveProofErrors[keyof EnterpriseArchiveProofErrors]
@@ -6902,7 +7013,6 @@ export type EnterpriseExportArchiveResponse = EnterpriseExportArchiveResponses[k
 
 export type EnterpriseCustodyData = {
   body: {
-    who: string
     action: string
   }
   path: {
@@ -6925,6 +7035,10 @@ export type EnterpriseCustodyErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseCustodyError = EnterpriseCustodyErrors[keyof EnterpriseCustodyErrors]
@@ -6965,6 +7079,10 @@ export type EnterpriseLegalHoldErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseLegalHoldError = EnterpriseLegalHoldErrors[keyof EnterpriseLegalHoldErrors]
@@ -7004,6 +7122,10 @@ export type EnterpriseRetentionSweepErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseRetentionSweepError = EnterpriseRetentionSweepErrors[keyof EnterpriseRetentionSweepErrors]
@@ -7092,6 +7214,10 @@ export type EnterprisePutAlertErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterprisePutAlertError = EnterprisePutAlertErrors[keyof EnterprisePutAlertErrors]
@@ -7150,7 +7276,6 @@ export type EnterpriseListTimelineResponse = EnterpriseListTimelineResponses[key
 
 export type EnterpriseAppendTimelineData = {
   body: {
-    actor: string
     event: string
     at?: string
   }
@@ -7174,6 +7299,10 @@ export type EnterpriseAppendTimelineErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseAppendTimelineError = EnterpriseAppendTimelineErrors[keyof EnterpriseAppendTimelineErrors]
@@ -7194,7 +7323,6 @@ export type EnterpriseRevocationCampaignData = {
   body: {
     nodeIds: Array<string>
     reason: string
-    actorUserId: string
   }
   path: {
     tenantId: string
@@ -7215,6 +7343,10 @@ export type EnterpriseRevocationCampaignErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseRevocationCampaignError =
@@ -7523,6 +7655,10 @@ export type EnterpriseBackupErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseBackupError = EnterpriseBackupErrors[keyof EnterpriseBackupErrors]
@@ -7567,6 +7703,10 @@ export type EnterpriseRestoreErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseRestoreError = EnterpriseRestoreErrors[keyof EnterpriseRestoreErrors]
@@ -7670,6 +7810,10 @@ export type EnterpriseDrillErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseDrillError = EnterpriseDrillErrors[keyof EnterpriseDrillErrors]
@@ -7729,6 +7873,10 @@ export type EnterprisePutFederationAgreementErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterprisePutFederationAgreementError =
@@ -7826,6 +7974,10 @@ export type EnterpriseFederationExchangeErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseFederationExchangeError =
@@ -7882,6 +8034,10 @@ export type EnterpriseFederationRevokeErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseFederationRevokeError = EnterpriseFederationRevokeErrors[keyof EnterpriseFederationRevokeErrors]
@@ -8348,6 +8504,10 @@ export type EnterprisePutEscalationPolicyErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterprisePutEscalationPolicyError =
@@ -8393,6 +8553,10 @@ export type EnterpriseEscalationCheckErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseEscalationCheckError = EnterpriseEscalationCheckErrors[keyof EnterpriseEscalationCheckErrors]
@@ -8548,6 +8712,10 @@ export type EnterprisePutAdminEventErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterprisePutAdminEventError = EnterprisePutAdminEventErrors[keyof EnterprisePutAdminEventErrors]
@@ -8686,6 +8854,10 @@ export type EnterprisePutUsageErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterprisePutUsageError = EnterprisePutUsageErrors[keyof EnterprisePutUsageErrors]
@@ -8855,6 +9027,10 @@ export type EnterprisePutFederationRuleErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterprisePutFederationRuleError =
@@ -8903,6 +9079,10 @@ export type EnterpriseRouteCrossOrgApprovalErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseRouteCrossOrgApprovalError =
@@ -9057,6 +9237,10 @@ export type EnterprisePutUpgradeRingErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterprisePutUpgradeRingError = EnterprisePutUpgradeRingErrors[keyof EnterprisePutUpgradeRingErrors]
@@ -9102,6 +9286,10 @@ export type EnterpriseAssignRingNodeErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseAssignRingNodeError = EnterpriseAssignRingNodeErrors[keyof EnterpriseAssignRingNodeErrors]
@@ -9260,6 +9448,10 @@ export type EnterpriseAnomalyScanErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseAnomalyScanError = EnterpriseAnomalyScanErrors[keyof EnterpriseAnomalyScanErrors]
@@ -9392,6 +9584,10 @@ export type EnterpriseQueueRevocationDeliveryErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseQueueRevocationDeliveryError =
@@ -9494,6 +9690,10 @@ export type EnterpriseReceiveRevocationDeliveryErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseReceiveRevocationDeliveryError =
@@ -9549,6 +9749,10 @@ export type EnterpriseMarkRevocationDeliveredErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseMarkRevocationDeliveredError =
@@ -9631,6 +9835,10 @@ export type EnterprisePutWebhookErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterprisePutWebhookError = EnterprisePutWebhookErrors[keyof EnterprisePutWebhookErrors]
@@ -9720,6 +9928,10 @@ export type EnterpriseDeliverWebhooksErrors = {
    * Unauthorized
    */
   401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
 }
 
 export type EnterpriseDeliverWebhooksError = EnterpriseDeliverWebhooksErrors[keyof EnterpriseDeliverWebhooksErrors]
@@ -11003,6 +11215,55 @@ export type FormatterStatusResponses = {
 }
 
 export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
+
+export type ManagerGovernanceStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/manager/governance"
+}
+
+export type ManagerGovernanceStatusErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type ManagerGovernanceStatusError = ManagerGovernanceStatusErrors[keyof ManagerGovernanceStatusErrors]
+
+export type ManagerGovernanceStatusResponses = {
+  /**
+   * Arcana Manager governance connection status
+   */
+  200: {
+    workspaceId: string
+    generatedAt: string
+    authority: "ARCANA_RUNTIME"
+    approvalCounts: {
+      total: number
+      pending: number
+      approved: number
+      claimed: number
+      consumed: number
+      denied: number
+      revoked: number
+      expired: number
+    }
+    endpoints: {
+      events: string
+      approvals: string
+      approveTemplate: string
+      denyTemplate: string
+      revokeTemplate: string
+    }
+  }
+}
+
+export type ManagerGovernanceStatusResponse = ManagerGovernanceStatusResponses[keyof ManagerGovernanceStatusResponses]
 
 export type McpStatusData = {
   body?: never
@@ -12597,7 +12858,8 @@ export type RuntimeApprovalsAffordancesErrors = {
   404: NotFoundError
 }
 
-export type RuntimeApprovalsAffordancesError = RuntimeApprovalsAffordancesErrors[keyof RuntimeApprovalsAffordancesErrors]
+export type RuntimeApprovalsAffordancesError =
+  RuntimeApprovalsAffordancesErrors[keyof RuntimeApprovalsAffordancesErrors]
 
 export type RuntimeApprovalsAffordancesResponses = {
   /**

@@ -224,11 +224,6 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
         await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
         markActive(item.payload.sessionID)
         remove(item.id)
-        toast.show({
-          title: "Queued message sent",
-          message: item.label,
-          variant: "success",
-        })
       } catch (error) {
         const attempts = item.attempts + 1
         const retryable = isRetryablePromptError(error)

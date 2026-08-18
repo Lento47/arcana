@@ -74,10 +74,7 @@ export class NotFoundError extends ArcanaError {
  * Map an HTTP error body onto the stable taxonomy. Non-JSON responses map to
  * TRANSPORT_ERROR; known status codes map to their semantic classes.
  */
-export function toArcanaError(
-  status: number,
-  body: unknown,
-): ArcanaError {
+export function toArcanaError(status: number, body: unknown): ArcanaError {
   const details = typeof body === "string" ? { message: body } : body
   const message = typeof body === "string" ? body : JSON.stringify(body)
   switch (status) {

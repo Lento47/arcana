@@ -5,7 +5,11 @@ import bloodmoon from "./assets/bloodmoon.json" with { type: "json" }
 import coven from "./assets/coven.json" with { type: "json" }
 import crypt from "./assets/crypt.json" with { type: "json" }
 import dragon from "./assets/dragon.json" with { type: "json" }
+import grimoire from "./assets/grimoire.json" with { type: "json" }
+import jade from "./assets/jade.json" with { type: "json" }
 import lich from "./assets/lich.json" with { type: "json" }
+import oracle from "./assets/oracle.json" with { type: "json" }
+import sakura from "./assets/sakura.json" with { type: "json" }
 import wraith from "./assets/wraith.json" with { type: "json" }
 
 export type Theme = {
@@ -189,7 +193,11 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   coven,
   crypt,
   dragon,
+  grimoire,
+  jade,
   lich,
+  oracle,
+  sakura,
   wraith,
 }
 

@@ -2,15 +2,16 @@ import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-j
 import { useTheme } from "../context/theme"
 import { Spinner } from "./spinner"
 import { Scramble } from "./scramble"
-import { Glyph, BOOT_PHRASES } from "../branding"
-
-const bootPhrase = BOOT_PHRASES[Math.floor(Math.random() * BOOT_PHRASES.length)]
+import { Glyph, BOOT_PHRASES, BOOT_READY } from "../branding"
 import { FrameBorder } from "../ui/chrome"
 
 export function StartupLoading(props: { ready: () => boolean }) {
   const theme = useTheme().theme
   const [show, setShow] = createSignal(false)
-  const text = createMemo(() => (props.ready() ? "binding sigils…" : bootPhrase))
+  // Pick the boot phrase at mount (after setLexiconVoice ran) so a plain-voice
+  // session never flashes arcane splash copy.
+  const bootPhrase = () => BOOT_PHRASES[Math.floor(Math.random() * BOOT_PHRASES.length)] ?? "…"
+  const text = createMemo(() => (props.ready() ? BOOT_READY : bootPhrase()))
   let wait: NodeJS.Timeout | undefined
   let hold: NodeJS.Timeout | undefined
   let stamp = 0

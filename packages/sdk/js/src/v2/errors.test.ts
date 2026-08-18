@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import {
-  ApprovalRequiredError,
-  ArcanaError,
-  AuthorizationDeniedError,
-  toArcanaError,
-} from "./errors.js"
+import { ApprovalRequiredError, ArcanaError, AuthorizationDeniedError, toArcanaError } from "./errors.js"
 
 describe("SDK error model (E3)", () => {
   it("maps HTTP statuses onto stable codes", () => {

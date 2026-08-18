@@ -14,6 +14,7 @@ import DESCRIPTION from "./apply_patch.txt"
 import { FileSystem } from "@arcana/core/filesystem"
 import { Format } from "../format"
 import * as Bom from "@/util/bom"
+import { isDependencyManifest } from "@/execution/install"
 
 export const Parameters = Schema.Struct({
   patchText: Schema.String.annotate({ description: "The full patch text that describes all changes to be made" }),
@@ -203,10 +204,11 @@ export const ApplyPatchTool = Tool.define(
 
       // Check permissions if needed
       const relativePaths = fileChanges.map((c) => path.relative(instance.worktree, c.filePath).replaceAll("\\", "/"))
+      const manifestPaths = relativePaths.filter((item) => isDependencyManifest(item))
       yield* ctx.ask({
         permission: "edit",
         patterns: relativePaths,
-        always: ["*"],
+        always: manifestPaths.length > 0 ? manifestPaths : ["*"],
         metadata: {
           filepath: relativePaths.join(", "),
           diff: totalDiff,

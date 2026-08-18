@@ -4,7 +4,19 @@ import { atomicWriteSync } from "../../util/atomic-write"
 import { join, dirname } from "node:path"
 import { homedir } from "node:os"
 
-const THEMES = ["arcana", "bloodmoon", "coven", "crypt", "dragon", "lich", "wraith"] as const
+const THEMES = [
+  "arcana",
+  "bloodmoon",
+  "coven",
+  "crypt",
+  "dragon",
+  "grimoire",
+  "jade",
+  "lich",
+  "oracle",
+  "sakura",
+  "wraith",
+] as const
 const TUI_CONFIG = join(homedir(), ".config", "arcana", "tui.json")
 
 export const ThemeCommand: CommandModule = {
@@ -42,7 +54,7 @@ export const ThemeCommand: CommandModule = {
       }
     })()
 
-    console.log("7 arcane themes:\n")
+    console.log("11 arcane themes:\n")
     for (const t of THEMES) {
       console.log(`  ${t === current ? "\u25C6" : " "} ${t}${t === current ? " \u2190 active" : ""}`)
     }

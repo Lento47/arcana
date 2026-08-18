@@ -2,11 +2,13 @@ import { For, Match, Show, Switch, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { filetype } from "../../util/filetype"
 import type { SpineKind } from "./spine-types"
-import { looksLikeMarkdown, normalizeChatProse } from "./chat-prose"
+import { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis } from "./chat-prose"
+import { codeBlockChrome, streamTextCue } from "./spine-chrome"
+import { RoundBorder } from "../../ui/chrome"
 
 export type SpineProseMode = "markdown" | "code" | "plain"
 
-export { looksLikeMarkdown, normalizeChatProse } from "./chat-prose"
+export { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis } from "./chat-prose"
 
 /**
  * Disable underscore emphasis in markdown so `_text_`, snake_case, and
@@ -169,8 +171,12 @@ export function SpineProse(props: {
 
   const markdownContent = createMemo(() => {
     const raw = mode() === "markdown" ? escapeMarkdownUnderscoreEmphasis(text()) : text()
+    // Strip emphasis/strikethrough markers (`**`, `~~`) so raw syntax never
+    // leaks into chat text (OpenTUI inline conceal depends on tree-sitter
+    // markdown_inline injection; strip guarantees clean text regardless).
+    const noEmphasis = mode() === "markdown" ? stripMarkdownEmphasis(raw) : raw
     // Strip horizontal rules (full-width dash rows) only outside fenced code blocks
-    return stripMarkdownHorizontalRules(raw)
+    return stripMarkdownHorizontalRules(noEmphasis)
   })
   const ft = createMemo(() => resolveFiletype(bodyLabel(), hint(), text(), hint()))
   const fg = createMemo(() => {
@@ -193,6 +199,10 @@ export function SpineProse(props: {
    * (no per-token layout flip); set false once idle to finalize trailing parsing.
    */
   const liveStreaming = createMemo(() => props.streaming === true)
+  const streamCue = createMemo(() => streamTextCue(liveStreaming()))
+  const codeChrome = createMemo(() =>
+    codeBlockChrome({ bodyLabel: bodyLabel(), filetype: ft(), streaming: liveStreaming() }),
+  )
 
   const bodyNote = () => (
     <Show when={props.note?.trim()}>
@@ -281,6 +291,15 @@ export function SpineProse(props: {
           finalize trailing token parsing. No dual-mode swap, no remount-by-key.
         */}
         <Match when={mode() === "markdown"}>
+          <Show when={streamCue().badge}>
+            <box flexShrink={0} paddingBottom={0} flexDirection="row">
+              <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+                <text fg={theme.accent} wrapMode="none">
+                  {streamCue().badge}
+                </text>
+              </box>
+            </box>
+          </Show>
           <MarkdownBody />
           {bodyNote()}
         </Match>
@@ -290,14 +309,29 @@ export function SpineProse(props: {
             flexShrink={0}
             minWidth={0}
             width={wrapCols()}
-            backgroundColor={focused() ? (theme.backgroundElement as any) : undefined}
+            backgroundColor={focused() ? (theme.backgroundElement as any) : theme.backgroundPanel}
             paddingLeft={codePad()}
             paddingRight={codePad()}
             paddingTop={codePadY()}
             paddingBottom={codePadY()}
-            border={["left"]}
+            border={true}
+            customBorderChars={RoundBorder}
             borderColor={(bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : (theme.borderSubtle ?? theme.textMuted)) as any}
           >
+            <box flexDirection="row" flexShrink={0} gap={1} paddingBottom={1}>
+              <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+                <text fg={theme.spineContext} wrapMode="none">
+                  {codeChrome().header}
+                </text>
+              </box>
+              <Show when={codeChrome().badge}>
+                <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+                  <text fg={theme.accent} wrapMode="none">
+                    {codeChrome().badge}
+                  </text>
+                </box>
+              </Show>
+            </box>
             <code
               width={wrapCols()}
               filetype={ft()}

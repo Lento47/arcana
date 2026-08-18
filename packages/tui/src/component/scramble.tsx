@@ -6,6 +6,11 @@ import { CORRUPT_GLYPHS } from "../branding"
 // Cryptic glyph pool for the "decrypt" reveal — abstract, monochrome, no color.
 const GLYPHS = "▚▞▌▐░▒╳┃═╱╲+=*<>/|·:."
 
+/** True when `next` is a token-append of `prev` (live stream, skip decrypt). */
+export function isStreamingExtension(next: string, prev: string): boolean {
+  return typeof next === "string" && prev.length > 0 && next.startsWith(prev)
+}
+
 /** Default ms between ticks (error mode is snappier). */
 const DEFAULT_SPEED_MS = 18
 const DEFAULT_ERROR_SPEED_MS = 10
@@ -59,7 +64,7 @@ export function Scramble(props: {
     // already showed (tokens being appended), render immediately with no
     // animation.  This eliminates the flicker that happened when the old
     // effect restarted the decrypt from index 0 on every streaming chunk.
-    const isStreaming = target?.startsWith(prevText) && prevText.length > 0
+    const isStreaming = isStreamingExtension(target ?? "", prevText)
     prevText = target
 
     if (

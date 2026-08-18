@@ -11,6 +11,7 @@ import { SpinePrompt } from "./spine-prompt"
  * child session), the view-filter hint, and the Grok-order composer prompt.
  */
 export function SpineComposer(props: {
+  escapeStage: () => 0 | 1 | 2
   layout: SpineLayout
   parentID?: string
   viewFilter: SpineViewFilter
@@ -25,6 +26,12 @@ export function SpineComposer(props: {
 }) {
   const { theme } = useTheme()
   const pad = spineOuterPadding(props.layout)
+  const escapeHint = () => {
+    const stage = props.escapeStage()
+    if (stage === 0) return undefined
+    if (stage === 1) return "esc again: leave prompt · navigate spine"
+    return "esc again: interrupt session"
+  }
 
   return (
     <>
@@ -37,6 +44,13 @@ export function SpineComposer(props: {
       </Show>
       <Show when={props.parentID}>
         <SubagentFooter />
+      </Show>
+      <Show when={escapeHint()}>
+        {(hint) => (
+          <box flexDirection="row" flexShrink={0} paddingLeft={pad + 2}>
+            <text fg={theme.accent}>{hint()}</text>
+          </box>
+        )}
       </Show>
       <SpinePrompt
         bind={props.bind as any}

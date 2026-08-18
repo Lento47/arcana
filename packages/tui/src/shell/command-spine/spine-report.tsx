@@ -3,6 +3,8 @@ import type { SpineReportData, SpineConcernSeverity } from "./spine-types"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import { displayWidth, truncate } from "../../util/locale"
+import { projectInsightCard } from "./spine-insight"
+import { SpineInsightCard } from "./spine-insight-card"
 
 // Scorecard geometry (audit O2). A badge is `[pad][label] [glyph][pad]` —
 // 2 padding cells + 1 space + 1 glyph; badges are separated by a 1-col gap.
@@ -92,9 +94,13 @@ export function SpineReport(props: {
   // so streaming re-parses that swap the report object refresh the scorecard.
   const scorecardRows = createMemo(() => packScorecardRows(props.report.scorecard, scorecardBudget()))
   const badgeLabelMax = createMemo(() => scorecardLabelMax(scorecardBudget()))
+  const insight = createMemo(() => projectInsightCard({ report: props.report }))
 
   return (
     <box flexDirection="column" flexShrink={0} minWidth={0}>
+      <Show when={insight()}>
+        {(card) => <SpineInsightCard card={card()} focused={props.focused} contentWidth={scorecardBudget()} />}
+      </Show>
       {/* Summary paragraph */}
       <Show when={r.summary}>
         <box flexShrink={0} paddingTop={1} paddingBottom={1}>
@@ -113,7 +119,7 @@ export function SpineReport(props: {
               <box flexDirection="row" flexShrink={0} gap={1}>
                 <For each={row}>
                   {(item) => (
-                    <box flexShrink={0} paddingLeft={1} paddingRight={1}>
+                    <box flexShrink={0} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
                       <text fg={scoreColor(item.status, theme)}>
                         {truncate(item.label, badgeLabelMax())} {scoreGlyph(item.status)}
                       </text>

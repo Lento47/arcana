@@ -10,6 +10,7 @@ import { expect, test } from "bun:test"
 import { type Renderable, ScrollBoxRenderable } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import { ThemeProvider } from "../src/context/theme"
+import { ToastProvider } from "../src/ui/toast"
 import { TuiConfigProvider } from "../src/config"
 import { KVProvider } from "../src/context/kv"
 import { Dialog } from "../src/ui/dialog"
@@ -35,7 +36,8 @@ async function renderDialogWithLongContent() {
       <TestTuiContexts>
         <TuiConfigProvider config={createTuiResolvedConfig()}>
           <KVProvider>
-            <ThemeProvider mode="dark">
+            <ToastProvider>
+              <ThemeProvider mode="dark">
               <Dialog size="xlarge" onClose={() => {}}>
                 <box flexDirection="column" paddingLeft={1} paddingRight={1}>
                   {rows.map((i) => (
@@ -43,7 +45,8 @@ async function renderDialogWithLongContent() {
                   ))}
                 </box>
               </Dialog>
-            </ThemeProvider>
+              </ThemeProvider>
+            </ToastProvider>
           </KVProvider>
         </TuiConfigProvider>
       </TestTuiContexts>

@@ -8,6 +8,8 @@ import {
   formatTimestamp,
   mapAuditEvent,
   formatSweepResult,
+  parseRetentionSweepNow,
+  readApiError,
 } from "../core/auditor-console"
 
 describe("auditor-console helpers", () => {
@@ -53,10 +55,13 @@ describe("auditor-console helpers", () => {
         at: "2026-08-04T10:30:00.000Z",
       }
       const mapped = mapAuditEvent(evt)
-      expect(mapped.id).toBe("evt-abc123def456…")
-      expect(mapped.actor).toBe("user-abc12…")
+      expect(mapped.id).toBe(evt.id)
+      expect(mapped.idShort).toBe("evt-abc123def456…")
+      expect(mapped.actor).toBe(evt.actorUserId)
+      expect(mapped.actorShort).toBe("user-abc12…")
       expect(mapped.action).toBe("proof.verified")
-      expect(mapped.resource).toBe("proof://run_01…")
+      expect(mapped.resource).toBe(evt.resource)
+      expect(mapped.resourceShort).toBe("proof://run_01…")
       expect(mapped.outcome).toBe("SUCCESS")
       expect(mapped.at).toBe("2026-08-04 10:30:00")
     })
@@ -92,6 +97,36 @@ describe("auditor-console helpers", () => {
 
     it("returns fallback for zero counts", () => {
       expect(formatSweepResult({ deleted: 0, retainedByHold: 0 })).toBe("nothing to sweep")
+    })
+  })
+
+  describe("readApiError", () => {
+    it("joins engine error and detail", async () => {
+      const res = new Response(
+        JSON.stringify({ error: "engine_unreachable", detail: "ECONNREFUSED" }),
+        { status: 502, statusText: "Bad Gateway" },
+      )
+      expect(await readApiError(res)).toBe("engine_unreachable: ECONNREFUSED")
+    })
+
+    it("falls back to the HTTP status for non-JSON bodies", async () => {
+      const res = new Response("nope", { status: 500, statusText: "Internal Server Error" })
+      expect(await readApiError(res)).toBe("HTTP 500: Internal Server Error")
+    })
+  })
+
+  describe("parseRetentionSweepNow", () => {
+    it("omits now when the field is empty", () => {
+      expect(parseRetentionSweepNow()).toEqual({})
+      expect(parseRetentionSweepNow("  ")).toEqual({})
+    })
+
+    it("rejects a bare day count", () => {
+      expect(parseRetentionSweepNow("90").error).toContain("ISO timestamp")
+    })
+
+    it("accepts an ISO timestamp", () => {
+      expect(parseRetentionSweepNow("2026-08-17T00:00:00Z").now).toBe("2026-08-17T00:00:00.000Z")
     })
   })
 })

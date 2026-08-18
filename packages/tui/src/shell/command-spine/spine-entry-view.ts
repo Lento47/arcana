@@ -5,6 +5,8 @@ import type {
   SpineLayout,
   SpineReceipt,
   SpineReportData,
+  SpineApprovalSnapshot,
+  SpineProofContinuation,
 } from "./spine-types"
 import { joinSpineProse } from "./spine-prose"
 
@@ -70,6 +72,7 @@ export type ToolEntry = SpineEntryViewBase & {
   listing?: string[]
   children?: SpineChildView[]
   childSessionID?: string
+  proof?: SpineProofContinuation
 }
 
 /** Approval row (durable approval or permission/question gate). */
@@ -87,6 +90,8 @@ export type ApprovalEntry = SpineEntryViewBase & {
   pending: boolean
   /** Requester/agent identity for a pending approval (not an operator). */
   requester?: string
+  /** Exact-request snapshot for the inline approval card. */
+  snapshot?: SpineApprovalSnapshot
 }
 
 /** Governance / projection row (event or aggregated group). */
@@ -109,6 +114,7 @@ export type ProofEntry = SpineEntryViewBase & {
   summary: string
   elapsed?: string
   children?: SpineChildView[]
+  proof?: SpineProofContinuation
 }
 
 /** Subagent task row. */
@@ -271,6 +277,7 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
         summary: entry.summary,
         elapsed: entry.elapsed,
         children: childrenViews(entry.children),
+        proof: entry.proof,
       }
     }
     return {
@@ -304,6 +311,7 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
       // The adapter puts the requester (principal agent identity) in `actor`
       // for PENDING records - no operator has acted yet.
       requester: pending ? entry.actor : undefined,
+      snapshot: entry.approval,
     }
   }
 
@@ -349,5 +357,6 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
     listing: entry.listing,
     children: childrenViews(entry.children),
     childSessionID: ctx.childSessionID,
+    proof: entry.proof,
   }
 }

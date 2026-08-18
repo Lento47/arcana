@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { getSpineLayout, spineChatCardChrome, spineProseWidth } from "../src/shell/command-spine/spine-types"
+import {
+  getSpineLayout,
+  SESSION_FRAME_CHROME,
+  spineChatCardChrome,
+  spineProseWidth,
+  spineViewportWidth,
+} from "../src/shell/command-spine/spine-types"
 
 describe("spineProseWidth", () => {
   test("present-but-narrow width gets its real budget — never the bare 80 fallback", () => {
@@ -55,5 +61,13 @@ describe("spineProseWidth", () => {
     expect(spineProseWidth(80, "narrow", "chat")).toBe(71)
     // minimal: outerPad 0
     expect(spineProseWidth(60, "minimal", "chat")).toBe(52)
+  })
+
+  test("session frame chrome is 6 cells; viewport is terminal minus that", () => {
+    expect(SESSION_FRAME_CHROME).toBe(6)
+    expect(spineViewportWidth(80)).toBe(74)
+    expect(spineViewportWidth(120)).toBe(114)
+    expect(spineProseWidth(spineViewportWidth(80), "narrow", "chat")).toBe(65)
+    expect(65).toBeLessThanOrEqual(67)
   })
 })

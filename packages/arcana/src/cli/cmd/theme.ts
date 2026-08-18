@@ -3,7 +3,19 @@ import { readFileSync, existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 
-const THEMES = ["arcana", "bloodmoon", "coven", "crypt", "dragon", "lich", "wraith"] as const
+const THEMES = [
+  "arcana",
+  "bloodmoon",
+  "coven",
+  "crypt",
+  "dragon",
+  "grimoire",
+  "jade",
+  "lich",
+  "oracle",
+  "sakura",
+  "wraith",
+] as const
 const TUI_CONFIG = join(homedir(), ".config", "arcana", "tui.json")
 
 export const ThemeCommand: CommandModule = {
@@ -38,7 +50,7 @@ export const ThemeCommand: CommandModule = {
       } catch { return "arcana" }
     })()
 
-    console.log("7 arcane themes:\n")
+    console.log("11 arcane themes:\n")
     for (const t of THEMES) {
       console.log(`  ${t === current ? "◆" : " "} ${t}${t === current ? " ← active" : ""}`)
     }

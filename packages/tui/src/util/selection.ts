@@ -24,6 +24,13 @@ type SelectionKeyEvent = {
   stopPropagation: () => void
 }
 
+export function selectionActions() {
+  return {
+    copy: { key: "c", modifiers: ["ctrl"] as const, label: "copy", clears: true },
+    clear: { key: "escape", label: "clear" },
+  }
+}
+
 export function copy(renderer: Renderer, toast: Toast, clipboard: ClipboardService): boolean {
   const selection = renderer.getSelection()
   if (!selection) return false
@@ -53,7 +60,8 @@ export function handleSelectionKey(
   const selection = renderer.getSelection()
   if (!selection) return
 
-  if (event.ctrl && event.name === "c") {
+  const actions = selectionActions()
+  if (event.ctrl && event.name === actions.copy.key) {
     if (!copy(renderer, toast, clipboard)) {
       renderer.clearSelection()
       return
@@ -64,7 +72,7 @@ export function handleSelectionKey(
     return
   }
 
-  if (event.name === "escape") {
+  if (event.name === actions.clear.key) {
     renderer.clearSelection()
     event.preventDefault()
     event.stopPropagation()

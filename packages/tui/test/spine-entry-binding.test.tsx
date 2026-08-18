@@ -3,6 +3,7 @@ import { expect, test } from "bun:test"
 import { testRender, type JSX } from "@opentui/solid"
 import { For, createMemo, createSignal, type Setter } from "solid-js"
 import { ThemeProvider } from "../src/context/theme"
+import { ToastProvider } from "../src/ui/toast"
 import { TuiConfigProvider } from "../src/config"
 import { KVProvider } from "../src/context/kv"
 import { ArgsProvider } from "../src/context/args"
@@ -28,7 +29,9 @@ function withProviders(component: () => JSX.Element) {
               <SDKProvider url="http://test" directory={directory} fetch={calls.fetch} events={events.source}>
                 <ProjectProvider>
                   <SyncProvider>
-                    <ThemeProvider mode="dark">{component()}</ThemeProvider>
+                    <ToastProvider>
+                      <ThemeProvider mode="dark">{component()}</ThemeProvider>
+                    </ToastProvider>
                   </SyncProvider>
                 </ProjectProvider>
               </SDKProvider>

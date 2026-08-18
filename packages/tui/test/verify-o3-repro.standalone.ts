@@ -38,10 +38,13 @@ console.log("1. Dialog owns the shared overflow boundary:")
 check(dialogSrc.includes("maxHeight={dialogMaxHeight(dimensions().height)}"), "dialog card height is terminal-bounded")
 check(dialogSrc.includes("<scrollbox"), "dialog body has a ScrollBox owner")
 check(
-  dialogSrc.includes("height={dialogContentMaxHeight(dimensions().height)}"),
-  "scroll viewport has a definite terminal-derived height",
+  dialogSrc.includes("height={bodyHeight()}") && dialogSrc.includes("Math.min(measured, contentCap())"),
+  "scroll viewport height is measured from content and capped at the terminal bound (shrink-to-fit)",
 )
-check(dialogSrc.includes("scrollbarOptions={{ visible: true }}"), "overflow is visibly discoverable")
+check(
+  !dialogSrc.includes("scrollbarOptions"),
+  "scrollbar auto-appears on overflow (no forced track on short dialogs)",
+)
 check(dialogSrc.includes("viewportCulling={true}"), "long dialog bodies cull offscreen rows")
 
 console.log("2. DialogProvider routes every stacked surface through Dialog:")

@@ -114,6 +114,36 @@ function normalizeProseRegion(region: string): string {
   return out.join("\n")
 }
 
+/**
+ * Remove markdown emphasis/strikethrough markers (`***`, `**`, `~~`) from prose
+ * so raw syntax never leaks into chat text. OpenTUI hides inline emphasis only
+ * via the tree-sitter `markdown_inline` injection at idle; when that path is
+ * unavailable (grammar not loaded, highlight failure) the `**` delimiters render
+ * verbatim. Stripping the markers outside fenced code blocks and inline code
+ * spans guarantees clean text regardless of highlight state. Single `*` is left
+ * alone — it is common as arithmetic (`3 * 4`) and its italic markers are rarer
+ * and less visually noisy than stray `**`.
+ */
+export function stripMarkdownEmphasis(text: string): string {
+  if (!text) return text
+  const parts = text.split(/(```[\s\S]*?(?:```|$))/)
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 1 || part.startsWith("```")) return part
+      return part
+        .split(/(`[^`\n]+`)/)
+        .map((seg, j) => {
+          if (j % 2 === 1) return seg
+          return seg
+            .replace(/\*\*\*([^*\n]+)\*\*\*/g, "$1")
+            .replace(/\*\*([^*\n]+)\*\*/g, "$1")
+            .replace(/~~([^~\n]+)~~/g, "$1")
+        })
+        .join("")
+    })
+    .join("")
+}
+
 /** True when text has markdown structure worth rich rendering. */
 export function looksLikeMarkdown(text: string): boolean {
   if (/```/.test(text)) return true

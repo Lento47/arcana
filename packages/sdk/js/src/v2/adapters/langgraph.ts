@@ -7,9 +7,9 @@
  * executes only after ALLOW.
  */
 
-import { toAuthorizationRequest, type GovernanceContext } from "../governance.js"
+import { toAuthorizationRequest, unionUntrustedProvenance, type GovernanceContext } from "../governance.js"
 import { AuthorizationDeniedError, ApprovalRequiredError } from "../errors.js"
-import type { AuthorizeFn, ExecuteExactFn } from "./ai-sdk.js"
+import { runGovernedExecute, type AuthorizeFn, type ExecuteExactFn } from "./ai-sdk.js"
 
 export type LangGraphToolLike<Args extends Record<string, unknown>, Result> = {
   name: string
@@ -34,12 +34,9 @@ export function governedLangGraphTool<Args extends Record<string, unknown>, Resu
       const context: GovernanceContext = {
         ...options.context,
         // LangGraph metadata is untrusted; callers must declassify explicitly.
-        provenance: options.context.provenance ?? ["MCP_DESCRIPTION"],
+        provenance: unionUntrustedProvenance(options.context.provenance),
       }
-      const request = toAuthorizationRequest(
-        { name: `langgraph.${tool.name}`, arguments: args },
-        context,
-      )
+      const request = toAuthorizationRequest({ name: `langgraph.${tool.name}`, arguments: args }, context)
       const outcome = await options.authorize(request)
       if (outcome.decision !== "ALLOW") {
         if (outcome.decision === "REQUIRE_APPROVAL") {
@@ -51,8 +48,7 @@ export function governedLangGraphTool<Args extends Record<string, unknown>, Resu
           requestHash: request.requestHash,
         })
       }
-      const execute = () => tool.invoke(args)
-      return options.executeExact ? options.executeExact(request, execute) : execute()
+      return runGovernedExecute(options.executeExact, request, () => tool.invoke(args))
     },
   }
 }

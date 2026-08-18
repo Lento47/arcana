@@ -16,11 +16,13 @@ import {
 } from "./approval-spine-adapter"
 import { createDedupeKey, dedupeKeyToString, compareOrderingKeys, createOrderingKey } from "./spine-ordering"
 import {
-  governanceProofToSpineEntry,
   governanceTraceToSpineEntry,
   productionInputToSpineEntry,
 } from "./production-spine-input"
 import { collapseGovernanceEntries } from "./spine-governance-group"
+import { buildTrustStatus, eventGapFromTrace } from "./spine-trust"
+import { projectGovernedTally, projectSessionCharter } from "./session-charter"
+import { attachProofContinuations } from "./spine-proof-attach"
 
 // Cross-session cache: keyed by sessionID so back-switching to a session
 // reuses the already-computed entries + per-message cache instead of
@@ -184,9 +186,32 @@ export function useSpineProjection(props: ShellProps, input: {
         }),
       )
     }
-    const proof = props.governanceProof?.()
-    if (proof) result.push(governanceProofToSpineEntry(props.sessionID, proof))
     return result
+  })
+
+  const sessionProof = createMemo(() => props.governanceProof?.())
+  const sessionCharter = createMemo(() => {
+    const proof = sessionProof()
+    return projectSessionCharter(proof)
+  })
+  const trust = createMemo(() => {
+    const proof = sessionProof()
+    const trace = props.governanceTrace?.()
+    const pending = (props.approvals?.() ?? []).filter((approval) => approval.state === "PENDING").length
+    const traceHealth = proof?.traceHealth ?? trace?.status
+    return buildTrustStatus({
+      syncStatus: sync.status,
+      streamActive: sync.status === "complete",
+      trace: traceHealth,
+      integrity: proof?.integrityStatus,
+      proofLevel: proof?.proofLevel,
+      pendingApprovals: pending,
+      eventGap: eventGapFromTrace({
+        trace: traceHealth,
+        expectedCriticalEvents: Number(trace?.expectedCriticalEvents),
+        recordedCriticalEvents: Number(trace?.recordedCriticalEvents),
+      }),
+    })
   })
 
   // ── Merge + deterministic ordering ───────────────────────────────
@@ -219,10 +244,32 @@ export function useSpineProjection(props: ShellProps, input: {
     return merged
   })
 
+  const entriesWithProof = createMemo(() => {
+    const events = props.governance?.() ?? []
+    const executed = events.filter(
+      (event) => event.type === "authorization.executed" || event.type === "authorization.execution_failed",
+    )
+    const evidenceCountByRequestHash: Record<string, number> = {}
+    for (const event of events) {
+      if (event.type !== "evidence.attached") continue
+      const hash = typeof (event.payload as { requestHash?: unknown } | undefined)?.requestHash === "string"
+        ? (event.payload as { requestHash: string }).requestHash
+        : undefined
+      if (!hash) continue
+      evidenceCountByRequestHash[hash] = (evidenceCountByRequestHash[hash] ?? 0) + 1
+    }
+    return attachProofContinuations({
+      entries: allVisibleEntries(),
+      executedEvents: executed,
+      evidenceCountByRequestHash,
+      proof: sessionProof(),
+    })
+  })
+
   // ── Turn grouping + display indices + geometry ───────────────────
   const groupedVisibleEntries = createMemo(() => {
     const tui = governanceConfig.config().display.tui
-    return collapseGovernanceEntries(allVisibleEntries(), {
+    return collapseGovernanceEntries(entriesWithProof(), {
       enabled: tui.collapseGovernanceGroups,
       maxGroupSize: tui.collapseThreshold,
     })
@@ -236,6 +283,7 @@ export function useSpineProjection(props: ShellProps, input: {
       return withIndex
     })
   })
+  const governedTally = createMemo(() => projectGovernedTally(groupedVisibleEntries()))
   const gutterWidth = createMemo(() =>
     spineGutterDigits(displayRows().reduce((max, entry) => Math.max(max, entry.index), 0)),
   )
@@ -262,6 +310,10 @@ export function useSpineProjection(props: ShellProps, input: {
 
   return {
     headerSegments,
+    trust,
+    sessionCharter,
+    sessionProof,
+    governedTally,
     approvals,
     approvalEntries,
     allVisibleEntries,

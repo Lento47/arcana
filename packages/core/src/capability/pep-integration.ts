@@ -65,7 +65,8 @@ export function toolToAction(toolName: string): {
     case "web_fetch":
     case "fetch":
     case "search":
-      return { action: "network.read", resourceKind: "network" }
+    case "mcp":
+      return { action: "network.write", resourceKind: "network" }
     case "env_clean":
       return { action: "filesystem.delete", resourceKind: "file" }
     case "git_commit":

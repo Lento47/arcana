@@ -20,7 +20,10 @@ export type EnterpriseClientOptions = {
 export type TenantRole = "OWNER" | "ADMIN" | "OPERATOR" | "AUDITOR" | "MEMBER"
 
 export type EnterpriseClient = {
-  createOrganization(tenantId: string, name: string): Promise<{ tenantId: string; id: string; name: string; createdAt: string }>
+  createOrganization(
+    tenantId: string,
+    name: string,
+  ): Promise<{ tenantId: string; id: string; name: string; createdAt: string }>
   assignRole(tenantId: string, userId: string, role: TenantRole): Promise<boolean>
   fleet(tenantId: string): Promise<Array<{ nodeId: string; health: string; version: string }>>
   promotePolicy(
@@ -72,8 +75,7 @@ export function enterpriseClient(options: EnterpriseClientOptions): EnterpriseCl
   }
 
   return {
-    createOrganization: (tenantId, name) =>
-      request("POST", `${ENTERPRISE_API_ROOT}/organizations`, { tenantId, name }),
+    createOrganization: (tenantId, name) => request("POST", `${ENTERPRISE_API_ROOT}/organizations`, { tenantId, name }),
 
     assignRole: async (tenantId, userId, role) => {
       await request("POST", pathFor(tenantId, "/roles"), { userId, role })
@@ -82,11 +84,9 @@ export function enterpriseClient(options: EnterpriseClientOptions): EnterpriseCl
 
     fleet: (tenantId) => request("GET", pathFor(tenantId, "/fleet")),
 
-    promotePolicy: (tenantId, input) =>
-      request("POST", pathFor(tenantId, "/policies/promote"), input),
+    promotePolicy: (tenantId, input) => request("POST", pathFor(tenantId, "/policies/promote"), input),
 
-    escalationCheck: (tenantId, approvalId) =>
-      request("POST", pathFor(tenantId, "/escalations/check"), { approvalId }),
+    escalationCheck: (tenantId, approvalId) => request("POST", pathFor(tenantId, "/escalations/check"), { approvalId }),
 
     siemExport: async (tenantId) => {
       const headers: Record<string, string> = {
@@ -103,13 +103,10 @@ export function enterpriseClient(options: EnterpriseClientOptions): EnterpriseCl
       return response.text()
     },
 
-    recordUsage: (tenantId, input) =>
-      request("POST", pathFor(tenantId, "/commercial/usage"), input),
+    recordUsage: (tenantId, input) => request("POST", pathFor(tenantId, "/commercial/usage"), input),
 
-    usageQuota: (tenantId, input) =>
-      request("POST", pathFor(tenantId, "/commercial/usage/quota"), input),
+    usageQuota: (tenantId, input) => request("POST", pathFor(tenantId, "/commercial/usage/quota"), input),
 
-    routeCrossOrgApproval: (tenantId, input) =>
-      request("POST", pathFor(tenantId, "/federation/route-approval"), input),
+    routeCrossOrgApproval: (tenantId, input) => request("POST", pathFor(tenantId, "/federation/route-approval"), input),
   }
 }

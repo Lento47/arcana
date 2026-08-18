@@ -4,6 +4,7 @@ import type { SessionID } from "@/session/schema"
 import { ApprovalEvent } from "@/approval/events"
 import { approvalStoreForWorkspace, loadSessionApprovals, submitApprovalCommand } from "@/approval/command"
 import { affordancesForApproval } from "@/approval/affordances"
+import { desktopOnline } from "@/approval/desktop-subscribers"
 import { Effect, Option } from "effect"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
@@ -134,6 +135,53 @@ export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval"
       }
     })
 
+    /**
+     * Re-send a PENDING approval to its decision surface.
+     *
+     * When the surface that should decide (Arcana Desktop) never saw the
+     * original notification — offline at creation, reconnected after a drop,
+     * notification lost — the operator can re-broadcast the approval.updated
+     * sync event with the EXACT same durable record. This is strictly
+     * idempotent by construction: the store is only read, never written, so
+     * a re-send can never create a duplicate request, bump the version, or
+     * race a CAS guard. Settled approvals are rejected — there is no pending
+     * request left to re-send.
+     */
+    const resend = Effect.fn("ApprovalHttpApi.resend")(function* (ctx: {
+      params: { sessionID: SessionID; approvalID: string }
+      query: { directory?: string }
+    }) {
+      const { directory } = yield* resolveWorkspace(ctx.params.sessionID, ctx.query.directory)
+      const store = approvalStoreForWorkspace(directory)
+      const record = store.loadApproval(ctx.params.approvalID)
+      if (!record) {
+        return yield* Effect.fail(
+          new ApprovalNotFoundError({
+            approvalID: ctx.params.approvalID,
+            message: `approval ${ctx.params.approvalID} not found`,
+          }),
+        )
+      }
+      if (record.state !== "PENDING") {
+        return {
+          success: false as const,
+          reason: `approval is ${record.state.toLowerCase()}, nothing to re-send`,
+        }
+      }
+      // Best-effort sync-channel push, exactly like the command path: a
+      // publish failure must never fail the operator action — the durable
+      // record is already authoritative.
+      yield* events
+        .publish(ApprovalEvent, { sessionID: ctx.params.sessionID, approval: record })
+        .pipe(Effect.catchCause(() => Effect.void))
+      return {
+        success: true as const,
+        approval: record,
+        resendAt: new Date().toISOString(),
+        desktopOnline: desktopOnline(directory),
+      }
+    })
+
     const affordances = Effect.fn("ApprovalHttpApi.affordances")(function* (ctx: {
       params: { sessionID: SessionID; approvalID: string }
       query: {
@@ -189,5 +237,6 @@ export const approvalHandlers = HttpApiBuilder.group(InstanceHttpApi, "approval"
       .handle("list", list)
       .handle("detail", detail)
       .handle("affordances", affordances)
+      .handle("resend", resend)
   }),
 )

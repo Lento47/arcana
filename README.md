@@ -1,6 +1,23 @@
 # ⛧ arcana
 
-**Self-improving AI agent CLI** — skills, memory, gateway, coding, and cron in one terminal.
+**Governed autonomy runtime** — an execution-security kernel, operator console (TUI), and proof system for autonomous agents. The model proposes. The engine decides. The proof records.
+
+Skills, memory, gateway, coding, and cron still live in one terminal. Authorization is not optional: `¬Authorized(q) ⇒ ¬Executed(q)`.
+
+**Current development branch is [`arcanagov`](https://github.com/Lento47/arcana/tree/arcanagov).** GitHub still defaults to `master`, which is stale. Clone and work from `arcanagov`.
+
+## What you can verify
+
+Every consequential action answers four questions:
+
+| | Question | What you see |
+|---|---|---|
+| **P1** | What is the agent trying to do? | The exact request — action, resource, arguments — not a paraphrase |
+| **P2** | Why is it allowed, denied, or waiting? | A recorded decision. If approval is required, you review that same exact request |
+| **P3** | What actually ran? | A receipt for the effect that executed, at most once |
+| **P4** | What proves it? | Durable evidence you can export and verify later |
+
+Missing evidence is shown as missing. It is never painted as healthy.
 
 [![npm](https://img.shields.io/npm/v/arcana-ai?label=npm)](https://www.npmjs.com/package/arcana-ai)
 [![license](https://img.shields.io/badge/license-MIT%20%2B%20Commercial-blue)](LICENSE)
@@ -37,8 +54,8 @@ npx arcana-ai
 npm install -g arcana-ai
 arcana
 
-# From source (dev)
-git clone https://github.com/Lento47/arcana && cd arcana
+# From source (dev) — arcanagov is the living tree
+git clone -b arcanagov https://github.com/Lento47/arcana && cd arcana
 bun install
 bun link                 # from packages/arcana/ — creates global `arcana` bin
 ```
@@ -171,7 +188,11 @@ Env overrides: `ARCANA_PROVIDER`, `ARCANA_MODEL`, `ARCANA_API_KEY`, `OPENAI_API_
 
 ## Dev
 
+Work on **`arcanagov`**. It is the only current integration branch. `master` is the GitHub default and is not the development tip.
+
 ```sh
+git clone -b arcanagov https://github.com/Lento47/arcana
+cd arcana
 bun install
 bun run typecheck       # turbo typecheck (16 packages)
 bun run lint            # oxlint (warnings only; 0 errors required)
@@ -198,12 +219,23 @@ bun packages/arcana/src/index.ts run "hello"
 
 ## Themes
 
-7 arcane themes. Press `⛧ themes` in the TUI or set in `~/.config/arcana/tui.json`:
+11 arcane themes. Press `⛧ themes` in the TUI or set in `~/.config/arcana/tui.json`:
 ```json
 { "theme": "dragon" }
 ```
 
-Themes: `arcana` (default), `bloodmoon`, `coven`, `crypt`, `dragon`, `lich`, `wraith`.
+Themes: `arcana` (default), `bloodmoon`, `coven`, `crypt`, `dragon`, `grimoire`, `jade`, `lich`, `oracle`, `sakura`, `wraith`.
+
+### Interface voice (lexicon)
+
+The interface copy ships in two voices: `arcane` (default — occult verbs like *scrying*, *invoking*, *glyphs*) and `plain` (plain language — *reading*, *running*, *tokens*). Set it in `~/.config/arcana/tui.json`:
+```json
+{ "theme": "dragon", "lexicon": "plain" }
+```
+
+Or switch with `arcana lexicon set --name plain` (or `--name arcane`). Restart arcana to apply.
+
+Custom themes (drop-in JSON), the interface voice, and full `arcana.json` configuration are covered in [docs/customizing-arcana.md](docs/customizing-arcana.md).
 
 ### Background image
 
@@ -222,6 +254,7 @@ Set a custom full-screen background image (truecolor terminals — Kitty, iTerm2
 
 ## Recent Changes
 
+- **v0.3.11** — P1 exact-request checks from the SDK, P2 console decisions via the engine, P3 key backup and rotation, P4 read-only auditor evidence. Source builds use `arcanagov` (`git clone -b arcanagov`). See [CHANGELOG.md](CHANGELOG.md).
 - **v0.3.10** — Merge wave 2026-08-13 (PRs #120–#126): protocol extension registry enforcement (BLK-E-09, PR #120: validateExtensionRegistry + DEFAULT_EXTENSION_REGISTRY wired into verifier + policy-bundle-store), contract/runtime parity lint + CI job (PR #121), CI test isolation + concurrency stabilization (TUI tests, OpenTUI patcher, models cache, TUI workspace; PRs #122–#126). See [STATUS.md](docs/STATUS.md).
 - **v0.3.9** — Merge wave 2026-08-09 (PRs #109–#118): CLI `--json` + deterministic exit codes across every remaining command (BLK-CLI-02, PR #113), cross-platform smoke matrix published (BLK-CLI-04, PR #114), Rust proof-batching parity (BLK-E-04, PR #117), claude/gemini launch adapters certified A1 alongside codex (BLK-E-05, PR #118), CURRENT-STATE.json reconciled at f3c935e6. See [STATUS.md](docs/STATUS.md).
 - **v0.3.8** — Freeze evidence pack ([FREEZE-EVIDENCE-2026-08-06.md](docs/FREEZE-EVIDENCE-2026-08-06.md): real suite numbers, 16 evidence logs), governance protections ([FREEZE-GOVERNANCE.md](docs/FREEZE-GOVERNANCE.md)), freeze-evidence CI workflow, CURRENT-STATE.json reconciliation, audit-7 convergence campaign completion, cross-platform smoke matrix + script (Windows executed, Linux/macOS NOT EXERCISED), CLI launch adapter certification, DX quickstart + reference app + samples, deployment runbook (BLK-D-07). See [STATUS.md](docs/STATUS.md).

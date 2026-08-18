@@ -8,7 +8,7 @@
  *      ▸ inspect evidence
  *
  * The individual events remain as children and keep their full committed
- * payloads; expanding the group is the forensic inspector. RunProof and trace
+ * payloads; expanding the group is the forensic inspector. Leftover RunProof and trace
  * rows are standalone summaries and never merged into an event burst.
  */
 
@@ -39,7 +39,10 @@ export function groupGovernanceEntries(
     const isGovernance = entry.source?.kind === "governance"
     const isStandalone =
       isGovernance &&
-      (STANDALONE_PREFIXES.some((prefix) => entry.id.startsWith(prefix)) || entry.breakthrough === true)
+      (STANDALONE_PREFIXES.some((prefix) => entry.id.startsWith(prefix))
+        || entry.breakthrough === true
+        || entry.kind === "fail"
+        || entry.kind === "approve")
     if (!isGovernance || isStandalone) {
       flush()
       result.push(entry)

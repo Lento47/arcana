@@ -90,7 +90,7 @@ function extractJson(text: string): unknown | undefined {
     try { return JSON.parse(codeBlock[1]) } catch {}
   }
   // Try finding a JSON object in the text
-  const objMatch = text.match(/\{[\s\S]*\}/)
+  const objMatch = text.match(/{[\s\S]*}/)
   if (objMatch) {
     try { return JSON.parse(objMatch[0]) } catch {}
   }
@@ -122,6 +122,7 @@ function renderOutput(input: {
   summary?: string
   text: string
   structured?: unknown
+  warning?: string
 }) {
   const tag = input.state === "error" ? "task_error" : "task_result"
   const structured = input.structured !== undefined ? ` type="json"` : ""
@@ -132,6 +133,7 @@ function renderOutput(input: {
     `<${tag}${structured}>`,
     content,
     `</${tag}>`,
+    ...(input.warning ? [`<warning>${input.warning}</warning>`] : []),
     "</task>",
   ].join("\n")
 }
@@ -190,6 +192,7 @@ export const TaskTool = Tool.define(
         ? yield* sessions.get(SessionID.make(params.task_id)).pipe(Effect.catch(() => Effect.succeed(undefined)))
         : undefined
       const resume = existing !== undefined && existing.parentID === ctx.sessionID
+      let delegationWarning: string | undefined
       const childPermission = deriveSubagentSessionPermission({
         parentSessionPermission: parent.permission ?? [],
         subagent: next,
@@ -346,6 +349,12 @@ export const TaskTool = Tool.define(
           `delegation-${ctx.sessionID}-${nextSession.id}`,
         )
 
+        if (delegationResult.status === "DENIED") {
+          delegationWarning =
+            `Capability delegation was denied for child session ${nextSession.id}; ` +
+            `the subagent will run without delegated authority, and capability-gated tools may be denied.`
+        }
+
         if (delegationResult.status === "CREATED") {
           // Insert child grants as PENDING first
           for (const grant of delegationResult.childGrants) {
@@ -363,9 +372,10 @@ export const TaskTool = Tool.define(
           )
 
           if (activated === 0) {
-            yield* Effect.logWarning(
-              `No grants activated for child session ${nextSession.id}`,
-            )
+            delegationWarning =
+              `No capability grants were activated for child session ${nextSession.id}; ` +
+              `the subagent will run without delegated authority, and capability-gated tools may be denied.`
+            yield* Effect.logWarning(delegationWarning)
           }
         }
         // If delegation is denied, the child session still runs but
@@ -452,7 +462,8 @@ export const TaskTool = Tool.define(
                       ? `Background task completed: ${params.description}`
                       : `Background task failed: ${params.description}`,
                   text,
-                }),
+                  warning: delegationWarning,
+        })
               },
             ],
           })
@@ -483,7 +494,8 @@ export const TaskTool = Tool.define(
             state: "running",
             summary: "Background task updated",
             text: BACKGROUND_UPDATED,
-          }),
+            warning: delegationWarning,
+        })
         }
       }
 
@@ -515,7 +527,8 @@ export const TaskTool = Tool.define(
             state: "running",
             summary: "Background task started",
             text: BACKGROUND_STARTED,
-          }),
+            warning: delegationWarning,
+        })
         }
       }
 
@@ -569,7 +582,9 @@ export const TaskTool = Tool.define(
                 return {
                   title: params.description,
                   metadata,
-                  output: renderOutput({ sessionID: nextSession.id, state: "completed", text: rawOutput, structured: json }),
+                  output: renderOutput({ sessionID: nextSession.id, state: "completed", text: rawOutput, structured: json,
+          warning: delegationWarning,
+        })
                 }
               }
               // Retry once: ask subagent to fix format
@@ -594,14 +609,18 @@ export const TaskTool = Tool.define(
                 return {
                   title: params.description,
                   metadata,
-                  output: renderOutput({ sessionID: nextSession.id, state: "completed", text: retryResult, structured: retryJson }),
+                  output: renderOutput({ sessionID: nextSession.id, state: "completed", text: retryResult, structured: retryJson,
+          warning: delegationWarning,
+        })
                 }
               }
             }
             return {
               title: params.description,
               metadata,
-              output: renderOutput({ sessionID: nextSession.id, state: "completed", text: rawOutput }),
+              output: renderOutput({ sessionID: nextSession.id, state: "completed", text: rawOutput,
+          warning: delegationWarning,
+        })
             }
           }),
         (_, exit) =>

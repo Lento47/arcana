@@ -1,9 +1,19 @@
-import { Show } from "solid-js"
+import { For, Show, createMemo } from "solid-js"
 import { TextAttributes, type RGBA } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
+import { RoundBorder } from "../../ui/chrome"
 import { truncate } from "../../util/locale"
 import type { SpineApprovalSnapshot, SpineEntry as SpineEntryType, SpineLayout } from "./spine-types"
+import {
+  approvalFactGroups,
+  approvalGateFacts,
+  chipCellWidth,
+  FACT_LABEL_WIDTH,
+  packChipRows,
+} from "./spine-chrome"
+
+export { approvalGateFacts, formatApprovalActionKeys } from "./spine-chrome"
 
 function riskColor(risk: string | undefined, theme: Theme) {
   if (risk === "CRITICAL") return theme.error
@@ -16,8 +26,8 @@ function GateRow(props: { label: string; value?: string; tone?: RGBA; theme: The
   const value = props.value?.trim()
   if (!value) return null
   return (
-    <box flexDirection="row" flexShrink={0} minWidth={0}>
-      <box width={12} flexShrink={0}>
+    <box flexDirection="row" flexShrink={0} minWidth={0} gap={1}>
+      <box width={FACT_LABEL_WIDTH} flexShrink={0}>
         <text fg={props.theme.spineDiffMuted}>{props.label}</text>
       </box>
       <text fg={props.tone ?? props.theme.text} wrapMode="word" flexGrow={1} minWidth={0}>
@@ -28,17 +38,25 @@ function GateRow(props: { label: string; value?: string; tone?: RGBA; theme: The
 }
 
 function ActionKeys(props: { theme: Theme; layout: SpineLayout }) {
-  if (props.layout === "minimal" || props.layout === "narrow") {
-    return (
-      <text fg={props.theme.spineContext} wrapMode="none">
-        [a] approve once  [x] deny  [v] inspect
-      </text>
-    )
-  }
+  const facts = approvalGateFacts(undefined, props.layout)
   return (
-    <text fg={props.theme.spineContext} wrapMode="none">
-      [a] approve once  [x] deny  [v] full inspection
-    </text>
+    <box flexDirection="row" flexShrink={0} gap={1} paddingTop={1}>
+      <For each={[...facts.keys]}>
+        {(item) => (
+          <box
+            flexShrink={0}
+            paddingLeft={1}
+            paddingRight={1}
+            backgroundColor={props.theme.backgroundElement}
+          >
+            <text wrapMode="none">
+              <span style={{ fg: props.theme.accent }}>{item.key}</span>
+              <span style={{ fg: props.theme.spineContext }}> {item.action}</span>
+            </text>
+          </box>
+        )}
+      </For>
+    </box>
   )
 }
 
@@ -56,48 +74,85 @@ export function SpineApprovalGate(props: {
   snapshot?: SpineApprovalSnapshot
   layout: SpineLayout
   focused?: boolean
+  contentWidth?: number
 }) {
   const { theme } = useTheme()
   const snapshot = () => props.snapshot
-  const isWide = () => props.layout === "wide"
-  const isCompact = () => props.layout === "compact" || isWide()
-  const risk = () => snapshot()?.risk ?? "HIGH"
+  const facts = () => approvalGateFacts(snapshot(), props.layout)
+  const groups = () => approvalFactGroups(snapshot(), props.layout)
+  const risk = () => facts().risk
+  const chipBudget = createMemo(() => {
+    const raw = props.contentWidth
+    if (typeof raw === "number" && Number.isFinite(raw)) return Math.max(1, Math.floor(raw) - 4)
+    return props.layout === "minimal" || props.layout === "narrow" ? 28 : 48
+  })
+  const primaryRows = createMemo(() =>
+    packChipRows(
+      groups().primary.map((row) => ({ ...row, text: `${row.label} ${truncate(row.value, 28)}` })),
+      chipBudget(),
+      (item) => chipCellWidth(item.text),
+    ),
+  )
 
   return (
-    <box flexDirection="column" flexShrink={0} minWidth={0} gap={0} paddingTop={1}>
-      <box flexDirection="row" flexShrink={0}>
+    <box
+      flexDirection="column"
+      flexShrink={0}
+      minWidth={0}
+      gap={0}
+      paddingTop={1}
+      paddingBottom={1}
+      paddingLeft={1}
+      paddingRight={1}
+      border={true}
+      customBorderChars={RoundBorder}
+      borderColor={riskColor(risk(), theme)}
+      backgroundColor={theme.backgroundPanel}
+    >
+      <box flexDirection="row" flexShrink={0} alignItems="center" gap={1} paddingBottom={1}>
         <text fg={theme.warning} attributes={TextAttributes.BOLD}>
-          ◤ APPROVAL REQUIRED
+          {facts().title}
         </text>
-        <box flexGrow={1} />
-        <text fg={riskColor(risk(), theme)}>{risk()}</text>
+        <box flexGrow={1} minWidth={1} />
+        <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+          <text fg={riskColor(risk(), theme)} wrapMode="none">{risk()}</text>
+        </box>
       </box>
 
-      <GateRow label="tool" value={snapshot()?.tool} theme={theme} />
-      <Show when={snapshot()?.action}>
-        <GateRow label="action" value={snapshot()?.action} theme={theme} />
-      </Show>
-      <Show when={isCompact()}>
-        <GateRow label="capability" value={snapshot()?.capability} theme={theme} />
-        <GateRow label="policy" value={snapshot()?.policy} theme={theme} />
-        <GateRow label="route" value={snapshot()?.route} theme={theme} />
-      </Show>
-      <Show when={!isCompact() && snapshot()?.capability}>
-        <GateRow label="capability" value={snapshot()?.capability} theme={theme} />
-      </Show>
-      <GateRow label="principal" value={snapshot()?.principal} theme={theme} />
-      <Show when={isCompact()}>
-        <GateRow
-          label="change"
-          value={snapshot()?.change ?? "unavailable · fail-closed"}
-          tone={theme.spineDiffAdd}
-          theme={theme}
-        />
-      </Show>
-      <Show when={isWide() && snapshot()?.arguments?.length}>
-        <GateRow label="args" value={snapshot()!.arguments!.join(" ")} theme={theme} />
-      </Show>
-      <GateRow label="expires" value={snapshot()?.expires ?? "unknown"} theme={theme} />
+      <box flexDirection="column" flexShrink={0} gap={1} paddingBottom={1}>
+        <For each={primaryRows()}>
+          {(row) => (
+            <box flexDirection="row" flexShrink={0} gap={1} minWidth={0}>
+              <For each={row}>
+                {(item) => (
+                  <box
+                    flexShrink={0}
+                    paddingLeft={1}
+                    paddingRight={1}
+                    backgroundColor={theme.backgroundElement}
+                  >
+                    <text wrapMode="none">
+                      <span style={{ fg: theme.spineDiffMuted }}>{item.label} </span>
+                      <span style={{ fg: theme.text }}>{truncate(item.value, 28)}</span>
+                    </text>
+                  </box>
+                )}
+              </For>
+            </box>
+          )}
+        </For>
+      </box>
+
+      <For each={groups().meta}>
+        {(row) => (
+          <GateRow
+            label={row.label}
+            value={row.value}
+            tone={row.label === "change" ? theme.spineDiffAdd : undefined}
+            theme={theme}
+          />
+        )}
+      </For>
       <GateRow label="request" value={shortRequestHash(snapshot())} theme={theme} />
       <Show when={!snapshot()?.available}>
         <text fg={theme.error}>snapshot unavailable · fail-closed</text>

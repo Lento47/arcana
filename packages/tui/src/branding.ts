@@ -4,6 +4,13 @@
  * Single source for the app name, taglines, external links, and the signature
  * glyphs/sigils used across the cyberpunk/arcane redesign. Anything that shows
  * the product name or a brand mark should read from here, not a string literal.
+ *
+ * Voice: the interface lexicon (tool verbs, statuses, placeholders, copy) is
+ * a live bundle. The default is the "arcane" voice; setLexiconVoice("plain")
+ * swaps the exported bindings to plain language. Consumers import the live
+ * names (Lexicon, VerbPool, PLACEHOLDER, ...) and read them at call time, so
+ * the swap takes effect for every subsequent render — call it once at startup
+ * with the resolved config.
  */
 
 export const APP_NAME = "arcana"
@@ -12,7 +19,9 @@ export const APP_NAME_UPPER = "ARCANA"
 /** Short descriptor used after the wordmark / in titles. */
 export const TAGLINE = "arcane terminal"
 /** Decorative line rendered under the launch wordmark. */
-export const WORDMARK_TAGLINE = "« decrypt the arcane »"
+const DEFAULT_WORDMARK_TAGLINE = "« decrypt the arcane »"
+export let WORDMARK_TAGLINE: string = DEFAULT_WORDMARK_TAGLINE
+export const PLAIN_WORDMARK_TAGLINE = "governed autonomy, in your terminal"
 
 /** Abbreviation used in compact spots (e.g. the terminal-title prefix). */
 export const APP_ABBR = "ARC"
@@ -54,7 +63,7 @@ export const AgentSigil = {
  * Arcane verb lexicon — tool action display labels.
  * Used by InlineTool pending= strings in session/index.tsx.
  */
-export const Lexicon = {
+const DEFAULT_LEXICON = {
   think: "Divining",
   thought: "Divined",
   read: "scrying",
@@ -88,8 +97,45 @@ export const Lexicon = {
   },
 } as const
 
+/** Plain-language counterpart of DEFAULT_LEXICON. Same shape, different voice. */
+export const PLAIN_LEXICON = {
+  think: "Thinking",
+  thought: "Thought",
+  read: "reading",
+  write: "writing",
+  edit: "editing",
+  search: "searching",
+  find: "finding",
+  shell: "running",
+  fetch: "fetching",
+  task: "tasking",
+  skill: "using skill",
+  Token: {
+    label: "tokens",
+    labelShort: "tok",
+    meter: "usage",
+    cost: "cost",
+    pool: "pool",
+  },
+  Agent: {
+    primary: "Agent",
+    subagent: "Subagent",
+    all: "Agent",
+    school: "team",
+  },
+  Status: {
+    idle: "idle",
+    busy: "working",
+    retry: "retrying",
+    error: "error",
+    done: "done",
+  },
+} as const
+
+export let Lexicon: typeof DEFAULT_LEXICON | typeof PLAIN_LEXICON = DEFAULT_LEXICON
+
 /** Boot/splash phrase pool — one picked per launch for pre-ready state. */
-export const BOOT_PHRASES = [
+const DEFAULT_BOOT_PHRASES = [
   "decrypting arcane registry…",
   "binding sigils…",
   "aligning ley lines…",
@@ -98,12 +144,28 @@ export const BOOT_PHRASES = [
   "waking familiars…",
 ] as const
 
+export const PLAIN_BOOT_PHRASES = [
+  "starting arcana…",
+  "loading configuration…",
+  "connecting providers…",
+  "preparing workspace…",
+  "loading skills…",
+  "warming up…",
+] as const
+
+export let BOOT_PHRASES: readonly string[] = DEFAULT_BOOT_PHRASES
+
+/** Ready-state label for the boot overlay (voice-aware). */
+const DEFAULT_BOOT_READY = "binding sigils…"
+export let BOOT_READY: string = DEFAULT_BOOT_READY
+export const PLAIN_BOOT_READY = "ready"
+
 /**
  * Prompt placeholder pools (rotating examples).
  * Shared by home + command-spine — pick one at random per session / mode switch.
  * Keep lines short (≤ ~48 chars) so they fit narrow terminals.
  */
-export const PLACEHOLDER = {
+const DEFAULT_PLACEHOLDER = {
   normal: [
     "Speak your intent…",
     "What secrets does this codebase hold?",
@@ -149,22 +211,86 @@ export const PLACEHOLDER = {
   ],
 }
 
+export const PLAIN_PLACEHOLDER: { normal: string[]; shell: string[] } = {
+  normal: [
+    "Ask anything…",
+    "What does this codebase hold?",
+    "Make a change…",
+    "Name the next objective…",
+    "What should we build next?",
+    "Trace a bug to its source…",
+    "Refactor something that bothers you…",
+    "Ask about the project history…",
+    "Ship a small, verifiable change…",
+    "Explain this module…",
+    "Draft a plan before we start…",
+    "Find the smell in this tree…",
+    "Wire up the missing piece…",
+    "Review the last patch carefully…",
+    "Open a path through this maze…",
+    "Turn this idea into a commit…",
+    "Get help on a stuck task…",
+    "Explain what this function does…",
+    "Align types until they compile…",
+    "Carve a cleaner API surface…",
+    "Test the edge cases…",
+    "Document the unwritten rule…",
+    "Cull the dead code gently…",
+    "Turn a todo into a real fix…",
+  ],
+  shell: [
+    "Run a command…",
+    "run a command…",
+    "cat /dev/arcana",
+    "echo $SECRETS",
+    "git status",
+    "git diff --stat",
+    "rg -n 'TODO|FIXME'",
+    "ls -la",
+    "pwd",
+    "bun test",
+    "bun run typecheck",
+    "which arcana",
+    "env | sort",
+    "head -n 40 README.md",
+    "find . -name '*.ts' | head",
+  ],
+}
+
+export let PLACEHOLDER: { normal: string[]; shell: string[] } = DEFAULT_PLACEHOLDER
+
 /** Prompt framing prefix text. */
-export const PROMPT_FRAME = {
+const DEFAULT_PROMPT_FRAME = {
   normal: "Speak your intent…",
   shell: "Inscribe a command…",
 }
 
+export const PLAIN_PROMPT_FRAME: { normal: string; shell: string } = {
+  normal: "Ask anything…",
+  shell: "Run a command…",
+}
+
+export let PROMPT_FRAME: { normal: string; shell: string } = DEFAULT_PROMPT_FRAME
+
 /** Miscellaneous copy strings (toasts, notifications, empty states). */
-export const COPY = {
+const DEFAULT_COPY = {
   inscribedToClipboard: "Inscribed to clipboard",
   riteComplete: "The rite is complete",
   noEchoesFound: "No echoes found",
   chronicleEmpty: "The chronicle is empty",
 } as const
 
+export const PLAIN_COPY = {
+  inscribedToClipboard: "Copied to clipboard",
+  riteComplete: "Done",
+  noEchoesFound: "No matches found",
+  chronicleEmpty: "No sessions yet",
+} as const
+
+export let COPY: typeof DEFAULT_COPY | typeof PLAIN_COPY = DEFAULT_COPY
+
 /** Home idle epigram pool — rotates every ~12s with decrypt animation. */
-export const IDLE_PHRASES = [
+const DEFAULT_IDLE_PHRASES = [
   "the arcane speaks in riddles…",
   "every cipher has its key…",
   "sigils flicker; truths emerge…",
@@ -175,8 +301,21 @@ export const IDLE_PHRASES = [
   "the veil thins at compile time…",
 ] as const
 
+export const PLAIN_IDLE_PHRASES = [
+  "ask me anything…",
+  "ready when you are…",
+  "waiting for your first prompt…",
+  "type /help to see commands…",
+  "the workspace is quiet…",
+  "no task running…",
+  "plan it, then prove it…",
+  "the terminal is listening…",
+] as const
+
+export let IDLE_PHRASES: readonly string[] = DEFAULT_IDLE_PHRASES
+
 /** Verb pools — deterministic per-seed rotation avoids repetitive labels across sessions. */
-export const VerbPool = {
+const DEFAULT_VERB_POOL = {
   thinking: [
     "Divining", "Scrying", "Channeling", "Unraveling",
     "Decrypting", "Interpreting", "Decoding", "Translating",
@@ -202,6 +341,69 @@ export const VerbPool = {
     todo: ["Inscribing", "Tracking", "Recording", "Logging", "Listing"] as const,
     question: ["Divining", "Asking", "Inquiring", "Querying", "Probing"] as const,
   },
+} as const
+
+/** Plain-language counterpart of DEFAULT_VERB_POOL. Same shape, different voice. */
+export const PLAIN_VERB_POOL = {
+  thinking: [
+    "Thinking", "Reasoning", "Analyzing", "Reviewing",
+    "Reading", "Parsing", "Tracing", "Exploring",
+    "Inspecting", "Examining", "Investigating",
+    "Considering", "Evaluating", "Deciding", "Planning",
+  ] as const,
+  thought: [
+    "Thought", "Reasoned", "Analyzed", "Reviewed",
+    "Read", "Parsed", "Traced", "Explored",
+    "Inspected", "Examined", "Investigated",
+    "Considered", "Evaluated", "Decided", "Planned",
+  ] as const,
+  pending: {
+    search: ["Searching", "Scanning", "Finding", "Looking", "Querying", "Matching", "Hunting"] as const,
+    read: ["Reading", "Opening", "Loading", "Viewing", "Inspecting"] as const,
+    write: ["Writing", "Saving", "Creating", "Updating", "Editing"] as const,
+    edit: ["Editing", "Modifying", "Updating", "Changing", "Rewriting"] as const,
+    fetch: ["Fetching", "Downloading", "Loading", "Retrieving", "Calling"] as const,
+    shell: ["Running", "Executing", "Calling", "Starting", "Triggering"] as const,
+    task: ["Starting task", "Running task", "Delegating", "Spawning", "Dispatching"] as const,
+    skill: ["Loading skill", "Using skill", "Attaching", "Loading", "Syncing"] as const,
+    generic: ["Running", "Working", "Processing", "Executing", "Handling"] as const,
+    todo: ["Updating todos", "Tracking", "Recording", "Logging", "Listing"] as const,
+    question: ["Asking", "Prompting", "Inquiring", "Querying", "Checking"] as const,
+  },
+} as const
+
+export let VerbPool: typeof DEFAULT_VERB_POOL | typeof PLAIN_VERB_POOL = DEFAULT_VERB_POOL
+
+/** Interface voice selector. "arcane" is the default occult voice; "plain" is plain language. */
+export type LexiconVoice = "arcane" | "plain"
+
+/**
+ * Swap the live branding bindings to the requested voice. Call once at
+ * startup with the resolved config — every consumer reads the bindings at
+ * call time, so the new voice applies to all subsequent renders.
+ */
+export function setLexiconVoice(voice: LexiconVoice) {
+  if (voice === "plain") {
+    WORDMARK_TAGLINE = PLAIN_WORDMARK_TAGLINE
+    Lexicon = PLAIN_LEXICON
+    BOOT_PHRASES = PLAIN_BOOT_PHRASES
+    BOOT_READY = PLAIN_BOOT_READY
+    PLACEHOLDER = PLAIN_PLACEHOLDER
+    PROMPT_FRAME = PLAIN_PROMPT_FRAME
+    COPY = PLAIN_COPY
+    IDLE_PHRASES = PLAIN_IDLE_PHRASES
+    VerbPool = PLAIN_VERB_POOL
+    return
+  }
+  WORDMARK_TAGLINE = DEFAULT_WORDMARK_TAGLINE
+  Lexicon = DEFAULT_LEXICON
+  BOOT_PHRASES = DEFAULT_BOOT_PHRASES
+  BOOT_READY = DEFAULT_BOOT_READY
+  PLACEHOLDER = DEFAULT_PLACEHOLDER
+  PROMPT_FRAME = DEFAULT_PROMPT_FRAME
+  COPY = DEFAULT_COPY
+  IDLE_PHRASES = DEFAULT_IDLE_PHRASES
+  VerbPool = DEFAULT_VERB_POOL
 }
 
 /** Glyph pool for error "unencrypt" glitch effect — heavier, chaotic blocks. */

@@ -208,6 +208,33 @@ export const Info = Schema.Struct({
     description:
       "Opt-in @arcana/ml signal engine for the TUI: quality gate + silent revision. Equivalent to ARCANA_ML_RUNTIME=1.",
   }),
+  retention: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean).annotate({
+        description: "Enable the session retention sweep (default: false — opt-in, nothing is ever deleted without this)",
+      }),
+      keep_days: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "Delete sessions (and cascade messages/parts) not touched for this many days. 0 disables the age rule (default: 0).",
+      }),
+      max_sessions: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "Keep at most this many most-recent sessions per project directory; older ones beyond the cap are deleted. 0 disables the count rule (default: 0).",
+      }),
+      empty_days: Schema.optional(NonNegativeInt).annotate({
+        description:
+          "Delete empty sessions (no messages/parts) older than this many days. 0 disables the empty rule (default: 0).",
+      }),
+      vacuum: Schema.optional(Schema.Boolean).annotate({
+        description: "Run wal_checkpoint(TRUNCATE) + VACUUM after a sweep that deleted anything (default: false)",
+      }),
+      interval_hours: Schema.optional(NonNegativeInt).annotate({
+        description: "Hours between automatic sweeps (default: 24; 0 = run once at engine start)",
+      }),
+    }),
+  ).annotate({
+    description: "Session retention policy: prune old / excess / empty sessions so the store does not grow forever",
+  }),
 }).annotate({ identifier: "Config" })
 
 export type Info = DeepMutable<Schema.Schema.Type<typeof Info>>

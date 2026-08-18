@@ -16,6 +16,20 @@ export function reasoningSummary(text: string) {
   return { title: match[1].trim(), body: content.slice(match[0].length).trimEnd() }
 }
 
+/** Classify a thinking block for header chrome (verb + live vs complete). */
+export function classifyThinking(text: string, streaming?: boolean) {
+  const { title, body } = reasoningSummary(text)
+  const live = streaming === true
+  return {
+    title,
+    body,
+    streaming: live,
+    verb: live ? "Thinking" : "Thought",
+    hasBody: body.trim().length > 0,
+    cue: live ? "live" : "done",
+  }
+}
+
 export function isThinkingMode(value: unknown): value is ThinkingMode {
   return typeof value === "string" && (MODES as readonly string[]).includes(value)
 }

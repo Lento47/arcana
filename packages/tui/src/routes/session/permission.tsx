@@ -91,6 +91,58 @@ function EditBody(props: { request: PermissionRequest }) {
   )
 }
 
+function inspectFromMetadata(metadata: PermissionRequest["metadata"] | undefined): {
+  verdict: string
+  risk: string
+  lines: string[]
+} | undefined {
+  const action = metadata && typeof metadata === "object"
+    ? (metadata as { engine_action?: { inspect?: unknown } }).engine_action
+    : undefined
+  const inspect = action?.inspect
+  if (!inspect || typeof inspect !== "object") return undefined
+  const record = inspect as {
+    verdict?: unknown
+    risk?: unknown
+    findings?: unknown
+  }
+  const findings = Array.isArray(record.findings) ? record.findings : []
+  const lines = findings.flatMap((item) => {
+    if (!item || typeof item !== "object") return []
+    const row = item as { severity?: unknown; title?: unknown; detail?: unknown }
+    const title = typeof row.title === "string" ? row.title : ""
+    const detail = typeof row.detail === "string" ? row.detail : ""
+    const severity = typeof row.severity === "string" ? row.severity : ""
+    if (!title) return []
+    return [`${severity} ${title}${detail ? ` — ${detail}` : ""}`.trim()]
+  })
+  if (lines.length === 0 && typeof record.verdict !== "string") return undefined
+  return {
+    verdict: typeof record.verdict === "string" ? record.verdict : "review",
+    risk: typeof record.risk === "string" ? record.risk : "high",
+    lines,
+  }
+}
+
+function InspectBody(props: { request: PermissionRequest }) {
+  const { theme } = useTheme()
+  const inspect = inspectFromMetadata(props.request.metadata)
+  return (
+    <Show when={inspect}>
+      {(report) => (
+        <box paddingLeft={1} paddingTop={1} flexDirection="column" gap={0}>
+          <text fg={report().verdict === "block" ? theme.error : theme.warning}>
+            {`inspect ${report().verdict} · ${report().risk}`}
+          </text>
+          <For each={report().lines}>
+            {(line) => <text fg={theme.textMuted} wrapMode="word">{line}</text>}
+          </For>
+        </box>
+      )}
+    </Show>
+  )
+}
+
 function TextBody(props: { title: string; description?: string; icon?: string }) {
   const { theme } = useTheme()
   return (
@@ -415,7 +467,12 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
             <Prompt
               title="Action gate"
               header={header()}
-              body={current.body}
+              body={
+                <box flexDirection="column" minWidth={0}>
+                  {current.body}
+                  <InspectBody request={props.request} />
+                </box>
+              }
               options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
               // Esc is intentionally NOT mapped on the gate: an accidental
               // Escape must never reject/decline the request. The operator

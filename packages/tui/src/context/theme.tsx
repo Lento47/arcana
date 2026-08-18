@@ -23,6 +23,7 @@ import { createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 import { useKV } from "./kv"
+import { useToast } from "../ui/toast"
 import { useTuiConfig } from "../config"
 import { Global } from "@arcana/core/global"
 import { Glob } from "@arcana/core/util/glob"
@@ -110,6 +111,7 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
     const renderer = useRenderer()
     const config = useTuiConfig()
     const kv = useKV()
+    const toast = useToast()
     const themes = props.source ?? themeSource
     const pick = (value: unknown) => {
       if (value === "dark" || value === "light") return value
@@ -134,6 +136,7 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
       if (theme) setStore("active", theme)
     })
 
+    let customThemeFailureToastShown = false
     function syncCustomThemes() {
       return themes
         .discover()
@@ -145,7 +148,13 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
             }, {}),
           )
         })
-        .catch(() => setStore("active", "arcana"))
+        .catch(() => {
+          setStore("active", "arcana")
+          if (!customThemeFailureToastShown) {
+            customThemeFailureToastShown = true
+            toast.show({ message: "Custom theme discovery failed — switched to arcana", variant: "warning" })
+          }
+        })
     }
 
     onMount(() => {
@@ -156,6 +165,7 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
 
     let systemThemeSignature: string | undefined
     let systemThemeMode: "dark" | "light" | undefined
+    let systemThemeFailureToastShown = false
     let hasResolvedSystemTheme = false
     function resolveSystemTheme(mode: "dark" | "light" = store.mode) {
       return renderer
@@ -165,6 +175,10 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
             if (hasResolvedSystemTheme) return
             setSystemTheme(undefined)
             if (store.active === "system") setStore("active", "arcana")
+            if (!systemThemeFailureToastShown) {
+              systemThemeFailureToastShown = true
+              toast.show({ message: "System theme detection failed — switched to arcana", variant: "warning" })
+            }
             return
           }
           const next = store.lock ?? terminalMode(colors) ?? mode
@@ -180,6 +194,10 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
           if (hasResolvedSystemTheme) return
           setSystemTheme(undefined)
           if (store.active === "system") setStore("active", "arcana")
+          if (!systemThemeFailureToastShown) {
+            systemThemeFailureToastShown = true
+            toast.show({ message: "System theme detection failed — switched to arcana", variant: "warning" })
+          }
         })
     }
 

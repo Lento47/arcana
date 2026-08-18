@@ -2,6 +2,7 @@
 // Copyright (c) 2026 arcana contributors
 
 import type { EngineActionKind, RequiredControl, RiskAssessment, RiskLevel } from "./action"
+import { commandLooksLikeInstall } from "./install"
 
 export type RiskInput = {
   kind: EngineActionKind
@@ -18,13 +19,6 @@ const destructiveShellPatterns = [
   /\bchown\s+-R\b/,
   /\bdd\s+if=/,
   /\bmkfs\b/,
-]
-
-const packageManagerPatterns = [
-  /\bnpm\s+(install|update|audit\s+fix)\b/,
-  /\bbun\s+(add|install|update)\b/,
-  /\byarn\s+(add|install|upgrade)\b/,
-  /\bpnpm\s+(add|install|update)\b/,
 ]
 
 const networkPatterns = [
@@ -77,7 +71,7 @@ export function assessActionRisk(input: RiskInput): RiskAssessment {
       )
     }
 
-    if (packageManagerPatterns.some((pattern) => pattern.test(body))) {
+    if (commandLooksLikeInstall(body)) {
       return result(
         "high",
         ["Shell command changes dependency state or package manager outputs."],

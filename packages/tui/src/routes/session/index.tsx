@@ -21,6 +21,7 @@ import { recordTuiFeedback } from "../../feedback"
 import { Flag } from "@arcana/core/flag/flag"
 import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import { isDefaultTitle, titleFromUserText } from "../../util/session"
+import { framePadding, isDensity } from "../../shell/command-spine/spine-types"
 import { useRoute, useRouteData } from "../../context/route"
 import { Lexicon, Glyph, AgentSigil, VerbPool } from "../../branding"
 import { useProject } from "../../context/project"
@@ -76,6 +77,7 @@ import {
   allOptimisticMessages,
   clearOptimisticMessages,
   filterCoveredOptimistics,
+  mergeOptimisticMessages,
   realUserMessageHasText,
 } from "../../component/prompt/optimistic"
 import { useEpilogue } from "../../context/epilogue"
@@ -225,6 +227,13 @@ export function Session() {
   const promptRef = usePromptRef()
   const session = createMemo(() => sync.session.get(route.sessionID))
 
+  // Density (compact/cozy/spacious): the frame chrome must match what the
+  // spine's viewport math subtracts (see frameChrome in spine-types).
+  const density = createMemo(() => {
+    const stored = kv.get("density")
+    return isDensity(stored) ? stored : "cozy"
+  })
+
   // Border pulse on session transition — flash accent, then fade to subtle.
   // Resting color is `borderSubtle`; pulse to `accent` on every sessionID change.
   const [transBorder, setTransBorder] = createSignal(theme.borderSubtle)
@@ -251,7 +260,7 @@ export function Session() {
     const stored = sync.data.message[route.sessionID] ?? []
     const allOpt = allOptimisticMessages()
     const opt = allOpt.filter((m) => m.sessionID === route.sessionID)
-    if (opt.length === 0) return stored
+    if (opt.length === 0) return mergeOptimisticMessages(stored, []) as typeof stored
 
     // Grok-style: keep local user echo until real TEXT parts exist.
     // SSE often creates the user Message before any TextPart — dropping on
@@ -269,26 +278,28 @@ export function Session() {
     }
 
     const remaining = filterCoveredOptimistics(opt, realUserTexts)
-    // GC: when everything is covered, clear optimistics for this session
-    if (remaining.length === 0 && opt.length > 0) {
-      // Defer so we don't setState during this memo's pure computation.
-      queueMicrotask(() => clearOptimisticMessages(route.sessionID))
-      return stored
+    // Always linearize. The store is id-sorted; walking it as a transcript
+    // puts thoughts and later you-rows in the wrong turn after the echo drops.
+    return mergeOptimisticMessages(stored, remaining) as typeof stored
+  })
+  createEffect(() => {
+    const stored = sync.data.message[route.sessionID] ?? []
+    const opt = allOptimisticMessages().filter((m) => m.sessionID === route.sessionID)
+    if (opt.length === 0) return
+    const realUserTexts: string[] = []
+    for (const m of stored) {
+      if (m.role !== "user" || m.id.startsWith("optimistic-")) continue
+      const parts = sync.data.part[m.id] ?? []
+      if (!realUserMessageHasText(m, parts)) continue
+      for (const p of parts) {
+        if (p.type === "text" && typeof (p as TextPart).text === "string" && (p as TextPart).text.trim()) {
+          realUserTexts.push((p as TextPart).text)
+        }
+      }
     }
-    if (remaining.length === 0) return stored
-
-    // Proxies carry `text` so mapper/getParts can render even without parts.
-    const optMessages: any[] = remaining.map((o) => ({
-      id: o.id,
-      sessionID: o.sessionID,
-      role: "user" as const,
-      time: { created: o.timestamp },
-      agent: o.agent,
-      model: o.model,
-      // Defense for mapper if getParts is empty
-      text: o.text,
-    }))
-    return [...optMessages, ...stored]
+    if (filterCoveredOptimistics(opt, realUserTexts).length === 0) {
+      clearOptimisticMessages(route.sessionID)
+    }
   })
   const foregroundTasks = createMemo(() =>
     messages().flatMap((message) =>
@@ -1793,9 +1804,9 @@ export function Session() {
           <box
             flexGrow={1}
             minHeight={0}
-            paddingBottom={1}
-            paddingLeft={2}
-            paddingRight={2}
+            paddingBottom={density() === "compact" ? 0 : 1}
+            paddingLeft={framePadding(density())}
+            paddingRight={framePadding(density())}
             gap={1}
             border={["left", "right"]}
             borderColor={transBorder()}

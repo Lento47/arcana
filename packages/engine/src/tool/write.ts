@@ -14,6 +14,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { trimDiff } from "./edit"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import * as Bom from "@/util/bom"
+import { isDependencyManifest } from "@/execution/install"
 
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
 
@@ -64,10 +65,11 @@ export const WriteTool = Tool.define(
           const contentNew = next.text
 
           const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, contentNew))
+          const relative = path.relative(instance.worktree, filepath)
           yield* ctx.ask({
             permission: "edit",
-            patterns: [path.relative(instance.worktree, filepath)],
-            always: ["*"],
+            patterns: [relative],
+            always: isDependencyManifest(filepath) ? [relative] : ["*"],
             metadata: {
               filepath,
               diff,

@@ -6,6 +6,7 @@ import type { JSX } from "solid-js"
 import { createTuiResolvedConfig } from "../../fixture/tui-runtime"
 import { KVProvider } from "../../../src/context/kv"
 import { ThemeProvider } from "../../../src/context/theme"
+import { ToastProvider } from "../../../src/ui/toast"
 import { TuiConfigProvider } from "../../../src/config"
 import { DiffViewerFileTree } from "../../../src/feature-plugins/system/diff-viewer-file-tree"
 import { TestTuiContexts } from "../../fixture/tui-environment"
@@ -183,7 +184,9 @@ function withTheme(component: () => JSX.Element) {
     <TestTuiContexts>
       <TuiConfigProvider config={createTuiResolvedConfig()}>
         <KVProvider>
-          <ThemeProvider mode="dark">{component()}</ThemeProvider>
+          <ToastProvider>
+            <ThemeProvider mode="dark">{component()}</ThemeProvider>
+          </ToastProvider>
         </KVProvider>
       </TuiConfigProvider>
     </TestTuiContexts>

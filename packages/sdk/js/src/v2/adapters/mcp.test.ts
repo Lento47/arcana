@@ -37,6 +37,7 @@ describe("MCP governed tool adapter (E6)", () => {
           expect(request.provenance).toContain("MCP_DESCRIPTION")
           return { decision: "ALLOW" }
         },
+        executeExact: async (_request, execute) => execute(),
       },
     )
     const result = await tool.execute({ path: "/workspace/a.ts" })

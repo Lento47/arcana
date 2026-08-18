@@ -293,6 +293,7 @@ const commandLoaders = {
   loop: () => import("./cli/cmd/loop").then((m) => m.LoopCommand),
   daemon: () => import("./cli/cmd/daemon").then((m) => m.DaemonCommand),
   theme: () => import("./cli/cmd/theme").then((m) => m.ThemeCommand),
+  lexicon: () => import("./cli/cmd/lexicon").then((m) => m.LexiconCommand),
   learn: () => import("./cli/cmd/learn").then((m) => m.LearnCommand),
   config: () => import("./cli/cmd/config").then((m) => m.ConfigCommand),
   history: () => import("./cli/cmd/history").then((m) => m.HistoryCommand),

@@ -498,6 +498,47 @@ noLLMServer.instance(
   { config: cfg },
 )
 
+it.instance("a noReply prompt titles a default-titled session from the first user text", () =>
+  Effect.gen(function* () {
+    // The run loop never reaches its step-1 title path under noReply, so the
+    // title must be derived the moment the first user message is durable —
+    // otherwise the session stays "New session - <ISO>" (shown as Untitled).
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({})
+    expect(Session.isDefaultTitle(chat.title)).toBe(true)
+
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "Refactor the auth middleware" }],
+    })
+
+    const after = yield* sessions.get(chat.id).pipe(Effect.orDie)
+    expect(Session.isDefaultTitle(after.title)).toBe(false)
+    expect(after.title).toBe("Refactor the auth middleware")
+  }),
+)
+
+it.instance("a custom title is never clobbered by the heuristic title", () =>
+  Effect.gen(function* () {
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text", text: "Refactor the auth middleware" }],
+    })
+
+    const after = yield* sessions.get(chat.id).pipe(Effect.orDie)
+    expect(after.title).toBe("Pinned")
+  }),
+)
+
 it.instance("loop exits without an LLM request for interrupted orphan tool calls", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)

@@ -244,6 +244,55 @@ export function spineOuterPadding(layout: SpineLayout) {
 }
 
 /**
+ * Session route frame around the spine: paddingLeft 2 + paddingRight 2
+ * + Yoga border 1 on left and right. OpenTUI setBorder(..., 1) per side.
+ * Subtract this from terminal width before spineProseWidth — do not also
+ * remove the session pad/border or wrap will undershoot twice.
+ */
+export const SESSION_FRAME_CHROME = 6
+
+/**
+ * User density preference: how much chrome the session frame and spine use.
+ * Stored in KV (`density`) like theme/animations so it persists per machine.
+ * `cozy` is the default (2), `compact` trims to 1, `spacious` adds to 3.
+ */
+export type Density = "compact" | "cozy" | "spacious"
+
+export const DENSITIES: readonly Density[] = ["compact", "cozy", "spacious"] as const
+
+export function isDensity(value: unknown): value is Density {
+  return typeof value === "string" && (DENSITIES as readonly string[]).includes(value)
+}
+
+/** Human label for the slash-command title (compact → cozy → spacious). */
+export function densityName(value: unknown): string {
+  return isDensity(value) ? value : "cozy"
+}
+
+/** Cycle order matches the slash command: compact → cozy → spacious → … */
+export function nextDensity(current: Density): Density {
+  const idx = DENSITIES.indexOf(current)
+  return DENSITIES[(idx + 1) % DENSITIES.length] ?? "cozy"
+}
+
+/** Per-side horizontal padding of the session frame for a density. */
+export function framePadding(density?: Density): number {
+  if (density === "compact") return 1
+  if (density === "spacious") return 3
+  return 2
+}
+
+/** Total chrome (padding + borders) the frame consumes for a density. */
+export function frameChrome(density?: Density): number {
+  return framePadding(density) * 2 + 2
+}
+
+export function spineViewportWidth(terminalWidth: number, chrome: number = SESSION_FRAME_CHROME): number {
+  const term = Number.isFinite(terminalWidth) ? Math.floor(terminalWidth) : 1
+  return Math.max(1, term - chrome)
+}
+
+/**
  * Left meta column: step index only.
  * Duration lives on the node header (not a fixed gutter tax).
  * Wall-clock is not shown on the spine row.

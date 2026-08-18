@@ -1,10 +1,14 @@
 import { For, Show, createMemo } from "solid-js"
-import { TextAttributes } from "@opentui/core"
+import type { RGBA } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
-import { spineOuterPadding, type SpineLayout, type StatusSegment, statusToneColor } from "./spine-types"
+import { spineOuterPadding, statusToneColor, type SpineLayout, type StatusSegment, type StatusTone } from "./spine-types"
 import { truncate } from "../../util/locale"
+import { useTuiConfig } from "../../config"
 import type { SpineTrustStatus } from "./spine-trust"
+import type { SessionCharter, SessionCharterChip, SessionCharterTone, HeaderStatusItem } from "./session-charter"
+import { buildHeaderStatusItems, fitHeaderStatusItems } from "./session-charter"
+import { applyConfiguredSegments } from "./spine-segments"
 
 // Truncation: shared display-width-aware helper from util/locale (audit T5/O6).
 
@@ -27,25 +31,6 @@ function valueLimit(segment: StatusSegment, layout: SpineLayout): number {
   return layout === "wide" ? 16 : 12
 }
 
-function SegmentView(props: {
-  segment: StatusSegment
-  divider?: boolean
-  theme: Theme
-  layout: SpineLayout
-}) {
-  const color = statusToneColor(props.segment.tone, props.theme)
-  const value = createMemo(() => truncate(props.segment.value, valueLimit(props.segment, props.layout)))
-
-  return (
-    <>
-      <Show when={props.divider}>
-        <text fg={props.theme.borderSubtle}> · </text>
-      </Show>
-      <text fg={color}>{value()}</text>
-    </>
-  )
-}
-
 function prioritizeSegments(segments: StatusSegment[], layout: SpineLayout): StatusSegment[] {
   const primary = segments.filter((s) => s.key !== "path" && s.key !== "tok" && s.key !== "proj" && s.key !== "mode")
   const order = new Map(["branch", "agent", "model", "ctx", "state", "session"].map((key, index) => [key, index]))
@@ -60,149 +45,164 @@ function prioritizeSegments(segments: StatusSegment[], layout: SpineLayout): Sta
 }
 
 function trustWord(trust: SpineTrustStatus): string {
-  if (trust.state === "disconnected") return "DISCONNECTED"
-  if (trust.state === "degraded") return "DEGRADED"
-  return "LIVE"
+  if (trust.state === "disconnected") return "offline"
+  if (trust.state === "degraded") return "degraded"
+  return "live"
 }
 
-function trustProof(trust: SpineTrustStatus): string {
-  if (!trust.proofLevel) return "PROOF UNVERIFIED"
-  return `PROOF ${trust.proofLevel}`
+function charterToneColor(tone: SessionCharterTone, theme: Theme) {
+  if (tone === "ok") return theme.spineOk
+  if (tone === "error") return theme.error
+  if (tone === "warn") return theme.warning
+  return theme.textMuted
 }
 
-function TrustBanner(props: { trust: SpineTrustStatus; pad: number; theme: Theme; layout: SpineLayout }) {
-  const t = props.trust
-  const healthy = t.state === "healthy"
-  const gap = t.eventGap ? `EVENT GAP ${t.eventGap.from}–${t.eventGap.to} · RESYNC REQUIRED` : undefined
+function statusFg(tone: SessionCharterTone, theme: Theme) {
+  return charterToneColor(tone, theme)
+}
 
-  const lineOne = () => {
-    const parts = [
-      trustWord(t),
-      t.trace === "UNAVAILABLE" ? "UNGOVERNED" : "GOVERNED",
-      gap ?? (t.trace === "COMPLETE" ? "TRACE COMPLETE" : `TRACE ${t.trace}`),
-      trustProof(t),
-    ]
-    return parts.join(" · ")
-  }
+function segmentFg(tone: StatusTone, theme: Theme): RGBA {
+  return statusToneColor(tone, theme)
+}
 
-  const lineTwo = () => {
-    if (healthy) {
-      const pending = t.pendingApprovals === 1 ? "1 pending approval" : `${t.pendingApprovals} pending approvals`
-      return `workspace trusted · ${pending}`
-    }
-    const reason =
-      gap
-        ? "event gap"
-        : t.trace === "DEGRADED" || t.trace === "UNAVAILABLE"
-          ? `trace ${t.trace.toLowerCase()}`
-          : t.integrity === "INVALID" || t.integrity === "UNVERIFIED"
-            ? `proof ${t.integrity.toLowerCase()}`
-            : "connection degraded"
-    return `authority actions disabled · ${reason}`
-  }
-
+function StatusLine(props: {
+  items: { key: string; label: string; hint?: string; tone: SessionCharterTone; fg?: RGBA }[]
+  theme: Theme
+  separator: string
+}) {
   return (
-    <box flexDirection="column" flexShrink={0}>
-      <box flexDirection="row" paddingLeft={props.pad} paddingRight={props.pad}>
-        <text fg={props.theme.spineBrand} attributes={TextAttributes.BOLD}>A R C A N A</text>
-        <text fg={healthy ? props.theme.spineOk : props.theme.error}>
-          {"  "}{lineOne()}
-        </text>
-      </box>
-      <box flexDirection="row" paddingLeft={props.pad} paddingRight={props.pad}>
-        <text fg={healthy ? props.theme.spineContext : props.theme.warning}>
-          {lineTwo()}
-        </text>
-      </box>
-    </box>
+    <text wrapMode="none">
+      <For each={props.items}>
+        {(item, index) => (
+          <>
+            <Show when={index() > 0}>
+              <span style={{ fg: props.theme.spineDiffMuted }}>{props.separator}</span>
+            </Show>
+            <Show when={item.hint}>
+              <span style={{ fg: props.theme.spineDiffMuted }}>{item.hint} </span>
+            </Show>
+            <span style={{ fg: item.fg ?? statusFg(item.tone, props.theme) }}>{item.label}</span>
+          </>
+        )}
+      </For>
+    </text>
   )
 }
 
 export function SpineHeader(props: {
   layout: SpineLayout
+  /** Inner spine width (terminal minus session frame). Used to drop status items. */
+  contentWidth?: number
   segments: StatusSegment[]
   session: () => { id: string; title?: string } | undefined
   /** PR6: trust-first runtime status (connection, trace, proof, approvals). */
   trust?: SpineTrustStatus
+  /** Session contract + proof chips (not timeline rows). */
+  charter?: SessionCharter
+  /** Governed-action tally — header only, not a chat row. */
+  governed?: SessionCharterChip
 }) {
   const { theme } = useTheme()
+  const tuiConfig = useTuiConfig()
   const pad = createMemo(() => spineOuterPadding(props.layout))
   const isWide = createMemo(() => props.layout === "wide")
   const isMinimal = createMemo(() => props.layout === "minimal")
   const isCompact = createMemo(() => props.layout === "compact")
   const showBrand = createMemo(() => !isMinimal())
-  const segments = createMemo(() => prioritizeSegments(props.segments, props.layout))
+  // Config-driven header: when status_segments is set, show exactly those
+  // segments in the user's order (dropping unselected ones); otherwise the
+  // layout-based auto priority applies. Governance/trust items always stay.
+  const configuredSegments = createMemo(() =>
+    applyConfiguredSegments(props.segments, tuiConfig.status_segments),
+  )
+  const segments = createMemo(() =>
+    configuredSegments() ?? prioritizeSegments(props.segments, props.layout),
+  )
   const pathSegment = createMemo(() => props.segments.find((segment) => segment.key === "path"))
-  const showPath = createMemo(() => !!pathSegment() && (isWide() || isCompact()))
+  // With a configured segment list, the user decides path placement; the
+  // auto wide/compact path block only applies to the unconfigured layout.
+  const showPath = createMemo(
+    () => !configuredSegments() && !!pathSegment() && (isWide() || isCompact()),
+  )
   const trust = createMemo(() => props.trust)
-
-  const SegmentList = () => (
-    <box flexDirection="row" minWidth={0} overflow="hidden">
-      <For each={segments()}>
-        {(seg, i) => <SegmentView segment={seg} divider={i() > 0} theme={theme} layout={props.layout} />}
-      </For>
-    </box>
-  )
-
-  const PathLine = () => (
-    <Show when={showPath()}>
-      <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()}>
-        <Show when={isWide()}>
-          <box flexGrow={1} />
-        </Show>
-        <text fg={theme.spineContext}>
-          {truncate(pathSegment()!.value, valueLimit(pathSegment()!, props.layout))}
-        </text>
-      </box>
-    </Show>
-  )
-
-  // Tight header: no blank row above brand; one separator only when context rows exist.
-  const hasContext = createMemo(() => segments().length > 0 || showPath())
+  const statusItems = createMemo(() => {
+    const t = trust()
+    if (!t) return []
+    return buildHeaderStatusItems({
+      live: trustWord(t),
+      liveTone: t.state === "healthy" ? "ok" : t.state === "disconnected" ? "muted" : "error",
+      charter: props.charter,
+      proofFallback: t.proofLevel
+        ? `${t.proofLevel} ${(t.integrity ?? "unverified").toLowerCase()}`
+        : undefined,
+      governed: props.governed,
+      pending: t.pendingApprovals,
+    })
+  })
+  const lineItems = createMemo(() => {
+    const items: (HeaderStatusItem & { hint?: string; fg?: RGBA })[] = [...statusItems()]
+    for (const segment of segments()) {
+      if (segment.key === "state") continue
+      if (items.some((item) => item.key === segment.key)) continue
+      items.push({
+        key: segment.key,
+        hint: segment.label,
+        label: truncate(segment.value, valueLimit(segment, props.layout)),
+        tone: "muted",
+        fg: segmentFg(segment.tone, theme),
+      })
+    }
+    if (showPath() && pathSegment()) {
+      items.push({
+        key: "path",
+        hint: pathSegment()!.label,
+        label: truncate(pathSegment()!.value, valueLimit(pathSegment()!, props.layout)),
+        tone: "muted",
+        fg: theme.textMuted,
+      })
+    }
+    return items
+  })
+  const statusBudget = createMemo(() => {
+    const inner = props.contentWidth
+    if (typeof inner !== "number" || !Number.isFinite(inner)) {
+      return Number.POSITIVE_INFINITY
+    }
+    const brand = showBrand() ? 8 : 0
+    const pads = pad() * 2
+    return Math.max(1, Math.floor(inner) - brand - pads)
+  })
+  const visibleItems = createMemo(() => fitHeaderStatusItems(lineItems(), statusBudget()))
+  const lockReason = createMemo(() => {
+    const t = trust()
+    if (!t || t.state === "healthy") return ""
+    if (t.eventGap) return `locked | gap ${t.eventGap.from}–${t.eventGap.to}`
+    if (t.trace === "DEGRADED" || t.trace === "UNAVAILABLE") return `locked | trace ${t.trace.toLowerCase()}`
+    if (t.integrity === "INVALID" || t.integrity === "UNVERIFIED") return `locked | proof ${t.integrity.toLowerCase()}`
+    return "locked"
+  })
 
   return (
     <box flexDirection="column" flexShrink={0}>
-      <Show when={trust()}>
-        {(t) => (
-          <>
-            <TrustBanner trust={t()} pad={pad()} theme={theme} layout={props.layout} />
-            <Show when={hasContext()}>
-              <box height={1} />
-            </Show>
-          </>
-        )}
-      </Show>
-      <Show
-        when={isWide()}
-        fallback={
-          <>
-            <Show when={showBrand()}>
-              <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()}>
-                <text fg={theme.spineBrand}>A R C A N A</text>
-              </box>
-              <box border={["bottom"]} borderColor={theme.spineBrand} />
-            </Show>
-            <Show when={segments().length > 0}>
-              <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()}>
-                <SegmentList />
-              </box>
-            </Show>
-            <PathLine />
-          </>
-        }
-      >
-        <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()}>
-          <text fg={theme.spineBrand}>A R C A N A</text>
-          <box flexGrow={1} />
-          <Show when={segments().length > 0}>
-            <SegmentList />
+      <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()} minWidth={0} alignItems="flex-start">
+        <Show when={showBrand()}>
+          <box flexShrink={0} paddingRight={2}>
+            <text fg={theme.spineBrand} wrapMode="none">
+              ARCANA
+            </text>
+          </box>
+        </Show>
+        <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
+          <StatusLine items={visibleItems()} theme={theme} separator={tuiConfig.status_separator} />
+          <Show when={lockReason()}>
+            <text fg={theme.warning} wrapMode="word">
+              {lockReason()}
+            </text>
           </Show>
         </box>
-        <PathLine />
-      </Show>
-      <Show when={hasContext() || showBrand()}>
-        <box height={1} />
-        <box border={["bottom"]} borderColor={theme.borderSubtle} marginBottom={1} />
+      </box>
+      <Show when={showBrand() || visibleItems().length > 0 || lockReason()}>
+        <box border={["bottom"]} borderColor={theme.borderSubtle} marginTop={1} marginBottom={1} />
       </Show>
     </box>
   )

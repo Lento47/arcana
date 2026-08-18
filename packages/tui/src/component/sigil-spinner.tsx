@@ -2,6 +2,7 @@ import { createEffect, createSignal, onCleanup, Show } from "solid-js"
 import type { JSX } from "@opentui/solid"
 import type { RGBA } from "@opentui/core"
 import { useKV } from "../context/kv"
+import { isSpinnerStyle, SIGIL_FRAMES, spinnerFrames } from "../util/spinner-style"
 
 // A single rotating arcane sigil — the pentagram cycling through its
 // orientations (point-up → interlaced → inverted → interlaced). Reads as one
@@ -21,8 +22,14 @@ export function SigilSpinner(props: {
   interval?: number
 }) {
   const kv = useKV()
-  const frames = () => props.frames ?? SIGIL
-  const animate = () => kv.get("animations_enabled", true)
+  // An explicit spinner_style overrides the sigil default (braille, dots, …);
+  // unset keeps the arcane sigil this component is named for.
+  const style = () => {
+    const stored = kv.get("spinner_style")
+    return isSpinnerStyle(stored) ? stored : undefined
+  }
+  const frames = () => props.frames ?? (style() === undefined ? SIGIL : spinnerFrames(style()!))
+  const animate = () => kv.get("animations_enabled", true) && style() !== "none"
   const [i, setI] = createSignal(0)
 
   createEffect(() => {

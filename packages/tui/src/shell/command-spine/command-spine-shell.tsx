@@ -4,8 +4,10 @@ import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { useTheme } from "../../context/theme"
+import { useKV } from "../../context/kv"
 import type { ShellProps } from "../types"
 import type { SpineEntry } from "./spine-types"
+import { frameChrome, isDensity, spineViewportWidth } from "./spine-types"
 import { useSpineLayout } from "./use-spine-layout"
 import { useSpineProjection } from "./use-spine-projection"
 import { useSpineNavigation } from "./use-spine-navigation"
@@ -75,7 +77,15 @@ export function CommandSpineShell(props: ShellProps) {
   const layout = useSpineLayout(() => dims().width)
   // Centralized width contract - computed once, passed to all children.
   // No component should subtract its own padding.
-  const viewportWidth = createMemo(() => dims().width)
+  // Density (compact/cozy/spacious) trims or widens the session frame; the
+  // viewport contract subtracts exactly the frame the route renders so prose
+  // width never drifts.
+  const kv = useKV()
+  const density = createMemo(() => {
+    const stored = kv.get("density")
+    return isDensity(stored) ? stored : "cozy"
+  })
+  const viewportWidth = createMemo(() => spineViewportWidth(dims().width, frameChrome(density())))
 
   // Pure data derivation: header segments, entries, governance projection,
   // approval merging, deterministic ordering, grouping, geometry, run state.
@@ -123,9 +133,9 @@ export function CommandSpineShell(props: ShellProps) {
     })
   }
 
-  // View filtering - conversation/tools/governance/proof/all. Security states
-  // break through via applyViewFilter, so a filter never hides a denial or a
-  // pending approval.
+  // View filtering — conversation/tools/governance/all. Session proof and
+  // settled deny/receipt ledger live in header chrome + governance view.
+  // Pending approvals still break through via applyViewFilter.
   const filters = useSpineFilters({
     displayRows: projection.displayRows,
     sessionID: () => props.sessionID,
@@ -392,7 +402,7 @@ export function CommandSpineShell(props: ShellProps) {
       },
       {
         key: "f",
-        desc: "Cycle view filter: all - conversation - tools - governance - proof",
+        desc: "Cycle view filter: all - conversation - tools - governance",
         group: "Command Spine",
         cmd: filters.cycleViewFilter,
       },
@@ -488,7 +498,15 @@ export function CommandSpineShell(props: ShellProps) {
         </box>
       )}>
         <box flexDirection="column" flexGrow={1} minHeight={0}>
-          <SpineHeader session={props.session} layout={layout()} segments={projection.headerSegments()} />
+          <SpineHeader
+            session={props.session}
+            layout={layout()}
+            contentWidth={viewportWidth()}
+            segments={projection.headerSegments()}
+            trust={projection.trust()}
+            charter={projection.sessionCharter()}
+            governed={projection.governedTally()}
+          />
           <SpineViewport
             visibleEntryIDs={visibleEntryIDs}
             visibleEntryByID={visibleEntryByID}
@@ -511,6 +529,7 @@ export function CommandSpineShell(props: ShellProps) {
           />
           <AuthorityGate permissions={props.permissions()} questions={props.questions()} />
           <SpineComposer
+            escapeStage={escapeStage as () => 0 | 1 | 2}
             layout={layout()}
             parentID={props.session()?.parentID}
             viewFilter={filters.viewFilter()}

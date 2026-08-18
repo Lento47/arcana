@@ -82,28 +82,23 @@ describe("spine governance aggregation (TUI-2.1)", () => {
     expect(group.elapsed).toBe("+5ms")
   })
 
-  test("a denied event marks the group fail-visible", () => {
-    const rows = groupGovernanceEntries([
+  test("denied and approval rows stay standalone so they can interrupt chat", () => {
+    const denied = groupGovernanceEntries([
       governanceEntry("e1", "authorization", "inspect", 1000),
       governanceEntry("e2", "denied", "fail", 1002, "Authorization denied · scope mismatch"),
     ])
+    expect(denied).toHaveLength(2)
+    expect(denied[0]!.id).toBe("governance:e1")
+    expect(denied[1]!.kind).toBe("fail")
+    expect(denied[1]!.label).toBe("denied")
 
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.kind).toBe("fail")
-    expect(rows[0]!.glyph).toBe("!")
-    expect(rows[0]!.summary).toContain("1 denied")
-    expect(rows[0]!.summary).toContain("1 failed")
-  })
-
-  test("pending approvals are not counted as failures", () => {
-    const rows = groupGovernanceEntries([
+    const pending = groupGovernanceEntries([
       governanceEntry("e1", "approval required", "approve", 1000, "Approval required"),
       governanceEntry("e2", "authorized", "ok", 1002, "Authorization allowed"),
     ])
-
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.summary).toContain("1 pending approval")
-    expect(rows[0]!.summary).not.toContain("failed")
+    expect(pending).toHaveLength(2)
+    expect(pending[0]!.kind).toBe("approve")
+    expect(pending[1]!.label).toBe("authorized")
   })
 
   test("RunProof and trace rows stay standalone, never merged into a burst", () => {

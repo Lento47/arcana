@@ -74,6 +74,7 @@ import { revokeWithCascade, type RuntimeGrantStore } from "@arcana/core/capabili
 import { deriveCompletionReason } from "./epistemic/completion-reason"
 import { SessionTable } from "@arcana/core/session/sql"
 import { SessionReminders } from "./reminders"
+import { formatInstallResumePrompt, takeParkedInstall } from "@/execution/install-notice"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@arcana/llm"
 
@@ -1359,6 +1360,15 @@ export const layer = Layer.effect(
       const message = yield* createUserMessage(input)
       yield* sessions.touch(input.sessionID)
 
+      // Title the session from the first user text as soon as the message is
+      // durable, so it never stays on the default "New session - <ISO>". The
+      // run loop re-checks at step 1, but a loop that dies before that (model
+      // failure, rate limit, noReply) would otherwise leave the session
+      // untitled. Guarded by isDefaultTitle + a store re-read inside
+      // ensureHeuristicTitle: a custom title that landed concurrently is never
+      // clobbered, and non-default-titled sessions are untouched.
+      yield* ensureHeuristicTitle({ session, history: [message] }).pipe(Effect.ignore)
+
       const permissions: PermissionV1.Rule[] = []
       for (const [t, enabled] of Object.entries(input.tools ?? {})) {
         permissions.push({ permission: t, action: enabled ? "allow" : "deny", pattern: "*" })
@@ -2147,6 +2157,25 @@ export const layer = Layer.effect(
         messageID: result.info.id,
       })
       return result
+    })
+
+    yield* events.listen((event) => {
+      if (event.type !== Permission.Event.Replied.type) return Effect.void
+      const data = event.data as { sessionID: SessionID; requestID: string; reply: string }
+      if (data.reply === "reject") {
+        takeParkedInstall(data.sessionID, data.requestID)
+        return Effect.void
+      }
+      const parked = takeParkedInstall(data.sessionID, data.requestID)
+      if (!parked) return Effect.void
+      return Effect.gen(function* () {
+        const current = yield* status.get(data.sessionID)
+        if (current.type !== "idle") return
+        yield* prompt({
+          sessionID: data.sessionID,
+          parts: [{ type: "text", text: formatInstallResumePrompt(parked.command) }],
+        }).pipe(Effect.forkIn(scope), Effect.ignore)
+      })
     })
 
     return Service.of({

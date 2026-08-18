@@ -29,6 +29,7 @@ describe("Mastra governed tool adapter (E6)", () => {
           expect(request.provenance).toContain("MCP_DESCRIPTION")
           return { decision: "ALLOW" }
         },
+        executeExact: async (_request, execute) => execute(),
       },
     )
     expect(await tool.execute({ path: "/workspace/a.ts" })).toBe("content")

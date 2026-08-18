@@ -13,6 +13,7 @@ export type DialogPromptProps = {
   value?: string
   busy?: boolean
   busyText?: string
+  height?: number
   onConfirm?: (value: string) => void
   onCancel?: () => void
 }
@@ -85,7 +86,7 @@ export function DialogPrompt(props: DialogPromptProps) {
       <box gap={1}>
         {typeof props.description === "function" ? props.description() : props.description}
         <textarea
-          height={3}
+          height={props.height ?? 3}
           ref={(val: TextareaRenderable) => {
             textarea = val
             setTextareaTarget(val)

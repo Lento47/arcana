@@ -18,6 +18,7 @@ import { Snapshot } from "@/snapshot"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { FSUtil } from "@arcana/core/fs-util"
 import * as Bom from "@/util/bom"
+import { isDependencyManifest } from "@/execution/install"
 
 function normalizeLineEndings(text: string): string {
   return text.replaceAll("\r\n", "\n")
@@ -92,10 +93,11 @@ export const EditTool = Tool.define(
               contentOld = ""
               contentNew = next.text
               diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
+              const relativeCreate = path.relative(instance.worktree, filePath)
               yield* ctx.ask({
                 permission: "edit",
-                patterns: [path.relative(instance.worktree, filePath)],
-                always: ["*"],
+                patterns: [relativeCreate],
+                always: isDependencyManifest(filePath) ? [relativeCreate] : ["*"],
                 metadata: {
                   filepath: filePath,
                   diff,
@@ -140,10 +142,11 @@ export const EditTool = Tool.define(
                 normalizeLineEndings(contentNew),
               ),
             )
+            const relativeEdit = path.relative(instance.worktree, filePath)
             yield* ctx.ask({
               permission: "edit",
-              patterns: [path.relative(instance.worktree, filePath)],
-              always: ["*"],
+              patterns: [relativeEdit],
+              always: isDependencyManifest(filePath) ? [relativeEdit] : ["*"],
               metadata: {
                 filepath: filePath,
                 diff,

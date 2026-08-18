@@ -13,11 +13,12 @@ import {
  *
  * Owns the active filter signal, the cycle action (bound to `f`), the reset
  * to "all" whenever the session changes (a new session starts unfiltered), and
- * the derived filtered rows. Security-critical states (denials, pending
- * approvals) break through via applyViewFilter regardless of the active filter.
+ * the derived filtered rows. Pending approvals break through via
+ * applyViewFilter. Settled ledger rows (deny, revoke, receipt, completed
+ * approval) stay in the header tally and the governance view.
  */
 export function useSpineFilters(input: {
-  /** The rows to filter (post grouping + display-index assignment). */
+  /** The rows to filter (post grouping). Visible indexes are assigned after the filter. */
   displayRows: Accessor<readonly SpineEntry[]>
   /** Reactively changing sessionID — resets the filter to "all". */
   sessionID: Accessor<string>

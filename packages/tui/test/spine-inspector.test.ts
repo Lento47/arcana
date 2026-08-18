@@ -132,6 +132,9 @@ describe("PR6 universal inspector content", () => {
         },
       } satisfies GovernanceRunProof,
     })
+    const charter = sections.find((section) => section.title === "Session charter")
+    expect(charter).toBeDefined()
+    expect(new Map(charter!.rows).get("Contract")).toBe("none")
     const proofSection = sections.find((section) => section.title === "Execution receipt / proof chain")
     expect(proofSection).toBeDefined()
     const rows = new Map(proofSection!.rows)

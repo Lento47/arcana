@@ -16,6 +16,7 @@ import { fileURLToPath } from "url"
 import { useLocal } from "../../context/local"
 import { PROMPT_FRAME, Glyph, AgentSigil, Lexicon } from "../../branding"
 import { Flag } from "@arcana/core/flag/flag"
+import { toolsOverrideKey, toolsPayload } from "../../util/tools-override"
 import { tint, useTheme } from "../../context/theme"
 import { RoundBorder } from "../../ui/chrome"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
@@ -44,7 +45,7 @@ import type { FilePart, UserMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
 import { errorMessage } from "../../util/error"
 import { formatDuration } from "../../util/format"
-import { createPendingSessionID } from "../../util/session"
+import { createPendingSessionID, titleFromUserText } from "../../util/session"
 import { promptMaxHeight } from "../../util/geometry"
 import { useDialog } from "../../ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
@@ -1256,6 +1257,11 @@ export function Prompt(props: PromptProps) {
             id: selectedModel.modelID,
             variant,
           },
+          // Name the session from the first prompt line so the session list
+          // never shows the engine default ("New session - <ISO>" → Untitled)
+          // before the engine's own first-message title lands. undefined for
+          // empty text keeps the backfill-friendly default title.
+          title: titleFromUserText(inputText) ?? undefined,
         })
         markSubmit("T3 session.create", t0, { error: Boolean(res.error) })
 
@@ -1342,6 +1348,10 @@ export function Prompt(props: PromptProps) {
       })
       move.startSubmit()
       // promptAsync returns immediately; agent loop runs server-side (SSE updates).
+      // Per-session tool overrides from /tools: only explicit user choices,
+      // attached so the engine persists them as session permissions. The
+      // LLM only sees the tools the operator kept.
+      const toolsOverride = toolsPayload(kv.get(toolsOverrideKey(targetSessionID)) as Record<string, boolean> | undefined)
       const payload: QueuedPromptPayload = {
         sessionID: targetSessionID,
         agent: agent.name,
@@ -1350,6 +1360,7 @@ export function Prompt(props: PromptProps) {
           modelID: selectedModel.modelID,
         },
         variant,
+        ...(toolsOverride ? { tools: toolsOverride } : {}),
         parts: [
           ...editorParts,
           ...(instruction
@@ -1586,6 +1597,10 @@ export function Prompt(props: PromptProps) {
       }
       // promptAsync: 204 + forked agent loop (same as workspace move path).
       // Avoids holding HTTP open for the full turn (session.prompt waits on loop).
+      // Per-session tool overrides from /tools: only explicit user choices,
+      // attached so the engine persists them as session permissions. The
+      // LLM only sees the tools the operator kept.
+      const toolsOverride = toolsPayload(kv.get(toolsOverrideKey(targetSessionID)) as Record<string, boolean> | undefined)
       const payload: QueuedPromptPayload = {
         sessionID: targetSessionID,
         agent: agent.name,
@@ -1594,6 +1609,7 @@ export function Prompt(props: PromptProps) {
           modelID: selectedModel.modelID,
         },
         variant,
+        ...(toolsOverride ? { tools: toolsOverride } : {}),
         parts: [
           ...editorParts,
           {
@@ -2109,7 +2125,7 @@ export function Prompt(props: PromptProps) {
       </box>
         <box width="100%" flexDirection="row" justifyContent="space-between">
           <Switch>
-            <Match when={status().type !== "idle"}>
+            <Match when={!isCommandSpine() && status().type !== "idle"}>
               <box
                 flexDirection="row"
                 gap={1}
@@ -2244,7 +2260,9 @@ export function Prompt(props: PromptProps) {
               (elapsed · tokens · cost · context pressure · free-usage). The keybinds
               are still discoverable via `?` (help.show) and the command palette. */}
       </box>
-      <SessionMetricsBar sessionID={props.sessionID} freeUsage={null} />
+      <Show when={!isCommandSpine()}>
+        <SessionMetricsBar sessionID={props.sessionID} freeUsage={null} />
+      </Show>
       {/* Default shell: absolute overlay relative to prompt parent. */}
       <Show when={!isCommandSpine()}>
         <AutocompleteSlot layout="overlay" />

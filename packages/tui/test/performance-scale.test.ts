@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { performance } from "node:perf_hooks"
 import type { Message, Part } from "@arcana/sdk/v2"
 import type { SpineEntry } from "../src/shell/command-spine/spine-types"
-import { applyViewFilter, SPINE_VIEW_FILTERS } from "../src/shell/command-spine/spine-view-filter"
+import { applyViewFilter, isQuietGovernanceLedger, isSecurityCritical, SPINE_VIEW_FILTERS } from "../src/shell/command-spine/spine-view-filter"
 import {
   buildGovernanceGroup,
   groupGovernanceEntries,
@@ -186,17 +186,18 @@ describe("TUI performance at scale (grouping, aggregation, filters)", () => {
     const rows = Array.from({ length: 4000 }, (_, index) => mixedEntry(index))
     const chat = rows.filter((row) => row.kind === "ask").length
     const tools = rows.filter((row) => row.kind === "run").length
-    const governance = rows.filter((row) => row.source?.kind === "governance" && !row.id.startsWith("governance-proof:")).length
-    const proof = rows.filter((row) => row.id.startsWith("governance-proof:")).length
+    const governance = rows.filter((row) => row.source?.kind === "governance").length
     const critical = rows.filter((row) => row.kind === "fail").length
 
     for (const filter of SPINE_VIEW_FILTERS) {
       const { value: filtered, ms } = timed(`applyViewFilter(${filter}, 4000)`, () => applyViewFilter(rows, filter))
       expect(ms).toBeLessThan(2000)
       switch (filter) {
-        case "all":
-          expect(filtered).toHaveLength(4000)
+        case "all": {
+          const hidden = rows.filter((row) => isQuietGovernanceLedger(row) && !isSecurityCritical(row)).length
+          expect(filtered).toHaveLength(4000 - hidden)
           break
+        }
         case "conversation":
           expect(filtered).toHaveLength(chat + critical)
           break
@@ -205,9 +206,6 @@ describe("TUI performance at scale (grouping, aggregation, filters)", () => {
           break
         case "governance":
           expect(filtered).toHaveLength(governance + critical)
-          break
-        case "proof":
-          expect(filtered).toHaveLength(proof + critical)
           break
       }
     }
@@ -219,18 +217,16 @@ describe("TUI performance at scale (grouping, aggregation, filters)", () => {
     const { value: grouped, ms } = timed("groupGovernanceEntries(4001)", () => groupGovernanceEntries(burst))
     expect(ms).toBeLessThan(2000)
 
-    // Two contiguous bursts split by the standalone proof row.
+    // Denies stay standalone so they can interrupt chat; healthy triplets collapse.
     const groups = grouped.filter((row) => row.id.startsWith("governance-group:"))
-    expect(groups).toHaveLength(2)
+    const denied = grouped.filter((row) => row.label === "denied")
+    expect(groups).toHaveLength(1000)
+    expect(denied).toHaveLength(1000)
     const first = groups[0]!
-    expect(first.children).toHaveLength(2000)
-    // 25% denied, 25% authorization, 25% authorized, 25% executed.
-    expect(first.summary).toContain("2000 governed actions")
-    expect(first.summary).toContain("500 denied")
-    expect(first.summary).toContain("500 authorized")
-    expect(first.summary).toContain("500 executed")
-    expect(first.kind).toBe("fail")
-    // The standalone proof row survives between the two bursts.
+    expect(first.children).toHaveLength(3)
+    expect(first.summary).toContain("3 governed actions")
+    expect(first.kind).toBe("ok")
+    // The standalone proof row survives at the midpoint.
     expect(grouped.some((row) => row.id.startsWith("governance-proof:"))).toBe(true)
     expect(grouped.find((row) => row.id.startsWith("governance-proof:"))?.id).toBe(
       proofEntry(0).id,

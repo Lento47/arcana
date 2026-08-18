@@ -41,6 +41,7 @@ import type { ScopedApproval } from "@arcana/core/capability/scoped-approval"
 import { SqliteScopedApprovalStore } from "@arcana/core/crypto/scoped-approval-adapter"
 import type { RiskClass } from "@arcana/core/capability/types"
 import { buildApprovalRequestSnapshot } from "@arcana/core/crypto/approval-request-snapshot"
+import { formatInspectSummary, inspectEffect } from "@/execution/inspect"
 import { loadApprovalRoutingPolicy, deploymentModeFromEnv, resolveApprovalRoute } from "@/approval/routing"
 import { desktopOnline } from "@/approval/desktop-subscribers"
 import { EventStore } from "./epistemic/event-store"
@@ -149,6 +150,10 @@ function persistApprovalWithSnapshot(input: {
   contractRevision: number
   riskClass: RiskClass
 }): Effect.Effect<void> {
+  const inspect = inspectEffect({
+    tool: typeof input.args.tool === "string" ? input.args.tool : input.request.action,
+    args: input.args,
+  })
   const snapshotRow = {
     request: input.request,
     args: input.args,
@@ -159,6 +164,15 @@ function persistApprovalWithSnapshot(input: {
         requestHash: input.requestHash,
         contractRevision: input.contractRevision,
         riskClass: input.riskClass,
+        ...(inspect.findings.length
+          ? {
+              artifactPreview: {
+                kind: "inspect",
+                name: inspect.verdict,
+                description: formatInspectSummary(inspect),
+              },
+            }
+          : {}),
       },
       input.args,
     ),
@@ -361,9 +375,11 @@ function extractProvenance(toolName: string, args: Record<string, unknown>): Pro
     case "web_fetch":
     case "fetch":
     case "search":
+    case "mcp":
       // Network reads return remote content
       labels.push("REMOTE_CONTENT")
       labels.push("TOOL_OUTPUT")
+      if (toolName === "mcp") labels.push("MCP_DESCRIPTION")
       break
 
     case "write":

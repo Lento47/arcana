@@ -14,6 +14,10 @@ import {
   resolveApprovalRoute,
 } from "@/approval/routing"
 import { riskFromMetadata, riskRequiresFreshAsk, riskRequiresInitialAsk } from "./risk-policy"
+import { commandLooksLikeInstall, commandLooksLikeOpaqueExec } from "@/execution/install"
+import { inspectEffect, type EffectInspectReport } from "@/execution/inspect"
+import { enrichInspectOnline } from "@/execution/inspect-online"
+import { noteParkedInstall } from "@/execution/install-notice"
 
 export const Event = {
   Asked: EventV2.define({ type: "permission.asked", schema: PermissionV1.Request.fields }),
@@ -93,9 +97,19 @@ export const layer = Layer.effect(
       const { approved, pending } = yield* InstanceState.get(state)
       const { ruleset, ...request } = input
       const engineRisk = riskFromMetadata(request.metadata)
-      const forceInitialAskFromRisk = riskRequiresInitialAsk(engineRisk)
-      const forceFreshAskFromRisk = riskRequiresFreshAsk(engineRisk)
+      const inspect = inspectFromMetadata(request.metadata)
+      const command = typeof request.metadata.command === "string" ? request.metadata.command : ""
+      const installAttempt = commandLooksLikeInstall(command) || inspectIsInstall(inspect)
+      const opaqueAttempt = commandLooksLikeOpaqueExec(command)
+      const forceInitialAskFromRisk = riskRequiresInitialAsk(engineRisk) || installAttempt || opaqueAttempt
+      const forceFreshAskFromRisk = riskRequiresFreshAsk(engineRisk) || installAttempt || opaqueAttempt
       let needsAsk = false
+
+      if (inspect?.verdict === "block") {
+        return yield* new PermissionV1.DeniedError({
+          ruleset: [{ permission: request.permission, pattern: "*", action: "deny" }],
+        })
+      }
 
       for (const pattern of request.patterns) {
         const configuredRule = evaluate(request.permission, pattern, ruleset)
@@ -123,15 +137,37 @@ export const layer = Layer.effect(
 
       if (!needsAsk) return
 
+      let metadata = request.metadata
+      if (installAttempt) {
+        const seeded = inspectReportFromMetadata(metadata)
+          ?? inspectEffect({ tool: request.permission, args: { command, ...metadata } })
+        const enriched = yield* Effect.promise(() => enrichInspectOnline(seeded)).pipe(
+          Effect.catch(() => Effect.succeed(seeded)),
+        )
+        metadata = mergeInspectMetadata(metadata, enriched)
+        if (enriched.verdict === "block") {
+          return yield* new PermissionV1.DeniedError({
+            ruleset: [{ permission: request.permission, pattern: "*", action: "deny" }],
+          })
+        }
+      }
+
       const id = request.id ?? PermissionV1.ID.ascending()
       const info: PermissionV1.Request = {
         id,
         sessionID: request.sessionID,
         permission: request.permission,
         patterns: request.patterns,
-        metadata: request.metadata,
+        metadata,
         always: request.always,
         tool: request.tool,
+      }
+      if (installAttempt) {
+        const parkedCommand =
+          command
+          || (typeof metadata.command === "string" ? metadata.command : "")
+          || info.patterns.join(" ")
+        noteParkedInstall(request.sessionID, id, parkedCommand)
       }
       yield* Effect.logInfo("asking", {
         id,
@@ -263,6 +299,90 @@ export const layer = Layer.effect(
     return Service.of({ ask, reply, list })
   }),
 )
+
+function inspectFromMetadata(metadata: Record<string, unknown>): { verdict?: string; findings?: unknown } | undefined {
+  const action = metadata.engine_action
+  if (!action || typeof action !== "object" || Array.isArray(action)) return undefined
+  const inspect = (action as { inspect?: unknown }).inspect
+  if (!inspect || typeof inspect !== "object" || Array.isArray(inspect)) return undefined
+  return inspect as { verdict?: string; findings?: unknown }
+}
+
+function inspectReportFromMetadata(metadata: Record<string, unknown>): EffectInspectReport | undefined {
+  const inspect = inspectFromMetadata(metadata)
+  if (!inspect) return undefined
+  const findings = Array.isArray(inspect.findings)
+    ? inspect.findings.flatMap((item) => {
+        if (!item || typeof item !== "object") return []
+        const row = item as { code?: unknown; severity?: unknown; title?: unknown; detail?: unknown }
+        if (typeof row.code !== "string" || typeof row.title !== "string") return []
+        const severity = row.severity === "low" || row.severity === "medium" || row.severity === "high" || row.severity === "critical"
+          ? row.severity
+          : "high"
+        return [{
+          code: row.code,
+          severity,
+          title: row.title,
+          detail: typeof row.detail === "string" ? row.detail : "",
+        }]
+      })
+    : []
+  const action = metadata.engine_action
+  const full = action && typeof action === "object" && !Array.isArray(action)
+    ? (action as { inspect?: { risk?: unknown; subjects?: unknown; controls?: unknown; verdict?: unknown } }).inspect
+    : undefined
+  const risk = full?.risk === "low" || full?.risk === "medium" || full?.risk === "high" || full?.risk === "critical"
+    ? full.risk
+    : "high"
+  return {
+    verdict: inspect.verdict === "block" || inspect.verdict === "benign" || inspect.verdict === "review"
+      ? inspect.verdict
+      : "review",
+    risk,
+    findings,
+    subjects: Array.isArray(full?.subjects)
+      ? full.subjects.flatMap((item) => {
+          if (!item || typeof item !== "object") return []
+          const row = item as { kind?: unknown; value?: unknown }
+          if (typeof row.value !== "string") return []
+          const kind = row.kind === "package" || row.kind === "url" || row.kind === "command" || row.kind === "path" || row.kind === "repo"
+            ? row.kind
+            : "command"
+          return [{ kind, value: row.value }]
+        })
+      : [],
+    controls: Array.isArray(full?.controls)
+      ? full.controls.filter((item): item is string => typeof item === "string")
+      : [],
+  }
+}
+
+function mergeInspectMetadata(
+  metadata: Record<string, unknown>,
+  inspect: EffectInspectReport,
+): Record<string, unknown> {
+  const action = metadata.engine_action
+  const current = action && typeof action === "object" && !Array.isArray(action)
+    ? { ...(action as Record<string, unknown>) }
+    : {}
+  return {
+    ...metadata,
+    engine_action: {
+      ...current,
+      inspect,
+    },
+  }
+}
+
+function inspectIsInstall(inspect: { findings?: unknown } | undefined): boolean {
+  if (!Array.isArray(inspect?.findings)) return false
+  return inspect.findings.some(
+    (item) =>
+      item
+      && typeof item === "object"
+      && (item as { code?: unknown }).code === "PACKAGE_MUTATION",
+  )
+}
 
 function expand(pattern: string) {
   if (pattern.startsWith("~/")) return os.homedir() + pattern.slice(1)

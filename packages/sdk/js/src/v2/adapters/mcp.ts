@@ -6,9 +6,9 @@
  * MCP_DESCRIPTION provenance and executes only after ALLOW.
  */
 
-import { toAuthorizationRequest, type GovernanceContext } from "../governance.js"
+import { toAuthorizationRequest, unionUntrustedProvenance, type GovernanceContext } from "../governance.js"
 import { AuthorizationDeniedError, ApprovalRequiredError } from "../errors.js"
-import type { AuthorizeFn, ExecuteExactFn } from "./ai-sdk.js"
+import { runGovernedExecute, type AuthorizeFn, type ExecuteExactFn } from "./ai-sdk.js"
 
 export type McpToolLike<Args extends Record<string, unknown>, Result> = {
   server: string
@@ -34,7 +34,7 @@ export function governedMcpTool<Args extends Record<string, unknown>, Result>(
         ...options.context,
         // MCP metadata is untrusted: provenance defaults to MCP_DESCRIPTION
         // and callers must declassify explicitly to add USER_INSTRUCTION.
-        provenance: options.context.provenance ?? ["MCP_DESCRIPTION"],
+        provenance: unionUntrustedProvenance(options.context.provenance),
       }
       const request = toAuthorizationRequest({ name: `mcp.${tool.server}.${tool.name}`, arguments: args }, context)
       const outcome = await options.authorize(request)
@@ -48,8 +48,7 @@ export function governedMcpTool<Args extends Record<string, unknown>, Result>(
           requestHash: request.requestHash,
         })
       }
-      const execute = () => tool.execute(args)
-      return options.executeExact ? options.executeExact(request, execute) : execute()
+      return runGovernedExecute(options.executeExact, request, () => tool.execute(args))
     },
   }
 }

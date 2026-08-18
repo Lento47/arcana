@@ -2,6 +2,7 @@
 import { testRender, type JSX } from "@opentui/solid"
 import { expect, test } from "bun:test"
 import { ThemeProvider } from "../src/context/theme"
+import { ToastProvider } from "../src/ui/toast"
 import { TuiConfigProvider } from "../src/config"
 import { KVProvider } from "../src/context/kv"
 import { TestTuiContexts } from "./fixture/tui-environment"
@@ -14,7 +15,9 @@ function withTheme(component: () => JSX.Element) {
     <TestTuiContexts>
       <TuiConfigProvider config={createTuiResolvedConfig()}>
         <KVProvider>
-          <ThemeProvider mode="dark">{component()}</ThemeProvider>
+          <ToastProvider>
+            <ThemeProvider mode="dark">{component()}</ThemeProvider>
+          </ToastProvider>
         </KVProvider>
       </TuiConfigProvider>
     </TestTuiContexts>

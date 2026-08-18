@@ -60,6 +60,8 @@ export function PromptChrome(props: {
       backgroundColor={theme.background}
       paddingLeft={1}
       paddingRight={1}
+      paddingTop={1}
+      paddingBottom={0}
       width="100%"
     >
       <box flexDirection="row" width="100%">

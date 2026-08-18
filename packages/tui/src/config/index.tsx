@@ -76,10 +76,19 @@ export const Shell = Schema.Literals(["opencode", "command-spine"]).annotate({
 })
 export type Shell = Schema.Schema.Type<typeof Shell>
 
+export const LexiconVoice = Schema.Literals(["arcane", "plain"]).annotate({
+  description: "Interface voice: 'arcane' (default occult verbs and copy) or 'plain' (plain-language verbs and copy)",
+})
+export type LexiconVoice = Schema.Schema.Type<typeof LexiconVoice>
+
+export const StatusSegmentKey = Schema.Literals(["branch", "model", "ctx", "state", "session", "path"])
+export type StatusSegmentKey = Schema.Schema.Type<typeof StatusSegmentKey>
+
 export const Info = Schema.Struct({
   $schema: Schema.optional(Schema.String),
   shell: Schema.optional(Shell).annotate({ description: "TUI shell layout" }),
   theme: Schema.optional(Schema.String),
+  lexicon: Schema.optional(LexiconVoice).annotate({ description: "Interface voice (arcane | plain)" }),
   keybinds: Schema.optional(TuiKeybind.KeybindOverrides),
   plugin: Schema.optional(Schema.Array(PluginSpec)),
   plugin_enabled: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
@@ -91,11 +100,22 @@ export const Info = Schema.Struct({
   diff_style: Schema.optional(DiffStyle),
   mouse: Schema.optional(Schema.Boolean).annotate({ description: "Enable or disable mouse capture (default: true)" }),
   background: Schema.optional(Background).annotate({ description: "Custom TUI background image" }),
+  status_segments: Schema.optional(Schema.Array(StatusSegmentKey)).annotate({
+    description:
+      "Header status segments to show, in order: branch, model, ctx, state, session, path. Unset = automatic (fits the terminal width).",
+  }),
+  status_separator: Schema.optional(Schema.String).annotate({
+    description: "Separator between header status segments (default: ' | ')",
+  }),
 })
 export type Info = Schema.Schema.Type<typeof Info>
 
-export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | "mouse" | "shell"> & {
+export type Resolved = Omit<
+  Info,
+  "attention" | "keybinds" | "leader_timeout" | "mouse" | "shell" | "status_separator"
+> & {
   shell: Shell
+  lexicon: LexiconVoice
   attention: {
     enabled: boolean
     notifications: boolean
@@ -107,6 +127,7 @@ export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | 
   keybinds: TuiKeybind.BindingLookupView
   leader_timeout: number
   mouse: boolean
+  status_separator: string
 }
 
 export const ResolveOptions = Schema.Struct({
@@ -137,12 +158,14 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
       sounds: input.attention?.sounds ?? {},
     },
     shell: input.shell ?? "command-spine",
+    lexicon: input.lexicon ?? "arcane",
     keybinds: createBindingLookup(TuiKeybind.toBindingConfig(TuiKeybind.parse(keybinds)), {
       commandMap: TuiKeybind.CommandMap,
       bindingDefaults: TuiKeybind.bindingDefaults(),
     }),
     leader_timeout: input.leader_timeout ?? LeaderTimeoutDefault,
     mouse: input.mouse ?? true,
+    status_separator: input.status_separator ?? " | ",
     prompt: {
       ...input.prompt,
       ai_suggestion: input.prompt?.ai_suggestion ?? false,

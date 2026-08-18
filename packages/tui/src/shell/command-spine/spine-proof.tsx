@@ -3,13 +3,14 @@ import { TextAttributes, type RGBA } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import type { SpineLayout, SpineProofContinuation } from "./spine-types"
+import { FACT_LABEL_WIDTH } from "./spine-chrome"
 
 function ProofRow(props: { label: string; value?: string; tone?: RGBA; theme: Theme }) {
   const value = props.value?.trim()
   if (!value) return null
   return (
     <box flexDirection="row" flexShrink={0} minWidth={0}>
-      <box width={10} flexShrink={0}>
+      <box width={FACT_LABEL_WIDTH} flexShrink={0}>
         <text fg={props.theme.spineDiffMuted}>{props.label}</text>
       </box>
       <text fg={props.tone ?? props.theme.text} wrapMode="word" flexGrow={1} minWidth={0}>

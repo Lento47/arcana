@@ -6,7 +6,7 @@ import { Deferred, Effect } from "effect"
 import { Global } from "@arcana/core/global"
 import { Flag } from "@arcana/core/flag/flag"
 import { InstallationVersion } from "@arcana/core/installation/version"
-import { APP_NAME, APP_ABBR, DOCS_URL, COPY } from "./branding"
+import { APP_NAME, APP_ABBR, DOCS_URL, COPY, setLexiconVoice } from "./branding"
 import {
   asRecord,
   contextBudgetsFromEvents,
@@ -50,6 +50,8 @@ import { EditorContextProvider } from "./context/editor"
 import { useEvent } from "./context/event"
 import { SDKProvider, useSDK, getLastSseEventMeta } from "./context/sdk"
 import { parseStallIntervalMs, startStallWatchdog } from "./util/stall-watchdog"
+import { isSpinnerStyle, nextSpinnerStyle, spinnerStyleName } from "./util/spinner-style"
+import { densityName, isDensity, nextDensity } from "./shell/command-spine/spine-types"
 import { StartupLoading } from "./component/startup-loading"
 import { SyncProvider, useSync } from "./context/sync"
 import { DataProvider } from "./context/data"
@@ -58,9 +60,13 @@ import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
 import { DialogStatus } from "./component/dialog-status"
+import { DialogPermissions } from "./component/dialog-permissions"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
+import { DialogAgentPrompt } from "./component/dialog-agent-prompt"
+import { DialogTools } from "./component/dialog-tools"
+import { DialogSoul } from "./component/dialog-soul"
 import { DialogSessionList } from "./component/dialog-session-list"
 import { DialogWorkspaceList } from "./component/dialog-workspace-list"
 import { DialogConsoleOrg } from "./component/dialog-console-org"
@@ -1136,6 +1142,10 @@ function isVersionGreater(left: string, right: string) {
 }
 
 export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
+  // Apply the configured interface voice (arcane | plain) before anything
+  // renders — setLexiconVoice swaps the live branding bindings once at
+  // startup; consumers read them at call time.
+  setLexiconVoice(input.config.lexicon)
   const global = yield* Global.Service
   const exit = { epilogue: undefined as string | undefined, reason: undefined as unknown }
   const result = yield* Effect.scoped(
@@ -1956,6 +1966,38 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         },
       },
       {
+        name: "agent.prompt",
+        title: "Edit agent system prompt",
+        category: "Agent",
+        slashName: "prompt",
+        run: () => {
+          dialog.replace(() => <DialogAgentPrompt />)
+        },
+      },
+      {
+        name: "tools.list",
+        title: "Toggle session tools",
+        category: "Agent",
+        slashName: "tools",
+        run: () => {
+          const sessionID = route.data.type === "session" ? route.data.sessionID : undefined
+          if (!sessionID) {
+            toast.show({ message: "Open a session first", variant: "warning" })
+            return
+          }
+          dialog.replace(() => <DialogTools sessionID={sessionID} />)
+        },
+      },
+      {
+        name: "instructions.edit",
+        title: "Edit personal instructions",
+        category: "Agent",
+        slashName: "soul",
+        run: () => {
+          dialog.replace(() => <DialogSoul />)
+        },
+      },
+      {
         name: "goal.set",
         title: "Set session goal",
         category: "Session",
@@ -2095,6 +2137,16 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "System",
       },
       {
+        name: "arcana.permissions",
+        title: "Permissions status",
+        slashName: "permissions",
+        slashAliases: ["perms", "pending"],
+        run: () => {
+          dialog.replace(() => <DialogPermissions />)
+        },
+        category: "System",
+      },
+      {
         name: "theme.switch",
         title: "Switch theme",
         slashName: "themes",
@@ -2212,6 +2264,26 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "System",
         run: () => {
           kv.set("animations_enabled", !kv.get("animations_enabled", true))
+          dialog.clear()
+        },
+      },
+      {
+        name: "app.cycle.spinner",
+        title: `Spinner: ${spinnerStyleName(kv.get("spinner_style"))}`,
+        category: "System",
+        run: () => {
+          const current = isSpinnerStyle(kv.get("spinner_style")) ? kv.get("spinner_style") : undefined
+          kv.set("spinner_style", nextSpinnerStyle(current ?? "braille"))
+          dialog.clear()
+        },
+      },
+      {
+        name: "app.cycle.density",
+        title: `Density: ${densityName(kv.get("density"))}`,
+        category: "System",
+        run: () => {
+          const current = isDensity(kv.get("density")) ? kv.get("density") : undefined
+          kv.set("density", nextDensity(current ?? "cozy"))
           dialog.clear()
         },
       },

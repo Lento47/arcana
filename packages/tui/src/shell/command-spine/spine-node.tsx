@@ -10,6 +10,7 @@ import {
   type SpineKind,
   type SpineLayout,
 } from "./spine-types"
+import { streamTextCue, thinkingRowChrome, toolChipChrome } from "./spine-chrome"
 
 /**
  * Meta parts that must live in a `flexShrink={0}` sibling box beside the
@@ -125,6 +126,11 @@ export function SpineNode(props: {
   )
   const showActor = createMemo(() => !!actor() && (kind() === "agent" || actor() === "you"))
 
+  const chip = createMemo(() => toolChipChrome({ kind: kind(), label: label(), streaming: streaming() }))
+  const thinkChrome = createMemo(() =>
+    thinkingRowChrome({ streaming: streaming(), title: summary() }),
+  )
+  const streamCue = createMemo(() => streamTextCue(streaming()))
   const tone = createMemo(() => spineTone(kind(), theme))
   const summaryColor = createMemo(() => {
     if (kind() === "fail") return theme.spineFail
@@ -196,24 +202,38 @@ export function SpineNode(props: {
             <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
               {actorBox()}
               <Show when={thinking()}>
-                <box flexDirection="row" gap={1} flexShrink={0}>
-                  <ShimmerText
-                    text={summary() || (streaming() ? "Thinking" : "Thought")}
-                    active={streaming() || !!thinking()}
-                    background={theme.backgroundPanel}
-                  />
+                <box flexDirection="row" gap={1} flexShrink={0} alignItems="center">
+                  <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+                    <ShimmerText
+                      text={summary() || thinkChrome().verb}
+                      active={streaming() || !!thinking()}
+                      background={theme.backgroundElement}
+                    />
+                  </box>
+                  <Show when={streamCue().badge}>
+                    <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+                      <text fg={theme.accent} wrapMode="none">{streamCue().badge}</text>
+                    </box>
+                  </Show>
                   <text fg={theme.spineDiffMuted}>·</text>
                 </box>
               </Show>
               <Show when={isThinkStreaming()} fallback={summaryBody()}>
-                <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
-                  <ShimmerText
-                    text={summary() || (streaming() ? "Thinking" : "Thought")}
-                    active={true}
-                    background={theme.backgroundPanel}
-                  />
+                <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start" gap={1}>
+                  <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+                    <ShimmerText
+                      text={summary() || thinkChrome().verb}
+                      active={true}
+                      background={theme.backgroundElement}
+                    />
+                  </box>
+                  <Show when={thinkChrome().badge}>
+                    <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+                      <text fg={theme.accent} wrapMode="none">{thinkChrome().badge}</text>
+                    </box>
+                  </Show>
                   <Show when={elapsedText()}>
-                    <text fg={theme.spineGutterElapsed} wrapMode="none">{` · ${elapsedText()}`}</text>
+                    <text fg={theme.spineGutterElapsed} wrapMode="none">{elapsedText()}</text>
                   </Show>
                 </box>
               </Show>
@@ -248,18 +268,45 @@ export function SpineNode(props: {
           </box>
         }
       >
-        <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
-          <box flexShrink={0} width={labelWidth()}>
-            <text fg={labelColor()}>{truncatedLabel()}</text>
-          </box>
+        <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start" gap={1}>
+          <Show
+            when={isTool()}
+            fallback={
+              <box flexShrink={0} width={labelWidth()}>
+                <text fg={labelColor()}>{truncatedLabel()}</text>
+              </box>
+            }
+          >
+            <box
+              flexShrink={0}
+              width={labelWidth()}
+              backgroundColor={theme.backgroundElement}
+              border={["left"]}
+              borderColor={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? theme.accent : theme.spineOk}
+            >
+              <text
+                fg={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? theme.accent : labelColor()}
+                wrapMode="none"
+              >
+                {chip().glyph} {truncatedLabel()}
+              </text>
+            </box>
+          </Show>
           {actorBox()}
           <Show when={thinking()}>
-            <ShimmerText
-              text={thinking() || (streaming() ? "Thinking" : "Thought")}
-              active={streaming()}
-              background={theme.backgroundPanel}
-            />
-            <text fg={theme.spineDiffMuted}> · </text>
+            <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+              <ShimmerText
+                text={thinking() || thinkChrome().verb}
+                active={streaming()}
+                background={theme.backgroundElement}
+              />
+            </box>
+            <Show when={streamCue().badge}>
+              <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+                <text fg={theme.accent} wrapMode="none">{streamCue().badge}</text>
+              </box>
+            </Show>
+            <text fg={theme.spineDiffMuted} wrapMode="none">·</text>
           </Show>
           <box flexGrow={1} minWidth={0} flexShrink={1}>
             <Show
@@ -276,7 +323,7 @@ export function SpineNode(props: {
           </box>
           <Show when={elapsedText()}>
             <box flexShrink={0}>
-              <text fg={theme.spineGutterElapsed} wrapMode="none">{` · ${elapsedText()}`}</text>
+              <text fg={theme.spineGutterElapsed} wrapMode="none">{elapsedText()}</text>
             </box>
           </Show>
         </box>

@@ -54,8 +54,29 @@ test("resolves host-neutral defaults", () => {
   })
   expect(config.leader_timeout).toBe(LeaderTimeoutDefault)
   expect(config.mouse).toBe(true)
+  expect(config.status_separator).toBe(" | ")
+  expect(config.status_segments).toBeUndefined()
   expect(config.keybinds.has("terminal.suspend")).toBe(true)
   expect(config.keybinds.has("session.list")).toBe(true)
+})
+
+test("resolves status-line customization from config", () => {
+  const config = resolve(
+    {
+      status_segments: ["branch", "model", "session"],
+      status_separator: " · ",
+    },
+    { terminalSuspend: true },
+  )
+
+  expect(config.status_segments).toEqual(["branch", "model", "session"])
+  expect(config.status_separator).toBe(" · ")
+})
+
+test("rejects unknown status segment keys", () => {
+  expect(() =>
+    decodeInfo({ status_segments: ["branch", "cpu"] }),
+  ).toThrow()
 })
 
 test("resolves overrides without mutating input", () => {

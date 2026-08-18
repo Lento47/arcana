@@ -1,6 +1,13 @@
-import { createSignal, createMemo, Show, For, Match, Switch } from "solid-js"
+import { createSignal, createMemo, For, Match, Switch, Show, createEffect, on } from "solid-js"
 import { useSearchParams } from "@solidjs/router"
-import { truncateHash, mapAuditEvent, formatSweepResult, type AuditEvent } from "~/core/auditor-console"
+import {
+  truncateHash,
+  mapAuditEvent,
+  formatSweepResult,
+  parseRetentionSweepNow,
+  readApiError,
+  type AuditEvent,
+} from "~/core/auditor-console"
 
 const GALT = "#d4a853"
 const VIOL = "#9d7cd8"
@@ -41,7 +48,7 @@ export default function AuditorConsole() {
   const tenantId = createMemo(() => searchParams.tenantId || DEFAULT_TENANT)
 
   const [events, setEvents] = createSignal<AuditEvent[]>([])
-  const [loading, setLoading] = createSignal(true)
+  const [loading, setLoading] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
   const [selectedArchive, setSelectedArchive] = createSignal<string>("")
   const [archiveExport, setArchiveExport] = createSignal<ArchiveExport | ArchiveRejected | null>(null)
@@ -56,6 +63,7 @@ export default function AuditorConsole() {
   const [sweepResult, setSweepResult] = createSignal<string | null>(null)
   const [sweepLoading, setSweepLoading] = createSignal(false)
   const [sweepError, setSweepError] = createSignal<string | null>(null)
+  const [actionResult, setActionResult] = createSignal<string | null>(null)
 
   const fetchEvents = async () => {
     setLoading(true)
@@ -64,15 +72,19 @@ export default function AuditorConsole() {
       const res = await fetch(
         `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/audit`
       )
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      if (!res.ok) throw new Error(await readApiError(res))
       const data = await res.json() as AuditEvent[]
-      setEvents(data as AuditEvent[])
+      setEvents(Array.isArray(data) ? data : [])
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
   }
+
+  createEffect(on(tenantId, () => {
+    void fetchEvents()
+  }))
 
   const fetchArchiveExport = async (archiveId: string) => {
     if (!archiveId) return
@@ -81,7 +93,7 @@ export default function AuditorConsole() {
       const res = await fetch(
         `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/audit-archive/${encodeURIComponent(archiveId)}/export`
       )
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      if (!res.ok) throw new Error(await readApiError(res))
       const data = await res.json()
       setArchiveExport(data as ArchiveExport | ArchiveRejected)
     } catch (e) {
@@ -90,48 +102,69 @@ export default function AuditorConsole() {
   }
 
   const postCustody = async (archiveId: string, action: string) => {
+    const id = archiveId.trim()
+    if (!id) {
+      setActionResult("archive id required")
+      return { ok: false, reason: "archive id required" }
+    }
     try {
       const res = await fetch(
-        `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/audit-archive/${encodeURIComponent(archiveId)}/custody`,
+        `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/audit-archive/${encodeURIComponent(id)}/custody`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action }),
         }
       )
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      if (!res.ok) throw new Error(await readApiError(res))
       const data = (await res.json()) as LegalHoldResponse
+      setActionResult(data.ok === false ? (data.reason ?? "custody failed") : `custody ${action}`)
       return data
     } catch (e) {
-      return { ok: false, reason: e instanceof Error ? e.message : String(e) }
+      const reason = e instanceof Error ? e.message : String(e)
+      setActionResult(reason)
+      return { ok: false, reason }
     }
   }
 
-  const postLegalHold = async (archiveId: string, action: "PLACE" | "RELEASE") => {
+  const postLegalHold = async (archiveId: string, action: "PLACE" | "REMOVE") => {
+    const id = archiveId.trim()
+    if (!id) {
+      setActionResult("archive id required")
+      return { ok: false, reason: "archive id required" }
+    }
     try {
       const res = await fetch(
-        `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/audit-archive/${encodeURIComponent(archiveId)}/legal-hold`,
+        `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/audit-archive/${encodeURIComponent(id)}/legal-hold`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action }),
         }
       )
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      if (!res.ok) throw new Error(await readApiError(res))
       const data = (await res.json()) as LegalHoldResponse
+      setActionResult(data.ok === false ? (data.reason ?? "legal hold failed") : `legal hold ${action}`)
       return data
     } catch (e) {
-      return { ok: false, reason: e instanceof Error ? e.message : String(e) }
+      const reason = e instanceof Error ? e.message : String(e)
+      setActionResult(reason)
+      return { ok: false, reason }
     }
   }
 
-  const postRetentionSweep = async (n?: string) => {
+  const postRetentionSweep = async (rawNow?: string) => {
     setSweepLoading(true)
     setSweepError(null)
     setSweepResult(null)
     try {
+      const parsed = parseRetentionSweepNow(rawNow)
+      if (parsed.error) {
+        setSweepError(parsed.error)
+        return
+      }
       const body: Record<string, string> = {}
-      if (n) body.n = n
+      if (parsed.now) body.now = parsed.now
       const res = await fetch(
         `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/audit-archive/retention-sweep`,
         {
@@ -140,7 +173,7 @@ export default function AuditorConsole() {
           body: JSON.stringify(body),
         }
       )
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      if (!res.ok) throw new Error(await readApiError(res))
       const data = (await res.json()) as RetentionSweepResponse
       setSweepResult(formatSweepResult(data))
     } catch (e) {
@@ -156,7 +189,7 @@ export default function AuditorConsole() {
         <title>Auditor Console</title>
       </head>
       <p style={{ color: TEXT_WEAK, "font-size": "0.85rem" }}>
-        Read-only audit console. Operators inspect events and archive proofs; all mutations go through the enterprise API.
+        Audit console. Inspect events and archive proofs. Mutations (custody, legal hold, retention sweep) go through the enterprise API.
       </p>
 
       <section style={{ "margin-bottom": "2rem", display: "flex", gap: "1rem", "align-items": "center", "flex-wrap": "wrap" }}>
@@ -226,11 +259,15 @@ export default function AuditorConsole() {
                   <For each={events().map(mapAuditEvent)}>
                     {(mapped) => {
                       return (
-                        <tr style={{ "border-bottom": "1px solid " + BORDER }}>
-                          <td style={{ padding: "0.4rem", "font-family": "monospace", "font-size": "0.75rem" }}>{mapped.id}</td>
-                          <td style={{ padding: "0.4rem", "font-family": "monospace", "font-size": "0.75rem" }}>{mapped.actor}</td>
+                        <tr
+                          style={{ "border-bottom": "1px solid " + BORDER, cursor: "pointer" }}
+                          title={mapped.id}
+                          onClick={() => setSelectedArchive(mapped.id)}
+                        >
+                          <td style={{ padding: "0.4rem", "font-family": "monospace", "font-size": "0.75rem" }} title={mapped.id}>{mapped.idShort}</td>
+                          <td style={{ padding: "0.4rem", "font-family": "monospace", "font-size": "0.75rem" }} title={mapped.actor}>{mapped.actorShort}</td>
                           <td style={{ padding: "0.4rem" }}>{mapped.action}</td>
-                          <td style={{ padding: "0.4rem", "font-family": "monospace", "font-size": "0.75rem" }}>{mapped.resource}</td>
+                          <td style={{ padding: "0.4rem", "font-family": "monospace", "font-size": "0.75rem" }} title={mapped.resource}>{mapped.resourceShort}</td>
                           <td>
                             <span
                               style={{
@@ -350,7 +387,7 @@ export default function AuditorConsole() {
           Place Legal Hold (POST)
         </button>
         <button
-          onClick={() => postLegalHold(selectedArchive(), "RELEASE")}
+          onClick={() => postLegalHold(selectedArchive(), "REMOVE")}
           style={{
             background: BG,
             border: "1px solid " + BORDER,
@@ -361,16 +398,16 @@ export default function AuditorConsole() {
             cursor: "pointer",
           }}
         >
-          Release Legal Hold (POST)
+          Remove Legal Hold (POST)
         </button>
       </section>
 
       <section style={{ display: "flex", gap: "1rem", "flex-wrap": "wrap", "align-items": "flex-end", "margin-bottom": "1rem" }}>
-        <label style={{ color: TEXT_WEAK, "font-size": "0.85rem" }}>Retention sweep (optional n):</label>
+        <label style={{ color: TEXT_WEAK, "font-size": "0.85rem" }}>Retention sweep (optional now ISO):</label>
         <input
           id="sweep-now"
           type="text"
-          placeholder="e.g. 90"
+          placeholder="2026-08-17T00:00:00Z"
           style={{
             background: SUPP,
             border: "1px solid " + BORDER,
@@ -402,6 +439,10 @@ export default function AuditorConsole() {
         </button>
       </section>
 
+      <Show when={actionResult()}>
+        <div style={{ color: TEXT_WEAK, "font-size": "0.85rem", "margin-bottom": "1rem" }}>{actionResult()}</div>
+      </Show>
+
       <Switch>
         <Match when={sweepLoading()}>
           <div style={{ color: TEXT_WEAK }}>Running retention sweep...</div>
@@ -415,7 +456,7 @@ export default function AuditorConsole() {
       </Switch>
 
       <footer style={{ color: TEXT_WEAK, "font-size": "0.75rem", "margin-top": "2rem", "border-top": "1px solid " + BORDER, "padding-top": "1rem" }}>
-        arcana enterprise · auditor console · read-only · GET /audit · POST /audit-archive/:id/custody · POST /audit-archive/:id/legal-hold · POST /audit-archive/retention-sweep
+        arcana enterprise · auditor console · GET /audit · POST /audit-archive/:id/custody · POST /audit-archive/:id/legal-hold (PLACE|REMOVE) · POST /audit-archive/retention-sweep
       </footer>
     </div>
   )

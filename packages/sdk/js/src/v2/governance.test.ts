@@ -2,10 +2,13 @@ import { describe, expect, it } from "bun:test"
 import { ed25519 } from "@noble/curves/ed25519.js"
 import {
   buildAuthorizationRequest,
+  parseToolArguments,
   toAuthorizationRequest,
+  unionUntrustedProvenance,
   verifySignedEnvelope,
   type GovernanceContext,
 } from "./governance.js"
+import { InvalidRequestError } from "./errors.js"
 import { signEnvelope } from "@arcana/core/crypto/node-enrollment"
 import { CAPABILITY_DOMAIN } from "@arcana/core/crypto/signed-envelopes"
 
@@ -70,16 +73,39 @@ describe("SDK 1.0 governance surface (E3)", () => {
   })
 
   it("maps framework tool calls through the adapter hook", () => {
-    const request = toAuthorizationRequest(
-      { name: "run", arguments: { command: "bun test" } },
-      CONTEXT,
-    )
+    const request = toAuthorizationRequest({ name: "run", arguments: { command: "bun test" } }, CONTEXT)
     expect(request.tool).toBe("run")
     expect(request.action).toBe("process.execute")
     expect(request.principalId).toBe("agent:build")
     expect(request.contractRevision).toBe("3")
     expect(request.arguments).toContain("command=bun test")
     expect(request.requestHash.length).toBe(64)
+  })
+
+  it("canonicalizes object arguments so distinct values do not share H(q)", () => {
+    const a = toAuthorizationRequest(
+      { name: "write", arguments: { dest: { path: "/tmp" } } },
+      CONTEXT,
+    )
+    const b = toAuthorizationRequest(
+      { name: "write", arguments: { dest: { path: "/etc" } } },
+      CONTEXT,
+    )
+    expect(a.arguments[0]).toBe('dest={"path":"/tmp"}')
+    expect(b.arguments[0]).toBe('dest={"path":"/etc"}')
+    expect(a.requestHash).not.toBe(b.requestHash)
+  })
+
+  it("rejects invalid JSON tool arguments", () => {
+    expect(() => parseToolArguments("{")).toThrow(InvalidRequestError)
+    expect(() =>
+      toAuthorizationRequest({ name: "run", arguments: "{" }, CONTEXT),
+    ).toThrow(InvalidRequestError)
+  })
+
+  it("unions MCP_DESCRIPTION with caller provenance instead of replacing it", () => {
+    expect(unionUntrustedProvenance(["USER_INSTRUCTION"])).toEqual(["USER_INSTRUCTION", "MCP_DESCRIPTION"])
+    expect(unionUntrustedProvenance()).toEqual(["MCP_DESCRIPTION"])
   })
 
   it("verifies signed envelopes and rejects forgeries", () => {

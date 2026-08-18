@@ -6,6 +6,7 @@ import type { SessionID, MessageID } from "../session/schema"
 import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
 import { actionRequiresMutationGate, createEngineAction, type ArcanaActionKind, createRunProofEvent, createVerificationRun, createVerifierRecord } from "@/kernel"
+import { inspectEffect } from "@/execution/inspect"
 
 interface Metadata {
   [key: string]: any
@@ -48,10 +49,13 @@ function inferToolSecurity(id: string, input: unknown) {
   const actionKind = inferToolActionKind(id)
   const paths = extractStringValues(input, ["path", "file", "filename", "files", "target", "cwd"])
   const command = extractStringValues(input, ["command", "cmd", "script"])[0]
+  const inspect = inspectEffect({ tool: id, args: input })
   const security = {
     paths,
-    network_egress: actionKind === "network",
-    modifies_dependencies: paths.some((path) => /(^|\/)(package\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb|requirements\.txt|pyproject\.toml|cargo\.toml|go\.mod)$/i.test(path)),
+    network_egress: actionKind === "network" || actionKind === "mcp" || inspect.subjects.some((item) => item.kind === "url"),
+    modifies_dependencies:
+      inspect.subjects.some((item) => item.kind === "package")
+      || paths.some((path) => /(^|\/)(package\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb|requirements\.txt|pyproject\.toml|cargo\.toml|go\.mod)$/i.test(path)),
   }
   return command ? { ...security, command } : security
 }
@@ -166,6 +170,7 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           input_summary: summarizeToolInput(args),
           security: inferToolSecurity(id, args),
         })
+        const inspect = inspectEffect({ tool: id, args })
         const governedCtx: Context = {
           ...ctx,
           ask(input) {
@@ -185,6 +190,7 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
                   policy: action.policy,
                   reversible: action.reversible,
                   security_context: action.security_context,
+                  inspect,
                 },
               },
             })

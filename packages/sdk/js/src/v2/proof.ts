@@ -33,7 +33,9 @@ const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "rolled_b
  * Canonical proof fingerprint: binds the stable identity fields, lifecycle,
  * and the ordered event list. Any tampering with events changes it.
  */
-export function proofFingerprint(proof: Pick<RunProofLike, "id" | "schema_version" | "timestamp" | "lifecycle" | "events">): string {
+export function proofFingerprint(
+  proof: Pick<RunProofLike, "id" | "schema_version" | "timestamp" | "lifecycle" | "events">,
+): string {
   const canonical = canonicalize({
     id: proof.id,
     schema_version: proof.schema_version,

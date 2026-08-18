@@ -9,16 +9,20 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import { app } from "../api-app"
 import {
+  CONSOLE_ORIGIN_ENV,
   ENGINE_BASE_URL_DEFAULT,
   ENGINE_BASE_URL_ENV,
   forwardToEngine,
   resolveEngineBaseURL,
+  shouldForwardCookie,
 } from "./enterprise-proxy"
 
 type FetchImpl = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 const realFetch = globalThis.fetch
 const originalEnv = process.env[ENGINE_BASE_URL_ENV]
+const originalNodeEnv = process.env.NODE_ENV
+const originalAllowLocal = process.env.ARCANA_ENGINE_ALLOW_LOCAL
 
 function installFetch(impl: FetchImpl) {
   globalThis.fetch = impl as unknown as typeof fetch
@@ -28,11 +32,16 @@ afterEach(() => {
   globalThis.fetch = realFetch
   if (originalEnv === undefined) delete process.env[ENGINE_BASE_URL_ENV]
   else process.env[ENGINE_BASE_URL_ENV] = originalEnv
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV
+  else process.env.NODE_ENV = originalNodeEnv
+  if (originalAllowLocal === undefined) delete process.env.ARCANA_ENGINE_ALLOW_LOCAL
+  else process.env.ARCANA_ENGINE_ALLOW_LOCAL = originalAllowLocal
 })
 
 describe("resolveEngineBaseURL", () => {
-  it("returns the documented default when the env var is missing", () => {
-    expect(resolveEngineBaseURL({})).toBe(ENGINE_BASE_URL_DEFAULT)
+  it("fails closed when the env var is missing outside local development", () => {
+    expect(resolveEngineBaseURL({})).toBe("")
+    expect(resolveEngineBaseURL({ NODE_ENV: "production" })).toBe("")
   })
 
   it("returns the configured engine base URL when set", () => {
@@ -41,13 +50,77 @@ describe("resolveEngineBaseURL", () => {
     )
   })
 
-  it("falls back to the default for empty or whitespace-only values", () => {
-    expect(resolveEngineBaseURL({ [ENGINE_BASE_URL_ENV]: "" })).toBe(ENGINE_BASE_URL_DEFAULT)
-    expect(resolveEngineBaseURL({ [ENGINE_BASE_URL_ENV]: "   " })).toBe(ENGINE_BASE_URL_DEFAULT)
+  it("uses localhost only in explicit development or when local default is allowed", () => {
+    expect(resolveEngineBaseURL({ NODE_ENV: "development" })).toBe(ENGINE_BASE_URL_DEFAULT)
+    expect(resolveEngineBaseURL({ ARCANA_ENGINE_ALLOW_LOCAL: "1" })).toBe(ENGINE_BASE_URL_DEFAULT)
+  })
+
+  it("fails closed for empty or whitespace-only values outside development", () => {
+    expect(resolveEngineBaseURL({ [ENGINE_BASE_URL_ENV]: "" })).toBe("")
+    expect(resolveEngineBaseURL({ [ENGINE_BASE_URL_ENV]: "   " })).toBe("")
+  })
+})
+
+describe("shouldForwardCookie", () => {
+  it("forwards cookies with no Origin (same-origin)", () => {
+    expect(shouldForwardCookie(null, {})).toBe(true)
+  })
+
+  it("does not forward cookies from an unknown Origin", () => {
+    expect(shouldForwardCookie("https://evil.example", {})).toBe(false)
+  })
+
+  it("forwards cookies only from the allowlisted console origin", () => {
+    expect(
+      shouldForwardCookie("https://console.example", { [CONSOLE_ORIGIN_ENV]: "https://console.example" }),
+    ).toBe(true)
+    expect(
+      shouldForwardCookie("https://evil.example", { [CONSOLE_ORIGIN_ENV]: "https://console.example" }),
+    ).toBe(false)
   })
 })
 
 describe("forwardToEngine", () => {
+  it("does not forward Cookie from a foreign Origin", async () => {
+    let cookie: string | null = "unset"
+    installFetch(async (_input, init) => {
+      cookie = new Headers(init?.headers).get("cookie")
+      return new Response("{}", { status: 200 })
+    })
+    await forwardToEngine(
+      new Request("http://console/api/enterprise/organizations/t/approvals", {
+        headers: { origin: "https://evil.example", cookie: "sid=abc" },
+      }),
+      "http://engine.local",
+      {},
+    )
+    expect(cookie).toBeNull()
+  })
+
+  it("forwards workspace directory headers with the request", async () => {
+    let seen: Record<string, string | null> = {}
+    installFetch(async (_input, init) => {
+      const headers = new Headers(init?.headers)
+      seen = {
+        directory: headers.get("x-opencode-directory"),
+        workspace: headers.get("x-arcana-workspace"),
+      }
+      return new Response("{}", { status: 200 })
+    })
+
+    await forwardToEngine(
+      new Request("http://console/api/enterprise/organizations/t/approvals", {
+        headers: {
+          "x-opencode-directory": "/work/proj",
+          "x-arcana-workspace": "ws-1",
+        },
+      }),
+      "http://engine.local",
+    )
+
+    expect(seen).toEqual({ directory: "/work/proj", workspace: "ws-1" })
+  })
+
   it("forwards method, query string, and authorization header", async () => {
     const seen: Array<{ url: string; method: string; auth: string | null }> = []
     installFetch(async (input, init) => {
@@ -192,6 +265,22 @@ describe("console api route forwarding", () => {
     expect((await res.json()) as Array<{ approvalId: string; status: string }>).toEqual([
       { approvalId: "appr-1", status: "PENDING" },
     ])
+  })
+
+  it("returns 503 through the app when the engine base URL is not configured", async () => {
+    delete process.env[ENGINE_BASE_URL_ENV]
+    delete process.env.ARCANA_ENGINE_ALLOW_LOCAL
+    process.env.NODE_ENV = "test"
+    installFetch(async () => {
+      throw new Error("must not be called")
+    })
+
+    const res = await app.fetch(
+      new Request("http://console/api/enterprise/organizations/tenant-a/approvals"),
+    )
+    expect(res.status).toBe(503)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toBe("engine_base_url_not_configured")
   })
 
   it("returns 502 JSON through the app when the engine is unreachable", async () => {

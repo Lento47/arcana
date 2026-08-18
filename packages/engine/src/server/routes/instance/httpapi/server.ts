@@ -28,6 +28,7 @@ import { Vcs } from "@/project/vcs"
 import { ProviderAuth } from "@/provider/auth"
 import { Provider } from "@/provider/provider"
 import { Question } from "@/question"
+import { Retention } from "@/retention/retention"
 import { SessionCompaction } from "@/session/compaction"
 import { Instruction } from "@/session/instruction"
 import { LLM } from "@/session/llm"
@@ -241,6 +242,7 @@ const app = LayerNode.group([
   Question.node,
   Permission.node,
   Todo.node,
+  Retention.node,
   Session.node,
   SessionProjector.node,
   SessionStatus.node,

@@ -143,8 +143,15 @@ function preserveBodyText(text: string): string {
   return normalizeNewlines(text)
 }
 
+/** Engine tags meant for the model, not the operator transcript. */
+function stripEngineMetadataBlocks(text: string): string {
+  return text
+    .replace(/\n*<shell_metadata\b[^>]*>[\s\S]*?<\/shell_metadata>/gi, "")
+    .replace(/\n*<metadata\b[^>]*>[\s\S]*?<\/metadata>/gi, "")
+}
+
 function cleanText(text: string): string {
-  return preserveBodyText(text).trim()
+  return stripEngineMetadataBlocks(preserveBodyText(text)).trim()
 }
 
 /** Parse subagent task output into a structured report. Extracts summary paragraph,
@@ -836,7 +843,7 @@ function metadataNumber(meta: Record<string, unknown>, ...keys: string[]): numbe
 
 /** Extract a short inline summary from tool output for the spine row. */
 function summarizeOutput(output: string): string {
-  const text = stripAnsi(output).trim()
+  const text = stripAnsi(stripEngineMetadataBlocks(output)).trim()
   if (!text) return ""
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean)
   if (!lines.length) return ""
@@ -1108,7 +1115,7 @@ type ToolOutputBody = {
 function toolOutputBody(part: ToolPart): ToolOutputBody {
   const state = part.state
   if (state.status === "error") {
-    const error = stripAnsi(preserveBodyText(state.error ?? ""))
+    const error = stripAnsi(stripEngineMetadataBlocks(preserveBodyText(state.error ?? "")))
     return { body: error.trim() ? error : "", label: "error", reminders: [] }
   }
 
@@ -1148,7 +1155,7 @@ function toolOutputBody(part: ToolPart): ToolOutputBody {
     }
   }
 
-  const output = stripAnsi(preserveBodyText(state.output ?? ""))
+  const output = stripAnsi(stripEngineMetadataBlocks(preserveBodyText(state.output ?? "")))
   if (/^\[?STALE\]?\s*(Wrote file successfully|Edit applied successfully)\.?$/i.test(cleanText(output))) {
     return { body: "", label: "output", reminders: [] }
   }

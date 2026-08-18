@@ -567,7 +567,7 @@ function WhichKeyPanel(props: {
 const tui: TuiPlugin = async (api) => {
   const [pinned, setPinned] = createSignal(false)
   const [mode, setMode] = createSignal(layout(api.kv.get(KV_LAYOUT, "dock")))
-  const [pendingPreview, setPendingPreview] = createSignal(api.kv.get(KV_PENDING_PREVIEW, false))
+  const [pendingPreview, setPendingPreview] = createSignal(api.kv.get(KV_PENDING_PREVIEW, true))
 
   api.keymap.registerLayer({
     priority: LAYER_PRIORITY,

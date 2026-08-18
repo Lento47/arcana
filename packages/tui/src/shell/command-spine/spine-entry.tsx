@@ -18,6 +18,9 @@ import { SpineReport } from "./spine-report"
 import { SpineListArtifact } from "./spine-list-artifact"
 import { SpineListing } from "./spine-listing"
 import { SpineChatCard } from "./spine-chat"
+import { SpineApprovalGate } from "./spine-approval-gate"
+import { SpineProof } from "./spine-proof"
+import { taskRowChrome } from "./spine-chrome"
 import {
   toSpineEntryView,
   type ApprovalEntry,
@@ -137,6 +140,7 @@ type HeaderFields = {
   elapsed?: string
   glyph: string
   streaming?: boolean
+  thinking?: string
 }
 
 /** Shared compact header for every non-chat row family. */
@@ -171,6 +175,7 @@ function RowHeader(props: {
         elapsed={props.view.elapsed}
         disclosure={props.disclosure}
         streaming={props.view.streaming === true}
+        thinking={props.view.thinking}
       />
     </box>
   )
@@ -196,12 +201,19 @@ function ChildrenGroup(props: {
                 active={false}
               />
               <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
-                <text fg={theme.text} wrapMode="word">
-                  {child.summary || child.receipt?.command || child.label || "action"}
-                </text>
+                <box flexDirection="row" flexShrink={0} gap={1} minWidth={0}>
+                  <box flexShrink={0} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
+                    <text fg={theme.spineContext} wrapMode="none">
+                      {child.label || child.kind}
+                    </text>
+                  </box>
+                  <text fg={theme.text} wrapMode="word">
+                    {child.summary || child.receipt?.command || child.label || "action"}
+                  </text>
+                </box>
                 <Show when={child.receipt?.summary || child.elapsed}>
                   <text fg={theme.spineDiffMuted} wrapMode="word">
-                    {[child.receipt?.summary, child.elapsed].filter(Boolean).join(" \u00B7 ")}
+                    {[child.receipt?.status, child.receipt?.summary, child.elapsed].filter(Boolean).join(" \u00B7 ")}
                   </text>
                 </Show>
               </box>
@@ -530,6 +542,14 @@ export function SpineEntry(props: {
                     </box>
                   </box>
                 </Show>
+                <Show when={v().proof}>
+                  <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+                    <SpineRail layout={props.layout} active={props.focused} />
+                    <box flexGrow={1} minWidth={0} flexShrink={1}>
+                      <SpineProof proof={v().proof!} layout={props.layout} failed={kind() === "fail"} />
+                    </box>
+                  </box>
+                </Show>
 
                 {/* Thinking body - TextPart-style host (no rail sibling on prose). */}
                 <Show when={hasThinkBody() && bodyExpanded()}>
@@ -571,6 +591,7 @@ export function SpineEntry(props: {
                         headers={v().table!.headers}
                         rows={v().table!.rows}
                         focused={props.focused}
+                        contentWidth={props.contentWidth}
                       />
                     </box>
                   </box>
@@ -647,6 +668,20 @@ export function SpineEntry(props: {
                     </text>
                   </box>
                 </Show>
+                <Show when={v().pending || v().snapshot}>
+                  <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+                    <SpineRail layout={props.layout} active={props.focused} />
+                    <box flexGrow={1} minWidth={0} flexShrink={1}>
+                      <SpineApprovalGate
+                        entry={entry()}
+                        snapshot={v().snapshot}
+                        layout={props.layout}
+                        focused={props.focused}
+                        contentWidth={props.contentWidth}
+                      />
+                    </box>
+                  </box>
+                </Show>
                 <Show when={v().body?.trim() && bodyExpanded()}>
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail layout={props.layout} active={props.focused} />
@@ -682,6 +717,14 @@ export function SpineEntry(props: {
                 <Show when={hasChildren() && expanded()}>
                   <ChildrenGroup children={v().children!} layout={props.layout} contentWidth={props.contentWidth} />
                 </Show>
+                <Show when={entry().proof}>
+                  <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+                    <SpineRail layout={props.layout} active={props.focused} />
+                    <box flexGrow={1} minWidth={0} flexShrink={1}>
+                      <SpineProof proof={entry().proof!} layout={props.layout} failed={kind() === "fail"} />
+                    </box>
+                  </box>
+                </Show>
               </>
             )}
           </Show>
@@ -698,6 +741,29 @@ export function SpineEntry(props: {
                   nodeSummary={nodeSummary()}
                   onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                 />
+                <Show when={taskRowChrome({ streaming: v().streaming, childCount: childCount(), expanded: expanded() }).childHint}>
+                  <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+                    <SpineRail layout={props.layout} active={props.focused} />
+                    <box
+                      flexDirection="row"
+                      gap={1}
+                      flexShrink={0}
+                      paddingLeft={1}
+                      paddingRight={1}
+                      backgroundColor={theme.backgroundElement}
+                    >
+                      <text fg={theme.spineContext} wrapMode="none">
+                        {taskRowChrome({ streaming: v().streaming }).kind}
+                      </text>
+                      <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none">
+                        {taskRowChrome({ streaming: v().streaming }).cue}
+                      </text>
+                      <text fg={theme.spineDiffMuted} wrapMode="none">
+                        {taskRowChrome({ streaming: v().streaming, childCount: childCount(), expanded: expanded() }).childHint}
+                      </text>
+                    </box>
+                  </box>
+                </Show>
                 {/* Expandable body for agent entries without a tool body. */}
                 <Show when={!hasToolBody() && bodyExpanded()}>
                   <box paddingLeft={padLeft()} paddingTop={1}>

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { createSignal } from "solid-js"
 import { context as SessionRouteContext, ReasoningPart } from "../src/routes/session/index"
 import { ThemeProvider } from "../src/context/theme"
+import { ToastProvider } from "../src/ui/toast"
 import { ArgsProvider } from "../src/context/args"
 import { TuiConfigProvider } from "../src/config"
 import { KVProvider } from "../src/context/kv"
@@ -71,7 +72,8 @@ function Harness(props: {
       <ArgsProvider>
         <TuiConfigProvider config={createTuiResolvedConfig()}>
           <KVProvider>
-            <ThemeProvider mode="dark">
+            <ToastProvider>
+              <ThemeProvider mode="dark">
               <SessionRouteContext.Provider
                 value={
                   {
@@ -94,7 +96,8 @@ function Harness(props: {
                   <ReasoningPart last={true} part={props.part()} message={makeMessage()} />
                 </box>
               </SessionRouteContext.Provider>
-            </ThemeProvider>
+              </ThemeProvider>
+            </ToastProvider>
           </KVProvider>
         </TuiConfigProvider>
       </ArgsProvider>

@@ -11,18 +11,23 @@ export const app = new Hono()
 
 app
   .basePath("/api")
-  .use(cors())
   .use("/enterprise/*", (c) =>
     forwardToEngine(c.req.raw, resolveEngineBaseURL(process.env)),
+  )
+  .use(
+    cors({
+      origin: process.env.ARCANA_CONSOLE_ORIGIN?.trim() || "",
+      credentials: Boolean(process.env.ARCANA_CONSOLE_ORIGIN?.trim()),
+    }),
   )
   .get(
     "/doc",
     openAPIRouteHandler(app, {
       documentation: {
         info: {
-          title: "Opencode Enterprise API",
+          title: "Arcana Enterprise API",
           version: "1.0.0",
-          description: "Opencode Enterprise API endpoints",
+          description: "Arcana Enterprise API endpoints",
         },
         openapi: "3.1.1",
       },

@@ -8,9 +8,7 @@
  */
 
 import { randomUUID } from "node:crypto"
-import {
-  computeRequestHash,
-} from "@arcana/core/capability/request-hash"
+import { computeRequestHash } from "@arcana/core/capability/request-hash"
 import type {
   AuthorizationRequest,
   CanonicalResource,
@@ -18,11 +16,9 @@ import type {
   ProvenanceLabel,
   SensitivityLabel,
 } from "@arcana/core/capability/types"
-import {
-  canonicalize,
-  type SignatureDomain,
-} from "@arcana/core/crypto/canonical-serializer"
+import { canonicalize, type SignatureDomain } from "@arcana/core/crypto/canonical-serializer"
 import { parseStrictEnvelope, verifyEnvelopeSignature } from "@arcana/core/crypto/verifier"
+import { InvalidRequestError } from "./errors.js"
 
 export { canonicalize, parseStrictEnvelope }
 export type { SignatureDomain }
@@ -82,14 +78,44 @@ export function buildAuthorizationRequest(
  * Map a framework tool call + governance context onto a canonical
  * AuthorizationRequest. Framework adapters use this hook before every effect.
  */
+export function unionUntrustedProvenance(
+  caller?: readonly ProvenanceLabel[],
+  required: ProvenanceLabel = "MCP_DESCRIPTION",
+): ProvenanceLabel[] {
+  const labels = new Set<ProvenanceLabel>(caller ?? [])
+  labels.add(required)
+  return [...labels]
+}
+
+function formatArgValue(value: unknown): string {
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  if (value === null || value === undefined) return String(value)
+  return JSON.stringify(value)
+}
+
+export function parseToolArguments(
+  raw: Record<string, unknown> | string | undefined,
+): Record<string, unknown> {
+  if (raw == null) return {}
+  if (typeof raw === "object") return raw
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new InvalidRequestError("tool arguments must be a JSON object")
+    }
+    return parsed as Record<string, unknown>
+  } catch (error) {
+    if (error instanceof InvalidRequestError) throw error
+    throw new InvalidRequestError("tool arguments must be valid JSON")
+  }
+}
+
 export function toAuthorizationRequest(
   toolCall: ToolCallLike,
   context: GovernanceContext,
 ): AuthorizationRequest & { requestHash: string } {
-  const args =
-    typeof toolCall.arguments === "string"
-      ? (JSON.parse(toolCall.arguments) as Record<string, unknown>)
-      : (toolCall.arguments ?? {})
+  const args = parseToolArguments(toolCall.arguments)
   const resource: CanonicalResource = {
     kind: context.resource?.kind ?? "process",
     ...context.resource,
@@ -109,7 +135,7 @@ export function toAuthorizationRequest(
     action: context.action,
     resource,
     executable: context.executable,
-    arguments: Object.keys(args).map((key) => `${key}=${String(args[key])}`),
+    arguments: Object.keys(args).map((key) => `${key}=${formatArgValue(args[key])}`),
     workingDirectory: context.workingDirectory,
     networkDestination: context.networkDestination,
     provenance: context.provenance,
@@ -117,9 +143,7 @@ export function toAuthorizationRequest(
   })
 }
 
-export type SignedEnvelopeVerification =
-  | { valid: true }
-  | { valid: false; stage: string; reason: string }
+export type SignedEnvelopeVerification = { valid: true } | { valid: false; stage: string; reason: string }
 
 /**
  * Strict-parse and verify a signed envelope against a public key.
@@ -137,7 +161,5 @@ export function verifySignedEnvelope(
     return { valid: false, stage: "PARSE", reason: String(error) }
   }
   const result = verifyEnvelopeSignature(envelope, domain, publicKey)
-  return result.valid
-    ? { valid: true }
-    : { valid: false, stage: result.stage, reason: result.detail }
+  return result.valid ? { valid: true } : { valid: false, stage: result.stage, reason: result.detail }
 }

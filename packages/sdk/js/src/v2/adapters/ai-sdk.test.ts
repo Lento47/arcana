@@ -1,8 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import {
-  AuthorizationDeniedError,
-  ApprovalRequiredError,
-} from "../errors.js"
+import { AuthorizationDeniedError, ApprovalRequiredError, InvalidRequestError } from "../errors.js"
 import { governedTool, type AuthorizeFn } from "./ai-sdk.js"
 import type { GovernanceContext } from "../governance.js"
 
@@ -83,5 +80,24 @@ describe("AI SDK governed tool adapter (E6)", () => {
       },
     )
     await expect(tool.execute({})).rejects.toBeInstanceOf(ApprovalRequiredError)
+  })
+
+  it("fails closed on ALLOW when executeExact is omitted", async () => {
+    let executed = false
+    const tool = governedTool(
+      {
+        name: "run",
+        execute: async () => {
+          executed = true
+          return { ok: true }
+        },
+      },
+      {
+        context: CONTEXT,
+        authorize: async () => ({ decision: "ALLOW" }),
+      },
+    )
+    await expect(tool.execute({ command: "bun test" })).rejects.toBeInstanceOf(InvalidRequestError)
+    expect(executed).toBe(false)
   })
 })
