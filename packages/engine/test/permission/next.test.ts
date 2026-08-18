@@ -1276,6 +1276,42 @@ it.instance(
 )
 
 it.instance(
+  "ask - benign verdict with coarse human-review control still asks",
+  () =>
+    Effect.gen(function* () {
+      const fiber = yield* ask({
+        sessionID: SessionID.make("session_benign_review"),
+        permission: "bash",
+        patterns: ["ls -la"],
+        metadata: {
+          command: "ls -la",
+          engine_action: {
+            risk: {
+              level: "medium",
+              reasons: ["Shell command can affect local runtime state."],
+              required_controls: ["approval", "human_review"],
+            },
+            inspect: {
+              verdict: "benign",
+              risk: "medium",
+              findings: [],
+              subjects: [],
+              controls: ["approval"],
+            },
+          },
+        },
+        always: [],
+        ruleset: [],
+      }).pipe(Effect.forkScoped)
+
+      expect(yield* waitForPending(1)).toHaveLength(1)
+      yield* rejectAll()
+      yield* Fiber.await(fiber)
+    }),
+  { git: true },
+)
+
+it.instance(
   "ask - installs always require analysis even with an allow rule",
   () =>
     Effect.gen(function* () {

@@ -113,7 +113,8 @@ export const layer = Layer.effect(
         !installAttempt &&
         !opaqueAttempt &&
         engineRisk?.level !== "high" &&
-        engineRisk?.level !== "critical"
+        engineRisk?.level !== "critical" &&
+        !engineRisk?.required_controls.includes("human_review")
 
       if (inspect?.verdict === "block") {
         return yield* new PermissionV1.DeniedError({
