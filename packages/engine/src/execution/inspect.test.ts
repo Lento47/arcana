@@ -24,6 +24,49 @@ describe("inspectEffect", () => {
     expect(report.controls).toContain("osv_scan")
   })
 
+  test("manifest edits are package mutations, never benign", () => {
+    const edit = inspectEffect({
+      tool: "edit",
+      args: { filePath: "package.json", oldString: "a", newString: "b" },
+    })
+    expect(edit.verdict).toBe("review")
+    expect(edit.risk).toBe("high")
+    expect(edit.findings.some((item) => item.code === "PACKAGE_MUTATION")).toBe(true)
+    expect(edit.controls).toContain("osv_scan")
+
+    const write = inspectEffect({
+      tool: "write",
+      args: { filePath: "L:\\PROJECTS\\app\\pyproject.toml", content: "x" },
+    })
+    expect(write.verdict).toBe("review")
+    expect(write.findings.some((item) => item.code === "PACKAGE_MUTATION")).toBe(true)
+
+    const patch = inspectEffect({
+      tool: "apply_patch",
+      args: {
+        patchText: [
+          "*** Begin Patch",
+          "*** Update File: src/package.json",
+          "@@",
+          "- \"left-pad\": \"1.0.0\"",
+          "+ \"left-pad\": \"2.0.0\"",
+          "*** End Patch",
+        ].join("\n"),
+      },
+    })
+    expect(patch.verdict).toBe("review")
+    expect(patch.findings.some((item) => item.code === "PACKAGE_MUTATION")).toBe(true)
+  })
+
+  test("plain source edits stay benign", () => {
+    const report = inspectEffect({
+      tool: "edit",
+      args: { filePath: "src/index.ts", oldString: "a", newString: "b" },
+    })
+    expect(report.verdict).toBe("benign")
+    expect(report.findings).toEqual([])
+  })
+
   test("git clone is review", () => {
     const report = inspectEffect({
       tool: "bash",

@@ -68,6 +68,21 @@ describe("commandLooksLikeInstall", () => {
       "composer update",
       "python setup.py install",
       "cmake --install build",
+      "npm up -g eslint",
+      "yarn upgrade-interactive",
+      "cargo update",
+      "go mod tidy",
+      "gem update bundler",
+      "bundle update",
+      "composer remove foo/bar",
+      "pip uninstall requests",
+      "apt remove nginx",
+      "pacman -R firefox",
+      "apk del curl",
+      "dotnet tool install dotnet-ef",
+      "docker pull node:22",
+      "docker run --rm node:22",
+      "uv tool upgrade ruff",
     ]
     for (const command of commands) {
       expect(commandLooksLikeInstall(command)).toBe(true)
@@ -80,6 +95,8 @@ describe("commandLooksLikeInstall", () => {
     expect(commandLooksLikeInstall("mix test")).toBe(false)
     expect(commandLooksLikeInstall("cmake --build build")).toBe(false)
     expect(commandLooksLikeInstall("mvn test")).toBe(false)
+    expect(commandLooksLikeInstall("docker ps")).toBe(false)
+    expect(commandLooksLikeInstall("dotnet run")).toBe(false)
   })
 
   test("extracts package names and ignores flags", () => {

@@ -1447,6 +1447,44 @@ it.instance(
 )
 
 it.instance(
+  "ask - manifest edits always require analysis even with a benign verdict and an allow rule",
+  () =>
+    Effect.gen(function* () {
+      const fiber = yield* ask({
+        sessionID: SessionID.make("session_manifest_edit"),
+        permission: "edit",
+        patterns: ["package.json"],
+        metadata: {
+          filepath: "package.json",
+          engine_action: {
+            inspect: {
+              verdict: "review",
+              risk: "high",
+              findings: [
+                {
+                  code: "PACKAGE_MUTATION",
+                  severity: "high",
+                  title: "Package manifest mutation",
+                  detail: "Would change dependency state via manifest edit: package.json",
+                },
+              ],
+              subjects: [{ kind: "path", value: "package.json" }],
+              controls: ["approval", "verifier", "osv_scan", "sbom_scan"],
+            },
+          },
+        },
+        always: [],
+        ruleset: [{ permission: "edit", pattern: "*", action: "allow" }],
+      }).pipe(Effect.forkScoped)
+
+      expect(yield* waitForPending(1)).toHaveLength(1)
+      yield* rejectAll()
+      yield* Fiber.await(fiber)
+    }),
+  { git: true },
+)
+
+it.instance(
   "ask - should deny even when an earlier pattern is ask",
   () =>
     Effect.gen(function* () {

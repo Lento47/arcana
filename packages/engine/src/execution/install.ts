@@ -10,7 +10,7 @@
 const INSTALL_COMMAND = new RegExp(
   [
     // JS / Node
-    String.raw`\b(?:npm|yarn|pnpm|bun)\s+(?:install|i|add|update|upgrade|remove|uninstall|ci)\b`,
+    String.raw`\b(?:npm|yarn|pnpm|bun)\s+(?:install|i|add|update|upgrade|up|remove|uninstall|ci)\b`,
     String.raw`\b(?:npx|bunx|pnpx)\b`,
     String.raw`\b(?:pnpm|yarn)\s+dlx\b`,
     String.raw`\b(?:npm|yarn|pnpm)\s+exec\b`,
@@ -18,36 +18,36 @@ const INSTALL_COMMAND = new RegExp(
     String.raw`\bbun\s+x\b`,
     String.raw`\bbun\s+create\b`,
     String.raw`\byarn\s+global\s+add\b`,
+    String.raw`\byarn\s+upgrade-interactive\b`,
     // Python
-    String.raw`\b(?:pip|pip3|pipx)\s+(?:install|download)\b`,
+    String.raw`\b(?:pip|pip3|pipx)\s+(?:install|download|uninstall)\b`,
     String.raw`\bpython(?:3)?\s+-m\s+pip\s+install\b`,
     String.raw`\b(?:uv|poetry)\s+(?:add|install|remove|sync)\b`,
     String.raw`\buvx\b`,
     String.raw`\bconda\s+install\b`,
     String.raw`\bmamba\s+install\b`,
     // Rust / Go / Ruby / PHP
-    String.raw`\bcargo\s+(?:install|add)\b`,
+    String.raw`\bcargo\s+(?:install|add|update|remove)\b`,
     String.raw`\bgo\s+(?:install|get)\b`,
-    String.raw`\bgem\s+install\b`,
-    String.raw`\bbundle\s+add\b`,
-    String.raw`\bcomposer\s+(?:require|install)\b`,
+    String.raw`\bgo\s+mod\s+(?:download|tidy)\b`,
+    String.raw`\bgem\s+(?:install|update)\b`,
+    String.raw`\bbundle\s+(?:install|add|update)\b`,
+    String.raw`\bcomposer\s+(?:require|install|update|remove)\b`,
     // System / desktop
     String.raw`\bbrew\s+(?:install|upgrade|cask\s+install)\b`,
-    String.raw`\b(?:apt-get|apt|yum|dnf|zypper)\s+install\b`,
-    String.raw`\bpacman\s+-S\b`,
-    String.raw`\bapk\s+add\b`,
+    String.raw`\b(?:apt-get|apt|yum|dnf|zypper)\s+(?:install|remove|purge|autoremove)\b`,
+    String.raw`\bpacman\s+-[SRU]\b`,
+    String.raw`\bapk\s+(?:add|del|upgrade)\b`,
     String.raw`\bchoco(?:latey)?\s+install\b`,
     String.raw`\bscoop\s+install\b`,
     String.raw`\bwinget\s+install\b`,
     String.raw`\bnix(?:-env\s+-i| profile install)\b`,
-    String.raw`\bdotnet\s+add\s+package\b`,
+    String.raw`\bdotnet\s+(?:add\s+package|tool\s+(?:install|update|uninstall))\b`,
     String.raw`\bnuget\s+install\b`,
     String.raw`\bdeno\s+install\b`,
     String.raw`\bmake\s+install\b`,
-    // Ruby / ecosystem gaps
-    String.raw`\bbundle\s+install\b`,
-    // uv tool install (uvx-style managed tools)
-    String.raw`\buv\s+tool\s+install\b`,
+    // uv tool install/upgrade (uvx-style managed tools)
+    String.raw`\buv\s+tool\s+(?:install|upgrade)\b`,
     // Desktop / system storefronts
     String.raw`\bsnap\s+install\b`,
     String.raw`\bflatpak\s+install\b`,
@@ -55,6 +55,8 @@ const INSTALL_COMMAND = new RegExp(
     String.raw`\bwinget\s+upgrade\b`,
     String.raw`\bchoco(?:latey)?\s+upgrade\b`,
     String.raw`\bscoop\s+update\b`,
+    // Container images are installed/executed from remote registries
+    String.raw`\bdocker\s+(?:pull|run)\b`,
     // Rust / Dart / Flutter / Elixir / OCaml / Haskell / Java
     String.raw`\bcargo\s+binstall\b`,
     String.raw`\bdart\s+pub\s+(?:add|get|upgrade)\b`,

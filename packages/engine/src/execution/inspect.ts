@@ -15,6 +15,7 @@ import {
   commandLooksLikeInstall,
   commandLooksLikeOpaqueExec,
   extractInstallPackages,
+  isDependencyManifest,
 } from "./install"
 import type { EngineActionKind, RiskLevel } from "./action"
 export type { RiskLevel } from "./action"
@@ -78,6 +79,43 @@ function urlOf(args: Record<string, unknown>): string | undefined {
   return firstString(args, ["url", "target", "uri", "href"])
 }
 
+function fileTargetsOf(args: Record<string, unknown>): string[] {
+  const targets: string[] = []
+  const push = (value: unknown) => {
+    if (typeof value !== "string" || value.length === 0) return
+    for (const part of value.split(/[,\n]+/)) {
+      const trimmed = part.trim()
+      if (trimmed.length > 0) targets.push(trimmed)
+    }
+  }
+
+  for (const key of ["filePath", "filepath", "path", "target"]) push(args[key])
+  for (const key of ["changes", "files"]) {
+    const value = args[key]
+    if (!Array.isArray(value)) continue
+    for (const item of value) {
+      if (typeof item === "string") {
+        push(item)
+        continue
+      }
+      if (!item || typeof item !== "object") continue
+      const row = item as Record<string, unknown>
+      for (const key2 of ["filePath", "filepath", "path", "target"]) push(row[key2])
+    }
+  }
+
+  // apply_patch carries the document, not parsed paths; extract the touched
+  // files from the patch itself (custom Arcana format and unified diff).
+  const patchText = typeof args.patchText === "string" ? args.patchText : ""
+  if (patchText) {
+    for (const match of patchText.matchAll(/^\*\*\*\s+(?:Update|Add|Delete) File:\s*(.+)$/gm)) push(match[1])
+    for (const match of patchText.matchAll(/^\*\*\*\s+Move to:\s*(.+)$/gm)) push(match[1])
+    for (const match of patchText.matchAll(/^\+\+\+\s+b?\/(.+)$/gm)) push(match[1])
+  }
+
+  return targets
+}
+
 function extractGitRemote(command: string): string | undefined {
   const match = command.match(/\b(?:git\s+clone|git\s+remote\s+add\s+\S+|git\s+submodule\s+add)\s+(\S+)/i)
   const value = match?.[1]
@@ -115,7 +153,7 @@ export function inspectEffect(input: { tool: string; args?: unknown }): EffectIn
     : tool === "webfetch" || tool === "websearch" || tool === "fetch" || tool === "search" ? "network"
     : tool === "bash" || tool === "shell" ? "shell"
     : tool === "read" || tool === "grep" || tool === "glob" ? "file_read"
-    : tool === "edit" || tool === "write" || tool === "patch" ? "file_write"
+    : tool === "edit" || tool === "write" || tool === "patch" || tool === "apply_patch" ? "file_write"
     : "tool"
 
   const risk = assessActionRisk({ kind, name: tool, input: input.args ?? args })
@@ -209,6 +247,24 @@ export function inspectEffect(input: { tool: string; args?: unknown }): EffectIn
     controls.add("osv_scan")
     controls.add("sbom_scan")
     level = worse(level, "high")
+  }
+
+  if (kind === "file_write") {
+    const manifestTargets = fileTargetsOf(args).filter((target) => isDependencyManifest(target))
+    if (manifestTargets.length > 0) {
+      for (const target of manifestTargets) subjects.push({ kind: "path", value: target })
+      addFinding(findings, {
+        code: "PACKAGE_MUTATION",
+        severity: "high",
+        title: "Package manifest mutation",
+        detail: `Would change dependency state via manifest edit: ${manifestTargets.join(", ")}`,
+      })
+      controls.add("approval")
+      controls.add("verifier")
+      controls.add("osv_scan")
+      controls.add("sbom_scan")
+      level = worse(level, "high")
+    }
   }
 
   if (GIT_REMOTE.test(command)) {
