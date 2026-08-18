@@ -1859,14 +1859,13 @@ function assistantMessagePartsToEntries(
   const textBeforeTool: TextPart[] = []
   const textAfterTool: TextPart[] = []
 
-  // Collect child session IDs from task tool parts so agent/subtask entries
-  // can link to their subsessions and become clickable/openable.
-  const childSessionIDs: string[] = []
+  // Map each task tool part to its child session id so agent/subtask entries
+  // link to their own subsession instead of all sharing childSessionIDs[0].
+  const taskSessionIdByPartId = new Map<string, string>()
   for (const p of parts) {
-    if (p.type === "tool" && p.state.status === "completed") {
-      const meta = (p.state.metadata ?? {}) as Record<string, unknown>
-      const sid = meta.sessionId
-      if (typeof sid === "string" && sid) childSessionIDs.push(sid)
+    if (p.type === "tool" && (p.state.status === "completed" || p.state.status === "running")) {
+      const sid = taskToolSessionID(p)
+      if (sid) taskSessionIdByPartId.set(p.id, sid)
     }
   }
 
@@ -1922,7 +1921,7 @@ function assistantMessagePartsToEntries(
         summary: truncate(part.description || part.prompt, 120) || `subagent: ${part.agent ?? "agent"}`,
         body: part.description || part.prompt || "",
         collapsible: true,
-        source: { messageID: message.id, partID: part.id, kind: "subtask", sessionID: childSessionIDs[0] },
+        source: { messageID: message.id, partID: part.id, kind: "subtask", sessionID: taskSessionIdByPartId.get(part.id) },
       })
       continue
     }
@@ -1941,7 +1940,7 @@ function assistantMessagePartsToEntries(
         summary: `subagent: ${part.name}`,
         body: `subagent: ${part.name}`,
         collapsible: true,
-        source: { messageID: message.id, partID: part.id, kind: "agent", sessionID: childSessionIDs[0] },
+        source: { messageID: message.id, partID: part.id, kind: "agent", sessionID: taskSessionIdByPartId.get(part.id) },
       })
       continue
     }
