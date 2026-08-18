@@ -22,6 +22,7 @@ export type GovernanceConfig = {
   policy: {
     approvalRoute?: ApprovalRoute
     localFallbackAllowed?: boolean
+    autoAllowBenign?: boolean
   }
 }
 
@@ -62,6 +63,10 @@ export const DEFAULT_GOVERNANCE_CONFIG: GovernanceConfig = {
   policy: {
     approvalRoute: "DESKTOP_PREFERRED",
     localFallbackAllowed: true,
+    // Benign requests (no findings, low/medium risk) are allowed without an
+    // approval gate by default; installations always require analysis
+    // regardless of this flag.
+    autoAllowBenign: true,
   },
 }
 
@@ -89,6 +94,7 @@ type GovernanceOverride = {
   policy: {
     approvalRoute?: ApprovalRoute
     localFallbackAllowed?: boolean
+    autoAllowBenign?: boolean
   }
 }
 
@@ -143,6 +149,8 @@ function parseGovernanceOverride(input: unknown): GovernanceOverride {
       approvalRoute: asApprovalRoute(policy.approvalRoute),
       localFallbackAllowed:
         typeof policy.localFallbackAllowed === "boolean" ? policy.localFallbackAllowed : undefined,
+      autoAllowBenign:
+        typeof policy.autoAllowBenign === "boolean" ? policy.autoAllowBenign : undefined,
     },
   }
 }
@@ -194,6 +202,7 @@ function mergeConfig(base: GovernanceConfig, override: GovernanceOverride): Gove
     policy: {
       approvalRoute: override.policy.approvalRoute ?? base.policy.approvalRoute,
       localFallbackAllowed: override.policy.localFallbackAllowed ?? base.policy.localFallbackAllowed,
+      autoAllowBenign: override.policy.autoAllowBenign ?? base.policy.autoAllowBenign,
     },
   }
 }

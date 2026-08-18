@@ -16,6 +16,7 @@ import {
 import { riskFromMetadata, riskRequiresFreshAsk, riskRequiresInitialAsk } from "./risk-policy"
 import { commandLooksLikeInstall, commandLooksLikeOpaqueExec } from "@/execution/install"
 import { inspectEffect, type EffectInspectReport } from "@/execution/inspect"
+import { loadGovernanceConfig } from "@arcana/core/governance-config"
 import type { RiskLevel } from "@/execution/action"
 import { enrichInspectOnline } from "@/execution/inspect-online"
 import { noteParkedInstall } from "@/execution/install-notice"
@@ -96,6 +97,8 @@ export const layer = Layer.effect(
 
     const ask = Effect.fn("Permission.ask")(function* (input: PermissionV1.AskInput) {
       const { approved, pending } = yield* InstanceState.get(state)
+      const directory = yield* InstanceState.directory
+      const governance = loadGovernanceConfig(directory)
       const { ruleset, ...request } = input
       const engineRisk = riskFromMetadata(request.metadata)
       const inspect = inspectFromMetadata(request.metadata)
@@ -110,6 +113,7 @@ export const layer = Layer.effect(
       // or the coarse kernel risk disagrees at high/critical (fail closed).
       const benignAutoAllowed =
         inspect?.verdict === "benign" &&
+        governance.config.policy.autoAllowBenign !== false &&
         !installAttempt &&
         !opaqueAttempt &&
         engineRisk?.level !== "high" &&
@@ -204,7 +208,6 @@ export const layer = Layer.effect(
       // or DESKTOP_PREFERRED with local fallback). Under DESKTOP_REQUIRED /
       // CENTRAL_REQUIRED the gate stays pending for Desktop even during an
       // outage. This must be the ONLY permission.asked publication.
-      const directory = yield* InstanceState.directory
       const online = desktopOnline(directory)
       let localGate = false
       if (!online) {

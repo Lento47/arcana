@@ -1312,6 +1312,48 @@ it.instance(
 )
 
 it.instance(
+  "ask - benign verdict asks when governance disables auto-allow",
+  () =>
+    Effect.gen(function* () {
+      const fiber = yield* ask({
+        sessionID: SessionID.make("session_benign_strict"),
+        permission: "bash",
+        patterns: ["ls -la"],
+        metadata: {
+          command: "ls -la",
+          engine_action: {
+            inspect: {
+              verdict: "benign",
+              risk: "medium",
+              findings: [],
+              subjects: [],
+              controls: ["approval"],
+            },
+          },
+        },
+        always: [],
+        ruleset: [],
+      }).pipe(Effect.forkScoped)
+
+      expect(yield* waitForPending(1)).toHaveLength(1)
+      yield* rejectAll()
+      yield* Fiber.await(fiber)
+    }),
+  {
+    git: true,
+    init: (directory) =>
+      Effect.promise(async () => {
+        await fs.mkdir(path.join(directory, ".arcana"), { recursive: true })
+        await fs.writeFile(
+          path.join(directory, ".arcana", "governance.yml"),
+          ["version: 1", "policy:", "  autoAllowBenign: false", ""].join("\n"),
+          "utf8",
+        )
+      }),
+  },
+)
+
+it.instance(
   "ask - installs always require analysis even with an allow rule",
   () =>
     Effect.gen(function* () {

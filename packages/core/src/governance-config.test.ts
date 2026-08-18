@@ -28,6 +28,7 @@ describe("governance config", () => {
     expect(DEFAULT_GOVERNANCE_CONFIG.display.desktop.syncChat).toBe(true)
     expect(DEFAULT_GOVERNANCE_CONFIG.policy.approvalRoute).toBe("DESKTOP_PREFERRED")
     expect(DEFAULT_GOVERNANCE_CONFIG.policy.localFallbackAllowed).toBe(true)
+    expect(DEFAULT_GOVERNANCE_CONFIG.policy.autoAllowBenign).toBe(true)
     expect(shouldShowGovernanceEvent(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(false)
     expect(shouldForwardGovernanceEventToDesktop(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(true)
   })
@@ -71,6 +72,18 @@ describe("governance config", () => {
     })
     expect(resolved?.display.desktop.syncChat).toBe(false)
     expect(resolved?.display.desktop.includePrefixes).toEqual(["contract."])
+  })
+
+  test("autoAllowBenign defaults on and can be disabled per workspace", () => {
+    const strict = normalizeGovernanceConfig({
+      policy: { autoAllowBenign: false },
+    })
+    expect(strict.policy.autoAllowBenign).toBe(false)
+
+    const resolved = resolveGovernanceConfig(strict, {
+      policy: { approvalRoute: "DESKTOP_REQUIRED" },
+    })
+    expect(resolved?.policy.autoAllowBenign).toBe(false)
   })
 
   test("applies exact, prefix, trailing-star, and catch-all display filters", () => {
