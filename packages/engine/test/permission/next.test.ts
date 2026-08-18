@@ -1246,6 +1246,56 @@ it.instance(
 )
 
 it.instance(
+  "ask - benign auto-allow publishes permission.allowed",
+  () =>
+    Effect.gen(function* () {
+      const events = yield* EventV2Bridge.Service
+      const seen = yield* Deferred.make<unknown>()
+      const unsub = yield* events.listen((event) => {
+        if (event.type === Permission.Event.Allowed.type)
+          Deferred.doneUnsafe(seen, Effect.succeed(event.data))
+        return Effect.void
+      })
+      yield* Effect.addFinalizer(() => unsub)
+
+      yield* ask({
+        sessionID: SessionID.make("session_benign_event"),
+        permission: "bash",
+        patterns: ["ls -la"],
+        metadata: {
+          command: "ls -la",
+          engine_action: {
+            inspect: {
+              verdict: "benign",
+              risk: "medium",
+              findings: [],
+              subjects: [],
+              controls: [],
+            },
+          },
+        },
+        always: [],
+        ruleset: [],
+      })
+
+      expect(
+        yield* Deferred.await(seen).pipe(
+          Effect.timeoutOrElse({
+            duration: "1 second",
+            orElse: () => Effect.fail(new Error("timed out waiting for permission.allowed")),
+          }),
+        ),
+      ).toMatchObject({
+        sessionID: "session_benign_event",
+        permission: "bash",
+        patterns: ["ls -la"],
+        reason: "benign",
+      })
+    }),
+  { git: true },
+)
+
+it.instance(
   "ask - configured deny still blocks a benign verdict",
   () =>
     Effect.gen(function* () {

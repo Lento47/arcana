@@ -2,7 +2,7 @@ import { LayerNode } from "@arcana/core/effect/layer-node"
 import { ConfigPermissionV1 } from "@arcana/core/v1/config/permission"
 import { InstanceState } from "@/effect/instance-state"
 import { Wildcard } from "@arcana/core/util/wildcard"
-import { Deferred, Effect, Layer, Context } from "effect"
+import { Context, Deferred, Effect, Layer, Schema } from "effect"
 import os from "os"
 import { PermissionV1 } from "@arcana/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -29,6 +29,15 @@ export const Event = {
       sessionID: PermissionV1.Request.fields.sessionID,
       requestID: PermissionV1.ID,
       reply: PermissionV1.Reply,
+    },
+  }),
+  Allowed: EventV2.define({
+    type: "permission.allowed",
+    schema: {
+      sessionID: PermissionV1.Request.fields.sessionID,
+      permission: PermissionV1.Request.fields.permission,
+      patterns: PermissionV1.Request.fields.patterns,
+      reason: Schema.Literals(["benign", "configured"]),
     },
   }),
 }
@@ -148,6 +157,12 @@ export const layer = Layer.effect(
         if (approvedRule.action === "allow" && !forceFreshAskFromRisk) continue
         if (rule.action === "allow" && !forceInitialAskFromRisk) continue
         if (benignAutoAllowed) {
+          yield* events.publish(Event.Allowed, {
+            sessionID: request.sessionID,
+            permission: request.permission,
+            patterns: request.patterns,
+            reason: "benign",
+          })
           yield* Effect.logInfo("benign auto-allowed", {
             permission: request.permission,
             patterns: request.patterns,
@@ -159,7 +174,15 @@ export const layer = Layer.effect(
         needsAsk = true
       }
 
-      if (!needsAsk) return
+      if (!needsAsk) {
+        yield* events.publish(Event.Allowed, {
+          sessionID: request.sessionID,
+          permission: request.permission,
+          patterns: request.patterns,
+          reason: "configured",
+        })
+        return
+      }
 
       let metadata = request.metadata
       if (installAttempt) {
