@@ -280,6 +280,61 @@ describe("BLK-CLI-05: CLI/TUI cross-surface bypass adversarial suite", () => {
     }),
   )
 
+  it.instance("desktop can approve a real session-scoped record via the runtime API", () =>
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirScoped()
+      const session = yield* Session.Service.use((svc) => svc.create({}))
+      // Real engine-created records are session-scoped: workspace_id is the
+      // session id, never the directory path. The runtime handler must bind
+      // the operator service to the record's durable workspace identity,
+      // otherwise every desktop decision fails with
+      // "approval belongs to another workspace".
+      const seeded = yield* seedRecord(tmp, session.id, {
+        route: "DESKTOP_REQUIRED",
+      })
+      yield* registerDesktop(tmp)
+      const response = yield* requestInDirectory(
+        `/approvals/${seeded.approvalId}/approve`,
+        tmp,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(commandBody()),
+        },
+      )
+      const body = (yield* json(response)) as {
+        success: boolean
+        approval?: ApprovalRecord
+        reason?: string
+      }
+      expect(body.success).toBe(true)
+      if (body.success) expect(body.approval!.state).toBe("APPROVED")
+      expect(approvalStoreForWorkspace(tmp).loadApproval(seeded.approvalId)!.state).toBe(
+        "APPROVED",
+      )
+    }),
+  )
+
+  it.instance("desktop affordances resolve for a real session-scoped record", () =>
+    Effect.gen(function* () {
+      const tmp = yield* tmpdirScoped()
+      const session = yield* Session.Service.use((svc) => svc.create({}))
+      const seeded = yield* seedRecord(tmp, session.id, {
+        route: "DESKTOP_PREFERRED",
+      })
+      yield* registerDesktop(tmp)
+      const response = yield* requestInDirectory(
+        `/approvals/${seeded.approvalId}/affordances`,
+        tmp,
+        { method: "GET" },
+      )
+      const body = (yield* json(response)) as unknown[]
+      expect(Array.isArray(body)).toBe(true)
+      expect(body.length).toBeGreaterThan(0)
+      expect(JSON.stringify(body)).not.toContain("WORKSPACE_MISMATCH")
+    }),
+  )
+
   it.instance("LOCAL_TUI-routed approval rejects the DESKTOP surface (CLI cannot claim Desktop)", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance

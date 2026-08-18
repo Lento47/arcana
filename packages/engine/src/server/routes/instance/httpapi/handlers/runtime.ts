@@ -169,7 +169,13 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
         return { success: false as const, reason: "approval belongs to another session" }
       }
 
-      const operator = yield* operatorIdentity(directory)
+      // Engine-created approval records are session-scoped
+      // (workspace_id = session_id). Bind the operator service and identity
+      // to the RECORD's durable workspace identity, not the directory path:
+      // the record was already loaded from the authoritatively resolved
+      // workspace store, so this grants nothing beyond that store, and the
+      // service's workspace equality check compares equal by construction.
+      const operator = yield* operatorIdentity(record.workspaceId)
       const response = submitApprovalCommand({
         sessionId: record.sessionId,
         approvalId: ctx.params.approvalID,
@@ -181,7 +187,7 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
         },
         surface: "DESKTOP",
         workspaceCwd: directory,
-        workspaceId: directory,
+        workspaceId: record.workspaceId,
         operator,
       })
 
@@ -222,7 +228,7 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
       const directory = yield* resolveAuthorizedWorkspace()
       const record = yield* requireApproval(ctx.params.approvalID, directory)
       const sessionScope = yield* sessionScopeFromRequest()
-      const operator = yield* operatorIdentity(directory)
+      const operator = yield* operatorIdentity(record.workspaceId)
       const viewed =
         ctx.query.viewedVersion !== undefined &&
         ctx.query.viewedRequestHash !== undefined &&
@@ -238,7 +244,7 @@ export const runtimeHandlers = HttpApiBuilder.group(InstanceHttpApi, "runtime", 
         approval: record,
         operator,
         surface: "DESKTOP",
-        workspaceId: directory,
+        workspaceId: record.workspaceId,
         routingWorkspaceKey: directory,
         sessionRestriction: sessionScope,
         viewed,
