@@ -17,6 +17,7 @@ import {
   extractInstallPackages,
 } from "./install"
 import type { EngineActionKind, RiskLevel } from "./action"
+export type { RiskLevel } from "./action"
 
 export type InspectVerdict = "benign" | "review" | "block"
 

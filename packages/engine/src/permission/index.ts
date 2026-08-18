@@ -16,6 +16,7 @@ import {
 import { riskFromMetadata, riskRequiresFreshAsk, riskRequiresInitialAsk } from "./risk-policy"
 import { commandLooksLikeInstall, commandLooksLikeOpaqueExec } from "@/execution/install"
 import { inspectEffect, type EffectInspectReport } from "@/execution/inspect"
+import type { RiskLevel } from "@/execution/action"
 import { enrichInspectOnline } from "@/execution/inspect-online"
 import { noteParkedInstall } from "@/execution/install-notice"
 
@@ -316,7 +317,7 @@ function inspectReportFromMetadata(metadata: Record<string, unknown>): EffectIns
         if (!item || typeof item !== "object") return []
         const row = item as { code?: unknown; severity?: unknown; title?: unknown; detail?: unknown }
         if (typeof row.code !== "string" || typeof row.title !== "string") return []
-        const severity = row.severity === "low" || row.severity === "medium" || row.severity === "high" || row.severity === "critical"
+        const severity: RiskLevel = row.severity === "low" || row.severity === "medium" || row.severity === "high" || row.severity === "critical"
           ? row.severity
           : "high"
         return [{
