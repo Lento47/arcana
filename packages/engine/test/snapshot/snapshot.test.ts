@@ -535,6 +535,8 @@ it.instance(
     }),
   ),
   { git: true },
+  // Git info/exclude tracking is heavy; 5s default times out under load.
+  { timeout: 60_000 },
 )
 
 it.instance(
@@ -1151,6 +1153,6 @@ it.instance(
     for (const file of fresh) expect(yield* exists(file)).toBe(false)
   }),
   { git: true },
-  // ~2.9s in isolation; near 5s under full-suite load on 2026-08-02.
-  { timeout: 10_000 },
+  // ~3s in isolation; up to 10s+ under full-suite load.
+  { timeout: 60_000 },
 )
