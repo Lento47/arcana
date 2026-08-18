@@ -138,18 +138,6 @@ export type SpineProofContinuation = {
   completedAt?: string
 }
 
-/** PR6: subagent session branch state on the execution spine. */
-export type SpineBraidStatus = "running" | "completed" | "crashed"
-
-export type SpineBraidChild = {
-  sessionID: string
-  agent: string
-  title: string
-  status: SpineBraidStatus
-  line: string
-  detail?: string
-}
-
 export type SpineEntry = {
   id: string
   index: number
@@ -198,8 +186,6 @@ export type SpineEntry = {
   approval?: SpineApprovalSnapshot
   /** PR6: proof continuation beneath a completed effect. */
   proof?: SpineProofContinuation
-  /** PR6: subagent braid branches for agent rows. */
-  braid?: SpineBraidChild[]
   /** Parsed CLI table data — rendered as stacked rows instead of raw text. */
   table?: { headers: string[]; rows: string[][] }
   /**

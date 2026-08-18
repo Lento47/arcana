@@ -40,13 +40,11 @@ export type {
 
 // PR6: operator-experience additions
 export { resolveApprovalSnapshot, changeForExecuted, shortHash } from "./approval-snapshot"
-export type { SpineApprovalSnapshot, SpineProofContinuation, SpineBraidChild, SpineBraidStatus } from "./spine-types"
+export type { SpineApprovalSnapshot, SpineProofContinuation } from "./spine-types"
 export { buildTrustStatus, eventGapFromTrace } from "./spine-trust"
 export { projectSessionCharter, projectGovernedTally, buildHeaderStatusItems, joinHeaderStatus } from "./session-charter"
 export type { SessionCharter, SessionCharterChip } from "./session-charter"
 export type { SpineTrustStatus, SpineTrustInput, SpineTrustState, SpineTrustConnection } from "./spine-trust"
-export { buildSubagentBraid, braidStatusFor } from "./spine-braid.ts"
-export type { SpineBraidInput } from "./spine-braid.ts"
 export { attachProofContinuations } from "./spine-proof-attach"
 export { projectInsightCard } from "./spine-insight"
 export type { InsightCardModel, InsightMetric } from "./spine-insight"
