@@ -8,10 +8,22 @@ const DAEMON_PORT_END = 9150
 const RESPAWN_DEBOUNCE_MS = 3_000 // prevent storms on network flap
 
 export async function startDaemon(cwd: string, version: string): Promise<{ port: number; url: string }> {
-  // Clean up any stale lock for this workspace
+  // Singleton guard: a live daemon already owns this workspace, so a
+  // duplicate process must never linger or waste a port. Stale locks are
+  // removed; live locks short-circuit before any bind attempt.
   const existing = readLock(cwd)
-  if (existing && isLockStale(existing)) {
-    removeLock(cwd)
+  if (existing) {
+    if (isLockStale(existing)) {
+      removeLock(cwd)
+    } else {
+      if (process.env.ARCANA_DAEMON === "1") {
+        daemonLog(
+          `[daemon] duplicate-start rejected pid=${process.pid} existing-pid=${existing.pid} port=${existing.port}`,
+        )
+        process.exit(0)
+      }
+      return { port: existing.port, url: `http://127.0.0.1:${existing.port}` }
+    }
   }
 
   // Find available port
@@ -45,7 +57,17 @@ export async function startDaemon(cwd: string, version: string): Promise<{ port:
     // Another process won the race — stop our server, connect to theirs
     await server.stop(true)
     const theirs = readLock(cwd)
-    if (theirs) return { port: theirs.port, url: `http://127.0.0.1:${theirs.port}` }
+    if (theirs) {
+      // In daemon mode the process exists only to serve this workspace;
+      // losing the race means there is nothing left to do.
+      if (process.env.ARCANA_DAEMON === "1") {
+        daemonLog(
+          `[daemon] lock-race lost pid=${process.pid} winner-pid=${theirs.pid} port=${theirs.port}`,
+        )
+        process.exit(0)
+      }
+      return { port: theirs.port, url: `http://127.0.0.1:${theirs.port}` }
+    }
     throw new Error("Lock race lost but no winner lock found")
   }
 
