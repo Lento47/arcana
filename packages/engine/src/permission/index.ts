@@ -143,7 +143,15 @@ export const layer = Layer.effect(
         }
         if (approvedRule.action === "allow" && !forceFreshAskFromRisk) continue
         if (rule.action === "allow" && !forceInitialAskFromRisk) continue
-        if (benignAutoAllowed) continue
+        if (benignAutoAllowed) {
+          yield* Effect.logInfo("benign auto-allowed", {
+            permission: request.permission,
+            patterns: request.patterns,
+            verdict: inspect?.verdict,
+            risk: engineRisk?.level,
+          })
+          continue
+        }
         needsAsk = true
       }
 
