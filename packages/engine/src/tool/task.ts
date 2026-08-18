@@ -463,7 +463,7 @@ export const TaskTool = Tool.define(
                       : `Background task failed: ${params.description}`,
                   text,
                   warning: delegationWarning,
-        })
+                })
               },
             ],
           })
@@ -495,7 +495,7 @@ export const TaskTool = Tool.define(
             summary: "Background task updated",
             text: BACKGROUND_UPDATED,
             warning: delegationWarning,
-        })
+          })
         }
       }
 
@@ -528,7 +528,7 @@ export const TaskTool = Tool.define(
             summary: "Background task started",
             text: BACKGROUND_STARTED,
             warning: delegationWarning,
-        })
+          })
         }
       }
 
@@ -583,8 +583,8 @@ export const TaskTool = Tool.define(
                   title: params.description,
                   metadata,
                   output: renderOutput({ sessionID: nextSession.id, state: "completed", text: rawOutput, structured: json,
-          warning: delegationWarning,
-        })
+                    warning: delegationWarning,
+                  })
                 }
               }
               // Retry once: ask subagent to fix format
@@ -610,8 +610,8 @@ export const TaskTool = Tool.define(
                   title: params.description,
                   metadata,
                   output: renderOutput({ sessionID: nextSession.id, state: "completed", text: retryResult, structured: retryJson,
-          warning: delegationWarning,
-        })
+                    warning: delegationWarning,
+                  })
                 }
               }
             }
@@ -619,8 +619,8 @@ export const TaskTool = Tool.define(
               title: params.description,
               metadata,
               output: renderOutput({ sessionID: nextSession.id, state: "completed", text: rawOutput,
-          warning: delegationWarning,
-        })
+                warning: delegationWarning,
+              })
             }
           }),
         (_, exit) =>
