@@ -50,6 +50,14 @@ export type {
 export { formatThinkingPlanForAudit, planThinking } from "./thinking.js"
 
 export { analyzeTool, analyzeTurn, createSignalEngine } from "./signals.js"
+export { classifyEffect, formatClassifierForAudit, mergeClassifier } from "./classifier.js"
+export type {
+  EffectClassFinding,
+  EffectClassInput,
+  EffectClassResult,
+  EffectClassRisk,
+  EffectClassVerdict,
+} from "./classifier.js"
 export { formatToolSignalForAudit, formatTurnSignalForSystemPrompt } from "./llm.js"
 export { rerankCandidates } from "./rerank.js"
 export { decideToolPolicy, decideTurnPolicy, formatPolicyDecision } from "./policy.js"

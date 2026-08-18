@@ -23,6 +23,8 @@ export type GovernanceConfig = {
     approvalRoute?: ApprovalRoute
     localFallbackAllowed?: boolean
     autoAllowBenign?: boolean
+    /** Machine-layer effect classifier: "signals" (default) or "off". */
+    classifierMode?: "signals" | "off"
   }
 }
 
@@ -68,6 +70,9 @@ export const DEFAULT_GOVERNANCE_CONFIG: GovernanceConfig = {
     // approval gate by default; installations always require analysis
     // regardless of this flag.
     autoAllowBenign: true,
+    // The Signal Engine classifier runs on governed tool asks and can only
+    // escalate deterministic findings; it never downgrades them.
+    classifierMode: "signals",
   },
 }
 
@@ -96,11 +101,16 @@ type GovernanceOverride = {
     approvalRoute?: ApprovalRoute
     localFallbackAllowed?: boolean
     autoAllowBenign?: boolean
+    classifierMode?: "signals" | "off"
   }
 }
 
 function optionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined
+}
+
+function optionalClassifierMode(value: unknown): "signals" | "off" | undefined {
+  return value === "signals" || value === "off" ? value : undefined
 }
 
 function optionalThreshold(value: unknown): number | undefined {
@@ -152,6 +162,7 @@ function parseGovernanceOverride(input: unknown): GovernanceOverride {
         typeof policy.localFallbackAllowed === "boolean" ? policy.localFallbackAllowed : undefined,
       autoAllowBenign:
         typeof policy.autoAllowBenign === "boolean" ? policy.autoAllowBenign : undefined,
+      classifierMode: optionalClassifierMode(policy.classifierMode),
     },
   }
 }
@@ -204,6 +215,7 @@ function mergeConfig(base: GovernanceConfig, override: GovernanceOverride): Gove
       approvalRoute: override.policy.approvalRoute ?? base.policy.approvalRoute,
       localFallbackAllowed: override.policy.localFallbackAllowed ?? base.policy.localFallbackAllowed,
       autoAllowBenign: override.policy.autoAllowBenign ?? base.policy.autoAllowBenign,
+      classifierMode: override.policy.classifierMode ?? base.policy.classifierMode,
     },
   }
 }

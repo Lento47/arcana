@@ -29,6 +29,7 @@ describe("governance config", () => {
     expect(DEFAULT_GOVERNANCE_CONFIG.policy.approvalRoute).toBe("DESKTOP_PREFERRED")
     expect(DEFAULT_GOVERNANCE_CONFIG.policy.localFallbackAllowed).toBe(true)
     expect(DEFAULT_GOVERNANCE_CONFIG.policy.autoAllowBenign).toBe(true)
+    expect(DEFAULT_GOVERNANCE_CONFIG.policy.classifierMode).toBe("signals")
     expect(shouldShowGovernanceEvent(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(false)
     expect(shouldForwardGovernanceEventToDesktop(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(true)
     expect(shouldForwardGovernanceEventToDesktop(DEFAULT_GOVERNANCE_CONFIG, "permission.allowed")).toBe(true)
@@ -61,6 +62,13 @@ describe("governance config", () => {
     expect(config.display.desktop.enabled).toBe(true)
     expect(config.display.desktop.syncChat).toBe(true)
     expect(config.policy.approvalRoute).toBe("DESKTOP_REQUIRED")
+  })
+
+  test("classifier mode round-trips through normalize and resolve", () => {
+    const config = normalizeGovernanceConfig({ policy: { classifierMode: "off" } })
+    expect(config.policy.classifierMode).toBe("off")
+    const resolved = resolveGovernanceConfig(DEFAULT_GOVERNANCE_CONFIG, { policy: { classifierMode: "signals" } })
+    expect(resolved?.policy.classifierMode).toBe("signals")
   })
 
   test("syncChat can be disabled per workspace and survives partial updates", () => {

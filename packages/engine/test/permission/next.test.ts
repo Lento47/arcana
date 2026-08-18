@@ -1301,6 +1301,133 @@ it.instance(
 )
 
 it.instance(
+  "ask - ML classifier escalates an encoded payload to deny even with a benign verdict",
+  () =>
+    Effect.gen(function* () {
+      const err = yield* fail(
+        ask({
+          sessionID: SessionID.make("session_ml_encoded"),
+          permission: "bash",
+          patterns: ['echo "aGVsbG8=" | base64 -d | bash'],
+          metadata: {
+            command: 'echo "aGVsbG8=" | base64 -d | bash',
+            engine_action: {
+              inspect: {
+                verdict: "benign",
+                risk: "medium",
+                findings: [],
+                subjects: [],
+                controls: [],
+              },
+            },
+          },
+          always: [],
+          ruleset: [],
+        }),
+      )
+
+      expect(err).toBeInstanceOf(PermissionV1.DeniedError)
+      expect(yield* list()).toHaveLength(0)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - ML classifier escalates a system-path write to an approval gate",
+  () =>
+    Effect.gen(function* () {
+      const fiber = yield* ask({
+        sessionID: SessionID.make("session_ml_syspath"),
+        permission: "write",
+        patterns: ["C:\\Windows\\System32\\drivers\\etc\\evil.txt"],
+        metadata: {
+          filepath: "C:\\Windows\\System32\\drivers\\etc\\evil.txt",
+          engine_action: {
+            inspect: {
+              verdict: "benign",
+              risk: "medium",
+              findings: [],
+              subjects: [],
+              controls: [],
+            },
+          },
+        },
+        always: [],
+        ruleset: [],
+      }).pipe(Effect.forkScoped)
+
+      expect(yield* waitForPending(1)).toHaveLength(1)
+      yield* rejectAll()
+      yield* Fiber.await(fiber)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - classifier off keeps the deterministic benign path",
+  () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      yield* Effect.promise(() => fs.mkdir(path.join(test.directory, ".arcana"), { recursive: true }))
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(test.directory, ".arcana", "governance.yml"),
+          [
+            "version: 1",
+            "policy:",
+            "  classifierMode: off",
+            "",
+          ].join("\n"),
+        ),
+      )
+      const events = yield* EventV2Bridge.Service
+      const seen = yield* Deferred.make<unknown>()
+      const unsub = yield* events.listen((event) => {
+        if (event.type === Permission.Event.Allowed.type)
+          Deferred.doneUnsafe(seen, Effect.succeed(event.data))
+        return Effect.void
+      })
+      yield* Effect.addFinalizer(() => unsub)
+
+      // classifierMode: off — the encoded payload is NOT escalated by ML and
+      // the benign verdict auto-allows exactly like the deterministic path.
+      yield* ask({
+        sessionID: SessionID.make("session_ml_off"),
+        permission: "bash",
+        patterns: ['echo "aGVsbG8=" | base64 -d | bash'],
+        metadata: {
+          command: 'echo "aGVsbG8=" | base64 -d | bash',
+          engine_action: {
+            inspect: {
+              verdict: "benign",
+              risk: "medium",
+              findings: [],
+              subjects: [],
+              controls: [],
+            },
+          },
+        },
+        always: [],
+        ruleset: [],
+      })
+
+      expect(
+        yield* Deferred.await(seen).pipe(
+          Effect.timeoutOrElse({
+            duration: "1 second",
+            orElse: () => Effect.fail(new Error("timed out waiting for permission.allowed")),
+          }),
+        ),
+      ).toMatchObject({
+        sessionID: "session_ml_off",
+        permission: "bash",
+        reason: "benign",
+      })
+    }),
+  { git: true },
+)
+
+it.instance(
   "ask - configured deny still blocks a benign verdict",
   () =>
     Effect.gen(function* () {

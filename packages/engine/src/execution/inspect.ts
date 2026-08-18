@@ -40,6 +40,14 @@ export type EffectInspectReport = {
   findings: InspectFinding[]
   subjects: InspectSubject[]
   controls: string[]
+  /** Machine-layer classification attached by inspectEffectWithML. */
+  classifier?: {
+    verdict: "benign" | "review" | "block"
+    risk: RiskLevel
+    confidence: number
+    labels: string[]
+    reasons: string[]
+  }
 }
 
 const GIT_REMOTE =

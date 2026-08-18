@@ -16,6 +16,7 @@
     "./semantic": "./src/semantic.ts",
     "./sql": "./src/sql.ts",
     "./machine": "./src/machine.ts",
+    "./classifier": "./src/classifier.ts",
     "./expectation": "./src/expectation.ts",
     "./quality": "./src/quality.ts",
     "./response-pipeline": "./src/response-pipeline.ts",

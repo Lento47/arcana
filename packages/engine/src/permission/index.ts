@@ -21,6 +21,7 @@ import { loadGovernanceConfig } from "@arcana/core/governance-config"
 import type { RiskLevel } from "@/execution/action"
 import { enrichInspectOnline } from "@/execution/inspect-online"
 import { noteParkedInstall } from "@/execution/install-notice"
+import { mergeInspectWithClassifier } from "@/execution/inspect-ml"
 
 export const Event = {
   Asked: EventV2.define({ type: "permission.asked", schema: PermissionV1.Request.fields }),
@@ -112,7 +113,15 @@ export const layer = Layer.effect(
       const governance = loadGovernanceConfig(directory)
       const { ruleset, ...request } = input
       const engineRisk = riskFromMetadata(request.metadata)
-      const inspect = inspectFromMetadata(request.metadata)
+      // Machine layer: the Signal Engine classifier runs on governed tool
+      // asks (default "signals") and can only escalate deterministic
+      // findings — it never downgrades a firewall verdict. "off" restores
+      // the pure deterministic path.
+      const baseInspect = inspectReportFromMetadata(request.metadata)
+      const inspect =
+        governance.config.policy.classifierMode === "off"
+          ? baseInspect
+          : mergeInspectWithClassifier(baseInspect, request.permission, request.metadata)
       const command = typeof request.metadata.command === "string" ? request.metadata.command : ""
       const installAttempt = commandLooksLikeInstall(command) || inspectIsInstall(inspect)
       const opaqueAttempt = commandLooksLikeOpaqueExec(command)
