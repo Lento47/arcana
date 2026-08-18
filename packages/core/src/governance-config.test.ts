@@ -31,6 +31,7 @@ describe("governance config", () => {
     expect(DEFAULT_GOVERNANCE_CONFIG.policy.autoAllowBenign).toBe(true)
     expect(shouldShowGovernanceEvent(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(false)
     expect(shouldForwardGovernanceEventToDesktop(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(true)
+    expect(shouldForwardGovernanceEventToDesktop(DEFAULT_GOVERNANCE_CONFIG, "permission.allowed")).toBe(true)
   })
 
   test("does not share mutable default arrays with normalized configs", () => {

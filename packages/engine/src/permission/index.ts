@@ -8,6 +8,7 @@ import { PermissionV1 } from "@arcana/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { EventV2 } from "@arcana/core/event"
 import { desktopOnline } from "@/approval/desktop-subscribers"
+import { EventStore } from "@/session/epistemic/event-store"
 import {
   deploymentModeFromEnv,
   loadApprovalRoutingPolicy,
@@ -82,6 +83,7 @@ export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const events = yield* EventV2Bridge.Service
+    const eventStore = yield* EventStore.Service
     const state = yield* InstanceState.make<State>(
       Effect.fn("Permission.state")(function* (ctx) {
         void ctx
@@ -117,6 +119,7 @@ export const layer = Layer.effect(
       const forceInitialAskFromRisk = riskRequiresInitialAsk(engineRisk) || installAttempt || opaqueAttempt
       const forceFreshAskFromRisk = riskRequiresFreshAsk(engineRisk) || installAttempt || opaqueAttempt
       let needsAsk = false
+      let benignAutoAllowedAny = false
       // Local-firewall benign: allow by default unless this is an install or
       // opaque exec (which always need analysis), a configured deny matches,
       // or the coarse kernel risk disagrees at high/critical (fail closed).
@@ -157,12 +160,7 @@ export const layer = Layer.effect(
         if (approvedRule.action === "allow" && !forceFreshAskFromRisk) continue
         if (rule.action === "allow" && !forceInitialAskFromRisk) continue
         if (benignAutoAllowed) {
-          yield* events.publish(Event.Allowed, {
-            sessionID: request.sessionID,
-            permission: request.permission,
-            patterns: request.patterns,
-            reason: "benign",
-          })
+          benignAutoAllowedAny = true
           yield* Effect.logInfo("benign auto-allowed", {
             permission: request.permission,
             patterns: request.patterns,
@@ -175,12 +173,22 @@ export const layer = Layer.effect(
       }
 
       if (!needsAsk) {
-        yield* events.publish(Event.Allowed, {
+        const allowed: EventV2.Data<typeof Event.Allowed> = {
           sessionID: request.sessionID,
           permission: request.permission,
           patterns: request.patterns,
-          reason: "configured",
-        })
+          reason: benignAutoAllowedAny ? "benign" : "configured",
+        }
+        yield* events.publish(Event.Allowed, allowed)
+        // Durable operator evidence: the governance bridge only forwards
+        // committed ArcanaEvents, so the decision must land in the EventStore
+        // (best-effort — a storage failure never fails the permission grant).
+        yield* eventStore.append({
+          sessionId: request.sessionID,
+          actor: { kind: "policy", id: "permission" },
+          type: "permission.allowed",
+          payload: allowed,
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
         return
       }
 
@@ -467,8 +475,11 @@ export function disabled(tools: string[], ruleset: PermissionV1.Ruleset): Set<st
   )
 }
 
-export const defaultLayer = layer.pipe(Layer.provide(EventV2Bridge.defaultLayer))
+export const defaultLayer = layer.pipe(
+  Layer.provide(EventStore.defaultLayer),
+  Layer.provide(EventV2Bridge.defaultLayer),
+)
 
-export const node = LayerNode.make(layer, [EventV2Bridge.node])
+export const node = LayerNode.make(layer, [EventV2Bridge.node, EventStore.node])
 
 export * as Permission from "."

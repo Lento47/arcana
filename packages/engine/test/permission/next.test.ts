@@ -10,6 +10,7 @@ import { Database } from "@arcana/core/database/database"
 import { Permission } from "../../src/permission"
 import { InstanceBootstrap } from "../../src/project/bootstrap-service"
 import { InstanceStore } from "../../src/project/instance-store"
+import { EventStore } from "../../src/session/epistemic/event-store"
 import { desktopSubscriberRegistry } from "../../src/approval/desktop-subscribers"
 import { TestInstance, tmpdirScoped } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
@@ -18,7 +19,11 @@ import { MessageID, SessionID } from "../../src/session/schema"
 const events = EventV2Bridge.defaultLayer
 const noopBootstrap = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
 const env = Layer.mergeAll(
-  Permission.layer.pipe(Layer.provide(Database.defaultLayer), Layer.provide(events)),
+  Permission.layer.pipe(
+    Layer.provide(EventStore.defaultLayer),
+    Layer.provide(Database.defaultLayer),
+    Layer.provide(events),
+  ),
   events,
   CrossSpawnSpawner.defaultLayer,
   InstanceStore.defaultLayer.pipe(Layer.provide(noopBootstrap)),

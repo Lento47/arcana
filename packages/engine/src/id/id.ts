@@ -16,7 +16,7 @@ const prefixes = {
 const LENGTH = 26
 
 // State for monotonic ID generation
-let lastTimestamp = 0
+let lastSecond = 0
 let counter = 0
 
 export function ascending(prefix: keyof typeof prefixes, given?: string) {
@@ -50,19 +50,25 @@ function randomBase62(length: number): string {
 
 export function create(prefix: string, direction: "descending" | "ascending", timestamp?: number): string {
   const currentTimestamp = timestamp ?? Date.now()
+  const currentSecond = Math.floor(currentTimestamp / 1000)
 
-  if (currentTimestamp !== lastTimestamp) {
-    lastTimestamp = currentTimestamp
+  // The encoded field holds seconds, so the counter must reset on second
+  // boundaries. Resetting on millisecond boundaries would let two IDs from
+  // the same encoded second share a prefix, and their random suffix — not
+  // their creation order — would decide the sort.
+  if (currentSecond !== lastSecond) {
+    lastSecond = currentSecond
     counter = 0
   }
   counter++
 
-  // The 6-byte field holds a 36-bit timestamp plus a 12-bit counter.
+  // The 6-byte field holds a 36-bit seconds timestamp plus a 12-bit counter
+  // (4095 IDs per encoded second; a second boundary resets the counter).
   // Millisecond timestamps overflow 36 bits (only ~2.2 years fit), which
   // made every modern ID decode to a garbage timestamp. Encode seconds
   // instead (covers ~2178 years) and decode back to milliseconds so the
   // caller-visible unit is unchanged.
-  const seconds = BigInt(Math.floor(currentTimestamp / 1000))
+  const seconds = BigInt(currentSecond)
   let now = seconds * BigInt(0x1000) + BigInt(counter)
 
   now = direction === "descending" ? ~now : now

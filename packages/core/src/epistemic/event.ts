@@ -52,6 +52,9 @@ export const ArcanaEvent = Schema.Struct({
     Schema.Literal("authorization.stale"),
     Schema.Literal("authorization.executed"),
     Schema.Literal("authorization.execution_failed"),
+    // Phase C: local-firewall permission decisions (benign auto-allow and
+    // configured allows) recorded for operator evidence.
+    Schema.Literal("permission.allowed"),
     // Phase C: explicit operator/verifier outcomes for obligations that
     // cannot be auto-resolved from executed effects (comparison, human
     // decision, external confirmation).

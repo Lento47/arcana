@@ -55,6 +55,7 @@ export const DEFAULT_GOVERNANCE_CONFIG: GovernanceConfig = {
         "intent.",
         "authorization.",
         "capability.",
+        "permission.",
         "verification.",
       ],
       excludePrefixes: [],

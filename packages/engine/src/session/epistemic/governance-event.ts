@@ -25,6 +25,7 @@ export const prefixes = [
   "intent.",
   "authorization.",
   "capability.",
+  "permission.",
   "verification.",
 ] as const
 

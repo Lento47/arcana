@@ -188,6 +188,12 @@ describe("GovernanceEventBridge", () => {
         type: "contract.proposed",
         payload: { contractId: "contract-live", objective: "show evidence", revision: 1 },
       })
+      const allowed = yield* store.append({
+        sessionId: "session-live",
+        actor: { kind: "policy", id: "pep" },
+        type: "permission.allowed",
+        payload: { requestId: "request-live", permission: "bash", reason: "benign" },
+      })
       yield* store.append({
         sessionId: "session-live",
         actor: { kind: "tool", id: "terminal" },
@@ -196,12 +202,14 @@ describe("GovernanceEventBridge", () => {
       })
       yield* unsubscribe
 
-      expect(observed).toHaveLength(2)
+      expect(observed).toHaveLength(3)
       expect(observed[0]!.sessionID).toBe("session-live")
       expect(observed[0]!.event.id).toBe(recorded.id)
       expect(observed[0]!.event.type).toBe("authorization.denied")
       expect(observed[1]!.event.id).toBe(contract.id)
       expect(observed[1]!.event.type).toBe("contract.proposed")
+      expect(observed[2]!.event.id).toBe(allowed.id)
+      expect(observed[2]!.event.type).toBe("permission.allowed")
     }),
   )
 

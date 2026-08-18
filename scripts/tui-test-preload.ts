@@ -59,3 +59,14 @@ registerBunPlugin({
     })
   },
 })
+
+// Engine tests rely on an isolated environment (XDG dirs, test home, managed
+// config dir, in-memory DB, workspace trust, cleared provider credentials).
+// Running `bun test packages/engine` from the repo root uses this root
+// preload instead of packages/engine/test/preload.ts; without the engine
+// preload the tests silently read the real user config/home and treat every
+// tmpdir worktree as untrusted, which strips agent/plugin config and breaks
+// suites that depend on the test environment. Load it here so root runs are
+// equivalent to package-local runs. Module caching keeps initProjectors
+// single-shot and afterAll hooks stay scoped to the test process.
+await import("../packages/engine/test/preload.ts")

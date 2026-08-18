@@ -482,10 +482,10 @@ it.instance("default permission includes doom_loop and external_directory as ask
   }),
 )
 
-it.instance("webfetch is allowed by default", () =>
+it.instance("webfetch is ask by default", () =>
   Effect.gen(function* () {
     const build = yield* load((svc) => svc.get("build"))
-    expect(evalPerm(build, "webfetch")).toBe("allow")
+    expect(evalPerm(build, "webfetch")).toBe("ask")
   }),
 )
 
