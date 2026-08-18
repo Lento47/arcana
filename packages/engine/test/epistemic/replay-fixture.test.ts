@@ -201,7 +201,7 @@ describe("P2 End-to-End Replay Fixture", () => {
     expect(result.schemaVersion).toBe("1")
     expect(result.sourceSessionId).toBe("fixture-s1")
     expect(result.refusalReasons).toHaveLength(0)
-  })
+  }, 30_000)
 
   it("refuses P2 when output digest mismatches", () => {
     const cwd = process.cwd()

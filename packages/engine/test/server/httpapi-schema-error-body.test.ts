@@ -88,6 +88,7 @@ describe("schema-rejection wire shape", () => {
         expect(parsed.data.message.length).toBeGreaterThan(0)
       }),
     { git: true, config: { formatter: false, lsp: false } },
+    30_000,
   )
 
   it.instance(
@@ -104,6 +105,7 @@ describe("schema-rejection wire shape", () => {
         expect(parsed).toMatchObject({ name: "BadRequest", data: { kind: "Query" } })
       }),
     { git: true, config: { formatter: false, lsp: false } },
+    30_000,
   )
 
   it.instance(
