@@ -1104,6 +1104,111 @@ it.instance(
 )
 
 it.instance(
+  "task tool returns the child's completed text to the parent",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const agentSvc = yield* AgentSvc.Service
+      const registry = yield* ToolRegistry.Service
+      const buildAgent = yield* agentSvc.get("build")
+      yield* registry.tools({
+        modelID: ref.modelID,
+        providerID: ref.providerID,
+        agent: buildAgent!,
+      })
+      const chat = yield* sessions.create({
+        title: "Pinned",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      yield* llm.tool("task", {
+        description: "inspect bug",
+        prompt: "look into the cache key path",
+        subagent_type: "general",
+      })
+      // The child session's LLM call returns a real final answer.
+      yield* llm.text("child final answer: cache key is stable")
+      yield* user(chat.id, "hello")
+
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+
+      const tool = yield* pollWithTimeout(
+        Effect.gen(function* () {
+          const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
+          // The task part may live on an earlier assistant message once the
+          // parent moves on, so scan every assistant message, not just the last.
+          const tool = msgs
+            .filter((m) => m.info.role === "assistant")
+            .flatMap((m) => m.parts)
+            .find((part): part is SessionV1.ToolPart => part.type === "tool" && part.tool === "task")
+          if (tool?.state.status === "completed") return tool
+        }),
+        "timed out waiting for the task tool to complete",
+        "10 seconds",
+      )
+
+      const output = "output" in tool.state ? (tool.state as { output?: string }).output ?? "" : ""
+      expect(output).toContain("child final answer: cache key is stable")
+
+      yield* prompt.cancel(chat.id)
+      yield* Fiber.await(fiber)
+    }),
+  30_000,
+)
+
+it.instance(
+  "task tool fails loudly when the child returns no output",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const agentSvc = yield* AgentSvc.Service
+      const registry = yield* ToolRegistry.Service
+      const buildAgent = yield* agentSvc.get("build")
+      yield* registry.tools({
+        modelID: ref.modelID,
+        providerID: ref.providerID,
+        agent: buildAgent!,
+      })
+      const chat = yield* sessions.create({
+        title: "Pinned",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      yield* llm.tool("task", {
+        description: "inspect bug",
+        prompt: "look into the cache key path",
+        subagent_type: "general",
+      })
+      // The child returns a whitespace-only completion — must NOT look like success.
+      yield* llm.text(" ")
+      yield* user(chat.id, "hello")
+
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+
+      const tool = yield* pollWithTimeout(
+        Effect.gen(function* () {
+          const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
+          const tool = msgs
+            .filter((m) => m.info.role === "assistant")
+            .flatMap((m) => m.parts)
+            .find((part): part is SessionV1.ToolPart => part.type === "tool" && part.tool === "task")
+          if (tool?.state.status === "completed" && (tool.state as { output?: string }).output?.includes("returned no output")) return tool
+        }),
+        "timed out waiting for the task tool to fail",
+        "10 seconds",
+      )
+
+      expect((tool.state as { output?: string }).output).toContain("returned no output")
+
+      yield* prompt.cancel(chat.id)
+      yield* Fiber.await(fiber)
+    }),
+  30_000,
+)
+
+it.instance(
   "loop sets status to busy then idle",
   () =>
     Effect.gen(function* () {
