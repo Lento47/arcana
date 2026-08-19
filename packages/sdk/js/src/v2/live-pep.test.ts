@@ -1,10 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { buildAuthorizationRequest } from "./governance.js"
-import {
-  AuthorizationDeniedError,
-  ApprovalRequiredError,
-  TransportError,
-} from "./errors.js"
+import { AuthorizationDeniedError, ApprovalRequiredError, TransportError } from "./errors.js"
 import {
   createLivePepClient,
   governedToolWithLivePep,
@@ -139,9 +135,7 @@ describe("SDK 1.0 live PEP transport (E6 / BLK-E-06)", () => {
 
   it("DENY maps to AuthorizationDeniedError without executing", async () => {
     const calls: CapturedCall[] = []
-    const client = clientWith(calls, () =>
-      jsonResponse({ decision: "DENY", reason: "outside workspace" }),
-    )
+    const client = clientWith(calls, () => jsonResponse({ decision: "DENY", reason: "outside workspace" }))
     let executed = false
 
     await expect(
@@ -151,9 +145,10 @@ describe("SDK 1.0 live PEP transport (E6 / BLK-E-06)", () => {
       }),
     ).rejects.toBeInstanceOf(AuthorizationDeniedError)
 
-    await expect(
-      client.executeExact(REQUEST, async () => "done"),
-    ).rejects.toMatchObject({ code: "AUTHORIZATION_DENIED", message: "outside workspace" })
+    await expect(client.executeExact(REQUEST, async () => "done")).rejects.toMatchObject({
+      code: "AUTHORIZATION_DENIED",
+      message: "outside workspace",
+    })
     expect(executed).toBe(false)
   })
 
@@ -207,18 +202,14 @@ describe("SDK 1.0 live PEP transport (E6 / BLK-E-06)", () => {
 
   it("fails closed on 5xx responses with TransportError", async () => {
     const calls: CapturedCall[] = []
-    const client = clientWith(calls, () =>
-      jsonResponse({ error: "internal" }, 503),
-    )
+    const client = clientWith(calls, () => jsonResponse({ error: "internal" }, 503))
 
     await expect(client.authorize(REQUEST)).rejects.toBeInstanceOf(TransportError)
   })
 
   it("fails closed on non-JSON success responses", async () => {
     const calls: CapturedCall[] = []
-    const client = clientWith(calls, () =>
-      new Response("<html>gateway error</html>", { status: 200 }),
-    )
+    const client = clientWith(calls, () => new Response("<html>gateway error</html>", { status: 200 }))
 
     await expect(client.authorize(REQUEST)).rejects.toBeInstanceOf(TransportError)
   })
@@ -226,9 +217,7 @@ describe("SDK 1.0 live PEP transport (E6 / BLK-E-06)", () => {
   it("fails closed on unknown or missing decision values", async () => {
     const calls: CapturedCall[] = []
     const client = clientWith(calls, (call) =>
-      call.url.endsWith(PEP_DECIDE_PATH)
-        ? jsonResponse({ decision: "MAYBE" })
-        : jsonResponse({}),
+      call.url.endsWith(PEP_DECIDE_PATH) ? jsonResponse({ decision: "MAYBE" }) : jsonResponse({}),
     )
 
     await expect(client.authorize(REQUEST)).rejects.toBeInstanceOf(TransportError)
@@ -236,9 +225,7 @@ describe("SDK 1.0 live PEP transport (E6 / BLK-E-06)", () => {
 
   it("fails closed when the engine echoes a mismatched requestHash", async () => {
     const calls: CapturedCall[] = []
-    const client = clientWith(calls, () =>
-      jsonResponse({ decision: "ALLOW", requestHash: "0".repeat(64) }),
-    )
+    const client = clientWith(calls, () => jsonResponse({ decision: "ALLOW", requestHash: "0".repeat(64) }))
 
     await expect(client.authorize(REQUEST)).rejects.toBeInstanceOf(TransportError)
     await expect(client.authorize(REQUEST)).rejects.toMatchObject({
@@ -251,27 +238,21 @@ describe("SDK 1.0 live PEP transport (E6 / BLK-E-06)", () => {
 
   it("accepts a matching requestHash echo", async () => {
     const calls: CapturedCall[] = []
-    const client = clientWith(calls, () =>
-      jsonResponse({ decision: "ALLOW", requestHash: REQUEST.requestHash }),
-    )
+    const client = clientWith(calls, () => jsonResponse({ decision: "ALLOW", requestHash: REQUEST.requestHash }))
 
     await expect(client.authorize(REQUEST)).resolves.toEqual({ decision: "ALLOW" })
   })
 
   it("sends engine auth: auth_token query, Basic header, and custom headers", async () => {
     const calls: CapturedCall[] = []
-    const client = clientWith(
-      calls,
-      () => jsonResponse({ decision: "ALLOW" }),
-      {
-        token: "dXNlcjpwYXNz",
-        username: "operator",
-        password: "secret",
-        directory: "C:/work",
-        workspace: "ws-a",
-        headers: { "x-arcana-session": "session-1" },
-      },
-    )
+    const client = clientWith(calls, () => jsonResponse({ decision: "ALLOW" }), {
+      token: "dXNlcjpwYXNz",
+      username: "operator",
+      password: "secret",
+      directory: "C:/work",
+      workspace: "ws-a",
+      headers: { "x-arcana-session": "session-1" },
+    })
 
     await client.authorize(REQUEST)
 
@@ -280,7 +261,7 @@ describe("SDK 1.0 live PEP transport (E6 / BLK-E-06)", () => {
     expect(url.searchParams.get("auth_token")).toBe("dXNlcjpwYXNz")
     expect(url.searchParams.get("workspace")).toBe("ws-a")
     expect(calls[0]?.headers["authorization"]).toBe("Basic b3BlcmF0b3I6c2VjcmV0")
-    expect(calls[0]?.headers["x-opencode-directory"]).toBe("C:/work")
+    expect(calls[0]?.headers["x-arcana-directory"]).toBe("C:/work")
     expect(calls[0]?.headers["x-arcana-session"]).toBe("session-1")
   })
 
@@ -333,9 +314,7 @@ describe("SDK 1.0 live PEP transport (E6 / BLK-E-06)", () => {
 
   it("wires governedToolWithLivePep: DENY blocks the executor", async () => {
     const calls: CapturedCall[] = []
-    const client = clientWith(calls, () =>
-      jsonResponse({ decision: "DENY", reason: "outside workspace" }),
-    )
+    const client = clientWith(calls, () => jsonResponse({ decision: "DENY", reason: "outside workspace" }))
     let executed = false
 
     const tool = governedToolWithLivePep(

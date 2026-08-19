@@ -57,15 +57,19 @@ export function enterpriseClient(options: EnterpriseClientOptions): EnterpriseCl
   const fetchImpl = options.fetchImpl ?? fetch
   const base = options.baseUrl.replace(/\/+$/, "")
 
-  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const headers: Record<string, string> = {
+  function baseHeaders(extraHeaders?: Record<string, string>): Record<string, string> {
+    return {
       "content-type": "application/json",
-      ...(options.directory ? { "x-opencode-directory": options.directory } : {}),
+      ...(options.directory ? { "x-arcana-directory": options.directory } : {}),
       ...options.headers,
+      ...extraHeaders,
     }
+  }
+
+  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const response = await fetchImpl(`${base}${path}`, {
       method,
-      headers,
+      headers: baseHeaders(),
       body: body === undefined ? undefined : JSON.stringify(body),
     })
     if (!response.ok) {
@@ -89,13 +93,9 @@ export function enterpriseClient(options: EnterpriseClientOptions): EnterpriseCl
     escalationCheck: (tenantId, approvalId) => request("POST", pathFor(tenantId, "/escalations/check"), { approvalId }),
 
     siemExport: async (tenantId) => {
-      const headers: Record<string, string> = {
-        ...(options.directory ? { "x-opencode-directory": options.directory } : {}),
-        ...options.headers,
-      }
       const response = await fetchImpl(`${base}${pathFor(tenantId, "/admin-events/siem-export")}`, {
         method: "GET",
-        headers,
+        headers: baseHeaders({ "accept": "application/json" }),
       })
       if (!response.ok) {
         throw new Error(`enterprise admin request failed: ${response.status} ${response.statusText}`)

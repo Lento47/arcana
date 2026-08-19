@@ -45,7 +45,7 @@ describe("SDK 1.0 enterprise admin surface (F11)", () => {
       method: "POST",
       body: { tenantId: "tenant-a", name: "Acme" },
     })
-    expect(calls[0]?.headers["x-opencode-directory"]).toBe("C:/work")
+    expect(calls[0]?.headers["x-arcana-directory"]).toBe("C:/work")
   })
 
   it("promotes policies, checks escalation, and reads the fleet", async () => {

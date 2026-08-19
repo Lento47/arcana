@@ -35,28 +35,11 @@
  */
 
 import type { AuthorizationRequest } from "@arcana/core/capability/types"
-import {
-  AuthorizationDeniedError,
-  ApprovalRequiredError,
-  TransportError,
-  toArcanaError,
-} from "./errors.js"
+import { AuthorizationDeniedError, ApprovalRequiredError, TransportError, toArcanaError } from "./errors.js"
 import type { GovernanceContext } from "./governance.js"
-import {
-  governedTool,
-  type ExecuteExactFn,
-  type FrameworkTool,
-} from "./adapters/ai-sdk.js"
-import {
-  governedMcpTool,
-  type GovernedMcpToolOptions,
-  type McpToolLike,
-} from "./adapters/mcp.js"
-import {
-  governedMastraTool,
-  type GovernedMastraToolOptions,
-  type MastraToolLike,
-} from "./adapters/mastra.js"
+import { governedTool, type AuthorizeFn, type ExecuteExactFn, type FrameworkTool } from "./adapters/ai-sdk.js"
+import { governedMcpTool, type GovernedMcpToolOptions, type McpToolLike } from "./adapters/mcp.js"
+import { governedMastraTool, type GovernedMastraToolOptions, type MastraToolLike } from "./adapters/mastra.js"
 import {
   governedLangGraphTool,
   type GovernedLangGraphToolOptions,
@@ -82,7 +65,7 @@ export type LivePepOptions = {
   /** Extra headers merged onto every request (after auth headers). */
   headers?: Record<string, string>
   /**
-   * Workspace selection: sent as the `x-opencode-directory` header. A
+   * Workspace selection: sent as the `x-arcana-directory` header. A
    * selection, never a grant: the engine treats header/query directories as
    * non-authoritative.
    */
@@ -122,15 +105,7 @@ export type PepApprovalRecord = {
   requestHash: string
   contractRevision: number
   principalId?: string
-  state:
-    | "PENDING"
-    | "APPROVED"
-    | "DENIED"
-    | "REVOKED"
-    | "CLAIMED"
-    | "CONSUMED"
-    | "EXPIRED"
-    | "INVALIDATED"
+  state: "PENDING" | "APPROVED" | "DENIED" | "REVOKED" | "CLAIMED" | "CONSUMED" | "EXPIRED" | "INVALIDATED"
   approvedBy?: string
   revokedBy?: string
   executionId?: string
@@ -194,7 +169,7 @@ export function createLivePepClient(options: LivePepOptions): LivePepClient {
       "content-type": "application/json",
     }
     if (options.directory !== undefined) {
-      headers["x-opencode-directory"] = options.directory
+      headers["x-arcana-directory"] = options.directory
     }
     if (options.username !== undefined || options.password !== undefined) {
       const credentials = btoa(`${options.username ?? ""}:${options.password ?? ""}`)
@@ -242,16 +217,14 @@ export function createLivePepClient(options: LivePepOptions): LivePepClient {
    */
   function assertRequestHashEcho(response: PepDecisionResponse, requestHash: string) {
     if (response.requestHash !== undefined && response.requestHash !== requestHash) {
-      throw new TransportError(
-        "pep transport: decision requestHash does not match the submitted request",
-        { responseRequestHash: response.requestHash, submittedRequestHash: requestHash },
-      )
+      throw new TransportError("pep transport: decision requestHash does not match the submitted request", {
+        responseRequestHash: response.requestHash,
+        submittedRequestHash: requestHash,
+      })
     }
   }
 
-  async function decide(
-    authRequest: AuthorizationRequest & { requestHash: string },
-  ): Promise<LivePepOutcome> {
+  async function decide(authRequest: AuthorizationRequest & { requestHash: string }): Promise<LivePepOutcome> {
     const response = await request<PepDecisionResponse>("POST", PEP_DECIDE_PATH, authRequest)
     if (response.decision === "ALLOW") {
       assertRequestHashEcho(response, authRequest.requestHash)
@@ -272,9 +245,7 @@ export function createLivePepClient(options: LivePepOptions): LivePepClient {
       }
     }
     // Unknown or missing decision: fail closed.
-    throw new TransportError(
-      `pep transport: unknown decision ${String((response as { decision?: unknown }).decision)}`,
-    )
+    throw new TransportError(`pep transport: unknown decision ${String((response as { decision?: unknown }).decision)}`)
   }
 
   const executeExact: ExecuteExactFn = async (authRequest, execute) => {
@@ -298,11 +269,7 @@ export function createLivePepClient(options: LivePepOptions): LivePepClient {
     command: "approve" | "deny" | "revoke",
     payload: RuntimeApprovalCommandPayload,
   ): Promise<ApprovalCommandResult> {
-    return request<ApprovalCommandResult>(
-      "POST",
-      `/approvals/${encodeURIComponent(approvalId)}/${command}`,
-      payload,
-    )
+    return request<ApprovalCommandResult>("POST", `/approvals/${encodeURIComponent(approvalId)}/${command}`, payload)
   }
 
   return {
@@ -325,46 +292,47 @@ export function createLivePepClient(options: LivePepOptions): LivePepClient {
 // against a real running engine: `governedToolWithLivePep(tool, { context,
 // pep })` is the same hook with a live PEP behind it.
 
-export function governedToolWithLivePep<Args extends Record<string, unknown>, Result>(
-  tool: FrameworkTool<Args, Result>,
-  options: { context: GovernanceContext; pep: LivePepClient },
-): FrameworkTool<Args, Result> {
-  return governedTool(tool, {
+/** Internal generic factory shared by all governed*ToolWithLivePep variants. */
+function makeGovernedToolWithLivePep<
+  Tool,
+  Context,
+  Governed,
+>(
+  tool: Tool,
+  options: { context: Context; pep: LivePepClient },
+  govern: (tool: Tool, options: { context: Context; authorize: AuthorizeFn; executeExact?: ExecuteExactFn }) => Governed,
+): Governed {
+  return govern(tool, {
     context: options.context,
     authorize: options.pep.authorize,
     executeExact: options.pep.executeExact,
   })
+}
+
+export function governedToolWithLivePep<Args extends Record<string, unknown>, Result>(
+  tool: FrameworkTool<Args, Result>,
+  options: { context: GovernanceContext; pep: LivePepClient },
+): FrameworkTool<Args, Result> {
+  return makeGovernedToolWithLivePep(tool, options, governedTool)
 }
 
 export function governedMcpToolWithLivePep<Args extends Record<string, unknown>, Result>(
   tool: McpToolLike<Args, Result>,
   options: { context: GovernedMcpToolOptions["context"]; pep: LivePepClient },
 ): McpToolLike<Args, Result> {
-  return governedMcpTool(tool, {
-    context: options.context,
-    authorize: options.pep.authorize,
-    executeExact: options.pep.executeExact,
-  })
+  return makeGovernedToolWithLivePep(tool, options, governedMcpTool)
 }
 
 export function governedMastraToolWithLivePep<Args extends Record<string, unknown>, Result>(
   tool: MastraToolLike<Args, Result>,
   options: { context: GovernedMastraToolOptions["context"]; pep: LivePepClient },
 ): MastraToolLike<Args, Result> {
-  return governedMastraTool(tool, {
-    context: options.context,
-    authorize: options.pep.authorize,
-    executeExact: options.pep.executeExact,
-  })
+  return makeGovernedToolWithLivePep(tool, options, governedMastraTool)
 }
 
 export function governedLangGraphToolWithLivePep<Args extends Record<string, unknown>, Result>(
   tool: LangGraphToolLike<Args, Result>,
   options: { context: GovernedLangGraphToolOptions["context"]; pep: LivePepClient },
 ): LangGraphToolLike<Args, Result> {
-  return governedLangGraphTool(tool, {
-    context: options.context,
-    authorize: options.pep.authorize,
-    executeExact: options.pep.executeExact,
-  })
+  return makeGovernedToolWithLivePep(tool, options, governedLangGraphTool)
 }
