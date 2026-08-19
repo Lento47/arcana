@@ -21,6 +21,7 @@ import { ModelsDev } from "@arcana/core/models-dev"
 import { InstanceRef } from "@/effect/instance-ref"
 import { SessionShare } from "@/share/session"
 import { Session } from "@/session/session"
+import { Config } from "@/config/config"
 import type { SessionID } from "../../session/schema"
 import { MessageID, PartID } from "../../session/schema"
 import { Provider } from "@/provider/provider"
@@ -381,6 +382,8 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
   const sessionShare = yield* SessionShare.Service
   const sessionPrompt = yield* SessionPrompt.Service
   const events = yield* EventV2Bridge.Service
+  const configSvc = yield* Config.Service
+  const config = yield* configSvc.get()
   const runLocalEffect = <A, E>(effect: Effect.Effect<A, E>) =>
     Effect.runPromise(effect.pipe(Effect.provideService(InstanceRef, ctx)))
   yield* Effect.promise(async () => {
@@ -461,9 +464,15 @@ export const githubRun = Effect.fn("Cli.github.run")(function* (args: { event?: 
     }
     const gitStatus = (args: string[]) => Effect.runPromise(gitSvc.run(args, { cwd: ctx.worktree }))
     const commitChanges = async (summary: string, actor?: string) => {
-      const args = ["commit", "-m", summary]
-      if (actor) args.push("-m", `Co-authored-by: ${actor} <${actor}@users.noreply.github.com>`)
-      await gitRun(args)
+      const result = await Effect.runPromise(
+        gitSvc.commit(ctx.worktree, summary, {
+          actor,
+          signature: config.git?.commit_signature ?? "minimal",
+        }),
+      )
+      if (result.exitCode !== 0) {
+        throw new Process.RunFailedError(["git", "commit"], result.exitCode, result.stdout, result.stderr)
+      }
     }
 
     try {

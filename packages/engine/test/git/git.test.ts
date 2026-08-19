@@ -175,4 +175,92 @@ describe("Git", () => {
       expect(text).toBe("")
     }),
   )
+
+  it.live("commit() adds minimal Arcana signature by default", () =>
+    Effect.gen(function* () {
+      const tmp = yield* scopedTmpdir({ git: true })
+      yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "a.txt"), "a\n", "utf-8"))
+      yield* Effect.promise(() => $`git add .`.cwd(tmp.path).quiet())
+
+      const git = yield* Git.Service
+      const result = yield* git.commit(tmp.path, "fix things")
+      expect(result.exitCode).toBe(0)
+
+      const message = yield* Effect.promise(() => $`git log -1 --pretty=%B`.cwd(tmp.path).quiet().text())
+      expect(message).toContain("fix things")
+      expect(message).toContain("Co-authored-by: arcana <arcana@arcana.ai>")
+      expect(message).not.toContain("Generated with arcana")
+    }),
+  )
+
+  it.live("commit() adds branded signature when requested", () =>
+    Effect.gen(function* () {
+      const tmp = yield* scopedTmpdir({ git: true })
+      yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "a.txt"), "a\n", "utf-8"))
+      yield* Effect.promise(() => $`git add .`.cwd(tmp.path).quiet())
+
+      const git = yield* Git.Service
+      const result = yield* git.commit(tmp.path, "feat things", { signature: "branded" })
+      expect(result.exitCode).toBe(0)
+
+      const message = yield* Effect.promise(() => $`git log -1 --pretty=%B`.cwd(tmp.path).quiet().text())
+      expect(message).toContain("feat things")
+      expect(message).toContain("Generated with arcana · the AI coding agent")
+      expect(message).toContain("Co-authored-by: arcana <arcana@arcana.ai>")
+    }),
+  )
+
+  it.live("commit() omits signature when disabled", () =>
+    Effect.gen(function* () {
+      const tmp = yield* scopedTmpdir({ git: true })
+      yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "a.txt"), "a\n", "utf-8"))
+      yield* Effect.promise(() => $`git add .`.cwd(tmp.path).quiet())
+
+      const git = yield* Git.Service
+      const result = yield* git.commit(tmp.path, "chore things", { signature: false })
+      expect(result.exitCode).toBe(0)
+
+      const message = yield* Effect.promise(() => $`git log -1 --pretty=%B`.cwd(tmp.path).quiet().text())
+      expect(message).toContain("chore things")
+      expect(message).not.toContain("Co-authored-by: arcana")
+      expect(message).not.toContain("Generated with arcana")
+    }),
+  )
+
+  it.live("commit() does not duplicate an existing Arcana trailer", () =>
+    Effect.gen(function* () {
+      const tmp = yield* scopedTmpdir({ git: true })
+      yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "a.txt"), "a\n", "utf-8"))
+      yield* Effect.promise(() => $`git add .`.cwd(tmp.path).quiet())
+
+      const git = yield* Git.Service
+      const result = yield* git.commit(
+        tmp.path,
+        "fix things\n\nCo-authored-by: arcana <arcana@arcana.ai>",
+      )
+      expect(result.exitCode).toBe(0)
+
+      const message = yield* Effect.promise(() => $`git log -1 --pretty=%B`.cwd(tmp.path).quiet().text())
+      expect(message).toContain("fix things")
+      expect(message).toContain("Co-authored-by: arcana <arcana@arcana.ai>")
+      expect(message.split("Co-authored-by: arcana").length).toBe(2)
+    }),
+  )
+
+  it.live("commit() preserves an actor co-author alongside the Arcana trailer", () =>
+    Effect.gen(function* () {
+      const tmp = yield* scopedTmpdir({ git: true })
+      yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "a.txt"), "a\n", "utf-8"))
+      yield* Effect.promise(() => $`git add .`.cwd(tmp.path).quiet())
+
+      const git = yield* Git.Service
+      const result = yield* git.commit(tmp.path, "fix things", { actor: "octocat" })
+      expect(result.exitCode).toBe(0)
+
+      const message = yield* Effect.promise(() => $`git log -1 --pretty=%B`.cwd(tmp.path).quiet().text())
+      expect(message).toContain("fix things")
+      expect(message).toContain("Co-authored-by: octocat <octocat@users.noreply.github.com>")
+      expect(message).toContain("Co-authored-by: arcana <arcana@arcana.ai>")
+    }),
+  )
 })

@@ -72,6 +72,13 @@ export interface Options {
   readonly stdin?: ChildProcess.CommandInput
 }
 
+export interface CommitOptions {
+  readonly actor?: string
+  readonly signature?: false | "minimal" | "branded"
+  readonly signatureName?: string
+  readonly signatureEmail?: string
+}
+
 export interface Interface {
   readonly run: (args: string[], opts: Options) => Effect.Effect<Result>
   readonly branch: (cwd: string) => Effect.Effect<string | undefined>
@@ -88,7 +95,18 @@ export interface Interface {
   readonly patchUntracked: (cwd: string, file: string, options?: PatchOptions) => Effect.Effect<Patch>
   readonly statUntracked: (cwd: string, file: string) => Effect.Effect<Stat | undefined>
   readonly applyPatch: (cwd: string, patch: string) => Effect.Effect<Result>
+  readonly commit: (cwd: string, message: string, options?: CommitOptions) => Effect.Effect<Result>
 }
+
+const ARCANA_SIGNATURE_NAME = "arcana"
+const ARCANA_SIGNATURE_EMAIL = "arcana@arcana.ai"
+const ARCANA_BRANDED_LINE = "Generated with arcana · the AI coding agent"
+
+const splitMessage = (message: string): string[] =>
+  message.split(/\n\s*\n/).filter((paragraph) => paragraph.trim().length > 0)
+
+const containsTrailer = (message: string, trailer: string): boolean =>
+  message.split(/\r?\n/).some((line) => line.trim() === trailer.trim())
 
 const kind = (code: string): Kind => {
   if (code === "??") return "added"
@@ -323,6 +341,37 @@ export const layer = Layer.effect(
       return yield* run(["apply", "-"], { cwd, stdin: stdin(patch) })
     })
 
+    const commit = Effect.fn("Git.commit")(function* (cwd: string, message: string, options?: CommitOptions) {
+      const mode = options?.signature ?? "minimal"
+      const name = options?.signatureName ?? ARCANA_SIGNATURE_NAME
+      const email = options?.signatureEmail ?? ARCANA_SIGNATURE_EMAIL
+      const arcanaTrailer = `Co-authored-by: ${name} <${email}>`
+      const actorTrailer = options?.actor
+        ? `Co-authored-by: ${options.actor} <${options.actor}@users.noreply.github.com>`
+        : undefined
+
+      const paragraphs = splitMessage(message)
+
+      if (mode === "branded" && !paragraphs.some((paragraph) => paragraph.includes("Generated with arcana"))) {
+        paragraphs.push(ARCANA_BRANDED_LINE)
+      }
+
+      if (actorTrailer && !containsTrailer(message, actorTrailer)) {
+        paragraphs.push(actorTrailer)
+      }
+
+      if (mode !== false && !containsTrailer(message, arcanaTrailer)) {
+        paragraphs.push(arcanaTrailer)
+      }
+
+      const args = ["commit"]
+      for (const paragraph of paragraphs) {
+        args.push("-m", paragraph)
+      }
+
+      return yield* run(args, { cwd })
+    })
+
     return Service.of({
       run,
       branch,
@@ -339,6 +388,7 @@ export const layer = Layer.effect(
       patchUntracked,
       statUntracked,
       applyPatch,
+      commit,
     })
   }),
 )

@@ -235,6 +235,16 @@ export const Info = Schema.Struct({
   ).annotate({
     description: "Session retention policy: prune old / excess / empty sessions so the store does not grow forever",
   }),
+  git: Schema.optional(
+    Schema.Struct({
+      commit_signature: Schema.optional(Schema.Literals(["minimal", "branded", false])).annotate({
+        description:
+          "Append an Arcana signature to commits made by the CLI. 'minimal' adds a Co-authored-by trailer; 'branded' also adds a body line. Set false to disable. Default: 'minimal'.",
+      }),
+    }),
+  ).annotate({
+    description: "Git behaviour for commits created by the Arcana CLI",
+  }),
 }).annotate({ identifier: "Config" })
 
 export type Info = DeepMutable<Schema.Schema.Type<typeof Info>>
