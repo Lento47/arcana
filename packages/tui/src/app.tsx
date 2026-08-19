@@ -424,6 +424,9 @@ function MLEvidencePanel(props: { evidence: RunProofMLEvidenceView[]; latestOnly
               <Show when={evidence.labels && evidence.labels.length > 0}>
                 <text fg={theme.textMuted}>labels: {evidence.labels?.join(", ")}</text>
               </Show>
+              <Show when={evidence.guard_rules && evidence.guard_rules.length > 0}>
+                <text fg={theme.warning}>guard: {evidence.guard_rules?.join("  ")}</text>
+              </Show>
               <Show when={evidence.decision_reasons && evidence.decision_reasons.length > 0}>
                 <FieldList items={evidence.decision_reasons} empty="" />
               </Show>

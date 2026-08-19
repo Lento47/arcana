@@ -295,6 +295,7 @@ export const runProofMLEvidenceViewSchema = z.object({
   decision_posture: optionalString,
   decision_confidence: optionalNumber,
   decision_reasons: stringArray,
+  guard_rules: stringArray,
 })
 export type RunProofMLEvidenceView = z.infer<typeof runProofMLEvidenceViewSchema>
 
@@ -419,6 +420,7 @@ const mlSignalDataSchema = z.preprocess(
         ),
         labels: stringArray,
         reasons: stringArray,
+        guardRules: stringArray,
         modelRoute: optionalRecord(z.object({ profile: optionalString, reason: optionalString })),
       }),
     ),
@@ -529,6 +531,7 @@ export function mlEvidenceFromEvents(events: RunProofEventView[]): RunProofMLEvi
         decision_posture: data.decision?.posture,
         decision_confidence: data.decision?.confidence,
         decision_reasons: data.decision?.reasons ?? [],
+        guard_rules: signal.guardRules ?? [],
       }
     })
 }
