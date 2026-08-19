@@ -293,14 +293,13 @@ export function createLivePepClient(options: LivePepOptions): LivePepClient {
 // pep })` is the same hook with a live PEP behind it.
 
 /** Internal generic factory shared by all governed*ToolWithLivePep variants. */
-function makeGovernedToolWithLivePep<
-  Tool,
-  Context,
-  Governed,
->(
+function makeGovernedToolWithLivePep<Tool, Context, Governed>(
   tool: Tool,
   options: { context: Context; pep: LivePepClient },
-  govern: (tool: Tool, options: { context: Context; authorize: AuthorizeFn; executeExact?: ExecuteExactFn }) => Governed,
+  govern: (
+    tool: Tool,
+    options: { context: Context; authorize: AuthorizeFn; executeExact?: ExecuteExactFn },
+  ) => Governed,
 ): Governed {
   return govern(tool, {
     context: options.context,

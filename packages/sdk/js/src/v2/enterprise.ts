@@ -95,7 +95,7 @@ export function enterpriseClient(options: EnterpriseClientOptions): EnterpriseCl
     siemExport: async (tenantId) => {
       const response = await fetchImpl(`${base}${pathFor(tenantId, "/admin-events/siem-export")}`, {
         method: "GET",
-        headers: baseHeaders({ "accept": "application/json" }),
+        headers: baseHeaders({ accept: "application/json" }),
       })
       if (!response.ok) {
         throw new Error(`enterprise admin request failed: ${response.status} ${response.statusText}`)

@@ -2127,6 +2127,12 @@ export type Config = {
     vacuum?: boolean
     interval_hours?: number
   }
+  git?: {
+    /**
+     * Append an Arcana signature to commits made by the CLI. 'minimal' adds a Co-authored-by trailer; 'branded' also adds a body line. Set false to disable. Default: 'minimal'.
+     */
+    commit_signature?: "minimal" | "branded" | false
+  }
 }
 
 export type ApprovalRequestSnapshot = {
