@@ -19,16 +19,8 @@ import { assertExternalDirectoryEffect } from "./external-directory"
 import { FSUtil } from "@arcana/core/fs-util"
 import * as Bom from "@/util/bom"
 import { isDependencyManifest } from "@/execution/install"
-import {
-  analyzeDiff,
-  enrichMetadata,
-  createBackup,
-  cleanupBackup,
-  shouldBackup,
-  guardWarning,
-  resolveThresholds,
-} from "./file-edit-guard"
-import { singleMutationPermission } from "./mutation-permission"
+import { guardWarning, resolveThresholds } from "./file-edit-guard"
+import { computeMutationAnalysis, buildMutationAskPayload, cleanupBackup } from "./mutation-util"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 
 function normalizeLineEndings(text: string): string {
@@ -107,22 +99,36 @@ export const EditTool = Tool.define(
               contentNew = next.text
               diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
               const relativeCreate = path.relative(instance.worktree, filePath)
-              const createGuard = enrichMetadata(
-                analyzeDiff(contentOld, contentNew),
-                false,
+
+              // ── File Edit Guard: analyse create branch, route permission ──
+              const createAnalysis = yield* computeMutationAnalysis({
+                instanceDirectory: instance.directory,
+                filePath,
+                relativePath: relativeCreate,
+                oldContent: contentOld,
+                newContent: contentNew,
+                existingFile: false,
+                type: "add",
                 thresholds,
-              )
-              const createPerm = singleMutationPermission(filePath, relativeCreate, createGuard)
-              yield* ctx.ask({
-                permission: createPerm.permission,
-                patterns: [relativeCreate],
-                always: createPerm.always,
-                metadata: {
-                  filepath: filePath,
-                  diff,
-                  ...createPerm.metadata,
-                },
+                isDependencyManifest: isDependencyManifest(filePath),
               })
+
+              yield* ctx.ask(buildMutationAskPayload(
+                {
+                  instanceDirectory: instance.directory,
+                  filePath,
+                  relativePath: relativeCreate,
+                  oldContent: contentOld,
+                  newContent: contentNew,
+                  existingFile: false,
+                  type: "add",
+                  thresholds,
+                  isDependencyManifest: isDependencyManifest(filePath),
+                },
+                createAnalysis,
+                { diff },
+              ))
+
               yield* afs.writeWithDirs(filePath, Bom.join(contentNew, desiredBom))
               if (yield* format.file(filePath)) {
                 contentNew = yield* Bom.syncFile(afs, filePath, desiredBom)
@@ -164,32 +170,38 @@ export const EditTool = Tool.define(
             )
             const relativeEdit = path.relative(instance.worktree, filePath)
 
-            // ── File Edit Guard: analyze diff, create backup for complex edits ──
-            const stats = analyzeDiff(contentOld, contentNew)
-            const guard = enrichMetadata(stats, true, thresholds)
-            const backupPath = shouldBackup(stats, thresholds)
-              ? yield* Effect.promise(() => createBackup(filePath, instance.directory))
-              : undefined
-            if (backupPath) guard.backup_created = true
-            if (backupPath) guard.backup_path = backupPath
-
-            const editPerm = singleMutationPermission(filePath, relativeEdit, guard)
-
-            yield* ctx.ask({
-              permission: editPerm.permission,
-              patterns: [relativeEdit],
-              always: editPerm.always,
-              metadata: {
-                filepath: filePath,
-                diff,
-                ...guard,
-                ...editPerm.metadata,
-              },
+            // ── File Edit Guard: analyse edit branch, enforce guardrails ──
+            const editAnalysis = yield* computeMutationAnalysis({
+              instanceDirectory: instance.directory,
+              filePath,
+              relativePath: relativeEdit,
+              oldContent: contentOld,
+              newContent: contentNew,
+              existingFile: true,
+              type: "update",
+              thresholds,
+              isDependencyManifest: isDependencyManifest(filePath),
             })
+
+            yield* ctx.ask(buildMutationAskPayload(
+              {
+                instanceDirectory: instance.directory,
+                filePath,
+                relativePath: relativeEdit,
+                oldContent: contentOld,
+                newContent: contentNew,
+                existingFile: true,
+                type: "update",
+                thresholds,
+                isDependencyManifest: isDependencyManifest(filePath),
+              },
+              editAnalysis,
+              { diff, ...(stale ? { stale: true } : {}) },
+            ))
 
             yield* afs.writeWithDirs(filePath, Bom.join(contentNew, desiredBom))
             // Clean up backup on success
-            yield* Effect.promise(() => cleanupBackup(backupPath))
+            yield* Effect.promise(() => cleanupBackup(editAnalysis.backupPath))
             if (yield* format.file(filePath)) {
               contentNew = yield* Bom.syncFile(afs, filePath, desiredBom)
             }
@@ -478,7 +490,7 @@ export const WhitespaceNormalizedReplacer: Replacer = function* (content, find) 
         // Find the actual substring in the original line that matches
         const words = find.trim().split(/\s+/)
         if (words.length > 0) {
-          const pattern = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+")
+          const pattern = words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$\u0026")).join("\\s+")
           try {
             const regex = new RegExp(pattern)
             const match = line.match(regex)

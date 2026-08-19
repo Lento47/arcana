@@ -17,13 +17,14 @@ import * as Bom from "@/util/bom"
 import { isDependencyManifest } from "@/execution/install"
 import {
   analyzeDiff,
-  enrichMetadata,
   createBackup,
   cleanupBackup,
   shouldBackup,
   guardWarning,
   resolveThresholds,
+  classifyGuard,
   type GuardMetadata,
+  type GuardRule,
 } from "./file-edit-guard"
 import { classifyPatch } from "./mutation-permission"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -226,10 +227,21 @@ export const ApplyPatchTool = Tool.define(
         totalAdditions += change.additions
         totalDeletions += change.deletions
         const stats = analyzeDiff(change.oldContent, change.newContent)
-        const meta = enrichMetadata(stats, change.type !== "add", thresholds)
-        changeGuards.push(meta)
-        if (meta.large_change) guardMetadata.large_change = true
-        if (meta.wholesale_replacement) guardMetadata.wholesale_replacement = true
+        const meta = classifyGuard(stats, {
+          filePath: change.filePath,
+          existingFile: change.type !== "add",
+          type: change.type,
+          thresholds,
+          isDependencyManifest: isDependencyManifest(change.filePath),
+        })
+        const guard: GuardMetadata = {
+          large_change: stats.totalChanged > thresholds.largeChangeLines,
+          wholesale_replacement: change.type !== "add" && stats.changeRatio > thresholds.wholesaleThreshold,
+          guard_rules: meta.rules,
+        }
+        changeGuards.push(guard)
+        if (guard.large_change) guardMetadata.large_change = true
+        if (guard.wholesale_replacement) guardMetadata.wholesale_replacement = true
         const backup = shouldBackup(stats, thresholds)
           ? yield* Effect.promise(() => createBackup(change.filePath, instance.directory))
           : undefined
@@ -255,6 +267,15 @@ export const ApplyPatchTool = Tool.define(
           : manifestPaths.length > 0
             ? manifestPaths
             : ["*"]
+
+      const guardRules: GuardRule[] = Array.from(new Set(fileChanges.flatMap((_, i) => changeGuards[i].guard_rules ?? [])))
+      if (patchClass.rules.length > 0) {
+        for (const rule of patchClass.rules) {
+          if (!guardRules.includes(rule)) guardRules.push(rule)
+        }
+      }
+      if (guardRules.length > 0) guardMetadata.guard_rules = guardRules
+
       yield* ctx.ask({
         permission: patchPermission,
         patterns: relativePaths,
@@ -352,7 +373,18 @@ export const ApplyPatchTool = Tool.define(
       let output = `Success. Updated the following files:\n${summaryLines.join("\n")}`
 
       // Emit guard warnings for large or wholesale patches
-      const totalStats = { additions: totalAdditions, deletions: totalDeletions, totalChanged: totalAdditions + totalDeletions, totalLines: 0, changeRatio: 0 }
+      const totalStats = {
+        additions: totalAdditions,
+        deletions: totalDeletions,
+        totalChanged: totalAdditions + totalDeletions,
+        totalLines: 0,
+        changeRatio: 0,
+        maxConsecutiveAdditions: 0,
+        maxConsecutiveDeletions: 0,
+        unchangedPrefixLines: 0,
+        unchangedSuffixLines: 0,
+        hunkCount: 0,
+      }
       const warning = guardWarning(totalStats, guardMetadata)
       if (warning) output += `\n\n${warning}`
 

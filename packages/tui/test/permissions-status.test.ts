@@ -9,9 +9,12 @@ import {
   authorizationSummary,
   authorizationWarnings,
   expiresLabel,
+  extractGuardFlags,
+  guardWarnings,
   permissionRequestSummary,
   projectPermissionsStatus,
   relativeTimeLabel,
+  subagentSuffix,
   waitingHint,
 } from "../src/util/permissions-status"
 
@@ -372,5 +375,94 @@ describe("permissionRequestSummary", () => {
   test("missing detail keeps a bare kind label", () => {
     expect(permissionRequestSummary(request("bash"))).toBe("bash")
     expect(permissionRequestSummary(request("read"))).toBe("read")
+  })
+})
+
+describe("subagent attribution", () => {
+  test("subagentSuffix marks child-session approvals only", () => {
+    expect(subagentSuffix({})).toBe("")
+    expect(subagentSuffix({ parentSessionId: "ses-parent" })).toBe(" · subagent")
+  })
+
+  test("a pending subagent approval row names its delegation", () => {
+    const row = approvalStatusRow(approval({ approvalId: "a-sub", state: "PENDING", parentSessionId: "ses-parent" }))
+    expect(row).toContain(" · subagent")
+  })
+
+  test("top-level approvals stay unmarked", () => {
+    const row = approvalStatusRow(approval({ approvalId: "a-top", state: "PENDING" }))
+    expect(row).not.toContain("subagent")
+  })
+
+  test("recent activity carries the subagent marker too", () => {
+    const row = approvalActivityRow({
+      approvalId: "a-sub",
+      requestHash: "abcdef1234567890",
+      state: "CONSUMED",
+      updatedAt: new Date().toISOString(),
+      parentSessionId: "ses-parent",
+    })
+    expect(row).toContain(" · subagent")
+  })
+})
+
+describe("extractGuardFlags", () => {
+  test("extracts classic guard flags", () => {
+    const flags = extractGuardFlags({
+      wholesale_replacement: true,
+      large_change: true,
+      backup_created: true,
+    })
+    expect(flags).toEqual({
+      wholesale_replacement: true,
+      large_change: true,
+      backup_created: true,
+      destructive_patch: undefined,
+      permission_policy: undefined,
+      self_awareness: undefined,
+      guard_rules: undefined,
+    })
+  })
+
+  test("extracts patch guard flags and rule IDs", () => {
+    const flags = extractGuardFlags({
+      destructive_patch: true,
+      permission_policy: true,
+      self_awareness: true,
+      guard_rules: ["BLOCK_DELETION", "PERMISSION_POLICY_EDIT"],
+    })
+    expect(flags.destructive_patch).toBe(true)
+    expect(flags.permission_policy).toBe(true)
+    expect(flags.self_awareness).toBe(true)
+    expect(flags.guard_rules).toEqual(["BLOCK_DELETION", "PERMISSION_POLICY_EDIT"])
+  })
+})
+
+describe("guardWarnings", () => {
+  test("renders chip labels for guard rule IDs", () => {
+    const warnings = guardWarnings({
+      guard_rules: ["BLOCK_DELETION", "BLOCK_INSERTION", "FILE_DELETE", "MANIFEST_EDIT"],
+    })
+    expect(warnings).toContain("BLOCK DELETION")
+    expect(warnings).toContain("BLOCK INSERTION")
+    expect(warnings).toContain("FILE DELETE")
+    expect(warnings).toContain("manifest edit")
+  })
+
+  test("includes patch-level flags", () => {
+    const warnings = guardWarnings({
+      destructive_patch: true,
+      permission_policy: true,
+      self_awareness: true,
+    })
+    expect(warnings).toContain("destructive patch")
+    expect(warnings).toContain("permission policy")
+    expect(warnings).toContain("self-awareness")
+  })
+
+  test("permissionRequestSummary surfaces guard chips on edit requests", () => {
+    const summary = permissionRequestSummary(request("edit", { filepath: "/repo/src/a.ts", guard_rules: ["BLOCK_DELETION"] }))
+    expect(summary).toContain("edit · /repo/src/a.ts")
+    expect(summary).toContain("⚠ BLOCK DELETION")
   })
 })

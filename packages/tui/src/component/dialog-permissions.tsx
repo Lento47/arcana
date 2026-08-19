@@ -212,7 +212,8 @@ export function DialogPermissions() {
           <For each={status().pendingRequests}>
             {(request) => {
               const flags = extractGuardFlags(request.metadata ?? {})
-              const hasGuard = flags.wholesale_replacement || flags.large_change
+              const hasGuard = flags.wholesale_replacement || flags.large_change || flags.destructive_patch ||
+                flags.permission_policy || flags.self_awareness || (flags.guard_rules && flags.guard_rules.length > 0)
               return (
                 <box flexDirection="row" gap={1}>
                   <text fg={hasGuard ? theme.error : theme.warning} flexShrink={0}>

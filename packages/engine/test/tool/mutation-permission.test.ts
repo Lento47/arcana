@@ -53,6 +53,7 @@ describe("mutation-permission", () => {
     const result = singleMutationPermission(".arcana/memory.md", ".arcana/memory.md", large)
     expect(result.permission).toBe("self_awareness")
     expect(result.always).toEqual(["*"])
+    expect(result.metadata.guard_rules).toContain("SELF_AWARENESS_DESTRUCTIVE")
   })
 
   test("singleMutationPermission keeps dependency manifests on their own always path", () => {
@@ -68,6 +69,7 @@ describe("mutation-permission", () => {
     ])
     expect(result.selfAware).toBe(false)
     expect(result.permissionPolicy).toBe(true)
+    expect(result.rules).toContain("PERMISSION_POLICY_EDIT")
   })
 
   test("classifyPatch treats delete/move under self-awareness as destructive", () => {
@@ -76,6 +78,7 @@ describe("mutation-permission", () => {
     ])
     expect(result.selfAware).toBe(true)
     expect(result.destructive).toBe(true)
+    expect(result.rules).toContain("FILE_DELETE")
   })
 
   test("classifyPatch allows safe multi-file self-awareness patch", () => {
@@ -86,5 +89,17 @@ describe("mutation-permission", () => {
     expect(result.selfAware).toBe(true)
     expect(result.destructive).toBe(false)
     expect(result.permissionPolicy).toBe(false)
+  })
+
+  test("classifyPatch aggregates guard rule IDs", () => {
+    const blockDeletionGuard = guard(
+      "a\n" + Array.from({ length: 25 }, (_, i) => String(i + 1)).join("\n") + "\nb",
+      "a\nb",
+    )
+    blockDeletionGuard.guard_rules = ["BLOCK_DELETION"]
+    const result = classifyPatch([
+      { filePath: "src/a.ts", guard: blockDeletionGuard, type: "update" },
+    ])
+    expect(result.rules).toContain("BLOCK_DELETION")
   })
 })

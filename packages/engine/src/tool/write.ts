@@ -15,17 +15,8 @@ import { trimDiff } from "./edit"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import * as Bom from "@/util/bom"
 import { isDependencyManifest } from "@/execution/install"
-import {
-  analyzeDiff,
-  enrichMetadata,
-  createBackup,
-  cleanupBackup,
-  shouldBackup,
-  isWholesaleReplacement,
-  guardWarning,
-  resolveThresholds,
-} from "./file-edit-guard"
-import { singleMutationPermission } from "./mutation-permission"
+import { isWholesaleReplacement, guardWarning, resolveThresholds } from "./file-edit-guard"
+import { computeMutationAnalysis, buildMutationAskPayload, cleanupBackup } from "./mutation-util"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
@@ -81,43 +72,47 @@ export const WriteTool = Tool.define(
           const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, contentNew))
           const relative = path.relative(instance.worktree, filepath)
 
-          // ── File Edit Guard: analyze diff and enforce guardrails ──
-          const stats = analyzeDiff(contentOld, contentNew)
-          const guard = enrichMetadata(stats, exists, thresholds)
-          const backupPath = shouldBackup(stats, thresholds)
-            ? yield* Effect.promise(() => createBackup(filepath, instance.directory))
-            : undefined
-          if (backupPath) guard.backup_created = true
-          if (backupPath) guard.backup_path = backupPath
-
-          const writePerm = singleMutationPermission(filepath, relative, guard)
+          // ── File Edit Guard: analyse diff, enforce guardrails, route permission ──
+          const analysis = yield* computeMutationAnalysis({
+            instanceDirectory: instance.directory,
+            filePath: filepath,
+            relativePath: relative,
+            oldContent: contentOld,
+            newContent: contentNew,
+            existingFile: exists,
+            thresholds,
+            isDependencyManifest: isDependencyManifest(filepath),
+          })
 
           // Guard: if this is a wholesale replacement of an existing file,
           // require the operator to explicitly approve the full-file rewrite.
-          if (isWholesaleReplacement(stats, exists, thresholds)) {
+          if (isWholesaleReplacement(analysis.stats, exists, thresholds)) {
             yield* Effect.logWarning("file-edit-guard: wholesale replacement detected", {
               filepath,
-              changeRatio: stats.changeRatio,
-              totalChanged: stats.totalChanged,
-              totalLines: stats.totalLines,
+              changeRatio: analysis.stats.changeRatio,
+              totalChanged: analysis.stats.totalChanged,
+              totalLines: analysis.stats.totalLines,
             })
           }
 
-          yield* ctx.ask({
-            permission: writePerm.permission,
-            patterns: [relative],
-            always: writePerm.always,
-            metadata: {
-              filepath,
-              diff,
-              ...guard,
-              ...writePerm.metadata,
+          yield* ctx.ask(buildMutationAskPayload(
+            {
+              instanceDirectory: instance.directory,
+              filePath: filepath,
+              relativePath: relative,
+              oldContent: contentOld,
+              newContent: contentNew,
+              existingFile: exists,
+              thresholds,
+              isDependencyManifest: isDependencyManifest(filepath),
             },
-          })
+            analysis,
+            { diff, exists: exists, ...(stale ? { stale: true } : {}) },
+          ))
 
           yield* fs.writeWithDirs(filepath, Bom.join(contentNew, desiredBom))
           // Clean up backup on success
-          yield* Effect.promise(() => cleanupBackup(backupPath))
+          yield* Effect.promise(() => cleanupBackup(analysis.backupPath))
           if (yield* format.file(filepath)) {
             yield* Bom.syncFile(fs, filepath, desiredBom)
           }
@@ -128,7 +123,7 @@ export const WriteTool = Tool.define(
           })
 
           let output = stale ? "[STALE] Wrote file successfully." : "Wrote file successfully."
-          const warning = guardWarning(stats, guard)
+          const warning = guardWarning(analysis.stats, analysis.guard)
           if (warning) output += `\n\n${warning}`
           yield* lsp.touchFile(filepath, "document")
           const diagnostics = yield* lsp.diagnostics()

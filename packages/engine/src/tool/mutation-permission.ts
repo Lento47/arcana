@@ -14,13 +14,15 @@ import {
   isPermissionPolicyPath,
   isSelfAwarenessPath,
 } from "@arcana/core/util/self-awareness"
-import type { GuardMetadata } from "./file-edit-guard"
+import type { GuardMetadata, GuardRule } from "./file-edit-guard"
 
 export interface MutationClassification {
   /** True when the target lives in the model's self-awareness surface. */
   selfAware: boolean
   /** True when the self-awareness edit is large/wholesale and must still ask. */
   destructive: boolean
+  /** Stable rule IDs describing why the mutation is guarded. */
+  rules: GuardRule[]
 }
 
 export interface MutationPermission {
@@ -29,6 +31,7 @@ export interface MutationPermission {
   metadata: {
     self_awareness: boolean
     destructive: boolean
+    guard_rules?: GuardRule[]
   }
 }
 
@@ -39,7 +42,10 @@ export function classifyMutation(
 ): MutationClassification {
   const selfAware = isSelfAwarenessPath(filePath) && !isPermissionPolicyPath(filePath)
   const destructive = selfAware && (guard.wholesale_replacement === true || guard.large_change === true)
-  return { selfAware, destructive }
+  const rules: GuardRule[] = []
+  if (guard.guard_rules) rules.push(...guard.guard_rules)
+  if (selfAware && destructive) rules.push("SELF_AWARENESS_DESTRUCTIVE")
+  return { selfAware, destructive, rules: uniqueRules(rules) }
 }
 
 /**
@@ -54,7 +60,7 @@ export function singleMutationPermission(
   relativePath: string,
   guard: GuardMetadata,
 ): MutationPermission {
-  const { selfAware, destructive } = classifyMutation(filePath, guard)
+  const { selfAware, destructive, rules } = classifyMutation(filePath, guard)
   return {
     permission: selfAware ? "self_awareness" : "edit",
     always:
@@ -66,6 +72,7 @@ export function singleMutationPermission(
     metadata: {
       self_awareness: selfAware,
       destructive,
+      guard_rules: rules.length > 0 ? rules : undefined,
     },
   }
 }
@@ -75,6 +82,7 @@ export interface PatchClassification {
   selfAware: boolean
   destructive: boolean
   permissionPolicy: boolean
+  rules: GuardRule[]
 }
 
 /** Classify a patch covering multiple file changes. */
@@ -84,22 +92,32 @@ export function classifyPatch(
   let selfAware = true
   let destructive = false
   let permissionPolicy = false
+  const rules: GuardRule[] = []
 
   for (const change of changes) {
     if (isPermissionPolicyPath(change.filePath)) {
       permissionPolicy = true
       selfAware = false
+      rules.push("PERMISSION_POLICY_EDIT")
       continue
     }
     const classification = classifyMutation(change.filePath, change.guard)
     if (!classification.selfAware) selfAware = false
     if (classification.destructive) destructive = true
-    if (change.type === "delete" || change.type === "move") destructive = true
+    if (change.type === "delete" || change.type === "move") {
+      destructive = true
+      rules.push(change.type === "delete" ? "FILE_DELETE" : "FILE_MOVE")
+    }
+    rules.push(...classification.rules)
   }
 
   // If any permission-policy file is present, the whole patch is treated as
   // non-self-aware so it goes through the normal `edit` permission path.
   if (permissionPolicy) selfAware = false
 
-  return { selfAware, destructive, permissionPolicy }
+  return { selfAware, destructive, permissionPolicy, rules: uniqueRules(rules) }
+}
+
+function uniqueRules(rules: GuardRule[]): GuardRule[] {
+  return Array.from(new Set(rules))
 }

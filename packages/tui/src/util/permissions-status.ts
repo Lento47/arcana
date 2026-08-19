@@ -265,22 +265,67 @@ export interface EditGuardFlags {
   wholesale_replacement?: boolean
   large_change?: boolean
   backup_created?: boolean
+  destructive_patch?: boolean
+  permission_policy?: boolean
+  self_awareness?: boolean
+  /** Stable guard rule IDs describing why the mutation is guarded. */
+  guard_rules?: readonly string[]
 }
 
 /** Extract file-edit-guard flags from a permission request's metadata. */
 export function extractGuardFlags(metadata: Record<string, unknown>): EditGuardFlags {
+  const guardRules = Array.isArray(metadata.guard_rules)
+    ? metadata.guard_rules.filter((r): r is string => typeof r === "string")
+    : undefined
   return {
     wholesale_replacement: typeof metadata.wholesale_replacement === "boolean" ? metadata.wholesale_replacement : undefined,
     large_change: typeof metadata.large_change === "boolean" ? metadata.large_change : undefined,
     backup_created: typeof metadata.backup_created === "boolean" ? metadata.backup_created : undefined,
+    destructive_patch: typeof metadata.destructive_patch === "boolean" ? metadata.destructive_patch : undefined,
+    permission_policy: typeof metadata.permission_policy === "boolean" ? metadata.permission_policy : undefined,
+    self_awareness: typeof metadata.self_awareness === "boolean" ? metadata.self_awareness : undefined,
+    guard_rules: guardRules,
+  }
+}
+
+/** Map a guard rule ID to a human-readable chip label. */
+export function guardRuleLabel(rule: string): string {
+  switch (rule) {
+    case "WHOLESALE_REPLACEMENT":
+      return "WHOLESALE REPLACEMENT"
+    case "LARGE_CHANGE":
+      return "LARGE CHANGE"
+    case "BLOCK_DELETION":
+      return "BLOCK DELETION"
+    case "BLOCK_INSERTION":
+      return "BLOCK INSERTION"
+    case "MANIFEST_EDIT":
+      return "manifest edit"
+    case "PERMISSION_POLICY_EDIT":
+      return "permission policy"
+    case "SELF_AWARENESS_DESTRUCTIVE":
+      return "self-awareness rewrite"
+    case "FILE_DELETE":
+      return "FILE DELETE"
+    case "FILE_MOVE":
+      return "FILE MOVE"
+    default:
+      return rule.replace(/_/g, " ").toLowerCase()
   }
 }
 
 /** Guard-specific warning chips for a permission request. */
 export function guardWarnings(flags: EditGuardFlags): string[] {
   const warnings: string[] = []
-  if (flags.wholesale_replacement) warnings.push("WHOLESALE REPLACEMENT")
-  if (flags.large_change) warnings.push("LARGE CHANGE")
+  if (flags.wholesale_replacement) warnings.push(guardRuleLabel("WHOLESALE_REPLACEMENT"))
+  if (flags.large_change) warnings.push(guardRuleLabel("LARGE_CHANGE"))
+  if (flags.destructive_patch) warnings.push("destructive patch")
+  if (flags.permission_policy) warnings.push(guardRuleLabel("PERMISSION_POLICY_EDIT"))
+  if (flags.self_awareness) warnings.push("self-awareness")
+  for (const rule of flags.guard_rules ?? []) {
+    const label = guardRuleLabel(rule)
+    if (!warnings.includes(label)) warnings.push(label)
+  }
   if (flags.backup_created) warnings.push("backup created")
   return warnings
 }
