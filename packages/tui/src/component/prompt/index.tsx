@@ -41,7 +41,7 @@ import { usePromptStash } from "../../prompt/stash"
 import { DialogStash } from "../dialog-stash"
 import { type AutocompleteRef, Autocomplete, ARCANA_PROMPT_SLASHES } from "./autocomplete"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
-import type { FilePart, UserMessage } from "@arcana/sdk/v2"
+import type { FilePart, Session, UserMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
 import { errorMessage } from "../../util/error"
 import { formatDuration } from "../../util/format"
@@ -1194,7 +1194,7 @@ export function Prompt(props: PromptProps) {
           title,
           version: "0",
           time: { created: now, updated: now },
-        } as any)
+        } as Session)
       }
       if (store.mode !== "shell" && !arcanaPromptCommand) {
         const isGoalCmd =
@@ -1281,7 +1281,7 @@ export function Prompt(props: PromptProps) {
         }
 
         createdID = res.data.id
-        sync.session.upsert(res.data as any)
+        sync.session.upsert(res.data! as Session)
       }
 
       remapOptimisticSession(pendingStubID, createdID)

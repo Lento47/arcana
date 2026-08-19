@@ -140,13 +140,19 @@ describe("approvalGateFacts", () => {
 })
 
 describe("task / chat / prompt / code chrome", () => {
-  test("task rows expose status and step count", () => {
-    const row = taskRowChrome({ streaming: true, childCount: 2, expanded: false })
-    expect(row.kind).toBe("task")
-    expect(row.status).toBe("running")
-    expect(row.cue).toBe("live")
-    expect(row.childHint).toBe("2 steps")
-    expect(row.disclosure).toBe("▸")
+  test("task rows expose status and step count with handover cues", () => {
+    const running = taskRowChrome({ streaming: true, childCount: 2, expanded: false })
+    expect(running.kind).toBe("task")
+    expect(running.status).toBe("running")
+    expect(running.cue).toBe("delegated")
+    expect(running.childHint).toBe("2 steps")
+    expect(running.disclosure).toBe("▸")
+
+    const done = taskRowChrome({ streaming: false, childCount: 3, expanded: true })
+    expect(done.status).toBe("done")
+    expect(done.cue).toBe("returned")
+    expect(done.childHint).toBe("3 steps")
+    expect(done.disclosure).toBe("▾")
   })
 
   test("listing entries split dir vs file chrome", () => {

@@ -1,5 +1,7 @@
 import { MouseButton, type MouseEvent } from "@opentui/core"
-import { For, Show, createMemo, createSignal } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
+import type { Message, Part, ToolPart } from "@arcana/sdk/v2"
+import { titlecase, truncate } from "../../util/locale"
 import type {
   SpineEntry as SpineEntryType,
   SpineKind,
@@ -138,6 +140,7 @@ type HeaderFields = {
   summary: string
   actor?: string
   elapsed?: string
+  startMs?: number
   glyph: string
   streaming?: boolean
   thinking?: string
@@ -173,6 +176,7 @@ function RowHeader(props: {
         layout={props.layout}
         focused={props.focused}
         elapsed={props.view.elapsed}
+        startMs={props.view.startMs}
         disclosure={props.disclosure}
         streaming={props.view.streaming === true}
         thinking={props.view.thinking}
@@ -254,6 +258,8 @@ export function SpineEntry(props: {
   onFocus?: () => void
   onHover?: () => void
   onNavigate?: (sessionID: string) => void
+  /** Agent rows: called when a dive target is unresolved (no child link yet). */
+  onResolveChild?: () => void
   sessionID?: string  // Parent session ID for child lookup
   /** Measured markdown wrap width (terminal minus gutters). */
   contentWidth?: number
@@ -430,6 +436,26 @@ export function SpineEntry(props: {
     if (!toggle().headerToggleable) return
     if (event.button !== undefined && event.button !== MouseButton.LEFT && event.button !== MouseButton.RIGHT) return
     handleToggle(event)
+  }
+
+  // Subagent rows: clicking the header ENTERS the subagent's own context when a
+  // child session resolves (running rows included); otherwise it toggles.
+  const handleSubagentHeaderMouseUp = (event: MouseEvent) => {
+    if (event.button !== undefined && event.button !== MouseButton.LEFT && event.button !== MouseButton.RIGHT) return
+    const target = childSessionID()
+    if (target) {
+      event.stopPropagation?.()
+      event.preventDefault?.()
+      props.onNavigate?.(target)
+      return
+    }
+    if (props.onResolveChild) {
+      event.stopPropagation?.()
+      event.preventDefault?.()
+      props.onResolveChild()
+      return
+    }
+    handleHeaderMouseUp(event)
   }
 
   // Chat voice lives in SpineChatCard (panel + accent line + title rule).
@@ -729,97 +755,169 @@ export function SpineEntry(props: {
             )}
           </Show>
 
-          {/* Subagent task row. */}
+          {/* Subagent task row — a bordered block, not a transcript line. The
+              header chip (animated braille while delegated, check when returned)
+              leads; the card below is the working/returned panel. The card is a
+              self-contained unit so the delegation reads as a box even while
+              collapsed, and Enter/click on the header dives into its own context. */}
           <Show when={subagentView()}>
-            {(v) => (
-              <>
-                <RowHeader
-                  view={v()}
-                  layout={props.layout}
-                  focused={props.focused}
-                  disclosure={toggle().disclosure}
-                  nodeSummary={nodeSummary()}
-                  onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
-                />
-                <Show when={taskRowChrome({ streaming: v().streaming, childCount: childCount(), expanded: expanded() }).childHint}>
+            {(v) => {
+              const chrome = () =>
+                taskRowChrome({
+                  streaming: v().streaming,
+                  childCount: childCount(),
+                  expanded: expanded(),
+                })
+              const cardBody = () => {
+                if (v().streaming) return ""
+                if (hasToolBody() && !v().table && !hasListing()) return v().body ?? ""
+                if (!hasToolBody() && v().body?.trim()) return v().body
+                return ""
+              }
+              // Live streaming text from the child (preliminary tool result).
+              const liveWorkingText = () => v().liveOutput?.trim() || ""
+              const statusLine = () =>
+                `${v().streaming ? "⠹" : "✓"} ${chrome().cue}${chrome().childHint ? ` · ${chrome().childHint}` : ""}` +
+                `${v().streaming && v().elapsed ? ` · ${v().elapsed}` : ""}` +
+                `${v().streaming && childSessionID() ? " · ↵ enter its context" : ""}`
+              // Completed step list: the child session's tool calls, read from the
+              // workspace-wide sync projection so the returned card shows what the
+              // subagent did without navigating into its session.
+              const childSteps = createMemo(() => {
+                const childID = childSessionID()
+                if (!childID) return []
+                const messages = sync.data.message[childID] ?? []
+                const steps: Array<{ label: string; status: "ok" | "fail" }> = []
+                for (const msg of messages) {
+                  const parts = sync.data.part[msg.id] ?? []
+                  for (const part of parts) {
+                    if (part.type !== "tool") continue
+                    const state = (part as ToolPart).state
+                    if (state.status !== "completed" && state.status !== "error") continue
+                    const label = childStepLabel(part as ToolPart)
+                    if (!label) continue
+                    steps.push({ label, status: state.status === "error" ? "fail" : "ok" })
+                  }
+                }
+                return steps
+              })
+              // Hydrate the child session's messages/parts once the session is
+              // resolvable, so the step list renders without navigating away.
+              // Mirrors the legacy subagent route's onMount sync.
+              createEffect(() => {
+                const childID = childSessionID()
+                if (childID && !sync.data.message[childID]?.length && !sync.session.isSynced(childID)) {
+                  void sync.session.sync(childID)
+                }
+              })
+              return (
+                <>
+                  <RowHeader
+                    view={v()}
+                    layout={props.layout}
+                    focused={props.focused}
+                    disclosure={toggle().disclosure}
+                    nodeSummary={nodeSummary()}
+                    onHeaderMouseUp={toggle().headerToggleable ? handleSubagentHeaderMouseUp : undefined}
+                  />
+
+                  {/* Subagent card — bordered block. Single status text so
+                      separators always render (box gaps are unreliable here). */}
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail layout={props.layout} active={props.focused} />
-                    <box
-                      flexDirection="row"
-                      gap={1}
-                      flexShrink={0}
-                      paddingLeft={1}
-                      paddingRight={1}
-                      backgroundColor={theme.backgroundElement}
-                    >
-                      <text fg={theme.spineContext} wrapMode="none">
-                        {taskRowChrome({ streaming: v().streaming }).kind}
-                      </text>
-                      <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none">
-                        {taskRowChrome({ streaming: v().streaming }).cue}
-                      </text>
-                      <text fg={theme.spineDiffMuted} wrapMode="none">
-                        {taskRowChrome({ streaming: v().streaming, childCount: childCount(), expanded: expanded() }).childHint}
-                      </text>
+                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1} paddingRight={1}>
+                      <box
+                        flexDirection="column"
+                        flexShrink={0}
+                        width="100%"
+                        border={["top", "bottom", "left", "right"]}
+                        borderColor={v().streaming ? theme.accent : theme.spineOk}
+                        backgroundColor={theme.backgroundPanel}
+                        paddingLeft={1}
+                        paddingRight={1}
+                      >
+                        <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none">
+                          {statusLine()}
+                        </text>
+                        {/* Completed step list — what the subagent actually did. */}
+                        <Show when={!v().streaming && childSteps().length > 0}>
+                          <box flexDirection="column" paddingTop={1}>
+                            <For each={childSteps()}>
+                              {(step) => (
+                                <text fg={step.status === "fail" ? theme.spineFail : theme.spineContext} wrapMode="word">
+                                  {step.status === "fail" ? "✗" : "✓"} {step.label}
+                                </text>
+                              )}
+                            </For>
+                          </box>
+                        </Show>
+                        {/* Working panel while delegated — its own context, not shared.
+                            When the engine relays live preliminary text (streaming subagent
+                            progress), show that; otherwise fall back to the static hint. */}
+                        <Show when={v().streaming}>
+                          <Show when={!!liveWorkingText()} fallback={
+                            <text fg={theme.spineContext} wrapMode="word">
+                              Working in the {v().label || "subagent"} context — its own tools, files
+                              and messages, not the shared session. Enter or click to watch it think.
+                            </text>
+                          }>
+                            <text fg={theme.spineContext} wrapMode="word">
+                              {liveWorkingText()}
+                            </text>
+                          </Show>
+                        </Show>
+                        {/* Returned report/body when expanded. */}
+                        <Show when={!v().streaming && bodyExpanded() && !!cardBody()?.trim()}>
+                          <box paddingTop={1}>
+                            <SpineProse
+                              kind={kind()}
+                              text={cardBody()!}
+                              bodyLabel={v().bodyLabel}
+                              hint={v().bodyHint || v().summary}
+                              note={v().bodyNote}
+                              streaming={false}
+                              focused={props.focused}
+                              reminders={entryReminders()}
+                              contentWidth={props.contentWidth}
+                            />
+                          </box>
+                        </Show>
+                      </box>
                     </box>
                   </box>
-                </Show>
-                {/* Expandable body for agent entries without a tool body. */}
-                <Show when={!hasToolBody() && bodyExpanded()}>
-                  <box paddingLeft={padLeft()} paddingTop={1}>
-                    <SpineProse
-                      kind={kind()}
-                      text={v().body || v().summary}
-                      streaming={false}
-                      focused={false}
-                      contentWidth={props.contentWidth}
-                    />
-                  </box>
-                </Show>
-                <Show when={hasToolBody() && bodyExpanded() && !v().table && !hasListing()}>
-                  <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-                    <SpineRail layout={props.layout} active={props.focused} />
-                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
-                      <SpineProse
-                        kind={kind()}
-                        text={v().body!}
-                        bodyLabel={v().bodyLabel}
-                        hint={v().bodyHint || v().summary}
-                        note={v().bodyNote}
-                        streaming={false}
-                        focused={props.focused}
-                        reminders={entryReminders()}
-                        contentWidth={props.contentWidth}
-                      />
-                    </box>
-                  </box>
-                </Show>
 
-                {/* Open child session - polished button with rail alignment */}
-                <Show when={bodyExpanded() && !!childSessionID()}>
-                  <box paddingTop={1} flexShrink={0} />
-                  <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-                    <SpineRail layout={props.layout} active={false} />
-                    <box
-                      flexGrow={1}
-                      minWidth={0}
-                      flexShrink={1}
-                      paddingLeft={1}
-                      backgroundColor={openBtnHover() ? theme.backgroundElement : undefined}
-                      onMouseOver={() => setOpenBtnHover(true)}
-                      onMouseOut={() => setOpenBtnHover(false)}
-                      onMouseUp={() => props.onNavigate?.(childSessionID()!)}
-                    >
-                      <text>{`\u2937 Open subagent ${childSessionID()!.slice(0, 8)}`}</text>
+                  {/* Open child session - polished button with rail alignment.
+                      Visible while running too (dive into its own context mid-flight). */}
+                  <Show when={bodyExpanded() && !!childSessionID()}>
+                    <box paddingTop={1} flexShrink={0} />
+                    <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+                      <SpineRail layout={props.layout} active={false} />
+                      <box
+                        flexGrow={1}
+                        minWidth={0}
+                        flexShrink={1}
+                        paddingLeft={1}
+                        backgroundColor={openBtnHover() ? theme.backgroundElement : undefined}
+                        onMouseOver={() => setOpenBtnHover(true)}
+                        onMouseOut={() => setOpenBtnHover(false)}
+                        onMouseUp={() => props.onNavigate?.(childSessionID()!)}
+                      >
+                        <text>
+                          {`\u2937 Open ${v().label || "subagent"}`}
+                          <Show when={!v().streaming}>
+                            <span style={{ fg: theme.spineDiffMuted }}> · its own context</span>
+                          </Show>
+                        </text>
+                      </box>
                     </box>
-                  </box>
-                </Show>
+                  </Show>
 
-                <Show when={hasChildren() && expanded()}>
-                  <ChildrenGroup children={v().children!} layout={props.layout} contentWidth={props.contentWidth} />
-                </Show>
-              </>
-            )}
+                  <Show when={hasChildren() && expanded()}>
+                    <ChildrenGroup children={v().children!} layout={props.layout} contentWidth={props.contentWidth} />
+                  </Show>
+                </>
+              )
+            }}
           </Show>
 
           {/* Recovery / error row. */}
@@ -866,4 +964,30 @@ export function SpineEntry(props: {
       </box>
     </Show>
   )
+}
+
+/**
+ * Compact one-line label for a completed child tool call (the step list inside
+ * the returned subagent card). Prefers the tool title, then a command / path /
+ * search summary from the input, mirroring the spine mapper's per-tool chrome.
+ */
+export function childStepLabel(part: ToolPart): string {
+  const tool = part.tool || "tool"
+  const state = part.state
+  const title =
+    "title" in state && typeof state.title === "string" && state.title.trim() ? state.title.trim() : undefined
+  const input = "input" in state && state.input && typeof state.input === "object"
+    ? (state.input as Record<string, unknown>)
+    : undefined
+
+  const name = titlecase(tool)
+  if (title && title !== "Working") return `${name} · ${truncate(title, 60)}`
+
+  const command = input?.command ?? input?.cmd
+  if (typeof command === "string" && command.trim()) return `${name} · ${truncate(command.trim(), 60)}`
+  const file = input?.filePath ?? input?.path ?? input?.file
+  if (typeof file === "string" && file.trim()) return `${name} · ${truncate(file.trim(), 60)}`
+  const pattern = input?.pattern
+  if (typeof pattern === "string" && pattern.trim()) return `${name} · ${truncate(pattern.trim(), 60)}`
+  return name
 }

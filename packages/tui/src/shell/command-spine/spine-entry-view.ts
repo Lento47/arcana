@@ -58,12 +58,15 @@ export type ToolEntry = SpineEntryViewBase & {
   summary: string
   actor?: string
   elapsed?: string
+  startMs?: number
   streaming?: boolean
   thinking?: string
   body?: string
   bodyLabel?: string
   bodyHint?: string
   bodyNote?: string
+  /** Live preliminary output while running (subagent text stream). */
+  liveOutput?: string
   reminders?: string[]
   receipt?: SpineReceipt
   diff?: SpineDiffExcerpt
@@ -126,11 +129,14 @@ export type SubagentEntry = SpineEntryViewBase & {
   summary: string
   actor?: string
   elapsed?: string
+  startMs?: number
   streaming?: boolean
   body?: string
   bodyLabel?: string
   bodyHint?: string
   bodyNote?: string
+  /** Live preliminary output while running (subagent text stream). */
+  liveOutput?: string
   table?: { headers: string[]; rows: string[][] }
   listing?: string[]
   children?: SpineChildView[]
@@ -253,11 +259,13 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
       summary: entry.summary,
       actor: entry.actor,
       elapsed: entry.elapsed,
+      startMs: entry.startMs,
       streaming: entry.streaming === true,
       body: entry.body,
       bodyLabel: entry.bodyLabel,
       bodyHint: entry.bodyHint,
       bodyNote: entry.bodyNote,
+      liveOutput: entry.liveOutput,
       table: entry.table,
       listing: entry.listing,
       children: childrenViews(entry.children),
@@ -343,6 +351,7 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
     summary: entry.summary,
     actor: entry.actor,
     elapsed: entry.elapsed,
+    startMs: entry.startMs,
     streaming: entry.streaming === true,
     thinking: entry.thinking,
     body: entry.body,

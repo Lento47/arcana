@@ -144,6 +144,8 @@ export type SpineEntry = {
   elapsed: string
   /** Numeric elapsed in ms (parallel to `elapsed`). Use for sums; avoids re-parsing "+1h"→"+1s" bug. */
   elapsedMs?: number
+  /** Absolute start time (unix ms) while running — enables a ticking elapsed timer. */
+  startMs?: number
   timestamp?: string
   /** Absolute occurrence time (unix ms) — enables group duration/range derivation. */
   occurredAt?: number
@@ -171,6 +173,9 @@ export type SpineEntry = {
   streaming?: boolean
   /** Verb text from preceding think entry — merged into the tool row. */
   thinking?: string
+  /** Live preliminary output while running (subagent text stream). Each update
+   * replaces the previous value — mirrors ToolStateRunning.output on the wire. */
+  liveOutput?: string
   /** Grouped child entries (when this entry is a parent row). */
   children?: SpineEntry[]
   /** System-reminder blocks extracted from read tool output — rendered as callouts. */

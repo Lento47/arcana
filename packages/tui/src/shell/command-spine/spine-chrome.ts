@@ -179,7 +179,9 @@ export function taskRowChrome(input: {
   return {
     kind: "task",
     status: input.streaming === true ? "running" : "done",
-    cue: input.streaming === true ? "live" : "done",
+    // Handover language: the parent delegated work to a subagent and the result
+    // comes back when it completes. "delegated" while running, "returned" on done.
+    cue: input.streaming === true ? "delegated" : "returned",
     childHint: n > 0 ? `${n} ${n === 1 ? "step" : "steps"}` : "",
     disclosure: (input.expanded ? "▾" : "▸") as "▸" | "▾",
   }

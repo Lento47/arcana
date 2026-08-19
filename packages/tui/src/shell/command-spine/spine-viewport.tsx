@@ -25,6 +25,7 @@ export function SpineViewport(props: {
   onToggleEntry: (entry: SpineEntry) => void
   onFocusEntry: (entry: SpineEntry) => void
   onNavigate: (sessionID: string) => void
+  onResolveChild?: (entry: SpineEntry) => void
   sessionID?: string
   showScrollbar: boolean
   scrollAcceleration: ScrollAcceleration
@@ -86,6 +87,10 @@ export function SpineViewport(props: {
                     if (entry) props.onFocusEntry(entry)
                   }}
                   onNavigate={props.onNavigate}
+                  onResolveChild={() => {
+                    const entry = getEntry()
+                    if (entry) props.onResolveChild?.(entry)
+                  }}
                   sessionID={props.sessionID}
                 />
               </ErrorBoundary>

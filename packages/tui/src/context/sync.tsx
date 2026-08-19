@@ -39,6 +39,15 @@ import { batch, onMount } from "solid-js"
 import path from "path"
 import { useKV } from "./kv"
 
+/**
+ * Safely extract message items from an SDK response that may be wrapped in
+ * `{ data }` or `{ data: { items } }` depending on the endpoint and error state.
+ */
+function extractMessages(res: any): Array<{ info: Message; parts: any[] }> {
+  const d = res?.data
+  return d?.items ?? d ?? []
+}
+
 export type ReconcileReason = "heartbeat-gap" | "missing-part" | "reconnect" | "stream-reset" | "manual" | "turn-end"
 
 /**
@@ -835,7 +844,7 @@ export const {
               })
               setStore("provider", (prev: any[]) => {
                 const filtered = prev.filter((p: any) => p.id !== "ollama")
-                return [...filtered, ollamaProvider] as any
+                return [...filtered, ollamaProvider]
               })
             })
           })
@@ -1016,7 +1025,7 @@ export const {
             ])
 
             // Store cursor for lazy-loading older messages
-            const responseData = (messages as any).data?.items ?? (messages as any).data ?? []
+            const responseData = extractMessages(messages)
             const oldest = responseData[responseData.length - 1]
             olderCursors.set(sessionID, oldest?.info?.id ?? undefined)
 
@@ -1166,7 +1175,7 @@ export const {
             }),
             loadGovernance(sessionID, signal),
           ])
-          const responseData = (messages as any).data?.items ?? (messages as any).data ?? []
+          const responseData = extractMessages(messages)
           const oldest = responseData[responseData.length - 1]
           olderCursors.set(sessionID, oldest?.info?.id ?? undefined)
           let converged = true
@@ -1306,7 +1315,7 @@ export const {
           const count = await sdk.client.session
             .messages({ sessionID, limit: 25, before: cursor }, { throwOnError: true })
             .then((res) => {
-              const data: any[] = (res as any).data ?? []
+              const data: any[] = extractMessages(res)
               if (data.length === 0) {
                 exhaustedOlderSessions.add(sessionID)
                 return 0
@@ -1351,54 +1360,6 @@ export const {
           loadingOlderSessions.delete(sessionID)
           return count >= 25
         },
-      },
-      /**
-       * Load messages for a child session not in the current route.
-       * Used by agent spine entries to show subagent activity inline.
-       */
-      ensureChildMessages(sessionID: string) {
-        if (hydratingSessions.has(sessionID)) return
-        const tracker = { messages: new Set<string>(), parts: new Set<string>() }
-        hydratingSessions.set(sessionID, tracker)
-        sdk.client.session.messages({ sessionID, limit: 25 })
-          .then((result: any) => {
-            const data: any[] = result.data?.items ?? result.data ?? []
-            setStore(
-              produce((draft) => {
-                const existing = draft.message[sessionID] ?? []
-                const newInfos = data.map((m) => m.info).filter((info) => !tracker.messages.has(info.id))
-                const merged = [...existing, ...newInfos].slice(-100)
-                draft.message[sessionID] = merged
-                // Hydrate parts for each message
-                for (const message of data) {
-                  const parts = message.parts ?? []
-                  const currentParts = draft.part[message.info.id] ?? []
-                  const mergedParts = parts.flatMap((part: any) => {
-                    const current = currentParts.find((item) => item.id === part.id)
-                    if (
-                      shouldKeepLocalPart({
-                        rest: part,
-                        current,
-                        tracked: tracker.parts.has(part.id),
-                        lastEventAt: lastPartLiveAt.get(part.id) ?? 0,
-                        now: Date.now(),
-                        silenceMs: SSE_PART_LIVENESS_MS,
-                      })
-                    ) {
-                      return current ? [current] : []
-                    }
-                    return [part]
-                  })
-                  draft.part[message.info.id] = [...currentParts.filter((p) => tracker.parts.has(p.id)), ...mergedParts]
-                  draft.part_revision[message.info.id] = (draft.part_revision[message.info.id] ?? 0) + 1
-                }
-              }),
-            )
-            hydratingSessions.delete(sessionID)
-          })
-          .catch(() => {
-            hydratingSessions.delete(sessionID)
-          })
       },
       bootstrap,
     }

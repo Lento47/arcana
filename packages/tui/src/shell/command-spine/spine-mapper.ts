@@ -1073,6 +1073,35 @@ function taskToolAgent(part: ToolPart): string | undefined {
   return undefined
 }
 
+/**
+ * One-line result peek for a completed subagent row: the report summary
+ * paragraph first line, else the first meaningful output line. Keeps the
+ * collapsed spine row informative without expanding.
+ */
+/** First non-empty, non-heading, non-list line — the result, not the structure. */
+function firstResultLine(text: string): string | undefined {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l && !/^(#+\s|[-*]\s|\d+\.\s)/.test(l))
+}
+
+function subagentResultPeek(
+  state: ToolPart["state"],
+  report: SpineReportData | undefined,
+): string | undefined {
+  if (report?.summary) {
+    const line = firstResultLine(report.summary)
+    if (line) return truncate(line, 80)
+  }
+  if (state.status !== "completed") return undefined
+  const raw = "output" in state && typeof (state as { output?: string }).output === "string"
+    ? (state as { output: string }).output
+    : ""
+  const line = firstResultLine(stripAnsi(stripEngineMetadataBlocks(raw)))
+  return line ? truncate(line, 80) : undefined
+}
+
 function taskToolSummary(part: ToolPart): string {
   const input =
     "input" in part.state && part.state.input && typeof part.state.input === "object"
@@ -1110,6 +1139,19 @@ type ToolOutputBody = {
   lineStart?: number
   lineEnd?: number
   totalLines?: number
+}
+
+/**
+ * Live preliminary output while a tool is still running (AI SDK preliminary
+ * tool result). Each update replaces the previous value. Only task/subagent
+ * tools stream meaningful progress today; other running tools return nothing.
+ */
+function preliminaryToolOutput(state: ToolPart["state"]): string | undefined {
+  if (state.status !== "running") return undefined
+  if (!("output" in state) || typeof state.output !== "string") return undefined
+  const text = state.output.trim()
+  if (!text) return undefined
+  return truncate(stripAnsi(stripEngineMetadataBlocks(preserveBodyText(text))), 240)
 }
 
 function toolOutputBody(part: ToolPart): ToolOutputBody {
@@ -1234,6 +1276,14 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number, 
   const kind: SpineKind = state.status === "error" ? "fail" : agentName ? "agent" : toolKind
   const glyph = SPINE_GLYPH[kind] ?? SPINE_GLYPH.inspect
   const elapsed = computeElapsed(undefined, message, resolved)
+  // Running tool/subagent rows stay "live" for chrome (spinner, ticking elapsed,
+  // handover cues). resolveToolState already coerced stale running → completed,
+  // so a remaining "running"/"pending" status is genuinely active.
+  const running = state.status === "running" || state.status === "pending"
+  const startMs =
+    running && "time" in state && state.time && typeof state.time.start === "number"
+      ? state.time.start
+      : undefined
   let receipt = toolStateToReceipt(resolved.tool, state)
   const baseId = `${message.id}:${resolved.id || `tool-${partIndex}`}`
 
@@ -1269,6 +1319,13 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number, 
   if (kind === "fail" && state.status === "error") {
     // Prefer the error on the spine line (design: "fail  error[E0308]: …").
     summary = truncate(stripAnsi(state.error ?? ""), 120) || summary || resolved.tool
+  }
+  // Completed subagents: append a one-line result peek to the collapsed summary
+  // (report summary paragraph, else first output line) so the parent view shows
+  // what the subagent concluded without expanding.
+  if (agentName && state.status === "completed" && summary) {
+    const peek = subagentResultPeek(state, renderedOutput.report)
+    if (peek) summary = `${summary} · ${peek}`
   }
 
   // Codex/read: path · Lstart–end or path · N entries; pure source / clean listing.
@@ -1381,13 +1438,15 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number, 
       index: 0,
       elapsed: elapsed.str,
       elapsedMs: elapsed.ms,
+      startMs,
+      streaming: running,
       timestamp: formatTimestamp(message.time?.created),
       kind: finalKind,
       label:
         finalKind === "fail"
           ? "fail"
           : agentName
-            ? "agent"
+            ? agentName
             : finalKind === "report"
               ? "report"
               : kindLabel(kind, undefined, resolved.tool),
@@ -1398,6 +1457,7 @@ function toolPartToEntries(message: Message, part: ToolPart, partIndex: number, 
       bodyLabel: renderedOutput.report ? "report" : renderedOutput.label,
       bodyHint: renderedOutput.bodyHint || (resolved.tool === "read" ? filePath : undefined),
       bodyNote: renderedOutput.bodyNote,
+      liveOutput: running ? preliminaryToolOutput(state) : undefined,
       collapsible: !!diff || !!renderedOutput.report || hasExpandableBody,
       expandedByDefault: expandDefault,
       receipt,

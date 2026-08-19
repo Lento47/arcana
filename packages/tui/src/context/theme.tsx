@@ -150,10 +150,9 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
         })
         .catch(() => {
           setStore("active", "arcana")
-          if (!customThemeFailureToastShown) {
-            customThemeFailureToastShown = true
-            toast.show({ message: "Custom theme discovery failed — switched to arcana", variant: "warning" })
-          }
+          // Discovery failures are routine (no custom themes directory, no
+          // read permissions, etc.); switching back to arcana is sufficient
+          // feedback without a transient toast.
         })
     }
 
@@ -165,7 +164,6 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
 
     let systemThemeSignature: string | undefined
     let systemThemeMode: "dark" | "light" | undefined
-    let systemThemeFailureToastShown = false
     let hasResolvedSystemTheme = false
     function resolveSystemTheme(mode: "dark" | "light" = store.mode) {
       return renderer
@@ -175,10 +173,6 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
             if (hasResolvedSystemTheme) return
             setSystemTheme(undefined)
             if (store.active === "system") setStore("active", "arcana")
-            if (!systemThemeFailureToastShown) {
-              systemThemeFailureToastShown = true
-              toast.show({ message: "System theme detection failed — switched to arcana", variant: "warning" })
-            }
             return
           }
           const next = store.lock ?? terminalMode(colors) ?? mode
@@ -194,10 +188,8 @@ export const { use: useTheme, provider: ThemeProvider, context: ThemeContext } =
           if (hasResolvedSystemTheme) return
           setSystemTheme(undefined)
           if (store.active === "system") setStore("active", "arcana")
-          if (!systemThemeFailureToastShown) {
-            systemThemeFailureToastShown = true
-            toast.show({ message: "System theme detection failed — switched to arcana", variant: "warning" })
-          }
+          // System palette detection failing is routine on many terminals /
+          // multiplexers. Fall back silently to arcana.
         })
     }
 

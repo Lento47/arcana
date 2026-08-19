@@ -127,4 +127,43 @@ describe("TUI approval HTTP bridge (same runtime service as the CLI/HTTP surface
     expect(result.status).toBe("ERROR")
     expect(result.error).toContain("STALE")
   })
+
+  test("a subagent approval is decided through its OWN session, never the active one", async () => {
+    let captured: string | undefined
+    const childRecord = {
+      approvalId: "appr_child",
+      version: 1,
+      sessionId: "sess-child",
+      parentSessionId: "sess-a",
+      workspaceId: "sess-child",
+      requestHash: "hash-child",
+      contractRevision: 1,
+      state: "PENDING",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      updatedAt: "2026-08-02T00:00:00.000Z",
+      createdAt: "2026-08-02T00:00:00.000Z",
+    }
+    const bridge = makeBridge(
+      async (url) => {
+        captured = String(url)
+        return new Response(
+          JSON.stringify({ success: true, approval: { ...childRecord, state: "APPROVED" } }),
+          { status: 200 },
+        )
+      },
+      [childRecord],
+    )
+
+    const result = await bridge.approveOnce({
+      approvalId: "appr_child",
+      expectedVersion: 1,
+      expectedRequestHash: "hash-child",
+      expectedContractRevision: 1,
+    })
+
+    expect(result.status).toBe("APPROVED")
+    // The engine's session-scoped command handler refuses cross-session
+    // access, so the child approval must go through the child session path.
+    expect(captured).toBe("http://runtime.test/api/session/sess-child/approval/appr_child/command")
+  })
 })

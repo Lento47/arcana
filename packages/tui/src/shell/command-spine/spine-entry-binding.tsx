@@ -26,6 +26,7 @@ export function SpineEntryBinding(props: SpineEntryBindingProps) {
           onFocus={props.onFocus}
           onHover={props.onHover}
           onNavigate={props.onNavigate}
+          onResolveChild={props.onResolveChild}
           sessionID={props.sessionID}
           contentWidth={props.contentWidth}
           thinkContentWidth={props.thinkContentWidth}

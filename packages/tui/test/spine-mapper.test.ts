@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { messagesToSpineEntries } from "../src/shell/command-spine/spine-mapper"
-import type { Message, Part } from "@arcana/sdk/v2"
+import { childStepLabel } from "../src/shell/command-spine/spine-entry"
+import type { Message, Part, ToolPart } from "@arcana/sdk/v2"
 
 function partsLookup(parts: Part[]): (id: string) => Part[] {
   const map = new Map<string, Part[]>()
@@ -1325,10 +1326,97 @@ describe("edge cases", () => {
       assistantDuration: new Map(),
     })
     expect(result[0]!.kind).toBe("agent")
-    expect(result[0]!.label).toBe("agent")
+    expect(result[0]!.label).toBe("architect")
     expect(result[0]!.actor).toBe("architect")
     expect(result[0]!.summary).toBe("Design arcana-site dashboard architecture")
     expect(result[0]!.source?.kind).toBe("subtask")
+    // Running rows stay live for chrome: streaming + startMs enable the ticking elapsed.
+    expect(result[0]!.streaming).toBe(true)
+    expect(result[0]!.startMs).toBe(1000)
+    // No preliminary output yet — nothing streamed.
+    expect(result[0]!.liveOutput).toBeUndefined()
+  })
+
+  test("running subagent streams live text onto the parent row", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("e8c")
+    parts.push({
+      id: "p-tool-task-live",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "task-live",
+      tool: "task",
+      state: {
+        status: "running",
+        input: {
+          subagent_type: "explore",
+          description: "Scan the assets folder",
+          prompt: "List what is in the assets folder.",
+        },
+        output: "I found 3 asset directories: textures, models, audio.",
+        metadata: { sessionId: "sess-child" },
+        time: { start: 2000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("agent")
+    expect(result[0]!.streaming).toBe(true)
+    // The child's live text rides the running row as the preliminary output.
+    expect(result[0]!.liveOutput).toBe("I found 3 asset directories: textures, models, audio.")
+    // Child session link must survive streaming updates.
+    expect(result[0]!.source?.sessionID).toBe("sess-child")
+  })
+  test("childStepLabel prefers tool title, then command/file/pattern", () => {
+    const tool = (state: Record<string, unknown>): ToolPart =>
+      ({ type: "tool", tool: "read", state } as ToolPart)
+    expect(childStepLabel(tool({ status: "completed", title: "Read the manifest" }))).toBe("Read · Read the manifest")
+    expect(childStepLabel(tool({ status: "completed", title: "Working" }))).toBe("Read")
+    expect(childStepLabel(tool({ status: "completed", input: { command: "bun test" } }))).toBe("Read · bun test")
+    expect(childStepLabel(tool({ status: "completed", input: { filePath: "/a/b.ts" } }))).toBe("Read · /a/b.ts")
+    expect(childStepLabel(tool({ status: "completed", input: { pattern: "*.tsx" } }))).toBe("Read · *.tsx")
+    expect(childStepLabel(tool({ status: "completed", input: {} }))).toBe("Read")
+    expect(childStepLabel(tool({ status: "completed" }))).toBe("Read")
+  })
+
+  test("completed subagent row appends a one-line result peek", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("e8b")
+    parts.push({
+      id: "p-tool-task-done",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "task-1b",
+      tool: "task",
+      state: {
+        status: "completed",
+        input: {
+          subagent_type: "explore",
+          description: "Review PS5 folder",
+        },
+        output: "# Findings\n\nThe folder has 3 asset directories.\nMore detail here.",
+        title: "Done",
+        metadata: { sessionId: "child-explore-1" },
+        time: { start: 1000, end: 2400 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("agent")
+    expect(result[0]!.label).toBe("explore")
+    expect(result[0]!.streaming).toBe(false)
+    expect(result[0]!.startMs).toBeUndefined()
+    // Collapsed summary carries the description + first output line as a peek.
+    expect(result[0]!.summary).toContain("Review PS5 folder")
+    expect(result[0]!.summary).toContain("The folder has 3 asset directories")
   })
   test("completed task tool report stays on agent row", () => {
     const { messages: msgs, parts } = makeAssistantMessage("e9")
@@ -1368,9 +1456,10 @@ Diff excerpts can be improved later.`,
       assistantDuration: new Map(),
     })
     expect(result[0]!.kind).toBe("agent")
-    expect(result[0]!.label).toBe("agent")
+    expect(result[0]!.label).toBe("reviewer")
     expect(result[0]!.actor).toBe("reviewer")
-    expect(result[0]!.summary).toBe("Review Result")
+    // Collapsed summary: report title + one-line result peek.
+    expect(result[0]!.summary).toBe("Review Result · The command spine interaction path is usable.")
     expect(result[0]!.report?.summary).toContain("usable")
     expect(result[0]!.source).toMatchObject({ kind: "subtask", sessionID: "child-reviewer-1" })
   })

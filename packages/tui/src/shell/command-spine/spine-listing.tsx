@@ -11,6 +11,7 @@ export function SpineListing(props: {
 }) {
   const { theme } = useTheme()
   const muted = () => theme.spineDiffMuted
+  const nameColor = () => theme.text
 
   return (
     <box flexDirection="column" flexShrink={0} minWidth={0} paddingLeft={1} gap={0}>
@@ -24,7 +25,7 @@ export function SpineListing(props: {
                   {entry.kind}
                 </text>
               </box>
-              <text fg={theme.text} wrapMode="none">
+              <text fg={nameColor()} wrapMode="none">
                 {entry.name}
                 <Show when={entry.mark}>
                   <span style={{ fg: muted() }}>{entry.mark}</span>

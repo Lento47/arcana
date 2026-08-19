@@ -41,7 +41,7 @@ describe("entries memo body is pure", () => {
   })
 
   test("memo returns the mapper result untouched", () => {
-    expect(memoBody).toContain("return messagesToSpineEntriesCached({")
+    expect(memoBody).toContain("return { entries: result.entries, cache: result.cache }")
   })
 
   test("no leftover local cache aliases", () => {

@@ -32,25 +32,29 @@ function renderReceipt(kind: string, receipt: SpineReceiptType, layout: SpineLay
           <SpineReceipt kind={kind as any} receipt={receipt} layout={layout} />
         </box>
       )),
-    { width, height: 5 },
+    { width, height: 12 },
   )
 }
 
 async function renderOnceSettled(app: Awaited<ReturnType<typeof testRender>>) {
-  await app.renderOnce()
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  await app.renderOnce()
+  // ThemeProvider resolves the active theme asynchronously (system/custom
+  // discovery), so the first explicit renderOnce often yields an empty frame.
+  // The receipt layout also streams in (border + label first, stats next), so
+  // wait until the frame stops changing and is non-empty.
+  let previous = ""
+  for (let i = 0; i < 40; i++) {
+    await app.renderOnce()
+    const frame = app.captureCharFrame()
+    const trimmed = frame.trim()
+    if (trimmed.length > 0 && trimmed === previous) break
+    previous = trimmed
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
 }
 
 async function capture(app: Awaited<ReturnType<typeof testRender>>) {
   try {
     await renderOnceSettled(app)
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const frame = app.captureCharFrame()
-      if (frame.trim().length > 0) return frame.trim()
-      await new Promise((resolve) => setTimeout(resolve, 50))
-      await app.renderOnce()
-    }
     return app.captureCharFrame().trim()
   } finally {
     app.renderer.destroy()

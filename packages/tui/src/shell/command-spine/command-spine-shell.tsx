@@ -281,6 +281,29 @@ export function CommandSpineShell(props: ShellProps) {
     if (!entry || !canToggleSpineEntry(entry)) return
     toggleEntry(entry)
   }
+  // Enter on a focused subagent row dives into ITS OWN context (child session),
+  // not the shared one. Space still toggles expand/collapse.
+  const activateFocusedEntry = () => {
+    const entry = navigation.resolveFocusedEntry(true)
+    if (!entry) return
+    if (entry.kind === "agent") {
+      const sessionID = spineEntrySessionID(entry)
+      if (sessionID) {
+        dialog.clear()
+        props.onNavigateToSession?.(sessionID) ?? route.navigate({ type: "session", sessionID })
+        return
+      }
+      // No link yet (running card before the engine stamped metadata, or the
+      // child is not in the local session list). Ask the session layer to
+      // refresh and resolve it instead of silently toggling the row.
+      if (props.onResolveChild) {
+        props.onResolveChild(entry)
+        return
+      }
+    }
+    if (!canToggleSpineEntry(entry)) return
+    toggleEntry(entry)
+  }
   const copyFocusedEntry = () => {
     const entry = navigation.resolveFocusedEntry()
     if (!entry) {
@@ -337,7 +360,7 @@ export function CommandSpineShell(props: ShellProps) {
     }
 
     dialog.clear()
-    route.navigate({ type: "session", sessionID })
+    props.onNavigateToSession?.(sessionID) ?? route.navigate({ type: "session", sessionID })
   }
 
   // Keyboard-only spine mode (Phase 3/4): Esc ALWAYS leaves the composer so
@@ -362,7 +385,8 @@ export function CommandSpineShell(props: ShellProps) {
     bindings: [
       { key: "j,down", desc: "Focus next spine entry", group: "Command Spine", cmd: () => navigation.focusRelativeEntry(1) },
       { key: "k,up", desc: "Focus previous spine entry", group: "Command Spine", cmd: () => navigation.focusRelativeEntry(-1) },
-      { key: "return,space", desc: "Expand or collapse spine entry", group: "Command Spine", cmd: toggleFocusedEntry },
+      { key: "return", desc: "Enter subagent context or expand/collapse entry", group: "Command Spine", cmd: activateFocusedEntry },
+      { key: "space", desc: "Expand or collapse spine entry", group: "Command Spine", cmd: toggleFocusedEntry },
       { key: "y", desc: "Copy focused spine entry", group: "Command Spine", cmd: copyFocusedEntry },
       { key: "o", desc: "Open spine entry details", group: "Command Spine", cmd: openFocusedEntryDetails },
       {
@@ -518,7 +542,8 @@ export function CommandSpineShell(props: ShellProps) {
             entryFocused={navigation.entryFocused}
             onToggleEntry={toggleEntry}
             onFocusEntry={(entry) => navigation.focusEntry(entry)}
-            onNavigate={(sid) => route.navigate({ type: "session", sessionID: sid })}
+            onNavigate={(sid) => props.onNavigateToSession?.(sid) ?? route.navigate({ type: "session", sessionID: sid })}
+            onResolveChild={props.onResolveChild}
             sessionID={route.data?.type === "session" ? (route.data as any).sessionID : undefined}
             showScrollbar={props.showScrollbar()}
             scrollAcceleration={props.scrollAcceleration}

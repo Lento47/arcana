@@ -1,15 +1,17 @@
-import { For, Show, createMemo } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import { ShimmerText } from "../../component/shimmer-text"
 import { displayWidth, truncate } from "../../util/locale"
 import {
   compactSpineElapsed,
+  formatElapsedMs,
   spineElapsedMax,
   spineTone,
   type SpineKind,
   type SpineLayout,
 } from "./spine-types"
+import { SPINNER_FRAMES_BRAILLE_FLOW } from "../../util/spinner-style"
 import { streamTextCue, thinkingRowChrome, toolChipChrome } from "./spine-chrome"
 
 /**
@@ -87,6 +89,8 @@ export function SpineNode(props: {
   focused?: boolean
   /** Optional duration from the entry — shown muted after the label/summary. */
   elapsed?: string
+  /** Absolute start time (unix ms) — a ticking elapsed replaces `elapsed` while streaming. */
+  startMs?: number
   /** Optional disclosure chevron for collapsible rows (e.g. thinking). */
   disclosure?: "▸" | "▾" | ""
   /** True while reasoning content is still streaming — shows animated shimmer. */
@@ -103,8 +107,38 @@ export function SpineNode(props: {
   const actor = createMemo(() => props.actor?.trim() ?? "")
   const disclosure = createMemo(() => props.disclosure ?? "")
   const thinking = createMemo(() => props.thinking)
-  const elapsedText = createMemo(() => compactSpineElapsed(props.elapsed, spineElapsedMax(props.layout)))
   const streaming = createMemo(() => props.streaming === true)
+
+  // Live ticking chrome: while a running row carries an absolute start time,
+  // re-render every second so subagents/tools show a spinning braille frame and
+  // a progress elapsed without waiting for the next engine update. Falls back to
+  // the static entry duration and a static glyph.
+  const live = createMemo(
+    () => streaming() && typeof props.startMs === "number" && Number.isFinite(props.startMs),
+  )
+  // Animated braille frame for live rows. Uses a manual 150ms interval driven
+  // by a client-only effect (skipped in the server renderer) so the chip spins
+  // in the live app without destabilizing frame capture in tests.
+  const [tick, setTick] = createSignal(0)
+  createEffect(() => {
+    if (!live()) return
+    const timer = setInterval(() => setTick((n) => n + 1), 150)
+    onCleanup(() => clearInterval(timer))
+  })
+  const spinnerGlyph = createMemo(() => {
+    if (!live()) return ""
+    const frames = SPINNER_FRAMES_BRAILLE_FLOW
+    return frames[Math.floor(tick() / 2) % frames.length] ?? "⠋"
+  })
+  const elapsedText = createMemo(() => {
+    const max = spineElapsedMax(props.layout)
+    if (live()) {
+      void tick() // track the interval signal
+      const ms = Math.max(0, Date.now() - (props.startMs as number))
+      return compactSpineElapsed(formatElapsedMs(ms), max)
+    }
+    return compactSpineElapsed(props.elapsed, max)
+  })
 
   const isChat = createMemo(() => {
     const k = kind()
@@ -119,12 +153,13 @@ export function SpineNode(props: {
 
   const labelWidth = createMemo(() => {
     if (isChat()) return CHAT_LABEL_WIDTH
+    if (kind() === "agent") return layout() === "minimal" ? 8 : 12
     return layout() === "minimal" ? 7 : 10
   })
   const showLabel = createMemo(
     () => !!label() && layout() !== "minimal" && kind() !== "think",
   )
-  const showActor = createMemo(() => !!actor() && (kind() === "agent" || actor() === "you"))
+  const showActor = createMemo(() => !!actor() && actor() === "you")
 
   const chip = createMemo(() => toolChipChrome({ kind: kind(), label: label(), streaming: streaming() }))
   const thinkChrome = createMemo(() =>
@@ -146,6 +181,13 @@ export function SpineNode(props: {
   })
 
   const truncatedLabel = createMemo(() => truncate(label(), labelWidth()))
+  // Agent chips (subagent rows) pad the label to the full column width: the
+  // fixed-width box / row gap is not a reliable separator across renderers,
+  // so the chip text itself carries trailing spaces and the summary can
+  // never merge into the agent name ("generalSimple").
+  const chipLabel = createMemo(() =>
+    kind() === "agent" ? truncateActor(label(), labelWidth()) : truncatedLabel(),
+  )
 
   const metaStrip = createMemo(() => nodeMetaStrip(disclosure(), elapsedText()))
 
@@ -284,12 +326,27 @@ export function SpineNode(props: {
               border={["left"]}
               borderColor={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? theme.accent : theme.spineOk}
             >
-              <text
-                fg={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? theme.accent : labelColor()}
-                wrapMode="none"
-              >
-                {chip().glyph} {truncatedLabel()}
-              </text>
+              {/* Subagent block: animated braille spinner + agent name while delegated.
+                  Inline frames (not the Spinner component) so the server renderer
+                  stays stable — no opentui-spinner element in the chip. */}
+              <Show
+                  when={kind() === "agent" && live()}
+                  fallback={
+                    <text
+                      fg={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? theme.accent : labelColor()}
+                      wrapMode="none"
+                    >
+                      {chip().glyph} {chipLabel()}
+                    </text>
+                  }
+                >
+                  <text
+                    fg={chip().status === "live" ? theme.accent : labelColor()}
+                    wrapMode="none"
+                  >
+                    {spinnerGlyph()} {chipLabel()}
+                  </text>
+                </Show>
             </box>
           </Show>
           {actorBox()}

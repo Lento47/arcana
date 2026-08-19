@@ -18,6 +18,21 @@ export type SpinnerStyle = (typeof SPINNER_STYLES)[number]
 
 export const SPINNER_FRAMES_BRAILLE = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
+/**
+ * Braille loader with varied movement for live subagent rows: the classic
+ * clockwise sweep, a counter-clockwise return, then a grow/drain pulse of
+ * the braille cell (⠁ → ⠃ → ⠇ → … → ⣿ → back). The working indicator
+ * visibly changes motion instead of looping one spin.
+ */
+export const SPINNER_FRAMES_BRAILLE_FLOW = [
+  // clockwise sweep
+  "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏",
+  // counter-clockwise return sweep
+  "⠇", "⠧", "⠦", "⠴", "⠼", "⠸", "⠹", "⠙",
+  // grow the cell to a full block, then drain it
+  "⠁", "⠃", "⠇", "⠏", "⠟", "⠿", "⡿", "⣿", "⡿", "⠿", "⠟", "⠏", "⠇", "⠃", "⠁",
+]
+
 const DOTS_FRAMES = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃", "▂"]
 
 export const SIGIL_FRAMES = ["⛤", "⛥", "⛧", "⛦"]

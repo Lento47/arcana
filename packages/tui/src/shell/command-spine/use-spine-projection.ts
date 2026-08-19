@@ -110,7 +110,7 @@ export function useSpineProjection(props: ShellProps, input: {
   const entries = createMemo(() => {
     const state = sessionState()
     const sessionStatusType = props.sessionStatus?.()?.type
-    return messagesToSpineEntriesCached({
+    const result = messagesToSpineEntriesCached({
       messages: props.messages(),
       getParts: props.getParts,
       getPartRevision: props.getPartRevision,
@@ -120,6 +120,7 @@ export function useSpineProjection(props: ShellProps, input: {
       expandThinking: thinking.mode() === "show",
       sessionStatusType,
     })
+    return { entries: result.entries, cache: result.cache }
   })
 
   createEffect(() => {
@@ -132,7 +133,33 @@ export function useSpineProjection(props: ShellProps, input: {
   const gateEntries = createMemo(() =>
     pendingGateEntries({ permissions: props.permissions(), questions: props.questions() }),
   )
-  const visibleEntries = createMemo(() => [...entries().entries, ...gateEntries()])
+  // Running subagents: the tool metadata has no sessionId yet, but the child
+  // session exists in sync (parentID). Stamp it so Enter / click-to-dive and
+  // the open-subagent button all resolve the child context reliably.
+  const entriesWithChildSessions = createMemo(() =>
+    stampAgentChildSessions({
+      entries: entries().entries,
+      sessions: sync.data.session,
+      parentSessionID: props.sessionID,
+    })
+  )
+  const visibleEntries = createMemo(() => [...entriesWithChildSessions(), ...gateEntries()])
+
+  // Child sessions are created by the engine but may not yet appear in the
+  // local session list. When an agent entry has no linked sessionID and no
+  // child session is known for this parent, refresh the session list once so
+  // the fallback linker (stampAgentChildSessions) can resolve the dive target.
+  const childRefreshRequested = new Set<string>()
+  createEffect(() => {
+    const parentID = props.sessionID
+    const needLink = entries().entries.some((e) => e.kind === "agent" && !e.source?.sessionID)
+    if (!needLink) return
+    const hasChild = sync.data.session.some((s) => s.parentID === parentID)
+    if (hasChild) return
+    if (childRefreshRequested.has(parentID)) return
+    childRefreshRequested.add(parentID)
+    void sync.session.refresh()
+  })
 
   // ── TUI-2.1: Approval integration ────────────────────────────────
   const approvals = createMemo(() => props.approvals?.() ?? [])
@@ -325,4 +352,47 @@ export function useSpineProjection(props: ShellProps, input: {
     runState,
     getApprovalForEntry,
   }
+}
+
+/**
+ * Running subagent rows carry no child sessionID in the tool metadata until the
+ * engine records it. The child session is already visible in sync (parentID), so
+ * stamp a matching child onto agent entries without one. Matching prefers the
+ * child whose title names the entry's actor (`@agent subagent`), with a fallback
+ * to the newest child — this is what Enter-to-dive, the open-subagent button,
+ * and the inline working panel all rely on.
+ */
+export function stampAgentChildSessions(input: {
+  entries: SpineEntry[]
+  sessions: Array<{ id: string; parentID?: string | null; title?: string | null; time?: { created?: number } }>
+  parentSessionID: string
+}): SpineEntry[] {
+  const { entries, sessions, parentSessionID } = input
+  const children = sessions.filter((s) => s.parentID === parentSessionID)
+  if (children.length === 0) return entries
+
+  const newestChild = children.reduce((max, s) =>
+    (s.time?.created ?? 0) > (max.time?.created ?? 0) ? s : max,
+  )
+  const newestChildID = newestChild.id
+
+  const childByAgent = new Map<string, { id: string; created: number }>()
+  for (const child of children) {
+    const agentName = child.title?.match(/@([\w-]+)\s+subagent/i)?.[1]
+    if (!agentName) continue
+    const created = child.time?.created ?? 0
+    const existing = childByAgent.get(agentName)
+    if (!existing || created > existing.created) {
+      childByAgent.set(agentName, { id: child.id, created })
+    }
+  }
+
+  return entries.map((entry): SpineEntry => {
+    if (entry.kind !== "agent" || entry.source?.sessionID || !entry.actor) return entry
+    const matched = entry.actor ? childByAgent.get(entry.actor) : undefined
+    return {
+      ...entry,
+      source: { ...entry.source, sessionID: matched?.id ?? newestChildID } as SpineEntry["source"],
+    }
+  })
 }

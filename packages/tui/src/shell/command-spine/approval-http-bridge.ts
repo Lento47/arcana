@@ -106,14 +106,27 @@ export class HttpApprovalOperatorService implements ApprovalOperatorService {
     return this.options.getWorkspaceId()
   }
 
+  /**
+   * The session path must be the approval's OWN session: the engine's
+   * session-scoped command/detail handlers refuse cross-session access (the
+   * operator's workspace scope is the path session), so a subagent approval
+   * is decided through its child session even when the operator is watching
+   * the parent. For ordinary approvals the record's session equals the
+   * active session, so behavior is unchanged.
+   */
+  private sessionIdFor(approvalId: string): string {
+    const record = this.loadApproval(approvalId)
+    return record?.sessionId || this.sessionId
+  }
+
   private commandUrl(approvalId: string): string {
     const base = this.options.baseUrl.replace(/\/+$/, "")
-    return `${base}/api/session/${encodeURIComponent(this.sessionId)}/approval/${encodeURIComponent(approvalId)}/command`
+    return `${base}/api/session/${encodeURIComponent(this.sessionIdFor(approvalId))}/approval/${encodeURIComponent(approvalId)}/command`
   }
 
   private detailUrl(approvalId: string): string {
     const base = this.options.baseUrl.replace(/\/+$/, "")
-    return `${base}/api/session/${encodeURIComponent(this.sessionId)}/approval/${encodeURIComponent(approvalId)}/detail`
+    return `${base}/api/session/${encodeURIComponent(this.sessionIdFor(approvalId))}/approval/${encodeURIComponent(approvalId)}/detail`
   }
 
   private async postCommand(

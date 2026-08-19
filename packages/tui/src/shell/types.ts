@@ -75,6 +75,18 @@ export interface ShellProps {
   governanceTrace?: Accessor<GovernanceTraceHealth | undefined>
   /** Canonical read-only RunProof projection for the current session. */
   governanceProof?: Accessor<GovernanceRunProof | undefined>
+  /**
+   * Navigate into a child/subagent session. The implementation should sync the
+   * target session before routing so the route guard never rejects a valid
+   * child session that is not yet in the local list.
+   */
+  onNavigateToSession?: (sessionID: string) => void
+  /**
+   * Called when the user activates an agent (subagent) row that has no child
+   * session link yet. The implementation should refresh the session list,
+   * resolve the child (by actor title, newest fallback), and navigate.
+   */
+  onResolveChild?: (entry: { kind: string; actor?: string }) => void
 }
 
 export type ShellComponent = Component<ShellProps>

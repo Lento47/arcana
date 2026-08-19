@@ -1585,7 +1585,8 @@ export function Session() {
       run: () => {
         dialog.clear()
         const status = sync.data.session_status?.[route.sessionID]
-        const verifier = (sync.data as any).verifier?.[route.sessionID]
+        // verifier is not in the sync store type yet — injected by the engine at runtime.
+        const verifier = (sync.data as Record<string, any>)?.verifier?.[route.sessionID] as Record<string, any> | undefined
         if (!verifier) {
           toast.show({ message: "No verifier active for this session", variant: "info" })
           return
@@ -1815,7 +1816,7 @@ export function Session() {
                   sessionID: opt.sessionID,
                   messageID: messageId,
                 },
-              ] as any
+              ] as TextPart[]
             }
           }
           // Stable empty array — a fresh `[]` every call busts the spine message cache.
@@ -2123,6 +2124,7 @@ export function AssistantMessage(props: {
               <Dynamic
                 last={index() === props.parts.length - 1}
                 component={Component}
+                // Dynamic's generic prop types can't narrow union part types — cast needed.
                 part={part as any}
                 message={props.message}
               />
@@ -2489,7 +2491,7 @@ function GenericTool(props: ToolProps) {
       // Todos: array of objects with content + status
       if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(
         (item: unknown) => typeof item === "object" && item !== null &&
-        "content" in (item as any) && "status" in (item as any)
+        "content" in (item as Record<string, unknown>) && "status" in (item as Record<string, unknown>)
       )) {
         return { type: "todos", items: parseTodos(parsed) }
       }
