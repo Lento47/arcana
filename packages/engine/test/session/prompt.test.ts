@@ -1183,6 +1183,7 @@ it.instance(
       })
       // The child returns a whitespace-only completion — must NOT look like success.
       yield* llm.text(" ")
+      yield* llm.text(" ")
       yield* user(chat.id, "hello")
 
       const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
@@ -1201,6 +1202,58 @@ it.instance(
       )
 
       expect((tool.state as { output?: string }).output).toContain("returned no output")
+
+      yield* prompt.cancel(chat.id)
+      yield* Fiber.await(fiber)
+    }),
+  30_000,
+)
+
+it.instance(
+  "task tool retries once when the child returns an empty completion",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const agentSvc = yield* AgentSvc.Service
+      const registry = yield* ToolRegistry.Service
+      const buildAgent = yield* agentSvc.get("build")
+      yield* registry.tools({
+        modelID: ref.modelID,
+        providerID: ref.providerID,
+        agent: buildAgent!,
+      })
+      const chat = yield* sessions.create({
+        title: "Pinned",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      yield* llm.tool("task", {
+        description: "inspect bug",
+        prompt: "look into the cache key path",
+        subagent_type: "general",
+      })
+      // First completion is empty; the retry returns a real answer.
+      yield* llm.text(" ")
+      yield* llm.text("final answer after retry")
+      yield* user(chat.id, "hello")
+
+      const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
+
+      const tool = yield* pollWithTimeout(
+        Effect.gen(function* () {
+          const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
+          const tool = msgs
+            .filter((m) => m.info.role === "assistant")
+            .flatMap((m) => m.parts)
+            .find((part): part is SessionV1.ToolPart => part.type === "tool" && part.tool === "task")
+          if (tool?.state.status === "completed" && (tool.state as { output?: string }).output?.includes("final answer after retry")) return tool
+        }),
+        "timed out waiting for the retried task result",
+        "10 seconds",
+      )
+
+      expect((tool.state as { output?: string }).output).toContain("final answer after retry")
 
       yield* prompt.cancel(chat.id)
       yield* Fiber.await(fiber)
