@@ -63,6 +63,7 @@
         "@silvia-odwyer/photon-node": "0.3.4",
         "bun-pty": "0.4.8",
         "cross-spawn": "catalog:",
+        "diff": "catalog:",
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
         "fuzzysort": "3.1.0",

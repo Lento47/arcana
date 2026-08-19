@@ -7,6 +7,8 @@
  * A miss here is a bypass — keep this list broad.
  */
 
+export { isDependencyManifest } from "@arcana/core/util/file-edit-guard"
+
 const INSTALL_COMMAND = new RegExp(
   [
     // JS / Node
@@ -73,29 +75,6 @@ const INSTALL_COMMAND = new RegExp(
   "i",
 )
 
-const MANIFEST_NAME = new Set([
-  "package.json",
-  "package-lock.json",
-  "pnpm-lock.yaml",
-  "yarn.lock",
-  "bun.lock",
-  "bun.lockb",
-  "requirements.txt",
-  "pyproject.toml",
-  "poetry.lock",
-  "uv.lock",
-  "pipfile",
-  "pipfile.lock",
-  "cargo.toml",
-  "cargo.lock",
-  "go.mod",
-  "go.sum",
-  "gemfile",
-  "gemfile.lock",
-  "composer.json",
-  "composer.lock",
-])
-
 export function normalizeCommand(command: string): string {
   return command.replace(/\s+/g, " ").trim()
 }
@@ -104,11 +83,6 @@ export function commandLooksLikeInstall(command: string): boolean {
   const text = normalizeCommand(command)
   if (!text) return false
   return INSTALL_COMMAND.test(text)
-}
-
-export function isDependencyManifest(filePath: string): boolean {
-  const name = filePath.replace(/\\/g, "/").split("/").pop()?.toLowerCase() ?? ""
-  return MANIFEST_NAME.has(name)
 }
 
 const OPAQUE_EXEC = new RegExp(

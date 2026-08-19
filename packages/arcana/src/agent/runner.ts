@@ -10,7 +10,7 @@ import { redactSecrets, redactGitEmails, redactPII, redactGitAuthorNames, checkD
 import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
 import { isPermissionPolicyPath, isSelfAwarenessPath } from "@arcana/core/util/self-awareness"
-import { analyzeDiff, classifyGuard, DEFAULT_THRESHOLDS } from "@arcana/core/util/file-edit-guard"
+import { analyzeDiff, classifyGuard, DEFAULT_THRESHOLDS, isDependencyManifest } from "@arcana/core/util/file-edit-guard"
 import {
   applyMlPreflight,
   buildMlRevisionMessages,
@@ -277,11 +277,13 @@ export class AgentRunner {
         try {
           const existing = fs.existsSync(path) ? fs.readFileSync(path, "utf8") : ""
           const stats = analyzeDiff(existing, newContent)
+          const exists = existing !== ""
           const classification = classifyGuard(stats, {
             filePath: path,
-            existingFile: existing !== "",
-            type: toolName === "write" ? "update" : "update",
+            existingFile: exists,
+            type: toolName === "write" ? (exists ? "update" : "add") : "update",
             thresholds: DEFAULT_THRESHOLDS,
+            isDependencyManifest: isDependencyManifest(path),
           })
           rules.push(...classification.rules)
         } catch {

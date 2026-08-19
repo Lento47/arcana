@@ -9,6 +9,30 @@
 import { diffLines } from "diff"
 import { isPermissionPolicyPath, isSelfAwarenessPath } from "./self-awareness.js"
 
+/** Filenames commonly treated as dependency manifests. */
+export const DEPENDENCY_MANIFEST_NAMES = new Set([
+  "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb",
+  "requirements.txt",
+  "pyproject.toml",
+  "poetry.lock",
+  "uv.lock",
+  "pipfile",
+  "pipfile.lock",
+  "cargo.toml",
+  "cargo.lock",
+  "go.mod",
+  "go.sum",
+  "gemfile",
+  "gemfile.lock",
+  "composer.json",
+  "composer.lock",
+])
+
 // ── Thresholds ──────────────────────────────────────────────────────
 
 /**
@@ -179,6 +203,12 @@ export interface GuardClassification {
   rules: GuardRule[]
   /** True if any rule marks the mutation as destructive. */
   destructive: boolean
+}
+
+/** Return true when the file basename is a known dependency manifest. */
+export function isDependencyManifest(filePath: string): boolean {
+  const name = filePath.replace(/\\/g, "/").split("/").pop()?.toLowerCase() ?? ""
+  return DEPENDENCY_MANIFEST_NAMES.has(name)
 }
 
 export interface ClassifyGuardContext {
