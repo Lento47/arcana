@@ -36,6 +36,7 @@ type ApprovalRow = {
   version: number
   session_id: string
   workspace_id: string
+  parent_session_id: string | null
   request_hash: string
   contract_revision: number | null
   principal_id: string | null
@@ -81,6 +82,7 @@ function rowToScoped(row: ApprovalRow): ScopedApproval {
     requestHash: row.request_hash,
     principalId: row.principal_id ?? "",
     sessionId: row.session_id,
+    parentSessionId: row.parent_session_id ?? undefined,
     contractRevision: row.contract_revision ?? undefined,
     decision: stateToDecision(row.state),
     actions: row.actions_json ? (JSON.parse(row.actions_json) as ScopedApproval["actions"]) : [],
@@ -111,6 +113,7 @@ function rowToApprovalRecord(row: ApprovalRow): ApprovalRecord {
     version: row.version,
     sessionId: row.session_id,
     workspaceId: row.workspace_id,
+    parentSessionId: row.parent_session_id ?? undefined,
     requestHash: row.request_hash,
     contractRevision: row.contract_revision ?? 0,
     principalId: row.principal_id ?? undefined,
@@ -265,11 +268,11 @@ export class SqliteScopedApprovalStore implements ScopedApprovalStore {
     const now = new Date().toISOString()
     this.db.run(
       `INSERT INTO approval_records (
-         approval_id, version, session_id, workspace_id, request_hash, contract_revision,
+         approval_id, version, session_id, workspace_id, parent_session_id, request_hash, contract_revision,
          principal_id, state, expires_at, actions_json, resource_json, uses_consumed,
          claim_execution_id, lease_expires_at, decided_at, route, routing_policy_version,
          local_fallback_allowed, risk_class, updated_at, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(approval_id) DO UPDATE SET
          version = excluded.version,
          state = excluded.state,
@@ -291,6 +294,7 @@ export class SqliteScopedApprovalStore implements ScopedApprovalStore {
         1,
         approval.sessionId,
         approval.sessionId, // workspace = session-scoped in the engine path
+        approval.parentSessionId ?? null,
         approval.requestHash,
         approval.contractRevision ?? 0,
         approval.principalId,

@@ -162,4 +162,17 @@ describe("SqliteScopedApprovalStore (RB-01 adapter)", () => {
     expect(record!.updatedAt).toBeDefined()
     expect(run(store.getApprovalRecord("missing"))).toBeUndefined()
   })
+
+  test("parent_session_id round-trips for subagent approvals (wire + scoped forms)", () => {
+    const store = freshStore()
+    run(
+      store.putApproval(
+        makeApproval({ id: "appr_sub", requestHash: "h-sub", parentSessionId: "sess-parent" }),
+      ),
+    )
+    const scoped = run(store.getApproval("appr_sub"))
+    expect(scoped?.parentSessionId).toBe("sess-parent")
+    const record = run(store.getApprovalRecord("appr_sub"))
+    expect(record?.parentSessionId).toBe("sess-parent")
+  })
 })

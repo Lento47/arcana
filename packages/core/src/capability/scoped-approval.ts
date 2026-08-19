@@ -41,6 +41,8 @@ export interface ScopedApproval {
 
   readonly principalId: string
   readonly sessionId: string
+  /** Session that spawned this approval's session (subagent delegation). */
+  readonly parentSessionId?: string
   readonly contractId?: string
   readonly contractRevision?: number
 

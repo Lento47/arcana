@@ -45,6 +45,13 @@ export type ApprovalRecord = {
   requestHash: string
   contractRevision: number
 
+  /**
+   * Session that spawned this approval's session (subagent delegation).
+   * Undefined for top-level sessions. Lets operator surfaces attribute a
+   * child-session approval to its parent for rendering and routing.
+   */
+  parentSessionId?: string
+
   /** Principal the approval authorizes (agent identity). Optional for backward compat. */
   principalId?: string
 

@@ -10,7 +10,7 @@ node_modules/
 
 # Claude session lock files
 .claude/scheduled_tasks.lock
-.arcana/.session-lock
+.arcana/
 
 # Private keys / signing material
 *-private.pem

@@ -6,6 +6,8 @@ import { BackgroundJob } from "@/background/job"
 import { Session } from "@/session/session"
 import { SessionID, MessageID } from "../session/schema"
 import { MessageV2 } from "../session/message-v2"
+import { EventV2Bridge } from "@/event-v2-bridge"
+import { EventV2 } from "@arcana/core/event"
 import { Agent } from "../agent/agent"
 import * as Router from "../agent/router"
 import { deriveSubagentSessionPermission } from "../agent/subagent-permissions"
@@ -148,6 +150,7 @@ export const TaskTool = Tool.define(
     const scope = yield* Scope.Scope
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const events = yield* EventV2Bridge.Service
 
     const run = Effect.fn("TaskTool.execute")(function* (
       params: Schema.Schema.Type<typeof Parameters>,
@@ -210,21 +213,44 @@ export const TaskTool = Tool.define(
           action: "deny" as const,
         })) ?? []),
       ]
-      const nextSession = resume && existing ? existing : yield* sessions.create({
-            parentID: ctx.sessionID,
-            title: params.description + ` (@${next.name} subagent)`,
-            agent: next.name,
-            permission: [
-              ...childPermission,
-              ...childToolDenies.filter(
-                (deny) =>
-                  !childPermission.some(
-                    (rule) =>
-                      rule.permission === deny.permission && rule.pattern === deny.pattern && rule.action === deny.action,
-                  ),
-              ),
-            ],
-          })
+      let nextSession: NonNullable<typeof existing>
+      try {
+        nextSession = resume && existing
+          ? existing
+          : yield* sessions.create({
+              parentID: ctx.sessionID,
+              title: params.description + ` (@${next.name} subagent)`,
+              agent: next.name,
+              permission: [
+                ...childPermission,
+                ...childToolDenies.filter(
+                  (deny) =>
+                    !childPermission.some(
+                      (rule) =>
+                        rule.permission === deny.permission && rule.pattern === deny.pattern && rule.action === deny.action,
+                    ),
+                ),
+              ],
+            })
+      } catch (error) {
+        yield* Effect.logWarning(`Child session creation failed for subagent ${next.name}: ${String(error)}`)
+        // Cast to any so the early error path does not widen the tool's
+        // inferred metadata type away from the branded child session id.
+        return {
+          title: params.description,
+          metadata: {
+            parentSessionId: ctx.sessionID,
+            subagent_type: params.subagent_type,
+            error: String(error),
+          },
+          output: renderOutput({
+            sessionID: ctx.sessionID,
+            state: "error",
+            summary: "Subagent session creation failed",
+            text: String(error),
+          }),
+        } as any
+      }
 
       if (!resume) {
         // Inherit parent session goal so subagent turns see the same active goal
@@ -437,7 +463,53 @@ export const TaskTool = Tool.define(
           agent: next.name,
           parts,
         })
-        return result.parts.findLast((item) => item.type === "text")?.text ?? ""
+        let text = result.parts.findLast((item) => item.type === "text")?.text ?? ""
+        // Empty completions happen on fast/free model routes: the loop exits
+        // with a stop and no final text. Give the subagent one explicit retry
+        // before the parent sees an empty result.
+        if (!text.trim()) {
+          yield* Effect.logWarning("subagent returned empty, retrying once", {
+            sessionID: nextSession.id,
+            agent: next.name,
+            description: params.description,
+          })
+          const retryParts = yield* ops.resolvePromptParts(
+            `${params.prompt}\n\nYou did not produce a final answer. Do the work now and return your final answer as plain text.`,
+          )
+          const retry = yield* ops.prompt({
+            messageID: MessageID.ascending(),
+            sessionID: nextSession.id,
+            model: {
+              modelID: model.modelID,
+              providerID: model.providerID,
+            },
+            variant: next.model ? undefined : variant,
+            agent: next.name,
+            parts: retryParts,
+          })
+          text = retry.parts.findLast((item) => item.type === "text")?.text ?? ""
+        }
+        return text
+      })
+
+      // Stream the child's live text to the parent's running tool part (AI SDK
+      // "preliminary tool result" pattern). Each PartUpdated event for a child
+      // text part replaces the parent's `state.output`, so the TUI card shows
+      // real progress without entering the child session. Dies with the scope
+      // when the foreground wait (or tool execution) ends.
+      const relayChildText = Effect.fn("TaskTool.relayChildText")(function* () {
+        let latest = ""
+        const unsubscribe = yield* events.listen((event) => {
+          if (event.type !== MessageV2.Event.PartUpdated.type) return Effect.void
+          const data = event.data as EventV2.Data<typeof MessageV2.Event.PartUpdated>
+          if (data.part.sessionID !== nextSession.id) return Effect.void
+          if (data.part.type !== "text") return Effect.void
+          const text = (data.part as { text?: string }).text ?? ""
+          if (!text || text === latest) return Effect.void
+          latest = text
+          return ctx.metadata({ output: text }).pipe(Effect.ignore)
+        })
+        yield* Effect.addFinalizer(() => unsubscribe)
       })
 
       const inject = Effect.fn("TaskTool.injectBackgroundResult")(function* (
@@ -549,80 +621,114 @@ export const TaskTool = Tool.define(
           ctx.abort.addEventListener("abort", onAbort)
         }),
         () =>
-          Effect.gen(function* () {
-            let waitEffect: Effect.Effect<BackgroundJob.Info | undefined, Error, never> = Effect.raceFirst(
-              background.wait({ id: nextSession.id }).pipe(Effect.map((waited) => waited.info)),
-              background.waitForPromotion(nextSession.id),
-            )
-            if (params.timeout !== undefined && params.timeout > 0) {
-              waitEffect = waitEffect.pipe(
-                Effect.timeout(params.timeout),
-                Effect.flatMap((timed) => {
-                  if (timed === undefined) {
-                    return Effect.all([
-                      ops.cancel(nextSession.id),
-                      background.cancel(nextSession.id),
-                    ], { discard: true }).pipe(
-                      Effect.flatMap(() => Effect.fail(new Error(`Task timed out after ${params.timeout}ms`)))
-                    )
-                  }
-                  return Effect.succeed(timed)
-                })
+          Effect.scoped(
+            Effect.gen(function* () {
+              // Stream the child's live text to the parent running part while the
+              // foreground wait blocks. Scoped: the fiber (and its listener) dies
+              // as soon as the wait resolves or is interrupted.
+              yield* relayChildText().pipe(Effect.forkScoped, Effect.interruptible)
+              let waitEffect: Effect.Effect<BackgroundJob.Info | undefined, Error, never> = Effect.raceFirst(
+                background.wait({ id: nextSession.id }).pipe(Effect.map((waited) => waited.info)),
+                background.waitForPromotion(nextSession.id),
               )
-            }
-            const result = yield* waitEffect
-            if (result?.metadata?.background === true) return backgroundResult()
-            if (result?.status === "error") return yield* Effect.fail(new Error(result.error ?? "Task failed"))
-            if (result?.status === "cancelled") return yield* Effect.fail(new Error("Task cancelled"))
-            const rawOutput = result?.output ?? ""
-            // Structured output validation
-            if (params.schema) {
-              const json = extractJson(rawOutput)
-              if (json !== undefined && validateSchema(json, params.schema)) {
-                return {
-                  title: params.description,
-                  metadata,
-                  output: renderOutput({ sessionID: nextSession.id, state: "completed", text: rawOutput, structured: json,
-                    warning: delegationWarning,
+              if (params.timeout !== undefined && params.timeout > 0) {
+                waitEffect = waitEffect.pipe(
+                  Effect.timeout(params.timeout),
+                  Effect.flatMap((timed) => {
+                    if (timed === undefined) {
+                      return Effect.all([
+                        ops.cancel(nextSession.id),
+                        background.cancel(nextSession.id),
+                      ], { discard: true }).pipe(
+                        Effect.flatMap(() => Effect.fail(new Error(`Task timed out after ${params.timeout}ms`)))
+                      )
+                    }
+                    return Effect.succeed(timed)
                   })
-                }
-              }
-              // Retry once: ask subagent to fix format
-              const retryResult = yield* Effect.gen(function* () {
-                const fixParts = yield* ops.resolvePromptParts(
-                  `Your previous output did not match the required JSON schema. ` +
-                  `Re-output your result as valid JSON matching this schema: ${JSON.stringify(params.schema)}. ` +
-                  `Output ONLY the JSON object, no markdown wrapping.`
                 )
-                const retry = yield* ops.prompt({
-                  messageID: MessageID.ascending(),
-                  sessionID: nextSession.id,
-                  model: { modelID: model.modelID, providerID: model.providerID },
-                  variant: next.model ? undefined : variant,
-                  agent: next.name,
-                  parts: fixParts,
-                })
-                return retry.parts.findLast((item) => item.type === "text")?.text ?? ""
-              }).pipe(Effect.catch(() => Effect.succeed(rawOutput)))
-              const retryJson = extractJson(retryResult)
-              if (retryJson !== undefined && validateSchema(retryJson, params.schema)) {
+              }
+              const result = yield* waitEffect
+              if (result?.metadata?.background === true) return backgroundResult()
+              if (result?.status === "error") return yield* Effect.fail(new Error(result.error ?? "Task failed"))
+              if (result?.status === "cancelled") return yield* Effect.fail(new Error("Task cancelled"))
+              const rawOutput = result?.output ?? ""
+              // Diagnostics: capture what the subagent actually produced so
+              // empty/invalid completions are visible in the engine log.
+              yield* Effect.logWarning("task completed", {
+                sessionID: nextSession.id,
+                agent: next.name,
+                description: params.description,
+                status: result?.status ?? null,
+                chars: rawOutput.length,
+                preview: rawOutput.slice(0, 240),
+              })
+              // A subagent that completes with no final text did not do the
+              // work: surface it as a failure so the parent can retry with
+              // clearer instructions instead of showing an empty "returned".
+              if (!rawOutput.trim() && !params.schema) {
                 return {
                   title: params.description,
                   metadata,
-                  output: renderOutput({ sessionID: nextSession.id, state: "completed", text: retryResult, structured: retryJson,
+                  output: renderOutput({
+                    sessionID: nextSession.id,
+                    state: "error",
+                    summary: "Subagent returned no output",
+                    text:
+                      `Subagent ${next.name} returned no output for "${params.description}". ` +
+                      "Re-run the task with explicit instructions to produce a final answer.",
                     warning: delegationWarning,
-                  })
+                  }),
                 }
               }
-            }
-            return {
-              title: params.description,
-              metadata,
-              output: renderOutput({ sessionID: nextSession.id, state: "completed", text: rawOutput,
-                warning: delegationWarning,
-              })
-            }
-          }),
+              // Structured output validation
+              if (params.schema) {
+                const json = extractJson(rawOutput)
+                if (json !== undefined && validateSchema(json, params.schema)) {
+                  return {
+                    title: params.description,
+                    metadata,
+                    output: renderOutput({ sessionID: nextSession.id, state: "completed", text: rawOutput, structured: json,
+                      warning: delegationWarning,
+                    })
+                  }
+                }
+                // Retry once: ask subagent to fix format
+                const retryResult = yield* Effect.gen(function* () {
+                  const fixParts = yield* ops.resolvePromptParts(
+                    `Your previous output did not match the required JSON schema. ` +
+                    `Re-output your result as valid JSON matching this schema: ${JSON.stringify(params.schema)}. ` +
+                    `Output ONLY the JSON object, no markdown wrapping.`
+                  )
+                  const retry = yield* ops.prompt({
+                    messageID: MessageID.ascending(),
+                    sessionID: nextSession.id,
+                    model: { modelID: model.modelID, providerID: model.providerID },
+                    variant: next.model ? undefined : variant,
+                    agent: next.name,
+                    parts: fixParts,
+                  })
+                  return retry.parts.findLast((item) => item.type === "text")?.text ?? ""
+                }).pipe(Effect.catch(() => Effect.succeed(rawOutput)))
+                const retryJson = extractJson(retryResult)
+                if (retryJson !== undefined && validateSchema(retryJson, params.schema)) {
+                  return {
+                    title: params.description,
+                    metadata,
+                    output: renderOutput({ sessionID: nextSession.id, state: "completed", text: retryResult, structured: retryJson,
+                      warning: delegationWarning,
+                    })
+                  }
+                }
+              }
+              return {
+                title: params.description,
+                metadata,
+                output: renderOutput({ sessionID: nextSession.id, state: "completed", text: rawOutput,
+                  warning: delegationWarning,
+                })
+              }
+            }),
+        ),
         (_, exit) =>
           Effect.gen(function* () {
             if (Exit.hasInterrupts(exit))

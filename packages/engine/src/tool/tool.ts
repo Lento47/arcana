@@ -89,7 +89,7 @@ export type Context<M extends Metadata = Metadata> = {
   callID?: string
   extra?: { [key: string]: unknown }
   messages: SessionV1.WithParts[]
-  metadata(input: { title?: string; metadata?: M }): Effect.Effect<void>
+  metadata(input: { title?: string; metadata?: M; output?: string }): Effect.Effect<void>
   ask(input: Omit<PermissionV1.Request, "id" | "sessionID" | "tool">): Effect.Effect<void>
 }
 
@@ -233,13 +233,13 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
           // without enforcing DiffGate. This is observational — it measures
           // coverage of the mutation contract against real tool execution.
           let mutationProposalID: string | undefined
-          if (actionRequiresMutationGate(action as any)) {
+          if (actionRequiresMutationGate(action)) {
             const { mutationProposalFromAction } = yield* Effect.promise(() =>
               import("@/kernel/mutation-shadow").then((m) => ({
                 mutationProposalFromAction: m.mutationProposalFromAction,
               })),
             )
-            const proposal = mutationProposalFromAction(action as any)
+            const proposal = mutationProposalFromAction(action)
             if (proposal) {
               mutationProposalID = proposal.id
               yield* Effect.logInfo("engine.mutation.shadow", {

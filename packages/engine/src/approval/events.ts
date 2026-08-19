@@ -25,6 +25,8 @@ export const ApprovalRecordSchema = Schema.Struct({
   approvalId: Schema.String,
   version: Schema.Number,
   sessionId: Schema.String,
+  /** Session that spawned this approval's session (subagent delegation). */
+  parentSessionId: Schema.optional(Schema.String),
   workspaceId: Schema.String,
   requestHash: Schema.String,
   contractRevision: Schema.Number,

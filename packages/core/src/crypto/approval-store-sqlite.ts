@@ -93,6 +93,8 @@ export const APPROVAL_RECORD_MIGRATIONS = [
   `ALTER TABLE approval_records ADD COLUMN local_fallback_allowed INTEGER NOT NULL DEFAULT 1`,
   `ALTER TABLE approval_records ADD COLUMN risk_class TEXT`,
   `ALTER TABLE approval_records ADD COLUMN revoked_by TEXT`,
+  // Subagent delegation: session that spawned this approval's session.
+  `ALTER TABLE approval_records ADD COLUMN parent_session_id TEXT`,
 ]
 
 export type ApprovalTransitionStep = "begin" | "approval" | "execution" | "outbox" | "commit"
@@ -233,8 +235,8 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
 
   private upsertApproval(record: ApprovalRecord): void {
     this.db.run(
-      `INSERT INTO approval_records (approval_id, version, session_id, workspace_id, request_hash, contract_revision, principal_id, state, approved_by, revoked_by, execution_id, route, routing_policy_version, local_fallback_allowed, risk_class, expires_at, updated_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO approval_records (approval_id, version, session_id, workspace_id, parent_session_id, request_hash, contract_revision, principal_id, state, approved_by, revoked_by, execution_id, route, routing_policy_version, local_fallback_allowed, risk_class, expires_at, updated_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(approval_id) DO UPDATE SET
          version = excluded.version,
          principal_id = excluded.principal_id,
@@ -250,6 +252,7 @@ export class SqliteApprovalStore implements ApprovalLifecycleStore {
          updated_at = excluded.updated_at`,
       [
         record.approvalId, record.version, record.sessionId, record.workspaceId,
+        record.parentSessionId ?? null,
         record.requestHash, record.contractRevision, record.principalId ?? "",
         record.state,
         record.approvedBy ?? null, record.revokedBy ?? null, record.executionId ?? null,
@@ -503,6 +506,7 @@ function rowToApproval(row: any): ApprovalRecord {
     version: row.version,
     sessionId: row.session_id,
     workspaceId: row.workspace_id,
+    parentSessionId: row.parent_session_id ?? undefined,
     requestHash: row.request_hash,
     contractRevision: row.contract_revision,
     principalId: row.principal_id || undefined,

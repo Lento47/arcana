@@ -434,6 +434,12 @@ components:
           description: Optimistic-concurrency version; expectedVersion must match.
         sessionId:
           type: string
+        parentSessionId:
+          type: string
+          description: >-
+            Session that spawned this approval's session (subagent delegation).
+            Absent for top-level sessions; lets operator surfaces attribute a
+            child-session approval to its parent for rendering and routing.
         workspaceId:
           type: string
         requestHash:

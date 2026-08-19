@@ -273,7 +273,7 @@ export function formatUnknownError(error: unknown): string {
     }
     // AI SDK errors carry diagnostic properties that produce massive dumps
     // when Bun serializes them. Extract only the actionable message.
-    if ((error as any)["vercel.ai.error"]) {
+    if ("vercel.ai.error" in error) {
       try {
         const data = (error as { data?: { error?: { message?: string } } }).data
         if (data?.error?.message) return `API error: ${data.error.message}`
@@ -327,7 +327,12 @@ function sameView(a: FooterView, b: FooterView) {
     return a.requests.every((r, i) => r.id === b.requests[i]?.id)
   }
 
-  return (a as any).request === (b as any).request
+  // After eliminating prompt and plan, only permission and question remain —
+  // both carry a `request` field.
+  if ("request" in a && "request" in b) {
+    return (a as { request: unknown }).request === (b as { request: unknown }).request
+  }
+  return false
 }
 
 function blockerOrder(order: Map<string, number>, id: string) {
