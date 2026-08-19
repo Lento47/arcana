@@ -1486,7 +1486,7 @@ export const layer = Layer.effect(
         // without models, which would override the discovery and drop the provider.
         if (process.env.ARCANA_PROXY_KEY) {
           const existing = cfg.provider?.["arcana-proxy"]
-          const hasNoModels = !existing || !(existing as any).models || Object.keys((existing as any).models ?? {}).length === 0
+          const hasNoModels = !existing || !existing.models || Object.keys(existing.models).length === 0
           if (!existing || hasNoModels) {
             configProviders.unshift([
               "arcana-proxy",

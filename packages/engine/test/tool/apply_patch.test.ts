@@ -8,6 +8,7 @@ import { FSUtil } from "@arcana/core/fs-util"
 import { Format } from "../../src/format"
 import { Agent } from "../../src/agent/agent"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Truncate } from "@/tool/truncate"
 import { TestInstance } from "../fixture/fixture"
 import { SessionID, MessageID } from "../../src/session/schema"
@@ -21,6 +22,7 @@ const it = testEffect(
     EventV2Bridge.defaultLayer,
     Truncate.defaultLayer,
     Agent.defaultLayer,
+    RuntimeFlags.defaultLayer,
   ),
 )
 

@@ -10,9 +10,10 @@ import { streamText, wrapLanguageModel, type ModelMessage, type Tool } from "ai"
 import type { LLMEvent } from "@arcana/llm"
 import { LLMClient, RequestExecutor, WebSocketExecutor } from "@arcana/llm/route"
 import type { LLMClientService } from "@arcana/llm/route"
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// Dynamic import of an optional provider — type is unknown until loaded.
+// oxlint-disable-next-line typescript-eslint/no-explicit-any
 let _GitLabWorkflowLanguageModel: any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// oxlint-disable-next-line typescript-eslint/no-explicit-any
 async function getGitLabWorkflowLanguageModel(): Promise<any> {
   if (!_GitLabWorkflowLanguageModel) {
     _GitLabWorkflowLanguageModel = (await import("gitlab-ai-provider")).GitLabWorkflowLanguageModel

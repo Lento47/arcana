@@ -26,16 +26,16 @@ import { InstanceStore } from "@/project/instance-store"
 import { ModelV2 } from "@arcana/core/model"
 import { withToolAdmission } from "@/tool/batch"
 import { checkGoalToolGate } from "@arcana/core/session/goal"
-import { buildAuthorizationRequest, toolToAction } from "@arcana/core/capability/pep-integration"
+import { buildAuthorizationRequest } from "@arcana/core/capability/pep-integration"
 import { authorizeAndExecuteEffect } from "@arcana/core/capability/pep"
-import { computeRequestHash } from "@arcana/core/capability/request-hash"
+
 import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
 import { SessionPolicyProvider } from "@arcana/core/capability/grant-store"
 import type { IntentBindingStoreEffect } from "@arcana/core/capability/grant-store"
 import { ensureSessionAgentGrants, shortPrincipal } from "@arcana/core/capability/session-grants"
 import { Database } from "@arcana/core/database/database"
-import type { AuthorizationEventEmitter, PolicyContextProvider, PreparedEffect } from "@arcana/core/capability/pep"
-import type { PolicyContext } from "@arcana/core/capability/pdp"
+import type { AuthorizationEventEmitter } from "@arcana/core/capability/pep"
+
 import type { AuthorizationRequest, CanonicalResource, ProvenanceLabel, SensitivityLabel } from "@arcana/core/capability/types"
 import type { ScopedApproval } from "@arcana/core/capability/scoped-approval"
 import { SqliteScopedApprovalStore } from "@arcana/core/crypto/scoped-approval-adapter"
@@ -106,6 +106,8 @@ function makePendingScopedApproval(input: {
   requestHash: string
   principalId: string
   sessionId: string
+  /** Session that spawned this session (subagent delegation), for attribution. */
+  parentSessionId?: string
   action: string
   resource: CanonicalResource
   contractRevision?: number
@@ -120,6 +122,7 @@ function makePendingScopedApproval(input: {
     requestHash: input.requestHash,
     principalId: input.principalId,
     sessionId: input.sessionId,
+    parentSessionId: input.parentSessionId,
     contractRevision: input.contractRevision,
     decision: "PENDING",
     actions: [input.action as ScopedApproval["actions"][number]],
@@ -341,6 +344,22 @@ function formatPepDenial(input: {
 }
 
 /**
+ * Build an MCP tool result object for PEP gate outcomes.
+ * All MCP result objects share this shape; the `as any` casts existed because
+ * the MCP protocol type doesn't exactly match the AI SDK's expected return type.
+ * This helper constructs the object once, typed as `Record<string, unknown>`.
+ */
+function mcpToolResult(
+  text: string,
+  metadata?: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    content: [{ type: "text" as const, text }],
+    ...(metadata ? { metadata } : {}),
+  }
+}
+
+/**
  * Extract provenance labels for a tool call at the production boundary.
  *
  * Classification rules:
@@ -405,8 +424,10 @@ function extractProvenance(toolName: string, args: Record<string, unknown>): Pro
     case "task":
     case "delegate_task":
     case "workflow":
-      // Delegating to a subagent — subagent output will carry its own labels
-      labels.push("SUBAGENT_OUTPUT")
+      // Delegating to a subagent is model-initiated (MODEL_OUTPUT); the
+      // intent runtime grounds it via the session's ACTIVE_CONTRACT label
+      // when a contract is in force. SUBAGENT_OUTPUT was wrong here: it made
+      // every delegation look untrusted and forced an approval gate.
       break
 
     case "git_commit":
@@ -555,15 +576,19 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     metadata: (val) =>
       input.processor.updateToolCall(options.toolCallId, (match) => {
         if (!["running", "pending"].includes(match.state.status)) return match
+        // Spread the existing state and overwrite only the supplied fields.
+        // Status is narrowed to running/pending, but the ToolState union still
+        // lacks optional fields on the pending branch — cast for the update.
+        const next = { ...match.state, status: "running" } as Record<string, unknown>
+        // The pending branch has no time field; completion reads
+        // state.time.start, so stamp the start time on the running transition.
+        if (!next.time) next.time = { start: Date.now() }
+        if (val.title !== undefined) next.title = val.title
+        if (val.metadata !== undefined) next.metadata = val.metadata
+        if (val.output !== undefined) next.output = val.output
         return {
           ...match,
-          state: {
-            title: val.title,
-            metadata: val.metadata,
-            status: "running",
-            input: args,
-            time: { start: Date.now() },
-          },
+          state: next as typeof match.state,
         }
       }),
     ask: (req) =>
@@ -597,7 +622,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               // SessionBudget: queue (wait for capacity) instead of erroring.
               // Occupancy is released in finally so waiters can continue.
               const cost = toolBudgetCost(item.id, args as Record<string, unknown>)
-              yield* budget.checkOrBlock(ctx.sessionID as any, cost)
+              yield* budget.checkOrBlock(ctx.sessionID, cost)
               try {
               // Goal awareness: Tier B mutation gate + freeze after goal complete.
               const gate = checkGoalToolGate({
@@ -638,7 +663,10 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 sessionId: ctx.sessionID,
                 ...intentRequestFields(intentAuthority),
                 args: args as Record<string, unknown>,
-                provenance: extractProvenance(item.id, args as Record<string, unknown>),
+                provenance:
+                  intentAuthority.mode === "REQUIRED"
+                    ? [...new Set([...extractProvenance(item.id, args as Record<string, unknown>), "ACTIVE_CONTRACT" as ProvenanceLabel])]
+                    : extractProvenance(item.id, args as Record<string, unknown>),
                 sensitivity: extractSensitivity(item.id, args as Record<string, unknown>),
               })
               yield* IntentRuntime.ensureRuntimeBinding(authReq, intentAuthority, eventStore).pipe(
@@ -726,6 +754,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                       requestHash: pepResult.decision.requestHash,
                       principalId: authReq.principalId,
                       sessionId: ctx.sessionID,
+                      parentSessionId: input.session.parentID,
                       action: authReq.action ?? item.id,
                       resource: authReq.resource,
                       contractRevision: contractRevisionOf(authReq),
@@ -797,7 +826,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               }
               return output
               } finally {
-                yield* budget.release(ctx.sessionID as any, cost)
+                yield* budget.release(ctx.sessionID, cost)
               }
             }),
             { input: args },
@@ -819,7 +848,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         Effect.gen(function* () {
           const ctx = context(args, opts)
           const mcpCost = toolBudgetCost(key, args as Record<string, unknown>)
-          yield* budget.checkOrBlock(ctx.sessionID as any, mcpCost)
+          yield* budget.checkOrBlock(ctx.sessionID, mcpCost)
           try {
           // ── Phase C PEP: authorize MCP before execution ───────────
           // Same RB-01 contract as local tools: the effect runs only inside
@@ -897,41 +926,26 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 mcpScopedStore,
               )
               if (mcpPepResult.status === "DENIED") {
-                return {
-                  content: [
-                    {
-                      type: "text",
-                      text: formatPepDenial({
-                        toolName: key,
-                        authReq: mcpAuthReq,
-                        reasons: mcpPepResult.decision.reasons,
-                      }),
-                    },
-                  ],
-                  metadata: { pep_denied: true, request_principal: mcpAuthReq.principalId },
-                } as any
+                return mcpToolResult(
+                  formatPepDenial({
+                    toolName: key,
+                    authReq: mcpAuthReq,
+                    reasons: mcpPepResult.decision.reasons,
+                  }),
+                  { pep_denied: true, request_principal: mcpAuthReq.principalId },
+                )
               }
               if (mcpPepResult.status === "STALE_DECISION") {
-                return {
-                  content: [
-                    {
-                      type: "text",
-                      text: `STALE_DECISION\nreason: ${mcpPepResult.reason}\naction: ${mcpAuthReq.action}\ntool: ${key}`,
-                    },
-                  ],
-                  metadata: { pep_stale: true },
-                } as any
+                return mcpToolResult(
+                  `STALE_DECISION\nreason: ${mcpPepResult.reason}\naction: ${mcpAuthReq.action}\ntool: ${key}`,
+                  { pep_stale: true },
+                )
               }
               if (mcpPepResult.status === "EXECUTION_FAILED") {
-                return {
-                  content: [
-                    {
-                      type: "text",
-                      text: `EXECUTION_FAILED\n${String(mcpPepResult.error ?? "unknown error")}`,
-                    },
-                  ],
-                  metadata: { pep_execution_failed: true },
-                } as any
+                return mcpToolResult(
+                  `EXECUTION_FAILED\n${String(mcpPepResult.error ?? "unknown error")}`,
+                  { pep_execution_failed: true },
+                )
               }
               if (mcpPepResult.status === "APPROVAL_REQUIRED") {
                 const reasons = mcpPepResult.decision.reasons.map((r) => r.code).join(", ")
@@ -949,6 +963,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                   requestHash: mcpPepResult.decision.requestHash,
                   principalId: mcpAuthReq.principalId,
                   sessionId: ctx.sessionID,
+                  parentSessionId: input.session.parentID,
                   action: mcpAuthReq.action ?? key,
                   resource: mcpAuthReq.resource,
                   contractRevision: contractRevisionOf(mcpAuthReq),
@@ -968,15 +983,10 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 parkedApprovals.set(approvalId, gate)
                 const decision = yield* Effect.promise(() => gate.decision)
                 if (decision === "denied") {
-                  return {
-                    content: [
-                      {
-                        type: "text",
-                        text: `DENIED by operator\napproval: ${approvalId}\naction: ${mcpAuthReq.action}\ntool: ${key}`,
-                      },
-                    ],
-                    metadata: { approval_denied: true, approval_id: approvalId, pep_approval_required: true },
-                  } as any
+                  return mcpToolResult(
+                    `DENIED by operator\napproval: ${approvalId}\naction: ${mcpAuthReq.action}\ntool: ${key}`,
+                    { approval_denied: true, approval_id: approvalId, pep_approval_required: true },
+                  )
                 }
                 if (mcpIntentAuthority.mode === "REQUIRED") {
                   const binding = yield* IntentRuntime.ensureApprovedBinding(
@@ -986,25 +996,17 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                       eventStore,
                     ).pipe(Effect.catch(() => Effect.succeed(undefined)))
                   if (!binding) {
-                    return {
-                      content: [{
-                        type: "text",
-                        text: `INTENT_BINDING_FAILED\naction: ${mcpAuthReq.action}\ntool: ${key}\nrequest_hash: ${mcpPepResult.decision.requestHash}`,
-                      }],
-                      metadata: { intent_binding_failed: true, approval_id: approvalId },
-                    } as any
+                    return mcpToolResult(
+                      `INTENT_BINDING_FAILED\naction: ${mcpAuthReq.action}\ntool: ${key}\nrequest_hash: ${mcpPepResult.decision.requestHash}`,
+                      { intent_binding_failed: true, approval_id: approvalId },
+                    )
                   }
                 }
                 if (attempt >= 2) {
-                  return {
-                    content: [
-                      {
-                        type: "text",
-                        text: `APPROVAL_RE_RUN_EXHAUSTED\nreason: ${reasons}\naction: ${mcpAuthReq.action}\ntool: ${key}`,
-                      },
-                    ],
-                    metadata: { approval_re_run_exhausted: true, approval_id: approvalId },
-                  } as any
+                  return mcpToolResult(
+                    `APPROVAL_RE_RUN_EXHAUSTED\nreason: ${reasons}\naction: ${mcpAuthReq.action}\ntool: ${key}`,
+                    { approval_re_run_exhausted: true, approval_id: approvalId },
+                  )
                 }
                 return yield* runMcpThroughPep(attempt + 1)
               }
@@ -1062,7 +1064,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           }
           return output
           } finally {
-            yield* budget.release(ctx.sessionID as any, mcpCost)
+            yield* budget.release(ctx.sessionID, mcpCost)
           }
         }),
       )

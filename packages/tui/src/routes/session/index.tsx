@@ -66,6 +66,8 @@ import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { SubagentFooter } from "./subagent-footer.tsx"
+import { SubagentBreadcrumb } from "./subagent-breadcrumb.tsx"
+import { resolveChildSession } from "./subagent-resolve.ts"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
 import { errorMessage } from "../../util/error"
@@ -199,6 +201,8 @@ export const context = createContext<{
   providers: () => ReadonlyMap<string, Provider>
   sync: ReturnType<typeof useSync>
   tui: ReturnType<typeof useTuiConfig>
+  /** Navigate into a child/subagent session with a pre-flight sync. */
+  enterChild: (sessionID: string) => Promise<void>
 }>()
 
 function use() {
@@ -792,7 +796,51 @@ export function Session() {
 
   const local = useLocal()
 
-  function enterChild(sessionID: string) {
+  /**
+   * Self-healing dive: a subagent card may lack its child link (engine stamped
+   * it after the card rendered, or the child is not in the local list yet).
+   * Refresh sessions, resolve the child by actor title (newest fallback), then
+   * navigate. Keeps Enter/click on a delegated card working in every case.
+   */
+  async function resolveAndEnterChild(entry: { kind: string; actor?: string }) {
+    if (entry.kind !== "agent") return
+    // Authoritative: ask the engine for this parent's children directly. The
+    // project session list may lag or omit subagent sessions, which is why
+    // the previous list-refresh path kept reporting "not found".
+    let children: Array<{ id: string; parentID?: string | null; title?: string | null; time?: { created?: number } }> = []
+    try {
+      const res = await sdk.client.session.children({ sessionID: route.sessionID })
+      children = (res.data ?? []) as typeof children
+    } catch (error) {
+      console.warn("[subagent-dive] children endpoint failed", error)
+      // Fall back to the local session store.
+    }
+    if (children.length === 0) {
+      await sync.session.refresh().catch(() => undefined)
+      children = sync.data.session.filter((s) => s.parentID === route.sessionID)
+    }
+    const childID = resolveChildSession({
+      actor: entry.actor,
+      parentID: route.sessionID,
+      sessions: children,
+    })
+    if (childID) return enterChild(childID)
+    toast.show({ message: "Subagent session not found yet — try again in a moment", variant: "info" })
+  }
+
+  async function enterChild(sessionID: string) {
+    // Preflight: the child session may have just been created and not be in
+    // the local list yet. Sync it before navigating so the route guard never
+    // flashes "Session not found" for a valid subagent session.
+    await sync.session.sync(sessionID).catch(() => undefined)
+    if (!sync.session.get(sessionID)) {
+      toast.show({
+        message: `Session not found: ${sessionID.slice(0, 8)}…`,
+        variant: "error",
+        duration: 5000,
+      })
+      return
+    }
     navigate({
       type: "session",
       sessionID,
@@ -1571,6 +1619,33 @@ export function Session() {
         })
       },
     },
+    {
+      title: "View file-edit guard thresholds",
+      value: "session.guard",
+      category: "Session",
+      slash: { name: "guard" },
+      run: () => {
+        dialog.clear()
+        const large = process.env.ARCANA_FILE_EDIT_LARGE_CHANGE_LINES || "30 (default)"
+        const wholesale = process.env.ARCANA_FILE_EDIT_WHOLESALE_THRESHOLD || "0.3 (default)"
+        const backup = process.env.ARCANA_FILE_EDIT_BACKUP_THRESHOLD || "50 (default)"
+        toast.show({
+          title: "File Edit Guard Thresholds",
+          message: [
+            `Large change: >${large} lines changed`,
+            `Wholesale: >${wholesale} of file (30%)`,
+            `Backup: >${backup} lines changed`,
+            "",
+            "Override via environment variables:",
+            "ARCANA_FILE_EDIT_LARGE_CHANGE_LINES",
+            "ARCANA_FILE_EDIT_WHOLESALE_THRESHOLD",
+            "ARCANA_FILE_EDIT_BACKUP_THRESHOLD",
+          ].join("\n"),
+          variant: "info",
+          duration: 10000,
+        })
+      },
+    },
   ])
 
   const sessionCommands = createMemo(() =>
@@ -1639,8 +1714,14 @@ export function Session() {
   // commands go through the engine HTTP endpoint via the bridge. The engine
   // records workspace_id = session_id (session-scoped records), so the
   // isolation check compares against sessionID to stay consistent.
+  // Durable approvals are session-scoped. Include subagent-owned approvals
+  // (parentSessionId === this session) so a pending gate raised inside a
+  // delegated child is visible while watching the parent — marked as
+  // subagent work, decided through the child's own session path.
   const approvals = createMemo(() =>
-    Object.values(sync.data.approvals).filter((a) => a.sessionId === route.sessionID),
+    Object.values(sync.data.approvals).filter(
+      (a) => a.sessionId === route.sessionID || a.parentSessionId === route.sessionID,
+    ),
   )
   const [approvalAffordances, setApprovalAffordances] = createSignal<
     ReadonlyMap<string, readonly AuthorityAffordance[]>
@@ -1657,17 +1738,19 @@ export function Session() {
       setApprovalAffordances(new Map())
       return
     }
-    const sid = route.sessionID
     let cancelled = false
     const tasks = list.map(async (approval) => {
       try {
         const response = await sdk.client.approval.affordances(
           {
-            sessionID: sid,
+            // The session path must be the approval's OWN session — the
+            // engine's affordance handler refuses cross-session reads, so
+            // subagent approvals resolve through their child session.
+            sessionID: approval.sessionId,
             approvalID: approval.approvalId,
-            viewedVersion: approval.version,
+            viewedVersion: String(approval.version),
             viewedRequestHash: approval.requestHash,
-            viewedContractRevision: approval.contractRevision,
+            viewedContractRevision: String(approval.contractRevision),
           },
           { throwOnError: true } as never,
         )
@@ -1773,6 +1856,9 @@ export function Session() {
 
         theme,
         transBorder,
+
+        onNavigateToSession: enterChild,
+        onResolveChild: resolveAndEnterChild,
       }) as ShellProps,
   )
 
@@ -1798,6 +1884,7 @@ export function Session() {
           providers,
           sync,
           tui: tuiConfig,
+          enterChild,
         }}
       >
         <box flexDirection="row" flexGrow={1} minHeight={0}>
@@ -1812,6 +1899,9 @@ export function Session() {
             borderColor={transBorder()}
           >
             <Show when={session() || allOptimisticMessages().some((item) => item.sessionID === route.sessionID)}>
+              <Show when={session()?.parentID}>
+                <SubagentBreadcrumb parentID={session()!.parentID!} />
+              </Show>
               <Dynamic component={ShellCmp()} {...shellProps()} />
             </Show>
           </box>
@@ -2982,8 +3072,8 @@ function WebSearch(props: ToolProps) {
 }
 
 function Task(props: ToolProps) {
+  const ctx = use()
   const { theme } = useTheme()
-  const { navigate } = useRoute()
   const sync = useSync()
   const dialog = useDialog()
 
@@ -3042,17 +3132,25 @@ function Task(props: ToolProps) {
     const retrying = retry()
     if (isRunning() && retrying) {
       content.push(`↳ ${formatSubagentRetry(retrying.attempt, Locale.truncate(retrying.message, 80))}`)
-    } else if (isRunning() && tools().length > 0) {
-      if (current()) {
-        const state = current()!.state
-        const title = state.status === "running" || state.status === "completed" ? state.title : undefined
-        content.push(`↳ ${Locale.titlecase(current()!.tool)} ${title}`)
-      } else content.push(`↳ ${formatSubagentToolcalls(tools().length)}`)
+    } else if (isRunning()) {
+      // Handover cue: work is delegated to the subagent; show its current step.
+      const active = current()
+      const activeTitle =
+        active && "title" in active.state && typeof active.state.title === "string" ? active.state.title : undefined
+      const step =
+        active
+          ? `${Locale.titlecase(active.tool)}${activeTitle ? ` ${activeTitle}` : ""}`
+          : tools().length > 0
+            ? formatSubagentToolcalls(tools().length)
+            : "working…"
+      content.push(`↳ ${step}`)
     }
 
     if (!isRunning() && props.part.state.status === "completed") {
       const dur = Locale.duration(duration())
-      content.push(`↳ ${formatCompletedSubagentDetail(tools().length, dur)}`)
+      const detail = formatCompletedSubagentDetail(tools().length, dur)
+      const peek = taskResultPeek(props.part)
+      content.push(`↳ ${detail}${peek ? ` ${Glyph.sep} ${peek}` : ""}`)
     }
 
     return content.join("\n")
@@ -3069,7 +3167,7 @@ function Task(props: ToolProps) {
       part={props.part}
       onClick={() => {
         if (sessionID()) {
-          navigate({ type: "session", sessionID: sessionID()! })
+          void ctx.enterChild(sessionID()!)
         }
         const status = retry()
         if (status) void DialogAlert.show(dialog, "Retry Error", status.message)
@@ -3078,6 +3176,20 @@ function Task(props: ToolProps) {
       {content()}
     </InlineTool>
   )
+}
+
+/**
+ * One-line result peek for a completed subagent inline row: the first
+ * meaningful output line, so the parent view shows what came back.
+ */
+function taskResultPeek(part: ToolPart): string | undefined {
+  if (part.state.status !== "completed") return undefined
+  const raw =
+    "output" in part.state && typeof (part.state as { output?: string }).output === "string"
+      ? (part.state as { output: string }).output
+      : ""
+  const line = raw.split("\n").map((l) => l.trim()).find(Boolean)
+  return line ? Locale.truncate(line, 80) : undefined
 }
 
 export function formatSubagentToolcalls(count: number) {

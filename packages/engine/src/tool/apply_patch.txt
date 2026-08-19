@@ -14,3 +14,8 @@ Headers:
 
 - Must include action header (Add/Delete/Update)
 - Must prefix new lines with `+` even for new files
+
+Guardrails:
+- Keep patches focused: change only the hunks that need updating.
+- Large patches (>30 lines total) show ⚑ [LARGE CHANGE] chips in the TUI operator view. Split into smaller patches when possible.
+- Backups are auto-created for each file when the patch exceeds 50 lines and shown as [backup created] in the TUI. Preserved on failure, cleaned up on success.

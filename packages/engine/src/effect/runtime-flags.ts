@@ -7,6 +7,11 @@ const positiveInteger = (name: string) =>
     Config.map((value) => (Number.isInteger(value) && value > 0 ? value : undefined)),
     Config.orElse(() => Config.succeed(undefined)),
   )
+const percentage = (name: string) =>
+  Config.number(name).pipe(
+    Config.map((value) => (value >= 0 && value <= 1 ? value : undefined)),
+    Config.orElse(() => Config.succeed(undefined)),
+  )
 const experimental = bool("ARCANA_EXPERIMENTAL")
 const enabledByExperimental = (name: string) =>
   Config.all({ experimental, enabled: Config.boolean(name).pipe(Config.option) }).pipe(
@@ -50,6 +55,9 @@ export class Service extends ConfigService.Service<Service>()("@arcana/RuntimeFl
   experimentalIconDiscovery: enabledByExperimental("ARCANA_EXPERIMENTAL_ICON_DISCOVERY"),
   outputTokenMax: positiveInteger("ARCANA_EXPERIMENTAL_OUTPUT_TOKEN_MAX"),
   bashDefaultTimeoutMs: positiveInteger("ARCANA_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS"),
+  fileEditLargeChangeLines: positiveInteger("ARCANA_FILE_EDIT_LARGE_CHANGE_LINES"),
+  fileEditWholesaleThreshold: percentage("ARCANA_FILE_EDIT_WHOLESALE_THRESHOLD"),
+  fileEditBackupThreshold: positiveInteger("ARCANA_FILE_EDIT_BACKUP_THRESHOLD"),
   experimentalNativeLlm: bool("ARCANA_EXPERIMENTAL_NATIVE_LLM"),
   experimentalWebSockets: bool("ARCANA_EXPERIMENTAL_WEBSOCKETS"),
   mlRuntime: bool("ARCANA_ML_RUNTIME"),

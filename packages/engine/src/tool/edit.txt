@@ -1,4 +1,4 @@
-Exact string replacement in files.
+Exact string replacement in files — the preferred way to change code.
 
 - Must Read file in conversation before editing — tool errors otherwise
 - Match content AFTER line number prefix (`1: `). Never include prefix in oldString/newString.
@@ -7,3 +7,10 @@ Exact string replacement in files.
 - Edit FAILS if oldString not found: "oldString not found in content"
 - Edit FAILS if oldString found multiple times: "Found multiple matches". Provide more surrounding context, or use replaceAll: true.
 - Use replaceAll to rename variables or replace every occurrence.
+
+Guardrails:
+- Keep edits surgical: change only the lines that need to change. Do NOT replace large blocks when a few lines will do.
+- If your replacement exceeds ~30 lines, split it into smaller focused edits.
+- Backups are auto-created for edits changing >50 lines (preserved on failure for recovery).
+- Large changes (>30 lines) are flagged to the operator. Prefer multiple small edits over one large rewrite.
+- The TUI shows ⚑ + [LARGE CHANGE] chips for flagged edits. Small, focused edits keep the UI clean.

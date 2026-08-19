@@ -9,6 +9,7 @@ import { FSUtil } from "@arcana/core/fs-util"
 import { Format } from "../../src/format"
 import { Agent } from "../../src/agent/agent"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Truncate } from "@/tool/truncate"
 import { SessionID, MessageID } from "../../src/session/schema"
 import * as Tool from "../../src/tool/tool"
@@ -37,6 +38,7 @@ const layer = Layer.mergeAll(
   EventV2Bridge.defaultLayer,
   Truncate.defaultLayer,
   Agent.defaultLayer,
+  RuntimeFlags.defaultLayer,
 )
 
 const it = testEffect(layer)

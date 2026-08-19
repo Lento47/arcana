@@ -4,3 +4,8 @@ Write file to local filesystem. Overwrites if exists.
 - Prefer editing existing files. Never write new unless required.
 - Never proactively create documentation files (*.md, README). Only if user requests.
 - No emojis unless user requests.
+
+Guardrails:
+- Do NOT rewrite entire files when only some lines changed. Use the edit tool for surgical changes.
+- Wholesale replacement (>30% of file changed) triggers an operator approval prompt with ⚑ [WHOLESALE REPLACEMENT] chips in the TUI. Prefer edit for targeted changes.
+- Backups are auto-created for large overwrites (>50 lines changed) and shown as [backup created] in the TUI. Preserved on failure, cleaned up on success.

@@ -15,6 +15,18 @@ import { FileSystem } from "@arcana/core/filesystem"
 import { Format } from "../format"
 import * as Bom from "@/util/bom"
 import { isDependencyManifest } from "@/execution/install"
+import {
+  analyzeDiff,
+  enrichMetadata,
+  createBackup,
+  cleanupBackup,
+  shouldBackup,
+  guardWarning,
+  resolveThresholds,
+  type GuardMetadata,
+} from "./file-edit-guard"
+import { classifyPatch } from "./mutation-permission"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 
 export const Parameters = Schema.Struct({
   patchText: Schema.String.annotate({ description: "The full patch text that describes all changes to be made" }),
@@ -27,6 +39,8 @@ export const ApplyPatchTool = Tool.define(
     const afs = yield* FSUtil.Service
     const format = yield* Format.Service
     const events = yield* EventV2Bridge.Service
+    const flags = yield* RuntimeFlags.Service
+    const thresholds = resolveThresholds(flags)
 
     const run = Effect.fn("ApplyPatchTool.execute")(function* (
       params: Schema.Schema.Type<typeof Parameters>,
@@ -202,60 +216,112 @@ export const ApplyPatchTool = Tool.define(
         movePath: change.movePath,
       }))
 
+      // ── File Edit Guard: analyze total diff and create backups for large changes ──
+      const guardMetadata: GuardMetadata = {}
+      const backupPaths: Array<string | undefined> = []
+      const changeGuards: Array<GuardMetadata> = []
+      let totalAdditions = 0
+      let totalDeletions = 0
+      for (const change of fileChanges) {
+        totalAdditions += change.additions
+        totalDeletions += change.deletions
+        const stats = analyzeDiff(change.oldContent, change.newContent)
+        const meta = enrichMetadata(stats, change.type !== "add", thresholds)
+        changeGuards.push(meta)
+        if (meta.large_change) guardMetadata.large_change = true
+        if (meta.wholesale_replacement) guardMetadata.wholesale_replacement = true
+        const backup = shouldBackup(stats, thresholds)
+          ? yield* Effect.promise(() => createBackup(change.filePath, instance.directory))
+          : undefined
+        backupPaths.push(backup)
+        if (backup) guardMetadata.backup_created = true
+      }
+
       // Check permissions if needed
       const relativePaths = fileChanges.map((c) => path.relative(instance.worktree, c.filePath).replaceAll("\\", "/"))
       const manifestPaths = relativePaths.filter((item) => isDependencyManifest(item))
+      const patchClass = classifyPatch(
+        fileChanges.map((change, i) => ({
+          filePath: change.filePath,
+          guard: changeGuards[i],
+          type: change.type,
+        })),
+      )
+      const patchDestructive = patchClass.selfAware && patchClass.destructive
+      const patchPermission = patchClass.selfAware && !patchDestructive ? "self_awareness" : "edit"
+      const patchAlways =
+        patchClass.selfAware && !patchDestructive
+          ? relativePaths
+          : manifestPaths.length > 0
+            ? manifestPaths
+            : ["*"]
       yield* ctx.ask({
-        permission: "edit",
+        permission: patchPermission,
         patterns: relativePaths,
-        always: manifestPaths.length > 0 ? manifestPaths : ["*"],
+        always: patchAlways,
         metadata: {
           filepath: relativePaths.join(", "),
           diff: totalDiff,
           files,
+          self_awareness: patchClass.selfAware,
+          destructive_patch: patchClass.destructive,
+          permission_policy: patchClass.permissionPolicy,
+          ...guardMetadata,
         },
       })
 
       // Apply the changes
       const updates: Array<{ file: string; event: "add" | "change" | "unlink" }> = []
 
-      for (const change of fileChanges) {
-        const edited = change.type === "delete" ? undefined : (change.movePath ?? change.filePath)
-        switch (change.type) {
-          case "add":
-            // Create parent directories (recursive: true is safe on existing/root dirs)
-
-            yield* afs.writeWithDirs(change.filePath, Bom.join(change.newContent, change.bom))
-            updates.push({ file: change.filePath, event: "add" })
-            break
-
-          case "update":
-            yield* afs.writeWithDirs(change.filePath, Bom.join(change.newContent, change.bom))
-            updates.push({ file: change.filePath, event: "change" })
-            break
-
-          case "move":
-            if (change.movePath) {
+      let applySucceeded = false
+      try {
+        for (let i = 0; i < fileChanges.length; i++) {
+          const change = fileChanges[i]
+          const edited = change.type === "delete" ? undefined : (change.movePath ?? change.filePath)
+          switch (change.type) {
+            case "add":
               // Create parent directories (recursive: true is safe on existing/root dirs)
 
-              yield* afs.writeWithDirs(change.movePath!, Bom.join(change.newContent, change.bom))
+              yield* afs.writeWithDirs(change.filePath, Bom.join(change.newContent, change.bom))
+              updates.push({ file: change.filePath, event: "add" })
+              break
+
+            case "update":
+              yield* afs.writeWithDirs(change.filePath, Bom.join(change.newContent, change.bom))
+              updates.push({ file: change.filePath, event: "change" })
+              break
+
+            case "move":
+              if (change.movePath) {
+                // Create parent directories (recursive: true is safe on existing/root dirs)
+
+                yield* afs.writeWithDirs(change.movePath!, Bom.join(change.newContent, change.bom))
+                yield* afs.remove(change.filePath)
+                updates.push({ file: change.filePath, event: "unlink" })
+                updates.push({ file: change.movePath, event: "add" })
+              }
+              break
+
+            case "delete":
               yield* afs.remove(change.filePath)
               updates.push({ file: change.filePath, event: "unlink" })
-              updates.push({ file: change.movePath, event: "add" })
-            }
-            break
-
-          case "delete":
-            yield* afs.remove(change.filePath)
-            updates.push({ file: change.filePath, event: "unlink" })
-            break
-        }
-
-        if (edited) {
-          if (yield* format.file(edited)) {
-            yield* Bom.syncFile(afs, edited, change.bom)
+              break
           }
-          yield* events.publish(FileSystem.Event.Edited, { file: edited })
+
+          if (edited) {
+            if (yield* format.file(edited)) {
+              yield* Bom.syncFile(afs, edited, change.bom)
+            }
+            yield* events.publish(FileSystem.Event.Edited, { file: edited })
+          }
+        }
+        applySucceeded = true
+      } finally {
+        // Clean up backups on success; preserve on failure for recovery.
+        if (applySucceeded) {
+          for (const backup of backupPaths) {
+            yield* Effect.promise(() => cleanupBackup(backup))
+          }
         }
       }
 
@@ -285,6 +351,11 @@ export const ApplyPatchTool = Tool.define(
       })
       let output = `Success. Updated the following files:\n${summaryLines.join("\n")}`
 
+      // Emit guard warnings for large or wholesale patches
+      const totalStats = { additions: totalAdditions, deletions: totalDeletions, totalChanged: totalAdditions + totalDeletions, totalLines: 0, changeRatio: 0 }
+      const warning = guardWarning(totalStats, guardMetadata)
+      if (warning) output += `\n\n${warning}`
+
       for (const change of fileChanges) {
         if (change.type === "delete") continue
         const target = change.movePath ?? change.filePath
@@ -300,6 +371,7 @@ export const ApplyPatchTool = Tool.define(
           diff: totalDiff,
           files,
           diagnostics,
+          ...guardMetadata,
         },
         output,
       }

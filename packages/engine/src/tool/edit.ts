@@ -19,6 +19,17 @@ import { assertExternalDirectoryEffect } from "./external-directory"
 import { FSUtil } from "@arcana/core/fs-util"
 import * as Bom from "@/util/bom"
 import { isDependencyManifest } from "@/execution/install"
+import {
+  analyzeDiff,
+  enrichMetadata,
+  createBackup,
+  cleanupBackup,
+  shouldBackup,
+  guardWarning,
+  resolveThresholds,
+} from "./file-edit-guard"
+import { singleMutationPermission } from "./mutation-permission"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 
 function normalizeLineEndings(text: string): string {
   return text.replaceAll("\r\n", "\n")
@@ -55,6 +66,8 @@ export const EditTool = Tool.define(
     const afs = yield* FSUtil.Service
     const format = yield* Format.Service
     const events = yield* EventV2Bridge.Service
+    const flags = yield* RuntimeFlags.Service
+    const thresholds = resolveThresholds(flags)
 
     return {
       description: DESCRIPTION,
@@ -94,13 +107,20 @@ export const EditTool = Tool.define(
               contentNew = next.text
               diff = trimDiff(createTwoFilesPatch(filePath, filePath, contentOld, contentNew))
               const relativeCreate = path.relative(instance.worktree, filePath)
+              const createGuard = enrichMetadata(
+                analyzeDiff(contentOld, contentNew),
+                false,
+                thresholds,
+              )
+              const createPerm = singleMutationPermission(filePath, relativeCreate, createGuard)
               yield* ctx.ask({
-                permission: "edit",
+                permission: createPerm.permission,
                 patterns: [relativeCreate],
-                always: isDependencyManifest(filePath) ? [relativeCreate] : ["*"],
+                always: createPerm.always,
                 metadata: {
                   filepath: filePath,
                   diff,
+                  ...createPerm.metadata,
                 },
               })
               yield* afs.writeWithDirs(filePath, Bom.join(contentNew, desiredBom))
@@ -143,17 +163,33 @@ export const EditTool = Tool.define(
               ),
             )
             const relativeEdit = path.relative(instance.worktree, filePath)
+
+            // ── File Edit Guard: analyze diff, create backup for complex edits ──
+            const stats = analyzeDiff(contentOld, contentNew)
+            const guard = enrichMetadata(stats, true, thresholds)
+            const backupPath = shouldBackup(stats, thresholds)
+              ? yield* Effect.promise(() => createBackup(filePath, instance.directory))
+              : undefined
+            if (backupPath) guard.backup_created = true
+            if (backupPath) guard.backup_path = backupPath
+
+            const editPerm = singleMutationPermission(filePath, relativeEdit, guard)
+
             yield* ctx.ask({
-              permission: "edit",
+              permission: editPerm.permission,
               patterns: [relativeEdit],
-              always: isDependencyManifest(filePath) ? [relativeEdit] : ["*"],
+              always: editPerm.always,
               metadata: {
                 filepath: filePath,
                 diff,
+                ...guard,
+                ...editPerm.metadata,
               },
             })
 
             yield* afs.writeWithDirs(filePath, Bom.join(contentNew, desiredBom))
+            // Clean up backup on success
+            yield* Effect.promise(() => cleanupBackup(backupPath))
             if (yield* format.file(filePath)) {
               contentNew = yield* Bom.syncFile(afs, filePath, desiredBom)
             }

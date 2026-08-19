@@ -15,6 +15,18 @@ import { trimDiff } from "./edit"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import * as Bom from "@/util/bom"
 import { isDependencyManifest } from "@/execution/install"
+import {
+  analyzeDiff,
+  enrichMetadata,
+  createBackup,
+  cleanupBackup,
+  shouldBackup,
+  isWholesaleReplacement,
+  guardWarning,
+  resolveThresholds,
+} from "./file-edit-guard"
+import { singleMutationPermission } from "./mutation-permission"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
 
@@ -32,6 +44,8 @@ export const WriteTool = Tool.define(
     const fs = yield* FSUtil.Service
     const events = yield* EventV2Bridge.Service
     const format = yield* Format.Service
+    const flags = yield* RuntimeFlags.Service
+    const thresholds = resolveThresholds(flags)
 
     return {
       description: DESCRIPTION,
@@ -66,17 +80,44 @@ export const WriteTool = Tool.define(
 
           const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, contentNew))
           const relative = path.relative(instance.worktree, filepath)
+
+          // ── File Edit Guard: analyze diff and enforce guardrails ──
+          const stats = analyzeDiff(contentOld, contentNew)
+          const guard = enrichMetadata(stats, exists, thresholds)
+          const backupPath = shouldBackup(stats, thresholds)
+            ? yield* Effect.promise(() => createBackup(filepath, instance.directory))
+            : undefined
+          if (backupPath) guard.backup_created = true
+          if (backupPath) guard.backup_path = backupPath
+
+          const writePerm = singleMutationPermission(filepath, relative, guard)
+
+          // Guard: if this is a wholesale replacement of an existing file,
+          // require the operator to explicitly approve the full-file rewrite.
+          if (isWholesaleReplacement(stats, exists, thresholds)) {
+            yield* Effect.logWarning("file-edit-guard: wholesale replacement detected", {
+              filepath,
+              changeRatio: stats.changeRatio,
+              totalChanged: stats.totalChanged,
+              totalLines: stats.totalLines,
+            })
+          }
+
           yield* ctx.ask({
-            permission: "edit",
+            permission: writePerm.permission,
             patterns: [relative],
-            always: isDependencyManifest(filepath) ? [relative] : ["*"],
+            always: writePerm.always,
             metadata: {
               filepath,
               diff,
+              ...guard,
+              ...writePerm.metadata,
             },
           })
 
           yield* fs.writeWithDirs(filepath, Bom.join(contentNew, desiredBom))
+          // Clean up backup on success
+          yield* Effect.promise(() => cleanupBackup(backupPath))
           if (yield* format.file(filepath)) {
             yield* Bom.syncFile(fs, filepath, desiredBom)
           }
@@ -87,6 +128,8 @@ export const WriteTool = Tool.define(
           })
 
           let output = stale ? "[STALE] Wrote file successfully." : "Wrote file successfully."
+          const warning = guardWarning(stats, guard)
+          if (warning) output += `\n\n${warning}`
           yield* lsp.touchFile(filepath, "document")
           const diagnostics = yield* lsp.diagnostics()
           const normalizedFilepath = FSUtil.normalizePath(filepath)

@@ -60,4 +60,22 @@ describe("arcana launch declaration (E5)", () => {
       }),
     60_000,
   )
+
+  cliIt.live(
+    "launch hermes --dry-run prints the A1 declaration",
+    ({ opencode }) =>
+      Effect.gen(function* () {
+        const r = yield* opencode.spawn(["launch", "hermes", "--dry-run"])
+        opencode.expectExit(r, 0, "launch hermes --dry-run")
+        expect(r.stdout).toContain("[arcana launch] hermes")
+        expect(r.stdout).toContain("certification level: A1")
+        expect(r.stdout).toContain("test version:")
+        expect(r.stdout).toContain("evidence:")
+        expect(r.stdout).toContain("nonclaims:")
+        expect(r.stdout).toContain("no sandbox claim")
+        expect(r.stdout).toContain("no exact-effect PEP claim")
+        expect(r.stdout).toContain("[dry-run] no process launched")
+      }),
+    60_000,
+  )
 })

@@ -13,6 +13,8 @@ import {
   approvalStatusRow,
   authorizationSummary,
   authorizationWarnings,
+  extractGuardFlags,
+  guardWarnings,
   permissionRequestSummary,
   projectPermissionsStatus,
   waitingHint,
@@ -52,10 +54,14 @@ export function DialogPermissions() {
 
   // Scope durable approvals to the active session when one is open; on the
   // home route show every pending approval (all of it is operator work).
+  // Subagent-owned approvals (parentSessionId === active session) are
+  // included so a gate raised inside a delegated child is visible here too.
   const approvals = createMemo(() => {
     const all = Object.values(sync.data.approvals)
     const id = sessionID()
-    return id ? all.filter((approval) => approval.sessionId === id) : all
+    return id
+      ? all.filter((approval) => approval.sessionId === id || approval.parentSessionId === id)
+      : all
   })
 
   const requests = createMemo(() => {
@@ -80,14 +86,17 @@ export function DialogPermissions() {
   >({})
 
   const onResend = async (approvalId: string) => {
-    const id = sessionID()
-    if (!id) return
+    const approval = approvals().find((item) => item.approvalId === approvalId)
+    // The resend path is session-scoped: use the approval's OWN session so a
+    // subagent approval re-broadcasts through its child session, never the
+    // parent's.
+    if (!approval) return
     setResendState(approvalId, { phase: "sending", label: "sending…" })
     const outcome = await resendApproval({
       baseUrl: sdk.url,
       fetchImpl: sdk.fetch,
-      sessionID: id,
-      approvalID: approvalId,
+      sessionID: approval.sessionId,
+      approvalID: approval.approvalId,
     })
     if (outcome.ok) {
       setResendState(approvalId, {
@@ -201,16 +210,29 @@ export function DialogPermissions() {
             {status().pendingRequests.length === 1 ? "" : "s"} waiting
           </text>
           <For each={status().pendingRequests}>
-            {(request) => (
-              <box flexDirection="row" gap={1}>
-                <text fg={theme.warning} flexShrink={0}>
-                  △
-                </text>
-                <text fg={theme.text} wrapMode="word">
-                  {permissionRequestSummary(request)}
-                </text>
-              </box>
-            )}
+            {(request) => {
+              const flags = extractGuardFlags(request.metadata ?? {})
+              const hasGuard = flags.wholesale_replacement || flags.large_change
+              return (
+                <box flexDirection="row" gap={1}>
+                  <text fg={hasGuard ? theme.error : theme.warning} flexShrink={0}>
+                    {hasGuard ? "⚑" : "△"}
+                  </text>
+                  <text fg={hasGuard ? theme.warning : theme.text} wrapMode="word">
+                    {permissionRequestSummary(request)}
+                  </text>
+                  <Show when={guardWarnings(flags).length > 0}>
+                    <For each={guardWarnings(flags)}>
+                      {(chip) => (
+                        <text fg={chip === "backup created" ? theme.textMuted : theme.error}>
+                          [{chip}]
+                        </text>
+                      )}
+                    </For>
+                  </Show>
+                </box>
+              )
+            }}
           </For>
         </Show>
       </box>

@@ -50,6 +50,8 @@ export type ApprovalActivity = {
   requestHash: string
   state: ApprovalState
   updatedAt: string
+  /** Session that spawned the approval's session (subagent delegation). */
+  parentSessionId?: string
 }
 
 const numberValue = (value: number | string | undefined): number => {
@@ -95,6 +97,7 @@ export function projectPermissionsStatus(input: {
       requestHash: approval.requestHash,
       state: approval.state,
       updatedAt: approval.updatedAt,
+      parentSessionId: approval.parentSessionId,
     }))
 
   return {
@@ -168,10 +171,15 @@ export function relativeTimeLabel(value: string): string {
   return `${Math.floor(hours / 24)}d ago`
 }
 
+/** Subagent attribution suffix for an approval owned by a child session. */
+export function subagentSuffix(approval: { parentSessionId?: string }): string {
+  return approval.parentSessionId ? " · subagent" : ""
+}
+
 /** One-line summary for a settled approval in the activity list. */
 export function approvalActivityRow(activity: ApprovalActivity): string {
   const id = Locale.truncate(activity.approvalId, 12)
-  return `${activity.state.toLowerCase()} ${id} · request ${activity.requestHash.slice(0, 8)} · ${relativeTimeLabel(activity.updatedAt)}`
+  return `${activity.state.toLowerCase()} ${id} · request ${activity.requestHash.slice(0, 8)} · ${relativeTimeLabel(activity.updatedAt)}${subagentSuffix(activity)}`
 }
 
 /**
@@ -215,7 +223,7 @@ export function approvalStatusRow(approval: ApprovalRecord): string {
   const id = Locale.truncate(approval.approvalId, 16)
   const request = approval.requestHash.slice(0, 8)
   const surface = approvalSurface(approval.route)
-  return `approval ${id} · request ${request} · ${expiresLabel(approval.expiresAt)}${surface ? ` · ${surface}` : ""}`
+  return `approval ${id} · request ${request} · ${expiresLabel(approval.expiresAt)}${surface ? ` · ${surface}` : ""}${subagentSuffix(approval)}`
 }
 
 /**
@@ -252,6 +260,41 @@ export function waitingHint(status: Pick<PermissionsStatus, "pendingApprovals" |
   return "New gates appear here while the agent waits for your decision."
 }
 
+/** Guard flags embedded in edit/write/apply_patch permission metadata. */
+export interface EditGuardFlags {
+  wholesale_replacement?: boolean
+  large_change?: boolean
+  backup_created?: boolean
+}
+
+/** Extract file-edit-guard flags from a permission request's metadata. */
+export function extractGuardFlags(metadata: Record<string, unknown>): EditGuardFlags {
+  return {
+    wholesale_replacement: typeof metadata.wholesale_replacement === "boolean" ? metadata.wholesale_replacement : undefined,
+    large_change: typeof metadata.large_change === "boolean" ? metadata.large_change : undefined,
+    backup_created: typeof metadata.backup_created === "boolean" ? metadata.backup_created : undefined,
+  }
+}
+
+/** Guard-specific warning chips for a permission request. */
+export function guardWarnings(flags: EditGuardFlags): string[] {
+  const warnings: string[] = []
+  if (flags.wholesale_replacement) warnings.push("WHOLESALE REPLACEMENT")
+  if (flags.large_change) warnings.push("LARGE CHANGE")
+  if (flags.backup_created) warnings.push("backup created")
+  return warnings
+}
+
+/**
+ * Guard summary suffix — a compact, inline indicator for the permission row.
+ * Example: "edit · foo.ts  · ⚠ WHOLESALE · backup" or empty string.
+ */
+export function guardSuffix(flags: EditGuardFlags): string {
+  const chips = guardWarnings(flags)
+  if (chips.length === 0) return ""
+  return "  · " + chips.map((c) => (c === "backup created" ? c : `⚠ ${c}`)).join(" · ")
+}
+
 /** One-line summary for a classic permission action gate. */
 export function permissionRequestSummary(request: PermissionRequest): string {
   const data = request.metadata ?? {}
@@ -267,7 +310,8 @@ export function permissionRequestSummary(request: PermissionRequest): string {
       return label("read", field("filePath") || field("filepath"))
     }
     case "edit": {
-      return label("edit", field("filepath") || field("filePath"))
+      const base = label("edit", field("filepath") || field("filePath"))
+      return base + guardSuffix(extractGuardFlags(data))
     }
     case "glob":
       return label("glob", field("pattern"))
