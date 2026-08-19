@@ -51,7 +51,7 @@ export type AgentConfig = {
     ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
     gateFileMutation(
       path: string,
-      options?: { operation?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean } },
+      options?: { operation?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean }; guardRules?: readonly string[] },
     ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
     recordMlSignal?(input: {
       kind: "turn" | "tool"

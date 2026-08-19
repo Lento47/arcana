@@ -8,6 +8,7 @@ import type { AgentConfig, ChatMessage, TurnResult, ToolDef, ToolHandler, ToolRe
 import { redactSecrets, redactGitEmails, redactPII, redactGitAuthorNames, checkDangerousCommand, RateLimiter, auditLog, detectInjection } from "./guard.js"
 import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
+import { isPermissionPolicyPath, isSelfAwarenessPath } from "@arcana/core/util/self-awareness"
 import {
   applyMlPreflight,
   buildMlRevisionMessages,
@@ -250,14 +251,33 @@ export class AgentRunner {
     return typeof path === "string" && path.trim() ? path : undefined
   }
 
+  private guardRulesFromMutationTool(toolName: string, input: Record<string, unknown>, path: string): string[] {
+    const rules: string[] = []
+    if (isPermissionPolicyPath(path)) rules.push("PERMISSION_POLICY_EDIT")
+    if (isSelfAwarenessPath(path) && (toolName === "write" || toolName === "edit")) {
+      // Runner cannot compute large/wholesale here; the engine tool will still
+      // surface those via its own ctx.ask metadata. We flag the class so the ML
+      // policy sees self-awareness paths as attention-worthy.
+      rules.push("SELF_AWARENESS_DESTRUCTIVE")
+    }
+    if (toolName === "apply_patch" && typeof input.patchText === "string") {
+      const patchText = input.patchText
+      if (patchText.includes("*** Delete File:")) rules.push("FILE_DELETE")
+      if (patchText.includes("*** Move File:")) rules.push("FILE_MOVE")
+    }
+    return rules
+  }
+
   private async runProofFileGate(toolName: string, input: Record<string, unknown>): Promise<string | undefined> {
     const path = this.filePathFromMutationTool(toolName, input)
     if (!path || !this.config.proofGate) return undefined
+    const guardRules = this.guardRulesFromMutationTool(toolName, input, path)
     const decision = await this.config.proofGate.gateFileMutation(path, {
       operation: toolName,
       approved: this.config.godlike === true,
       sandboxEnabled: Boolean(this.sandbox),
       userSovereignty: { requireApprovalForWrites: true, requireApprovalForNetwork: true },
+      guardRules: guardRules.length > 0 ? guardRules : undefined,
     })
     if (!decision.blocked) return undefined
     return [

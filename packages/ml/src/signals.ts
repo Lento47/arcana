@@ -132,6 +132,16 @@ export function analyzeTurn(input: TurnSignalInput): TurnSignal {
   }
 }
 
+const DESTRUCTIVE_GUARD_RULES = [
+  "WHOLESALE_REPLACEMENT",
+  "BLOCK_DELETION",
+  "BLOCK_INSERTION",
+  "PERMISSION_POLICY_EDIT",
+  "SELF_AWARENESS_DESTRUCTIVE",
+  "FILE_DELETE",
+  "FILE_MOVE",
+]
+
 export function analyzeTool(input: ToolSignalInput): ToolSignal {
   const toolName = input.toolName.toLowerCase()
   const argText = JSON.stringify(input.args ?? {}).toLowerCase()
@@ -155,9 +165,17 @@ export function analyzeTool(input: ToolSignalInput): ToolSignal {
     score += 0.18
   }
 
+  const matchedGuardRules = input.guardRules?.filter((rule) => DESTRUCTIVE_GUARD_RULES.includes(rule)) ?? []
+  if (matchedGuardRules.length > 0) {
+    labels.push("destructive-edit")
+    reasons.push(`File-edit guard flagged destructive patterns: ${matchedGuardRules.join(", ")}.`)
+    score += 0.25
+  }
+
   const needsApproval =
     (input.userSovereignty?.requireApprovalForWrites && labels.includes("write-capable")) ||
-    (input.userSovereignty?.requireApprovalForNetwork && labels.includes("network-capable"))
+    (input.userSovereignty?.requireApprovalForNetwork && labels.includes("network-capable")) ||
+    matchedGuardRules.includes("PERMISSION_POLICY_EDIT")
 
   if (needsApproval) reasons.push("User sovereignty profile requires approval for this tool class.")
   if (!labels.length) {
@@ -177,6 +195,7 @@ export function analyzeTool(input: ToolSignalInput): ToolSignal {
     },
     labels,
     reasons,
+    guardRules: input.guardRules,
   }
 }
 

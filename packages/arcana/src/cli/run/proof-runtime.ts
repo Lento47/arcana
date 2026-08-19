@@ -82,6 +82,7 @@ export type ProofRuntime = {
         requireApprovalForNetwork?: boolean
         preferLocal?: boolean
       }
+      guardRules?: readonly string[]
     },
   ): Promise<{
     blocked: boolean

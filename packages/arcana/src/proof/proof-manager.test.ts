@@ -561,6 +561,25 @@ describe("RunProof execution governance", () => {
     expect(data?.ml_decision).toBeDefined()
   })
 
+  test("file mutation gate escalates on guard rules", () => {
+    const manager = ProofManager.create({
+      user_intent: "Classify file mutation gates with ML signals",
+      cwd: process.cwd(),
+    })
+
+    const decision = manager.gateFileMutation("packages/arcana/src/auth/session.ts", {
+      operation: "apply_patch",
+      approved: false,
+      sandboxEnabled: false,
+      guardRules: ["BLOCK_DELETION", "FILE_DELETE"],
+    })
+
+    expect(decision.risk).toBe("high")
+    const gateEvent = manager.proof.events.find((event) => event.data?.action === "file_mutation")
+    const mlSignal = (gateEvent?.data as { ml_signal?: { labels?: string[]; reasons?: string[] } } | undefined)?.ml_signal
+    expect(mlSignal?.labels).toContain("destructive-edit")
+  })
+
   test("records ML signal events", () => {
     const manager = ProofManager.create({
       user_intent: "Record ML turn signal",

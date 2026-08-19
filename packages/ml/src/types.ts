@@ -41,6 +41,8 @@ export type ToolSignalInput = {
   args?: Record<string, unknown>
   sandboxEnabled?: boolean
   userSovereignty?: TurnSignalInput["userSovereignty"]
+  /** Stable guard rule IDs from the file-edit guard (e.g. BLOCK_DELETION). */
+  guardRules?: readonly string[]
 }
 
 export type TurnSignal = {
@@ -68,6 +70,8 @@ export type ToolSignal = {
   confidence: SignalScore
   labels: string[]
   reasons: string[]
+  /** Guard rule IDs that influenced this signal, if any. */
+  guardRules?: readonly string[]
 }
 
 export type SignalEngine = {

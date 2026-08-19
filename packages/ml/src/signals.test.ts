@@ -45,6 +45,35 @@ describe("Arcana Signal Engine", () => {
     expect(writeSignal.risk).not.toBe("low")
   })
 
+  test("escalates risk when guard rules flag destructive edits", () => {
+    const base = analyzeTool({ toolName: "edit", args: { filePath: "src/index.ts" } })
+    const wholesale = analyzeTool({
+      toolName: "write",
+      args: { filePath: "src/index.ts", content: "x" },
+      guardRules: ["WHOLESALE_REPLACEMENT"],
+    })
+    const blockDeletion = analyzeTool({
+      toolName: "apply_patch",
+      args: { filePath: "src/index.ts" },
+      guardRules: ["BLOCK_DELETION"],
+    })
+
+    expect(base.risk).not.toBe("high")
+    expect(wholesale.risk).toBe("high")
+    expect(blockDeletion.labels).toContain("destructive-edit")
+    expect(blockDeletion.reasons.some((r) => r.includes("BLOCK_DELETION"))).toBe(true)
+  })
+
+  test("permission policy guard rule forces approval posture", () => {
+    const signal = analyzeTool({
+      toolName: "write",
+      args: { filePath: ".arcana/permissions.json" },
+      guardRules: ["PERMISSION_POLICY_EDIT"],
+    })
+    expect(signal.executionPosture).toBe("approval")
+    expect(decideToolPolicy(signal).action).toBe("ask_approval")
+  })
+
   test("formats turn signals for LLM system prompt injection", () => {
     const signal = analyzeTurn({ prompt: "review this repo for bugs" })
     const formatted = formatTurnSignalForSystemPrompt(signal)

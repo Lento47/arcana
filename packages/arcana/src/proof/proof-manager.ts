@@ -352,6 +352,7 @@ export class ProofManager {
       approved?: boolean
       sandboxEnabled?: boolean
       userSovereignty?: MlGateContext["userSovereignty"]
+      guardRules?: readonly string[]
     } = {},
     mlContext?: MlGateContext,
   ): PolicyGateDecision {
@@ -360,6 +361,7 @@ export class ProofManager {
       args: { path },
       sandboxEnabled: mlContext?.sandboxEnabled ?? options.sandboxEnabled ?? false,
       userSovereignty: mlContext?.userSovereignty ?? options.userSovereignty,
+      guardRules: options.guardRules,
     })
     const decision = evaluateFileMutationPolicy(path, options, mlSignal)
     this.proof.risk = {
