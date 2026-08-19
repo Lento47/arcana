@@ -4,6 +4,7 @@ import { Ripgrep } from "@arcana/core/ripgrep"
 import { effectCmd } from "../../effect-cmd"
 import { cmd } from "../cmd"
 import { InstanceRef } from "@/effect/instance-ref"
+import { outputJson } from "../../json-output"
 
 export const RipgrepCommand = cmd({
   command: "rg",
@@ -74,6 +75,6 @@ const SearchCommand = effectCmd({
         limit: args.limit ?? 10_000,
       })
       .pipe(Effect.orDie)
-    process.stdout.write(JSON.stringify(results, null, 2) + EOL)
+    outputJson(results)
   }),
 })

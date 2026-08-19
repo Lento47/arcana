@@ -6,18 +6,27 @@ import { getArcanaHome } from "./arcana-home.js"
 
 // ── config ────────────────────────────────────────────────────────────
 
-function readGatewayConfig(): Record<string, unknown> {
+type PlatformWithToken = { token?: string; [key: string]: unknown }
+type GatewayConfigFile = {
+  telegram?: PlatformWithToken
+  discord?: PlatformWithToken
+  slack?: PlatformWithToken
+  whatsapp?: PlatformWithToken
+  [key: string]: unknown
+}
+
+function readGatewayConfig(): GatewayConfigFile {
   const cp = join(getArcanaHome(), "config.json")
   let config: Record<string, unknown> = {}
   if (existsSync(cp)) {
     try { config = JSON.parse(readFileSync(cp, "utf8")) } catch {}
   }
-  const gw = (config.gateway as Record<string, unknown>) ?? {}
-  if (process.env.ARCANA_TELEGRAM_TOKEN && !(gw.telegram as any)?.token) {
-    gw.telegram = { ...(gw.telegram as any ?? {}), token: process.env.ARCANA_TELEGRAM_TOKEN }
+  const gw = (config.gateway as GatewayConfigFile) ?? {}
+  if (process.env.ARCANA_TELEGRAM_TOKEN && !gw.telegram?.token) {
+    gw.telegram = { ...(gw.telegram ?? {}), token: process.env.ARCANA_TELEGRAM_TOKEN }
   }
-  if (process.env.ARCANA_DISCORD_TOKEN && !(gw.discord as any)?.token) {
-    gw.discord = { ...(gw.discord as any ?? {}), token: process.env.ARCANA_DISCORD_TOKEN }
+  if (process.env.ARCANA_DISCORD_TOKEN && !gw.discord?.token) {
+    gw.discord = { ...(gw.discord ?? {}), token: process.env.ARCANA_DISCORD_TOKEN }
   }
   return gw
 }
@@ -148,13 +157,13 @@ export const GatewayCommand: CommandModule = {
 
     const { Gateway } = gatewayMod
     const gwConfig = readGatewayConfig()
-    const gatewayConfig = {
+    const gatewayConfig: GatewayConfigFile = {
       ...gwConfig,
-      ...(args.telegramToken ? { telegram: { ...(gwConfig.telegram as any ?? {}), token: String(args.telegramToken) } } : {}),
-      ...(args.discordToken ? { discord: { ...(gwConfig.discord as any ?? {}), token: String(args.discordToken) } } : {}),
+      ...(args.telegramToken ? { telegram: { ...(gwConfig.telegram ?? {}), token: String(args.telegramToken) } } : {}),
+      ...(args.discordToken ? { discord: { ...(gwConfig.discord ?? {}), token: String(args.discordToken) } } : {}),
     }
 
-    if (!gatewayConfig.telegram && !gatewayConfig.discord && !(gatewayConfig as any).slack && !(gatewayConfig as any).whatsapp) {
+    if (!gatewayConfig.telegram && !gatewayConfig.discord && !gatewayConfig.slack && !gatewayConfig.whatsapp) {
       console.error("No platform configured. Set gateway config or pass --telegram-token / --discord-token.")
       process.exitCode = 1
       return

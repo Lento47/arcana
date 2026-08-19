@@ -1,5 +1,5 @@
-import { EOL } from "os"
 import { Effect, Option } from "effect"
+import { outputJson } from "../../json-output"
 import { Catalog } from "@arcana/core/catalog"
 import { LocationServiceMap } from "@arcana/core/location-layer"
 import { Location } from "@arcana/core/location"
@@ -34,7 +34,7 @@ export const V2Command = effectCmd({
           ),
         ),
       }
-      process.stdout.write(JSON.stringify(result, null, 2) + EOL)
+      outputJson(result)
     }).pipe(
       Effect.withSpan("Cli.debug.v2"),
       Effect.provide(

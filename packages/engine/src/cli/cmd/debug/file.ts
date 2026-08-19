@@ -1,6 +1,7 @@
 import { EOL } from "os"
 import { Effect } from "effect"
 import { FileSystem } from "@arcana/core/filesystem"
+import { outputJson } from "../../json-output"
 import { LocationServiceMap } from "@arcana/core/location-layer"
 import { Location } from "@arcana/core/location"
 import { AbsolutePath, RelativePath } from "@arcana/core/schema"
@@ -39,13 +40,7 @@ const FileReadCommand = effectCmd({
     }),
   handler: Effect.fn("Cli.debug.file.read")(function* (args) {
     const file = yield* filesystem(FileSystem.Service.use((svc) => svc.read({ path: RelativePath.make(args.path) })))
-    process.stdout.write(
-      JSON.stringify(
-        { content: Buffer.from(file.content).toString("base64"), encoding: "base64", mime: file.mime },
-        null,
-        2,
-      ) + EOL,
-    )
+    outputJson({ content: Buffer.from(file.content).toString("base64"), encoding: "base64", mime: file.mime })
   }),
 })
 
@@ -60,7 +55,7 @@ const FileListCommand = effectCmd({
     }),
   handler: Effect.fn("Cli.debug.file.list")(function* (args) {
     const files = yield* filesystem(FileSystem.Service.use((svc) => svc.list({ path: RelativePath.make(args.path) })))
-    process.stdout.write(JSON.stringify(files, null, 2) + EOL)
+    outputJson(files)
   }),
 })
 

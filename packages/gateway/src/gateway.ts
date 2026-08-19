@@ -8,7 +8,7 @@ export function gatewayOpenMode(): boolean {
 
 /**
  * Refuse gateways with no allowlist unless ARCANA_GATEWAY_OPEN is set.
- * Prevents “anyone on the platform can drive a host-authority agent”.
+ * Prevents "anyone on the platform can drive a host-authority agent".
  */
 export function assertGatewayAllowlist(platform: string, list: string[] | undefined): void {
   if (list && list.length > 0) return
@@ -34,39 +34,19 @@ export class Gateway {
     }
 
     if (config.telegram) {
-      assertGatewayAllowlist("telegram", config.telegram.allowedUsers)
-      const { TelegramAdapter } = await import("./platforms/telegram.js")
-      const adapter = new TelegramAdapter(config.telegram)
-      await adapter.start(handler)
-      this.adapters.push(adapter)
-      console.error("[arcana:gateway] Telegram started")
+      await this.startPlatform("telegram", config.telegram.allowedUsers, () => import("./platforms/telegram.js"), (m) => new m.TelegramAdapter(config.telegram), handler)
     }
 
     if (config.discord) {
-      assertGatewayAllowlist("discord", config.discord.allowedChannels)
-      const { DiscordAdapter } = await import("./platforms/discord.js")
-      const adapter = new DiscordAdapter(config.discord)
-      await adapter.start(handler)
-      this.adapters.push(adapter)
-      console.error("[arcana:gateway] Discord started")
+      await this.startPlatform("discord", config.discord.allowedChannels, () => import("./platforms/discord.js"), (m) => new m.DiscordAdapter(config.discord), handler)
     }
 
     if (config.slack) {
-      assertGatewayAllowlist("slack", config.slack.allowedChannels)
-      const { SlackAdapter } = await import("./platforms/slack.js")
-      const adapter = new SlackAdapter(config.slack)
-      await adapter.start(handler)
-      this.adapters.push(adapter)
-      console.error("[arcana:gateway] Slack started")
+      await this.startPlatform("slack", config.slack.allowedChannels, () => import("./platforms/slack.js"), (m) => new m.SlackAdapter(config.slack), handler)
     }
 
     if (config.whatsapp) {
-      assertGatewayAllowlist("whatsapp", config.whatsapp.allowedUsers)
-      const { WhatsAppAdapter } = await import("./platforms/whatsapp.js")
-      const adapter = new WhatsAppAdapter(config.whatsapp)
-      await adapter.start(handler)
-      this.adapters.push(adapter)
-      console.error("[arcana:gateway] WhatsApp started")
+      await this.startPlatform("whatsapp", config.whatsapp.allowedUsers, () => import("./platforms/whatsapp.js"), (m) => new m.WhatsAppAdapter(config.whatsapp), handler)
     }
   }
 
@@ -77,5 +57,21 @@ export class Gateway {
 
   get activePlatforms(): string[] {
     return this.adapters.map((a) => a.name)
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- adapter constructors have heterogeneous config types; the caller provides typed construction via createAdapter
+  private async startPlatform(
+    platform: string,
+    allowlist: string[] | undefined,
+    importModule: () => Promise<Record<string, new (config: any) => PlatformAdapter>>,
+    createAdapter: (mod: Record<string, new (config: any) => PlatformAdapter>) => PlatformAdapter,
+    handler: MessageHandler,
+  ): Promise<void> {
+    assertGatewayAllowlist(platform, allowlist)
+    const mod = await importModule()
+    const adapter = createAdapter(mod)
+    await adapter.start(handler)
+    this.adapters.push(adapter)
+    console.error(`[arcana:gateway] ${platform} started`)
   }
 }
