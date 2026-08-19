@@ -83,24 +83,16 @@ describe("SDK 1.0 governance surface (E3)", () => {
   })
 
   it("canonicalizes object arguments so distinct values do not share H(q)", () => {
-    const a = toAuthorizationRequest(
-      { name: "write", arguments: { dest: { path: "/tmp" } } },
-      CONTEXT,
-    )
-    const b = toAuthorizationRequest(
-      { name: "write", arguments: { dest: { path: "/etc" } } },
-      CONTEXT,
-    )
-    expect(a.arguments[0]).toBe('dest={"path":"/tmp"}')
-    expect(b.arguments[0]).toBe('dest={"path":"/etc"}')
+    const a = toAuthorizationRequest({ name: "write", arguments: { dest: { path: "/tmp" } } }, CONTEXT)
+    const b = toAuthorizationRequest({ name: "write", arguments: { dest: { path: "/etc" } } }, CONTEXT)
+    expect(a.arguments?.[0]).toBe('dest={"path":"/tmp"}')
+    expect(b.arguments?.[0]).toBe('dest={"path":"/etc"}')
     expect(a.requestHash).not.toBe(b.requestHash)
   })
 
   it("rejects invalid JSON tool arguments", () => {
     expect(() => parseToolArguments("{")).toThrow(InvalidRequestError)
-    expect(() =>
-      toAuthorizationRequest({ name: "run", arguments: "{" }, CONTEXT),
-    ).toThrow(InvalidRequestError)
+    expect(() => toAuthorizationRequest({ name: "run", arguments: "{" }, CONTEXT)).toThrow(InvalidRequestError)
   })
 
   it("unions MCP_DESCRIPTION with caller provenance instead of replacing it", () => {

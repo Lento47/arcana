@@ -50,8 +50,10 @@ export type Event =
   | EventSessionDiff
   | EventSessionError
   | EventModelsDevRefreshed
+  | EventGovernanceRecorded
   | EventPermissionAsked
   | EventPermissionReplied
+  | EventPermissionAllowed
   | EventPermissionV2Asked
   | EventPermissionV2Replied
   | EventReferenceUpdated
@@ -78,7 +80,6 @@ export type Event =
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
-  | EventGovernanceRecorded
   | EventLspUpdated
   | EventApprovalUpdated
   | EventVcsBranchUpdated
@@ -494,6 +495,7 @@ export type ToolStateRunning = {
     [key: string]: unknown
   }
   title?: string
+  output?: string
   metadata?: {
     [key: string]: unknown
   }
@@ -731,6 +733,7 @@ export type ApprovalRecord = {
   approvalId: string
   version: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   sessionId: string
+  parentSessionId?: string
   workspaceId: string
   requestHash: string
   contractRevision: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
@@ -1269,6 +1272,58 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "governance.recorded"
+        properties: {
+          sessionID: string
+          event: {
+            id: string
+            sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+            sessionId?: string
+            timestamp: string
+            previousHash: string
+            hash: string
+            actor: {
+              kind: "user" | "model" | "tool" | "policy" | "operator"
+              id: string
+            }
+            type:
+              | "session.started"
+              | "session.completed"
+              | "session.crashed"
+              | "contract.proposed"
+              | "contract.activated"
+              | "contract.amended"
+              | "claim.created"
+              | "claim.transitioned"
+              | "evidence.attached"
+              | "obligation.created"
+              | "obligation.resolved"
+              | "completion.attempted"
+              | "completion.resolved"
+              | "intent.enforcement_required"
+              | "intent.binding_created"
+              | "intent.binding_revoked"
+              | "intent.compatibility_mode"
+              | "tool.called"
+              | "tool.returned"
+              | "capability.created"
+              | "capability.revoked"
+              | "capability.exhausted"
+              | "authorization.requested"
+              | "authorization.allowed"
+              | "authorization.denied"
+              | "authorization.approval_required"
+              | "authorization.stale"
+              | "authorization.executed"
+              | "authorization.execution_failed"
+              | "permission.allowed"
+              | "verification.recorded"
+            payload: unknown
+          }
+        }
+      }
+    | {
+        id: string
         type: "permission.asked"
         properties: {
           id: string
@@ -1292,6 +1347,16 @@ export type GlobalEvent = {
           sessionID: string
           requestID: string
           reply: "once" | "always" | "reject"
+        }
+      }
+    | {
+        id: string
+        type: "permission.allowed"
+        properties: {
+          sessionID: string
+          permission: string
+          patterns: Array<string>
+          reason: "benign" | "configured"
         }
       }
     | {
@@ -1557,57 +1622,6 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "governance.recorded"
-        properties: {
-          sessionID: string
-          event: {
-            id: string
-            sequence: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
-            sessionId?: string
-            timestamp: string
-            previousHash: string
-            hash: string
-            actor: {
-              kind: "user" | "model" | "tool" | "policy" | "operator"
-              id: string
-            }
-            type:
-              | "session.started"
-              | "session.completed"
-              | "session.crashed"
-              | "contract.proposed"
-              | "contract.activated"
-              | "contract.amended"
-              | "claim.created"
-              | "claim.transitioned"
-              | "evidence.attached"
-              | "obligation.created"
-              | "obligation.resolved"
-              | "completion.attempted"
-              | "completion.resolved"
-              | "intent.enforcement_required"
-              | "intent.binding_created"
-              | "intent.binding_revoked"
-              | "intent.compatibility_mode"
-              | "tool.called"
-              | "tool.returned"
-              | "capability.created"
-              | "capability.revoked"
-              | "capability.exhausted"
-              | "authorization.requested"
-              | "authorization.allowed"
-              | "authorization.denied"
-              | "authorization.approval_required"
-              | "authorization.stale"
-              | "authorization.executed"
-              | "authorization.execution_failed"
-              | "verification.recorded"
-            payload: unknown
-          }
-        }
-      }
-    | {
-        id: string
         type: "lsp.updated"
         properties: {
           [key: string]: unknown
@@ -1743,6 +1757,7 @@ export type PermissionConfig =
       bash?: PermissionRuleConfig
       task?: PermissionRuleConfig
       external_directory?: PermissionRuleConfig
+      self_awareness?: PermissionRuleConfig
       todowrite?: PermissionActionConfig
       question?: PermissionActionConfig
       webfetch?: PermissionActionConfig
@@ -2104,6 +2119,14 @@ export type Config = {
     policies?: Array<ConfigV2ExperimentalPolicy>
   }
   mlRuntime?: boolean
+  retention?: {
+    enabled?: boolean
+    keep_days?: number
+    max_sessions?: number
+    empty_days?: number
+    vacuum?: boolean
+    interval_hours?: number
+  }
 }
 
 export type ApprovalRequestSnapshot = {
@@ -2182,13 +2205,6 @@ export type AuthorityAffordance = {
   surface: "LOCAL_TUI" | "DESKTOP" | "CONTROL" | "SDK"
   requiresFreshRecord: boolean
   destructive: boolean
-}
-
-export type NotFoundError = {
-  name: "NotFoundError"
-  data: {
-    message: string
-  }
 }
 
 export type Model = {
@@ -2706,6 +2722,13 @@ export type QuestionNotFoundError = {
   message: string
 }
 
+export type NotFoundError = {
+  name: "NotFoundError"
+  data: {
+    message: string
+  }
+}
+
 export type PermissionRequest = {
   id: string
   sessionID: string
@@ -3038,6 +3061,7 @@ export type ApprovalRecord2 = {
   approvalId: string
   version: number | "NaN" | "Infinity" | "-Infinity"
   sessionId: string
+  parentSessionId?: string
   workspaceId: string
   requestHash: string
   contractRevision: number | "NaN" | "Infinity" | "-Infinity"
@@ -4998,6 +5022,59 @@ export type EventModelsDevRefreshed = {
   }
 }
 
+export type EventGovernanceRecorded = {
+  id: string
+  type: "governance.recorded"
+  properties: {
+    sessionID: string
+    event: {
+      id: string
+      sequence: number | "NaN" | "Infinity" | "-Infinity"
+      sessionId?: string
+      timestamp: string
+      previousHash: string
+      hash: string
+      actor: {
+        kind: "user" | "model" | "tool" | "policy" | "operator"
+        id: string
+      }
+      type:
+        | "session.started"
+        | "session.completed"
+        | "session.crashed"
+        | "contract.proposed"
+        | "contract.activated"
+        | "contract.amended"
+        | "claim.created"
+        | "claim.transitioned"
+        | "evidence.attached"
+        | "obligation.created"
+        | "obligation.resolved"
+        | "completion.attempted"
+        | "completion.resolved"
+        | "intent.enforcement_required"
+        | "intent.binding_created"
+        | "intent.binding_revoked"
+        | "intent.compatibility_mode"
+        | "tool.called"
+        | "tool.returned"
+        | "capability.created"
+        | "capability.revoked"
+        | "capability.exhausted"
+        | "authorization.requested"
+        | "authorization.allowed"
+        | "authorization.denied"
+        | "authorization.approval_required"
+        | "authorization.stale"
+        | "authorization.executed"
+        | "authorization.execution_failed"
+        | "permission.allowed"
+        | "verification.recorded"
+      payload: unknown
+    }
+  }
+}
+
 export type EventPermissionAsked = {
   id: string
   type: "permission.asked"
@@ -5024,6 +5101,17 @@ export type EventPermissionReplied = {
     sessionID: string
     requestID: string
     reply: "once" | "always" | "reject"
+  }
+}
+
+export type EventPermissionAllowed = {
+  id: string
+  type: "permission.allowed"
+  properties: {
+    sessionID: string
+    permission: string
+    patterns: Array<string>
+    reason: "benign" | "configured"
   }
 }
 
@@ -5256,58 +5344,6 @@ export type EventQuestionRejected = {
   properties: {
     sessionID: string
     requestID: string
-  }
-}
-
-export type EventGovernanceRecorded = {
-  id: string
-  type: "governance.recorded"
-  properties: {
-    sessionID: string
-    event: {
-      id: string
-      sequence: number | "NaN" | "Infinity" | "-Infinity"
-      sessionId?: string
-      timestamp: string
-      previousHash: string
-      hash: string
-      actor: {
-        kind: "user" | "model" | "tool" | "policy" | "operator"
-        id: string
-      }
-      type:
-        | "session.started"
-        | "session.completed"
-        | "session.crashed"
-        | "contract.proposed"
-        | "contract.activated"
-        | "contract.amended"
-        | "claim.created"
-        | "claim.transitioned"
-        | "evidence.attached"
-        | "obligation.created"
-        | "obligation.resolved"
-        | "completion.attempted"
-        | "completion.resolved"
-        | "intent.enforcement_required"
-        | "intent.binding_created"
-        | "intent.binding_revoked"
-        | "intent.compatibility_mode"
-        | "tool.called"
-        | "tool.returned"
-        | "capability.created"
-        | "capability.revoked"
-        | "capability.exhausted"
-        | "authorization.requested"
-        | "authorization.allowed"
-        | "authorization.denied"
-        | "authorization.approval_required"
-        | "authorization.stale"
-        | "authorization.executed"
-        | "authorization.execution_failed"
-        | "verification.recorded"
-      payload: unknown
-    }
   }
 }
 
@@ -5886,9 +5922,9 @@ export type ApprovalAffordancesData = {
   query?: {
     directory?: string
     workspace?: string
-    viewedVersion?: number
+    viewedVersion?: string
     viewedRequestHash?: string
-    viewedContractRevision?: number
+    viewedContractRevision?: string
   }
   url: "/api/session/{sessionID}/approval/{approvalID}/affordances"
 }
@@ -5903,9 +5939,9 @@ export type ApprovalAffordancesErrors = {
    */
   401: unknown
   /**
-   * NotFoundError
+   * ApprovalNotFoundError
    */
-  404: NotFoundError
+  404: ApprovalNotFoundError
 }
 
 export type ApprovalAffordancesError = ApprovalAffordancesErrors[keyof ApprovalAffordancesErrors]
@@ -5918,6 +5954,55 @@ export type ApprovalAffordancesResponses = {
 }
 
 export type ApprovalAffordancesResponse = ApprovalAffordancesResponses[keyof ApprovalAffordancesResponses]
+
+export type ApprovalResendData = {
+  body?: never
+  path: {
+    sessionID: string
+    approvalID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/session/{sessionID}/approval/{approvalID}/resend"
+}
+
+export type ApprovalResendErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * ApprovalNotFoundError
+   */
+  404: ApprovalNotFoundError
+}
+
+export type ApprovalResendError = ApprovalResendErrors[keyof ApprovalResendErrors]
+
+export type ApprovalResendResponses = {
+  /**
+   * Approval re-notification result
+   */
+  200:
+    | {
+        success: true
+        approval: ApprovalRecord
+        resendAt: string
+        desktopOnline: boolean
+      }
+    | {
+        success: false
+        reason: string
+      }
+}
+
+export type ApprovalResendResponse = ApprovalResendResponses[keyof ApprovalResendResponses]
 
 export type ConfigGetData = {
   body?: never
@@ -7673,6 +7758,7 @@ export type EnterpriseBackupResponses = {
     kind: "DATABASE" | "KEYS"
     createdAt: string
     digest: string
+    fingerprint?: string
     restoredAt?: string
   }
 }
@@ -7724,6 +7810,7 @@ export type EnterpriseRestoreResponses = {
           kind: "DATABASE" | "KEYS"
           createdAt: string
           digest: string
+          fingerprint?: string
           restoredAt?: string
         }
       }
@@ -7842,6 +7929,325 @@ export type EnterpriseDrillResponses = {
 }
 
 export type EnterpriseDrillResponse = EnterpriseDrillResponses[keyof EnterpriseDrillResponses]
+
+export type EnterpriseKeyRotationPreviewData = {
+  body: {
+    nodeId: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/keys/rotation/preview"
+}
+
+export type EnterpriseKeyRotationPreviewErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+}
+
+export type EnterpriseKeyRotationPreviewError =
+  EnterpriseKeyRotationPreviewErrors[keyof EnterpriseKeyRotationPreviewErrors]
+
+export type EnterpriseKeyRotationPreviewResponses = {
+  /**
+   * Key rotation preview (F7)
+   */
+  200:
+    | {
+        kind: "PREVIEW"
+        record: {
+          tenantId: string
+          rotationId: string
+          nodeId: string
+          mode: "DRY_RUN" | "CONFIRMED"
+          previousEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          nextEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          previousFingerprint: string
+          nextFingerprint: string
+          rotatedAt: string
+        }
+        currentEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        nextEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        currentFingerprint: string
+        nextFingerprint: string
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseKeyRotationPreviewResponse =
+  EnterpriseKeyRotationPreviewResponses[keyof EnterpriseKeyRotationPreviewResponses]
+
+export type EnterpriseKeyRotationData = {
+  body: {
+    nodeId: string
+    mode?: "GENERATE" | "RECEIVE"
+    publicKey?: string
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/keys/rotation"
+}
+
+export type EnterpriseKeyRotationErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+}
+
+export type EnterpriseKeyRotationError = EnterpriseKeyRotationErrors[keyof EnterpriseKeyRotationErrors]
+
+export type EnterpriseKeyRotationResponses = {
+  /**
+   * Node key rotation result (F7)
+   */
+  200:
+    | {
+        kind: "ROTATED"
+        record: {
+          tenantId: string
+          rotationId: string
+          nodeId: string
+          mode: "DRY_RUN" | "CONFIRMED"
+          previousEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          nextEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          previousFingerprint: string
+          nextFingerprint: string
+          rotatedAt: string
+        }
+        nodeRecord: {
+          nodeId: string
+          organizationId: string
+          trustDomain: string
+          status: "UNREGISTERED" | "PENDING" | "TRUSTED" | "SUSPENDED" | "REVOKED"
+          publicKey: string
+          nodeKeyEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          certificate: {
+            schemaVersion: 1
+            nodeId: string
+            organizationId: string
+            publicKey: string
+            issuerId: string
+            issuerEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+            issuedAt: string
+            expiresAt: string
+            capabilities: Array<string>
+            signatureAlgorithm: "Ed25519"
+            signature: string
+          }
+          enrolledAt: string
+          lastKeyRotatedAt?: string
+          decommissionedAt?: string
+        }
+        newSecretKeyB64?: string
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseKeyRotationResponse = EnterpriseKeyRotationResponses[keyof EnterpriseKeyRotationResponses]
+
+export type EnterpriseKeyRotationsData = {
+  body?: never
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/keys/rotation/evidence"
+}
+
+export type EnterpriseKeyRotationsErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+}
+
+export type EnterpriseKeyRotationsError = EnterpriseKeyRotationsErrors[keyof EnterpriseKeyRotationsErrors]
+
+export type EnterpriseKeyRotationsResponses = {
+  /**
+   * Key rotation evidence (F7)
+   */
+  200: Array<{
+    tenantId: string
+    rotationId: string
+    nodeId: string
+    mode: "DRY_RUN" | "CONFIRMED"
+    previousEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    nextEpoch: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    previousFingerprint: string
+    nextFingerprint: string
+    rotatedAt: string
+  }>
+}
+
+export type EnterpriseKeyRotationsResponse = EnterpriseKeyRotationsResponses[keyof EnterpriseKeyRotationsResponses]
+
+export type EnterpriseBackupKeysData = {
+  body: {
+    backupId: string
+    material: {
+      nodeId: string
+      publicKey: string
+      secretKey?: string
+    }
+  }
+  path: {
+    tenantId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/reliability/backups/keys"
+}
+
+export type EnterpriseBackupKeysErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+}
+
+export type EnterpriseBackupKeysError = EnterpriseBackupKeysErrors[keyof EnterpriseBackupKeysErrors]
+
+export type EnterpriseBackupKeysResponses = {
+  /**
+   * Key backup recorded (F7)
+   */
+  200:
+    | {
+        kind: "BACKED_UP"
+        record: {
+          tenantId: string
+          backupId: string
+          kind: "DATABASE" | "KEYS"
+          createdAt: string
+          digest: string
+          fingerprint?: string
+          restoredAt?: string
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseBackupKeysResponse = EnterpriseBackupKeysResponses[keyof EnterpriseBackupKeysResponses]
+
+export type EnterpriseRestoreKeysData = {
+  body: {
+    presentedMaterial: {
+      nodeId: string
+      publicKey: string
+      secretKey?: string
+    }
+  }
+  path: {
+    tenantId: string
+    backupId: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/api/enterprise/organizations/{tenantId}/reliability/backups/keys/{backupId}/restore"
+}
+
+export type EnterpriseRestoreKeysErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * ForbiddenError
+   */
+  403: ForbiddenError
+}
+
+export type EnterpriseRestoreKeysError = EnterpriseRestoreKeysErrors[keyof EnterpriseRestoreKeysErrors]
+
+export type EnterpriseRestoreKeysResponses = {
+  /**
+   * Key restore result (F7)
+   */
+  200:
+    | {
+        kind: "RESTORED"
+        record: {
+          tenantId: string
+          backupId: string
+          kind: "DATABASE" | "KEYS"
+          createdAt: string
+          digest: string
+          fingerprint?: string
+          restoredAt?: string
+        }
+      }
+    | {
+        kind: "REJECTED"
+        reason: string
+      }
+}
+
+export type EnterpriseRestoreKeysResponse = EnterpriseRestoreKeysResponses[keyof EnterpriseRestoreKeysResponses]
 
 export type EnterprisePutFederationAgreementData = {
   body: {
@@ -11265,6 +11671,73 @@ export type ManagerGovernanceStatusResponses = {
 
 export type ManagerGovernanceStatusResponse = ManagerGovernanceStatusResponses[keyof ManagerGovernanceStatusResponses]
 
+export type ManagerGovernanceConfigGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/manager/governance/config"
+}
+
+export type ManagerGovernanceConfigGetErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type ManagerGovernanceConfigGetError = ManagerGovernanceConfigGetErrors[keyof ManagerGovernanceConfigGetErrors]
+
+export type ManagerGovernanceConfigGetResponses = {
+  /**
+   * Arcana governance configuration
+   */
+  200: {
+    path: string
+    config: unknown
+  }
+}
+
+export type ManagerGovernanceConfigGetResponse =
+  ManagerGovernanceConfigGetResponses[keyof ManagerGovernanceConfigGetResponses]
+
+export type ManagerGovernanceConfigUpdateData = {
+  body?: {
+    content: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/manager/governance/config"
+}
+
+export type ManagerGovernanceConfigUpdateErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+}
+
+export type ManagerGovernanceConfigUpdateError =
+  ManagerGovernanceConfigUpdateErrors[keyof ManagerGovernanceConfigUpdateErrors]
+
+export type ManagerGovernanceConfigUpdateResponses = {
+  /**
+   * Saved Arcana governance configuration
+   */
+  200: {
+    path: string
+    config: unknown
+  }
+}
+
+export type ManagerGovernanceConfigUpdateResponse =
+  ManagerGovernanceConfigUpdateResponses[keyof ManagerGovernanceConfigUpdateResponses]
+
 export type McpStatusData = {
   body?: never
   path?: never
@@ -12840,9 +13313,9 @@ export type RuntimeApprovalsAffordancesData = {
   query?: {
     directory?: string
     workspace?: string
-    viewedVersion?: number
+    viewedVersion?: string
     viewedRequestHash?: string
-    viewedContractRevision?: number
+    viewedContractRevision?: string
   }
   url: "/approvals/{approvalID}/affordances"
 }
@@ -13948,6 +14421,7 @@ export type SessionGovernanceResponses = {
         | "authorization.stale"
         | "authorization.executed"
         | "authorization.execution_failed"
+        | "permission.allowed"
         | "verification.recorded"
       payload: unknown
     }>

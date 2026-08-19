@@ -16,6 +16,8 @@ import type {
   ApprovalDetailResponses,
   ApprovalListErrors,
   ApprovalListResponses,
+  ApprovalResendErrors,
+  ApprovalResendResponses,
   AppSkillsErrors,
   AppSkillsResponses,
   Auth as Auth3,
@@ -25,7 +27,7 @@ import type {
   AuthSetResponses,
   CommandListErrors,
   CommandListResponses,
-  Config as Config3,
+  Config as Config4,
   ConfigGetErrors,
   ConfigGetResponses,
   ConfigProvidersErrors,
@@ -57,6 +59,8 @@ import type {
   EnterpriseAuditErrors,
   EnterpriseAuditResponses,
   EnterpriseBackupErrors,
+  EnterpriseBackupKeysErrors,
+  EnterpriseBackupKeysResponses,
   EnterpriseBackupResponses,
   EnterpriseBulkDenyApprovalsErrors,
   EnterpriseBulkDenyApprovalsResponses,
@@ -114,6 +118,12 @@ import type {
   EnterpriseGetUsageResponses,
   EnterpriseHeartbeatErrors,
   EnterpriseHeartbeatResponses,
+  EnterpriseKeyRotationErrors,
+  EnterpriseKeyRotationPreviewErrors,
+  EnterpriseKeyRotationPreviewResponses,
+  EnterpriseKeyRotationResponses,
+  EnterpriseKeyRotationsErrors,
+  EnterpriseKeyRotationsResponses,
   EnterpriseLegalHoldErrors,
   EnterpriseLegalHoldResponses,
   EnterpriseListAdminEventsErrors,
@@ -171,6 +181,8 @@ import type {
   EnterpriseRegisterNodeErrors,
   EnterpriseRegisterNodeResponses,
   EnterpriseRestoreErrors,
+  EnterpriseRestoreKeysErrors,
+  EnterpriseRestoreKeysResponses,
   EnterpriseRestoreResponses,
   EnterpriseRetentionSweepErrors,
   EnterpriseRetentionSweepResponses,
@@ -277,6 +289,10 @@ import type {
   LocationRef,
   LspStatusErrors,
   LspStatusResponses,
+  ManagerGovernanceConfigGetErrors,
+  ManagerGovernanceConfigGetResponses,
+  ManagerGovernanceConfigUpdateErrors,
+  ManagerGovernanceConfigUpdateResponses,
   ManagerGovernanceStatusErrors,
   ManagerGovernanceStatusResponses,
   McpAddErrors,
@@ -1587,7 +1603,7 @@ export class Config extends HeyApiClient {
    */
   public update<ThrowOnError extends boolean = false>(
     parameters?: {
-      config?: Config3
+      config?: Config4
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1829,9 +1845,9 @@ export class Approval extends HeyApiClient {
       approvalID: string
       directory?: string
       workspace?: string
-      viewedVersion?: number
+      viewedVersion?: string
       viewedRequestHash?: string
-      viewedContractRevision?: number
+      viewedContractRevision?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1853,6 +1869,40 @@ export class Approval extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<ApprovalAffordancesResponses, ApprovalAffordancesErrors, ThrowOnError>({
       url: "/api/session/{sessionID}/approval/{approvalID}/affordances",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Re-send a pending approval to the decision surface
+   *
+   * Re-publish the approval.updated sync event for a PENDING approval so a decision surface that missed the original notification (for example Arcana Desktop reconnecting) receives the exact same request again. Strictly idempotent: the durable record is never mutated, never versioned, and never duplicated — only the notification is re-broadcast. Settled approvals (APPROVED/DENIED/CONSUMED/EXPIRED/INVALIDATED) return success:false and are never re-sent.
+   */
+  public resend<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      approvalID: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "approvalID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ApprovalResendResponses, ApprovalResendErrors, ThrowOnError>({
+      url: "/api/session/{sessionID}/approval/{approvalID}/resend",
       ...options,
       ...params,
     })
@@ -1899,7 +1949,7 @@ export class Config2 extends HeyApiClient {
     parameters?: {
       directory?: string
       workspace?: string
-      config?: Config3
+      config?: Config4
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -3475,6 +3525,228 @@ export class Enterprise extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<EnterpriseDrillResponses, EnterpriseDrillErrors, ThrowOnError>({
       url: "/api/enterprise/organizations/{tenantId}/reliability/drills",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Dry-run preview of a node key rotation (F7)
+   *
+   * Reports what a confirmed rotation would do (current epoch, next epoch, key fingerprints) and records a DRY_RUN evidence row. Never touches the key store.
+   */
+  public keyRotationPreview<ThrowOnError extends boolean = false>(
+    parameters: {
+      tenantId: string
+      directory?: string
+      workspace?: string
+      nodeId?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "tenantId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "nodeId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      EnterpriseKeyRotationPreviewResponses,
+      EnterpriseKeyRotationPreviewErrors,
+      ThrowOnError
+    >({
+      url: "/api/enterprise/organizations/{tenantId}/keys/rotation/preview",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Execute a node key rotation (F7)
+   *
+   * GENERATE creates a fresh Ed25519 key pair (secret returned once for out-of-band delivery); RECEIVE accepts an operator-submitted public key. Advances the epoch in the D-1 enrollment registry and records CONFIRMED rotation evidence.
+   */
+  public keyRotation<ThrowOnError extends boolean = false>(
+    parameters: {
+      tenantId: string
+      directory?: string
+      workspace?: string
+      nodeId?: string
+      mode?: "GENERATE" | "RECEIVE"
+      publicKey?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "tenantId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "nodeId" },
+            { in: "body", key: "mode" },
+            { in: "body", key: "publicKey" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      EnterpriseKeyRotationResponses,
+      EnterpriseKeyRotationErrors,
+      ThrowOnError
+    >({
+      url: "/api/enterprise/organizations/{tenantId}/keys/rotation",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List key rotation evidence for a tenant (F7)
+   */
+  public keyRotations<ThrowOnError extends boolean = false>(
+    parameters: {
+      tenantId: string
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "tenantId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      EnterpriseKeyRotationsResponses,
+      EnterpriseKeyRotationsErrors,
+      ThrowOnError
+    >({
+      url: "/api/enterprise/organizations/{tenantId}/keys/rotation/evidence",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Record a digest-verified key backup (F7)
+   *
+   * Computes the digest from the key material itself and records the key fingerprint; tampered key backups are rejected at restore time.
+   */
+  public backupKeys<ThrowOnError extends boolean = false>(
+    parameters: {
+      tenantId: string
+      directory?: string
+      workspace?: string
+      backupId?: string
+      material?: {
+        nodeId: string
+        publicKey: string
+        secretKey?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "tenantId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "backupId" },
+            { in: "body", key: "material" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      EnterpriseBackupKeysResponses,
+      EnterpriseBackupKeysErrors,
+      ThrowOnError
+    >({
+      url: "/api/enterprise/organizations/{tenantId}/reliability/backups/keys",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Restore key material only when digest and fingerprint match (F7)
+   *
+   * Rejects tampered key backups (digest mismatch) and backups whose key fingerprint does not match the recorded or active key; a restored key activates only after both gates pass.
+   */
+  public restoreKeys<ThrowOnError extends boolean = false>(
+    parameters: {
+      tenantId: string
+      backupId: string
+      directory?: string
+      workspace?: string
+      presentedMaterial?: {
+        nodeId: string
+        publicKey: string
+        secretKey?: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "tenantId" },
+            { in: "path", key: "backupId" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "presentedMaterial" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      EnterpriseRestoreKeysResponses,
+      EnterpriseRestoreKeysErrors,
+      ThrowOnError
+    >({
+      url: "/api/enterprise/organizations/{tenantId}/reliability/backups/keys/{backupId}/restore",
       ...options,
       ...params,
       headers: {
@@ -6148,6 +6420,83 @@ export class Formatter extends HeyApiClient {
   }
 }
 
+export class Config3 extends HeyApiClient {
+  /**
+   * Get Arcana governance configuration
+   *
+   * Read the validated workspace governance display/policy configuration. This endpoint grants no authority.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ManagerGovernanceConfigGetResponses,
+      ManagerGovernanceConfigGetErrors,
+      ThrowOnError
+    >({
+      url: "/manager/governance/config",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update Arcana governance configuration
+   *
+   * Validate and persist a workspace governance YAML/JSON configuration. Arcana Runtime remains the enforcement authority.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      content?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "content" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      ManagerGovernanceConfigUpdateResponses,
+      ManagerGovernanceConfigUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/manager/governance/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Governance extends HeyApiClient {
   /**
    * Get Arcana Manager governance status
@@ -6181,6 +6530,11 @@ export class Governance extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  private _config?: Config3
+  get config(): Config3 {
+    return (this._config ??= new Config3({ client: this.client }))
   }
 }
 
@@ -7599,9 +7953,9 @@ export class Approvals extends HeyApiClient {
       approvalID: string
       directory?: string
       workspace?: string
-      viewedVersion?: number
+      viewedVersion?: string
       viewedRequestHash?: string
-      viewedContractRevision?: number
+      viewedContractRevision?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {

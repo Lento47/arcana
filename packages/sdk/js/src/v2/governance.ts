@@ -94,9 +94,7 @@ function formatArgValue(value: unknown): string {
   return JSON.stringify(value)
 }
 
-export function parseToolArguments(
-  raw: Record<string, unknown> | string | undefined,
-): Record<string, unknown> {
+export function parseToolArguments(raw: Record<string, unknown> | string | undefined): Record<string, unknown> {
   if (raw == null) return {}
   if (typeof raw === "object") return raw
   try {
