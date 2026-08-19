@@ -20,6 +20,11 @@
  * swapped in later without touching the firewall or the permission layer.
  */
 
+import {
+  isPermissionPolicyPath,
+  isSelfAwarenessPath,
+} from "@arcana/core/util/self-awareness"
+
 import { analyzeTool } from "./signals.js"
 import type { ToolSignal } from "./types.js"
 
@@ -229,6 +234,28 @@ export function classifyEffect(input: EffectClassInput): EffectClassResult {
         ),
       )
     }
+  }
+
+  // Self-awareness surface: the model is allowed to read/write its own memory,
+  // session metadata, and arcana config non-destructively. Permission-policy
+  // files inside those directories must never be auto-allowed, so check those
+  // first and escalate; otherwise downgrade benign self-awareness edits.
+  if (signal.labels.includes("write-capable") && isPermissionPolicyPath(path)) {
+    score += 0.55
+    labels.push("permission-policy-write")
+    reasons.push("Write targets a permission-policy file; keep under operator control.")
+    findings.push(
+      finding(
+        "ML_PERMISSION_POLICY_WRITE",
+        "high",
+        "Permission-policy write",
+        "The model attempted to modify its own permission rules.",
+      ),
+    )
+  } else if (signal.labels.includes("write-capable") && isSelfAwarenessPath(path)) {
+    score -= 0.35
+    labels.push("self-awareness")
+    reasons.push("Write targets the model's self-awareness surface (memory/config).")
   }
 
   // Firewall-detected findings already escalate; do not double-count them.

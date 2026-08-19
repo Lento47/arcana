@@ -1,8 +1,10 @@
 import type { ProjectV2 } from "@arcana/core/project"
 import type { WorkspaceAdapter, WorkspaceAdapterEntry } from "../types"
+import { ArcanaLocalAdapter } from "./arcana-local"
 import { WorktreeAdapter } from "./worktree"
 
 const BUILTIN: Record<string, WorkspaceAdapter> = {
+  "arcana-local": ArcanaLocalAdapter,
   worktree: WorktreeAdapter,
 }
 

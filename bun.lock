@@ -429,6 +429,9 @@
     "packages/ml": {
       "name": "@arcana/ml",
       "version": "0.1.0",
+      "dependencies": {
+        "@arcana/core": "workspace:*",
+      },
       "devDependencies": {
         "@types/bun": "catalog:",
         "@types/node": "catalog:",

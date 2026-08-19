@@ -30,6 +30,9 @@
     "eval": "bun src/evals.ts",
     "build": "true"
   },
+  "dependencies": {
+    "@arcana/core": "workspace:*"
+  },
   "devDependencies": {
     "@types/bun": "catalog:",
     "@types/node": "catalog:",

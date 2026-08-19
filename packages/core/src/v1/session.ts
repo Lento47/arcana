@@ -261,6 +261,10 @@ export const ToolStateRunning = Schema.Struct({
   status: Schema.Literal("running"),
   input: Schema.Record(Schema.String, Schema.Any),
   title: Schema.optional(Schema.String),
+  /** Live preliminary output while the tool is still running (AI SDK
+   * "preliminary tool result"). Each update replaces the previous value, so
+   * long-running tools (subagents) can stream progress to the UI. */
+  output: Schema.optional(Schema.String),
   metadata: Schema.optional(Schema.Record(Schema.String, Schema.Any)),
   time: Schema.Struct({
     start: NonNegativeInt,

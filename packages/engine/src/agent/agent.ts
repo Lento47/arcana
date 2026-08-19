@@ -135,7 +135,7 @@ export const layer = Layer.effect(
 
         // ARC-SEC-I01: shell is ask-by-default (not covered by the "*" allow).
         // Users who want silent shell can set permission.bash = "allow" in config.
-        const defaults = Permission.fromConfig({
+        const baseDefaults = Permission.fromConfig({
           "*": "allow",
           bash: "ask",
           mcp: "ask",
@@ -188,9 +188,66 @@ export const layer = Layer.effect(
             "Gemfile": "ask",
             "**/Gemfile": "ask",
           },
+          // ARC-SEC-I04: self-awareness permission. Allows the model to read/write
+          // its own memory, session metadata, and arcana config under .arcana/,
+          // ~/.arcana/, ~/.config/arcana/, and explicit memory files. Permission
+          // policy files are denied so the model cannot widen its own access.
+          self_awareness: {
+            "*.memory.md": "allow",
+            ".arcana/**": "allow",
+            ".opencode/**": "allow",
+            "$HOME/.arcana/**": "allow",
+            "$HOME/.config/arcana/**": "allow",
+            "$HOME/.opencode/**": "allow",
+            // Deny permission-policy files explicitly so they are not auto-allowed.
+            ".arcana/permission*": "deny",
+            ".arcana/permissions*": "deny",
+            ".opencode/permission*": "deny",
+            ".opencode/permissions*": "deny",
+            "$HOME/.arcana/permission*": "deny",
+            "$HOME/.arcana/permissions*": "deny",
+            "$HOME/.config/arcana/permission*": "deny",
+            "$HOME/.config/arcana/permissions*": "deny",
+            "$HOME/.opencode/permission*": "deny",
+            "$HOME/.opencode/permissions*": "deny",
+          },
         })
 
+        // ARC-SEC-I03: HOME-protection floor. Deny sensitive HOME directories and
+        // gate generic HOME access, while keeping arcana's own config/data dirs
+        // accessible. This is merged after agent profiles so an agent's broad
+        // "bash: allow" or "external_directory: ask" cannot silently remove it.
+        const homeProtection = Permission.fromConfig({
+          bash: {
+            "*~/.ssh*": "deny",
+            "*$HOME/.ssh*": "deny",
+            "*~/.gnupg*": "deny",
+            "*$HOME/.gnupg*": "deny",
+            "*~/.aws*": "deny",
+            "*$HOME/.aws*": "deny",
+            "*~/.kube*": "deny",
+            "*$HOME/.kube*": "deny",
+            "*~/.docker*": "deny",
+            "*$HOME/.docker*": "deny",
+          },
+          external_directory: {
+            "$HOME/.arcana/**": "allow",
+            "$HOME/.config/arcana/**": "allow",
+            "$HOME/.opencode/**": "allow",
+            "$HOME/.ssh/**": "deny",
+            "$HOME/.gnupg/**": "deny",
+            "$HOME/.aws/**": "deny",
+            "$HOME/.kube/**": "deny",
+            "$HOME/.docker/**": "deny",
+          },
+        })
+
+        const defaults = Permission.merge(baseDefaults, homeProtection)
         const user = Permission.fromConfig(cfg.permission ?? {})
+
+        function agentPermission(overrides: Parameters<typeof Permission.fromConfig>[0]) {
+          return Permission.merge(defaults, Permission.fromConfig(overrides), homeProtection, user)
+        }
 
         const agents: Record<string, Info> = {
           build: {
@@ -204,14 +261,10 @@ export const layer = Layer.effect(
               "instead of exhausting this agent's step limit.",
             prompt: PROMPT_BUILD,
             options: {},
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                question: "allow",
-                plan_enter: "allow",
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              question: "allow",
+              plan_enter: "allow",
+            }),
             mode: "primary",
             native: true,
             steps: 50,
@@ -221,38 +274,30 @@ export const layer = Layer.effect(
             description: "Plan mode. Disallows all edit tools.",
             steps: 25,
             options: {},
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                question: "allow",
-                plan_exit: "allow",
-                task: {
-                  general: "deny",
-                },
-                external_directory: {
-                  [path.join(Global.Path.data, "plans", "*")]: "allow",
-                },
-                edit: {
-                  "*": "deny",
-                  [path.join(".opencode", "plans", "*.md")]: "allow",
-                  [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
-                },
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              question: "allow",
+              plan_exit: "allow",
+              task: {
+                general: "deny",
+              },
+              external_directory: {
+                [path.join(Global.Path.data, "plans", "*")]: "allow",
+              },
+              edit: {
+                "*": "deny",
+                [path.join(".opencode", "plans", "*.md")]: "allow",
+                [path.relative(ctx.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
+              },
+            }),
             mode: "primary",
             native: true,
           },
           general: {
             name: "general",
             description: `General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.`,
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                todowrite: "deny",
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              todowrite: "deny",
+            }),
             options: {},
             mode: "subagent",
             native: true,
@@ -265,21 +310,17 @@ export const layer = Layer.effect(
           },
           explore: {
             name: "explore",
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                "*": "deny",
-                grep: "allow",
-                glob: "allow",
-                list: "allow",
-                bash: "allow",
-                webfetch: "allow",
-                websearch: "allow",
-                read: "allow",
-                external_directory: readonlyExternalDirectory,
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              "*": "deny",
+              grep: "allow",
+              glob: "allow",
+              list: "allow",
+              bash: "allow",
+              webfetch: "allow",
+              websearch: "allow",
+              read: "allow",
+              external_directory: readonlyExternalDirectory,
+            }),
             description: `Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.`,
             prompt: PROMPT_EXPLORE,
             options: {},
@@ -297,13 +338,9 @@ export const layer = Layer.effect(
             native: true,
             hidden: true,
             prompt: PROMPT_COMPACTION,
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                "*": "deny",
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              "*": "deny",
+            }),
             options: {},
           },
           title: {
@@ -313,13 +350,9 @@ export const layer = Layer.effect(
             native: true,
             hidden: true,
             temperature: 0.5,
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                "*": "deny",
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              "*": "deny",
+            }),
             prompt: PROMPT_TITLE,
           },
           summary: {
@@ -328,13 +361,9 @@ export const layer = Layer.effect(
             options: {},
             native: true,
             hidden: true,
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                "*": "deny",
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              "*": "deny",
+            }),
             prompt: PROMPT_SUMMARY,
           },
           client: {
@@ -342,33 +371,29 @@ export const layer = Layer.effect(
             description:
               "Project inception agent — helps define the project contract: requirements, tech choices, components, and constraints before any code is written.",
             options: {},
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                question: "allow",
-                edit: {
-                  "*": "deny",
-                  "*.md": "allow",
-                  "*.json": "allow",
-                  "*.jsonc": "allow",
-                  "*.yaml": "allow",
-                  "*.yml": "allow",
-                  ".opencode/**": "allow",
-                  ".vault/**": "allow",
-                },
-                write: {
-                  "*": "deny",
-                  "*.md": "allow",
-                  "*.json": "allow",
-                  "*.jsonc": "allow",
-                  "*.yaml": "allow",
-                  "*.yml": "allow",
-                  ".opencode/**": "allow",
-                  ".vault/**": "allow",
-                },
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              question: "allow",
+              edit: {
+                "*": "deny",
+                "*.md": "allow",
+                "*.json": "allow",
+                "*.jsonc": "allow",
+                "*.yaml": "allow",
+                "*.yml": "allow",
+                ".opencode/**": "allow",
+                ".vault/**": "allow",
+              },
+              write: {
+                "*": "deny",
+                "*.md": "allow",
+                "*.json": "allow",
+                "*.jsonc": "allow",
+                "*.yaml": "allow",
+                "*.yml": "allow",
+                ".opencode/**": "allow",
+                ".vault/**": "allow",
+              },
+            }),
             mode: "all",
             native: true,
             steps: 25,
@@ -380,16 +405,12 @@ export const layer = Layer.effect(
             description:
               "Code review specialist — analyzes code quality, security, and architecture without modifying any files.",
             options: {},
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                question: "allow",
-                edit: "deny",
-                write: "deny",
-                apply_patch: "deny",
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              question: "allow",
+              edit: "deny",
+              write: "deny",
+              apply_patch: "deny",
+            }),
             mode: "all",
             native: true,
             steps: 15,
@@ -401,23 +422,19 @@ export const layer = Layer.effect(
             description:
               "Software architect — designs system structure, writes ADRs, maps component boundaries, and ensures architectural consistency.",
             options: {},
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                question: "allow",
-                edit: {
-                  "*": "deny",
-                  "*.md": "allow",
-                  ".opencode/**": "allow",
-                },
-                write: {
-                  "*": "deny",
-                  "*.md": "allow",
-                  ".opencode/**": "allow",
-                },
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              question: "allow",
+              edit: {
+                "*": "deny",
+                "*.md": "allow",
+                ".opencode/**": "allow",
+              },
+              write: {
+                "*": "deny",
+                "*.md": "allow",
+                ".opencode/**": "allow",
+              },
+            }),
             mode: "all",
             native: true,
             steps: 25,
@@ -429,31 +446,27 @@ export const layer = Layer.effect(
             description:
               "Test specialist — writes and runs tests. Never modifies source code.",
             options: {},
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                question: "allow",
-                edit: {
-                  "*": "deny",
-                  "**/*.test.*": "allow",
-                  "**/*.spec.*": "allow",
-                  "**/*.test-d.*": "allow",
-                  "**/test/**": "allow",
-                  "**/tests/**": "allow",
-                  "**/__tests__/**": "allow",
-                },
-                write: {
-                  "*": "deny",
-                  "**/*.test.*": "allow",
-                  "**/*.spec.*": "allow",
-                  "**/*.test-d.*": "allow",
-                  "**/test/**": "allow",
-                  "**/tests/**": "allow",
-                  "**/__tests__/**": "allow",
-                },
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              question: "allow",
+              edit: {
+                "*": "deny",
+                "**/*.test.*": "allow",
+                "**/*.spec.*": "allow",
+                "**/*.test-d.*": "allow",
+                "**/test/**": "allow",
+                "**/tests/**": "allow",
+                "**/__tests__/**": "allow",
+              },
+              write: {
+                "*": "deny",
+                "**/*.test.*": "allow",
+                "**/*.spec.*": "allow",
+                "**/*.test-d.*": "allow",
+                "**/test/**": "allow",
+                "**/tests/**": "allow",
+                "**/__tests__/**": "allow",
+              },
+            }),
             mode: "all",
             native: true,
             steps: 30,
@@ -465,16 +478,12 @@ export const layer = Layer.effect(
             description:
               "Quality assurance — finds bugs, edge cases, and regression risks. Reports issues, never fixes them.",
             options: {},
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                question: "allow",
-                edit: "deny",
-                write: "deny",
-                apply_patch: "deny",
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              question: "allow",
+              edit: "deny",
+              write: "deny",
+              apply_patch: "deny",
+            }),
             mode: "subagent",
             native: true,
             steps: 15,
@@ -491,15 +500,11 @@ export const layer = Layer.effect(
             description:
               "Code quality gate — detects AI-generated anti-patterns, overengineering, and low-quality code.",
             options: {},
-            permission: Permission.merge(
-              defaults,
-              Permission.fromConfig({
-                edit: "deny",
-                write: "deny",
-                apply_patch: "deny",
-              }),
-              user,
-            ),
+            permission: agentPermission({
+              edit: "deny",
+              write: "deny",
+              apply_patch: "deny",
+            }),
             mode: "subagent",
             native: true,
             steps: 15,
@@ -545,12 +550,13 @@ export const layer = Layer.effect(
         // Ensure Truncate.GLOB is allowed unless explicitly configured
         for (const name in agents) {
           const agent = agents[name]
-          const explicit = agent.permission.some((r) => {
-            if (r.permission !== "external_directory") return false
-            if (r.action !== "deny") return false
-            return r.pattern === Truncate.GLOB
-          })
-          if (explicit) continue
+          const explicitlyDenied = agent.permission.some(
+            (r) =>
+              r.permission === "external_directory"
+              && r.action === "deny"
+              && r.pattern === Truncate.GLOB,
+          )
+          if (explicitlyDenied) continue
 
           agents[name].permission = Permission.merge(
             agents[name].permission,
@@ -580,7 +586,9 @@ export const layer = Layer.effect(
               ? { modelID: ModelV2.ID.make(mod.model.modelID), providerID: ProviderV2.ID.make(mod.model.providerID) }
               : undefined,
             routing: mod.routing as Info["routing"],
-            permission: allowed ? Permission.merge(defaults, allowed, user) : Permission.merge(defaults, user),
+            permission: allowed
+              ? Permission.merge(defaults, allowed, homeProtection, user)
+              : Permission.merge(defaults, homeProtection, user),
           }
         }
 

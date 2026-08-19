@@ -1,5 +1,6 @@
 import { afterEach, expect } from "bun:test"
 import { Cause, Effect, Exit, Layer } from "effect"
+import os from "os"
 import path from "path"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
@@ -186,6 +187,95 @@ it.instance("compaction agent denies all permissions", () =>
     expect(evalPerm(compaction, "bash")).toBe("deny")
     expect(evalPerm(compaction, "edit")).toBe("deny")
     expect(evalPerm(compaction, "read")).toBe("deny")
+  }),
+)
+
+it.instance("build agent denies shell commands that touch sensitive HOME directories", () =>
+  Effect.gen(function* () {
+    const build = yield* load((svc) => svc.get("build"))
+    expect(build).toBeDefined()
+    expect(Permission.evaluate("bash", "rm -rf ~/.ssh", build!.permission).action).toBe("deny")
+    expect(Permission.evaluate("bash", "cat $HOME/.ssh/config", build!.permission).action).toBe("deny")
+    expect(Permission.evaluate("bash", "gpg --list-keys ~/.gnupg", build!.permission).action).toBe("deny")
+  }),
+)
+
+it.instance("build agent gates generic HOME access but allows arcana self-config", () =>
+  Effect.gen(function* () {
+    const build = yield* load((svc) => svc.get("build"))
+    expect(build).toBeDefined()
+    const home = os.homedir()
+    expect(Permission.evaluate("external_directory", path.join(home, ".ssh", "*"), build!.permission).action).toBe(
+      "deny",
+    )
+    expect(
+      Permission.evaluate("external_directory", path.join(home, ".arcana", "*"), build!.permission).action,
+    ).toBe("allow")
+    expect(
+      Permission.evaluate("external_directory", path.join(home, ".config", "arcana", "*"), build!.permission).action,
+    ).toBe("allow")
+    expect(Permission.evaluate("external_directory", path.join(home, "*"), build!.permission).action).toBe("ask")
+  }),
+)
+
+it.instance(
+  "user permission can override HOME protection defaults",
+  () =>
+    Effect.gen(function* () {
+      const build = yield* load((svc) => svc.get("build"))
+      expect(build).toBeDefined()
+      expect(Permission.evaluate("bash", "rm -rf ~/.ssh", build!.permission).action).toBe("allow")
+    }),
+  {
+    config: {
+      permission: {
+        bash: {
+          "*~/.ssh*": "allow",
+        },
+      },
+    },
+  },
+)
+
+it.instance(
+  "explore agent keeps HOME protection despite bash allow override",
+  () =>
+    Effect.gen(function* () {
+      const explore = yield* load((svc) => svc.get("explore"))
+      expect(explore).toBeDefined()
+      expect(Permission.evaluate("bash", "rm -rf ~/.ssh", explore!.permission).action).toBe("deny")
+      const home = os.homedir()
+      expect(
+        Permission.evaluate("external_directory", path.join(home, ".ssh", "*"), explore!.permission).action,
+      ).toBe("deny")
+    }),
+)
+
+it.instance("build agent allows self-awareness edits in arcana dirs", () =>
+  Effect.gen(function* () {
+    const build = yield* load((svc) => svc.get("build"))
+    expect(build).toBeDefined()
+    expect(Permission.evaluate("self_awareness", ".arcana/memory.md", build!.permission).action).toBe("allow")
+    expect(Permission.evaluate("self_awareness", "notes.memory.md", build!.permission).action).toBe("allow")
+    expect(
+      Permission.evaluate("self_awareness", path.join(os.homedir(), ".arcana", "config.json"), build!.permission).action,
+    ).toBe("allow")
+  }),
+)
+
+it.instance("build agent denies permission-policy files even under self-awareness paths", () =>
+  Effect.gen(function* () {
+    const build = yield* load((svc) => svc.get("build"))
+    expect(build).toBeDefined()
+    expect(
+      Permission.evaluate("self_awareness", ".arcana/permissions.json", build!.permission).action,
+    ).toBe("deny")
+    expect(
+      Permission.evaluate("self_awareness", ".opencode/permissions.json", build!.permission).action,
+    ).toBe("deny")
+    expect(
+      Permission.evaluate("self_awareness", path.join(os.homedir(), ".arcana", "permission"), build!.permission).action,
+    ).toBe("deny")
   }),
 )
 

@@ -59,6 +59,61 @@ describe("classifyEffect", () => {
     expect(result.verdict).toBe("review")
     expect(result.findings.some((item) => item.code === "ML_REMOTE_FETCH_EXEC")).toBe(true)
   })
+
+  test("self-awareness write stays benign", () => {
+    const result = classifyEffect({
+      tool: "write",
+      args: { filePath: "~/.arcana/memory/session.memory.md", content: "learned fact" },
+    })
+    expect(result.verdict).toBe("benign")
+    expect(result.labels).toContain("self-awareness")
+  })
+
+  test("self-awareness edit under project .arcana stays benign", () => {
+    const result = classifyEffect({
+      tool: "edit",
+      args: { filePath: ".arcana/notes.md", oldString: "a", newString: "b" },
+    })
+    expect(result.verdict).toBe("benign")
+    expect(result.labels).toContain("self-awareness")
+  })
+
+  test("permission-policy write inside .arcana escalates", () => {
+    const result = classifyEffect({
+      tool: "write",
+      args: { filePath: "~/.arcana/permissions.json", content: '{"bash":"allow"}' },
+    })
+    expect(result.verdict).toBe("review")
+    expect(result.findings.some((item) => item.code === "ML_PERMISSION_POLICY_WRITE")).toBe(true)
+  })
+
+  test("self-awareness write under .opencode stays benign", () => {
+    const result = classifyEffect({
+      tool: "write",
+      args: { filePath: ".opencode/plans/roadmap.md", content: "# plan" },
+    })
+    expect(result.verdict).toBe("benign")
+    expect(result.labels).toContain("self-awareness")
+  })
+
+  test("permission-policy write inside .opencode escalates", () => {
+    const result = classifyEffect({
+      tool: "write",
+      args: { filePath: ".opencode/permissions.yaml", content: "bash: allow" },
+    })
+    expect(result.verdict).toBe("review")
+    expect(result.findings.some((item) => item.code === "ML_PERMISSION_POLICY_WRITE")).toBe(true)
+  })
+
+  test("ordinary project file is not self-awareness", () => {
+    const result = classifyEffect({
+      tool: "write",
+      args: { filePath: "src/index.ts", content: "console.log('ok')" },
+    })
+    expect(result.verdict).toBe("benign")
+    expect(result.labels).not.toContain("self-awareness")
+    expect(result.findings).toEqual([])
+  })
 })
 
 describe("mergeClassifier (escalation-only)", () => {
