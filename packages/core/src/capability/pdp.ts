@@ -568,25 +568,30 @@ function matchCapabilities(
       })
     }
 
-    // Delegation depth
-    if (
-      !cap.delegation.allowed &&
-      cap.delegation.currentDepth > 0
-    ) {
-      capReasons.push({
-        code: "DENY_DELEGATION_DEPTH",
-        message: `Capability ${cap.id} does not allow delegation`,
-        severity: "critical",
-      })
-    }
-    if (
-      cap.delegation.currentDepth > cap.delegation.maximumDepth
-    ) {
-      capReasons.push({
-        code: "DENY_DELEGATION_DEPTH",
-        message: `Capability ${cap.id} delegation depth ${cap.delegation.currentDepth} exceeds max ${cap.delegation.maximumDepth}`,
-        severity: "critical",
-      })
+    // Delegation depth: a leaf capability (delegation.allowed=false) is still
+    // USABLE by the principal it was granted to. These checks only apply when
+    // this request is itself a delegation (re-delegating the grant onward);
+    // otherwise every subagent capability would be denied at depth > 0.
+    if (req.action === "delegate") {
+      if (
+        !cap.delegation.allowed &&
+        cap.delegation.currentDepth > 0
+      ) {
+        capReasons.push({
+          code: "DENY_DELEGATION_DEPTH",
+          message: `Capability ${cap.id} does not allow delegation`,
+          severity: "critical",
+        })
+      }
+      if (
+        cap.delegation.currentDepth > cap.delegation.maximumDepth
+      ) {
+        capReasons.push({
+          code: "DENY_DELEGATION_DEPTH",
+          message: `Capability ${cap.id} delegation depth ${cap.delegation.currentDepth} exceeds max ${cap.delegation.maximumDepth}`,
+          severity: "critical",
+        })
+      }
     }
 
     if (capReasons.length === 0) {

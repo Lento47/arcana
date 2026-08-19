@@ -433,26 +433,34 @@ describe("PDP: capability lifecycle", () => {
 })
 
 describe("PDP: delegation", () => {
-  test("delegation depth exceeded → DENY", () => {
+  test("depth over maximum blocks re-delegation but not use", () => {
     const cap = makeCapability({
+      actions: ["process.execute", "delegate"],
       delegation: { allowed: true, maximumDepth: 1, currentDepth: 2 },
     })
-    const req = makeRequest()
     const ctx = makeContext({ capabilities: [cap] })
-    const d = evaluate(req, ctx)
-    expect(d.decision).toBe("DENY")
-    expect(d.reasons.some((r) => r.code === "DENY_DELEGATION_DEPTH")).toBe(true)
+    // The granted principal may still USE the capability at depth 2.
+    const use = evaluate(makeRequest(), ctx)
+    expect(use.decision).toBe("ALLOW")
+    // Re-delegating it onward is blocked by the depth check.
+    const redelegate = evaluate(makeRequest({ action: "delegate", tool: "delegate" }), ctx)
+    expect(redelegate.decision).toBe("DENY")
+    expect(redelegate.reasons.some((r) => r.code === "DENY_DELEGATION_DEPTH")).toBe(true)
   })
 
-  test("delegation not allowed and depth > 0 → DENY", () => {
+  test("non-delegatable leaf is usable but not re-delegatable", () => {
     const cap = makeCapability({
+      actions: ["process.execute", "delegate"],
       delegation: { allowed: false, maximumDepth: 5, currentDepth: 1 },
     })
-    const req = makeRequest()
     const ctx = makeContext({ capabilities: [cap] })
-    const d = evaluate(req, ctx)
-    expect(d.decision).toBe("DENY")
-    expect(d.reasons.some((r) => r.code === "DENY_DELEGATION_DEPTH")).toBe(true)
+    // A leaf grant (subagent capability) remains usable by its principal.
+    const use = evaluate(makeRequest(), ctx)
+    expect(use.decision).toBe("ALLOW")
+    // The leaf cannot be delegated onward.
+    const redelegate = evaluate(makeRequest({ action: "delegate", tool: "delegate" }), ctx)
+    expect(redelegate.decision).toBe("DENY")
+    expect(redelegate.reasons.some((r) => r.code === "DENY_DELEGATION_DEPTH")).toBe(true)
   })
 
   test("delegation allowed, within depth → ALLOW", () => {
