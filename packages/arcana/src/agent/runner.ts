@@ -1,3 +1,4 @@
+import * as fs from "node:fs"
 import { generateText, streamText, type ModelMessage } from "ai"
 import { createOpenAI } from "@ai-sdk/openai"
 import { createAnthropic } from "@ai-sdk/anthropic"
@@ -9,6 +10,7 @@ import { redactSecrets, redactGitEmails, redactPII, redactGitAuthorNames, checkD
 import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
 import { isPermissionPolicyPath, isSelfAwarenessPath } from "@arcana/core/util/self-awareness"
+import { analyzeDiff, classifyGuard, DEFAULT_THRESHOLDS } from "@arcana/core/util/file-edit-guard"
 import {
   applyMlPreflight,
   buildMlRevisionMessages,
@@ -254,18 +256,44 @@ export class AgentRunner {
   private guardRulesFromMutationTool(toolName: string, input: Record<string, unknown>, path: string): string[] {
     const rules: string[] = []
     if (isPermissionPolicyPath(path)) rules.push("PERMISSION_POLICY_EDIT")
-    if (isSelfAwarenessPath(path) && (toolName === "write" || toolName === "edit")) {
-      // Runner cannot compute large/wholesale here; the engine tool will still
-      // surface those via its own ctx.ask metadata. We flag the class so the ML
-      // policy sees self-awareness paths as attention-worthy.
-      rules.push("SELF_AWARENESS_DESTRUCTIVE")
-    }
     if (toolName === "apply_patch" && typeof input.patchText === "string") {
       const patchText = input.patchText
       if (patchText.includes("*** Delete File:")) rules.push("FILE_DELETE")
       if (patchText.includes("*** Move File:")) rules.push("FILE_MOVE")
     }
-    return rules
+
+    // For write/edit we can pre-compute wholesale/large-change/block signals
+    // by reading the existing file and diffing against the proposed content.
+    // This lets the RunProof ML policy see the same guard rules the engine
+    // tool will surface in its ctx.ask metadata.
+    if (toolName === "write" || toolName === "edit") {
+      const newContent =
+        typeof input.content === "string"
+          ? input.content
+          : typeof input.newString === "string"
+            ? input.newString
+            : undefined
+      if (newContent !== undefined) {
+        try {
+          const existing = fs.existsSync(path) ? fs.readFileSync(path, "utf8") : ""
+          const stats = analyzeDiff(existing, newContent)
+          const classification = classifyGuard(stats, {
+            filePath: path,
+            existingFile: existing !== "",
+            type: toolName === "write" ? "update" : "update",
+            thresholds: DEFAULT_THRESHOLDS,
+          })
+          rules.push(...classification.rules)
+        } catch {
+          // If the file cannot be read, fall back to path-based rules only.
+        }
+      }
+    }
+
+    // Self-awareness paths need special handling: classifyGuard treats them as
+    // self-aware and may emit SELF_AWARENESS_DESTRUCTIVE. Ensure we also flag
+    // permission-policy edits which classifyGuard emits too.
+    return Array.from(new Set(rules))
   }
 
   private async runProofFileGate(toolName: string, input: Record<string, unknown>): Promise<string | undefined> {
