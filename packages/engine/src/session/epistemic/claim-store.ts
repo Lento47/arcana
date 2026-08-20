@@ -1,5 +1,5 @@
 import { Effect, Context, Layer } from "effect"
-import { eq, and } from "drizzle-orm"
+import { eq, inArray } from "drizzle-orm"
 import { Database } from "@arcana/core/database/database"
 import { ClaimTable, ClaimEvidenceTable, ClaimDependencyTable, ClaimContradictionTable, ClaimOutcomeTable } from "@arcana/core/epistemic/sql"
 import type { Claim, ClaimStatus, EvidenceRef, ClaimOutcome } from "@arcana/core/epistemic/claim"
@@ -73,14 +73,56 @@ export const layer = Layer.effect(
 
     const listBySession = Effect.fn("ClaimStore.listBySession")(function* (sessionId: SessionID) {
       const rows = yield* db.select().from(ClaimTable).where(eq(ClaimTable.session_id, sessionId)).pipe(Effect.orDie)
-      const claims: Claim[] = []
-      for (const row of rows) {
-        const evidenceRows = yield* db.select().from(ClaimEvidenceTable).where(eq(ClaimEvidenceTable.claim_id, row.id)).pipe(Effect.orDie)
-        const depRows = yield* db.select().from(ClaimDependencyTable).where(eq(ClaimDependencyTable.claim_id, row.id)).pipe(Effect.orDie)
-        const contraRows = yield* db.select().from(ClaimContradictionTable).where(eq(ClaimContradictionTable.claim_id, row.id)).pipe(Effect.orDie)
-        claims.push(hydrateRow(row, evidenceRows, depRows, contraRows))
+      if (rows.length === 0) return []
+
+      // Batch-fetch all related data in 3 queries instead of 3N
+      const claimIds = rows.map((r) => r.id)
+
+      // Fetch all evidence for this session's claims in one query
+      const allEvidence = yield* db.select().from(ClaimEvidenceTable)
+        .where(inArray(ClaimEvidenceTable.claim_id, claimIds))
+        .pipe(Effect.orDie)
+
+      // Group by claim_id
+      const evidenceByClaimId = new Map<string, (typeof ClaimEvidenceTable.$inferSelect)[]>()
+      for (const ev of allEvidence) {
+        const list = evidenceByClaimId.get(ev.claim_id) ?? []
+        list.push(ev)
+        evidenceByClaimId.set(ev.claim_id, list)
       }
-      return claims
+
+      // Fetch all dependencies for this session's claims
+      const allDeps = yield* db.select().from(ClaimDependencyTable)
+        .where(inArray(ClaimDependencyTable.claim_id, claimIds))
+        .pipe(Effect.orDie)
+
+      const depsByClaimId = new Map<string, (typeof ClaimDependencyTable.$inferSelect)[]>()
+      for (const dep of allDeps) {
+        const list = depsByClaimId.get(dep.claim_id) ?? []
+        list.push(dep)
+        depsByClaimId.set(dep.claim_id, list)
+      }
+
+      // Fetch all contradictions for this session's claims
+      const allContra = yield* db.select().from(ClaimContradictionTable)
+        .where(inArray(ClaimContradictionTable.claim_id, claimIds))
+        .pipe(Effect.orDie)
+
+      const contraByClaimId = new Map<string, (typeof ClaimContradictionTable.$inferSelect)[]>()
+      for (const contra of allContra) {
+        const list = contraByClaimId.get(contra.claim_id) ?? []
+        list.push(contra)
+        contraByClaimId.set(contra.claim_id, list)
+      }
+
+      return rows.map((row) =>
+        hydrateRow(
+          row,
+          evidenceByClaimId.get(row.id) ?? [],
+          depsByClaimId.get(row.id) ?? [],
+          contraByClaimId.get(row.id) ?? [],
+        )
+      )
     })
 
     const updateStatus = Effect.fn("ClaimStore.updateStatus")(function* (id: string, status: ClaimStatus) {

@@ -1,5 +1,6 @@
 import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
+import "opentui-spinner/solid"
 import { readFile, writeFile } from "node:fs/promises"
 import { randomUUID } from "node:crypto"
 import { Deferred, Effect } from "effect"
@@ -2268,6 +2269,8 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         name: "app.toggle.animations",
         title: kv.get("animations_enabled", true) ? "Disable animations" : "Enable animations",
         category: "System",
+        slashName: "animations",
+        slashAliases: ["toggle-animations"],
         run: () => {
           kv.set("animations_enabled", !kv.get("animations_enabled", true))
           dialog.clear()

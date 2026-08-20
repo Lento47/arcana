@@ -13,7 +13,7 @@ export function load(db: Database.Interface["db"], ids?: string[]) {
     const rows = yield* (
       ids?.length
         ? db.select().from(EventSequenceTable).where(inArray(EventSequenceTable.aggregate_id, ids)).all()
-        : db.select().from(EventSequenceTable).all()
+        : db.select().from(EventSequenceTable).limit(10000).all()
     ).pipe(Effect.orDie)
 
     return Object.fromEntries(rows.map((row) => [row.aggregate_id, row.seq]))

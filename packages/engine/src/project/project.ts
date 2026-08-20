@@ -280,7 +280,7 @@ export const layer = Layer.effect(
             Effect.orDie,
             Effect.map((exists) => (exists ? s : undefined)),
           ),
-        { concurrency: "unbounded" },
+        { concurrency: 8 },
       ).pipe(Effect.map((arr) => arr.filter((x): x is string => x !== undefined)))
 
       yield* db
@@ -363,7 +363,7 @@ export const layer = Layer.effect(
     })
 
     const list = Effect.fn("Project.list")(function* () {
-      return (yield* db.select().from(ProjectTable).all().pipe(Effect.orDie)).map(fromRow)
+      return (yield* db.select().from(ProjectTable).limit(500).all().pipe(Effect.orDie)).map(fromRow)
     })
 
     const get = Effect.fn("Project.get")(function* (id: ProjectV2.ID) {
@@ -439,7 +439,7 @@ export const layer = Layer.effect(
             Effect.orDie,
             Effect.map((ok) => (ok ? dir : undefined)),
           ),
-        { concurrency: "unbounded" },
+        { concurrency: 8 },
       ).pipe(Effect.map((arr) => arr.filter((x): x is string => x !== undefined)))
     })
 

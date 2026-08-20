@@ -134,19 +134,35 @@ export async function create(input: {
   input.server.process.stderr?.resume()
   // --- Connection state ---
 
+  const MAX_DIAGNOSTIC_FILES = 100
   const pushDiagnostics = new Map<string, Diagnostic[]>()
   const pullDiagnostics = new Map<string, Diagnostic[]>()
   const published = new Map<string, { at: number; version?: number }>()
   const diagnosticRegistrations = new Map<string, CapabilityRegistration>()
   const registrationListeners = new Set<() => void>()
   const diagnosticListeners = new Set<(input: { path: string; serverID: string }) => void>()
+
+  const evictOldDiagnostics = () => {
+    if (pushDiagnostics.size <= MAX_DIAGNOSTIC_FILES) return
+    const keys = pushDiagnostics.keys()
+    for (let i = 0; i < pushDiagnostics.size - MAX_DIAGNOSTIC_FILES; i++) {
+      const next = keys.next()
+      if (next.done) break
+      pushDiagnostics.delete(next.value)
+      pullDiagnostics.delete(next.value)
+      published.delete(next.value)
+    }
+  }
+
   const mergedDiagnostics = (filePath: string) =>
     dedupeDiagnostics([...(pushDiagnostics.get(filePath) ?? []), ...(pullDiagnostics.get(filePath) ?? [])])
   const updatePushDiagnostics = (filePath: string, next: Diagnostic[]) => {
+    evictOldDiagnostics()
     pushDiagnostics.set(filePath, next)
     for (const listener of diagnosticListeners) listener({ path: filePath, serverID: input.serverID })
   }
   const updatePullDiagnostics = (filePath: string, next: Diagnostic[]) => {
+    evictOldDiagnostics()
     pullDiagnostics.set(filePath, next)
   }
   const emitRegistrationChange = () => {

@@ -495,7 +495,8 @@ export const layer = Layer.effect(
       // Drop complete turns from the front only (tool-pair safe), not arbitrary slices.
       const MAX_COMPACTION_JSON_CHARS = 950_000
       let safetyPass = 0
-      while (JSON.stringify(modelMessages).length > MAX_COMPACTION_JSON_CHARS && msgs.length > 2 && safetyPass < 10) {
+      let serializedLength = JSON.stringify(modelMessages).length
+      while (serializedLength > MAX_COMPACTION_JSON_CHARS && msgs.length > 2 && safetyPass < 10) {
         safetyPass++
         const dropCount = Math.max(1, Math.ceil(msgs.length * 0.1))
         const nextMsgs = dropCompleteTurnsFromFront(msgs, dropCount)
@@ -510,6 +511,7 @@ export const layer = Layer.effect(
           stripMedia: true,
           toolOutputMaxChars: TOOL_OUTPUT_MAX_CHARS,
         })
+        serializedLength = JSON.stringify(modelMessages).length
         yield* Effect.logInfo("compaction JSON safety truncation", {
           pass: safetyPass,
           remaining: modelMessages.length,

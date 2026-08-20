@@ -694,7 +694,7 @@ function createLayer(input: StreamInput) {
                 Effect.flatMap((item) => (item.error ? Effect.fail(item.error) : Effect.succeed(item.data ?? []))),
               ),
             ],
-            { concurrency: "unbounded" },
+            { concurrency: 4 },
           )
 
         const markReplayedParts = (data: SessionData) => {
@@ -767,7 +767,7 @@ function createLayer(input: StreamInput) {
               ),
             ],
             {
-              concurrency: "unbounded",
+              concurrency: 4,
             },
           )
 
@@ -1070,7 +1070,7 @@ function createLayer(input: StreamInput) {
           input.trace?.write("replay.resize.start", {
             sessionID: input.sessionID,
           })
-          const source = yield* Effect.all([replayMessages(), replayRequests()], { concurrency: "unbounded" }).pipe(
+          const source = yield* Effect.all([replayMessages(), replayRequests()], { concurrency: 2 }).pipe(
             Effect.exit,
           )
           if (Exit.isFailure(source)) {

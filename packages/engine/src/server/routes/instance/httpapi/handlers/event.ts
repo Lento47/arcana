@@ -9,6 +9,7 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import * as Sse from "effect/unstable/encoding/Sse"
 import { resetActivity, sseConnected, sseDisconnected } from "@/daemon/activity"
 import { EventApi } from "../groups/event"
+import path from "path"
 
 function eventData(data: unknown): Sse.Event {
   return {
@@ -53,9 +54,18 @@ function eventResponse(events: EventV2.Interface) {
     // a cross-directory/workspace flood can no longer evict this subscriber's
     // own deltas from the queue.
     const queue = yield* Queue.sliding<EventV2.Payload>(4096)
-    const belongsToSubscriber = (event: EventV2.Payload) =>
-      event.location?.directory === instance.directory &&
-      (event.location.workspaceID === undefined || event.location.workspaceID === workspaceID)
+    // Normalize paths for comparison to handle Windows mixed separators (\ vs /)
+    // and case differences. path.normalize handles separator normalization;
+    // lowercase ensures case-insensitive matching on Windows.
+    const normalizedInstanceDir = path.normalize(instance.directory).toLowerCase()
+    const belongsToSubscriber = (event: EventV2.Payload) => {
+      if (!event.location?.directory) return false
+      const normalizedEventDir = path.normalize(event.location.directory).toLowerCase()
+      return (
+        normalizedEventDir === normalizedInstanceDir &&
+        (event.location.workspaceID === undefined || event.location.workspaceID === workspaceID)
+      )
+    }
     const unsubscribe = yield* events.listen((event) =>
       Effect.sync(() => {
         offered += 1

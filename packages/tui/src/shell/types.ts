@@ -23,6 +23,7 @@ export type GovernanceRunProof = SessionGovernanceResponse["proof"]
 export interface ShellProps {
   scrollRef: (r: ScrollBoxRenderable) => void
   showScrollbar: Accessor<boolean>
+  showGutter?: Accessor<boolean>
   scrollAcceleration: ScrollAcceleration
 
   messages: Accessor<Message[]>

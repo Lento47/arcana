@@ -750,7 +750,7 @@ export const layer = Layer.effect(
               Effect.logWarning("workspace adapter list failed", { type, error }).pipe(Effect.as([])),
             ),
           ),
-        { concurrency: "unbounded" },
+        { concurrency: 8 },
       ).pipe(Effect.map((items) => items.flat()))
 
       yield* Effect.forEach(

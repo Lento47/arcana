@@ -204,7 +204,7 @@ function makeStop(state: ListenerState, unpublishMdns: Effect.Effect<void>, list
 }
 
 function forceClose(state: ListenerState) {
-  return Effect.all([state.http.closeAll, state.websockets.closeAll], { concurrency: "unbounded", discard: true })
+  return Effect.all([state.http.closeAll, state.websockets.closeAll], { concurrency: 2, discard: true })
 }
 
 function serverLayer(opts: { port: number; hostname: string }) {

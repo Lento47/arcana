@@ -2,6 +2,21 @@ import Ajv, { type ValidateFunction } from "ajv"
 
 const ajv = new Ajv({ strict: false })
 const validatorCache = new Map<string, ValidateFunction>()
+const VALIDATOR_CACHE_MAX = 100
+
+/**
+ * Evict oldest entries when cache exceeds max size.
+ * Simple FIFO eviction — validators are expensive to compile but cheap to re-derive.
+ */
+function evictIfNeeded() {
+  if (validatorCache.size <= VALIDATOR_CACHE_MAX) return
+  const keys = validatorCache.keys()
+  for (let i = 0; i < validatorCache.size - VALIDATOR_CACHE_MAX; i++) {
+    const next = keys.next()
+    if (next.done) break
+    validatorCache.delete(next.value)
+  }
+}
 
 /**
  * Deterministic cache key for a JSON Schema object.
@@ -51,6 +66,7 @@ export function validateStepOutput(
         `${e instanceof Error ? e.message : String(e)}\n\nRaw output:\n${output}`
       )
     }
+    evictIfNeeded()
     validatorCache.set(key, validate)
   }
 

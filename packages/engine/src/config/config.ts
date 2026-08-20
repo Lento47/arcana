@@ -63,7 +63,7 @@ function _cachedReadFileSync(path: string, encoding: BufferEncoding): string | n
 function cachedExistsSync(path: string): boolean {
   const now = Date.now()
   const cached = fileCache.get(path)
-  if (cached) return true
+  if (cached && (now - cached.ts) < CACHE_TTL) return true
   try {
     const { existsSync } = require("node:fs") as typeof import("node:fs")
     const exists = existsSync(path)
@@ -300,7 +300,7 @@ export const layer = Layer.effect(
     })
 
     const loadFilesOrdered = Effect.fnUntraced(function* (files: string[], env?: Record<string, string>) {
-      return yield* Effect.all(files.map((file) => loadFile(file, env)), { concurrency: "unbounded" })
+      return yield* Effect.all(files.map((file) => loadFile(file, env)), { concurrency: 16 })
     })
 
     const loadGlobal = Effect.fnUntraced(function* (env?: Record<string, string>) {
@@ -727,7 +727,7 @@ export const layer = Layer.effect(
 
     const waitForDependencies = Effect.fn("Config.waitForDependencies")(function* () {
       yield* InstanceState.useEffect(state, (s) =>
-        Effect.forEach(s.deps, Fiber.join, { concurrency: "unbounded" }).pipe(Effect.asVoid),
+        Effect.forEach(s.deps, Fiber.join, { concurrency: 8 }).pipe(Effect.asVoid),
       )
     })
 

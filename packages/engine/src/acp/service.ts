@@ -953,7 +953,7 @@ function registerMcpServers(
           Effect.ignore,
         ),
       ),
-    { concurrency: "unbounded" },
+    { concurrency: 4 },
   ).pipe(
     Effect.tap(() =>
       Effect.sync(() =>

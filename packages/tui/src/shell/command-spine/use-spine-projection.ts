@@ -4,6 +4,7 @@ import type { AssistantMessage } from "@arcana/sdk/v2"
 import type { ShellProps } from "../types"
 import { useThinkingMode } from "../../context/thinking"
 import { useSync } from "../../context/sync"
+import { useTuiConfig } from "../../config"
 import { useGovernanceConfig } from "../../context/governance-config"
 import { shouldShowGovernanceEvent } from "@arcana/core/governance-config"
 import { spineProseWidth, spineGutterDigits, type SpineLayout, type SpineEntry } from "./spine-types"
@@ -58,6 +59,7 @@ export function useSpineProjection(props: ShellProps, input: {
 }) {
   const thinking = useThinkingMode()
   const sync = useSync()
+  const tuiConfig = useTuiConfig()
   const governanceConfig = useGovernanceConfig()
   const layout = input.layout
   const viewportWidth = input.viewportWidth
@@ -233,6 +235,7 @@ export function useSpineProjection(props: ShellProps, input: {
       integrity: proof?.integrityStatus,
       proofLevel: proof?.proofLevel,
       pendingApprovals: pending,
+      selfGovernance: tuiConfig.self_governance,
       eventGap: eventGapFromTrace({
         trace: traceHealth,
         expectedCriticalEvents: Number(trace?.expectedCriticalEvents),
@@ -311,9 +314,10 @@ export function useSpineProjection(props: ShellProps, input: {
     })
   })
   const governedTally = createMemo(() => projectGovernedTally(groupedVisibleEntries()))
-  const gutterWidth = createMemo(() =>
-    spineGutterDigits(displayRows().reduce((max, entry) => Math.max(max, entry.index), 0)),
-  )
+  const gutterWidth = createMemo(() => {
+    if (props.showGutter && !props.showGutter()) return 0
+    return spineGutterDigits(displayRows().reduce((max, entry) => Math.max(max, entry.index), 0))
+  })
   const proseWidth = createMemo(() => spineProseWidth(viewportWidth(), layout(), "chat", gutterWidth()))
   const thinkWidth = createMemo(() => spineProseWidth(viewportWidth(), layout(), "think", gutterWidth()))
   const thinkContentWidth = createMemo(() => thinkWidth())

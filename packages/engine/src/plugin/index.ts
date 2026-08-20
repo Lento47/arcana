@@ -175,7 +175,7 @@ export const layer = Layer.effect(
               Effect.option,
             ),
           ),
-          { concurrency: "unbounded" },
+          { concurrency: 8 },
         )
         for (const init of internalInits) {
           if (init._tag === "Some") hooks.push(init.value)

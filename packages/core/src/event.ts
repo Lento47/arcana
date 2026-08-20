@@ -182,7 +182,7 @@ export const layerWith = (options?: LayerOptions) =>
   Layer.effect(
     Service,
     Effect.gen(function* () {
-      const all = yield* PubSub.unbounded<Payload>()
+      const all = yield* PubSub.bounded<Payload>(4096)
       const synchronized = new Map<string, Set<PubSub.PubSub<void>>>()
       const typed = new Map<string, PubSub.PubSub<Payload>>()
       const projectors = new Map<string, AnyProjector[]>()
@@ -195,7 +195,7 @@ export const layerWith = (options?: LayerOptions) =>
         Effect.gen(function* () {
           const existing = typed.get(definition.type)
           if (existing) return existing
-          const pubsub = yield* PubSub.unbounded<Payload>()
+          const pubsub = yield* PubSub.bounded<Payload>(4096)
           typed.set(definition.type, pubsub)
           return pubsub
         })

@@ -157,12 +157,26 @@ export interface CapabilityGrantStore {
 
 export class InMemoryGrantStore implements CapabilityGrantStore {
   private grants = new Map<string, CapabilityGrant>()
+  private readonly GRANT_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+  private evictExpired() {
+    const now = Date.now()
+    for (const [id, grant] of this.grants) {
+      if (grant.constraints.expiresAt) {
+        const expiry = new Date(grant.constraints.expiresAt).getTime()
+        if (expiry < now) {
+          this.grants.delete(id)
+        }
+      }
+    }
+  }
 
   getGrantsForPrincipal(
     principalId: string,
     sessionId: string,
     workspaceId?: string,
   ): Effect.Effect<readonly CapabilityGrant[], CapabilityGrantStoreError> {
+    this.evictExpired()
     return Effect.succeed(this._getForPrincipal(principalId, sessionId, workspaceId))
   }
 
@@ -186,6 +200,7 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
   getGrantsForWorkspace(
     workspaceId: string,
   ): Effect.Effect<readonly CapabilityGrant[], CapabilityGrantStoreError> {
+    this.evictExpired()
     const result: CapabilityGrant[] = []
     for (const g of this.grants.values()) {
       if (g.status !== "ACTIVE") continue  // Positive allowlist
@@ -199,6 +214,7 @@ export class InMemoryGrantStore implements CapabilityGrantStore {
   putGrant(
     grant: CapabilityGrant,
   ): Effect.Effect<void, CapabilityGrantStoreError> {
+    this.evictExpired()
     this.grants.set(grant.id, { ...grant })
     return Effect.void
   }

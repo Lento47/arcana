@@ -1,0 +1,271 @@
+warning: in the working copy of 'packages/core/src/event.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'packages/tui/src/context/project.tsx', LF will be replaced by CRLF the next time Git touches it
+diff --git a/packages/core/src/event.ts b/packages/core/src/event.ts
+index af81754a..76f0ff84 100644
+--- a/packages/core/src/event.ts
++++ b/packages/core/src/event.ts
+@@ -182,7 +182,7 @@ export const layerWith = (options?: LayerOptions) =>
+   Layer.effect(
+     Service,
+     Effect.gen(function* () {
+-      const all = yield* PubSub.unbounded<Payload>()
++      const all = yield* PubSub.bounded<Payload>(4096)
+       const synchronized = new Map<string, Set<PubSub.PubSub<void>>>()
+       const typed = new Map<string, PubSub.PubSub<Payload>>()
+       const projectors = new Map<string, AnyProjector[]>()
+@@ -195,7 +195,7 @@ export const layerWith = (options?: LayerOptions) =>
+         Effect.gen(function* () {
+           const existing = typed.get(definition.type)
+           if (existing) return existing
+-          const pubsub = yield* PubSub.unbounded<Payload>()
++          const pubsub = yield* PubSub.bounded<Payload>(4096)
+           typed.set(definition.type, pubsub)
+           return pubsub
+         })
+diff --git a/packages/engine/src/config/config.ts b/packages/engine/src/config/config.ts
+index 525d81f7..95d97e2c 100644
+--- a/packages/engine/src/config/config.ts
++++ b/packages/engine/src/config/config.ts
+@@ -63,7 +63,7 @@ function _cachedReadFileSync(path: string, encoding: BufferEncoding): string | n
+ function cachedExistsSync(path: string): boolean {
+   const now = Date.now()
+   const cached = fileCache.get(path)
+-  if (cached) return true
++  if (cached && (now - cached.ts) < CACHE_TTL) return true
+   try {
+     const { existsSync } = require("node:fs") as typeof import("node:fs")
+     const exists = existsSync(path)
+diff --git a/packages/engine/src/session/epistemic/claim-store.ts b/packages/engine/src/session/epistemic/claim-store.ts
+index 3c583aaa..c725cde4 100644
+--- a/packages/engine/src/session/epistemic/claim-store.ts
++++ b/packages/engine/src/session/epistemic/claim-store.ts
+@@ -1,5 +1,5 @@
+ import { Effect, Context, Layer } from "effect"
+-import { eq, and } from "drizzle-orm"
++import { eq, inArray } from "drizzle-orm"
+ import { Database } from "@arcana/core/database/database"
+ import { ClaimTable, ClaimEvidenceTable, ClaimDependencyTable, ClaimContradictionTable, ClaimOutcomeTable } from "@arcana/core/epistemic/sql"
+ import type { Claim, ClaimStatus, EvidenceRef, ClaimOutcome } from "@arcana/core/epistemic/claim"
+@@ -73,14 +73,56 @@ export const layer = Layer.effect(
+ 
+     const listBySession = Effect.fn("ClaimStore.listBySession")(function* (sessionId: SessionID) {
+       const rows = yield* db.select().from(ClaimTable).where(eq(ClaimTable.session_id, sessionId)).pipe(Effect.orDie)
+-      const claims: Claim[] = []
+-      for (const row of rows) {
+-        const evidenceRows = yield* db.select().from(ClaimEvidenceTable).where(eq(ClaimEvidenceTable.claim_id, row.id)).pipe(Effect.orDie)
+-        const depRows = yield* db.select().from(ClaimDependencyTable).where(eq(ClaimDependencyTable.claim_id, row.id)).pipe(Effect.orDie)
+-        const contraRows = yield* db.select().from(ClaimContradictionTable).where(eq(ClaimContradictionTable.claim_id, row.id)).pipe(Effect.orDie)
+-        claims.push(hydrateRow(row, evidenceRows, depRows, contraRows))
++      if (rows.length === 0) return []
++
++      // Batch-fetch all related data in 3 queries instead of 3N
++      const claimIds = rows.map((r) => r.id)
++
++      // Fetch all evidence for this session's claims in one query
++      const allEvidence = yield* db.select().from(ClaimEvidenceTable)
++        .where(inArray(ClaimEvidenceTable.claim_id, claimIds))
++        .pipe(Effect.orDie)
++
++      // Group by claim_id
++      const evidenceByClaimId = new Map<string, (typeof ClaimEvidenceTable.$inferSelect)[]>()
++      for (const ev of allEvidence) {
++        const list = evidenceByClaimId.get(ev.claim_id) ?? []
++        list.push(ev)
++        evidenceByClaimId.set(ev.claim_id, list)
+       }
+-      return claims
++
++      // Fetch all dependencies for this session's claims
++      const allDeps = yield* db.select().from(ClaimDependencyTable)
++        .where(inArray(ClaimDependencyTable.claim_id, claimIds))
++        .pipe(Effect.orDie)
++
++      const depsByClaimId = new Map<string, (typeof ClaimDependencyTable.$inferSelect)[]>()
++      for (const dep of allDeps) {
++        const list = depsByClaimId.get(dep.claim_id) ?? []
++        list.push(dep)
++        depsByClaimId.set(dep.claim_id, list)
++      }
++
++      // Fetch all contradictions for this session's claims
++      const allContra = yield* db.select().from(ClaimContradictionTable)
++        .where(inArray(ClaimContradictionTable.claim_id, claimIds))
++        .pipe(Effect.orDie)
++
++      const contraByClaimId = new Map<string, (typeof ClaimContradictionTable.$inferSelect)[]>()
++      for (const contra of allContra) {
++        const list = contraByClaimId.get(contra.claim_id) ?? []
++        list.push(contra)
++        contraByClaimId.set(contra.claim_id, list)
++      }
++
++      return rows.map((row) =>
++        hydrateRow(
++          row,
++          evidenceByClaimId.get(row.id) ?? [],
++          depsByClaimId.get(row.id) ?? [],
++          contraByClaimId.get(row.id) ?? [],
++        )
++      )
+     })
+ 
+     const updateStatus = Effect.fn("ClaimStore.updateStatus")(function* (id: string, status: ClaimStatus) {
+diff --git a/packages/engine/src/session/llm/native-runtime.ts b/packages/engine/src/session/llm/native-runtime.ts
+index 99db74f3..f34fe917 100644
+--- a/packages/engine/src/session/llm/native-runtime.ts
++++ b/packages/engine/src/session/llm/native-runtime.ts
+@@ -104,7 +104,7 @@ export function stream(input: StreamInput): StreamResult {
+     Stream.unwrap(
+       Effect.gen(function* () {
+         const settlements = yield* FiberSet.make<void>()
+-        const results = yield* Queue.unbounded<LLMEvent, Cause.Done>()
++        const results = yield* Queue.bounded<LLMEvent, Cause.Done>(1024)
+         const provider = input.llmClient
+           .stream(
+             LLMRequest.update(request, {
+diff --git a/packages/engine/src/workflow/validate.ts b/packages/engine/src/workflow/validate.ts
+index fcd9f2d3..e00caf84 100644
+--- a/packages/engine/src/workflow/validate.ts
++++ b/packages/engine/src/workflow/validate.ts
+@@ -2,6 +2,21 @@ import Ajv, { type ValidateFunction } from "ajv"
+ 
+ const ajv = new Ajv({ strict: false })
+ const validatorCache = new Map<string, ValidateFunction>()
++const VALIDATOR_CACHE_MAX = 100
++
++/**
++ * Evict oldest entries when cache exceeds max size.
++ * Simple FIFO eviction — validators are expensive to compile but cheap to re-derive.
++ */
++function evictIfNeeded() {
++  if (validatorCache.size <= VALIDATOR_CACHE_MAX) return
++  const keys = validatorCache.keys()
++  for (let i = 0; i < validatorCache.size - VALIDATOR_CACHE_MAX; i++) {
++    const next = keys.next()
++    if (next.done) break
++    validatorCache.delete(next.value)
++  }
++}
+ 
+ /**
+  * Deterministic cache key for a JSON Schema object.
+@@ -51,6 +66,7 @@ export function validateStepOutput(
+         `${e instanceof Error ? e.message : String(e)}\n\nRaw output:\n${output}`
+       )
+     }
++    evictIfNeeded()
+     validatorCache.set(key, validate)
+   }
+ 
+diff --git a/packages/tui/src/context/project.tsx b/packages/tui/src/context/project.tsx
+index 7eb7ca52..b4b8d731 100644
+--- a/packages/tui/src/context/project.tsx
++++ b/packages/tui/src/context/project.tsx
+@@ -1,4 +1,4 @@
+-import { batch } from "solid-js"
++import { batch, onCleanup } from "solid-js"
+ import type { Path, Workspace } from "@arcana/sdk/v2"
+ import { createStore, reconcile } from "solid-js/store"
+ import { createSimpleContext } from "./helper"
+@@ -67,11 +67,12 @@ export const { use: useProject, provider: ProjectProvider } = createSimpleContex
+       })
+     }
+ 
+-    sdk.event.on((event: any) => {
++    const unsub = sdk.event.on((event: any) => {
+       if (event.payload.type === "workspace.status") {
+         setStore("workspace", "status", event.payload.properties.workspaceID, event.payload.properties.status)
+       }
+     })
++    onCleanup(unsub)
+ 
+     return {
+       data: store,
+diff --git a/packages/tui/src/routes/session/index.tsx b/packages/tui/src/routes/session/index.tsx
+index 1e769f09..004414df 100644
+--- a/packages/tui/src/routes/session/index.tsx
++++ b/packages/tui/src/routes/session/index.tsx
+@@ -618,7 +618,7 @@ export function Session() {
+     ),
+   )
+ 
+-  event.on("message.part.updated", (evt) => {
++  const unsubPart = event.on("message.part.updated", (evt) => {
+     const part = evt.properties.part
+     if (part.sessionID !== route.sessionID) return
+     // Follow streaming text: keep the view pinned to the newest content
+@@ -639,6 +639,7 @@ export function Session() {
+       lastSwitch = part.id
+     }
+   })
++  onCleanup(unsubPart)
+ 
+   // Periodically check if the user has scrolled to the top and load older messages
+   onMount(() => {
+@@ -670,7 +671,7 @@ export function Session() {
+   const dialog = useDialog()
+   const renderer = useRenderer()
+ 
+-  event.on("session.status", (evt) => {
++  const unsubStatus = event.on("session.status", (evt) => {
+     if (evt.properties.sessionID !== route.sessionID) return
+     if (evt.properties.status.type !== "retry") return
+     if (!evt.properties.status.action) return
+@@ -689,16 +690,18 @@ export function Session() {
+       kv.set(keys.lastSeenAt, Date.now())
+     })
+   })
++  onCleanup(unsubStatus)
+ 
+   // SSE gap-closer: the event stream can drop mid-exchange (daemon
+   // re-registration, parser buffer discard at EOF). Events carry no id,
+   // so replay is impossible — re-hydrate the active session from REST
+   // after every reconnect. Idempotent; failure just leaves the sync
+   // guard cleared for the next attempt.
+-  event.subscribe((evt) => {
++  const unsubReconnect = event.subscribe((evt) => {
+     if ((evt as { type: string }).type !== "sse.reconnected") return
+     void sync.session.resync(route.sessionID).catch(() => {})
+   })
++  onCleanup(unsubReconnect)
+ 
+   // Divergence detection + authoritative repair (P12). The engine numbers
+   // every state-bearing event per stream (handlers/event.ts) and heartbeats
+@@ -709,7 +712,7 @@ export function Session() {
+   // a real stall (frozen part) leaves applied behind and converges within
+   // one heartbeat.
+   const HEARTBEAT_GAP_GRACE = 4
+-  event.subscribe((evt) => {
++  const unsubHeartbeat = event.subscribe((evt) => {
+     if ((evt as { type: string }).type !== "server.heartbeat") return
+     const transport = (evt as { transport?: { headSequence?: number } }).transport
+     const head = transport?.headSequence
+@@ -723,6 +726,7 @@ export function Session() {
+       void sync.session.reconcile(route.sessionID, "heartbeat-gap", head).catch(() => {})
+     }
+   })
++  onCleanup(unsubHeartbeat)
+ 
+   // Helper: Find next visible message boundary in direction.
+   // Build a single Set of message IDs with valid text parts so we do not
+diff --git a/packages/tui/src/shell/command-spine/spine-mapper.ts b/packages/tui/src/shell/command-spine/spine-mapper.ts
+index 427482bc..ef8af1c1 100644
+--- a/packages/tui/src/shell/command-spine/spine-mapper.ts
++++ b/packages/tui/src/shell/command-spine/spine-mapper.ts
+@@ -2122,11 +2122,15 @@ function groupToolSummary(entries: SpineEntry[]): string {
+   if (kind === "inspect") {
+     // Semantic group label: aggregate the distinct targets (files/dirs) so a
+     // read burst reads "inspect PDP, PEP, types" instead of "3× read".
++    const seen = new Set<string>()
+     const paths: string[] = []
+     for (const entry of entries) {
+       const path = (entry.summary ?? "").split(/\s·\s/)[0]?.trim()
+       if (!path || path.length < 3 || !/[\\/.]/.test(path)) continue
+-      if (!paths.includes(path)) paths.push(path)
++      if (!seen.has(path)) {
++        seen.add(path)
++        paths.push(path)
++      }
+     }
+     if (paths.length) {
+       const shown = paths.slice(0, 3)

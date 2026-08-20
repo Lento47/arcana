@@ -41,7 +41,7 @@ export const layer = Layer.effect(
       yield* Effect.forEach(
         [lsp, shareNext, format, vcs, snapshot, project],
         (s) => s.init().pipe(Effect.catchCause((cause) => Effect.logWarning("init failed", { cause }))),
-        { concurrency: "unbounded", discard: true },
+        { concurrency: 8, discard: true },
       ).pipe(Effect.withSpan("InstanceBootstrap.init"))
     }).pipe(Effect.withSpan("InstanceBootstrap"))
 

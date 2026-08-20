@@ -38,7 +38,7 @@ export const layer = Layer.sync(Service)(() => {
             Effect.catch(() => Effect.void),
           ),
         ),
-        { concurrency: "unbounded", discard: true },
+        { concurrency: 10, discard: true },
       )
     }),
   })

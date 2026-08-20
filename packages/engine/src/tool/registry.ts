@@ -334,7 +334,7 @@ export const layer = Layer.effect(
             formatValidationError: tool.formatValidationError,
           }
         }),
-        { concurrency: "unbounded" },
+        { concurrency: 8 },
       )
       _toolCache = { tools: result, time: Date.now(), key: cacheKey }
       return result

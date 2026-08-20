@@ -23,6 +23,8 @@ export type SpineTrustInput = {
   proofLevel?: string
   pendingApprovals: number
   eventGap?: SpineTrustEventGap
+  /** When true, UNAVAILABLE trace health is treated as acceptable (self-governance mode). */
+  selfGovernance?: boolean
 }
 
 export type SpineTrustStatus = {
@@ -49,7 +51,10 @@ export function buildTrustStatus(input: SpineTrustInput): SpineTrustStatus {
 
   const trace = input.trace ?? "UNKNOWN"
   const integrity = input.integrity ?? "UNKNOWN"
-  const unhealthyTrace = trace === "DEGRADED" || trace === "UNAVAILABLE"
+  // In self-governance mode, UNAVAILABLE trace is acceptable (no external daemon required)
+  const unhealthyTrace = input.selfGovernance
+    ? trace === "DEGRADED"
+    : trace === "DEGRADED" || trace === "UNAVAILABLE"
   const unhealthyIntegrity = integrity === "INVALID" || integrity === "UNVERIFIED"
   const hasGap = input.eventGap !== undefined
 
@@ -60,8 +65,10 @@ export function buildTrustStatus(input: SpineTrustInput): SpineTrustStatus {
         ? "degraded"
         : "healthy"
 
+  // In self-governance mode, UNVERIFIED integrity is acceptable for local operation
+  const effectiveIntegrity = input.selfGovernance && integrity === "UNVERIFIED" ? "VALID" : integrity
   const workspaceTrusted =
-    state === "healthy" && trace === "COMPLETE" && integrity === "VALID" && !hasGap
+    state === "healthy" && (trace === "COMPLETE" || (input.selfGovernance === true && trace === "UNAVAILABLE")) && effectiveIntegrity === "VALID" && !hasGap
 
   return {
     state,

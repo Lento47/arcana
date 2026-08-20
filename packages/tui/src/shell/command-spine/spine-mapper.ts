@@ -1932,6 +1932,11 @@ function assistantMessagePartsToEntries(
   // Snapshot patch parts only store {hash, files}; hydrate/suppress using tool diffs.
   const siblingPatchEvidence = collectSiblingPatchEvidence(parts)
 
+  // When native reasoning parts exist, skip inline-thinking extraction from
+  // text parts to avoid duplicate "Thought" entries. Some providers emit both
+  // a reasoning stream AND the same content as <think> tags in text.
+  const hasNativeReasoning = parts.some((p) => p.type === "reasoning")
+
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]
 
@@ -1943,7 +1948,9 @@ function assistantMessagePartsToEntries(
     }
 
     if (part.type === "text" && isTextRelevant(part)) {
-      const split = splitInlineThinkingText(part)
+      const split = hasNativeReasoning
+        ? { thinking: undefined, text: part }
+        : splitInlineThinkingText(part)
       if (split.thinking) {
         entries.push(makeInlineThinkEntry(message, part, split.thinking, options, parts, streamingCtx))
       }
@@ -2115,11 +2122,15 @@ function groupToolSummary(entries: SpineEntry[]): string {
   if (kind === "inspect") {
     // Semantic group label: aggregate the distinct targets (files/dirs) so a
     // read burst reads "inspect PDP, PEP, types" instead of "3× read".
+    const seen = new Set<string>()
     const paths: string[] = []
     for (const entry of entries) {
       const path = (entry.summary ?? "").split(/\s·\s/)[0]?.trim()
       if (!path || path.length < 3 || !/[\\/.]/.test(path)) continue
-      if (!paths.includes(path)) paths.push(path)
+      if (!seen.has(path)) {
+        seen.add(path)
+        paths.push(path)
+      }
     }
     if (paths.length) {
       const shown = paths.slice(0, 3)

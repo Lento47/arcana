@@ -162,6 +162,7 @@ const sessionBindingCommands = [
   "session.toggle.actions",
   "session.toggle.scrollbar",
   "session.toggle.generic_tool_output",
+  "session.toggle.gutter",
   "session.first",
   "session.last",
   "session.messages_last_user",
@@ -196,6 +197,7 @@ export const context = createContext<{
   showTimestamps: () => boolean
   showDetails: () => boolean
   showGenericToolOutput: () => boolean
+  showGutter: () => boolean
   userMessageIDs: () => ReadonlySet<string>
   diffWrapMode: () => "word" | "none"
   providers: () => ReadonlyMap<string, Provider>
@@ -403,6 +405,7 @@ export function Session() {
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
   const [_animationsEnabled, _setAnimationsEnabled] = kv.signal("animations_enabled", true)
   const [showGenericToolOutput, setShowGenericToolOutput] = kv.signal("generic_tool_output_visibility", false)
+  const [showGutter, setShowGutter] = kv.signal("gutter_visible", true)
   const [viewingArtifact, setViewingArtifact] = createSignal<string | null>(null)
 
   const wide = createMemo(() => dimensions().width > Size.wideBreakpoint)
@@ -615,7 +618,7 @@ export function Session() {
     ),
   )
 
-  event.on("message.part.updated", (evt) => {
+  const unsubPart = event.on("message.part.updated", (evt) => {
     const part = evt.properties.part
     if (part.sessionID !== route.sessionID) return
     // Follow streaming text: keep the view pinned to the newest content
@@ -636,6 +639,7 @@ export function Session() {
       lastSwitch = part.id
     }
   })
+  onCleanup(unsubPart)
 
   // Periodically check if the user has scrolled to the top and load older messages
   onMount(() => {
@@ -667,7 +671,7 @@ export function Session() {
   const dialog = useDialog()
   const renderer = useRenderer()
 
-  event.on("session.status", (evt) => {
+  const unsubStatus = event.on("session.status", (evt) => {
     if (evt.properties.sessionID !== route.sessionID) return
     if (evt.properties.status.type !== "retry") return
     if (!evt.properties.status.action) return
@@ -686,16 +690,18 @@ export function Session() {
       kv.set(keys.lastSeenAt, Date.now())
     })
   })
+  onCleanup(unsubStatus)
 
   // SSE gap-closer: the event stream can drop mid-exchange (daemon
   // re-registration, parser buffer discard at EOF). Events carry no id,
   // so replay is impossible — re-hydrate the active session from REST
   // after every reconnect. Idempotent; failure just leaves the sync
   // guard cleared for the next attempt.
-  event.subscribe((evt) => {
+  const unsubReconnect = event.subscribe((evt) => {
     if ((evt as { type: string }).type !== "sse.reconnected") return
     void sync.session.resync(route.sessionID).catch(() => {})
   })
+  onCleanup(unsubReconnect)
 
   // Divergence detection + authoritative repair (P12). The engine numbers
   // every state-bearing event per stream (handlers/event.ts) and heartbeats
@@ -706,7 +712,7 @@ export function Session() {
   // a real stall (frozen part) leaves applied behind and converges within
   // one heartbeat.
   const HEARTBEAT_GAP_GRACE = 4
-  event.subscribe((evt) => {
+  const unsubHeartbeat = event.subscribe((evt) => {
     if ((evt as { type: string }).type !== "server.heartbeat") return
     const transport = (evt as { transport?: { headSequence?: number } }).transport
     const head = transport?.headSequence
@@ -720,6 +726,7 @@ export function Session() {
       void sync.session.reconcile(route.sessionID, "heartbeat-gap", head).catch(() => {})
     }
   })
+  onCleanup(unsubHeartbeat)
 
   // Helper: Find next visible message boundary in direction.
   // Build a single Set of message IDs with valid text parts so we do not
@@ -1208,6 +1215,19 @@ export function Session() {
       category: "Session",
       run: () => {
         setShowGenericToolOutput((prev) => !prev)
+        dialog.clear()
+      },
+    },
+    {
+      title: showGutter() ? "Hide step-index numbers" : "Show step-index numbers",
+      value: "session.toggle.gutter",
+      category: "Session",
+      slash: {
+        name: "gutter",
+        aliases: ["toggle-gutter"],
+      },
+      run: () => {
+        setShowGutter((prev) => !prev)
         dialog.clear()
       },
     },
@@ -1855,6 +1875,7 @@ export function Session() {
         viewingArtifact,
         setViewingArtifact,
 
+        showGutter,
         theme,
         transBorder,
 
@@ -1880,6 +1901,7 @@ export function Session() {
           showTimestamps,
           showDetails,
           showGenericToolOutput,
+          showGutter,
           userMessageIDs,
           diffWrapMode,
           providers,

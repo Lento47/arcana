@@ -117,7 +117,7 @@ export const loaderLayer = Layer.effect(
           const providers = yield* provider.list()
           const [agents, defaultAgent, commands, defaultModel] = yield* Effect.all(
             [agent.list(), agent.defaultInfo(), command.list(), provider.defaultModel().pipe(Effect.option)],
-            { concurrency: "unbounded" },
+            { concurrency: 4 },
           )
           return build({
             directory,

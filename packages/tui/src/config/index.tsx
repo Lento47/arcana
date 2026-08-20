@@ -148,15 +148,20 @@ export const Info = Schema.Struct({
   status_separator: Schema.optional(Schema.String).annotate({
     description: "Separator between header status segments (default: ' | ')",
   }),
+  self_governance: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Accept local self-governance when no external daemon is connected. When true, UNAVAILABLE trace health is treated as acceptable and authority actions are not blocked. Default: false",
+  }),
 })
 export type Info = Schema.Schema.Type<typeof Info>
 
 export type Resolved = Omit<
   Info,
-  "attention" | "keybinds" | "leader_timeout" | "mouse" | "shell" | "status_separator" | "voice"
+  "attention" | "keybinds" | "leader_timeout" | "mouse" | "self_governance" | "shell" | "status_separator" | "voice"
 > & {
   shell: Shell
   lexicon: LexiconVoice
+  self_governance: boolean
   attention: {
     enabled: boolean
     notifications: boolean
@@ -226,6 +231,7 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
     }),
     leader_timeout: input.leader_timeout ?? LeaderTimeoutDefault,
     mouse: input.mouse ?? true,
+    self_governance: input.self_governance ?? false,
     status_separator: input.status_separator ?? " | ",
     prompt: {
       ...input.prompt,

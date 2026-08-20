@@ -148,7 +148,26 @@ function diffSnapshots(before: Map<string, string>, after: Map<string, string>):
 // derivation on Windows. Cache per executable for the lifetime of the process:
 // PATH does not change mid-derivation and the same binary is re-checked for
 // every replayed step.
-const environmentCompatibilityCache = new Map<string, "COMPATIBLE" | "DRIFTED" | "UNKNOWN">()
+const environmentCompatibilityCache = new Map<string, { result: "COMPATIBLE" | "DRIFTED" | "UNKNOWN"; ts: number }>()
+const ENV_CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
+const ENV_CACHE_MAX = 100
+
+function evictEnvCache() {
+  const now = Date.now()
+  for (const [key, entry] of environmentCompatibilityCache) {
+    if (now - entry.ts > ENV_CACHE_TTL_MS) {
+      environmentCompatibilityCache.delete(key)
+    }
+  }
+  if (environmentCompatibilityCache.size > ENV_CACHE_MAX) {
+    const keys = environmentCompatibilityCache.keys()
+    for (let i = 0; i < environmentCompatibilityCache.size - ENV_CACHE_MAX; i++) {
+      const next = keys.next()
+      if (next.done) break
+      environmentCompatibilityCache.delete(next.value)
+    }
+  }
+}
 
 export function checkEnvironmentCompatibility(
   executable: string | null,
@@ -157,7 +176,8 @@ export function checkEnvironmentCompatibility(
   if (workingDirectory && !fs.existsSync(workingDirectory)) return "DRIFTED"
   if (!executable) return "UNKNOWN"
   const cached = environmentCompatibilityCache.get(executable)
-  if (cached) return cached
+  if (cached && (Date.now() - cached.ts) < ENV_CACHE_TTL_MS) return cached.result
+  evictEnvCache()
   let result: "COMPATIBLE" | "DRIFTED" | "UNKNOWN"
   try {
     const resolver = process.platform === "win32" ? "where" : "which"
@@ -169,7 +189,7 @@ export function checkEnvironmentCompatibility(
   } catch {
     result = "DRIFTED"
   }
-  environmentCompatibilityCache.set(executable, result)
+  environmentCompatibilityCache.set(executable, { result, ts: Date.now() })
   return result
 }
 

@@ -518,7 +518,7 @@ export const layer = Layer.effect(
                 watch(s, key, result.mcpClient, bridge, mcp.timeout)
               }
             }),
-          { concurrency: "unbounded" },
+          { concurrency: 4 },
         )
 
         yield* Effect.addFinalizer(() =>
@@ -541,7 +541,7 @@ export const layer = Layer.effect(
                   }
                   yield* Effect.tryPromise(() => client.close()).pipe(Effect.ignore)
                 }),
-              { concurrency: "unbounded" },
+              { concurrency: 4 },
             )
             pendingOAuthTransports.clear()
           }),
@@ -680,7 +680,7 @@ export const layer = Layer.effect(
               (c) => listFn(c, requestTimeout(s, clientName, cfg.mcp?.[clientName], cfg.experimental?.mcp_timeout)),
               label,
             ).pipe(Effect.map((items) => Object.entries(items ?? {}))),
-          { concurrency: "unbounded" },
+          { concurrency: 4 },
         ).pipe(Effect.map((results) => Object.fromEntries<T & { client: string }>(results.flat())))
       })
     }

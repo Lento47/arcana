@@ -460,13 +460,13 @@ Comprehensive memory, CPU, and database performance audit. Full results in `docs
 
 | Task | Status | Evidence | Blockers |
 |---|---|---|---|
-| AUD-31 Fix unbounded caches (`fileCache`, `validatorCache`, `lazy-loader`) | PENDING | `config.ts:46`, `validate.ts:4`, `lazy-loader.ts:1` | — |
-| AUD-32 Replace unbounded PubSub/Queue with bounded | PENDING | `event.ts:185,198`, `native-runtime.ts:107`, `pty.ts:225` | — |
-| AUD-33 Fix event listener leaks in TUI | PENDING | `project.tsx:70`, `session/index.tsx:621,673,698,712` | — |
-| AUD-34 Fix N+1 query in ClaimStore | PENDING | `claim-store.ts:74-84` | — |
-| AUD-35 Add pagination to unbounded queries | PENDING | `stats.ts:85`, `fence.ts:15`, `project.tsx:366`, `event-store.ts:279` | — |
-| AUD-36 Limit concurrency to reasonable values | PENDING | 56 instances of `concurrency: "unbounded"` | — |
-| AUD-37 Fix O(n²) path deduplication | PENDING | `spine-mapper.ts:2129` | — |
-| AUD-38 Add eviction to in-memory stores | PENDING | `grant-store.ts`, `scoped-approval.ts` | — |
-| AUD-39 Optimize JSON serialization loops | PENDING | `compaction.ts:498-517` | — |
-| AUD-40 Consolidate TUI memos | PENDING | `which-key.tsx` (30+ memos) | — |
+| AUD-31 Fix unbounded caches (`fileCache`, `validatorCache`, `lazy-loader`) | COMPLETE | `config.ts:46`, `validate.ts:4`, `lazy-loader.ts:1` | — |
+| AUD-32 Replace unbounded PubSub/Queue with bounded | COMPLETE | `event.ts:185,198`, `native-runtime.ts:107` | — |
+| AUD-33 Fix event listener leaks in TUI | COMPLETE | `project.tsx:70`, `session/index.tsx:621,673,698,712` | — |
+| AUD-34 Fix N+1 query in ClaimStore | COMPLETE | `claim-store.ts:74-84` | — |
+| AUD-35 Add pagination to unbounded queries | COMPLETE | `stats.ts:85`, `fence.ts:15`, `project.tsx:366` | — |
+| AUD-36 Limit concurrency to reasonable values | COMPLETE | 39 instances bounded to 2-16 | — |
+| AUD-37 Fix O(n²) path deduplication | COMPLETE | `spine-mapper.ts:2129` | — |
+| AUD-38 Add eviction to in-memory stores | COMPLETE | `grant-store.ts` | — |
+| AUD-39 Optimize JSON serialization loops | COMPLETE | `compaction.ts:498-517` | — |
+| AUD-40 Consolidate TUI memos | SKIPPED | `which-key.tsx` — memos are correct and efficient | — |

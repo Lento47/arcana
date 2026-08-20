@@ -104,7 +104,7 @@ export function stream(input: StreamInput): StreamResult {
     Stream.unwrap(
       Effect.gen(function* () {
         const settlements = yield* FiberSet.make<void>()
-        const results = yield* Queue.unbounded<LLMEvent, Cause.Done>()
+        const results = yield* Queue.bounded<LLMEvent, Cause.Done>(1024)
         const provider = input.llmClient
           .stream(
             LLMRequest.update(request, {
