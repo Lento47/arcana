@@ -116,6 +116,28 @@ const KEY_ALIASES = {
   pgup: "pageup",
 } as const
 
+/**
+ * Event-match resolver: some terminals/keyboard protocols emit "enter" for the
+ * Return key while our bindings are authored as "return". This resolver adds
+ * "return" as an alias candidate so permission/question gates confirm on Enter
+ * on every platform.
+ */
+export function createEnterToReturnResolver() {
+  return (event: { name?: string; ctrl?: boolean; shift?: boolean; meta?: boolean; super?: boolean; hyper?: boolean }, ctx: { resolveKey: (key: { name: string; ctrl?: boolean; shift?: boolean; meta?: boolean; super?: boolean; hyper?: boolean | undefined }) => string }) => {
+    if (event.name !== "enter") return
+    return [
+      ctx.resolveKey({
+        name: "return",
+        ctrl: event.ctrl,
+        shift: event.shift,
+        meta: event.meta,
+        super: event.super ?? false,
+        hyper: event.hyper || undefined,
+      }),
+    ]
+  }
+}
+
 function expandKeyAliases(input: string) {
   const result = Object.entries(KEY_ALIASES).reduce(
     (acc, [alias, key]) => acc.replace(new RegExp(`(^|[+,\\s>])${alias}(?=$|[+,\\s<])`, "gi"), `$1${key}`),
@@ -216,6 +238,7 @@ export function registerOpencodeKeymap(keymap: OpenTuiKeymap, renderer: CliRende
   const offCommaBindings = registerCommaBindings(keymap)
   const offAliasExpander = registerKeyAliases(keymap)
   const offBaseLayout = registerBaseLayoutFallback(keymap)
+  const offEnterAlias = keymap.appendEventMatchResolver(createEnterToReturnResolver())
   const leader = leaderKey(config)
   const offLeader = leader
     ? registerTimedLeader(keymap, {
@@ -236,6 +259,7 @@ export function registerOpencodeKeymap(keymap: OpenTuiKeymap, renderer: CliRende
     offBackspace()
     offEscape()
     offLeader()
+    offEnterAlias()
     offAliasExpander()
     offBaseLayout()
     offCommaBindings()

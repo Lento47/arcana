@@ -2,10 +2,10 @@
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { createBindingLookup } from "@opentui/keymap/extras"
 import { testRender, useRenderer } from "@opentui/solid"
-import { expect, test } from "bun:test"
+import { expect, test, describe } from "bun:test"
 import { onCleanup } from "solid-js"
 import { TuiKeybind } from "../src/config/keybind"
-import { getOpencodeModeStack, ARCANA_BASE_MODE, OpencodeKeymapProvider, registerOpencodeKeymap } from "../src/keymap"
+import { getOpencodeModeStack, ARCANA_BASE_MODE, OpencodeKeymapProvider, registerOpencodeKeymap, createEnterToReturnResolver } from "../src/keymap"
 
 function createResolvedKeymapConfig(input: TuiKeybind.KeybindOverrides = {}) {
   const keybinds = TuiKeybind.parse(input)
@@ -138,4 +138,58 @@ test("mode-less bindings stay active when opencode mode changes", async () => {
   } finally {
     app.renderer.destroy()
   }
+})
+
+describe("enter-to-return key alias", () => {
+  test("resolver maps enter events to return candidates", () => {
+    const resolver = createEnterToReturnResolver()
+    const ctx = {
+      resolveKey: (key: { name: string; ctrl?: boolean; shift?: boolean; meta?: boolean; super?: boolean; hyper?: boolean | undefined }) =>
+        `${key.ctrl ? "ctrl+" : ""}${key.shift ? "shift+" : ""}${key.meta ? "meta+" : ""}${key.name}`,
+    }
+
+    expect(resolver({ name: "enter" }, ctx)).toEqual(["return"])
+    expect(resolver({ name: "enter", ctrl: true, shift: true }, ctx)).toEqual(["ctrl+shift+return"])
+    expect(resolver({ name: "return" }, ctx)).toBeUndefined()
+    expect(resolver({ name: "escape" }, ctx)).toBeUndefined()
+  })
+
+  test("registerOpencodeKeymap installs the alias resolver", async () => {
+    let capturedKeymap: ReturnType<typeof createDefaultOpenTuiKeymap> | undefined
+    function Harness() {
+      const renderer = useRenderer()
+      const keymap = createDefaultOpenTuiKeymap(renderer)
+      capturedKeymap = keymap
+      const config = createResolvedKeymapConfig()
+      const offKeymap = registerOpencodeKeymap(keymap, renderer, config)
+      const commands: string[] = []
+      const offLayer = keymap.registerLayer({
+        mode: ARCANA_BASE_MODE,
+        priority: 10,
+        commands: [{ name: "test.confirm", run() { commands.push("confirmed") } }],
+        bindings: [{ key: "return", cmd: "test.confirm" }],
+      })
+
+      onCleanup(() => {
+        offLayer()
+        offKeymap()
+      })
+
+      return (
+        <OpencodeKeymapProvider keymap={keymap}>
+          <box />
+        </OpencodeKeymapProvider>
+      )
+    }
+
+    const app = await testRender(() => <Harness />)
+    try {
+      expect(capturedKeymap).toBeTruthy()
+      const bindings = capturedKeymap!.getCommandBindings({ visibility: "registered", commands: ["test.confirm"] }).get("test.confirm")
+      expect(bindings?.length).toBeGreaterThanOrEqual(1)
+      expect(bindings?.[0]?.sequence?.map((part: any) => part.stroke.name)).toContain("return")
+    } finally {
+      app.renderer.destroy()
+    }
+  })
 })

@@ -153,6 +153,7 @@ describe("PermissionPrompt keymap layer", () => {
 
       const returnBinding = decisionLayer.bindings.find((b: any) => b.key === "return")
       expect(returnBinding).toBeTruthy()
+      expect(returnBinding.preventDefault).toBe(true)
       returnBinding.cmd()
 
       expect(replyCalls).toEqual([
