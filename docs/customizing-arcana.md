@@ -76,6 +76,64 @@ unchanged in either voice.
 
 ---
 
+## Voice input
+
+Press `ctrl+x v` (leader, then `v`) to toggle voice input. The pipeline is
+fully local and TUI-side:
+
+1. An external recorder captures your microphone to a 16 kHz mono WAV.
+2. A local whisper.cpp CLI transcribes the WAV.
+3. A local Ollama model (default `superwhisper/s1-mini`) cleans up the
+   transcript.
+4. The cleaned text replaces the prompt input and is submitted automatically
+   (unless you set `voice.auto_submit` to `false`).
+
+### Requirements
+
+- A recorder: `ffmpeg` is preferred; `sox`/`rec` and Linux `arecord` also work.
+- A whisper.cpp binary: `whisper-cli`, `whisper.cpp`, or `main`.
+- A whisper.cpp model (ggml/gguf) downloaded locally.
+- Ollama running with the configured model pulled (`ollama pull superwhisper/s1-mini`).
+
+### Configuration
+
+Add a `voice` block to `~/.config/arcana/tui.json` (project config does not
+merge `voice`; it lives in TUI config only):
+
+```jsonc
+{
+  "voice": {
+    "enabled": true,
+    "auto_submit": true,
+    "recorder": {
+      // Optional. If omitted, arcana tries ffmpeg/sox/rec/arecord.
+      "binary": "ffmpeg",
+      "args": ["-y", "-f", "avfoundation", "-i", ":0", "-ar", "16000", "-ac", "1", "{output}"]
+    },
+    "asr": {
+      // Only whisper.cpp is supported today.
+      "backend": "whisper.cpp",
+      "binary": "whisper-cli",
+      "model": "~/.local/share/whisper/models/base.bin",
+      "language": "en"
+    },
+    "normalizer": {
+      // Only Ollama is supported today.
+      "provider": "ollama",
+      "host": "http://localhost:11434",
+      "model": "superwhisper/s1-mini",
+      "prompt": "Clean up this voice transcript. Remove filler words, fix punctuation and casing, and return ONLY the concise prompt text.\n\nTranscript:\n{text}"
+    }
+  }
+}
+```
+
+`{output}` in recorder args is replaced with the temp WAV path; `{text}` in the
+normalizer prompt is replaced with the raw transcript. If no recorder or ASR
+binary is found, the first voice toggle shows a setup toast.
+
+---
+
 ## Configuring arcana (arcana.json)
 
 ### Where config lives
@@ -153,6 +211,7 @@ Highlights:
 | Pick a theme | `/theme`, or `arcana theme set --name <name>` |
 | Add my own theme | Drop a theme JSON in `.arcana/themes/` |
 | Switch the interface voice | `arcana lexicon set --name plain` (or `arcane`) |
+| Use voice input | Press `ctrl+x v`; configure `voice` in `~/.config/arcana/tui.json` |
 | Change models, agents, skills, plugins, permissions | Edit `arcana.json` (project or `~/.config/arcana/arcana.json`) and restart |
 
 For anything not covered here, load the built-in **"customizing arcana"**

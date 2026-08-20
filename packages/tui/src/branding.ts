@@ -95,6 +95,13 @@ const DEFAULT_LEXICON = {
     error: "corrupted",
     done: "complete",
   },
+  Voice: {
+    listen: "Attuning",
+    transcribe: "Transcribing",
+    normalize: "Refining",
+    send: "Casting",
+    error: "The voice rite failed",
+  },
 } as const
 
 /** Plain-language counterpart of DEFAULT_LEXICON. Same shape, different voice. */
@@ -129,6 +136,13 @@ export const PLAIN_LEXICON = {
     retry: "retrying",
     error: "error",
     done: "done",
+  },
+  Voice: {
+    listen: "Listening",
+    transcribe: "Transcribing",
+    normalize: "Refining",
+    send: "Sending",
+    error: "Voice input failed",
   },
 } as const
 

@@ -89,6 +89,7 @@ import * as Model from "./util/model"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
+import { VoiceProvider } from "./context/voice"
 import { TuiConfigProvider, useTuiConfig, type TuiConfig } from "./config"
 import { createTuiApiAdapters } from "./plugin/adapters"
 import { createTuiApi } from "./plugin/api"
@@ -1320,12 +1321,14 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                             <FrecencyProvider>
                                                               <PromptHistoryProvider>
                                                                 <PromptRefProvider>
-                                                                  <EditorContextProvider>
-                                                                    <App
-                                                                      onSnapshot={input.onSnapshot}
-                                                                      pluginHost={input.pluginHost}
-                                                                    />
-                                                                  </EditorContextProvider>
+                                                                  <VoiceProvider>
+                                                                    <EditorContextProvider>
+                                                                      <App
+                                                                        onSnapshot={input.onSnapshot}
+                                                                        pluginHost={input.pluginHost}
+                                                                      />
+                                                                    </EditorContextProvider>
+                                                                  </VoiceProvider>
                                                                 </PromptRefProvider>
                                                               </PromptHistoryProvider>
                                                             </FrecencyProvider>

@@ -71,6 +71,46 @@ export const Background = Schema.Struct({
 })
 export type Background = Schema.Schema.Type<typeof Background>
 
+export const VoiceRecorder = Schema.Struct({
+  binary: Schema.optional(Schema.String).annotate({
+    description: "External recorder command (ffmpeg, sox, arecord, rec) or absolute path",
+  }),
+  args: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({
+    description: "Recorder args; {output} is replaced with the temp WAV path",
+  }),
+}).annotate({ description: "External microphone recorder settings" })
+
+export const VoiceAsr = Schema.Struct({
+  backend: Schema.optional(Schema.Literal("whisper.cpp")).annotate({ description: "Local ASR backend" }),
+  binary: Schema.optional(Schema.String).annotate({
+    description: "whisper.cpp CLI binary name or absolute path",
+  }),
+  model: Schema.optional(Schema.String).annotate({ description: "Path to the whisper.cpp model (ggml/gguf)" }),
+  language: Schema.optional(Schema.String).annotate({ description: "Language code, e.g. 'en'" }),
+}).annotate({ description: "Automatic speech recognition settings" })
+
+export const VoiceNormalizer = Schema.Struct({
+  provider: Schema.optional(Schema.Literal("ollama")).annotate({ description: "Local LLM normalizer provider" }),
+  host: Schema.optional(Schema.String).annotate({ description: "Ollama API host, default http://localhost:11434" }),
+  model: Schema.optional(Schema.String).annotate({
+    description: "Ollama model for transcript cleanup, default superwhisper/s1-mini",
+  }),
+  prompt: Schema.optional(Schema.String).annotate({
+    description: "Prompt template; {text} is replaced with the raw transcript",
+  }),
+}).annotate({ description: "Transcript normalization settings" })
+
+export const Voice = Schema.Struct({
+  enabled: Schema.optional(Schema.Boolean).annotate({ description: "Enable voice input" }),
+  auto_submit: Schema.optional(Schema.Boolean).annotate({
+    description: "Insert normalized prompt and submit automatically (default true)",
+  }),
+  recorder: Schema.optional(VoiceRecorder),
+  asr: Schema.optional(VoiceAsr),
+  normalizer: Schema.optional(VoiceNormalizer),
+}).annotate({ description: "Voice input settings" })
+export type Voice = Schema.Schema.Type<typeof Voice>
+
 export const Shell = Schema.Literals(["opencode", "command-spine"]).annotate({
   description: "TUI shell layout: 'opencode' (legacy chat-style) or 'command-spine' (chronicle layout)",
 })
@@ -100,6 +140,7 @@ export const Info = Schema.Struct({
   diff_style: Schema.optional(DiffStyle),
   mouse: Schema.optional(Schema.Boolean).annotate({ description: "Enable or disable mouse capture (default: true)" }),
   background: Schema.optional(Background).annotate({ description: "Custom TUI background image" }),
+  voice: Schema.optional(Voice).annotate({ description: "Voice input settings" }),
   status_segments: Schema.optional(Schema.Array(StatusSegmentKey)).annotate({
     description:
       "Header status segments to show, in order: branch, model, ctx, state, session, path. Unset = automatic (fits the terminal width).",
@@ -112,7 +153,7 @@ export type Info = Schema.Schema.Type<typeof Info>
 
 export type Resolved = Omit<
   Info,
-  "attention" | "keybinds" | "leader_timeout" | "mouse" | "shell" | "status_separator"
+  "attention" | "keybinds" | "leader_timeout" | "mouse" | "shell" | "status_separator" | "voice"
 > & {
   shell: Shell
   lexicon: LexiconVoice
@@ -128,6 +169,26 @@ export type Resolved = Omit<
   leader_timeout: number
   mouse: boolean
   status_separator: string
+  voice: {
+    enabled: boolean
+    auto_submit: boolean
+    recorder: {
+      binary?: string
+      args?: string[]
+    }
+    asr: {
+      backend: "whisper.cpp"
+      binary?: string
+      model?: string
+      language?: string
+    }
+    normalizer: {
+      provider: "ollama"
+      host: string
+      model: string
+      prompt: string
+    }
+  }
 }
 
 export const ResolveOptions = Schema.Struct({
@@ -169,6 +230,28 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
     prompt: {
       ...input.prompt,
       ai_suggestion: input.prompt?.ai_suggestion ?? false,
+    },
+    voice: {
+      enabled: input.voice?.enabled ?? false,
+      auto_submit: input.voice?.auto_submit ?? true,
+      recorder: {
+        binary: input.voice?.recorder?.binary,
+        args: input.voice?.recorder?.args,
+      },
+      asr: {
+        backend: input.voice?.asr?.backend ?? "whisper.cpp",
+        binary: input.voice?.asr?.binary,
+        model: input.voice?.asr?.model,
+        language: input.voice?.asr?.language,
+      },
+      normalizer: {
+        provider: input.voice?.normalizer?.provider ?? "ollama",
+        host: input.voice?.normalizer?.host ?? "http://localhost:11434",
+        model: input.voice?.normalizer?.model ?? "superwhisper/s1-mini",
+        prompt:
+          input.voice?.normalizer?.prompt ??
+          "Clean up this voice transcript. Remove filler words (um, uh, like), fix punctuation and casing, and return ONLY the concise prompt text. Do not add commentary.\n\nTranscript:\n{text}",
+      },
     },
   }
 }

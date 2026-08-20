@@ -28,6 +28,7 @@ import { ApprovalInspector } from "../../routes/session/approval-inspector"
 import { DialogMessage } from "../../routes/session/dialog-message"
 import { ARCANA_BASE_MODE, useBindings } from "../../keymap"
 import { usePromptRef } from "../../context/prompt"
+import { useVoice } from "../../context/voice"
 import { useSDK } from "../../context/sdk"
 import { useClipboard } from "../../context/clipboard"
 import { useToast } from "../../ui/toast"
@@ -42,10 +43,22 @@ export function CommandSpineShell(props: ShellProps) {
   const dialog = useDialog()
   const route = useRoute()
   const promptRef = usePromptRef()
+  const voice = useVoice()
   const sdk = useSDK()
   const dims = useTerminalDimensions()
   const [escapeStage, setEscapeStage] = createSignal<0 | 1 | 2>(0)
   let escapeResetTimer: ReturnType<typeof setTimeout> | undefined
+
+  // Voice input is session-local: cancel any active recording when the shell
+  // unmounts or the operator switches to another session.
+  onCleanup(() => voice.cancel())
+  createEffect((prevSessionID?: string) => {
+    const current = props.sessionID
+    if (prevSessionID !== undefined && prevSessionID !== current) {
+      voice.cancel()
+    }
+    return current
+  })
 
   const advanceEscape = () => {
     const next = escapeStage() + 1
