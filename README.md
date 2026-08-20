@@ -5,14 +5,6 @@
 [![npm](https://img.shields.io/npm/v/arcana-ai?label=npm)](https://www.npmjs.com/package/arcana-ai)
 [![license](https://img.shields.io/badge/license-MIT%20%2B%20Commercial-blue)](LICENSE)
 
-## vs OpenCode
-
-Arcana began as an OpenCode fork. It's now faster, leaner, and more capable.
-
-<p align="center">
-  <img src="docs/benchmark.svg" alt="arcana vs opencode benchmark" width="720">
-</p>
-
 ```sh
 arcana doctor            # check system health
 arcana run "query"       # agent session / TUI
