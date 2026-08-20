@@ -453,3 +453,20 @@ Master spec Parts I–IV (architecture/roadmap)
 | AUD-23 Approval routing model + REVOKE lifecycle | COMPLETE | approval-routing.ts (LOCAL_TUI/DESKTOP_PREFERRED/DESKTOP_REQUIRED/CENTRAL_REQUIRED, policy-driven); REVOKE (PENDING/APPROVED -> INVALIDATED, zero execution path); surface-bound routing gate in approval/command.ts; 17 core routing/lifecycle tests + 15 engine gate tests | - |
 | AUD-24 Runtime/Desktop API contract | COMPLETE (pre-release) | Runtime API mounted (/approvals, approve/deny/revoke, /sessions, /proofs, /desktop/heartbeat); operator identity from server context; exact-request revalidation; OpenAPI contracts/approval-api.v1.yaml; doc docs/RUNTIME-API-CONTRACT.md; 19 engine approval tests | Desktop client implementation not yet built; the runtime surface it consumes is mounted (ADR-004 M1 local approval companion) |
 | AUD-25 Low-noise TUI governance projection | COMPLETE | Three visibility modes (conversation default / operations / forensic); healthy governance aggregated into compact lifecycle rows; forensic expands raw evidence; security-critical rows always visible; 18 TUI tests | - |
+
+## AUD-3x: Performance audit (2026-08-20)
+
+Comprehensive memory, CPU, and database performance audit. Full results in `docs/STATUS.md` Performance audit section.
+
+| Task | Status | Evidence | Blockers |
+|---|---|---|---|
+| AUD-31 Fix unbounded caches (`fileCache`, `validatorCache`, `lazy-loader`) | PENDING | `config.ts:46`, `validate.ts:4`, `lazy-loader.ts:1` | — |
+| AUD-32 Replace unbounded PubSub/Queue with bounded | PENDING | `event.ts:185,198`, `native-runtime.ts:107`, `pty.ts:225` | — |
+| AUD-33 Fix event listener leaks in TUI | PENDING | `project.tsx:70`, `session/index.tsx:621,673,698,712` | — |
+| AUD-34 Fix N+1 query in ClaimStore | PENDING | `claim-store.ts:74-84` | — |
+| AUD-35 Add pagination to unbounded queries | PENDING | `stats.ts:85`, `fence.ts:15`, `project.tsx:366`, `event-store.ts:279` | — |
+| AUD-36 Limit concurrency to reasonable values | PENDING | 56 instances of `concurrency: "unbounded"` | — |
+| AUD-37 Fix O(n²) path deduplication | PENDING | `spine-mapper.ts:2129` | — |
+| AUD-38 Add eviction to in-memory stores | PENDING | `grant-store.ts`, `scoped-approval.ts` | — |
+| AUD-39 Optimize JSON serialization loops | PENDING | `compaction.ts:498-517` | — |
+| AUD-40 Consolidate TUI memos | PENDING | `which-key.tsx` (30+ memos) | — |

@@ -61,6 +61,7 @@ satisfy the user outcome.
 - Validate Linux production behavior.
 - Publish a stable TypeScript SDK against the frozen runtime contract.
 - Promote the verified implementation line to the repository default branch.
+- **Performance hardening** (AUD-31..40): Fix unbounded caches, replace unbounded queues with bounded, fix event listener leaks, optimize N+1 queries, add pagination, limit concurrency. See `docs/TASKS.md` AUD-3x section.
 
 ## Later — preserved, not active
 

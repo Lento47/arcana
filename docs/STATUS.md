@@ -33,6 +33,7 @@ secondary; never edit the mirror independently.
 | Release version | pre-release builds only (`0.0.0-phase-d-implementation-*`) |
 | Last verification date | 2026-08-09 (freeze-evidence CI at `0501f33c`: engine 4365 pass / 8 fail / 38 skip / 4412 tests; TUI 819 pass / 0 fail; core 1465 pass / 0 fail; Arcana CLI 124 pass / 0 fail; SDK 34 pass / 0 fail — per-suite detail in `docs/CURRENT-STATE.json`; the engine failures are the CI flake class (spine hover/right-click, ReasoningPart wrap, DiffViewerFileTree), green on local Windows re-runs) |
 | Supported platforms | Windows 10/11 (primary, tested); Linux (D-6A-L identity scaffold; live validation pending) |
+| Performance audit | 2026-08-20 — 7 critical, 14 medium, 18 low issues identified; see Performance Audit section below |
 
 ## Milestone matrix
 
@@ -47,6 +48,46 @@ secondary; never edit the mirror independently.
 | TUI-1 | Historical independent tag (`arcana-tui-1-governance-observability`); not in current branch ancestry |
 | TUI-2 — Interactive Authority Control | FROZEN (`arcana-tui-2-interactive-authority-control`) |
 | TUI-2.1 — Production Integration + Polish | MOUNTED, AUTOMATED GREEN (TUI 787 tests, 0 fail); freeze NOT AUTHORIZED. F-22..F-28 manual items verified per the 2026-08-02 status: daemon respawn on idle-stop (F-22), approval inspector + spine keys (F-23), `v` inspect for any approval state + guidance toast (F-24), Esc always leaves the composer without interrupting (F-25), Esc inert on ACTION GATES (F-26), spine navigation + `v` inspection available while a gate is open (F-27), permission-gate `v` inspector (F-28), plus contract admission, tool execution, governance aggregation, proof axes, approval via gate, denial with zero effects, restart durability. Automated validation for approval lifecycle via spine keys, routing matrices, live stream protocol, and performance is DONE via merged PR #49 (2026-08-03). Remaining: the manual validation phases per TUI-2.1-MANUAL-SMOKE-TEST.md plus human freeze sign-off |
+
+## Performance audit (2026-08-20)
+
+Comprehensive memory, CPU, and database performance audit completed. Full audit covers security model (A), TUI rendering (A), database (B+), memory (B), CPU (B), project structure (A-).
+
+### Critical issues (7)
+
+| # | Category | Issue | File | Fix |
+|---|----------|-------|------|-----|
+| 1 | Memory | `fileCache` TTL bypass in `cachedExistsSync` | `engine/src/config/config.ts:46` | Fix TTL check |
+| 2 | Memory | `validatorCache` never evicts heavy AJV validators | `engine/src/workflow/validate.ts:4` | Add LRU eviction |
+| 3 | Memory | `PubSub.unbounded` in event system | `core/src/event.ts:185,198` | `PubSub.bounded(4096)` |
+| 4 | Memory | `Queue.unbounded` in LLM runtime | `engine/src/session/llm/native-runtime.ts:107` | `Queue.bounded(1024)` |
+| 5 | Memory | Event listener leaks without cleanup | `tui/src/context/project.tsx:70`, `tui/src/routes/session/index.tsx` | Add `onCleanup` |
+| 6 | Database | N+1 query in ClaimStore | `engine/src/session/epistemic/claim-store.ts:74-84` | Use JOIN queries |
+| 7 | CPU | O(n²) path deduplication | `tui/src/shell/command-spine/spine-mapper.ts:2129` | Use `Set` |
+
+### Medium issues (14)
+
+- 56 instances of `concurrency: "unbounded"` across engine (limit to 10)
+- 4 unbounded database queries without `.limit()` (`stats.ts:85`, `fence.ts:15`, `project.tsx:366`, `event-store.ts:279`)
+- LSP client 6 unbounded Maps (`lsp/client.ts:137-142`)
+- In-memory stores without eviction (`grant-store.ts`, `scoped-approval.ts`)
+- JSON serialization loops in `compaction.ts:498-517`
+- Double array iteration in `spine-mapper.ts:2029-2035`
+- Excessive memoization in `which-key.tsx` (30+ memos)
+
+### Low issues (18)
+
+- TUI rendering low-severity issues (10): stale closure in `dedupeFilePaths`, `Date.now()` fallback in `resolveToolState`, hash stride collision risk, `ShimmerText` interval timing, RGBA mutation in spinner trail, `runState` missing-status handling, `structuredClone` on KV write, KV read error swallowing, no KV schema migration, narrow-terminal prose width
+- Project structure gaps (5): 15 packages lack READMEs, no test coverage reporting, version inconsistencies
+- Security informational (2): clock dependency in PDP, `Math.random()` for non-critical event IDs
+
+### Recommendations
+
+**Immediate:** Add eviction to `fileCache`, `validatorCache`, `lazy-loader`; replace `PubSub.unbounded` → `PubSub.bounded(4096)`; add `onCleanup` to leaked event listeners.
+
+**Next sprint:** Fix N+1 query in `claim-store.ts`; add `.limit()` to unbounded queries; replace `concurrency: "unbounded"` with `10`; fix O(n²) path deduplication.
+
+**Later:** Consolidate TUI memos; add memory monitoring; optimize JSON serialization.
 
 ## Product tracks and roadmap (2026-08-02)
 
