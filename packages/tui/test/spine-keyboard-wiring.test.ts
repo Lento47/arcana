@@ -68,10 +68,17 @@ describe("spine keyboard wiring source contract (F-24..F-28)", () => {
     expect(shellSource).toContain("priority: 2")
   })
 
-  test("permission gates own their mode and decision keys", () => {
-    expect(permissionSource).toContain('const PERMISSION_MODE = "permission"')
-    expect(permissionSource).toContain("modeStack.push(PERMISSION_MODE)")
-    expect(permissionSource.split("mode: PERMISSION_MODE").length - 1).toBeGreaterThanOrEqual(2)
+  test("permission gates override base-mode decision keys at priority 10", () => {
+    // The gate must fight in the shared base mode (where the spine/composer live)
+    // rather than push a private mode that can be lost when the mode stack is
+    // not registered for the current keymap. Priority 10 outranks the spine
+    // entry toggle at priority 1, so Enter confirms the gate instead of expanding
+    // a message.
+    expect(permissionSource).toContain("ARCANA_BASE_MODE")
+    expect(permissionSource).toContain("mode: ARCANA_BASE_MODE")
+    expect(permissionSource.split("priority: 10").length - 1).toBeGreaterThanOrEqual(2)
+    expect(permissionSource).not.toContain("PERMISSION_MODE")
+    expect(permissionSource).not.toContain("modeStack.push")
   })
 
   test("the composer blurs on unmount so gate keys cannot be stolen", () => {
