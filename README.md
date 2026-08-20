@@ -22,13 +22,18 @@ Missing evidence is shown as missing. It is never painted as healthy.
 [![npm](https://img.shields.io/npm/v/arcana-ai?label=npm)](https://www.npmjs.com/package/arcana-ai)
 [![license](https://img.shields.io/badge/license-MIT%20%2B%20Commercial-blue)](LICENSE)
 
-## vs OpenCode
+## Key capabilities
 
-Arcana began as an OpenCode fork. It's now faster, leaner, and more capable.
+- **Governing Autonomy**: The engine makes deterministic decisions based on immutable policies
+- **Proof Recording**: Every execution is cryptographically recorded and verifiable
+- **Operator Console**: Full TUI interface for agent management and oversight
+- **Capability-Based Security**: No ambient authority, precise and revocable permissions
+- **Memory & Learning**: Persistent state and knowledge accumulation
+- **Multi-Channel Gateway**: Telegram, Discord, Slack, WhatsApp integration
+- **Scheduled Autonomy**: Cron-based agent jobs and workflows
+- **Plugin Architecture**: 30+ extension hooks for custom tools and capabilities
 
-<p align="center">
-  <img src="benchmark.svg" alt="arcana vs opencode benchmark" width="720">
-</p>
+## Core Commands
 
 ```sh
 arcana doctor            # check system health
@@ -40,6 +45,10 @@ arcana providers         # manage provider credentials
 arcana session list      # past sessions
 arcana stats             # usage stats
 arcana serve             # local headless server (loopback by default)
+arcana gateway           # start gateway service (Telegram, Discord, Slack, WhatsApp)
+arcana cron add          # schedule autonomous jobs
+arcana memory search     # search persistent memory
+arcana skills list       # list available skills
 ```
 
 **Docs:** [arcana.otnelhq.com/docs](https://arcana.otnelhq.com/docs) · in-repo campaign docs: [STATUS](docs/STATUS.md) · [TASKS](docs/TASKS.md) · [BLOCKERS](docs/BLOCKERS.md) · [COMPLETION-REPORT](docs/COMPLETION-REPORT.md) · [FREEZE-RELEASE](docs/FREEZE-RELEASE.md)
@@ -278,6 +287,8 @@ Arcana builds on incredible open-source work:
 - **[SolidJS](https://solidjs.com)** + **[OpenTUI](https://github.com/opentui/core)** — reactive UI framework + terminal rendering engine.
 - **[AI SDK](https://sdk.vercel.ai)** — unified LLM provider interface (OpenAI, Anthropic, Google, Bedrock, and 30+ more).
 - 174 skills from the open-source community across 28 categories.
+
+Full credits: [CREDITS.md](CREDITS.md)
 
 All arcana modifications are MIT-licensed and upstreamable.
 
