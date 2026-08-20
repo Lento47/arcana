@@ -323,7 +323,10 @@ export function useSpineProjection(props: ShellProps, input: {
     if (gateEntries().length) return "stop"
     const sessionStatus = props.sessionStatus?.()
     const statusType = sessionStatus?.type
-    const sessionActive = statusType === "busy" || statusType === "retry"
+    // Only show "working" when both pending AND session is active.
+    // Stale messages without time.completed shouldn't block idle transition.
+    // If sessionStatus is undefined, treat session as active (backward compatible).
+    const sessionActive = !statusType || statusType === "busy"
     if (props.pending() && sessionActive) return "working"
     return "idle"
   })
