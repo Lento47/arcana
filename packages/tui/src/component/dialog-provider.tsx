@@ -544,16 +544,19 @@ async function registerCustomProvider(input: {
     })
     if (error) return { ok: false, models: 0 }
   } catch {
+    // Never propagate: callers report failure through toasts, not crashes.
     return { ok: false, models: 0 }
   }
   return { ok: true, models: modelIDs.length }
 }
+export { registerCustomProvider }
 function ApiMethod(props: ApiMethodProps) {
   const dialog = useDialog()
   const sdk = useSDK()
   const sync = useSync()
   const toast = useToast()
   const { theme } = useTheme()
+  const [busy, setBusy] = createSignal(false)
   const description = ({
     arcana: (
       <box gap={1}>
@@ -583,8 +586,11 @@ function ApiMethod(props: ApiMethodProps) {
       title={props.title}
       placeholder="API key"
       description={description as any}
+      busy={busy()}
+      busyText={props.custom && props.baseURL ? "Registering provider…" : undefined}
       onConfirm={async (value) => {
-        if (!value) return
+        if (!value || busy()) return
+        setBusy(true)
         try {
           const { error } = await sdk.client.auth.set({
             providerID: props.providerID,
@@ -598,14 +604,12 @@ function ApiMethod(props: ApiMethodProps) {
             toast.show({ variant: "error", message: `Failed to save key: ${errorMessage(error)}` })
             return
           }
-          await sdk.client.instance.dispose()
-          await sync.bootstrap()
-        } catch (err) {
-          toast.show({ variant: "error", message: `Failed to save key: ${err instanceof Error ? err.message : String(err)}` })
-          return
-        }
-        if (props.custom && !sync.data.provider_next.all.some((provider) => provider.id === props.providerID)) {
-          if (props.baseURL) {
+
+          const known = sync.data.provider_next.all.some((provider) => provider.id === props.providerID)
+
+          // URL-derived custom provider: register into global config FIRST, then
+          // do ONE dispose/bootstrap so the reload picks up key + config together.
+          if (props.custom && !known && props.baseURL) {
             const registered = await registerCustomProvider({
               sdk: sdk.client,
               providerID: props.providerID,
@@ -620,8 +624,9 @@ function ApiMethod(props: ApiMethodProps) {
               dialog.clear()
               return
             }
+            await sdk.client.instance.dispose()
+            await sync.bootstrap()
             if (registered.models > 0) {
-              await sync.bootstrap()
               dialog.replace(() => <DialogModel providerID={props.providerID} />)
               return
             }
@@ -632,14 +637,28 @@ function ApiMethod(props: ApiMethodProps) {
             dialog.clear()
             return
           }
+
+          await sdk.client.instance.dispose()
+          await sync.bootstrap()
+
+          if (props.custom && !known) {
+            toast.show({
+              variant: "info",
+              message: `Saved credential for ${props.providerID}. Configure it in arcana.json to use it.`,
+            })
+            dialog.clear()
+            return
+          }
+          dialog.replace(() => <DialogModel providerID={props.providerID} />)
+        } catch (err) {
+          // Never let a failure die silently — every path must surface here.
           toast.show({
-            variant: "info",
-            message: `Saved credential for ${props.providerID}. Configure it in arcana.json to use it.`,
+            variant: "error",
+            message: `Provider setup failed: ${err instanceof Error ? err.message : String(err)}`,
           })
-          dialog.clear()
-          return
+        } finally {
+          setBusy(false)
         }
-        dialog.replace(() => <DialogModel providerID={props.providerID} />)
       }}
     />
   )

@@ -12,6 +12,7 @@ import {
   discoverModelIDs,
   invalidProviderIDMessage,
   parseCustomProviderInput,
+  registerCustomProvider,
 } from "../src/component/dialog-provider"
 
 describe("deriveProviderIDFromHost", () => {
@@ -129,6 +130,61 @@ describe("customProviderConfigBlock", () => {
     const block = customProviderConfigBlock("https://api.tokenrouter.com/v1", [])
     expect(block).not.toHaveProperty("models")
     expect(block.options.baseURL).toBe("https://api.tokenrouter.com/v1")
+  })
+})
+
+describe("registerCustomProvider", () => {
+  const originalFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  function stubSdk(updateImpl: (args: { config: any }) => Promise<{ error?: unknown }>) {
+    return { global: { config: { update: updateImpl } } } as any
+  }
+
+  test("success returns ok + discovered model count and sends the provider block", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ data: [{ id: "m1" }, { id: "m2" }] }), { status: 200 })) as any
+    let sent: { config: { provider: Record<string, any> } } | undefined
+    const res = await registerCustomProvider({
+      sdk: stubSdk(async (args) => {
+        sent = args as any
+        return { error: undefined }
+      }),
+      providerID: "tokenrouter",
+      baseURL: "https://api.tokenrouter.com/v1",
+      apiKey: "sk-test",
+    })
+    expect(res).toEqual({ ok: true, models: 2 })
+    const block = sent!.config.provider["tokenrouter"]
+    expect(block.npm).toBe("@ai-sdk/openai-compatible")
+    expect(block.options.baseURL).toBe("https://api.tokenrouter.com/v1")
+    expect(block.models).toEqual({ m1: {}, m2: {} })
+  })
+
+  test("config.update throwing is contained to ok:false — never propagates", async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: [] }), { status: 200 })) as any
+    const res = await registerCustomProvider({
+      sdk: stubSdk(async () => {
+        throw new Error("engine exploded")
+      }),
+      providerID: "tokenrouter",
+      baseURL: "https://api.tokenrouter.com/v1",
+      apiKey: "sk-test",
+    })
+    expect(res).toEqual({ ok: false, models: 0 })
+  })
+
+  test("endpoint error field is contained to ok:false", async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: [{ id: "m1" }] }), { status: 200 })) as any
+    const res = await registerCustomProvider({
+      sdk: stubSdk(async () => ({ error: { message: "bad request" } })),
+      providerID: "tokenrouter",
+      baseURL: "https://api.tokenrouter.com/v1",
+      apiKey: "sk-test",
+    })
+    expect(res).toEqual({ ok: false, models: 0 })
   })
 })
 
