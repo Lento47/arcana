@@ -13,7 +13,6 @@
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { GovernanceEventRecord } from "../types"
 import type { SpineApprovalSnapshot } from "./spine-types"
-import type { ApprovalSnapshotDetail } from "./approval-http-bridge"
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -135,30 +134,4 @@ export function changeForExecuted(snapshot: Pick<SpineApprovalSnapshot, "tool" |
 export function shortHash(hash: string | undefined, length = 8): string {
   if (!hash) return "unavailable"
   return hash.length <= length ? hash : `${hash.slice(0, 4)}…${hash.slice(-4)}`
-}
-
-/**
- * PR #86 verified server detail overlaid onto the event-derived snapshot.
- *
- * The engine's detail endpoint returns an immutable, hash-verified
- * ApprovalSnapshotDetail. Verified fields win; gaps are filled from the
- * governance-event-derived snapshot so the inspector never loses the tool
- * name or change evidence when the engine has no snapshot (older records).
- */
-export function snapshotFromDetail(
-  detail: ApprovalSnapshotDetail,
-  base?: SpineApprovalSnapshot,
-): SpineApprovalSnapshot {
-  return {
-    ...base,
-    requestHash: detail.requestHash,
-    available: true,
-    action: detail.action,
-    capability: detail.capability ?? base?.capability,
-    principal: detail.principalId ?? base?.principal,
-    policy: detail.policyVersion ?? base?.policy,
-    route: detail.resource ?? base?.route,
-    risk: detail.riskClass ?? base?.risk,
-    contractRevision: detail.contractRevision ?? base?.contractRevision,
-  }
 }

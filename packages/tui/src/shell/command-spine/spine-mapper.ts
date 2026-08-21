@@ -503,12 +503,6 @@ function cacheReadOutput(key: string, output: string, result: ParsedReadBody) {
   readParseBytes += size
 }
 
-/** @deprecated use parseReadToolOutput */
-function stripReadXml(output: string): { body: string; reminders: string[] } {
-  const parsed = parseReadToolOutput(output)
-  return { body: parsed.body, reminders: parsed.reminders }
-}
-
 function formatInspectFileSummary(path: string, meta: Pick<ParsedReadBody, "lineStart" | "lineEnd" | "totalLines">): string {
   const { lineStart, lineEnd, totalLines } = meta
   if (lineStart !== undefined && lineEnd !== undefined) {
@@ -1881,20 +1875,21 @@ function assistantTextLabel(_message: Message, _kind: "plan" | "ok") {
   return APP_NAME
 }
 function shouldAddTrailingOk(entries: SpineEntry[], message: Message): boolean {
-  const messageEntries = entries.filter((e) => e.id.startsWith(message.id))
+  let hasMessageEntry = false
+  let hasToolEntry = false
+  let hasPending = false
+  let hasFailed = false
+  for (const entry of entries) {
+    if (!entry.id.startsWith(message.id)) continue
+    hasMessageEntry = true
+    if (entry.kind === "run" || entry.kind === "patch" || entry.kind === "inspect" || entry.kind === "agent") {
+      hasToolEntry = true
+    }
+    if (entry.receipt?.status === "pending") hasPending = true
+    if (entry.kind === "fail" || entry.receipt?.status === "fail") hasFailed = true
+  }
 
-  if (messageEntries.length === 0) return false
-
-  const hasToolEntry = messageEntries.some(
-    (e) => e.kind === "run" || e.kind === "patch" || e.kind === "inspect" || e.kind === "agent",
-  )
-  if (!hasToolEntry) return false
-
-  const hasPending = messageEntries.some((e) => e.receipt?.status === "pending")
-  if (hasPending) return false
-
-  const hasFailed = messageEntries.some((e) => e.kind === "fail" || e.receipt?.status === "fail")
-  if (hasFailed) return false
+  if (!hasMessageEntry || !hasToolEntry || hasPending || hasFailed) return false
 
   if ("finish" in message && message.finish) {
     if (message.finish === "error" || message.finish === "content-filter") return false
@@ -1919,10 +1914,15 @@ function assistantMessagePartsToEntries(
   const textBeforeTool: TextPart[] = []
   const textAfterTool: TextPart[] = []
 
-  // Map each task tool part to its child session id so agent/subtask entries
-  // link to their own subsession instead of all sharing childSessionIDs[0].
+  // One pass: task session ids + native reasoning. Patch evidence is a
+  // separate pass because it only cares about completed/error patch tools.
   const taskSessionIdByPartId = new Map<string, string>()
+  let hasNativeReasoning = false
   for (const p of parts) {
+    if (p.type === "reasoning") {
+      hasNativeReasoning = true
+      continue
+    }
     if (p.type === "tool" && (p.state.status === "completed" || p.state.status === "running")) {
       const sid = taskToolSessionID(p)
       if (sid) taskSessionIdByPartId.set(p.id, sid)
@@ -1931,11 +1931,6 @@ function assistantMessagePartsToEntries(
 
   // Snapshot patch parts only store {hash, files}; hydrate/suppress using tool diffs.
   const siblingPatchEvidence = collectSiblingPatchEvidence(parts)
-
-  // When native reasoning parts exist, skip inline-thinking extraction from
-  // text parts to avoid duplicate "Thought" entries. Some providers emit both
-  // a reasoning stream AND the same content as <think> tags in text.
-  const hasNativeReasoning = parts.some((p) => p.type === "reasoning")
 
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]

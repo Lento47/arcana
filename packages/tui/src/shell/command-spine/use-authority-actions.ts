@@ -8,7 +8,6 @@ import {
   approvalActionBindingsEnabled as approvalActionBindingsEnabledPolicy,
   approvalEscapeEnabled as approvalEscapeEnabledPolicy,
   approvalInspectionAllowed,
-  isApprovalTerminal,
 } from "./approval-spine-adapter"
 import type { ApprovalShellController } from "./approval-shell-controller"
 
@@ -170,30 +169,17 @@ export function useAuthorityActions(input: {
     }
   })
 
-  // Clear inspector when approval becomes terminal (kept open read-only).
+  // Clear inspector when the approval record vanishes entirely (e.g. session
+  // switch). Terminal approvals intentionally keep the inspector open
+  // read-only so the operator can see the terminal state.
   createEffect(() => {
     const inspectorId = input.inspectorApprovalId()
     if (!inspectorId) return
     const approval = approvals().find(a => a.approvalId === inspectorId)
     if (!approval) {
       input.setInspectorApprovalId(undefined)
-      return
-    }
-    if (isApprovalTerminal(approval)) {
-      // Keep inspector open read-only; terminal state visible in inspector.
     }
   })
-
-  // A parked durable approval keeps the turn BUSY while it waits. Same
-  // affordance-based rule as the inline shell logic: only still-actionable
-  // approvals (a/d available) count as pending operator work.
-  const hasPendingApproval = createMemo(() =>
-    approvals().some(
-      (a) =>
-        approvalActionAvailable(getAffordancesForApproval(a), "approve") ||
-        approvalActionAvailable(getAffordancesForApproval(a), "deny"),
-    ),
-  )
 
   return {
     approvalSubmitting,
@@ -209,6 +195,5 @@ export function useAuthorityActions(input: {
     denyFocused,
     inspectFocused,
     closeInspectorOrClearSelection,
-    hasPendingApproval,
   }
 }

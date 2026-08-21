@@ -261,6 +261,8 @@ export function SpineEntry(props: {
   /** Agent rows: called when a dive target is unresolved (no child link yet). */
   onResolveChild?: () => void
   sessionID?: string  // Parent session ID for child lookup
+  /** Newest child of the parent session, computed once in the projection. */
+  fallbackChildSessionID?: string
   /** Measured markdown wrap width (terminal minus gutters). */
   contentWidth?: number
   /** Think-body wrap width (slightly different chrome tax). */
@@ -284,14 +286,13 @@ export function SpineEntry(props: {
   const isAgentEntry = createMemo(() => kind() === "agent")
 
   // Lookup child sessionID even when source.sessionID isn't set yet (running subagents).
+  // The session list is scanned once in useSpineProjection (stamp + fallback),
+  // not per row.
   const childSessionID = createMemo(() => {
     const direct = entry().source?.sessionID
     if (direct) return direct
-    if (!isAgentEntry() || !props.sessionID) return undefined
-    const children = sync.data.session
-      ?.filter((s: any) => s.parentID === props.sessionID)
-      .toSorted((a: any, b: any) => (b.time?.created ?? 0) - (a.time?.created ?? 0))
-    return children?.[0]?.id
+    if (!isAgentEntry()) return undefined
+    return props.fallbackChildSessionID
   })
 
   // PR5: the row render boundary is a discriminated union (spine-entry-view).

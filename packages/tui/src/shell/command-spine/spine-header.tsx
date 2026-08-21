@@ -27,13 +27,14 @@ function valueLimit(segment: StatusSegment, layout: SpineLayout): number {
   if (segment.key === "agent") return layout === "wide" ? 14 : 11
   if (segment.key === "session") return layout === "wide" ? 10 : 9
   if (segment.key === "state") return 9
+  if (segment.key === "drive") return 10
   if (segment.key === "ctx") return 8
   return layout === "wide" ? 16 : 12
 }
 
 function prioritizeSegments(segments: StatusSegment[], layout: SpineLayout): StatusSegment[] {
   const primary = segments.filter((s) => s.key !== "path" && s.key !== "tok" && s.key !== "proj" && s.key !== "mode")
-  const order = new Map(["branch", "agent", "model", "ctx", "state", "session"].map((key, index) => [key, index]))
+  const order = new Map(["branch", "agent", "model", "ctx", "state", "drive", "session"].map((key, index) => [key, index]))
   const ranked = [...primary].sort((a, b) => (order.get(a.key) ?? 99) - (order.get(b.key) ?? 99))
   if (layout === "minimal")
     return ranked

@@ -11,7 +11,7 @@ export type { TurnLifecycle, AssistantSegmentKind } from "./turn-lifecycle"
 
 // TUI-2.1A: Production mounting
 export { productionInputToSpineEntry } from "./production-spine-input"
-export type { ProductionSpineInput, MessageView, GovernanceView } from "./production-spine-input"
+export type { ProductionSpineInput, GovernanceView } from "./production-spine-input"
 export { createOrderingKey, compareOrderingKeys, createDedupeKey, dedupeKeyToString } from "./spine-ordering"
 export type { SpineOrderingKey, SpineDedupeKey } from "./spine-ordering"
 
@@ -32,7 +32,7 @@ export { HttpApprovalOperatorService } from "./approval-http-bridge"
 export type { HttpApprovalBridgeOptions } from "./approval-http-bridge"
 
 // TUI-2.1A: Production approval integration
-export { useApprovalIntegration, mergeSpineEntries } from "./approval-integration"
+export { useApprovalIntegration } from "./approval-integration"
 export type {
   ApprovalIntegrationInput,
   ApprovalIntegrationOutput,
@@ -68,4 +68,3 @@ export {
 } from "./spine-chrome"
 export { buildSpineInspection } from "./spine-inspector.ts"
 export type { SpineInspectionSection, SpineInspectionInput } from "./spine-inspector.ts"
-export { SpineInspector } from "./spine-inspector.tsx"

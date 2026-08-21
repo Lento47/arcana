@@ -17,6 +17,8 @@ export type SpineSegmentSource = {
   state?: string
   /** Working directory — shown on the header path line in wide/compact. */
   path?: string
+  /** Self-driven loop: "2/6", "on", "paused", "done". */
+  drive?: string | null
 }
 
 /**
@@ -46,6 +48,11 @@ export function buildStatusSegments(src: SpineSegmentSource): StatusSegment[] {
   if (src.state && src.state !== "idle") {
     const tone: StatusTone = src.state === "error" ? "error" : src.state === "retry" ? "warning" : "info"
     segments.push({ key: "state", label: "state", value: src.state, tone })
+  }
+  if (src.drive) {
+    const tone: StatusTone =
+      src.drive === "paused" ? "warning" : src.drive === "done" ? "success" : "info"
+    segments.push({ key: "drive", label: "drive", value: src.drive, tone })
   }
   if (src.sessionID) {
     segments.push({ key: "session", label: "session", value: src.sessionID, tone: "muted" })

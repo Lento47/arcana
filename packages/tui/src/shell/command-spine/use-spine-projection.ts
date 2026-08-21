@@ -23,6 +23,7 @@ import {
 import { collapseGovernanceEntries } from "./spine-governance-group"
 import { buildTrustStatus, eventGapFromTrace } from "./spine-trust"
 import { projectGovernedTally, projectSessionCharter } from "./session-charter"
+import { getSessionGoal } from "@arcana/core/session/goal"
 import { attachProofContinuations } from "./spine-proof-attach"
 
 // Cross-session cache: keyed by sessionID so back-switching to a session
@@ -69,14 +70,18 @@ export function useSpineProjection(props: ShellProps, input: {
   const sessionState = createMemo(() => getSessionCache(props.sessionID))
 
   // ── Header segments ──────────────────────────────────────────────
-  const lastAssistant = createMemo(() =>
-    props.messages().findLast((m): m is AssistantMessage => m.role === "assistant"),
-  )
-  const lastUsageAssistant = createMemo(() =>
-    props.messages().findLast(
+  const lastAssistant = createMemo(() => {
+    const fromProps = props.lastAssistant()
+    if (fromProps?.role === "assistant") return fromProps as AssistantMessage
+    return props.messages().findLast((m): m is AssistantMessage => m.role === "assistant")
+  })
+  const lastUsageAssistant = createMemo(() => {
+    const last = lastAssistant()
+    if (last && last.tokens.output > 0) return last
+    return props.messages().findLast(
       (m): m is AssistantMessage => m.role === "assistant" && m.tokens.output > 0,
-    ),
-  )
+    )
+  })
   const modelName = createMemo(() => {
     const last = lastAssistant()
     if (!last) return undefined
@@ -98,6 +103,19 @@ export function useSpineProjection(props: ShellProps, input: {
   })
   const headerSegments = createMemo(() => {
     const session = sync.data.session.find((s) => s.id === props.sessionID)
+    const goal = getSessionGoal(props.sessionID)
+    const meta = (session as { metadata?: Record<string, unknown> } | undefined)?.metadata
+    const used = typeof meta?.__arcana_drive_continuations === "number" ? meta.__arcana_drive_continuations : 0
+    const pending = (props.questions?.().length ?? 0) + (props.permissions?.().length ?? 0)
+    const busy = props.sessionStatus?.()?.type === "busy"
+    let drive: string | undefined
+    if (goal.status === "complete" || goal.status === "complete_unverified" || goal.status === "complete_pending_verify") {
+      drive = "done"
+    } else if (goal.status === "in_progress") {
+      if (pending > 0) drive = "paused"
+      else if (busy) drive = used > 0 ? `${used}/6` : "on"
+      else drive = "open"
+    }
     return buildStatusSegments({
       sessionID: props.sessionID,
       branch: sync.data.vcs?.branch,
@@ -105,6 +123,7 @@ export function useSpineProjection(props: ShellProps, input: {
       ctxPercent: ctxPercent(),
       state: props.sessionStatus?.()?.type,
       path: session?.directory,
+      drive,
     })
   })
 
@@ -138,6 +157,20 @@ export function useSpineProjection(props: ShellProps, input: {
   // Running subagents: the tool metadata has no sessionId yet, but the child
   // session exists in sync (parentID). Stamp it so Enter / click-to-dive and
   // the open-subagent button all resolve the child context reliably.
+  const fallbackChildSessionID = createMemo(() => {
+    const parentID = props.sessionID
+    let newest: string | undefined
+    let newestCreated = -1
+    for (const session of sync.data.session) {
+      if (session.parentID !== parentID) continue
+      const created = session.time?.created ?? 0
+      if (created >= newestCreated) {
+        newestCreated = created
+        newest = session.id
+      }
+    }
+    return newest
+  })
   const entriesWithChildSessions = createMemo(() =>
     stampAgentChildSessions({
       entries: entries().entries,
@@ -358,6 +391,7 @@ export function useSpineProjection(props: ShellProps, input: {
     thinkContentWidth,
     runState,
     getApprovalForEntry,
+    fallbackChildSessionID,
   }
 }
 
@@ -375,6 +409,15 @@ export function stampAgentChildSessions(input: {
   parentSessionID: string
 }): SpineEntry[] {
   const { entries, sessions, parentSessionID } = input
+  let needsStamp = false
+  for (const entry of entries) {
+    if (entry.kind === "agent" && !entry.source?.sessionID && entry.actor) {
+      needsStamp = true
+      break
+    }
+  }
+  if (!needsStamp) return entries
+
   const children = sessions.filter((s) => s.parentID === parentSessionID)
   if (children.length === 0) return entries
 

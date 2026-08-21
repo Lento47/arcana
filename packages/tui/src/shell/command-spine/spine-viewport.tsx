@@ -27,6 +27,7 @@ export function SpineViewport(props: {
   onNavigate: (sessionID: string) => void
   onResolveChild?: (entry: SpineEntry) => void
   sessionID?: string
+  fallbackChildSessionID?: string
   showScrollbar: boolean
   scrollAcceleration: ScrollAcceleration
   setScrollRef: (r: ScrollBoxRenderable) => void
@@ -92,6 +93,7 @@ export function SpineViewport(props: {
                     if (entry) props.onResolveChild?.(entry)
                   }}
                   sessionID={props.sessionID}
+                  fallbackChildSessionID={props.fallbackChildSessionID}
                 />
               </ErrorBoundary>
             )

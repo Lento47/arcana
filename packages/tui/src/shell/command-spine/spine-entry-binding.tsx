@@ -6,8 +6,6 @@ type SpineEntryProps = Parameters<typeof SpineEntry>[0]
 
 export type SpineEntryBindingProps = Omit<SpineEntryProps, "entry"> & {
   getEntry: Accessor<SpineEntryType | undefined>
-  /** Compatibility with shells that still use row refs for scroll positioning. */
-  nodeRef?: (...args: any[]) => void
 }
 
 /** Keeps a stable keyed row mounted while forwarding its latest entry object. */
@@ -16,7 +14,6 @@ export function SpineEntryBinding(props: SpineEntryBindingProps) {
     <Show when={props.getEntry()}>
       {(entry) => (
         <SpineEntry
-          {...({ nodeRef: props.nodeRef } as any)}
           entry={entry()}
           index={props.index}
           layout={props.layout}
@@ -28,6 +25,7 @@ export function SpineEntryBinding(props: SpineEntryBindingProps) {
           onNavigate={props.onNavigate}
           onResolveChild={props.onResolveChild}
           sessionID={props.sessionID}
+          fallbackChildSessionID={props.fallbackChildSessionID}
           contentWidth={props.contentWidth}
           thinkContentWidth={props.thinkContentWidth}
           gutterWidth={props.gutterWidth}

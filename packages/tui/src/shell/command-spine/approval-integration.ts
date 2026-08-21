@@ -130,27 +130,3 @@ export function useApprovalIntegration(
     getApprovalForEntry,
   }
 }
-
-// ─── Merge with deterministic ordering ───────────────────────────
-
-/**
- * Merge message entries, gate entries, and approval entries
- * with deterministic ordering. Use this in the shell's visibleEntries memo.
- */
-export function mergeSpineEntries(
-  messageEntries: SpineEntry[],
-  gateEntries: SpineEntry[],
-  approvalEntries: SpineEntry[],
-): SpineEntry[] {
-  // Deduplication by entry ID
-  const seen = new Set<string>()
-  const all: SpineEntry[] = []
-
-  for (const entry of [...messageEntries, ...gateEntries, ...approvalEntries]) {
-    if (seen.has(entry.id)) continue
-    seen.add(entry.id)
-    all.push(entry)
-  }
-
-  return all
-}

@@ -23,17 +23,8 @@ import type { GovernanceRunProof } from "../types"
 // ─── Input Union ──────────────────────────────────────────────────
 
 export type ProductionSpineInput =
-  | { source: "MESSAGE"; value: MessageView }
   | { source: "GOVERNANCE"; value: GovernanceView }
   | { source: "APPROVAL"; value: ApprovalRecord }
-
-export type MessageView = {
-  id: string
-  sessionId: string
-  role: string
-  timestamp: number
-  content: string
-}
 
 export type GovernanceView = {
   id: string
@@ -68,9 +59,6 @@ export function productionInputToSpineEntry(
 
     case "GOVERNANCE":
       return governanceToSpineEntry(input.value)
-
-    case "MESSAGE":
-      return messageToSpineEntry(input.value)
   }
 }
 
@@ -448,24 +436,4 @@ function formatRecordedAt(timestamp: number): string {
   if (!Number.isFinite(timestamp) || timestamp <= 0) return "unknown"
   const date = new Date(timestamp)
   return Number.isNaN(date.getTime()) ? "unknown" : date.toISOString()
-}
-
-function messageToSpineEntry(view: MessageView): SpineEntry {
-  return {
-    id: `message:${view.id}`,
-    index: 0,
-    elapsed: "",
-    kind: view.role === "assistant" ? "plan" : "ask",
-    glyph: view.role === "assistant" ? "✦" : "◆",
-    // T9: display-width truncation — the helper appends "…" only when it
-    // actually truncated, so no separate ellipsis flag is required.
-    summary: Locale.truncate(view.content, 120),
-    body: view.content,
-    collapsible: true,
-    expandedByDefault: false,
-    source: {
-      messageID: view.id,
-      kind: "message",
-    },
-  }
 }

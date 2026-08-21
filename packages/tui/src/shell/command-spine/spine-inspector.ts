@@ -11,7 +11,6 @@ import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { Message, Part, ToolPart } from "@arcana/sdk/v2"
 import type { GovernanceRunProof } from "../types"
 import type { SpineApprovalSnapshot, SpineEntry } from "./spine-types"
-import { shortHash } from "./approval-snapshot"
 import { projectSessionCharter } from "./session-charter"
 
 export type SpineInspectionSection = {
@@ -234,6 +233,3 @@ export function buildSpineInspection(input: SpineInspectionInput): SpineInspecti
 
   return sections
 }
-
-/** Short hash reuse so inspector headers and rows agree on formatting. */
-export { shortHash as inspectorShortHash }
