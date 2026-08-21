@@ -1182,6 +1182,22 @@ export type Info = Types.DeepMutable<Schema.Schema.Type<typeof Info>>
 
 const DefaultModelIDs = Schema.Record(Schema.String, Schema.String)
 
+/**
+ * True when a baseURL points at Arcana-owned proxy infrastructure. Requests
+ * to these hosts are license-metered; any other host is user BYOK territory
+ * and must never receive Arcana credentials (see resolveSDK proxy routing).
+ * Hostname-exact: lookalike hosts (…otnelhq.com.evil.io) are NOT trusted.
+ */
+export function isArcanaProxyBaseURL(base: unknown): boolean {
+  if (typeof base !== "string" || base === "") return false
+  try {
+    const host = new URL(base).hostname.toLowerCase()
+    return host === "proxy-arcana.otnelhq.com" || /^arcana-proxy\.[a-z0-9-]+\.workers\.dev$/.test(host)
+  } catch {
+    return false
+  }
+}
+
 export const ListResult = Schema.Struct({
   all: Schema.Array(Info),
   default: DefaultModelIDs,
@@ -1651,14 +1667,23 @@ export const layer = Layer.effect(
         // load apikeys
         const auths = yield* auth.all().pipe(Effect.orDie)
         const proxyKey = envs["ARCANA_PROXY_KEY"]
+        // A provider whose config declares its own (non-Arcana) baseURL is
+        // true BYOK: the user's stored key must load even when a proxy key is
+        // present — the proxy exists to meter keyless access, not to hijack
+        // user-supplied endpoints.
+        const hasDirectBaseURL = (providerID: string): boolean => {
+          const base = cfg.provider?.[providerID]?.options?.baseURL
+          return typeof base === "string" && base !== "" && !isArcanaProxyBaseURL(base)
+        }
         for (const [id, provider] of Object.entries(auths)) {
           const providerID = ProviderV2.ID.make(id)
           if (disabled.has(providerID)) continue
           if (provider.type === "api") {
-            // When proxy key is active, the arcana-proxy provider serves
-            // all models. auth.json API keys for individual providers
-            // route to the proxy host and fail license validation.
-            if (proxyKey) continue
+            // When proxy key is active, the arcana-proxy provider serves all
+            // models, and auth.json keys for Arcana-hosted providers would
+            // route to the proxy host and fail license validation — skip
+            // those. BYOK providers with their own baseURL keep their keys.
+            if (proxyKey && !hasDirectBaseURL(id)) continue
             mergeProvider(providerID, {
               source: "api",
               key: provider.key,
@@ -1865,13 +1890,22 @@ export const layer = Layer.effect(
         // key is present. This is the System B equivalent of the config-plugin's
         // Catalog URL redirect — ensures all requests carry the license key and
         // hit the proxy URL regardless of how the provider was loaded.
+        //
+        // BYOK exception: a provider with an explicit non-Arcana baseURL is the
+        // user's own endpoint. Injecting the proxy key there would leak Arcana
+        // credentials to a third party (and get them rejected as invalid) — so
+        // direct-BYOK providers keep their own key and their own host.
         const proxyKey = envs["ARCANA_PROXY_KEY"]
         if (proxyKey && model.api.npm === "@ai-sdk/openai-compatible") {
-          options["apiKey"] ??= proxyKey
-          // Prefer workers.dev; rewrite known-broken custom domain if present
-          const broken = typeof options["baseURL"] === "string" && /proxy\.arcana\.otnelhq\.com/i.test(options["baseURL"])
-          if (!options["baseURL"] || broken) {
-            options["baseURL"] = "https://proxy-arcana.otnelhq.com/v1"
+          const base = typeof options["baseURL"] === "string" ? options["baseURL"] : ""
+          const directBYOK = base !== "" && !isArcanaProxyBaseURL(base)
+          if (!directBYOK) {
+            options["apiKey"] ??= proxyKey
+            // Prefer workers.dev; rewrite known-broken custom domain if present
+            const broken = /proxy\.arcana\.otnelhq\.com/i.test(base)
+            if (!options["baseURL"] || broken) {
+              options["baseURL"] = "https://proxy-arcana.otnelhq.com/v1"
+            }
           }
         }
 
