@@ -1,7 +1,8 @@
 import { BoxRenderable, MouseButton, MouseEvent, RGBA, TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
-import { For, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js"
+import { For, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
 import { useTheme, tint } from "../context/theme"
+import { useKV } from "../context/kv"
 import { go, logo } from "../logo"
 
 export type LogoShape = {
@@ -559,6 +560,7 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
   const ctx = props.shape ? build(props.shape) : DEFAULT
   const { theme } = useTheme()
   const renderer = useRenderer()
+  const kv = useKV()
   const [rings, setRings] = createSignal<Ring[]>([])
   const [hold, setHold] = createSignal<Hold>()
   const [release, setRelease] = createSignal<Release>()
@@ -592,7 +594,10 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
     }
     if (!live) setRelease(undefined)
     if (live || hold() || release() || glow()) return
-    if (props.idle) return
+    // Ambient idle breathing honors the animations kill switch: a user press
+    // may have restarted the timer, but with animations off the loop must
+    // still wind down once the interactive effect finishes.
+    if (props.idle && kv.get("animations_enabled", true)) return
     stop()
   }
 
@@ -605,8 +610,18 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
     stop()
   })
 
-  onMount(() => {
-    if (!props.idle) return
+  // Ambient idle animation honors the global animations_enabled KV like every
+  // other decorative component (Scramble, ShimmerText, SigilSpinner). This is
+  // a reactive effect, NOT onMount: the KV store hydrates asynchronously, so a
+  // one-shot mount-time check would read the default (on) and permanently
+  // start the timer for users who disabled animations. The effect re-runs on
+  // hydration and on live toggles; start() is idempotent, stop() winds down.
+  createEffect(() => {
+    const enabled = kv.get("animations_enabled", true)
+    if (!props.idle || !enabled) {
+      stop()
+      return
+    }
     setNow(performance.now())
     start()
   })
