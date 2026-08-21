@@ -296,6 +296,18 @@ export function CommandSpineShell(props: ShellProps) {
   }
   // Enter on a focused subagent row dives into ITS OWN context (child session),
   // not the shared one. Space still toggles expand/collapse.
+  // Navigation policy: branch on handler EXISTENCE, never on its return value.
+  // The declared contract is `(sessionID: string) => void` (shell/types.ts), so
+  // a compliant void-returning handler must not fall through to the router —
+  // the old `handler?.() ?? route.navigate(...)` double-navigated in that case
+  // and only worked because today's handler happens to be async.
+  const navigateToChildSession = (sessionID: string): void => {
+    if (props.onNavigateToSession) {
+      props.onNavigateToSession(sessionID)
+      return
+    }
+    route.navigate({ type: "session", sessionID })
+  }
   const activateFocusedEntry = () => {
     const entry = navigation.resolveFocusedEntry(true)
     if (!entry) return
@@ -303,7 +315,7 @@ export function CommandSpineShell(props: ShellProps) {
       const sessionID = spineEntrySessionID(entry)
       if (sessionID) {
         dialog.clear()
-        props.onNavigateToSession?.(sessionID) ?? route.navigate({ type: "session", sessionID })
+        navigateToChildSession(sessionID)
         return
       }
       // No link yet (running card before the engine stamped metadata, or the
@@ -373,7 +385,7 @@ export function CommandSpineShell(props: ShellProps) {
     }
 
     dialog.clear()
-    props.onNavigateToSession?.(sessionID) ?? route.navigate({ type: "session", sessionID })
+    navigateToChildSession(sessionID)
   }
 
   // Keyboard-only spine mode (Phase 3/4): Esc ALWAYS leaves the composer so
@@ -555,9 +567,10 @@ export function CommandSpineShell(props: ShellProps) {
             entryFocused={navigation.entryFocused}
             onToggleEntry={toggleEntry}
             onFocusEntry={(entry) => navigation.focusEntry(entry)}
-            onNavigate={(sid) => props.onNavigateToSession?.(sid) ?? route.navigate({ type: "session", sessionID: sid })}
+            onNavigate={navigateToChildSession}
             onResolveChild={props.onResolveChild}
             sessionID={route.data?.type === "session" ? (route.data as any).sessionID : undefined}
+            fallbackChildSessionID={projection.fallbackChildSessionID()}
             showScrollbar={props.showScrollbar()}
             scrollAcceleration={props.scrollAcceleration}
             setScrollRef={scroll.setScrollRef}
