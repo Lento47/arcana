@@ -71,14 +71,17 @@ type ZonedItem = { key: string; label: string; hint?: string; tone: SessionChart
 
 const RUNTIME_DOT = "◆"
 const ZONE_SEP = "│"
+/** Context-zone glyphs: structure marks, not labels. */
+const CONTEXT_GLYPHS: Record<string, string> = { branch: "⎇" }
 
 /**
  * Option A header: three zones — runtime state (dot + word beside the
  * wordmark), governance (proof/contract/tally kept together so security
- * state never drowns), and a context breadcrumb trail. Zone separator `│`
- * (borderSubtle); within governance `·`; within context the breadcrumb
- * arrow `▸`. All separators render as space+glyph+space so the existing
- * 3-cell-per-separator width budget in fitHeaderStatusItems stays accurate.
+ * state never drowns), and a context breadcrumb trail of bare values.
+ * Zone separator `│` (borderSubtle); within governance `·`; within context
+ * the breadcrumb arrow `▸`. All separators render as space+glyph+space so
+ * the 3-cell-per-separator width budget in fitHeaderStatusItems stays
+ * accurate. Hints are intentionally dropped — arrows carry the structure.
  */
 function ZonedStatusLine(props: { items: ZonedItem[]; theme: Theme }) {
   const zones = createMemo(() => {
@@ -98,20 +101,26 @@ function ZonedStatusLine(props: { items: ZonedItem[]; theme: Theme }) {
               <span style={{ fg: props.theme.borderSubtle }}> {ZONE_SEP} </span>
             </Show>
             <For each={zone.items}>
-              {(item, index) => (
-                <>
-                  <Show when={index() > 0}>
-                    <span style={{ fg: props.theme.spineDiffMuted }}> {zone.inner} </span>
-                  </Show>
-                  <Show when={item.hint}>
-                    <span style={{ fg: props.theme.spineDiffMuted }}>{item.hint} </span>
-                  </Show>
-                  <Show when={zone.dot && index() === 0}>
-                    <span style={{ fg: item.fg ?? statusFg(item.tone, props.theme) }}>{RUNTIME_DOT} </span>
-                  </Show>
-                  <span style={{ fg: item.fg ?? statusFg(item.tone, props.theme) }}>{item.label}</span>
-                </>
-              )}
+              {(item, index) => {
+                const glyph = zone.kind === "context" ? CONTEXT_GLYPHS[item.key] : undefined
+                const text =
+                  zone.dot && index() === 0
+                    ? `${RUNTIME_DOT} ${item.label}`
+                    : glyph
+                      ? `${glyph} ${item.label}`
+                      : item.label
+                return (
+                  <>
+                    <Show when={zoneIndex() === 0 && index() === 0}>
+                      <span> </span>
+                    </Show>
+                    <Show when={index() > 0}>
+                      <span style={{ fg: props.theme.spineDiffMuted }}> {zone.inner} </span>
+                    </Show>
+                    <span style={{ fg: item.fg ?? statusFg(item.tone, props.theme) }}>{text}</span>
+                  </>
+                )
+              }}
             </For>
           </>
         )}
