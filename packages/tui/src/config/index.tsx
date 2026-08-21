@@ -105,6 +105,13 @@ export const Voice = Schema.Struct({
   auto_submit: Schema.optional(Schema.Boolean).annotate({
     description: "Insert normalized prompt and submit automatically (default true)",
   }),
+  hold_key: Schema.optional(Schema.String).annotate({
+    description: "Push-to-talk key to hold for voice input. Use 'alt' for either Alt key (default: alt)",
+  }),
+  hold_delay_ms: Schema.optional(Schema.Int.check(Schema.isGreaterThan(-1))).annotate({
+    description:
+      "How long the push-to-talk key must be held before the microphone activates (ms, default 0 = immediate)",
+  }),
   recorder: Schema.optional(VoiceRecorder),
   asr: Schema.optional(VoiceAsr),
   normalizer: Schema.optional(VoiceNormalizer),
@@ -121,7 +128,7 @@ export const LexiconVoice = Schema.Literals(["arcane", "plain"]).annotate({
 })
 export type LexiconVoice = Schema.Schema.Type<typeof LexiconVoice>
 
-export const StatusSegmentKey = Schema.Literals(["branch", "model", "ctx", "state", "session", "path"])
+export const StatusSegmentKey = Schema.Literals(["branch", "model", "ctx", "state", "drive", "session", "path"])
 export type StatusSegmentKey = Schema.Schema.Type<typeof StatusSegmentKey>
 
 export const Info = Schema.Struct({
@@ -177,6 +184,7 @@ export type Resolved = Omit<
   voice: {
     enabled: boolean
     auto_submit: boolean
+    hold_key: string
     recorder: {
       binary?: string
       args?: string[]
@@ -238,8 +246,9 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
       ai_suggestion: input.prompt?.ai_suggestion ?? false,
     },
     voice: {
-      enabled: input.voice?.enabled ?? false,
+      enabled: input.voice?.enabled ?? true,
       auto_submit: input.voice?.auto_submit ?? true,
+      hold_key: input.voice?.hold_key ?? "alt",
       recorder: {
         binary: input.voice?.recorder?.binary,
         args: input.voice?.recorder?.args,
