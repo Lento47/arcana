@@ -33,6 +33,71 @@ const PROVIDER_PRIORITY: Record<string, number> = {
 const CUSTOM_PROVIDER_OPTION_VALUE = "__ARCANA_custom_provider__"
 const CUSTOM_PROVIDER_ID = /^[a-z0-9][a-z0-9-_]*$/
 
+/**
+ * Derive a provider id from a base-URL hostname: drop the TLD, drop leading
+ * infrastructure labels (`api.` `www.` …), slugify what remains.
+ *   api.tokenrouter.com → tokenrouter · openrouter.ai → openrouter · x.ai → x
+ * Collisions with `existingIDs` get numeric suffixes (-2, -3, …).
+ */
+export function deriveProviderIDFromHost(
+  hostname: string,
+  existingIDs: ReadonlySet<string> = new Set(),
+): string | undefined {
+  const labels = hostname.toLowerCase().split(".").filter(Boolean)
+  if (labels.length === 0) return undefined
+  // The brand lives in the last label before the TLD; everything before it
+  // is infrastructure (api./www./v1.api./…). Single-label hosts use it as-is.
+  const slug = (labels.length > 1 ? labels[labels.length - 2] : labels[0])!
+    .replace(/[^a-z0-9-_]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+  if (!CUSTOM_PROVIDER_ID.test(slug)) return undefined
+  let id = slug
+  let n = 2
+  while (existingIDs.has(id)) id = `${slug}-${n++}`
+  return id
+}
+
+/**
+ * Accept either a short slug (`tokenrouter`) or a full base URL
+ * (`https://api.tokenrouter.com/v1`). URLs yield `{ id, baseURL }`; slugs
+ * behave exactly like the old normalize path (plus case-folding).
+ */
+export function parseCustomProviderInput(
+  value: string,
+  existingIDs: ReadonlySet<string> = new Set(),
+): { id: string; baseURL?: string } | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    let url: URL
+    try {
+      url = new URL(trimmed)
+    } catch {
+      return undefined
+    }
+    const id = deriveProviderIDFromHost(url.hostname, existingIDs)
+    if (!id) return undefined
+    const baseURL = `${url.origin}${url.pathname.replace(/\/+$/, "")}`
+    return { id, baseURL }
+  }
+
+  const id = normalizeCustomProviderID(trimmed.toLowerCase())
+  return id ? { id } : undefined
+}
+
+/** Error copy that names the actual problem instead of blaming the first character. */
+export function invalidProviderIDMessage(value: string): string {
+  const trimmed = value.trim()
+  if (/^https?:\/\//i.test(trimmed)) {
+    return `Couldn't derive a provider id from that URL. Try a short id like tokenrouter instead.`
+  }
+  const bad = [...new Set([...trimmed].filter((ch) => !/[a-z0-9\-_]/.test(ch)))]
+  const listed = bad.map((ch) => (ch === " " ? "space" : `"${ch}"`)).join(", ")
+  return `Provider ids use lowercase letters, numbers, hyphens, underscores${bad.length ? ` — found ${listed}` : ""}. Example: tokenrouter`
+}
+
 type ProviderOptionBase = {
   title: string
   value: string
@@ -116,26 +181,24 @@ export function createDialogProviderOptions() {
   const onboarded = useConnected()
   const proxyKey = useHasProxyKey()
 
-  async function promptCustomProviderID(): Promise<string | undefined> {
+  async function promptCustomProvider(): Promise<{ id: string; baseURL?: string } | undefined> {
     while (true) {
       const value = await DialogPrompt.show(dialog, "Other", {
-        placeholder: "Provider id",
+        placeholder: "Provider id or base URL",
         description: () => (
           <text fg={theme.textMuted}>
-            This only stores a credential. Configure the provider in arcana.json to use it. Press escape to cancel.
+            Short id like {"tokenrouter"} — or paste your provider's base URL (e.g. https://api.tokenrouter.com/v1)
+            and Arcana derives the rest. Press escape to cancel.
           </text>
         ),
       })
       if (value === null) return undefined
 
-      const providerID = normalizeCustomProviderID(value)
-      if (providerID) return providerID
+      const existing = new Set(sync.data.provider_next.all.map((provider) => provider.id))
+      const parsed = parseCustomProviderInput(value, existing)
+      if (parsed) return parsed
 
-      toast.show({
-        variant: "error",
-        message:
-          "Provider ids must start with a lowercase letter or number and only use lowercase letters, numbers, hyphens, and underscores. Press escape to cancel.",
-      })
+      toast.show({ variant: "error", message: invalidProviderIDMessage(value) })
     }
   }
 
@@ -176,9 +239,11 @@ export function createDialogProviderOptions() {
             description: provider.description,
             category: provider.category,
             async onSelect() {
-              const providerID = await promptCustomProviderID()
-              if (!providerID) return
-              return dialog.replace(() => <ApiMethod providerID={providerID} title="API key" custom />)
+              const parsed = await promptCustomProvider()
+              if (!parsed) return
+              return dialog.replace(() => (
+                <ApiMethod providerID={parsed.id} title="API key" custom baseURL={parsed.baseURL} />
+              ))
             },
           }
         }
@@ -411,6 +476,77 @@ interface ApiMethodProps {
   title: string
   metadata?: Record<string, string>
   custom?: boolean
+  /** Present when the id was derived from a pasted base URL — register the provider after the key is saved. */
+  baseURL?: string
+}
+
+/**
+ * Probe an OpenAI-compatible endpoint for its model catalog. Tries
+ * `<baseURL>/models`, falling back to `<origin>/v1/models` when the URL
+ * omitted the version path. Returns discovered model ids (possibly empty).
+ */
+export async function discoverModelIDs(baseURL: string, apiKey: string): Promise<string[]> {
+  const candidates = new Set<string>([`${baseURL}/models`])
+  if (!/\/v1$/.test(baseURL)) candidates.add(`${baseURL}/v1/models`)
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(3_500),
+      })
+      if (!res.ok) continue
+      const json = (await res.json()) as { data?: Array<{ id?: string }> }
+      const ids = (json.data ?? [])
+        .map((model) => model.id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+      if (ids.length > 0) return ids
+    } catch {}
+  }
+  return []
+}
+
+/** The `provider.<id>` block written to global config for a URL-derived custom provider. */
+export function customProviderConfigBlock(baseURL: string, modelIDs: string[]) {
+  return {
+    npm: "@ai-sdk/openai-compatible",
+    name: providerDisplayName(baseURL),
+    options: { baseURL },
+    ...(modelIDs.length > 0 ? { models: Object.fromEntries(modelIDs.map((id) => [id, {}])) } : {}),
+  }
+}
+
+function providerDisplayName(baseURL: string): string {
+  const host = new URL(baseURL).hostname.split(".").filter(Boolean)
+  const word = (host.length > 1 ? host[host.length - 2] : host[0]) ?? "custom"
+  return word.charAt(0).toUpperCase() + word.slice(1)
+}
+
+/**
+ * Register a URL-derived custom provider in the GLOBAL config via the engine's
+ * JSONC-merging PATCH /global/config. Deep-merge means only this provider key
+ * is touched; the engine disposes instances on change so the provider is live
+ * immediately — no restart, no hand-editing arcana.json.
+ */
+async function registerCustomProvider(input: {
+  sdk: ReturnType<typeof useSDK>["client"]
+  providerID: string
+  baseURL: string
+  apiKey: string
+}): Promise<{ ok: boolean; models: number }> {
+  const modelIDs = await discoverModelIDs(input.baseURL, input.apiKey)
+  try {
+    const { error } = await input.sdk.global.config.update({
+      config: {
+        provider: {
+          [input.providerID]: customProviderConfigBlock(input.baseURL, modelIDs),
+        },
+      },
+    })
+    if (error) return { ok: false, models: 0 }
+  } catch {
+    return { ok: false, models: 0 }
+  }
+  return { ok: true, models: modelIDs.length }
 }
 function ApiMethod(props: ApiMethodProps) {
   const dialog = useDialog()
@@ -469,6 +605,33 @@ function ApiMethod(props: ApiMethodProps) {
           return
         }
         if (props.custom && !sync.data.provider_next.all.some((provider) => provider.id === props.providerID)) {
+          if (props.baseURL) {
+            const registered = await registerCustomProvider({
+              sdk: sdk.client,
+              providerID: props.providerID,
+              baseURL: props.baseURL,
+              apiKey: value,
+            })
+            if (!registered.ok) {
+              toast.show({
+                variant: "error",
+                message: `Saved the key, but couldn't register ${props.providerID} — add it to arcana.json manually.`,
+              })
+              dialog.clear()
+              return
+            }
+            if (registered.models > 0) {
+              await sync.bootstrap()
+              dialog.replace(() => <DialogModel providerID={props.providerID} />)
+              return
+            }
+            toast.show({
+              variant: "info",
+              message: `${props.providerID} registered at ${props.baseURL}, but no models were discovered — add them in arcana.json.`,
+            })
+            dialog.clear()
+            return
+          }
           toast.show({
             variant: "info",
             message: `Saved credential for ${props.providerID}. Configure it in arcana.json to use it.`,
