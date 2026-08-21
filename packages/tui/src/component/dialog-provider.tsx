@@ -557,6 +557,7 @@ function ApiMethod(props: ApiMethodProps) {
   const toast = useToast()
   const { theme } = useTheme()
   const [busy, setBusy] = createSignal(false)
+  const [phase, setPhase] = createSignal("Working…")
   const description = ({
     arcana: (
       <box gap={1}>
@@ -587,11 +588,63 @@ function ApiMethod(props: ApiMethodProps) {
       placeholder="API key"
       description={description as any}
       busy={busy()}
-      busyText={props.custom && props.baseURL ? "Registering provider…" : undefined}
+      busyText={phase()}
       onConfirm={async (value) => {
         if (!value || busy()) return
         setBusy(true)
         try {
+          // URL-derived custom provider: save the key and probe the model
+          // catalog in parallel (discovery needs only the typed key), then
+          // register into global config.
+          if (props.custom && props.baseURL) {
+            setPhase("Saving key…")
+            const known = sync.data.provider_next.all.some((provider) => provider.id === props.providerID)
+            if (!known) {
+              setPhase("Discovering models…")
+              const [, registered] = await Promise.all([
+                sdk.client.auth.set({
+                  providerID: props.providerID,
+                  auth: { type: "api", key: value },
+                }),
+                registerCustomProvider({
+                  sdk: sdk.client,
+                  providerID: props.providerID,
+                  baseURL: props.baseURL,
+                  apiKey: value,
+                }),
+              ])
+              if (!registered.ok) {
+                toast.show({
+                  variant: "error",
+                  message: `Saved the key, but couldn't register ${props.providerID} — add it to arcana.json manually.`,
+                })
+                dialog.clear()
+                return
+              }
+              // The config endpoint disposes instances ASYNC — a single
+              // immediate bootstrap can race the rebuild and reconcile a stale
+              // list without the new provider. Poll until the fresh instance
+              // reports it (bounded), so the picker and providers list agree.
+              setPhase("Registering…")
+              for (let attempt = 0; attempt < 10; attempt++) {
+                await Bun.sleep(300)
+                await sync.bootstrap()
+                if (sync.data.provider_next.all.some((provider) => provider.id === props.providerID)) break
+              }
+              if (registered.models > 0) {
+                dialog.replace(() => <DialogModel providerID={props.providerID} />)
+                return
+              }
+              toast.show({
+                variant: "info",
+                message: `${props.providerID} registered at ${props.baseURL}, but no models were discovered — add them in arcana.json.`,
+              })
+              dialog.clear()
+              return
+            }
+          }
+
+          setPhase("Saving key…")
           const { error } = await sdk.client.auth.set({
             providerID: props.providerID,
             auth: {
@@ -606,37 +659,6 @@ function ApiMethod(props: ApiMethodProps) {
           }
 
           const known = sync.data.provider_next.all.some((provider) => provider.id === props.providerID)
-
-          // URL-derived custom provider: register into global config FIRST, then
-          // do ONE dispose/bootstrap so the reload picks up key + config together.
-          if (props.custom && !known && props.baseURL) {
-            const registered = await registerCustomProvider({
-              sdk: sdk.client,
-              providerID: props.providerID,
-              baseURL: props.baseURL,
-              apiKey: value,
-            })
-            if (!registered.ok) {
-              toast.show({
-                variant: "error",
-                message: `Saved the key, but couldn't register ${props.providerID} — add it to arcana.json manually.`,
-              })
-              dialog.clear()
-              return
-            }
-            await sdk.client.instance.dispose()
-            await sync.bootstrap()
-            if (registered.models > 0) {
-              dialog.replace(() => <DialogModel providerID={props.providerID} />)
-              return
-            }
-            toast.show({
-              variant: "info",
-              message: `${props.providerID} registered at ${props.baseURL}, but no models were discovered — add them in arcana.json.`,
-            })
-            dialog.clear()
-            return
-          }
 
           await sdk.client.instance.dispose()
           await sync.bootstrap()
