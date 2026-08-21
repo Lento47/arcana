@@ -10,7 +10,9 @@
  * Sites (from the audit row):
  *   1. statusbar.tsx:40,42   compactModelName
  *   2. approval-spine-adapter.ts:116  short()
- *   3. production-spine-input.ts:96   message summary
+ *   (site 3 — production-spine-input message summary — retired: the MESSAGE
+ *   input branch was dead code and was removed; see commit
+ *   "refactor: remove dead spine exports")
  *   4. util/session.ts:25    titleFromUserText
  *   5. spine-mapper.ts:184,210-218    heading / concern title / detail
  *   6. prompt/index.tsx:266,1399,2110 model id / toast / retry error
@@ -32,7 +34,6 @@ const engine = (p: string) =>
 
 const statusbar = tui("feature-plugins/system/statusbar.tsx")
 const approvalAdapter = tui("shell/command-spine/approval-spine-adapter.ts")
-const prodInput = tui("shell/command-spine/production-spine-input.ts")
 const sessionUtil = tui("util/session.ts")
 const mapper = tui("shell/command-spine/spine-mapper.ts")
 const prompt = tui("component/prompt/index.tsx")
@@ -66,16 +67,9 @@ describe("site 2 — approval-spine-adapter short()", () => {
   })
 })
 
-describe("site 3 — production-spine-input message summary", () => {
-  test("no code-unit cut in summary", () => {
-    expect(prodInput).not.toContain("view.content.slice(0, 120)")
-    expect(prodInput).not.toContain("needsEllipsis")
-  })
-  test("routes through Locale.truncate", () => {
-    expect(prodInput).toContain("Locale.truncate(view.content, 120)")
-    expect(prodInput).toMatch(/import \{[^}]*Locale[^}]*\} from "\.\.\/\.\.\/util\/locale"/)
-  })
-})
+// Site 3 (production-spine-input message summary) was retired when the dead
+// MESSAGE input branch was removed from production-spine-input.ts. The T9
+// invariant there has no remaining subject; sites 1/2/4+ still guard theirs.
 
 describe("site 4 — util/session titleFromUserText", () => {
   test("no code-unit cut", () => {
