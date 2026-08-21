@@ -6,9 +6,10 @@ import { spineOuterPadding, statusToneColor, type SpineLayout, type StatusSegmen
 import { truncate } from "../../util/locale"
 import { useTuiConfig } from "../../config"
 import type { SpineTrustStatus } from "./spine-trust"
-import type { SessionCharter, SessionCharterChip, SessionCharterTone, HeaderStatusItem } from "./session-charter"
+import type { SessionCharter, SessionCharterChip, SessionCharterTone } from "./session-charter"
 import { buildHeaderStatusItems, fitHeaderStatusItems } from "./session-charter"
 import { applyConfiguredSegments } from "./spine-segments"
+import { breadcrumbFromPath, partitionHeaderStatusItems } from "./spine-chrome"
 
 // Truncation: shared display-width-aware helper from util/locale (audit T5/O6).
 
@@ -66,23 +67,52 @@ function segmentFg(tone: StatusTone, theme: Theme): RGBA {
   return statusToneColor(tone, theme)
 }
 
-function StatusLine(props: {
-  items: { key: string; label: string; hint?: string; tone: SessionCharterTone; fg?: RGBA }[]
-  theme: Theme
-  separator: string
-}) {
+type ZonedItem = { key: string; label: string; hint?: string; tone: SessionCharterTone; fg?: RGBA }
+
+const RUNTIME_DOT = "◆"
+const ZONE_SEP = "│"
+
+/**
+ * Option A header: three zones — runtime state (dot + word beside the
+ * wordmark), governance (proof/contract/tally kept together so security
+ * state never drowns), and a context breadcrumb trail. Zone separator `│`
+ * (borderSubtle); within governance `·`; within context the breadcrumb
+ * arrow `▸`. All separators render as space+glyph+space so the existing
+ * 3-cell-per-separator width budget in fitHeaderStatusItems stays accurate.
+ */
+function ZonedStatusLine(props: { items: ZonedItem[]; theme: Theme }) {
+  const zones = createMemo(() => {
+    const parts = partitionHeaderStatusItems(props.items)
+    return [
+      { kind: "runtime" as const, items: parts.runtime, inner: "·", dot: true },
+      { kind: "governance" as const, items: parts.governance, inner: "·", dot: false },
+      { kind: "context" as const, items: parts.context, inner: "▸", dot: false },
+    ].filter((zone) => zone.items.length > 0)
+  })
   return (
     <text wrapMode="none">
-      <For each={props.items}>
-        {(item, index) => (
+      <For each={zones()}>
+        {(zone, zoneIndex) => (
           <>
-            <Show when={index() > 0}>
-              <span style={{ fg: props.theme.spineDiffMuted }}>{props.separator}</span>
+            <Show when={zoneIndex() > 0}>
+              <span style={{ fg: props.theme.borderSubtle }}> {ZONE_SEP} </span>
             </Show>
-            <Show when={item.hint}>
-              <span style={{ fg: props.theme.spineDiffMuted }}>{item.hint} </span>
-            </Show>
-            <span style={{ fg: item.fg ?? statusFg(item.tone, props.theme) }}>{item.label}</span>
+            <For each={zone.items}>
+              {(item, index) => (
+                <>
+                  <Show when={index() > 0}>
+                    <span style={{ fg: props.theme.spineDiffMuted }}> {zone.inner} </span>
+                  </Show>
+                  <Show when={item.hint}>
+                    <span style={{ fg: props.theme.spineDiffMuted }}>{item.hint} </span>
+                  </Show>
+                  <Show when={zone.dot && index() === 0}>
+                    <span style={{ fg: item.fg ?? statusFg(item.tone, props.theme) }}>{RUNTIME_DOT} </span>
+                  </Show>
+                  <span style={{ fg: item.fg ?? statusFg(item.tone, props.theme) }}>{item.label}</span>
+                </>
+              )}
+            </For>
           </>
         )}
       </For>
@@ -141,14 +171,18 @@ export function SpineHeader(props: {
     })
   })
   const lineItems = createMemo(() => {
-    const items: (HeaderStatusItem & { hint?: string; fg?: RGBA })[] = [...statusItems()]
+    const items: ZonedItem[] = [...statusItems()]
+    const breadcrumbMax = isWide() ? 3 : isCompact() ? 2 : 0
     for (const segment of segments()) {
       if (segment.key === "state") continue
       if (items.some((item) => item.key === segment.key)) continue
       items.push({
         key: segment.key,
         hint: segment.label,
-        label: truncate(segment.value, valueLimit(segment, props.layout)),
+        label:
+          segment.key === "path"
+            ? breadcrumbFromPath(segment.value, breadcrumbMax)
+            : truncate(segment.value, valueLimit(segment, props.layout)),
         tone: "muted",
         fg: segmentFg(segment.tone, theme),
       })
@@ -157,7 +191,7 @@ export function SpineHeader(props: {
       items.push({
         key: "path",
         hint: pathSegment()!.label,
-        label: truncate(pathSegment()!.value, valueLimit(pathSegment()!, props.layout)),
+        label: breadcrumbFromPath(pathSegment()!.value, Math.max(breadcrumbMax, 2)),
         tone: "muted",
         fg: theme.textMuted,
       })
@@ -170,8 +204,10 @@ export function SpineHeader(props: {
       return Number.POSITIVE_INFINITY
     }
     const brand = showBrand() ? 8 : 0
+    // Runtime zone renders a leading "◆ " before the state word.
+    const runtimeDot = statusItems().some((item) => item.key === "live") ? 2 : 0
     const pads = pad() * 2
-    return Math.max(1, Math.floor(inner) - brand - pads)
+    return Math.max(1, Math.floor(inner) - brand - runtimeDot - pads)
   })
   const visibleItems = createMemo(() => fitHeaderStatusItems(lineItems(), statusBudget()))
   const lockReason = createMemo(() => {
@@ -194,7 +230,7 @@ export function SpineHeader(props: {
           </box>
         </Show>
         <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
-          <StatusLine items={visibleItems()} theme={theme} separator={tuiConfig.status_separator} />
+          <ZonedStatusLine items={visibleItems()} theme={theme} />
           <Show when={lockReason()}>
             <text fg={theme.warning} wrapMode="word">
               {lockReason()}

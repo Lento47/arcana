@@ -12,6 +12,89 @@ export const FACT_LABEL_WIDTH = 12
 const CHIP_PAD = 2
 const CHIP_GAP = 1
 
+// ── Header status zones (Option A breadcrumb redesign) ───────────
+
+/** Keys that belong to the governance zone of the header status line. */
+const GOVERNANCE_ITEM_KEYS = new Set(["contract", "proof", "governed", "pending"])
+
+export type HeaderItemZone = "runtime" | "governance" | "context"
+
+export function headerItemZone(item: { key: string }): HeaderItemZone {
+  if (item.key === "live") return "runtime"
+  if (GOVERNANCE_ITEM_KEYS.has(item.key)) return "governance"
+  return "context"
+}
+
+/**
+ * Partition flat header items into render zones: runtime (brand-adjacent
+ * state), governance (proof/contract/tally — security state stays together),
+ * and context (branch/model/session/path breadcrumbs).
+ */
+export function partitionHeaderStatusItems<T extends { key: string }>(items: readonly T[]): {
+  runtime: T[]
+  governance: T[]
+  context: T[]
+} {
+  const runtime: T[] = []
+  const governance: T[] = []
+  const context: T[] = []
+  for (const item of items) {
+    const zone = headerItemZone(item)
+    if (zone === "runtime") runtime.push(item)
+    else if (zone === "governance") governance.push(item)
+    else context.push(item)
+  }
+  return { runtime, governance, context }
+}
+
+const BREADCRUMB_SEP = " ▸ "
+
+/** Generic container directories that carry no brand meaning in a trail. */
+const CONTAINER_SEGMENTS = new Set([
+  "projects", "project", "repos", "repo", "workspace", "workspaces",
+  "dev", "code", "src", "work", "home", "users", "user",
+])
+
+/**
+ * Path → breadcrumb trail for the header context zone.
+ *
+ * Drops drive letters and empty segments; anchors on the first non-container
+ * segment (skipping PROJECTS/, home/, users/…), elides everything between the
+ * anchor and the nearest leaves:
+ *   L:\PROJECTS\arcana\packages\engine, 3 → "arcana ▸ … ▸ engine"
+ *   /home/user/arcana/packages/core, 3    → "arcana ▸ … ▸ core"
+ *   Z:\a\b\c\d, 3                         → "a ▸ … ▸ d"
+ * `maxSegments` counts displayed tokens including the ellipsis. Below 3 the
+ * trail is leaf-anchored with a leading ellipsis when trimmed.
+ */
+export function breadcrumbFromPath(path: string, maxSegments: number): string {
+  const parts = path
+    .split(/[\\/]+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && !/^[a-zA-Z]:$/.test(part))
+  const max = Math.max(0, Math.floor(maxSegments))
+  if (parts.length === 0 || max === 0) return ""
+  if (parts.length <= max) return parts.join(BREADCRUMB_SEP)
+
+  if (max < 3) {
+    const tail = parts.slice(-max)
+    const trimmed = parts.length > tail.length
+    return [...(trimmed ? ["…"] : []), ...tail].join(BREADCRUMB_SEP)
+  }
+
+  let anchorIndex = 0
+  while (anchorIndex < parts.length - 1 && CONTAINER_SEGMENTS.has(parts[anchorIndex]!.toLowerCase())) {
+    anchorIndex++
+  }
+  const head = parts[anchorIndex]!
+  const tailCount = max - 2
+  const tail = parts.slice(Math.max(anchorIndex + 1, parts.length - tailCount))
+  if (tail.length === 0 || tail.includes(head)) {
+    return parts.slice(-max).join(BREADCRUMB_SEP)
+  }
+  return [head, "…", ...tail].join(BREADCRUMB_SEP)
+}
+
 /** Display width of a padded chip: pad + label + pad. */
 export function chipCellWidth(label: string): number {
   return displayWidth(label) + CHIP_PAD
