@@ -17,6 +17,7 @@ import type { ApprovalRecord, ApprovalState } from "@arcana/core/crypto/approval
 import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
 import type { SpineEntry, SpineKind, StatusTone } from "./spine-types"
 import { SPINE_GLYPH } from "./spine-types"
+import { createDedupeKey, dedupeKeyToString } from "./spine-ordering"
 import { Locale } from "../../util/locale"
 
 // ─── Approval → SpineEntry ──────────────────────────────────────────
@@ -158,6 +159,29 @@ export function approvalIdFromEntryID(entryID: string): string | undefined {
   const parts = entryID.split(":")
   if (parts.length < 3) return undefined
   return parts.slice(1, -1).join(":")
+}
+
+/**
+ * THE one derivation of approval spine entries: map each durable record to a
+ * spine entry, deduped by (approvalId, version). Both the projection
+ * (use-spine-projection) and the integration hook (approval-integration)
+ * render through this so the two paths can never drift.
+ */
+export function dedupeApprovalEntries(approvals: readonly ApprovalRecord[]): SpineEntry[] {
+  const seen = new Set<string>()
+  const entries: SpineEntry[] = []
+  for (const approval of approvals) {
+    const key = dedupeKeyToString(
+      createDedupeKey({
+        approvalId: approval.approvalId,
+        approvalVersion: approval.version,
+      }),
+    )
+    if (seen.has(key)) continue
+    seen.add(key)
+    entries.push(approvalToSpineEntry(approval))
+  }
+  return entries
 }
 
 export function approvalActionAvailable(

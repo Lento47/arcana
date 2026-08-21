@@ -13,9 +13,9 @@ import { buildStatusSegments } from "./spine-segments"
 import { pendingGateEntries } from "./spine-gates"
 import {
   approvalIdFromEntryID,
-  approvalToSpineEntry,
+  dedupeApprovalEntries,
 } from "./approval-spine-adapter"
-import { createDedupeKey, dedupeKeyToString, compareOrderingKeys, createOrderingKey } from "./spine-ordering"
+import { compareOrderingKeys, createOrderingKey, createDedupeKey, dedupeKeyToString } from "./spine-ordering"
 import {
   governanceTraceToSpineEntry,
   productionInputToSpineEntry,
@@ -199,20 +199,7 @@ export function useSpineProjection(props: ShellProps, input: {
   // ── TUI-2.1: Approval integration ────────────────────────────────
   const approvals = createMemo(() => props.approvals?.() ?? [])
 
-  const approvalEntries = createMemo(() => {
-    const seen = new Set<string>()
-    const result: SpineEntry[] = []
-    for (const approval of approvals()) {
-      const key = dedupeKeyToString(createDedupeKey({
-        approvalId: approval.approvalId,
-        approvalVersion: approval.version,
-      }))
-      if (seen.has(key)) continue
-      seen.add(key)
-      result.push(approvalToSpineEntry(approval))
-    }
-    return result
-  })
+  const approvalEntries = createMemo(() => dedupeApprovalEntries(approvals()))
 
   const governanceEntries = createMemo(() => {
     const seen = new Set<string>()
