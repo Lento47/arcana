@@ -14,9 +14,9 @@
       "@arcana/engine/*": ["../../packages/engine/src/*"],
       "@arcana/sdk": ["../../packages/sdk/js/src/index.ts"],
       "@arcana/sdk/v2/*": ["../../packages/sdk/js/src/v2/*"],
-      "effect": ["../../packages/engine/node_modules/effect"],
-      "effect/*": ["../../packages/engine/node_modules/effect/*"]
+      "effect": ["../../packages/engine/node_modules/effect/dist"],
+      "effect/*": ["../../packages/engine/node_modules/effect/dist/*"]
     }
   },
-  "include": ["index.ts"]
+  "include": ["index.ts", "*.d.ts"]
 }
