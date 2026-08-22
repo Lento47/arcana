@@ -84,7 +84,7 @@ main
 └── release/*
 ```
 
-Until the current implementation branch is promoted, pull requests may target `phase-d-implementation`, but CI must run on that target. Long-lived phase branches are historical implementation lines, not permanent substitutes for a maintained default branch.
+The current implementation branch is `arcanagov`. The previous `phase-d-implementation` branch is historical. Pull requests target `arcanagov`; CI must run on that target. Long-lived phase branches are historical implementation lines, not permanent substitutes for a maintained default branch.
 
 ## Definition of organized
 

@@ -3,7 +3,7 @@
 **Document class:** living task register + traceability matrix
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Consolidated:** 2026-08-02 — merges the former `docs/roadmap/TASK-REGISTER.md` and `docs/roadmap/PHASE-TRACEABILITY.md`
-**Implementation checkpoint:** `4e954e5a` (2026-08-06; HEAD of `phase-d-implementation` at the PR-7 freeze-evidence audit; upstream advanced from `b5d192a1` via merged PRs #83–#91)
+**Implementation checkpoint:** `fb7c1968` (2026-08-21; current HEAD of `arcanagov`)
 **Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
 
 Part 1 is the living per-task status register (playbook tasks plus AUD-xx campaign tasks). Part 2 is the task → evidence → gate traceability matrix.
@@ -73,7 +73,7 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | TUI-1.5 Responsive Command Spine | PARTIAL | spine width logic + tests; matrix pending | BLK-TUI-02 |
 | TUI-1.6 Stability/performance/accessibility | PARTIAL | 786/1/0 suite; live/performance gates pending | BLK-TUI-06, BLK-TUI-07 |
 | TUI-1.7 Documentation and manual smoke plan | PARTIAL | runbook + smoke plan exist; execution pending | BLK-TUI-01 |
-| TUI-2.1 production polish + freeze | PARTIAL | mounted, automated green; freeze NOT authorized | BLK-TUI-01..08 |
+| TUI-2.1 production polish + freeze | PARTIAL | mounted; 42 TUI failures in working-tree run; freeze NOT authorized | BLK-TUI-01..08 |
 | TUI-3/4/5 (later milestones) | PENDING | out of TUI-2.1 scope | — |
 
 ## CLI 1.0 track
@@ -316,7 +316,7 @@ Gates (playbook §19): all PASS within declared scope — see
 |---|---|---|---|
 | TUI-1 governance visibility | COMPLETE (historical tag) | TAG `arcana-tui-1-governance-observability` | Not in current branch ancestry |
 | TUI-2 interactive authority | COMPLETE (frozen) | TAG `arcana-tui-2-interactive-authority-control` → `e0b14a2d`; approval lifecycle sources | Approval pipeline mounted |
-| TUI-2.1 production polish | PARTIAL — automated green, freeze NOT authorized | TST TUI 786/1/0; SRC spine polish, `approval-inspector.tsx`, daemon respawn; DOC TUI-2.1-FREEZE-OPERATOR-RUNBOOK | Runbook Gates 1–10 pending (BLK-TUI-01..08) |
+| TUI-2.1 production polish | PARTIAL — mounted; 42 TUI failures in working-tree run; freeze NOT authorized | TST TUI 1132/1/42 (working tree); historical TUI 786/1/0; SRC spine polish, `approval-inspector.tsx`, daemon respawn; DOC TUI-2.1-FREEZE-OPERATOR-RUNBOOK | Runbook Gates 1–10 pending (BLK-TUI-01..08) |
 | TUI-3 delegation console | PENDING | — | — |
 | TUI-4 proof/replay/audit UI | PARTIAL | SRC `packages/tui/src/proof-view/run-proof-view.ts` | Full audit UI pending |
 | TUI-5 final polish | PENDING | — | — |

@@ -28,7 +28,7 @@ every hard gate to pass and every phase to be human-approved before "100%".
 | Phase B — Verification and Replay | COMPLETE / FROZEN |
 | Phase C — Local Governed Autonomy | EVALUATION PASS; approved with exceptions (2026-08-01) |
 | TUI-2 (interactive authority) | FROZEN (`arcana-tui-2-interactive-authority-control`) |
-| TUI-2.1 (production polish) | MOUNTED + automated green; freeze NOT authorized |
+| TUI-2.1 (production polish) | MOUNTED; 42 TUI failures in working-tree run; freeze NOT authorized |
 | CLI 1.0 | PARTIAL — contract not frozen |
 | Phase D — Distributed Governed Autonomy | Implementation coverage: HIGH (enrollment, revocation store + push, delta transport + node persistence, execution ledger, hostile matrices). Release readiness: BLOCKED — TLS/mTLS, live Linux validation, offline PEP wiring, L3, Node 1.0 freeze |
 | Phase E — Protocol/SDK/Adapters | Implementation coverage: MODERATE–HIGH (protocol draft + conformance 5/5 with TS + Rust + adapter vectors + adapters AI SDK/MCP/Mastra/LangGraph + certified vectors). Release readiness: BLOCKED — live PEP transport, macOS/Linux, L3, ecosystem freeze |
@@ -202,7 +202,7 @@ isolation); engine code is unchanged since the `e57c5ca2` verified run.
 
 ## 6. What is NOT complete (honest scope)
 
-- **TUI-2.1 freeze** — automated green only; manual/live gates pending.
+- **TUI-2.1 freeze** — mounted but 42 TUI failures in working-tree run; manual/live gates pending.
 - **CLI 1.0** — no frozen JSON/exit-code contract; A1 launch scaffold
   implemented but no production-certified adapter. CLI 1.0 is a required
   Arcana 1.0 convergence gate (BLK-CLI-01..05).
