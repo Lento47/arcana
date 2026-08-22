@@ -8,6 +8,7 @@ import { Database } from "bun:sqlite"
 import { InstanceState } from "@/effect/instance-state"
 
 import BASE_ARCANA from "./prompt/base-arcana.txt"
+import SHARED_BEHAVIORAL from "./prompt/shared-behavioral.txt"
 import PROMPT_ANTHROPIC from "./prompt/anthropic.txt"
 import PROMPT_DEFAULT from "./prompt/default.txt"
 import PROMPT_BEAST from "./prompt/beast.txt"
@@ -30,18 +31,18 @@ import { isReservedMemoryKey } from "@arcana/memory"
 
 export function provider(model: Provider.Model) {
   if (model.api.id.includes("gpt-4") || model.api.id.includes("o1") || model.api.id.includes("o3"))
-    return [BASE_ARCANA, PROMPT_BEAST]
+    return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_BEAST]
   if (model.api.id.includes("gpt")) {
     if (model.api.id.includes("codex")) {
-      return [BASE_ARCANA, PROMPT_CODEX]
+      return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_CODEX]
     }
-    return [BASE_ARCANA, PROMPT_GPT]
+    return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_GPT]
   }
-  if (model.api.id.includes("gemini-")) return [BASE_ARCANA, PROMPT_GEMINI]
-  if (model.api.id.includes("claude")) return [BASE_ARCANA, PROMPT_ANTHROPIC]
-  if (model.api.id.toLowerCase().includes("trinity")) return [BASE_ARCANA, PROMPT_TRINITY]
-  if (model.api.id.toLowerCase().includes("kimi")) return [BASE_ARCANA, PROMPT_KIMI]
-  return [BASE_ARCANA, PROMPT_DEFAULT]
+  if (model.api.id.includes("gemini-")) return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_GEMINI]
+  if (model.api.id.includes("claude")) return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_ANTHROPIC]
+  if (model.api.id.toLowerCase().includes("trinity")) return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_TRINITY]
+  if (model.api.id.toLowerCase().includes("kimi")) return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_KIMI]
+  return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_DEFAULT]
 }
 
 // ---------------------------------------------------------------------------
