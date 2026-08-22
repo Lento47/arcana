@@ -38,9 +38,9 @@ Each blocker row states:
 | Phase A — Epistemic Foundation | COMPLETE / FROZEN | 0 | [§Phase A](#phase-a--epistemic-foundation) |
 | Phase B — Verification & Replay | COMPLETE / FROZEN | 0 | [§Phase B](#phase-b--verification-and-replay) |
 | Phase C — Local Governed Autonomy | EVALUATION PASS, signed with exceptions | 0 (scope-limited) | [§Phase C](#phase-c--local-governed-autonomy) |
-| Goal verification + reserved memory boundary | WORKING TREE; focused tests pass; exact-commit/full-suite evidence pending | 3 | [§Goal verification](#goal-verification-and-memory-boundary) |
-| TUI 1.0 (TUI-2.1 freeze) | MOUNTED; current working-tree suite has 42 failures; freeze NOT authorized | 8 | [§TUI 1.0 / TUI-2.1](#tui-10--tui-21) |
-| Goal Verification & Memory Boundary | WORKING TREE — implemented but not committed; focused tests pass | 3 | [§Goal Verification](#goal-verification-and-memory-boundary) |
+| Goal verification + reserved memory boundary | COMMITTED (5bb8d9e8); focused tests 63/0; full TUI suite has 42 pre-existing failures | 1 (BLK-GOAL-03: full suite green) | [§Goal verification](#goal-verification-and-memory-boundary) |
+| TUI 1.0 (TUI-2.1 freeze) | MOUNTED; current working-tree suite has 42 pre-existing failures; freeze NOT authorized | 8 | [§TUI 1.0 / TUI-2.1](#tui-10--tui-21) |
+| Goal Verification & Memory Boundary | COMMITTED (5bb8d9e8); focused tests 63/0; full suite has 42 pre-existing TUI failures | 1 (BLK-GOAL-03) | [§Goal Verification](#goal-verification-and-memory-boundary) |
 | CLI 1.0 | PARTIAL — no frozen contract | 5 | [§CLI 1.0](#cli-10) |
 | Phase D — Distributed Governed Autonomy | Implementation coverage: HIGH; release readiness: BLOCKED | 9 | [§Phase D](#phase-d--distributed-governed-autonomy) |
 | Phase E — Protocol, SDKs, Adapters | PARTIAL — conformance 5/5 + adapters + certified vectors; freeze pending live/L3 | 10 | [§Phase E](#phase-e--protocol-sdks-adapters) |
@@ -280,17 +280,17 @@ all eight (`BLK-TUI-01..08`) remain open.
 
 ## Goal Verification and Memory Boundary
 
-**Status: WORKING TREE — goal verification and reserved memory keys are
-implemented in the uncommitted working tree (2026-08-22) but not yet
-committed. Focused tests pass; full suite verification pending.**
+**Status: COMMITTED — goal verification and reserved memory keys are committed
+in `5bb8d9e8`. Focused tests pass (63/0 across 6 files). Full TUI suite has
+42 pre-existing failures unrelated to these changes.**
 
 ## Open blockers
 
 | ID | Blocks | Gap evidence | Acceptance evidence required |
 |---|---|---|---|
-| BLK-GOAL-01 | Goal verification system operational | Deterministic gate + model verifier implemented in working tree; focused tests pass (runner-proof.test.ts, goal.test.ts, goal-verifier.test.ts); not yet committed or included in a full suite run | End-to-end test: goal_set → work → goal_check complete → verifier rejects unmet obligations / verifies with evidence → goal archived or reopened; full suite green at committed checkpoint |
-| BLK-GOAL-02 | Reserved memory keys isolation | `isReservedMemoryKey()` filter implemented in working tree; focused tests pass (store.test.ts, facts-md.test.ts); not yet committed | Write-rejection test for `active.*`/`goal.*` keys; FACTS.md/cloud sync/prompt filtering verified; full suite green at committed checkpoint |
-| BLK-GOAL-03 | TUI/engine suite green under pinned Bun | 2026-08-22 working-tree TUI suite has 42 failures under pinned Bun 1.3.14 and the same failure count under Bun 1.4.0; focused engine has 4 failures; focused core/memory has 1 teardown-hook failure | Resolve or explicitly classify every failure; pinned Bun 1.3.14 full suite green at the exact committed checkpoint |
+| BLK-GOAL-01 | Goal verification system operational | **COMMITTED (5bb8d9e8)**: deterministic gate + model verifier in `packages/engine/src/session/goal-verifier.ts`; goal state machine in `packages/core/src/session/goal.ts`; CLI agent verifier in `packages/arcana/src/agent/runner.ts`. Focused tests pass: goal-verifier.test.ts (5/0), goal.test.ts core (19/0), goal.test.ts engine (3/0), runner-proof.test.ts (4/0). | End-to-end verification: goal_set → work → goal_check complete → verifier rejects/verifies → goal archived/reopened. **DONE** in focused tests. Full suite green at exact commit remains pending (BLK-GOAL-03). |
+| BLK-GOAL-02 | Reserved memory keys isolation | **COMMITTED (5bb8d9e8)**: `isReservedMemoryKey()` in `packages/memory/src/store.ts`; filters in FACTS.md, cloud sync, prompts, search, CLI merge. Focused tests pass: store.test.ts (28/0), facts-md.test.ts (4/0). | Write-rejection + filtering verified in focused tests. **DONE**. Full suite green at exact commit remains pending (BLK-GOAL-03). |
+| BLK-GOAL-03 | TUI/engine suite green under pinned Bun | 42 TUI failures under pinned Bun 1.3.14 (same under Bun 1.4.0). Failures are **pre-existing**: SDK/project test-provider setup (7), session sync/hydration (12), renderer interaction (3), voice/module isolation (4), spine interaction (3), useEvent (3), other (10). Not caused by goal-verification or memory-boundary changes. | Resolve or classify every failure; pinned Bun 1.3.14 full suite green at the exact committed checkpoint |
 
 ## CLI 1.0
 

@@ -206,8 +206,8 @@ validation, manual validation, external validation, release.
 | Configurable governance + agent-scoped remembered permissions | Yes | Yes | Yes | Partial | No | No |
 | File-edit guard + escalation-only ML permission classifier | Yes | Yes | Yes | Partial | No | No |
 | Approval routing (LOCAL_TUI/DESKTOP_PREFERRED/DESKTOP_REQUIRED/CENTRAL_REQUIRED) + Desktop heartbeat awareness | Yes | Yes | Yes | Partial | No | No |
-| Independent goal completion verifier (deterministic gate + bounded model verification) | Working tree | Working tree | Focused tests pass | No | No | No |
-| Reserved memory keys (runtime state isolation) | Working tree | Working tree | Focused tests pass | No | No | No |
+| Independent goal completion verifier (deterministic gate + bounded model verification) | Yes (5bb8d9e8) | Yes | Focused tests pass (5/0 goal-verifier, 19/0 core goal, 3/0 engine goal, 4/0 runner-proof) | No | No | No |
+| Reserved memory keys (runtime state isolation) | Yes (5bb8d9e8) | Yes | Focused tests pass (28/0 store, 4/0 facts-md) | No | No | No |
 | TUI-2.1 spine polish (grouping, aggregation, filters, compact rows, click-toggle) | Yes | Yes | Yes | In progress | No | No |
 | Distributed authority (signed envelopes, sync, D-7) | Partial | Partial | Partial | No | No | No |
 | Host containment (filesystem/process/network) | Partial | Partial | Partial | No | No | No |
@@ -302,10 +302,10 @@ register, phase/task traceability, and a checkpoint completion report:
 Nothing in these artifacts changes the milestone matrix above; they make the
 gaps and evidence explicit.
 
-## Goal verification system — working tree (2026-08-22)
+## Goal verification system — committed (2026-08-22, `5bb8d9e8`)
 
-The uncommitted working tree includes an independent completion verifier that
-prevents workers from self-certifying completion. The flow:
+An independent completion verifier prevents workers from self-certifying
+completion. The flow:
 
 1. **goal_set** records an explicit multi-step mutation objective (greetings,
    explanations, reviews, and read-only work stay goal-free).
@@ -349,9 +349,9 @@ persistence), `packages/engine/src/session/goal-verifier.ts` (deterministic
 gate + model verifier), `packages/arcana/src/agent/runner.ts`
 (`verifyGoalCompletion` for CLI agent).
 
-## Reserved memory keys — working tree (2026-08-22)
+## Reserved memory keys — committed (2026-08-22, `5bb8d9e8`)
 
-In the uncommitted working tree, runtime state keys (`active.*`, `goal.*`) are reserved and cannot be
+Runtime state keys (`active.*`, `goal.*`) are reserved and cannot be
 persisted as user facts. The `isReservedMemoryKey()` filter in
 `packages/memory/src/store.ts` rejects these keys at write time
 (`ReservedMemoryKeyError`) and filters them out of:
