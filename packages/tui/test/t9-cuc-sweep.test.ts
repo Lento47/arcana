@@ -34,6 +34,7 @@ const engine = (p: string) =>
 
 const statusbar = tui("feature-plugins/system/statusbar.tsx")
 const approvalAdapter = tui("shell/command-spine/approval-spine-adapter.ts")
+const slashGoal = tui("component/prompt/slash-goal.ts")
 const sessionUtil = tui("util/session.ts")
 const mapper = tui("shell/command-spine/spine-mapper.ts")
 const prompt = tui("component/prompt/index.tsx")
@@ -103,9 +104,12 @@ describe("site 6 — prompt/index model id + toast + retry error", () => {
     expect(prompt).not.toContain("r.message.slice(0, 80)")
   })
   test("routes through Locale.truncate", () => {
+    // /goal's "Locale.truncate(args, 120)" moved to slash-goal.ts with the
+    // handler extraction; the remaining three sites stay in prompt/index.
     expect(prompt).toContain("Locale.truncate(id, 36)")
-    expect(prompt).toContain("Locale.truncate(args, 120)")
     expect(prompt).toContain("Locale.truncate(r.message, 80)")
+    expect(slashGoal).toContain("Locale.truncate(args, 120)")
+    expect(slashGoal).toMatch(/import \{[^}]*Locale[^}]*\} from "\.\.\/\.\.\/util\/locale"/)
   })
 })
 
