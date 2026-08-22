@@ -87,7 +87,8 @@ export function ProviderTree(props: ProviderTreeProps) {
                     ? "x11"
                     : undefined,
               }}
-            >                <TuiStartupProvider
+            >
+              <TuiStartupProvider
                 value={{
                   initialRoute: process.env.ARCANA_ROUTE ? (JSON.parse(process.env.ARCANA_ROUTE) as Args["continue"]) : undefined,
                   skipInitialLoading: Boolean(process.env.ARCANA_FAST_BOOT),
