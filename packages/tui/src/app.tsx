@@ -1163,7 +1163,14 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
             targetFps: 60,
             gatherStats: false,
             exitOnCtrlC: false,
-            useKittyKeyboard: {},
+            useKittyKeyboard: {
+              events: true,
+              // Windows Terminal + kitty "all keys as escapes" floods modifier
+              // CSI on ALT hold and can take the native renderer down. Win32
+              // push-to-talk reads the physical Alt key instead.
+              allKeysAsEscapes:
+                process.platform === "win32" ? false : (input.config.voice?.enabled ?? false),
+            },
             autoFocus: false,
             openConsoleOnError: false,
             stdin: resolvedStdin,

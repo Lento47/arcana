@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../../../fixture/fixture"
 import { mount, wait } from "./sync-fixture"
 import type { GlobalEvent } from "@arcana/sdk/v2"
-import { mergeSessionList } from "../../../../src/context/sync"
+import { mergeSessionList, splitMessageWindow, SESSION_MESSAGE_WINDOW } from "../../../../src/context/sync"
 
 function makeSession(id: string, title = id) {
   return {
@@ -29,6 +29,22 @@ function branchEvent(branch: string, workspace?: string): GlobalEvent {
 }
 
 describe("tui sync", () => {
+  test("splitMessageWindow keeps the newest window and reports overflow", () => {
+    const messages = Array.from({ length: SESSION_MESSAGE_WINDOW + 5 }, (_, i) => ({ id: `m${i}` }))
+    const { visible, removed } = splitMessageWindow(messages)
+    expect(visible).toHaveLength(SESSION_MESSAGE_WINDOW)
+    expect(removed).toHaveLength(5)
+    expect(visible[0]?.id).toBe("m5")
+    expect(visible.at(-1)?.id).toBe(`m${SESSION_MESSAGE_WINDOW + 4}`)
+  })
+
+  test("splitMessageWindow is a no-op at or under the window", () => {
+    const messages = [{ id: "a" }, { id: "b" }]
+    const { visible, removed } = splitMessageWindow(messages)
+    expect(visible).toBe(messages)
+    expect(removed).toEqual([])
+  })
+
   test("mergeSessionList keeps local sessions missing from a stale fetch", () => {
     const current = [makeSession("a", "old-a"), makeSession("b", "local-only")]
     const incoming = [makeSession("a", "new-a"), makeSession("c", "incoming")]

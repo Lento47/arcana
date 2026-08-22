@@ -7,6 +7,7 @@ import {
   mergeOptimisticMessages,
   orderTranscriptMessages,
   pinUserBeforeOpenAssistants,
+  refreshTranscriptOrder,
   normalizeOptimisticText,
   realUserMessageHasText,
   remapOptimisticSession,
@@ -391,5 +392,36 @@ describe("user ask never permanent ellipsis", () => {
       "think:Thought",
       "plan:Hi!",
     ])
+  })
+})
+
+describe("refreshTranscriptOrder", () => {
+  const u1 = { id: "u1", role: "user" as const, time: { created: 1000 } }
+  const a1 = { id: "a1", role: "assistant" as const, parentID: "u1", time: { created: 2000 } }
+  const u2 = { id: "u2", role: "user" as const, time: { created: 3000 } }
+
+  test("returns the same array when membership and objects are unchanged", () => {
+    const stored = [u1, a1, u2]
+    const first = refreshTranscriptOrder(stored, undefined)
+    const second = refreshTranscriptOrder(stored, first)
+    expect(second).toBe(first)
+  })
+
+  test("remaps object slots without reordering when identities change", () => {
+    const stored = [u1, a1, u2]
+    const first = refreshTranscriptOrder(stored, undefined)
+    const a1b = { ...a1, time: { created: 2000, completed: 2500 } }
+    const nextStored = [u1, a1b, u2]
+    const remapped = refreshTranscriptOrder(nextStored, first)
+    expect(remapped).not.toBe(first)
+    expect(remapped.map((m) => m.id)).toEqual(first.map((m) => m.id))
+    expect(remapped.find((m) => m.id === "a1")).toBe(a1b)
+  })
+
+  test("reorders when membership changes", () => {
+    const first = refreshTranscriptOrder([u1, a1], undefined)
+    const next = refreshTranscriptOrder([u1, a1, u2], first)
+    expect(next.map((m) => m.id)).toEqual(["u1", "a1", "u2"])
+    expect(next).not.toBe(first)
   })
 })

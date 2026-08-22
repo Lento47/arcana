@@ -2,6 +2,29 @@ import type { AssistantMessage, Part, Provider, UserMessage } from "@arcana/sdk/
 import { Locale } from "./locale"
 import * as Model from "./model"
 
+export function computeAssistantDurations(
+  list: ReadonlyArray<{
+    id: string
+    role?: string
+    parentID?: string
+    finish?: string
+    time?: { created?: number; completed?: number }
+  }>,
+): Map<string, number> {
+  const byId = new Map<string, (typeof list)[number]>()
+  for (const message of list) byId.set(message.id, message)
+  const next = new Map<string, number>()
+  for (const message of list) {
+    if (message.role !== "assistant" || !message.time?.completed || !message.finish) continue
+    if (message.finish === "tool-calls" || message.finish === "unknown") continue
+    const parent = message.parentID ? byId.get(message.parentID) : undefined
+    if (parent?.role === "user" && parent.time?.created != null) {
+      next.set(message.id, message.time.completed - parent.time.created)
+    }
+  }
+  return next
+}
+
 export type TranscriptOptions = {
   thinking: boolean
   toolDetails: boolean

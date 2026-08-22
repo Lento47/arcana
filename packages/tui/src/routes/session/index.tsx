@@ -81,6 +81,7 @@ import {
   filterCoveredOptimistics,
   mergeOptimisticMessages,
   realUserMessageHasText,
+  refreshTranscriptOrder,
 } from "../../component/prompt/optimistic"
 import { useEpilogue } from "../../context/epilogue"
 import { normalizePath } from "../../util/path"
@@ -88,7 +89,8 @@ import { PermissionPrompt } from "./permission"
 import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import * as Model from "../../util/model"
-import { formatTranscript } from "../../util/transcript"
+import { computeAssistantDurations, formatTranscript } from "../../util/transcript"
+import { getSessionGoal } from "@arcana/core/session/goal"
 import { sessionEpilogue } from "../../util/presentation"
 import { setPreLayoutSiblingMargin } from "../../util/layout"
 import { useTuiConfig } from "../../config"
@@ -188,6 +190,8 @@ const sessionGlobalBindingCommands = [
 
 const sessionGlobalUnfocusedBindingCommands = ["session.first", "session.last"] as const
 
+const EMPTY_MESSAGES: Message[] = []
+
 export const context = createContext<{
   width: number
   sessionID: string
@@ -262,11 +266,15 @@ export function Session() {
       .filter((x) => x.parentID === parentID || x.id === parentID)
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
+  let orderedTranscript: Message[] | undefined
   const messages = createMemo(() => {
-    const stored = sync.data.message[route.sessionID] ?? []
+    const stored = sync.data.message[route.sessionID] ?? EMPTY_MESSAGES
     const allOpt = allOptimisticMessages()
-    const opt = allOpt.filter((m) => m.sessionID === route.sessionID)
-    if (opt.length === 0) return mergeOptimisticMessages(stored, []) as typeof stored
+    const opt = allOpt.length === 0 ? allOpt : allOpt.filter((m) => m.sessionID === route.sessionID)
+    if (opt.length === 0) {
+      orderedTranscript = refreshTranscriptOrder(stored, orderedTranscript)
+      return orderedTranscript
+    }
 
     // Grok-style: keep local user echo until real TEXT parts exist.
     // SSE often creates the user Message before any TextPart — dropping on
@@ -284,8 +292,13 @@ export function Session() {
     }
 
     const remaining = filterCoveredOptimistics(opt, realUserTexts)
+    if (remaining.length === 0) {
+      orderedTranscript = refreshTranscriptOrder(stored, orderedTranscript)
+      return orderedTranscript
+    }
     // Always linearize. The store is id-sorted; walking it as a transcript
     // puts thoughts and later you-rows in the wrong turn after the echo drops.
+    orderedTranscript = undefined
     return mergeOptimisticMessages(stored, remaining) as typeof stored
   })
   createEffect(() => {
@@ -367,17 +380,8 @@ export function Session() {
       return cachedDurationMap
     }
     cachedDurationKey = key
-    const next = new Map<string, number>()
-    for (const message of list) {
-      if (message.role !== "assistant" || !message.time.completed || !message.finish) continue
-      if (["tool-calls", "unknown"].includes(message.finish)) continue
-      const parent = list.find((m) => m.id === message.parentID)
-      if (parent?.role === "user" && parent.time) {
-        next.set(message.id, message.time.completed - parent.time.created)
-      }
-    }
-    cachedDurationMap = next
-    return next
+    cachedDurationMap = computeAssistantDurations(list)
+    return cachedDurationMap
   })
 
   const permissions = createMemo(() => {
@@ -610,6 +614,8 @@ export function Session() {
         lastSwitch = undefined
         seeded = false
         scrollExhausted = false
+        orderedTranscript = undefined
+        if (prev) sync.session.pruneLoaded(prev)
         if (scrollInterval) {
           clearInterval(scrollInterval)
           scrollInterval = undefined
@@ -731,12 +737,16 @@ export function Session() {
   // Helper: Find next visible message boundary in direction.
   // Build a single Set of message IDs with valid text parts so we do not
   // perform an O(n) find + per-child parts scan for every renderable child.
-  // The visibleIDs Set is memoized against (messages.length, children.length)
-  // — n/p keystrokes in the same scene do not pay the parts-scan cost twice.
+  // Cache key includes message ids + part revisions so streaming text does
+  // not reuse a stale set, while n/p in an unchanged scene still skips the scan.
   let visibleIDsCache: { key: string; ids: Set<string> } | undefined
   const computeVisibleIDs = (childrenCount: number): Set<string> => {
     const messagesList = messages()
-    const key = `${messagesList.length}:${childrenCount}`
+    const revisions = sync.data.part_revision
+    let key = `${messagesList.length}:${childrenCount}`
+    for (const message of messagesList) {
+      key += `|${message.id}:${revisions[message.id] ?? 0}`
+    }
     if (visibleIDsCache && visibleIDsCache.key === key) return visibleIDsCache.ids
     const ids = new Set<string>()
     for (const message of messagesList) {
@@ -880,6 +890,24 @@ export function Session() {
     }
   }
 
+  const shareUrl = createMemo(() => session()?.share?.url)
+  const shareEnabled = createMemo(() => sync.data.config.share !== "disabled")
+  const hasRevert = createMemo(() => !!session()?.revert?.messageID)
+  const hasParent = createMemo(() => !!session()?.parentID)
+  const hasForegroundTasks = createMemo(() => foregroundTasks().length > 0)
+  const shareTitle = createMemo(() => (shareUrl() ? "Copy share link" : "Share session"))
+  const sidebarTitle = createMemo(() => (sidebarVisible() ? "Hide sidebar" : "Show sidebar"))
+  const concealTitle = createMemo(() => (conceal() ? "Disable code concealment" : "Enable code concealment"))
+  const timestampsTitle = createMemo(() => (showTimestamps() ? "Hide timestamps" : "Show timestamps"))
+  const thinkingTitle = createMemo(() =>
+    nextThinkingMode(thinkingMode()) === "hide" ? "Collapse thinking" : "Expand thinking",
+  )
+  const detailsTitle = createMemo(() => (showDetails() ? "Hide tool details" : "Show tool details"))
+  const genericToolTitle = createMemo(() =>
+    showGenericToolOutput() ? "Hide generic tool output" : "Show generic tool output",
+  )
+  const gutterTitle = createMemo(() => (showGutter() ? "Hide step-index numbers" : "Show step-index numbers"))
+
   const sessionCommandList = createMemo(() => [
     {
       title: "Rate last response 👍",
@@ -916,11 +944,11 @@ export function Session() {
       },
     },
     {
-      title: session()?.share?.url ? "Copy share link" : "Share session",
+      title: shareTitle(),
       value: "session.share",
       suggested: route.type === "session",
       category: "Session",
-      enabled: sync.data.config.share !== "disabled",
+      enabled: shareEnabled(),
       slash: {
         name: "share",
       },
@@ -1057,7 +1085,7 @@ export function Session() {
       title: "Unshare session",
       value: "session.unshare",
       category: "Session",
-      enabled: !!session()?.share?.url,
+      enabled: !!shareUrl(),
       slash: {
         name: "unshare",
       },
@@ -1117,7 +1145,7 @@ export function Session() {
       title: "Redo",
       value: "session.redo",
       category: "Session",
-      enabled: !!session()?.revert?.messageID,
+      enabled: hasRevert(),
       slash: {
         name: "redo",
       },
@@ -1140,7 +1168,7 @@ export function Session() {
       },
     },
     {
-      title: sidebarVisible() ? "Hide sidebar" : "Show sidebar",
+      title: sidebarTitle(),
       value: "session.sidebar.toggle",
       category: "Session",
       run: () => {
@@ -1153,7 +1181,7 @@ export function Session() {
       },
     },
     {
-      title: conceal() ? "Disable code concealment" : "Enable code concealment",
+      title: concealTitle(),
       value: "session.toggle.conceal",
       category: "Session",
       run: () => {
@@ -1162,7 +1190,7 @@ export function Session() {
       },
     },
     {
-      title: showTimestamps() ? "Hide timestamps" : "Show timestamps",
+      title: timestampsTitle(),
       value: "session.toggle.timestamps",
       category: "Session",
       slash: {
@@ -1175,11 +1203,7 @@ export function Session() {
       },
     },
     {
-      title: (() => {
-        const next = nextThinkingMode(thinkingMode())
-        if (next === "hide") return "Collapse thinking"
-        return "Expand thinking"
-      })(),
+      title: thinkingTitle(),
       value: "session.toggle.thinking",
       category: "Session",
       slash: {
@@ -1192,7 +1216,7 @@ export function Session() {
       },
     },
     {
-      title: showDetails() ? "Hide tool details" : "Show tool details",
+      title: detailsTitle(),
       value: "session.toggle.actions",
       category: "Session",
       run: () => {
@@ -1210,7 +1234,7 @@ export function Session() {
       },
     },
     {
-      title: showGenericToolOutput() ? "Hide generic tool output" : "Show generic tool output",
+      title: genericToolTitle(),
       value: "session.toggle.generic_tool_output",
       category: "Session",
       run: () => {
@@ -1219,7 +1243,7 @@ export function Session() {
       },
     },
     {
-      title: showGutter() ? "Hide step-index numbers" : "Show step-index numbers",
+      title: gutterTitle(),
       value: "session.toggle.gutter",
       category: "Session",
       slash: {
@@ -1509,7 +1533,7 @@ export function Session() {
       value: "session.background",
       category: "Session",
       hidden: true,
-      enabled: foregroundTasks().length > 0,
+      enabled: hasForegroundTasks(),
       run: () => {
         void sdk.client.experimental.session.background({
           sessionID: route.sessionID,
@@ -1533,7 +1557,7 @@ export function Session() {
       value: "session.parent",
       category: "Session",
       hidden: true,
-      enabled: !!session()?.parentID,
+      enabled: hasParent(),
       run: childSessionHandler(() => {
         const parentID = session()?.parentID
         if (parentID) {
@@ -1550,7 +1574,7 @@ export function Session() {
       value: "session.child.next",
       category: "Session",
       hidden: true,
-      enabled: !!session()?.parentID,
+      enabled: hasParent(),
       run: childSessionHandler(() => {
         dialog.clear()
         moveChild(1)
@@ -1561,7 +1585,7 @@ export function Session() {
       value: "session.child.previous",
       category: "Session",
       hidden: true,
-      enabled: !!session()?.parentID,
+      enabled: hasParent(),
       run: childSessionHandler(() => {
         dialog.clear()
         moveChild(-1)
@@ -1574,26 +1598,47 @@ export function Session() {
       slash: { name: "contract" },
       run: () => {
         dialog.clear()
+        const snap = getSessionGoal(route.sessionID)
+        if (snap.status === "unset") {
+          toast.show({
+            title: "Session contract",
+            message: "No active goal. Send a work prompt — Arcana records it as the goal and keeps working until it is satisfied.",
+            variant: "info",
+            duration: 8000,
+          })
+          return
+        }
         toast.show({
-          title: "Session Contract",
-          message: `Session: ${route.sessionID.slice(0,8)}…\nType /loop to start a research loop with cockpit verification.\nThe cockpit manages contracts, verifiers, and governance automatically.`,
+          title: "Session contract",
+          message: `Goal: ${snap.goal}\nStatus: ${snap.status}\nScope: ${"scope" in snap ? snap.scope : "—"}\nPriority: ${"priority" in snap ? snap.priority : "—"}`,
           variant: "info",
           duration: 8000,
         })
       },
     },
     {
-      title: "Start research loop",
+      title: "Drive / goal status",
       value: "session.loop",
       category: "Session",
       slash: { name: "loop" },
       run: () => {
         dialog.clear()
+        const snap = getSessionGoal(route.sessionID)
+        if (snap.status === "unset") {
+          toast.show({
+            title: "Drive",
+            message:
+              "No active goal. On a work prompt Arcana sets the goal and continues (up to 6 extra loops) until it is satisfied, a question is asked, or you abort.",
+            variant: "info",
+            duration: 8000,
+          })
+          return
+        }
         toast.show({
-          title: "Research Loop",
-          message: "Starting loop session with cockpit. Use /contract to view objectives, /verifier to check results.",
+          title: "Drive",
+          message: `Goal: ${snap.goal}\nStatus: ${snap.status}\nDrive agents (build/general) keep going while this is in_progress.`,
           variant: "info",
-          duration: 5000,
+          duration: 8000,
         })
       },
     },
@@ -1700,7 +1745,7 @@ export function Session() {
 
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
-    enabled: foregroundTasks().length > 0,
+    enabled: hasForegroundTasks(),
     priority: 1,
     bindings: tuiConfig.keybinds.get("session.background"),
   }))

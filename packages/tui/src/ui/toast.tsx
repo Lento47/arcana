@@ -105,6 +105,7 @@ function init() {
       const timer = setTimeout(() => toast.dismiss(id), item.duration)
       timer.unref()
       timers.set(id, timer)
+      return id
     },
     dismiss(id: number) {
       const existing = timers.get(id)

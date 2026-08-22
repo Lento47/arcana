@@ -9,7 +9,28 @@ interface ShimmerTextProps {
   active?: boolean
   /** Terminal bg color — RGBA from the theme resolves to a valid ColorInput. */
   background?: ColorInput
-  accent?: string
+  /** Hex string or OpenTUI RGBA. Theme tokens are RGBA objects. */
+  accent?: string | RGBA
+}
+
+const FALLBACK_ACCENT: [number, number, number] = [224, 166, 75]
+
+/** Convert a hex string or OpenTUI RGBA (0–1 channels) to 0–255 RGB. */
+export function colorToRgb(color: string | RGBA | undefined): [number, number, number] {
+  if (color == null) return FALLBACK_ACCENT
+  if (typeof color === "object" && typeof (color as RGBA).r === "number") {
+    const { r, g, b } = color as RGBA
+    const scale = r <= 1 && g <= 1 && b <= 1 ? 255 : 1
+    return [Math.round(r * scale), Math.round(g * scale), Math.round(b * scale)]
+  }
+  if (typeof color !== "string") return FALLBACK_ACCENT
+  const hex = color.trim().replace("#", "")
+  if (hex.length < 6) return FALLBACK_ACCENT
+  const r = Number.parseInt(hex.slice(0, 2), 16)
+  const g = Number.parseInt(hex.slice(2, 4), 16)
+  const b = Number.parseInt(hex.slice(4, 6), 16)
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return FALLBACK_ACCENT
+  return [r, g, b]
 }
 
 function interpolate(a: readonly [number, number, number], b: readonly [number, number, number], amount: number): [number, number, number] {
@@ -18,11 +39,6 @@ function interpolate(a: readonly [number, number, number], b: readonly [number, 
 
 function toHex(rgb: readonly [number, number, number]): string {
   return "#" + rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")
-}
-
-function rgbaToRgb(rgba: string): [number, number, number] {
-  const hex = rgba.replace("#", "")
-  return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)]
 }
 
 function makeStops(base: readonly [number, number, number], highlight: readonly [number, number, number]): readonly Stop[] {
@@ -55,7 +71,7 @@ function makeStops(base: readonly [number, number, number], highlight: readonly 
 export function ShimmerText(props: ShimmerTextProps) {
   const kv = useKV()
   const animationsEnabled = () => kv.get("animations_enabled", true)
-  const accent = props.accent ? rgbaToRgb(props.accent) : ([224, 166, 75] as const)
+  const accent = colorToRgb(props.accent)
   // Base = dimmed accent (~40% brightness)
   const base: [number, number, number] = [
     Math.round(accent[0] * 0.4),

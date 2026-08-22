@@ -57,6 +57,7 @@ import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { SessionMetricsBar } from "./metrics-bar"
+import { VoiceWave, isVoiceUiActive } from "../voice-wave"
 import { useArgs } from "../../context/args"
 import {
   ARCANA_BASE_MODE,
@@ -188,6 +189,10 @@ export function Prompt(props: PromptProps) {
   const dimensions = useTerminalDimensions()
   const { theme, syntax } = useTheme()
   const kv = useKV()
+  const voiceStatus = createMemo(() => {
+    const status = kv.get("voice_status")
+    return typeof status === "string" ? status : "idle"
+  })
   const animationsEnabled = createMemo(() => kv.get("animations_enabled", true))
   const list = createMemo(() => props.placeholders?.normal ?? [])
   const shell = createMemo(() => props.placeholders?.shell ?? [])
@@ -2123,6 +2128,11 @@ export function Prompt(props: PromptProps) {
 
         </box>
       </box>
+      <Show when={isVoiceUiActive(voiceStatus())}>
+        <box width="100%" flexShrink={0} paddingLeft={isCommandSpine() ? 1 : 2} paddingTop={0}>
+          <VoiceWave status={voiceStatus} />
+        </box>
+      </Show>
         <box width="100%" flexDirection="row" justifyContent="space-between">
           <Switch>
             <Match when={!isCommandSpine() && status().type !== "idle"}>

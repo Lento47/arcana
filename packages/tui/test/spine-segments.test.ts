@@ -85,4 +85,13 @@ describe("spine-segments.buildStatusSegments (S3)", () => {
     })
     expect(segments.map((s) => s.key)).toEqual(["branch", "model", "ctx", "state", "session", "path"])
   })
+
+  test("drive segment: on / paused / done", () => {
+    expect(buildStatusSegments({ drive: "2/6" })).toEqual([
+      { key: "drive", label: "drive", value: "2/6", tone: "info" },
+    ])
+    expect(buildStatusSegments({ drive: "paused" })[0]?.tone).toBe("warning")
+    expect(buildStatusSegments({ drive: "done" })[0]?.tone).toBe("success")
+  })
 })
+

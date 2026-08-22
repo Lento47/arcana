@@ -168,6 +168,8 @@ export function isThisTurnAssistant(
  * The sync store inserts by message id (binary search). UUID ids scramble
  * send order, so the spine must not walk the store as a transcript.
  */
+const EMPTY_TRANSCRIPT: TurnMessage[] = []
+
 export function orderTranscriptMessages<T extends TurnMessage>(messages: readonly T[]): T[] {
   if (messages.length <= 1) return messages.slice()
 
@@ -227,6 +229,49 @@ export function orderTranscriptMessages<T extends TurnMessage>(messages: readonl
 /** @deprecated Use orderTranscriptMessages — kept so existing call sites stay valid. */
 export function pinUserBeforeOpenAssistants<T extends TurnMessage>(messages: readonly T[]): T[] {
   return orderTranscriptMessages(messages)
+}
+
+/**
+ * Re-order a store transcript only when membership changes.
+ *
+ * Solid store arrays keep identity across in-place splices and item
+ * replacements. Returning a new array on every pulse defeats downstream
+ * memos; returning the store array itself hides membership changes.
+ * Reuse `previous` when the same objects are already in transcript order,
+ * remap object slots when identities changed, and only walk the full
+ * orderer when ids/length changed.
+ */
+export function refreshTranscriptOrder<T extends TurnMessage>(
+  stored: readonly T[],
+  previous: readonly T[] | undefined,
+): T[] {
+  if (stored.length === 0) {
+    return (previous && previous.length === 0 ? previous : EMPTY_TRANSCRIPT) as T[]
+  }
+  if (stored.length === 1) {
+    if (previous?.length === 1 && previous[0] === stored[0]) return previous as T[]
+    return [stored[0]!]
+  }
+
+  if (previous && previous.length === stored.length) {
+    const byId = new Map<string, T>()
+    for (const message of stored) {
+      if (byId.has(message.id)) return orderTranscriptMessages(stored)
+      byId.set(message.id, message)
+    }
+    const remapped = new Array<T>(previous.length)
+    for (let i = 0; i < previous.length; i++) {
+      const cur = byId.get(previous[i]!.id)
+      if (!cur) return orderTranscriptMessages(stored)
+      remapped[i] = cur
+    }
+    for (let i = 0; i < previous.length; i++) {
+      if (remapped[i] !== previous[i]) return remapped
+    }
+    return previous as T[]
+  }
+
+  return orderTranscriptMessages(stored)
 }
 
 /**

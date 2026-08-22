@@ -48,6 +48,7 @@ export const Glyph = {
   charge: "◈",
   meter: "▰",
   well: "▣",
+  mic: "🎙",
 } as const
 
 /** Agent sigil glyphs by mode. */
@@ -100,6 +101,7 @@ const DEFAULT_LEXICON = {
     transcribe: "Transcribing",
     normalize: "Refining",
     send: "Casting",
+    disabled: "Voice is sealed — set voice.enabled to true.",
     error: "The voice rite failed",
   },
 } as const
@@ -142,6 +144,7 @@ export const PLAIN_LEXICON = {
     transcribe: "Transcribing",
     normalize: "Refining",
     send: "Sending",
+    disabled: "Voice input is not enabled. Set voice.enabled to true.",
     error: "Voice input failed",
   },
 } as const

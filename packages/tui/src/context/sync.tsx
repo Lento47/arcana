@@ -48,6 +48,20 @@ function extractMessages(res: any): Array<{ info: Message; parts: any[] }> {
   return d?.items ?? d ?? []
 }
 
+/** Newest-message window kept in the local sync store per session. */
+export const SESSION_MESSAGE_WINDOW = 100
+
+export function splitMessageWindow<T>(
+  messages: readonly T[],
+  keep = SESSION_MESSAGE_WINDOW,
+): { visible: T[]; removed: T[] } {
+  if (messages.length <= keep) return { visible: messages as T[], removed: [] }
+  return {
+    visible: messages.slice(-keep) as T[],
+    removed: messages.slice(0, -keep) as T[],
+  }
+}
+
 export type ReconcileReason = "heartbeat-gap" | "missing-part" | "reconnect" | "stream-reset" | "manual" | "turn-end"
 
 /**
@@ -592,7 +606,7 @@ export const {
             }),
           )
           const updated = store.message[event.properties.info.sessionID]
-          if (updated.length > 100) {
+          if (updated.length > SESSION_MESSAGE_WINDOW) {
             const oldest = updated[0]
             batch(() => {
               setStore(
@@ -1043,8 +1057,7 @@ export const {
                     (message: any) => tracker.messages.has(message.id) && !infos.some((item: any) => item.id === message.id),
                   ),
                 )
-                const removed = infos.slice(0, -100)
-                const visible: any[] = infos.slice(-100)
+                const { visible, removed } = splitMessageWindow(infos)
                 const visibleIDs = new Set(visible.map((message: any) => message.id))
                 for (const message of responseData) {
                   if (!visibleIDs.has(message.info.id)) {
@@ -1197,8 +1210,7 @@ export const {
             produce((draft) => {
               draft.todo[sessionID] = todo?.data ?? []
               const infos = responseData.map((message: any) => message.info)
-              const removed = infos.slice(0, -100)
-              const visible: any[] = infos.slice(-100)
+              const { visible, removed } = splitMessageWindow(infos)
               const visibleIDs = new Set(visible.map((message: any) => message.id))
               for (const message of responseData) {
                 if (!visibleIDs.has(message.info.id)) continue
@@ -1359,6 +1371,30 @@ export const {
 
           loadingOlderSessions.delete(sessionID)
           return count >= 25
+        },
+        /**
+         * Drop extra older-message pages loaded while this session was
+         * focused. Switching away re-renders the whole loaded history, so
+         * inactive sessions snap back to the newest window and can page
+         * older messages again on return.
+         */
+        pruneLoaded(sessionID: string) {
+          if (isPendingSessionID(sessionID)) return
+          const messages = store.message[sessionID]
+          if (!messages || messages.length <= SESSION_MESSAGE_WINDOW) return
+          const { visible, removed } = splitMessageWindow(messages)
+          if (removed.length === 0) return
+          setStore(
+            produce((draft) => {
+              for (const message of removed) {
+                delete draft.part[message.id]
+                delete draft.part_revision[message.id]
+              }
+              draft.message[sessionID] = visible
+            }),
+          )
+          olderCursors.set(sessionID, visible[0]?.id)
+          exhaustedOlderSessions.delete(sessionID)
         },
       },
       bootstrap,

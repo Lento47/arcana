@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { formatAssistantHeader, formatMessage, formatPart, formatTranscript } from "../../src/util/transcript"
+import { computeAssistantDurations, formatAssistantHeader, formatMessage, formatPart, formatTranscript } from "../../src/util/transcript"
 import type { AssistantMessage, Part, Provider, UserMessage } from "@arcana/sdk/v2"
 
 const providers: Provider[] = [
@@ -417,5 +417,21 @@ describe("transcript", () => {
       expect(result).not.toContain("Build")
       expect(result).not.toContain("claude-sonnet-4-20250514")
     })
+  })
+})
+
+describe("computeAssistantDurations", () => {
+  test("looks up the parent in O(n) and skips unfinished turns", () => {
+    const list = [
+      { id: "u1", role: "user", time: { created: 1000 } },
+      { id: "a1", role: "assistant", parentID: "u1", finish: "stop", time: { created: 1100, completed: 1500 } },
+      { id: "u2", role: "user", time: { created: 2000 } },
+      { id: "a2", role: "assistant", parentID: "u2", time: { created: 2100 } },
+      { id: "a3", role: "assistant", parentID: "u1", finish: "tool-calls", time: { created: 1200, completed: 1300 } },
+    ]
+    const durations = computeAssistantDurations(list)
+    expect(durations.get("a1")).toBe(500)
+    expect(durations.has("a2")).toBe(false)
+    expect(durations.has("a3")).toBe(false)
   })
 })

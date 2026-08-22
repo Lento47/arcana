@@ -62,4 +62,11 @@ describe("stampAgentChildSessions", () => {
     const result = stampAgentChildSessions({ entries, sessions, parentSessionID: "parent" })
     expect(result[0]!.source?.sessionID).toBeUndefined()
   })
+
+  test("returns the same array when every agent row is already linked", () => {
+    const entries = [agentEntry("p1", "research", "already-linked")]
+    const sessions = [{ id: "child-1", parentID: "parent", time: { created: 1000 }, title: "t (@research subagent)" }]
+    const result = stampAgentChildSessions({ entries, sessions, parentSessionID: "parent" })
+    expect(result).toBe(entries)
+  })
 })

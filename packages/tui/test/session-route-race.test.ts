@@ -24,3 +24,10 @@ test("pending stub cleanup happens only after navigating to the real session", (
   expect(navigate).toBeGreaterThan(remap)
   expect(forget).toBeGreaterThan(navigate)
 })
+
+test("session messages reuse a stable transcript order when nothing changed", () => {
+  expect(sessionSource).toContain("refreshTranscriptOrder(stored, orderedTranscript)")
+  expect(sessionSource).toContain("computeAssistantDurations(list)")
+  expect(sessionSource).toContain("sync.session.pruneLoaded(prev)")
+  expect(sessionSource).toContain("revisions[message.id]")
+})
