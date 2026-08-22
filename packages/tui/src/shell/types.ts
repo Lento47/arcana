@@ -37,6 +37,13 @@ export interface ShellProps {
   permissions: Accessor<unknown[]>
   questions: Accessor<unknown[]>
   session: Accessor<{ id: string; parentID?: string; title?: string } | undefined>
+  /** Project sessions used to derive root → subagent ancestry and sibling position. */
+  sessionList?: Accessor<readonly {
+    id: string
+    parentID?: string | null
+    title?: string | null
+    time?: { created?: number }
+  }[]>
   /** Session turn status (idle/busy/retry/…) — stops assistant "writing" chrome. */
   sessionStatus?: Accessor<{ type: string } | undefined>
   visible: Accessor<boolean>

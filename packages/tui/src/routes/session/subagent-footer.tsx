@@ -75,7 +75,8 @@ export function SubagentFooter() {
   const parentShortcut = useCommandShortcut("session.parent")
   const previousShortcut = useCommandShortcut("session.child.previous")
   const nextShortcut = useCommandShortcut("session.child.next")
-  const [hover, setHover] = createSignal<"parent" | "prev" | "next" | "self" | null>(null)
+  const [hoverZone, setHoverZone] = createSignal<"parent" | "prev" | "next" | null>(null)
+  const [hover, setHover] = createSignal(false)
 
   const statusColor = () => {
     if (status().tone === "ok") return (t.spineOk ?? theme.success) as any
@@ -84,7 +85,7 @@ export function SubagentFooter() {
   }
 
   const actionBg = (name: "parent" | "prev" | "next") =>
-    hover() === name ? ((t.backgroundElement ?? theme.backgroundElement) as any) : undefined
+    hoverZone() === name ? ((t.backgroundElement ?? theme.backgroundElement) as any) : undefined
 
   function Action(props: { name: "parent" | "prev" | "next"; label: string; shortcut: string; command: string }) {
     return (
@@ -92,25 +93,23 @@ export function SubagentFooter() {
         paddingLeft={1}
         paddingRight={1}
         backgroundColor={actionBg(props.name)}
-        onMouseOver={() => setHover(props.name)}
-        onMouseOut={() => setHover(null)}
+        onMouseOver={() => setHoverZone(props.name)}
+        onMouseOut={() => setHoverZone(null)}
         onMouseUp={() => keymap.dispatchCommand(props.command)}
       >
         <text fg={(t.spineBrand ?? theme.text) as any}>{props.label}</text>
         <text fg={(t.spineContext ?? theme.textMuted) as any}> {props.shortcut}</text>
       </box>
     )
-  }
-
+}
   return (
     <box flexDirection="column" flexShrink={0} paddingLeft={2} paddingRight={1}>
       <box border={["top"]} borderColor={(t.spineRail ?? theme.borderSubtle) as any} flexShrink={0} />
       <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0} minHeight={1}>
         <box flexDirection="row" gap={1} minWidth={0} flexShrink={1}>
           <box
-            onMouseOver={() => setHover("self")}
-            onMouseOut={() => setHover(null)}
-            onMouseUp={() => keymap.dispatchCommand("session.parent")}
+            onMouseOver={() => setHover(true)}
+            onMouseOut={() => setHover(false)}
           >
             <text fg={(t.spineContext ?? theme.textMuted) as any}>mesh</text>
             <text fg={(t.spineBrand ?? theme.text) as any}> {subagentInfo().label}</text>
@@ -128,17 +127,17 @@ export function SubagentFooter() {
                 · ctx {item().context}
                 <Show when={item().pressure}> · {item().pressure}</Show>
                 <Show when={item().cost}> · {item().cost}</Show>
+          <box flexDirection="row" gap={1} flexShrink={0}>
+            <Action name="parent" label="parent" shortcut={parentShortcut()} />
+            <Action name="prev" label="prev" shortcut={previousShortcut()} />
+            <Action name="next" label="next" shortcut={nextShortcut()} />
+          </box>
               </text>
             )}
           </Show>
         </box>
-        <box flexDirection="row" flexShrink={0}>
-          <Action name="parent" label="parent" shortcut={parentShortcut()} command="session.parent" />
-          <Action name="prev" label="prev" shortcut={previousShortcut()} command="session.child.previous" />
-          <Action name="next" label="next" shortcut={nextShortcut()} command="session.child.next" />
-        </box>
       </box>
-      <Show when={hover() === "self" && tailMessages().length > 0}>
+      <Show when={hover() && tailMessages().length > 0}>
         <scrollbox maxHeight={3} flexShrink={0} paddingLeft={1} scrollbarOptions={{ visible: false }}>
           <For each={tailMessages()}>
             {(text) => (

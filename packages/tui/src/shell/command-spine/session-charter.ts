@@ -3,6 +3,8 @@
  * Contract is normative (what may happen). Proof is descriptive (what did).
  */
 
+import { displayWidth } from "../../util/locale"
+
 export type SessionCharterTone = "ok" | "warn" | "error" | "muted"
 
 export type SessionCharterChip = {
@@ -102,8 +104,8 @@ const HEADER_DROP_ORDER = ["path", "session", "branch", "model", "ctx"] as const
 
 export function headerItemDisplayWidth(item: { hint?: string; label: string }, first: boolean): number {
   const sep = first ? 0 : HEADER_SEP.length
-  const hint = item.hint?.trim() ? item.hint.trim().length + 1 : 0
-  return sep + hint + item.label.trim().length
+  const hint = item.hint?.trim() ? displayWidth(item.hint.trim()) + 1 : 0
+  return sep + hint + displayWidth(item.label.trim())
 }
 
 export function headerLineDisplayWidth(items: readonly { hint?: string; label: string }[]): number {

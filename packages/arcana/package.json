@@ -23,6 +23,7 @@
     "@ai-sdk/anthropic": "catalog:",
     "@ai-sdk/google": "catalog:",
     "@ai-sdk/openai-compatible": "catalog:",
+    "zod": "catalog:",
     "yargs": "17.7.2",
     "gray-matter": "catalog:"
   },

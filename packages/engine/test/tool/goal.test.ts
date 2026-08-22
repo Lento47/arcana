@@ -41,14 +41,18 @@ describe("engine goal tools", () => {
     expect(checkGoalToolGate({ sessionID, agentName: "build", toolName: "edit" }).allow).toBe(true)
   })
 
-  test("goal_check complete freezes mutations", async () => {
+  test("completion claim waits for verification and freezes mutations without suggesting an unlock goal", async () => {
     const sessionID = "sess-goal-2"
-    const { setSessionGoal, patchSessionGoal } = await import("@arcana/core/session/goal")
+    const { setSessionGoal, claimSessionGoalCompletion } = await import("@arcana/core/session/goal")
     setSessionGoal(sessionID, { goal: "Ship it" })
-    patchSessionGoal(sessionID, { status: "complete_unverified" })
+    claimSessionGoalCompletion(sessionID)
     const gate = checkGoalToolGate({ sessionID, agentName: "build", toolName: "write" })
     expect(gate.allow).toBe(false)
-    if (!gate.allow) expect(gate.reason).toBe("goal_complete")
+    if (!gate.allow) {
+      expect(gate.reason).toBe("goal_complete")
+      expect(gate.message).toContain("pending independent verification")
+      expect(gate.message).toContain("Do not invent a replacement goal")
+    }
   })
 
   test("GoalSetTool and GoalCheckTool have stable ids", () => {

@@ -26,6 +26,7 @@ import { Location } from "@arcana/core/location"
 import { LocationServiceMap } from "@arcana/core/location-layer"
 import { PluginBoot } from "@arcana/core/plugin/boot"
 import { Reference } from "@arcana/core/reference"
+import { isReservedMemoryKey } from "@arcana/memory"
 
 export function provider(model: Provider.Model) {
   if (model.api.id.includes("gpt-4") || model.api.id.includes("o1") || model.api.id.includes("o3"))
@@ -72,7 +73,12 @@ function getMemoryStmt() {
     _memoryDb = new Database(dbPath, { readonly: true })
     _memoryDbMtime = mtime
     _memoryStmt = _memoryDb.prepare(
-      "SELECT key, value, confidence FROM user_facts WHERE confidence >= 0.5 ORDER BY confidence DESC, updated_at DESC LIMIT 5",
+      `SELECT key, value, confidence FROM user_facts
+       WHERE confidence >= 0.5
+         AND lower(key) NOT IN ('active', 'goal')
+         AND lower(key) NOT LIKE 'active.%'
+         AND lower(key) NOT LIKE 'goal.%'
+       ORDER BY confidence DESC, updated_at DESC LIMIT 5`,
     )
   } catch {
     _memoryDb = null
@@ -91,6 +97,20 @@ function resetMemoryDb() {
 
 interface LearnedEntry { slug: string; excerpt: string }
 let _learnedCache: { mtimeMs: number; entries: LearnedEntry[] } | null = null
+
+function escapePromptField(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+}
+
+export function formatPersistentMemoryFacts(
+  rows: ReadonlyArray<{ key: string; value: string; confidence: number }>,
+): string | undefined {
+  const lines = rows
+    .filter((row) => !isReservedMemoryKey(row.key))
+    .map((row) => `- ${escapePromptField(row.key)}: ${escapePromptField(row.value)}`)
+  if (lines.length === 0) return undefined
+  return "<persistent-memory>\nThese facts were stored by the user or learned from past sessions and persist across conversations:\n" + lines.join("\n") + "\n</persistent-memory>"
+}
 
 /**
  * Read + parse learned-wiki excerpts, cached and invalidated on the learned
@@ -197,8 +217,8 @@ export const layer = Layer.effect(
           try {
             const rows = stmt.all() as Array<{ key: string; value: string; confidence: number }>
             if (rows.length) {
-              const lines = rows.map((r) => `- ${r.key}: ${r.value}`)
-              parts.push("<persistent-memory>\nThese facts were stored by the user or learned from past sessions and persist across conversations:\n" + lines.join("\n") + "\n</persistent-memory>")
+              const facts = formatPersistentMemoryFacts(rows)
+              if (facts) parts.push(facts)
             }
           } catch {
             // handle went bad (db replaced/corrupted) — drop it, retry next turn

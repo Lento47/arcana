@@ -6,6 +6,8 @@ export {
   WRITE_LOCK_TIMEOUT_MS,
   recencyWeight,
   decayedConfidence,
+  isReservedMemoryKey,
+  ReservedMemoryKeyError,
 } from "./store.js"
 export type {
   Session,

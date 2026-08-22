@@ -12,10 +12,19 @@ describe("subagent dive/back UX source contracts", () => {
     expect(entry).not.toContain(".filter((s: any) => s.parentID === props.sessionID)")
   })
 
-  test("breadcrumb renders a back-to-parent affordance with the session.parent shortcut", () => {
-    const breadcrumb = src("src/routes/session/subagent-breadcrumb.tsx")
-    expect(breadcrumb).toContain("← back to")
-    expect(breadcrumb).toContain('useCommandShortcut("session.parent")')
-    expect(breadcrumb).toContain('route.navigate({ type: "session", sessionID: props.parentID })')
+  test("the header owns session navigation and the route no longer renders a duplicate breadcrumb", () => {
+    const header = src("src/shell/command-spine/spine-header.tsx")
+    const shell = src("src/shell/command-spine/command-spine-shell.tsx")
+    const route = src("src/routes/session/index.tsx")
+    const footer = src("src/routes/session/subagent-footer.tsx")
+
+    expect(header).toContain("<SpineNavigationRail")
+    expect(shell).toContain('keymap.dispatchCommand("session.parent")')
+    expect(shell).toContain('keymap.dispatchCommand("session.child.previous")')
+    expect(shell).toContain('keymap.dispatchCommand("session.child.next")')
+    expect(route).not.toContain("SubagentBreadcrumb")
+    expect(footer).not.toContain('keymap.dispatchCommand("session.parent")')
+    expect(footer).not.toContain('keymap.dispatchCommand("session.child.previous")')
+    expect(footer).not.toContain('keymap.dispatchCommand("session.child.next")')
   })
 })

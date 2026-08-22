@@ -60,7 +60,7 @@ export function runGoalCommand(deps: SlashGoalDeps): true | undefined {
   }
   void loadGoal()
     .then(({ setSessionGoal }) => {
-      setSessionGoal(deps.targetSessionID, { goal: args, status: "in_progress" })
+      setSessionGoal(deps.targetSessionID, { goal: args, status: "in_progress", newRevision: true })
       toast.show({
         title: "Goal set",
         // T9: helper appends "…" only when it truncated.
@@ -122,7 +122,7 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
     }
     void loadGoal()
       .then(({ setSessionGoal }) => {
-        setSessionGoal(deps.targetSessionID, { goal: description, status: "in_progress" })
+        setSessionGoal(deps.targetSessionID, { goal: description, status: "in_progress", newRevision: true })
         toast.show({ title: "Goal set", message: description, variant: "success" })
       })
       .catch((error: unknown) => {
@@ -131,7 +131,7 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
   } else if (subcommand === "done" || subcommand === "blocked" || subcommand === "stale") {
     // /loop done|blocked|stale — mark goal status
     void loadGoal()
-      .then(({ getSessionGoal, setSessionGoal }) => {
+      .then(({ getSessionGoal, patchSessionGoal, claimSessionGoalCompletion }) => {
         const snap = getSessionGoal(deps.targetSessionID)
         if (snap.status === "unset") {
           toast.show({
@@ -141,11 +141,12 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
           })
           return
         }
-        const mapped: "complete_unverified" | "blocked" | "stale" =
-          subcommand === "done" ? "complete_unverified"
+        const mapped: "complete_pending_verify" | "blocked" | "stale" =
+          subcommand === "done" ? "complete_pending_verify"
           : subcommand === "blocked" ? "blocked"
           : "stale"
-        setSessionGoal(deps.targetSessionID, { goal: snap.goal, status: mapped })
+        if (subcommand === "done") claimSessionGoalCompletion(deps.targetSessionID)
+        else patchSessionGoal(deps.targetSessionID, { status: mapped })
         toast.show({ title: "Goal marked", message: mapped, variant: "success" })
       })
       .catch((error: unknown) => {
@@ -162,7 +163,7 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
         const snap = getSessionGoal(deps.targetSessionID)
         if (snap.status === "unset") {
           const goal = rest.split(/[.,;]/)[0]?.trim() || rest.slice(0, 80)
-          setSessionGoal(deps.targetSessionID, { goal, status: "in_progress" })
+          setSessionGoal(deps.targetSessionID, { goal, status: "in_progress", newRevision: true })
           toast.show({ title: "Goal auto-set", message: goal, variant: "success" })
         }
       })

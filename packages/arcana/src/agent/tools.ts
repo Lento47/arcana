@@ -1115,7 +1115,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       type: "function",
       function: {
         name: "goal_set",
-        description: "RECORD the user's stated goal. MUST call this once you understand what the user wants done. The goal is binding — all subsequent actions must align with it.",
+        description: "Record an explicit multi-step mutation objective. Do not call for greetings, explanations, reviews, or simple read-only requests.",
         parameters: {
           type: "object",
           properties: {
@@ -1131,16 +1131,17 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const goal = String(args.goal)
       const scope = args.scope ? String(args.scope) : "not specified"
       const priority = String(args.priority ?? "medium") as "high" | "medium" | "low"
-      memory.recordUserFact("active.goal", goal, "goal_set")
-      memory.recordUserFact("active.goal.scope", scope, "goal_set")
-      memory.recordUserFact("active.goal.priority", priority, "goal_set")
       const sessionId =
         (typeof process.env.ARCANA_SESSION_ID === "string" && process.env.ARCANA_SESSION_ID.trim()
           ? process.env.ARCANA_SESSION_ID.trim()
           : "")
         || `cli-${process.cwd().replace(/[^a-zA-Z0-9]+/g, "_").slice(-48)}`
       try {
-        const { setSessionGoal } = await import("@arcana/core/session/goal")
+        const { getSessionGoal, setSessionGoal } = await import("@arcana/core/session/goal")
+        const current = getSessionGoal(sessionId)
+        if (current.status === "complete_pending_verify") {
+          return "Goal is awaiting independent verification. Do not replace it to unlock mutations; wait for the verdict or ask the user to use /goal for an explicit new objective."
+        }
         setSessionGoal(sessionId, {
           goal,
           scope,
@@ -1148,6 +1149,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
           status: "in_progress",
           boardSessionID: sessionId,
         })
+        runner.beginGoalEvidence()
       } catch {
         /* core store optional if path unavailable */
       }
@@ -1187,16 +1189,63 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
           : "")
         || `cli-${process.cwd().replace(/[^a-zA-Z0-9]+/g, "_").slice(-48)}`
 
-      // Prefer session goal store, fall back to memory facts
+      // Session goal state is authoritative. Persistent memory must never
+      // masquerade as the runtime's active goal.
       let goalLine = "No active goal set. Call goal_set first."
+      let verificationLine: string | undefined
       try {
-        const { getSessionGoal, patchSessionGoal } = await import("@arcana/core/session/goal")
+        const {
+          getSessionGoal,
+          patchSessionGoal,
+          claimSessionGoalCompletion,
+          resolveSessionGoalVerification,
+          startSessionGoalVerification,
+        } = await import("@arcana/core/session/goal")
         const snap = getSessionGoal(sessionId)
         if (snap.status !== "unset") {
           goalLine = snap.goal
           if (status === "complete") {
-            // Soft hard-stop: freeze mutations without full verifier (unverified complete).
-            patchSessionGoal(sessionId, { status: "complete_unverified" })
+            const claimed = claimSessionGoalCompletion(sessionId)
+            if (claimed.status === "complete_pending_verify") {
+              startSessionGoalVerification({
+                sessionID: sessionId,
+                goalID: claimed.goalID,
+                revision: claimed.revision,
+              })
+              try {
+                const verdict = await runner.verifyGoalCompletion({
+                  goal: claimed.goal,
+                  scope: claimed.scope,
+                  done,
+                  pending,
+                  blocked,
+                })
+                const resolved = resolveSessionGoalVerification({
+                  sessionID: sessionId,
+                  goalID: claimed.goalID,
+                  revision: claimed.revision,
+                  result: verdict,
+                })
+                verificationLine = resolved.applied
+                  ? verdict.verdict === "verified"
+                    ? `VERIFIED: ${verdict.summary}`
+                    : `REJECTED: ${verdict.summary}`
+                  : "STALE VERDICT: the goal changed before verification completed."
+              } catch (error) {
+                resolveSessionGoalVerification({
+                  sessionID: sessionId,
+                  goalID: claimed.goalID,
+                  revision: claimed.revision,
+                  result: {
+                    verdict: "error",
+                    summary: error instanceof Error ? error.message : String(error),
+                    unmetCriteria: ["Independent verification could not complete."],
+                    evidenceRefs: [],
+                  },
+                })
+                verificationLine = "VERIFIER ERROR: goal blocked pending operator review."
+              }
+            }
           } else if (status === "blocked") {
             patchSessionGoal(sessionId, { status: "blocked" })
           } else if (status === "stale") {
@@ -1205,10 +1254,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
             patchSessionGoal(sessionId, { status: "in_progress" })
           }
         }
-      } catch {
-        const goalResults = memory.search("active.goal")
-        if (goalResults.length > 0) goalLine = goalResults[0]!.snippet
-      }
+      } catch {}
 
       // Record the check-in
       const checkId = `check-${Date.now()}`
@@ -1234,8 +1280,10 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       if (status === "complete") {
         lines.push(
           "",
-          "🎯 GOAL ACHIEVED (complete_unverified). Mutation tools are now frozen for this session.",
-          "Summarize for the user. Set a new goal with goal_set or /goal to continue work.",
+          verificationLine ?? "Completion claim could not be verified because no active goal was found.",
+          verificationLine?.startsWith("VERIFIED:")
+            ? "The verified goal was archived and the active slot was cleared."
+            : "The same goal remains active or blocked. Do not invent a replacement goal to unlock tools.",
         )
       } else if (status === "blocked") {
         lines.push("", "⛔ Blocked. Consider asking the user for help or changing approach.")

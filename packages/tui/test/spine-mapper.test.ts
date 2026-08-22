@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { messagesToSpineEntries } from "../src/shell/command-spine/spine-mapper"
+import { messagesToSpineEntries, messagesToSpineEntriesCached } from "../src/shell/command-spine/spine-mapper"
 import { childStepLabel } from "../src/shell/command-spine/spine-entry"
 import type { Message, Part, ToolPart } from "@arcana/sdk/v2"
 
@@ -699,6 +699,7 @@ describe("collapsible think entries", () => {
       messages: msgs,
       getParts: partsLookup(parts),
       assistantDuration: new Map(),
+      sessionStatusType: "busy",
     })
     expect(result).toHaveLength(0)
   })
@@ -1195,6 +1196,7 @@ describe("edge cases", () => {
       messages: msgs,
       getParts: partsLookup(parts),
       assistantDuration: new Map(),
+      sessionStatusType: "busy",
     })
     expect(result[0]!.kind).toBe("patch")
     expect(result[0]!.summary).toBe("L:\\PROJECTS\\arcana\\src\\auth.ts")
@@ -1223,6 +1225,7 @@ describe("edge cases", () => {
       messages: msgs,
       getParts: partsLookup(parts),
       assistantDuration: new Map(),
+      sessionStatusType: "busy",
     })
     expect(result[0]!.kind).toBe("inspect")
     expect(result[0]!.summary).toContain("Wire OAuth device flow")
@@ -1253,6 +1256,7 @@ describe("edge cases", () => {
       messages: msgs,
       getParts: partsLookup(parts),
       assistantDuration: new Map(),
+      sessionStatusType: "busy",
     })
     expect(result[0]!.kind).toBe("inspect")
     expect(result[0]!.summary).toBe("https://example.com/docs/api")
@@ -1324,6 +1328,7 @@ describe("edge cases", () => {
       messages: msgs,
       getParts: partsLookup(parts),
       assistantDuration: new Map(),
+      sessionStatusType: "busy",
     })
     expect(result[0]!.kind).toBe("agent")
     expect(result[0]!.label).toBe("architect")
@@ -1363,6 +1368,7 @@ describe("edge cases", () => {
       messages: msgs,
       getParts: partsLookup(parts),
       assistantDuration: new Map(),
+      sessionStatusType: "busy",
     })
     expect(result[0]!.kind).toBe("agent")
     expect(result[0]!.streaming).toBe(true)
@@ -1869,6 +1875,129 @@ Diff excerpts can be improved later.`,
     expect(run).toBeDefined()
     expect(run!.receipt?.status).not.toBe("pending")
     expect(run!.receipt?.status).toBe("ok")
+  })
+
+  test("empty orphan assistant renders one static recovery row", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-orphan-empty")
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: undefined,
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.kind).toBe("fail")
+    expect(result[0]!.summary).toBe("Interrupted before completion · recovery required")
+    expect(result[0]!.streaming).toBe(false)
+    expect(result[0]!.source).toEqual({ messageID: "a-orphan-empty", kind: "message" })
+  })
+
+  test("orphan running tool becomes interrupted instead of Working", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-orphan-tool")
+    parts.push({
+      id: "p-orphan-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-orphan-tool",
+      tool: "bash",
+      state: {
+        status: "running",
+        input: { command: "bun test" },
+        output: "partial output",
+        title: "bash",
+        metadata: {},
+        time: { start: 1000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: undefined,
+    })
+    const run = result.find((entry) => entry.source?.partID === "p-orphan-tool")
+
+    expect(run).toBeDefined()
+    expect(run!.receipt?.status).toBe("interrupted")
+    expect(run!.streaming).toBe(false)
+    expect(run!.startMs).toBeUndefined()
+    expect(run!.liveOutput).toBeUndefined()
+    expect(result.some((entry) => entry.kind === "ok")).toBe(false)
+  })
+
+  test("retry keeps pending tools active", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-retry-tool")
+    parts.push({
+      id: "p-retry-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-retry-tool",
+      tool: "bash",
+      state: {
+        status: "running",
+        input: { command: "bun test" },
+        title: "bash",
+        metadata: {},
+        time: { start: 1000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "retry",
+    })
+    const run = result.find((entry) => entry.source?.partID === "p-retry-tool")
+
+    expect(run!.receipt?.status).toBe("pending")
+    expect(run!.streaming).toBe(true)
+    expect(run!.startMs).toBe(1000)
+  })
+
+  test("cached busy tool remaps immediately when idle status is omitted", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-cached-orphan")
+    parts.push({
+      id: "p-cached-orphan",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-cached-orphan",
+      tool: "bash",
+      state: {
+        status: "running",
+        input: { command: "bun test" },
+        title: "bash",
+        metadata: {},
+        time: { start: 1000 },
+      },
+    } as Part)
+    const getParts = partsLookup(parts)
+    const common = {
+      messages: msgs,
+      getParts,
+      getPartRevision: () => 1,
+      assistantDuration: new Map<string, number>(),
+    }
+    const busy = messagesToSpineEntriesCached({ ...common, sessionStatusType: "busy" })
+    const inactive = messagesToSpineEntriesCached({
+      ...common,
+      sessionStatusType: undefined,
+      cache: busy.cache,
+      previousEntries: busy.entries,
+    })
+    const before = busy.entries.find((entry) => entry.source?.partID === "p-cached-orphan")
+    const after = inactive.entries.find((entry) => entry.source?.partID === "p-cached-orphan")
+
+    expect(before!.receipt?.status).toBe("pending")
+    expect(after!.receipt?.status).toBe("interrupted")
+    expect(after!.streaming).toBe(false)
+    expect(after).not.toBe(before)
   })
 
   test("simple reply stops writing when session is idle even without time.completed", () => {

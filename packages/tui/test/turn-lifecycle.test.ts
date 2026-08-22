@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   buildTurnLifecycle,
+  deriveComposerRunState,
   isAssistantSegmentStreaming,
   isSessionTurnActive,
   type TurnLifecycle,
@@ -29,6 +30,33 @@ describe("isSessionTurnActive", () => {
     expect(isSessionTurnActive("idle")).toBe(false)
     expect(isSessionTurnActive(undefined)).toBe(false)
     expect(isSessionTurnActive("")).toBe(false)
+  })
+})
+
+describe("deriveComposerRunState", () => {
+  const base = {
+    hasQuestions: false,
+    hasLocalPermissions: false,
+    hasPermissions: false,
+    pending: true,
+  }
+
+  test("works only for explicit busy/retry turns", () => {
+    expect(deriveComposerRunState({ ...base, sessionStatusType: "busy" })).toBe("working")
+    expect(deriveComposerRunState({ ...base, sessionStatusType: "retry" })).toBe("working")
+    expect(deriveComposerRunState({ ...base, sessionStatusType: "idle" })).toBe("idle")
+    expect(deriveComposerRunState({ ...base, sessionStatusType: undefined })).toBe("idle")
+  })
+
+  test("pending message is required for working chrome", () => {
+    expect(deriveComposerRunState({ ...base, pending: false, sessionStatusType: "busy" })).toBe("idle")
+  })
+
+  test("operator gates take precedence over active work", () => {
+    expect(deriveComposerRunState({ ...base, hasQuestions: true, sessionStatusType: "busy" })).toBe("stop")
+    expect(deriveComposerRunState({ ...base, hasLocalPermissions: true, sessionStatusType: "busy" })).toBe("stop")
+    expect(deriveComposerRunState({ ...base, hasPermissions: true, sessionStatusType: "busy" })).toBe("waiting")
+    expect(deriveComposerRunState({ ...base, sessionStatusType: "waiting" })).toBe("waiting")
   })
 })
 

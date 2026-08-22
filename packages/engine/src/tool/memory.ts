@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { openMemoryDB, MemoryStore } from "@arcana/memory"
+import { openMemoryDB, MemoryStore, isReservedMemoryKey } from "@arcana/memory"
 import { memoryDataDir } from "@/memory/paths"
 import * as Tool from "./tool"
 
@@ -37,16 +37,23 @@ export const MemorySearchTool = Tool.define("memory_search", Effect.succeed({
 
 export const MemoryStoreFactTool = Tool.define("memory_store_fact", Effect.succeed({
   description:
-    "Store a persistent fact in long-term memory. Same key updates in place (never duplicates). Survives sessions.",
+    "Store a persistent user fact in long-term memory. Runtime-reserved active.* and goal.* keys are rejected. Same key updates in place (never duplicates). Survives sessions.",
   parameters: StoreParams,
   execute: (params: Schema.Schema.Type<typeof StoreParams>) =>
     Effect.sync(() => {
+      if (isReservedMemoryKey(params.key)) {
+        return {
+          title: "memory key rejected",
+          output: `Rejected reserved runtime key: ${params.key}. Use a user.* or project.* fact key instead.`,
+          metadata: { key: params.key, merged: false, rejected: true },
+        }
+      }
       const result = store().recordUserFact(params.key, params.value, params.source)
       const verb = result.merged ? "Updated" : "Stored"
       return {
         title: "memory store",
         output: `${verb}: ${params.key} = ${params.value}`,
-        metadata: { key: params.key, merged: result.merged },
+        metadata: { key: params.key, merged: result.merged, rejected: false },
       }
     }),
 }))

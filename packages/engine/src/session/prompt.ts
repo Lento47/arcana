@@ -56,7 +56,12 @@ import { SessionMessage } from "@arcana/core/session/message"
 import { ModelV2 } from "@arcana/core/model"
 import { ProviderV2 } from "@arcana/core/provider"
 import { AgentAttachment, FileAttachment, Prompt, Source } from "@arcana/core/session/prompt"
-import { formatActiveGoalBlock, getSessionGoal } from "@arcana/core/session/goal"
+import {
+  formatActiveGoalBlock,
+  getSessionGoal,
+  resolveSessionGoalVerification,
+  startSessionGoalVerification,
+} from "@arcana/core/session/goal"
 import { Question } from "@/question"
 import {
   DRIVE_CONTINUATION_REMINDER,
@@ -66,9 +71,10 @@ import {
   resolveDriveConfig,
 } from "./drive"
 import * as DateTime from "effect/DateTime"
-import { and, eq, ne, sql } from "drizzle-orm"
+import { and, desc, eq, gte, ne, sql } from "drizzle-orm"
 import { ContractTable } from "@arcana/core/epistemic/contract-sql"
 import { ObligationTable } from "@arcana/core/epistemic/obligation-sql"
+import { EventTable } from "@arcana/core/epistemic/event-sql"
 import { SqliteIntentBindingStore } from "@arcana/core/capability/intent-binding-store-sqlite"
 import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
 import { EventStore } from "./epistemic/event-store"
@@ -80,6 +86,7 @@ import { ContractAdmission } from "./contract-admission"
 import { CapabilityRevocation } from "./capability-revocation"
 import { revokeWithCascade, type RuntimeGrantStore } from "@arcana/core/capability/runtime-delegation"
 import { deriveCompletionReason } from "./epistemic/completion-reason"
+import { runGoalVerifier, type GoalEvidencePacket } from "./goal-verifier"
 import { EXTRACTION_PROMPT } from "./learning"
 import {
   applyLearningExtraction,
@@ -181,6 +188,7 @@ export const layer = Layer.effect(
     const contracts = yield* ContractEngine.Service
     const obligations = yield* ObligationEngine.Service
     const { db } = database
+    const goalVerificationInFlight = new Set<string>()
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
         cancel: (sessionID: SessionID) => cancel(sessionID),
@@ -340,6 +348,166 @@ export const layer = Layer.effect(
         return true
       },
     )
+
+    /**
+     * Independent model verifier for a worker's pending completion claim.
+     * The runner receives only an engine-built evidence packet, owns no
+     * tools, and can update only the exact goal revision it evaluated.
+     */
+    const verifyPendingGoal = Effect.fn("SessionPrompt.verifyPendingGoal")(function* (input: {
+      sessionID: SessionID
+      providerID: ProviderV2.ID
+      modelID: ModelV2.ID
+    }) {
+      const goal = getSessionGoal(input.sessionID)
+      if (goal.status !== "complete_pending_verify") return
+      const key = `${input.sessionID}:${goal.goalID}:${goal.revision}`
+      if (goalVerificationInFlight.has(key)) return
+      goalVerificationInFlight.add(key)
+
+      try {
+        startSessionGoalVerification({
+          sessionID: input.sessionID,
+          goalID: goal.goalID,
+          revision: goal.revision,
+        })
+
+        const contractRows = yield* db
+          .select({
+            id: ContractTable.id,
+            revision: ContractTable.revision,
+            status: ContractTable.status,
+            resolutionState: ContractTable.resolution_state,
+            resolutionReason: ContractTable.resolution_reason,
+          })
+          .from(ContractTable)
+          .where(eq(ContractTable.session_id, input.sessionID))
+          .orderBy(desc(ContractTable.created_at))
+          .limit(1)
+          .pipe(Effect.provideService(Database.Service, database), Effect.orElseSucceed(() => []))
+        const contract = contractRows[0]
+        const obligationRows = contract
+          ? yield* db
+              .select({
+                id: ObligationTable.id,
+                description: ObligationTable.description,
+                required: ObligationTable.required,
+                status: ObligationTable.status,
+                verification: ObligationTable.verification,
+              })
+              .from(ObligationTable)
+              .where(eq(ObligationTable.contract_id, contract.id))
+              .pipe(Effect.provideService(Database.Service, database), Effect.orElseSucceed(() => []))
+          : []
+        const governanceEvents = yield* eventStore
+          .listGovernance(input.sessionID, 200)
+          .pipe(Effect.orElseSucceed(() => []))
+        const objectiveGovernanceEvents = governanceEvents.filter((event) => event.timestamp >= goal.createdAt)
+        const toolEvidence = yield* db
+          .select({ id: EventTable.id, type: EventTable.type, payload: EventTable.payload })
+          .from(EventTable)
+          .where(
+            and(
+              eq(EventTable.session_id, input.sessionID),
+              eq(EventTable.type, "tool.returned"),
+              gte(EventTable.timestamp, goal.createdAt),
+            ),
+          )
+          .orderBy(desc(EventTable.sequence))
+          .limit(100)
+          .pipe(Effect.provideService(Database.Service, database), Effect.orElseSucceed(() => []))
+        const trace = yield* eventStore
+          .sessionTraceHealth(input.sessionID)
+          .pipe(Effect.orElseSucceed(() => ({ status: "UNAVAILABLE" as const })))
+
+        const packet: GoalEvidencePacket = {
+          goal: {
+            sessionID: goal.sessionID,
+            goalID: goal.goalID,
+            revision: goal.revision,
+            goal: goal.goal,
+            scope: goal.scope,
+          },
+          contract: contract
+            ? {
+                id: contract.id,
+                revision: contract.revision ?? 1,
+                status: contract.status,
+                resolutionState: contract.resolutionState,
+                resolutionReason: contract.resolutionReason,
+              }
+            : undefined,
+          obligations: obligationRows.map((item) => ({
+            id: item.id,
+            description: item.description,
+            required: item.required === 1,
+            status: item.status,
+            verification: item.verification,
+          })),
+          evidence: [
+            ...objectiveGovernanceEvents.map((event) => ({
+              id: event.id,
+              type: event.type,
+              summary: JSON.stringify(event.payload).slice(0, 1200),
+            })),
+            ...toolEvidence.map((event) => ({
+              id: event.id,
+              type: event.type,
+              summary: event.payload.slice(0, 1200),
+            })),
+          ],
+          traceStatus: trace.status,
+        }
+
+        const verifier = yield* agents.get("verifier")
+        if (!verifier) {
+          resolveSessionGoalVerification({
+            sessionID: input.sessionID,
+            goalID: goal.goalID,
+            revision: goal.revision,
+            result: {
+              verdict: "error",
+              summary: "The built-in verifier principal is unavailable.",
+            },
+          })
+          return
+        }
+        const verifierModel = verifier.model
+          ? yield* provider.getModel(verifier.model.providerID, verifier.model.modelID)
+          : yield* provider.getModel(input.providerID, input.modelID)
+        const language = yield* provider.getLanguage(verifierModel)
+        const verdict = yield* Effect.promise(() =>
+          runGoalVerifier({
+            model: language,
+            system: verifier.prompt ?? "Evaluate completion evidence independently.",
+            packet,
+          }),
+        )
+        const applied = resolveSessionGoalVerification({
+          sessionID: input.sessionID,
+          goalID: goal.goalID,
+          revision: goal.revision,
+          result: verdict.result,
+        })
+        yield* eventStore.append({
+          sessionId: input.sessionID,
+          actor: { kind: "model", id: "verifier" },
+          type: "verification.recorded",
+          payload: {
+            goalID: goal.goalID,
+            goalRevision: goal.revision,
+            verdict: verdict.result.verdict,
+            summary: verdict.result.summary,
+            unmetCriteria: verdict.result.unmetCriteria ?? [],
+            evidenceRefs: verdict.result.evidenceRefs ?? [],
+            attempts: verdict.attempts,
+            applied: applied.applied,
+          },
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+      } finally {
+        goalVerificationInFlight.delete(key)
+      }
+    })
 
     const resolvePromptParts = Effect.fn("SessionPrompt.resolvePromptParts")(function* (template: string) {
       const ctx = yield* InstanceState.context
@@ -1542,6 +1710,26 @@ export const layer = Layer.effect(
               step,
               messageID: lastAssistant.id,
             }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+            yield* verifyPendingGoal({
+              sessionID,
+              providerID: lastUser.model.providerID,
+              modelID: lastUser.model.modelID,
+            }).pipe(
+              Effect.catchCause((cause) => Effect.sync(() => {
+                const pending = getSessionGoal(sessionID)
+                if (pending.status !== "complete_pending_verify") return
+                resolveSessionGoalVerification({
+                  sessionID,
+                  goalID: pending.goalID,
+                  revision: pending.revision,
+                  result: {
+                    verdict: "error",
+                    summary: `Independent verification infrastructure failed: ${String(Cause.squash(cause))}`,
+                  },
+                })
+              })),
+              Effect.ignore,
+            )
 
             const cfg = yield* config.get()
             const driveCfg = resolveDriveConfig({
@@ -1968,6 +2156,26 @@ export const layer = Layer.effect(
                 step,
                 messageID: handle.message.id,
               })
+              yield* verifyPendingGoal({
+                sessionID,
+                providerID: lastUser.model.providerID,
+                modelID: lastUser.model.modelID,
+              }).pipe(
+                Effect.catchCause((cause) => Effect.sync(() => {
+                  const pending = getSessionGoal(sessionID)
+                  if (pending.status !== "complete_pending_verify") return
+                  resolveSessionGoalVerification({
+                    sessionID,
+                    goalID: pending.goalID,
+                    revision: pending.revision,
+                    result: {
+                      verdict: "error",
+                      summary: `Independent verification infrastructure failed: ${String(Cause.squash(cause))}`,
+                    },
+                  })
+                })),
+                Effect.ignore,
+              )
               if (completed) return "break" as const
             }
             if (result === "compact") {

@@ -73,7 +73,6 @@ export {
 } from "./tool-parts"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { SubagentFooter } from "./subagent-footer.tsx"
-import { SubagentBreadcrumb } from "./subagent-breadcrumb.tsx"
 import { resolveChildSession } from "./subagent-resolve.ts"
 import { filetype } from "../../util/filetype"
 import parsers from "../../parsers-config"
@@ -1134,6 +1133,7 @@ export function Session() {
         permissions,
         questions,
         session,
+        sessionList: () => sync.data.session,
         sessionStatus: () => sync.data.session_status[route.sessionID],
         visible,
         disabled,
@@ -1205,9 +1205,6 @@ export function Session() {
             borderColor={transBorder()}
           >
             <Show when={session() || allOptimisticMessages().some((item) => item.sessionID === route.sessionID)}>
-              <Show when={session()?.parentID}>
-                <SubagentBreadcrumb parentID={session()!.parentID!} />
-              </Show>
               <Dynamic component={ShellCmp()} {...shellProps()} />
             </Show>
           </box>
@@ -1230,4 +1227,3 @@ export function Session() {
     </PathFormatterProvider>
   )
 }
-

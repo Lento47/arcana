@@ -71,7 +71,8 @@ export type SpineReceipt = {
     added?: number
     removed?: number
   }
-  status: "ok" | "fail" | "pending"
+  /** `interrupted` is a display-only recovery state; it never rewrites engine history. */
+  status: "ok" | "fail" | "pending" | "interrupted"
   files?: SpineReceiptFile[]
 }
 

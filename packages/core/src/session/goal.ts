@@ -6,6 +6,7 @@
  * Pure Node APIs so engine, CLI, and TUI can share without Effect boilerplate.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
+import { randomUUID } from "crypto"
 import { homedir } from "os"
 import { join } from "path"
 
@@ -22,16 +23,46 @@ export type GoalPriority = "high" | "medium" | "low"
 
 export type SessionGoal = {
   sessionID: string
+  /** Stable identity for one objective within a session. */
+  goalID: string
+  /** Increments only when the objective changes, never for status updates. */
+  revision: number
   goal: string
   scope: string
   priority: GoalPriority
   status: GoalStatus
+  /** Start of this objective revision's evidence window. */
+  createdAt: string
   updatedAt: string
   /** Optional kanban session key for board linkage */
   boardSessionID?: string
   openCards?: number
   doneCards?: number
   blockedCards?: number
+  verification?: GoalVerification
+}
+
+export type GoalVerification = {
+  claimedAt?: string
+  startedAt?: string
+  resolvedAt?: string
+  attempts: number
+  verdict?: "verified" | "rejected" | "error"
+  summary?: string
+  unmetCriteria?: string[]
+  evidenceRefs?: string[]
+}
+
+export type GoalVerificationResult = {
+  verdict: "verified" | "rejected" | "error"
+  summary: string
+  unmetCriteria?: readonly string[]
+  evidenceRefs?: readonly string[]
+}
+
+export type GoalArchiveRecord = SessionGoal & {
+  archivedAt: string
+  outcome: "verified_complete" | "legacy_unverified"
 }
 
 export type GoalSnapshot = SessionGoal | { sessionID: string; status: "unset" }
@@ -108,6 +139,18 @@ function goalPath(sessionID: string): string {
   return join(goalsDir(), `${safe}.json`)
 }
 
+function safeSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 180)
+}
+
+function escapePromptField(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+}
+
+function archivePath(goal: SessionGoal): string {
+  return join(goalsDir(), "archive", safeSegment(goal.sessionID), `${safeSegment(goal.goalID)}-r${goal.revision}.json`)
+}
+
 export function getSessionGoal(sessionID: string): GoalSnapshot {
   if (!sessionID) return { sessionID: "", status: "unset" }
   try {
@@ -115,17 +158,22 @@ export function getSessionGoal(sessionID: string): GoalSnapshot {
     if (!existsSync(path)) return { sessionID, status: "unset" }
     const raw = JSON.parse(readFileSync(path, "utf8")) as SessionGoal
     if (!raw?.goal?.trim()) return { sessionID, status: "unset" }
+    const updatedAt = raw.updatedAt ?? new Date().toISOString()
     return {
       sessionID,
+      goalID: raw.goalID?.trim() || `legacy-${safeSegment(sessionID)}`,
+      revision: Number.isInteger(raw.revision) && raw.revision > 0 ? raw.revision : 1,
       goal: raw.goal,
       scope: raw.scope ?? "not specified",
       priority: raw.priority ?? "medium",
       status: raw.status ?? "in_progress",
-      updatedAt: raw.updatedAt ?? new Date().toISOString(),
+      createdAt: raw.createdAt ?? updatedAt,
+      updatedAt,
       boardSessionID: raw.boardSessionID,
       openCards: raw.openCards,
       doneCards: raw.doneCards,
       blockedCards: raw.blockedCards,
+      verification: raw.verification,
     }
   } catch {
     return { sessionID, status: "unset" }
@@ -143,22 +191,30 @@ export function setSessionGoal(
     openCards?: number
     doneCards?: number
     blockedCards?: number
+    /** Explicit user replacement, even when the objective text is unchanged. */
+    newRevision?: boolean
   },
 ): SessionGoal {
   const dir = goalsDir()
   mkdirSync(dir, { recursive: true })
   const prev = getSessionGoal(sessionID)
+  const sameObjective = !input.newRevision && prev.status !== "unset" && prev.goal === input.goal.trim()
+  const now = new Date().toISOString()
   const next: SessionGoal = {
     sessionID,
+    goalID: sameObjective ? prev.goalID : randomUUID(),
+    revision: sameObjective ? prev.revision : prev.status === "unset" ? 1 : prev.revision + 1,
     goal: input.goal.trim(),
     scope: (input.scope ?? (prev.status !== "unset" ? prev.scope : "not specified")).trim() || "not specified",
     priority: input.priority ?? (prev.status !== "unset" ? prev.priority : "medium"),
     status: input.status ?? "in_progress",
-    updatedAt: new Date().toISOString(),
+    createdAt: sameObjective ? prev.createdAt : now,
+    updatedAt: now,
     boardSessionID: input.boardSessionID ?? (prev.status !== "unset" ? prev.boardSessionID : undefined),
     openCards: input.openCards ?? (prev.status !== "unset" ? prev.openCards : undefined),
     doneCards: input.doneCards ?? (prev.status !== "unset" ? prev.doneCards : undefined),
     blockedCards: input.blockedCards ?? (prev.status !== "unset" ? prev.blockedCards : undefined),
+    verification: sameObjective ? prev.verification : undefined,
   }
   writeFileSync(goalPath(sessionID), JSON.stringify(next, null, 2), "utf8")
   return next
@@ -166,7 +222,7 @@ export function setSessionGoal(
 
 export function patchSessionGoal(
   sessionID: string,
-  patch: Partial<Omit<SessionGoal, "sessionID" | "updatedAt">>,
+  patch: Partial<Omit<SessionGoal, "sessionID" | "goalID" | "revision" | "createdAt" | "updatedAt">>,
 ): GoalSnapshot {
   const cur = getSessionGoal(sessionID)
   if (cur.status === "unset" && !patch.goal) return cur
@@ -194,6 +250,118 @@ export function patchSessionGoal(
   })
 }
 
+/** Record a worker's completion claim without granting completion authority. */
+export function claimSessionGoalCompletion(sessionID: string): GoalSnapshot {
+  const cur = getSessionGoal(sessionID)
+  if (cur.status === "unset") return cur
+  if (cur.status === "complete_pending_verify") return cur
+  if (cur.status === "complete" || cur.status === "complete_unverified") return cur
+  const next = setSessionGoal(sessionID, {
+    goal: cur.goal,
+    scope: cur.scope,
+    priority: cur.priority,
+    status: "complete_pending_verify",
+    boardSessionID: cur.boardSessionID,
+    openCards: cur.openCards,
+    doneCards: cur.doneCards,
+    blockedCards: cur.blockedCards,
+  })
+  next.verification = {
+    attempts: cur.verification?.attempts ?? 0,
+    claimedAt: new Date().toISOString(),
+  }
+  writeFileSync(goalPath(sessionID), JSON.stringify(next, null, 2), "utf8")
+  return next
+}
+
+/** Mark a pending verifier attempt. Idempotent callers may safely call this after restart. */
+export function startSessionGoalVerification(input: {
+  sessionID: string
+  goalID: string
+  revision: number
+}): GoalSnapshot {
+  const cur = getSessionGoal(input.sessionID)
+  if (
+    cur.status === "unset" ||
+    cur.status !== "complete_pending_verify" ||
+    cur.goalID !== input.goalID ||
+    cur.revision !== input.revision
+  ) return cur
+  const next: SessionGoal = {
+    ...cur,
+    updatedAt: new Date().toISOString(),
+    verification: {
+      ...cur.verification,
+      attempts: (cur.verification?.attempts ?? 0) + 1,
+      startedAt: new Date().toISOString(),
+      verdict: undefined,
+    },
+  }
+  writeFileSync(goalPath(input.sessionID), JSON.stringify(next, null, 2), "utf8")
+  return next
+}
+
+function archiveGoal(goal: SessionGoal, outcome: GoalArchiveRecord["outcome"]): GoalArchiveRecord {
+  const record: GoalArchiveRecord = { ...goal, archivedAt: new Date().toISOString(), outcome }
+  const path = archivePath(goal)
+  mkdirSync(join(goalsDir(), "archive", safeSegment(goal.sessionID)), { recursive: true })
+  if (!existsSync(path)) writeFileSync(path, JSON.stringify(record, null, 2), "utf8")
+  return record
+}
+
+/** Apply a verifier result only to the exact pending objective revision. */
+export function resolveSessionGoalVerification(input: {
+  sessionID: string
+  goalID: string
+  revision: number
+  result: GoalVerificationResult
+}): { applied: boolean; archived?: GoalArchiveRecord; goal: GoalSnapshot } {
+  const cur = getSessionGoal(input.sessionID)
+  if (
+    cur.status === "unset" ||
+    cur.status !== "complete_pending_verify" ||
+    cur.goalID !== input.goalID ||
+    cur.revision !== input.revision
+  ) return { applied: false, goal: cur }
+
+  const resolved: SessionGoal = {
+    ...cur,
+    updatedAt: new Date().toISOString(),
+    verification: {
+      ...cur.verification,
+      attempts: cur.verification?.attempts ?? 1,
+      resolvedAt: new Date().toISOString(),
+      verdict: input.result.verdict,
+      summary: input.result.summary,
+      unmetCriteria: [...(input.result.unmetCriteria ?? [])],
+      evidenceRefs: [...(input.result.evidenceRefs ?? [])],
+    },
+  }
+
+  if (input.result.verdict === "verified") {
+    const archived = archiveGoal(resolved, "verified_complete")
+    clearSessionGoal(input.sessionID)
+    return { applied: true, archived, goal: getSessionGoal(input.sessionID) }
+  }
+
+  const next: SessionGoal = {
+    ...resolved,
+    status: input.result.verdict === "rejected" ? "in_progress" : "blocked",
+  }
+  writeFileSync(goalPath(input.sessionID), JSON.stringify(next, null, 2), "utf8")
+  return { applied: true, goal: next }
+}
+
+/** Quarantine old model-terminal states without treating them as verified. */
+export function migrateLegacyTerminalGoal(sessionID: string): GoalSnapshot {
+  const cur = getSessionGoal(sessionID)
+  if (cur.status === "unset") return cur
+  if (cur.status !== "complete" && cur.status !== "complete_unverified") return cur
+  archiveGoal(cur, "legacy_unverified")
+  clearSessionGoal(sessionID)
+  return getSessionGoal(sessionID)
+}
+
 export function clearSessionGoal(sessionID: string): void {
   try {
     const path = goalPath(sessionID)
@@ -210,9 +378,11 @@ export function formatActiveGoalBlock(input: {
   actorAgent?: string
   actorRole?: "primary" | "subagent" | "system"
 }): string {
-  const snap = getSessionGoal(input.sessionID)
-  const sessionAgent = input.sessionAgent?.trim() || "unknown"
-  const actorAgent = input.actorAgent?.trim() || sessionAgent
+  const snap = migrateLegacyTerminalGoal(input.sessionID)
+  const sessionAgentRaw = input.sessionAgent?.trim() || "unknown"
+  const actorAgentRaw = input.actorAgent?.trim() || sessionAgentRaw
+  const sessionAgent = escapePromptField(sessionAgentRaw)
+  const actorAgent = escapePromptField(actorAgentRaw)
   const actorRole = input.actorRole ?? (actorAgent === sessionAgent ? "primary" : "subagent")
 
   if (snap.status === "unset") {
@@ -222,7 +392,7 @@ export function formatActiveGoalBlock(input: {
       `  session_agent: ${sessionAgent}`,
       `  actor_agent: ${actorAgent}`,
       `  actor_role: ${actorRole}`,
-      "  note: No active goal. Call goal_set (or user /goal) before multi-step mutation work.",
+      "  note: No active goal. Set one only for an explicit multi-step mutation objective.",
       "</active-goal>",
     ].join("\n")
   }
@@ -232,11 +402,14 @@ export function formatActiveGoalBlock(input: {
       ? `  board: open ${snap.openCards ?? 0} · done ${snap.doneCards ?? 0} · blocked ${snap.blockedCards ?? 0}`
       : undefined
 
-  const goalLine = snap.goal.length > 400 ? snap.goal.slice(0, 397) + "…" : snap.goal
-  const scopeLine = snap.scope.length > 200 ? snap.scope.slice(0, 197) + "…" : snap.scope
+  const goalText = snap.goal.length > 400 ? snap.goal.slice(0, 397) + "…" : snap.goal
+  const scopeText = snap.scope.length > 200 ? snap.scope.slice(0, 197) + "…" : snap.scope
+  const goalLine = escapePromptField(goalText)
+  const scopeLine = escapePromptField(scopeText)
 
+  const pending = snap.status === "complete_pending_verify"
   return [
-    "<active-goal>",
+    pending ? "<goal-lifecycle>" : "<active-goal>",
     `  goal: ${goalLine}`,
     `  scope: ${scopeLine}`,
     `  priority: ${snap.priority}`,
@@ -245,10 +418,15 @@ export function formatActiveGoalBlock(input: {
     `  session_agent: ${sessionAgent}`,
     `  actor_agent: ${actorAgent}`,
     `  actor_role: ${actorRole}`,
-    snap.status === "complete" || snap.status === "complete_unverified"
-      ? "  note: Goal complete — do not mutate further; summarize or set a new goal."
+    pending
+      ? "  note: Completion was claimed and is awaiting independent verification. Do not mutate or invent a replacement goal."
+      : snap.verification?.verdict === "rejected"
+        ? `  verification: rejected — ${escapePromptField(snap.verification.summary ?? "criteria remain unmet")}`
+        : undefined,
+    !pending && snap.verification?.verdict === "rejected" && snap.verification.unmetCriteria?.length
+      ? `  unmet_criteria: ${escapePromptField(snap.verification.unmetCriteria.join(" | ").slice(0, 600))}`
       : undefined,
-    "</active-goal>",
+    pending ? "</goal-lifecycle>" : "</active-goal>",
   ]
     .filter(Boolean)
     .join("\n")
@@ -278,7 +456,7 @@ export function checkGoalToolGate(input: {
   const agent = input.agentName.toLowerCase()
   if (GATE_EXEMPT_AGENTS.has(agent)) return { allow: true }
 
-  const snap = getSessionGoal(input.sessionID)
+  const snap = migrateLegacyTerminalGoal(input.sessionID)
 
   if (snap.status === "complete" || snap.status === "complete_unverified") {
     return {
@@ -286,7 +464,7 @@ export function checkGoalToolGate(input: {
       reason: "goal_complete",
       message:
         `Goal is ${snap.status}. Mutation tool "${input.toolName}" is frozen. ` +
-        `Set a new goal with goal_set or /goal to continue, or use read-only tools to summarize.`,
+        `Do not invent a replacement goal to unlock tools; wait for a new explicit user objective.`,
     }
   }
 
@@ -294,7 +472,7 @@ export function checkGoalToolGate(input: {
     return {
       allow: false,
       reason: "goal_complete",
-      message: `Goal is pending verification. Wait for verify outcome or set a new goal before mutating.`,
+      message: `Goal is pending independent verification. Do not invent a replacement goal or mutate until it resolves.`,
     }
   }
 
@@ -304,8 +482,8 @@ export function checkGoalToolGate(input: {
       allow: false,
       reason: "goal_required",
       message:
-        `No active goal for this session. Call goal_set (or user /goal) before "${input.toolName}". ` +
-        `Read/search tools remain available.`,
+        `No active goal for this session. Set one only if the user's current request explicitly requires multi-step mutation before "${input.toolName}". ` +
+        `Do not create a goal merely to unlock tools; read/search and conversational work remain available.`,
     }
   }
 

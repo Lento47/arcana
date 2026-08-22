@@ -809,7 +809,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
         if (snap.status === "unset") {
           toast.show({
             title: "Session contract",
-            message: "No active goal. Send a work prompt — Arcana records it as the goal and keeps working until it is satisfied.",
+            message: "No active goal. Send an explicit multi-step mutation request or use /goal to start one.",
             variant: "info",
             duration: 8000,
           })
@@ -835,7 +835,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           toast.show({
             title: "Drive",
             message:
-              "No active goal. On a work prompt Arcana sets the goal and continues (up to 6 extra loops) until it is satisfied, a question is asked, or you abort.",
+              "No active goal. Explicit multi-step mutation work can start one; greetings, reviews, and read-only requests stay goal-free.",
             variant: "info",
             duration: 8000,
           })

@@ -65,7 +65,8 @@ const CONTAINER_SEGMENTS = new Set([
  *   /home/user/arcana/packages/core, 3    → "arcana ▸ … ▸ core"
  *   Z:\a\b\c\d, 3                         → "a ▸ … ▸ d"
  * `maxSegments` counts displayed tokens including the ellipsis. Below 3 the
- * trail is leaf-anchored with a leading ellipsis when trimmed.
+ * trail is leaf-anchored: up to `maxSegments` leaves plus a leading ellipsis
+ * when trimmed (so one extra token on top of the budget).
  */
 export function breadcrumbFromPath(path: string, maxSegments: number): string {
   const parts = path

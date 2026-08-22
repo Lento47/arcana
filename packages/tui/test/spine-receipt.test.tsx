@@ -157,6 +157,31 @@ test("run + pending receipt shows running indicator", async () => {
   expect(frame).toContain("Working")
 })
 
+test("interrupted receipt is static recovery evidence", async () => {
+  const frame = await capture(
+    await renderReceipt(
+      "run",
+      { label: "bash", command: "cargo build", status: "interrupted" },
+      "wide",
+      120,
+    ),
+  )
+  expect(frame).toContain("Interrupted · recovery required")
+  expect(frame).not.toContain("Working")
+})
+
+test("interrupted receipt has a compact minimal label", async () => {
+  const frame = await capture(
+    await renderReceipt(
+      "patch",
+      { label: "edit", status: "interrupted" },
+      "minimal",
+      40,
+    ),
+  )
+  expect(frame).toBe("INTERRUPTED")
+})
+
 // ---------- patch ----------
 
 test("patch receipt at wide", async () => {

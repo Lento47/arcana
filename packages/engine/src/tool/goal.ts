@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect"
 import * as Tool from "./tool"
 import {
   getSessionGoal,
+  claimSessionGoalCompletion,
   patchSessionGoal,
   setSessionGoal,
   type GoalPriority,
@@ -49,6 +50,16 @@ export const GoalSetTool = Tool.define<typeof SetParams, SetMetadata, never>("go
   parameters: SetParams,
   execute: (params: Schema.Schema.Type<typeof SetParams>, ctx: Tool.Context<SetMetadata>) =>
     Effect.sync(() => {
+      const current = getSessionGoal(ctx.sessionID)
+      if (current.status === "complete_pending_verify") {
+        return {
+          title: "goal awaiting verification",
+          output:
+            "The current goal is awaiting independent verification. Do not replace it to unlock mutation tools. " +
+            "Wait for the verdict; if the user explicitly changes objectives, they can use /goal.",
+          metadata: { goal: current.goal, status: current.status },
+        }
+      }
       const priority = (params.priority ?? "medium") as GoalPriority
       const snap = setSessionGoal(ctx.sessionID, {
         goal: params.goal,
@@ -92,7 +103,7 @@ export const GoalCheckTool = Tool.define<typeof CheckParams, CheckMetadata, neve
       }
 
       if (params.status === "complete") {
-        patchSessionGoal(ctx.sessionID, { status: "complete_unverified" })
+        claimSessionGoalCompletion(ctx.sessionID)
       } else if (params.status === "blocked" || params.status === "stale" || params.status === "in_progress") {
         patchSessionGoal(ctx.sessionID, { status: params.status })
       }
@@ -107,8 +118,8 @@ export const GoalCheckTool = Tool.define<typeof CheckParams, CheckMetadata, neve
       if (params.status === "complete") {
         lines.push(
           "",
-          "GOAL ACHIEVED (complete_unverified). Mutation tools are frozen for this session.",
-          "Summarize for the user. Call goal_set (or /goal) only when starting a new objective.",
+          "COMPLETION CLAIMED (complete_pending_verify). Mutation tools are frozen while an independent verifier checks the exact goal revision.",
+          "Summarize for the user. Do not invent or set a replacement goal to unlock tools.",
         )
       } else if (params.status === "blocked") {
         lines.push("", "Blocked. Ask the user for guidance or change approach.")

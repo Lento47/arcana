@@ -61,8 +61,23 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("general")
     expect(names).toContain("explore")
     expect(names).toContain("compaction")
+    expect(names).toContain("verifier")
     expect(names).toContain("title")
     expect(names).toContain("summary")
+  }),
+)
+
+it.instance("verifier agent is hidden, bounded, and has no tool authority", () =>
+  Effect.gen(function* () {
+    const verifier = yield* load((svc) => svc.get("verifier"))
+    expect(verifier).toBeDefined()
+    expect(verifier?.hidden).toBe(true)
+    expect(verifier?.mode).toBe("subagent")
+    expect(verifier?.steps).toBe(1)
+    expect(evalPerm(verifier, "read")).toBe("deny")
+    expect(evalPerm(verifier, "edit")).toBe("deny")
+    expect(evalPerm(verifier, "bash")).toBe("deny")
+    expect(evalPerm(verifier, "task")).toBe("deny")
   }),
 )
 

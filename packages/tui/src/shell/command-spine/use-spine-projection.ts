@@ -25,6 +25,7 @@ import { buildTrustStatus, eventGapFromTrace } from "./spine-trust"
 import { projectGovernedTally, projectSessionCharter } from "./session-charter"
 import { getSessionGoal } from "@arcana/core/session/goal"
 import { attachProofContinuations } from "./spine-proof-attach"
+import { deriveComposerRunState } from "./turn-lifecycle"
 
 // Cross-session cache: keyed by sessionID so back-switching to a session
 // reuses the already-computed entries + per-message cache instead of
@@ -109,10 +110,13 @@ export function useSpineProjection(props: ShellProps, input: {
     const pending = (props.questions?.().length ?? 0) + (props.permissions?.().length ?? 0)
     const busy = props.sessionStatus?.()?.type === "busy"
     let drive: string | undefined
-    if (goal.status === "complete" || goal.status === "complete_unverified" || goal.status === "complete_pending_verify") {
+    if (goal.status === "complete_pending_verify") {
+      drive = "verifying"
+    } else if (goal.status === "complete" || goal.status === "complete_unverified") {
       drive = "done"
     } else if (goal.status === "in_progress") {
-      if (pending > 0) drive = "paused"
+      if (goal.verification?.verdict === "rejected") drive = "rework"
+      else if (pending > 0) drive = "paused"
       else if (busy) drive = used > 0 ? `${used}/6` : "on"
       else drive = "open"
     }
@@ -343,18 +347,13 @@ export function useSpineProjection(props: ShellProps, input: {
   const thinkContentWidth = createMemo(() => thinkWidth())
 
   // ── Run state for the composer ───────────────────────────────────
-  const runState = createMemo(() => {
-    if (props.questions().length || props.permissions().some(isLocalPermissionRequest)) return "stop"
-    const sessionStatus = props.sessionStatus?.()
-    const statusType = sessionStatus?.type
-    if (statusType === "waiting" || props.permissions().length) return "waiting"
-    // Only show "working" when both pending AND session is active.
-    // Stale messages without time.completed shouldn't block idle transition.
-    // If sessionStatus is undefined, treat session as active (backward compatible).
-    const sessionActive = !statusType || statusType === "busy"
-    if (props.pending() && sessionActive) return "working"
-    return "idle"
-  })
+  const runState = createMemo(() => deriveComposerRunState({
+    hasQuestions: props.questions().length > 0,
+    hasLocalPermissions: props.permissions().some(isLocalPermissionRequest),
+    hasPermissions: props.permissions().length > 0,
+    pending: !!props.pending(),
+    sessionStatusType: props.sessionStatus?.()?.type,
+  }))
 
   // ── Approval lookup helpers (shared by projection consumers) ─────
   const getApprovalForEntry = (entry: SpineEntry) => {

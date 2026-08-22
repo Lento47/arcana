@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { runProofVerificationKindFromShellCommand } from "./runner.js"
+import { AgentRunner, runProofVerificationKindFromShellCommand } from "./runner.js"
 
 describe("AgentRunner RunProof verification shell classification", () => {
   test("classifies focused verification commands", () => {
@@ -14,5 +14,29 @@ describe("AgentRunner RunProof verification shell classification", () => {
     expect(runProofVerificationKindFromShellCommand("rg -n proof packages/arcana/src")).toBeUndefined()
     expect(runProofVerificationKindFromShellCommand("git status --short")).toBeUndefined()
     expect(runProofVerificationKindFromShellCommand("echo building context summary")).toBeUndefined()
+  })
+})
+
+describe("AgentRunner independent goal verifier", () => {
+  test("rejects completion without objective-scoped execution receipts", async () => {
+    const runner = new AgentRunner({})
+    const verdict = await runner.verifyGoalCompletion({
+      goal: "change the project",
+      pending: "none",
+      blocked: "none",
+    })
+    expect(verdict.verdict).toBe("rejected")
+    expect(verdict.summary).toContain("No execution receipts")
+  })
+
+  test("rejects reported pending work before calling a model", async () => {
+    const runner = new AgentRunner({})
+    const verdict = await runner.verifyGoalCompletion({
+      goal: "change the project",
+      pending: "run the tests",
+      blocked: "none",
+    })
+    expect(verdict.verdict).toBe("rejected")
+    expect(verdict.unmetCriteria[0]).toContain("run the tests")
   })
 })

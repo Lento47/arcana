@@ -16,6 +16,11 @@ function extractErrorCode(msg: string): { code?: string; cause: string } {
   return { cause: msg }
 }
 
+function renderInterruptedReceipt(layout: SpineLayout, t: Theme) {
+  const text = layout === "minimal" ? "INTERRUPTED" : "Interrupted · recovery required"
+  return <text fg={t.warning}>{text}</text>
+}
+
 // Truncation: shared display-width-aware helper from util/locale (audit T3).
 
 function renderRunReceipt(r: SpineReceiptType, layout: SpineLayout, t: Theme) {
@@ -187,6 +192,7 @@ export function SpineReceipt(props: {
   const content = () => {
     const receipt = r()
     if (!receipt) return null
+    if (receipt.status === "interrupted") return renderInterruptedReceipt(layout(), theme)
     switch (kind()) {
       case "run":
         return renderRunReceipt(receipt, layout(), theme)

@@ -17,6 +17,7 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_CLIENT from "./prompt/client.txt"
 import PROMPT_REVIEWER from "./prompt/reviewer.txt"
+import PROMPT_VERIFIER from "./prompt/verifier.txt"
 import PROMPT_ARCHITECT from "./prompt/architect.txt"
 import PROMPT_TESTER from "./prompt/tester.txt"
 import PROMPT_QA from "./prompt/qa.txt"
@@ -416,6 +417,20 @@ export const layer = Layer.effect(
             steps: 15,
             color: "#10B981",
             prompt: PROMPT_REVIEWER,
+          },
+          verifier: {
+            name: "verifier",
+            description: "Independent completion verifier — evaluates bounded evidence for an exact goal revision and never mutates.",
+            options: {},
+            permission: agentPermission({
+              "*": "deny",
+            }),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 1,
+            color: "#22C55E",
+            prompt: PROMPT_VERIFIER,
           },
           architect: {
             name: "architect",

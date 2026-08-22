@@ -6,6 +6,7 @@ import {
   parseLearnedIndex,
   renderFactsMd,
   parseFactsMd,
+  factsForCloud,
   gatherFromLearned,
   type CompiledFact,
 } from "./facts-md.js"
@@ -45,6 +46,24 @@ describe("FACTS.md", () => {
     expect(back).toHaveLength(2)
     expect(back.find((f) => f.key === "user.theme")?.value).toBe("dark mode")
     expect(back.find((f) => f.key === "learned.session-lock")?.origin).toBe("learned_wiki")
+  })
+
+  test("reserved runtime keys cannot return through FACTS.md or cloud sync", () => {
+    const reserved: CompiledFact = {
+      key: "active.goal",
+      value: "repeat an old objective",
+      confidence: 1,
+      origin: "user_facts",
+    }
+    const safe: CompiledFact = {
+      key: "user.theme",
+      value: "dark",
+      confidence: 1,
+      origin: "user_facts",
+    }
+    const parsed = parseFactsMd(renderFactsMd([reserved, safe]))
+    expect(parsed.map((fact) => fact.key)).toEqual(["user.theme"])
+    expect(factsForCloud([reserved, safe]).map((fact) => fact.key)).toEqual(["user.theme"])
   })
 
   test("gatherFromLearned reads index + wiki", () => {

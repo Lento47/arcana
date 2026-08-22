@@ -12,6 +12,7 @@ import { errorMessage } from "../../src/util/error"
 function makeHarness(inputText: string, opts: { goalStatus?: string; goal?: string } = {}) {
   const shown: any[] = []
   const setSessionGoalCalls: Array<{ sessionID: string; patch: any }> = []
+  const claimCompletionCalls: string[] = []
   const goalModule = {
     setSessionGoal: (sessionID: string, patch: any) => {
       setSessionGoalCalls.push({ sessionID, patch })
@@ -21,6 +22,12 @@ function makeHarness(inputText: string, opts: { goalStatus?: string; goal?: stri
       goal: opts.goal ?? "",
     }),
     formatActiveGoalBlock: (_o: any) => "<active-goal>block</active-goal>",
+    patchSessionGoal: (sessionID: string, patch: any) => {
+      setSessionGoalCalls.push({ sessionID, patch })
+    },
+    claimSessionGoalCompletion: (sessionID: string) => {
+      claimCompletionCalls.push(sessionID)
+    },
   }
   const deps: SlashGoalDeps = {
     inputText,
@@ -29,7 +36,7 @@ function makeHarness(inputText: string, opts: { goalStatus?: string; goal?: stri
     toast: { show: (t: any) => shown.push(t) },
     loadGoalModule: () => Promise.resolve(goalModule as any),
   }
-  return { deps, shown, setSessionGoalCalls }
+  return { deps, shown, setSessionGoalCalls, claimCompletionCalls }
 }
 
 const flush = () => new Promise<void>(r => setTimeout(r, 0))
@@ -62,7 +69,7 @@ describe("runGoalCommand", () => {
     // fall-off contract: undefined lets the submit chain continue past /goal
     expect(res).toBeUndefined()
     expect(setSessionGoalCalls).toEqual([
-      { sessionID: "ses_test", patch: { goal: "ship the release", status: "in_progress" } },
+      { sessionID: "ses_test", patch: { goal: "ship the release", status: "in_progress", newRevision: true } },
     ])
     expect(shown[0].title).toBe("Goal set")
     expect(shown[0].variant).toBe("success")
@@ -93,17 +100,16 @@ describe("runLoopCommand", () => {
     expect(setSessionGoalCalls.length).toBe(0)
   })
 
-  test("done maps an existing goal to complete_unverified", async () => {
-    const { deps, shown, setSessionGoalCalls } = makeHarness("/loop done", {
+  test("done submits the existing goal for independent verification", async () => {
+    const { deps, shown, setSessionGoalCalls, claimCompletionCalls } = makeHarness("/loop done", {
       goalStatus: "in_progress",
       goal: "ship it",
     })
     const res = runLoopCommand(deps)
     await flush()
     expect(res).toBeUndefined()
-    expect(setSessionGoalCalls).toEqual([
-      { sessionID: "ses_test", patch: { goal: "ship it", status: "complete_unverified" } },
-    ])
-    expect(shown.at(-1)?.message).toBe("complete_unverified")
+    expect(setSessionGoalCalls).toEqual([])
+    expect(claimCompletionCalls).toEqual(["ses_test"])
+    expect(shown.at(-1)?.message).toBe("complete_pending_verify")
   })
 })

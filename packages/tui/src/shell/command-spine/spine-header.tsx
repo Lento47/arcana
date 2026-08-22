@@ -9,7 +9,8 @@ import type { SpineTrustStatus } from "./spine-trust"
 import type { SessionCharter, SessionCharterChip, SessionCharterTone } from "./session-charter"
 import { buildHeaderStatusItems, fitHeaderStatusItems } from "./session-charter"
 import { applyConfiguredSegments } from "./spine-segments"
-import { breadcrumbFromPath, partitionHeaderStatusItems } from "./spine-chrome"
+import { partitionHeaderStatusItems } from "./spine-chrome"
+import { SpineNavigationRail, type SessionNavigationLike } from "./session-navigation-rail"
 
 // Truncation: shared display-width-aware helper from util/locale (audit T5/O6).
 
@@ -134,7 +135,12 @@ export function SpineHeader(props: {
   /** Inner spine width (terminal minus session frame). Used to drop status items. */
   contentWidth?: number
   segments: StatusSegment[]
-  session: () => { id: string; title?: string } | undefined
+  session: () => { id: string; parentID?: string; title?: string } | undefined
+  sessions?: readonly SessionNavigationLike[]
+  onNavigateToSession?: (sessionID: string) => void
+  onPreviousSession?: () => void
+  onNextSession?: () => void
+  onParentSession?: () => void
   /** PR6: trust-first runtime status (connection, trace, proof, approvals). */
   trust?: SpineTrustStatus
   /** Session contract + proof chips (not timeline rows). */
@@ -159,10 +165,14 @@ export function SpineHeader(props: {
     configuredSegments() ?? prioritizeSegments(props.segments, props.layout),
   )
   const pathSegment = createMemo(() => props.segments.find((segment) => segment.key === "path"))
-  // With a configured segment list, the user decides path placement; the
-  // auto wide/compact path block only applies to the unconfigured layout.
+  // With a configured segment list, the user decides whether the repository
+  // trail is present; otherwise it follows the wide/compact auto layout.
   const showPath = createMemo(
-    () => !configuredSegments() && !!pathSegment() && (isWide() || isCompact()),
+    () => {
+      const configured = configuredSegments()
+      if (configured) return configured.some((segment) => segment.key === "path")
+      return !!pathSegment() && (isWide() || isCompact())
+    },
   )
   const trust = createMemo(() => props.trust)
   const statusItems = createMemo(() => {
@@ -181,28 +191,17 @@ export function SpineHeader(props: {
   })
   const lineItems = createMemo(() => {
     const items: ZonedItem[] = [...statusItems()]
-    const breadcrumbMax = isWide() ? 3 : isCompact() ? 2 : 0
     for (const segment of segments()) {
-      if (segment.key === "state") continue
+      if (segment.key === "state" || segment.key === "path") continue
       if (items.some((item) => item.key === segment.key)) continue
+      const label = truncate(segment.value, valueLimit(segment, props.layout))
+      if (!label) continue
       items.push({
         key: segment.key,
         hint: segment.label,
-        label:
-          segment.key === "path"
-            ? breadcrumbFromPath(segment.value, breadcrumbMax)
-            : truncate(segment.value, valueLimit(segment, props.layout)),
+        label,
         tone: "muted",
         fg: segmentFg(segment.tone, theme),
-      })
-    }
-    if (showPath() && pathSegment()) {
-      items.push({
-        key: "path",
-        hint: pathSegment()!.label,
-        label: breadcrumbFromPath(pathSegment()!.value, Math.max(breadcrumbMax, 2)),
-        tone: "muted",
-        fg: theme.textMuted,
       })
     }
     return items
@@ -219,6 +218,12 @@ export function SpineHeader(props: {
     return Math.max(1, Math.floor(inner) - brand - runtimeDot - pads)
   })
   const visibleItems = createMemo(() => fitHeaderStatusItems(lineItems(), statusBudget()))
+  const navigationWidth = createMemo(() => {
+    const inner = typeof props.contentWidth === "number" && Number.isFinite(props.contentWidth)
+      ? Math.floor(props.contentWidth)
+      : 120
+    return Math.max(8, inner - pad() * 2 - (showBrand() ? 8 : 0))
+  })
   const lockReason = createMemo(() => {
     const t = trust()
     if (!t || t.state === "healthy") return ""
@@ -247,7 +252,27 @@ export function SpineHeader(props: {
           </Show>
         </box>
       </box>
-      <Show when={showBrand() || visibleItems().length > 0 || lockReason()}>
+      <Show when={props.session()}>
+        {(session) => (
+          <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()} minWidth={0}>
+            <Show when={showBrand()}>
+              <box width={8} flexShrink={0} />
+            </Show>
+            <SpineNavigationRail
+              layout={props.layout}
+              width={navigationWidth()}
+              path={showPath() ? pathSegment()?.value : undefined}
+              session={session()}
+              sessions={props.sessions}
+              onNavigate={props.onNavigateToSession}
+              onPrevious={props.onPreviousSession}
+              onNext={props.onNextSession}
+              onParent={props.onParentSession}
+            />
+          </box>
+        )}
+      </Show>
+      <Show when={showBrand() || visibleItems().length > 0 || lockReason() || props.session()}>
         <box border={["bottom"]} borderColor={theme.borderSubtle} marginTop={1} marginBottom={1} />
       </Show>
     </box>

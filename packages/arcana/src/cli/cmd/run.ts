@@ -10,7 +10,7 @@ import { SessionManager } from "../../agent/session.js"
 import { registerBuiltinTools, TOOL_SELECTION_GUIDE } from "../../agent/tools.js"
 import { loadBoard, initBoard, addCard, moveCard, saveBoard, type KanbanBoard } from "../../agent/kanban.js"
 import { registerMcpTools } from "../../agent/mcp.js"
-import { openMemoryDB, MemoryStore } from "@arcana/memory"
+import { isReservedMemoryKey, openMemoryDB, MemoryStore } from "@arcana/memory"
 import { loadSkills, loadSkillBody, type SkillCatalog } from "../../skills/loader.js"
 import { EXTRACTION_PROMPT, extractAndMerge, type LearningExtraction } from "../../learning.js"
 import { maybeEvolve, incrementSessionCount, getActivePrompt } from "../../agent/evolve.js"
@@ -25,7 +25,7 @@ const SYSTEM_PROMPT = `You are Arcana, a self-improving AI agent. You have acces
 - skill_activate: load a specialized skill's instructions into context
 - skill_list: list available skills
 - web_fetch: fetch content from a URL
-- goal_set: record the user's goal — MUST call this once you understand what they want
+- goal_set: record an explicit multi-step mutation objective
 - goal_check: check in on goal progress — call periodically to verify alignment
 - kanban: manage goal tasks — init, add, move, view, archive
 
@@ -37,15 +37,14 @@ Be concise and direct. Format code in markdown blocks.
 ${TOOL_SELECTION_GUIDE}
 
 GOAL DISCIPLINE:
-1. As soon as you understand what the user wants, call goal_set to record it.
-2. After goal_set, use kanban add to break the goal into trackable tasks.
-3. Periodically call goal_check and kanban view to verify progress.
-4. Move cards on the kanban as tasks progress (backlog → in_progress → done).
-5. The active goal is BINDING — all tool calls must align with it.
-6. If goal_check reports "complete", stop working and summarize results to the user.
-7. If goal_check reports "blocked", ask the user for guidance before proceeding.
-8. After completing the goal, use git_autocommit to save changes.
-9. Run git_status to verify the working tree is clean.`
+1. Call goal_set only for an explicit multi-step mutation objective. Greetings, questions, explanations, reviews, and read-only inspection stay goal-free.
+2. For an active goal, use kanban when task tracking materially helps.
+3. Periodically call goal_check to report progress and evidence.
+4. The active goal is BINDING — all mutating tool calls must align with it.
+5. goal_check(status=complete) is only a completion claim. A distinct verifier decides whether to archive it or reopen the same goal.
+6. Never create a replacement goal merely to unlock frozen mutation tools.
+7. If verification rejects or the goal is blocked, continue the same objective when possible or ask the user for guidance.
+8. Commit only when the user explicitly requests it.`
 
 const c = {
   purple: (s: string) => `\x1b[35m${s}\x1b[0m`,
@@ -59,6 +58,10 @@ const STARTUP_MCP_TIMEOUT_MS = Number(process.env.ARCANA_STARTUP_MCP_TIMEOUT_MS 
 const SHARED_MEMORY_TIMEOUT_MS = Number(process.env.ARCANA_SHARED_MEMORY_TIMEOUT_MS ?? "1200")
 const SHARED_MEMORY_BASE_URL = process.env.ARCANA_SHARED_MEMORY_URL ?? "https://api-arcana.otnelhq.com"
 const EVOLVE_ON_STARTUP = process.env.ARCANA_EVOLVE_ON_STARTUP === "1"
+
+function escapePromptData(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+}
 
 async function withStartupTimeout<T>(label: string, task: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
   if (timeoutMs <= 0) return task
@@ -382,7 +385,10 @@ export const RunCommand: CommandModule = {
           return out
         }
         const chosen = pick(facts, 3)
-        const factLines = chosen.map((f) => `- [[${f.key.replace(/[\s.]+/g, "-")}]]: ${f.value}`).join("\n")
+        const factLines = chosen
+          .filter((f) => !isReservedMemoryKey(f.key))
+          .map((f) => `- [[${escapePromptData(f.key.replace(/[\s.]+/g, "-"))}]]: ${escapePromptData(f.value)}`)
+          .join("\n")
         systemPrompt += `\n\n<user-context>\n${factLines}\n</user-context>`
       }
 
@@ -396,7 +402,9 @@ export const RunCommand: CommandModule = {
           if (response.ok) {
             const data = (await response.json()) as { facts: Array<{ key: string; value: string; source?: string }> }
             if (data.facts?.length > 0) {
-              const factLines = data.facts.map((f) => `${f.key}: ${f.value.slice(0, 200)}`)
+              const factLines = data.facts
+                .filter((f) => !isReservedMemoryKey(f.key))
+                .map((f) => `${escapePromptData(f.key)}: ${escapePromptData(f.value.slice(0, 200))}`)
               systemPrompt += `\n\n<shared-knowledge>\n${factLines.join("\n")}\n</shared-knowledge>`
             }
           }
@@ -769,7 +777,8 @@ export const RunCommand: CommandModule = {
         }
         const sid = resolveSid()
         const { setSessionGoal } = await import("@arcana/core/session/goal")
-        setSessionGoal(sid, { goal: description, status: "in_progress" })
+        setSessionGoal(sid, { goal: description, status: "in_progress", newRevision: true })
+        runner.beginGoalEvidence()
         initBoard(sid, description, "")
         process.stdout.write(c.purple("◆ Goal set: ") + description + "\n\n")
         await proofRuntime.recordUserCommand("/loop set", `Goal set: ${description}`)
@@ -780,17 +789,64 @@ export const RunCommand: CommandModule = {
       if (input === "/loop done" || input === "/loop blocked" || input === "/loop stale") {
         const sid = resolveSid()
         const status = input.slice(6) as "done" | "blocked" | "stale"
-        const { getSessionGoal, setSessionGoal } = await import("@arcana/core/session/goal")
+        const {
+          getSessionGoal,
+          patchSessionGoal,
+          claimSessionGoalCompletion,
+          resolveSessionGoalVerification,
+          startSessionGoalVerification,
+        } = await import("@arcana/core/session/goal")
         const snap = getSessionGoal(sid)
         if (snap.status === "unset") {
           process.stdout.write(c.yellow("No active goal to mark " + status + ".\n"))
         } else {
-          const mapped: "complete_unverified" | "blocked" | "stale" =
-            status === "done" ? "complete_unverified" : status === "blocked" ? "blocked" : "stale"
-          setSessionGoal(sid, { goal: snap.goal, status: mapped })
-          process.stdout.write(c.purple("◆ Goal marked ") + mapped + "\n")
-          if (mapped === "complete_unverified") {
-            process.stdout.write(c.dim("  Mutations now frozen until a new goal is set.\n"))
+          const mapped: "complete_pending_verify" | "blocked" | "stale" =
+            status === "done" ? "complete_pending_verify" : status === "blocked" ? "blocked" : "stale"
+          if (status === "done") {
+            const claimed = claimSessionGoalCompletion(sid)
+            if (claimed.status === "complete_pending_verify") {
+              startSessionGoalVerification({ sessionID: sid, goalID: claimed.goalID, revision: claimed.revision })
+              try {
+                const verdict = await runner.verifyGoalCompletion({
+                  goal: claimed.goal,
+                  scope: claimed.scope,
+                  done: "The operator requested completion verification for the current session.",
+                  pending: "none",
+                  blocked: "none",
+                })
+                const resolved = resolveSessionGoalVerification({
+                  sessionID: sid,
+                  goalID: claimed.goalID,
+                  revision: claimed.revision,
+                  result: verdict,
+                })
+                if (!resolved.applied) {
+                  process.stdout.write(c.yellow("◆ Verifier result was stale; goal state was not changed.\n"))
+                } else if (verdict.verdict === "verified") {
+                  process.stdout.write(c.purple("◆ Goal verified and archived\n"))
+                  process.stdout.write(c.dim(`  ${verdict.summary}\n`))
+                } else {
+                  process.stdout.write(c.yellow("◆ Completion rejected; same goal reopened\n"))
+                  process.stdout.write(c.dim(`  ${verdict.summary}\n`))
+                }
+              } catch (error) {
+                resolveSessionGoalVerification({
+                  sessionID: sid,
+                  goalID: claimed.goalID,
+                  revision: claimed.revision,
+                  result: {
+                    verdict: "error",
+                    summary: error instanceof Error ? error.message : String(error),
+                    unmetCriteria: ["Independent verification could not complete."],
+                    evidenceRefs: [],
+                  },
+                })
+                process.stdout.write(c.red("◆ Verifier failed; goal blocked for operator review\n"))
+              }
+            }
+          } else {
+            patchSessionGoal(sid, { status: mapped })
+            process.stdout.write(c.purple("◆ Goal marked ") + mapped + "\n")
           }
         }
         process.stdout.write("\n")
@@ -811,7 +867,8 @@ export const RunCommand: CommandModule = {
         const snap = getSessionGoal(sid)
         if (snap.status === "unset") {
           const goal = text.split(/[.,;]/)[0]?.trim() || text.slice(0, 80)
-          setSessionGoal(sid, { goal, status: "in_progress" })
+          setSessionGoal(sid, { goal, status: "in_progress", newRevision: true })
+          runner.beginGoalEvidence()
           initBoard(sid, goal, "")
           process.stdout.write(c.purple("◆ Goal auto-set: ") + goal + "\n")
         }

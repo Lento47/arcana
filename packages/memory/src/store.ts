@@ -6,6 +6,22 @@ function now(): string {
   return new Date().toISOString()
 }
 
+const RESERVED_FACT_ROOTS = new Set(["active", "goal"])
+
+/** Control-plane-looking keys must never become persistent user facts. */
+export function isReservedMemoryKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase()
+  const root = normalized.split(".", 1)[0] ?? ""
+  return RESERVED_FACT_ROOTS.has(root)
+}
+
+export class ReservedMemoryKeyError extends Error {
+  constructor(readonly key: string) {
+    super(`Memory key "${key}" is reserved for runtime state`)
+    this.name = "ReservedMemoryKeyError"
+  }
+}
+
 export type Session = {
   id: string
   title?: string
@@ -293,6 +309,9 @@ export class MemoryStore {
          FROM user_facts_fts
          JOIN user_facts f ON user_facts_fts.id = f.id
          WHERE user_facts_fts MATCH ?
+           AND lower(f.key) NOT IN ('active', 'goal')
+           AND lower(f.key) NOT LIKE 'active.%'
+           AND lower(f.key) NOT LIKE 'goal.%'
          ORDER BY bm25
          LIMIT ?`,
       )
@@ -307,6 +326,7 @@ export class MemoryStore {
     }>
 
     for (const r of factResults) {
+      if (isReservedMemoryKey(r.key)) continue
       const recency = recencyWeight(r.last_accessed_at ?? r.created_at, asOf)
       // Use *stored* confidence (not decayed) — search callers see the
       // authored confidence; runtime decay is applied via runDecay() so the
@@ -342,6 +362,7 @@ export class MemoryStore {
     source?: string,
     confidence = 1.0,
   ): { fact: UserFact; merged: boolean } {
+    if (isReservedMemoryKey(key)) throw new ReservedMemoryKeyError(key)
     const ts = now()
     const valueNorm = normalize(value)
     const hash = exactHash(value)
@@ -449,9 +470,16 @@ export class MemoryStore {
   getTopFacts(limit = 5, minConfidence = 0.5): UserFact[] {
     return (
       this.db
-        .prepare(`SELECT * FROM user_facts WHERE confidence >= ? ORDER BY confidence DESC, updated_at DESC LIMIT ?`)
+        .prepare(
+          `SELECT * FROM user_facts
+           WHERE confidence >= ?
+             AND lower(key) NOT IN ('active', 'goal')
+             AND lower(key) NOT LIKE 'active.%'
+             AND lower(key) NOT LIKE 'goal.%'
+           ORDER BY confidence DESC, updated_at DESC LIMIT ?`,
+        )
         .all(minConfidence, limit) as UserFact[]
-    )
+    ).filter((fact) => !isReservedMemoryKey(fact.key))
   }
 
   /** Bump last_accessed_at (called by search/recall hot path). */

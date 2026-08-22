@@ -257,15 +257,15 @@ export const TaskTool = Tool.define(
         // and mutation gates align with the parent objective.
         yield* Effect.sync(() => {
           const parentGoal = getSessionGoal(ctx.sessionID)
-          if (parentGoal.status === "unset") return
+          // Only active work is delegable. Verification-pending, blocked,
+          // stale, and legacy terminal goals must never be copied into a new
+          // worker session.
+          if (parentGoal.status !== "in_progress") return
           setSessionGoal(nextSession.id, {
             goal: parentGoal.goal,
             scope: parentGoal.scope,
             priority: parentGoal.priority,
-            status:
-              parentGoal.status === "complete" || parentGoal.status === "complete_unverified"
-                ? parentGoal.status
-                : "in_progress",
+            status: "in_progress",
             boardSessionID: parentGoal.boardSessionID,
             openCards: parentGoal.openCards,
             doneCards: parentGoal.doneCards,

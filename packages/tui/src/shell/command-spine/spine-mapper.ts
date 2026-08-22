@@ -657,6 +657,11 @@ function resolveToolState(part: ToolPart, message: Message, allParts: Part[]): T
   return state
 }
 
+function isInterruptedToolState(state: ToolPart["state"], streamingCtx: StreamingCtx): boolean {
+  if (state.status !== "pending" && state.status !== "running") return false
+  return !streamingCtx.isLatestAssistant || !isSessionTurnActive(streamingCtx.sessionStatusType)
+}
+
 function toolStateToReceipt(tool: string, state: ToolPart["state"]): SpineReceipt | undefined {
   if (state.status === "pending" || state.status === "running") {
     return { label: tool, status: "pending" }
@@ -1009,23 +1014,32 @@ function toolOutputBody(part: ToolPart): ToolOutputBody {
   return { body: output, label: "output", reminders: [] }
 }
 
-function toolPartToEntries(message: Message, part: ToolPart, partIndex: number, allParts: Part[]): SpineEntry[] {
+function toolPartToEntries(
+  message: Message,
+  part: ToolPart,
+  partIndex: number,
+  allParts: Part[],
+  streamingCtx: StreamingCtx,
+): SpineEntry[] {
   const state = resolveToolState(part, message, allParts)
   const resolved: ToolPart = state === part.state ? part : { ...part, state }
+  const interrupted = isInterruptedToolState(state, streamingCtx)
   const toolKind = toolToSpineKind(resolved.tool)
   const agentName = taskToolAgent(resolved)
   const kind: SpineKind = state.status === "error" ? "fail" : agentName ? "agent" : toolKind
   const glyph = SPINE_GLYPH[kind] ?? SPINE_GLYPH.inspect
   const elapsed = computeElapsed(undefined, message, resolved)
-  // Running tool/subagent rows stay "live" for chrome (spinner, ticking elapsed,
-  // handover cues). resolveToolState already coerced stale running → completed,
-  // so a remaining "running"/"pending" status is genuinely active.
-  const running = state.status === "running" || state.status === "pending"
+  // A tool row is live only when this is the latest assistant turn and the
+  // engine explicitly says busy/retry. Hard exits can leave durable tool state
+  // at running/pending; those rows become static recovery evidence instead.
+  const running = !interrupted && (state.status === "running" || state.status === "pending")
   const startMs =
     running && "time" in state && state.time && typeof state.time.start === "number"
       ? state.time.start
       : undefined
-  let receipt = toolStateToReceipt(resolved.tool, state)
+  let receipt: SpineReceipt | undefined = interrupted
+    ? { label: resolved.tool, status: "interrupted" }
+    : toolStateToReceipt(resolved.tool, state)
   const baseId = `${message.id}:${resolved.id || `tool-${partIndex}`}`
 
   let summary = ""
@@ -1633,7 +1647,11 @@ function shouldAddTrailingOk(entries: SpineEntry[], message: Message): boolean {
       hasToolEntry = true
     }
     if (entry.receipt?.status === "pending") hasPending = true
-    if (entry.kind === "fail" || entry.receipt?.status === "fail") hasFailed = true
+    if (
+      entry.kind === "fail"
+      || entry.receipt?.status === "fail"
+      || entry.receipt?.status === "interrupted"
+    ) hasFailed = true
   }
 
   if (!hasMessageEntry || !hasToolEntry || hasPending || hasFailed) return false
@@ -1655,6 +1673,33 @@ function assistantMessagePartsToEntries(
   const streamingCtx: StreamingCtx = {
     isLatestAssistant: options?.isLatestAssistant !== false,
     sessionStatusType: options?.sessionStatusType,
+  }
+
+  const messageFinished =
+    message.role === "assistant"
+    && typeof message.finish === "string"
+    && message.finish.length > 0
+  if (
+    parts.length === 0
+    && message.role === "assistant"
+    && !message.time?.completed
+    && !messageFinished
+    && streamingCtx.isLatestAssistant
+    && !isSessionTurnActive(streamingCtx.sessionStatusType)
+  ) {
+    return [{
+      id: `${message.id}:interrupted`,
+      index: 0,
+      elapsed: "",
+      timestamp: formatTimestamp(message.time?.created),
+      occurredAt: message.time?.created,
+      kind: "fail",
+      label: "fail",
+      glyph: SPINE_GLYPH.fail,
+      summary: "Interrupted before completion · recovery required",
+      streaming: false,
+      source: { messageID: message.id, kind: "message" },
+    }]
   }
 
   let sawTool = false
@@ -1705,7 +1750,7 @@ function assistantMessagePartsToEntries(
 
     if (part.type === "tool") {
       sawTool = true
-      entries.push(...toolPartToEntries(message, part, i, parts))
+      entries.push(...toolPartToEntries(message, part, i, parts, streamingCtx))
       continue
     }
 

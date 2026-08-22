@@ -37,6 +37,29 @@ export function isSessionTurnActive(sessionStatusType?: string): boolean {
   return sessionStatusType === "busy" || sessionStatusType === "retry"
 }
 
+export type ComposerRunState = "idle" | "working" | "waiting" | "stop"
+
+/**
+ * Derive composer chrome from engine-authored lifecycle state.
+ *
+ * An absent status is idle: the engine deliberately removes idle sessions
+ * from the status map. A durable assistant row without `time.completed` may
+ * survive a hard process exit, so `pending` alone must never restart the
+ * working animation after reconnect.
+ */
+export function deriveComposerRunState(input: {
+  hasQuestions: boolean
+  hasLocalPermissions: boolean
+  hasPermissions: boolean
+  pending: boolean
+  sessionStatusType?: string
+}): ComposerRunState {
+  if (input.hasQuestions || input.hasLocalPermissions) return "stop"
+  if (input.sessionStatusType === "waiting" || input.hasPermissions) return "waiting"
+  if (input.pending && isSessionTurnActive(input.sessionStatusType)) return "working"
+  return "idle"
+}
+
 /**
  * Whether a spine assistant segment should show streaming chrome.
  * Terminal signals always win. Writing requires an explicitly active session turn

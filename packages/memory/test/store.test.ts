@@ -3,7 +3,15 @@ import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir as osTmpdir } from "node:os"
 import { openMemoryDB } from "../src/db.js"
-import { MemoryStore, RECENCY_HALFLIFE_DAYS, CONFIDENCE_HALFLIFE_DAYS, decayedConfidence, recencyWeight } from "../src/store.js"
+import {
+  MemoryStore,
+  RECENCY_HALFLIFE_DAYS,
+  CONFIDENCE_HALFLIFE_DAYS,
+  ReservedMemoryKeyError,
+  decayedConfidence,
+  isReservedMemoryKey,
+  recencyWeight,
+} from "../src/store.js"
 import { normalize, exactHash, shingles, jaccard, isNearDuplicate, JACCARD_DEDUP_THRESHOLD } from "../src/dedup.js"
 
 /**
@@ -269,6 +277,24 @@ describe("session lock (5.5)", () => {
 })
 
 describe("search scoring (5.3)", () => {
+  test("runtime-looking goal keys are reserved case-insensitively", () => {
+    expect(isReservedMemoryKey("active.goal")).toBe(true)
+    expect(isReservedMemoryKey(" Goal.Scope ")).toBe(true)
+    expect(isReservedMemoryKey("user.goal")).toBe(false)
+    const { store } = freshStore()
+    expect(() => store.recordUserFact("active.goal", "run old task")).toThrow(ReservedMemoryKeyError)
+  })
+
+  test("legacy reserved rows remain administratively visible but never appear in prompt or search retrieval", () => {
+    const { store } = freshStore()
+    const { fact } = store.recordUserFact("user.fixture", "prime contamination sentinel")
+    ;(store as any).db.prepare(`UPDATE user_facts SET key = ? WHERE id = ?`).run("active.goal", fact.id)
+
+    expect(store.getUserFacts().some((item) => item.key === "active.goal")).toBe(true)
+    expect(store.getTopFacts().some((item) => item.key === "active.goal")).toBe(false)
+    expect(store.search("prime contamination sentinel").some((item) => item.id === fact.id)).toBe(false)
+  })
+
   test("user_fact FTS5 trigger fires on insert", () => {
     const { store } = freshStore()
     store.recordUserFact("user.theme", "dark mode is preferred")

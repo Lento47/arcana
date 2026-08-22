@@ -13,7 +13,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { homedir } from "node:os"
-import type { MemoryStore, UserFact } from "@arcana/memory"
+import { isReservedMemoryKey, type MemoryStore, type UserFact } from "@arcana/memory"
 import { atomicWriteSync } from "./util/atomic-write"
 
 export type FactOrigin = "user_facts" | "learned_md" | "learned_wiki"
@@ -85,7 +85,7 @@ export function parseLearnedIndex(content: string): Array<{ slug: string; summar
 }
 
 export function gatherFromUserFacts(store: MemoryStore, minConfidence = 0): CompiledFact[] {
-  return store.getUserFacts(minConfidence).map((f: UserFact) => ({
+  return store.getUserFacts(minConfidence).filter((f) => !isReservedMemoryKey(f.key)).map((f: UserFact) => ({
     key: f.key,
     value: f.value,
     source: f.source,
@@ -280,7 +280,7 @@ export function parseFactsMd(content: string): CompiledFact[] {
     // trim trailing blanks
     while (bodyLines.length && !bodyLines[bodyLines.length - 1]!.trim()) bodyLines.pop()
     const value = bodyLines.join("\n").trim()
-    if (!key || !value) continue
+    if (!key || !value || isReservedMemoryKey(key)) continue
     const conf = meta.confidence != null ? Number(meta.confidence) : 1
     const origin = (meta.origin as FactOrigin) || "user_facts"
     facts.push({
@@ -313,7 +313,7 @@ export function factsForCloud(facts: CompiledFact[], max = 200): Array<{
   confidence: number
   updatedAt?: string
 }> {
-  return facts.slice(0, max).map((f) => ({
+  return facts.filter((f) => !isReservedMemoryKey(f.key)).slice(0, max).map((f) => ({
     key: f.key,
     value: f.value.slice(0, VALUE_MAX),
     source: f.source ?? f.origin,

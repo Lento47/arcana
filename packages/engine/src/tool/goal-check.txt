@@ -2,8 +2,8 @@ CHECK IN on the active session goal. Call periodically during multi-step work.
 
 status values:
 - in_progress: still working
-- complete: goal achieved (freezes mutation tools until a new goal_set)
+- complete: submit a completion claim for independent verification (freezes mutation tools while verification runs)
 - blocked: cannot proceed without user help
 - stale: goal may no longer match user intent
 
-When complete, stop mutating and summarize for the user. Set a new goal only if the user starts a new objective.
+When complete, stop mutating and summarize for the user. Do not invent a replacement goal to unlock tools.

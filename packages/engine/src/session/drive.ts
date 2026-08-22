@@ -17,7 +17,7 @@ export const DRIVE_CONTINUATION_REMINDER = [
   "The session goal is still open. Continue from the current workspace state.",
   "Do not restart. Do not wait for another user message.",
   "Ask `question` if a decision is required. Call `goal_check` with status complete",
-  "only when the user's prompt is actually satisfied.",
+  "only when the user's prompt is actually satisfied; this submits the goal for independent verification.",
   "</system-reminder>",
 ].join("\n")
 

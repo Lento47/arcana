@@ -1,6 +1,6 @@
-RECORD the user's stated goal for this session. Call once you understand what they want done.
+RECORD the user's explicit multi-step mutation objective for this session.
 
 The goal is binding — multi-step mutation tools (edit/write/bash) for build/general/tester require an active goal.
-Prefer calling this early. User can also set goals with /goal in the TUI.
+Do not call this for greetings, banter, explanations, reviews, or simple read-only requests. User can also set goals with /goal in the TUI.
 
 Do not invent a different goal mid-run; update only if the user clearly changes objectives.

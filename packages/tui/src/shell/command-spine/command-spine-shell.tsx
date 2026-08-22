@@ -26,7 +26,7 @@ import type { ApprovalSnapshotDetail } from "./approval-http-bridge"
 import { PermissionInspector } from "../../routes/session/permission-inspector"
 import { ApprovalInspector } from "../../routes/session/approval-inspector"
 import { DialogMessage } from "../../routes/session/dialog-message"
-import { ARCANA_BASE_MODE, useBindings } from "../../keymap"
+import { ARCANA_BASE_MODE, useBindings, useOpencodeKeymap } from "../../keymap"
 import { usePromptRef } from "../../context/prompt"
 import { useVoice } from "../../context/voice"
 import { useSDK } from "../../context/sdk"
@@ -42,6 +42,7 @@ export function CommandSpineShell(props: ShellProps) {
   const toast = useToast()
   const dialog = useDialog()
   const route = useRoute()
+  const keymap = useOpencodeKeymap()
   const promptRef = usePromptRef()
   const voice = useVoice()
   const sdk = useSDK()
@@ -549,12 +550,17 @@ export function CommandSpineShell(props: ShellProps) {
         <box flexDirection="column" flexGrow={1} minHeight={0}>
           <SpineHeader
             session={props.session}
+            sessions={props.sessionList?.()}
             layout={layout()}
             contentWidth={viewportWidth()}
             segments={projection.headerSegments()}
             trust={projection.trust()}
             charter={projection.sessionCharter()}
             governed={projection.governedTally()}
+            onNavigateToSession={props.onNavigateToSession}
+            onPreviousSession={() => keymap.dispatchCommand("session.child.previous")}
+            onNextSession={() => keymap.dispatchCommand("session.child.next")}
+            onParentSession={() => keymap.dispatchCommand("session.parent")}
           />
           <SpineViewport
             visibleEntryIDs={visibleEntryIDs}

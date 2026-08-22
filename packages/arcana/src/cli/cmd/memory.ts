@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs"
-import { openMemoryDB, MemoryStore } from "@arcana/memory"
+import { isReservedMemoryKey, openMemoryDB, MemoryStore } from "@arcana/memory"
 import { loadConfig, getDataDir, getArcanaHome } from "../../config.js"
 import { mkdir } from "node:fs/promises"
 import { existsSync } from "node:fs"
@@ -236,7 +236,7 @@ export const MemoryCommand: CommandModule = {
         }
         let merged = 0
         for (const f of remote) {
-          if (!f.key || !f.value) continue
+          if (!f.key || !f.value || isReservedMemoryKey(f.key)) continue
           store.recordUserFact(
             f.key,
             f.value,
