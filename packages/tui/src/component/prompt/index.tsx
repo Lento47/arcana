@@ -869,6 +869,45 @@ export function Prompt(props: PromptProps) {
     commands: stashCommands(),
   }))
 
+  // /goal and /loop as first-class palette+slash commands: discoverable in
+  // the "/" menu and injectable into the input box (ARCANA_PROMPT_SLASHES),
+  // instead of hidden behind submit-time handling only.
+  const goalLoopCommands = [
+    {
+      title: "Set session goal",
+      desc: "Goal: /goal <description> — Arcana drives until satisfied",
+      name: "prompt.goal",
+      slashName: "goal",
+      run: () =>
+        runGoalCommand({
+          inputText: "/goal",
+          targetSessionID: props.sessionID ?? "",
+          agentName: "build",
+          toast,
+        }),
+    },
+    {
+      title: "Autonomous loop hub",
+      desc: "Loop: /loop [set | status | done | blocked | stale]",
+      name: "prompt.loop",
+      slashName: "loop",
+      run: () =>
+        runLoopCommand({
+          inputText: "/loop status",
+          targetSessionID: props.sessionID ?? "",
+          agentName: "build",
+          toast,
+        }),
+    },
+  ].map((entry) => ({
+    namespace: "palette",
+    ...entry,
+  }))
+
+  useBindings(() => ({
+    commands: goalLoopCommands,
+  }))
+
   useBindings(() => {
     return {
       target: inputTarget,

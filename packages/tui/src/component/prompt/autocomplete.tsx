@@ -82,6 +82,8 @@ export const ARCANA_PROMPT_SLASHES = new Set([
   "/verify",
   "/sovereignty",
   "/consensus",
+  "/goal",
+  "/loop",
 ])
 
 export function shouldClearSlashOnHide(text: string): boolean {
