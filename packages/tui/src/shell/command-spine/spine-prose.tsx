@@ -335,7 +335,10 @@ export function SpineProse(props: {
             <code
               width={wrapCols()}
               filetype={ft()}
-              drawUnstyledText={false}
+              // Keep read/open output visible while Tree-sitter highlights it.
+              // Hiding the fallback produces a blank frame that looks like a
+              // code-preview flicker on every newly mounted tool result.
+              drawUnstyledText={true}
               streaming={false}
               syntaxStyle={style()}
               content={text()}
