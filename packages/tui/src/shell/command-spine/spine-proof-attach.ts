@@ -12,16 +12,8 @@
 
 import type { GovernanceRunProof } from "../types"
 import type { SpineEntry, SpineProofContinuation } from "./spine-types"
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined
-}
+import { asRecordOrEmpty, asStringTrimmed } from "../../util/record"
+import { shortHash } from "./approval-snapshot"
 
 function normalizeCommand(command: string | undefined): string | undefined {
   if (!command) return undefined
@@ -33,10 +25,10 @@ function normalizeCommand(command: string | undefined): string | undefined {
 }
 
 export function commandKeyForExecuted(payload: unknown): string | undefined {
-  const record = asRecord(payload)
-  const tool = stringValue(record.tool)
+  const record = asRecordOrEmpty(payload)
+  const tool = asStringTrimmed(record.tool)
   if (!tool) return undefined
-  const executable = stringValue(record.executable)
+  const executable = asStringTrimmed(record.executable)
   const args = Array.isArray(record.arguments)
     ? record.arguments.filter((arg): arg is string => typeof arg === "string")
     : []
@@ -49,31 +41,26 @@ export function commandKeyForEntry(entry: SpineEntry): string | undefined {
   return undefined
 }
 
-function shortHash(hash: string | undefined): string | undefined {
-  if (!hash) return undefined
-  return hash.length <= 8 ? hash : `${hash.slice(0, 4)}…${hash.slice(-4)}`
-}
-
 function proofFromPayload(
   payload: unknown,
   evidenceCount: number,
   proof?: GovernanceRunProof,
 ): SpineProofContinuation {
-  const record = asRecord(payload)
-  const decision = asRecord(record.decision)
-  const requestHash = stringValue(record.requestHash) ?? "unavailable"
+  const record = asRecordOrEmpty(payload)
+  const decision = asRecordOrEmpty(record.decision)
+  const requestHash = asStringTrimmed(record.requestHash) ?? "unavailable"
   return {
     receipt: shortHash(requestHash),
     evidence: evidenceCount,
     proofLevel: proof?.proofLevel ?? "P0",
     integrity: proof?.integrityStatus ?? "UNVERIFIED",
-    policy: stringValue(decision.policyVersion) ?? proof?.authorizationProfile.policyVersions?.[0],
-    executionId: stringValue(record.executionId),
+    policy: asStringTrimmed(decision.policyVersion) ?? proof?.authorizationProfile.policyVersions?.[0],
+    executionId: asStringTrimmed(record.executionId),
     requestHash,
-    tool: stringValue(record.tool),
-    action: stringValue(record.action),
-    startedAt: stringValue(record.startedAt),
-    completedAt: stringValue(record.completedAt),
+    tool: asStringTrimmed(record.tool),
+    action: asStringTrimmed(record.action),
+    startedAt: asStringTrimmed(record.startedAt),
+    completedAt: asStringTrimmed(record.completedAt),
   }
 }
 
@@ -96,8 +83,8 @@ export function attachProofContinuations(input: {
     if (entry.id.startsWith("proof-continuation:")) {
       const event = input.executedEvents.find((item) => `proof-continuation:${item.id}` === entry.id)
       if (event) {
-        const payload = asRecord(event.payload)
-        const requestHash = stringValue(payload.requestHash)
+        const payload = asRecordOrEmpty(event.payload)
+        const requestHash = asStringTrimmed(payload.requestHash)
         const evidence = requestHash ? (input.evidenceCountByRequestHash[requestHash] ?? 0) : 0
         return {
           ...entry,
@@ -113,8 +100,8 @@ export function attachProofContinuations(input: {
     const key = commandKeyForEntry(entry)
     const match = key ? byCommand.get(key) : undefined
     if (!match) return entry
-    const payload = asRecord(match.payload)
-    const requestHash = stringValue(payload.requestHash)
+    const payload = asRecordOrEmpty(match.payload)
+    const requestHash = asStringTrimmed(payload.requestHash)
     const evidence = requestHash ? (input.evidenceCountByRequestHash[requestHash] ?? 0) : 0
     hiddenStandalone.add(`proof-continuation:${match.id}`)
     return {

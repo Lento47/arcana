@@ -17,6 +17,7 @@ import type { SpineEntry, SpineKind } from "./spine-types"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import { approvalToSpineEntry } from "./approval-spine-adapter"
 import { Locale } from "../../util/locale"
+import { asRecordOrEmpty } from "../../util/record"
 import { shortHash } from "./approval-snapshot"
 import type { GovernanceRunProof } from "../types"
 
@@ -115,8 +116,8 @@ export function governanceExecutedToSpineEntry(input: {
   evidenceCount?: number
 }): SpineEntry {
   const { view, proof, evidenceCount } = input
-  const payload = asRecord(view.payload)
-  const decision = asRecord(payload.decision)
+  const payload = asRecordOrEmpty(view.payload)
+  const decision = asRecordOrEmpty(payload.decision)
   const failed = view.eventType === "authorization.execution_failed"
   const tool = firstText(payload.tool) ?? "effect"
   const requestHash = firstText(payload.requestHash) ?? "unavailable"
@@ -290,7 +291,7 @@ function governancePresentation(view: GovernanceView): {
   expandedByDefault: boolean
   breakthrough?: boolean
 } {
-  const payload = asRecord(view.payload)
+  const payload = asRecordOrEmpty(view.payload)
   const subject = firstText(
     payload.action,
     payload.tool,
@@ -392,12 +393,6 @@ function governancePresentation(view: GovernanceView): {
   }
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
-}
-
 function firstText(...values: unknown[]): string | undefined {
   return values.find((value): value is string => typeof value === "string" && value.length > 0)
 }
@@ -405,7 +400,7 @@ function firstText(...values: unknown[]): string | undefined {
 function governanceReason(payload: Record<string, unknown>): string | undefined {
   const direct = firstText(payload.reason, payload.error)
   if (direct) return direct
-  const decision = asRecord(payload.decision)
+  const decision = asRecordOrEmpty(payload.decision)
   const decisionReason = firstText(decision.reason, decision.reasonCode, decision.code)
   if (decisionReason) return decisionReason
   if (Array.isArray(decision.reasons)) {

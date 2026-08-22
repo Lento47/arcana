@@ -4,6 +4,7 @@ import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import { RoundBorder } from "../../ui/chrome"
 import { truncate } from "../../util/locale"
+import { shortHash } from "./approval-snapshot"
 import type { SpineApprovalSnapshot, SpineEntry as SpineEntryType, SpineLayout } from "./spine-types"
 import {
   approvalFactGroups,
@@ -153,7 +154,7 @@ export function SpineApprovalGate(props: {
           />
         )}
       </For>
-      <GateRow label="request" value={shortRequestHash(snapshot())} theme={theme} />
+      <GateRow label="request" value={shortHash(snapshot()?.requestHash, 12)} theme={theme} />
       <Show when={!snapshot()?.available}>
         <text fg={theme.error}>snapshot unavailable · fail-closed</text>
       </Show>
@@ -162,8 +163,3 @@ export function SpineApprovalGate(props: {
   )
 }
 
-function shortRequestHash(snapshot?: SpineApprovalSnapshot): string {
-  const hash = snapshot?.requestHash
-  if (!hash) return "unavailable"
-  return hash.length <= 12 ? hash : `${hash.slice(0, 4)}…${hash.slice(-4)}`
-}

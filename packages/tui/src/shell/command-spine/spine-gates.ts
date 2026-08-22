@@ -1,13 +1,12 @@
 import type { PermissionRequest, QuestionInfo, QuestionRequest } from "@arcana/sdk/v2"
 import type { SpineEntry } from "./spine-types"
 import { SPINE_GLYPH } from "./spine-types"
+import { asStringTrimmed } from "../../util/record"
 
+// Deliberate local variant: accepts arrays and yields undefined on miss —
+// different contract from util/record's asRecordOrEmpty. Do not merge blindly.
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined
 }
 
 function stringArray(value: unknown): string[] {
@@ -18,25 +17,25 @@ function stringArray(value: unknown): string[] {
 
 function questionInfo(value: unknown): QuestionInfo | undefined {
   const record = asRecord(value)
-  const question = stringValue(record?.question)
-  const header = stringValue(record?.header)
+  const question = asStringTrimmed(record?.question)
+  const header = asStringTrimmed(record?.header)
   if (!record || !question || !header) return undefined
   return value as QuestionInfo
 }
 
 function permissionRequest(value: unknown): PermissionRequest | undefined {
   const record = asRecord(value)
-  const id = stringValue(record?.id)
-  const sessionID = stringValue(record?.sessionID)
-  const permission = stringValue(record?.permission)
+  const id = asStringTrimmed(record?.id)
+  const sessionID = asStringTrimmed(record?.sessionID)
+  const permission = asStringTrimmed(record?.permission)
   if (!record || !id || !sessionID || !permission) return undefined
   return value as PermissionRequest
 }
 
 function questionRequest(value: unknown): QuestionRequest | undefined {
   const record = asRecord(value)
-  const id = stringValue(record?.id)
-  const sessionID = stringValue(record?.sessionID)
+  const id = asStringTrimmed(record?.id)
+  const sessionID = asStringTrimmed(record?.sessionID)
   const questions = Array.isArray(record?.questions) ? record.questions.map(questionInfo).filter(Boolean) : []
   if (!record || !id || !sessionID || questions.length === 0) return undefined
   return value as QuestionRequest

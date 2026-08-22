@@ -14,15 +14,7 @@ import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import type { GovernanceEventRecord } from "../types"
 import type { SpineApprovalSnapshot } from "./spine-types"
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined
-}
+import { asRecordOrEmpty, asStringTrimmed } from "../../util/record"
 
 function numberValue(value: unknown): number | undefined {
   const n = typeof value === "number" ? value : Number(value)
@@ -48,13 +40,13 @@ export function governanceEventByRequestHash(
 ): GovernanceEventRecord | undefined {
   return events.find(
     (event) =>
-      event.type === type && stringValue(asRecord(event.payload).requestHash) === requestHash,
+      event.type === type && asStringTrimmed(asRecordOrEmpty(event.payload).requestHash) === requestHash,
   )
 }
 
 /** PDP decision embedded in an authorization event payload. */
 export function decisionFromPayload(payload: unknown): Record<string, unknown> {
-  return asRecord(asRecord(payload).decision)
+  return asRecordOrEmpty(asRecordOrEmpty(payload).decision)
 }
 
 /**
@@ -73,9 +65,9 @@ export function resolveApprovalSnapshot(
   const required = governanceEventByRequestHash(events, "authorization.approval_required", approval.requestHash)
   const executed = governanceEventByRequestHash(events, "authorization.executed", approval.requestHash)
 
-  const requestedPayload = asRecord(requested?.payload)
-  const requiredPayload = asRecord(required?.payload)
-  const executedPayload = asRecord(executed?.payload)
+  const requestedPayload = asRecordOrEmpty(requested?.payload)
+  const requiredPayload = asRecordOrEmpty(required?.payload)
+  const executedPayload = asRecordOrEmpty(executed?.payload)
   const decision = decisionFromPayload(requiredPayload)
 
   const capabilityIds = Array.isArray(decision.capabilityIds)
@@ -86,21 +78,21 @@ export function resolveApprovalSnapshot(
     requestHash: approval.requestHash,
     available: Boolean(requested || required),
     tool:
-      stringValue(requestedPayload.tool)
-      ?? stringValue(requiredPayload.tool)
-      ?? stringValue(executedPayload.tool),
+      asStringTrimmed(requestedPayload.tool)
+      ?? asStringTrimmed(requiredPayload.tool)
+      ?? asStringTrimmed(executedPayload.tool),
     action:
-      stringValue(requestedPayload.action)
-      ?? stringValue(decision.action)
-      ?? stringValue(executedPayload.action),
+      asStringTrimmed(requestedPayload.action)
+      ?? asStringTrimmed(decision.action)
+      ?? asStringTrimmed(executedPayload.action),
     capability: capabilityIds[0],
-    principal: approval.principalId ?? stringValue(requestedPayload.principalId),
-    policy: stringValue(decision.policyVersion) ?? approval.routingPolicyVersion,
+    principal: approval.principalId ?? asStringTrimmed(requestedPayload.principalId),
+    policy: asStringTrimmed(decision.policyVersion) ?? approval.routingPolicyVersion,
     route: approval.route ?? "LOCAL TUI",
-    risk: approval.riskClass ?? stringValue(decision.riskClass),
+    risk: approval.riskClass ?? asStringTrimmed(decision.riskClass),
     expires: shortTime(approval.expiresAt),
     contractRevision: numberValue(approval.contractRevision),
-    executionId: approval.executionId ?? stringValue(executedPayload.executionId),
+    executionId: approval.executionId ?? asStringTrimmed(executedPayload.executionId),
     arguments: Array.isArray(executedPayload.arguments)
       ? executedPayload.arguments.filter((arg): arg is string => typeof arg === "string")
       : undefined,
