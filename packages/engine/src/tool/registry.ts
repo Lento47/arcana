@@ -13,6 +13,9 @@ import { TaskTool } from "./task"
 import { Database } from "@arcana/core/database/database"
 import { TodoWriteTool } from "./todo"
 import { GoalCheckTool, GoalSetTool } from "./goal"
+import { MemorySearchTool, MemoryStoreFactTool } from "./memory"
+import { SkillUpsertTool } from "./skill-upsert"
+import { PluginUpsertTool } from "./plugin-upsert"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
@@ -100,6 +103,10 @@ export const layer = Layer.effect(
     const todo = yield* TodoWriteTool
     const goalSet = yield* GoalSetTool
     const goalCheck = yield* GoalCheckTool
+    const memorySearch = yield* MemorySearchTool
+    const memoryStoreFact = yield* MemoryStoreFactTool
+    const skillUpsert = yield* SkillUpsertTool
+    const pluginUpsert = yield* PluginUpsertTool
     const lsptool = yield* LspTool
     const plan = yield* PlanExitTool
     const webfetch = yield* WebFetchTool
@@ -225,6 +232,10 @@ export const layer = Layer.effect(
           todo: Tool.init(todo),
           goal_set: Tool.init(goalSet),
           goal_check: Tool.init(goalCheck),
+          memory_search: Tool.init(memorySearch),
+          memory_store_fact: Tool.init(memoryStoreFact),
+          skill_upsert: Tool.init(skillUpsert),
+          plugin_upsert: Tool.init(pluginUpsert),
           search: Tool.init(websearch),
           skill: Tool.init(skilltool),
           mcp: Tool.init(mcptool),
@@ -251,6 +262,10 @@ export const layer = Layer.effect(
             tool.todo,
             tool.goal_set,
             tool.goal_check,
+            tool.memory_search,
+            tool.memory_store_fact,
+            tool.skill_upsert,
+            tool.plugin_upsert,
             tool.search,
             tool.skill,
             tool.mcp,

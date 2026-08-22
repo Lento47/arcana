@@ -12,7 +12,7 @@ import { Agent } from "../agent/agent"
 import { Provider } from "@/provider/provider"
 import * as Locale from "@/util/locale"
 
-import { type Tool as AITool, tool, jsonSchema } from "ai"
+import { type Tool as AITool, tool, jsonSchema, generateText } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
@@ -56,7 +56,15 @@ import { SessionMessage } from "@arcana/core/session/message"
 import { ModelV2 } from "@arcana/core/model"
 import { ProviderV2 } from "@arcana/core/provider"
 import { AgentAttachment, FileAttachment, Prompt, Source } from "@arcana/core/session/prompt"
-import { formatActiveGoalBlock } from "@arcana/core/session/goal"
+import { formatActiveGoalBlock, getSessionGoal } from "@arcana/core/session/goal"
+import { Question } from "@/question"
+import {
+  DRIVE_CONTINUATION_REMINDER,
+  DRIVE_METADATA,
+  continuationsUsed,
+  decideDrive,
+  resolveDriveConfig,
+} from "./drive"
 import * as DateTime from "effect/DateTime"
 import { and, eq, ne, sql } from "drizzle-orm"
 import { ContractTable } from "@arcana/core/epistemic/contract-sql"
@@ -72,6 +80,15 @@ import { ContractAdmission } from "./contract-admission"
 import { CapabilityRevocation } from "./capability-revocation"
 import { revokeWithCascade, type RuntimeGrantStore } from "@arcana/core/capability/runtime-delegation"
 import { deriveCompletionReason } from "./epistemic/completion-reason"
+import { EXTRACTION_PROMPT } from "./learning"
+import {
+  applyLearningExtraction,
+  fallbackExtraction,
+  learningHasEntries,
+  parseLearningJson,
+  shouldExtractLearnings,
+  transcriptFromTurns,
+} from "./learn-runtime"
 import { SessionTable } from "@arcana/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { formatInstallResumePrompt, takeParkedInstall } from "@/execution/install-notice"
@@ -139,6 +156,7 @@ export const layer = Layer.effect(
     const commands = yield* Command.Service
     const config = yield* Config.Service
     const permission = yield* Permission.Service
+    const question = yield* Question.Service
     const fsys = yield* FSUtil.Service
     const mcp = yield* MCP.Service
     const lsp = yield* LSP.Service
@@ -1396,6 +1414,21 @@ export const layer = Layer.effect(
         let structured: unknown
         let step = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+        // New user prompt: do not inherit the previous drive counter.
+        const priorMeta = session.metadata as Record<string, unknown> | undefined
+        if (
+          priorMeta &&
+          (DRIVE_METADATA.continuations in priorMeta ||
+            DRIVE_METADATA.exhausted in priorMeta ||
+            DRIVE_METADATA.decisionRequired in priorMeta)
+        ) {
+          const cleaned = { ...priorMeta }
+          delete cleaned[DRIVE_METADATA.continuations]
+          delete cleaned[DRIVE_METADATA.exhausted]
+          delete cleaned[DRIVE_METADATA.decisionRequired]
+          session.metadata = cleaned
+          yield* sessions.setMetadata({ sessionID, metadata: cleaned })
+        }
         // Fresh concurrent occupancy for this run; wakes any parked tool waiters.
         yield* budget.reset(sessionID)
 
@@ -1462,8 +1495,52 @@ export const layer = Layer.effect(
               step,
               messageID: lastAssistant.id,
             }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
-            yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
-            break
+
+            const cfg = yield* config.get()
+            const driveCfg = resolveDriveConfig({
+              enabled: cfg.drive?.enabled,
+              maxContinuations: cfg.drive?.max_continuations,
+            })
+            const goal = getSessionGoal(sessionID)
+            const pendingQuestions = (yield* question.list()).filter((item) => item.sessionID === sessionID)
+            const pendingPermissions = (yield* permission.list()).filter((item) => item.sessionID === sessionID)
+            const meta = (session.metadata ?? {}) as Record<string, unknown>
+            const used = continuationsUsed(meta)
+            const decision = decideDrive({
+              enabled: driveCfg.enabled,
+              agent: lastUser.agent,
+              goalStatus: goal.status,
+              pendingQuestions: pendingQuestions.length,
+              pendingPermissions: pendingPermissions.length,
+              pendingApprovals: 0,
+              cancelled: meta.__arcana_cancelled === true,
+              pepDeniedRequired: false,
+              continuationsUsed: used,
+              maxContinuations: driveCfg.maxContinuations,
+            })
+            if (decision.action === "continue") {
+              session.metadata = {
+                ...session.metadata,
+                [DRIVE_METADATA.continuations]: used + 1,
+              }
+              yield* sessions.setMetadata({ sessionID, metadata: session.metadata })
+              yield* Effect.logInfo("drive continue", {
+                "session.id": sessionID,
+                continuation: used + 1,
+                max: driveCfg.maxContinuations,
+              })
+            } else {
+              if (decision.reason === "decision_required") {
+                session.metadata = { ...session.metadata, [DRIVE_METADATA.decisionRequired]: true }
+                yield* sessions.setMetadata({ sessionID, metadata: session.metadata })
+              }
+              if (decision.reason === "exhausted") {
+                session.metadata = { ...session.metadata, [DRIVE_METADATA.exhausted]: true }
+                yield* sessions.setMetadata({ sessionID, metadata: session.metadata })
+              }
+              yield* Effect.logInfo("exiting loop", { "session.id": sessionID, drive: decision.reason })
+              break
+            }
           }
 
           step++
@@ -1765,6 +1842,9 @@ export const layer = Layer.effect(
               ...(skills ? [skills] : []),
               ...(memory ? [memory] : []),
               goalBlock,
+              ...(continuationsUsed(session.metadata as Record<string, unknown> | undefined) > 0
+                ? [DRIVE_CONTINUATION_REMINDER]
+                : []),
             ]
 
             // Detect step-limit continuation: check for the metadata flag set when max steps was hit.
@@ -1888,6 +1968,57 @@ export const layer = Layer.effect(
           type: "session.completed",
           payload: { steps: step, reason: completionReason },
         }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
+
+        yield* Effect.gen(function* () {
+          const msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+            Effect.provideService(Database.Service, database),
+          )
+          const userTurns = msgs.filter((msg) => msg.info.role === "user").length
+          const goal = getSessionGoal(sessionID)
+          const goalComplete =
+            goal.status === "complete" ||
+            goal.status === "complete_unverified" ||
+            goal.status === "complete_pending_verify"
+          if (!shouldExtractLearnings(userTurns) && !goalComplete) return
+
+          const turns = msgs.flatMap((msg) => {
+            if (msg.info.role !== "user" && msg.info.role !== "assistant") return []
+            const text = msg.parts
+              .flatMap((part) => (part.type === "text" && typeof part.text === "string" ? [part.text] : []))
+              .join("\n")
+              .trim()
+              .slice(0, 800)
+            if (!text) return []
+            return [{ role: msg.info.role, text }]
+          })
+          const transcript = transcriptFromTurns(turns).slice(0, 12000)
+          let extraction = undefined as ReturnType<typeof parseLearningJson>
+          const { user: lastUser } = MessageV2.latest(msgs)
+          if (transcript && lastUser) {
+            const language = yield* provider.getLanguage(
+              yield* provider.getModel(lastUser.model.providerID, lastUser.model.modelID),
+            )
+            const resp = yield* Effect.promise(() =>
+              generateText({
+                model: language,
+                system: EXTRACTION_PROMPT,
+                prompt: `Session transcript:\n${transcript}`,
+              }),
+            ).pipe(Effect.catch(() => Effect.succeed({ text: "" })))
+            extraction = parseLearningJson(resp.text)
+          }
+          if (!learningHasEntries(extraction) && goalComplete && "goal" in goal) {
+            extraction = fallbackExtraction(goal.goal)
+          }
+          if (!learningHasEntries(extraction) || !extraction) return
+          const projectRoot = yield* InstanceState.directory
+          applyLearningExtraction({
+            projectRoot,
+            sessionID,
+            reason: completionReason,
+            extraction,
+          })
+        }).pipe(Effect.catch(() => Effect.void), Effect.ignore, Effect.forkIn(scope))
 
         return yield* lastAssistant(sessionID)
       },
@@ -2220,6 +2351,7 @@ export const defaultLayer = Layer.suspend(() =>
     // would leak an unsatisfied EventStore requirement into the layer type.
     Layer.provide(ContractEngine.layer),
     Layer.provide(ObligationEngine.layer),
+    Layer.provide(Question.defaultLayer),
     Layer.provide(
       Layer.mergeAll(
         Agent.defaultLayer,
@@ -2359,6 +2491,7 @@ export const node = LayerNode.make(layer as any, [
   Command.node,
   Config.node,
   Permission.node,
+  Question.node,
   FSUtil.node,
   MCP.node,
   LSP.node,

@@ -19,6 +19,10 @@ describe("deriveCompletionReason", () => {
     expect(deriveCompletionReason({ __arcana_max_steps_hit: true })).toBe("step_limit")
   })
 
+  it("returns drive_exhausted for __arcana_drive_exhausted", () => {
+    expect(deriveCompletionReason({ __arcana_drive_exhausted: true })).toBe("drive_exhausted")
+  })
+
   it("returns cancelled for __arcana_cancelled", () => {
     expect(deriveCompletionReason({ __arcana_cancelled: true })).toBe("cancelled")
   })
@@ -77,6 +81,9 @@ describe("isSuccessfulCompletion", () => {
   it("decision_required is not successful", () => {
     expect(isSuccessfulCompletion("decision_required")).toBe(false)
   })
+  it("drive_exhausted is not successful", () => {
+    expect(isSuccessfulCompletion("drive_exhausted")).toBe(false)
+  })
 })
 
 describe("isInterruption", () => {
@@ -88,6 +95,9 @@ describe("isInterruption", () => {
   })
   it("step_limit is interruption", () => {
     expect(isInterruption("step_limit")).toBe(true)
+  })
+  it("drive_exhausted is interruption", () => {
+    expect(isInterruption("drive_exhausted")).toBe(true)
   })
   it("normal is not interruption", () => {
     expect(isInterruption("normal")).toBe(false)

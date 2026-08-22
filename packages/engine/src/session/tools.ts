@@ -439,6 +439,10 @@ function extractProvenance(toolName: string, args: Record<string, unknown>): Pro
 
     case "skill":
     case "skill_create":
+    case "skill_upsert":
+    case "plugin_upsert":
+    case "memory_store_fact":
+    case "memory_search":
       // Writing skill files
       labels.push("USER_INSTRUCTION")
       break

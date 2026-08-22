@@ -235,6 +235,19 @@ export const Info = Schema.Struct({
   ).annotate({
     description: "Session retention policy: prune old / excess / empty sessions so the store does not grow forever",
   }),
+  drive: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Keep working toward the session goal after the model idles, until the prompt is satisfied or a bound is hit (default: true for build/general).",
+      }),
+      max_continuations: Schema.optional(PositiveInt).annotate({
+        description: "Maximum extra model loops after idle while the goal is still open (default: 6).",
+      }),
+    }),
+  ).annotate({
+    description: "Self-driven session loop: continue until the user prompt is satisfied, a question is asked, or the continuation cap is hit.",
+  }),
   git: Schema.optional(
     Schema.Struct({
       commit_signature: Schema.optional(Schema.Literals(["minimal", "branded", false])).annotate({

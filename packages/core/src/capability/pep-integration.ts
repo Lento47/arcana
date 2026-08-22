@@ -37,6 +37,8 @@ export function toolToAction(toolName: string): {
     case "patch":
     case "env_write":
     case "skill_create":
+    case "skill_upsert":
+    case "plugin_upsert":
     case "skill":
       return { action: "filesystem.write", resourceKind: "file" }
     case "read":
@@ -50,6 +52,8 @@ export function toolToAction(toolName: string): {
     case "goal_check":
     case "plan":
     case "question":
+    case "memory_search":
+    case "memory_store_fact":
       return { action: "filesystem.read", resourceKind: "file" }
     case "send_message":
     case "image_generate":

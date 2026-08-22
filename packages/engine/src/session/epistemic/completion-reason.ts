@@ -13,6 +13,8 @@ export type SessionCompletionReason =
   | "normal"
   /** Session hit the max-steps limit for the configured agent. */
   | "step_limit"
+  /** Drive loop hit max_continuations with the goal still open. */
+  | "drive_exhausted"
   /** Session was explicitly cancelled by the user or system. */
   | "cancelled"
   /** Session exhausted its token/compute budget. */
@@ -27,13 +29,14 @@ export type SessionCompletionReason =
  *
  * Metadata flags (set during session execution):
  * - __arcana_max_steps_hit: true → step_limit
+ * - __arcana_drive_exhausted: true → drive_exhausted
  * - __arcana_cancelled: true → cancelled
  * - __arcana_budget_exhausted: true → budget_exhausted
  * - __arcana_decision_required: true → decision_required
  * - __arcana_graceful_failure: true → graceful_failure
  * - none set → normal
  *
- * Priority: cancelled > budget_exhausted > step_limit > decision_required > graceful_failure > normal
+ * Priority: cancelled > budget_exhausted > step_limit > drive_exhausted > decision_required > graceful_failure > normal
  */
 export function deriveCompletionReason(
   metadata: Record<string, unknown> | undefined,
@@ -43,6 +46,7 @@ export function deriveCompletionReason(
   if (metadata.__arcana_cancelled === true) return "cancelled"
   if (metadata.__arcana_budget_exhausted === true) return "budget_exhausted"
   if (metadata.__arcana_max_steps_hit === true) return "step_limit"
+  if (metadata.__arcana_drive_exhausted === true) return "drive_exhausted"
   if (metadata.__arcana_decision_required === true) return "decision_required"
   if (metadata.__arcana_graceful_failure === true) return "graceful_failure"
 
@@ -62,5 +66,5 @@ export function isSuccessfulCompletion(reason: SessionCompletionReason): boolean
  * Used to flag sessions that did not complete their intended work.
  */
 export function isInterruption(reason: SessionCompletionReason): boolean {
-  return reason === "cancelled" || reason === "budget_exhausted" || reason === "step_limit"
+  return reason === "cancelled" || reason === "budget_exhausted" || reason === "step_limit" || reason === "drive_exhausted"
 }

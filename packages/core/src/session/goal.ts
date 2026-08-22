@@ -95,6 +95,7 @@ const ALWAYS_ALLOWED_TOOLS = new Set([
   "skill",
   "memory_search",
   "memory_write",
+  "memory_store_fact",
 ])
 
 function goalsDir(): string {

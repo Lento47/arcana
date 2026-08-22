@@ -4,6 +4,8 @@ import { InstanceState } from "@/effect/instance-state"
 import { Wildcard } from "@arcana/core/util/wildcard"
 import { Context, Deferred, Effect, Layer, Schema } from "effect"
 import os from "os"
+import path from "path"
+import fs from "fs"
 import { PermissionV1 } from "@arcana/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { EventV2 } from "@arcana/core/event"
@@ -22,6 +24,7 @@ import type { RiskLevel } from "@/execution/action"
 import { enrichInspectOnline } from "@/execution/inspect-online"
 import { noteParkedInstall } from "@/execution/install-notice"
 import { mergeInspectWithClassifier } from "@/execution/inspect-ml"
+import { Global } from "@arcana/core/global"
 
 export const Event = {
   Asked: EventV2.define({ type: "permission.asked", schema: PermissionV1.Request.fields }),
@@ -80,6 +83,29 @@ export function evaluate(permission: string, pattern: string, ...rulesets: Permi
 
 export class Service extends Context.Service<Service, Interface>()("@arcana/Permission") {}
 
+// Persistent approval storage
+const APPROVALS_FILE = path.join(Global.Path.state, "permission-approvals.json")
+
+function loadPersistentApprovals(): PermissionV1.Rule[] {
+  try {
+    if (fs.existsSync(APPROVALS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(APPROVALS_FILE, "utf-8"))
+      if (Array.isArray(data)) return data as PermissionV1.Rule[]
+    }
+  } catch {
+    // Ignore errors — start with empty approvals
+  }
+  return []
+}
+
+function savePersistentApprovals(approvals: PermissionV1.Rule[]): void {
+  try {
+    fs.writeFileSync(APPROVALS_FILE, JSON.stringify(approvals, null, 2))
+  } catch {
+    // Ignore errors — non-critical
+  }
+}
+
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -90,7 +116,7 @@ export const layer = Layer.effect(
         void ctx
         const state = {
           pending: new Map<PermissionV1.ID, PendingEntry>(),
-          approved: [],
+          approved: loadPersistentApprovals(),
           resolved: new Set<PermissionV1.ID>(),
         }
 
@@ -336,6 +362,9 @@ export const layer = Layer.effect(
           action: "allow",
         })
       }
+
+      // Persist approvals to disk
+      savePersistentApprovals(approved)
 
       for (const [id, item] of pending.entries()) {
         if (item.info.sessionID !== existing.info.sessionID) continue

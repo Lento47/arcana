@@ -46,7 +46,13 @@ function isBenignAbort(reason: unknown): boolean {
   if (reason == null) return false
   if (typeof reason === "string") {
     const s = reason.toLowerCase()
-    return s === "abort" || s === "aborted" || s.includes("abort")
+    return (
+      s === "abort" ||
+      s === "aborted" ||
+      s.includes("abort") ||
+      s.includes("ffmpeg") ||
+      s.includes("recorder produced no audio")
+    )
   }
   if (typeof reason === "object") {
     const r = reason as { name?: string; message?: string; code?: string }
@@ -54,6 +60,8 @@ function isBenignAbort(reason: unknown): boolean {
     if (r.code === "ABORT_ERR") return true
     const msg = typeof r.message === "string" ? r.message.toLowerCase() : ""
     if (msg === "abort" || msg === "aborted" || msg.includes("this operation was aborted")) return true
+    // Voice capture: ffmpeg/sox child-exit must never kill the TUI.
+    if (msg.includes("ffmpeg") || msg.includes("recorder produced no audio")) return true
   }
   return false
 }
