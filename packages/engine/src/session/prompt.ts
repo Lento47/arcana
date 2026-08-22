@@ -102,6 +102,7 @@ import { formatInstallResumePrompt, takeParkedInstall } from "@/execution/instal
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@arcana/llm"
 import { KeyedMutex } from "@arcana/core/effect/keyed-mutex"
+import { TrialLog } from "./trial-log"
 
 // @ts-ignore globalThis.AI_SDK_LOG_WARNINGS not in TS lib — prevents ai-sdk stdout spam
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -137,7 +138,7 @@ export function contractCompletionAlreadyResolved(
 function isOrphanedInterruptedTool(part: SessionV1.ToolPart) {
   // cleanup() marks abandoned tool_use blocks this way after retries/aborts.
   // They are not pending work and must not trigger an assistant-prefill request.
-  return part.state.status === "error" && part.state.metadata?.interrupted === true
+  return part.state.status === "cancelled" || (part.state.status === "error" && part.state.metadata?.interrupted === true)
 }
 
 export interface Interface {
@@ -187,6 +188,10 @@ export const layer = Layer.effect(
     const eventStore = yield* EventStore.Service
     const contracts = yield* ContractEngine.Service
     const obligations = yield* ObligationEngine.Service
+    // The production graph provides TrialLog. Isolated prompt tests may omit
+    // it, so capture it safely at layer construction instead of performing a
+    // defecting service lookup during every run-loop iteration.
+    const trialLog = Option.getOrUndefined(yield* Effect.serviceOption(TrialLog.Service))
     const { db } = database
     const goalVerificationInFlight = new Set<string>()
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
@@ -789,11 +794,13 @@ export const layer = Layer.effect(
                 yield* sessions.updatePart({
                   ...part,
                   state: {
-                    status: "error",
-                    error: "Cancelled",
+                    status: "cancelled",
+                    reason: "session_cancelled",
                     time: { start: part.state.time.start, end: Date.now() },
-                    metadata: part.state.metadata,
+                    metadata: { ...part.state.metadata, interrupted: true },
                     input: part.state.input,
+                    title: part.state.title,
+                    output: part.state.output,
                   },
                 } satisfies SessionV1.ToolPart)
               }
@@ -1624,10 +1631,12 @@ export const layer = Layer.effect(
     })
 
     const runLoop = Effect.fn("SessionPrompt.run")(
-      function* (sessionID: SessionID) {
+      function* (input: LoopInput) {
+        const sessionID = input.sessionID
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
+        let resumePending = input.failedMessageID !== undefined
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
         // New user prompt: do not inherit the previous drive counter.
         const priorMeta = session.metadata as Record<string, unknown> | undefined
@@ -1663,7 +1672,16 @@ export const layer = Layer.effect(
             Effect.provideService(Database.Service, database),
           )
 
-          const { user: lastUser, assistant: lastAssistant, finished: lastFinished, tasks } = MessageV2.latest(msgs)
+          const { user: storedLastUser, assistant: lastAssistant, finished: lastFinished, tasks } = MessageV2.latest(msgs)
+          const lastUser = storedLastUser && (input.agent || input.model)
+            ? {
+                ...storedLastUser,
+                agent: input.agent ?? storedLastUser.agent,
+                model: input.model
+                  ? { ...input.model, variant: storedLastUser.model.variant }
+                  : storedLastUser.model,
+              }
+            : storedLastUser
 
           if (!lastUser) throw new Error("No user message found in stream. This should never happen.")
 
@@ -1684,12 +1702,17 @@ export const layer = Layer.effect(
           // the engine's time-based ids. msgs is chronological unless
           // compaction reordered it, in which case it ends on a user message.
           const lastMsg = msgs[msgs.length - 1]
+          const resumingFailedTurn = resumePending
+            && lastAssistant !== undefined
+            && lastAssistant.id === input.failedMessageID
+            && lastAssistant.error !== undefined
           if (
             lastAssistant?.finish &&
             !["tool-calls"].includes(lastAssistant.finish) &&
             !hasToolCalls &&
             lastMsg?.info.role === "assistant" &&
-            lastMsg.info.id === lastAssistant.id
+            lastMsg.info.id === lastAssistant.id &&
+            !resumingFailedTurn
           ) {
             const orphan = lastAssistantMsg?.parts.find(
               (part): part is SessionV1.ToolPart => part.type === "tool" && isOrphanedInterruptedTool(part),
@@ -1741,6 +1764,12 @@ export const layer = Layer.effect(
             const pendingPermissions = (yield* permission.list()).filter((item) => item.sessionID === sessionID)
             const meta = (session.metadata ?? {}) as Record<string, unknown>
             const used = continuationsUsed(meta)
+            // Detect whether the model actually invoked tools in its last
+            // response. Pure-text responses (greetings, commentary) have no
+            // tool activity -- continuing would just produce more text.
+            const hadToolActivity = lastAssistantMsg?.parts.some(
+              (part) => part.type === "tool",
+            ) ?? false
             const decision = decideDrive({
               enabled: driveCfg.enabled,
               agent: lastUser.agent,
@@ -1750,6 +1779,7 @@ export const layer = Layer.effect(
               pendingApprovals: 0,
               cancelled: meta.__arcana_cancelled === true,
               pepDeniedRequired: false,
+              hadToolActivity,
               continuationsUsed: used,
               maxContinuations: driveCfg.maxContinuations,
             })
@@ -1777,6 +1807,7 @@ export const layer = Layer.effect(
               break
             }
           }
+          if (resumingFailedTurn) resumePending = false
 
           step++
           // No engine-side wall-clock/counter budget gate here: credit enforcement is
@@ -1881,7 +1912,10 @@ export const layer = Layer.effect(
                         revision: String(contract.revision),
                         criteria: contract.criteria.slice(0, 3),
                       },
-                      always: [],
+                      // Remembering this permission admits future completion
+                      // contracts for this workspace + agent. It does not
+                      // authorize any tool or consequential action.
+                      always: ["*"],
                       // Honor the session's permission rules: allow-all
                       // sessions auto-accept admission, default sessions are
                       // asked, deny rules decline into LEGACY_COMPAT.
@@ -2081,6 +2115,13 @@ export const layer = Layer.effect(
                 ? [DRIVE_CONTINUATION_REMINDER]
                 : []),
             ]
+
+            // Trial log: inject recent tool call history for loop prevention.
+            // This is optional — if TrialLog.Service is not available, skip it.
+            const trialHistory = yield* (trialLog ? trialLog.formatHistory() : Effect.succeed(undefined))
+            if (trialHistory) {
+              system.push(trialHistory)
+            }
 
             // Detect step-limit continuation: check for the metadata flag set when max steps was hit.
             if (step === 1 && lastAssistant?.finish && !["tool-calls"].includes(lastAssistant.finish)) {
@@ -2283,7 +2324,7 @@ export const layer = Layer.effect(
       input: LoopInput,
     ) {
       // Wrap runLoop to emit session.crashed on uncaught errors before dying
-      const work = runLoop(input.sessionID).pipe(
+      const work = runLoop(input).pipe(
         Effect.catch((error: unknown) =>
           Effect.gen(function* () {
             yield* eventStore.append({
@@ -2601,6 +2642,7 @@ export const defaultLayer = Layer.suspend(() =>
     // provides, so the final mergeAll provide goes in a second .pipe() call.
     // Semantically identical: a.pipe(...x).pipe(y) === a.pipe(...x, y).
   ).pipe(
+    Layer.provide(TrialLog.defaultLayer),
     // Provided BEFORE the mergeAll so its EventStore requirement is excluded
     // again by the mergeAll's EventStore.layer below; after the mergeAll it
     // would leak an unsatisfied EventStore requirement into the layer type.
@@ -2655,6 +2697,9 @@ export type PromptInput = Schema.Schema.Type<typeof PromptInput>
 
 export class LoopInput extends Schema.Class<LoopInput>("SessionPrompt.LoopInput")({
   sessionID: SessionID,
+  failedMessageID: Schema.optional(MessageID),
+  model: Schema.optional(ModelRef),
+  agent: Schema.optional(Schema.String),
 }) {}
 
 export const ShellInput = Schema.Struct({
@@ -2751,6 +2796,7 @@ export const node = LayerNode.make(layer as any, [
   MCP.node,
   LSP.node,
   ToolRegistry.node,
+  TrialLog.node,
   Truncate.node,
   Image.node,
   CrossSpawnSpawner.node,

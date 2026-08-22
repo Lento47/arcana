@@ -18,6 +18,7 @@ function snap(overrides: Partial<DriveSnapshot> = {}): DriveSnapshot {
     pendingApprovals: 0,
     cancelled: false,
     pepDeniedRequired: false,
+    hadToolActivity: true,
     continuationsUsed: 0,
     maxContinuations: DEFAULT_MAX_CONTINUATIONS,
     ...overrides,
@@ -44,6 +45,15 @@ describe("decideDrive", () => {
     expect(decideDrive(snap({ pendingQuestions: 1 }))).toEqual({ action: "stop", reason: "decision_required" })
     expect(decideDrive(snap({ pendingPermissions: 1 }))).toEqual({ action: "stop", reason: "decision_required" })
     expect(decideDrive(snap({ pendingApprovals: 1 }))).toEqual({ action: "stop", reason: "decision_required" })
+  })
+
+  test("stops on pure-text responses (no tool activity) even with an open goal", () => {
+    const result = decideDrive(snap({ hadToolActivity: false }))
+    expect(result).toEqual({ action: "stop", reason: "conversational" })
+  })
+
+  test("continues when the model invoked tools and the goal is open", () => {
+    expect(decideDrive(snap({ hadToolActivity: true })).action).toBe("continue")
   })
 
   test("stops when the goal is complete, blocked, stale, or unset", () => {

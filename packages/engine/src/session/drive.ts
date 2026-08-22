@@ -14,10 +14,11 @@ export const DRIVE_AGENTS = new Set(["build", "general"])
 
 export const DRIVE_CONTINUATION_REMINDER = [
   "<system-reminder>",
-  "The session goal is still open. Continue from the current workspace state.",
-  "Do not restart. Do not wait for another user message.",
-  "Ask `question` if a decision is required. Call `goal_check` with status complete",
-  "only when the user's prompt is actually satisfied; this submits the goal for independent verification.",
+  "The session goal is still open. Pick up where you left off — do not restart from scratch.",
+  "Run your verification check (typecheck, tests, build) and fix any errors you find.",
+  "Use `question` only when a genuine decision or clarification is required.",
+  "Call `goal_check(status=complete, checks=[...])` with the appropriate checks",
+  "when the goal is truly satisfied. The checks run deterministically — no review needed.",
   "</system-reminder>",
 ].join("\n")
 
@@ -38,6 +39,8 @@ export type DriveSnapshot = {
   pepDeniedRequired: boolean
   continuationsUsed: number
   maxContinuations: number
+  /** True when the model's last response invoked at least one tool. False = pure text. */
+  hadToolActivity: boolean
 }
 
 export type DriveStopReason =
@@ -51,6 +54,7 @@ export type DriveStopReason =
   | "cancelled"
   | "pep_denied"
   | "exhausted"
+  | "conversational"
 
 export type DriveDecision =
   | { action: "continue"; reason: "goal_open" }
@@ -78,6 +82,10 @@ export function continuationsUsed(metadata: Record<string, unknown> | undefined)
 }
 
 export function decideDrive(snap: DriveSnapshot): DriveDecision {
+  // Pure-text responses (no tool invocations) are conversational — there is
+  // no work to drive toward. Continuing would produce another greeting or
+  // commentary without any actionable output.
+  if (!snap.hadToolActivity) return { action: "stop", reason: "conversational" }
   if (!snap.enabled) return { action: "stop", reason: "disabled" }
   if (!isDriveAgent(snap.agent)) return { action: "stop", reason: "agent_exempt" }
   if (snap.cancelled) return { action: "stop", reason: "cancelled" }
