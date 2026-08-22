@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { For, Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import { ShimmerText } from "../../component/shimmer-text"
@@ -13,6 +13,7 @@ import {
 } from "./spine-types"
 import { SPINNER_FRAMES_BRAILLE_FLOW } from "../../util/spinner-style"
 import { streamTextCue, thinkingRowChrome, toolChipChrome } from "./spine-chrome"
+import { useSpineMotion } from "./spine-motion"
 
 /**
  * Meta parts that must live in a `flexShrink={0}` sibling box beside the
@@ -97,8 +98,11 @@ export function SpineNode(props: {
   streaming?: boolean
   /** Merged think verb for tool rows — shows inline after the tool glyph. */
   thinking?: string
+  /** Stable row cue used by the shell's single-animation arbiter. */
+  cueID?: string
 }) {
   const { theme } = useTheme()
+  const motion = useSpineMotion()
 
   const kind = () => props.kind
   const layout = () => props.layout
@@ -116,24 +120,16 @@ export function SpineNode(props: {
   const live = createMemo(
     () => streaming() && typeof props.startMs === "number" && Number.isFinite(props.startMs),
   )
-  // Animated braille frame for live rows. Uses a manual 150ms interval driven
-  // by a client-only effect (skipped in the server renderer) so the chip spins
-  // in the live app without destabilizing frame capture in tests.
-  const [tick, setTick] = createSignal(0)
-  createEffect(() => {
-    if (!live()) return
-    const timer = setInterval(() => setTick((n) => n + 1), 150)
-    onCleanup(() => clearInterval(timer))
-  })
+  const animatedLive = createMemo(() => live() && (motion?.isCueActive(props.cueID) ?? true))
   const spinnerGlyph = createMemo(() => {
-    if (!live()) return ""
+    if (!animatedLive()) return ""
     const frames = SPINNER_FRAMES_BRAILLE_FLOW
-    return frames[Math.floor(tick() / 2) % frames.length] ?? "⠋"
+    return frames[Math.floor((motion?.phase() ?? 0) / 2) % frames.length] ?? "⠋"
   })
   const elapsedText = createMemo(() => {
     const max = spineElapsedMax(props.layout)
     if (live()) {
-      void tick() // track the interval signal
+      void motion?.phase()
       const ms = Math.max(0, Date.now() - (props.startMs as number))
       return compactSpineElapsed(formatElapsedMs(ms), max)
     }
@@ -248,8 +244,8 @@ export function SpineNode(props: {
                   <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
                     <ShimmerText
                       text={summary() || thinkChrome().verb}
-                      active={streaming() || !!thinking()}
                       background={theme.backgroundElement}
+                      cue={props.cueID}
                     />
                   </box>
                   <Show when={streamCue().badge}>
@@ -267,6 +263,7 @@ export function SpineNode(props: {
                       text={summary() || thinkChrome().verb}
                       active={true}
                       background={theme.backgroundElement}
+                      cue={props.cueID}
                     />
                   </box>
                   <Show when={thinkChrome().badge}>
@@ -330,7 +327,7 @@ export function SpineNode(props: {
                   Inline frames (not the Spinner component) so the server renderer
                   stays stable — no opentui-spinner element in the chip. */}
               <Show
-                  when={kind() === "agent" && live()}
+                  when={kind() === "agent" && animatedLive()}
                   fallback={
                     <text
                       fg={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? theme.accent : labelColor()}
@@ -354,8 +351,8 @@ export function SpineNode(props: {
             <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
               <ShimmerText
                 text={thinking() || thinkChrome().verb}
-                active={streaming()}
                 background={theme.backgroundElement}
+                cue={props.cueID}
               />
             </box>
             <Show when={streamCue().badge}>
