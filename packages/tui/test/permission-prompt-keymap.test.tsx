@@ -8,12 +8,22 @@ import { ARCANA_BASE_MODE, OpencodeKeymapProvider, registerOpencodeKeymap } from
 import { createTuiResolvedConfig } from "./fixture/tui-runtime"
 import { TuiConfigProvider } from "../src/config"
 import { TestTuiContexts } from "./fixture/tui-environment"
+// Real modules spread into the mocks below so the partial overrides never
+// shadow unrelated exports. A wholesale mock here previously erased
+// `discoverThemes` from context/theme for every file running later in the
+// same bun process — killing all 24 theme-readability tests as collateral.
+import * as realSdk from "../src/context/sdk"
+import * as realProject from "../src/context/project"
+import * as realSync from "../src/context/sync"
+import * as realPathFormat from "../src/context/path-format"
+import * as realTheme from "../src/context/theme"
 
 function installContextMocks(input: {
   replyCalls?: { requestID: string; reply: string; directory?: string; workspace?: string; message?: string }[]
   sessions?: { id: string; parentID?: string }[]
 }) {
   mock.module("../src/context/sdk", () => ({
+    ...realSdk,
     useSDK: () => ({
       client: {
         permission: {
@@ -26,6 +36,7 @@ function installContextMocks(input: {
   }))
 
   mock.module("../src/context/project", () => ({
+    ...realProject,
     useProject: () => ({
       workspace: {
         current: () => "ws-1",
@@ -34,6 +45,7 @@ function installContextMocks(input: {
   }))
 
   mock.module("../src/context/sync", () => ({
+    ...realSync,
     useSync: () => ({
       data: {
         session: input.sessions ?? [{ id: "sess-1" }],
@@ -43,13 +55,14 @@ function installContextMocks(input: {
   }))
 
   mock.module("../src/context/path-format", () => ({
+    ...realPathFormat,
     usePathFormatter: () => ({
       format: (p: string) => p,
     }),
   }))
 
   mock.module("../src/context/theme", () => ({
-    selectedForeground: () => "#ffffff",
+    ...realTheme,
     useTheme: () => ({
       theme: {
         background: "#000000",
