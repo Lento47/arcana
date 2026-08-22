@@ -1,0 +1,152 @@
+/*
+ * Arcana Dark Theme
+ * Gold (#d4a853) + Violet (#9d7cd8) identity on deep void (#0d0a14)
+ * Overrides @arcana/ui v2 design tokens
+ */
+
+[data-color-scheme="dark"],
+:root[data-theme="arcana-dark"] {
+  color-scheme: dark;
+
+  /* ── Background ── */
+  --v2-background-bg-base: #0d0a14;
+  --v2-background-bg-deep: #080610;
+  --v2-background-bg-layer-01: #12101c;
+  --v2-background-bg-layer-02: #1a1726;
+  --v2-background-bg-layer-03: #221e32;
+  --v2-background-bg-layer-04: #2a2540;
+  --v2-background-bg-inverse: #f0ece0;
+  --v2-background-bg-contrast: #1a1726;
+  --v2-background-bg-button-neutral: #1a1726;
+  --v2-background-bg-accent: #d4a853;
+
+  /* ── Text ── */
+  --v2-text-text-base: #e0d8c8;
+  --v2-text-text-muted: #8880a0;
+  --v2-text-text-faint: #5c5478;
+  --v2-text-text-inverse: #0d0a14;
+  --v2-text-text-contrast: #f0ece0;
+  --v2-text-text-accent: #d4a853;
+  --v2-text-text-accent-hover: #e0bc6a;
+
+  /* ── Icon ── */
+  --v2-icon-icon-base: #b0a8c8;
+  --v2-icon-icon-muted: #6c6490;
+  --v2-icon-icon-inverse: #0d0a14;
+  --v2-icon-icon-contrast: #e0d8c8;
+  --v2-icon-icon-accent: #d4a853;
+  --v2-icon-icon-accent-hover: #e0bc6a;
+
+  /* ── Border ── */
+  --v2-border-border-muted: #ffffff08;
+  --v2-border-border-base: #ffffff10;
+  --v2-border-border-strong: #ffffff1a;
+  --v2-border-border-inverse: #f0ece0;
+  --v2-border-border-focus: #9d7cd8;
+
+  /* ── Overlay ── */
+  --v2-overlay-simple-overlay-hover: #ffffff08;
+  --v2-overlay-simple-overlay-pressed: #ffffff10;
+  --v2-overlay-simple-overlay-contrast-hover: #00000020;
+  --v2-overlay-simple-overlay-contrast-pressed: #00000030;
+  --v2-overlay-simple-overlay-scrim: #00000060;
+  --v2-overlay-gradient-depth-overlay-depth-top: #ffffff10;
+  --v2-overlay-gradient-depth-overlay-depth-bot: #ffffff00;
+  --v2-overlay-simple-tab-active-scrim: #0d0a1400;
+  --v2-overlay-simple-tab-hover-scrim: #1a172600;
+  --v2-overlay-simple-tab-scrim: #08061000;
+
+  /* ── State ── */
+  --v2-state-bg-success: #14361d;
+  --v2-state-fg-success: #49c970;
+  --v2-state-border-success: #196130;
+  --v2-state-bg-warning: #4b4025;
+  --v2-state-fg-warning: #f6c251;
+  --v2-state-border-warning: #68552b;
+  --v2-state-bg-danger: #461516;
+  --v2-state-fg-danger: #f1484f;
+  --v2-state-border-danger: #7a1f23;
+  --v2-state-bg-info: #1b2852;
+  --v2-state-fg-info: #7698fd;
+  --v2-state-border-info: #263fa9;
+
+  /* ── Avatar ── */
+  --v2-avatar-fg: #ffffffff;
+  --v2-avatar-bg-orange: #723d22ff;
+  --v2-avatar-border-orange: #ff8648ff;
+  --v2-avatar-bg-yellow: #68552bff;
+  --v2-avatar-border-yellow: #e7af36ff;
+  --v2-avatar-bg-cyan: #005a6eff;
+  --v2-avatar-border-cyan: #0096b8ff;
+  --v2-avatar-bg-green: #196130ff;
+  --v2-avatar-border-green: #49c970ff;
+  --v2-avatar-bg-red: #7a1f23ff;
+  --v2-avatar-border-red: #d92e3cff;
+  --v2-avatar-bg-pink: #8c2d61ff;
+  --v2-avatar-border-pink: #e4429eff;
+  --v2-avatar-bg-blue: #263fa9ff;
+  --v2-avatar-border-blue: #7698fdff;
+  --v2-avatar-bg-purple: #361f83ff;
+  --v2-avatar-border-purple: #7152f4ff;
+  --v2-avatar-bg-gray: #5c5c5cff;
+  --v2-avatar-border-gray: #aeaeaeff;
+
+  /* ── Elevation ── */
+  --v2-elevation-raised:
+    0px 2px 4px 0px #00000040,
+    0px 1px 2px 0px #00000040,
+    0px 0px 0px 0.5px #ffffff10,
+    0px -0.5px 0px 0px #ffffff08;
+  --v2-elevation-floating:
+    0px 8px 16px 0px #00000040,
+    0px 4px 8px 0px #00000040,
+    0px 0px 0px 0.5px #ffffff10,
+    0px -0.5px 0px 0px #ffffff08;
+  --v2-elevation-overlay:
+    0px 16px 32px 0px #00000040,
+    0px 8px 16px 0px #00000040,
+    0px 0px 0px 0.5px #ffffff10,
+    0px -0.5px 0px 0px #ffffff08;
+  --v2-elevation-button-neutral:
+    0px 1px 2px 0px #00000050,
+    0px 0px 0px 0.5px #ffffff18,
+    0px -0.5px 0px 0px #ffffff0c;
+  --v2-elevation-button-contrast:
+    0px 1px 2px 0px #00000050,
+    0px 0px 0px 0.5px #ffffff30,
+    inset 0px 0px 0px 0px #ffffff00,
+    inset 0px 0px 0px 0px #ffffff00,
+    0px -0.5px 0px 0px #ffffff20;
+  --v2-elevation-elements: 0px 0.5px 0.5px 0px #00000050;
+  --v2-elevation-switch-off:
+    inset 0px -0.5px 0px 0px #ffffff10,
+    inset 0px 0px 0px 0px #ffffff00,
+    inset 0px 0px 0px 0.5px #ffffff14;
+  --v2-elevation-switch-on:
+    inset 0px -0.5px 0px 0px #ffffff10,
+    inset 0px 0px 0px 0px #ffffff00,
+    inset 0px 0px 0px 0.5px #ffffff14;
+
+  /* ── Illustration ── */
+  --v2-illustration-illustration-layer-01: #1a1726;
+  --v2-illustration-illustration-layer-02: #221e32;
+  --v2-illustration-illustration-layer-03: #2a2540;
+
+  /* ── Arcana Identity ── */
+  --arcana-gold: #d4a853;
+  --arcana-gold-dim: #d4a85340;
+  --arcana-violet: #9d7cd8;
+  --arcana-violet-dim: #9d7cd840;
+  --arcana-void: #0d0a14;
+  --arcana-surface: #12101c;
+  --arcana-surface-raised: #1a1726;
+  --arcana-border: #2a2540;
+  --arcana-text: #e0d8c8;
+  --arcana-text-weak: #8880a0;
+  --arcana-text-faint: #5c5478;
+  --arcana-danger: #c44;
+  --arcana-success: #4a4;
+
+  --font-family-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-family-mono: "JetBrains Mono", "Fira Code", monospace;
+}

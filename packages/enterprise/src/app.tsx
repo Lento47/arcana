@@ -9,6 +9,7 @@ import { dict as uiEn } from "@arcana/ui/i18n/en"
 import { dict as uiZh } from "@arcana/ui/i18n/zh"
 import { createEffect, createMemo, Suspense, type ParentProps } from "solid-js"
 import { getRequestEvent } from "solid-js/web"
+import { AppLayout } from "~/core/layout"
 import "./app.css"
 import { Favicon } from "@arcana/ui/favicon"
 
@@ -66,6 +67,8 @@ function UiI18nBridge(props: ParentProps) {
   createEffect(() => {
     if (typeof document !== "object") return
     document.documentElement.lang = locale()
+    document.documentElement.setAttribute("data-color-scheme", "dark")
+    document.documentElement.setAttribute("data-theme", "arcana-dark")
   })
 
   return <I18nProvider value={{ locale, t }}>{props.children}</I18nProvider>
@@ -81,7 +84,9 @@ export default function App() {
               <Favicon />
               <Font />
               <UiI18nBridge>
-                <Suspense>{props.children}</Suspense>
+                <AppLayout>
+                  <Suspense>{props.children}</Suspense>
+                </AppLayout>
               </UiI18nBridge>
             </MarkedProvider>
           </DialogProvider>

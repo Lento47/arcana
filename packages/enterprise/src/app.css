@@ -1,1 +1,39 @@
 @import "@arcana/ui/styles/tailwind";
+@import "@arcana/ui/v2/styles/tailwind";
+@import "./arcana-theme.css";
+
+/* ── Arcana Base Styles ── */
+
+html {
+  font-family: var(--font-family-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background: var(--arcana-void);
+  color: var(--arcana-text);
+}
+
+/* Scrollbar styling for Arcana dark */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--arcana-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--arcana-text-faint);
+}
+
+/* Selection */
+::selection {
+  background: var(--arcana-violet-dim);
+  color: var(--arcana-text);
+}

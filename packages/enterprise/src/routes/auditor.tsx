@@ -9,16 +9,6 @@ import {
   type AuditEvent,
 } from "~/core/auditor-console"
 
-const GALT = "#d4a853"
-const VIOL = "#9d7cd8"
-const BG = "#10101a"
-const SUPP = "#14111e"
-const BORDER = "#2a2535"
-const TEXT = "#e0d8c8"
-const TEXT_WEAK = "#8880a0"
-const DANGER = "#c44"
-const SUCCESS = "#4a4"
-
 const DEFAULT_TENANT = "org-1"
 
 interface ArchiveExport {
@@ -103,18 +93,11 @@ export default function AuditorConsole() {
 
   const postCustody = async (archiveId: string, action: string) => {
     const id = archiveId.trim()
-    if (!id) {
-      setActionResult("archive id required")
-      return { ok: false, reason: "archive id required" }
-    }
+    if (!id) { setActionResult("archive id required"); return { ok: false, reason: "archive id required" } }
     try {
       const res = await fetch(
         `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/audit-archive/${encodeURIComponent(id)}/custody`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action }),
-        }
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }
       )
       if (!res.ok) throw new Error(await readApiError(res))
       const data = (await res.json()) as LegalHoldResponse
@@ -129,18 +112,11 @@ export default function AuditorConsole() {
 
   const postLegalHold = async (archiveId: string, action: "PLACE" | "REMOVE") => {
     const id = archiveId.trim()
-    if (!id) {
-      setActionResult("archive id required")
-      return { ok: false, reason: "archive id required" }
-    }
+    if (!id) { setActionResult("archive id required"); return { ok: false, reason: "archive id required" } }
     try {
       const res = await fetch(
         `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/audit-archive/${encodeURIComponent(id)}/legal-hold`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action }),
-        }
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) }
       )
       if (!res.ok) throw new Error(await readApiError(res))
       const data = (await res.json()) as LegalHoldResponse
@@ -154,24 +130,15 @@ export default function AuditorConsole() {
   }
 
   const postRetentionSweep = async (rawNow?: string) => {
-    setSweepLoading(true)
-    setSweepError(null)
-    setSweepResult(null)
+    setSweepLoading(true); setSweepError(null); setSweepResult(null)
     try {
       const parsed = parseRetentionSweepNow(rawNow)
-      if (parsed.error) {
-        setSweepError(parsed.error)
-        return
-      }
+      if (parsed.error) { setSweepError(parsed.error); return }
       const body: Record<string, string> = {}
       if (parsed.now) body.now = parsed.now
       const res = await fetch(
         `/api/enterprise/organizations/${encodeURIComponent(tenantId())}/audit-archive/retention-sweep`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
       )
       if (!res.ok) throw new Error(await readApiError(res))
       const data = (await res.json()) as RetentionSweepResponse
@@ -184,43 +151,51 @@ export default function AuditorConsole() {
   }
 
   return (
-    <div style={{ "min-height": "100vh", background: BG, color: TEXT, "font-family": "system-ui, monospace", padding: "2rem" }}>
-      <head>
-        <title>Auditor Console</title>
-      </head>
-      <p style={{ color: TEXT_WEAK, "font-size": "0.85rem" }}>
-        Audit console. Inspect events and archive proofs. Mutations (custody, legal hold, retention sweep) go through the enterprise API.
-      </p>
+    <div style={{ padding: "2rem", "max-width": "1100px" }}>
+      <head><title>Auditor Console — Arcana</title></head>
 
-      <section style={{ "margin-bottom": "2rem", display: "flex", gap: "1rem", "align-items": "center", "flex-wrap": "wrap" }}>
-        <label style={{ color: TEXT_WEAK, "font-size": "0.85rem" }}>Tenant:</label>
+      {/* Header */}
+      <header style={{ "margin-bottom": "1.5rem" }}>
+        <h1 style={{ "font-size": "1.5rem", "font-weight": "600", color: "var(--arcana-gold)", margin: "0 0 0.25rem 0" }}>
+          Auditor Console
+        </h1>
+        <p style={{ color: "var(--arcana-text-weak)", "font-size": "0.85rem", margin: 0 }}>
+          Inspect events and archive proofs. Mutations go through the enterprise API.
+        </p>
+      </header>
+
+      {/* Tenant selector */}
+      <section style={{ display: "flex", gap: "0.75rem", "align-items": "center", "margin-bottom": "1.5rem", "flex-wrap": "wrap" }}>
+        <label style={{ color: "var(--arcana-text-weak)", "font-size": "0.8125rem" }}>Tenant:</label>
         <input
           type="text"
           value={tenantId()}
           onInput={(e) => setSearchParams({ tenantId: e.currentTarget.value })}
           placeholder="org-1"
           style={{
-            background: SUPP,
-            border: "1px solid " + BORDER,
-            color: TEXT,
-            padding: "0.4rem 0.8rem",
-            "border-radius": "4rem",
-            "font-family": "monospace",
-            "font-size": "0.85rem",
-            flex: "1",
-            "max-width": "300px",
+            background: "var(--arcana-surface-raised)",
+            border: "1px solid var(--arcana-border)",
+            color: "var(--arcana-text)",
+            padding: "0.4rem 0.75rem",
+            "border-radius": "6px",
+            "font-family": "var(--font-family-mono)",
+            "font-size": "0.8125rem",
+            width: "200px",
+            outline: "none",
           }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = "var(--arcana-violet)" }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = "var(--arcana-border)" }}
         />
         <button
           onClick={fetchEvents}
           style={{
-            background: GALT,
-            color: BG,
+            background: "var(--arcana-gold)",
+            color: "var(--arcana-void)",
             border: "none",
             padding: "0.4rem 1rem",
-            "border-radius": "4rem",
-            "font-size": "0.85rem",
-            "font-weight": "bold",
+            "border-radius": "6px",
+            "font-size": "0.8125rem",
+            "font-weight": "600",
             cursor: "pointer",
           }}
         >
@@ -228,60 +203,57 @@ export default function AuditorConsole() {
         </button>
       </section>
 
+      {/* Audit Events */}
       <section style={{ "margin-bottom": "2rem" }}>
-        <h2 style={{ color: VIOL, "font-size": "1.2rem", margin: "0 0 1rem 0" }}>Audit Events</h2>
+        <h2 style={{ "font-size": "1rem", "font-weight": "500", color: "var(--arcana-violet)", margin: "0 0 1rem 0" }}>
+          Audit Events
+        </h2>
         <Switch>
           <Match when={loading()}>
-            <div style={{ color: TEXT_WEAK }}>Loading audit events...</div>
+            <div style={{ color: "var(--arcana-text-faint)", "font-size": "0.85rem" }}>Loading audit events…</div>
           </Match>
           <Match when={error()}>
-            <div style={{ color: DANGER }}>Error: {error()}</div>
+            <div style={{ color: "var(--v2-state-fg-danger)", "font-size": "0.85rem" }}>Error: {error()}</div>
           </Match>
           <Match when={events().length === 0 && !loading()}>
-            <div style={{ color: TEXT_WEAK }}>No audit events found for this tenant.</div>
+            <div style={{ color: "var(--arcana-text-faint)", "font-size": "0.85rem" }}>No audit events found for this tenant.</div>
           </Match>
           <Match when={true}>
-            <div style={{ overflow: "auto" }}>
-              <table
-                style={{ width: "100%", "border-collapse": "collapse", "font-size": "0.85rem" }}
-              >
+            <div style={{ overflow: "auto", border: "1px solid var(--arcana-border)", "border-radius": "8px" }}>
+              <table style={{ width: "100%", "border-collapse": "collapse", "font-size": "0.8125rem" }}>
                 <thead>
-                  <tr style={{ "border-bottom": "2px solid " + BORDER }}>
-                    <th style={{ padding: "0.5rem", "text-align": "left", color: TEXT_WEAK }}>ID</th>
-                    <th style={{ padding: "0.5rem", "text-align": "left", color: TEXT_WEAK }}>Actor</th>
-                    <th style={{ padding: "0.5rem", "text-align": "left", color: TEXT_WEAK }}>Action</th>
-                    <th style={{ padding: "0.5rem", "text-align": "left", color: TEXT_WEAK }}>Source</th>
-                    <th style={{ padding: "0.5rem", "text-align": "left", color: TEXT_WEAK }}>Outcome</th>
-                    <th style={{ padding: "0.5rem", "text-align": "left", color: TEXT_WEAK }}>At</th>
+                  <tr style={{ "border-bottom": "1px solid var(--arcana-border)", background: "var(--arcana-surface)" }}>
+                    <For each={["ID", "Actor", "Action", "Source", "Outcome", "At"]}>
+                      {(h) => (
+                        <th style={{ padding: "0.6rem 0.75rem", "text-align": "left", color: "var(--arcana-text-faint)", "font-weight": "500", "font-size": "0.75rem", "text-transform": "uppercase", "letter-spacing": "0.05em" }}>
+                          {h}
+                        </th>
+                      )}
+                    </For>
                   </tr>
                 </thead>
                 <tbody>
                   <For each={events().map(mapAuditEvent)}>
-                    {(mapped) => {
-                      return (
-                        <tr
-                          style={{ "border-bottom": "1px solid " + BORDER, cursor: "pointer" }}
-                          title={mapped.id}
-                          onClick={() => setSelectedArchive(mapped.id)}
-                        >
-                          <td style={{ padding: "0.4rem", "font-family": "monospace", "font-size": "0.75rem" }} title={mapped.id}>{mapped.idShort}</td>
-                          <td style={{ padding: "0.4rem", "font-family": "monospace", "font-size": "0.75rem" }} title={mapped.actor}>{mapped.actorShort}</td>
-                          <td style={{ padding: "0.4rem" }}>{mapped.action}</td>
-                          <td style={{ padding: "0.4rem", "font-family": "monospace", "font-size": "0.75rem" }} title={mapped.resource}>{mapped.resourceShort}</td>
-                          <td>
-                            <span
-                              style={{
-                                color: mapped.outcome === "SUCCESS" ? SUCCESS : DANGER,
-                                "font-weight": "bold",
-                              }}
-                            >
-                              {mapped.outcome}
-                            </span>
-                          </td>
-                          <td style={{ padding: "0.4rem", color: TEXT_WEAK, "font-size": "0.75rem" }}>{mapped.at}</td>
-                        </tr>
-                      )
-                    }}
+                    {(mapped) => (
+                      <tr
+                        style={{ "border-bottom": "1px solid var(--arcana-border)", cursor: "pointer", transition: "background 0.1s" }}
+                        title={mapped.id}
+                        onClick={() => setSelectedArchive(mapped.id)}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--arcana-surface)" }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent" }}
+                      >
+                        <td style={{ padding: "0.5rem 0.75rem", "font-family": "var(--font-family-mono)", "font-size": "0.75rem", color: "var(--arcana-text-weak)" }} title={mapped.id}>{mapped.idShort}</td>
+                        <td style={{ padding: "0.5rem 0.75rem", "font-family": "var(--font-family-mono)", "font-size": "0.75rem", color: "var(--arcana-text-weak)" }} title={mapped.actor}>{mapped.actorShort}</td>
+                        <td style={{ padding: "0.5rem 0.75rem", color: "var(--arcana-text)" }}>{mapped.action}</td>
+                        <td style={{ padding: "0.5rem 0.75rem", "font-family": "var(--font-family-mono)", "font-size": "0.75rem", color: "var(--arcana-text-weak)" }} title={mapped.resource}>{mapped.resourceShort}</td>
+                        <td style={{ padding: "0.5rem 0.75rem" }}>
+                          <span style={{ color: mapped.outcome === "SUCCESS" ? "var(--v2-state-fg-success)" : "var(--v2-state-fg-danger)", "font-weight": "500", "font-size": "0.75rem" }}>
+                            {mapped.outcome}
+                          </span>
+                        </td>
+                        <td style={{ padding: "0.5rem 0.75rem", color: "var(--arcana-text-faint)", "font-size": "0.75rem" }}>{mapped.at}</td>
+                      </tr>
+                    )}
                   </For>
                 </tbody>
               </table>
@@ -290,55 +262,59 @@ export default function AuditorConsole() {
         </Switch>
       </section>
 
-      <section style={{ "margin-bottom": "2rem", display: "flex", gap: "1rem", "flex-wrap": "wrap", "align-items": "flex-end" }}>
-        <h2 style={{ color: VIOL, "font-size": "1.2rem", margin: "0" }}>Archive Operations</h2>
-        <div style={{ display: "flex", gap: "0.5rem", "align-items": "center" }}>
-          <label style={{ color: TEXT_WEAK, "font-size": "0.85rem" }}>Archive ID:</label>
+      {/* Archive Operations */}
+      <section style={{ "margin-bottom": "1.5rem" }}>
+        <h2 style={{ "font-size": "1rem", "font-weight": "500", color: "var(--arcana-violet)", margin: "0 0 1rem 0" }}>
+          Archive Operations
+        </h2>
+        <div style={{ display: "flex", gap: "0.75rem", "align-items": "center", "flex-wrap": "wrap", "margin-bottom": "1rem" }}>
           <input
             type="text"
             value={selectedArchive()}
             onInput={(e) => setSelectedArchive(e.currentTarget.value)}
-            placeholder="arc-..."
+            placeholder="arc-…"
             style={{
-              background: SUPP,
-              border: "1px solid " + BORDER,
-              color: TEXT,
-              padding: "0.4rem 0.8rem",
-              "border-radius": "4rem",
-              "font-family": "monospace",
-              "font-size": "0.85rem",
-              width: "260px",
+              background: "var(--arcana-surface-raised)",
+              border: "1px solid var(--arcana-border)",
+              color: "var(--arcana-text)",
+              padding: "0.4rem 0.75rem",
+              "border-radius": "6px",
+              "font-family": "var(--font-family-mono)",
+              "font-size": "0.8125rem",
+              width: "240px",
+              outline: "none",
             }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "var(--arcana-violet)" }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "var(--arcana-border)" }}
           />
-          <button
-            onClick={() => fetchArchiveExport(selectedArchive())}
-            style={{
-              background: GALT,
-              color: BG,
-              border: "none",
-              padding: "0.4rem 0.8rem",
-              "border-radius": "4rem",
-              "font-size": "0.85rem",
-              cursor: "pointer",
-            }}
-          >
+          <button onClick={() => fetchArchiveExport(selectedArchive())} style={btnStyle("var(--arcana-gold)", "var(--arcana-void)")}>
             Export
+          </button>
+          <button onClick={() => postCustody(selectedArchive(), "PLACE")} style={btnStyle("transparent", "var(--arcana-text)")}>
+            Place Custody
+          </button>
+          <button onClick={() => postLegalHold(selectedArchive(), "PLACE")} style={btnStyle("transparent", "var(--arcana-text)")}>
+            Place Legal Hold
+          </button>
+          <button onClick={() => postLegalHold(selectedArchive(), "REMOVE")} style={btnStyle("transparent", "var(--arcana-text)")}>
+            Remove Legal Hold
           </button>
         </div>
       </section>
 
+      {/* Export result */}
       <Switch>
         <Match when={exported()}>
           {(data) => {
             const d = data() as ArchiveExport
             return (
-              <div style={{ background: SUPP, border: "1px solid " + BORDER, "border-radius": "4rem", padding: "1rem", "margin-bottom": "1rem" }}>
-                <div style={{ color: SUCCESS, "font-weight": "bold", "margin-bottom": "0.5rem" }}>Proof Exported</div>
-                <div style={{ color: TEXT_WEAK, "font-size": "0.85rem", "margin-bottom": "0.3rem" }}>Fingerprint: {truncateHash(d.fingerprint)}</div>
-                <div style={{ color: TEXT_WEAK, "font-size": "0.85rem", "margin-bottom": "0.3rem" }}>Custody events: {d.custody.length}</div>
+              <div style={{ background: "var(--v2-state-bg-success)", border: "1px solid var(--v2-state-border-success)", "border-radius": "8px", padding: "1rem", "margin-bottom": "1rem" }}>
+                <div style={{ color: "var(--v2-state-fg-success)", "font-weight": "500", "margin-bottom": "0.5rem", "font-size": "0.85rem" }}>Proof Exported</div>
+                <div style={{ color: "var(--arcana-text-weak)", "font-size": "0.8125rem", "margin-bottom": "0.25rem" }}>Fingerprint: {truncateHash(d.fingerprint)}</div>
+                <div style={{ color: "var(--arcana-text-weak)", "font-size": "0.8125rem", "margin-bottom": "0.25rem" }}>Custody events: {d.custody.length}</div>
                 <For each={d.custody}>
                   {(c) => (
-                    <div style={{ color: TEXT_WEAK, "font-size": "0.75rem", "padding-left": "1rem" }}>
+                    <div style={{ color: "var(--arcana-text-faint)", "font-size": "0.75rem", "padding-left": "1rem" }}>
                       {c.who} — {c.action} — {c.at}
                     </div>
                   )}
@@ -351,113 +327,77 @@ export default function AuditorConsole() {
           {(data) => {
             const d = data() as ArchiveRejected
             return (
-              <div style={{ color: DANGER, "margin-bottom": "1rem" }}>Export error: {d.reason}</div>
+              <div style={{ color: "var(--v2-state-fg-danger)", "font-size": "0.85rem", "margin-bottom": "1rem" }}>Export error: {d.reason}</div>
             )
           }}
         </Match>
       </Switch>
 
-      <section style={{ display: "flex", gap: "1rem", "flex-wrap": "wrap", "margin-bottom": "1rem" }}>
-        <button
-          onClick={() => postCustody(selectedArchive(), "PLACE")}
-          style={{
-            background: BG,
-            border: "1px solid " + BORDER,
-            color: TEXT,
-            padding: "0.4rem 0.8rem",
-            "border-radius": "4rem",
-            "font-size": "0.85rem",
-            cursor: "pointer",
-          }}
-        >
-          Place Custody (POST)
-        </button>
-        <button
-          onClick={() => postLegalHold(selectedArchive(), "PLACE")}
-          style={{
-            background: BG,
-            border: "1px solid " + BORDER,
-            color: TEXT,
-            padding: "0.4rem 0.8rem",
-            "border-radius": "4rem",
-            "font-size": "0.85rem",
-            cursor: "pointer",
-          }}
-        >
-          Place Legal Hold (POST)
-        </button>
-        <button
-          onClick={() => postLegalHold(selectedArchive(), "REMOVE")}
-          style={{
-            background: BG,
-            border: "1px solid " + BORDER,
-            color: TEXT,
-            padding: "0.4rem 0.8rem",
-            "border-radius": "4rem",
-            "font-size": "0.85rem",
-            cursor: "pointer",
-          }}
-        >
-          Remove Legal Hold (POST)
-        </button>
-      </section>
-
-      <section style={{ display: "flex", gap: "1rem", "flex-wrap": "wrap", "align-items": "flex-end", "margin-bottom": "1rem" }}>
-        <label style={{ color: TEXT_WEAK, "font-size": "0.85rem" }}>Retention sweep (optional now ISO):</label>
-        <input
-          id="sweep-now"
-          type="text"
-          placeholder="2026-08-17T00:00:00Z"
-          style={{
-            background: SUPP,
-            border: "1px solid " + BORDER,
-            color: TEXT,
-            padding: "0.4rem 0.8rem",
-            "border-radius": "4rem",
-            "font-family": "monospace",
-            "font-size": "0.85rem",
-            width: "80px",
-          }}
-        />
+      {/* Retention sweep */}
+      <section style={{ display: "flex", gap: "0.75rem", "align-items": "flex-end", "flex-wrap": "wrap", "margin-bottom": "1rem" }}>
+        <div style={{ display: "flex", "flex-direction": "column", gap: "0.25rem" }}>
+          <label style={{ color: "var(--arcana-text-faint)", "font-size": "0.75rem" }}>Retention sweep (optional now ISO):</label>
+          <input
+            id="sweep-now"
+            type="text"
+            placeholder="2026-08-17T00:00:00Z"
+            style={{
+              background: "var(--arcana-surface-raised)",
+              border: "1px solid var(--arcana-border)",
+              color: "var(--arcana-text)",
+              padding: "0.4rem 0.75rem",
+              "border-radius": "6px",
+              "font-family": "var(--font-family-mono)",
+              "font-size": "0.8125rem",
+              width: "220px",
+              outline: "none",
+            }}
+          />
+        </div>
         <button
           onClick={() => {
             const el = document.getElementById("sweep-now") as HTMLInputElement | null
-            const n = el?.value || undefined
-            postRetentionSweep(n)
+            postRetentionSweep(el?.value || undefined)
           }}
-          style={{
-            background: BG,
-            border: "1px solid " + BORDER,
-            color: TEXT,
-            padding: "0.4rem 0.8rem",
-            "border-radius": "4rem",
-            "font-size": "0.85rem",
-            cursor: "pointer",
-          }}
+          style={btnStyle("transparent", "var(--arcana-text)")}
         >
-          Run Retention Sweep (POST)
+          Run Retention Sweep
         </button>
       </section>
 
       <Show when={actionResult()}>
-        <div style={{ color: TEXT_WEAK, "font-size": "0.85rem", "margin-bottom": "1rem" }}>{actionResult()}</div>
+        <div style={{ color: "var(--arcana-text-weak)", "font-size": "0.8125rem", "margin-bottom": "0.75rem" }}>{actionResult()}</div>
       </Show>
 
       <Switch>
         <Match when={sweepLoading()}>
-          <div style={{ color: TEXT_WEAK }}>Running retention sweep...</div>
+          <div style={{ color: "var(--arcana-text-faint)", "font-size": "0.85rem" }}>Running retention sweep…</div>
         </Match>
         <Match when={sweepError()}>
-          <div style={{ color: DANGER }}>Sweep error: {sweepError()}</div>
+          <div style={{ color: "var(--v2-state-fg-danger)", "font-size": "0.85rem" }}>Sweep error: {sweepError()}</div>
         </Match>
         <Match when={sweepResult()}>
-          <div style={{ color: SUCCESS, "font-size": "0.85rem", "margin-bottom": "1rem" }}>Sweep result: {sweepResult()}</div>
+          <div style={{ color: "var(--v2-state-fg-success)", "font-size": "0.85rem", "margin-bottom": "1rem" }}>Sweep result: {sweepResult()}</div>
         </Match>
       </Switch>
 
-      <footer style={{ color: TEXT_WEAK, "font-size": "0.75rem", "margin-top": "2rem", "border-top": "1px solid " + BORDER, "padding-top": "1rem" }}>
-        arcana enterprise · auditor console · GET /audit · POST /audit-archive/:id/custody · POST /audit-archive/:id/legal-hold (PLACE|REMOVE) · POST /audit-archive/retention-sweep
+      <footer style={{ color: "var(--arcana-text-faint)", "font-size": "0.7rem", "margin-top": "2rem", "border-top": "1px solid var(--arcana-border)", "padding-top": "0.75rem" }}>
+        arcana enterprise · auditor console · GET /audit · POST /audit-archive/:id/custody · POST /audit-archive/:id/legal-hold · POST /audit-archive/retention-sweep
       </footer>
     </div>
   )
+}
+
+function btnStyle(bg: string, color: string): Record<string, string> {
+  return {
+    background: bg,
+    color,
+    border: bg === "transparent" ? "1px solid var(--arcana-border)" : "none",
+    padding: "0.4rem 0.75rem",
+    "border-radius": "6px",
+    "font-size": "0.8125rem",
+    "font-weight": "500",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+  }
 }
