@@ -15,33 +15,22 @@ import {
   stageActiveRunProofRollbackRestore,
   approveActiveRunProofRollbackRestore,
 } from "./proof-io"
-import { useClipboard } from "./context/clipboard"
-import { useExit } from "./context/exit"
 import * as Selection from "./util/selection"
 import { CliRenderEvents, createCliRenderer, MouseButton, type CliRenderer } from "@opentui/core"
-import { useRoute } from "./context/route"
 import {
   Switch,
   Match,
-  createEffect,
   createMemo,
   createSignal,
-  onMount,
-  onCleanup,
-  batch,
   Show,
-  on,
   For,
 } from "solid-js"
 import { useTuiStartup } from "./context/runtime"
-import { useDialog } from "./ui/dialog"
 import { ArcanaMetricLine, ArcanaSection, ArcanaSurface, ArcanaTapeItem } from "./ui/arcana"
-import { DialogProvider as DialogProviderList } from "./component/dialog-provider"
 import { PluginRouteMissing } from "./component/plugin-route-missing"
 import { useProject } from "./context/project"
 import { useEvent } from "./context/event"
-import { useSDK, getLastSseEventMeta } from "./context/sdk"
-import { parseStallIntervalMs, startStallWatchdog } from "./util/stall-watchdog"
+import { useSDK } from "./context/sdk"
 import { isSpinnerStyle, nextSpinnerStyle, spinnerStyleName } from "./util/spinner-style"
 import { densityName, isDensity, nextDensity } from "./shell/command-spine/spine-types"
 import { StartupLoading } from "./component/startup-loading"
@@ -65,13 +54,13 @@ import { useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { Session } from "./routes/session"
 import { usePromptQueue } from "./context/prompt-queue"
-import { DialogAlert } from "./ui/dialog-alert"
-import { DialogConfirm } from "./ui/dialog-confirm"
 import { Toast, useToast } from "./ui/toast"
-import { displaySessionTitle } from "./util/session"
 import { truncate, truncateMiddle } from "./util/locale"
 import { useKV } from "./context/kv"
-import * as Model from "./util/model"
+import { useClipboard } from "./context/clipboard"
+import { useExit } from "./context/exit"
+import { useRoute } from "./context/route"
+import { useDialog } from "./ui/dialog"
 import { useArgs, type Args } from "./context/args"
 
 import { usePromptRef } from "./context/prompt"
@@ -80,6 +69,7 @@ import { createTuiApiAdapters } from "./plugin/adapters"
 import { createTuiApi } from "./plugin/api"
 import { createPluginRuntime, usePluginRuntime, type TuiPluginHost } from "./plugin/runtime"
 import { ProviderTree } from "./provider-tree"
+import { useAppEffects } from "./app-effects"
 import { CommandPaletteDialog } from "./component/command-palette"
 import {
   COMMAND_PALETTE_COMMAND,
@@ -161,38 +151,6 @@ export type TuiInput = {
   renderer?: CliRenderer
 }
 
-function errorMessage(error: unknown) {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "data" in error &&
-    typeof error.data === "object" &&
-    error.data !== null &&
-    "message" in error.data &&
-    typeof error.data.message === "string"
-  ) {
-    return error.data.message
-  }
-  return error instanceof Error ? error.message : String(error)
-}
-
-function isVersionGreater(left: string, right: string) {
-  const parse = (value: string) => {
-    const [core, prerelease] = value.replace(/^v/, "").split("-", 2)
-    return { core: core.split(".").map((part) => Number.parseInt(part, 10) || 0), prerelease }
-  }
-  const a = parse(left)
-  const b = parse(right)
-  for (let index = 0; index < Math.max(a.core.length, b.core.length); index++) {
-    const difference = (a.core[index] ?? 0) - (b.core[index] ?? 0)
-    if (difference) return difference > 0
-  }
-  if (a.prerelease === b.prerelease) return false
-  if (!a.prerelease) return true
-  if (!b.prerelease) return false
-  return a.prerelease.localeCompare(b.prerelease, undefined, { numeric: true }) > 0
-}
-
 export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
   // Apply the configured interface voice (arcane | plain) before anything
   // renders — setLexiconVoice swaps the live branding bindings once at
@@ -214,9 +172,6 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                 exitOnCtrlC: false,
                 useKittyKeyboard: {
                   events: true,
-                  // Windows Terminal + kitty "all keys as escapes" floods modifier
-                  // CSI on ALT hold and can take the native renderer down. Win32
-                  // push-to-talk reads the physical Alt key instead.
                   allKeysAsEscapes: process.platform === "win32" ? false : (input.config.voice?.enabled ?? false),
                 },
                 autoFocus: false,
@@ -240,18 +195,6 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
         Effect.sync(() => registerOpencodeKeymap(keymap, renderer, input.config)),
         (unregister) => Effect.sync(unregister),
       )
-      // Optional custom background image. Half-block compositing needs truecolor
-      // (audit C1/D6): on ANSI-256 terminals RGBA→palette quantization shifts hues
-      // and the bottom half of "▀" can inherit the default background (ghosted,
-      // mispositioned blocks). Gate on renderer.capabilities.rgb; when truecolor
-      // is available, prefer renderer.setBackgroundColor (OSC 11) — mirroring
-      // context/theme.tsx — so the terminal itself paints the background instead of
-      // a per-frame post-process pass. See background.ts.
-      //
-      // Capabilities are finalized only after the terminal answers the probe
-      // (the renderer re-reads and emits CAPABILITIES in processCapabilitySequence;
-      // the snapshot from setupTerminal can still be a pre-detection default). Apply
-      // immediately when rgb is already definitive, otherwise wait for the event.
       const bg = input.config.background
       if (!process.env.NO_COLOR && bg?.enabled && bg.image) {
         yield* Effect.promise(async () => {
@@ -267,9 +210,6 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
           if (renderer.capabilities?.rgb === true) {
             applyBackground()
           } else {
-            // CAPABILITIES fires once per capability reply (DA1/DA2/XTVERSION arrive
-            // progressively), so only tear down once rgb is confirmed true — an early
-            // partial snapshot must not discard the listener.
             const onCapabilities = () => {
               if (renderer.capabilities?.rgb !== true || renderer.isDestroyed) return
               renderer.off(CliRenderEvents.CAPABILITIES, onCapabilities)
@@ -299,7 +239,6 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       const pluginRuntime = createPluginRuntime()
 
       yield* Effect.tryPromise(async () => {
-        // Prewarm palette before ThemeProvider mounts so `system` theme avoids a first-paint fallback flash.
         void renderer.getPalette({ size: 16 }).catch(() => undefined)
         const mode = (await renderer.waitForThemeMode(1000)) ?? "dark"
         if (renderer.isDestroyed) return
@@ -388,6 +327,19 @@ export function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: T
       Slot: pluginRuntime.Slot,
     }),
   )
+
+  // ── Wire up all side effects via the extracted hook ──
+  const {
+    terminalTitleEnabled,
+    setTerminalTitleEnabled,
+    pasteSummaryEnabled,
+    setPasteSummaryEnabled,
+    mlRuntimeEnabled,
+    setMlRuntimeEnabled,
+  } = useAppEffects({
+    attention,
+  })
+
   const [ready, setReady] = createSignal(false)
   props.pluginHost
     .start({
@@ -403,7 +355,6 @@ export function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: T
     .finally(() => {
       if (process.env["ARCANA_PROFILE_STARTUP"]) {
         performance.mark("tui-ready")
-        // Flush profile marks after TUI is interactive
         setTimeout(() => {
           const entries = performance.getEntriesByType("measure")
           if (entries.length) {
@@ -423,190 +374,6 @@ export function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: T
       }
       setReady(true)
     })
-
-  // Let selection copy/dismiss win ahead of normal bindings when explicit copy is required.
-  const offSelectionKeys = keymap.intercept(
-    "key",
-    ({ event }) => {
-      if (!Flag.ARCANA_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) return
-      Selection.handleSelectionKey(renderer, toast, event, clipboard)
-    },
-    { priority: 1 },
-  )
-  const eventUnsubs: (() => void)[] = []
-  onCleanup(() => {
-    offSelectionKeys()
-    attention.dispose()
-    for (const fn of eventUnsubs) {
-      try {
-        fn()
-      } catch {}
-    }
-  })
-
-  // Wire up console copy-to-clipboard via opentui's onCopySelection callback
-  renderer.console.onCopySelection = async (text: string) => {
-    if (!text || text.length === 0) return
-
-    await clipboard
-      .write?.(text)
-      .then(() => toast.show({ message: COPY.inscribedToClipboard, variant: "info" }))
-      .catch(toast.error)
-
-    renderer.clearSelection()
-  }
-  const [terminalTitleEnabled, setTerminalTitleEnabled] = createSignal(kv.get("terminal_title_enabled", true))
-  const [pasteSummaryEnabled, setPasteSummaryEnabled] = createSignal(
-    kv.get("paste_summary_enabled", !sync.data.config.experimental?.disable_paste_summary),
-  )
-  const [mlRuntimeEnabled, setMlRuntimeEnabled] = createSignal(kv.get("ml_runtime_enabled", Flag.ARCANA_ML_RUNTIME))
-
-  // Update terminal window title based on current route and session
-  createEffect(() => {
-    if (!terminalTitleEnabled() || Flag.ARCANA_DISABLE_TERMINAL_TITLE) return
-
-    if (route.data.type === "home") {
-      renderer.setTerminalTitle("⛧ ARCANA")
-      return
-    }
-
-    if (route.data.type === "session") {
-      const session = sync.session.get(route.data.sessionID)
-      if (!session) {
-        renderer.setTerminalTitle("⛧ ARCANA")
-        return
-      }
-
-      const label = displaySessionTitle({
-        title: session.title,
-        created: session.time?.created,
-      })
-      const title = truncate(label, 40)
-      renderer.setTerminalTitle(`${APP_ABBR} | ${title}`)
-      return
-    }
-
-    if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`${APP_ABBR} | ${route.data.id}`)
-    }
-  })
-
-  const args = useArgs()
-  onMount(() => {
-    // Opt-in long-session freeze detector: ARCANA_DEBUG_STALL_MS=200
-    const stallInterval = parseStallIntervalMs()
-    if (stallInterval !== undefined) {
-      const stopStall = startStallWatchdog({
-        intervalMs: stallInterval,
-        getSnapshot: () => {
-          const data = route.data
-          const sessionID = data.type === "session" ? data.sessionID : undefined
-          const meta = getLastSseEventMeta()
-          return {
-            sessionID,
-            routeType: data.type,
-            msgCount: sessionID ? (sync.data.message[sessionID]?.length ?? 0) : undefined,
-            compacting: sessionID ? (sync.data.session_compacting[sessionID] ?? false) : undefined,
-            lastEventType: meta.type,
-            lastEventAgeMs: meta.at ? Date.now() - meta.at : undefined,
-          }
-        },
-        getHeavySnapshot: () => {
-          const data = route.data
-          const sessionID = data.type === "session" ? data.sessionID : undefined
-          if (!sessionID) return {}
-          let partApproxBytes = 0
-          const messages = sync.data.message[sessionID] ?? []
-          for (const m of messages) {
-            const parts = sync.data.part[m.id] ?? []
-            for (const p of parts) {
-              if (p.type === "text" && typeof p.text === "string") partApproxBytes += p.text.length
-              if (p.type === "reasoning" && typeof (p as { text?: string }).text === "string") {
-                partApproxBytes += (p as { text: string }).text.length
-              }
-              if (p.type === "tool" && p.state && typeof p.state === "object") {
-                const st = p.state as { output?: string; error?: string }
-                if (typeof st.output === "string") partApproxBytes += st.output.length
-                if (typeof st.error === "string") partApproxBytes += st.error.length
-              }
-            }
-          }
-          return { partApproxBytes }
-        },
-      })
-      onCleanup(stopStall)
-    }
-
-    batch(() => {
-      if (args.agent) local.agent.set(args.agent)
-      if (args.model) {
-        const { providerID, modelID } = Model.parse(args.model)
-        if (!providerID || !modelID)
-          return toast.show({
-            variant: "warning",
-            message: `Invalid model format: ${args.model}`,
-            duration: 3000,
-          })
-        local.model.set({ providerID, modelID }, { recent: true })
-      }
-      if (args.sessionID && !args.fork) {
-        route.navigate({
-          type: "session",
-          sessionID: args.sessionID,
-        })
-      }
-    })
-  })
-
-  let continued = false
-  createEffect(() => {
-    // When using -c, session list is loaded in blocking phase, so we can navigate at "partial"
-    if (continued || sync.status === "loading" || !args.continue) return
-    const match = sync.data.session
-      .toSorted((a, b) => b.time.updated - a.time.updated)
-      .find((x) => x.parentID === undefined)?.id
-    if (match) {
-      continued = true
-      if (args.fork) {
-        void sdk.client.session.fork({ sessionID: match }).then((result) => {
-          if (result.data?.id) {
-            route.navigate({ type: "session", sessionID: result.data.id })
-          } else {
-            toast.show({ message: "Failed to fork session", variant: "error" })
-          }
-        })
-      } else {
-        route.navigate({ type: "session", sessionID: match })
-      }
-    }
-  })
-
-  // Handle --session with --fork: wait for sync to be fully complete before forking
-  // (session list loads in non-blocking phase for --session, so we must wait for "complete"
-  // to avoid a race where reconcile overwrites the newly forked session)
-  let forked = false
-  createEffect(() => {
-    if (forked || sync.status !== "complete" || !args.sessionID || !args.fork) return
-    forked = true
-    void sdk.client.session.fork({ sessionID: args.sessionID }).then((result) => {
-      if (result.data?.id) {
-        route.navigate({ type: "session", sessionID: result.data.id })
-      } else {
-        toast.show({ message: "Failed to fork session", variant: "error" })
-      }
-    })
-  })
-
-  createEffect(
-    on(
-      () => sync.status === "complete" && sync.data.provider.length === 0,
-      (isEmpty, wasEmpty) => {
-        // only trigger when we transition into an empty-provider state
-        if (!isEmpty || wasEmpty) return
-        dialog.replace(() => <DialogProviderList />)
-      },
-    ),
-  )
 
   const connected = useConnected()
   const currentWorktreeWorkspace = createMemo(() => {
@@ -668,112 +435,6 @@ export function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: T
     },
     bindings: tuiConfig.keybinds.gather("app_exit", ["app.exit"]),
   }))
-
-  eventUnsubs.push(
-    event.on("tui.command.execute", (evt, { workspace }) => {
-      if (workspace !== project.workspace.current()) return
-      keymap.dispatchCommand(evt.properties.command)
-    }),
-  )
-
-  eventUnsubs.push(
-    event.on("tui.toast.show", (evt, { workspace }) => {
-      if (workspace !== project.workspace.current()) return
-      toast.show({
-        title: evt.properties.title,
-        message: evt.properties.message,
-        variant: evt.properties.variant,
-        duration: evt.properties.duration,
-      })
-    }),
-  )
-
-  eventUnsubs.push(
-    event.on("tui.session.select", (evt, { workspace }) => {
-      if (workspace !== project.workspace.current()) return
-      route.navigate({
-        type: "session",
-        sessionID: evt.properties.sessionID,
-      })
-    }),
-  )
-
-  eventUnsubs.push(
-    event.on("session.deleted", (evt) => {
-      if (route.data.type === "session" && route.data.sessionID === evt.properties.info.id) {
-        route.navigate({ type: "home" })
-        toast.show({
-          variant: "info",
-          message: "The current session was deleted",
-        })
-      }
-    }),
-  )
-
-  eventUnsubs.push(
-    event.on("session.error", (evt, { workspace }) => {
-      if (workspace !== project.workspace.current()) return
-      const error = evt.properties.error
-      if (error && typeof error === "object" && error.name === "MessageAbortedError") return
-      const message = errorMessage(error)
-
-      toast.show({
-        variant: "error",
-        message,
-        duration: 5000,
-      })
-    }),
-  )
-
-  eventUnsubs.push(
-    event.on("installation.update-available", async (evt) => {
-      console.log("installation.update-available", evt)
-      const version = evt.properties.version
-
-      const skipped = kv.get("skipped_version")
-      if (skipped && !isVersionGreater(version, skipped)) return
-
-      const choice = await DialogConfirm.show(
-        dialog,
-        `Update Available`,
-        `A new release v${version} is available. Would you like to update now?`,
-        "skip",
-      )
-
-      if (choice === false) {
-        kv.set("skipped_version", version)
-        return
-      }
-
-      if (choice !== true) return
-
-      toast.show({
-        variant: "info",
-        message: `Updating to v${version}...`,
-        duration: 30000,
-      })
-
-      const result = await sdk.client.global.upgrade({ target: version })
-
-      if (result.error || !result.data?.success) {
-        toast.show({
-          variant: "error",
-          title: "Update Failed",
-          message: "Update failed",
-          duration: 10000,
-        })
-        return
-      }
-
-      await DialogAlert.show(
-        dialog,
-        "Update Complete",
-        `Successfully updated to ${APP_NAME} v${result.data.version}. Please restart the application.`,
-      )
-
-      void exit()
-    }),
-  )
 
   const plugin = createMemo(() => {
     if (!ready()) return
