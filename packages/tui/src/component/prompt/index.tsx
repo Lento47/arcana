@@ -1754,11 +1754,10 @@ export function Prompt(props: PromptProps) {
     }
     if (store.mode === "shell") {
       if (!shell().length) return undefined
-      const example = shell()[store.placeholder % shell().length]
-      return `${PROMPT_FRAME.shell} "${example}"`
+      return shell()[store.placeholder % shell().length]
     }
     if (!list().length) return undefined
-    return `${PROMPT_FRAME.normal} "${list()[store.placeholder % list().length]}"`
+    return list()[store.placeholder % list().length]
   })
 
   // D5: geometry routes through the centralized spine contract — the prompt

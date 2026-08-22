@@ -184,21 +184,23 @@ export const PLAIN_BOOT_READY = "ready"
  */
 const DEFAULT_PLACEHOLDER = {
   normal: [
-    "Speak your intent…",
+    "Ask anything...  (!shell  /commands  @files)",
     "What secrets does this codebase hold?",
+    "/goal fix the login bug",
     "Inscribe a change…",
     "Name the next objective…",
     "What should we forge next?",
     "Trace a bug to its source…",
+    "/loop set refactor auth module",
     "Refactor something that frets you…",
     "Ask the chronicle a question…",
+    "@file.ts explain this module",
     "Ship a small, verifiable change…",
-    "Explain this module like a spell…",
     "Draft a plan before we cast…",
     "Find the smell in this tree…",
-    "Wire up the missing piece…",
+    "!git log --oneline -10",
     "Review the last patch with care…",
-    "Open a path through this maze…",
+    "Wire up the missing piece…",
     "Turn this idea into a commit…",
     "Summon help on a stuck rite…",
     "Decrypt what this function does…",
@@ -206,8 +208,6 @@ const DEFAULT_PLACEHOLDER = {
     "Carve a cleaner API surface…",
     "Test the edge cases that lurk…",
     "Document the unwritten rule…",
-    "Cull the dead code gently…",
-    "Lift a todo into a real fix…",
   ],
   shell: [
     "Inscribe a command…",
@@ -230,12 +230,14 @@ const DEFAULT_PLACEHOLDER = {
 
 export const PLAIN_PLACEHOLDER: { normal: string[]; shell: string[] } = {
   normal: [
-    "Ask anything…",
+    "Ask anything...  (!shell  /commands  @files)",
     "What does this codebase hold?",
+    "/goal fix the login bug",
     "Make a change…",
     "Name the next objective…",
     "What should we build next?",
     "Trace a bug to its source…",
+    "/loop set refactor auth module",
     "Refactor something that bothers you…",
     "Ask about the project history…",
     "Ship a small, verifiable change…",
