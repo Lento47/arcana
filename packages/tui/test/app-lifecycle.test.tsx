@@ -25,6 +25,16 @@ test("SIGHUP clears title and disposes scoped resources once", async () => {
   })
   let disposes = 0
 
+  // Wait for a condition with a bound — polling beats sleep-guessing under
+  // full-suite load, where app startup steps lag their readiness signals.
+  async function waitFor(what: string, fn: () => boolean, timeoutMs = 10_000) {
+    const deadline = Date.now() + timeoutMs
+    while (!fn()) {
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
+      await Bun.sleep(10)
+    }
+  }
+
   try {
     const { run } = await import("../src/app")
     const task = Effect.runPromise(
@@ -46,6 +56,10 @@ test("SIGHUP clears title and disposes scoped resources once", async () => {
       }).pipe(Effect.provide(Global.defaultLayer)),
     )
     await ready
+    // pluginHost.start() does not guarantee the app's SIGHUP handler is
+    // registered yet — under load it can lag. Emitting before registration
+    // makes this test flake; wait for the listener to actually appear.
+    await waitFor("app SIGHUP listener registration", () => process.listeners("SIGHUP").length > listeners.size)
     process.emit("SIGHUP")
     await task
 
