@@ -1,37 +1,30 @@
 import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import "opentui-spinner/solid"
-import { readFile, writeFile } from "node:fs/promises"
-import { randomUUID } from "node:crypto"
+
 import { Deferred, Effect } from "effect"
 import { Global } from "@arcana/core/global"
 import { Flag } from "@arcana/core/flag/flag"
 import { InstallationVersion } from "@arcana/core/installation/version"
 import { APP_NAME, APP_ABBR, DOCS_URL, COPY, setLexiconVoice } from "./branding"
+import type { RunProofView } from "./proof-view/run-proof-view"
+import { buildAppCommands } from "./app-commands"
 import {
-  asRecord,
-  contextBudgetsFromEvents,
-  normalizeProofView,
-  proofString,
-  type RunProofCheckView,
-  type RunProofConsensusView,
-  type RunProofDiffView,
-  type RunProofEventView,
-  type RunProofMLEvidenceView,
-  type RunProofView,
-} from "./proof-view/run-proof-view"
-import { ClipboardProvider, useClipboard } from "./context/clipboard"
-import { ExitProvider, useExit } from "./context/exit"
-import { EpilogueProvider } from "./context/epilogue"
+  type ProofLoadResult,
+  loadActiveRunProof,
+  stageActiveRunProofRollbackRestore,
+  approveActiveRunProofRollbackRestore,
+} from "./proof-io"
+import { useClipboard } from "./context/clipboard"
+import { useExit } from "./context/exit"
 import * as Selection from "./util/selection"
 import { CliRenderEvents, createCliRenderer, MouseButton, type CliRenderer } from "@opentui/core"
-import { RouteProvider, useRoute } from "./context/route"
+import { useRoute } from "./context/route"
 import {
   Switch,
   Match,
   createEffect,
   createMemo,
-  ErrorBoundary,
   createSignal,
   onMount,
   onCleanup,
@@ -40,23 +33,20 @@ import {
   on,
   For,
 } from "solid-js"
-import { TuiPathsProvider, TuiStartupProvider, TuiTerminalEnvironmentProvider, useTuiStartup } from "./context/runtime"
-import { DialogProvider, useDialog } from "./ui/dialog"
+import { useTuiStartup } from "./context/runtime"
+import { useDialog } from "./ui/dialog"
 import { ArcanaMetricLine, ArcanaSection, ArcanaSurface, ArcanaTapeItem } from "./ui/arcana"
 import { DialogProvider as DialogProviderList } from "./component/dialog-provider"
-import { ErrorComponent } from "./component/error-component"
 import { PluginRouteMissing } from "./component/plugin-route-missing"
-import { ProjectProvider, useProject } from "./context/project"
-import { EditorContextProvider } from "./context/editor"
+import { useProject } from "./context/project"
 import { useEvent } from "./context/event"
-import { SDKProvider, useSDK, getLastSseEventMeta } from "./context/sdk"
+import { useSDK, getLastSseEventMeta } from "./context/sdk"
 import { parseStallIntervalMs, startStallWatchdog } from "./util/stall-watchdog"
 import { isSpinnerStyle, nextSpinnerStyle, spinnerStyleName } from "./util/spinner-style"
 import { densityName, isDensity, nextDensity } from "./shell/command-spine/spine-types"
 import { StartupLoading } from "./component/startup-loading"
-import { SyncProvider, useSync } from "./context/sync"
-import { DataProvider } from "./context/data"
-import { LocalProvider, useLocal } from "./context/local"
+import { useSync } from "./context/sync"
+import { useLocal } from "./context/local"
 import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
@@ -71,35 +61,29 @@ import { DialogSoul } from "./component/dialog-soul"
 import { DialogSessionList } from "./component/dialog-session-list"
 import { DialogWorkspaceList } from "./component/dialog-workspace-list"
 import { DialogConsoleOrg } from "./component/dialog-console-org"
-import { ThemeProvider, useTheme } from "./context/theme"
+import { useTheme } from "./context/theme"
 import { Home } from "./routes/home"
-import { SessionPrewarmProvider } from "./routes/home/prewarm-session"
 import { Session } from "./routes/session"
-import { PromptHistoryProvider } from "./component/prompt/history"
-import { FrecencyProvider } from "./component/prompt/frecency"
-import { PromptStashProvider } from "./component/prompt/stash"
-import { PromptQueueProvider, usePromptQueue } from "./context/prompt-queue"
-import { GovernanceConfigProvider } from "./context/governance-config"
+import { usePromptQueue } from "./context/prompt-queue"
 import { DialogAlert } from "./ui/dialog-alert"
 import { DialogConfirm } from "./ui/dialog-confirm"
-import { ToastProvider, Toast, useToast } from "./ui/toast"
+import { Toast, useToast } from "./ui/toast"
 import { displaySessionTitle } from "./util/session"
 import { truncate, truncateMiddle } from "./util/locale"
-import { KVProvider, useKV } from "./context/kv"
+import { useKV } from "./context/kv"
 import * as Model from "./util/model"
-import { ArgsProvider, useArgs, type Args } from "./context/args"
+import { useArgs, type Args } from "./context/args"
 
-import { PromptRefProvider, usePromptRef } from "./context/prompt"
-import { VoiceProvider } from "./context/voice"
-import { TuiConfigProvider, useTuiConfig, type TuiConfig } from "./config"
+import { usePromptRef } from "./context/prompt"
+import { useTuiConfig, type TuiConfig } from "./config"
 import { createTuiApiAdapters } from "./plugin/adapters"
 import { createTuiApi } from "./plugin/api"
-import { createPluginRuntime, PluginRuntimeProvider, usePluginRuntime, type TuiPluginHost } from "./plugin/runtime"
+import { createPluginRuntime, usePluginRuntime, type TuiPluginHost } from "./plugin/runtime"
+import { ProviderTree } from "./provider-tree"
 import { CommandPaletteDialog } from "./component/command-palette"
 import {
   COMMAND_PALETTE_COMMAND,
   ARCANA_BASE_MODE,
-  OpencodeKeymapProvider,
   registerOpencodeKeymap,
   useBindings,
   useOpencodeKeymap,
@@ -162,945 +146,6 @@ const appBindingCommands = [
   "app.toggle.session_directory_filter",
 ] as const
 
-type ProofLoadResult =
-  | { status: "ready"; proof: RunProofView; path: string }
-  | { status: "unbound" }
-  | { status: "error"; message: string }
-
-
-function activeProofPath(): string | undefined {
-  const value = process.env.ARCANA_ACTIVE_RUNPROOF_PATH
-  return typeof value === "string" && value.trim() ? value : undefined
-}
-
-async function loadActiveRunProof(): Promise<ProofLoadResult> {
-  const path = activeProofPath()
-  if (!path) return { status: "unbound" }
-
-  try {
-    return {
-      status: "ready",
-      proof: normalizeProofView(JSON.parse(await readFile(path, "utf8"))),
-      path,
-    }
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    return { status: "error", message: `Failed to read active RunProof at ${path}: ${detail}` }
-  }
-}
-
-const runProofRiskRank: Record<string, number> = {
-  low: 0,
-  medium: 1,
-  high: 2,
-  critical: 3,
-}
-
-function maxRunProofRisk(current: string | undefined, next: "high"): string {
-  const currentRank = current ? runProofRiskRank[current] : undefined
-  return currentRank !== undefined && currentRank > runProofRiskRank[next] ? current! : next
-}
-
-function appendUniqueString(value: unknown, item: string): string[] {
-  const items = Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []
-  return items.includes(item) ? items : [...items, item]
-}
-
-async function stageActiveRunProofRollbackRestore(): Promise<ProofLoadResult> {
-  const path = activeProofPath()
-  if (!path) return { status: "unbound" }
-
-  try {
-    const parsed = JSON.parse(await readFile(path, "utf8"))
-    const proof = asRecord(parsed)
-    if (!proof) return { status: "error", message: `Active RunProof at ${path} is not an object.` }
-
-    const rollback = asRecord(proof.rollback)
-    const restoreCommand = proofString(rollback?.restore_command)
-    if (!rollback || !restoreCommand) {
-      return {
-        status: "error",
-        message: "Active RunProof has no rollback.restore_command to stage.",
-      }
-    }
-
-    const timestamp = new Date().toISOString()
-    rollback.restore_status = "staged"
-    rollback.staged_at = timestamp
-    rollback.approval_required = true
-
-    const risk = asRecord(proof.risk) ?? {}
-    risk.level = maxRunProofRisk(proofString(risk.level), "high")
-    risk.reasons = appendUniqueString(
-      risk.reasons,
-      "Rollback restore command is staged and requires explicit approval before execution.",
-    )
-    risk.required_approval = true
-    proof.risk = risk
-
-    const contract = asRecord(proof.contract) ?? {}
-    contract.risk_level = maxRunProofRisk(proofString(contract.risk_level), "high")
-    contract.required_approvals = appendUniqueString(contract.required_approvals, "rollback restore execution")
-    proof.contract = contract
-
-    const events = Array.isArray(proof.events) ? proof.events : []
-    events.push({
-      id: `evt_${randomUUID()}`,
-      timestamp,
-      type: "rollback.staged",
-      actor: "user",
-      summary: `Rollback restore staged pending approval: ${restoreCommand}`,
-      risk: "high",
-      status: "awaiting_approval",
-      refs: {
-        checkpoint_id: proofString(rollback.checkpoint_id) ?? "none",
-        restore_command: restoreCommand,
-      },
-      data: {
-        approval_required: true,
-        restore_status: "staged",
-        staged_at: timestamp,
-      },
-    })
-    proof.events = events
-
-    await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8")
-    return { status: "ready", proof: normalizeProofView(parsed), path }
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    return { status: "error", message: `Failed to stage rollback restore in active RunProof at ${path}: ${detail}` }
-  }
-}
-
-async function approveActiveRunProofRollbackRestore(): Promise<ProofLoadResult> {
-  const path = activeProofPath()
-  if (!path) return { status: "unbound" }
-
-  try {
-    const parsed = JSON.parse(await readFile(path, "utf8"))
-    const proof = asRecord(parsed)
-    if (!proof) return { status: "error", message: `Active RunProof at ${path} is not an object.` }
-
-    const rollback = asRecord(proof.rollback)
-    const restoreCommand = proofString(rollback?.restore_command)
-    if (!rollback || !restoreCommand) {
-      return {
-        status: "error",
-        message: "Active RunProof has no rollback.restore_command to approve.",
-      }
-    }
-    if (rollback.restore_status !== "staged") {
-      return {
-        status: "error",
-        message: "Rollback restore must be staged before approval.",
-      }
-    }
-
-    const timestamp = new Date().toISOString()
-    rollback.restore_status = "approved"
-    rollback.approval_required = false
-    rollback.approved_at = timestamp
-    rollback.approved_by = "operator"
-
-    const events = Array.isArray(proof.events) ? proof.events : []
-    events.push({
-      id: `evt_${randomUUID()}`,
-      timestamp,
-      type: "rollback.approved",
-      actor: "user",
-      summary: `Rollback restore approved but not executed: ${restoreCommand}`,
-      risk: "high",
-      status: proofString(asRecord(proof.lifecycle)?.status) ?? "awaiting_approval",
-      refs: {
-        checkpoint_id: proofString(rollback.checkpoint_id) ?? "none",
-        restore_command: restoreCommand,
-      },
-      data: {
-        restore_status: "approved",
-        approved_at: timestamp,
-        approved_by: "operator",
-        executed: false,
-      },
-    })
-    proof.events = events
-
-    await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8")
-    return { status: "ready", proof: normalizeProofView(parsed), path }
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    return { status: "error", message: `Failed to approve rollback restore in active RunProof at ${path}: ${detail}` }
-  }
-}
-
-function FieldList(props: { items: string[] | undefined; empty: string }) {
-  const { theme } = useTheme()
-  return (
-    <Show when={props.items && props.items.length > 0} fallback={<text fg={theme.textMuted}>{props.empty}</text>}>
-      <For each={props.items}>{(item) => <text fg={theme.text}>- {item}</text>}</For>
-    </Show>
-  )
-}
-
-function rollbackSummary(proof: RunProofView): string {
-  const rollback = proof.rollback
-  if (rollback?.strategy && rollback.strategy !== "none") {
-    return [rollback.strategy, rollback.checkpoint_id].filter(Boolean).join("  ")
-  }
-  return proof.contract?.rollback_plan ?? "not recorded"
-}
-
-function rollbackRestoreCommand(proof: RunProofView): string {
-  return proof.rollback?.restore_command ?? proof.contract?.rollback_plan ?? "not recorded"
-}
-
-function rollbackRestoreCommandValue(proof: RunProofView): string | undefined {
-  return proof.rollback?.restore_command
-}
-
-function rollbackValidity(proof: RunProofView): string {
-  return proof.rollback?.valid_until ?? "not recorded"
-}
-
-function rollbackRestoreStatus(proof: RunProofView): string {
-  return proof.rollback?.restore_status ?? "not_staged"
-}
-
-function rollbackRestoreCanBeStaged(proof: RunProofView): boolean {
-  const status = rollbackRestoreStatus(proof)
-  return status === "not_staged" || status === "rejected"
-}
-
-function rollbackRestoreCanBeApproved(proof: RunProofView): boolean {
-  return rollbackRestoreStatus(proof) === "staged"
-}
-
-function rollbackApprovalStatus(proof: RunProofView): string {
-  if (proof.rollback?.approved_at) {
-    return ["approved", proof.rollback.approved_by ? `by ${proof.rollback.approved_by}` : undefined]
-      .filter(Boolean)
-      .join(" ")
-  }
-  if (proof.rollback?.approval_required) return "required before execution"
-  return "not required"
-}
-
-function rollbackExecutionStatus(proof: RunProofView): string | undefined {
-  if (!proof.rollback?.executed_at && !proof.rollback?.execution_status) return undefined
-  return [
-    proof.rollback.execution_status ?? "unknown",
-    proof.rollback.execution_exit_code === undefined ? undefined : `exit=${proof.rollback.execution_exit_code}`,
-    proof.rollback.executed_at,
-  ]
-    .filter(Boolean)
-    .join(" ")
-}
-
-function mlEvidenceSummary(evidence: RunProofMLEvidenceView): string {
-  const parts = [
-    evidence.kind === "tool" ? `tool=${evidence.tool ?? "unknown"}` : `intent=${evidence.intent ?? "unknown"}`,
-    evidence.risk ? `risk=${evidence.risk}` : undefined,
-    evidence.posture ? `posture=${evidence.posture}` : undefined,
-    evidence.confidence !== undefined ? `confidence=${Math.round(evidence.confidence * 100)}%` : undefined,
-    evidence.decision_action ? `decision=${evidence.decision_action}` : undefined,
-  ].filter((item): item is string => Boolean(item))
-  return parts.join("  ")
-}
-
-function MLEvidencePanel(props: { evidence: RunProofMLEvidenceView[]; latestOnly?: boolean }) {
-  const { theme } = useTheme()
-  const items = () => (props.latestOnly ? props.evidence.slice(-1) : props.evidence)
-  return (
-    <Show when={props.evidence.length > 0} fallback={<text fg={theme.textMuted}>No ML signal evidence recorded.</text>}>
-      <box gap={0}>
-        <For each={items()}>
-          {(evidence) => (
-            <box gap={0}>
-              <text fg={theme.text}>{mlEvidenceSummary(evidence)}</text>
-              <Show when={evidence.route}>
-                <text fg={theme.textMuted}>
-                  route={evidence.route}
-                  {evidence.route_reason ? `  (${evidence.route_reason})` : ""}
-                </text>
-              </Show>
-              <FieldList items={evidence.reasons} empty="" />
-              <Show when={evidence.labels && evidence.labels.length > 0}>
-                <text fg={theme.textMuted}>labels: {evidence.labels?.join(", ")}</text>
-              </Show>
-              <Show when={evidence.guard_rules && evidence.guard_rules.length > 0}>
-                <text fg={theme.warning}>guard: {evidence.guard_rules?.join("  ")}</text>
-              </Show>
-              <Show when={evidence.decision_reasons && evidence.decision_reasons.length > 0}>
-                <FieldList items={evidence.decision_reasons} empty="" />
-              </Show>
-            </box>
-          )}
-        </For>
-      </box>
-    </Show>
-  )
-}
-
-function DialogRunProofContract(props: {
-  proof: RunProofView
-  path: string
-  onCopyRollbackRestore?: (command: string) => void
-  onStageRollbackRestore?: () => void
-  onApproveRollbackRestore?: () => void
-}) {
-  const { theme } = useTheme()
-  const contract = () => props.proof.contract
-  const rollback = () => props.proof.rollback
-  const restoreCommand = () => rollbackRestoreCommandValue(props.proof)
-  const mlEvidence = () => props.proof.ml_evidence ?? []
-  const latestTurnEvidence = () => mlEvidence().findLast((item) => item.kind === "turn")
-  return (
-    <ArcanaSurface
-      title="CONTRACT"
-      path={props.path}
-      meta={`run ${compactProofId(props.proof.id)}  state ${props.proof.lifecycle?.status ?? "unknown"}`}
-    >
-      <Show when={contract()} fallback={<text fg={theme.warning}>Active RunProof has no execution contract.</text>}>
-        {(value) => (
-          <box gap={1}>
-            <ArcanaSection title="Execution Terms">
-              <box gap={0}>
-                <text fg={theme.text}>Goal: {value().goal ?? props.proof.user_intent ?? "not recorded"}</text>
-                <text fg={theme.text}>Scope: {value().scope ?? "not recorded"}</text>
-                <ArcanaMetricLine
-                  items={[`risk=${value().risk_level ?? "not recorded"}`, `status=${value().status ?? "not recorded"}`]}
-                />
-              </box>
-            </ArcanaSection>
-            <ArcanaSection title="Allowed Files">
-              <FieldList items={value().allowed_files} empty="No file allowlist recorded." />
-            </ArcanaSection>
-            <ArcanaSection title="Allowed Commands">
-              <FieldList items={value().allowed_commands} empty="No command allowlist recorded." />
-            </ArcanaSection>
-            <ArcanaSection title="Required Approvals">
-              <FieldList items={value().required_approvals} empty="No required approvals recorded." />
-            </ArcanaSection>
-            <ArcanaSection title="Expected Artifacts">
-              <FieldList items={value().expected_artifacts} empty="No expected artifacts recorded." />
-            </ArcanaSection>
-            <ArcanaTapeItem kind="ROLLBACK" summary={value().rollback_plan ?? "not recorded"} />
-            <Show when={rollback()?.strategy && rollback()?.strategy !== "none"}>
-              <box gap={0}>
-                <text fg={theme.text}>Rollback checkpoint: {rollbackSummary(props.proof)}</text>
-                <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
-                <text fg={theme.textMuted}>Valid until: {rollbackValidity(props.proof)}</text>
-                <text fg={theme.textMuted}>Restore status: {rollbackRestoreStatus(props.proof)}</text>
-                <text fg={props.proof.rollback?.approval_required ? theme.warning : theme.textMuted}>
-                  Restore approval: {rollbackApprovalStatus(props.proof)}
-                </text>
-                <Show when={rollbackExecutionStatus(props.proof)}>
-                  {(value) => <text fg={theme.textMuted}>Restore execution: {value()}</text>}
-                </Show>
-                <Show when={restoreCommand()}>
-                  {(command) => (
-                    <box gap={0}>
-                      <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
-                        copy restore command
-                      </text>
-                      <Show when={rollbackRestoreCanBeStaged(props.proof)}>
-                        <text fg={theme.warning} onMouseUp={() => props.onStageRollbackRestore?.()}>
-                          stage restore for approval
-                        </text>
-                      </Show>
-                      <Show when={rollbackRestoreCanBeApproved(props.proof)}>
-                        <text fg={theme.warning} onMouseUp={() => props.onApproveRollbackRestore?.()}>
-                          approve restore
-                        </text>
-                      </Show>
-                    </box>
-                  )}
-                </Show>
-              </box>
-            </Show>
-            <ArcanaSection title="Verification Steps">
-              <FieldList items={value().verification_steps} empty="No verification steps recorded." />
-            </ArcanaSection>
-          </box>
-        )}
-      </Show>
-      <Show when={latestTurnEvidence()}>
-        {(evidence) => (
-          <ArcanaSection title="ML Posture">
-            <MLEvidencePanel evidence={[evidence()]} />
-          </ArcanaSection>
-        )}
-      </Show>
-    </ArcanaSurface>
-  )
-}
-
-function voteTallyText(value: Record<string, number> | undefined): string {
-  const entries = Object.entries(value ?? {})
-  if (entries.length === 0) return "no valid votes"
-  return entries.map(([key, count]) => `${key}:${count}`).join("  ")
-}
-
-function ConsensusEvidencePanel(props: { consensus: RunProofConsensusView[]; latestOnly?: boolean }) {
-  const { theme } = useTheme()
-  const items = () => (props.latestOnly ? props.consensus.slice(-1) : props.consensus)
-  return (
-    <Show when={props.consensus.length > 0} fallback={<text fg={theme.textMuted}>No consensus evidence recorded.</text>}>
-      <box gap={0}>
-        <For each={items()}>
-          {(item) => (
-            <box gap={0}>
-              <text fg={theme.text}>
-                {eventTime(item.timestamp)} consensus {item.status ?? "unknown"}
-                {item.winner_model ? ` winner=${item.winner_model}` : ""}
-              </text>
-              <Show when={item.council_id}>
-                {(id) => <text fg={theme.textMuted}>ledger={id()}</text>}
-              </Show>
-              <Show when={item.prompt}>
-                {(prompt) => <text fg={theme.textMuted}>prompt={prompt()}</text>}
-              </Show>
-              <text fg={theme.textMuted}>
-                models={item.models.length ? item.models.join(", ") : "not recorded"} rounds={item.rounds ?? "?"} vote=
-                {item.vote_mode ?? "unknown"}
-              </text>
-              <text fg={theme.textMuted}>votes={voteTallyText(item.vote_tally)}</text>
-              <Show when={item.cost_tokens}>
-                {(cost) => (
-                  <text fg={theme.textMuted}>
-                    tokens={cost().input.toLocaleString()} in {cost().output.toLocaleString()} out
-                  </text>
-                )}
-              </Show>
-              <Show when={item.errored.length > 0}>
-                <text fg={theme.warning}>errors={item.errored.length}</text>
-              </Show>
-            </box>
-          )}
-        </For>
-      </box>
-    </Show>
-  )
-}
-
-function refsText(refs: Record<string, string> | undefined): string | undefined {
-  if (!refs || Object.keys(refs).length === 0) return undefined
-  return Object.entries(refs)
-    .filter(([, value]) => value)
-    .map(([key, value]) => `${key}=${value}`)
-    .join("  ")
-}
-
-function compactProofId(id: string | undefined): string {
-  if (!id) return "unknown"
-  // T7: display-width-aware middle truncation (grapheme-safe) — same 17-col
-  // budget as the old 10+…+4 shape, but never cuts a surrogate or CJK glyph.
-  return truncateMiddle(id, 17)
-}
-
-function eventTime(value: string | undefined): string {
-  if (!value) return "--:--"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-}
-
-function eventLabel(value: string | undefined): string {
-  const labels: Record<string, string> = {
-    "plan.created": "PLAN",
-    "context.budgeted": "BUDGET",
-    "context.accessed": "READ",
-    "tool.requested": "TOOL",
-    "risk.evaluated": "RISK",
-    "approval.required": "APPROVAL",
-    "command.executed": "EXEC",
-    "file.written": "WRITE",
-    "diff.created": "DIFF",
-    "verification.started": "VERIFY",
-    "verification.passed": "PASS",
-    "verification.failed": "FAIL",
-    "rollback.available": "ROLLBACK",
-    "rollback.staged": "RESTORE",
-    "rollback.approved": "APPROVE",
-    "rollback.executed": "RESTORE",
-    "sovereignty.routed": "ROUTE",
-    "token.used": "TOKENS",
-    "consensus.recorded": "CONSENSUS",
-    "ml.signal": "ML",
-  }
-  return labels[value ?? ""] ?? (value ?? "event").replace(/[._-]+/g, " ").toUpperCase()
-}
-
-function eventTone(event: RunProofEventView): "normal" | "muted" | "warning" | "error" {
-  if (event.type === "verification.failed" || event.status === "failed" || event.risk === "critical") return "error"
-  if (
-    event.type === "approval.required" ||
-    event.type === "rollback.staged" ||
-    event.risk === "high" ||
-    event.risk === "medium"
-  ) {
-    return "warning"
-  }
-  if (
-    event.type === "context.accessed" ||
-    event.type === "context.budgeted" ||
-    event.type === "token.used" ||
-    event.type === "ml.signal"
-  ) {
-    return "muted"
-  }
-  return "normal"
-}
-
-function DialogRunProofActions(props: {
-  proof: RunProofView
-  path: string
-  onCopyRollbackRestore?: (command: string) => void
-  onStageRollbackRestore?: () => void
-  onApproveRollbackRestore?: () => void
-}) {
-  const { theme } = useTheme()
-  const events = () => props.proof.events ?? []
-  const fileReads = () => props.proof.execution?.file_reads ?? []
-  const fileWrites = () => props.proof.execution?.file_writes ?? []
-  const shellCommands = () => props.proof.execution?.shell_commands ?? []
-  const status = () => props.proof.lifecycle?.status ?? props.proof.contract?.status ?? "unknown"
-  const risk = () => props.proof.risk?.level ?? props.proof.contract?.risk_level ?? "unknown"
-  const score = () => props.proof.final_evidence?.proof_score
-  const tokens = () => props.proof.token_usage
-  const contextBudgets = () => contextBudgetsFromEvents(events())
-  const latestContextBudget = () => contextBudgets().at(-1)
-  const restoreCommand = () => rollbackRestoreCommandValue(props.proof)
-  return (
-    <ArcanaSurface title="ACTIONS" path={props.path} meta={`run ${compactProofId(props.proof.id)}`}>
-      <ArcanaSection title="Run State">
-        <box gap={0}>
-          <ArcanaMetricLine
-            items={[`state=${status()}`, `risk=${risk()}`, score() === undefined ? undefined : `proof=${score()}/100`]}
-          />
-          <text fg={theme.text}>Intent: {props.proof.user_intent ?? "not recorded"}</text>
-        </box>
-      </ArcanaSection>
-      <ArcanaSection title="Governance">
-        <text fg={props.proof.risk?.required_approval ? theme.warning : theme.textMuted}>
-          Approval: {props.proof.risk?.required_approval ? "required" : "not required"}
-        </text>
-        <FieldList items={props.proof.risk?.reasons} empty="No risk reasons recorded." />
-        <text fg={theme.textMuted}>Rollback: {rollbackSummary(props.proof)}</text>
-        <Show when={props.proof.rollback?.restore_command}>
-          <box gap={0}>
-            <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
-            <Show when={restoreCommand()}>
-              {(command) => (
-                <box gap={0}>
-                  <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
-                    copy restore command
-                  </text>
-                  <Show when={rollbackRestoreCanBeStaged(props.proof)}>
-                    <text fg={theme.warning} onMouseUp={() => props.onStageRollbackRestore?.()}>
-                      stage restore for approval
-                    </text>
-                  </Show>
-                  <Show when={rollbackRestoreCanBeApproved(props.proof)}>
-                    <text fg={theme.warning} onMouseUp={() => props.onApproveRollbackRestore?.()}>
-                      approve restore
-                    </text>
-                  </Show>
-                </box>
-              )}
-            </Show>
-          </box>
-        </Show>
-        <Show when={props.proof.rollback?.valid_until}>
-          <text fg={theme.textMuted}>Rollback valid until: {rollbackValidity(props.proof)}</text>
-        </Show>
-        <Show when={props.proof.rollback?.restore_status || props.proof.rollback?.approval_required}>
-          <text fg={props.proof.rollback?.approval_required ? theme.warning : theme.textMuted}>
-            Restore status: {rollbackRestoreStatus(props.proof)} Approval: {rollbackApprovalStatus(props.proof)}
-          </text>
-        </Show>
-        <Show when={rollbackExecutionStatus(props.proof)}>
-          {(value) => <text fg={theme.textMuted}>Restore execution: {value()}</text>}
-        </Show>
-        <Show when={tokens()}>
-          {(value) => (
-            <text fg={theme.textMuted}>
-              Tokens: {value().total_tokens.toLocaleString()} total {value().input_tokens.toLocaleString()} in{" "}
-              {value().output_tokens.toLocaleString()} out Tool calls: {value().tool_calls}
-            </text>
-          )}
-        </Show>
-        <text fg={theme.textMuted}>
-          Evidence: {fileReads().length} context read(s) {fileWrites().length} file write(s) {shellCommands().length}{" "}
-          shell command(s)
-        </text>
-      </ArcanaSection>
-      <ArcanaSection
-        title="Token OS"
-        detail={`${contextBudgets().length} budget event${contextBudgets().length === 1 ? "" : "s"}`}
-      >
-        <Show
-          when={latestContextBudget()}
-          fallback={<text fg={theme.textMuted}>No context budget pressure recorded.</text>}
-        >
-          {(budget) => (
-            <box gap={0}>
-              <ArcanaMetricLine
-                items={[
-                  `estimated=${budget().estimated_tokens.toLocaleString()}`,
-                  budget().threshold ? `threshold=${budget().threshold.toLocaleString()}` : undefined,
-                  `messages=${budget().message_count}`,
-                  `action=${budget().action}`,
-                  budget().risk ? `risk=${budget().risk}` : undefined,
-                ]}
-              />
-              <text fg={theme.textMuted}>
-                System: {budget().system_tokens.toLocaleString()} Tool: {budget().tool_tokens.toLocaleString()}
-                {budget().timestamp ? ` Recorded: ${eventTime(budget().timestamp)}` : ""}
-              </text>
-              <text fg={theme.textMuted}>{budget().summary ?? "Context pressure recorded as RunProof evidence."}</text>
-            </box>
-          )}
-        </Show>
-      </ArcanaSection>
-      <Show when={fileReads().length > 0 || fileWrites().length > 0 || shellCommands().length > 0}>
-        <ArcanaSection title="Recent Evidence">
-          <For each={fileReads().slice(-3)}>
-            {(read) => (
-              <ArcanaTapeItem
-                kind="READ"
-                summary={read.path ?? "unknown path"}
-                detail={read.exists === false ? "missing" : (read.reason ?? "")}
-                tone="muted"
-              />
-            )}
-          </For>
-          <For each={fileWrites().slice(-3)}>
-            {(write) => (
-              <ArcanaTapeItem
-                kind="WRITE"
-                summary={`${write.mode ?? "unknown"} ${write.path ?? "unknown path"}`}
-                detail={write.reason ?? ""}
-                tone="muted"
-              />
-            )}
-          </For>
-          <For each={shellCommands().slice(-3)}>
-            {(cmd) => (
-              <ArcanaTapeItem
-                kind="SHELL"
-                summary={`${cmd.status ?? "unknown"} ${cmd.command ?? "unknown command"}`}
-                detail={cmd.risk ?? ""}
-                tone="muted"
-              />
-            )}
-          </For>
-        </ArcanaSection>
-      </Show>
-      <ArcanaSection
-        title="Consensus Evidence"
-        detail={`${props.proof.consensus?.length ?? 0} record${props.proof.consensus?.length === 1 ? "" : "s"}`}
-      >
-        <ConsensusEvidencePanel consensus={props.proof.consensus ?? []} />
-      </ArcanaSection>
-      <ArcanaSection
-        title="ML Evidence"
-        detail={`${props.proof.ml_evidence?.length ?? 0} signal${props.proof.ml_evidence?.length === 1 ? "" : "s"}`}
-      >
-        <MLEvidencePanel evidence={props.proof.ml_evidence ?? []} />
-      </ArcanaSection>
-      <ArcanaSection title="Proof Tape" detail={`${events().length} event${events().length === 1 ? "" : "s"}`}>
-        <Show when={events().length > 0} fallback={<text fg={theme.warning}>No RunProof events recorded.</text>}>
-          <For each={events()}>
-            {(event) => (
-              <ArcanaTapeItem
-                time={eventTime(event.timestamp)}
-                kind={eventLabel(event.type)}
-                summary={event.summary ?? "No summary recorded."}
-                tone={eventTone(event)}
-                detail={[
-                  event.actor ? `actor=${event.actor}` : undefined,
-                  event.risk ? `risk=${event.risk}` : undefined,
-                  event.status ? `status=${event.status}` : undefined,
-                  refsText(event.refs),
-                ]
-                  .filter(Boolean)
-                  .join("  ")}
-              />
-            )}
-          </For>
-        </Show>
-      </ArcanaSection>
-    </ArcanaSurface>
-  )
-}
-
-function DiffList(props: { title: string; diffs: RunProofDiffView[]; empty: string }) {
-  const { theme } = useTheme()
-  return (
-    <ArcanaSection title={props.title}>
-      <Show when={props.diffs.length > 0} fallback={<text fg={theme.textMuted}>{props.empty}</text>}>
-        <For each={props.diffs}>
-          {(diff) => (
-            <ArcanaTapeItem
-              kind={diff.status?.toUpperCase() ?? "DIFF"}
-              summary={`${diff.path ?? "unknown path"} +${diff.additions ?? 0} -${diff.deletions ?? 0}`}
-              detail={diff.summary ?? diff.id ?? "No diff summary recorded."}
-            />
-          )}
-        </For>
-      </Show>
-    </ArcanaSection>
-  )
-}
-
-function DialogRunProofDiffGate(props: {
-  proof: RunProofView
-  path: string
-  onCopyRollbackRestore?: (command: string) => void
-  onStageRollbackRestore?: () => void
-  onApproveRollbackRestore?: () => void
-}) {
-  const { theme } = useTheme()
-  const diffs = () => props.proof.diffs ?? { proposed: [], applied: [], rejected: [] }
-  const pending = () => diffs().proposed.length
-  const applied = () => diffs().applied.length
-  const rejected = () => diffs().rejected.length
-  const writes = () => props.proof.execution?.file_writes ?? []
-  const risk = () => props.proof.risk?.level ?? props.proof.contract?.risk_level ?? "unknown"
-  const restoreCommand = () => rollbackRestoreCommandValue(props.proof)
-  const approval = () =>
-    props.proof.risk?.required_approval || (props.proof.contract?.required_approvals?.length ?? 0) > 0
-      ? "required"
-      : "not required"
-  return (
-    <ArcanaSurface title="DIFF GATE" path={props.path} meta={`run ${compactProofId(props.proof.id)}`}>
-      <ArcanaSection title="Mutation Gate">
-        <ArcanaMetricLine
-          items={[
-            `pending=${pending()}`,
-            `applied=${applied()}`,
-            `rejected=${rejected()}`,
-            `writes=${writes().length}`,
-            `risk=${risk()}`,
-            `approval=${approval()}`,
-          ]}
-        />
-        <FieldList items={props.proof.risk?.reasons} empty="No risk reasons recorded." />
-        <text fg={theme.textMuted}>Rollback: {rollbackSummary(props.proof)}</text>
-        <text fg={theme.textMuted}>Restore: {rollbackRestoreCommand(props.proof)}</text>
-        <text fg={theme.textMuted}>Valid until: {rollbackValidity(props.proof)}</text>
-        <text fg={props.proof.rollback?.approval_required ? theme.warning : theme.textMuted}>
-          Restore status: {rollbackRestoreStatus(props.proof)} Approval: {rollbackApprovalStatus(props.proof)}
-        </text>
-        <Show when={rollbackExecutionStatus(props.proof)}>
-          {(value) => <text fg={theme.textMuted}>Restore execution: {value()}</text>}
-        </Show>
-        <Show when={restoreCommand()}>
-          {(command) => (
-            <box gap={0}>
-              <text fg={theme.primary} onMouseUp={() => props.onCopyRollbackRestore?.(command())}>
-                copy restore command
-              </text>
-              <Show when={rollbackRestoreCanBeStaged(props.proof)}>
-                <text fg={theme.warning} onMouseUp={() => props.onStageRollbackRestore?.()}>
-                  stage restore for approval
-                </text>
-              </Show>
-              <Show when={rollbackRestoreCanBeApproved(props.proof)}>
-                <text fg={theme.warning} onMouseUp={() => props.onApproveRollbackRestore?.()}>
-                  approve restore
-                </text>
-              </Show>
-            </box>
-          )}
-        </Show>
-      </ArcanaSection>
-      <DiffList title="Proposed diffs" diffs={diffs().proposed} empty="No proposed diffs." />
-      <DiffList title="Applied diffs" diffs={diffs().applied} empty="No applied diffs." />
-      <DiffList title="Rejected diffs" diffs={diffs().rejected} empty="No rejected diffs." />
-    </ArcanaSurface>
-  )
-}
-
-function checkLabel(check: RunProofCheckView): string {
-  return check.command ?? check.description ?? check.source ?? check.id ?? "verification check"
-}
-
-function statusMark(status: string | undefined): string {
-  if (status === "passed") return "PASS"
-  if (status === "failed") return "FAIL"
-  if (status === "skipped") return "SKIP"
-  if (status === "not_run") return "WAIT"
-  return (status ?? "unknown").toUpperCase()
-}
-
-function CheckList(props: { title: string; checks: RunProofCheckView[]; empty: string }) {
-  const { theme } = useTheme()
-  return (
-    <ArcanaSection title={props.title}>
-      <Show when={props.checks.length > 0} fallback={<text fg={theme.textMuted}>{props.empty}</text>}>
-        <For each={props.checks}>
-          {(check) => (
-            <ArcanaTapeItem
-              kind={statusMark(check.status)}
-              summary={checkLabel(check)}
-              detail={[
-                check.summary ?? check.evidence,
-                check.passed !== undefined || check.failed !== undefined || check.skipped !== undefined
-                  ? `passed=${check.passed ?? 0} failed=${check.failed ?? 0} skipped=${check.skipped ?? 0}`
-                  : undefined,
-              ]
-                .filter(Boolean)
-                .join("  ")}
-              tone={check.status === "failed" ? "error" : check.status === "passed" ? "normal" : "muted"}
-            />
-          )}
-        </For>
-      </Show>
-    </ArcanaSection>
-  )
-}
-
-function DialogRunProofVerify(props: { proof: RunProofView; path: string }) {
-  const { theme } = useTheme()
-  const verification = () =>
-    props.proof.verification ?? {
-      diagnostics: [],
-      tests: [],
-      manual_checks: [],
-    }
-  const fixedChecks = () =>
-    [verification().typecheck, verification().lint, verification().build].filter(
-      (check): check is RunProofCheckView => check !== undefined,
-    )
-  const allChecks = () => [
-    ...fixedChecks(),
-    ...verification().diagnostics,
-    ...verification().tests,
-    ...verification().manual_checks,
-    ...(verification().verifier_review
-      ? [
-          {
-            status: verification().verifier_review?.status,
-            summary: verification().verifier_review?.summary,
-            source: "verifier",
-          },
-        ]
-      : []),
-  ]
-  const passed = () => allChecks().filter((check) => check.status === "passed").length
-  const failed = () => allChecks().filter((check) => check.status === "failed").length
-  const pending = () => allChecks().filter((check) => check.status !== "passed" && check.status !== "failed").length
-  const score = () => props.proof.final_evidence?.proof_score
-  return (
-    <ArcanaSurface title="VERIFY" path={props.path} meta={`run ${compactProofId(props.proof.id)}`}>
-      <ArcanaSection title="Verifier Board">
-        <ArcanaMetricLine
-          items={[
-            `passed=${passed()}`,
-            `failed=${failed()}`,
-            `pending=${pending()}`,
-            `final=${props.proof.final_evidence?.completed === true ? "completed" : "open"}`,
-            score() === undefined ? undefined : `proof=${score()}/100`,
-          ]}
-        />
-        <text fg={theme.textMuted}>{props.proof.final_evidence?.summary ?? "No final evidence summary recorded."}</text>
-      </ArcanaSection>
-      <CheckList
-        title="Required checks"
-        checks={fixedChecks()}
-        empty="No typecheck, lint, or build evidence recorded."
-      />
-      <CheckList title="Tests" checks={verification().tests} empty="No test evidence recorded." />
-      <CheckList title="Diagnostics" checks={verification().diagnostics} empty="No diagnostic evidence recorded." />
-      <CheckList title="Manual checks" checks={verification().manual_checks} empty="No manual checks recorded." />
-      <Show when={verification().verifier_review}>
-        {(review) => (
-          <ArcanaSection title="Verifier Review">
-            <text fg={theme.text}>
-              {statusMark(review().status)} {review().model ?? ""}
-            </text>
-            <text fg={theme.textMuted}>{review().summary ?? "No verifier summary recorded."}</text>
-            <FieldList items={review().concerns} empty="No verifier concerns recorded." />
-          </ArcanaSection>
-        )}
-      </Show>
-    </ArcanaSurface>
-  )
-}
-
-function yesNo(value: boolean | undefined): string {
-  if (value === undefined) return "not recorded"
-  return value ? "yes" : "no"
-}
-
-function costLabel(value: number | undefined): string {
-  return value === undefined ? "not recorded" : `$${value.toFixed(6)}`
-}
-
-function latencyLabel(value: number | undefined): string {
-  return value === undefined ? "not recorded" : `${value}ms`
-}
-
-function DialogRunProofSovereignty(props: { proof: RunProofView; path: string }) {
-  const { theme } = useTheme()
-  const route = () => props.proof.sovereignty
-  return (
-    <ArcanaSurface title="SOVEREIGNTY" path={props.path} meta={`run ${compactProofId(props.proof.id)}`}>
-      <Show
-        when={route()}
-        fallback={<text fg={theme.warning}>No provider/model route evidence recorded in this RunProof.</text>}
-      >
-        {(value) => (
-          <box gap={1}>
-            <ArcanaSection title="Provider Route">
-              <text fg={theme.text}>Provider: {value().provider ?? "not recorded"}</text>
-              <text fg={theme.text}>Model: {value().model ?? "not recorded"}</text>
-              <text fg={theme.text}>Route: {value().route ?? "not recorded"}</text>
-              <text fg={theme.text}>Selection source: {value().selection_source ?? "not recorded"}</text>
-              <text fg={theme.text}>Data boundary: {value().data_boundary ?? "not recorded"}</text>
-              <text fg={theme.text}>Data left local machine: {yesNo(value().data_left_local)}</text>
-              <text fg={theme.textMuted}>
-                Fallback:{" "}
-                {[value().fallback_provider, value().fallback_model].filter(Boolean).join("/") || "not recorded"}
-              </text>
-              <text fg={theme.textMuted}>
-                Cost: {costLabel(value().estimated_cost_usd)} Latency: {latencyLabel(value().latency_ms)}
-              </text>
-            </ArcanaSection>
-            <ArcanaSection title="Route Evidence">
-              <text fg={theme.textMuted}>Recorded: {eventTime(value().timestamp)}</text>
-              <text fg={theme.textMuted}>{value().reason ?? value().summary ?? "No routing reason recorded."}</text>
-            </ArcanaSection>
-          </box>
-        )}
-      </Show>
-    </ArcanaSurface>
-  )
-}
-
-function DialogRunProofMissing(props: { result: Extract<ProofLoadResult, { status: "unbound" | "error" }> }) {
-  const { theme } = useTheme()
-  return (
-    <ArcanaSurface title="RUNPROOF">
-      <Show
-        when={props.result.status === "unbound" ? props.result : undefined}
-        fallback={
-          <text fg={theme.error}>
-            Failed to read RunProof: {props.result.status === "error" ? props.result.message : "unknown error"}
-          </text>
-        }
-      >
-        <ArcanaTapeItem
-          kind="UNBOUND"
-          summary="No active RunProof is bound to this TUI session"
-          detail="Use an Arcana task command with a prompt, for example /contract <task> or /consensus <task>."
-          tone="warning"
-        />
-      </Show>
-    </ArcanaSurface>
-  )
-}
 
 export type TuiInput = {
   url: string
@@ -1112,6 +157,8 @@ export type TuiInput = {
   headers?: RequestInit["headers"]
   events?: EventSource
   pluginHost: TuiPluginHost
+  /** Optional pre-created renderer for embedding and deterministic harnesses. */
+  renderer?: CliRenderer
 }
 
 function errorMessage(error: unknown) {
@@ -1158,27 +205,28 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
       const { stdin: resolvedStdin } = resolveInteractiveStdin()
       const renderer = yield* Effect.acquireRelease(
         Effect.tryPromise(() =>
-          createCliRenderer({
-            externalOutputMode: "passthrough",
-            targetFps: 60,
-            gatherStats: false,
-            exitOnCtrlC: false,
-            useKittyKeyboard: {
-              events: true,
-              // Windows Terminal + kitty "all keys as escapes" floods modifier
-              // CSI on ALT hold and can take the native renderer down. Win32
-              // push-to-talk reads the physical Alt key instead.
-              allKeysAsEscapes:
-                process.platform === "win32" ? false : (input.config.voice?.enabled ?? false),
-            },
-            autoFocus: false,
-            openConsoleOnError: false,
-            stdin: resolvedStdin,
-            useMouse: !Flag.ARCANA_DISABLE_MOUSE && input.config.mouse,
-            consoleOptions: {
-              keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
-            },
-          }),
+          input.renderer
+            ? Promise.resolve(input.renderer)
+            : createCliRenderer({
+                externalOutputMode: "passthrough",
+                targetFps: 60,
+                gatherStats: false,
+                exitOnCtrlC: false,
+                useKittyKeyboard: {
+                  events: true,
+                  // Windows Terminal + kitty "all keys as escapes" floods modifier
+                  // CSI on ALT hold and can take the native renderer down. Win32
+                  // push-to-talk reads the physical Alt key instead.
+                  allKeysAsEscapes: process.platform === "win32" ? false : (input.config.voice?.enabled ?? false),
+                },
+                autoFocus: false,
+                openConsoleOnError: false,
+                stdin: resolvedStdin,
+                useMouse: !Flag.ARCANA_DISABLE_MOUSE && input.config.mouse,
+                consoleOptions: {
+                  keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
+                },
+              }),
         ),
         (renderer) =>
           Effect.sync(() => {
@@ -1258,114 +306,30 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
 
         await render(() => {
           return (
-            <ExitProvider
-              exit={(reason) => {
+            <ProviderTree
+              mode={mode}
+              global={global}
+              keymap={keymap}
+              pluginRuntime={pluginRuntime}
+              config={input.config}
+              args={input.args}
+              url={input.url}
+              directory={input.directory}
+              fetch={input.fetch}
+              headers={input.headers}
+              events={input.events}
+              onExit={(reason) => {
                 if (renderer.isDestroyed) return
                 exit.reason = reason
                 destroyRenderer(renderer)
               }}
+              setEpilogue={(value) => (exit.epilogue = value)}
             >
-              <EpilogueProvider set={(value) => (exit.epilogue = value)}>
-                <ErrorBoundary fallback={(error, reset) => <ErrorComponent error={error} reset={reset} mode={mode} />}>
-                  <TuiPathsProvider
-                    value={{
-                      cwd: process.cwd(),
-                      home: global.home,
-                      state: global.state,
-                      worktree: global.data + "/worktree",
-                    }}
-                  >
-                    <TuiTerminalEnvironmentProvider
-                      value={{
-                        platform: process.platform,
-                        multiplexer: process.env.TMUX ? "tmux" : process.env.STY ? "screen" : undefined,
-                        displayServer: process.env.WAYLAND_DISPLAY
-                          ? "wayland"
-                          : process.env.DISPLAY
-                            ? "x11"
-                            : undefined,
-                      }}
-                    >
-                      <TuiStartupProvider
-                        value={{
-                          initialRoute: process.env.ARCANA_ROUTE ? JSON.parse(process.env.ARCANA_ROUTE) : undefined,
-                          skipInitialLoading: Boolean(process.env.ARCANA_FAST_BOOT),
-                        }}
-                      >
-                        <ClipboardProvider>
-                          <OpencodeKeymapProvider keymap={keymap}>
-                            <ArgsProvider {...input.args}>
-                              <KVProvider>
-                                <ToastProvider>
-                                  <RouteProvider
-                                    initialRoute={
-                                      input.args.continue
-                                        ? {
-                                            type: "session",
-                                            sessionID: "dummy",
-                                          }
-                                        : undefined
-                                    }
-                                  >
-                                    <TuiConfigProvider config={input.config}>
-                                      <PluginRuntimeProvider value={pluginRuntime}>
-                                        <SDKProvider
-                                          url={input.url}
-                                          directory={input.directory}
-                                          fetch={input.fetch}
-                                          headers={input.headers}
-                                          events={input.events}
-                                        >
-                                          <ProjectProvider>
-                                            <GovernanceConfigProvider>
-                                              <SyncProvider>
-                                                <PromptQueueProvider>
-                                                <DataProvider>
-                                                  <ThemeProvider mode={mode}>
-                                                    <LocalProvider>
-                                                      {/* Grok NewAuto-style: one spare session ready before first Home Enter. */}
-                                                      <SessionPrewarmProvider>
-                                                        <PromptStashProvider>
-                                                          <DialogProvider>
-                                                            <FrecencyProvider>
-                                                              <PromptHistoryProvider>
-                                                                <PromptRefProvider>
-                                                                  <VoiceProvider>
-                                                                    <EditorContextProvider>
-                                                                      <App
-                                                                        onSnapshot={input.onSnapshot}
-                                                                        pluginHost={input.pluginHost}
-                                                                      />
-                                                                    </EditorContextProvider>
-                                                                  </VoiceProvider>
-                                                                </PromptRefProvider>
-                                                              </PromptHistoryProvider>
-                                                            </FrecencyProvider>
-                                                          </DialogProvider>
-                                                        </PromptStashProvider>
-                                                      </SessionPrewarmProvider>
-                                                    </LocalProvider>
-                                                  </ThemeProvider>
-                                                </DataProvider>
-                                                </PromptQueueProvider>
-                                              </SyncProvider>
-                                            </GovernanceConfigProvider>
-                                          </ProjectProvider>
-                                        </SDKProvider>
-                                      </PluginRuntimeProvider>
-                                    </TuiConfigProvider>
-                                  </RouteProvider>
-                                </ToastProvider>
-                              </KVProvider>
-                            </ArgsProvider>
-                          </OpencodeKeymapProvider>
-                        </ClipboardProvider>
-                      </TuiStartupProvider>
-                    </TuiTerminalEnvironmentProvider>
-                  </TuiPathsProvider>
-                </ErrorBoundary>
-              </EpilogueProvider>
-            </ExitProvider>
+              <App
+                onSnapshot={input.onSnapshot}
+                pluginHost={input.pluginHost}
+              />
+            </ProviderTree>
           )
         }, renderer)
       })
@@ -1381,7 +345,7 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
   })
 })
 
-function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPluginHost }) {
+export function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPluginHost }) {
   const startup = useTuiStartup()
   const tuiConfig = useTuiConfig()
   const route = useRoute()
@@ -1652,706 +616,34 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (workspace?.type !== "worktree" || !workspace.directory) return
     return workspace
   })
-  async function showRunProofSurface(kind: "contract" | "actions" | "diffgate" | "verify" | "sovereignty") {
-    const result = await loadActiveRunProof()
-    if (result.status !== "ready") {
-      dialog.replace(() => <DialogRunProofMissing result={result} />)
-      return
-    }
-    const copyRollbackRestore = async (command: string) => {
-      if (!command) return
-      await clipboard
-        .write?.(command)
-        .then(() => toast.show({ message: "Copied rollback restore command", variant: "info" }))
-        .catch(toast.error)
-    }
-    const stageRollbackRestore = async () => {
-      const staged = await stageActiveRunProofRollbackRestore()
-      if (staged.status !== "ready") {
-        dialog.replace(() => <DialogRunProofMissing result={staged} />)
-        return
-      }
-      toast.show({ message: "Rollback restore staged for approval", variant: "warning" })
-      await showRunProofSurface(kind)
-    }
-    const approveRollbackRestore = async () => {
-      const approved = await approveActiveRunProofRollbackRestore()
-      if (approved.status !== "ready") {
-        dialog.replace(() => <DialogRunProofMissing result={approved} />)
-        return
-      }
-      toast.show({ message: "Rollback restore approved; not executed", variant: "warning" })
-      await showRunProofSurface(kind)
-    }
-    dialog.replace(() => {
-      if (kind === "contract") {
-        return (
-          <DialogRunProofContract
-            proof={result.proof}
-            path={result.path}
-            onCopyRollbackRestore={copyRollbackRestore}
-            onStageRollbackRestore={() => void stageRollbackRestore().catch(toast.error)}
-            onApproveRollbackRestore={() => void approveRollbackRestore().catch(toast.error)}
-          />
-        )
-      }
-      if (kind === "diffgate") {
-        return (
-          <DialogRunProofDiffGate
-            proof={result.proof}
-            path={result.path}
-            onCopyRollbackRestore={copyRollbackRestore}
-            onStageRollbackRestore={() => void stageRollbackRestore().catch(toast.error)}
-            onApproveRollbackRestore={() => void approveRollbackRestore().catch(toast.error)}
-          />
-        )
-      }
-      if (kind === "verify") return <DialogRunProofVerify proof={result.proof} path={result.path} />
-      if (kind === "sovereignty") return <DialogRunProofSovereignty proof={result.proof} path={result.path} />
-      return (
-        <DialogRunProofActions
-          proof={result.proof}
-          path={result.path}
-          onCopyRollbackRestore={copyRollbackRestore}
-          onStageRollbackRestore={() => void stageRollbackRestore().catch(toast.error)}
-          onApproveRollbackRestore={() => void approveRollbackRestore().catch(toast.error)}
-        />
-      )
-    })
-    dialog.setSize("xlarge")
-  }
-
   const appCommands = createMemo(() =>
-    [
-      {
-        name: COMMAND_PALETTE_COMMAND,
-        title: "Show command palette",
-        category: "System",
-        hidden: true,
-        run: () => {
-          dialog.replace(() => <CommandPaletteDialog />)
-        },
-      },
-      {
-        name: "session.list",
-        title: "Switch session",
-        category: "Session",
-        suggested: sync.data.session.length > 0,
-        slashName: "sessions",
-        slashAliases: ["resume", "continue"],
-        run: () => {
-          dialog.replace(() => <DialogSessionList />)
-        },
-      },
-      {
-        name: "session.queued_prompts",
-        title: "Retry queued prompts",
-        category: "Session",
-        hidden: promptQueue.list().length === 0,
-        run: () => {
-          const queued = promptQueue.list()
-          if (queued.length === 0) {
-            toast.show({ message: "No queued prompts", variant: "info" })
-            return
-          }
-          for (const item of queued) promptQueue.retry(item.id)
-          toast.show({
-            message: `Retrying ${queued.length} queued prompt${queued.length === 1 ? "" : "s"}`,
-            variant: "info",
-          })
-        },
-      },
-      {
-        name: "session.new",
-        title: "New session",
-        suggested: route.data.type === "session",
-        category: "Session",
-        slashName: "new",
-        slashAliases: ["clear"],
-        run: () => {
-          const agent = local.agent.current()
-          const model = local.model.current()
-          if (!agent || !model || !model.providerID || !model.modelID) {
-            dialog.clear()
-            queueMicrotask(() => route.navigate({ type: "home" }))
-            return
-          }
-
-          const currentSession = route.data.type === "session" ? sync.session.get(route.data.sessionID) : undefined
-          const directory = currentSession?.directory ?? project.instance.directory()
-          const workspaceID = currentSession?.workspaceID ?? project.workspace.current()
-          const variant = local.model.variant.current()
-
-          dialog.clear()
-
-          void sdk.client.session
-            .create({
-              directory,
-              workspace: workspaceID,
-              agent: agent.name,
-              model: {
-                providerID: model.providerID,
-                id: model.modelID,
-                variant,
-              },
-            })
-            .then((res) => {
-              if (res.error) {
-                console.error("session.new create returned error:", res.error)
-                // Do NOT call toast.show() or any SolidJS-reactive API here —
-                // the owning component was destroyed by dialog.clear() above
-                // and the async callback fires after navigation.
-                route.navigate({ type: "home" })
-                return
-              }
-              route.navigate({
-                type: "session",
-                sessionID: res.data.id,
-              })
-            })
-            .catch((error) => {
-              console.error("session.new create threw:", error)
-              route.navigate({ type: "home" })
-            })
-        },
-      },
-      {
-        name: "ml.toggle",
-        title: mlRuntimeEnabled() ? "Disable ML runtime" : "Enable ML runtime",
-        suggested: mlRuntimeEnabled(),
-        category: "ML",
-        slashName: "ml",
-        slashAliases: ["quality"],
-        run: () => {
-          setMlRuntimeEnabled((prev) => {
-            const next = !prev
-            kv.set("ml_runtime_enabled", next)
-            toast.show({
-              message: next ? "ML runtime on (quality gate + silent revision)" : "ML runtime off",
-              variant: next ? "info" : "info",
-            })
-            return next
-          })
-          dialog.clear()
-        },
-      },
-      {
-        name: "arcana.contract",
-        slashName: "contract",
-        title: "Inspect active execution contract",
-        desc: "Show the active execution contract for this session",
-        category: "Arcana",
-        run: () => void showRunProofSurface("contract").catch(toast.error),
-      },
-      {
-        name: "arcana.actions",
-        slashName: "actions",
-        title: "Show action timeline",
-        desc: "Show the execution action timeline",
-        category: "Arcana",
-        run: () => void showRunProofSurface("actions").catch(toast.error),
-      },
-      {
-        name: "arcana.diffgate",
-        slashName: "diffgate",
-        title: "Show diff gate state",
-        desc: "Show verification gate state",
-        category: "Arcana",
-        run: () => void showRunProofSurface("diffgate").catch(toast.error),
-      },
-      {
-        name: "arcana.verify",
-        slashName: "verify",
-        title: "Show verifier board",
-        desc: "Show verifier board and completion gates",
-        category: "Arcana",
-        run: () => void showRunProofSurface("verify").catch(toast.error),
-      },
-      {
-        name: "arcana.sovereignty",
-        slashName: "sovereignty",
-        title: "Show provider route evidence",
-        desc: "Show provider/model route evidence",
-        category: "Arcana",
-        run: () => void showRunProofSurface("sovereignty").catch(toast.error),
-      },
-      {
-        name: "arcana.consensus",
-        slashName: "consensus",
-        title: "Prepare consensus evidence task",
-        desc: "Use /consensus <prompt> to request proposals, critiques, votes, and recorded consensus evidence",
-        category: "Arcana",
-        run: () => {
-          toast.show({
-            message: "Use /consensus <prompt> to submit a consensus evidence task",
-            variant: "info",
-          })
-          dialog.clear()
-        },
-      },
-      {
-        name: "workspace.copy_path",
-        title: "Copy worktree path",
-        category: "Workspace",
-        enabled: () => currentWorktreeWorkspace() !== undefined,
-        run: async () => {
-          const workspace = currentWorktreeWorkspace()
-          if (!workspace?.directory) return
-          await clipboard
-            .write?.(workspace.directory)
-            .then(() => toast.show({ message: "Copied worktree path", variant: "info" }))
-            .catch(toast.error)
-          dialog.clear()
-        },
-      },
-      {
-        name: "workspace.list",
-        title: "Manage workspaces",
-        category: "Workspace",
-        hidden: !Flag.ARCANA_EXPERIMENTAL_WORKSPACES,
-        slashName: "workspaces",
-        run: () => {
-          dialog.replace(() => <DialogWorkspaceList />)
-        },
-      },
-      ...Array.from({ length: 9 }, (_, i) => ({
-        name: `session.quick_switch.${i + 1}`,
-        title: `Switch to session in quick slot ${i + 1}`,
-        category: "Session",
-        hidden: true,
-        run: () => {
-          local.session.quickSwitch(i + 1)
-        },
-      })),
-      {
-        name: "model.list",
-        title: "Switch model",
-        suggested: true,
-        category: "Agent",
-        slashName: "models",
-        // Bias /mo toward /models over /move without changing global fuzzy scoring.
-        slashAliases: ["mo"],
-        run: () => {
-          dialog.replace(() => <DialogModel />)
-        },
-      },
-      {
-        name: "model.cycle_recent",
-        title: "Model cycle",
-        category: "Agent",
-        hidden: true,
-        run: () => {
-          local.model.cycle(1)
-        },
-      },
-      {
-        name: "model.cycle_recent_reverse",
-        title: "Model cycle reverse",
-        category: "Agent",
-        hidden: true,
-        run: () => {
-          local.model.cycle(-1)
-        },
-      },
-      {
-        name: "model.cycle_favorite",
-        title: "Favorite cycle",
-        category: "Agent",
-        hidden: true,
-        run: () => {
-          local.model.cycleFavorite(1)
-        },
-      },
-      {
-        name: "model.cycle_favorite_reverse",
-        title: "Favorite cycle reverse",
-        category: "Agent",
-        hidden: true,
-        run: () => {
-          local.model.cycleFavorite(-1)
-        },
-      },
-      {
-        name: "agent.list",
-        title: "Switch agent",
-        category: "Agent",
-        slashName: "agents",
-        run: () => {
-          dialog.replace(() => <DialogAgent />)
-        },
-      },
-      {
-        name: "agent.prompt",
-        title: "Edit agent system prompt",
-        category: "Agent",
-        slashName: "prompt",
-        run: () => {
-          dialog.replace(() => <DialogAgentPrompt />)
-        },
-      },
-      {
-        name: "tools.list",
-        title: "Toggle session tools",
-        category: "Agent",
-        slashName: "tools",
-        run: () => {
-          const sessionID = route.data.type === "session" ? route.data.sessionID : undefined
-          if (!sessionID) {
-            toast.show({ message: "Open a session first", variant: "warning" })
-            return
-          }
-          dialog.replace(() => <DialogTools sessionID={sessionID} />)
-        },
-      },
-      {
-        name: "instructions.edit",
-        title: "Edit personal instructions",
-        category: "Agent",
-        slashName: "soul",
-        run: () => {
-          dialog.replace(() => <DialogSoul />)
-        },
-      },
-      {
-        name: "goal.set",
-        title: "Set session goal",
-        category: "Session",
-        slashName: "goal",
-        run: () => {
-          const sessionID = route.data.type === "session" ? route.data.sessionID : undefined
-          if (!sessionID) {
-            toast.show({ message: "Open a session first", variant: "warning" })
-            return
-          }
-          toast.show({
-            title: "Set goal",
-            message: "Type /goal <description> in the prompt to bind the session goal",
-            variant: "info",
-          })
-          dialog.clear()
-        },
-      },
-      {
-        name: "goal.loop",
-        title: "Check goal progress",
-        category: "Session",
-        slashName: "loop",
-        run: () => {
-          const sessionID = route.data.type === "session" ? route.data.sessionID : undefined
-          if (!sessionID) {
-            toast.show({ message: "Open a session first", variant: "warning" })
-            return
-          }
-          void import("@arcana/core/session/goal")
-            .then(({ getSessionGoal, formatActiveGoalBlock }) => {
-              const snap = getSessionGoal(sessionID)
-              if (snap.status === "unset") {
-                toast.show({ message: "No active goal — use /goal <description>", variant: "warning" })
-                return
-              }
-              toast.show({
-                title: "Goal",
-                message: formatActiveGoalBlock({
-                  sessionID,
-                  sessionAgent: local.agent.current()?.name,
-                })
-                  .replace(/<\/?active-goal>/g, "")
-                  .trim(),
-                variant: "info",
-                duration: 8000,
-              })
-            })
-            .catch((error) => toast.error(error))
-          dialog.clear()
-        },
-      },
-      {
-        name: "mcp.list",
-        title: "Toggle MCPs",
-        category: "Agent",
-        slashName: "mcps",
-        run: () => {
-          dialog.replace(() => <DialogMcp />)
-        },
-      },
-      {
-        name: "agent.cycle",
-        title: "Open agent picker",
-        category: "Agent",
-        hidden: true,
-        run: () => {
-          dialog.replace(() => <DialogAgent />)
-        },
-      },
-      {
-        name: "variant.cycle",
-        title: "Variant cycle",
-        category: "Agent",
-        run: () => {
-          local.model.variant.cycle()
-        },
-      },
-      {
-        name: "variant.list",
-        title: "Switch model variant",
-        category: "Agent",
-        hidden: local.model.variant.list().length === 0,
-        slashName: "variants",
-        run: () => {
-          if (local.model.variant.list().length === 0) {
-            return toast.show({
-              title: "No variants available",
-              message: "The current model does not support any variants.",
-              variant: "info",
-            })
-          }
-          dialog.replace(() => <DialogVariant />)
-        },
-      },
-      {
-        name: "agent.cycle.reverse",
-        title: "Open agent picker",
-        category: "Agent",
-        hidden: true,
-        run: () => {
-          dialog.replace(() => <DialogAgent />)
-        },
-      },
-      {
-        name: "provider.connect",
-        title: "Connect provider",
-        suggested: !connected(),
-        slashName: "connect",
-        run: () => {
-          dialog.replace(() => <DialogProviderList />)
-        },
-        category: "Provider",
-      },
-      ...(sync.data.console_state.switchableOrgCount > 1
-        ? [
-            {
-              name: "console.org.switch",
-              title: "Switch org",
-              suggested: Boolean(sync.data.console_state.activeOrgName),
-              slashName: "org",
-              slashAliases: ["orgs", "switch-org"],
-              run: () => {
-                dialog.replace(() => <DialogConsoleOrg />)
-              },
-              category: "Provider",
-            },
-          ]
-        : []),
-      {
-        name: "arcana.status",
-        title: "View status",
-        slashName: "status",
-        run: () => {
-          dialog.replace(() => <DialogStatus />)
-        },
-        category: "System",
-      },
-      {
-        name: "arcana.permissions",
-        title: "Permissions status",
-        slashName: "permissions",
-        slashAliases: ["perms", "pending"],
-        run: () => {
-          dialog.replace(() => <DialogPermissions />)
-        },
-        category: "System",
-      },
-      {
-        name: "theme.switch",
-        title: "Switch theme",
-        slashName: "themes",
-        run: () => {
-          dialog.replace(() => <DialogThemeList />)
-        },
-        category: "System",
-      },
-      {
-        name: "theme.switch_mode",
-        title: mode() === "dark" ? "Switch to light mode" : "Switch to dark mode",
-        run: () => {
-          setMode(mode() === "dark" ? "light" : "dark")
-          dialog.clear()
-        },
-        category: "System",
-      },
-      {
-        name: "theme.mode.lock",
-        title: locked() ? "Unlock theme mode" : "Lock theme mode",
-        run: () => {
-          if (locked()) unlock()
-          else lock()
-          dialog.clear()
-        },
-        category: "System",
-      },
-      {
-        name: "help.show",
-        title: "Help",
-        slashName: "help",
-        run: () => {
-          dialog.replace(() => <DialogHelp />)
-        },
-        category: "System",
-      },
-      {
-        name: "docs.open",
-        title: "Open docs",
-        run: () => {
-          import("open").then((m) => m.default(DOCS_URL)).catch(() => {})
-          dialog.clear()
-        },
-        category: "System",
-      },
-      {
-        name: "app.exit",
-        title: "Exit the app",
-        slashName: "exit",
-        slashAliases: ["quit", "q"],
-        run: () => exit(),
-        category: "System",
-      },
-      {
-        name: "app.debug",
-        title: "Toggle debug panel",
-        category: "System",
-        run: () => {
-          renderer.toggleDebugOverlay()
-          dialog.clear()
-        },
-      },
-      {
-        name: "app.console",
-        title: "Toggle console",
-        category: "System",
-        run: () => {
-          renderer.console.toggle()
-          dialog.clear()
-        },
-      },
-      {
-        name: "app.heap_snapshot",
-        title: "Write heap snapshot",
-        category: "System",
-        run: async () => {
-          const files = await props.onSnapshot?.()
-          toast.show({
-            variant: "info",
-            message: `Heap snapshot written to ${files?.join(", ")}`,
-            duration: 5000,
-          })
-          dialog.clear()
-        },
-      },
-      {
-        name: "terminal.suspend",
-        title: "Suspend terminal",
-        category: "System",
-        hidden: true,
-        enabled: process.platform !== "win32",
-        run: () => {
-          renderer.suspend()
-          process.once("SIGCONT", () => renderer.resume())
-          process.kill(0, "SIGTSTP")
-        },
-      },
-      {
-        name: "terminal.title.toggle",
-        title: terminalTitleEnabled() ? "Disable terminal title" : "Enable terminal title",
-        category: "System",
-        run: () => {
-          setTerminalTitleEnabled((prev) => {
-            const next = !prev
-            kv.set("terminal_title_enabled", next)
-            if (!next) renderer.setTerminalTitle("")
-            return next
-          })
-          dialog.clear()
-        },
-      },
-      {
-        name: "app.toggle.animations",
-        title: kv.get("animations_enabled", true) ? "Disable animations" : "Enable animations",
-        category: "System",
-        slashName: "animations",
-        slashAliases: ["toggle-animations"],
-        run: () => {
-          kv.set("animations_enabled", !kv.get("animations_enabled", true))
-          dialog.clear()
-        },
-      },
-      {
-        name: "app.cycle.spinner",
-        title: `Spinner: ${spinnerStyleName(kv.get("spinner_style"))}`,
-        category: "System",
-        run: () => {
-          const current = isSpinnerStyle(kv.get("spinner_style")) ? kv.get("spinner_style") : undefined
-          kv.set("spinner_style", nextSpinnerStyle(current ?? "braille"))
-          dialog.clear()
-        },
-      },
-      {
-        name: "app.cycle.density",
-        title: `Density: ${densityName(kv.get("density"))}`,
-        category: "System",
-        run: () => {
-          const current = isDensity(kv.get("density")) ? kv.get("density") : undefined
-          kv.set("density", nextDensity(current ?? "cozy"))
-          dialog.clear()
-        },
-      },
-      {
-        name: "app.toggle.file_context",
-        title: kv.get("file_context_enabled", true) ? "Disable file context" : "Enable file context",
-        category: "System",
-        run: () => {
-          kv.set("file_context_enabled", !kv.get("file_context_enabled", true))
-          dialog.clear()
-        },
-      },
-      {
-        name: "app.toggle.diffwrap",
-        title: kv.get("diff_wrap_mode", "word") === "word" ? "Disable diff wrapping" : "Enable diff wrapping",
-        category: "System",
-        run: () => {
-          const current = kv.get("diff_wrap_mode", "word")
-          kv.set("diff_wrap_mode", current === "word" ? "none" : "word")
-          dialog.clear()
-        },
-      },
-      {
-        name: "app.toggle.paste_summary",
-        title: pasteSummaryEnabled() ? "Disable paste summary" : "Enable paste summary",
-        category: "System",
-        run: () => {
-          setPasteSummaryEnabled((prev) => {
-            const next = !prev
-            kv.set("paste_summary_enabled", next)
-            return next
-          })
-          dialog.clear()
-        },
-      },
-      {
-        name: "app.toggle.session_directory_filter",
-        title: kv.get("session_directory_filter_enabled", true)
-          ? "Disable session directory filtering"
-          : "Enable session directory filtering",
-        category: "System",
-        run: async () => {
-          kv.set("session_directory_filter_enabled", !kv.get("session_directory_filter_enabled", true))
-          await sync.session.refresh()
-          dialog.clear()
-        },
-      },
-    ].map((command) => ({
-      namespace: "palette",
-      ...command,
-    })),
+    buildAppCommands({
+      dialog,
+      sync,
+      local,
+      kv,
+      route,
+      sdk,
+      toast,
+      renderer,
+      exit,
+      clipboard,
+      pluginHost: props.pluginHost,
+      currentWorktreeWorkspace: () => currentWorktreeWorkspace(),
+      connected: () => connected(),
+      mlRuntimeEnabled: () => mlRuntimeEnabled(),
+      setMlRuntimeEnabled,
+      terminalTitleEnabled: () => terminalTitleEnabled(),
+      setTerminalTitleEnabled,
+      pasteSummaryEnabled: () => pasteSummaryEnabled(),
+      setPasteSummaryEnabled,
+      mode: () => mode(),
+      setMode,
+      locked: () => locked(),
+      lock,
+      unlock,
+      onSnapshot: props.onSnapshot,
+    })
   )
 
   useBindings(() => ({
