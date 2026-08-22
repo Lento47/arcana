@@ -75,6 +75,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ## [Unreleased]
 
 ### Added
+- **Persistent scoped governance**: Remembered permission decisions are stored
+  by project and agent, exposed for revocation, and governed by configurable
+  policy for benign auto-allows, risk limits, routing, and classifier mode.
+- **Permission firewall signals**: The ML signal classifier can escalate a
+  deterministic allow to review or deny, but cannot downgrade an existing
+  deterministic decision. File-edit guard rules and backup evidence feed the
+  permission and RunProof views.
+- **Expanded A1 runtime launch support**: `arcana launch` supports codex,
+  claude, gemini, hermes, opencode, cursor, aider, continue, cline, windsurf,
+  and copilot with configurable binary, arguments, and environment. A1 remains
+  a supervision/evidence contract, not a sandbox or exact-effect PEP claim.
+- **Voice activation gate**: ALT push-to-talk defaults to a configurable
+  `voice.hold_delay_ms` of 3,000 ms before animation and microphone activation;
+  Windows DirectShow discovery, waveform display, and recorder diagnostics are
+  included.
+- **Operator surfaces**: Added enterprise console routes for models, proofs,
+  sessions, settings, and skills; custom OpenAI-compatible provider URL
+  registration; expanded TUI themes and session ancestry navigation.
+- **Goal lifecycle hardening (working tree, pending checkpoint)**: Completion
+  claims enter independent revision-bound verification, verified goals archive
+  and clear, legacy terminal goals are quarantined, and runtime-looking memory
+  keys are reserved from user-fact injection.
 - **Git PII Redaction** (`packages/arcana/src/agent/guard.ts`): Complete guard pipeline with `redactGitEmails()` (strips personal emails from git output), `redactPII()` (IP addresses, phone numbers, street addresses), and `redactGitAuthorNames()` (strips personal names from git Author/Committer lines). Tightened regex patterns to reduce false positives. 21+ tests covering redaction, false positives, and edge cases. Applied automatically in the tool execution pipeline alongside existing `redactSecrets()`.
 - **Gateway documentation** (`docs/gateway.md`): Full setup guide for Telegram, Discord, Slack, and WhatsApp adapters with configuration, security, and platform setup instructions.
 - **Cron documentation** (`docs/cron.md`): Scheduled agent jobs documentation covering job management, cron syntax, daemon mode, and configuration.
@@ -90,6 +112,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Team onboarding** (`docs/onboarding.md`): Step-by-step team onboarding checklist covering install, provider config, workspace trust, shared skills, gateway setup, and a reusable onboarding template.
 - **Provider setup guides** (`docs/providers/`): Individual setup guides for the top 5 providers — OpenAI, Anthropic, Google Gemini, xAI Grok, and Amazon Bedrock — with env vars, model lists, pricing, custom base URLs, provider options, and troubleshooting.
 - **Database schema** (`docs/architecture/database-schema.md`): Complete SQLite schema documentation with Drizzle ORM tables, FTS5 indexes, trigger SQL examples, PRAGMA timing, and entity relationship diagrams.
+
+### Fixed
+- Deduplicated concurrent and retried prompt delivery by message identity.
+- Stopped completed reasoning, tool, and assistant rows from shimmering forever
+  when session status becomes idle or disappears from the active-status map.
+- Kept code previews visible during highlighting and hardened subagent
+  attribution, navigation, and empty-completion recovery.
 
 ### Changed
 - **Docs index update** (`docs/README.md`): Updated with links to all new documentation files.

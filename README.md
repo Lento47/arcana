@@ -6,6 +6,14 @@ Skills, memory, gateway, coding, and cron still live in one terminal. Authorizat
 
 **Current development branch is [`arcanagov`](https://github.com/Lento47/arcana/tree/arcanagov).** GitHub still defaults to `master`, which is stale. Clone and work from `arcanagov`.
 
+> **Development status (2026-08-22):** Arcana remains pre-1.0. The governance,
+> proof, CLI/TUI, adapter, and enterprise surfaces are substantial, but the
+> current working-tree TUI suite is not release-green and Linux, TLS/mTLS,
+> independent validation, manual freeze evidence, and human sign-off remain
+> open. See [the live status authority](docs/STATUS.md) and
+> [blocker register](docs/BLOCKERS.md); README feature lists are not completion
+> claims.
+
 ## What you can verify
 
 Every consequential action answers four questions:
@@ -263,6 +271,19 @@ Set a custom full-screen background image (truecolor terminals — Kitty, iTerm2
 
 ## Recent Changes
 
+- **Development wave 2026-08-15–21** — Persistent, agent-scoped remembered
+  permissions; configurable governance routing and benign-effect policy;
+  escalation-only ML permission classification; file-edit guard evidence;
+  durable/idempotent prompt delivery; subagent resilience and live navigation;
+  custom provider URLs; enterprise models/proofs/sessions/settings/skills
+  routes; 21 built-in TUI themes; rendering lifecycle fixes; and Windows voice
+  hardening with a configurable 3-second ALT hold before microphone activation.
+  `arcana launch` now supports 11 A1 launch wrappers, with explicit nonclaims
+  for sandboxing and exact-effect PEP mediation. See [STATUS.md](docs/STATUS.md).
+- **Working tree 2026-08-22** — Independent revision-bound goal completion
+  verification, legacy terminal-goal quarantine, reserved runtime memory keys,
+  and consolidated session navigation are implemented but not yet checkpointed
+  or release-validated.
 - **v0.3.11** — P1 exact-request checks from the SDK, P2 console decisions via the engine, P3 key backup and rotation, P4 read-only auditor evidence. Source builds use `arcanagov` (`git clone -b arcanagov`). See [CHANGELOG.md](CHANGELOG.md).
 - **v0.3.10** — Merge wave 2026-08-13 (PRs #120–#126): protocol extension registry enforcement (BLK-E-09, PR #120: validateExtensionRegistry + DEFAULT_EXTENSION_REGISTRY wired into verifier + policy-bundle-store), contract/runtime parity lint + CI job (PR #121), CI test isolation + concurrency stabilization (TUI tests, OpenTUI patcher, models cache, TUI workspace; PRs #122–#126). See [STATUS.md](docs/STATUS.md).
 - **v0.3.9** — Merge wave 2026-08-09 (PRs #109–#118): CLI `--json` + deterministic exit codes across every remaining command (BLK-CLI-02, PR #113), cross-platform smoke matrix published (BLK-CLI-04, PR #114), Rust proof-batching parity (BLK-E-04, PR #117), claude/gemini launch adapters certified A1 alongside codex (BLK-E-05, PR #118), CURRENT-STATE.json reconciled at f3c935e6. See [STATUS.md](docs/STATUS.md).

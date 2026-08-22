@@ -4,8 +4,8 @@
 **Authority:** secondary — status decisions live in `docs/STATUS.md`
 **Created:** 2026-08-02 (Phase A–F completion audit)
 **Consolidated:** 2026-08-02 — single register replacing the former `docs/blockers/` folder
-**Implementation checkpoint:** `b5d192a1` (2026-08-05; current HEAD of `phase-d-implementation` via merged PRs #79–#82)
-**Documentation reconciliation commit:** `882ea468` (baseline for the consolidated files)
+**Implementation checkpoint:** `fb7c1968` (2026-08-21; last code checkpoint before the 2026-08-22 documentation reconciliation)
+**Documentation reconciliation commit:** `d21c5e3e` (2026-08-22)
 
 This file consolidates every phase and product-track blocker register. Each area below preserves the original rows: the playbook task or gate it blocks, the current evidence of the gap, and the acceptance evidence required to close it.
 
@@ -38,18 +38,37 @@ Each blocker row states:
 | Phase A — Epistemic Foundation | COMPLETE / FROZEN | 0 | [§Phase A](#phase-a--epistemic-foundation) |
 | Phase B — Verification & Replay | COMPLETE / FROZEN | 0 | [§Phase B](#phase-b--verification-and-replay) |
 | Phase C — Local Governed Autonomy | EVALUATION PASS, signed with exceptions | 0 (scope-limited) | [§Phase C](#phase-c--local-governed-autonomy) |
-| TUI 1.0 (TUI-2.1 freeze) | MOUNTED, automated green, freeze NOT authorized | 8 | [§TUI 1.0 / TUI-2.1](#tui-10--tui-21) |
+| Goal verification + reserved memory boundary | WORKING TREE; focused tests pass; exact-commit/full-suite evidence pending | 3 | [§Goal verification](#goal-verification-and-memory-boundary) |
+| TUI 1.0 (TUI-2.1 freeze) | MOUNTED; current working-tree suite has 42 failures; freeze NOT authorized | 8 | [§TUI 1.0 / TUI-2.1](#tui-10--tui-21) |
+| Goal Verification & Memory Boundary | WORKING TREE — implemented but not committed; focused tests pass | 3 | [§Goal Verification](#goal-verification-and-memory-boundary) |
 | CLI 1.0 | PARTIAL — no frozen contract | 5 | [§CLI 1.0](#cli-10) |
 | Phase D — Distributed Governed Autonomy | Implementation coverage: HIGH; release readiness: BLOCKED | 9 | [§Phase D](#phase-d--distributed-governed-autonomy) |
 | Phase E — Protocol, SDKs, Adapters | PARTIAL — conformance 5/5 + adapters + certified vectors; freeze pending live/L3 | 10 | [§Phase E](#phase-e--protocol-sdks-adapters) |
 | Phase F — Enterprise Control Plane | Service cores: HIGH; mounting: SUBSTANTIAL; auth boundary: RESOLVED (PR #53); release: BLOCKED | 14 | [§Phase F](#phase-f--enterprise-control-plane) |
 | Arcana 1.0 convergence | NOT reached | 5 | [§Arcana 1.0](#arcana-10-convergence) |
 
+### 2026-08-22 reconciliation note
+
+The current `arcanagov` checkpoint is `fb7c1968`, 161 commits after the prior
+`f3c935e6` status checkpoint. The Aug. 15–21 wave materially advances
+governance persistence, permission scoping, prompt delivery, TUI/voice,
+subagents, file-edit guards, A1 runtime launch coverage, custom providers, and
+enterprise console routes. It does not close the release gates below.
+
+Fresh working-tree verification on Windows under pinned Bun 1.3.14 reports TUI
+1,132 pass / 42 fail / 1 skip; Bun 1.4.0 independently reproduced the same 42
+failures. Focused engine checks report 225 pass / 4 fail / 18 skip; focused
+core/memory checks report 71 pass with one teardown-hook failure; TUI and engine
+typechecks pass. An exact-commit green suite is an explicit prerequisite for
+BLK-TUI-08. Uncommitted goal-verification,
+reserved-memory, and session-navigation work is tracked as working-tree evidence
+only until committed.
+
 
 ## Phase A — Epistemic Foundation
 
 **Status: COMPLETE / FROZEN** (declared complete in the master spec and
-`docs/STATUS.md`; tag lineage contained in `phase-d-implementation`).
+`docs/STATUS.md`; historical tag lineage is preserved in `arcanagov`).
 
 ## Open blockers
 
@@ -206,7 +225,7 @@ remote attestation.
 ## TUI 1.0 / TUI-2.1
 
 **Status: TUI-2 FROZEN (`arcana-tui-2-interactive-authority-control`);
-TUI-2.1 MOUNTED and AUTOMATED GREEN, freeze NOT AUTHORIZED.**
+TUI-2.1 MOUNTED, current working-tree regressions OPEN, freeze NOT AUTHORIZED.**
 
 The open blockers below are exactly the TUI-2.1 freeze gates
 (TUI-2.1-FREEZE-OPERATOR-RUNBOOK) plus the remaining product-track
@@ -228,7 +247,7 @@ all eight (`BLK-TUI-01..08`) remain open.
 | BLK-TUI-05 | Runbook Gate 6 — restart recovery + session isolation | Durable re-hydration observed for session/contract/proof; approvals re-hydration and per-session isolation not yet observed | Restart + isolation checkpoints passed |
 | BLK-TUI-06 | Runbook Gate 7 — 6-checkpoint live-stream validation | Stream fixes implemented; live protocol not run (probe documented in the sign-off) | 6/6 checkpoints PASS at the final commit |
 | BLK-TUI-07 | Runbook Gate 8 — performance measurements | No typed-lag/idle-CPU/scroll/memory measurements at final commit | p95 input echo < 16.7 ms, session-open to input-ready < 500 ms (warm daemon), no redundant requests/reconnect storms/idle traffic |
-| BLK-TUI-08 | Runbook Gate 9/10 — exact-commit rerun + zero blockers | Current runs are at the working tree, not a committed final commit | Full suite rerun green at the tagged commit; sign-off |
+| BLK-TUI-08 | Runbook Gate 9/10 — exact-commit rerun + zero blockers | 2026-08-22 pinned Bun 1.3.14 working-tree run: TUI 1,132 pass / 42 fail / 1 skip; Bun 1.4.0 also reports 42 failures. Focused engine: 225 pass / 4 fail / 18 skip; focused core/memory has one teardown-hook failure. The worktree is not a committed final candidate. | Resolve or classify every failure; full suite rerun green at the tagged commit; sign-off |
 
 ## Closed TUI blockers (2026-08-01/02)
 
@@ -244,7 +263,7 @@ all eight (`BLK-TUI-01..08`) remain open.
 | F-22 | Daemon idle-stop left TUI with "Failed to send prompt / Unable to connect" | daemon respawn (`packages/engine/src/cli/cmd/tui.ts`, `packages/tui/src/context/sdk.tsx`, `daemon-respawn.test.ts`) |
 | F-23 | Approval inspector invisible + spine keys unreachable from keyboard | `approval-inspector.tsx`, command-spine key handling, `approval-inspector.test.ts` |
 
-## Known residual TUI issues (documented, not blocking the automated gate)
+## Known residual TUI issues and active regressions
 
 - Permission-gate rows (`◤`) intentionally disappear after decision — this is
   correct behavior, not a defect; durable approvals persist with
@@ -254,6 +273,24 @@ all eight (`BLK-TUI-01..08`) remain open.
 - The LLM-composer connection error path ("Failed to send prompt / Unable to
   connect") is mitigated by F-22 but must be re-verified through the
   live-stream protocol.
+- The 2026-08-22 full suite has shared SDK/project test-provider setup failures,
+  renderer interaction failures, and voice/module-isolation failures. These are
+  release blocking until the pinned-runtime rerun and root-cause classification
+  are complete.
+
+## Goal Verification and Memory Boundary
+
+**Status: WORKING TREE — goal verification and reserved memory keys are
+implemented in the uncommitted working tree (2026-08-22) but not yet
+committed. Focused tests pass; full suite verification pending.**
+
+## Open blockers
+
+| ID | Blocks | Gap evidence | Acceptance evidence required |
+|---|---|---|---|
+| BLK-GOAL-01 | Goal verification system operational | Deterministic gate + model verifier implemented in working tree; focused tests pass (runner-proof.test.ts, goal.test.ts, goal-verifier.test.ts); not yet committed or included in a full suite run | End-to-end test: goal_set → work → goal_check complete → verifier rejects unmet obligations / verifies with evidence → goal archived or reopened; full suite green at committed checkpoint |
+| BLK-GOAL-02 | Reserved memory keys isolation | `isReservedMemoryKey()` filter implemented in working tree; focused tests pass (store.test.ts, facts-md.test.ts); not yet committed | Write-rejection test for `active.*`/`goal.*` keys; FACTS.md/cloud sync/prompt filtering verified; full suite green at committed checkpoint |
+| BLK-GOAL-03 | TUI/engine suite green under pinned Bun | 2026-08-22 working-tree TUI suite has 42 failures under pinned Bun 1.3.14 and the same failure count under Bun 1.4.0; focused engine has 4 failures; focused core/memory has 1 teardown-hook failure | Resolve or explicitly classify every failure; pinned Bun 1.3.14 full suite green at the exact committed checkpoint |
 
 ## CLI 1.0
 
@@ -264,7 +301,7 @@ tests), but the CLI 1.0 contract is not frozen.**
 
 | ID | Blocks (playbook §26–27) | Gap evidence | Acceptance evidence required |
 |---|---|---|---|
-| BLK-CLI-01 | External-agent launch group (`arcana launch codex/claude/gemini`) | **All three adapters CERTIFIED A1 2026-08-09 (codex A1 2026-08-05, claude/gemini A1 via PR #118)**: `launchDeclaration` declares `certificationLevel: A1` for codex, claude, gemini with evidence (process supervision, durable launch evidence, interceptable surface, engine D-7.1 read-boundary hostile-escape fixtures) and explicit nonclaims (no sandbox, no exact-effect PEP, no file-read containment in the launch path); `arcana launch codex --dry-run` prints the full declaration (`packages/engine/test/cli/launch.test.ts`); claude/gemini share the codex spawn/supervision/evidence machinery (`src/cli/cmd/launch.ts`), certified by `launch-declaration.test.ts` A1 pins + hostile-escape fixtures. Verification: `bun test packages/engine/test/node/launch-declaration.test.ts packages/engine/test/cli/launch.test.ts` + `bun run --filter @arcana/engine typecheck` (0 errors). Live Linux/macOS validation pending — tracked separately (BLK-D-03 / BLK-CLI-04) | One production adapter reaches a declared certification level (DONE: codex A1); others documented (DONE: claude/gemini A1 via shared machinery, PR #118) |
+| BLK-CLI-01 | External-agent launch group (`arcana launch <runtime>`) | **Eleven A1 launch wrappers IMPLEMENTED by 2026-08-19**: codex, claude, gemini, hermes, opencode, cursor, aider, continue, cline, windsurf, and copilot share the bounded launch declaration, configurable binary/args/env, process supervision, and durable launch evidence. `launch-declaration.test.ts` pins A1 and its explicit nonclaims for every runtime; the 2026-08-22 focused launch tests pass. A1 does not claim sandboxing, exact-effect PEP mediation, or in-path file-read containment. Live Linux/macOS validation remains pending. | Declared A1 surface DONE for 11 runtimes; A2/A3 enforcement, live platform evidence, independent validation, and release freeze remain open |
 | BLK-CLI-02 | Stable JSON output + deterministic documented exit codes for every command | **JSON output + deterministic exit codes IMPLEMENTED 2026-08-05 (PR #65)** (`packages/engine/src/cli/json-output.ts` + tests; `docs/cli-json-contract.md` publishes the `--json` contract and 0/1/2 exit-code scheme; session/node/trust converted). **Every-command coverage DONE 2026-08-09 (PR #113)**: `--json` + deterministic exit codes across remaining engine CLI commands (capability, cron, daemon, doctor, gateway, history, models, providers, run, serve) + legacy arcana handlers (history); converted-commands table frozen in the contract doc; `json-contract.test.ts` 8/0 + error/exit-code tests. Remaining: CLI 1.0 milestone freeze (BLK-1.0-02) | Command catalog with JSON schema + exit-code table (contract doc DONE via PR #65; every-command coverage DONE via PR #113); milestone freeze pending |
 | BLK-CLI-03 | Shell completion | **Implemented 2026-08-05 (PR #67)**: bash (yargs built-in), zsh and fish (custom scripts). Remaining: none in-repo | DONE via PR #67: bash/zsh/fish completion scripts + 8 tests in completion.test.ts |
 | BLK-CLI-04 | Cross-platform smoke (Windows/Linux/macOS) | Windows smoke matrix executed with 10 checks (10 pass / 0 fail) at commit 5263b6fa; **matrix published 2026-08-09 (PR #114)** (`docs/PLATFORM-SMOKE-MATRIX.md` + `script/platform-smoke.sh`, real Windows results); Linux/macOS NOT EXERCISED (no host; BLK-D-03 separate) | Platform matrix with smoke results (DONE via PR #114: Windows 10/10; Linux/macOS pending external host) |
@@ -340,7 +377,7 @@ stable SDK 1.0.**
 | BLK-E-02 | E2 independent conformance suite | **Independent implementations DONE 2026-08-02**: TS production + Rust verifier agree on 46 vectors (`script/conformance.ts` runner, now 5/5 suites). Remaining: L3 external reproduction | Two independent implementations produce matching vectors (DONE in-repo); external reproduction |
 | BLK-E-03 | E3 TypeScript/JavaScript SDK 1.0 | **Governance + proof + error model + conformance wiring DONE 2026-08-02** (`@arcana/sdk/v2/*`; SDK suite 34/0 full `src`; conformance runner 5/5; `SDK-1.0-COMPATIBILITY.md`). Remaining: release freeze + external-vector conformance | SDK 1.0 release + external conformance |
 | BLK-E-04 | E4 additional language SDK | **Rust foundation DONE 2026-08-02**: canonical serializer + verifier + request hashing with cross-language golden vector (TS ↔ Rust identical hash). **Envelopes + PEP decision client IMPLEMENTED 2026-08-05 (PR #64)** (`tools/acep-conformance-rust/src/envelope.rs`: sign/verify with fixed keypairs; `pep.rs`). **Proof-batching parity DONE 2026-08-09 (PR #117)** (`tools/acep-conformance-rust/src/proof_batch.rs` + `tests/proof_batch_parity.rs`: TS↔Rust batch-root/merkle parity, gap/duplicate detection; full Rust suite 112 pass / 0 fail, 16/16 parity tests). Remaining: full Rust SDK surface beyond proof parity (freeze + L3 external) | One additional SDK passing the same conformance suite (request-hash vector PASS; envelope/PEP client DONE via PR #64; proof-batching parity DONE via PR #117; full surface freeze + L3 pending) |
-| BLK-E-05 | E5 external CLI adapters (Codex/Claude/Gemini) | **All three adapters CERTIFIED A1 2026-08-09 (codex A1 2026-08-05; claude + gemini A1 via PR #118)**: `launchDeclaration` A1 for all three (`launch-declaration.ts` sharedA1Declaration: process supervision, durable launch evidence, interceptable surface, hostile-escape fixtures; nonclaims: no sandbox, no exact-effect PEP, no file-read containment in the launch path); `arcana launch codex --dry-run` prints the declaration (`test/cli/launch.test.ts`); claude/gemini certified via the SAME generic spawn/supervision/evidence path as codex (`src/cli/cmd/launch.ts`), pins in `launch-declaration.test.ts` (e5-a1-1, 6/6 tests, 84 expects). **Hostile-escape fixture set runnable in core + engine suites** (traversal, absolute path, null byte, directory, size budget, junction escape); the launch path performs no agent-driven file reads — documented as a nonclaim, not in-path containment. Remaining: live Linux validation (BLK-D-03) is separate | Three adapters at declared levels (DONE: A1/A1/A1 via PR #118); hostile escape fixtures for the declared boundary (DONE: engine read-boundary fixtures cited in the A1 declarations; launch path has no in-path reads — explicit nonclaim) |
+| BLK-E-05 | E5 external CLI adapters | **Eleven runtimes declare the same A1 contract by 2026-08-19**: codex, claude, gemini, hermes, opencode, cursor, aider, continue, cline, windsurf, and copilot. Shared launch machinery provides configuration, supervision, and durable evidence; tests pin the declaration and explicit nonclaims. Remaining: A2/A3 enforcement, live Linux/macOS evidence, external validation, and freeze. | Eleven A1 declarations DONE; stronger certification and external/platform evidence pending |
 | BLK-E-06 | E6 framework adapters (Mastra/AI SDK/LangGraph/MCP apps) | **AI SDK-style + MCP hooks DONE 2026-08-02** (`governedTool` + `governedMcpTool`). **Mastra + LangGraph hooks DONE 2026-08-02** (`governedMastraTool` + `governedLangGraphTool`; 6 new tests, SDK suite 28/28). **Live PEP HTTP transport DONE 2026-08-12** (`src/v2/live-pep.ts`, commit `1eab77ae`: `createLivePepClient` implements `authorize` + `executeExact` by POSTing the canonical AuthorizationRequest to `POST /api/pep/decide` (documented engine transport contract), mapping ALLOW/DENY/REQUIRE_APPROVAL + approval ids to SDK outcomes/errors; approval command helpers against the live runtime surface (`/approvals/:approvalID/approve|deny|revoke` with `RuntimeApprovalCommandPayload`); fail-closed on transport errors; wired factories `governedToolWithLivePep` + `governedMcpToolWithLivePep` + `governedMastraToolWithLivePep` + `governedLangGraphToolWithLivePep`; 18 new tests, SDK suite 55/55, typecheck 0). Remaining: engine decision-endpoint mount, L3/external validation | Framework tool calls map to canonical requests (DONE); PEP cannot be bypassed (hook-level DONE for AI SDK/MCP/Mastra/LangGraph; live transport DONE — engine decision-endpoint mount + L3/external pending) |
 | BLK-E-07 | E7 adapter certification levels | **Registry published 2026-08-02** (`ADAPTER-CERTIFICATION.md`: A0–A3, procedure, nonclaims). Remaining: fixtures per adapter | Certification contract (DONE); per-adapter fixture results |
 | BLK-E-08 | E8 developer experience and examples | **DX package DONE 2026-08-05**: `docs/QUICKSTART.md` (SDK + CLI + governance + proofs), `docs/SECURITY-CHECKLIST.md`, `examples/reference-app/` (typed against real SDK/engine/core exports incl. `ApprovalCommandPayload`, `RuntimeApprovalCommandPayload`, `AuthenticatedOperator`, `ApprovalRecord`), `examples/samples/` (sdk-client, governance-policy, proof-verify, cli-headless). Verification was static-trace (bun unavailable in worktree); `bunx tsc --noEmit` pending on an install-capable environment | DX package + security checklist (DONE; tsc pass pending) |
@@ -406,8 +443,8 @@ and signed release artifacts.
 | ID | Blocks | Evidence / gap | Acceptance evidence required |
 |---|---|---|---|
 | BLK-1.0-01 | TUI 1.0 complete | TUI-2.1 freeze not authorized | Runbook Gates 1–10 at the final commit + sign-off |
-| BLK-1.0-02 | CLI 1.0 complete | JSON/exit-code contract frozen via PR #113 (converted-commands table + 0/1/2 scheme; every-command coverage DONE); all three launch adapters certified A1 (PR #118) | CLI 1.0 milestone frozen |
-| BLK-1.0-03 | one production-quality external adapter | **DONE via PRs (codex A1 2026-08-05; claude/gemini A1 2026-08-09 PR #118)**: all three `arcana launch` adapters certified A1 (declaration, `--dry-run`, process supervision, durable evidence, hostile-escape fixtures; no sandbox claim) | Adapter at declared certification level with hostile-escape fixture (DONE: A1/A1/A1, launch-declaration.test.ts + hostile-escape fixtures) |
+| BLK-1.0-02 | CLI 1.0 complete | JSON/exit-code contract frozen via PR #113 (converted-commands table + 0/1/2 scheme; every-command coverage DONE); 11 launch wrappers declare A1 | CLI 1.0 milestone frozen |
+| BLK-1.0-03 | one production-quality external adapter | Eleven `arcana launch` wrappers declare A1 with supervision and durable evidence, but A1 explicitly lacks sandboxing and exact-effect PEP mediation. The earlier register treated declaration-level A1 as sufficient; the current release gate requires live platform evidence and an explicit human decision that A1 is adequate for Arcana 1.0, or one adapter must reach A2/A3. | Live platform evidence plus human acceptance of A1 for 1.0, or one A2/A3 adapter; exact nonclaims preserved |
 | BLK-1.0-04 | signed release artifacts + stable installer/update path | pre-release builds only; **release-flow plan published 2026-08-02** (`docs/FREEZE-RELEASE.md`: verify → freeze/tag → build → sign → installer/update smoke → publish → promote → post-verify) but NOT executed | Signed artifacts, installer/upgrade data-loss tests = 0 |
 | BLK-1.0-05 | mainline promotion | `master`/`origin/master` stale; Phase B/C/D-7/TUI-2 commits not on mainline; promotion step defined in the release-flow plan | `master` fast-forwarded to the verified release commit |
 

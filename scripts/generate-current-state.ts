@@ -258,7 +258,7 @@ function readDocumentedTestTotals() {
 
   return {
     source: "documented",
-    documentedAt: "2026-08-02/03 (docs/STATUS.md Test checkpoint table)",
+    documentedAt: `${VERIFICATION_DATE} (docs/STATUS.md current test checkpoint table)`,
     suites: parsed,
     note: "No fresh run was parsed; totals are the documented figures from docs/STATUS.md. Nothing was invented.",
   }

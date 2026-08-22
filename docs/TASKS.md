@@ -211,6 +211,9 @@ Status values: `COMPLETE` (evidence + freeze where required) · `PARTIAL`
 | AUD-56 | Consolidate the external/human gate register with exact owner/artifact/evidence per gate (TLS, live Linux, live exercises, TUI matrices, F13, L3, license, Node freeze, Phase F freeze, Arcana 1.0 sign-off) — DONE (`docs/BLOCKERS.md`) | — | All owners |
 | AUD-57 | Obtain the explicit human freeze sign-off for TUI-2.1 (required before the milestone tag) | TUI-2.1 | Maintainer + operator |
 | AUD-58 | Create the immutable TUI-2.1 milestone tag at the verified exact final commit after human sign-off (release-flow Phase 1) | TUI-2.1 | Maintainer |
+| AUD-59 | Implement independent goal completion verifier: deterministic gate (obligations, contract resolution, trace integrity, execution receipts) + bounded model verifier (temperature=0, no tools, Zod output schema, evidence ref validation) + goal state machine (complete_pending_verify, verified/rejected/error) + archive-on-verify + legacy state migration — WORKING TREE (2026-08-22) | BLK-GOAL-01 | Engineering |
+| AUD-60 | Implement reserved memory keys: `isReservedMemoryKey()` filter rejecting `active.*`/`goal.*` roots at write time, FACTS.md/cloud sync/prompt/search/CLI merge filtering — WORKING TREE (2026-08-22) | BLK-GOAL-02 | Engineering |
+| AUD-61 | Restore the full TUI and focused engine/core suites to green; the 42 TUI failures reproduce under pinned Bun 1.3.14 and Bun 1.4.0, so resolve or classify them as worktree/test-isolation regressions before exact-commit verification | BLK-TUI-08 | Engineering |
 
 ## Phase traceability
 

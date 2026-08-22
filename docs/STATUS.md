@@ -4,7 +4,7 @@ authority: current_status
 status: current
 status_source: self
 implementation_checkpoint: fb7c1968
-documentation_reconciliation_commit: pending-2026-08-22-reconciliation
+documentation_reconciliation_commit: d21c5e3e
 current_branch_at_publication: arcanagov
 last_verified: 2026-08-22
 supersedes: status claims inside Arcana_Project_Master_Specification.md Parts I-III
@@ -27,11 +27,11 @@ secondary; never edit the mirror independently.
 |---|---|
 | Current implementation branch | `arcanagov` |
 | Implementation checkpoint | `fb7c1968` (2026-08-21; 161 commits after the prior `f3c935e6` checkpoint) |
-| Documentation reconciliation commit | Pending — this 2026-08-22 working-tree reconciliation |
+| Documentation reconciliation commit | `d21c5e3e` (2026-08-22 status/goal/memory reconciliation) |
 | Uncommitted worktree | Dirty at verification time. Goal-verifier, memory-boundary, session-navigation, and related tests are present but not yet committed; their evidence is labeled working-tree evidence below. |
 | Default branch (`master` / `origin/master`) | stale — Phase B/C, D-7, TUI-2 milestone commits not on it; mainline promotion pending (post-sign-off release action) |
 | Release version | Source manifests: `0.3.67`; no Arcana 1.0 freeze or production-release claim |
-| Last verification date | 2026-08-22 working tree on Windows with Bun 1.4.0. TUI and engine typechecks pass. The full TUI suite is **not green**: 1,131 pass / 42 fail / 1 skip. Focused engine checks: 225 pass / 4 fail / 18 skip. Focused core/memory checks: 71 pass / 1 teardown-hook failure. The repository pins Bun 1.3.14, so a pinned-runtime rerun is required before classifying runtime-version skew versus regressions. |
+| Last verification date | 2026-08-22 working tree on Windows. The pinned Bun 1.3.14 TUI run is **not green**: 1,132 pass / 42 fail / 1 skip; Bun 1.4.0 independently reproduced 42 failures. TUI and engine typechecks pass. Focused engine checks: 225 pass / 4 fail / 18 skip. Focused core/memory checks: 71 pass / 1 teardown-hook failure. |
 | Supported platforms | Windows 10/11 (primary, tested); Linux (D-6A-L identity scaffold; live validation pending) |
 | Performance audit | 2026-08-20 — 7 critical, 14 medium, 18 low issues identified; see Performance Audit section below |
 
@@ -47,7 +47,7 @@ secondary; never edit the mirror independently.
 | Phase F — Enterprise Control Plane | Service-core implementation: HIGH — F1–F13 cores implemented and mounted (`/api/enterprise/*` + SDK client: orgs, RBAC, fleet + rings + diagnostics, approvals + escalation, policy promotion/drafts, audit archive, security ops + anomaly, governance, reliability, federation + routing + revocation transport, SIEM, ticketing, webhooks, metering + usage export, entitlements, escalation + auditor consoles). Production mounting: SUBSTANTIAL. Secure production boundary: RESOLVED 2026-08-03 (BLK-F-AUTH-01 fixed and merged via PR #53; enterprise HTTP auth-boundary suite green). Release readiness: BLOCKED — remaining operator console work, live exercises, external assessment (F13) pending |
 | TUI-1 | Historical independent tag (`arcana-tui-1-governance-observability`); not in current branch ancestry |
 | TUI-2 — Interactive Authority Control | FROZEN (`arcana-tui-2-interactive-authority-control`) |
-| TUI-2.1 — Production Integration + Polish | MOUNTED; freeze NOT AUTHORIZED. The Aug. 15–21 wave added durable/idempotent prompt delivery, scoped remembered permissions, configurable governance routing, subagent progress/navigation, rendering-lifecycle fixes, custom providers, voice hold gating, and recorder hardening. The 2026-08-22 full TUI working-tree run has 42 failures, so the former “automated green” claim is historical only. Remaining: regressions, pinned-Bun rerun, manual validation, exact-commit evidence, and human freeze sign-off. |
+| TUI-2.1 — Production Integration + Polish | MOUNTED; freeze NOT AUTHORIZED. The Aug. 15–21 wave added durable/idempotent prompt delivery, scoped remembered permissions, configurable governance routing, subagent progress/navigation, rendering-lifecycle fixes, custom providers, voice hold gating, and recorder hardening. The 2026-08-22 pinned-runtime TUI working-tree run has 42 failures, so the former “automated green” claim is historical only. Remaining: regressions, manual validation, exact-commit evidence, and human freeze sign-off. |
 
 ## Development wave since the previous checkpoint (2026-08-15–21)
 
@@ -224,8 +224,8 @@ or independently validated production adapter exists.
 
 | Gate | Result |
 |---|---|
-| Runtime | Bun 1.4.0 on Windows; repository pin is Bun 1.3.14, so pinned-runtime reproduction remains required |
-| TUI suite | **1131 pass / 1 skip / 42 fail (1174 tests)**. Failures cluster in SDK/project test-provider setup, renderer interaction tests, and voice/module isolation. Not release-green. |
+| Runtime | Pinned Bun 1.3.14 on Windows; a Bun 1.4.0 corroboration run reproduced the same 42-failure count |
+| TUI suite | **1132 pass / 1 skip / 42 fail (1175 tests)** under Bun 1.3.14. Failures cluster in SDK/project test-provider setup, renderer interaction tests, voice/module isolation, and one teardown hook. Not release-green. |
 | Focused TUI regressions | 167 pass / 0 skip / 1 fail; the same run also reported 1 module-loader error across voice, prompt queue, shimmer, turn lifecycle, navigation, mapper, receipt, and subagent UX tests |
 | Focused engine regressions | 225 pass / 18 skip / 4 fail. Goal verifier, memory prompt boundary, scoped permissions, launch declarations, and prompt dedup checks pass; one HTTP timeout, one queued-static-reply failure, and two task empty-output timeout failures remain. |
 | Focused core + memory regressions | 71 pass / 0 skip / 1 fail; the failure is a suite teardown-hook timeout after the individual tests pass |
@@ -378,9 +378,9 @@ or leaking across sessions.
 
 ## Release blockers
 
-1. Restore the full TUI and focused engine/core suites to green under the
-   pinned Bun runtime, then classify and close any remaining runtime-skew or
-   isolation failures.
+1. Restore the full TUI and focused engine/core suites to green; the 42 TUI
+   failures reproduce under both pinned Bun 1.3.14 and Bun 1.4.0 and therefore
+   cannot be dismissed as runtime-version skew.
 2. TUI-2.1 freeze gates: 11-phase manual smoke, width matrix, dark/light theme
    matrix, approval lifecycle observation, restart recovery, session
    isolation, performance measurements, 6-checkpoint live stream protocol.
