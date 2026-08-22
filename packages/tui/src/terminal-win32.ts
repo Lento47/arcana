@@ -3,6 +3,9 @@ import type { ReadStream } from "node:tty"
 
 const STD_INPUT_HANDLE = -10
 const ENABLE_PROCESSED_INPUT = 0x0001
+const VK_MENU = 0x12
+const VK_LMENU = 0xa4
+const VK_RMENU = 0xa5
 
 const kernel = () =>
   dlopen("kernel32.dll", {
@@ -12,13 +15,46 @@ const kernel = () =>
     FlushConsoleInputBuffer: { args: ["ptr"], returns: "i32" },
   })
 
+const user = () =>
+  dlopen("user32.dll", {
+    GetAsyncKeyState: { args: ["i32"], returns: "i32" },
+  })
+
 let k32: ReturnType<typeof kernel> | undefined
+let u32: ReturnType<typeof user> | undefined
 
 function load() {
   if (process.platform !== "win32") return false
   try {
     k32 ??= kernel()
     return true
+  } catch {
+    return false
+  }
+}
+
+function loadUser() {
+  if (process.platform !== "win32") return false
+  try {
+    u32 ??= user()
+    return true
+  } catch {
+    return false
+  }
+}
+
+function keyDown(vk: number): boolean {
+  const fn = u32?.symbols.GetAsyncKeyState
+  if (typeof fn !== "function") return false
+  return (fn(vk) & 0x8000) !== 0
+}
+
+/** True while either Alt key is physically down (Windows). Terminals often omit Alt. */
+export function win32AltKeyDown(): boolean {
+  if (process.platform !== "win32") return false
+  if (!loadUser()) return false
+  try {
+    return keyDown(VK_MENU) || keyDown(VK_LMENU) || keyDown(VK_RMENU)
   } catch {
     return false
   }

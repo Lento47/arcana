@@ -12,7 +12,7 @@ test("replaces {text} in the prompt template", async () => {
       }),
     )
   })
-  globalThis.fetch = fetchMock
+  globalThis.fetch = fetchMock as unknown as typeof fetch
 
   const result = await normalize("hello world", {
     provider: "ollama",
@@ -44,7 +44,7 @@ test("throws on empty response", async () => {
         headers: { "Content-Type": "application/json" },
       }),
     ),
-  )
+  ) as unknown as typeof fetch
 
   await expect(
     normalize("hello", {

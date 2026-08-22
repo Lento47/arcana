@@ -1,4 +1,5 @@
 import { createSignal } from "solid-js"
+import { unlink } from "node:fs/promises"
 import type { Voice } from "../config"
 import type { useToast } from "../ui/toast"
 import * as Recorder from "./recorder"
@@ -14,6 +15,7 @@ export type VoiceLexicon = {
   transcribe: string
   normalize: string
   send: string
+  disabled: string
   error: string
 }
 
@@ -30,22 +32,30 @@ export function createVoiceOrchestrator(input: {
   toast: ToastAPI
   lexicon: () => VoiceLexicon
   onResult: (text: string, autoSubmit: boolean) => void
+  onStatusChange?: (status: VoiceStatus) => void
 }): VoiceOrchestrator {
   const [status, setStatus] = createSignal<VoiceStatus>("idle")
   const [error, setError] = createSignal<string | null>(null)
 
   let abortController: AbortController | null = null
   let recordingPromise: Promise<string> | null = null
+  let starting = false
+
+  function notifyStatus(next: VoiceStatus) {
+    setStatus(next)
+    input.onStatusChange?.(next)
+  }
 
   function setIdle() {
-    setStatus("idle")
+    notifyStatus("idle")
     abortController = null
     recordingPromise = null
+    starting = false
   }
 
   function showError(message: string) {
     setError(message)
-    setStatus("error")
+    notifyStatus("error")
     input.toast.show({
       message: `${input.lexicon().error}: ${message}`,
       variant: "error",
@@ -57,17 +67,13 @@ export function createVoiceOrchestrator(input: {
     const cfg = input.config()
     if (!cfg.enabled) {
       input.toast.show({
-        message: "Voice input is not enabled. Set `voice.enabled` to true.",
+        message: input.lexicon().disabled,
         variant: "info",
       })
       return
     }
 
-    if (status() === "recording") {
-      // Toggle: stop the recording and continue the pipeline.
-      await stop()
-      return
-    }
+    if (starting || status() === "recording") return
 
     if (status() !== "idle" && status() !== "error") {
       // Busy in another stage; ignore the keypress.
@@ -75,54 +81,106 @@ export function createVoiceOrchestrator(input: {
     }
 
     setError(null)
-    setStatus("recording")
-    input.toast.show({ message: `${input.lexicon().listen}…`, variant: "info" })
+    notifyStatus("recording")
+    starting = true
     abortController = new AbortController()
+    const captureAbort = abortController
 
-    const recorder = await Recorder.detectRecorder(cfg.recorder)
-    if (!recorder) {
-      showError(
-        "No microphone recorder found. Install ffmpeg/sox/arecord/rec or set `voice.recorder.binary`.",
-      )
-      setIdle()
-      return
-    }
-
-    // Fire-and-forget: the recorder process runs until stop() aborts the signal.
-    recordingPromise = Recorder.record(recorder, abortController.signal).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error)
-      if (!message.toLowerCase().includes("cancelled") && !message.toLowerCase().includes("abort")) {
-        showError(message)
+    try {
+      const recorder = await Recorder.detectRecorder(cfg.recorder)
+      if (captureAbort.signal.aborted) {
+        setIdle()
+        return
       }
+      if (!recorder) {
+        showError(
+          "No microphone recorder found. Install ffmpeg/sox/arecord/rec or set `voice.recorder.binary`.",
+        )
+        setIdle()
+        return
+      }
+
+      // Fire-and-forget: the recorder process runs until stop() aborts the signal.
+      // Never rethrow — an unhandled rejection kills the whole TUI (process.exit(1)).
+      recordingPromise = Recorder.record(recorder, captureAbort.signal)
+        .then((path) => {
+          if (!path && !captureAbort.signal.aborted && status() === "recording") {
+            showError("Microphone capture failed. Check ffmpeg can open your recording device.")
+            setIdle()
+          }
+          return path
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error)
+          if (!message.toLowerCase().includes("cancelled") && !message.toLowerCase().includes("abort")) {
+            showError(message)
+          }
+          setIdle()
+          return ""
+        })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      showError(message)
       setIdle()
-      throw error
-    })
+    } finally {
+      starting = false
+    }
   }
 
   async function stop() {
-    if (status() !== "recording" || !recordingPromise || !abortController) {
+    if (status() !== "recording" || !abortController) {
+      return
+    }
+    if (!recordingPromise) {
+      abortController.abort("Voice recording stopped")
+      setIdle()
       return
     }
 
     const cfg = input.config()
+    const recordAbort = abortController
+    const pipelineAbort = new AbortController()
+    abortController = pipelineAbort
 
-    // End the recording by aborting the signal; the recorder process exits and
-    // the stored promise resolves with the WAV path.
-    abortController.abort("Voice recording stopped")
+    // Graceful stop: the recorder keeps the WAV and resolves.
+    recordAbort.abort("Voice recording stopped")
 
+    let wavPath = ""
     try {
-      const wavPath = await recordingPromise
-      setStatus("transcribing")
-      const rawText = await Whisper.transcribe(wavPath, cfg.asr as Whisper.WhisperConfig, abortController.signal)
+      wavPath = await recordingPromise
+      if (!wavPath) {
+        setIdle()
+        return
+      }
+      notifyStatus("transcribing")
+      const asr = cfg.asr as Whisper.WhisperConfig
+      const whisperReady = await Whisper.whisperStatus(asr)
+      if (whisperReady.missing.includes("model")) {
+        input.toast.show({
+          message: "Downloading whisper tiny.en (~75MB, once)…",
+          variant: "info",
+          duration: 60_000,
+        })
+      } else {
+        input.toast.show({ message: `${input.lexicon().transcribe}…`, variant: "info", duration: 3000 })
+      }
+      const rawText = await Whisper.transcribe(wavPath, asr, pipelineAbort.signal)
       if (!rawText.trim()) {
         throw new Error("Nothing was heard — try speaking closer to the microphone.")
       }
 
-      setStatus("normalizing")
-      const normalized = await Normalizer.normalize(rawText, cfg.normalizer as Normalizer.NormalizerConfig, abortController.signal)
+      notifyStatus("normalizing")
+      input.toast.show({ message: `${input.lexicon().normalize}…`, variant: "info", duration: 3000 })
+      let promptText = rawText.trim()
+      try {
+        promptText = await Normalizer.normalize(rawText, cfg.normalizer as Normalizer.NormalizerConfig, pipelineAbort.signal)
+      } catch {
+        // superwhisper/s1-mini is preferred, but dictation still submits the ASR text.
+      }
 
       setStatus("sending")
-      input.onResult(normalized, cfg.auto_submit ?? true)
+      input.toast.show({ message: `${input.lexicon().send}…`, variant: "info", duration: 2000 })
+      input.onResult(promptText, cfg.auto_submit ?? true)
       setIdle()
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -130,6 +188,8 @@ export function createVoiceOrchestrator(input: {
         showError(message)
       }
       setIdle()
+    } finally {
+      if (wavPath) void unlink(wavPath).catch(() => {})
     }
   }
 

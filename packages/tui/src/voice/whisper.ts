@@ -2,7 +2,7 @@ import { spawn } from "node:child_process"
 import crypto from "node:crypto"
 import os from "node:os"
 import path from "node:path"
-import { readFile, unlink } from "node:fs/promises"
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises"
 import { which } from "../util/path"
 
 export type WhisperConfig = {
@@ -12,7 +12,26 @@ export type WhisperConfig = {
   language?: string
 }
 
-const BINARY_CANDIDATES = ["whisper-cli", "whisper.cpp", "main"]
+const BINARY_CANDIDATES = ["whisper-cli", "whisper.cpp", "whisper-bin", "main"]
+const MODEL_NAMES = [
+  "ggml-base.en.bin",
+  "ggml-small.en.bin",
+  "ggml-base.bin",
+  "ggml-tiny.en.bin",
+  "ggml-tiny.en-q5_1.bin",
+  "base.bin",
+]
+
+export const DEFAULT_WHISPER_MODEL_NAME = "ggml-tiny.en.bin"
+export const DEFAULT_WHISPER_MODEL_URL =
+  "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin"
+
+export function defaultWhisperModelDir(): string {
+  if (process.platform === "win32") {
+    return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "whisper")
+  }
+  return path.join(os.homedir(), ".local", "share", "whisper")
+}
 
 async function findWhisperBinary(configured?: string): Promise<string | undefined> {
   if (configured?.trim()) {
@@ -24,6 +43,75 @@ async function findWhisperBinary(configured?: string): Promise<string | undefine
     if (resolved) return resolved
   }
   return undefined
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function findWhisperModel(configured?: string, binaryDir?: string): Promise<string | undefined> {
+  if (configured?.trim()) {
+    const resolved = await which(configured.trim())
+    if (resolved) return resolved
+    if (await fileExists(configured.trim())) return configured.trim()
+    return undefined
+  }
+
+  const home = os.homedir()
+  const dirs = [
+    defaultWhisperModelDir(),
+    path.join(home, ".local", "share", "whisper"),
+    path.join(home, ".whisper"),
+    path.join(home, "whisper.cpp", "models"),
+    ...(binaryDir
+      ? [binaryDir, path.join(binaryDir, "models"), path.join(binaryDir, "..", "models")]
+      : []),
+  ]
+  for (const dir of dirs) {
+    for (const name of MODEL_NAMES) {
+      const candidate = path.join(dir, name)
+      if (await fileExists(candidate)) return candidate
+    }
+  }
+  return undefined
+}
+
+export async function downloadWhisperModel(destPath: string, signal?: AbortSignal): Promise<string> {
+  await mkdir(path.dirname(destPath), { recursive: true })
+  const response = await fetch(DEFAULT_WHISPER_MODEL_URL, {
+    signal,
+    redirect: "follow",
+    headers: { "User-Agent": "arcana" },
+  })
+  if (!response.ok) {
+    throw new Error(
+      `Failed to download whisper model (${response.status}). Save ${DEFAULT_WHISPER_MODEL_NAME} to ${path.dirname(destPath)} or set voice.asr.model.`,
+    )
+  }
+  const bytes = Buffer.from(await response.arrayBuffer())
+  if (bytes.byteLength < 1_000_000) {
+    throw new Error("Downloaded whisper model was too small — Hugging Face may have returned an HTML error page.")
+  }
+  const tmp = `${destPath}.partial`
+  await writeFile(tmp, bytes)
+  await rename(tmp, destPath)
+  return destPath
+}
+
+/** Existing ggml/gguf on disk, or download tiny.en (~75MB) once. */
+export async function ensureWhisperModel(
+  configured?: string,
+  signal?: AbortSignal,
+  binaryDir?: string,
+): Promise<string> {
+  const existing = await findWhisperModel(configured, binaryDir)
+  if (existing) return existing
+  return downloadWhisperModel(path.join(defaultWhisperModelDir(), DEFAULT_WHISPER_MODEL_NAME), signal)
 }
 
 /**
@@ -44,10 +132,7 @@ export async function transcribe(
     )
   }
 
-  const model = config.model?.trim()
-  if (!model) {
-    throw new Error("whisper.cpp model path is not configured. Set `voice.asr.model`.")
-  }
+  const model = await ensureWhisperModel(config.model, signal, path.dirname(binary))
 
   const baseName = `arcana-whisper-${crypto.randomUUID()}`
   const tempBase = path.join(os.tmpdir(), baseName)
@@ -136,7 +221,7 @@ export async function whisperStatus(config: WhisperConfig): Promise<{
   missing: ("binary" | "model")[]
 }> {
   const binary = await findWhisperBinary(config.binary)
-  const model = config.model?.trim()
+  const model = await findWhisperModel(config.model, binary ? path.dirname(binary) : undefined)
   const missing: ("binary" | "model")[] = []
   if (!binary) missing.push("binary")
   if (!model) missing.push("model")
