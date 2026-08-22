@@ -43,7 +43,7 @@ check("no state as any", shellSrc.includes("state={runState as any}"), false)
 
 // ─── M3 dead-branch contract ──────────────────────────────────────────
 check("no thinking palette branch", promptSrc.includes('props.state() === "thinking"'), false)
-check("state prop union narrowed", promptSrc.includes('state: () => "idle" | "working" | "stop"'), true)
+check("state prop union includes waiting", promptSrc.includes('state: () => SpinePromptState'), true)
 
 if (failures > 0) {
   console.log(`${failures}/${assertions} S9 assertions FAILED`)

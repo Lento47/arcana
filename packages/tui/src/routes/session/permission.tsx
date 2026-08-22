@@ -18,6 +18,7 @@ import { usePathFormatter } from "../../context/path-format"
 import { SpineGutterSpacer, spineLeadMetrics } from "../../shell/command-spine/spine-lead"
 import { useSpineLayout } from "../../shell/command-spine/use-spine-layout"
 import { SpineRail } from "../../shell/command-spine/spine-rail"
+import { loadGovernanceConfig } from "@arcana/core/governance-config"
 
 type PermissionStage = "permission" | "always" | "reject"
 
@@ -168,6 +169,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   const sync = useSync()
   const [store, setStore] = createStore({
     stage: "permission" as PermissionStage,
+    error: undefined as string | undefined,
   })
   const pathFormatter = usePathFormatter()
 
@@ -186,6 +188,15 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   })
 
   const { theme } = useTheme()
+  const canRemember = createMemo(() => {
+    const directory = props.directory ?? project.instance.directory()
+    const policy = loadGovernanceConfig(directory).config.policy.rememberedPermissions
+    if (policy?.enabled === false) return false
+    const risk = inspectFromMetadata(props.request.metadata)?.risk
+    if (risk === "high" || risk === "critical") return false
+    if (policy?.maxRisk === "LOW" && risk !== "low") return false
+    return true
+  })
 
   return (
     <Switch>
@@ -195,11 +206,19 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
           body={
             <Switch>
               <Match when={props.request.always.length === 1 && props.request.always[0] === "*"}>
-                <TextBody title={"This will allow " + props.request.permission + " until arcana is restarted."} />
+                <TextBody
+                  title={
+                    "This will allow "
+                    + props.request.permission
+                    + " for this workspace and agent across future sessions."
+                  }
+                />
               </Match>
               <Match when={true}>
                 <box paddingLeft={1} gap={1}>
-                  <text fg={theme.textMuted}>This will allow the following patterns until arcana is restarted</text>
+                  <text fg={theme.textMuted}>
+                    This will allow the following patterns for this workspace and agent across future sessions
+                  </text>
                   <box>
                     <For each={props.request.always}>
                       {(pattern) => (
@@ -224,6 +243,8 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               requestID: props.request.id,
               directory: props.directory,
               workspace: project.workspace.current(),
+            }).catch(() => {
+              setStore("error", "Permission was not saved; choose Allow once or try again.")
             })
           }}
         />
@@ -461,9 +482,14 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
                 <box flexDirection="column" minWidth={0}>
                   {current.body}
                   <InspectBody request={props.request} />
+                  <Show when={store.error}>
+                    {(message) => <text fg={theme.error}>{message()}</text>}
+                  </Show>
                 </box>
               }
-              options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
+              options={canRemember()
+                ? { once: "Allow once", always: "Allow always", reject: "Reject" }
+                : { once: "Allow once", reject: "Reject" }}
               // Esc is intentionally NOT mapped on the gate: an accidental
               // Escape must never reject/decline the request. The operator
               // resolves the gate explicitly with ←/→ + Enter (Reject is a

@@ -170,6 +170,7 @@ export default {
         CREATE TABLE \`permission\` (
           \`id\` text PRIMARY KEY,
           \`project_id\` text NOT NULL,
+          \`agent_id\` text DEFAULT 'build' NOT NULL,
           \`action\` text NOT NULL,
           \`resource\` text NOT NULL,
           \`time_created\` integer NOT NULL,
@@ -458,7 +459,7 @@ export default {
       yield* tx.run(`CREATE INDEX \`audit_session_idx\` ON \`audit_event\` (\`session_id\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`event_aggregate_seq_idx\` ON \`event\` (\`aggregate_id\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`event_aggregate_type_seq_idx\` ON \`event\` (\`aggregate_id\`,\`type\`,\`seq\`);`)
-      yield* tx.run(`CREATE UNIQUE INDEX \`permission_project_action_resource_idx\` ON \`permission\` (\`project_id\`,\`action\`,\`resource\`);`)
+      yield* tx.run(`CREATE UNIQUE INDEX \`permission_project_agent_action_resource_idx\` ON \`permission\` (\`project_id\`,\`agent_id\`,\`action\`,\`resource\`);`)
       yield* tx.run(`CREATE INDEX \`message_session_time_created_id_idx\` ON \`message\` (\`session_id\`,\`time_created\`,\`id\`);`)
       yield* tx.run(`CREATE INDEX \`part_message_id_id_idx\` ON \`part\` (\`message_id\`,\`id\`);`)
       yield* tx.run(`CREATE INDEX \`part_session_idx\` ON \`part\` (\`session_id\`);`)

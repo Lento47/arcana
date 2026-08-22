@@ -30,6 +30,10 @@ describe("governance config", () => {
     expect(DEFAULT_GOVERNANCE_CONFIG.policy.localFallbackAllowed).toBe(true)
     expect(DEFAULT_GOVERNANCE_CONFIG.policy.autoAllowBenign).toBe(true)
     expect(DEFAULT_GOVERNANCE_CONFIG.policy.classifierMode).toBe("signals")
+    expect(DEFAULT_GOVERNANCE_CONFIG.policy.rememberedPermissions).toEqual({
+      enabled: true,
+      maxRisk: "MODERATE",
+    })
     expect(shouldShowGovernanceEvent(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(false)
     expect(shouldForwardGovernanceEventToDesktop(DEFAULT_GOVERNANCE_CONFIG, "authorization.allowed")).toBe(true)
     expect(shouldForwardGovernanceEventToDesktop(DEFAULT_GOVERNANCE_CONFIG, "permission.allowed")).toBe(true)
@@ -93,6 +97,18 @@ describe("governance config", () => {
       policy: { approvalRoute: "DESKTOP_REQUIRED" },
     })
     expect(resolved?.policy.autoAllowBenign).toBe(false)
+  })
+
+  test("remembered permissions can be disabled or limited to low-risk requests", () => {
+    const strict = normalizeGovernanceConfig({
+      policy: { rememberedPermissions: { enabled: false, maxRisk: "LOW" } },
+    })
+    expect(strict.policy.rememberedPermissions).toEqual({ enabled: false, maxRisk: "LOW" })
+
+    const resolved = resolveGovernanceConfig(strict, {
+      policy: { rememberedPermissions: { enabled: true } },
+    })
+    expect(resolved?.policy.rememberedPermissions).toEqual({ enabled: true, maxRisk: "LOW" })
   })
 
   test("applies exact, prefix, trailing-star, and catch-all display filters", () => {

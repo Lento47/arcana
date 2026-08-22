@@ -11309,10 +11309,21 @@ export class Saved extends HeyApiClient {
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
       projectID?: string
+      agentID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "projectID" }] }])
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "projectID" },
+            { in: "query", key: "agentID" },
+          ],
+        },
+      ],
+    )
     return (options?.client ?? this.client).get<
       V2PermissionSavedListResponses,
       V2PermissionSavedListErrors,

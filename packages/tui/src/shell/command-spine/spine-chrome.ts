@@ -285,8 +285,9 @@ export function chatCardChrome(input: {
   }
 }
 
-export function promptBarState(state: "idle" | "working" | "stop") {
+export function promptBarState(state: "idle" | "working" | "waiting" | "stop") {
   if (state === "working") return { pulse: true, label: "working", hint: "" }
+  if (state === "waiting") return { pulse: false, label: "waiting", hint: "approval" }
   if (state === "stop") return { pulse: false, label: "stop", hint: "halted" }
   return { pulse: false, label: "idle", hint: "" }
 }

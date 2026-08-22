@@ -401,7 +401,8 @@ export const {
           break
         }
 
-        case "permission.asked": {
+        case "permission.asked":
+        case "permission.routed": {
           const request = event.properties
           const requests = store.permission[request.sessionID]
           if (!requests) {

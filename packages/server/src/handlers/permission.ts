@@ -46,6 +46,7 @@ export const PermissionHandler = HttpApiBuilder.group(Api, "server.permission", 
           return {
             data: yield* (yield* PermissionSaved.Service).list({
               projectID: ctx.query.projectID ?? location.project.id,
+              agentID: ctx.query.agentID,
             }),
           }
         }),
@@ -53,7 +54,10 @@ export const PermissionHandler = HttpApiBuilder.group(Api, "server.permission", 
       .handle(
         "permission.saved.remove",
         Effect.fn(function* (ctx) {
-          yield* (yield* PermissionSaved.Service).remove(ctx.params.id)
+          const location = yield* Location.Service
+          const saved = yield* PermissionSaved.Service
+          const owned = (yield* saved.list({ projectID: location.project.id })).some((item) => item.id === ctx.params.id)
+          if (owned) yield* saved.remove(ctx.params.id)
           return HttpApiSchema.NoContent.make()
         }),
       )

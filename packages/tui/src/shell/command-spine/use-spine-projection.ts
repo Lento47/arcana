@@ -10,7 +10,7 @@ import { shouldShowGovernanceEvent } from "@arcana/core/governance-config"
 import { spineProseWidth, spineGutterDigits, type SpineLayout, type SpineEntry } from "./spine-types"
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
 import { buildStatusSegments } from "./spine-segments"
-import { pendingGateEntries } from "./spine-gates"
+import { isLocalPermissionRequest, pendingGateEntries } from "./spine-gates"
 import {
   approvalIdFromEntryID,
   dedupeApprovalEntries,
@@ -344,9 +344,10 @@ export function useSpineProjection(props: ShellProps, input: {
 
   // ── Run state for the composer ───────────────────────────────────
   const runState = createMemo(() => {
-    if (gateEntries().length) return "stop"
+    if (props.questions().length || props.permissions().some(isLocalPermissionRequest)) return "stop"
     const sessionStatus = props.sessionStatus?.()
     const statusType = sessionStatus?.type
+    if (statusType === "waiting" || props.permissions().length) return "waiting"
     // Only show "working" when both pending AND session is active.
     // Stale messages without time.completed shouldn't block idle transition.
     // If sessionStatus is undefined, treat session as active (backward compatible).

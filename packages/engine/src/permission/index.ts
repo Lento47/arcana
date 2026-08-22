@@ -3,12 +3,15 @@ import { ConfigPermissionV1 } from "@arcana/core/v1/config/permission"
 import { InstanceState } from "@/effect/instance-state"
 import { Wildcard } from "@arcana/core/util/wildcard"
 import { Context, Deferred, Effect, Layer, Schema } from "effect"
+import { existsSync } from "node:fs"
 import os from "os"
-import path from "path"
-import fs from "fs"
+import path from "node:path"
 import { PermissionV1 } from "@arcana/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { EventV2 } from "@arcana/core/event"
+import { AgentV2 } from "@arcana/core/agent"
+import { ProjectV2 } from "@arcana/core/project"
+import { PermissionSaved } from "@arcana/core/permission/saved"
 import { desktopOnline } from "@/approval/desktop-subscribers"
 import { EventStore } from "@/session/epistemic/event-store"
 import {
@@ -24,10 +27,14 @@ import type { RiskLevel } from "@/execution/action"
 import { enrichInspectOnline } from "@/execution/inspect-online"
 import { noteParkedInstall } from "@/execution/install-notice"
 import { mergeInspectWithClassifier } from "@/execution/inspect-ml"
+import { SessionStatus } from "@/session/status"
 import { Global } from "@arcana/core/global"
+
+const LEGACY_APPROVALS_FILE = path.join(Global.Path.state, "permission-approvals.json")
 
 export const Event = {
   Asked: EventV2.define({ type: "permission.asked", schema: PermissionV1.Request.fields }),
+  Routed: EventV2.define({ type: "permission.routed", schema: PermissionV1.Request.fields }),
   Replied: EventV2.define({
     type: "permission.replied",
     schema: {
@@ -60,7 +67,6 @@ interface PendingEntry {
 
 interface State {
   pending: Map<PermissionV1.ID, PendingEntry>
-  approved: PermissionV1.Rule[]
   // IDs of requests that have already been resolved (approved, rejected, or
   // cascade-rejected). Tracked so a duplicate reply to a resolved request is
   // idempotent (double-Enter, cascade races) without swallowing genuinely
@@ -83,40 +89,24 @@ export function evaluate(permission: string, pattern: string, ...rulesets: Permi
 
 export class Service extends Context.Service<Service, Interface>()("@arcana/Permission") {}
 
-// Persistent approval storage
-const APPROVALS_FILE = path.join(Global.Path.state, "permission-approvals.json")
-
-function loadPersistentApprovals(): PermissionV1.Rule[] {
-  try {
-    if (fs.existsSync(APPROVALS_FILE)) {
-      const data = JSON.parse(fs.readFileSync(APPROVALS_FILE, "utf-8"))
-      if (Array.isArray(data)) return data as PermissionV1.Rule[]
-    }
-  } catch {
-    // Ignore errors — start with empty approvals
-  }
-  return []
-}
-
-function savePersistentApprovals(approvals: PermissionV1.Rule[]): void {
-  try {
-    fs.writeFileSync(APPROVALS_FILE, JSON.stringify(approvals, null, 2))
-  } catch {
-    // Ignore errors — non-critical
-  }
-}
-
 export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const events = yield* EventV2Bridge.Service
     const eventStore = yield* EventStore.Service
+    const saved = yield* PermissionSaved.Service
+    const status = yield* SessionStatus.Service
+    if (existsSync(LEGACY_APPROVALS_FILE)) {
+      yield* Effect.logWarning(
+        "Ignoring legacy machine-global remembered permissions; review and recreate grants for this workspace and agent",
+        { path: LEGACY_APPROVALS_FILE },
+      )
+    }
     const state = yield* InstanceState.make<State>(
       Effect.fn("Permission.state")(function* (ctx) {
         void ctx
         const state = {
           pending: new Map<PermissionV1.ID, PendingEntry>(),
-          approved: loadPersistentApprovals(),
           resolved: new Set<PermissionV1.ID>(),
         }
 
@@ -133,8 +123,60 @@ export const layer = Layer.effect(
       }),
     )
 
+    const rememberedRules = Effect.fn("Permission.rememberedRules")(function* (input: {
+      projectID: ProjectV2.ID
+      agentID: AgentV2.ID
+    }) {
+      return (yield* saved.list(input)).map(
+        (item): PermissionV1.Rule => ({ permission: item.action, pattern: item.resource, action: "allow" }),
+      )
+    })
+
+    const routeFor = (input: {
+      directory: string
+      sessionID: PermissionV1.Request["sessionID"]
+      permission: string
+      risk: ReturnType<typeof riskFromMetadata>
+    }): NonNullable<PermissionV1.Request["routing"]> => {
+      const online = desktopOnline(input.directory)
+      const resolution = resolveApprovalRoute(loadApprovalRoutingPolicy(input.directory), {
+        sessionId: input.sessionID,
+        workspaceId: input.directory,
+        action: input.permission,
+        riskClass: input.risk
+          ? ({ low: "LOW", medium: "MODERATE", high: "HIGH", critical: "CRITICAL" } as const)[input.risk.level]
+          : "LOW",
+        deploymentMode: deploymentModeFromEnv(),
+        desktopOnline: online,
+      })
+      return {
+        route: resolution.route,
+        decisionSurface: resolution.decisionSurface,
+        localFallbackAllowed: resolution.localFallbackAllowed,
+        desktopOnline: resolution.desktopOnline,
+        policyVersion: resolution.policyVersion,
+      }
+    }
+
+    const refreshPermissionStatus = Effect.fn("Permission.refreshStatus")(function* (
+      sessionID: PermissionV1.Request["sessionID"],
+    ) {
+      const { pending } = yield* InstanceState.get(state)
+      const next = Array.from(pending.values()).find((item) => item.info.sessionID === sessionID)
+      if (!next) {
+        yield* status.set(sessionID, { type: "busy" })
+        return
+      }
+      yield* status.set(sessionID, {
+        type: "waiting",
+        reason: "permission",
+        requestID: next.info.id,
+        decisionSurface: next.info.routing?.decisionSurface ?? "LOCAL_TUI",
+      })
+    })
+
     const ask = Effect.fn("Permission.ask")(function* (input: PermissionV1.AskInput) {
-      const { approved, pending } = yield* InstanceState.get(state)
+      const { pending } = yield* InstanceState.get(state)
       const directory = yield* InstanceState.directory
       const governance = loadGovernanceConfig(directory)
       const { ruleset, ...request } = input
@@ -153,6 +195,19 @@ export const layer = Layer.effect(
       const opaqueAttempt = commandLooksLikeOpaqueExec(command)
       const forceInitialAskFromRisk = riskRequiresInitialAsk(engineRisk) || installAttempt || opaqueAttempt
       const forceFreshAskFromRisk = riskRequiresFreshAsk(engineRisk) || installAttempt || opaqueAttempt
+      // Legacy/non-session callers do not carry project identity. Scope their
+      // remembered rules to the active instance directory instead of falling
+      // back to the machine-global project.
+      const projectID = request.projectID ?? ProjectV2.ID.make(directory)
+      const agentID = request.agentID ?? AgentV2.defaultID
+      const rememberedPolicy = governance.config.policy.rememberedPermissions
+      const rememberedEligible =
+        rememberedPolicy?.enabled !== false
+        && !forceFreshAskFromRisk
+        // Missing risk metadata is treated as MODERATE for persistence. It
+        // may pass the default ceiling, but never a LOW-only policy.
+        && (rememberedPolicy?.maxRisk !== "LOW" || engineRisk?.level === "low")
+      const approved = rememberedEligible ? yield* rememberedRules({ projectID, agentID }) : []
       let needsAsk = false
       let benignAutoAllowedAny = false
       // Local-firewall benign: allow by default unless this is an install or
@@ -246,11 +301,14 @@ export const layer = Layer.effect(
       const info: PermissionV1.Request = {
         id,
         sessionID: request.sessionID,
+        projectID,
+        agentID,
         permission: request.permission,
         patterns: request.patterns,
         metadata,
         always: request.always,
         tool: request.tool,
+        routing: routeFor({ directory, sessionID: request.sessionID, permission: request.permission, risk: engineRisk }),
       }
       if (installAttempt) {
         const parkedCommand =
@@ -267,50 +325,45 @@ export const layer = Layer.effect(
         riskReasons: engineRisk?.reasons,
       })
 
-      // A live Arcana Desktop owns the ACTION GATE. Keep the TUI quiet and
-      // let Desktop discover the pending request through /permission. When
-      // no Desktop heartbeat is active, the TUI may decide only if the
-      // workspace routing policy resolves to LOCAL_TUI (LOCAL_TUI default,
-      // or DESKTOP_PREFERRED with local fallback). Under DESKTOP_REQUIRED /
-      // CENTRAL_REQUIRED the gate stays pending for Desktop even during an
-      // outage. This must be the ONLY permission.asked publication.
-      const online = desktopOnline(directory)
-      let localGate = false
-      if (!online) {
-        const policy = loadApprovalRoutingPolicy(directory)
-        const resolution = resolveApprovalRoute(policy, {
-          sessionId: request.sessionID,
-          workspaceId: directory,
-          action: request.permission,
-          riskClass: engineRisk
-            ? ({
-                low: "LOW",
-                medium: "MODERATE",
-                high: "HIGH",
-                critical: "CRITICAL",
-              } as const)[engineRisk.level]
-            : "LOW",
-          deploymentMode: deploymentModeFromEnv(),
-          desktopOnline: false,
-        })
-        localGate = resolution.decisionSurface === "LOCAL_TUI"
-      }
-      if (localGate) {
-        yield* events.publish(Event.Asked, info)
-      }
-
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
       pending.set(id, { info, deferred })
+      yield* events.publish(Event.Asked, info).pipe(
+        Effect.onError(() => Effect.sync(() => pending.delete(id))),
+      )
+      yield* refreshPermissionStatus(info.sessionID)
+
+      const monitorRoute = Effect.gen(function* () {
+        while (true) {
+          yield* Effect.sleep("1 second")
+          const current = pending.get(id)
+          if (!current) return yield* Effect.never
+          if (current.info.routing?.decisionSurface === "LOCAL_TUI") continue
+          const routing = routeFor({
+            directory,
+            sessionID: current.info.sessionID,
+            permission: current.info.permission,
+            risk: riskFromMetadata(current.info.metadata),
+          })
+          if (
+            routing.decisionSurface === current.info.routing?.decisionSurface
+            && routing.desktopOnline === current.info.routing.desktopOnline
+          ) continue
+          current.info = { ...current.info, routing }
+          yield* events.publish(Event.Routed, current.info)
+          yield* refreshPermissionStatus(current.info.sessionID)
+        }
+      })
       return yield* Effect.ensuring(
-        Deferred.await(deferred),
-        Effect.sync(() => {
+        Effect.raceFirst(Deferred.await(deferred), monitorRoute),
+        Effect.gen(function* () {
           pending.delete(id)
+          yield* refreshPermissionStatus(info.sessionID)
         }),
       )
     })
 
     const reply = Effect.fn("Permission.reply")(function* (input: PermissionV1.ReplyInput) {
-      const { approved, pending, resolved } = yield* InstanceState.get(state)
+      const { pending, resolved } = yield* InstanceState.get(state)
       const existing = pending.get(input.requestID)
       // Idempotent: if the request was already resolved (double-Enter, race,
       // cascade reject), return silently — the user's intent was already
@@ -322,15 +375,14 @@ export const layer = Layer.effect(
         return yield* new PermissionV1.NotFoundError({ requestID: input.requestID })
       }
 
-      pending.delete(input.requestID)
-      resolved.add(input.requestID)
-      yield* events.publish(Event.Replied, {
-        sessionID: existing.info.sessionID,
-        requestID: existing.info.id,
-        reply: input.reply,
-      })
-
       if (input.reply === "reject") {
+        pending.delete(input.requestID)
+        resolved.add(input.requestID)
+        yield* events.publish(Event.Replied, {
+          sessionID: existing.info.sessionID,
+          requestID: existing.info.id,
+          reply: input.reply,
+        })
         yield* Deferred.fail(
           existing.deferred,
           input.message
@@ -349,25 +401,55 @@ export const layer = Layer.effect(
           })
           yield* Deferred.fail(item.deferred, new PermissionV1.RejectedError())
         }
+        yield* refreshPermissionStatus(existing.info.sessionID)
         return
       }
 
-      yield* Deferred.succeed(existing.deferred, undefined)
-      if (input.reply === "once") return
+      let effectiveReply = input.reply
+      if (input.reply === "always" && existing.info.always.length) {
+        const governance = loadGovernanceConfig(yield* InstanceState.directory)
+        const risk = riskFromMetadata(existing.info.metadata)
+        const command = typeof existing.info.metadata.command === "string" ? existing.info.metadata.command : ""
+        const maxRisk = governance.config.policy.rememberedPermissions?.maxRisk ?? "MODERATE"
+        const eligible =
+          governance.config.policy.rememberedPermissions?.enabled !== false
+          && !riskRequiresFreshAsk(risk)
+          && !commandLooksLikeInstall(command)
+          && !commandLooksLikeOpaqueExec(command)
+          && (maxRisk !== "LOW" || risk?.level === "low")
+        if (eligible) {
+          yield* saved.add({
+            projectID: existing.info.projectID ?? ProjectV2.ID.global,
+            agentID: existing.info.agentID ?? AgentV2.defaultID,
+            action: existing.info.permission,
+            resources: existing.info.always,
+          })
+        } else effectiveReply = "once"
+      }
+      if (input.reply === "always" && existing.info.always.length === 0) effectiveReply = "once"
 
-      for (const pattern of existing.info.always) {
-        approved.push({
-          permission: existing.info.permission,
-          pattern,
-          action: "allow",
-        })
+      pending.delete(input.requestID)
+      resolved.add(input.requestID)
+      yield* events.publish(Event.Replied, {
+        sessionID: existing.info.sessionID,
+        requestID: existing.info.id,
+        reply: effectiveReply,
+      })
+      yield* Deferred.succeed(existing.deferred, undefined)
+      if (effectiveReply === "once") {
+        yield* refreshPermissionStatus(existing.info.sessionID)
+        return
       }
 
-      // Persist approvals to disk
-      savePersistentApprovals(approved)
+      const approved = yield* rememberedRules({
+        projectID: existing.info.projectID ?? ProjectV2.ID.global,
+        agentID: existing.info.agentID ?? AgentV2.defaultID,
+      })
 
       for (const [id, item] of pending.entries()) {
         if (item.info.sessionID !== existing.info.sessionID) continue
+        if ((item.info.projectID ?? ProjectV2.ID.global) !== (existing.info.projectID ?? ProjectV2.ID.global)) continue
+        if ((item.info.agentID ?? AgentV2.defaultID) !== (existing.info.agentID ?? AgentV2.defaultID)) continue
         const ok = item.info.patterns.every(
           (pattern) => evaluate(item.info.permission, pattern, approved).action === "allow",
         )
@@ -381,6 +463,7 @@ export const layer = Layer.effect(
         })
         yield* Deferred.succeed(item.deferred, undefined)
       }
+      yield* refreshPermissionStatus(existing.info.sessionID)
     })
 
     const list = Effect.fn("Permission.list")(function* () {
@@ -514,10 +597,12 @@ export function disabled(tools: string[], ruleset: PermissionV1.Ruleset): Set<st
 }
 
 export const defaultLayer = layer.pipe(
+  Layer.provide(PermissionSaved.defaultLayer),
+  Layer.provide(SessionStatus.defaultLayer),
   Layer.provide(EventStore.defaultLayer),
   Layer.provide(EventV2Bridge.defaultLayer),
 )
 
-export const node = LayerNode.make(layer, [EventV2Bridge.node, EventStore.node])
+export const node = LayerNode.make(layer, [EventV2Bridge.node, EventStore.node, PermissionSaved.node, SessionStatus.node])
 
 export * as Permission from "."

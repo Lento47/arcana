@@ -1,11 +1,13 @@
 import { TextAttributes } from "@opentui/core"
-import { For, Show, createMemo } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
+import type { PermissionSavedInfo } from "@arcana/sdk/v2"
 import { createStore } from "solid-js/store"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { useSync } from "../context/sync"
 import { useRoute } from "../context/route"
 import { useSDK } from "../context/sdk"
+import { useToast } from "../ui/toast"
 import { resendApproval } from "../util/approval-resend"
 import {
   approvalActivityRow,
@@ -47,10 +49,38 @@ export function DialogPermissions() {
   const sync = useSync()
   const route = useRoute()
   const sdk = useSDK()
+  const toast = useToast()
   const { theme } = useTheme()
   const dialog = useDialog()
 
   const sessionID = createMemo(() => (route.data.type === "session" ? route.data.sessionID : undefined))
+  const projectID = createMemo(() => {
+    const id = sessionID()
+    return id ? sync.data.session?.find((session) => session.id === id)?.projectID : undefined
+  })
+  const [remembered, setRemembered] = createSignal<PermissionSavedInfo[]>([])
+
+  const refreshRemembered = async (id: string) => {
+    const response = await sdk.client.v2.permission.saved.list({ projectID: id }, { throwOnError: true })
+    setRemembered(response.data.data)
+  }
+
+  createEffect(() => {
+    const id = projectID()
+    if (id) void refreshRemembered(id).catch(() => setRemembered([]))
+    else setRemembered([])
+  })
+
+  const revokeRemembered = async (id: string) => {
+    try {
+      await sdk.client.v2.permission.saved.remove({ id }, { throwOnError: true })
+      const project = projectID()
+      if (project) await refreshRemembered(project)
+      toast.show({ message: "Remembered permission revoked", variant: "success" })
+    } catch {
+      toast.show({ message: "Could not revoke remembered permission", variant: "error" })
+    }
+  }
 
   // Scope durable approvals to the active session when one is open; on the
   // home route show every pending approval (all of it is operator work).
@@ -234,6 +264,30 @@ export function DialogPermissions() {
                 </box>
               )
             }}
+          </For>
+        </Show>
+      </box>
+
+      <box flexDirection="column" gap={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          Remembered permissions
+        </text>
+        <Show when={remembered().length > 0} fallback={<text fg={theme.textMuted}>No remembered permissions.</text>}>
+          <For each={remembered()}>
+            {(rule) => (
+              <box flexDirection="row" gap={1}>
+                <text fg={theme.text} wrapMode="word">
+                  {rule.agentID} · {rule.action} · {rule.resource}
+                </text>
+                <text
+                  fg={theme.textMuted}
+                  attributes={TextAttributes.UNDERLINE}
+                  onMouseUp={() => void revokeRemembered(rule.id)}
+                >
+                  [revoke]
+                </text>
+              </box>
+            )}
           </For>
         </Show>
       </box>

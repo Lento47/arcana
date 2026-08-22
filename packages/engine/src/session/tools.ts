@@ -24,6 +24,7 @@ import { EffectBridge } from "@/effect/bridge"
 import { InstanceRef } from "@/effect/instance-ref"
 import { InstanceStore } from "@/project/instance-store"
 import { ModelV2 } from "@arcana/core/model"
+import { AgentV2 } from "@arcana/core/agent"
 import { withToolAdmission } from "@/tool/batch"
 import { checkGoalToolGate } from "@arcana/core/session/goal"
 import { buildAuthorizationRequest } from "@arcana/core/capability/pep-integration"
@@ -45,6 +46,7 @@ import { formatInspectSummary, inspectEffect } from "@/execution/inspect"
 import { loadApprovalRoutingPolicy, deploymentModeFromEnv, resolveApprovalRoute } from "@/approval/routing"
 import { desktopOnline } from "@/approval/desktop-subscribers"
 import { EventStore } from "./epistemic/event-store"
+import { SessionStatus } from "./status"
 import type { ArcanaEvent } from "@arcana/core/epistemic/event"
 import { IntentRuntime, type IntentAuthority } from "./intent-runtime"
 
@@ -531,6 +533,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const budget = yield* SessionBudget.Service
   const events = yield* EventV2Bridge.Service
   const eventStore = yield* EventStore.Service
+  const sessionStatus = yield* SessionStatus.Service
 
   // GOVERNANCE EVIDENCE BOUNDARY: every production PEP decision must enter the
   // durable hash-chained EventStore. Passing no emitter keeps enforcement live
@@ -561,6 +564,63 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       ),
       Effect.catch(() => Effect.void),
     )
+
+  const approvalSurface = (approval: ScopedApproval) => {
+    if (approval.route === "CENTRAL_REQUIRED") return "CENTRAL" as const
+    if (approval.route === "LOCAL_TUI" || !approval.route) return "LOCAL_TUI" as const
+    const online = desktopOnline(input.processor.message.path?.cwd ?? input.session.directory)
+    if (approval.route === "DESKTOP_REQUIRED") return online ? ("DESKTOP" as const) : ("PENDING" as const)
+    return online
+      ? ("DESKTOP" as const)
+      : approval.localFallbackAllowed !== false
+        ? ("LOCAL_TUI" as const)
+        : ("PENDING" as const)
+  }
+
+  const awaitApprovalDecision = Effect.fn("SessionTools.awaitApprovalDecision")(function* (args: {
+    gate: ApprovalGate
+    approval: ScopedApproval
+    store: SqliteScopedApprovalStore
+  }) {
+    const remaining = Math.max(0, Date.parse(args.approval.expiresAt) - Date.now())
+    yield* sessionStatus.set(input.session.id, {
+      type: "waiting",
+      reason: "approval",
+      requestID: args.approval.id,
+      decisionSurface: approvalSurface(args.approval),
+    })
+    const decision = yield* Effect.promise(() => args.gate.decision).pipe(
+      Effect.timeoutOrElse({
+        duration: `${remaining} millis`,
+        orElse: () => Effect.succeed("expired" as const),
+      }),
+      Effect.onInterrupt(() =>
+        args.store.updateApproval(args.approval.id, {
+          decision: "REJECTED",
+          decidedEventId: `evt-approval-aborted:${args.approval.id}`,
+        }).pipe(
+          Effect.orDie,
+          Effect.andThen(publishApprovalCreated(input.session.id, args.store, args.approval.id)),
+        ),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          parkedApprovals.delete(args.approval.id)
+        }),
+      ),
+    )
+    if (decision === "expired") {
+      yield* args.store.updateApproval(args.approval.id, {
+        decision: "EXPIRED",
+        decidedEventId: `evt-approval-expired:${args.approval.id}`,
+      }).pipe(Effect.orDie)
+      yield* publishApprovalCreated(input.session.id, args.store, args.approval.id)
+      yield* sessionStatus.set(input.session.id, { type: "busy" })
+      return "denied" as const
+    }
+    yield* sessionStatus.set(input.session.id, { type: "busy" })
+    return decision
+  })
 
   const sessionMeta = input.session.metadata as Record<string, unknown> | undefined
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
@@ -600,6 +660,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         .ask({
           ...req,
           sessionID: input.session.id,
+          projectID: input.session.projectID,
+          agentID: AgentV2.ID.make(input.agent.name),
           tool: { messageID: input.processor.message.id, callID: options.toolCallId },
           ruleset: Permission.merge(input.agent.permission, input.session.permission ?? []),
         })
@@ -776,7 +838,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     yield* publishApprovalCreated(ctx.sessionID, scopedStore, approvalId)
                     const gate = createApprovalGate()
                     parkedApprovals.set(approvalId, gate)
-                    const decision = yield* Effect.promise(() => gate.decision)
+                    const decision = yield* awaitApprovalDecision({ gate, approval: scoped, store: scopedStore })
                     if (decision === "denied") {
                       return {
                         title: `Denied: ${item.id}`,
@@ -985,7 +1047,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 yield* publishApprovalCreated(ctx.sessionID, mcpScopedStore, approvalId)
                 const gate = createApprovalGate()
                 parkedApprovals.set(approvalId, gate)
-                const decision = yield* Effect.promise(() => gate.decision)
+                const decision = yield* awaitApprovalDecision({ gate, approval: scoped, store: mcpScopedStore })
                 if (decision === "denied") {
                   return mcpToolResult(
                     `DENIED by operator\napproval: ${approvalId}\naction: ${mcpAuthReq.action}\ntool: ${key}`,

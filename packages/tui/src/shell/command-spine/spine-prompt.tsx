@@ -12,13 +12,14 @@ const PROMPT_PULSE_MS = 200
 
 /**
  * S9: the composer marker pulse is signal-driven, so the interval must run
- * only while the session is working and stop in idle/stop, where markerColor
+ * only while the session is working and stop in idle/waiting/stop, where markerColor
  * returns a static color and a running timer would be pure render-thread
- * waste. M3: the SDK SessionStatus union is idle|retry|busy (types.gen.ts:672)
- * — no "thinking" status exists, so the state union and the gate cover
- * exactly the real statuses (the dead thinking palette branch is deleted).
+ * waste. Waiting is engine-authored for permission/approval gates and must
+ * remain visually stable while the operator decides.
  */
-export function pulseActive(state: "idle" | "working" | "stop"): boolean {
+export type SpinePromptState = "idle" | "working" | "waiting" | "stop"
+
+export function pulseActive(state: SpinePromptState): boolean {
   return state === "working"
 }
 
@@ -30,7 +31,7 @@ export function SpinePrompt(props: {
   /** Called after send. May receive the submitted text for optimistic UI. */
   toBottom: (text?: string) => void
   layout: () => SpineLayout
-  state: () => "idle" | "working" | "stop"
+  state: () => SpinePromptState
   /** Session-global gutter width so the composer stays aligned with rows. */
   gutterWidth?: number
 }) {
@@ -62,6 +63,7 @@ export function SpinePrompt(props: {
 
   const markerColor = () => {
     if (props.state() === "stop") return theme.spineFail
+    if (props.state() === "waiting") return theme.warning
     if (props.state() === "working") {
       const pulse = [theme.spineRun, theme.spinePrompt, theme.spineBrand, theme.spinePrompt]
       return pulse[pulseFrame()] ?? theme.spinePrompt

@@ -51,7 +51,10 @@ export type Event =
   | EventSessionError
   | EventModelsDevRefreshed
   | EventGovernanceRecorded
+  | EventSessionStatus
+  | EventSessionIdle
   | EventPermissionAsked
+  | EventPermissionRouted
   | EventPermissionReplied
   | EventPermissionAllowed
   | EventPermissionV2Asked
@@ -75,8 +78,6 @@ export type Event =
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
   | EventProjectUpdated
-  | EventSessionStatus
-  | EventSessionIdle
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
@@ -646,6 +647,34 @@ export type Part =
   | RetryPart
   | CompactionPart
 
+export type SessionStatus =
+  | {
+      type: "idle"
+    }
+  | {
+      type: "retry"
+      attempt: number
+      message: string
+      action?: {
+        reason: string
+        provider: string
+        title: string
+        message: string
+        label: string
+        link?: string
+      }
+      next: number
+    }
+  | {
+      type: "busy"
+    }
+  | {
+      type: "waiting"
+      reason: "permission" | "approval"
+      requestID: string
+      decisionSurface: "LOCAL_TUI" | "DESKTOP" | "CENTRAL" | "PENDING"
+    }
+
 export type Pty = {
   id: string
   title: string
@@ -671,28 +700,6 @@ export type Todo = {
    */
   priority: string
 }
-
-export type SessionStatus =
-  | {
-      type: "idle"
-    }
-  | {
-      type: "retry"
-      attempt: number
-      message: string
-      action?: {
-        reason: string
-        provider: string
-        title: string
-        message: string
-        label: string
-        link?: string
-      }
-      next: number
-    }
-  | {
-      type: "busy"
-    }
 
 export type QuestionOption = {
   /**
@@ -1324,16 +1331,67 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "session.status"
+        properties: {
+          sessionID: string
+          status: SessionStatus
+        }
+      }
+    | {
+        id: string
+        type: "session.idle"
+        properties: {
+          sessionID: string
+        }
+      }
+    | {
+        id: string
         type: "permission.asked"
         properties: {
           id: string
           sessionID: string
+          projectID?: string
+          agentID?: string
           permission: string
           patterns: Array<string>
           metadata: {
             [key: string]: unknown
           }
           always: Array<string>
+          routing?: {
+            route: "LOCAL_TUI" | "DESKTOP_PREFERRED" | "DESKTOP_REQUIRED" | "CENTRAL_REQUIRED"
+            decisionSurface: "LOCAL_TUI" | "DESKTOP" | "CENTRAL" | "PENDING"
+            localFallbackAllowed: boolean
+            desktopOnline: boolean
+            policyVersion: string
+          }
+          tool?: {
+            messageID: string
+            callID: string
+          }
+        }
+      }
+    | {
+        id: string
+        type: "permission.routed"
+        properties: {
+          id: string
+          sessionID: string
+          projectID?: string
+          agentID?: string
+          permission: string
+          patterns: Array<string>
+          metadata: {
+            [key: string]: unknown
+          }
+          always: Array<string>
+          routing?: {
+            route: "LOCAL_TUI" | "DESKTOP_PREFERRED" | "DESKTOP_REQUIRED" | "CENTRAL_REQUIRED"
+            decisionSurface: "LOCAL_TUI" | "DESKTOP" | "CENTRAL" | "PENDING"
+            localFallbackAllowed: boolean
+            desktopOnline: boolean
+            policyVersion: string
+          }
           tool?: {
             messageID: string
             callID: string
@@ -1573,21 +1631,6 @@ export type GlobalEvent = {
             initialized?: number
           }
           sandboxes: Array<string>
-        }
-      }
-    | {
-        id: string
-        type: "session.status"
-        properties: {
-          sessionID: string
-          status: SessionStatus
-        }
-      }
-    | {
-        id: string
-        type: "session.idle"
-        properties: {
-          sessionID: string
         }
       }
     | {
@@ -2742,12 +2785,21 @@ export type NotFoundError = {
 export type PermissionRequest = {
   id: string
   sessionID: string
+  projectID?: string
+  agentID?: string
   permission: string
   patterns: Array<string>
   metadata: {
     [key: string]: unknown
   }
   always: Array<string>
+  routing?: {
+    route: "LOCAL_TUI" | "DESKTOP_PREFERRED" | "DESKTOP_REQUIRED" | "CENTRAL_REQUIRED"
+    decisionSurface: "LOCAL_TUI" | "DESKTOP" | "CENTRAL" | "PENDING"
+    localFallbackAllowed: boolean
+    desktopOnline: boolean
+    policyVersion: string
+  }
   tool?: {
     messageID: string
     callID: string
@@ -4398,6 +4450,7 @@ export type PermissionV2Request = {
 export type PermissionSavedInfo = {
   id: string
   projectID: string
+  agentID: string
   action: string
   resource: string
 }
@@ -5085,18 +5138,72 @@ export type EventGovernanceRecorded = {
   }
 }
 
+export type EventSessionStatus = {
+  id: string
+  type: "session.status"
+  properties: {
+    sessionID: string
+    status: SessionStatus
+  }
+}
+
+export type EventSessionIdle = {
+  id: string
+  type: "session.idle"
+  properties: {
+    sessionID: string
+  }
+}
+
 export type EventPermissionAsked = {
   id: string
   type: "permission.asked"
   properties: {
     id: string
     sessionID: string
+    projectID?: string
+    agentID?: string
     permission: string
     patterns: Array<string>
     metadata: {
       [key: string]: unknown
     }
     always: Array<string>
+    routing?: {
+      route: "LOCAL_TUI" | "DESKTOP_PREFERRED" | "DESKTOP_REQUIRED" | "CENTRAL_REQUIRED"
+      decisionSurface: "LOCAL_TUI" | "DESKTOP" | "CENTRAL" | "PENDING"
+      localFallbackAllowed: boolean
+      desktopOnline: boolean
+      policyVersion: string
+    }
+    tool?: {
+      messageID: string
+      callID: string
+    }
+  }
+}
+
+export type EventPermissionRouted = {
+  id: string
+  type: "permission.routed"
+  properties: {
+    id: string
+    sessionID: string
+    projectID?: string
+    agentID?: string
+    permission: string
+    patterns: Array<string>
+    metadata: {
+      [key: string]: unknown
+    }
+    always: Array<string>
+    routing?: {
+      route: "LOCAL_TUI" | "DESKTOP_PREFERRED" | "DESKTOP_REQUIRED" | "CENTRAL_REQUIRED"
+      decisionSurface: "LOCAL_TUI" | "DESKTOP" | "CENTRAL" | "PENDING"
+      localFallbackAllowed: boolean
+      desktopOnline: boolean
+      policyVersion: string
+    }
     tool?: {
       messageID: string
       callID: string
@@ -5304,23 +5411,6 @@ export type EventProjectUpdated = {
       initialized?: number
     }
     sandboxes: Array<string>
-  }
-}
-
-export type EventSessionStatus = {
-  id: string
-  type: "session.status"
-  properties: {
-    sessionID: string
-    status: SessionStatus
-  }
-}
-
-export type EventSessionIdle = {
-  id: string
-  type: "session.idle"
-  properties: {
-    sessionID: string
   }
 }
 
@@ -16857,6 +16947,7 @@ export type V2PermissionSavedListData = {
   path?: never
   query?: {
     projectID?: string
+    agentID?: string
   }
   url: "/api/permission/saved"
 }

@@ -154,8 +154,8 @@ export const layer = Layer.effect(
       ),
     )
 
-    const savedRules = EffectRuntime.fnUntraced(function* () {
-      return (yield* saved.list({ projectID: location.project.id })).map(
+    const savedRules = EffectRuntime.fnUntraced(function* (agentID: AgentV2.ID) {
+      return (yield* saved.list({ projectID: location.project.id, agentID })).map(
         (item): Rule => ({ action: item.action, resource: item.resource, effect: "allow" }),
       )
     })
@@ -166,8 +166,9 @@ export const layer = Layer.effect(
     ) {
       const session = yield* sessions.get(sessionID)
       if (!session) return yield* new SessionV2.NotFoundError({ sessionID })
-      const agent = yield* agents.resolve(agentID ?? session.agent)
-      return agent?.permissions ?? missingAgentPermissions
+      const resolvedAgentID = agentID ?? session.agent ?? AgentV2.defaultID
+      const agent = yield* agents.resolve(resolvedAgentID)
+      return { agentID: resolvedAgentID, rules: agent?.permissions ?? missingAgentPermissions }
     })
 
     function denied(input: AssertInput, rules: Ruleset) {
@@ -179,12 +180,13 @@ export const layer = Layer.effect(
     }
 
     const evaluateInput = EffectRuntime.fnUntraced(function* (input: AssertInput) {
-      const rules = yield* configured(input.sessionID, input.agent)
+      const configuredResult = yield* configured(input.sessionID, input.agent)
+      const { agentID, rules } = configuredResult
       if (denied(input, rules)) return { effect: "deny" as const, rules }
-      const all = [...rules, ...(yield* savedRules())]
+      const all = [...rules, ...(yield* savedRules(agentID))]
       const effects = input.resources.map((resource) => evaluate(input.action, resource, all).effect)
       const effect: Effect = effects.includes("deny") ? "deny" : effects.includes("ask") ? "ask" : "allow"
-      return { effect, rules: all }
+      return { effect, rules: all, agentID }
     })
 
     function request(input: AssertInput): Request {
@@ -216,7 +218,7 @@ export const layer = Layer.effect(
     const ask = EffectRuntime.fn("PermissionV2.ask")(function* (input: AssertInput) {
       const result = yield* evaluateInput(input)
       const value = request(input)
-      if (result.effect === "ask") yield* create(value, input.agent)
+      if (result.effect === "ask") yield* create(value, result.agentID)
       return { id: value.id, effect: result.effect }
     })
 
@@ -230,7 +232,7 @@ export const layer = Layer.effect(
             })
           }
           if (result.effect === "allow") return
-          const item = yield* create(request(input), input.agent)
+          const item = yield* create(request(input), result.agentID)
           return yield* restore(Deferred.await(item.deferred)).pipe(
             EffectRuntime.ensuring(
               EffectRuntime.sync(() => {
@@ -275,6 +277,7 @@ export const layer = Layer.effect(
           if (input.reply === "always" && existing.request.save?.length) {
             yield* saved.add({
               projectID: location.project.id,
+              agentID: existing.agent ?? AgentV2.defaultID,
               action: existing.request.action,
               resources: existing.request.save,
             })
@@ -283,13 +286,15 @@ export const layer = Layer.effect(
           pending.delete(input.requestID)
           if (input.reply !== "always" || !existing.request.save?.length) return
 
-          const rememberedRules = yield* savedRules()
+          const rememberedRules = yield* savedRules(existing.agent ?? AgentV2.defaultID)
           for (const [id, item] of pending) {
+            if ((item.agent ?? AgentV2.defaultID) !== (existing.agent ?? AgentV2.defaultID)) continue
             const input = { ...item.request }
-            const rules = yield* configured(item.request.sessionID, item.agent).pipe(
+            const configuredResult = yield* configured(item.request.sessionID, item.agent).pipe(
               EffectRuntime.catchTag("Session.NotFoundError", () => EffectRuntime.succeed(undefined)),
             )
-            if (!rules) continue
+            if (!configuredResult) continue
+            const rules = configuredResult.rules
             if (denied(input, rules)) continue
             const effective = [...rules, ...rememberedRules]
             if (

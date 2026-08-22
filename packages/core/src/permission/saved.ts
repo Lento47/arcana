@@ -1,8 +1,10 @@
 export * as PermissionSaved from "./saved"
 
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { Context, Effect, Layer, Schema } from "effect"
+import { AgentV2 } from "../agent"
 import { Database } from "../database/database"
+import { LayerNode } from "../effect/layer-node"
 import { ProjectV2 } from "../project"
 import { withStatics } from "../schema"
 import { Identifier } from "../util/identifier"
@@ -17,6 +19,7 @@ export type ID = typeof ID.Type
 export const Info = Schema.Struct({
   id: ID,
   projectID: ProjectV2.ID,
+  agentID: AgentV2.ID,
   action: Schema.String,
   resource: Schema.String,
 }).annotate({ identifier: "PermissionSaved.Info" })
@@ -24,11 +27,13 @@ export type Info = typeof Info.Type
 
 export const ListInput = Schema.Struct({
   projectID: ProjectV2.ID.pipe(Schema.optional),
+  agentID: AgentV2.ID.pipe(Schema.optional),
 }).annotate({ identifier: "PermissionSaved.ListInput" })
 export type ListInput = typeof ListInput.Type
 
 export const AddInput = Schema.Struct({
   projectID: ProjectV2.ID,
+  agentID: AgentV2.ID,
   action: Schema.String,
   resources: Schema.Array(Schema.String),
 }).annotate({ identifier: "PermissionSaved.AddInput" })
@@ -51,11 +56,25 @@ export const layer = Layer.effect(
       const rows = yield* db
         .select()
         .from(PermissionTable)
-        .where(input?.projectID ? eq(PermissionTable.project_id, input.projectID) : undefined)
+        .where(
+          input?.projectID && input?.agentID
+            ? and(eq(PermissionTable.project_id, input.projectID), eq(PermissionTable.agent_id, input.agentID))
+            : input?.projectID
+              ? eq(PermissionTable.project_id, input.projectID)
+              : input?.agentID
+                ? eq(PermissionTable.agent_id, input.agentID)
+                : undefined,
+        )
         .all()
         .pipe(Effect.orDie)
       return rows.map(
-        (row): Info => ({ id: row.id, projectID: row.project_id, action: row.action, resource: row.resource }),
+        (row): Info => ({
+          id: row.id,
+          projectID: row.project_id,
+          agentID: row.agent_id,
+          action: row.action,
+          resource: row.resource,
+        }),
       )
     })
 
@@ -67,6 +86,7 @@ export const layer = Layer.effect(
           input.resources.map((resource) => ({
             id: ID.create(),
             project_id: input.projectID,
+            agent_id: input.agentID,
             action: input.action,
             resource,
           })),
@@ -85,3 +105,4 @@ export const layer = Layer.effect(
 )
 
 export const defaultLayer = layer.pipe(Layer.provide(Database.defaultLayer))
+export const node = LayerNode.make(layer, [Database.node])

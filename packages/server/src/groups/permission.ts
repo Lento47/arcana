@@ -1,4 +1,5 @@
 import { PermissionV2 } from "@arcana/core/permission"
+import { AgentV2 } from "@arcana/core/agent"
 import { Location } from "@arcana/core/location"
 import { PermissionSaved } from "@arcana/core/permission/saved"
 import { ProjectV2 } from "@arcana/core/project"
@@ -26,7 +27,10 @@ export const PermissionGroup = HttpApiGroup.make("server.permission")
   )
   .add(
     HttpApiEndpoint.get("permission.saved.list", "/api/permission/saved", {
-      query: Schema.Struct({ projectID: ProjectV2.ID.pipe(Schema.optional) }),
+      query: Schema.Struct({
+        projectID: ProjectV2.ID.pipe(Schema.optional),
+        agentID: AgentV2.ID.pipe(Schema.optional),
+      }),
       success: Schema.Struct({ data: Schema.Array(PermissionSaved.Info) }),
     }).annotateMerge(
       OpenApi.annotations({

@@ -32,6 +32,16 @@ function permissionRequest(value: unknown): PermissionRequest | undefined {
   return value as PermissionRequest
 }
 
+export function permissionDecisionSurface(value: unknown): "LOCAL_TUI" | "DESKTOP" | "CENTRAL" | "PENDING" {
+  const routing = asRecord(asRecord(value)?.routing)
+  const surface = asStringTrimmed(routing?.decisionSurface)
+  return surface === "DESKTOP" || surface === "CENTRAL" || surface === "PENDING" ? surface : "LOCAL_TUI"
+}
+
+export function isLocalPermissionRequest(value: unknown): boolean {
+  return permissionDecisionSurface(value) === "LOCAL_TUI"
+}
+
 function questionRequest(value: unknown): QuestionRequest | undefined {
   const record = asRecord(value)
   const id = asStringTrimmed(record?.id)
@@ -49,12 +59,20 @@ function permissionSummary(request: PermissionRequest) {
         ? "Read approval required"
         : `${request.permission} approval required`
   const firstPattern = request.patterns.find((pattern) => pattern && pattern !== "*")
-  return firstPattern ? `${subject}: ${firstPattern}` : subject
+  const summary = firstPattern ? `${subject}: ${firstPattern}` : subject
+  const surface = permissionDecisionSurface(request)
+  return surface === "LOCAL_TUI" ? summary : `${summary} · waiting on ${surface.toLowerCase().replace("_", " ")}`
 }
 
 function permissionBody(request: PermissionRequest) {
   const patterns = request.patterns.length ? request.patterns : ["*"]
-  return [`Permission: ${request.permission}`, "Patterns:", ...patterns.map((pattern) => `- ${pattern}`)].join("\n")
+  const surface = permissionDecisionSurface(request)
+  return [
+    `Permission: ${request.permission}`,
+    `Decision surface: ${surface}`,
+    "Patterns:",
+    ...patterns.map((pattern) => `- ${pattern}`),
+  ].join("\n")
 }
 
 function questionSummary(request: QuestionRequest) {

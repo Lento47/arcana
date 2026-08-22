@@ -242,7 +242,12 @@ describe("PermissionV2", () => {
     Effect.gen(function* () {
       yield* setup()
       const saved = yield* PermissionSaved.Service
-      yield* saved.add({ projectID: Project.ID.global, action: "bash", resources: ["pwd"] })
+      yield* saved.add({
+        projectID: Project.ID.global,
+        agentID: AgentV2.ID.make("test"),
+        action: "bash",
+        resources: ["pwd"],
+      })
 
       const service = yield* PermissionV2.Service
       expect(yield* service.ask(assertion({ action: "bash", resources: ["pwd"] }))).toEqual({
@@ -250,6 +255,19 @@ describe("PermissionV2", () => {
         effect: "allow",
       })
       expect(yield* service.list()).toEqual([])
+
+      const agents = yield* AgentV2.Service
+      yield* agents.update((editor) =>
+        editor.update(AgentV2.ID.make("reviewer"), (agent) => {
+          agent.permissions = []
+        }),
+      )
+      expect(yield* service.ask(assertion({
+        id: PermissionV2.ID.create("per_other_agent"),
+        action: "bash",
+        resources: ["pwd"],
+        agent: AgentV2.ID.make("reviewer"),
+      }))).toMatchObject({ effect: "ask" })
 
       yield* setRules([{ action: "bash", resource: "*", effect: "deny" }])
       expect(yield* service.ask(assertion({ action: "bash", resources: ["pwd"] }))).toEqual({
@@ -297,7 +315,13 @@ describe("PermissionV2", () => {
       ).toMatchObject([{ action: "read", resource: "src/*" }])
       const saved = yield* PermissionSaved.Service
       const id = (yield* saved.list())[0]!.id
-      expect(yield* saved.list()).toEqual([{ id, projectID: Project.ID.global, action: "read", resource: "src/*" }])
+      expect(yield* saved.list()).toEqual([{
+        id,
+        projectID: Project.ID.global,
+        agentID: AgentV2.ID.make("test"),
+        action: "read",
+        resource: "src/*",
+      }])
       yield* service.assert(assertion({ id: PermissionV2.ID.create("per_next"), resources: ["src/next.ts"] }))
       yield* saved.remove(id)
       expect(yield* saved.list()).toEqual([])

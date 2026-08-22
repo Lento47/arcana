@@ -7,9 +7,8 @@
  * contracts that the interval is gated (no persistent onMount interval) and
  * the shell's state pass is typed (no `as any`).
  *
- * M3 prerequisite note: the SDK `SessionStatus` union is idle|retry|busy
- * (types.gen.ts:672) — there is NO "thinking" status to emit, so gating on
- * the existing "working" chain suffices; M3 is not a hard prerequisite.
+ * Permission/approval waits are explicit non-animated states; only active
+ * model work may drive the pulse interval.
  */
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
@@ -30,8 +29,9 @@ describe("pulseActive (M3-narrowed gating predicate)", () => {
     expect(pulseActive("working")).toBe(true)
   })
 
-  test("stopped in idle and stop", () => {
+  test("stopped in idle, waiting, and stop", () => {
     expect(pulseActive("idle")).toBe(false)
+    expect(pulseActive("waiting")).toBe(false)
     expect(pulseActive("stop")).toBe(false)
   })
 })
@@ -60,7 +60,8 @@ describe("M3 dead-branch contract", () => {
     expect(promptSrc).not.toContain('props.state() === "thinking"')
   })
 
-  test("state prop union narrowed to the real statuses", () => {
-    expect(promptSrc).toContain('state: () => "idle" | "working" | "stop"')
+  test("state prop uses the shared lifecycle union including waiting", () => {
+    expect(promptSrc).toContain('export type SpinePromptState = "idle" | "working" | "waiting" | "stop"')
+    expect(promptSrc).toContain("state: () => SpinePromptState")
   })
 })

@@ -38,6 +38,7 @@ export interface DesktopSubscriberRegistry {
     now?: number
   }): DesktopSubscriber
   isOnline(workspaceId: string, now?: number): boolean
+  remove(subscriberId: string): boolean
   /** Remove stale subscribers and return the ids removed. */
   prune(now?: number): string[]
   list(workspaceId?: string, now?: number): DesktopSubscriber[]
@@ -79,6 +80,10 @@ export class ExpiringDesktopSubscriberRegistry implements DesktopSubscriberRegis
       }
     }
     return false
+  }
+
+  remove(subscriberId: string): boolean {
+    return this.subscribers.delete(subscriberId)
   }
 
   prune(now?: number): string[] {

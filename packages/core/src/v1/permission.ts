@@ -2,6 +2,7 @@ export * as PermissionV1 from "./permission"
 
 import { Schema } from "effect"
 import { ProjectV2 } from "../project"
+import { AgentV2 } from "../agent"
 import { withStatics } from "../schema"
 import { SessionSchema } from "../session/schema"
 import { Identifier } from "../util/identifier"
@@ -28,10 +29,19 @@ export type Ruleset = typeof Ruleset.Type
 export const Request = Schema.Struct({
   id: ID,
   sessionID: SessionSchema.ID,
+  projectID: ProjectV2.ID.pipe(Schema.optional),
+  agentID: AgentV2.ID.pipe(Schema.optional),
   permission: Schema.String,
   patterns: Schema.Array(Schema.String),
   metadata: Schema.Record(Schema.String, Schema.Unknown),
   always: Schema.Array(Schema.String),
+  routing: Schema.Struct({
+    route: Schema.Literals(["LOCAL_TUI", "DESKTOP_PREFERRED", "DESKTOP_REQUIRED", "CENTRAL_REQUIRED"]),
+    decisionSurface: Schema.Literals(["LOCAL_TUI", "DESKTOP", "CENTRAL", "PENDING"]),
+    localFallbackAllowed: Schema.Boolean,
+    desktopOnline: Schema.Boolean,
+    policyVersion: Schema.String,
+  }).pipe(Schema.optional),
   tool: Schema.Struct({
     messageID: Schema.String,
     callID: Schema.String,

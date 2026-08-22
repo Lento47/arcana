@@ -247,6 +247,16 @@ describe("SessionStatus.Info", () => {
     expect(decode(input)).toEqual(input)
   })
 
+  test("waiting identifies the gate and decision surface", () => {
+    const input = {
+      type: "waiting" as const,
+      reason: "permission" as const,
+      requestID: "per_test",
+      decisionSurface: "DESKTOP" as const,
+    }
+    expect(decode(input)).toEqual(input)
+  })
+
   test("rejects unknown type", () => {
     expect(() => decode({ type: "bogus" })).toThrow()
   })

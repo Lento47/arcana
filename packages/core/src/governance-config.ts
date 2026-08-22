@@ -25,6 +25,10 @@ export type GovernanceConfig = {
     autoAllowBenign?: boolean
     /** Machine-layer effect classifier: "signals" (default) or "off". */
     classifierMode?: "signals" | "off"
+    rememberedPermissions?: {
+      enabled: boolean
+      maxRisk: "LOW" | "MODERATE"
+    }
   }
 }
 
@@ -73,6 +77,10 @@ export const DEFAULT_GOVERNANCE_CONFIG: GovernanceConfig = {
     // The Signal Engine classifier runs on governed tool asks and can only
     // escalate deterministic findings; it never downgrades them.
     classifierMode: "signals",
+    rememberedPermissions: {
+      enabled: true,
+      maxRisk: "MODERATE",
+    },
   },
 }
 
@@ -102,6 +110,10 @@ type GovernanceOverride = {
     localFallbackAllowed?: boolean
     autoAllowBenign?: boolean
     classifierMode?: "signals" | "off"
+    rememberedPermissions?: {
+      enabled?: boolean
+      maxRisk?: "LOW" | "MODERATE"
+    }
   }
 }
 
@@ -111,6 +123,13 @@ function optionalBoolean(value: unknown): boolean | undefined {
 
 function optionalClassifierMode(value: unknown): "signals" | "off" | undefined {
   return value === "signals" || value === "off" ? value : undefined
+}
+
+function optionalRememberedPermissions(value: unknown): GovernanceOverride["policy"]["rememberedPermissions"] {
+  if (!isRecord(value)) return undefined
+  const maxRisk = value.maxRisk === "LOW" || value.maxRisk === "MODERATE" ? value.maxRisk : undefined
+  const enabled = optionalBoolean(value.enabled)
+  return enabled === undefined && maxRisk === undefined ? undefined : { enabled, maxRisk }
 }
 
 function optionalThreshold(value: unknown): number | undefined {
@@ -163,6 +182,7 @@ function parseGovernanceOverride(input: unknown): GovernanceOverride {
       autoAllowBenign:
         typeof policy.autoAllowBenign === "boolean" ? policy.autoAllowBenign : undefined,
       classifierMode: optionalClassifierMode(policy.classifierMode),
+      rememberedPermissions: optionalRememberedPermissions(policy.rememberedPermissions),
     },
   }
 }
@@ -216,6 +236,16 @@ function mergeConfig(base: GovernanceConfig, override: GovernanceOverride): Gove
       localFallbackAllowed: override.policy.localFallbackAllowed ?? base.policy.localFallbackAllowed,
       autoAllowBenign: override.policy.autoAllowBenign ?? base.policy.autoAllowBenign,
       classifierMode: override.policy.classifierMode ?? base.policy.classifierMode,
+      rememberedPermissions: {
+        enabled:
+          override.policy.rememberedPermissions?.enabled
+          ?? base.policy.rememberedPermissions?.enabled
+          ?? true,
+        maxRisk:
+          override.policy.rememberedPermissions?.maxRisk
+          ?? base.policy.rememberedPermissions?.maxRisk
+          ?? "MODERATE",
+      },
     },
   }
 }

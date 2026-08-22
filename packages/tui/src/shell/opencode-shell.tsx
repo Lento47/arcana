@@ -15,6 +15,7 @@ import { DashBorder } from "../ui/chrome"
 import { useCommandShortcut } from "../keymap"
 import { useOpencodeKeymap } from "../keymap"
 import { usePluginRuntime } from "../plugin/runtime"
+import { isLocalPermissionRequest } from "./command-spine/spine-gates"
 import { useSync } from "../context/sync"
 import type { UserMessage as UserMessageType, AssistantMessage as AssistantMessageType } from "@arcana/sdk/v2"
 import type { ShellProps } from "./types"
@@ -27,6 +28,7 @@ export function OpencodeShell(props: ShellProps) {
   const sync = useSync()
   const pr = usePluginRuntime()
   const Slot = pr.Slot as any
+  const localPermissions = () => props.permissions().filter(isLocalPermissionRequest)
 
   return (
     <Show when={props.session()}>
@@ -154,13 +156,13 @@ export function OpencodeShell(props: ShellProps) {
         </For>
       </scrollbox>
       <box flexShrink={0}>
-        <Show when={props.permissions().length > 0}>
+        <Show when={localPermissions().length > 0}>
           <PermissionPrompt
-            request={props.permissions()[0] as any}
-            directory={(sync.session.get((props.permissions()[0] as any).sessionID) as any)?.directory}
+            request={localPermissions()[0] as any}
+            directory={(sync.session.get((localPermissions()[0] as any).sessionID) as any)?.directory}
           />
         </Show>
-        <Show when={props.permissions().length === 0 && props.questions().length > 0}>
+        <Show when={localPermissions().length === 0 && props.permissions().length === 0 && props.questions().length > 0}>
           <QuestionPrompt
             request={props.questions()[0] as any}
             directory={(sync.session.get((props.questions()[0] as any).sessionID) as any)?.directory}

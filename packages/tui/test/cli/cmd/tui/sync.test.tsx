@@ -197,6 +197,55 @@ describe("tui sync", () => {
     }
   })
 
+  test("permission.routed replaces the pending request with its current decision surface", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(`${tmp.path}/kv.json`, "{}")
+    const { app, emit, sync } = await mount(undefined, tmp.path)
+
+    try {
+      const request = {
+        id: "per_route_1",
+        sessionID: "ses_route_1",
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        always: ["git status"],
+        routing: {
+          route: "DESKTOP_PREFERRED",
+          decisionSurface: "DESKTOP",
+          localFallbackAllowed: true,
+          desktopOnline: true,
+        },
+      }
+      emit({
+        directory: "/tmp/other",
+        project: "proj_test",
+        payload: { id: "evt_permission_asked", type: "permission.asked", properties: request },
+      } as unknown as GlobalEvent)
+      await wait(() => sync.data.permission["ses_route_1"]?.length === 1)
+
+      emit({
+        directory: "/tmp/other",
+        project: "proj_test",
+        payload: {
+          id: "evt_permission_routed",
+          type: "permission.routed",
+          properties: {
+            ...request,
+            routing: { ...request.routing, decisionSurface: "LOCAL_TUI", desktopOnline: false },
+          },
+        },
+      } as unknown as GlobalEvent)
+
+      await wait(
+        () => sync.data.permission["ses_route_1"]?.[0]?.routing?.decisionSurface === "LOCAL_TUI",
+      )
+      expect(sync.data.permission["ses_route_1"]).toHaveLength(1)
+    } finally {
+      app.renderer.destroy()
+    }
+  })
+
   test("part updates, deltas, and removals advance the message part revision", async () => {
     await using tmp = await tmpdir()
     await Bun.write(`${tmp.path}/kv.json`, "{}")

@@ -29,6 +29,12 @@ export const Info = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("busy"),
   }),
+  Schema.Struct({
+    type: Schema.Literal("waiting"),
+    reason: Schema.Literals(["permission", "approval"]),
+    requestID: Schema.String,
+    decisionSurface: Schema.Literals(["LOCAL_TUI", "DESKTOP", "CENTRAL", "PENDING"]),
+  }),
 ]).annotate({ identifier: "SessionStatus" })
 export type Info = Schema.Schema.Type<typeof Info>
 

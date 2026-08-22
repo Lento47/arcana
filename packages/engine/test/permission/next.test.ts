@@ -7,6 +7,7 @@ import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { CrossSpawnSpawner } from "@arcana/core/cross-spawn-spawner"
 import { Database } from "@arcana/core/database/database"
+import { PermissionSaved } from "@arcana/core/permission/saved"
 import { Permission } from "../../src/permission"
 import { InstanceBootstrap } from "../../src/project/bootstrap-service"
 import { InstanceStore } from "../../src/project/instance-store"
@@ -15,13 +16,45 @@ import { desktopSubscriberRegistry } from "../../src/approval/desktop-subscriber
 import { TestInstance, tmpdirScoped } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { MessageID, SessionID } from "../../src/session/schema"
+import { SessionStatus } from "../../src/session/status"
 
 const events = EventV2Bridge.defaultLayer
 const noopBootstrap = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
+const savedRows: PermissionSaved.Info[] = []
+const savedPermissions = Layer.succeed(
+  PermissionSaved.Service,
+  PermissionSaved.Service.of({
+    list: (input) => Effect.succeed(savedRows.filter((row) =>
+      (!input?.projectID || row.projectID === input.projectID)
+      && (!input?.agentID || row.agentID === input.agentID))),
+    add: (input) => Effect.sync(() => {
+      for (const resource of input.resources) {
+        if (savedRows.some((row) =>
+          row.projectID === input.projectID
+          && row.agentID === input.agentID
+          && row.action === input.action
+          && row.resource === resource)) continue
+        savedRows.push({
+          id: PermissionSaved.ID.create(),
+          projectID: input.projectID,
+          agentID: input.agentID,
+          action: input.action,
+          resource,
+        })
+      }
+    }),
+    remove: (id) => Effect.sync(() => {
+      const index = savedRows.findIndex((row) => row.id === id)
+      if (index >= 0) savedRows.splice(index, 1)
+    }),
+  }),
+)
 const env = Layer.mergeAll(
   Permission.layer.pipe(
     Layer.provide(EventStore.defaultLayer),
     Layer.provide(Database.defaultLayer),
+    Layer.provide(savedPermissions),
+    Layer.provide(SessionStatus.defaultLayer),
     Layer.provide(events),
   ),
   events,
@@ -707,7 +740,7 @@ it.instance(
 )
 
 it.instance(
-  "ask - keeps TUI quiet when a desktop subscriber is online",
+  "ask - publishes a visible Desktop-routed request when a desktop subscriber is online",
   () =>
     Effect.gen(function* () {
       const instance = yield* TestInstance
@@ -738,8 +771,8 @@ it.instance(
       }).pipe(Effect.forkScoped)
 
       expect(yield* waitForPending(1)).toHaveLength(1)
-      const outcome = yield* Deferred.await(seen).pipe(Effect.timeoutOption("150 millis"))
-      expect(outcome._tag).toBe("None")
+      const request = yield* Deferred.await(seen).pipe(Effect.timeout("1 second"))
+      expect(request.routing?.decisionSurface).toBe("DESKTOP")
 
       yield* rejectAll()
       yield* Fiber.await(fiber)
@@ -770,8 +803,8 @@ it.instance(
       }).pipe(Effect.forkScoped)
 
       expect(yield* waitForPending(1)).toHaveLength(1)
-      const outcome = yield* Deferred.await(seen).pipe(Effect.timeoutOption("150 millis"))
-      expect(outcome._tag).toBe("None")
+      const request = yield* Deferred.await(seen).pipe(Effect.timeout("1 second"))
+      expect(request.routing?.decisionSurface).toBe("PENDING")
 
       yield* rejectAll()
       yield* Fiber.await(fiber)
@@ -788,6 +821,62 @@ it.instance(
             "policy:",
             "  approvalRoute: DESKTOP_REQUIRED",
             "  localFallbackAllowed: false",
+            "",
+          ].join("\n"),
+          "utf8",
+        )
+      }),
+  },
+)
+
+it.instance(
+  "ask - reroutes DESKTOP_PREFERRED to the TUI when Desktop disconnects",
+  () =>
+    Effect.gen(function* () {
+      const instance = yield* TestInstance
+      const registry = desktopSubscriberRegistry()
+      registry.heartbeat({ subscriberId: "test-desktop-reroute", workspaceId: instance.directory })
+      yield* Effect.addFinalizer(() => Effect.sync(() => registry.remove("test-desktop-reroute")))
+
+      const events = yield* EventV2Bridge.Service
+      const routed = yield* Deferred.make<PermissionV1.Request>()
+      const unsub = yield* events.listen((event) => {
+        if (event.type === Permission.Event.Routed.type) {
+          const request = event.data as PermissionV1.Request
+          if (request.routing?.decisionSurface === "LOCAL_TUI") Deferred.doneUnsafe(routed, Effect.succeed(request))
+        }
+        return Effect.void
+      })
+      yield* Effect.addFinalizer(() => unsub)
+
+      const fiber = yield* ask({
+        sessionID: SessionID.make("session_reroute"),
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: {},
+        always: [],
+        ruleset: [],
+      }).pipe(Effect.forkScoped)
+
+      expect((yield* waitForPending(1))[0]?.routing?.decisionSurface).toBe("DESKTOP")
+      registry.remove("test-desktop-reroute")
+      expect((yield* Deferred.await(routed).pipe(Effect.timeout("3 seconds"))).routing?.decisionSurface).toBe("LOCAL_TUI")
+
+      yield* rejectAll()
+      yield* Fiber.await(fiber)
+    }),
+  {
+    git: true,
+    init: (directory) =>
+      Effect.promise(async () => {
+        await fs.mkdir(path.join(directory, ".arcana"), { recursive: true })
+        await fs.writeFile(
+          path.join(directory, ".arcana", "governance.yml"),
+          [
+            "version: 1",
+            "policy:",
+            "  approvalRoute: DESKTOP_PREFERRED",
+            "  localFallbackAllowed: true",
             "",
           ].join("\n"),
           "utf8",

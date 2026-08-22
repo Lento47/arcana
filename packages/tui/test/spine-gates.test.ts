@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { pendingGateEntries } from "../src/shell/command-spine/spine-gates"
+import {
+  isLocalPermissionRequest,
+  pendingGateEntries,
+  permissionDecisionSurface,
+} from "../src/shell/command-spine/spine-gates"
 
 describe("command-spine pending gates", () => {
   test("permission requests become approve entries", () => {
@@ -66,5 +70,26 @@ describe("command-spine pending gates", () => {
     })
     expect(entries[0]!.body).toContain("1. Risk")
     expect(entries[0]!.body).toContain("- Allow once — Run this command once.")
+  })
+
+  test("remote requests remain visible without becoming local action gates", () => {
+    const request = {
+      id: "perm-remote",
+      sessionID: "sess-1",
+      permission: "bash",
+      patterns: ["deploy *"],
+      metadata: {},
+      always: [],
+      routing: {
+        route: "DESKTOP_REQUIRED",
+        decisionSurface: "PENDING",
+        localFallbackAllowed: false,
+        desktopOnline: false,
+        policyVersion: "1",
+      },
+    }
+    expect(isLocalPermissionRequest(request)).toBe(false)
+    expect(permissionDecisionSurface(request)).toBe("PENDING")
+    expect(pendingGateEntries({ permissions: [request], questions: [] })[0]?.summary).toContain("waiting on pending")
   })
 })

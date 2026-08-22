@@ -4,7 +4,7 @@ import { spineOuterPadding, type SpineLayout } from "./spine-types"
 import type { SpineViewFilter } from "./spine-view-filter"
 import type { PromptRef } from "../../component/prompt"
 import { SubagentFooter } from "../../routes/session/subagent-footer"
-import { SpinePrompt } from "./spine-prompt"
+import { SpinePrompt, type SpinePromptState } from "./spine-prompt"
 
 /**
  * Composer + footer region for the spine: the subagent footer (when inside a
@@ -21,7 +21,7 @@ export function SpineComposer(props: {
   visible: () => boolean
   sessionID: string
   toBottom: (text?: string) => void
-  state: () => "idle" | "working" | "stop"
+  state: () => SpinePromptState
   gutterWidth: number
 }) {
   const { theme } = useTheme()
