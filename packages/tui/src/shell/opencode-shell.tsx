@@ -1,3 +1,8 @@
+/* LEGACY SHELL - selectable via tui.json shell:"opencode".
+ * Command-spine is the primary surface; this chat-style shell remains a
+ * supported config option. Do not remove without a config deprecation.
+ * Primary: ../command-spine/command-spine-shell.tsx
+ */
 import { For, Match, Show, Switch, createSignal } from "solid-js"
 import { useRenderer } from "@opentui/solid"
 import type { ScrollBoxRenderable } from "@opentui/core"
