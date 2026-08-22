@@ -1,0 +1,109 @@
+name: Import external assurance evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_commit:
+        description: "40-character commit assessed by both external parties"
+        required: true
+        type: string
+      manifest_url:
+        description: "HTTPS URL for assurance-manifest.json"
+        required: true
+        type: string
+      l3_attestation_url:
+        description: "HTTPS URL for l3-attestation.json"
+        required: true
+        type: string
+      l4_attestation_url:
+        description: "HTTPS URL for l4-attestation.json"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    environment: assurance
+    steps:
+      - name: Validate requested commit
+        shell: bash
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::candidate_commit must be a full lowercase Git SHA" >&2
+            exit 2
+          }
+
+      - name: Checkout assessed commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Download public assurance attestations
+        shell: bash
+        env:
+          MANIFEST_URL: ${{ inputs.manifest_url }}
+          L3_URL: ${{ inputs.l3_attestation_url }}
+          L4_URL: ${{ inputs.l4_attestation_url }}
+        run: |
+          set -euo pipefail
+          for item in "$MANIFEST_URL" "$L3_URL" "$L4_URL"; do
+            [[ "$item" == https://* ]] || {
+              echo "::error::assurance evidence must be downloaded over HTTPS" >&2
+              exit 2
+            }
+          done
+          curl --fail --show-error --silent --location --proto '=https' --proto-redir '=https' --tlsv1.2 --max-time 60 --max-filesize 10485760 "$MANIFEST_URL" --output assurance-manifest.json
+          curl --fail --show-error --silent --location --proto '=https' --proto-redir '=https' --tlsv1.2 --max-time 60 --max-filesize 10485760 "$L3_URL" --output l3-attestation.json
+          curl --fail --show-error --silent --location --proto '=https' --proto-redir '=https' --tlsv1.2 --max-time 60 --max-filesize 10485760 "$L4_URL" --output l4-attestation.json
+
+      - name: Verify exact-commit evidence and trusted external signers
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          L3_KEY: ${{ secrets.ARCANA_L3_SIGNER_KEY_SHA256 }}
+          L4_KEY: ${{ secrets.ARCANA_L4_SIGNER_KEY_SHA256 }}
+        run: |
+          test -n "$L3_KEY"
+          test -n "$L4_KEY"
+          bun run assurance verify \
+            --manifest assurance-manifest.json \
+            --l3 l3-attestation.json \
+            --l4 l4-attestation.json \
+            --expected-commit "$CANDIDATE_COMMIT" \
+            --l3-key "$L3_KEY" \
+            --l4-key "$L4_KEY" \
+            --verify-checkout
+
+      - name: Freeze public evidence digests
+        shell: bash
+        run: sha256sum assurance-manifest.json l3-attestation.json l4-attestation.json > assurance-evidence.sha256
+
+      - name: Publish immutable evidence release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE_TAG="assurance-$CANDIDATE_COMMIT"
+          if gh release view "$EVIDENCE_TAG" >/dev/null 2>&1; then
+            echo "::error::evidence release $EVIDENCE_TAG already exists and is immutable by policy" >&2
+            exit 1
+          fi
+          gh release create "$EVIDENCE_TAG" \
+            --target "$CANDIDATE_COMMIT" \
+            --title "External assurance for $CANDIDATE_COMMIT" \
+            --notes "Externally signed L3 reproduction and L4 assessment attestations. Detailed L4 findings remain confidential under NDA." \
+            assurance-manifest.json l3-attestation.json l4-attestation.json assurance-evidence.sha256

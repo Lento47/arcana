@@ -1,0 +1,8 @@
+{
+  "name": "@arcana/repository-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:assurance": "bun test assurance.test.ts"
+  }
+}

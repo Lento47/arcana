@@ -1,0 +1,108 @@
+name: Promote assessed release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_tag:
+        description: "Assessed candidate tag, for example v1.0.0-rc.1"
+        required: true
+        type: string
+      stable_tag:
+        description: "Stable tag to create, for example v1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: assurance
+    steps:
+      - name: Validate tag relationship
+        shell: bash
+        env:
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          STABLE_TAG: ${{ inputs.stable_tag }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] || exit 2
+          [[ "$STABLE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 2
+          [[ "${CANDIDATE_TAG%%-rc.*}" == "$STABLE_TAG" ]] || {
+            echo "::error::candidate and stable versions do not match" >&2
+            exit 2
+          }
+
+      - name: Checkout assessed candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_tag }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Resolve candidate identity
+        id: candidate
+        shell: bash
+        env:
+          STABLE_TAG: ${{ inputs.stable_tag }}
+        run: |
+          set -euo pipefail
+          COMMIT="$(git rev-parse HEAD)"
+          VERSION="$(node -p "require('./packages/arcana/package.json').version")"
+          [[ "v$VERSION" == "$STABLE_TAG" ]] || {
+            echo "::error::package version v$VERSION does not match $STABLE_TAG" >&2
+            exit 1
+          }
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+
+      - name: Download externally signed evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT: ${{ steps.candidate.outputs.commit }}
+        run: gh release download "assurance-$COMMIT" --pattern "assurance-manifest.json" --pattern "l3-attestation.json" --pattern "l4-attestation.json"
+
+      - name: Verify L3 and L4 against the candidate
+        env:
+          COMMIT: ${{ steps.candidate.outputs.commit }}
+          L3_KEY: ${{ secrets.ARCANA_L3_SIGNER_KEY_SHA256 }}
+          L4_KEY: ${{ secrets.ARCANA_L4_SIGNER_KEY_SHA256 }}
+        run: |
+          test -n "$L3_KEY"
+          test -n "$L4_KEY"
+          bun run assurance verify \
+            --manifest assurance-manifest.json \
+            --l3 l3-attestation.json \
+            --l4 l4-attestation.json \
+            --expected-commit "$COMMIT" \
+            --l3-key "$L3_KEY" \
+            --l4-key "$L4_KEY" \
+            --verify-checkout
+
+      - name: Re-run internal conformance on the exact commit
+        run: bun run conformance --json --output conformance-promotion.json
+
+      - name: Create stable tag without changing assessed source
+        shell: bash
+        env:
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+        run: |
+          set -euo pipefail
+          git fetch origin --tags
+          if git rev-parse "$STABLE_TAG" >/dev/null 2>&1; then
+            echo "::error::$STABLE_TAG already exists" >&2
+            exit 1
+          fi
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git tag -a "$STABLE_TAG" -m "Promote assessed candidate $CANDIDATE_TAG"
+          git push origin "$STABLE_TAG"

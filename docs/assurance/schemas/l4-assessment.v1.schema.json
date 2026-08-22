@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcana.otnelhq.com/schemas/l4-assessment.v1.schema.json",
+  "title": "Arcana L4 independent security assessment attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "subject",
+    "scope",
+    "party",
+    "deploymentSha256",
+    "reviews",
+    "findings",
+    "retestCompleted",
+    "limitations",
+    "reportSha256",
+    "conclusion",
+    "signature"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "arcana.l4-assessment.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateTag", "candidateCommit", "manifestSha256"],
+      "properties": {
+        "candidateTag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9]+$" },
+        "candidateCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "manifestSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "scope": { "const": "full_platform" },
+    "party": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organization", "reviewer", "independenceStatement"],
+      "properties": {
+        "organization": { "type": "string", "minLength": 1 },
+        "reviewer": { "type": "string", "minLength": 1 },
+        "independenceStatement": { "type": "string", "minLength": 20 }
+      }
+    },
+    "deploymentSha256": { "$ref": "#/$defs/sha256" },
+    "reviews": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["architecture", "threatModel", "penetrationTest", "supplyChain", "remediationVerification"],
+      "properties": {
+        "architecture": { "const": "completed" },
+        "threatModel": { "const": "completed" },
+        "penetrationTest": { "const": "completed" },
+        "supplyChain": { "const": "completed" },
+        "remediationVerification": { "const": "completed" }
+      }
+    },
+    "findings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["critical", "high", "medium", "low", "informational"],
+      "properties": {
+        "critical": { "$ref": "#/$defs/severity" },
+        "high": { "$ref": "#/$defs/severity" },
+        "medium": { "$ref": "#/$defs/severity" },
+        "low": { "$ref": "#/$defs/severity" },
+        "informational": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "retestCompleted": { "type": "boolean" },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "reportSha256": { "$ref": "#/$defs/sha256" },
+    "conclusion": { "enum": ["passed", "failed"] },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "publicKeyPem", "signedAt", "valueBase64"],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "keyId": { "$ref": "#/$defs/sha256" },
+        "publicKeyPem": { "type": "string", "minLength": 1 },
+        "signedAt": { "type": "string", "format": "date-time" },
+        "valueBase64": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "severity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "open"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "open": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

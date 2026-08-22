@@ -2,7 +2,7 @@ name: Build arcana
 
 on:
   push:
-    branches: [master]
+    branches: [master, arcanagov]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -19,8 +19,8 @@ jobs:
       - name: Setup Node 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -28,15 +28,104 @@ jobs:
 
       - name: Install dependencies (all platforms for cross-compile)
         run: |
-          bun install
+          bun install --frozen-lockfile
           bun install --os="*" --cpu="*"
+
+      - name: Classify release tag
+        id: release-kind
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          STABLE=false
+          CANDIDATE=false
+          if [[ "$REF_TYPE" == "tag" && "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            STABLE=true
+          elif [[ "$REF_TYPE" == "tag" && "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            CANDIDATE=true
+          elif [[ "$REF_TYPE" == "tag" ]]; then
+            echo "::error::unsupported release tag: $TAG" >&2
+            exit 2
+          fi
+          echo "stable=$STABLE" >> "$GITHUB_OUTPUT"
+          echo "candidate=$CANDIDATE" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve checked-out source identity
+        id: source
+        shell: bash
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Gate release artifacts on ACEP-1 conformance
+        run: bun run conformance --json --output conformance-release.json
+
+      - name: Upload release conformance evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-release-${{ github.sha }}
+          path: conformance-release.json
+          retention-days: 365
+
+      - name: Download stable-release assurance evidence
+        if: steps.release-kind.outputs.stable == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release download "assurance-${{ steps.source.outputs.commit }}" \
+            --pattern "assurance-manifest.json" \
+            --pattern "l3-attestation.json" \
+            --pattern "l4-attestation.json"
+
+      - name: Gate stable publication on trusted L3 and L4 evidence
+        if: steps.release-kind.outputs.stable == 'true'
+        env:
+          L3_KEY: ${{ secrets.ARCANA_L3_SIGNER_KEY_SHA256 }}
+          L4_KEY: ${{ secrets.ARCANA_L4_SIGNER_KEY_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "$L3_KEY"
+          test -n "$L4_KEY"
+          bun run assurance verify \
+            --manifest assurance-manifest.json \
+            --l3 l3-attestation.json \
+            --l4 l4-attestation.json \
+            --expected-commit "${{ steps.source.outputs.commit }}" \
+            --l3-key "$L3_KEY" \
+            --l4-key "$L4_KEY" \
+            --verify-checkout
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: "Lento47/arcana"
-        run: gh release create ${{ github.ref_name }} --title "${{ github.ref_name }}" --notes "arcana binaries" || true
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            exit 0
+          fi
+          FLAGS=()
+          if [[ "${{ steps.release-kind.outputs.candidate }}" == "true" ]]; then
+            FLAGS+=(--prerelease)
+          fi
+          gh release create "${{ github.ref_name }}" --verify-tag --title "${{ github.ref_name }}" --notes "arcana binaries" "${FLAGS[@]}"
+
+      - name: Attach conformance evidence to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: "Lento47/arcana"
+        run: gh release upload ${{ github.ref_name }} conformance-release.json --clobber
+
+      - name: Attach public external-assurance evidence to stable release
+        if: steps.release-kind.outputs.stable == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: "Lento47/arcana"
+        run: gh release upload "${{ github.ref_name }}" assurance-manifest.json l3-attestation.json l4-attestation.json --clobber
 
       - name: Build arcana binaries
         env:
@@ -47,7 +136,7 @@ jobs:
         run: bun run --cwd packages/engine script/build.ts --skip-embed-web-ui
 
       - name: Upload binaries to R2
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.release-kind.outputs.stable == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -95,7 +184,7 @@ jobs:
           wrangler r2 object put "arcana-releases/arcana/latest.txt" --file /tmp/latest.txt --remote
 
       - name: Publish to npmjs.org
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.release-kind.outputs.stable == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -104,7 +193,7 @@ jobs:
           npm publish --access public
 
       - name: Publish to GitHub Packages
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.release-kind.outputs.stable == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
         run: |

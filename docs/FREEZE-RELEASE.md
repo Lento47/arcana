@@ -69,6 +69,8 @@ BLK-F-AUTH-01 (authenticated administrative identity binding).
 
 ## What remains for the freeze
 
+The repository now contains the machine-readable L3/L4 contracts, signed evidence verifier, protected exact-commit import/promotion workflows, two-pass assessor procedure, and hardened Linux reference-deployment evidence schema. These mechanisms keep the gate fail-closed; they do not satisfy any external or live-operation gate by themselves.
+
 1. Live DR, compromised-node, and key-rotation exercises (operator-run).
 2. External architecture review + penetration test + threat-model review +
    supply-chain assessment (BLK-F-13).

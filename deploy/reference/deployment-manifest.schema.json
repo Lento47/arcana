@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcana.otnelhq.com/schemas/hardened-linux-deployment.v1.schema.json",
+  "title": "Arcana hardened Linux reference deployment evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "candidateCommit", "profile", "controls", "exercises", "evidence"],
+  "properties": {
+    "schemaVersion": { "const": "arcana.hardened-linux-deployment.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "candidateCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "architecture", "kernel", "arcanaServiceUser"],
+      "properties": {
+        "os": { "type": "string", "minLength": 1 },
+        "architecture": { "const": "x64" },
+        "kernel": { "type": "string", "minLength": 1 },
+        "arcanaServiceUser": { "type": "string", "minLength": 1 }
+      }
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leastPrivilege",
+        "filesystemIsolation",
+        "networkDefaultDeny",
+        "tls13",
+        "mutualTls",
+        "channelBinding",
+        "osKeyProtection",
+        "secretRedaction",
+        "auditAndProof",
+        "timeSync",
+        "monitoring"
+      ],
+      "properties": {
+        "leastPrivilege": { "$ref": "#/$defs/verifiedControl" },
+        "filesystemIsolation": { "$ref": "#/$defs/verifiedControl" },
+        "networkDefaultDeny": { "$ref": "#/$defs/verifiedControl" },
+        "tls13": { "$ref": "#/$defs/verifiedControl" },
+        "mutualTls": { "$ref": "#/$defs/verifiedControl" },
+        "channelBinding": { "$ref": "#/$defs/verifiedControl" },
+        "osKeyProtection": { "$ref": "#/$defs/verifiedControl" },
+        "secretRedaction": { "$ref": "#/$defs/verifiedControl" },
+        "auditAndProof": { "$ref": "#/$defs/verifiedControl" },
+        "timeSync": { "$ref": "#/$defs/verifiedControl" },
+        "monitoring": { "$ref": "#/$defs/verifiedControl" }
+      }
+    },
+    "exercises": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "restartRecovery",
+        "backupRestore",
+        "keyRotation",
+        "compromisedNode",
+        "tlsNegativeClients",
+        "bypassAttempts"
+      ],
+      "properties": {
+        "restartRecovery": { "$ref": "#/$defs/verifiedControl" },
+        "backupRestore": { "$ref": "#/$defs/verifiedControl" },
+        "keyRotation": { "$ref": "#/$defs/verifiedControl" },
+        "compromisedNode": { "$ref": "#/$defs/verifiedControl" },
+        "tlsNegativeClients": { "$ref": "#/$defs/verifiedControl" },
+        "bypassAttempts": { "$ref": "#/$defs/verifiedControl" }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "sha256"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "verifiedControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidenceIds"],
+      "properties": {
+        "status": { "const": "verified" },
+        "evidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

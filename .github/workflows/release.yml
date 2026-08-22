@@ -3,11 +3,11 @@ name: Release
 # Trigger: manual or "bump" comment on commit
 on:
   push:
-    branches: [master]
+    branches: [master, arcanagov]
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Version bump type'
+        description: "Version bump type"
         required: true
         type: choice
         options: [patch, minor, major]
@@ -24,12 +24,25 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.WORKFLOW_TOKEN }}
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Gate release tag on ACEP-1 conformance
+        run: bun run conformance --json --output conformance-release-candidate.json
+
       - name: Setup Node 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: "24"
 
-      - name: Bump version and tag
+      - name: Bump version and create release candidate
+        env:
+          RELEASE_BRANCH: ${{ github.ref_name }}
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
@@ -80,16 +93,24 @@ jobs:
           cat /tmp/npm-pkg.json > packages/arcana/npm/package.json
           sed -i "s/const VERSION = \"v[^\"]*\"/const VERSION = \"v$NEW_VERSION\"/" packages/arcana/npm/bin/arcana.js
 
-          TAG="v$NEW_VERSION"
+          STABLE_TAG="v$NEW_VERSION"
 
-          git commit -am "release: bump to $TAG"
-          # Rebase before creating the tag so it always points at the final release commit.
-          git pull --rebase origin master
-          git tag "$TAG"
-          # Publish the release commit and tag together so neither can land without the other.
-          git push --atomic origin master "$TAG" || {
-            echo "Failed to atomically push release commit and tag — another release may be in progress"
-            git tag -d "$TAG" 2>/dev/null || true
+          git commit -am "release: prepare $STABLE_TAG candidate"
+          # Rebase before creating the candidate tag so it points at the final candidate commit.
+          git pull --rebase origin "$RELEASE_BRANCH"
+          git fetch origin --tags
+          LAST_RC=$(git tag --list "$STABLE_TAG-rc.*" --sort=-version:refname | head -n 1)
+          if [ -z "$LAST_RC" ]; then
+            RC_NUMBER=1
+          else
+            RC_NUMBER=$(( ${LAST_RC##*.} + 1 ))
+          fi
+          CANDIDATE_TAG="$STABLE_TAG-rc.$RC_NUMBER"
+          git tag -a "$CANDIDATE_TAG" -m "Release candidate $CANDIDATE_TAG"
+          # Publish the candidate commit and tag together so neither can land without the other.
+          git push --atomic origin "HEAD:$RELEASE_BRANCH" "$CANDIDATE_TAG" || {
+            echo "Failed to atomically push release candidate — another release may be in progress"
+            git tag -d "$CANDIDATE_TAG" 2>/dev/null || true
             exit 1
           }
-          echo "Tagged $TAG — build.yml will publish to npm after binaries are ready"
+          echo "Tagged $CANDIDATE_TAG — stable publication requires imported L3/L4 evidence and promotion"

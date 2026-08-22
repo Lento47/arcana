@@ -1,0 +1,57 @@
+name: Assurance
+
+on:
+  push:
+    branches: [master, arcanagov]
+    paths:
+      - "packages/core/src/crypto/**"
+      - "packages/sdk/js/src/v2/**"
+      - "tools/acep-conformance-rust/**"
+      - "script/conformance.ts"
+      - "script/conformance.test.ts"
+      - ".github/workflows/assurance.yml"
+  pull_request:
+    branches: [master, arcanagov]
+    paths:
+      - "packages/core/src/crypto/**"
+      - "packages/sdk/js/src/v2/**"
+      - "tools/acep-conformance-rust/**"
+      - "script/conformance.ts"
+      - "script/conformance.test.ts"
+      - ".github/workflows/assurance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    name: ACEP-1 conformance (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Arcana
+        uses: ./.github/actions/setup-arcana
+
+      - name: Verify evidence contract
+        run: bun run conformance:test
+
+      - name: Run conformance and write evidence
+        run: bun run conformance --json --output "conformance-${{ runner.os }}-${{ github.sha }}.json"
+
+      - name: Upload conformance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-${{ runner.os }}-${{ github.sha }}
+          path: conformance-${{ runner.os }}-${{ github.sha }}.json
+          if-no-files-found: error
+          retention-days: 180

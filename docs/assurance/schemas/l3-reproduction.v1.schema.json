@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcana.otnelhq.com/schemas/l3-reproduction.v1.schema.json",
+  "title": "Arcana L3 external reproduction attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "subject",
+    "scope",
+    "party",
+    "environments",
+    "results",
+    "deviations",
+    "reportSha256",
+    "conclusion",
+    "signature"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "arcana.l3-reproduction.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "subject": { "$ref": "#/$defs/subject" },
+    "scope": { "const": "full_platform" },
+    "party": { "$ref": "#/$defs/party" },
+    "environments": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "platform", "architecture", "bun", "rust"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "platform": { "type": "string", "minLength": 1 },
+          "architecture": { "type": "string", "minLength": 1 },
+          "bun": { "type": "string", "minLength": 1 },
+          "rust": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["environmentId", "suiteId", "status", "sourceClean", "reportSha256"],
+        "properties": {
+          "environmentId": { "type": "string", "minLength": 1 },
+          "suiteId": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["passed", "failed"] },
+          "sourceClean": { "type": "boolean" },
+          "reportSha256": { "$ref": "#/$defs/sha256" }
+        }
+      }
+    },
+    "deviations": { "type": "array", "items": { "type": "string" } },
+    "reportSha256": { "$ref": "#/$defs/sha256" },
+    "conclusion": { "enum": ["passed", "failed"] },
+    "signature": { "$ref": "#/$defs/signature" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateTag", "candidateCommit", "manifestSha256"],
+      "properties": {
+        "candidateTag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9]+$" },
+        "candidateCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "manifestSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "party": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organization", "reviewer", "independenceStatement"],
+      "properties": {
+        "organization": { "type": "string", "minLength": 1 },
+        "reviewer": { "type": "string", "minLength": 1 },
+        "independenceStatement": { "type": "string", "minLength": 20 }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "keyId", "publicKeyPem", "signedAt", "valueBase64"],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "keyId": { "$ref": "#/$defs/sha256" },
+        "publicKeyPem": { "type": "string", "minLength": 1 },
+        "signedAt": { "type": "string", "format": "date-time" },
+        "valueBase64": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
