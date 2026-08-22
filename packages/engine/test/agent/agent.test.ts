@@ -714,7 +714,8 @@ description: Permission skill.
       process.env.ARCANA_TEST_HOME = test.directory
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
-          process.env.ARCANA_TEST_HOME = home
+          if (home === undefined) delete process.env.ARCANA_TEST_HOME
+          else process.env.ARCANA_TEST_HOME = home
         }),
       )
 

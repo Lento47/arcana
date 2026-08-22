@@ -72,7 +72,8 @@ const withHome = <A, E, R>(home: string, self: Effect.Effect<A, E, R>) =>
     () => self,
     (prev) =>
       Effect.sync(() => {
-        process.env.ARCANA_TEST_HOME = prev
+        if (prev === undefined) delete process.env.ARCANA_TEST_HOME
+        else process.env.ARCANA_TEST_HOME = prev
       }),
   )
 

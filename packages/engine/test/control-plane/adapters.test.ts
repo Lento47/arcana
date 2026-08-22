@@ -88,7 +88,8 @@ describe("control-plane/adapters", () => {
     })
 
     afterEach(async () => {
-      process.env.ARCANA_HOME = originalHome
+      if (originalHome === undefined) delete process.env.ARCANA_HOME
+      else process.env.ARCANA_HOME = originalHome
       await fs.rm(tmpHome, { recursive: true, force: true })
     })
 
