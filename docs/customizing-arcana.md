@@ -78,8 +78,13 @@ unchanged in either voice.
 
 ## Voice input
 
-Press `ctrl+x v` (leader, then `v`) to toggle voice input. The pipeline is
-fully local and TUI-side:
+Press `ctrl+x v` (leader, then `v`) to toggle voice input, or press and hold
+`alt` to open the microphone push-to-talk style. The microphone toast appears as
+soon as `alt` is pressed; releasing `alt` stops capture, transcribes the audio,
+cleans it with the configured normalizer, and submits the resulting prompt
+automatically. You can also type `/voice` in the prompt to enable voice input
+at runtime (or `/disable-voice` to turn it off). The pipeline is fully local and
+TUI-side:
 
 1. An external recorder captures your microphone to a 16 kHz mono WAV.
 2. A local whisper.cpp CLI transcribes the WAV.
@@ -105,6 +110,7 @@ merge `voice`; it lives in TUI config only):
   "voice": {
     "enabled": true,
     "auto_submit": true,
+    "hold_key": "alt",
     "recorder": {
       // Optional. If omitted, arcana tries ffmpeg/sox/rec/arecord.
       "binary": "ffmpeg",
@@ -130,7 +136,25 @@ merge `voice`; it lives in TUI config only):
 
 `{output}` in recorder args is replaced with the temp WAV path; `{text}` in the
 normalizer prompt is replaced with the raw transcript. If no recorder or ASR
-binary is found, the first voice toggle shows a setup toast.
+binary is found, the first voice toggle shows a setup toast. The disabled-toast
+copy follows the chosen lexicon (`voice.disabled` in `branding.ts`).
+
+Push-to-talk requires a terminal that supports the Kitty Keyboard Protocol
+release events (e.g. recent Warp, iTerm2, Windows Terminal Preview, WezTerm, or
+Kitty). The configured key starts capture immediately on press and submits on
+release. Pressing any other key while `alt` is held cancels the capture so
+normal alt-shortcuts still work.
+
+Runtime enable/disable (`/voice` and `/disable-voice`) changes state
+immediately, but the terminal keyboard mode is set when the renderer starts. If
+you enable voice at runtime and ALT push-to-talk does not work, restart arcana.
+If you enable voice in config before launching, no restart is needed.
+
+To diagnose key detection, run arcana with `ARCANA_DEBUG_VOICE=1` and inspect
+`~/.arcana/state/voice-debug.log` after pressing ALT. An empty log means the hold
+listener did not attach (stale build); a `voice is disabled` entry means voice
+is not enabled; a `press: name=leftalt` with no matching release means the
+terminal sends the press but not the release event.
 
 ---
 
