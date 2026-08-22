@@ -33,7 +33,33 @@ const MAX_RETRY_MS = 30_000
 const MAX_ATTEMPTS = 5
 
 export function isSessionWorking(status: unknown): boolean {
-  return isRecord(status) && (status.type === "busy" || status.type === "retry")
+  return isRecord(status) && (status.type === "busy" || status.type === "retry" || status.type === "waiting")
+}
+
+export function createPromptDeliveryGate(onChange: (active: number) => void = () => {}) {
+  const active = new Map<string, Promise<unknown>>()
+
+  return {
+    has: (id: string) => active.has(id),
+    run: <T,>(id: string, task: () => Promise<T>): Promise<T> => {
+      const current = active.get(id)
+      if (current) return current as Promise<T>
+
+      // Defer the task until after the promise is registered. This makes the
+      // claim atomic even when a reactive drain wakes during submit().
+      let promise!: Promise<T>
+      promise = Promise.resolve()
+        .then(task)
+        .finally(() => {
+          if (active.get(id) !== promise) return
+          active.delete(id)
+          onChange(active.size)
+        })
+      active.set(id, promise)
+      onChange(active.size)
+      return promise
+    },
+  }
 }
 
 export function releaseStaleSessions(
@@ -99,7 +125,8 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
     const event = useEvent()
     const toast = useToast()
     const [store, setStore] = createStore<QueueStore>({ items: [] })
-    const [inFlightID, setInFlightID] = createSignal<string | undefined>()
+    const [inFlightCount, setInFlightCount] = createSignal(0)
+    const deliveries = createPromptDeliveryGate(setInFlightCount)
     // Server-reported status can lag a few frames behind the 204 response
     // from promptAsync. This set fills that gap so a queued retry can never
     // start a second turn while the first turn is still ramping up. It is
@@ -201,51 +228,52 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       persist()
     }
 
-    const sendStored = async (item: QueuedPrompt): Promise<void> => {
-      setInFlightID(item.id)
-      try {
-        if (item.payload.messageID) {
-          const existing = await sdk.client.session
-            .message({
-              sessionID: item.payload.sessionID,
-              messageID: item.payload.messageID,
-            })
-            .catch(() => undefined)
-          if (existing?.data) {
-            remove(item.id)
-            toast.show({
-              title: "Message already delivered",
-              message: item.label,
-              variant: "info",
-            })
-            return
+    const sendStored = (item: QueuedPrompt): Promise<"sent" | "queued"> =>
+      deliveries.run(item.id, async () => {
+        try {
+          if (item.payload.messageID) {
+            const existing = await sdk.client.session
+              .message({
+                sessionID: item.payload.sessionID,
+                messageID: item.payload.messageID,
+              })
+              .catch(() => undefined)
+            if (existing?.data) {
+              remove(item.id)
+              toast.show({
+                title: "Message already delivered",
+                message: item.label,
+                variant: "info",
+              })
+              return "sent"
+            }
           }
+          await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
+          markActive(item.payload.sessionID)
+          remove(item.id)
+          return "sent"
+        } catch (error) {
+          const attempts = item.attempts + 1
+          const retryable = isRetryablePromptError(error)
+          const failed = !retryable || attempts >= MAX_ATTEMPTS
+          const nextRetryAt = retryable && !failed ? Date.now() + retryDelay(attempts) : Number.POSITIVE_INFINITY
+          update(item.id, {
+            attempts,
+            lastError: errorMessage(error),
+            failed,
+            nextRetryAt,
+          })
+          scheduleNext()
+          toast.show({
+            title: failed ? "Queued message needs attention" : "Message queued for retry",
+            message: failed
+              ? `${item.label}\n${errorMessage(error)}`
+              : `${item.label}\nRetrying in ${Math.max(1, Math.round((nextRetryAt - Date.now()) / 1000))}s`,
+            variant: "warning",
+          })
+          return "queued"
         }
-        await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
-        markActive(item.payload.sessionID)
-        remove(item.id)
-      } catch (error) {
-        const attempts = item.attempts + 1
-        const retryable = isRetryablePromptError(error)
-        const failed = !retryable || attempts >= MAX_ATTEMPTS
-        const nextRetryAt = retryable && !failed ? Date.now() + retryDelay(attempts) : Number.POSITIVE_INFINITY
-        update(item.id, {
-          attempts,
-          lastError: errorMessage(error),
-          failed,
-          nextRetryAt,
-        })
-        toast.show({
-          title: failed ? "Queued message needs attention" : "Message queued for retry",
-          message: failed
-            ? `${item.label}\n${errorMessage(error)}`
-            : `${item.label}\nRetrying in ${Math.max(1, Math.round((nextRetryAt - Date.now()) / 1000))}s`,
-          variant: "warning",
-        })
-      } finally {
-        setInFlightID(undefined)
-      }
-    }
+      })
 
     const drain = async (): Promise<void> => {
       if (draining) return
@@ -258,7 +286,7 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
             (entry) =>
               !entry.failed
               && entry.nextRetryAt <= now
-              && entry.id !== inFlightID()
+              && !deliveries.has(entry.id)
               && !sessionWorking(entry.payload.sessionID),
           )
           if (!item) break
@@ -306,32 +334,7 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
         return "queued"
       }
 
-      setInFlightID(item.id)
-      try {
-        await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
-        markActive(payload.sessionID)
-        remove(item.id)
-        return "sent"
-      } catch (error) {
-        const retryable = isRetryablePromptError(error)
-        const failed = !retryable
-        const nextRetryAt = retryable ? Date.now() + retryDelay(1) : Number.POSITIVE_INFINITY
-        update(item.id, {
-          attempts: 1,
-          lastError: errorMessage(error),
-          failed,
-          nextRetryAt,
-        })
-        toast.show({
-          title: failed ? "Message saved in queue" : "Failed to send prompt — queued",
-          message: failed ? `${label}\n${errorMessage(error)}` : `${label}\nWill retry automatically`,
-          variant: "warning",
-        })
-        void drain()
-        return "queued"
-      } finally {
-        setInFlightID(undefined)
-      }
+      return sendStored(item)
     }
 
     const retry = (id: string) => {
@@ -387,7 +390,7 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
     return {
       list: () => store.items,
       pendingCount: () => store.items.filter((item) => !item.failed).length,
-      retrying: () => inFlightID() !== undefined,
+      retrying: () => inFlightCount() > 0,
       submit,
       retry,
       remove,

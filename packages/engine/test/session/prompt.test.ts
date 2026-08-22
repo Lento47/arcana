@@ -539,6 +539,38 @@ it.instance("a custom title is never clobbered by the heuristic title", () =>
   }),
 )
 
+it.instance("deduplicates concurrent and repeated prompts with the same explicit message ID", () =>
+  Effect.gen(function* () {
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({ title: "Pinned" })
+    const messageID = MessageID.ascending()
+    const input = {
+      sessionID: chat.id,
+      messageID,
+      agent: "build",
+      noReply: true,
+      parts: [{ type: "text" as const, text: "deliver exactly once" }],
+    }
+
+    const [direct, retry] = yield* Effect.all(
+      [prompt.prompt(input), prompt.prompt(input)],
+      { concurrency: "unbounded" },
+    )
+    const laterRetry = yield* prompt.prompt({
+      ...input,
+      parts: [{ type: "text", text: "a reused key must not append new content" }],
+    })
+    const stored = yield* MessageV2.get({ sessionID: chat.id, messageID })
+    const text = stored.parts.filter((part) => part.type === "text").map((part) => part.text)
+
+    expect(direct.info.id).toBe(messageID)
+    expect(retry.info.id).toBe(messageID)
+    expect(laterRetry.info.id).toBe(messageID)
+    expect(text).toEqual(["deliver exactly once"])
+  }),
+)
+
 it.instance("loop exits without an LLM request for interrupted orphan tool calls", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)

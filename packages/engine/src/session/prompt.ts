@@ -89,11 +89,12 @@ import {
   shouldExtractLearnings,
   transcriptFromTurns,
 } from "./learn-runtime"
-import { SessionTable } from "@arcana/core/session/sql"
+import { MessageTable, SessionTable } from "@arcana/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { formatInstallResumePrompt, takeParkedInstall } from "@/execution/install-notice"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@arcana/llm"
+import { KeyedMutex } from "@arcana/core/effect/keyed-mutex"
 
 // @ts-ignore globalThis.AI_SDK_LOG_WARNINGS not in TS lib — prevents ai-sdk stdout spam
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -175,6 +176,7 @@ export const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const promptAdmission = yield* KeyedMutex.make<string>()
     const eventStore = yield* EventStore.Service
     const contracts = yield* ContractEngine.Service
     const obligations = yield* ObligationEngine.Service
@@ -1374,8 +1376,53 @@ export const layer = Layer.effect(
       "SessionPrompt.prompt",
     )(function* (input: PromptInput) {
       const session = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
-      yield* revert.cleanup(session)
-      const message = yield* createUserMessage(input)
+
+      // An explicit message ID is an idempotency key. Serialize the short
+      // admission window so concurrent HTTP retries cannot both observe a
+      // missing row and append fresh parts to the same logical message. The
+      // durable row check also covers retries after a restart.
+      const messageID = input.messageID
+      const admission = yield* (messageID
+        ? promptAdmission.withLock(messageID)(
+            Effect.gen(function* () {
+              const row = yield* db
+                .select({ sessionID: MessageTable.session_id })
+                .from(MessageTable)
+                .where(eq(MessageTable.id, messageID))
+                .get()
+                .pipe(Effect.orDie)
+              if (row) {
+                if (row.sessionID !== input.sessionID) {
+                  throw new NamedError.Unknown({
+                    message: `Message ID already belongs to another session: ${messageID}`,
+                  })
+                }
+                const existing = yield* MessageV2.get({
+                  sessionID: input.sessionID,
+                  messageID,
+                }).pipe(Effect.provideService(Database.Service, database), Effect.orDie)
+                if (existing.info.role !== "user") {
+                  throw new NamedError.Unknown({
+                    message: `Message ID already belongs to a non-user message: ${messageID}`,
+                  })
+                }
+                yield* Effect.logInfo("deduplicated prompt admission", {
+                  "session.id": input.sessionID,
+                  "message.id": messageID,
+                })
+                return { message: existing, fresh: false as const }
+              }
+
+              yield* revert.cleanup(session)
+              return { message: yield* createUserMessage(input), fresh: true as const }
+            }),
+          )
+        : Effect.gen(function* () {
+            yield* revert.cleanup(session)
+            return { message: yield* createUserMessage(input), fresh: true as const }
+          }))
+      const message = admission.message
+      if (!admission.fresh) return message
       yield* sessions.touch(input.sessionID)
 
       // Title the session from the first user text as soon as the message is

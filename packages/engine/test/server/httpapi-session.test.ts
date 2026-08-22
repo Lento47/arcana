@@ -34,7 +34,7 @@ import { resetDatabase } from "../fixture/db"
 import { disposeAllInstances, provideInstanceEffect, TestInstance, tmpdirScoped } from "../fixture/fixture"
 import { TestLLMServer } from "../lib/llm-server"
 import { testProviderConfig } from "../lib/test-provider"
-import { testEffect } from "../lib/effect"
+import { pollWithTimeout, testEffect } from "../lib/effect"
 
 const originalWorkspaces = Flag.ARCANA_EXPERIMENTAL_WORKSPACES
 const workspaceLayer = Workspace.defaultLayer.pipe(
@@ -394,6 +394,48 @@ describe("session HttpApi", () => {
             headers,
           })).data,
         ).toMatchObject([{ type: "assistant" }])
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
+    "admits concurrent prompt_async retries with one persisted user part",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const headers = {
+          "x-opencode-directory": test.directory,
+          "content-type": "application/json",
+        }
+        const session = yield* createSession({ title: "prompt retry" })
+        const messageID = MessageID.ascending()
+        const submit = () =>
+          request(pathFor(SessionPaths.promptAsync, { sessionID: session.id }), {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              messageID,
+              agent: "build",
+              noReply: true,
+              parts: [{ type: "text", text: "deliver exactly once" }],
+            }),
+          })
+
+        const responses = yield* Effect.all([submit(), submit()], { concurrency: "unbounded" })
+        expect(responses.map((response) => response.status)).toEqual([204, 204])
+
+        const delivered = yield* pollWithTimeout(
+          Session.use.messages({ sessionID: session.id }).pipe(
+            provideInstanceEffect(test.directory),
+            Effect.orDie,
+            Effect.map((messages) => messages.find((message) => message.info.id === messageID)),
+          ),
+          "timed out waiting for prompt_async persistence",
+        )
+        const text = delivered?.parts
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+        expect(text).toEqual(["deliver exactly once"])
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )
