@@ -127,15 +127,15 @@ export function SubagentFooter() {
                 · ctx {item().context}
                 <Show when={item().pressure}> · {item().pressure}</Show>
                 <Show when={item().cost}> · {item().cost}</Show>
-          <box flexDirection="row" gap={1} flexShrink={0}>
-            <Action name="parent" label="parent" shortcut={parentShortcut()} />
-            <Action name="prev" label="prev" shortcut={previousShortcut()} />
-            <Action name="next" label="next" shortcut={nextShortcut()} />
-          </box>
               </text>
             )}
           </Show>
         </box>
+          <box flexDirection="row" gap={1} flexShrink={0}>
+            <Action name="parent" label="parent" shortcut={parentShortcut()} command="session.parent" />
+            <Action name="prev" label="prev" shortcut={previousShortcut()} command="session.child.previous" />
+            <Action name="next" label="next" shortcut={nextShortcut()} command="session.child.next" />
+          </box>
       </box>
       <Show when={hover() && tailMessages().length > 0}>
         <scrollbox maxHeight={3} flexShrink={0} paddingLeft={1} scrollbarOptions={{ visible: false }}>
