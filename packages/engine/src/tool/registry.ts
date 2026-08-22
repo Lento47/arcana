@@ -8,6 +8,7 @@ import { ShellTool } from "./shell"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
+import { SearchTool } from "./search"
 import { ReadTool } from "./read"
 import { TaskTool } from "./task"
 import { Database } from "@arcana/core/database/database"
@@ -35,6 +36,7 @@ import { Provider } from "@/provider/provider"
 import { WebSearchTool } from "./websearch"
 import { LspTool } from "./lsp"
 import * as Truncate from "./truncate"
+import { TrialLog } from "@/session/trial-log"
 import { ApplyPatchTool } from "./apply_patch"
 import { Glob } from "@arcana/core/util/glob"
 import path from "path"
@@ -116,6 +118,7 @@ export const layer = Layer.effect(
     const writetool = yield* WriteTool
     const edit = yield* EditTool
     const greptool = yield* GrepTool
+    const searchtool = yield* SearchTool
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
     const workflowtool = yield* WorkflowTool
@@ -225,6 +228,7 @@ export const layer = Layer.effect(
           read: Tool.init(read),
           glob: Tool.init(globtool),
           grep: Tool.init(greptool),
+          content_search: Tool.init(searchtool),
           edit: Tool.init(edit),
           write: Tool.init(writetool),
           task: Tool.init(task),
@@ -385,6 +389,7 @@ export const defaultLayer = Layer.suspend(() =>
       Layer.provide(Format.defaultLayer),
       Layer.provide(CrossSpawnSpawner.defaultLayer),
       Layer.provide(Truncate.defaultLayer),
+      Layer.provide(TrialLog.defaultLayer),
     )
     .pipe(Layer.provide(Database.defaultLayer), Layer.provide(RuntimeFlags.defaultLayer)),
 )
@@ -486,6 +491,7 @@ export const node = LayerNode.make(layer.pipe(Layer.provide(Ripgrep.defaultLayer
   Truncate.node,
   RuntimeFlags.node,
   Database.node,
+  TrialLog.node,
 ])
 
 export * as ToolRegistry from "./registry"

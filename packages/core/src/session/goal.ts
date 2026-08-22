@@ -114,6 +114,7 @@ const ALWAYS_ALLOWED_TOOLS = new Set([
   "kanban",
   "read",
   "grep",
+  "content_search",
   "glob",
   "list",
   "list_files",
@@ -464,7 +465,9 @@ export function checkGoalToolGate(input: {
       reason: "goal_complete",
       message:
         `Goal is ${snap.status}. Mutation tool "${input.toolName}" is frozen. ` +
-        `Do not invent a replacement goal to unlock tools; wait for a new explicit user objective.`,
+        `Read-only tools remain fully available: read, grep, glob, list, websearch, question. ` +
+        `Use them to summarize, analyze, or answer questions about the completed work. ` +
+        `To start new work, set a new goal with goal_set or /goal.`,
     }
   }
 
