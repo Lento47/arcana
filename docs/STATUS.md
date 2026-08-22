@@ -3,10 +3,10 @@ document_class: status
 authority: current_status
 status: current
 status_source: self
-implementation_checkpoint: b5d192a1
-documentation_reconciliation_commit: 882ea468
-current_branch_at_publication: phase-d-implementation
-last_verified: 2026-08-05
+implementation_checkpoint: fb7c1968
+documentation_reconciliation_commit: pending-2026-08-22-reconciliation
+current_branch_at_publication: arcanagov
+last_verified: 2026-08-22
 supersedes: status claims inside Arcana_Project_Master_Specification.md Parts I-III
 ---
 
@@ -25,13 +25,13 @@ secondary; never edit the mirror independently.
 
 | Field | Value |
 |---|---|
-| Current implementation branch | `phase-d-implementation` |
-| Implementation checkpoint | `f3c935e6` (2026-08-09; merged via PRs #109–#118 — CLI JSON every-command coverage, platform smoke matrix, CURRENT-STATE reconciliation, cleanup PRs, Rust proof-batching parity, claude/gemini A1 certification) |
-| Documentation reconciliation commit | `882ea468` (baseline for the consolidated files) |
-| Uncommitted worktree | clean at implementation checkpoint `f3c935e6` |
+| Current implementation branch | `arcanagov` |
+| Implementation checkpoint | `fb7c1968` (2026-08-21; 161 commits after the prior `f3c935e6` checkpoint) |
+| Documentation reconciliation commit | Pending — this 2026-08-22 working-tree reconciliation |
+| Uncommitted worktree | Dirty at verification time. Goal-verifier, memory-boundary, session-navigation, and related tests are present but not yet committed; their evidence is labeled working-tree evidence below. |
 | Default branch (`master` / `origin/master`) | stale — Phase B/C, D-7, TUI-2 milestone commits not on it; mainline promotion pending (post-sign-off release action) |
-| Release version | pre-release builds only (`0.0.0-phase-d-implementation-*`) |
-| Last verification date | 2026-08-09 (freeze-evidence CI at `0501f33c`: engine 4365 pass / 8 fail / 38 skip / 4412 tests; TUI 819 pass / 0 fail; core 1465 pass / 0 fail; Arcana CLI 124 pass / 0 fail; SDK 34 pass / 0 fail — per-suite detail in `docs/CURRENT-STATE.json`; the engine failures are the CI flake class (spine hover/right-click, ReasoningPart wrap, DiffViewerFileTree), green on local Windows re-runs) |
+| Release version | Source manifests: `0.3.67`; no Arcana 1.0 freeze or production-release claim |
+| Last verification date | 2026-08-22 working tree on Windows with Bun 1.4.0. TUI and engine typechecks pass. The full TUI suite is **not green**: 1,131 pass / 42 fail / 1 skip. Focused engine checks: 225 pass / 4 fail / 18 skip. Focused core/memory checks: 71 pass / 1 teardown-hook failure. The repository pins Bun 1.3.14, so a pinned-runtime rerun is required before classifying runtime-version skew versus regressions. |
 | Supported platforms | Windows 10/11 (primary, tested); Linux (D-6A-L identity scaffold; live validation pending) |
 | Performance audit | 2026-08-20 — 7 critical, 14 medium, 18 low issues identified; see Performance Audit section below |
 
@@ -47,7 +47,47 @@ secondary; never edit the mirror independently.
 | Phase F — Enterprise Control Plane | Service-core implementation: HIGH — F1–F13 cores implemented and mounted (`/api/enterprise/*` + SDK client: orgs, RBAC, fleet + rings + diagnostics, approvals + escalation, policy promotion/drafts, audit archive, security ops + anomaly, governance, reliability, federation + routing + revocation transport, SIEM, ticketing, webhooks, metering + usage export, entitlements, escalation + auditor consoles). Production mounting: SUBSTANTIAL. Secure production boundary: RESOLVED 2026-08-03 (BLK-F-AUTH-01 fixed and merged via PR #53; enterprise HTTP auth-boundary suite green). Release readiness: BLOCKED — remaining operator console work, live exercises, external assessment (F13) pending |
 | TUI-1 | Historical independent tag (`arcana-tui-1-governance-observability`); not in current branch ancestry |
 | TUI-2 — Interactive Authority Control | FROZEN (`arcana-tui-2-interactive-authority-control`) |
-| TUI-2.1 — Production Integration + Polish | MOUNTED, AUTOMATED GREEN (TUI 787 tests, 0 fail); freeze NOT AUTHORIZED. F-22..F-28 manual items verified per the 2026-08-02 status: daemon respawn on idle-stop (F-22), approval inspector + spine keys (F-23), `v` inspect for any approval state + guidance toast (F-24), Esc always leaves the composer without interrupting (F-25), Esc inert on ACTION GATES (F-26), spine navigation + `v` inspection available while a gate is open (F-27), permission-gate `v` inspector (F-28), plus contract admission, tool execution, governance aggregation, proof axes, approval via gate, denial with zero effects, restart durability. Automated validation for approval lifecycle via spine keys, routing matrices, live stream protocol, and performance is DONE via merged PR #49 (2026-08-03). Remaining: the manual validation phases per TUI-2.1-MANUAL-SMOKE-TEST.md plus human freeze sign-off |
+| TUI-2.1 — Production Integration + Polish | MOUNTED; freeze NOT AUTHORIZED. The Aug. 15–21 wave added durable/idempotent prompt delivery, scoped remembered permissions, configurable governance routing, subagent progress/navigation, rendering-lifecycle fixes, custom providers, voice hold gating, and recorder hardening. The 2026-08-22 full TUI working-tree run has 42 failures, so the former “automated green” claim is historical only. Remaining: regressions, pinned-Bun rerun, manual validation, exact-commit evidence, and human freeze sign-off. |
+
+## Development wave since the previous checkpoint (2026-08-15–21)
+
+The following capabilities are implemented on `arcanagov`; this is development
+progress, not a release or freeze declaration:
+
+- **Governance and permissions:** workspace governance is live-reloadable and
+  persistent; benign auto-allow is configurable and fail-closed when coarse
+  risk requires review; remembered `always` decisions are persisted per
+  project and agent and can be revoked; the signal-engine classifier can only
+  escalate deterministic decisions, never downgrade them.
+- **Execution protection:** file edits are classified for wholesale replacement
+  and large changes, large writes can create backups, dependency-manifest
+  changes receive install-level scrutiny, and guard rules are included in
+  RunProof ML evidence.
+- **Prompt/session reliability:** failed prompt delivery has durable bounded
+  retry, concurrent/repeated deliveries deduplicate by message identity, new
+  sessions remain visible while routing settles, and stale route effects are
+  refused.
+- **TUI and voice:** turn lifecycle no longer treats missing session status as
+  active, completed reasoning/tool rows stop shimmering, code previews remain
+  visible while highlighting, the header carries session ancestry, and ALT
+  push-to-talk defaults to a configurable 3,000 ms activation threshold before
+  microphone animation/recording. Windows DirectShow discovery, waveform, and
+  recorder error handling were added.
+- **Agents and integrations:** subagent delegation, approval attribution,
+  empty-completion recovery, live progress, and child navigation were hardened.
+  `arcana launch` now declares the same bounded A1 launch contract for 11
+  runtimes: codex, claude, gemini, hermes, opencode, cursor, aider, continue,
+  cline, windsurf, and copilot. A1 still makes no sandbox or exact-effect PEP
+  claim.
+- **Operator surfaces:** custom OpenAI-compatible provider URLs can
+  self-register, the enterprise console gained models/proofs/sessions/settings/
+  skills routes, and TUI customization expanded to 21 built-in themes.
+
+Working-tree-only progress on 2026-08-22 adds revision-bound independent goal
+verification, archive-and-clear on verified completion, quarantine of legacy
+terminal goals, reserved `active.*`/`goal.*` memory keys, and a consolidated
+session navigation rail. These changes must be committed and included in the
+next exact-commit verification before they become checkpoint evidence.
 
 ## Performance audit (2026-08-20)
 
@@ -82,13 +122,12 @@ Comprehensive memory, CPU, and database performance audit completed. Full audit 
 - ✅ 15 packages lack READMEs — Added README.md to all 16 packages
 - ⏭️ `which-key.tsx` memos — Skipped (correct and efficient)
 
-### Recommendations
+### Follow-up validation
 
-**Immediate:** Add eviction to `fileCache`, `validatorCache`, `lazy-loader`; replace `PubSub.unbounded` → `PubSub.bounded(4096)`; add `onCleanup` to leaked event listeners.
-
-**Next sprint:** Fix N+1 query in `claim-store.ts`; add `.limit()` to unbounded queries; replace `concurrency: "unbounded"` with `10`; fix O(n²) path deduplication.
-
-**Later:** Consolidate TUI memos; add memory monitoring; optimize JSON serialization.
+All enumerated critical, medium, and low code changes above are implemented.
+The remaining work is measurement: rerun startup, long-session memory, database,
+and renderer benchmarks at the exact release candidate and attach the raw
+evidence before freeze.
 
 ## Product tracks and roadmap (2026-08-02)
 
@@ -164,17 +203,37 @@ validation, manual validation, external validation, release.
 | Durable approvals (PENDING→APPROVED→CLAIMED→CONSUMED) | Yes | Yes | Yes | Pending (WS1) | No | No |
 | RunProof + verified completion | Yes | Yes | Yes | Partial | No | No |
 | Governance projection + Command Spine (conversation/operations/forensic) | Yes | Yes | Yes | Partial | No | No |
+| Configurable governance + agent-scoped remembered permissions | Yes | Yes | Yes | Partial | No | No |
+| File-edit guard + escalation-only ML permission classifier | Yes | Yes | Yes | Partial | No | No |
 | Approval routing (LOCAL_TUI/DESKTOP_PREFERRED/DESKTOP_REQUIRED/CENTRAL_REQUIRED) + Desktop heartbeat awareness | Yes | Yes | Yes | Partial | No | No |
+| Independent goal completion verifier (deterministic gate + bounded model verification) | Working tree | Working tree | Focused tests pass | No | No | No |
+| Reserved memory keys (runtime state isolation) | Working tree | Working tree | Focused tests pass | No | No | No |
 | TUI-2.1 spine polish (grouping, aggregation, filters, compact rows, click-toggle) | Yes | Yes | Yes | In progress | No | No |
 | Distributed authority (signed envelopes, sync, D-7) | Partial | Partial | Partial | No | No | No |
 | Host containment (filesystem/process/network) | Partial | Partial | Partial | No | No | No |
-| External CLI adapters (codex/claude/gemini) | Yes (A1 launch scaffold) | No | Partial | No | No | No |
+| External CLI adapters (11 runtimes) | Yes (A1 launch wrappers) | No exact-effect governance | Partial | No | No | No |
 
-External adapters: A1 launch scaffold implemented (`arcana launch <runtime>`:
-declaration, `--dry-run`, supervision, durable evidence; no sandbox claim);
-production-certified adapter: no (BLK-CLI-01).
+External adapters: A1 launch wrappers implemented for 11 runtimes (`arcana
+launch <runtime>`: declaration, `--dry-run`, supervision, durable evidence;
+no sandbox, file-read containment, or exact-effect PEP claim). No A2/A3 adapter
+or independently validated production adapter exists.
 
-## Test checkpoint (2026-08-02)
+## Test checkpoints and verification evidence
+
+### Current working tree (2026-08-22)
+
+| Gate | Result |
+|---|---|
+| Runtime | Bun 1.4.0 on Windows; repository pin is Bun 1.3.14, so pinned-runtime reproduction remains required |
+| TUI suite | **1131 pass / 1 skip / 42 fail (1174 tests)**. Failures cluster in SDK/project test-provider setup, renderer interaction tests, and voice/module isolation. Not release-green. |
+| Focused TUI regressions | 167 pass / 0 skip / 1 fail; the same run also reported 1 module-loader error across voice, prompt queue, shimmer, turn lifecycle, navigation, mapper, receipt, and subagent UX tests |
+| Focused engine regressions | 225 pass / 18 skip / 4 fail. Goal verifier, memory prompt boundary, scoped permissions, launch declarations, and prompt dedup checks pass; one HTTP timeout, one queued-static-reply failure, and two task empty-output timeout failures remain. |
+| Focused core + memory regressions | 71 pass / 0 skip / 1 fail; the failure is a suite teardown-hook timeout after the individual tests pass |
+| TUI typecheck | PASS (`bun --cwd packages/tui typecheck`) |
+| Engine typecheck | PASS (`bun run --filter @arcana/engine typecheck`) |
+| Validation level | Working-tree L1/L2 evidence only; not a freeze run and not external validation |
+
+## Historical freeze evidence (2026-08-02–09)
 
 | Gate | Result |
 |---|---|
@@ -243,6 +302,68 @@ register, phase/task traceability, and a checkpoint completion report:
 Nothing in these artifacts changes the milestone matrix above; they make the
 gaps and evidence explicit.
 
+## Goal verification system — working tree (2026-08-22)
+
+The uncommitted working tree includes an independent completion verifier that
+prevents workers from self-certifying completion. The flow:
+
+1. **goal_set** records an explicit multi-step mutation objective (greetings,
+   explanations, reviews, and read-only work stay goal-free).
+2. **goal_check(status=complete)** submits a completion claim; this transitions
+   the goal to `complete_pending_verify` and freezes all mutation tools.
+3. An independent model-less deterministic gate runs first (required
+   obligations, contract resolution, trace integrity, execution receipts).
+   If it rejects, the goal reopens immediately without calling a model.
+4. If the deterministic gate passes, a bounded evidence packet is sent to a
+   separate model call (the "verifier") with temperature=0, no tools, and
+   a structured Zod output schema (`GoalVerifierOutput`).
+5. The verifier's evidence refs are validated against the bounded receipt set;
+   out-of-scope refs or contradictory fields (verified + unmet criteria)
+   cause automatic rejection.
+6. On **verified**: the goal is archived (`verified_complete`), the active slot
+   is cleared, and mutation tools are unfrozen.
+7. On **rejected**: the same goal reopens (`in_progress`) with unmet criteria
+   recorded; the worker must continue the same objective.
+8. On **error**: the goal moves to `blocked` for operator review.
+
+Key invariants:
+- The worker cannot choose the verdict.
+- Model citations must resolve to receipts from the current objective's
+  evidence window (capped at 20 most recent).
+- `complete` and `complete_unverified` (legacy) both freeze mutations.
+- `complete_pending_verify` also freezes mutations during verification.
+- Legacy `complete`/`complete_unverified` states are migrated on read via
+  `migrateLegacyTerminalGoal()` and archived as `legacy_unverified`.
+
+Goal status state machine:
+```text
+unset → in_progress → complete_pending_verify → verified (archived, slot cleared)
+                     ↗ rejected → in_progress (reopen)
+                     ↗ error → blocked (operator review)
+in_progress → blocked
+blocked → in_progress
+```
+
+Working-tree implementation: `packages/core/src/session/goal.ts` (state machine +
+persistence), `packages/engine/src/session/goal-verifier.ts` (deterministic
+gate + model verifier), `packages/arcana/src/agent/runner.ts`
+(`verifyGoalCompletion` for CLI agent).
+
+## Reserved memory keys — working tree (2026-08-22)
+
+In the uncommitted working tree, runtime state keys (`active.*`, `goal.*`) are reserved and cannot be
+persisted as user facts. The `isReservedMemoryKey()` filter in
+`packages/memory/src/store.ts` rejects these keys at write time
+(`ReservedMemoryKeyError`) and filters them out of:
+- FACTS.md rendering and parsing
+- Cloud sync (factsForCloud)
+- System prompt injection
+- Memory search results
+- CLI memory merge
+
+This prevents internal runtime state from masquerading as user knowledge
+or leaking across sessions.
+
 ## Enforcement boundaries (current)
 
 - **Logical PEP boundary:** Arcana-native effect paths (tools, session
@@ -257,13 +378,16 @@ gaps and evidence explicit.
 
 ## Release blockers
 
-1. TUI-2.1 freeze gates: 11-phase manual smoke, width matrix, dark/light theme
+1. Restore the full TUI and focused engine/core suites to green under the
+   pinned Bun runtime, then classify and close any remaining runtime-skew or
+   isolation failures.
+2. TUI-2.1 freeze gates: 11-phase manual smoke, width matrix, dark/light theme
    matrix, approval lifecycle observation, restart recovery, session
    isolation, performance measurements, 6-checkpoint live stream protocol.
-2. Engine/core/TUI/CLI/SDK/Rust suite rerun at the exact final commit.
-3. Mainline promotion (`master` fast-forward to `phase-d-implementation`).
-4. Independent validation (L3+ reproduction of the Phase C evaluation).
-5. Phase D/E/F remaining work per `docs/BLOCKERS.md`: in-repo engineering is
+3. Engine/core/TUI/CLI/SDK/Rust suite rerun at the exact final commit.
+4. Mainline promotion (`master` fast-forward to `arcanagov`).
+5. Independent validation (L3+ reproduction of the Phase C evaluation).
+6. Phase D/E/F remaining work per `docs/BLOCKERS.md`: in-repo engineering is
    substantially complete, but the remaining work is NOT exclusively
    operational/external: TLS/mTLS, live Linux validation, remaining operator
    console work (escalation and auditor consoles mounted 2026-08-04), live
@@ -276,10 +400,11 @@ gaps and evidence explicit.
 
 - No hostile-host containment claim; hardware-backed attestation + explicit
   trust model required before claiming it.
-- No universal governance of external CLIs yet (A0–A3 assurance levels are a
-  product contract, not an implemented surface).
-- No distributed/fleet production claim; Phase D in-repo engineering is
-  complete but production deployment (TLS/mTLS), live Linux validation, and
+- No universal exact-effect governance of external CLIs. Eleven A1 launch
+  wrappers exist, but A1 is supervision/evidence only and explicitly does not
+  claim sandboxing, in-process file-read containment, or PEP mediation.
+- No distributed/fleet production claim; Phase D in-repo engineering coverage
+  is high but production deployment (TLS/mTLS), live Linux validation, and
   Node 1.0 freeze remain.
 - No public proof protocol (stable schemas, canonical serialization, external
   verifier, public vectors) published yet.

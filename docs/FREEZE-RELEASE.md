@@ -28,6 +28,7 @@ evidence and receives explicit human sign-off. These map to runbook Gates 1–10
 | 8 | Suite rerun at the exact final commit | Engineering | Full core/engine/TUI/CLI/SDK/Rust suite rerun green at the tagged commit; totals recorded (BLK-TUI-08; AUD-08) |
 | 9 | Human freeze sign-off | Maintainer + operator | Explicit human approval recorded (freeze NOT authorized without it) |
 | 10 | Immutable milestone tag | Maintainer | Immutable tag created at the verified final commit after sign-off (release-flow Phase 1) |
+| 11 | Goal verification system operational | Engineering | Independent goal completion verifier tested end-to-end: deterministic gate rejects unmet obligations, model verifier bounded by evidence refs, verified goal archived and slot cleared, rejected goal reopens with unmet criteria (BLK-GOAL-01; AUD-GOAL-01) |
 
 Evidence for every gate must be recorded with a date, commit, and verification
 command per `docs/BLOCKERS.md` closing rules before the freeze is declared.

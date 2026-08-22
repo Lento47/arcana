@@ -854,6 +854,41 @@ Built-in agents such as build, general, tester/QA, explore, or subagents should 
 
 The agent that performs work cannot self-certify completion. A session is complete only when required criteria are resolved through evidence, verifier results, explicit recorded limitations, or a human override. This prevents “done” from being a rhetorical model output. 
 
+#### **9.5.1 Independent goal completion verification** 
+
+The goal lifecycle includes an independent completion verifier that prevents workers from self-certifying completion. The flow: 
+
+1. **goal_set** records an explicit multi-step mutation objective. Greetings, explanations, reviews, and read-only work stay goal-free. 
+2. **goal_check(status=complete)** submits a completion claim; this transitions the goal to `complete_pending_verify` and freezes all mutation tools. 
+3. An independent model-less deterministic gate runs first (required obligations, contract resolution, trace integrity, execution receipts). If it rejects, the goal reopens immediately without calling a model. 
+4. If the deterministic gate passes, a bounded evidence packet is sent to a separate model call (the "verifier") with temperature=0, no tools, and a structured Zod output schema (`GoalVerifierOutput`). 
+5. The verifier's evidence refs are validated against the bounded receipt set; out-of-scope refs or contradictory fields (verified + unmet criteria) cause automatic rejection. 
+6. On **verified**: the goal is archived (`verified_complete`), the active slot is cleared, and mutation tools are unfrozen. 
+7. On **rejected**: the same goal reopens (`in_progress`) with unmet criteria recorded; the worker must continue the same objective. 
+8. On **error**: the goal moves to `blocked` for operator review. 
+
+Key invariants: 
+- The worker cannot choose the verdict. 
+- Model citations must resolve to receipts from the current objective's evidence window (capped at 20 most recent). 
+- `complete_pending_verify` freezes mutations during verification. 
+- Legacy `complete`/`complete_unverified` states are migrated on read and archived as `legacy_unverified`. 
+
+Goal status state machine: 
+```text 
+unset → in_progress → complete_pending_verify → verified (archived, slot cleared) 
+                     ↗ rejected → in_progress (reopen) 
+                     ↗ error → blocked (operator review) 
+in_progress → blocked 
+blocked → in_progress 
+``` 
+
+Implementation: `packages/core/src/session/goal.ts` (state machine + persistence), `packages/engine/src/session/goal-verifier.ts` (deterministic gate + model verifier), `packages/arcana/src/agent/runner.ts` (`verifyGoalCompletion` for CLI agent). 
+
+#### **9.5.2 Reserved memory keys** 
+
+Runtime state keys (`active.*`, `goal.*`) are reserved and cannot be persisted as user facts. The `isReservedMemoryKey()` filter rejects these keys at write time (`ReservedMemoryKeyError`) and filters them out of FACTS.md rendering, cloud sync, system prompt injection, memory search results, and CLI memory merge. This prevents internal runtime state from masquerading as user knowledge or leaking across sessions. 
+
+
 ### **10. Governed Autonomy Security Kernel** 
 
 #### **10.1 Canonical authorization request** 

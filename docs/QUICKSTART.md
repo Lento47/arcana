@@ -291,6 +291,28 @@ Supported permission keys: `bash`, `read`, `edit`, `glob`, `grep`, `webfetch`, `
 Skills are structured instructions. The repository keeps a shared skill library under
 `skills/` and `arcana skills` lists/loads them. See `arcana skills --help`.
 
+### Goals and completion verification
+
+Arcana enforces goal discipline: mutating agents (build, general, tester) require an
+active goal before executing multi-step mutations. Greetings, explanations, reviews,
+and read-only work stay goal-free.
+
+```text
+User objective
+  → goal_set (records explicit multi-step mutation objective)
+  → work proceeds (mutations gated until goal exists)
+  → goal_check(status=complete) (submits completion claim)
+  → independent verifier checks bounded evidence
+  → verified: goal archived, slot cleared, mutations unfrozen
+  → rejected: same goal reopens with unmet criteria
+  → error: goal blocked for operator review
+```
+
+Key invariants:
+- The worker cannot choose the completion verdict.
+- `complete_pending_verify` freezes mutations during verification.
+- Reserved memory keys (`active.*`, `goal.*`) cannot leak as user facts.
+
 ---
 
 ## 6. Configuration

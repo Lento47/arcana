@@ -3,111 +3,83 @@
     "documentClass": "current_state",
     "authority": "generated_from_repo",
     "generatedBy": "scripts/generate-current-state.ts",
-    "generatedAt": "2026-08-13T12:58:25.758Z",
-    "implementationCheckpoint": "cce5398a17250a5c7c3758221b0fa0aa38503477",
-    "verificationDate": "2026-08-13",
+    "generatedAt": "2026-08-22T07:03:35.895Z",
+    "implementationCheckpoint": "fb7c19688bba2d6fee95db5f9222f5a9b34577cc",
+    "verificationDate": "2026-08-22",
     "currentMilestone": "M1"
   },
-  "commit": "cce5398a17250a5c7c3758221b0fa0aa38503477",
-  "verificationDate": "2026-08-13",
+  "commit": "fb7c19688bba2d6fee95db5f9222f5a9b34577cc",
+  "verificationDate": "2026-08-22",
   "currentMilestone": "M1",
   "branchAncestry": [
-    "cce5398a chore(ci): reconcile CURRENT-STATE testTotals at 2ddd4fc3d8d93150dd539cb4e86f3ae99a0d378d",
-    "2ddd4fc3 Merge pull request #126 from Lento47/fix/ci-isolate-tui-workspace-tests",
-    "e44ce1cd Merge pull request #125 from Lento47/fix/opentui-patcher-nontarget-chunks",
-    "b057532a chore(ci): document TUI isolation rationale",
-    "6eafe2f3 fix(ci): isolate TUI from workspace test concurrency",
-    "ffffac5c fix(ci): ignore unrelated OpenTUI bundle chunks",
-    "82c6fb6b Merge pull request #124 from Lento47/fix/models-dev-corrupt-cache-test-race",
-    "e7b052bb Merge pull request #123 from Lento47/fix/opentui-patcher-partial-failure",
-    "84c989c7 Merge pull request #122 from Lento47/fix/tui-test-concurrency",
-    "43a1b893 Merge pull request #121 from Lento47/feat/contract-parity-lint",
-    "6f5e22f4 Merge pull request #120 from Lento47/feat/e9-registry-enforcement",
-    "63e44df7 fix(test): isolate models cache recovery from eager refresh",
-    "805bbc3b fix: fail OpenTUI patcher on partial patch failure",
-    "d0e5f123 fix(tui): serialize renderer-sensitive test suite",
-    "d8bda27b fix(engine): treat only 2xx as success in parity error extraction",
-    "eed79fd2 feat: add contract parity CLI, fixtures tests, and CI job",
-    "18dc6878 feat: add contract parity comparison module (draft, typecheck green)",
-    "48589a11 docs: reference extension registry enforcement in protocol governance",
-    "ca601328 feat: enforce extension registry in envelope and policy bundle validation",
-    "f5693f4d feat: add protocol extension registry enforcement"
+    "fb7c1968 docs(tui): mark opencode-shell as legacy selectable shell",
+    "d95f1e6f feat(tui): register /goal and /loop as injectable palette+slash commands",
+    "6cf63b91 refactor(tui): extract /goal and /loop handlers into slash-goal module",
+    "8d00058b fix: deduplicate prompt delivery",
+    "1986c768 refactor(engine): extract enterprise wire schemas into schemas module",
+    "cb7f96c5 fix: persist scoped permission governance",
+    "0809727c refactor(tui): carve read-output parser into mapper/read-output module",
+    "94baf854 refactor(engine): extract per-provider custom loaders into custom-loaders module",
+    "635baf06 refactor(tui): extract message and tool-part renderers into tool-parts module",
+    "b7cd38f8 refactor(tui): extract session command palette into session-commands module",
+    "e2a38d6c fix: keep code previews visible while highlighting",
+    "7d5bb0ee fix: delay voice activation on alt hold",
+    "f3328d14 refactor: unify duplicated hash, guard, and trim helpers across spine modules",
+    "0ccc2db8 test: spread real modules into context mocks to stop cross-file pollution",
+    "fec59fa6 test: guard ARCANA home env restores against undefined coercion",
+    "e869e899 chore: untrack bug-artifact undefined/ config path",
+    "12bba9cc docs: gvo architecture notes and customization guide update",
+    "2b9f9a8b feat(enterprise): console routes for models, proofs, sessions, settings, skills",
+    "2a0c67c6 feat(tui): prompt, transcript, sync, and shell integration updates",
+    "69a62ca6 feat(engine): skill/memory upsert tools with session drive and learn runtime"
   ],
   "testTotals": {
-    "source": "mixed",
-    "summaryFile": "docs/evidence/ci-engine-tests.log",
-    "documentedAt": "2026-08-13T07:21:25.920Z",
+    "source": "documented",
+    "documentedAt": "2026-08-22 (docs/STATUS.md current test checkpoint table)",
     "suites": {
+      "Runtime": {
+        "note": "non-numeric row in the STATUS.md test table",
+        "evidence": "Bun 1.4.0 on Windows; repository pin is Bun 1.3.14, so pinned-runtime reproduction remains required"
+      },
       "TUI suite": {
-        "pass": 819,
+        "pass": 1131,
         "skip": 1,
-        "fail": 0,
-        "source": "fresh_run"
+        "fail": 42,
+        "tests": 1174,
+        "evidence": "**1131 pass / 1 skip / 42 fail (1174 tests)**. Failures cluster in SDK/project test-provider setup, renderer interaction tests, and voice/module isolation. Not release-green."
       },
-      "Repo-wide typecheck": {
-        "note": "non-numeric row in the STATUS.md test table",
-        "evidence": "16/16 packages",
-        "source": "documented"
-      },
-      "Build": {
-        "note": "non-numeric row in the STATUS.md test table",
-        "evidence": "8/8 tasks (engine binaries smoke-tested; `0.0.0-phase-d-implementation-202608021350`)",
-        "source": "documented"
-      },
-      "Core suite": {
-        "pass": 1465,
-        "skip": 7,
-        "fail": 0,
-        "evidence": "1465 pass / 7 skip / 0 fail (1,472 tests, 175 files — clean rerun 2026-08-02 incl. enterprise cores, delta bundles, revocation hostile fixtures, containment fixtures)",
-        "source": "documented",
-        "freshAttempt": {
-          "pass": 1590,
-          "skip": 7,
-          "fail": 1,
-          "exitCode": 1
-        }
-      },
-      "Engine suite": {
-        "pass": 4382,
-        "skip": 38,
-        "todo": 1,
-        "fail": 10,
-        "tests": 4431,
-        "source": "fresh_run_ci",
-        "evidence": "freeze-evidence workflow at 2ddd4fc3d8d93150dd539cb4e86f3ae99a0d378d (full engine suite, bun test --timeout 30000)"
-      },
-      "Arcana CLI/proof suite": {
-        "pass": 124,
-        "fail": 0,
-        "source": "fresh_run"
-      },
-      "SDK JS suite": {
-        "pass": 34,
+      "Focused TUI regressions": {
+        "pass": 167,
         "skip": 0,
-        "fail": 0,
-        "evidence": "34 pass / 0 fail (2026-08-02, full `src` run incl. enterprise client, adapters, vectors, SSE)",
-        "source": "documented"
+        "fail": 1,
+        "evidence": "167 pass / 0 skip / 1 fail; the same run also reported 1 module-loader error across voice, prompt queue, shimmer, turn lifecycle, navigation, mapper, receipt, and subagent UX tests"
       },
-      "Conformance runner": {
-        "note": "non-numeric row in the STATUS.md test table",
-        "evidence": "5/5 suites (TS golden vectors + D-10 matrix + Rust verifier + SDK surface + adapter vectors; 46 crypto + 4 adapter vectors + 15 hostile fixtures)",
-        "source": "documented"
+      "Focused engine regressions": {
+        "pass": 225,
+        "skip": 18,
+        "fail": 4,
+        "evidence": "225 pass / 18 skip / 4 fail. Goal verifier, memory prompt boundary, scoped permissions, launch declarations, and prompt dedup checks pass; one HTTP timeout, one queued-static-reply failure, and two task empty-output time"
       },
-      "ML eval / smoke": {
+      "Focused core + memory regressions": {
+        "pass": 71,
+        "skip": 0,
+        "fail": 1,
+        "evidence": "71 pass / 0 skip / 1 fail; the failure is a suite teardown-hook timeout after the individual tests pass"
+      },
+      "TUI typecheck": {
         "note": "non-numeric row in the STATUS.md test table",
-        "evidence": "Earlier baseline: ml:eval 13/13, smoke 8/8",
-        "source": "documented"
+        "evidence": "PASS (`bun --cwd packages/tui typecheck`)"
+      },
+      "Engine typecheck": {
+        "note": "non-numeric row in the STATUS.md test table",
+        "evidence": "PASS (`bun run --filter @arcana/engine typecheck`)"
       },
       "Validation level": {
         "note": "non-numeric row in the STATUS.md test table",
-        "evidence": "Strongest at L1–L2 (production-path integration + internal adversarial); L3+ independent validation not obtained",
-        "source": "documented"
+        "evidence": "Working-tree L1/L2 evidence only; not a freeze run and not external validation"
       }
     },
-    "failures": [
-      "Engine suite (exit=1, 10 failures at 2ddd4fc3d8d93150dd539cb4e86f3ae99a0d378d)"
-    ],
-    "note": "Engine suite totals were refreshed from freeze-evidence CI; all other suite entries retain their existing provenance. Engine suite recorded 10 failing tests at 2ddd4fc3d8d93150dd539cb4e86f3ae99a0d378d; see summaryFile for details. No numbers were invented."
+    "note": "No fresh run was parsed; totals are the documented figures from docs/STATUS.md. Nothing was invented."
   },
   "contractRevisions": {
     "approvalApi": {
@@ -129,7 +101,7 @@
     "gates": [
       {
         "area": "TUI 1.0 (TUI-2.1 freeze)",
-        "status": "MOUNTED, automated green, freeze NOT authorized",
+        "status": "MOUNTED; current working-tree suite has 42 failures; freeze NOT authorized",
         "openBlockers": 8
       },
       {
