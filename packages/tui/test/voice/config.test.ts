@@ -7,6 +7,7 @@ test("resolves voice defaults", () => {
   expect(config.voice.enabled).toBe(true)
   expect(config.voice.auto_submit).toBe(true)
   expect(config.voice.hold_key).toBe("alt")
+  expect(config.voice.hold_delay_ms).toBe(3000)
   expect(config.voice.recorder).toEqual({ binary: undefined, args: undefined })
   expect(config.voice.asr).toMatchObject({
     backend: "whisper.cpp",
@@ -29,6 +30,7 @@ test("reads voice overrides", () => {
         enabled: true,
         auto_submit: false,
         hold_key: "leftalt",
+        hold_delay_ms: 1250,
         recorder: { binary: "ffmpeg", args: ["-i", "mic", "{output}"] },
         asr: { backend: "whisper.cpp", model: "/models/base.bin", language: "en" },
         normalizer: { provider: "ollama", host: "http://host:11434", model: "custom", prompt: "Fix: {text}" },
@@ -40,6 +42,7 @@ test("reads voice overrides", () => {
   expect(config.voice.enabled).toBe(true)
   expect(config.voice.auto_submit).toBe(false)
   expect(config.voice.hold_key).toBe("leftalt")
+  expect(config.voice.hold_delay_ms).toBe(1250)
   expect(config.voice.recorder).toEqual({ binary: "ffmpeg", args: ["-i", "mic", "{output}"] })
   expect(config.voice.asr).toMatchObject({
     backend: "whisper.cpp",

@@ -111,6 +111,7 @@ merge `voice`; it lives in TUI config only):
     "enabled": true,
     "auto_submit": true,
     "hold_key": "alt",
+    "hold_delay_ms": 3000,
     "recorder": {
       // Optional. If omitted, arcana tries ffmpeg/sox/rec/arecord.
       "binary": "ffmpeg",

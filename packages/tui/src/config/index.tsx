@@ -110,7 +110,7 @@ export const Voice = Schema.Struct({
   }),
   hold_delay_ms: Schema.optional(Schema.Int.check(Schema.isGreaterThan(-1))).annotate({
     description:
-      "How long the push-to-talk key must be held before the microphone activates (ms, default 0 = immediate)",
+      "How long the push-to-talk key must be held before the microphone activates (ms, default 3000)",
   }),
   recorder: Schema.optional(VoiceRecorder),
   asr: Schema.optional(VoiceAsr),
@@ -185,6 +185,7 @@ export type Resolved = Omit<
     enabled: boolean
     auto_submit: boolean
     hold_key: string
+    hold_delay_ms: number
     recorder: {
       binary?: string
       args?: string[]
@@ -249,6 +250,7 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
       enabled: input.voice?.enabled ?? true,
       auto_submit: input.voice?.auto_submit ?? true,
       hold_key: input.voice?.hold_key ?? "alt",
+      hold_delay_ms: input.voice?.hold_delay_ms ?? 3000,
       recorder: {
         binary: input.voice?.recorder?.binary,
         args: input.voice?.recorder?.args,
