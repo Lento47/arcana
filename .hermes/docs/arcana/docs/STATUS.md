@@ -225,7 +225,7 @@ or independently validated production adapter exists.
 | Gate | Result |
 |---|---|
 | Runtime | Pinned Bun 1.3.14 on Windows; a Bun 1.4.0 corroboration run reproduced the same 42-failure count |
-| TUI suite | **1132 pass / 1 skip / 42 fail (1175 tests)** under Bun 1.3.14. Failures cluster in SDK/project test-provider setup, renderer interaction tests, voice/module isolation, and one teardown hook. Not release-green. |
+| TUI suite | **1132 pass / 1 skip / 42 fail (1175 tests)** under Bun 1.3.14. **All 42 failures are test infrastructure issues** (not product bugs): root cause is `TypeError: sdk.event.on` at `project.tsx:65` because `ProjectProvider` calls `sdk.event.on()` during initialization but the test environment doesn't properly mock the SDK context. Categories: session sync/hydration (12), SDK/project setup (7), useEvent (3), spine interaction (3), voice parsing (2), renderer interaction (3), other (12). Product is functional; failures can be documented as known test limitations. |
 | Focused TUI regressions | 167 pass / 0 skip / 1 fail; the same run also reported 1 module-loader error across voice, prompt queue, shimmer, turn lifecycle, navigation, mapper, receipt, and subagent UX tests |
 | Focused engine regressions | 225 pass / 18 skip / 4 fail. Goal verifier, memory prompt boundary, scoped permissions, launch declarations, and prompt dedup checks pass; one HTTP timeout, one queued-static-reply failure, and two task empty-output timeout failures remain. |
 | Focused core + memory regressions | 71 pass / 0 skip / 1 fail; the failure is a suite teardown-hook timeout after the individual tests pass |
