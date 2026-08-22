@@ -2,7 +2,9 @@ import { dlopen, ptr } from "bun:ffi"
 import type { ReadStream } from "node:tty"
 
 const STD_INPUT_HANDLE = -10
+const STD_OUTPUT_HANDLE = -11
 const ENABLE_PROCESSED_INPUT = 0x0001
+const UTF8_CODEPAGE = 65001
 const VK_MENU = 0x12
 const VK_LMENU = 0xa4
 const VK_RMENU = 0xa5
@@ -13,6 +15,10 @@ const kernel = () =>
     GetConsoleMode: { args: ["ptr", "ptr"], returns: "i32" },
     SetConsoleMode: { args: ["ptr", "u32"], returns: "i32" },
     FlushConsoleInputBuffer: { args: ["ptr"], returns: "i32" },
+    GetConsoleOutputCP: { args: [], returns: "u32" },
+    SetConsoleOutputCP: { args: ["u32"], returns: "i32" },
+    GetConsoleCP: { args: [], returns: "u32" },
+    SetConsoleCP: { args: ["u32"], returns: "i32" },
   })
 
 const user = () =>
@@ -50,8 +56,7 @@ function keyDown(vk: number): boolean {
 }
 
 /** True while either Alt key is physically down (Windows). Terminals often omit Alt. */
-export function win32AltKeyDown(): boolean {
-  if (process.platform !== "win32") return false
+export function win32AltKeyDown(): boolean {  if (process.platform !== "win32") return false
   if (!loadUser()) return false
   try {
     return keyDown(VK_MENU) || keyDown(VK_LMENU) || keyDown(VK_RMENU)
@@ -87,6 +92,23 @@ export function win32FlushInputBuffer() {
 
   const handle = k32!.symbols.GetStdHandle(STD_INPUT_HANDLE)
   k32!.symbols.FlushConsoleInputBuffer(handle)
+}
+
+/**
+ * Force UTF-8 code pages on the console output/input handles (Windows).
+ *
+ * Without this, Unicode glyphs used across the TUI (◆ ▸ ⎇ · box rails) are
+ * decoded through the legacy OEM code page and render as CJK/mojibake garbage
+ * — which users reasonably read as "the app is writing Chinese".
+ * Idempotent; leaves the console in UTF-8 after exit (harmless, standard).
+ */
+export function win32EnableUtf8Console() {
+  if (process.platform !== "win32") return
+  if (!load()) return
+  const k = k32!
+  if (k.symbols.GetConsoleOutputCP() === UTF8_CODEPAGE && k.symbols.GetConsoleCP() === UTF8_CODEPAGE) return
+  k.symbols.SetConsoleOutputCP(UTF8_CODEPAGE)
+  k.symbols.SetConsoleCP(UTF8_CODEPAGE)
 }
 
 let unhook: (() => void) | undefined
