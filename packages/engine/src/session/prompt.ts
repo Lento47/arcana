@@ -79,6 +79,7 @@ import {
   driveProgressFingerprint,
   noProgressContinuations,
   resolveDriveConfig,
+  turnToolActivity,
 } from "./drive"
 import * as DateTime from "effect/DateTime"
 import { and, desc, eq, gte, ne, sql } from "drizzle-orm"
@@ -1794,12 +1795,10 @@ export const layer = Layer.effect(
             const pendingPermissions = (yield* permission.list()).filter((item) => item.sessionID === sessionID)
             const meta = (session.metadata ?? {}) as Record<string, unknown>
             const used = continuationsUsed(meta)
-            // Detect whether the model actually invoked tools in its last
-            // response. Pure-text responses (greetings, commentary) have no
-            // tool activity -- continuing would just produce more text.
-            const hadToolActivity = lastAssistantMsg?.parts.some(
-              (part) => part.type === "tool",
-            ) ?? false
+            // Detect whether the model invoked tools anywhere in the current
+            // turn. Pure-text turns (greetings, commentary) have no tool
+            // activity — continuing would just produce more text.
+            const hadToolActivity = turnToolActivity(msgs)
             const progressFingerprint = driveProgressFingerprint({
               goalStatus: goal.status,
               tools: (lastAssistantMsg?.parts ?? [])
@@ -1844,6 +1843,14 @@ export const layer = Layer.effect(
                 [DRIVE_METADATA.noProgress]: repeatedProgress,
               }
               yield* sessions.setMetadata({ sessionID, metadata: session.metadata })
+              // Persist the decision so stops/continuations are diagnosable
+              // from the event store, not just the dev-server console.
+              yield* eventStore.append({
+                sessionId: sessionID,
+                actor: { kind: "policy", id: "drive" },
+                type: "session.drive_decision",
+                payload: { action: "continue", reason: decision.reason, continuation: used + 1 },
+              }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
               yield* Effect.logInfo("drive continue", {
                 "session.id": sessionID,
                 continuation: used + 1,
@@ -1858,6 +1865,12 @@ export const layer = Layer.effect(
                 session.metadata = { ...session.metadata, [DRIVE_METADATA.exhausted]: true }
                 yield* sessions.setMetadata({ sessionID, metadata: session.metadata })
               }
+              yield* eventStore.append({
+                sessionId: sessionID,
+                actor: { kind: "policy", id: "drive" },
+                type: "session.drive_decision",
+                payload: { action: "stop", reason: decision.reason },
+              }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
               yield* Effect.logInfo("exiting loop", { "session.id": sessionID, drive: decision.reason })
               break
             }

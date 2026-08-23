@@ -589,6 +589,105 @@ it.live("session.processor effect tests reset reasoning state across retries", (
   ),
 )
 
+it.live("session.processor retries a degenerate empty post-tool completion", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+
+        // Attempt 1: empty post-tool continuation — no content, no finish
+        // reason (maps to "unknown"), zero tokens. This is the free-pool
+        // failure shape that used to end the turn as a phantom success.
+        // Attempt 2 (after retry backoff): healthy response.
+        yield* llm.push(reply(), reply().text("recovered").stop())
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "continue working")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+
+        const value = yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies SessionV1.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [
+            { role: "user", content: "continue working" },
+            // Last context entry is a tool message → the degenerate-empty
+            // gate applies (post-tool follow-up call).
+            { role: "tool", content: [] },
+          ] as LLM.StreamInput["messages"],
+          tools: {},
+        })
+
+        expect(value).toBe("continue")
+        expect(yield* llm.calls).toBe(2)
+        const parts = yield* MessageV2.parts(msg.id)
+        const text = parts.find((part): part is SessionV1.TextPart => part.type === "text")
+        expect(text?.text).toBe("recovered")
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
+it.live("session.processor does not retry benign empty single-shot streams", () =>
+  provideTmpdirServer(
+    ({ dir, llm }) =>
+      Effect.gen(function* () {
+        const { processors, session, provider } = yield* boot()
+
+        // Empty stream but NOT a post-tool continuation (context ends with
+        // the user message): the gate must not fire — no retry, no error.
+        yield* llm.push(reply())
+
+        const chat = yield* session.create({})
+        const parent = yield* user(chat.id, "hello")
+        const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+        const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+        const handle = yield* processors.create({
+          assistantMessage: msg,
+          sessionID: chat.id,
+          model: mdl,
+        })
+
+        const value = yield* handle.process({
+          user: {
+            id: parent.id,
+            sessionID: chat.id,
+            role: "user",
+            time: parent.time,
+            agent: parent.agent,
+            model: { providerID: ref.providerID, modelID: ref.modelID },
+          } satisfies SessionV1.User,
+          sessionID: chat.id,
+          model: mdl,
+          agent: agent(),
+          system: [],
+          messages: [{ role: "user", content: "hello" }],
+          tools: {},
+        })
+
+        expect(value).toBe("continue")
+        expect(yield* llm.calls).toBe(1)
+        expect(msg.error).toBeUndefined()
+      }),
+    { config: (url) => providerCfg(url) },
+  ),
+)
+
 it.live("session.processor effect tests do not retry unknown json errors", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>

@@ -69,6 +69,22 @@ export function isDriveAgent(agent: string): boolean {
   return DRIVE_AGENTS.has(agent)
 }
 
+/**
+ * True when ANY assistant message in the current turn (messages since the
+ * last user message) invoked a tool. Scoping to the whole turn — not just
+ * the final message — keeps a degenerate final step (e.g. a free-pool
+ * upstream returning a zero-token stream mid-task) from reclassifying an
+ * otherwise tool-heavy turn as conversational.
+ */
+export function turnToolActivity(
+  messages: ReadonlyArray<{ info: { role: string }; parts: ReadonlyArray<{ type: string }> }>,
+): boolean {
+  const lastUserIndex = messages.findLastIndex((msg) => msg.info?.role === "user")
+  return messages
+    .slice(lastUserIndex + 1)
+    .some((msg) => msg.info?.role === "assistant" && msg.parts.some((part) => part.type === "tool"))
+}
+
 export function resolveDriveConfig(input: {
   enabled?: boolean
   maxContinuations?: number

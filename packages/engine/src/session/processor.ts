@@ -22,6 +22,7 @@ import type { Provider } from "@/provider/provider"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
+import { ProviderError } from "@/provider/error"
 import { reportCompletionUsage } from "@/metrics/reporter"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@arcana/core/database/database"
@@ -95,6 +96,8 @@ interface ProcessorContext extends Input {
   snapshot: string | undefined
   blocked: boolean
   needsCompaction: boolean
+  /** True when this LLM call continues after tool results (last context entry is a tool message). */
+  followingToolResults: boolean
   currentText: SessionV1.TextPart | undefined
   currentTextID: string | undefined
   completedTextIDs: Set<string>
@@ -182,6 +185,7 @@ export const layer = Layer.effect(
         mlRevisionsUsed: 0,
         textPersist: { lastAt: 0, count: 0 },
         reasoningPersist: {},
+        followingToolResults: false,
       }
       const mirrorAssistant = flags.experimentalEventSystem && !input.assistantMessage.summary
       let aborted = false
@@ -876,6 +880,23 @@ export const layer = Layer.effect(
               usage: value.usage ?? new Usage({}),
               metadata: value.providerMetadata,
             })
+            // Degenerate empty completion: free-pool upstreams occasionally
+            // end a post-tool follow-up call with zero content and an
+            // unparseable finish reason ("unknown"). Ending the turn there
+            // records a phantom success and idles the session silently —
+            // observed live on 2026-08-23 (OtnelVerdict run). Fail only when
+            // this call was a tool-result continuation, so benign single-shot
+            // empty streams are left to the drive layer. SessionRetry backs
+            // off and re-asks; if all attempts exhaust, halt() attaches a
+            // visible error.
+            if (
+              value.reason === "unknown" &&
+              usage.tokens.output === 0 &&
+              usage.tokens.reasoning === 0 &&
+              ctx.followingToolResults
+            ) {
+              throw new ProviderError.ResponseStreamError("Provider returned an empty response")
+            }
             if (!ctx.assistantMessage.summary) {
               // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
               if (mirrorAssistant) {
@@ -1315,6 +1336,10 @@ export const layer = Layer.effect(
         })
         ctx.needsCompaction = false
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
+        // Post-tool continuation marker: the degenerate-empty retry gate only
+        // fires for follow-up calls whose context ends with tool results.
+        ctx.followingToolResults =
+          Array.isArray(streamInput.messages) && streamInput.messages.at(-1)?.role === "tool"
         const attemptBase = ctx.assistantMessage.latency?.attempts.length ?? 0
 
         return yield* Effect.gen(function* () {

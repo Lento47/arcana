@@ -23,6 +23,8 @@ export const ArcanaEvent = Schema.Struct({
     Schema.Literal("session.started"),
     Schema.Literal("session.completed"),
     Schema.Literal("session.crashed"),
+    // Drive-loop autonomy decisions (continue/stop + reason)
+    Schema.Literal("session.drive_decision"),
     Schema.Literal("contract.proposed"),
     Schema.Literal("contract.activated"),
     Schema.Literal("contract.amended"),

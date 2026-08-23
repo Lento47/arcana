@@ -7,6 +7,7 @@ import {
   isDriveAgent,
   noProgressContinuations,
   resolveDriveConfig,
+  turnToolActivity,
   type DriveSnapshot,
 } from "../../src/session/drive"
 
@@ -116,5 +117,43 @@ describe("resolveDriveConfig / continuationsUsed", () => {
     expect(one).toBe(two)
     expect(changed).not.toBe(one)
     expect(noProgressContinuations({ __arcana_drive_no_progress: 2 })).toBe(2)
+  })
+})
+
+describe("turnToolActivity", () => {
+  const user = (text: string) => ({ info: { role: "user" }, parts: [{ type: "text" }] as { type: string }[], text })
+  const assistant = (...partTypes: string[]) => ({
+    info: { role: "assistant" },
+    parts: partTypes.map((type) => ({ type })),
+  })
+
+  test("sees tool activity anywhere in the current turn, not just the final message", () => {
+    // Incident shape: tool-heavy turn whose degenerate final step was empty
+    // (free-pool upstream returned a zero-token stream mid-task).
+    const turn = [
+      user("fix the tests"),
+      assistant("step-start", "tool", "step-finish"),
+      assistant("step-start", "tool", "step-finish"),
+      assistant("step-start", "step-finish"), // empty final step — no parts
+    ]
+    expect(turnToolActivity(turn)).toBe(true)
+  })
+
+  test("pure-text turns have no tool activity", () => {
+    expect(turnToolActivity([user("hi"), assistant("step-start", "text", "step-finish")])).toBe(false)
+  })
+
+  test("an empty turn has no tool activity", () => {
+    expect(turnToolActivity([user("hi")])).toBe(false)
+  })
+
+  test("tool activity before the last user message does not count (previous turn)", () => {
+    const history = [
+      user("first task"),
+      assistant("step-start", "tool", "step-finish"),
+      user("thanks, that is all"),
+      assistant("step-start", "text", "step-finish"),
+    ]
+    expect(turnToolActivity(history)).toBe(false)
   })
 })
