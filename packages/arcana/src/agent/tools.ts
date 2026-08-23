@@ -487,8 +487,16 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         if (!res.ok) return `TTS error: HTTP ${res.status}`
         const audio = Buffer.from(await res.arrayBuffer())
         const tmp = join(homedir(), ".arcana", "cache", "speech.mp3")
-        mkdirSync(dirname(tmp), { recursive: true })
-        writeFileSync(tmp, audio)
+        const cacheWrite = await gatedFileMutation(
+          "speak",
+          { filePath: tmp },
+          () => {
+            mkdirSync(dirname(tmp), { recursive: true })
+            writeFileSync(tmp, audio)
+            return `cached ${audio.length} bytes`
+          },
+        )
+        if (cacheWrite.status !== "EXECUTED") return `Speech blocked: ${formatGateResult(cacheWrite)}`
         // Play via system player
         const platform = process.platform
         // Routed through the Authority Kernel; fire-and-forget preserves the
@@ -542,8 +550,17 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         `date: ${new Date().toISOString().split("T")[0]}`,
         "---",
       ].filter(Boolean).join("\n")
-      writeFileSync(join(dir, "SKILL.md"), `${frontmatter}\n\n${String(args.body).trim()}\n`, "utf8")
-      return `Skill created: ${name} (${id})\nStored in ~/.arcana/skills/${id}/SKILL.md\nLoaded automatically next session.`
+      const skillPath = join(dir, "SKILL.md")
+      const skillBody = `${frontmatter}\n\n${String(args.body).trim()}\n`
+      const created = await gatedFileMutation(
+        "skill_create",
+        { filePath: skillPath, content: skillBody },
+        () => {
+          writeFileSync(skillPath, skillBody, "utf8")
+          return `Skill created: ${name} (${id})\nStored in ~/.arcana/skills/${id}/SKILL.md\nLoaded automatically next session.`
+        },
+      )
+      return created.status === "EXECUTED" ? created.output : formatGateResult(created)
     },
   )
 
@@ -637,11 +654,17 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       // 12. Home directory writable
       try {
         const testFile = join(homedir(), ".arcana", ".write-test")
-        writeFileSync(testFile, "ok", "utf8")
-        const { rmSync } = await import("node:fs")
+        const probe = await gatedFileMutation(
+          "env_write",
+          { filePath: testFile, content: "ok" },
+          () => {
+            writeFileSync(testFile, "ok", "utf8")
+            return "ok"
+          },
+        )
         rmSync(testFile, { force: true })
-        ok("Home dir writable", true, "yes")
-      } catch { ok("Home dir writable", false, "no — check permissions") }
+        ok("Home dir writable", probe.status === "EXECUTED", probe.status === "EXECUTED" ? "yes" : "no - check permissions")
+      } catch { ok("Home dir writable", false, "no - check permissions") }
 
       return lines.join("\n")
     },
@@ -884,13 +907,21 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       try {
         mkdirSync(dir, { recursive: true })
         const fp = resolveSandboxScriptPath(dir, args.filename)
-        writeFileSync(fp, String(args.content), { encoding: "utf8", mode: 0o600 })
+        const written = await gatedFileMutation(
+          "env_write",
+          { filePath: fp, content: String(args.content) },
+          () => {
+            writeFileSync(fp, String(args.content), { encoding: "utf8", mode: 0o600 })
+            return `Script written: ${fp}`
+          },
+        )
+        if (written.status !== "EXECUTED") return formatGateResult(written)
         try {
           await gatedSpawn("env_write", ["chmod", "+x", fp])
         } catch {
           /* Windows / no chmod */
         }
-        return `Script written: ${fp}`
+        return written.output
       } catch (e) {
         return `env_write rejected: ${e instanceof Error ? e.message : String(e)}`
       }
@@ -1859,13 +1890,20 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      const { writeFileSync, mkdirSync } = await import("node:fs")
-      const { dirname } = await import("node:path")
       const fp = String(args.filePath)
       try {
-        mkdirSync(dirname(fp), { recursive: true })
-        writeFileSync(fp, String(args.content), "utf8")
-        return `Written ${fp} (${String(args.content).length} chars)`
+        const result = await gatedFileMutation(
+          "write",
+          { filePath: fp, content: String(args.content) },
+          () => {
+            mkdirSync(dirname(fp), { recursive: true })
+            writeFileSync(fp, String(args.content), "utf8")
+            return `Written ${fp} (${String(args.content).length} chars)`
+          },
+        )
+        return result.status === "EXECUTED"
+          ? result.output
+          : formatGateResult(result)
       } catch (e) {
         return `Write error: ${e instanceof Error ? e.message : String(e)}`
       }
@@ -1891,16 +1929,28 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      const { readFileSync, writeFileSync } = await import("node:fs")
       const fp = String(args.filePath)
       try {
-        const content = readFileSync(fp, "utf8")
-        const oldStr = String(args.oldString)
-        const newStr = String(args.newString)
-        if (!content.includes(oldStr)) return `Error: oldString not found in ${fp}`
-        const updated = content.replace(oldStr, newStr)
-        writeFileSync(fp, updated, "utf8")
-        return `Edited ${fp} — replaced "${oldStr.slice(0, 40)}..."`
+        const result = await gatedFileMutation(
+          "edit",
+          { filePath: fp, oldString: String(args.oldString), content: String(args.newString) },
+          () => {
+            const content = readFileSync(fp, "utf8")
+            const oldStr = String(args.oldString)
+            const newStr = String(args.newString)
+            if (!content.includes(oldStr)) return `__NO_MATCH__${fp}`
+            const updated = content.replace(oldStr, newStr)
+            writeFileSync(fp, updated, "utf8")
+            return `Edited ${fp} - replaced "${oldStr.slice(0, 40)}..."`
+          },
+        )
+        if (result.status !== "EXECUTED") return formatGateResult(result)
+        if (result.output.startsWith("__NO_MATCH__")) {
+          // Exact-request semantics: the mutation never ran, so surface the
+          // mismatch as the tool's own no-match result.
+          return `Error: oldString not found in ${result.output.slice("__NO_MATCH__".length)}`
+        }
+        return result.output
       } catch (e) {
         return `Edit error: ${e instanceof Error ? e.message : String(e)}`
       }

@@ -13,6 +13,7 @@ import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { createHash } from "node:crypto"
 import { authorizeProcess, type ProcessGateResult } from "@arcana/core/capability/process-gate"
+import { authorizeFileMutation, type FileMutationResult } from "@arcana/core/capability/fs-gate"
 
 let resolved: { dbPath: string; sessionId: string } | null = null
 
@@ -51,6 +52,23 @@ export function gatedSpawn(
 /** Stable per-workspace id used where a plain string tag is needed. */
 export function workspaceTag(): string {
   return createHash("sha256").update(process.cwd()).digest("hex").slice(0, 16)
+}
+
+/**
+ * Authorize-and-execute one file mutation through the kernel.
+ * `perform` runs only on ALLOW; denials leave the filesystem untouched.
+ */
+export async function gatedFileMutation(
+  toolName: string,
+  req: { filePath: string; content?: string; oldString?: string },
+  perform: () => string,
+): Promise<FileMutationResult> {
+  const { dbPath, sessionId } = resolveGateTarget()
+  return authorizeFileMutation(
+    { dbPath, sessionId, principalId: "arcana-cli" },
+    { toolName, ...req },
+    perform,
+  )
 }
 
 /** Render a gate result as tool-output text (model-visible), preserving denials verbatim. */

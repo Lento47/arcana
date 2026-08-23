@@ -43,5 +43,8 @@ jobs:
       - name: Authority Kernel process-gate tests (M1)
         run: bun test packages/core/src/capability/process-gate.test.ts
 
+      - name: Authority Kernel fs-gate tests (M1)
+        run: bun test packages/core/src/capability/fs-gate.test.ts
+
       - name: Dynamic authority audit (exercised-path claim)
         run: bun run script/authority-dynamic.ts

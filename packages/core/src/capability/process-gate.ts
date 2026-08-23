@@ -5,7 +5,6 @@
 // arcana CLI runner, future cron/gateway executors) goes through here:
 //
 //   ProcessExecutionRequest ──> canonicalize ──> PDP snapshot ──> PEP
-//     (buildAuthorizationRequest)                (SessionPolicyProvider)
 //         └─ executeExact runs ONLY on ALLOW — no spawn outside this boundary
 //
 // Reuses the exact Phase C machinery the engine session path uses
@@ -24,6 +23,7 @@
 
 import { Effect } from "effect"
 import { authorizeAndExecuteEffect } from "./pep"
+import type { EnforcementResult } from "./pep"
 import { buildAuthorizationRequest } from "./pep-integration"
 import { SqliteGrantStore } from "./grant-store-sqlite"
 import { SessionPolicyProvider } from "./grant-store"
@@ -70,9 +70,51 @@ export type ProcessGateResult =
   | { status: "APPROVAL_REQUIRED"; message: string }
   | { status: "STALE_DECISION" | "EXHAUSTED" | "UNAVAILABLE" | "CLAIMED" | "EXECUTION_FAILED"; detail: string }
 
-const noopEmitter = {
+export const noopEmitter = {
   emit: () => undefined,
 } as const
+
+/**
+ * Shared gate plumbing: opens the authority store inside one scoped program,
+ * bootstraps session grants (unless suppressed), builds the policy provider,
+ * and hands it to the caller's effect. The database closes when the program
+ * completes — no open authority handles escape this function.
+ *
+ * Exported for sibling gates (fs-gate) so every effect class shares ONE
+ * store/provider/bootstrap implementation.
+ */
+export function withGate<T>(
+  options: ProcessGateOptions,
+  f: (provider: SessionPolicyProvider) => Effect.Effect<T>,
+): Promise<T> {
+  const principalId = options.principalId ?? "arcana-cli"
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const { db } = yield* Database.Service
+      const store = new SqliteGrantStore({ db })
+      if (!options.skipBootstrap) {
+        // Idempotent bootstrap: grants the interactive-agent action set
+        // scoped to this session — still fully subject to PDP evaluation
+        // on every request.
+        yield* ensureSessionAgentGrants(store, { agentName: principalId, sessionId: options.sessionId })
+      }
+      const provider = new SessionPolicyProvider(
+        store,
+        {
+          principalId,
+          sessionId: options.sessionId,
+          workspaceTrust: "TRUSTED",
+        },
+        // No intent-binding store on this surface yet. Engine convention
+        // (session/tools.ts) resolves to LEGACY_COMPAT when contracts are
+        // absent; REQUIRED without a store would fail closed on every call.
+        undefined,
+        "LEGACY_COMPAT",
+      )
+      return yield* f(provider)
+    }).pipe(Effect.provide(Database.layerFromPath(options.dbPath))),
+  )
+}
 
 /**
  * Authorize-and-execute a process spawn through the Authority Kernel.
@@ -103,67 +145,45 @@ export async function authorizeProcess(
     requestId: request.requestId,
   })
 
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const { db } = yield* Database.Service
-      const store = new SqliteGrantStore({ db })
-      if (!options.skipBootstrap) {
-        // Idempotent bootstrap: grants the interactive-agent action set
-        // (process.execute included) scoped to this session — still fully
-        // subject to PDP evaluation on every request.
-        yield* ensureSessionAgentGrants(store, { agentName: principalId, sessionId: options.sessionId })
-      }
-      const provider = new SessionPolicyProvider(
-        store,
-        {
-          principalId,
-          sessionId: options.sessionId,
-          workspaceTrust: "TRUSTED",
-        },
-        // No intent-binding store on this surface yet. Engine convention
-        // (session/tools.ts) resolves to LEGACY_COMPAT when contracts are
-        // absent; REQUIRED without a store would fail closed on every call.
-        undefined,
-        "LEGACY_COMPAT",
-      )
+  let executorCalls = 0
 
-      let executorCalls = 0
-      return yield* authorizeAndExecuteEffect(
-        {
-          request: authReq,
-          executeExact: () =>
-            Effect.sync(() => {
-              executorCalls++
-              let env: Record<string, string> | undefined
-              if (request.env) {
-                env = {}
-                for (const [k, v] of Object.entries(request.env)) {
-                  if (typeof v === "string") env[k] = v
-                }
+  const result = await withGate(options, (provider) =>
+    authorizeAndExecuteEffect(
+      {
+        request: authReq,
+        executeExact: () =>
+          Effect.sync(() => {
+            executorCalls++
+            let env: Record<string, string> | undefined
+            if (request.env) {
+              env = {}
+              for (const [k, v] of Object.entries(request.env)) {
+                if (typeof v === "string") env[k] = v
               }
-              const spawned = Bun.spawnSync({
-                cmd: request.argv,
-                cwd: request.cwd ?? undefined,
-                stdout: "pipe",
-                stderr: "pipe",
-                env,
-              })
-              return {
-                stdout: new TextDecoder().decode(spawned.stdout),
-                stderr: new TextDecoder().decode(spawned.stderr),
-                exitCode: spawned.exitCode,
-              }
-            }),
-        },
-        provider,
-        noopEmitter,
-      )
-    }).pipe(Effect.provide(Database.layerFromPath(options.dbPath))),
+            }
+            const spawned = Bun.spawnSync({
+              cmd: request.argv,
+              cwd: request.cwd ?? undefined,
+              stdout: "pipe",
+              stderr: "pipe",
+              env,
+            })
+            return {
+              stdout: new TextDecoder().decode(spawned.stdout),
+              stderr: new TextDecoder().decode(spawned.stderr),
+              exitCode: spawned.exitCode,
+            }
+          }),
+      },
+      provider,
+      noopEmitter,
+    ),
   )
 
   switch (result.status) {
     case "EXECUTED": {
       const value = result.value as { stdout: string; stderr: string; exitCode: number | null }
+      void executorCalls // >0 guaranteed by the PEP contract; kept for debuggability
       return { status: "EXECUTED", ...value, requestHash: result.requestHash }
     }
     case "DENIED":
