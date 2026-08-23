@@ -1,0 +1,24 @@
+{
+  "$comment": "Authority Surface manifest — frozen policy input for the K0 gate. See AUTHORITY-KERNEL.md §3. rawModules maps a raw authority source (module specifier or Bun API) to its effect class. kernelDeclaredPaths are the ONLY paths allowed to hold raw sources without a baseline grandfather entry; it is intentionally empty until M1 migrates the first effect class. enforcement:'audit' means new undeclared sources FAIL while grandfathered baseline entries remain recorded.",
+  "version": 1,
+  "enforcement": "audit",
+  "scan": {
+    "roots": ["packages"],
+    "excludeFilePatterns": ["*.test.ts", "*.d.ts"]
+  },
+  "rawModules": {
+    "node:fs": "FsMutation",
+    "node:fs/promises": "FsMutation",
+    "node:child_process": "ProcessExecution",
+    "node:http": "NetworkMutation",
+    "node:https": "NetworkMutation",
+    "node:net": "NetworkMutation",
+    "node:dgram": "NetworkMutation",
+    "node:dns": "NetworkMutation",
+    "node:tls": "NetworkMutation",
+    "Bun.spawn": "ProcessExecution",
+    "Bun.spawnSync": "ProcessExecution",
+    "Bun.write": "FsMutation",
+    "Bun.$shell": "ProcessExecution"
+  }
+}

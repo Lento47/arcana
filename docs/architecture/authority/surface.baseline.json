@@ -1,0 +1,1154 @@
+{
+  "generatedAt": "2026-08-23T07:16:00.592Z",
+  "entries": {
+    "packages/arcana/src/agent/council.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/agent/evolve.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/agent/guard.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/agent/image-generate.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/agent/kanban.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/agent/mcp.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/agent/models-dev.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/agent/providers.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/agent/runner.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "Bun.spawn",
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/agent/sandbox.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/agent/tools.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "Bun.spawn",
+        "Bun.spawnSync",
+        "node:child_process",
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/config.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/cron.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/daemon.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/doctor.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/feedback.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/learn.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/lexicon.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/memory.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/run.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/theme.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/web.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "Bun.spawn",
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/cli/run/proof-runtime.ts": {
+      "classes": [
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process"
+      ]
+    },
+    "packages/arcana/src/config.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/facts-md.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/arcana/src/index.ts": {
+      "classes": [
+        "ProcessExecution"
+      ],
+      "modules": [
+        "Bun.spawn"
+      ]
+    },
+    "packages/arcana/src/proof/create.ts": {
+      "classes": [
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process"
+      ]
+    },
+    "packages/arcana/src/proof/store.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/proxy-client.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/skills/bridge.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/skills/loader.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/util/atomic-write.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/core/src/capability/effect-boundary.ts": {
+      "classes": [
+        "ProcessExecution"
+      ],
+      "modules": [
+        "Bun.spawn"
+      ]
+    },
+    "packages/core/src/cross-spawn-spawner.ts": {
+      "classes": [
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process"
+      ]
+    },
+    "packages/core/src/crypto/bounded-file-reader.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/distributed-pep.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/export-conformance-vectors.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/run-crash-recovery-tests.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/run-d7i-tests.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/run-linux-identity-tests.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/run-sqlite-tests.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/run-tui2i-tests.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/run-tui2s-tests.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/test-vectors/generate-full.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/workload-identity-linux.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/workload-identity-windows.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process",
+        "node:fs"
+      ]
+    },
+    "packages/core/src/crypto/workload-identity.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/database/sqlite.bun.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/database/sqlite.node.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/governance-config.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/license/machine.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/core/src/plugin/provider/openai-auth.ts": {
+      "classes": [
+        "NetworkMutation"
+      ],
+      "modules": [
+        "node:http"
+      ]
+    },
+    "packages/core/src/tool/webfetch.ts": {
+      "classes": [
+        "NetworkMutation"
+      ],
+      "modules": [
+        "node:dns"
+      ]
+    },
+    "packages/core/src/workspace/trust.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/cron/src/atomic-write.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/cron/src/jobs.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/engine/src/account/license-bind.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/approval/routing.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/arcana-home.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/audit.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/config.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/cron.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process",
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/doctor.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/epistemic.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/feedback.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/gateway.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process",
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/history.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/launch.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "Bun.spawn",
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/learn.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/lexicon.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/license.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/loop.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/memory.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/plugin-store.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process",
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/proof.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/proxy.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/replay-deterministic.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/replay.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/revalidation.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/skills.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/team.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process",
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/theme.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/cmd/tui.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "Bun.spawn",
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/cli/tui/worker.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/config/config.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/control-plane/dev/debug-workspace-plugin.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/engine/src/daemon/lock.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/daemon/log.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/index.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/memory/paths.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/metrics/reporter.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/node/local-proof-source.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/node/node-identity-file.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/permission/index.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/plugin/upsert.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/provider/custom-loaders.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/retention/retention.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/server/routes/instance/httpapi/handlers/control-state.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/server/server.ts": {
+      "classes": [
+        "NetworkMutation"
+      ],
+      "modules": [
+        "node:http"
+      ]
+    },
+    "packages/engine/src/session/check-runner.ts": {
+      "classes": [
+        "ProcessExecution"
+      ],
+      "modules": [
+        "Bun.spawn"
+      ]
+    },
+    "packages/engine/src/session/epistemic/deterministic-replay.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process",
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/session/epistemic/governance-event-bridge.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/session/epistemic/live-revalidation.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/session/system.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/skill/cache.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/engine/src/skill/upsert.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/tool/file-edit-guard.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/engine/src/tool/shell.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/tool/webfetch.ts": {
+      "classes": [
+        "NetworkMutation"
+      ],
+      "modules": [
+        "node:dns"
+      ]
+    },
+    "packages/engine/src/util/atomic-write.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/util/autodoc.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/engine/src/workflow/store.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/enterprise/src/core/storage.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/gateway/src/platforms/whatsapp.ts": {
+      "classes": [
+        "NetworkMutation"
+      ],
+      "modules": [
+        "node:http"
+      ]
+    },
+    "packages/http-recorder/src/cassette.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/memory/src/db.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/ml/src/evals.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/plugin/src/example-workspace.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/script/src/index.ts": {
+      "classes": [
+        "ProcessExecution"
+      ],
+      "modules": [
+        "Bun.$shell"
+      ]
+    },
+    "packages/skills/src/registry.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/audio.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/clipboard.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process",
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/component/prompt/local-attachment.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/context/governance-config.tsx": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/tui/src/context/theme.tsx": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/editor-zed.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/editor.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process",
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/feedback.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/proof-io.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/routes/session/index.tsx": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/util/artifacts.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/tui/src/util/path.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs",
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/util/permission-debug.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/tui/src/util/persistence.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "Bun.write"
+      ]
+    },
+    "packages/tui/src/voice/hold.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/tui/src/voice/orchestrator.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/voice/recorder.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process",
+        "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/voice/whisper.ts": {
+      "classes": [
+        "FsMutation",
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process",
+        "node:fs/promises"
+      ]
+    }
+  }
+}
