@@ -4,13 +4,13 @@ on:
   schedule:
     - cron: "0 7 * * 1" # Every Monday 7am UTC
   push:
-    branches: [master]
+    branches: [master, arcanagov]
     paths:
       - "bun.lock"
       - "package.json"
       - "packages/*/package.json"
   pull_request:
-    branches: [master]
+    branches: [master, arcanagov]
     paths:
       - "bun.lock"
       - "package.json"

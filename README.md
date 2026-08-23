@@ -8,7 +8,7 @@ Skills, memory, gateway, coding, and cron still live in one terminal. Authorizat
 
 > **Development status (2026-08-22):** Arcana remains pre-1.0. The governance,
 > proof, CLI/TUI, adapter, and enterprise surfaces are substantial, but the
-> current working-tree TUI suite is not release-green and Linux, TLS/mTLS,
+> current working-tree TUI suite is locally green while Linux, TLS/mTLS,
 > independent validation, manual freeze evidence, and human sign-off remain
 > open. See [the live status authority](docs/STATUS.md) and
 > [blocker register](docs/BLOCKERS.md); README feature lists are not completion
@@ -18,12 +18,12 @@ Skills, memory, gateway, coding, and cron still live in one terminal. Authorizat
 
 Every consequential action answers four questions:
 
-| | Question | What you see |
-|---|---|---|
-| **P1** | What is the agent trying to do? | The exact request — action, resource, arguments — not a paraphrase |
+|        | Question                               | What you see                                                                     |
+| ------ | -------------------------------------- | -------------------------------------------------------------------------------- |
+| **P1** | What is the agent trying to do?        | The exact request — action, resource, arguments — not a paraphrase               |
 | **P2** | Why is it allowed, denied, or waiting? | A recorded decision. If approval is required, you review that same exact request |
-| **P3** | What actually ran? | A receipt for the effect that executed, at most once |
-| **P4** | What proves it? | Durable evidence you can export and verify later |
+| **P3** | What actually ran?                     | A receipt for the effect that executed, at most once                             |
+| **P4** | What proves it?                        | Durable evidence you can export and verify later                                 |
 
 Missing evidence is shown as missing. It is never painted as healthy.
 
@@ -59,7 +59,7 @@ arcana memory search     # search persistent memory
 arcana skills list       # list available skills
 ```
 
-**Docs:** [arcana.otnelhq.com/docs](https://arcana.otnelhq.com/docs) · in-repo campaign docs: [STATUS](docs/STATUS.md) · [TASKS](docs/TASKS.md) · [BLOCKERS](docs/BLOCKERS.md) · [COMPLETION-REPORT](docs/COMPLETION-REPORT.md) · [FREEZE-RELEASE](docs/FREEZE-RELEASE.md)
+**Docs:** [arcana.otnelhq.com/docs](https://arcana.otnelhq.com/docs) · [assurance and independent verification](docs/ASSURANCE.md) · [ecosystem and distribution](docs/ECOSYSTEM.md) · in-repo campaign docs: [STATUS](docs/STATUS.md) · [TASKS](docs/TASKS.md) · [BLOCKERS](docs/BLOCKERS.md) · [COMPLETION-REPORT](docs/COMPLETION-REPORT.md) · [FREEZE-RELEASE](docs/FREEZE-RELEASE.md)
 
 ## Install
 
@@ -100,6 +100,7 @@ arcana run "explain this codebase"
 ### Gateway (chat bots)
 
 Configure in `~/.arcana/config.json`:
+
 ```json
 {
   "provider": "openai",
@@ -150,31 +151,31 @@ The full catalog of supported providers and their env keys is documented in `pac
 
 20+ packages organized in a layered architecture. Full details: [system-architecture.md](.hermes/docs/arcana/docs/architecture/system-architecture.md) · [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md)
 
-| Layer | Packages | Purpose |
-|-------|----------|---------|
-| **Entry** | `arcana`, `engine`, `enterprise` | CLI, TUI (SolidJS + OpenTUI), web dashboard |
-| **Presentation** | `tui`, `ui` | Terminal UI (7 themes), web components (20+ locales) |
-| **Service** | `server`, `gateway`, `plugin`, `plugin-legacy`, `sdk` | Hono HTTP API, chat adapters, 30+ plugin hooks, JS client |
-| **Core** | `core`, `memory`, `cron`, `skills`, `ml` | Effect runtime, SQLite+FTS5 memory, scheduler, quality gate |
-| **Foundation** | `llm`, `effect-drizzle-sqlite`, `effect-sqlite-node` | 33+ LLM providers, database bridges |
-| **Infra** | `http-recorder`, `function`, `script` | VCR cassettes, CF Workers, build/release |
+| Layer            | Packages                                              | Purpose                                                     |
+| ---------------- | ----------------------------------------------------- | ----------------------------------------------------------- |
+| **Entry**        | `arcana`, `engine`, `enterprise`                      | CLI, TUI (SolidJS + OpenTUI), web dashboard                 |
+| **Presentation** | `tui`, `ui`                                           | Terminal UI (7 themes), web components (20+ locales)        |
+| **Service**      | `server`, `gateway`, `plugin`, `plugin-legacy`, `sdk` | Hono HTTP API, chat adapters, 30+ plugin hooks, JS client   |
+| **Core**         | `core`, `memory`, `cron`, `skills`, `ml`              | Effect runtime, SQLite+FTS5 memory, scheduler, quality gate |
+| **Foundation**   | `llm`, `effect-drizzle-sqlite`, `effect-sqlite-node`  | 33+ LLM providers, database bridges                         |
+| **Infra**        | `http-recorder`, `function`, `script`                 | VCR cassettes, CF Workers, build/release                    |
 
 ## Deep Dive
 
 Ready-to-use features beyond the basics. Full guide: [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md)
 
-| Feature | Command / Config | Docs |
-|---------|-----------------|------|
-| **Memory** | `arcana memory search "query"` | [session-compaction.md](.hermes/docs/arcana/docs/session-compaction.md) |
-| **History** | `arcana history list` / `arcana history resume --id <id>` | [arcana-updates-v0.3.5.md](.hermes/docs/arcana/docs/arcana-updates-v0.3.5.md) |
-| **Learn** | `arcana learn list` / `arcana learn moc` | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
-| **Doctor** | `arcana doctor` | [configuration.md](.hermes/docs/arcana/docs/configuration.md) |
-| **Gateway** | `arcana gateway` (Telegram, Discord, Slack, WhatsApp) | [gateway.md](.hermes/docs/arcana/docs/gateway.md) |
-| **Cron** | `arcana cron add --name ... --schedule ... --prompt ...` | [cron.md](.hermes/docs/arcana/docs/cron.md) |
-| **ML Engine** | `ARCANA_ML_RUNTIME=1 arcana run "..."` | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
-| **Web App** | `bun run dev:web` (Vite + SolidJS Start) | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
-| **Plugins** | 30+ hooks via `@arcana/plugin` | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
-| **HTTP Recorder** | `import { HttpRecorder } from "@arcana/http-recorder"` | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
+| Feature           | Command / Config                                          | Docs                                                                                    |
+| ----------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **Memory**        | `arcana memory search "query"`                            | [session-compaction.md](.hermes/docs/arcana/docs/session-compaction.md)                 |
+| **History**       | `arcana history list` / `arcana history resume --id <id>` | [arcana-updates-v0.3.5.md](.hermes/docs/arcana/docs/arcana-updates-v0.3.5.md)           |
+| **Learn**         | `arcana learn list` / `arcana learn moc`                  | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
+| **Doctor**        | `arcana doctor`                                           | [configuration.md](.hermes/docs/arcana/docs/configuration.md)                           |
+| **Gateway**       | `arcana gateway` (Telegram, Discord, Slack, WhatsApp)     | [gateway.md](.hermes/docs/arcana/docs/gateway.md)                                       |
+| **Cron**          | `arcana cron add --name ... --schedule ... --prompt ...`  | [cron.md](.hermes/docs/arcana/docs/cron.md)                                             |
+| **ML Engine**     | `ARCANA_ML_RUNTIME=1 arcana run "..."`                    | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
+| **Web App**       | `bun run dev:web` (Vite + SolidJS Start)                  | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
+| **Plugins**       | 30+ hooks via `@arcana/plugin`                            | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
+| **HTTP Recorder** | `import { HttpRecorder } from "@arcana/http-recorder"`    | [arcana-comprehensive-guide.md](.hermes/docs/arcana/docs/arcana-comprehensive-guide.md) |
 
 ## Skills
 
@@ -237,6 +238,7 @@ bun packages/arcana/src/index.ts run "hello"
 ## Themes
 
 11 arcane themes. Press `⛧ themes` in the TUI or set in `~/.config/arcana/tui.json`:
+
 ```json
 { "theme": "dragon" }
 ```
@@ -245,7 +247,8 @@ Themes: `arcana` (default), `bloodmoon`, `coven`, `crypt`, `dragon`, `grimoire`,
 
 ### Interface voice (lexicon)
 
-The interface copy ships in two voices: `arcane` (default — occult verbs like *scrying*, *invoking*, *glyphs*) and `plain` (plain language — *reading*, *running*, *tokens*). Set it in `~/.config/arcana/tui.json`:
+The interface copy ships in two voices: `arcane` (default — occult verbs like _scrying_, _invoking_, _glyphs_) and `plain` (plain language — _reading_, _running_, _tokens_). Set it in `~/.config/arcana/tui.json`:
+
 ```json
 { "theme": "dragon", "lexicon": "plain" }
 ```
@@ -257,6 +260,7 @@ Custom themes (drop-in JSON), the interface voice, and full `arcana.json` config
 ### Background image
 
 Set a custom full-screen background image (truecolor terminals — Kitty, iTerm2, WezTerm, Windows Terminal). In `~/.config/arcana/tui.json`:
+
 ```json
 {
   "background": {
@@ -267,6 +271,7 @@ Set a custom full-screen background image (truecolor terminals — Kitty, iTerm2
   }
 }
 ```
+
 `opacity` (0–1) dims the image so text stays readable. PNG/JPEG. Shows on the home screen and empty areas; falls back to the theme color where unsupported.
 
 ## Recent Changes
