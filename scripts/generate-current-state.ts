@@ -381,6 +381,112 @@ function readCiWorkflows() {
   }
 }
 
+// ---------- working tree ----------
+
+function readWorkingTree() {
+  const raw = git(["status", "--porcelain"]).split(/\r?\n/).filter(Boolean)
+  const modified: string[] = []
+  const staged: string[] = []
+  const untracked: string[] = []
+  for (const line of raw) {
+    const x = line.slice(0, 1)
+    const y = line.slice(1, 2)
+    const path = line.slice(3)
+    if (x === "?" && y === "?") untracked.push(path)
+    else {
+      if (x !== " " && x !== "?") staged.push(path)
+      if (y !== " " && y !== "?") modified.push(path)
+    }
+  }
+  return {
+    dirty: raw.length > 0,
+    totalPaths: raw.length,
+    stagedCount: staged.length,
+    unstagedModifiedCount: modified.length,
+    untrackedCount: untracked.length,
+    staged,
+    ...(modified.length ? { unstagedModified: modified } : {}),
+    ...(untracked.length ? { untracked } : {}),
+    note: "Uncommitted repository state at generation time. implementationCheckpoint reflects commits only.",
+  }
+}
+
+// ---------- phase status (AGENTS.md master table) ----------
+
+function readPhaseStatus() {
+  const agentsPath = resolve(REPO_ROOT, "AGENTS.md")
+  if (!existsSync(agentsPath)) return undefined
+  const lines = readFileSync(agentsPath, "utf8").split(/\r?\n/)
+  const start = lines.findIndex((line) => /^## Phase Status/.test(line))
+  if (start === -1) return undefined
+  const phases: Array<{ phase: string; status: string }> = []
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^## /.test(lines[i]!)) break
+    const m = lines[i]!.match(/^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|/)
+    if (!m || m[1] === "Phase" || /^[-–—]+$/.test(m[1])) continue
+    phases.push({ phase: m[1], status: m[2].replace(/\*/g, "").trim() })
+  }
+  if (phases.length === 0) return undefined
+  return { source: "AGENTS.md Phase Status table", phases }
+}
+
+// ---------- durable diagnostics paths ----------
+
+function readDiagnosticsPaths() {
+  const tmp = process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"
+  return {
+    daemonLog: `${tmp}/arcana-daemon.log`,
+    permissionDebugLog: {
+      path: `${tmp}/arcana-permission-debug.log`,
+      gate: "always-on outside bun test; ARCANA_DEBUG_PERMISSION=1 mirrors to stderr",
+      producer: "packages/tui/src/util/permission-debug.ts",
+    },
+    note: "Append-style logs that survive terminal death; derived from engine daemon/log.ts and tui util/permission-debug.ts path constants.",
+  }
+}
+
+// ---------- performance baseline refs ----------
+
+function fileLastCommitDate(relative: string): string | undefined {
+  try {
+    return git(["log", "-1", "--format=%cs", "--", relative]) || undefined
+  } catch {
+    return undefined
+  }
+}
+
+function readPerformanceBaseline() {
+  const audit = "docs/ENGINE-PERFORMANCE-AUDIT.md"
+  const fixes = "docs/ENGINE-PERFORMANCE-FIXES.md"
+  if (!existsSync(resolve(REPO_ROOT, audit))) return undefined
+  return {
+    auditDoc: audit,
+    fixesDoc: existsSync(resolve(REPO_ROOT, fixes)) ? fixes : undefined,
+    auditLastCommitDate: fileLastCommitDate(audit),
+    headline: {
+      governanceEndpointMs: "~119ms flat per call before caching (O(N) derive over all session events; 408KB payload)",
+      messagesEndpointMs: "148-225ms first hit / 19ms warm (25-message page, ~291KB)",
+      hotSessionScale: "543 messages / 2,933 epistemic events / 2.52MB part payloads in the largest live session (161MB dev DB)",
+      loadOlderCascadeRisk: "500ms scroll poll could crawl up to 22 pages per open on large sessions before the snap latch landed",
+    },
+    source: "docs/ENGINE-PERFORMANCE-AUDIT.md + live endpoint probes recorded in the audit",
+  }
+}
+
+// ---------- operator notes (optional sidecar) ----------
+
+const EXTRAS_FILE = resolve(REPO_ROOT, "docs", "CURRENT-STATE.extras.json")
+
+function readOperatorNotes(): unknown | undefined {
+  if (!existsSync(EXTRAS_FILE)) return undefined
+  try {
+    const parsed = JSON.parse(readFileSync(EXTRAS_FILE, "utf8"))
+    return { source: "docs/CURRENT-STATE.extras.json (sidecar merged by this generator)", ...parsed }
+  } catch (error) {
+    return { source: "docs/CURRENT-STATE.extras.json", error: `sidecar failed to parse: ${String(error)}` }
+  }
+}
+
 // ---------- assemble ----------
 
 const testTotals = readTestTotals()
@@ -404,6 +510,11 @@ const state = {
   openReleaseGates: readOpenReleaseGates(),
   mountedProductSurfaces: readMountedProductSurfaces(),
   ciWorkflows: readCiWorkflows(),
+  workingTree: readWorkingTree(),
+  ...(readPhaseStatus() ? { phaseStatus: readPhaseStatus() } : {}),
+  diagnostics: readDiagnosticsPaths(),
+  ...(readPerformanceBaseline() ? { performanceBaseline: readPerformanceBaseline() } : {}),
+  ...(readOperatorNotes() ? { operatorNotes: readOperatorNotes() } : {}),
 }
 
 writeFileSync(OUT_FILE, JSON.stringify(state, null, 2) + "\n")

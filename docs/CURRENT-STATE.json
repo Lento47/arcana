@@ -3,39 +3,39 @@
     "documentClass": "current_state",
     "authority": "generated_from_repo",
     "generatedBy": "scripts/generate-current-state.ts",
-    "generatedAt": "2026-08-22T07:07:56.423Z",
-    "implementationCheckpoint": "d21c5e3eb804122b648fa871bbb368050421bb37",
-    "verificationDate": "2026-08-22",
+    "generatedAt": "2026-08-23T06:15:25.890Z",
+    "implementationCheckpoint": "5be9f667ba6ce23ef3f2cf4448fca3aeae72a2c5",
+    "verificationDate": "2026-08-23",
     "currentMilestone": "M1"
   },
-  "commit": "d21c5e3eb804122b648fa871bbb368050421bb37",
-  "verificationDate": "2026-08-22",
+  "commit": "5be9f667ba6ce23ef3f2cf4448fca3aeae72a2c5",
+  "verificationDate": "2026-08-23",
   "currentMilestone": "M1",
   "branchAncestry": [
-    "d21c5e3e docs: reconcile status, goal verification, and reserved memory keys",
-    "fb7c1968 docs(tui): mark opencode-shell as legacy selectable shell",
-    "d95f1e6f feat(tui): register /goal and /loop as injectable palette+slash commands",
-    "6cf63b91 refactor(tui): extract /goal and /loop handlers into slash-goal module",
-    "8d00058b fix: deduplicate prompt delivery",
-    "1986c768 refactor(engine): extract enterprise wire schemas into schemas module",
-    "cb7f96c5 fix: persist scoped permission governance",
-    "0809727c refactor(tui): carve read-output parser into mapper/read-output module",
-    "94baf854 refactor(engine): extract per-provider custom loaders into custom-loaders module",
-    "635baf06 refactor(tui): extract message and tool-part renderers into tool-parts module",
-    "b7cd38f8 refactor(tui): extract session command palette into session-commands module",
-    "e2a38d6c fix: keep code previews visible while highlighting",
-    "7d5bb0ee fix: delay voice activation on alt hold",
-    "f3328d14 refactor: unify duplicated hash, guard, and trim helpers across spine modules",
-    "0ccc2db8 test: spread real modules into context mocks to stop cross-file pollution",
-    "fec59fa6 test: guard ARCANA home env restores against undefined coercion",
-    "e869e899 chore: untrack bug-artifact undefined/ config path",
-    "12bba9cc docs: gvo architecture notes and customization guide update",
-    "2b9f9a8b feat(enterprise): console routes for models, proofs, sessions, settings, skills",
-    "2a0c67c6 feat(tui): prompt, transcript, sync, and shell integration updates"
+    "5be9f667 fix: usage metrics sharing on by default",
+    "628409f0 feat(engine): opt-in usage metrics reporting",
+    "7faa1c27 fix(tui): hide installation_status approval notices from spine output",
+    "e1549908 fix: prefer served context window; unify token estimation",
+    "e56fe7ed feat(tui): dismiss approval banners",
+    "2daf8fcb fix: align TUI context percent with engine token accounting",
+    "435d1d1a docs: update performance audit with implementation status",
+    "ca9c918d perf(engine): fix verification race, classify MCP search as read, honor saved approvals",
+    "803daec7 perf(engine): skip unset goal block, cache read-only tool gate checks",
+    "192e28f3 fix(engine): honor saved approvals for HIGH-risk commands, only CRITICAL forces re-ask",
+    "f8db65fe fix(engine): respect saved permission approvals regardless of risk level",
+    "754128be fix(engine): drive loop stops on conversational responses with zero tool activity",
+    "a73cde7e feat(tui): functional placeholders teaching capabilities, remove PROMPT_FRAME redundancy",
+    "48af1c42 refactor(engine): deduplicate prompt architecture, extract shared behavioral fragment",
+    "ea8204bd feat(engine): add content_search tool with ripgrep for post-goal analysis",
+    "7a2ff655 fix(tui): restore shimmer on thinking chips by removing hardcoded active=false",
+    "8d95ab74 fix: remove orphan TUI whitespace node",
+    "972ec5f4 feat: add independent assurance release gates",
+    "5099918b fix(tui): enable per-file test isolation to eliminate cross-file pollution",
+    "dc005408 refactor(tui): extract app effects into app-effects.tsx useAppEffects hook"
   ],
   "testTotals": {
     "source": "documented",
-    "documentedAt": "2026-08-22 (docs/STATUS.md current test checkpoint table)",
+    "documentedAt": "2026-08-23 (docs/STATUS.md current test checkpoint table)",
     "suites": {
       "Runtime": {
         "note": "non-numeric row in the STATUS.md test table",
@@ -46,7 +46,7 @@
         "skip": 1,
         "fail": 42,
         "tests": 1175,
-        "evidence": "**1132 pass / 1 skip / 42 fail (1175 tests)** under Bun 1.3.14. Failures cluster in SDK/project test-provider setup, renderer interaction tests, voice/module isolation, and one teardown hook. Not release-green."
+        "evidence": "**1132 pass / 1 skip / 42 fail (1175 tests)** under Bun 1.3.14. **All 42 failures are test infrastructure issues** (not product bugs): root cause is `TypeError: sdk.event.on` at `project.tsx:65` because `ProjectProvider`"
       },
       "Focused TUI regressions": {
         "pass": 167,
@@ -100,19 +100,9 @@
     "source": "docs/BLOCKERS.md summary rows (open blockers > 0)",
     "gates": [
       {
-        "area": "Goal verification + reserved memory boundary",
-        "status": "WORKING TREE; focused tests pass; exact-commit/full-suite evidence pending",
-        "openBlockers": 3
-      },
-      {
         "area": "TUI 1.0 (TUI-2.1 freeze)",
-        "status": "MOUNTED; current working-tree suite has 42 failures; freeze NOT authorized",
+        "status": "MOUNTED; current working-tree suite has 42 pre-existing failures; freeze NOT authorized",
         "openBlockers": 8
-      },
-      {
-        "area": "Goal Verification & Memory Boundary",
-        "status": "WORKING TREE — implemented but not committed; focused tests pass",
-        "openBlockers": 3
       },
       {
         "area": "CLI 1.0",
@@ -177,6 +167,14 @@
   "ciWorkflows": {
     "workflows": [
       {
+        "file": "assurance-import.yml",
+        "name": "Import external assurance evidence"
+      },
+      {
+        "file": "assurance.yml",
+        "name": "Assurance"
+      },
+      {
         "file": "build.yml",
         "name": "Build arcana"
       },
@@ -193,6 +191,10 @@
         "name": "Freeze evidence"
       },
       {
+        "file": "promote-release.yml",
+        "name": "Promote assessed release candidate"
+      },
+      {
         "file": "release.yml",
         "name": "Release"
       },
@@ -206,5 +208,297 @@
       }
     ],
     "note": "Run IDs are not fabricated. See workflow runs in GitHub Actions for concrete run IDs."
+  },
+  "workingTree": {
+    "dirty": true,
+    "totalPaths": 146,
+    "stagedCount": 1,
+    "unstagedModifiedCount": 120,
+    "untrackedCount": 25,
+    "staged": [
+      "github/workflows/security-audit.yml"
+    ],
+    "unstagedModified": [
+      "README.md",
+      "docs/CURRENT-STATE.json",
+      "package.json",
+      "packages/arcana/README.md",
+      "packages/arcana/npm/README.md",
+      "packages/arcana/npm/package.json",
+      "packages/arcana/package.json",
+      "packages/arcana/src/agent/runner.ts",
+      "packages/core/src/capability/grant-store.ts",
+      "packages/core/src/config/compaction.ts",
+      "packages/core/src/plugin/provider/gateway.ts",
+      "packages/core/src/session/event.ts",
+      "packages/core/src/session/message-updater.ts",
+      "packages/core/src/session/message.ts",
+      "packages/core/src/session/runner/to-llm-message.ts",
+      "packages/core/src/v1/config/config.ts",
+      "packages/core/src/v1/config/migrate.ts",
+      "packages/core/src/v1/session.ts",
+      "packages/core/test/plugin/provider-gateway.test.ts",
+      "packages/core/test/workspace/trust.test.ts",
+      "packages/engine/src/cli/cmd/run/subagent-data.ts",
+      "packages/engine/src/permission/index.ts",
+      "packages/engine/src/provider/provider.ts",
+      "packages/engine/src/server/routes/instance/httpapi/groups/session.ts",
+      "packages/engine/src/server/routes/instance/httpapi/handlers/session.ts",
+      "packages/engine/src/session/compaction-inter.ts",
+      "packages/engine/src/session/compaction.ts",
+      "packages/engine/src/session/contract-admission.ts",
+      "packages/engine/src/session/drive.ts",
+      "packages/engine/src/session/epistemic/run-proof.ts",
+      "packages/engine/src/session/message-v2.ts",
+      "packages/engine/src/session/overflow.ts",
+      "packages/engine/src/session/retry.ts",
+      "packages/engine/src/session/session.ts",
+      "packages/engine/src/snapshot/index.ts",
+      "packages/engine/src/tool/goal-check.txt",
+      "packages/engine/src/tool/goal-set.txt",
+      "packages/engine/src/tool/goal.ts",
+      "packages/engine/src/tool/task.txt",
+      "packages/engine/src/tool/tool.ts",
+      "packages/engine/test/epistemic/replay-fixture.test.ts",
+      "packages/engine/test/permission/next.test.ts",
+      "packages/engine/test/server/httpapi-session.test.ts",
+      "packages/engine/test/session/compaction-assemble.test.ts",
+      "packages/engine/test/session/compaction-inter.test.ts",
+      "packages/engine/test/session/contract-admission.test.ts",
+      "packages/engine/test/session/overflow.test.ts",
+      "packages/engine/test/session/processor-effect.test.ts",
+      "packages/engine/test/session/prompt.test.ts",
+      "packages/engine/test/session/retry.test.ts",
+      "packages/engine/test/snapshot/snapshot.test.ts",
+      "packages/engine/test/v2/session-message-updater.test.ts",
+      "packages/sdk/js/src/v2/adapters/index.ts",
+      "packages/sdk/js/src/v2/adapters/vectors.test.ts",
+      "packages/sdk/js/src/v2/gen/sdk.gen.ts",
+      "packages/sdk/js/src/v2/gen/types.gen.ts",
+      "packages/tui/src/app-effects.tsx",
+      "packages/tui/src/component/dialog-model.tsx",
+      "packages/tui/src/component/dialog-session-list.tsx",
+      "packages/tui/src/component/prompt/index.tsx",
+      "packages/tui/src/component/prompt/optimistic.ts",
+      "packages/tui/src/component/shimmer-text.tsx",
+      "packages/tui/src/config/keybind.ts",
+      "packages/tui/src/context/local.tsx",
+      "packages/tui/src/context/prompt-queue.tsx",
+      "packages/tui/src/context/sync.tsx",
+      "packages/tui/src/feature-plugins/system/diff-viewer-file-tree.tsx",
+      "packages/tui/src/feature-plugins/system/diff-viewer.tsx",
+      "packages/tui/src/routes/session/index.tsx",
+      "packages/tui/src/routes/session/permission.tsx",
+      "packages/tui/src/routes/session/question.tsx",
+      "packages/tui/src/shell/command-spine/authority-gate.tsx",
+      "packages/tui/src/shell/command-spine/session-navigation-rail.tsx",
+      "packages/tui/src/shell/command-spine/spine-chat.tsx",
+      "packages/tui/src/shell/command-spine/spine-chrome.ts",
+      "packages/tui/src/shell/command-spine/spine-composer.tsx",
+      "packages/tui/src/shell/command-spine/spine-entry-view.ts",
+      "packages/tui/src/shell/command-spine/spine-insight-card.tsx",
+      "packages/tui/src/shell/command-spine/spine-mapper.ts",
+      "packages/tui/src/shell/command-spine/spine-navigation.ts",
+      "packages/tui/src/shell/command-spine/spine-prompt.tsx",
+      "packages/tui/src/shell/command-spine/spine-prose.tsx",
+      "packages/tui/src/shell/command-spine/spine-receipt.tsx",
+      "packages/tui/src/shell/command-spine/spine-types.ts",
+      "packages/tui/src/shell/command-spine/turn-lifecycle.ts",
+      "packages/tui/src/shell/command-spine/use-spine-scroll.ts",
+      "packages/tui/src/shell/types.ts",
+      "packages/tui/src/theme/index.ts",
+      "packages/tui/src/util/geometry.ts",
+      "packages/tui/src/voice/orchestrator.ts",
+      "packages/tui/test/app-lifecycle.test.tsx",
+      "packages/tui/test/c2-focus-alignment.test.ts",
+      "packages/tui/test/cleanup-pass.test.ts",
+      "packages/tui/test/cli/cmd/tui/sync-session-prefetch.test.tsx",
+      "packages/tui/test/cli/cmd/tui/sync.test.tsx",
+      "packages/tui/test/cli/tui/diff-viewer-file-tree.test.tsx",
+      "packages/tui/test/cli/tui/diff-viewer.test.tsx",
+      "packages/tui/test/config.test.tsx",
+      "packages/tui/test/geometry-clamp.test.ts",
+      "packages/tui/test/low-cluster-3.test.ts",
+      "packages/tui/test/m4-focus-policy.test.ts",
+      "packages/tui/test/optimistic-merge.test.ts",
+      "packages/tui/test/permission-prompt-keymap.test.tsx",
+      "packages/tui/test/session-navigation-rail.test.tsx",
+      "packages/tui/test/spine-chrome.test.ts",
+      "packages/tui/test/spine-entry-interaction.test.tsx",
+      "packages/tui/test/spine-keyboard-wiring.test.ts",
+      "packages/tui/test/spine-mapper.test.ts",
+      "packages/tui/test/spine-navigation.test.ts",
+      "packages/tui/test/spine-prompt-pulse.test.ts",
+      "packages/tui/test/spine-prose-code-flicker.test.tsx",
+      "packages/tui/test/spine-receipt.test.tsx",
+      "packages/tui/test/turn-lifecycle.test.ts",
+      "packages/tui/test/verify-cleanup-pass.standalone.ts",
+      "packages/tui/test/verify-low-cluster-3.standalone.ts",
+      "packages/tui/test/verify-m4-focus.standalone.ts",
+      "packages/tui/test/verify-spine-prompt-pulse.standalone.ts",
+      "packages/tui/test/voice/orchestrator.test.ts",
+      "script/patch-opentui.ts",
+      "scripts/generate-current-state.ts"
+    ],
+    "untracked": [
+      ".tmp-pty-test.ts",
+      "docs/AGENT-IQ200-ANALYSIS.md",
+      "docs/CURRENT-STATE.extras.json",
+      "docs/ECOSYSTEM.md",
+      "docs/ENGINE-ARCHITECTURE-DEEP-DIVE.md",
+      "docs/ENGINE-PERFORMANCE-FIXES.md",
+      "docs/SECURITY-REVIEW-TRIALLOG.md",
+      "packages/engine/.bun-cache/",
+      "packages/engine/src/session/check-runner.ts",
+      "packages/engine/src/session/text-stream-normalizer.ts",
+      "packages/engine/src/session/tool-lifecycle.ts",
+      "packages/engine/src/session/trial-log.ts",
+      "packages/engine/test/session/text-stream-normalizer.test.ts",
+      "packages/engine/test/session/tool-lifecycle.test.ts",
+      "packages/engine/test/session/trial-log.test.ts",
+      "packages/tui/src/app-commands.tsx",
+      "packages/tui/src/proof-io.ts",
+      "packages/tui/src/proof-view/run-proof-dialogs.tsx",
+      "packages/tui/src/shell/command-spine/spine-motion.tsx",
+      "packages/tui/src/theme/assets/vercel.json",
+      "packages/tui/src/util/permission-debug.ts",
+      "packages/tui/test/permission-reply.test.ts",
+      "packages/tui/test/question-prompt-contract.test.ts",
+      "packages/tui/test/spine-motion.test.ts",
+      "packages/tui/test/spine-visual-grammar.test.tsx"
+    ],
+    "note": "Uncommitted repository state at generation time. implementationCheckpoint reflects commits only."
+  },
+  "phaseStatus": {
+    "source": "AGENTS.md Phase Status table",
+    "phases": [
+      {
+        "phase": "A: Epistemic Foundation",
+        "status": "COMPLETE"
+      },
+      {
+        "phase": "B: Verification & Replay",
+        "status": "COMPLETE"
+      },
+      {
+        "phase": "C: Local Governed Autonomy",
+        "status": "EVALUATION PASS (95 fixtures, 0 false allows, 722 tests)"
+      },
+      {
+        "phase": "D: Distributed Authority",
+        "status": "PLANNED"
+      },
+      {
+        "phase": "TUI 1.0",
+        "status": "PARTIAL (Command Spine active, governance visibility pending)"
+      }
+    ]
+  },
+  "diagnostics": {
+    "daemonLog": "C:\\Users\\lejze\\AppData\\Local\\Temp/arcana-daemon.log",
+    "permissionDebugLog": {
+      "path": "C:\\Users\\lejze\\AppData\\Local\\Temp/arcana-permission-debug.log",
+      "gate": "always-on outside bun test; ARCANA_DEBUG_PERMISSION=1 mirrors to stderr",
+      "producer": "packages/tui/src/util/permission-debug.ts"
+    },
+    "note": "Append-style logs that survive terminal death; derived from engine daemon/log.ts and tui util/permission-debug.ts path constants."
+  },
+  "performanceBaseline": {
+    "auditDoc": "docs/ENGINE-PERFORMANCE-AUDIT.md",
+    "fixesDoc": "docs/ENGINE-PERFORMANCE-FIXES.md",
+    "auditLastCommitDate": "2026-08-22",
+    "headline": {
+      "governanceEndpointMs": "~119ms flat per call before caching (O(N) derive over all session events; 408KB payload)",
+      "messagesEndpointMs": "148-225ms first hit / 19ms warm (25-message page, ~291KB)",
+      "hotSessionScale": "543 messages / 2,933 epistemic events / 2.52MB part payloads in the largest live session (161MB dev DB)",
+      "loadOlderCascadeRisk": "500ms scroll poll could crawl up to 22 pages per open on large sessions before the snap latch landed"
+    },
+    "source": "docs/ENGINE-PERFORMANCE-AUDIT.md + live endpoint probes recorded in the audit"
+  },
+  "operatorNotes": {
+    "source": "docs/CURRENT-STATE.extras.json (sidecar merged by this generator)",
+    "updatedAt": "2026-08-23",
+    "provenance": "Operator verification session 2026-08-22..23. Every entry below was directly observed or implemented in that session; nothing is projected or planned.",
+    "uncommittedWork": {
+      "note": "Implemented and verified in the working tree; not yet part of implementationCheckpoint.",
+      "fixes": [
+        {
+          "area": "Permission gate resurrection",
+          "files": [
+            "packages/tui/src/context/sync.tsx",
+            "packages/tui/test/cli/cmd/tui/sync.test.tsx"
+          ],
+          "change": "permission.routed is update-only in the projection: a routing update racing past its own permission.replied can no longer re-insert a settled request as an unremovable phantom gate. Regression test added (stale routed after replied must not resurrect; routed for unknown session must not create)."
+        },
+        {
+          "area": "Session-history open crawl",
+          "files": [
+            "packages/tui/src/routes/session/index.tsx"
+          ],
+          "change": "historySettled latch gates the 500ms older-page poll until hydration + snap-to-bottom complete; prevents up to 22 sequential page loads (2.52MB) on large sessions from a race the heavy sessions always lost."
+        },
+        {
+          "area": "RunProof derivation cost",
+          "files": [
+            "packages/engine/src/session/epistemic/run-proof.ts"
+          ],
+          "change": "Derivation memo keyed on append-only signature (count + max(sequence), one indexed query). Repeat calls drop from ~119ms flat O(N) re-derive to a cache hit; bounded at 64 sessions with insertion-order eviction."
+        },
+        {
+          "area": "Governance reconcile churn",
+          "files": [
+            "packages/tui/src/context/sync.tsx"
+          ],
+          "change": "refreshGovernance fingerprints authoritative snapshots (proofHash + event count + tail id) and skips the deep Solid reconcile of up-to-500 merged events when unchanged; applied-map entry cleared on session.deleted."
+        }
+      ],
+      "freshTestEvidence": [
+        {
+          "suite": "packages/engine test/session/epistemic + test/server/httpapi-session.test.ts",
+          "result": "18 pass / 2 skip / 0 fail"
+        },
+        {
+          "suite": "packages/tui test/cli/cmd/tui/sync.test.tsx",
+          "result": "11 pass / 0 fail (includes new stale-routed regression)"
+        },
+        {
+          "suite": "packages/tui permission-prompt-keymap + dialog-permissions-render",
+          "result": "pass"
+        },
+        {
+          "typechecks": "bun --cwd packages/tui typecheck PASS; bun run --filter @arcana/engine typecheck PASS"
+        }
+      ]
+    },
+    "activeInvestigations": {
+      "permissionGateFlicker": {
+        "symptom": "Fullscreen ACTION GATE briefly redraws buggy after approve, then vanishes",
+        "state": "Store-level resurrection path fixed and regression-tested; flicker reportedly persists on fresh runtime, so leading hypothesis is a renderer paint artifact (one-frame ghost of the unmounted GateFrame), consistent with known OpenTUI 0.4.5 frame-boundary bugs already patched around (see script/patch-opentui.ts).",
+        "discriminatingInstrument": "%TEMP%/arcana-permission-debug.log — always-on JSONL trace of prompt.create/dispose, gate.head/clear, and every permission.* store mutation; one repro names the mechanism definitively",
+        "eliminatedCauses": [
+          "stale permission.routed insert-on-miss (fixed)",
+          "duplicate SSE channels (single ordered EventV2Bridge -> GlobalBus stream)",
+          "eager Show children / cross-gate state leak (solid-js 1.9.12 Show verified lazy)",
+          "fullscreen keybind collision (ctrl+f)",
+          "SDK response validation overhead (hey-api client does none)"
+        ]
+      }
+    },
+    "liveSystemObservations": {
+      "measuredAt": "2026-08-22/23 against running daemon :9142",
+      "endpoints": {
+        "message?limit=25": "148-225ms first hit / 19ms warm / ~291KB",
+        "governance": "~119ms flat before derive-cache / 408KB (larger than the message page)",
+        "todo": "6ms",
+        "diff": "8ms"
+      },
+      "database": {
+        "file": "~/.local/share/arcana/opencode-local.db",
+        "sizeMB": 161.5,
+        "sessions": 1344,
+        "hottestSession": "543 messages / 2933 epistemic events / 1827 parts / 2.52MB part payloads",
+        "notes": "Batched hydrate (no N+1); idx_events_session + message/part indexes present; part.data is unbounded inline JSON (max observed single part 200KB)"
+      }
+    }
   }
 }

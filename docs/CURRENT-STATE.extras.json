@@ -1,0 +1,65 @@
+{
+  "updatedAt": "2026-08-23",
+  "provenance": "Operator verification session 2026-08-22..23. Every entry below was directly observed or implemented in that session; nothing is projected or planned.",
+  "uncommittedWork": {
+    "note": "Implemented and verified in the working tree; not yet part of implementationCheckpoint.",
+    "fixes": [
+      {
+        "area": "Permission gate resurrection",
+        "files": ["packages/tui/src/context/sync.tsx", "packages/tui/test/cli/cmd/tui/sync.test.tsx"],
+        "change": "permission.routed is update-only in the projection: a routing update racing past its own permission.replied can no longer re-insert a settled request as an unremovable phantom gate. Regression test added (stale routed after replied must not resurrect; routed for unknown session must not create)."
+      },
+      {
+        "area": "Session-history open crawl",
+        "files": ["packages/tui/src/routes/session/index.tsx"],
+        "change": "historySettled latch gates the 500ms older-page poll until hydration + snap-to-bottom complete; prevents up to 22 sequential page loads (2.52MB) on large sessions from a race the heavy sessions always lost."
+      },
+      {
+        "area": "RunProof derivation cost",
+        "files": ["packages/engine/src/session/epistemic/run-proof.ts"],
+        "change": "Derivation memo keyed on append-only signature (count + max(sequence), one indexed query). Repeat calls drop from ~119ms flat O(N) re-derive to a cache hit; bounded at 64 sessions with insertion-order eviction."
+      },
+      {
+        "area": "Governance reconcile churn",
+        "files": ["packages/tui/src/context/sync.tsx"],
+        "change": "refreshGovernance fingerprints authoritative snapshots (proofHash + event count + tail id) and skips the deep Solid reconcile of up-to-500 merged events when unchanged; applied-map entry cleared on session.deleted."
+      }
+    ],
+    "freshTestEvidence": [
+      { "suite": "packages/engine test/session/epistemic + test/server/httpapi-session.test.ts", "result": "18 pass / 2 skip / 0 fail" },
+      { "suite": "packages/tui test/cli/cmd/tui/sync.test.tsx", "result": "11 pass / 0 fail (includes new stale-routed regression)" },
+      { "suite": "packages/tui permission-prompt-keymap + dialog-permissions-render", "result": "pass" },
+      { "typechecks": "bun --cwd packages/tui typecheck PASS; bun run --filter @arcana/engine typecheck PASS" }
+    ]
+  },
+  "activeInvestigations": {
+    "permissionGateFlicker": {
+      "symptom": "Fullscreen ACTION GATE briefly redraws buggy after approve, then vanishes",
+      "state": "Store-level resurrection path fixed and regression-tested; flicker reportedly persists on fresh runtime, so leading hypothesis is a renderer paint artifact (one-frame ghost of the unmounted GateFrame), consistent with known OpenTUI 0.4.5 frame-boundary bugs already patched around (see script/patch-opentui.ts).",
+      "discriminatingInstrument": "%TEMP%/arcana-permission-debug.log — always-on JSONL trace of prompt.create/dispose, gate.head/clear, and every permission.* store mutation; one repro names the mechanism definitively",
+      "eliminatedCauses": [
+        "stale permission.routed insert-on-miss (fixed)",
+        "duplicate SSE channels (single ordered EventV2Bridge -> GlobalBus stream)",
+        "eager Show children / cross-gate state leak (solid-js 1.9.12 Show verified lazy)",
+        "fullscreen keybind collision (ctrl+f)",
+        "SDK response validation overhead (hey-api client does none)"
+      ]
+    }
+  },
+  "liveSystemObservations": {
+    "measuredAt": "2026-08-22/23 against running daemon :9142",
+    "endpoints": {
+      "message?limit=25": "148-225ms first hit / 19ms warm / ~291KB",
+      "governance": "~119ms flat before derive-cache / 408KB (larger than the message page)",
+      "todo": "6ms",
+      "diff": "8ms"
+    },
+    "database": {
+      "file": "~/.local/share/arcana/opencode-local.db",
+      "sizeMB": 161.5,
+      "sessions": 1344,
+      "hottestSession": "543 messages / 2933 epistemic events / 1827 parts / 2.52MB part payloads",
+      "notes": "Batched hydrate (no N+1); idx_events_session + message/part indexes present; part.data is unbounded inline JSON (max observed single part 200KB)"
+    }
+  }
+}
