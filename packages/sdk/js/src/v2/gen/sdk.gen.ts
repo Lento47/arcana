@@ -441,6 +441,8 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
+  SessionRetryErrors,
+  SessionRetryResponses,
   SessionRevertErrors,
   SessionRevertResponses,
   SessionRevokeCapabilityErrors,
@@ -9467,6 +9469,51 @@ export class Session2 extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<SessionPromptAsyncResponses, SessionPromptAsyncErrors, ThrowOnError>({
       url: "/session/{sessionID}/prompt_async",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Retry a failed turn
+   *
+   * Resume the latest retry-exhausted assistant turn, optionally with another model or agent.
+   */
+  public retry<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+      failedMessageID?: string
+      providerID?: string
+      modelID?: string
+      agent?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "failedMessageID" },
+            { in: "body", key: "providerID" },
+            { in: "body", key: "modelID" },
+            { in: "body", key: "agent" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionRetryResponses, SessionRetryErrors, ThrowOnError>({
+      url: "/session/{sessionID}/retry",
       ...options,
       ...params,
       headers: {

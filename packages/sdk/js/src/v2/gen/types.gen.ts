@@ -32,6 +32,7 @@ export type Event =
   | EventSessionNextToolProgress
   | EventSessionNextToolSuccess
   | EventSessionNextToolFailed
+  | EventSessionNextToolCancelled
   | EventSessionNextRetried
   | EventSessionNextCompactionStarted
   | EventSessionNextCompactionDelta
@@ -47,12 +48,12 @@ export type Event =
   | EventIntegrationUpdated
   | EventCatalogUpdated
   | EventMessagePartDelta
+  | EventSessionStatus
+  | EventSessionIdle
   | EventSessionDiff
   | EventSessionError
   | EventModelsDevRefreshed
   | EventGovernanceRecorded
-  | EventSessionStatus
-  | EventSessionIdle
   | EventPermissionAsked
   | EventPermissionRouted
   | EventPermissionReplied
@@ -338,6 +339,29 @@ export type ApiError = {
   }
 }
 
+export type ModelAttemptLatency = {
+  attempt: number
+  startedAt: number
+  firstEventMs?: number
+  firstContentMs?: number
+  generationMs?: number
+  totalMs: number
+  retryWaitMs?: number
+  outcome: "success" | "retry" | "error" | "aborted"
+}
+
+export type ModelLatency = {
+  queueMs?: number
+  snapshotMs?: number
+  preflightMs?: number
+  contextAssemblyMs?: number
+  totalMs?: number
+  promptTokens?: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  attempts: Array<ModelAttemptLatency>
+}
+
 export type AssistantMessage = {
   id: string
   sessionID: string
@@ -379,6 +403,7 @@ export type AssistantMessage = {
   structured?: unknown
   variant?: string
   finish?: string
+  latency?: ModelLatency
 }
 
 export type Message = UserMessage | AssistantMessage
@@ -538,7 +563,26 @@ export type ToolStateError = {
   }
 }
 
-export type ToolState = ToolStatePending | ToolStateRunning | ToolStateCompleted | ToolStateError
+export type ToolCancellationReason = "session_cancelled" | "superseded" | "recovered_stale"
+
+export type ToolStateCancelled = {
+  status: "cancelled"
+  reason: ToolCancellationReason
+  input: {
+    [key: string]: unknown
+  }
+  title?: string
+  output?: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  time: {
+    start: number
+    end: number
+  }
+}
+
+export type ToolState = ToolStatePending | ToolStateRunning | ToolStateCompleted | ToolStateError | ToolStateCancelled
 
 export type ToolPart = {
   id: string
@@ -1115,6 +1159,17 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "session.next.tool.cancelled"
+        properties: {
+          timestamp: number
+          sessionID: string
+          assistantMessageID: string
+          callID: string
+          reason: "session_cancelled" | "superseded" | "recovered_stale"
+        }
+      }
+    | {
+        id: string
         type: "session.next.retried"
         properties: {
           timestamp: number
@@ -1248,6 +1303,21 @@ export type GlobalEvent = {
       }
     | {
         id: string
+        type: "session.status"
+        properties: {
+          sessionID: string
+          status: SessionStatus
+        }
+      }
+    | {
+        id: string
+        type: "session.idle"
+        properties: {
+          sessionID: string
+        }
+      }
+    | {
+        id: string
         type: "session.diff"
         properties: {
           sessionID: string
@@ -1331,21 +1401,6 @@ export type GlobalEvent = {
       }
     | {
         id: string
-        type: "session.status"
-        properties: {
-          sessionID: string
-          status: SessionStatus
-        }
-      }
-    | {
-        id: string
-        type: "session.idle"
-        properties: {
-          sessionID: string
-        }
-      }
-    | {
-        id: string
         type: "permission.asked"
         properties: {
           id: string
@@ -1405,6 +1460,7 @@ export type GlobalEvent = {
           sessionID: string
           requestID: string
           reply: "once" | "always" | "reject"
+          reason?: "aborted" | "instance_disposed"
         }
       }
     | {
@@ -1753,6 +1809,7 @@ export type GlobalEvent = {
     | SyncEventSessionNextToolProgress
     | SyncEventSessionNextToolSuccess
     | SyncEventSessionNextToolFailed
+    | SyncEventSessionNextToolCancelled
     | SyncEventSessionNextRetried
     | SyncEventSessionNextCompactionStarted
     | SyncEventSessionNextCompactionEnded
@@ -2148,6 +2205,10 @@ export type Config = {
     preserve_recent_tokens?: number
     reserved?: number
     threshold_percent?: number
+    performance?: boolean
+    performance_max_input_tokens?: number
+    default_context_tokens?: number
+    summary_max_input_tokens?: number
     intra?: boolean
     intra_min_steps?: number
     intra_min_tokens?: number
@@ -2914,6 +2975,12 @@ export type SubtaskPartInput = {
   command?: string
 }
 
+export type ConflictError = {
+  _tag: "ConflictError"
+  message: string
+  resource?: string
+}
+
 export type SessionBusyError = {
   _tag: "SessionBusyError"
   sessionID: string
@@ -3018,12 +3085,6 @@ export type SessionNotFoundError = {
   _tag: "SessionNotFoundError"
   sessionID: string
   message: string
-}
-
-export type ConflictError = {
-  _tag: "ConflictError"
-  message: string
-  resource?: string
 }
 
 export type ServiceUnavailableError = {
@@ -3735,6 +3796,24 @@ export type SyncEventSessionNextToolFailed = {
   }
 }
 
+export type SyncEventSessionNextToolCancelled = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "session.next.tool.cancelled.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      assistantMessageID: string
+      callID: string
+      reason: "session_cancelled" | "superseded" | "recovered_stale"
+    }
+  }
+}
+
 export type SyncEventSessionNextRetried = {
   type: "sync"
   id: string
@@ -4146,6 +4225,18 @@ export type SessionMessageToolStateError = {
   result?: unknown
 }
 
+export type SessionMessageToolStateCancelled = {
+  status: "cancelled"
+  reason: "session_cancelled" | "superseded" | "recovered_stale"
+  input: {
+    [key: string]: unknown
+  }
+  content: Array<ToolTextContent | ToolFileContent>
+  structured: {
+    [key: string]: unknown
+  }
+}
+
 export type SessionMessageAssistantTool = {
   type: "tool"
   id: string
@@ -4168,6 +4259,7 @@ export type SessionMessageAssistantTool = {
     | SessionMessageToolStateRunning
     | SessionMessageToolStateCompleted
     | SessionMessageToolStateError
+    | SessionMessageToolStateCancelled
   time: {
     created: number
     ran?: number
@@ -4903,6 +4995,18 @@ export type EventSessionNextToolFailed = {
   }
 }
 
+export type EventSessionNextToolCancelled = {
+  id: string
+  type: "session.next.tool.cancelled"
+  properties: {
+    timestamp: number
+    sessionID: string
+    assistantMessageID: string
+    callID: string
+    reason: "session_cancelled" | "superseded" | "recovered_stale"
+  }
+}
+
 export type EventSessionNextRetried = {
   id: string
   type: "session.next.retried"
@@ -5051,6 +5155,23 @@ export type EventMessagePartDelta = {
   }
 }
 
+export type EventSessionStatus = {
+  id: string
+  type: "session.status"
+  properties: {
+    sessionID: string
+    status: SessionStatus
+  }
+}
+
+export type EventSessionIdle = {
+  id: string
+  type: "session.idle"
+  properties: {
+    sessionID: string
+  }
+}
+
 export type EventSessionDiff = {
   id: string
   type: "session.diff"
@@ -5138,23 +5259,6 @@ export type EventGovernanceRecorded = {
   }
 }
 
-export type EventSessionStatus = {
-  id: string
-  type: "session.status"
-  properties: {
-    sessionID: string
-    status: SessionStatus
-  }
-}
-
-export type EventSessionIdle = {
-  id: string
-  type: "session.idle"
-  properties: {
-    sessionID: string
-  }
-}
-
 export type EventPermissionAsked = {
   id: string
   type: "permission.asked"
@@ -5218,6 +5322,7 @@ export type EventPermissionReplied = {
     sessionID: string
     requestID: string
     reply: "once" | "always" | "reject"
+    reason?: "aborted" | "instance_disposed"
   }
 }
 
@@ -14920,6 +15025,49 @@ export type SessionPromptAsyncResponses = {
 }
 
 export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
+
+export type SessionRetryData = {
+  body?: {
+    failedMessageID: string
+    providerID?: string
+    modelID?: string
+    agent?: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/retry"
+}
+
+export type SessionRetryErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+  /**
+   * ConflictError | SessionBusyError
+   */
+  409: ConflictError | SessionBusyError
+}
+
+export type SessionRetryError = SessionRetryErrors[keyof SessionRetryErrors]
+
+export type SessionRetryResponses = {
+  /**
+   * Retry accepted
+   */
+  204: void
+}
+
+export type SessionRetryResponse = SessionRetryResponses[keyof SessionRetryResponses]
 
 export type SessionCommandData = {
   body?: {
