@@ -3,7 +3,9 @@ import {
   DEFAULT_MAX_CONTINUATIONS,
   continuationsUsed,
   decideDrive,
+  driveProgressFingerprint,
   isDriveAgent,
+  noProgressContinuations,
   resolveDriveConfig,
   type DriveSnapshot,
 } from "../../src/session/drive"
@@ -19,6 +21,7 @@ function snap(overrides: Partial<DriveSnapshot> = {}): DriveSnapshot {
     cancelled: false,
     pepDeniedRequired: false,
     hadToolActivity: true,
+    noProgressContinuations: 0,
     continuationsUsed: 0,
     maxContinuations: DEFAULT_MAX_CONTINUATIONS,
     ...overrides,
@@ -69,6 +72,11 @@ describe("decideDrive", () => {
     expect(decideDrive(snap({ continuationsUsed: 5 })).action).toBe("continue")
   })
 
+  test("stops after two identical progress boundaries", () => {
+    expect(decideDrive(snap({ noProgressContinuations: 1 })).action).toBe("continue")
+    expect(decideDrive(snap({ noProgressContinuations: 2 }))).toEqual({ action: "stop", reason: "no_progress" })
+  })
+
   test("respects disabled, cancelled, and pep deny", () => {
     expect(decideDrive(snap({ enabled: false }))).toEqual({ action: "stop", reason: "disabled" })
     expect(decideDrive(snap({ cancelled: true }))).toEqual({ action: "stop", reason: "cancelled" })
@@ -90,5 +98,23 @@ describe("resolveDriveConfig / continuationsUsed", () => {
     expect(continuationsUsed(undefined)).toBe(0)
     expect(continuationsUsed({ __arcana_drive_continuations: 2 })).toBe(2)
     expect(continuationsUsed({ __arcana_drive_continuations: -1 })).toBe(0)
+  })
+
+  test("tracks semantic tool progress without depending on call ids", () => {
+    const one = driveProgressFingerprint({
+      goalStatus: "in_progress",
+      tools: [{ tool: "read", status: "completed", input: { file: "a.ts" }, output: "same" }],
+    })
+    const two = driveProgressFingerprint({
+      goalStatus: "in_progress",
+      tools: [{ tool: "read", status: "completed", input: { file: "a.ts" }, output: "same" }],
+    })
+    const changed = driveProgressFingerprint({
+      goalStatus: "in_progress",
+      tools: [{ tool: "read", status: "completed", input: { file: "b.ts" }, output: "same" }],
+    })
+    expect(one).toBe(two)
+    expect(changed).not.toBe(one)
+    expect(noProgressContinuations({ __arcana_drive_no_progress: 2 })).toBe(2)
   })
 })

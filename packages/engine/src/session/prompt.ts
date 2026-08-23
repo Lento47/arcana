@@ -44,7 +44,15 @@ import { Truncate } from "@/tool/truncate"
 import { Image } from "@/image/image"
 import { decodeDataUrl } from "@/util/data-url"
 import { Process } from "@/util/process"
-import { Cause, Effect, Exit, Latch, Layer, Option, Scope, Context, Schema, Types } from "effect"
+import { Cause, Effect, Exit, Latch, Layer, Option, Ref, Scope, Context, Schema, Types } from "effect"
+
+/**
+ * Log-and-ignore wrapper for silent catches that should be visible in
+ * production but must not fail the calling effect. Use for best-effort
+ * operations where a failure is noteworthy but non-fatal.
+ */
+const swallowLogged = (label: string) => (cause: unknown) =>
+  Effect.logWarning(`${label}: ${Cause.pretty(cause as any)}`).pipe(Effect.ignore)
 import { InstanceState } from "@/effect/instance-state"
 import { TaskTool, type TaskPromptOps } from "@/tool/task"
 import { SessionRunState } from "./run-state"
@@ -195,7 +203,7 @@ export const layer = Layer.effect(
     // defecting service lookup during every run-loop iteration.
     const trialLog = Option.getOrUndefined(yield* Effect.serviceOption(TrialLog.Service))
     const { db } = database
-    const goalVerificationInFlight = new Set<string>()
+    const goalVerificationInFlight = yield* Ref.make<ReadonlySet<string>>(new Set())
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
         cancel: (sessionID: SessionID) => cancel(sessionID),
@@ -301,7 +309,15 @@ export const layer = Layer.effect(
               reason: "All required obligations satisfied by durable evidence",
               unresolved: [],
             })
-            .pipe(Effect.catch(() => Effect.void), Effect.ignore)
+            .pipe(
+              Effect.catch((cause) =>
+                Effect.logWarning("epistemic completion gate failed", {
+                  sessionID: input.sessionID,
+                  error: String(cause),
+                })
+              ),
+              Effect.ignore,
+            )
           yield* eventStore.append({
             sessionId: input.sessionID,
             actor: { kind: "policy", id: "completion-gate" },
@@ -369,8 +385,12 @@ export const layer = Layer.effect(
       const goal = getSessionGoal(input.sessionID)
       if (goal.status !== "complete_pending_verify") return
       const key = `${input.sessionID}:${goal.goalID}:${goal.revision}`
-      if (goalVerificationInFlight.has(key)) return
-      goalVerificationInFlight.add(key)
+      // Atomic check-and-add: prevents double verification under concurrent fibers.
+      const isNew = yield* Ref.modify(goalVerificationInFlight, (s) => {
+        if (s.has(key)) return [false, s] as const
+        return [true, new Set([...s, key])] as const
+      })
+      if (!isNew) return
 
       try {
         startSessionGoalVerification({
@@ -512,7 +532,11 @@ export const layer = Layer.effect(
           },
         }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
       } finally {
-        goalVerificationInFlight.delete(key)
+        yield* Ref.update(goalVerificationInFlight, (s) => {
+          const n = new Set(s)
+          n.delete(key)
+          return n
+        })
       }
     })
 

@@ -8,6 +8,8 @@ export type ToolCapability = "read" | "network" | "write" | "verify" | "shell" |
 const READ = new Set([
   "read",
   "grep",
+  "search",
+  "content_search",
   "glob",
   "list",
   "skill",
@@ -15,6 +17,9 @@ const READ = new Set([
   "lsp",
   "codesearch",
 ])
+
+/** MCP tool names matching this pattern are read-only (parallel dispatch). */
+const MCP_READ_PATTERN = /search|read|list|get|query|fetch|find|lookup|describe/
 
 const NETWORK = new Set(["webfetch", "websearch", "web_fetch", "web_search", "mcp-websearch"])
 
@@ -24,7 +29,8 @@ const SHELL = new Set(["bash", "shell", "task"])
 
 export function classifyToolName(name: string): ToolCapability {
   const key = name.toLowerCase()
-  if (READ.has(key) || key.startsWith("mcp__") && key.includes("search")) return "read"
+  if (READ.has(key)) return "read"
+  if (key.startsWith("mcp__") && MCP_READ_PATTERN.test(key)) return "read"
   if (NETWORK.has(key)) return "network"
   if (WRITE.has(key)) return "write"
   if (SHELL.has(key)) return "shell"
