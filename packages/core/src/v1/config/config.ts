@@ -171,6 +171,21 @@ export const Info = Schema.Struct({
         description:
           "Auto-compact when estimated token usage reaches this percent of the model context window (1–100, default: 85). Matches proactive Grok-style compaction.",
       }),
+      performance: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Enable latency-oriented compaction before the context safety limit is reached (default: true when auto compaction is enabled).",
+      }),
+      performance_max_input_tokens: Schema.optional(PositiveInt).annotate({
+        description:
+          "Auto-compact when model-visible context reaches this token count (default: 96000). This is independent of the context-window safety threshold.",
+      }),
+      default_context_tokens: Schema.optional(PositiveInt).annotate({
+        description:
+          "Assumed context window (tokens) for models that advertise no limit. Enables percent-based proactive compaction for providers that do not report a context window (default: disabled).",
+      }),
+      summary_max_input_tokens: Schema.optional(PositiveInt).annotate({
+        description: "Maximum model-visible tokens in one compaction summarizer request (default: 64000).",
+      }),
       intra: Schema.optional(Schema.Boolean).annotate({
         description:
           "Enable mid-loop (intra) auto-compact during multi-step tool runs (default: true when auto is on). Set false to only compact between user turns.",

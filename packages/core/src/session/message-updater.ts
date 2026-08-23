@@ -337,6 +337,26 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
           }
         })
       },
+      "session.next.tool.cancelled": (event) => {
+        return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
+          const match = latestTool(draft, event.data.callID)
+          if (match && (match.state.status === "pending" || match.state.status === "running")) {
+            const input = typeof match.state.input === "string" ? {} : match.state.input
+            const structured = match.state.status === "running" ? match.state.structured : {}
+            const content = match.state.status === "running" ? match.state.content : []
+            match.time.completed = event.data.timestamp
+            match.state = castDraft(
+              new SessionMessage.ToolStateCancelled({
+                status: "cancelled",
+                reason: event.data.reason,
+                input,
+                structured,
+                content,
+              }),
+            )
+          }
+        })
+      },
       "session.next.reasoning.started": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           draft.content.push(

@@ -14,4 +14,10 @@ export class Info extends Schema.Class<Info>("ConfigV2.Compaction")({
   buffer: NonNegativeInt.pipe(Schema.optional),
   /** Auto-compact at this % of context window (1–100). Default 85 when unset at engine. */
   threshold_percent: NonNegativeInt.pipe(Schema.optional),
+  /** Enable the lower, latency-oriented token threshold independently of the safety threshold. */
+  performance: Schema.Boolean.pipe(Schema.optional),
+  /** Default 96k at the engine. */
+  performance_max_input_tokens: NonNegativeInt.pipe(Schema.optional),
+  /** Default 64k at the engine. */
+  summary_max_input_tokens: NonNegativeInt.pipe(Schema.optional),
 }) {}

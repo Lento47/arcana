@@ -1,26 +1,28 @@
-import { describe, expect, mock } from "bun:test"
+import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { PluginV2 } from "@arcana/core/plugin"
-import { GatewayPlugin } from "@arcana/core/plugin/provider/gateway"
+import { makeGatewayPlugin } from "@arcana/core/plugin/provider/gateway"
 import { it, model } from "./provider-helper"
 
 const gatewayCalls: Record<string, unknown>[] = []
 const vercelGatewayModels = ["anthropic/claude-sonnet-4", "openai/gpt-5", "google/gemini-2.5-pro"]
 
-mock.module("@ai-sdk/gateway", () => ({
-  createGateway(options: Record<string, unknown>) {
-    gatewayCalls.push({ ...options })
-    return {
-      languageModel(modelID: string) {
-        return {
-          modelId: modelID,
-          provider: options.name,
-          specificationVersion: "v3",
-        }
-      },
-    }
-  },
-}))
+const GatewayPlugin = makeGatewayPlugin(() =>
+  Effect.succeed({
+    createGateway(options: Record<string, unknown>) {
+      gatewayCalls.push({ ...options })
+      return {
+        languageModel(modelID: string) {
+          return {
+            modelId: modelID,
+            provider: options.name,
+            specificationVersion: "v3",
+          }
+        },
+      }
+    },
+  }),
+)
 
 describe("GatewayPlugin", () => {
   it.effect("creates a Gateway SDK for @ai-sdk/gateway", () =>

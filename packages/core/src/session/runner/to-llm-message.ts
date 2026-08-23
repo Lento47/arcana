@@ -65,6 +65,20 @@ const toolResult = (tool: SessionMessage.AssistantTool, providerMetadata: Provid
       providerMetadata,
     })
   }
+  if (tool.state.status === "cancelled") {
+    return ToolResultPart.make({
+      id: tool.id,
+      name: tool.name,
+      result: {
+        error: `[Tool execution ${tool.state.reason === "session_cancelled" ? "was cancelled" : "did not complete"}]`,
+        content: tool.state.content,
+        structured: tool.state.structured,
+      },
+      resultType: "error",
+      providerExecuted: tool.provider?.executed,
+      providerMetadata,
+    })
+  }
 }
 
 const assistant = (message: SessionMessage.Assistant, model: Model) => {

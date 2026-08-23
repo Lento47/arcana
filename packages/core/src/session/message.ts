@@ -98,9 +98,21 @@ export class ToolStateError extends Schema.Class<ToolStateError>("Session.Messag
   result: SessionEvent.Tool.Failed.data.fields.result,
 }) {}
 
-export const ToolState = Schema.Union([ToolStatePending, ToolStateRunning, ToolStateCompleted, ToolStateError]).pipe(
-  Schema.toTaggedUnion("status"),
-)
+export class ToolStateCancelled extends Schema.Class<ToolStateCancelled>("Session.Message.ToolState.Cancelled")({
+  status: Schema.Literal("cancelled"),
+  reason: SessionEvent.Tool.Cancelled.data.fields.reason,
+  input: Schema.Record(Schema.String, Schema.Unknown),
+  content: ToolContent.pipe(Schema.Array),
+  structured: Schema.Record(Schema.String, Schema.Any),
+}) {}
+
+export const ToolState = Schema.Union([
+  ToolStatePending,
+  ToolStateRunning,
+  ToolStateCompleted,
+  ToolStateError,
+  ToolStateCancelled,
+]).pipe(Schema.toTaggedUnion("status"))
 export type ToolState = Schema.Schema.Type<typeof ToolState>
 
 export class AssistantTool extends Schema.Class<AssistantTool>("Session.Message.Assistant.Tool")({

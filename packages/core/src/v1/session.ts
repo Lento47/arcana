@@ -299,16 +299,43 @@ export const ToolStateError = Schema.Struct({
 }).annotate({ identifier: "ToolStateError" })
 export type ToolStateError = Types.DeepMutable<Schema.Schema.Type<typeof ToolStateError>>
 
+export const ToolCancellationReason = Schema.Literals([
+  "session_cancelled",
+  "superseded",
+  "recovered_stale",
+]).annotate({ identifier: "ToolCancellationReason" })
+export type ToolCancellationReason = Schema.Schema.Type<typeof ToolCancellationReason>
+
+export const ToolStateCancelled = Schema.Struct({
+  status: Schema.Literal("cancelled"),
+  reason: ToolCancellationReason,
+  input: Schema.Record(Schema.String, Schema.Any),
+  title: Schema.optional(Schema.String),
+  output: Schema.optional(Schema.String),
+  metadata: Schema.optional(Schema.Record(Schema.String, Schema.Any)),
+  time: Schema.Struct({
+    start: NonNegativeInt,
+    end: NonNegativeInt,
+  }),
+}).annotate({ identifier: "ToolStateCancelled" })
+export type ToolStateCancelled = Types.DeepMutable<Schema.Schema.Type<typeof ToolStateCancelled>>
+
 export const ToolState = Schema.Union([
   ToolStatePending,
   ToolStateRunning,
   ToolStateCompleted,
   ToolStateError,
+  ToolStateCancelled,
 ]).annotate({
   discriminator: "status",
   identifier: "ToolState",
 })
-export type ToolState = ToolStatePending | ToolStateRunning | ToolStateCompleted | ToolStateError
+export type ToolState =
+  | ToolStatePending
+  | ToolStateRunning
+  | ToolStateCompleted
+  | ToolStateError
+  | ToolStateCancelled
 
 export const ToolPart = Schema.Struct({
   ...partBase,
@@ -456,6 +483,31 @@ export const SubtaskPartInput = Schema.Struct({
 }).annotate({ identifier: "SubtaskPartInput" })
 export type SubtaskPartInput = Types.DeepMutable<Schema.Schema.Type<typeof SubtaskPartInput>>
 
+export const ModelAttemptLatency = Schema.Struct({
+  attempt: NonNegativeInt,
+  startedAt: NonNegativeInt,
+  firstEventMs: Schema.optional(NonNegativeInt),
+  firstContentMs: Schema.optional(NonNegativeInt),
+  generationMs: Schema.optional(NonNegativeInt),
+  totalMs: NonNegativeInt,
+  retryWaitMs: Schema.optional(NonNegativeInt),
+  outcome: Schema.Literals(["success", "retry", "error", "aborted"]),
+}).annotate({ identifier: "ModelAttemptLatency" })
+export type ModelAttemptLatency = Types.DeepMutable<Schema.Schema.Type<typeof ModelAttemptLatency>>
+
+export const ModelLatency = Schema.Struct({
+  queueMs: Schema.optional(NonNegativeInt),
+  snapshotMs: Schema.optional(NonNegativeInt),
+  preflightMs: Schema.optional(NonNegativeInt),
+  contextAssemblyMs: Schema.optional(NonNegativeInt),
+  totalMs: Schema.optional(NonNegativeInt),
+  promptTokens: Schema.optional(NonNegativeInt),
+  cacheReadTokens: Schema.optional(NonNegativeInt),
+  cacheWriteTokens: Schema.optional(NonNegativeInt),
+  attempts: Schema.mutable(Schema.Array(ModelAttemptLatency)),
+}).annotate({ identifier: "ModelLatency" })
+export type ModelLatency = Types.DeepMutable<Schema.Schema.Type<typeof ModelLatency>>
+
 export const Assistant = Schema.Struct({
   ...messageBase,
   role: Schema.Literal("assistant"),
@@ -488,6 +540,7 @@ export const Assistant = Schema.Struct({
   structured: Schema.optional(Schema.Any),
   variant: Schema.optional(Schema.String),
   finish: Schema.optional(Schema.String),
+  latency: Schema.optional(ModelLatency),
 }).annotate({ identifier: "AssistantMessage" })
 export type Assistant = Omit<Types.DeepMutable<Schema.Schema.Type<typeof Assistant>>, "error"> & {
   error?: AssistantError

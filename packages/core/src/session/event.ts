@@ -396,6 +396,16 @@ export namespace Tool {
     },
   })
   export type Failed = typeof Failed.Type
+
+  export const Cancelled = EventV2.define({
+    type: "session.next.tool.cancelled",
+    ...options,
+    schema: {
+      ...ToolBase,
+      reason: Schema.Literals(["session_cancelled", "superseded", "recovered_stale"]),
+    },
+  })
+  export type Cancelled = typeof Cancelled.Type
 }
 
 export const RetryError = Schema.Struct({
@@ -491,6 +501,7 @@ const DurableDefinitions = [
   Tool.Progress,
   Tool.Success,
   Tool.Failed,
+  Tool.Cancelled,
   Reasoning.Started,
   Reasoning.Ended,
   Retried,

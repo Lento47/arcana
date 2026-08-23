@@ -15,15 +15,18 @@ import {
 describe("workspace trust (ARC-SEC-I02)", () => {
   let root: string
   let prevHome: string | undefined
+  let prevTestHome: string | undefined
   let prevDisable: string | undefined
   let prevForce: string | undefined
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), "arcana-trust-"))
     prevHome = process.env.ARCANA_HOME
+    prevTestHome = process.env.ARCANA_TEST_HOME
     prevDisable = process.env.ARCANA_DISABLE_WORKSPACE_TRUST
     prevForce = process.env.ARCANA_TRUST_WORKSPACE
     process.env.ARCANA_HOME = join(root, "home")
+    process.env.ARCANA_TEST_HOME = process.env.ARCANA_HOME
     delete process.env.ARCANA_DISABLE_WORKSPACE_TRUST
     delete process.env.ARCANA_TRUST_WORKSPACE
   })
@@ -31,6 +34,8 @@ describe("workspace trust (ARC-SEC-I02)", () => {
   afterEach(() => {
     if (prevHome === undefined) delete process.env.ARCANA_HOME
     else process.env.ARCANA_HOME = prevHome
+    if (prevTestHome === undefined) delete process.env.ARCANA_TEST_HOME
+    else process.env.ARCANA_TEST_HOME = prevTestHome
     if (prevDisable === undefined) delete process.env.ARCANA_DISABLE_WORKSPACE_TRUST
     else process.env.ARCANA_DISABLE_WORKSPACE_TRUST = prevDisable
     if (prevForce === undefined) delete process.env.ARCANA_TRUST_WORKSPACE
