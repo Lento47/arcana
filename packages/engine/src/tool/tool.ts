@@ -1,5 +1,5 @@
 import { PermissionV1 } from "@arcana/core/v1/permission"
-import { Effect, Schema } from "effect"
+import { Effect, Option, Schema } from "effect"
 import { SessionV1 } from "@arcana/core/v1/session"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import type { SessionID, MessageID } from "../session/schema"
@@ -7,6 +7,8 @@ import * as Truncate from "./truncate"
 import { Agent } from "@/agent/agent"
 import { actionRequiresMutationGate, createEngineAction, type ArcanaActionKind, createRunProofEvent, createVerificationRun, createVerifierRecord } from "@/kernel"
 import { inspectEffect } from "@/execution/inspect"
+import { TrialLog, computeInputHash } from "@/session/trial-log"
+import { Context } from "effect"
 
 interface Metadata {
   [key: string]: any
@@ -149,6 +151,7 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
   init: Init<Parameters, Result>,
   truncate: Truncate.Interface,
   agents: Agent.Interface,
+  trialLog: TrialLog.Interface | undefined,
 ) {
   return () =>
     Effect.gen(function* () {
@@ -260,7 +263,53 @@ function wrap<Parameters extends Schema.Decoder<unknown>, Result extends Metadat
                 }),
             ),
           )
-          const result = yield* execute(decoded as Schema.Schema.Type<Parameters>, governedCtx)
+
+          // Trial log: check for loop detection before executing
+          const inputHash = computeInputHash(id, args)
+          if (trialLog) {
+            const decision = yield* trialLog.checkLoop(id, inputHash)
+            if (decision.blocked) {
+              yield* Effect.logInfo("engine.loop.blocked", {
+                tool: id,
+                inputHash,
+                strikeCount: decision.strikeCount,
+              })
+              return {
+                title: "loop detected",
+                output: decision.message,
+                metadata: { loop_blocked: true, strike_count: decision.strikeCount },
+              }
+            }
+          }
+
+          let result: ExecuteResult<Result>
+          try {
+            result = yield* execute(decoded as Schema.Schema.Type<Parameters>, governedCtx)
+          } catch (error) {
+            // Record failure in trial log before re-throwing
+            if (trialLog) {
+              yield* trialLog.record({
+                tool: id,
+                inputHash,
+                inputSummary: summarizeToolInput(args),
+                success: false,
+                output: error instanceof Error ? error.message : String(error),
+                error: error instanceof Error ? error.message : undefined,
+              })
+            }
+            throw error
+          }
+
+          // Record success in trial log
+          if (trialLog) {
+            yield* trialLog.record({
+              tool: id,
+              inputHash,
+              inputSummary: summarizeToolInput(args),
+              success: true,
+              output: result.output.slice(0, 500),
+            })
+          }
           yield* Effect.logInfo("engine.action.completed", {
             actionID: action.id,
             sessionID: action.session_id,
@@ -352,7 +401,10 @@ export function define<
       const resolved = yield* init
       const truncate = yield* Truncate.Service
       const agents = yield* Agent.Service
-      return { id, init: wrap(id, resolved, truncate, agents) }
+      // Missing services are defects, not typed failures; serviceOption is the
+      // correct fallback for isolated tool tests that intentionally omit it.
+      const trialLog = Option.getOrUndefined(yield* Effect.serviceOption(TrialLog.Service))
+      return { id, init: wrap(id, resolved, truncate, agents, trialLog) }
     }),
     { id },
   )

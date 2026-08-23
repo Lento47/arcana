@@ -7,7 +7,7 @@ import {
   prepareHeadForSummarization,
   toolPairSafeTailStart,
 } from "../../src/session/compaction-assemble"
-import { compactWithBudget } from "../../src/session/compaction"
+import { buildCompactionCoverageIndex, compactWithBudget } from "../../src/session/compaction"
 import type { SessionV1 } from "@arcana/core/v1/session"
 import type { MessageID } from "../../src/session/schema"
 
@@ -139,6 +139,28 @@ describe("compaction-assemble.dropTrailingIncompleteAssistant", () => {
       msg("msg_a1", "assistant", [completedTool("c1", "done")]),
     ]
     expect(dropTrailingIncompleteAssistant(messages)).toHaveLength(2)
+  })
+})
+
+describe("compaction coverage index", () => {
+  test("keeps chronological message ids, roles, excerpts and tool outcomes", () => {
+    const messages = [
+      msg("msg_u1", "user", [{ type: "text", text: "inspect the renderer", id: "p1" } as never]),
+      msg("msg_a1", "assistant", [completedTool("c1", "large output")]),
+    ]
+    const index = buildCompactionCoverageIndex(messages)
+    expect(index).toContain("msg_u1 user | inspect the renderer")
+    expect(index).toContain("msg_a1 assistant")
+    expect(index).toContain("tools=bash:completed")
+  })
+
+  test("stays bounded", () => {
+    const messages = Array.from({ length: 100 }, (_, i) =>
+      msg(`msg_${i}`, i % 2 ? "assistant" : "user", [
+        { type: "text", text: "x".repeat(500), id: `p_${i}` } as never,
+      ]),
+    )
+    expect(buildCompactionCoverageIndex(messages, 1_000).length).toBeLessThanOrEqual(1_000)
   })
 })
 

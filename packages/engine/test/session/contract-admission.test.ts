@@ -6,6 +6,7 @@ import {
   CONTRACT_DECLINE,
   contractAdmissionQuestion,
   ensureContractAdmission,
+  requiresCompletionContract,
   type ContractAdmissionDeps,
 } from "@arcana/engine/session/contract-admission"
 
@@ -117,6 +118,25 @@ describe("contract admission", () => {
     expect(activated).toBe(false)
     expect(calls.proposes).toBe(0)
     expect(calls.asks).toBe(0)
+  })
+
+  test("does not contract obvious conversation or status checks", async () => {
+    for (const userRequest of ["hi", "Thanks!", "okay", "why did you stop?", "I said hi, not hello"]) {
+      const { deps, calls } = makeDeps()
+      const activated = await Effect.runPromise(
+        ensureContractAdmission(deps, { ...input, userRequest }),
+      )
+      expect(activated).toBe(false)
+      expect(calls.hasActive).toBe(0)
+      expect(calls.proposes).toBe(0)
+      expect(calls.asks).toBe(0)
+    }
+  })
+
+  test("keeps substantive and consequential requests contract-eligible", () => {
+    expect(requiresCompletionContract("review the authentication design")).toBe(true)
+    expect(requiresCompletionContract("Could you fix the rendering flicker?")).toBe(true)
+    expect(requiresCompletionContract("I meant implement the permission fix")).toBe(true)
   })
 
   test("admission question exposes Accept and Decline with exact labels", () => {

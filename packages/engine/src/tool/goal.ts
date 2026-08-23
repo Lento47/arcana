@@ -5,8 +5,10 @@ import {
   claimSessionGoalCompletion,
   patchSessionGoal,
   setSessionGoal,
+  resolveSessionGoalVerification,
   type GoalPriority,
 } from "@arcana/core/session/goal"
+import { runChecks, formatCheckResult, type CheckName } from "../session/check-runner"
 import DESCRIPTION_SET from "./goal-set.txt"
 import DESCRIPTION_CHECK from "./goal-check.txt"
 
@@ -33,6 +35,15 @@ const CheckParams = Schema.Struct({
   done: Schema.optional(Schema.String.annotate({ description: "What has been accomplished so far." })),
   pending: Schema.optional(Schema.String.annotate({ description: "What still needs to be done." })),
   blocked: Schema.optional(Schema.String.annotate({ description: "Any blockers or obstacles." })),
+  checks: Schema.optional(
+    Schema.Array(
+      Schema.Literals(["test", "typecheck", "build", "lint"]).annotate({
+        description: "Verification checks to run when status is complete (e.g. ['test', 'typecheck'])",
+      }),
+    ).annotate({
+      description: "List of checks to run for verification. If empty or omitted, no checks run.",
+    }),
+  ),
 })
 
 type SetMetadata = {
@@ -55,8 +66,8 @@ export const GoalSetTool = Tool.define<typeof SetParams, SetMetadata, never>("go
         return {
           title: "goal awaiting verification",
           output:
-            "The current goal is awaiting independent verification. Do not replace it to unlock mutation tools. " +
-            "Wait for the verdict; if the user explicitly changes objectives, they can use /goal.",
+            "The current goal is awaiting verification. Do not replace it to unlock mutation tools. " +
+            "Wait for verification to complete; if the user explicitly changes objectives, they can use /goal.",
           metadata: { goal: current.goal, status: current.status },
         }
       }
@@ -92,7 +103,7 @@ export const GoalCheckTool = Tool.define<typeof CheckParams, CheckMetadata, neve
   description: DESCRIPTION_CHECK,
   parameters: CheckParams,
   execute: (params: Schema.Schema.Type<typeof CheckParams>, ctx: Tool.Context<CheckMetadata>) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
       const cur = getSessionGoal(ctx.sessionID)
       if (cur.status === "unset") {
         return {
@@ -102,38 +113,113 @@ export const GoalCheckTool = Tool.define<typeof CheckParams, CheckMetadata, neve
         }
       }
 
-      if (params.status === "complete") {
-        claimSessionGoalCompletion(ctx.sessionID)
-      } else if (params.status === "blocked" || params.status === "stale" || params.status === "in_progress") {
+      // Non-complete status updates
+      if (params.status !== "complete") {
         patchSessionGoal(ctx.sessionID, { status: params.status })
+
+        const lines = [
+          `**Check status:** ${params.status}`,
+          `**Done:** ${params.done?.trim() || "nothing yet"}`,
+          `**Pending:** ${params.pending?.trim() || "unknown"}`,
+          `**Blocked:** ${params.blocked?.trim() || "none"}`,
+        ]
+
+        if (params.status === "blocked") {
+          lines.push("", "Blocked. Ask the user for guidance or change approach.")
+        } else if (params.status === "stale") {
+          lines.push("", "Goal may be stale. Confirm with the user before continuing.")
+        }
+
+        return {
+          title: `goal ${params.status}`,
+          output: lines.join("\n"),
+          metadata: {
+            status: params.status,
+            goal: cur.goal,
+          },
+        }
       }
 
-      const lines = [
-        `**Check status:** ${params.status}`,
-        `**Done:** ${params.done?.trim() || "nothing yet"}`,
-        `**Pending:** ${params.pending?.trim() || "unknown"}`,
-        `**Blocked:** ${params.blocked?.trim() || "none"}`,
-      ]
+      // Status === "complete": Run deterministic checks
+      const checks = params.checks ?? []
 
-      if (params.status === "complete") {
-        lines.push(
-          "",
-          "COMPLETION CLAIMED (complete_pending_verify). Mutation tools are frozen while an independent verifier checks the exact goal revision.",
-          "Summarize for the user. Do not invent or set a replacement goal to unlock tools.",
-        )
-      } else if (params.status === "blocked") {
-        lines.push("", "Blocked. Ask the user for guidance or change approach.")
-      } else if (params.status === "stale") {
-        lines.push("", "Goal may be stale. Confirm with the user before continuing.")
+      if (checks.length === 0) {
+        // No checks specified — claim completion without running checks
+        claimSessionGoalCompletion(ctx.sessionID)
+        return {
+          title: "goal completion claimed",
+          output: [
+            `**Check status:** complete`,
+            `**Done:** ${params.done?.trim() || "work completed"}`,
+            "",
+            "COMPLETION CLAIMED. Mutation tools are frozen while verification runs.",
+            "Summarize your work for the user.",
+          ].join("\n"),
+          metadata: {
+            status: "complete_pending_verify",
+            goal: cur.goal,
+          },
+        }
       }
 
-      return {
-        title: `goal ${params.status}`,
-        output: lines.join("\n"),
-        metadata: {
-          status: params.status,
-          goal: cur.goal,
-        },
+      // Run the specified checks
+      const result = yield* Effect.tryPromise(() =>
+        runChecks({
+          checks: checks as CheckName[],
+          cwd: process.cwd(),
+        }),
+      ).pipe(Effect.catch(() => Effect.succeed({
+        passed: false,
+        checks: [],
+        summary: "Check runner failed",
+      })))
+
+      if (result.passed) {
+        resolveSessionGoalVerification({
+          sessionID: ctx.sessionID,
+          goalID: cur.goalID,
+          revision: cur.revision,
+          result: {
+            verdict: "verified",
+            summary: result.summary,
+            unmetCriteria: [],
+            evidenceRefs: [],
+          },
+        })
+
+        return {
+          title: "goal verified",
+          output: [
+            `**Check status:** complete`,
+            `**Done:** ${params.done?.trim() || "work completed"}`,
+            "",
+            formatCheckResult(result),
+            "",
+            "All checks passed. Goal verified and archived.",
+          ].join("\n"),
+          metadata: {
+            status: "verified",
+            goal: cur.goal,
+          },
+        }
+      } else {
+        return {
+          title: "checks failed",
+          output: [
+            `**Check status:** complete (checks failed)`,
+            `**Done:** ${params.done?.trim() || "work completed"}`,
+            `**Pending:** Fix the errors below and re-run goal_check with status=complete`,
+            "",
+            formatCheckResult(result),
+            "",
+            "Fix the specific errors above, then call goal_check again with status=complete.",
+            "Do not claim completion until all checks pass.",
+          ].join("\n"),
+          metadata: {
+            status: "in_progress",
+            goal: cur.goal,
+          },
+        }
       }
-    }),
+    }).pipe(Effect.orDie),
 }))

@@ -15,7 +15,7 @@ import { NotFoundError } from "@/storage/storage"
 import { Effect, Layer, Context } from "effect"
 import * as DateTime from "effect/DateTime"
 import { InstanceState } from "@/effect/instance-state"
-import { isOverflow as overflow, tokenCount, thresholdPercent, usable } from "./overflow"
+import { compactionPressure, isOverflow as overflow, tokenCount, thresholdPercent, usable } from "./overflow"
 // usable used for hard-ceiling force path in maybeIntra
 import { serviceUse } from "@arcana/core/effect/service-use"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -71,6 +71,9 @@ const PRUNE_PROTECTED_TOOLS = ["skill"]
 const DEFAULT_TAIL_TURNS = 2
 const MIN_PRESERVE_RECENT_TOKENS = 2_000
 const MAX_PRESERVE_RECENT_TOKENS = 8_000
+const DEFAULT_SUMMARY_MAX_INPUT_TOKENS = 64_000
+const COMPACTION_PROMPT_RESERVE_TOKENS = 6_000
+const COVERAGE_INDEX_MAX_CHARS = 16_000
 type Turn = {
   start: number
   end: number
@@ -96,6 +99,45 @@ function summaryText(message: SessionV1.WithParts) {
     .join("\n\n")
     .trim()
   return text || undefined
+}
+
+/**
+ * When a legacy session is already larger than the bounded summarizer request,
+ * retain a compact, deterministic index across the omitted head. The model
+ * gets chronological IDs, roles, text excerpts and tool outcomes up to the
+ * explicit index budget even if the detailed suffix must be budgeted. Full
+ * messages remain durable in the session/proof stores.
+ */
+export function buildCompactionCoverageIndex(
+  messages: SessionV1.WithParts[],
+  maxChars = COVERAGE_INDEX_MAX_CHARS,
+): string {
+  if (!messages.length || maxChars <= 0) return ""
+  const lines = ["Earlier compacted-context coverage index (chronological):"]
+  let used = lines[0]!.length
+  for (const message of messages) {
+    const text = message.parts
+      .filter((part): part is SessionV1.TextPart => part.type === "text")
+      .map((part) => part.text.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .join(" ")
+    const tools = message.parts
+      .filter((part): part is SessionV1.ToolPart => part.type === "tool")
+      .map((part) => `${part.tool}:${part.state.status}`)
+      .join(",")
+    const detail = [text.slice(0, 220), tools ? `tools=${tools.slice(0, 120)}` : ""].filter(Boolean).join(" | ")
+    const prefix = `- ${message.info.id} ${message.info.role}`
+    const line = detail ? `${prefix} | ${detail}` : prefix
+    if (used + line.length + 1 > maxChars) {
+      const remaining = messages.length - (lines.length - 1)
+      const marker = `- … ${remaining} additional message(s); full records remain available by message ID in session history.`
+      if (used + marker.length + 1 <= maxChars) lines.push(marker)
+      break
+    }
+    lines.push(line)
+    used += line.length + 1
+  }
+  return lines.join("\n")
 }
 
 function completedCompactions(messages: SessionV1.WithParts[]) {
@@ -408,11 +450,12 @@ export const layer = Layer.effect(
             : input.auto
               ? "inline"
               : "manual"
-        const seed =
+        const sourceTokens =
           typeof input.hysteresisTokens === "number" && Number.isFinite(input.hysteresisTokens)
             ? input.hysteresisTokens
             : (hysteresisTokensFromMessages(input.messages) ?? tokensBeforeForHyst)
-        const next = compactSuccessMetadata(meta, { tokens: seed, pass })
+        const resultTokens = Math.max(0, Token.estimate(`${endText}\n${endRecent}`))
+        const next = compactSuccessMetadata(meta, { sourceTokens, resultTokens, pass })
         delete next[META_PENDING_COMPACT_PASS]
         yield* session.setMetadata({
           sessionID: input.sessionID,
@@ -460,22 +503,35 @@ export const layer = Layer.effect(
         cfg,
         model,
       })
-      // Cap the head so the compaction request never exceeds the model context window
-      // (and stays well under common ~1MB HTTP request body limits). Reserve room for
-      // the compaction prompt itself and the expected summary output.
+      // Cap each summarizer request independently from the provider's advertised
+      // context window. Huge-context models can still have very poor TTFT for a
+      // 100k+ prompt, which is exactly what performance compaction must avoid.
       const contextLimit = model.limit.context
-      const reservedTokens = 3_000
-      const headBudget = Math.max(2_000, Math.floor(contextLimit * 0.75) - reservedTokens)
+      const summaryLimit = cfg.compaction?.summary_max_input_tokens ?? DEFAULT_SUMMARY_MAX_INPUT_TOKENS
+      const providerBudget = Math.max(2_000, Math.floor(contextLimit * 0.75) - COMPACTION_PROMPT_RESERVE_TOKENS)
+      const headBudget = Math.max(
+        2_000,
+        Math.min(providerBudget, summaryLimit - COMPACTION_PROMPT_RESERVE_TOKENS),
+      )
       // P2 full-replace prep: budget-cap head, drop incomplete trailing tools, truncate tool dumps.
-      let cappedHead = dropTrailingIncompleteAssistant(compactWithBudget(selected.head, headBudget))
-      if (cappedHead.length < selected.head.length) {
+      const preparedHead = prepareHeadForSummarization(
+        dropTrailingIncompleteAssistant(selected.head),
+        TOOL_OUTPUT_MAX_CHARS,
+      )
+      const unboundedEstimate = estimateSessionTokens(preparedHead)
+      const cappedHead = compactWithBudget(preparedHead, headBudget)
+      const coverageIndex = unboundedEstimate > headBudget
+        ? buildCompactionCoverageIndex(preparedHead)
+        : ""
+      if (unboundedEstimate > headBudget) {
         yield* Effect.logInfo("compaction head truncated", {
-          before: selected.head.length,
+          before: preparedHead.length,
           after: cappedHead.length,
           budget: headBudget,
+          unboundedEstimate,
+          coverageIndexChars: coverageIndex.length,
         })
       }
-      cappedHead = prepareHeadForSummarization(cappedHead, TOOL_OUTPUT_MAX_CHARS)
 
       // Allow plugins to inject context or replace compaction prompt.
       const compacting = yield* plugin.trigger(
@@ -483,7 +539,10 @@ export const layer = Layer.effect(
         { sessionID: input.sessionID },
         { context: [], prompt: undefined },
       )
-      const nextPrompt = compacting.prompt ?? buildPrompt({ previousSummary, context: compacting.context })
+      const compactingContext = coverageIndex
+        ? [...compacting.context, coverageIndex]
+        : compacting.context
+      const nextPrompt = compacting.prompt ?? buildPrompt({ previousSummary, context: compactingContext })
       const msgs = structuredClone(cappedHead)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
       let modelMessages = yield* MessageV2.toModelMessagesEffect(msgs, model, {
@@ -899,19 +958,15 @@ export const layer = Layer.effect(
         .pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (!model) return false
 
-      // Same metric for overflow decide + hysteresis store (M1).
+      // Same metric for pressure decision + hysteresis store.
       const count = usageForHysteresis(input.tokens)
-      // isOverflow includes percent-of-context AND usable hard ceiling (M2).
-      if (
-        !overflow({
-          cfg,
-          tokens: input.tokens,
-          model,
-          outputTokenMax: flags.outputTokenMax,
-        })
-      ) {
-        return false
-      }
+      const pressure = compactionPressure({
+        cfg,
+        tokens: input.tokens,
+        model,
+        outputTokenMax: flags.outputTokenMax,
+      })
+      if (!pressure.hot) return false
 
       const sess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (!sess) return false
@@ -921,7 +976,7 @@ export const layer = Layer.effect(
       if (
         !shouldInterCompact({
           count,
-          context: model.limit.context,
+          context: pressure.limit,
           thresholdPercent: thresholdPercent(cfg),
           lastCompactTokens: lastTokens,
           alreadyHot: true,
@@ -931,6 +986,7 @@ export const layer = Layer.effect(
           reason: input.reason,
           count,
           lastTokens,
+          pressure: pressure.reason,
           sessionID: input.sessionID,
         })
         return false
@@ -940,6 +996,8 @@ export const layer = Layer.effect(
         reason: input.reason,
         count,
         context: model.limit.context,
+        pressure: pressure.reason,
+        pressureLimit: pressure.limit,
         sessionID: input.sessionID,
       })
 
@@ -995,16 +1053,13 @@ export const layer = Layer.effect(
       if (!model) return false
 
       const count = usageForHysteresis(input.tokens)
-      if (
-        !overflow({
-          cfg,
-          tokens: input.tokens,
-          model,
-          outputTokenMax: flags.outputTokenMax,
-        })
-      ) {
-        return false
-      }
+      const pressure = compactionPressure({
+        cfg,
+        tokens: input.tokens,
+        model,
+        outputTokenMax: flags.outputTokenMax,
+      })
+      if (!pressure.hot) return false
 
       const sess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (!sess) return false
@@ -1023,7 +1078,7 @@ export const layer = Layer.effect(
       const policyOk = shouldIntraCompact({
         step: input.step,
         count,
-        context: model.limit.context,
+        context: pressure.limit,
         thresholdPercent: thresholdPercent(cfg),
         minSteps: cfg.compaction?.intra_min_steps,
         minCompactableTokens: cfg.compaction?.intra_min_tokens,
@@ -1038,6 +1093,7 @@ export const layer = Layer.effect(
           count,
           lastTokens,
           hardBreach,
+          pressure: pressure.reason,
           sessionID: input.sessionID,
         })
         return false
@@ -1048,6 +1104,8 @@ export const layer = Layer.effect(
         count,
         context: model.limit.context,
         hardBreach,
+        pressure: pressure.reason,
+        pressureLimit: pressure.limit,
         sessionID: input.sessionID,
       })
 

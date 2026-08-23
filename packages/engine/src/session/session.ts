@@ -38,6 +38,8 @@ import { ProjectV2 } from "@arcana/core/project"
 import { WorkspaceV2 } from "@arcana/core/workspace"
 import { SessionID, MessageID, PartID } from "./schema"
 import { acquireLock } from "./session-lock"
+import { recoverCompletedTurnTools } from "./tool-lifecycle"
+import { SessionStatus } from "./status"
 
 import type { Provider } from "@/provider/provider"
 import { Global } from "@arcana/core/global"
@@ -566,6 +568,7 @@ export const layer: Layer.Layer<
     const background = yield* BackgroundJob.Service
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
+    const status = Option.getOrUndefined(yield* Effect.serviceOption(SessionStatus.Service))
 
     const createNext = Effect.fn("Session.createNext")(function* (input: {
       id?: SessionID
@@ -893,14 +896,21 @@ export const layer: Layer.Layer<
     })
 
     const messages: Interface["messages"] = Effect.fn("Session.messages")(function* (input) {
+      const recover = Effect.fnUntraced(function* (items: SessionV1.WithParts[]) {
+        const current = status ? yield* status.get(input.sessionID) : undefined
+        const result = recoverCompletedTurnTools(items, current?.type === "idle")
+        yield* Effect.forEach(result.recovered, updatePart, { concurrency: 1 })
+        return result.messages
+      })
       if (input.limit) {
-        return (yield* MessageV2.page({
+        const items = (yield* MessageV2.page({
           sessionID: input.sessionID,
           limit: input.limit,
           before: input.before,
         }).pipe(
           Effect.provideService(Database.Service, database),
         )).items
+        return yield* recover(items)
       }
 
       const size = 50
@@ -918,7 +928,7 @@ export const layer: Layer.Layer<
         if (!page.more || !page.cursor) break
         before = page.cursor
       }
-      return result.reverse()
+      return yield* recover(result.reverse())
     })
 
     const removeMessage = Effect.fn("Session.removeMessage")(function* (input: {
@@ -1013,6 +1023,7 @@ export const defaultLayer = layer.pipe(
   Layer.provide(SessionExecution.noopLayer),
   Layer.provide(SessionV2.defaultLayer),
   Layer.provide(RuntimeFlags.defaultLayer),
+  Layer.provide(SessionStatus.defaultLayer),
 )
 
 const cancelBackgroundJobs = Effect.fn("Session.cancelBackgroundJobs")(function* (
@@ -1157,6 +1168,12 @@ export function* listGlobal(input?: {
   }
 }
 
-export const node = LayerNode.make(layer, [BackgroundJob.node, RuntimeFlags.node, Database.node, EventV2Bridge.node])
+export const node = LayerNode.make(layer, [
+  BackgroundJob.node,
+  RuntimeFlags.node,
+  Database.node,
+  EventV2Bridge.node,
+  SessionStatus.node,
+])
 
 export * as Session from "./session"

@@ -1,5 +1,5 @@
 import { LayerNode } from "@arcana/core/effect/layer-node"
-import { Cause, Duration, Effect, Layer, Schedule, Schema, Semaphore, Context } from "effect"
+import { Cause, Duration, Effect, Layer, Option, Schedule, Schema, Semaphore, Context } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { formatPatch, structuredPatch } from "diff"
 import path from "path"
@@ -33,6 +33,11 @@ const limit = 2 * 1024 * 1024
 const core = ["-c", "core.longpaths=true", "-c", "core.symlinks=true"]
 const cfg = ["-c", "core.autocrlf=false", ...core]
 const quote = [...cfg, "-c", "core.quotepath=false"]
+const STALE_INDEX_LOCK_MS = 5 * 60_000
+
+export function isStaleSnapshotIndexLock(now: number, modifiedAt: number, threshold = STALE_INDEX_LOCK_MS) {
+  return Number.isFinite(modifiedAt) && modifiedAt > 0 && now - modifiedAt >= threshold
+}
 interface GitResult {
   readonly code: ChildProcessSpawner.ExitCode
   readonly text: string
@@ -144,14 +149,35 @@ export const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Serv
 
         const stage = Effect.fnUntraced(function* (files: string[]) {
           if (!files.length) return
-          const result = yield* git(
-            [...cfg, ...args(["add", "--all", "--sparse", "--pathspec-from-file=-", "--pathspec-file-nul"])],
-            {
-              cwd: state.directory,
-              stdin: feed(files),
-            },
+          const command = [...cfg, ...args(["add", "--all", "--sparse", "--pathspec-from-file=-", "--pathspec-file-nul"])]
+          const options = {
+            cwd: state.directory,
+            stdin: feed(files),
+          }
+          let result = yield* git(
+            command,
+            options,
           )
           if (result.code === 0) return
+          const indexLock = path.join(state.gitdir, "index.lock")
+          const lockFailure = result.stderr.includes("index.lock") && (yield* exists(indexLock))
+          if (lockFailure) {
+            const info = yield* fs.stat(indexLock).pipe(Effect.catch(() => Effect.succeed(undefined)))
+            const modifiedAt = info ? Option.getOrElse(info.mtime, () => new Date(0)).getTime() : 0
+            // Snapshot gitdirs are Arcana-private and every operation for this
+            // gitdir is already inside the per-repository semaphore. A recent
+            // lock may still belong to the just-failed Git process, so only an
+            // old lock is recoverable.
+            if (isStaleSnapshotIndexLock(Date.now(), modifiedAt)) {
+              yield* remove(indexLock)
+              yield* Effect.logWarning("removed stale snapshot index lock", {
+                lock: indexLock,
+                ageMs: Date.now() - modifiedAt,
+              })
+              result = yield* git(command, options)
+              if (result.code === 0) return
+            }
+          }
           yield* Effect.logWarning("failed to add snapshot files", {
             exitCode: result.code,
             stderr: result.stderr,

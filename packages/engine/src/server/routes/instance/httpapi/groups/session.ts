@@ -18,7 +18,7 @@ import {
   WorkspaceRoutingQuery,
   WorkspaceRoutingQueryFields,
 } from "../middleware/workspace-routing"
-import { ApiNotFoundError, PermissionNotFoundError, SessionBusyError } from "../errors"
+import { ApiNotFoundError, ConflictError, PermissionNotFoundError, SessionBusyError } from "../errors"
 import { described } from "./metadata"
 import { QueryBoolean } from "./query"
 import { ProviderV2 } from "@arcana/core/provider"
@@ -131,6 +131,12 @@ export const SummarizePayload = Schema.Struct({
   auto: Schema.optional(Schema.Boolean),
 })
 export const PromptPayload = Schema.Struct(Struct.omit(SessionPrompt.PromptInput.fields, ["sessionID"]))
+export const RetryPayload = Schema.Struct({
+  failedMessageID: MessageID,
+  providerID: Schema.optional(ProviderV2.ID),
+  modelID: Schema.optional(ModelV2.ID),
+  agent: Schema.optional(Schema.String),
+})
 export const CommandPayload = Schema.Struct(Struct.omit(SessionPrompt.CommandInput.fields, ["sessionID"]))
 export const ShellPayload = Schema.Struct(Struct.omit(SessionPrompt.ShellInput.fields, ["sessionID"]))
 export const RevertPayload = Schema.Struct(Struct.omit(SessionRevert.RevertInput.fields, ["sessionID"]))
@@ -158,6 +164,7 @@ export const SessionPaths = {
   summarize: `${root}/:sessionID/summarize`,
   prompt: `${root}/:sessionID/message`,
   promptAsync: `${root}/:sessionID/prompt_async`,
+  retry: `${root}/:sessionID/retry`,
   command: `${root}/:sessionID/command`,
   shell: `${root}/:sessionID/shell`,
   revert: `${root}/:sessionID/revert`,
@@ -461,6 +468,19 @@ export const SessionApi = HttpApi.make("session")
             summary: "Send async message",
             description:
               "Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.",
+          }),
+        ),
+        HttpApiEndpoint.post("retry", SessionPaths.retry, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          payload: RetryPayload,
+          success: described(HttpApiSchema.NoContent, "Retry accepted"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError, ConflictError, SessionBusyError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.retry",
+            summary: "Retry a failed turn",
+            description: "Resume the latest retry-exhausted assistant turn, optionally with another model or agent.",
           }),
         ),
         HttpApiEndpoint.post("command", SessionPaths.command, {

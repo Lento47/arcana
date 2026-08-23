@@ -24,29 +24,41 @@ const savedRows: PermissionSaved.Info[] = []
 const savedPermissions = Layer.succeed(
   PermissionSaved.Service,
   PermissionSaved.Service.of({
-    list: (input) => Effect.succeed(savedRows.filter((row) =>
-      (!input?.projectID || row.projectID === input.projectID)
-      && (!input?.agentID || row.agentID === input.agentID))),
-    add: (input) => Effect.sync(() => {
-      for (const resource of input.resources) {
-        if (savedRows.some((row) =>
-          row.projectID === input.projectID
-          && row.agentID === input.agentID
-          && row.action === input.action
-          && row.resource === resource)) continue
-        savedRows.push({
-          id: PermissionSaved.ID.create(),
-          projectID: input.projectID,
-          agentID: input.agentID,
-          action: input.action,
-          resource,
-        })
-      }
-    }),
-    remove: (id) => Effect.sync(() => {
-      const index = savedRows.findIndex((row) => row.id === id)
-      if (index >= 0) savedRows.splice(index, 1)
-    }),
+    list: (input) =>
+      Effect.succeed(
+        savedRows.filter(
+          (row) =>
+            (!input?.projectID || row.projectID === input.projectID) &&
+            (!input?.agentID || row.agentID === input.agentID),
+        ),
+      ),
+    add: (input) =>
+      Effect.sync(() => {
+        for (const resource of input.resources) {
+          if (
+            savedRows.some(
+              (row) =>
+                row.projectID === input.projectID &&
+                row.agentID === input.agentID &&
+                row.action === input.action &&
+                row.resource === resource,
+            )
+          )
+            continue
+          savedRows.push({
+            id: PermissionSaved.ID.create(),
+            projectID: input.projectID,
+            agentID: input.agentID,
+            action: input.action,
+            resource,
+          })
+        }
+      }),
+    remove: (id) =>
+      Effect.sync(() => {
+        const index = savedRows.findIndex((row) => row.id === id)
+        if (index >= 0) savedRows.splice(index, 1)
+      }),
   }),
 )
 const env = Layer.mergeAll(
@@ -86,9 +98,9 @@ const waitForPending = (count: number) =>
       }
     }).pipe(
       Effect.timeoutOrElse({
-        // Full-suite load can push an install-analysis ask past 1s; keep the
-        // wait generous so the suite stays deterministic.
-        duration: "3 seconds",
+        // Full-suite load includes process-heavy CLI and integration tests;
+        // keep this synchronization bound above observed Windows contention.
+        duration: "10 seconds",
         orElse: () => Effect.fail(new Error(`timed out waiting for ${count} pending permission request(s)`)),
       }),
     )
@@ -816,13 +828,9 @@ it.instance(
         await fs.mkdir(path.join(directory, ".arcana"), { recursive: true })
         await fs.writeFile(
           path.join(directory, ".arcana", "governance.yml"),
-          [
-            "version: 1",
-            "policy:",
-            "  approvalRoute: DESKTOP_REQUIRED",
-            "  localFallbackAllowed: false",
-            "",
-          ].join("\n"),
+          ["version: 1", "policy:", "  approvalRoute: DESKTOP_REQUIRED", "  localFallbackAllowed: false", ""].join(
+            "\n",
+          ),
           "utf8",
         )
       }),
@@ -860,7 +868,9 @@ it.instance(
 
       expect((yield* waitForPending(1))[0]?.routing?.decisionSurface).toBe("DESKTOP")
       registry.remove("test-desktop-reroute")
-      expect((yield* Deferred.await(routed).pipe(Effect.timeout("3 seconds"))).routing?.decisionSurface).toBe("LOCAL_TUI")
+      expect((yield* Deferred.await(routed).pipe(Effect.timeout("3 seconds"))).routing?.decisionSurface).toBe(
+        "LOCAL_TUI",
+      )
 
       yield* rejectAll()
       yield* Fiber.await(fiber)
@@ -872,13 +882,9 @@ it.instance(
         await fs.mkdir(path.join(directory, ".arcana"), { recursive: true })
         await fs.writeFile(
           path.join(directory, ".arcana", "governance.yml"),
-          [
-            "version: 1",
-            "policy:",
-            "  approvalRoute: DESKTOP_PREFERRED",
-            "  localFallbackAllowed: true",
-            "",
-          ].join("\n"),
+          ["version: 1", "policy:", "  approvalRoute: DESKTOP_PREFERRED", "  localFallbackAllowed: true", ""].join(
+            "\n",
+          ),
           "utf8",
         )
       }),
@@ -991,6 +997,39 @@ it.instance(
         ruleset: [],
       })
       expect(result).toBeUndefined()
+    }),
+  { git: true },
+)
+
+it.instance(
+  "reply - remembered contract admission applies to future sessions",
+  () =>
+    Effect.gen(function* () {
+      const first = yield* ask({
+        id: PermissionV1.ID.make("per_contract_first"),
+        sessionID: SessionID.make("session_contract_first"),
+        permission: "contract.accept",
+        patterns: ["session_contract_first"],
+        metadata: { kind: "contract_admission" },
+        always: ["*"],
+        ruleset: [],
+      }).pipe(Effect.forkScoped)
+
+      const pending = yield* waitForPending(1)
+      expect(pending[0]?.always).toEqual(["*"])
+      yield* reply({ requestID: PermissionV1.ID.make("per_contract_first"), reply: "always" })
+      yield* Fiber.join(first)
+
+      const admitted = yield* ask({
+        sessionID: SessionID.make("session_contract_future"),
+        permission: "contract.accept",
+        patterns: ["session_contract_future"],
+        metadata: { kind: "contract_admission" },
+        always: ["*"],
+        ruleset: [],
+      })
+      expect(admitted).toBeUndefined()
+      expect(yield* list()).toHaveLength(0)
     }),
   { git: true },
 )
@@ -1348,8 +1387,7 @@ it.instance(
       const events = yield* EventV2Bridge.Service
       const seen = yield* Deferred.make<unknown>()
       const unsub = yield* events.listen((event) => {
-        if (event.type === Permission.Event.Allowed.type)
-          Deferred.doneUnsafe(seen, Effect.succeed(event.data))
+        if (event.type === Permission.Event.Allowed.type) Deferred.doneUnsafe(seen, Effect.succeed(event.data))
         return Effect.void
       })
       yield* Effect.addFinalizer(() => unsub)
@@ -1463,19 +1501,13 @@ it.instance(
       yield* Effect.promise(() =>
         Bun.write(
           path.join(test.directory, ".arcana", "governance.yml"),
-          [
-            "version: 1",
-            "policy:",
-            "  classifierMode: off",
-            "",
-          ].join("\n"),
+          ["version: 1", "policy:", "  classifierMode: off", ""].join("\n"),
         ),
       )
       const events = yield* EventV2Bridge.Service
       const seen = yield* Deferred.make<unknown>()
       const unsub = yield* events.listen((event) => {
-        if (event.type === Permission.Event.Allowed.type)
-          Deferred.doneUnsafe(seen, Effect.succeed(event.data))
+        if (event.type === Permission.Event.Allowed.type) Deferred.doneUnsafe(seen, Effect.succeed(event.data))
         return Effect.void
       })
       yield* Effect.addFinalizer(() => unsub)

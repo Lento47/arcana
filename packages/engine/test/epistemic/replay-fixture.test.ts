@@ -3,9 +3,7 @@ import { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
 import path from "node:path"
-import {
-  deriveDeterministicReplay,
-} from "@arcana/engine/session/epistemic/deterministic-replay"
+import { deriveDeterministicReplay } from "@arcana/engine/session/epistemic/deterministic-replay"
 import {
   extractReplayCallMetadata,
   extractReplayReturnMetadata,
@@ -29,36 +27,80 @@ function makeTestDB(): Database {
   return db
 }
 
-function eventHash(row: { id: string; sequence: number; timestamp: string; previous_hash: string | null; actor_kind: string; actor_id: string; type: string; payload: string }): string {
-  return createHash("sha256").update(JSON.stringify({
-    id: row.id, sequence: row.sequence, timestamp: row.timestamp,
-    previousHash: row.previous_hash, actorKind: row.actor_kind,
-    actorId: row.actor_id, type: row.type, payload: row.payload,
-  })).digest("hex")
+function eventHash(row: {
+  id: string
+  sequence: number
+  timestamp: string
+  previous_hash: string | null
+  actor_kind: string
+  actor_id: string
+  type: string
+  payload: string
+}): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        id: row.id,
+        sequence: row.sequence,
+        timestamp: row.timestamp,
+        previousHash: row.previous_hash,
+        actorKind: row.actor_kind,
+        actorId: row.actor_id,
+        type: row.type,
+        payload: row.payload,
+      }),
+    )
+    .digest("hex")
 }
 
-function insertEvent(db: Database, opts: {
-  id: string; sequence: number; sessionId: string; type: string;
-  actorKind?: string; actorId?: string;
-  payload?: Record<string, unknown>; previousHash?: string | null
-}) {
+function insertEvent(
+  db: Database,
+  opts: {
+    id: string
+    sequence: number
+    sessionId: string
+    type: string
+    actorKind?: string
+    actorId?: string
+    payload?: Record<string, unknown>
+    previousHash?: string | null
+  },
+) {
   const ts = new Date().toISOString()
   const row = {
-    id: opts.id, sequence: opts.sequence, timestamp: ts,
+    id: opts.id,
+    sequence: opts.sequence,
+    timestamp: ts,
     previous_hash: opts.previousHash ?? null,
-    actor_kind: opts.actorKind ?? "user", actor_id: opts.actorId ?? "session",
-    type: opts.type, payload: JSON.stringify(opts.payload ?? {}),
+    actor_kind: opts.actorKind ?? "user",
+    actor_id: opts.actorId ?? "session",
+    type: opts.type,
+    payload: JSON.stringify(opts.payload ?? {}),
   }
   const hash = eventHash(row)
-  db.run("INSERT INTO events (id, sequence, session_id, timestamp, previous_hash, hash, actor_kind, actor_id, type, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    [row.id, row.sequence, opts.sessionId, row.timestamp, row.previous_hash, hash, row.actor_kind, row.actor_id, row.type, row.payload])
+  db.run(
+    "INSERT INTO events (id, sequence, session_id, timestamp, previous_hash, hash, actor_kind, actor_id, type, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [
+      row.id,
+      row.sequence,
+      opts.sessionId,
+      row.timestamp,
+      row.previous_hash,
+      hash,
+      row.actor_kind,
+      row.actor_id,
+      row.type,
+      row.payload,
+    ],
+  )
   return { hash, ts }
 }
 
 // ── End-to-end replay fixture ────────────────────────────────────────
 //
-// This test simulates a controlled session that ran:
-//   bun test packages/engine/test/epistemic/event-hash.test.ts
+// This test simulates a controlled session that ran a stable bounded Bun
+// command. Its output deliberately excludes runner timings so two executions
+// can be compared byte-for-byte under terminal-output-v1.
 //
 // The session emitted structured invocation metadata (not inferred),
 // and the tool.returned recorded the real exit code and output digests.
@@ -86,21 +128,29 @@ describe("P2 End-to-End Replay Fixture", () => {
   it("earns P2 for a real bounded command with structured invocation", () => {
     // ── Step 1: Record the session events as they would have been emitted ──
     //
-    // The session ran: bun test packages/engine/test/epistemic/event-hash.test.ts
+    // The session ran a deterministic one-line Bun program.
     // Structured invocation was captured at the terminal-tool boundary.
 
     const cwd = process.cwd()
-    const testFile = "packages/engine/test/epistemic/event-hash.test.ts"
-    const command = `bun test ${testFile}`
+    const command = `bun -e console.log("arcana-replay-fixture")`
     const executable = "bun"
-    const args = ["test", testFile]
+    const args = ["-e", 'console.log("arcana-replay-fixture")']
 
     // session.started
-    insertEvent(db, { id: "e1", sequence: 0, sessionId: "fixture-s1", type: "session.started", payload: { modelId: "test-model" } })
+    insertEvent(db, {
+      id: "e1",
+      sequence: 0,
+      sessionId: "fixture-s1",
+      type: "session.started",
+      payload: { modelId: "test-model" },
+    })
 
     // tool.called with structured invocation metadata
     insertEvent(db, {
-      id: "e2", sequence: 1, sessionId: "fixture-s1", type: "tool.called",
+      id: "e2",
+      sequence: 1,
+      sessionId: "fixture-s1",
+      type: "tool.called",
       payload: {
         callID: "call-001",
         tool: "terminal",
@@ -122,17 +172,6 @@ describe("P2 End-to-End Replay Fixture", () => {
     // tool.returned with raw boundary digests
     // (In production these come from extractReplayReturnMetadata.
     //  Here we compute them from the actual command output.)
-    const expectedOutput = `bun test v1.3.14 (0d9b296a)\n\npackages\\engine\\test\\epistemic\\event-hash.test.ts:\n(pass) computeEventHash > produces a deterministic hash for the same input [0.23ms]\n(pass) computeEventHash > produces different hashes for different inputs [0.04ms]\n(pass) computeEventHash > hash changes when id changes [0.03ms]\n(pass) computeEventHash > hash changes when payload changes [0.03ms]\n(pass) computeEventHash > raw string payload differs from parsed-and-reserialized [0.06ms]\n(pass) computeEventHash > global chain verification across interleaved sessions [0.14ms]\n(pass) computeEventHash > session-filtered events have non-contiguous previousHash references [0.09ms]\n(pass) computeEventHash > changing session_id does not affect hash (v1 limitation) [0.03ms]\n(pass) computeEventHash > hash includes id, sequence, timestamp, previousHash, actorKind, actorId, type, payload [0.15ms]\n\n 9 pass\n 0 fail\n 24 expect() calls\nRan 9 tests across 1 file. [424.00ms]`
-
-    // We don't know the exact output format from bun's test runner (timestamps,
-    // timings vary), so we record the normalizedOutputDigest as what the
-    // replay will compute from its own execution. For the fixture, we use
-    // a placeholder that the replay will compare against.
-    //
-    // The key insight: in production, extractReplayReturnMetadata computes
-    // the digest from the real output. Here, we pre-compute what the replay
-    // will produce by running the command ourselves.
-
     // Run the exact structured invocation now to get the real output for digest computation.
     const recorded = spawnSync(executable, args, {
       cwd,
@@ -150,7 +189,10 @@ describe("P2 End-to-End Replay Fixture", () => {
     const normalizedOutputDigest = createHash("sha256").update(normalized).digest("hex")
 
     insertEvent(db, {
-      id: "e3", sequence: 2, sessionId: "fixture-s1", type: "tool.returned",
+      id: "e3",
+      sequence: 2,
+      sessionId: "fixture-s1",
+      type: "tool.returned",
       payload: {
         callID: "call-001",
         title: "terminal",
@@ -168,7 +210,14 @@ describe("P2 End-to-End Replay Fixture", () => {
     })
 
     // session.completed
-    insertEvent(db, { id: "e4", sequence: 3, sessionId: "fixture-s1", type: "session.completed", payload: { reason: "normal" }, previousHash: "prev" })
+    insertEvent(db, {
+      id: "e4",
+      sequence: 3,
+      sessionId: "fixture-s1",
+      type: "session.completed",
+      payload: { reason: "normal" },
+      previousHash: "prev",
+    })
 
     // ── Step 2: Derive deterministic replay ──────────────────────────────
 
@@ -208,7 +257,10 @@ describe("P2 End-to-End Replay Fixture", () => {
 
     insertEvent(db, { id: "e1", sequence: 0, sessionId: "fixture-s2", type: "session.started" })
     insertEvent(db, {
-      id: "e2", sequence: 1, sessionId: "fixture-s2", type: "tool.called",
+      id: "e2",
+      sequence: 1,
+      sessionId: "fixture-s2",
+      type: "tool.called",
       payload: {
         callID: "call-002",
         tool: "terminal",
@@ -227,7 +279,10 @@ describe("P2 End-to-End Replay Fixture", () => {
     })
     // Record WRONG digest — will mismatch
     insertEvent(db, {
-      id: "e3", sequence: 2, sessionId: "fixture-s2", type: "tool.returned",
+      id: "e3",
+      sequence: 2,
+      sessionId: "fixture-s2",
+      type: "tool.returned",
       payload: {
         callID: "call-002",
         title: "terminal",
@@ -258,7 +313,10 @@ describe("P2 End-to-End Replay Fixture", () => {
 
     insertEvent(db, { id: "e1", sequence: 0, sessionId: "fixture-s3", type: "session.started" })
     insertEvent(db, {
-      id: "e2", sequence: 1, sessionId: "fixture-s3", type: "tool.called",
+      id: "e2",
+      sequence: 1,
+      sessionId: "fixture-s3",
+      type: "tool.called",
       payload: {
         callID: "call-003",
         tool: "terminal",
@@ -293,21 +351,45 @@ describe("P2 End-to-End Replay Fixture", () => {
     insertEvent(db, { id: "e1", sequence: 0, sessionId: "fixture-s4", type: "session.started" })
 
     // Tool 1: file_read → EXCLUDED (no replay metadata)
-    insertEvent(db, { id: "e2", sequence: 1, sessionId: "fixture-s4", type: "tool.called", payload: { callID: "c1", tool: "file_read" } })
+    insertEvent(db, {
+      id: "e2",
+      sequence: 1,
+      sessionId: "fixture-s4",
+      type: "tool.called",
+      payload: { callID: "c1", tool: "file_read" },
+    })
 
     // Tool 2: terminal with inferred invocation → REFUSED
-    insertEvent(db, { id: "e3", sequence: 2, sessionId: "fixture-s4", type: "tool.called", payload: {
-      callID: "c2", tool: "terminal",
-      replay: extractReplayCallMetadata("terminal", { command: "tsc --noEmit" }),
-    } })
+    insertEvent(db, {
+      id: "e3",
+      sequence: 2,
+      sessionId: "fixture-s4",
+      type: "tool.called",
+      payload: {
+        callID: "c2",
+        tool: "terminal",
+        replay: extractReplayCallMetadata("terminal", { command: "tsc --noEmit" }),
+      },
+    })
 
     // Tool 3: terminal with structured invocation → ELIGIBLE
-    insertEvent(db, { id: "e4", sequence: 3, sessionId: "fixture-s4", type: "tool.called", payload: {
-      callID: "c3", tool: "terminal",
-      replay: extractReplayCallMetadata("terminal", {
-        executable: "node", arguments: ["-e", "console.log(42)"], cwd, timeout: 5000, command: "node -e 'console.log(42)'",
-      }),
-    } })
+    insertEvent(db, {
+      id: "e4",
+      sequence: 3,
+      sessionId: "fixture-s4",
+      type: "tool.called",
+      payload: {
+        callID: "c3",
+        tool: "terminal",
+        replay: extractReplayCallMetadata("terminal", {
+          executable: "node",
+          arguments: ["-e", "console.log(42)"],
+          cwd,
+          timeout: 5000,
+          command: "node -e 'console.log(42)'",
+        }),
+      },
+    })
     // Run the exact structured invocation to get real output.
     const nodeResult = spawnSync("node", ["-e", "console.log(42)"], {
       cwd,
@@ -318,20 +400,35 @@ describe("P2 End-to-End Replay Fixture", () => {
     const output = nodeResult.stdout ?? ""
     const stderr = nodeResult.stderr ?? ""
     const norm = output.replace(/\s+$/g, "").replace(/\n{3,}/g, "\n\n")
-    insertEvent(db, { id: "e5", sequence: 4, sessionId: "fixture-s4", type: "tool.returned", payload: {
-      callID: "c3", title: "terminal", hasOutput: output.length > 0,
-      replay: {
-        exitCode: nodeResult.status ?? 1,
-        rawStdoutDigest: createHash("sha256").update(output).digest("hex"),
-        rawStderrDigest: createHash("sha256").update(stderr).digest("hex"),
-        normalizedOutputDigest: createHash("sha256").update(norm).digest("hex"),
-        normalizationProfile: "terminal-output-v1",
-        duration: 50,
-        timeoutStatus: "COMPLETED",
+    insertEvent(db, {
+      id: "e5",
+      sequence: 4,
+      sessionId: "fixture-s4",
+      type: "tool.returned",
+      payload: {
+        callID: "c3",
+        title: "terminal",
+        hasOutput: output.length > 0,
+        replay: {
+          exitCode: nodeResult.status ?? 1,
+          rawStdoutDigest: createHash("sha256").update(output).digest("hex"),
+          rawStderrDigest: createHash("sha256").update(stderr).digest("hex"),
+          normalizedOutputDigest: createHash("sha256").update(norm).digest("hex"),
+          normalizationProfile: "terminal-output-v1",
+          duration: 50,
+          timeoutStatus: "COMPLETED",
+        },
       },
-    } })
+    })
 
-    insertEvent(db, { id: "e6", sequence: 5, sessionId: "fixture-s4", type: "session.completed", payload: { reason: "normal" }, previousHash: "prev" })
+    insertEvent(db, {
+      id: "e6",
+      sequence: 5,
+      sessionId: "fixture-s4",
+      type: "session.completed",
+      payload: { reason: "normal" },
+      previousHash: "prev",
+    })
 
     const result = deriveDeterministicReplay(db, "fixture-s4")
 

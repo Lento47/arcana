@@ -195,6 +195,70 @@ test.skip("tool completion stores completed timestamp", () => {
   expect(state.messages[0].content[0].provider).toEqual({ executed: true, metadata: { fake: { status: "done" } } })
 })
 
+test("tool cancellation terminalizes the matching active tool", () => {
+  const sessionID = SessionID.make("session")
+  const assistantMessageID = SessionMessage.ID.create()
+  const created = DateTime.makeUnsafe(1)
+  const state: SessionMessageUpdater.MemoryState = {
+    messages: [
+      new SessionMessage.Assistant({
+        id: assistantMessageID,
+        type: "assistant",
+        agent: "build",
+        model: {
+          id: ModelV2.ID.make("model"),
+          providerID: ProviderV2.ID.make("provider"),
+          variant: ModelV2.VariantID.make("default"),
+        },
+        content: [
+          new SessionMessage.AssistantTool({
+            type: "tool",
+            id: "call",
+            name: "bash",
+            state: new SessionMessage.ToolStateRunning({
+              status: "running",
+              input: { command: "bun test" },
+              structured: { progress: 1 },
+              content: [{ type: "text", text: "partial" }],
+            }),
+            time: { created, ran: created },
+          }),
+        ],
+        time: { created },
+      }),
+    ],
+  }
+
+  Effect.runSync(
+    SessionMessageUpdater.update(SessionMessageUpdater.memory(state), {
+      id: EventV2.ID.create(),
+      type: "session.next.tool.cancelled",
+      data: {
+        sessionID,
+        assistantMessageID,
+        timestamp: DateTime.makeUnsafe(5),
+        callID: "call",
+        reason: "recovered_stale",
+      },
+    } satisfies SessionEvent.Event),
+  )
+
+  const message = state.messages[0]
+  expect(message?.type).toBe("assistant")
+  if (message?.type !== "assistant") return
+  const tool = message.content[0]
+  expect(tool?.type).toBe("tool")
+  if (tool?.type !== "tool") return
+  expect(tool.state).toMatchObject({
+    status: "cancelled",
+    reason: "recovered_stale",
+    input: { command: "bun test" },
+    structured: { progress: 1 },
+    content: [{ type: "text", text: "partial" }],
+  })
+  expect(tool.time.completed).toEqual(DateTime.makeUnsafe(5))
+})
+
 test("compaction events reduce to compaction message only when completed", () => {
   const state: SessionMessageUpdater.MemoryState = { messages: [] }
   const sessionID = SessionID.make("session")

@@ -228,6 +228,28 @@ const fragmentFailureEnv = LayerNode.buildLayer(root, {
 })
 const itFragmentFailure = testEffect(fragmentFailureEnv)
 
+const replayedText = "Just here to help. What would you like me to do?"
+const replayTextLLM = Layer.succeed(
+  LLM.Service,
+  LLM.Service.of({
+    stream: () =>
+      Stream.make(
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.textStart({ id: "text-replay" }),
+        LLMEvent.textDelta({ id: "text-replay", text: replayedText }),
+        LLMEvent.textDelta({ id: "text-replay", text: "\n\n" }),
+        LLMEvent.textDelta({ id: "text-replay", text: replayedText }),
+        LLMEvent.textEnd({ id: "text-replay" }),
+        LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+        LLMEvent.finish({ reason: "stop" }),
+      ),
+  }),
+)
+const replayTextEnv = LayerNode.buildLayer(root, {
+  replacements: [...replacements, LayerNode.replace(LLM.node, replayTextLLM)],
+})
+const itReplayText = testEffect(replayTextEnv)
+
 const boot = Effect.fn("test.boot")(function* () {
   const processors = yield* SessionProcessor.Service
   const session = yield* Session.Service
@@ -238,6 +260,51 @@ const boot = Effect.fn("test.boot")(function* () {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+itReplayText.live("session.processor persists a replayed response exactly once", () =>
+  provideTmpdirInstance(
+    (dir) => Effect.gen(function* () {
+      const { processors, session, provider } = yield* boot()
+      const chat = yield* session.create({})
+      const parent = yield* user(chat.id, "say hello")
+      const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+      const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+      const handle = yield* processors.create({
+        assistantMessage: msg,
+        sessionID: chat.id,
+        model: mdl,
+      })
+
+      const result = yield* handle.process({
+        user: {
+          id: parent.id,
+          sessionID: chat.id,
+          role: "user",
+          time: parent.time,
+          agent: parent.agent,
+          model: { providerID: ref.providerID, modelID: ref.modelID },
+        } satisfies SessionV1.User,
+        sessionID: chat.id,
+        model: mdl,
+        agent: agent(),
+        system: [],
+        messages: [{ role: "user", content: "say hello" }],
+        tools: {},
+      })
+
+      const textParts = (yield* MessageV2.parts(msg.id)).filter(
+        (part): part is SessionV1.TextPart => part.type === "text",
+      )
+      expect(result).toBe("continue")
+      expect(textParts).toHaveLength(1)
+      expect(textParts[0]?.text).toBe(replayedText)
+      expect(textParts[0]?.metadata?.["arcana.streamNormalization"]).toMatchObject({
+        reason: "whole_response_replay",
+      })
+    }),
+    { config: cfg },
+  ),
+)
 
 it.live("session.processor effect tests capture llm input cleanly", () =>
   provideTmpdirServer(
@@ -282,6 +349,12 @@ it.live("session.processor effect tests capture llm input cleanly", () =>
         expect(value).toBe("continue")
         expect(calls).toBe(1)
         expect(parts.some((part) => part.type === "text" && part.text === "hello")).toBe(true)
+        expect(handle.message.latency?.snapshotMs).toBeGreaterThanOrEqual(0)
+        expect(handle.message.latency?.totalMs).toBeGreaterThanOrEqual(0)
+        expect(handle.message.latency?.attempts).toHaveLength(1)
+        expect(handle.message.latency?.attempts[0]).toMatchObject({ attempt: 1, outcome: "success" })
+        expect(handle.message.latency?.attempts[0]?.firstEventMs).toBeGreaterThanOrEqual(0)
+        expect(handle.message.latency?.attempts[0]?.firstContentMs).toBeGreaterThanOrEqual(0)
       }),
     { config: (url) => providerCfg(url) },
   ),
@@ -600,6 +673,7 @@ it.live("session.processor effect tests retry recognized structured json errors"
         expect(value).toBe("continue")
         expect(yield* llm.calls).toBe(2)
         expect(parts.some((part) => part.type === "text" && part.text === "after")).toBe(true)
+        expect(parts.some((part) => part.type === "retry" && part.attempt === 1)).toBe(true)
         expect(handle.message.error).toBeUndefined()
       }),
     { config: (url) => providerCfg(url) },
@@ -655,6 +729,10 @@ it.live("session.processor effect tests publish retry status updates", () =>
         expect(value).toBe("continue")
         expect(yield* llm.calls).toBe(2)
         expect(states).toStrictEqual([1])
+        expect(handle.message.latency?.attempts).toHaveLength(2)
+        expect(handle.message.latency?.attempts[0]).toMatchObject({ attempt: 1, outcome: "retry" })
+        expect(handle.message.latency?.attempts[0]?.retryWaitMs).toBeGreaterThanOrEqual(0)
+        expect(handle.message.latency?.attempts[1]).toMatchObject({ attempt: 2, outcome: "success" })
       }),
     { config: (url) => providerCfg(url) },
   ),
@@ -768,7 +846,7 @@ it.live("session.processor effect tests complete AI SDK tool calls when native f
   ),
 )
 
-it.live("session.processor effect tests mark pending tools as aborted on cleanup", () =>
+it.live("session.processor effect tests mark pending tools as cancelled on cleanup", () =>
   provideTmpdirServer(
     ({ dir, llm }) =>
       Effect.gen(function* () {
@@ -825,9 +903,9 @@ it.live("session.processor effect tests mark pending tools as aborted on cleanup
           expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true)
         }
         expect(yield* llm.calls).toBe(1)
-        expect(call?.state.status).toBe("error")
-        if (call?.state.status === "error") {
-          expect(call.state.error).toBe("Tool execution aborted")
+        expect(call?.state.status).toBe("cancelled")
+        if (call?.state.status === "cancelled") {
+          expect(call.state.reason).toBe("session_cancelled")
           expect(call.state.metadata?.interrupted).toBe(true)
           expect(call.state.time.end).toBeDefined()
         }

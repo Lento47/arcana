@@ -1,9 +1,9 @@
-CHECK IN on the active session goal. Call periodically during multi-step work.
+Check in on the active session goal. Call periodically during multi-step work.
 
 status values:
 - in_progress: still working
-- complete: submit a completion claim for independent verification (freezes mutation tools while verification runs)
+- complete: report success with evidence (test output, typecheck output, etc.)
 - blocked: cannot proceed without user help
 - stale: goal may no longer match user intent
 
-When complete, stop mutating and summarize for the user. Do not invent a replacement goal to unlock tools.
+When complete, show the verification check output as evidence. The check output is your proof of success.

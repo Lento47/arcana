@@ -225,6 +225,18 @@ function compactToolState(part: ToolPart): ToolPart["state"] {
     }
   }
 
+  if (part.state.status === "cancelled") {
+    return {
+      status: "cancelled",
+      reason: part.state.reason,
+      input: part.state.input,
+      time: part.state.time,
+      ...(part.state.title ? { title: part.state.title } : {}),
+      ...(part.state.output ? { output: part.state.output } : {}),
+      ...(part.state.metadata ? { metadata: part.state.metadata } : {}),
+    }
+  }
+
   return {
     status: "error",
     input: part.state.input,
@@ -296,6 +308,8 @@ function taskStatus(part: ToolPart): FooterSubagentTab["status"] {
   if (part.state.status === "completed") {
     return "completed"
   }
+
+  if (part.state.status === "cancelled") return "cancelled"
 
   if (part.state.status === "error") {
     if (metadata(part, "interrupted") === true || text(part.state.error) === "Tool execution aborted") {

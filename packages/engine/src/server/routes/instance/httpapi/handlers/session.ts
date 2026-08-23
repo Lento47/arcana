@@ -37,6 +37,7 @@ import {
   MessagesQuery,
   PermissionResponsePayload,
   PromptPayload,
+  RetryPayload,
   RevertPayload,
   ShellPayload,
   SummarizePayload,
@@ -46,7 +47,7 @@ import {
   VerifyObligationPayload,
   VerifyObligationResult,
 } from "../groups/session"
-import { ApiNotFoundError, PermissionNotFoundError, notFound } from "../errors"
+import { ApiNotFoundError, ConflictError, PermissionNotFoundError, notFound } from "../errors"
 import * as SessionError from "./session-errors"
 
 const tryParseJson = (text: string) =>
@@ -467,6 +468,58 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       return HttpApiSchema.NoContent.make()
     })
 
+    const retry = Effect.fn("SessionHttpApi.retry")(function* (ctx: {
+      params: { sessionID: SessionID }
+      payload: typeof RetryPayload.Type
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      yield* SessionError.mapBusy(runState.assertNotBusy(ctx.params.sessionID))
+      if ((ctx.payload.providerID === undefined) !== (ctx.payload.modelID === undefined)) {
+        return yield* new HttpApiError.BadRequest({})
+      }
+      const failed = yield* MessageV2.get({
+        sessionID: ctx.params.sessionID,
+        messageID: ctx.payload.failedMessageID,
+      }).pipe(SessionError.mapStorageNotFound)
+      const latest = MessageV2.latest(
+        yield* MessageV2.filterCompactedEffect(ctx.params.sessionID).pipe(
+          Effect.provideService(Database.Service, database),
+        ),
+      ).assistant
+      const apiError = failed.info.role === "assistant" && failed.info.error?.name === "APIError"
+        ? failed.info.error
+        : undefined
+      const metadata = apiError?.data.metadata
+      if (
+        failed.info.role !== "assistant"
+        || latest?.id !== failed.info.id
+        || metadata?.retryExhausted !== "true"
+        || metadata?.retryResumed === "true"
+      ) {
+        return yield* new ConflictError({
+          resource: ctx.payload.failedMessageID,
+          message: "Only the latest retry-exhausted assistant turn can be resumed",
+        })
+      }
+      failed.info.error = new SessionV1.APIError({
+        ...apiError!.data,
+        metadata: { ...metadata, retryResumed: "true" },
+      }).toObject()
+      yield* session.updateMessage(failed.info)
+      yield* promptSvc.loop({
+        sessionID: ctx.params.sessionID,
+        failedMessageID: ctx.payload.failedMessageID,
+        agent: ctx.payload.agent,
+        model: ctx.payload.providerID && ctx.payload.modelID
+          ? { providerID: ctx.payload.providerID, modelID: ctx.payload.modelID }
+          : undefined,
+      }).pipe(
+        Effect.catchCause((cause) => Effect.logError("manual retry failed", { sessionID: ctx.params.sessionID, cause })),
+        Effect.forkIn(scope, { startImmediately: true }),
+      )
+      return HttpApiSchema.NoContent.make()
+    })
+
     const command = Effect.fn("SessionHttpApi.command")(function* (ctx: {
       params: { sessionID: SessionID }
       payload: typeof CommandPayload.Type
@@ -570,6 +623,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("summarize", summarize)
       .handle("prompt", prompt)
       .handle("promptAsync", promptAsync)
+      .handle("retry", retry)
       .handle("command", command)
       .handle("shell", shell)
       .handle("revert", revert)

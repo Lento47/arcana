@@ -39,6 +39,31 @@ export interface ContractAdmissionDeps {
 export const CONTRACT_ACCEPT = "Accept"
 export const CONTRACT_DECLINE = "Decline"
 
+const CONVERSATIONAL_TURN_PATTERNS = [
+  /^(?:hi|hello|hey|hiya|howdy)(?:\s+(?:there|arcana))?[!.?]*$/i,
+  /^(?:thanks|thank\s+you|thx|appreciate\s+it)[!.?]*$/i,
+  /^(?:ok|okay|got\s+it|understood|sounds\s+good|sure|yes|yeah|yep|no|nope)[!.?]*$/i,
+  /^(?:bye|goodbye|see\s+you|later)[!.?]*$/i,
+  /^(?:status|status\s+update|what(?:'s|\s+is)\s+the\s+status|how(?:'s|\s+is)\s+it\s+going|are\s+you\s+(?:still\s+)?working|why\s+did\s+you\s+stop|what\s+happened)[!.?]*$/i,
+] as const
+
+const CONSEQUENTIAL_CORRECTION = /\b(?:build|change|create|delete|deploy|edit|fix|implement|install|remove|review|run|test|update|write)\b/i
+
+/**
+ * Conservative admission prefilter. It only removes obvious conversation from
+ * the contract lifecycle; ambiguous requests still receive a contract.
+ */
+export function requiresCompletionContract(userRequest: string): boolean {
+  const text = userRequest.trim().replace(/\s+/g, " ")
+  if (!text) return false
+  if (CONVERSATIONAL_TURN_PATTERNS.some((pattern) => pattern.test(text))) return false
+
+  const shortCorrection = /^(?:correction\s*:|i\s+(?:said|meant)\b)/i.test(text)
+    && text.split(" ").length <= 16
+    && !CONSEQUENTIAL_CORRECTION.test(text)
+  return !shortCorrection
+}
+
 export function contractAdmissionQuestion(contract: ContractAdmissionContract) {
   return {
     header: "completion contract",
@@ -71,7 +96,7 @@ export const ensureContractAdmission = Effect.fn("ContractAdmission.ensure")(
       model?: string
     },
   ) {
-    if (!input.userRequest.trim()) return false
+    if (!requiresCompletionContract(input.userRequest)) return false
     if (yield* deps.hasActiveContract(input.sessionID)) return false
     if (yield* deps.wasDeclined(input.sessionID)) return false
 

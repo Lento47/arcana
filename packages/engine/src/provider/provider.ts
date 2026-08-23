@@ -32,7 +32,6 @@ import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
 
-
 function wrapSSE(res: Response, ms: number, ctl: AbortController) {
   if (typeof ms !== "number" || ms <= 0) return res
   if (!res.body) return res
@@ -45,7 +44,7 @@ function wrapSSE(res: Response, ms: number, ctl: AbortController) {
         const id = setTimeout(() => {
           const err = new ProviderError.ResponseStreamError("SSE read timed out")
           ctl.abort(err)
-          void reader.cancel(err)
+          void reader.cancel(err).catch(() => undefined)
           reject(err)
         }, ms)
 
@@ -89,7 +88,6 @@ function timeoutController(ms: number) {
     clear: () => clearTimeout(id),
   }
 }
-
 
 export type BundledSDK = {
   languageModel(modelId: string): LanguageModelV3
@@ -1071,7 +1069,11 @@ export const layer = Layer.effect(
           return {
             id: "ollama" as ProviderV2.ID,
             name: "Ollama (local)",
-            api: { type: "aisdk" as const, package: "@ai-sdk/openai-compatible" as const, url: `http://localhost:${port}/v1` } as any,
+            api: {
+              type: "aisdk" as const,
+              package: "@ai-sdk/openai-compatible" as const,
+              url: `http://localhost:${port}/v1`,
+            } as any,
             options: { baseURL: `http://localhost:${port}/v1` } as any,
             models: {},
             status: "active" as const,
@@ -1082,87 +1084,96 @@ export const layer = Layer.effect(
       }),
     )
 
-    const getModel: (providerID: ProviderV2.ID, modelID: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError> = Effect.fn("Provider.getModel")(function* (providerID: ProviderV2.ID, modelID: ModelV2.ID) {
-      const s = yield* InstanceState.get(state)
-      const provider = s.providers[providerID]
-      if (!provider) {
-        // Ollama fallback — models resolved at runtime via API
-        if (String(providerID) === "ollama") {
-          const port = process.env.OLLAMA_PORT ?? "11434"
-          return {
-            id: modelID,
-            name: modelID as string,
-            providerID: "ollama" as ProviderV2.ID,
-            api: { id: `ollama/${modelID}`, url: `http://localhost:${port}/v1`, npm: "@ai-sdk/openai-compatible" } as Model["api"],
-            capabilities: { completion: true, tools: true } as unknown as Model["capabilities"],
-            variants: [],
-            cost: [] as unknown as Model["cost"],
-            limit: { context: 128000, output: 8192 },
-            status: "active" as const,
-            options: {} as Record<string, any>,
-            headers: {} as Record<string, string>,
-            release_date: "2024-01-01",
-          } as unknown as Model
-        }
-        // Bare model name (no / in original) — search all providers
-        if (!modelID) {
-          const name = String(providerID)
-          for (const [pid, p] of Object.entries(s.providers)) {
-            // Exact match
-            if (p.models[name]) {
-              return yield* (getModel as (pid: ProviderV2.ID, mid: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError>)(
-                ProviderV2.ID.make(pid), ModelV2.ID.make(name)
-              )
-            }
+    const getModel: (providerID: ProviderV2.ID, modelID: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError> =
+      Effect.fn("Provider.getModel")(function* (providerID: ProviderV2.ID, modelID: ModelV2.ID) {
+        const s = yield* InstanceState.get(state)
+        const provider = s.providers[providerID]
+        if (!provider) {
+          // Ollama fallback — models resolved at runtime via API
+          if (String(providerID) === "ollama") {
+            const port = process.env.OLLAMA_PORT ?? "11434"
+            return {
+              id: modelID,
+              name: modelID as string,
+              providerID: "ollama" as ProviderV2.ID,
+              api: {
+                id: `ollama/${modelID}`,
+                url: `http://localhost:${port}/v1`,
+                npm: "@ai-sdk/openai-compatible",
+              } as Model["api"],
+              capabilities: { completion: true, tools: true } as unknown as Model["capabilities"],
+              variants: [],
+              cost: [] as unknown as Model["cost"],
+              limit: { context: 128000, output: 8192 },
+              status: "active" as const,
+              options: {} as Record<string, any>,
+              headers: {} as Record<string, string>,
+              release_date: "2024-01-01",
+            } as unknown as Model
           }
-          // Suffix match (e.g. "deepseek-v4-flash" → "aihubmix/deepseek-v4-flash")
-          for (const [pid, p] of Object.entries(s.providers)) {
-            for (const mid of Object.keys(p.models)) {
-              if (mid === name || mid.endsWith("/" + name)) {
-                return yield* (getModel as (pid: ProviderV2.ID, mid: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError>)(
-                  ProviderV2.ID.make(pid), ModelV2.ID.make(mid)
-                )
+          // Bare model name (no / in original) — search all providers
+          if (!modelID) {
+            const name = String(providerID)
+            for (const [pid, p] of Object.entries(s.providers)) {
+              // Exact match
+              if (p.models[name]) {
+                return yield* (
+                  getModel as (pid: ProviderV2.ID, mid: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError>
+                )(ProviderV2.ID.make(pid), ModelV2.ID.make(name))
+              }
+            }
+            // Suffix match (e.g. "deepseek-v4-flash" → "aihubmix/deepseek-v4-flash")
+            for (const [pid, p] of Object.entries(s.providers)) {
+              for (const mid of Object.keys(p.models)) {
+                if (mid === name || mid.endsWith("/" + name)) {
+                  return yield* (
+                    getModel as (pid: ProviderV2.ID, mid: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError>
+                  )(ProviderV2.ID.make(pid), ModelV2.ID.make(mid))
+                }
               }
             }
           }
+          const catalogProvider = s.catalog[providerID]
+          const suggestions = catalogProvider
+            ? modelSuggestions(catalogProvider, modelID, runtimeFlags.enableExperimentalModels)
+            : fuzzysort
+                .go(providerID, Object.keys({ ...s.catalog, ...s.providers }), { limit: 3, threshold: -10000 })
+                .map((m) => m.target)
+          return yield* new ModelNotFoundError({ providerID, modelID, suggestions })
         }
-        const catalogProvider = s.catalog[providerID]
-        const suggestions = catalogProvider
-          ? modelSuggestions(catalogProvider, modelID, runtimeFlags.enableExperimentalModels)
-          : fuzzysort
-              .go(providerID, Object.keys({ ...s.catalog, ...s.providers }), { limit: 3, threshold: -10000 })
-              .map((m) => m.target)
-        return yield* new ModelNotFoundError({ providerID, modelID, suggestions })
-      }
 
-      const info = provider.models[modelID]
-      if (!info) {
-        // Ollama fallback — any model name is valid
-        if (String(providerID) === "ollama") {
-          const port = process.env.OLLAMA_PORT ?? "11434"
-          return {
-            id: modelID,
-            name: modelID as string,
-            providerID: "ollama" as ProviderV2.ID,
-            api: { id: `ollama/${modelID}`, url: `http://localhost:${port}/v1`, npm: "@ai-sdk/openai-compatible" } as Model["api"],
-            capabilities: { completion: true, tools: true } as unknown as Model["capabilities"],
-            variants: [],
-            cost: [] as unknown as Model["cost"],
-            limit: { context: 128000, output: 8192 },
-            status: "active" as const,
-            options: {} as Record<string, any>,
-            headers: {} as Record<string, string>,
-            release_date: "2024-01-01",
-          } as unknown as Model
+        const info = provider.models[modelID]
+        if (!info) {
+          // Ollama fallback — any model name is valid
+          if (String(providerID) === "ollama") {
+            const port = process.env.OLLAMA_PORT ?? "11434"
+            return {
+              id: modelID,
+              name: modelID as string,
+              providerID: "ollama" as ProviderV2.ID,
+              api: {
+                id: `ollama/${modelID}`,
+                url: `http://localhost:${port}/v1`,
+                npm: "@ai-sdk/openai-compatible",
+              } as Model["api"],
+              capabilities: { completion: true, tools: true } as unknown as Model["capabilities"],
+              variants: [],
+              cost: [] as unknown as Model["cost"],
+              limit: { context: 128000, output: 8192 },
+              status: "active" as const,
+              options: {} as Record<string, any>,
+              headers: {} as Record<string, string>,
+              release_date: "2024-01-01",
+            } as unknown as Model
+          }
+          const current = modelSuggestions(provider, modelID, runtimeFlags.enableExperimentalModels)
+          const suggestions = current.length
+            ? current
+            : modelSuggestions(s.catalog[providerID], modelID, runtimeFlags.enableExperimentalModels)
+          return yield* new ModelNotFoundError({ providerID, modelID, suggestions })
         }
-        const current = modelSuggestions(provider, modelID, runtimeFlags.enableExperimentalModels)
-        const suggestions = current.length
-          ? current
-          : modelSuggestions(s.catalog[providerID], modelID, runtimeFlags.enableExperimentalModels)
-        return yield* new ModelNotFoundError({ providerID, modelID, suggestions })
-      }
-      return info
-    })
+        return info
+      })
 
     const getLanguage = Effect.fn("Provider.getLanguage")(function* (model: Model) {
       const s = yield* InstanceState.get(state)

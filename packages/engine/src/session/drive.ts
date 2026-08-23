@@ -26,6 +26,8 @@ export const DRIVE_METADATA = {
   continuations: "__arcana_drive_continuations",
   exhausted: "__arcana_drive_exhausted",
   decisionRequired: "__arcana_decision_required",
+  progressFingerprint: "__arcana_drive_progress_fingerprint",
+  noProgress: "__arcana_drive_no_progress",
 } as const
 
 export type DriveSnapshot = {
@@ -41,6 +43,8 @@ export type DriveSnapshot = {
   maxContinuations: number
   /** True when the model's last response invoked at least one tool. False = pure text. */
   hadToolActivity: boolean
+  /** Consecutive continuation boundaries with an identical semantic tool fingerprint. */
+  noProgressContinuations: number
 }
 
 export type DriveStopReason =
@@ -54,6 +58,7 @@ export type DriveStopReason =
   | "cancelled"
   | "pep_denied"
   | "exhausted"
+  | "no_progress"
   | "conversational"
 
 export type DriveDecision =
@@ -81,6 +86,38 @@ export function continuationsUsed(metadata: Record<string, unknown> | undefined)
   return typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : 0
 }
 
+export function noProgressContinuations(metadata: Record<string, unknown> | undefined): number {
+  const raw = metadata?.[DRIVE_METADATA.noProgress]
+  return typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : 0
+}
+
+function fingerprint(value: string) {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0")
+}
+
+export function driveProgressFingerprint(input: {
+  goalStatus: GoalStatus | "unset"
+  tools: ReadonlyArray<{
+    tool: string
+    status: string
+    input?: unknown
+    output?: string
+  }>
+}): string {
+  const normalized = input.tools.map((tool) => ({
+    tool: tool.tool,
+    status: tool.status,
+    input: tool.input,
+    output: tool.output?.slice(-500),
+  }))
+  return fingerprint(JSON.stringify({ goalStatus: input.goalStatus, tools: normalized }))
+}
+
 export function decideDrive(snap: DriveSnapshot): DriveDecision {
   // Pure-text responses (no tool invocations) are conversational — there is
   // no work to drive toward. Continuing would produce another greeting or
@@ -99,6 +136,7 @@ export function decideDrive(snap: DriveSnapshot): DriveDecision {
   }
   if (snap.goalStatus === "blocked") return { action: "stop", reason: "goal_blocked" }
   if (snap.goalStatus === "stale") return { action: "stop", reason: "goal_stale" }
+  if (snap.noProgressContinuations >= 2) return { action: "stop", reason: "no_progress" }
   if (snap.continuationsUsed >= snap.maxContinuations) return { action: "stop", reason: "exhausted" }
   if (snap.goalStatus === "in_progress") return { action: "continue", reason: "goal_open" }
   return { action: "stop", reason: "no_goal" }

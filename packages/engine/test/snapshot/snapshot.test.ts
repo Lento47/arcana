@@ -1,4 +1,4 @@
-import { afterEach, expect } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
 import { $ } from "bun"
 import { CrossSpawnSpawner } from "@arcana/core/cross-spawn-spawner"
 import { FSUtil } from "@arcana/core/fs-util"
@@ -24,6 +24,13 @@ const fwd = (...parts: string[]) => path.join(...parts).replaceAll("\\", "/")
 const SNAPSHOT_BATCH_BOUNDARY = 100
 const OVER_BATCH_COUNT = SNAPSHOT_BATCH_BOUNDARY + 1
 const MIXED_BATCH_GROUP_COUNT = Math.ceil(OVER_BATCH_COUNT / 4)
+
+test("snapshot index lock recovery requires a sufficiently old lock", () => {
+  const now = 1_000_000
+  expect(Snapshot.isStaleSnapshotIndexLock(now, now - 299_999)).toBe(false)
+  expect(Snapshot.isStaleSnapshotIndexLock(now, now - 300_000)).toBe(true)
+  expect(Snapshot.isStaleSnapshotIndexLock(now, 0)).toBe(false)
+})
 
 afterEach(async () => {
   await disposeAllInstances()

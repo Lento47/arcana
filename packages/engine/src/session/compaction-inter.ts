@@ -17,6 +17,8 @@ export const DEFAULT_INTER_MIN_TOKEN_DELTA_FRACTION = 0.05
 
 /** Metadata keys written on successful compact (session.metadata). */
 export const META_LAST_COMPACT_TOKENS = "__arcana_last_compact_tokens"
+export const META_LAST_COMPACT_SOURCE_TOKENS = "__arcana_last_compact_source_tokens"
+export const META_LAST_COMPACT_RESULT_TOKENS = "__arcana_last_compact_result_tokens"
 export const META_LAST_COMPACT_AT = "__arcana_last_compact_at"
 export const META_LAST_COMPACT_PASS = "__arcana_last_compact_pass"
 
@@ -114,17 +116,23 @@ export function shouldInterCompact(input: {
 
 export function readLastCompactTokens(metadata: Record<string, unknown> | undefined): number | undefined {
   if (!metadata) return undefined
+  const result = metadata[META_LAST_COMPACT_RESULT_TOKENS]
+  if (typeof result === "number" && Number.isFinite(result) && result >= 0) return result
   const v = metadata[META_LAST_COMPACT_TOKENS]
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined
 }
 
 export function compactSuccessMetadata(
   previous: Record<string, unknown> | undefined,
-  input: { tokens: number; pass: InterCompactPass },
+  input: { sourceTokens: number; resultTokens: number; pass: InterCompactPass },
 ): Record<string, unknown> {
   return {
     ...(previous ?? {}),
-    [META_LAST_COMPACT_TOKENS]: input.tokens,
+    // Keep the legacy key as the post-compaction baseline. Older readers remain
+    // conservative while new readers can distinguish source and result sizes.
+    [META_LAST_COMPACT_TOKENS]: input.resultTokens,
+    [META_LAST_COMPACT_SOURCE_TOKENS]: input.sourceTokens,
+    [META_LAST_COMPACT_RESULT_TOKENS]: input.resultTokens,
     [META_LAST_COMPACT_AT]: Date.now(),
     [META_LAST_COMPACT_PASS]: input.pass,
   }

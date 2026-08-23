@@ -114,6 +114,27 @@ describe("session.retry.delay", () => {
       })
     }),
   )
+
+  test("policy stops after three retries", async () => {
+    const error = apiError({ "retry-after-ms": "0" })
+    const attempts: number[] = []
+    let calls = 0
+    await Effect.runPromise(
+      Effect.suspend(() => {
+        calls++
+        return Effect.fail(error)
+      }).pipe(
+        Effect.retry(SessionRetry.policy({
+          provider: "test",
+          parse: Schema.decodeUnknownSync(SessionV1.APIError.Schema),
+          set: (info) => Effect.sync(() => attempts.push(info.attempt)),
+        })),
+        Effect.exit,
+      ),
+    )
+    expect(calls).toBe(4)
+    expect(attempts).toStrictEqual([1, 2, 3])
+  })
 })
 
 describe("session.retry.retryable", () => {

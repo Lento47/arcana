@@ -185,9 +185,7 @@ const testPermission = Layer.succeed(
   Permission.Service,
   Permission.Service.of({
     ask: (input) =>
-      input.permission === "contract.accept"
-        ? Effect.fail(new PermissionV1.RejectedError())
-        : Effect.void,
+      input.permission === "contract.accept" ? Effect.fail(new PermissionV1.RejectedError()) : Effect.void,
     reply: () => Effect.void,
     list: () => Effect.succeed([]),
   }),
@@ -359,6 +357,14 @@ const useServerConfig = Effect.fn("test.useServerConfig")(function* (
   if (options?.trust) trustWorkspace(dir)
   return { dir, llm }
 })
+
+function lastRequestContent(hit: { body: Record<string, unknown> }): string {
+  const messages = hit.body.messages
+  if (!Array.isArray(messages)) return ""
+  const last = messages.at(-1)
+  if (!last || typeof last !== "object" || !("content" in last)) return ""
+  return typeof last.content === "string" ? last.content : JSON.stringify(last.content)
+}
 
 // Wait for a session's runner to enter a busy state. SessionStatus is flipped
 // inside Runner.startShell's serialized transition, so cancel can't no-op once
@@ -553,10 +559,9 @@ it.instance("deduplicates concurrent and repeated prompts with the same explicit
       parts: [{ type: "text" as const, text: "deliver exactly once" }],
     }
 
-    const [direct, retry] = yield* Effect.all(
-      [prompt.prompt(input), prompt.prompt(input)],
-      { concurrency: "unbounded" },
-    )
+    const [direct, retry] = yield* Effect.all([prompt.prompt(input), prompt.prompt(input)], {
+      concurrency: "unbounded",
+    })
     const laterRetry = yield* prompt.prompt({
       ...input,
       parts: [{ type: "text", text: "a reused key must not append new content" }],
@@ -835,7 +840,7 @@ it.instance("static loop consumes queued replies across turns", () =>
       parts: [{ type: "text", text: "hello one" }],
     })
 
-    yield* llm.text("world one")
+    yield* llm.textMatch((hit) => lastRequestContent(hit) === "hello one", "world one")
 
     const first = yield* prompt.loop({ sessionID: session.id })
     expect(first.info.role).toBe("assistant")
@@ -848,13 +853,14 @@ it.instance("static loop consumes queued replies across turns", () =>
       parts: [{ type: "text", text: "hello two" }],
     })
 
-    yield* llm.text("world two")
+    yield* llm.textMatch((hit) => lastRequestContent(hit) === "hello two", "world two")
 
     const second = yield* prompt.loop({ sessionID: session.id })
     expect(second.info.role).toBe("assistant")
     expect(second.parts.some((part) => part.type === "text" && part.text === "world two")).toBe(true)
 
-    expect(yield* llm.hits).toHaveLength(2)
+    const foregroundHits = (yield* llm.hits).filter((hit) => !lastRequestContent(hit).startsWith("Session transcript:"))
+    expect(foregroundHits).toHaveLength(2)
     expect(yield* llm.pending).toBe(0)
   }),
 )
@@ -954,51 +960,53 @@ it.instance("loop continues when finish is stop but assistant has tool parts", (
   }),
 )
 
-it.instance("failed subtask preserves metadata on error tool state", () =>
-  Effect.gen(function* () {
-    const { llm } = yield* useServerConfig(
-      (url) => ({
-        ...providerCfg(url),
-        agent: {
-          general: {
-            model: "test/missing-model",
+it.instance(
+  "failed subtask preserves metadata on error tool state",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(
+        (url) => ({
+          ...providerCfg(url),
+          agent: {
+            general: {
+              model: "test/missing-model",
+            },
           },
-        },
-      }),
-      { trust: true },
-    )
-    const prompt = yield* SessionPrompt.Service
-    const sessions = yield* Session.Service
-    const chat = yield* sessions.create({ title: "Pinned" })
-    yield* llm.tool("task", {
-      description: "inspect bug",
-      prompt: "look into the cache key path",
-      subagent_type: "general",
-    })
-    yield* llm.text("done")
-    const msg = yield* user(chat.id, "hello")
-    yield* addSubtask(chat.id, msg.id)
+        }),
+        { trust: true },
+      )
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({ title: "Pinned" })
+      yield* llm.tool("task", {
+        description: "inspect bug",
+        prompt: "look into the cache key path",
+        subagent_type: "general",
+      })
+      yield* llm.text("done")
+      const msg = yield* user(chat.id, "hello")
+      yield* addSubtask(chat.id, msg.id)
 
-    const result = yield* prompt.loop({ sessionID: chat.id })
-    expect(result.info.role).toBe("assistant")
-    expect(yield* llm.calls).toBe(2)
+      const result = yield* prompt.loop({ sessionID: chat.id })
+      expect(result.info.role).toBe("assistant")
+      expect(yield* llm.calls).toBe(2)
 
-    const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
-    const taskMsg = msgs.find((item) => item.info.role === "assistant" && item.info.agent === "general")
-    expect(taskMsg?.info.role).toBe("assistant")
-    if (!taskMsg || taskMsg.info.role !== "assistant") return
+      const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
+      const taskMsg = msgs.find((item) => item.info.role === "assistant" && item.info.agent === "general")
+      expect(taskMsg?.info.role).toBe("assistant")
+      if (!taskMsg || taskMsg.info.role !== "assistant") return
 
-    const tool = errorTool(taskMsg.parts)
-    if (!tool) return
+      const tool = errorTool(taskMsg.parts)
+      if (!tool) return
 
-    expect(tool.state.error).toContain("Tool execution failed")
-    expect(tool.state.metadata).toBeDefined()
-    expect(tool.state.metadata?.sessionId).toBeDefined()
-    expect(tool.state.metadata?.model).toEqual({
-      providerID: ProviderV2.ID.make("test"),
-      modelID: ModelV2.ID.make("missing-model"),
-    })
-  }),
+      expect(tool.state.error).toContain("Tool execution failed")
+      expect(tool.state.metadata).toBeDefined()
+      expect(tool.state.metadata?.sessionId).toBeDefined()
+      expect(tool.state.metadata?.model).toEqual({
+        providerID: ProviderV2.ID.make("test"),
+        modelID: ModelV2.ID.make("missing-model"),
+      })
+    }),
   { trust: true },
 )
 
@@ -1180,7 +1188,7 @@ it.instance(
         "10 seconds",
       )
 
-      const output = "output" in tool.state ? (tool.state as { output?: string }).output ?? "" : ""
+      const output = "output" in tool.state ? ((tool.state as { output?: string }).output ?? "") : ""
       expect(output).toContain("child final answer: cache key is stable")
 
       yield* prompt.cancel(chat.id)
@@ -1214,8 +1222,18 @@ it.instance(
         subagent_type: "general",
       })
       // The child returns a whitespace-only completion — must NOT look like success.
-      yield* llm.text(" ")
-      yield* llm.text(" ")
+      yield* llm.textMatch(
+        (hit) =>
+          lastRequestContent(hit).includes("look into the cache key path") &&
+          !lastRequestContent(hit).includes("You did not produce a final answer"),
+        " ",
+      )
+      yield* llm.textMatch(
+        (hit) =>
+          !lastRequestContent(hit).startsWith("Session transcript:") &&
+          lastRequestContent(hit).includes("You did not produce a final answer"),
+        " ",
+      )
       yield* user(chat.id, "hello")
 
       const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
@@ -1227,7 +1245,11 @@ it.instance(
             .filter((m) => m.info.role === "assistant")
             .flatMap((m) => m.parts)
             .find((part): part is SessionV1.ToolPart => part.type === "tool" && part.tool === "task")
-          if (tool?.state.status === "completed" && (tool.state as { output?: string }).output?.includes("returned no output")) return tool
+          if (
+            tool?.state.status === "completed" &&
+            (tool.state as { output?: string }).output?.includes("returned no output")
+          )
+            return tool
         }),
         "timed out waiting for the task tool to fail",
         "10 seconds",
@@ -1266,8 +1288,18 @@ it.instance(
         subagent_type: "general",
       })
       // First completion is empty; the retry returns a real answer.
-      yield* llm.text(" ")
-      yield* llm.text("final answer after retry")
+      yield* llm.textMatch(
+        (hit) =>
+          lastRequestContent(hit).includes("look into the cache key path") &&
+          !lastRequestContent(hit).includes("You did not produce a final answer"),
+        " ",
+      )
+      yield* llm.textMatch(
+        (hit) =>
+          !lastRequestContent(hit).startsWith("Session transcript:") &&
+          lastRequestContent(hit).includes("You did not produce a final answer"),
+        "final answer after retry",
+      )
       yield* user(chat.id, "hello")
 
       const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
@@ -1279,7 +1311,11 @@ it.instance(
             .filter((m) => m.info.role === "assistant")
             .flatMap((m) => m.parts)
             .find((part): part is SessionV1.ToolPart => part.type === "tool" && part.tool === "task")
-          if (tool?.state.status === "completed" && (tool.state as { output?: string }).output?.includes("final answer after retry")) return tool
+          if (
+            tool?.state.status === "completed" &&
+            (tool.state as { output?: string }).output?.includes("final answer after retry")
+          )
+            return tool
         }),
         "timed out waiting for the retried task result",
         "10 seconds",
@@ -2540,8 +2576,8 @@ noLLMServer.instance(
       yield* sessions.remove(session.id)
     }),
   {
-      config: {
-        ...cfg,
+    config: {
+      ...cfg,
       provider: {
         ...cfg.provider,
         test: {

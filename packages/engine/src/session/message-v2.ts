@@ -367,6 +367,19 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
               })
             }
           }
+          if (part.state.status === "cancelled") {
+            assistantMessage.parts.push({
+              type: ("tool-" + part.tool) as `tool-${string}`,
+              state: "output-error",
+              toolCallId: part.callID,
+              input: part.state.input,
+              errorText: part.state.reason === "session_cancelled"
+                ? "[Tool execution was cancelled]"
+                : "[Tool execution did not complete]",
+              ...(part.metadata?.providerExecuted ? { providerExecuted: true } : {}),
+              ...(differentModel ? {} : { callProviderMetadata: providerMeta(part.metadata) }),
+            })
+          }
           // Handle pending/running tool calls to prevent dangling tool_use blocks
           // Anthropic/Claude APIs require every tool_use to have a corresponding tool_result
           if (part.state.status === "pending" || part.state.status === "running")

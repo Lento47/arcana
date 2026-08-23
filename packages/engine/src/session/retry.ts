@@ -42,6 +42,8 @@ export const RETRY_INITIAL_DELAY = 2000
 export const RETRY_BACKOFF_FACTOR = 2
 export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
 export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
+/** Automatic retries after the initial provider request. */
+export const RETRY_MAX_ATTEMPTS = 3
 
 function cap(ms: number) {
   return Math.min(ms, RETRY_MAX_DELAY)
@@ -203,10 +205,19 @@ function parseJSON(value: unknown) {
 export function policy(opts: {
   provider: string
   parse: (error: unknown) => Err
-  set: (input: { attempt: number; message: string; action?: Retryable["action"]; next: number }) => Effect.Effect<void>
+  set: (input: {
+    attempt: number
+    message: string
+    error: SessionV1.APIError
+    action?: Retryable["action"]
+    next: number
+  }) => Effect.Effect<void>
 }) {
-  return Schedule.fromStepWithMetadata(
+  const retrySchedule = Schedule.fromStepWithMetadata(
     Effect.succeed((meta: Schedule.InputMetadata<unknown>) => {
+      // Effect evaluates both schedules on the terminal failure. Do not emit
+      // a phantom fourth retry status/part when `recurs(3)` closes the gate.
+      if (meta.attempt > RETRY_MAX_ATTEMPTS) return Cause.done(meta.attempt)
       const error = opts.parse(meta.input)
       const retry = retryable(error, opts.provider)
       if (!retry) return Cause.done(meta.attempt)
@@ -216,6 +227,13 @@ export function policy(opts: {
         yield* opts.set({
           attempt: meta.attempt,
           message: retry.message,
+          error: SessionV1.APIError.isInstance(error)
+            ? error
+            : new SessionV1.APIError({
+                message: retry.message,
+                isRetryable: true,
+                metadata: { sourceError: error.name || "Unknown" },
+              }).toObject(),
           action: retry.action,
           next: now + wait,
         })
@@ -223,6 +241,10 @@ export function policy(opts: {
       })
     }),
   )
+  // `recurs(3)` means the initial request plus exactly three recurrences.
+  // Intersecting schedules preserves the existing delay/Retry-After policy
+  // while preventing a provider outage from keeping a turn alive forever.
+  return retrySchedule.pipe(Schedule.both(Schedule.recurs(RETRY_MAX_ATTEMPTS)))
 }
 
 export * as SessionRetry from "./retry"

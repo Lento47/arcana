@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import {
+  compactionPressure,
+  DEFAULT_PERFORMANCE_MAX_INPUT_TOKENS,
   DEFAULT_THRESHOLD_PERCENT,
+  effectiveContext,
   isOverflow,
+  performanceMaxInputTokens,
   thresholdPercent,
   tokenCount,
   usable,
@@ -60,6 +64,46 @@ describe("overflow.thresholdPercent", () => {
   test("rejects out of range", () => {
     expect(thresholdPercent(cfg({ threshold_percent: 0 }))).toBe(85)
     expect(thresholdPercent(cfg({ threshold_percent: 101 }))).toBe(85)
+  })
+})
+
+describe("overflow.compactionPressure", () => {
+  const wide = model({ context: 1_000_000, output: 131_072 })
+
+  test("uses the 96k performance limit independently of a 1M safety window", () => {
+    expect(performanceMaxInputTokens(cfg())).toBe(DEFAULT_PERFORMANCE_MAX_INPUT_TOKENS)
+    expect(compactionPressure({ cfg: cfg(), model: wide, tokens: tokens(95_999) })).toMatchObject({
+      hot: false,
+      limit: 96_000,
+    })
+    expect(compactionPressure({ cfg: cfg(), model: wide, tokens: tokens(150_000) })).toEqual({
+      count: 150_000,
+      hot: true,
+      limit: 96_000,
+      reason: "performance",
+    })
+  })
+
+  test("performance false preserves safety compaction", () => {
+    const config = cfg({ performance: false })
+    expect(compactionPressure({ cfg: config, model: wide, tokens: tokens(150_000) }).hot).toBe(false)
+    expect(compactionPressure({ cfg: config, model: wide, tokens: tokens(850_000) })).toMatchObject({
+      hot: true,
+      reason: "safety",
+    })
+  })
+
+  test("auto false disables both pressure classes", () => {
+    expect(
+      compactionPressure({ cfg: cfg({ auto: false }), model: wide, tokens: tokens(900_000) }).hot,
+    ).toBe(false)
+  })
+
+  test("supports a configured performance limit", () => {
+    const config = cfg({ performance_max_input_tokens: 120_000 })
+    expect(performanceMaxInputTokens(config)).toBe(120_000)
+    expect(compactionPressure({ cfg: config, model: wide, tokens: tokens(119_999) }).hot).toBe(false)
+    expect(compactionPressure({ cfg: config, model: wide, tokens: tokens(120_000) }).reason).toBe("performance")
   })
 })
 
@@ -134,6 +178,33 @@ describe("overflow.isOverflow (P0 85% proactive)", () => {
   test("context 0 never overflows", () => {
     const m = model({ context: 0, output: 32_000 })
     expect(isOverflow({ cfg: cfg(), model: m, tokens: tokens(1_000_000) })).toBe(false)
+  })
+
+  test("default_context_tokens assumes a window for unknown-limit models (G1a)", () => {
+    const m = model({ context: 0, output: 8_000 })
+    const config = cfg({ default_context_tokens: 100_000 })
+    // effectiveContext resolves the assumed window
+    expect(effectiveContext(config, m)).toBe(100_000)
+    expect(effectiveContext(cfg(), m)).toBe(0)
+    // 50k = 50% of the assumed window → no overflow
+    expect(isOverflow({ cfg: config, model: m, tokens: tokens(50_000) })).toBe(false)
+    // 85k = 85% of assumed → proactive safety trigger fires on a limit-less model
+    expect(isOverflow({ cfg: config, model: m, tokens: tokens(85_000) })).toBe(true)
+    // usable derives from the assumed window too: 100k - min(20k, 8k) = 92k
+    expect(usable({ cfg: config, model: m })).toBe(92_000)
+    // compactionPressure surfaces it as safety, with limit at threshold% of assumed
+    expect(compactionPressure({ cfg: config, model: m, tokens: tokens(85_000) })).toMatchObject({
+      hot: true,
+      reason: "safety",
+      limit: 85_000,
+    })
+  })
+
+  test("default_context_tokens never overrides an advertised window", () => {
+    const config = cfg({ default_context_tokens: 100_000 })
+    expect(effectiveContext(config, model({ context: 400_000, output: 4_000 }))).toBe(400_000)
+    // advertised wins even when smaller than the assumption
+    expect(effectiveContext(config, model({ context: 32_000, output: 4_000 }))).toBe(32_000)
   })
 
   test("custom threshold_percent 90", () => {

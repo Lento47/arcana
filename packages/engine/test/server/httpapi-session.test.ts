@@ -440,6 +440,47 @@ describe("session HttpApi", () => {
     { git: true, config: { formatter: false, lsp: false } },
   )
 
+  it.instance(
+    "accepts only the latest retry-exhausted turn once",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const headers = { "x-opencode-directory": test.directory, "content-type": "application/json" }
+        const sessionInfo = yield* createSession({ title: "manual retry" })
+        const parent = yield* createTextMessage(sessionInfo.id, "continue after outage")
+        const sessionSvc = yield* Session.Service
+        const failed = yield* sessionSvc.updateMessage({
+          id: MessageID.ascending(),
+          sessionID: sessionInfo.id,
+          role: "assistant",
+          parentID: parent.info.id,
+          time: { created: Date.now(), completed: Date.now() },
+          error: new SessionV1.APIError({
+            message: "gateway overloaded",
+            isRetryable: true,
+            metadata: { retryExhausted: "true", retryCount: "3" },
+          }).toObject(),
+          finish: "error",
+          modelID: ModelV2.ID.make("test"),
+          providerID: ProviderV2.ID.make("test"),
+          mode: "build",
+          agent: "build",
+          path: { cwd: test.directory, root: test.directory },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        })
+        const retry = () => request(pathFor(SessionPaths.retry, { sessionID: sessionInfo.id }), {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ failedMessageID: failed.id }),
+        })
+
+        expect((yield* retry()).status).toBe(204)
+        expect((yield* retry()).status).toBe(409)
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
   it.live("uses the persisted session directory for prompt requests", () =>
     Effect.gen(function* () {
       const llm = yield* TestLLMServer

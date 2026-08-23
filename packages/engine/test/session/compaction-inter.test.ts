@@ -4,6 +4,8 @@ import {
   hysteresisTokensFromMessages,
   META_LAST_COMPACT_AT,
   META_LAST_COMPACT_PASS,
+  META_LAST_COMPACT_RESULT_TOKENS,
+  META_LAST_COMPACT_SOURCE_TOKENS,
   META_LAST_COMPACT_TOKENS,
   minInterTokenDelta,
   passesCompactHysteresis,
@@ -182,23 +184,34 @@ describe("compaction-inter.hysteresis metric (M1)", () => {
 
 describe("compaction-inter.metadata", () => {
   test("read/write last compact tokens", () => {
-    const meta = compactSuccessMetadata(undefined, { tokens: 42_000, pass: "inter" })
-    expect(meta[META_LAST_COMPACT_TOKENS]).toBe(42_000)
+    const meta = compactSuccessMetadata(undefined, {
+      sourceTokens: 150_000,
+      resultTokens: 18_000,
+      pass: "inter",
+    })
+    expect(meta[META_LAST_COMPACT_TOKENS]).toBe(18_000)
+    expect(meta[META_LAST_COMPACT_SOURCE_TOKENS]).toBe(150_000)
+    expect(meta[META_LAST_COMPACT_RESULT_TOKENS]).toBe(18_000)
     expect(meta[META_LAST_COMPACT_PASS]).toBe("inter")
     expect(typeof meta[META_LAST_COMPACT_AT]).toBe("number")
-    expect(readLastCompactTokens(meta)).toBe(42_000)
+    expect(readLastCompactTokens(meta)).toBe(18_000)
     expect(readLastCompactTokens({})).toBeUndefined()
   })
 
-  test("double compact without growth blocked", () => {
-    const afterFirst = compactSuccessMetadata(undefined, { tokens: 90_000, pass: "inter" })
+  test("uses post-compact baseline so a later 96k session can compact again", () => {
+    const afterFirst = compactSuccessMetadata(undefined, {
+      sourceTokens: 150_000,
+      resultTokens: 18_000,
+      pass: "inter",
+    })
     const last = readLastCompactTokens(afterFirst)
     expect(
       shouldInterCompact({
-        count: 91_000,
-        context: 100_000,
+        count: 96_000,
+        context: 96_000,
         lastCompactTokens: last,
+        alreadyHot: true,
       }),
-    ).toBe(false)
+    ).toBe(true)
   })
 })
