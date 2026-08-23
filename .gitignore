@@ -95,3 +95,6 @@ packages/core/src/crypto/.test-crash-recovery/
 # Raw test evidence is committed for the completion gate.
 !docs/evidence/*.log
 !docs/evidence/*.log.err
+
+# Authority dynamic-audit transient report
+.authority-dynamic.json

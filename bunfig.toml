@@ -9,4 +9,7 @@ exact = true
 print = "bun"
 
 [test]
-preload = ["./scripts/tui-test-preload.ts"]
+# TUI Solid transform (see comment above) +
+# Authority Kernel dynamic-audit wrappers (pass-through; record only when
+# ARCANA_AUTHORITY_REPORT is set — see script/authority-dynamic.preload.ts).
+preload = ["./scripts/tui-test-preload.ts", "./script/authority-dynamic.preload.ts"]

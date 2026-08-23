@@ -1,0 +1,44 @@
+name: Authority Surface
+
+on:
+  pull_request:
+    branches:
+      - arcanagov
+  push:
+    branches:
+      - arcanagov
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authority-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  authority-surface:
+    name: Authority Surface gate (K0)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Static scan needs no dependencies; install only what bun test requires.
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Static authority scan (structure claim)
+        run: bun run script/authority-scan.ts
+
+      - name: Dynamic authority audit (exercised-path claim)
+        run: bun run script/authority-dynamic.ts
