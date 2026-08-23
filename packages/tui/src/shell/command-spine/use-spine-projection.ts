@@ -10,6 +10,11 @@ import { shouldShowGovernanceEvent } from "@arcana/core/governance-config"
 import { spineProseWidth, spineGutterDigits, type SpineLayout, type SpineEntry } from "./spine-types"
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
 import { buildStatusSegments } from "./spine-segments"
+import {
+  contextTokenCount,
+  hasContextUsage,
+  usableContextWindow,
+} from "../../util/context-pressure"
 import { isLocalPermissionRequest, pendingGateEntries } from "./spine-gates"
 import {
   approvalIdFromEntryID,
@@ -78,10 +83,8 @@ export function useSpineProjection(props: ShellProps, input: {
   })
   const lastUsageAssistant = createMemo(() => {
     const last = lastAssistant()
-    if (last && last.tokens.output > 0) return last
-    return props.messages().findLast(
-      (m): m is AssistantMessage => m.role === "assistant" && m.tokens.output > 0,
-    )
+    if (last && hasContextUsage(last.tokens)) return last
+    return props.messages().findLast((m): m is AssistantMessage => m.role === "assistant" && hasContextUsage(m.tokens))
   })
   const modelName = createMemo(() => {
     const last = lastAssistant()
@@ -89,18 +92,22 @@ export function useSpineProjection(props: ShellProps, input: {
     const provider = sync.data.provider.find((p) => p.id === last.providerID)
     return provider?.models[last.modelID]?.name ?? last.modelID
   })
-  const ctxPercent = createMemo(() => {
+  // Canonical context usage — mirrors engine session/overflow (tokenCount +
+  // usable ceiling). Percent is of the full advertised window; overBudget is
+  // the engine's hard-ceiling breach, which compacts even below the percent
+  // threshold. context === 0 (unlimited/unknown) hides the segment entirely.
+  const ctxUsage = createMemo(() => {
     const last = lastUsageAssistant()
-    if (!last) return null
-    const tokens =
-      last.tokens.input
-      + last.tokens.output
-      + last.tokens.reasoning
-      + last.tokens.cache.read
-      + last.tokens.cache.write
+    if (!last) return undefined
     const provider = sync.data.provider.find((p) => p.id === last.providerID)
-    const limit = provider?.models[last.modelID]?.limit?.context
-    return limit ? Math.round((tokens / limit) * 100) : null
+    const limit = provider?.models[last.modelID]?.limit
+    if (!limit || limit.context <= 0) return undefined
+    const tokens = contextTokenCount(last.tokens)
+    const usable = usableContextWindow(limit)
+    return {
+      percent: Math.round((tokens / limit.context) * 100),
+      overBudget: usable > 0 && tokens >= usable,
+    }
   })
   const headerSegments = createMemo(() => {
     const session = sync.data.session.find((s) => s.id === props.sessionID)
@@ -124,7 +131,8 @@ export function useSpineProjection(props: ShellProps, input: {
       sessionID: props.sessionID,
       branch: sync.data.vcs?.branch,
       model: modelName(),
-      ctxPercent: ctxPercent(),
+      ctxPercent: ctxUsage()?.percent ?? null,
+      ctxOverBudget: ctxUsage()?.overBudget,
       state: props.sessionStatus?.()?.type,
       path: session?.directory,
       drive,

@@ -50,6 +50,16 @@ describe("spine-segments.buildStatusSegments (S3)", () => {
     expect(buildStatusSegments({ ctxPercent: COMPACT_NOW_PERCENT })[0]?.tone).toBe("error")
   })
 
+  test("ctx usable-budget breach escalates tone even below the percent threshold", () => {
+    // 10% of the window but the engine's hard ceiling is breached → warning
+    expect(buildStatusSegments({ ctxPercent: 10, ctxOverBudget: true })[0]?.tone).toBe("warning")
+    // no breach keeps info at low percent
+    expect(buildStatusSegments({ ctxPercent: 10, ctxOverBudget: false })[0]?.tone).toBe("info")
+    expect(buildStatusSegments({ ctxPercent: 10 })[0]?.tone).toBe("info")
+    // breach does not mask the emergency band — error still wins at ≥95
+    expect(buildStatusSegments({ ctxPercent: COMPACT_NOW_PERCENT, ctxOverBudget: true })[0]?.tone).toBe("error")
+  })
+
   test("ctx omitted when percent missing or non-finite", () => {
     expect(buildStatusSegments({ ctxPercent: null })).toEqual([])
     expect(buildStatusSegments({ ctxPercent: Number.NaN })).toEqual([])

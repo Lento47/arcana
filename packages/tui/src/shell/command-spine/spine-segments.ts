@@ -13,6 +13,12 @@ export type SpineSegmentSource = {
   model?: string
   /** Context-token usage percent (0-100) of the active model's limit. */
   ctxPercent?: number | null
+  /**
+   * Engine hard-ceiling breach (`session/overflow.usable`) — auto-compact fires
+   * even below the percent threshold when an input cap / output reservation
+   * eats the window. Escalates tone to at least warning.
+   */
+  ctxOverBudget?: boolean
   /** Turn state from sessionStatus — "idle" is omitted as noise. */
   state?: string
   /** Working directory — shown on the header path line in wide/compact. */
@@ -26,6 +32,8 @@ export type SpineSegmentSource = {
  * Tones align with the app-wide context-pressure thresholds
  * (util/context-pressure, engine `threshold_percent` defaults):
  *   ctx >= 95 → error ("compact now"), >= 85 → warning ("compact soon"), else info.
+ * A usable-budget breach (ctxOverBudget) escalates to warning at any percent —
+ * the engine compacts on that ceiling regardless of raw percent.
  * "idle" is turn-state noise — omitted; busy/retry/error surface the turn.
  */
 export function buildStatusSegments(src: SpineSegmentSource): StatusSegment[] {
@@ -40,7 +48,7 @@ export function buildStatusSegments(src: SpineSegmentSource): StatusSegment[] {
     const tone: StatusTone =
       src.ctxPercent >= COMPACT_NOW_PERCENT
         ? "error"
-        : src.ctxPercent >= COMPACT_SOON_PERCENT
+        : src.ctxPercent >= COMPACT_SOON_PERCENT || src.ctxOverBudget === true
           ? "warning"
           : "info"
     segments.push({ key: "ctx", label: "ctx", value: `${src.ctxPercent}%`, tone })
