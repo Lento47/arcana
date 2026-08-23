@@ -260,19 +260,15 @@ export function Session() {
     // Grok-style: keep local user echo until real TEXT parts exist.
     // SSE often creates the user Message before any TextPart — dropping on
     // bare role:user produces spine "you …" with empty body.
-    const realUserTexts: string[] = []
+    const acknowledgedMessageIDs = new Set<string>()
     for (const m of stored) {
       if (m.role !== "user" || m.id.startsWith("optimistic-")) continue
       const parts = sync.data.part[m.id] ?? []
       if (!realUserMessageHasText(m, parts)) continue
-      for (const p of parts) {
-        if (p.type === "text" && typeof (p as TextPart).text === "string" && (p as TextPart).text.trim()) {
-          realUserTexts.push((p as TextPart).text)
-        }
-      }
+      acknowledgedMessageIDs.add(m.id)
     }
 
-    const remaining = filterCoveredOptimistics(opt, realUserTexts)
+    const remaining = filterCoveredOptimistics(opt, acknowledgedMessageIDs)
     if (remaining.length === 0) {
       orderedTranscript = refreshTranscriptOrder(stored, orderedTranscript)
       return orderedTranscript
@@ -286,18 +282,14 @@ export function Session() {
     const stored = sync.data.message[route.sessionID] ?? []
     const opt = allOptimisticMessages().filter((m) => m.sessionID === route.sessionID)
     if (opt.length === 0) return
-    const realUserTexts: string[] = []
+    const acknowledgedMessageIDs = new Set<string>()
     for (const m of stored) {
       if (m.role !== "user" || m.id.startsWith("optimistic-")) continue
       const parts = sync.data.part[m.id] ?? []
       if (!realUserMessageHasText(m, parts)) continue
-      for (const p of parts) {
-        if (p.type === "text" && typeof (p as TextPart).text === "string" && (p as TextPart).text.trim()) {
-          realUserTexts.push((p as TextPart).text)
-        }
-      }
+      acknowledgedMessageIDs.add(m.id)
     }
-    if (filterCoveredOptimistics(opt, realUserTexts).length === 0) {
+    if (filterCoveredOptimistics(opt, acknowledgedMessageIDs).length === 0) {
       clearOptimisticMessages(route.sessionID)
     }
   })
@@ -420,9 +412,10 @@ export function Session() {
         performance.mark(`session-switch-start:${sessionID}`)
       }
 
-      // sync.session.sync() fetches session.get, messages, todo, and diff in
-      // parallel — no need for a separate blocking session.get call.
-      // Warm sessions (already fullSynced) return immediately without network.
+      // Metadata, recent history, and supplemental projections start together.
+      // The route only waits for metadata identity; the shell can render cached
+      // data immediately and history/governance settle independently.
+      const openTask = sync.session.open(sessionID)
       const syncTask = sync.session.sync(sessionID).catch(() => undefined)
 
       // Optimistic setup: use cached session data (from session list loaded
@@ -434,15 +427,19 @@ export function Session() {
         workspaceChanged = cachedSession.workspaceID !== previousWorkspace
         if (workspaceChanged) {
           project.workspace.set(cachedSession.workspaceID)
-          try {
-            await sync.bootstrap({ fatal: false })
-          } catch {}
+          void sync.bootstrap({ fatal: false }).catch(() => {})
         }
         editor.reconnect(cachedSession.directory)
       }
 
-      await syncTask
-      const tSync = profile ? performance.now() : 0
+      let session = cachedSession
+      try {
+        session = (await openTask) ?? session
+      } catch {
+        // A cached session remains usable during a transient metadata failure.
+        // Unknown/new sessions use the bounded retry below.
+      }
+      const tMetadata = profile ? performance.now() : 0
       // The pending-stub handoff can navigate to the real session while this
       // effect is still suspended. A stale effect must never toast "Session
       // not found" for the old pending id or navigate away from the new one.
@@ -464,16 +461,16 @@ export function Session() {
         }
       }
 
-      let session = sync.session.get(sessionID)
+      session = sync.session.get(sessionID) ?? session
       if (!session) {
         for (let attempt = 0; attempt < 3 && !session; attempt++) {
           await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)))
           try {
-            await sync.session.resync(sessionID)
+            session = await sync.session.open(sessionID)
           } catch {
             // keep retrying — create+navigate can race the first GET
           }
-          session = sync.session.get(sessionID)
+          session = sync.session.get(sessionID) ?? session
         }
       }
       if (!session) {
@@ -494,14 +491,16 @@ export function Session() {
         workspaceChanged = session.workspaceID !== previousWorkspace
         if (workspaceChanged) {
           project.workspace.set(session.workspaceID)
-          try {
-            await sync.bootstrap({ fatal: false })
-          } catch {}
+          void sync.bootstrap({ fatal: false }).catch(() => {})
         }
         editor.reconnect(session.directory)
       }
 
+      await sync.session.hydrateHistory(sessionID)
+      const tHistory = profile ? performance.now() : 0
+      if (route.sessionID !== sessionID) return
       if (route.sessionID === sessionID && scroll) scroll.scrollBy(100_000)
+      historySettled = true
 
       // Layer D: lazy backfill — old sessions stuck on "New session - <ISO>" get a
       // name from first user text once messages are in the store. Never clobbers
@@ -546,6 +545,8 @@ export function Session() {
       }
 
       if (profile && route.sessionID === sessionID) {
+        await syncTask
+        if (route.sessionID !== sessionID) return
         const tEnd = performance.now()
         performance.mark(`session-switch-end:${sessionID}`)
         try {
@@ -558,12 +559,23 @@ export function Session() {
           // marks may collide on rapid re-entry; log still has wall times
         }
         // stderr so it never pollutes chat transcript
+        const loadState = sync.session.loadState(sessionID)
         console.error("[session-switch]", {
           sessionID,
           warm,
           workspaceChanged,
-          syncMs: Math.round(tSync - t0),
+          inputReadyMs: loadState.startedAt !== undefined && loadState.inputReadyAt !== undefined
+            ? loadState.inputReadyAt - loadState.startedAt
+            : undefined,
+          metadataMs: Math.round(tMetadata - t0),
+          historyMs: Math.round(tHistory - t0),
+          fullHydrationMs: Math.round(tEnd - t0),
           totalMs: Math.round(tEnd - t0),
+          loadState: {
+            metadata: loadState.metadata,
+            history: loadState.history,
+            supplemental: loadState.supplemental,
+          },
           msgCount: sync.data.message[sessionID]?.length ?? 0,
         })
       }
@@ -584,6 +596,14 @@ export function Session() {
   let prompt: PromptRef | undefined
   let scrollInterval: ReturnType<typeof setInterval> | undefined
   let scrollExhausted = false
+  /**
+   * Open-sequence latch: older-page polling must not race the initial
+   * hydration + snap-to-bottom. Before this flips true, scroll.y is ~0 on a
+   * near-empty viewport, and each prepended page's height-compensation keeps
+   * the viewport pinned at top — so an early tick would crawl page after page
+   * through the entire history of large sessions.
+   */
+  let historySettled = false
 
   // Reset per-session state when the route changes — `lastSwitch`, `seeded`
   // and the scroll-loading poll must not leak across sessions.
@@ -595,6 +615,7 @@ export function Session() {
         lastSwitch = undefined
         seeded = false
         scrollExhausted = false
+        historySettled = false
         orderedTranscript = undefined
         if (prev) sync.session.pruneLoaded(prev)
         if (scrollInterval) {
@@ -633,6 +654,9 @@ export function Session() {
     scrollInterval = setInterval(async () => {
       if (!scroll || scroll.isDestroyed) return
       if (scrollExhausted) return
+      // Older-page latch: ignore ticks until the open sequence has hydrated
+      // and snapped to bottom — see historySettled above.
+      if (!historySettled) return
       // Trigger when within 3 rows of the top
       if (scroll.y > 3) return
       const prevHeight = scroll.scrollHeight
@@ -827,10 +851,9 @@ export function Session() {
   }
 
   async function enterChild(sessionID: string) {
-    // Preflight: the child session may have just been created and not be in
-    // the local list yet. Sync it before navigating so the route guard never
-    // flashes "Session not found" for a valid subagent session.
-    await sync.session.sync(sessionID).catch(() => undefined)
+    // Preflight only metadata identity. History and governance already start
+    // concurrently and must not delay entering the child context.
+    await sync.session.open(sessionID).catch(() => undefined)
     if (!sync.session.get(sessionID)) {
       toast.show({
         message: `Session not found: ${sessionID.slice(0, 8)}…`,
@@ -1101,6 +1124,7 @@ export function Session() {
         scrollAcceleration: scrollAcceleration(),
 
         messages,
+        historyLoading: () => sync.session.loadState(route.sessionID).history === "loading",
         getParts: (messageId: string) => {
           const stored = sync.data.part[messageId]
           if (stored) return stored

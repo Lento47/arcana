@@ -7,7 +7,7 @@
 // Does NOT modify Phase A records.
 
 import { Effect, Context, Layer } from "effect"
-import { eq } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { createHash } from "node:crypto"
 import { Database } from "@arcana/core/database/database"
 import { LayerNode } from "@arcana/core/effect/layer-node"
@@ -204,7 +204,32 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const { db } = yield* Database.Service
 
+    // ── Derivation memo ─────────────────────────────────────────────
+    // Events are append-only per session, so a stable (count, maxSequence)
+    // pair proves every input row is unchanged and the full O(N) re-derive
+    // (JSON.parse + SHA-256 chain + runRoot per event) can be skipped. The
+    // signature is one indexed aggregate query; the cache is bounded with
+    // insertion-order eviction.
+    const deriveCache = new Map<string, { signature: string; proof: RunProof }>()
+    const DERIVE_CACHE_LIMIT = 64
+
+    const eventSignature = Effect.fn("RunProof.eventSignature")(function* (sessionId: string) {
+      const rows = yield* db
+        .select({
+          n: sql<number>`count(*)`.mapWith(Number),
+          s: sql<number>`coalesce(max(${EventTable.sequence}), 0)`.mapWith(Number),
+        })
+        .from(EventTable)
+        .where(eq(EventTable.session_id, sessionId))
+        .pipe(Effect.orDie)
+      return `${rows[0]?.n ?? 0}:${rows[0]?.s ?? 0}`
+    })
+
     const derive = Effect.fn("RunProof.derive")(function* (sessionId: string) {
+      const signature = yield* eventSignature(sessionId)
+      const cached = deriveCache.get(sessionId)
+      if (cached && cached.signature === signature) return cached.proof
+
       const derivedAt = new Date().toISOString()
 
       // Query all events for this session, ordered by sequence
@@ -324,7 +349,7 @@ export const layer = Layer.effect(
       // Derive approval profile from scoped approval events
       const approvalProfile = deriveApprovalProfile(events)
 
-      return {
+      const proof: RunProof = {
         ...payload,
         proofHash,
         runRoot,
@@ -339,7 +364,14 @@ export const layer = Layer.effect(
         informationFlowProfile,
         delegationProfile,
         approvalProfile,
-      } satisfies RunProof
+      }
+
+      if (deriveCache.size >= DERIVE_CACHE_LIMIT) {
+        const oldest = deriveCache.keys().next().value
+        if (oldest !== undefined) deriveCache.delete(oldest)
+      }
+      deriveCache.set(sessionId, { signature, proof })
+      return proof
     })
 
     return Service.of({ derive })
