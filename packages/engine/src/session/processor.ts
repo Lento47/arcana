@@ -12,7 +12,7 @@ import { Snapshot } from "@/snapshot"
 import { Session } from "./session"
 import { LLM } from "./llm"
 import { MessageV2 } from "./message-v2"
-import { isOverflow } from "./overflow"
+import { compactionPressure } from "./overflow"
 import { PartID } from "./schema"
 import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
@@ -22,6 +22,7 @@ import type { Provider } from "@/provider/provider"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
+import { reportCompletionUsage } from "@/metrics/reporter"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@arcana/core/database/database"
 import { SessionEvent } from "@arcana/core/session/event"
@@ -38,6 +39,11 @@ import {
   type ResponsePipelinePostflight,
 } from "@arcana/ml/response-pipeline"
 import { EventStore } from "./epistemic/event-store"
+import {
+  collapseWholeResponseReplay,
+  normalizeTextDelta,
+  type TextNormalizationReason,
+} from "./text-stream-normalizer"
 
 const DOOM_LOOP_THRESHOLD = 3
 export type Result = "compact" | "stop" | "continue"
@@ -91,6 +97,8 @@ interface ProcessorContext extends Input {
   needsCompaction: boolean
   currentText: SessionV1.TextPart | undefined
   currentTextID: string | undefined
+  completedTextIDs: Set<string>
+  ignoredTextIDs: Set<string>
   reasoningMap: Record<string, SessionV1.ReasoningPart>
   v2AssistantMessageID: SessionMessage.ID | undefined
   mlRequest: string | undefined
@@ -148,7 +156,12 @@ export const layer = Layer.effect(
       // Pre-capture snapshot before the LLM stream starts. The AI SDK
       // may execute tools internally before emitting start-step events,
       // so capturing inside the event handler can be too late.
+      const snapshotStarted = Date.now()
       const initialSnapshot = yield* snapshot.track()
+      input.assistantMessage.latency = {
+        ...(input.assistantMessage.latency ?? { attempts: [] }),
+        snapshotMs: Math.max(0, Date.now() - snapshotStarted),
+      }
       const ctx: ProcessorContext = {
         assistantMessage: input.assistantMessage,
         sessionID: input.sessionID,
@@ -161,6 +174,8 @@ export const layer = Layer.effect(
         needsCompaction: false,
         currentText: undefined,
         currentTextID: undefined,
+        completedTextIDs: new Set(),
+        ignoredTextIDs: new Set(),
         reasoningMap: {},
         v2AssistantMessageID: undefined,
         mlRequest: undefined,
@@ -170,6 +185,18 @@ export const layer = Layer.effect(
       }
       const mirrorAssistant = flags.experimentalEventSystem && !input.assistantMessage.summary
       let aborted = false
+      let retryCount = 0
+
+      const writeAttemptLatency = Effect.fn("SessionProcessor.writeAttemptLatency")(function* (
+        attempt: SessionV1.ModelAttemptLatency,
+      ) {
+        const current = ctx.assistantMessage.latency ?? { attempts: [] }
+        const attempts = current.attempts.filter((item) => item.attempt !== attempt.attempt)
+        attempts.push(attempt)
+        attempts.sort((a, b) => a.attempt - b.attempt)
+        ctx.assistantMessage.latency = { ...current, attempts }
+        yield* session.updateMessage(ctx.assistantMessage)
+      })
 
       // Seed ML runtime with the most recent user request so the postflight
       // hook can score the assistant's response against the actual prompt.
@@ -197,6 +224,33 @@ export const layer = Layer.effect(
           providerID: input.model.providerID,
           aborted,
         })
+
+      const noteTextNormalization = Effect.fn("SessionProcessor.noteTextNormalization")(function* (input: {
+        reason: TextNormalizationReason
+        removedCharacters: number
+      }) {
+        if (!ctx.currentText || input.removedCharacters <= 0) return
+        const previous = ctx.currentText.metadata?.["arcana.streamNormalization"]
+        const prior = isRecord(previous) ? previous : {}
+        const priorRemoved = typeof prior.removedCharacters === "number" ? prior.removedCharacters : 0
+        const priorCount = typeof prior.count === "number" ? prior.count : 0
+        ctx.currentText.metadata = {
+          ...(ctx.currentText.metadata),
+          "arcana.streamNormalization": {
+            reason: input.reason,
+            removedCharacters: priorRemoved + input.removedCharacters,
+            count: priorCount + 1,
+          },
+        }
+        yield* Effect.logWarning("normalized replayed text stream", {
+          sessionID: ctx.sessionID,
+          messageID: ctx.assistantMessage.id,
+          providerID: ctx.model.providerID,
+          modelID: ctx.model.id,
+          reason: input.reason,
+          removedCharacters: input.removedCharacters,
+        })
+      })
 
       const settleToolCall = Effect.fn("SessionProcessor.settleToolCall")(function* (toolCallID: string) {
         const done = ctx.toolcalls[toolCallID]?.done
@@ -840,6 +894,16 @@ export const layer = Layer.effect(
             ctx.assistantMessage.finish = value.reason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
+            // Counts-only metrics egress for direct/BYOK provider calls
+            // (opt-in via ARCANA_METRICS_SHARING; proxied traffic is excluded
+            // server-side of this call). Fire-and-forget, never throws.
+            reportCompletionUsage({
+              sessionId: ctx.sessionID,
+              providerID: ctx.model.providerID,
+              modelID: ctx.model.id,
+              tokens: usage.tokens,
+              cost: usage.cost,
+            })
             yield* session.updatePart({
               id: PartID.ascending(),
               reason: value.reason,
@@ -873,12 +937,12 @@ export const layer = Layer.effect(
               .pipe(Effect.ignore, Effect.forkIn(scope))
             if (
               !ctx.assistantMessage.summary &&
-              isOverflow({
+              compactionPressure({
                 cfg: yield* config.get(),
                 tokens: usage.tokens,
                 model: ctx.model,
                 outputTokenMax: flags.outputTokenMax,
-              })
+              }).hot
             ) {
               ctx.needsCompaction = true
             }
@@ -886,6 +950,25 @@ export const layer = Layer.effect(
           }
 
           case "text-start":
+            if (ctx.completedTextIDs.has(value.id)) {
+              ctx.ignoredTextIDs.add(value.id)
+              yield* Effect.logWarning("ignored replayed completed text segment", {
+                sessionID: ctx.sessionID,
+                messageID: ctx.assistantMessage.id,
+                providerID: ctx.model.providerID,
+                modelID: ctx.model.id,
+                textID: value.id,
+              })
+              return
+            }
+            if (ctx.currentText && ctx.currentTextID === value.id) {
+              yield* Effect.logWarning("ignored duplicate text segment start", {
+                sessionID: ctx.sessionID,
+                messageID: ctx.assistantMessage.id,
+                textID: value.id,
+              })
+              return
+            }
             if (!ctx.assistantMessage.summary) {
               // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
               if (mirrorAssistant) {
@@ -911,9 +994,18 @@ export const layer = Layer.effect(
             yield* session.updatePart(ctx.currentText)
             return
 
-          case "text-delta":
-            if (!ctx.currentText) return
-            ctx.currentText.text += value.text
+          case "text-delta": {
+            if (ctx.ignoredTextIDs.has(value.id)) return
+            if (!ctx.currentText || ctx.currentTextID !== value.id) return
+            const normalized = normalizeTextDelta(ctx.currentText.text, value.text)
+            if (normalized.reason) {
+              yield* noteTextNormalization({
+                reason: normalized.reason,
+                removedCharacters: normalized.removedCharacters,
+              })
+            }
+            if (!normalized.text) return
+            ctx.currentText.text += normalized.text
             if (value.providerMetadata) {
               ctx.currentText.metadata = {
                 ...(ctx.currentText.metadata),
@@ -925,7 +1017,7 @@ export const layer = Layer.effect(
                 sessionID: ctx.sessionID,
                 assistantMessageID: yield* currentV2AssistantMessage(),
                 textID: value.id,
-                delta: value.text,
+                delta: normalized.text,
                 timestamp: DateTime.makeUnsafe(Date.now()),
               })
             }
@@ -935,7 +1027,7 @@ export const layer = Layer.effect(
               partID: ctx.currentText.id,
               partType: "text",
               field: "text",
-              delta: value.text,
+              delta: normalized.text,
             })
             // Throttled durable flush: keep the DB close to the live stream
             // so a mid-stream daemon death does not permanently truncate.
@@ -949,11 +1041,23 @@ export const layer = Layer.effect(
               }
             }
             return
+          }
 
           case "text-end":
-            if (!ctx.currentText) return
+            if (ctx.ignoredTextIDs.delete(value.id)) return
+            if (!ctx.currentText || ctx.currentTextID !== value.id) return
             // oxlint-disable-next-line no-self-assign -- reactivity trigger
             ctx.currentText.text = ctx.currentText.text
+            {
+              const normalized = collapseWholeResponseReplay(ctx.currentText.text)
+              if (normalized.reason) {
+                ctx.currentText.text = normalized.text
+                yield* noteTextNormalization({
+                  reason: normalized.reason,
+                  removedCharacters: normalized.removedCharacters,
+                })
+              }
+            }
             ctx.currentText.text = (yield* plugin.trigger(
               "experimental.text.complete",
               {
@@ -1057,6 +1161,7 @@ export const layer = Layer.effect(
               }
             }
             yield* session.updatePart(ctx.currentText)
+            ctx.completedTextIDs.add(value.id)
             ctx.currentText = undefined
             ctx.currentTextID = undefined
             ctx.textPersist = { lastAt: 0, count: 0 }
@@ -1110,26 +1215,29 @@ export const layer = Layer.effect(
           const match = yield* readToolCall(toolCallID)
           if (!match) continue
           const part = match.part
+          const reason = aborted ? "session_cancelled" as const : "superseded" as const
           if (mirrorAssistant && match.call.assistantMessageID) {
-            yield* events.publish(SessionEvent.Tool.Failed, {
+            yield* events.publish(SessionEvent.Tool.Cancelled, {
               sessionID: ctx.sessionID,
               assistantMessageID: match.call.assistantMessageID,
               callID: toolCallID,
-              error: { type: "unknown", message: "Tool execution aborted" },
-              provider: { executed: part.metadata?.providerExecuted === true },
+              reason,
               timestamp: DateTime.makeUnsafe(Date.now()),
             })
           }
           const end = Date.now()
           const metadata = "metadata" in part.state && isRecord(part.state.metadata) ? part.state.metadata : {}
+          const start = "time" in part.state ? part.state.time.start : end
           yield* session.updatePart({
             ...part,
             state: {
-              ...part.state,
-              status: "error",
-              error: "Tool execution aborted",
+              status: "cancelled",
+              reason,
+              input: part.state.input,
+              title: "title" in part.state ? part.state.title : part.tool,
+              output: "output" in part.state ? part.state.output : undefined,
               metadata: { ...metadata, interrupted: true },
-              time: { start: "time" in part.state ? part.state.time.start : end, end },
+              time: { start, end },
             },
           })
         }
@@ -1176,7 +1284,18 @@ export const layer = Layer.effect(
             })
           }
         }
-        ctx.assistantMessage.error = error
+        if (retryCount >= SessionRetry.RETRY_MAX_ATTEMPTS && SessionV1.APIError.isInstance(error)) {
+          ctx.assistantMessage.error = new SessionV1.APIError({
+            ...error.data,
+            metadata: {
+              ...error.data.metadata,
+              retryExhausted: "true",
+              retryCount: String(retryCount),
+            },
+          }).toObject()
+        } else {
+          ctx.assistantMessage.error = error
+        }
         // F-A7a: the generic halt path must close the message as terminal
         // ("error"), not leave it with finish=None — an orphaned
         // non-terminal message is a false-incomplete trace (D6 → error).
@@ -1195,20 +1314,73 @@ export const layer = Layer.effect(
         })
         ctx.needsCompaction = false
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
+        const attemptBase = ctx.assistantMessage.latency?.attempts.length ?? 0
 
         return yield* Effect.gen(function* () {
           yield* Effect.gen(function* () {
             ctx.currentText = undefined
             ctx.currentTextID = undefined
+            ctx.completedTextIDs.clear()
+            ctx.ignoredTextIDs.clear()
             ctx.reasoningMap = {}
             ctx.mlRevisionsUsed = 0
             yield* status.set(ctx.sessionID, { type: "busy" })
+            const attempt = attemptBase + retryCount + 1
+            const attemptStarted = Date.now()
+            let firstEventAt: number | undefined
+            let firstContentAt: number | undefined
+            const contentEvents = new Set([
+              "reasoning-start",
+              "reasoning-delta",
+              "text-start",
+              "text-delta",
+              "tool-input-start",
+              "tool-input-delta",
+              "tool-call",
+            ])
+            const observe = (event: LLMEvent) =>
+              Effect.sync(() => {
+                const now = Date.now()
+                firstEventAt ??= now
+                if (contentEvents.has(event.type)) firstContentAt ??= now
+              })
+            const finishAttempt = (outcome: SessionV1.ModelAttemptLatency["outcome"]) => {
+              const end = Date.now()
+              const record: SessionV1.ModelAttemptLatency = {
+                attempt,
+                startedAt: attemptStarted,
+                firstEventMs: firstEventAt === undefined ? undefined : Math.max(0, firstEventAt - attemptStarted),
+                firstContentMs:
+                  firstContentAt === undefined ? undefined : Math.max(0, firstContentAt - attemptStarted),
+                generationMs: firstEventAt === undefined ? undefined : Math.max(0, end - firstEventAt),
+                totalMs: Math.max(0, end - attemptStarted),
+                outcome: aborted ? "aborted" : outcome,
+              }
+              return writeAttemptLatency(record).pipe(
+                Effect.andThen(
+                  record.firstContentMs !== undefined && record.firstContentMs >= 8_000
+                    ? Effect.logWarning("slow model first content", {
+                        sessionID: ctx.sessionID,
+                        messageID: ctx.assistantMessage.id,
+                        providerID: ctx.model.providerID,
+                        modelID: ctx.model.id,
+                        variant: ctx.assistantMessage.variant,
+                        attempt,
+                        firstContentMs: record.firstContentMs,
+                      })
+                    : Effect.void,
+                ),
+              )
+            }
             const stream = llm.stream(streamInput)
 
             yield* stream.pipe(
+              Stream.tap(observe),
               Stream.tap((event) => handleEvent(event)),
               Stream.takeUntil(() => ctx.needsCompaction),
               Stream.runDrain,
+              Effect.tap(() => finishAttempt("success")),
+              Effect.tapError(() => finishAttempt("error")),
             )
           }).pipe(
             Effect.onInterrupt(() =>
@@ -1228,6 +1400,14 @@ export const layer = Layer.effect(
                 provider: input.model.providerID,
                 parse,
                 set: (info) => {
+                  retryCount = info.attempt
+                  const failedAttempt = attemptBase + info.attempt
+                  const latency = ctx.assistantMessage.latency
+                  const recorded = latency?.attempts.find((item) => item.attempt === failedAttempt)
+                  const retryWaitMs = Math.max(0, info.next - Date.now())
+                  const markRetry = recorded
+                    ? writeAttemptLatency({ ...recorded, outcome: "retry", retryWaitMs })
+                    : Effect.void
                   // F-A3: prune the failed attempt's in-flight text/reasoning
                   // parts. On retry the stream regenerates the whole message
                   // under fresh PartIDs — leaving the half-written part durable
@@ -1260,8 +1440,19 @@ export const layer = Layer.effect(
                         timestamp: DateTime.makeUnsafe(Date.now()),
                       })
                     : Effect.void
+                  const retryPart: SessionV1.RetryPart = {
+                    id: PartID.ascending(),
+                    messageID: ctx.assistantMessage.id,
+                    sessionID: ctx.assistantMessage.sessionID,
+                    type: "retry",
+                    attempt: info.attempt,
+                    error: info.error,
+                    time: { created: Date.now() },
+                  }
                   return prune.pipe(
+                    Effect.andThen(markRetry),
                     Effect.andThen(flushV2Fragments()),
+                    Effect.andThen(session.updatePart(retryPart)),
                     Effect.andThen(event),
                     Effect.andThen(
                       status.set(ctx.sessionID, {
@@ -1279,6 +1470,19 @@ export const layer = Layer.effect(
             Effect.catch(halt),
             Effect.ensuring(cleanup()),
           )
+
+          const latency = ctx.assistantMessage.latency ?? { attempts: [] }
+          ctx.assistantMessage.latency = {
+            ...latency,
+            totalMs: Math.max(0, Date.now() - ctx.assistantMessage.time.created),
+            promptTokens:
+              (ctx.assistantMessage.tokens.input ?? 0) +
+              (ctx.assistantMessage.tokens.cache?.read ?? 0) +
+              (ctx.assistantMessage.tokens.cache?.write ?? 0),
+            cacheReadTokens: ctx.assistantMessage.tokens.cache?.read ?? 0,
+            cacheWriteTokens: ctx.assistantMessage.tokens.cache?.write ?? 0,
+          }
+          yield* session.updateMessage(ctx.assistantMessage)
 
           if (ctx.needsCompaction) return "compact"
           if (ctx.blocked || ctx.assistantMessage.error) return "stop"
