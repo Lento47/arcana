@@ -247,7 +247,7 @@ export const layer = Layer.effect(
             ruleset: ruleset.filter((rule) => Wildcard.match(request.permission, rule.permission)),
           })
         }
-        if (approvedRule.action === "allow" && !forceFreshAskFromRisk) continue
+        if (approvedRule.action === "allow") continue
         if (rule.action === "allow" && !forceInitialAskFromRisk) continue
         if (benignAutoAllowed) {
           benignAutoAllowedAny = true
@@ -306,7 +306,10 @@ export const layer = Layer.effect(
         permission: request.permission,
         patterns: request.patterns,
         metadata,
-        always: request.always,
+        // `always` is also the wire-level capability advertisement. Strip it
+        // when the engine would downgrade an `always` reply so every client
+        // renders the same authoritative eligibility decision.
+        always: rememberedEligible ? request.always : [],
         tool: request.tool,
         routing: routeFor({ directory, sessionID: request.sessionID, permission: request.permission, risk: engineRisk }),
       }
