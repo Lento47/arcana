@@ -1,6 +1,14 @@
 {
-  "generatedAt": "2026-08-23T07:16:00.592Z",
+  "generatedAt": "2026-08-23T08:23:14.242Z",
   "entries": {
+    "packages/arcana/src/agent/authority.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
     "packages/arcana/src/agent/council.ts": {
       "classes": [
         "FsMutation"
@@ -67,11 +75,9 @@
     },
     "packages/arcana/src/agent/runner.ts": {
       "classes": [
-        "FsMutation",
-        "ProcessExecution"
+        "FsMutation"
       ],
       "modules": [
-        "Bun.spawn",
         "node:fs"
       ]
     },
@@ -85,13 +91,9 @@
     },
     "packages/arcana/src/agent/tools.ts": {
       "classes": [
-        "FsMutation",
-        "ProcessExecution"
+        "FsMutation"
       ],
       "modules": [
-        "Bun.spawn",
-        "Bun.spawnSync",
-        "node:child_process",
         "node:fs"
       ]
     },
@@ -280,6 +282,14 @@
       ],
       "modules": [
         "Bun.spawn"
+      ]
+    },
+    "packages/core/src/capability/process-gate.ts": {
+      "classes": [
+        "ProcessExecution"
+      ],
+      "modules": [
+        "Bun.spawnSync"
       ]
     },
     "packages/core/src/cross-spawn-spawner.ts": {
@@ -826,10 +836,13 @@
     },
     "packages/engine/src/session/check-runner.ts": {
       "classes": [
+        "FsMutation",
         "ProcessExecution"
       ],
       "modules": [
-        "Bun.spawn"
+        "Bun.spawn",
+        "Bun.spawnSync",
+        "node:fs"
       ]
     },
     "packages/engine/src/session/epistemic/deterministic-replay.ts": {

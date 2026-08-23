@@ -8,7 +8,7 @@ export const toolHistory: Array<{ name: string; ts: number }> = []
 import { homedir } from "node:os"
 import { basename, join, dirname, resolve, sep } from "node:path"
 import { mkdirSync, writeFileSync, existsSync } from "node:fs"
-import { execFileSync } from "node:child_process"
+import { gatedSpawn, formatGateResult } from "./authority.js"
 import { initBoard, loadBoard, saveBoard, addCard, moveCard, archiveDone, formatBoard, type KanbanCard } from "./kanban.js"
 import { fetchAccountSnapshot, formatAccountSnapshot } from "../proxy-client.js"
 import { generateAndSaveImages, formatImageGenerateResult } from "./image-generate.js"
@@ -87,18 +87,16 @@ type GitRunOptions = {
   ignoreErrors?: boolean
 }
 
-function runGit(args: string[], options: GitRunOptions): string {
-  try {
-    return execFileSync("git", args, {
-      cwd: options.cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      maxBuffer: options.maxBuffer ?? 1024 * 1024,
-    }).trim()
-  } catch (error) {
+async function runGit(toolName: string, args: string[], options: GitRunOptions): Promise<string> {
+  const result = await gatedSpawn(toolName, ["git", ...args], { cwd: options.cwd })
+  if (result.status === "EXECUTED") {
+    if (result.exitCode === 0) return result.stdout.trim()
+    const err = `git ${args[0]} failed (exit ${result.exitCode}): ${result.stderr.slice(0, 300)}`
     if (options.ignoreErrors) return ""
-    throw error
+    throw new Error(err)
   }
+  if (options.ignoreErrors) return ""
+  throw new Error(formatGateResult(result))
 }
 
 function parseGitFiles(input: unknown): string[] {
@@ -493,13 +491,15 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         writeFileSync(tmp, audio)
         // Play via system player
         const platform = process.platform
-        if (platform === "win32") {
-          Bun.spawn(["powershell", "-c", "(New-Object Media.SoundPlayer (Get-Item -Path $args[0]).FullName).PlaySync()", "--", tmp])
-        } else if (platform === "darwin") {
-          Bun.spawn(["afplay", tmp])
-        } else {
-          Bun.spawn(["mpv", "--no-terminal", tmp])
-        }
+        // Routed through the Authority Kernel; fire-and-forget preserves the
+        // original non-blocking playback semantics.
+        const playArgv =
+          platform === "win32"
+            ? ["powershell", "-c", "(New-Object Media.SoundPlayer (Get-Item -Path $args[0]).FullName).PlaySync()", "--", tmp]
+            : platform === "darwin"
+              ? ["afplay", tmp]
+              : ["mpv", "--no-terminal", tmp]
+        void gatedSpawn("speak", playArgv).catch(() => {})
         return `Spoke: "${text.slice(0, 80)}${text.length > 80 ? "…" : ""}"`
       } catch (e) {
         return `Speech error: ${e instanceof Error ? e.message : String(e)}`
@@ -611,17 +611,20 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
 
       // 8. Disk space
       try {
-        const { execSync } = await import("node:child_process")
-        const df = execSync("df -h . 2>nul || echo unknown", { encoding: "utf8" }).trim().split("\n").pop() ?? ""
-        const parts = df.split(/\s+/)
-        ok("Disk space", true, parts[4] ?? "unknown")  // e.g. "45%"
+        const df = await gatedSpawn("env_probe", ["df", "-h", "."])
+        const lastLine =
+          df.status === "EXECUTED"
+            ? (df.stdout.trim().split("\n").pop() ?? "")
+            : "unknown"
+        const parts = lastLine.split(/\s+/)
+        ok("Disk space", true, parts[4] ?? "unknown") // e.g. "45%"
       } catch { ok("Disk space", true, "unknown") }
 
       // 9. Git repo
       try {
-        const { execSync } = await import("node:child_process")
-        const branch = execSync("git branch --show-current 2>nul || echo not a repo", { encoding: "utf8" }).trim()
-        ok("Git repo", branch !== "not a repo", branch !== "not a repo" ? `on ${branch}` : "not in a git repository")
+        const gb = await gatedSpawn("env_probe", ["git", "branch", "--show-current"])
+        const branch = gb.status === "EXECUTED" ? gb.stdout.trim() : "not a repo"
+        ok("Git repo", branch !== "not a repo" && branch.length > 0, branch !== "not a repo" && branch.length > 0 ? `on ${branch}` : "not in a git repository")
       } catch { ok("Git repo", false, "unknown") }
 
       // 10. arcana version
@@ -739,7 +742,8 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const tmp = process.env.TEMP ?? process.env.TMPDIR ?? "/tmp"
 
       const tools = ["git", "docker", "python", "python3", "node", "npm", "pnpm", "yarn", "cargo", "go", "rustc"]
-        .filter((t) => { try { return Bun.spawnSync({ cmd: ["which", t], stdout: "pipe" }).stdout.toString().trim().length > 0 } catch { return false } })
+        // Bun.which resolves PATH natively — no process spawn needed at all.
+        .filter((t) => { try { return Bun.which(t).length > 0 } catch { return false } })
 
       return [
         `OS: ${os}`,
@@ -845,10 +849,12 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       try {
         const dir = join(homedir(), ".arcana", "sandbox")
         mkdirSync(dir, { recursive: true })
-        const result = Bun.spawnSync({ cmd, stdout: "pipe", stderr: "pipe" })
-        return result.exitCode === 0
-          ? `Installed ${pkg} via ${manager}`
-          : `Install failed: ${result.stderr.toString().slice(0, 500)}`
+        const result = await gatedSpawn("env_install", cmd)
+        return result.status === "EXECUTED"
+          ? (result.exitCode === 0
+              ? `Installed ${pkg} via ${manager}`
+              : `Install failed: ${result.stderr.slice(0, 500)}`)
+          : `Install blocked: ${formatGateResult(result)}`
       } catch (e) {
         return `Install error: ${e instanceof Error ? e.message : String(e)}`
       }
@@ -880,7 +886,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         const fp = resolveSandboxScriptPath(dir, args.filename)
         writeFileSync(fp, String(args.content), { encoding: "utf8", mode: 0o600 })
         try {
-          Bun.spawnSync({ cmd: ["chmod", "+x", fp] })
+          await gatedSpawn("env_write", ["chmod", "+x", fp])
         } catch {
           /* Windows / no chmod */
         }
@@ -926,10 +932,10 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     async (args) => {
       const cwd = args.path ? String(args.path) : process.cwd()
       try {
-        const branch = runGit(["branch", "--show-current"], { cwd })
-        const status = runGit(["status", "--short"], { cwd })
-        const ahead = runGit(["rev-list", "--count", "@{upstream}..HEAD"], { cwd, ignoreErrors: true }) || "0"
-        const behind = runGit(["rev-list", "--count", "HEAD..@{upstream}"], { cwd, ignoreErrors: true }) || "0"
+        const branch = await runGit("git_status", ["branch", "--show-current"], { cwd })
+        const status = await runGit("git_status", ["status", "--short"], { cwd })
+        const ahead = await runGit("git_status", ["rev-list", "--count", "@{upstream}..HEAD"], { cwd, ignoreErrors: true }) || "0"
+        const behind = await runGit("git_status", ["rev-list", "--count", "HEAD..@{upstream}"], { cwd, ignoreErrors: true }) || "0"
         const lines = [`Branch: ${branch}`]
         if (ahead !== "0") lines.push(`Ahead: ${ahead} commits`)
         if (behind !== "0") lines.push(`Behind: ${behind} commits`)
@@ -963,7 +969,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     async (args) => {
       const cwd = args.path ? String(args.path) : process.cwd()
       try {
-        const diff = runGit(gitDiffArgs({ staged: args.staged, file: args.file }), { cwd, maxBuffer: 1024 * 1024 })
+        const diff = await runGit("git_diff", gitDiffArgs({ staged: args.staged, file: args.file }), { cwd, maxBuffer: 1024 * 1024 })
         if (!diff) return "No changes to show."
         return diff.length > 3000 ? diff.slice(0, 3000) + `\n...(truncated, ${diff.length} chars)` : diff
       } catch (e: any) {
@@ -994,9 +1000,9 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     async (args) => {
       const cwd = args.path ? String(args.path) : process.cwd()
       try {
-        runGit(gitAddArgs(args.files), { cwd })
-        runGit(gitCommitArgs(args.message), { cwd })
-        const hash = runGit(["rev-parse", "HEAD"], { cwd }).slice(0, 8)
+        await runGit("git_commit", gitAddArgs(args.files), { cwd })
+        await runGit("git_commit", gitCommitArgs(args.message), { cwd })
+        const hash = await runGit("git_commit", ["rev-parse", "HEAD"], { cwd }).slice(0, 8)
         return `Committed: ${hash} — ${String(args.message)}`
       } catch (e: any) {
         if (e.message?.includes("not a git repository")) return "Not a git repository."
@@ -1028,18 +1034,18 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       try {
         let msg = args.message ? String(args.message) : ""
         if (!msg) {
-          const diffStat = runGit(["diff", "--stat"], { cwd, maxBuffer: 1024 * 100 })
+          const diffStat = await runGit("git_autocommit", ["diff", "--stat"], { cwd, maxBuffer: 1024 * 100 })
           const filesChanged = diffStat ? diffStat.split("\n").length : 0
-          const branch = runGit(["branch", "--show-current"], { cwd })
-          const _added = runGit(["diff", "--cached", "--name-only"], { cwd, ignoreErrors: true })
+          const branch = await runGit("git_status", ["branch", "--show-current"], { cwd })
+          const _added = await runGit("git_autocommit", ["diff", "--cached", "--name-only"], { cwd, ignoreErrors: true })
           msg = `feat: update ${filesChanged > 0 ? filesChanged + " files" : "working state"} (${branch})`
         }
-        runGit(["add", "-A"], { cwd })
-        runGit(gitCommitArgs(msg), { cwd })
-        const hash = runGit(["rev-parse", "HEAD"], { cwd }).slice(0, 8)
+        await runGit("git_autocommit", ["add", "-A"], { cwd })
+        await runGit("git_autocommit", gitCommitArgs(msg), { cwd })
+        const hash = await runGit("git_commit", ["rev-parse", "HEAD"], { cwd }).slice(0, 8)
         let result = `✅ Committed ${hash}: ${msg}`
         if (args.push) {
-          runGit(["push"], { cwd })
+          await runGit("git_push", ["push"], { cwd })
           result += `\n📤 Pushed to origin`
         }
         return result
@@ -1704,7 +1710,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const cwd = args.path ? String(args.path) : process.cwd()
       const staged = args.staged !== false
       try {
-        const diff = runGit(gitDiffArgs({ staged, file: args.file }), { cwd, maxBuffer: 1024 * 1024 })
+        const diff = await runGit("git_diff", gitDiffArgs({ staged, file: args.file }), { cwd, maxBuffer: 1024 * 1024 })
         if (!diff.trim()) return "No changes to review."
         return `## Code Review\n\n\`\`\`diff\n${diff.slice(0, 4000)}\`\`\`\n\nReview the changes above. Focus on:\n1. Logic errors or bugs\n2. Security vulnerabilities\n3. Style inconsistencies\n4. Missing edge cases\n5. Performance concerns\n\nRate severity: 🔴 critical / 🟡 warning / 🟢 info`
       } catch (e: any) {
@@ -1773,7 +1779,6 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const cwd = args.path ? String(args.path) : process.cwd()
       const maxResults = Number(args.maxResults ?? 50)
       try {
-        const { execFileSync } = await import("node:child_process")
         // Pass args directly (no shell) — avoids the cross-platform `2>nul || true`
         // breakage (stray `nul` file on POSIX, `'true' not recognized` on Windows)
         // and shell injection from the model-supplied pattern. `--glob` is rg's
@@ -1781,17 +1786,13 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         const rgArgs = ["-n", "--no-heading"]
         if (args.include) rgArgs.push("--glob", String(args.include))
         rgArgs.push("--", String(args.pattern), cwd)
-        let output = ""
-        try {
-          output = execFileSync("rg", rgArgs, {
-            encoding: "utf8",
-            maxBuffer: 1024 * 1024,
-            stdio: ["ignore", "pipe", "ignore"],
-          }).trim()
-        } catch (e: any) {
-          if (e?.status === 1) return `No matches for "${args.pattern}"` // rg exit 1 = no matches
-          throw e
+        const result = await gatedSpawn("grep", ["rg", ...rgArgs])
+        if (result.status !== "EXECUTED") return formatGateResult(result)
+        if (result.exitCode !== 0 && result.exitCode !== 1) {
+          // rg exit 1 = no matches; anything else is a real failure
+          return `Grep error: ripgrep exited ${result.exitCode}: ${result.stderr.slice(0, 300)}`
         }
+        const output = result.stdout.trim()
         if (!output) return `No matches for "${args.pattern}"`
         const all = output.split("\n")
         const lines = all.slice(0, maxResults)

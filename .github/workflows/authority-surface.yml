@@ -40,5 +40,8 @@ jobs:
       - name: Static authority scan (structure claim)
         run: bun run script/authority-scan.ts
 
+      - name: Authority Kernel process-gate tests (M1)
+        run: bun test packages/core/src/capability/process-gate.test.ts
+
       - name: Dynamic authority audit (exercised-path claim)
         run: bun run script/authority-dynamic.ts

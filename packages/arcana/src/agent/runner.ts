@@ -10,6 +10,7 @@ import type { AgentConfig, ChatMessage, TurnResult, ToolDef, ToolHandler, ToolRe
 import { redactSecrets, redactGitEmails, redactPII, redactGitAuthorNames, checkDangerousCommand, RateLimiter, auditLog, detectInjection } from "./guard.js"
 import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
+import { gatedSpawn, formatGateResult } from "./authority.js"
 import { isPermissionPolicyPath, isSelfAwarenessPath } from "@arcana/core/util/self-awareness"
 import { analyzeDiff, classifyGuard, DEFAULT_THRESHOLDS, isDependencyManifest } from "@arcana/core/util/file-edit-guard"
 import {
@@ -327,17 +328,20 @@ export class AgentRunner {
           NODE_ENV: process.env.NODE_ENV,
           BUN_INSTALL: process.env.BUN_INSTALL,
         }
-        const proc = Bun.spawn(["bash", "-c", command], {
-          cwd: process.cwd(),
-          stdout: "pipe",
-          stderr: "pipe",
-          env: safeEnv,
-        })
-        const stdout = await new Response(proc.stdout).text()
-        const stderr = await new Response(proc.stderr).text()
-        const output = stdout + (stderr ? "\n" + stderr : "")
-        const exitCode = await proc.exited
-        results.push({ name: check, passed: exitCode === 0, output: output.slice(0, 5000) })
+        // Routed through the Authority Kernel (M1): the child is created only
+        // when the PDP allows this exact verification command. safeEnv keeps
+        // secrets out of the child environment.
+        const result = await gatedSpawn(
+          "shell",
+          ["bash", "-c", command],
+          { cwd: process.cwd(), env: safeEnv },
+        )
+        if (result.status === "EXECUTED") {
+          const output = result.stdout + (result.stderr ? "\n" + result.stderr : "")
+          results.push({ name: check, passed: result.exitCode === 0, output: output.slice(0, 5000) })
+        } else {
+          results.push({ name: check, passed: false, output: formatGateResult(result).slice(0, 5000) })
+        }
       } catch (error) {
         results.push({ name: check, passed: false, output: error instanceof Error ? error.message : String(error) })
       }

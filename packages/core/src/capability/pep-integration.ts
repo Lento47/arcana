@@ -101,6 +101,15 @@ export interface ToolCallContext {
   networkDestination?: string
   provenance?: ProvenanceLabel[]
   sensitivity?: SensitivityLabel[]
+  /**
+   * Captured nondeterminism (P3): callers replaying a recorded decision must
+   * supply the ORIGINAL nonce/timestamp; fresh attempts omit both and get
+   * newly minted values.
+   */
+  nonce?: string
+  requestedAt?: string
+  /** Captured request identity — supply when replaying a recorded authorization. */
+  requestId?: string
 }
 
 /**
@@ -124,7 +133,7 @@ export function buildAuthorizationRequest(ctx: ToolCallContext): AuthorizationRe
 
   return {
     schemaVersion: "1",
-    requestId: `req-${randomUUID()}`,
+    requestId: ctx.requestId ?? `req-${randomUUID()}`,
     principalId: ctx.principalId,
     sessionId: ctx.sessionId,
     contractId: ctx.contractId,
@@ -140,8 +149,8 @@ export function buildAuthorizationRequest(ctx: ToolCallContext): AuthorizationRe
     networkDestination: ctx.networkDestination ?? host,
     provenance: ctx.provenance ?? ["USER_INSTRUCTION"],
     sensitivity: ctx.sensitivity ?? ["PUBLIC"],
-    requestedAt: new Date().toISOString(),
-    nonce: randomUUID(),
+    requestedAt: ctx.requestedAt ?? new Date().toISOString(),
+    nonce: ctx.nonce ?? randomUUID(),
   }
 }
 

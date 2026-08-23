@@ -80,8 +80,14 @@ function extractModules(specifier: string, rawModules: Record<string, string>): 
   return hits
 }
 
+function stripComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^[ \t]*\/\/.*$/gm, "")
+}
+
 function scanFile(path: string, rawModules: Record<string, string>): { classes: Set<string>; modules: Set<string> } | null {
-  const src = readFileSync(path, "utf8")
+  const src = stripComments(readFileSync(path, "utf8"))
   const modules = new Set<string>()
   const classes = new Set<string>()
 
@@ -152,20 +158,39 @@ const stale = Object.keys(baseline.entries).filter((k) => !actual[k]).sort()
 // Declared paths that currently carry no raw authority — drift toward honesty.
 const emptyDeclared = [...declared].filter((k) => !actual[k])
 
+// packageRules: forbidden modules under a path prefix fail REGARDLESS of
+// baseline. Grandfathering records history; it never rescues a banned class.
+interface PackageRule { pathPrefix: string; forbiddenModules: string[] }
+const rules = (manifest as unknown as { packageRules?: PackageRule[] }).packageRules ?? []
+const forbiddenHits: Array<{ path: string; modules: string[] }> = []
+if (rules.length > 0) {
+  for (const [path, info] of Object.entries(actual)) {
+    for (const rule of rules) {
+      if (!path.startsWith(rule.pathPrefix)) continue
+      const hit = [...info.modules].filter((m) => rule.forbiddenModules.includes(m))
+      if (hit.length > 0 && !declared.has(path)) forbiddenHits.push({ path, modules: hit })
+    }
+  }
+}
+
 if (jsonOut) {
-  console.log(JSON.stringify({ ok: undeclared.length === 0, totals: { actual: Object.keys(actual).length, baseline: Object.keys(baseline.entries).length }, undeclared, stale, emptyDeclared }, null, 2))
+  console.log(JSON.stringify({ ok: undeclared.length === 0 && forbiddenHits.length === 0, totals: { actual: Object.keys(actual).length, baseline: Object.keys(baseline.entries).length }, undeclared, forbidden: forbiddenHits, stale, emptyDeclared }, null, 2))
 } else {
   console.log(`authority-surface: ${Object.keys(actual).length} actual · ${Object.keys(baseline.entries).length} grandfathered · ${declared.size} kernel-declared`)
   for (const f of undeclared) {
     console.log(`  NEW UNDECLARED  ${f}  [${[...actual[f]!.classes].join(",")}] via ${[...actual[f]!.modules].join(", ")}`)
   }
+  for (const f of forbiddenHits) {
+    console.log(`  FORBIDDEN       ${f.path}  via ${f.modules.join(", ")}`)
+  }
   for (const f of stale) console.log(`  stale-baseline  ${f} (source cleaned — prune with --update-baseline)`)
   for (const f of emptyDeclared) console.log(`  declared-idle   ${f}`)
-  if (undeclared.length > 0) {
-    console.error(`\nauthority-surface: FAIL — ${undeclared.length} new undeclared authority source(s).`)
-    console.error(`Declare them in the Authority Surface manifest (kernel-owned only) or justify + update baseline.`)
-  } else {
-    console.log("authority-surface: OK")
-  }
 }
-process.exit(undeclared.length === 0 ? 0 : 1)
+const failures = undeclared.length + forbiddenHits.length
+if (failures > 0) {
+    console.error(`\nauthority-surface: FAIL — ${failures} violation(s).`)
+    console.error(`Declare kernel-owned paths in the manifest; forbidden classes are never grandfathered.`)
+} else {
+    console.log("authority-surface: OK")
+}
+process.exit(failures === 0 ? 0 : 1)

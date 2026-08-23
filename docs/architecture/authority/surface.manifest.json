@@ -20,5 +20,12 @@
     "Bun.spawnSync": "ProcessExecution",
     "Bun.write": "FsMutation",
     "Bun.$shell": "ProcessExecution"
-  }
+  },
+  "$packageRulesComment": "forbiddenModules under pathPrefix fail REGARDLESS of baseline — grandfathering never rescues a forbidden class. Used by M1 to make agent-path process execution bypass-proof.",
+  "packageRules": [
+    {
+      "pathPrefix": "packages/arcana/src/agent/",
+      "forbiddenModules": ["node:child_process", "Bun.spawn", "Bun.spawnSync"]
+    }
+  ]
 }
