@@ -3,6 +3,7 @@
  * Inspired by Grok `xai-grok-compaction` FailureKind + degenerate summary guards.
  * Pure helpers — no I/O.
  */
+import { Token } from "@arcana/core/util/token"
 
 /** Whether a compaction LLM/call failure is worth retrying. */
 export type FailureKind = "deterministic" | "transient"
@@ -115,10 +116,9 @@ export function isAcceptableReduction(input: {
   return tokensAfter < tokensBefore * ratio
 }
 
-/** Rough token estimate: ~4 chars per token (same as util/token elsewhere). */
+/** Canonical token estimate — single source in core util/token (code-aware). */
 export function estimateTokensFromText(text: string): number {
-  if (!text) return 0
-  return Math.ceil(text.length / 4)
+  return Token.estimate(text)
 }
 
 /**

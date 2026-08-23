@@ -86,7 +86,14 @@ export function custom(dep: CustomDep): Record<string, CustomLoader> {
               const inMod: string[] = m.architecture?.input_modalities ?? []
               const outMod: string[] = m.architecture?.output_modalities ?? []
               const params: string[] = m.supported_parameters ?? []
-              const ctx = m.context_length ?? m.top_provider?.context_length ?? 0
+              // Prefer the SERVED window: when both are advertised, top_provider
+              // context_length is what the provider actually accepts, while
+              // context_length can be the marketing max (e.g. llama-4-scout
+              // 1.31M advertised vs 327k served). Taking the min keeps percent
+              // display and engine compaction honest.
+              const topCtx = m.top_provider?.context_length
+              const ctx =
+                m.context_length && topCtx ? Math.min(m.context_length, topCtx) : (m.context_length ?? topCtx ?? 0)
               const out = m.top_provider?.max_completion_tokens ?? 0
               // Catalog honesty: honor upstream image output (was hardcoded false).
               const outImage =

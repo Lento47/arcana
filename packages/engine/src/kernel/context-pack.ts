@@ -2,6 +2,7 @@
 // Copyright (c) 2026 arcana contributors
 
 import { Schema } from "effect"
+import { Token } from "@arcana/core/util/token"
 
 export const ContextPackKind = Schema.Literals([
   "policy",
@@ -159,7 +160,7 @@ export function packTrimLoss(
   return loss
 }
 
-/** Rough token estimate from message content — ~4 chars per token. */
+/** Rough token estimate from message content — canonical core estimator. */
 export function estimateTokensFromContent(content: string): number {
-  return Math.ceil(content.length / 4)
+  return Token.estimate(content)
 }

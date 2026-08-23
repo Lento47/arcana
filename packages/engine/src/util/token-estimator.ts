@@ -1,9 +1,7 @@
-export function estimateTokens(text: string): number {
-  if (!text) return 0
-  const codeChars = (text.match(/[{}[\]();:|<>]/g) || []).length
-  const regularChars = text.length - codeChars
-  return Math.ceil(regularChars / 4) + Math.ceil(codeChars / 2)
-}
+import { Token } from "@arcana/core/util/token"
+
+/** Canonical token estimator — single source in core util/token (code-aware). */
+export const estimateTokens = Token.estimate
 
 const RATES = {
   cheap: { input: 0.0000003, output: 0.0000011 },
