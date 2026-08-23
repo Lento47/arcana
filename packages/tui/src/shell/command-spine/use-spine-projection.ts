@@ -6,6 +6,7 @@ import { useThinkingMode } from "../../context/thinking"
 import { useSync } from "../../context/sync"
 import { useTuiConfig } from "../../config"
 import { useGovernanceConfig } from "../../context/governance-config"
+import { useKV } from "../../context/kv"
 import { shouldShowGovernanceEvent } from "@arcana/core/governance-config"
 import { spineProseWidth, spineGutterDigits, type SpineLayout, type SpineEntry } from "./spine-types"
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
@@ -68,8 +69,19 @@ export function useSpineProjection(props: ShellProps, input: {
   const sync = useSync()
   const tuiConfig = useTuiConfig()
   const governanceConfig = useGovernanceConfig()
+  const kv = useKV()
   const layout = input.layout
   const viewportWidth = input.viewportWidth
+
+  // Durable operator dismissals for approval banners (the "×" affordance).
+  // Keyed by stable id: governance event ids are engine-durable, and approval
+  // ids drop the version suffix so terminal transitions stay hidden too.
+  const [dismissedApprovalMap, setDismissedApprovalMap] = kv.signal<Record<string, boolean>>(
+    "spineDismissedApprovalEntries",
+    {},
+  )
+  const dismissKeyFor = (entry: SpineEntry): string =>
+    entry.id.startsWith("approval:") ? `approval:${entry.id.split(":")[1] ?? ""}` : entry.id
 
   // Cross-session cache slot for the CURRENT session (memo, not const —
   // <Session /> no longer remounts on session switch).
@@ -282,6 +294,9 @@ export function useSpineProjection(props: ShellProps, input: {
     const merged: SpineEntry[] = []
     for (const entry of [...visibleEntries(), ...governanceEntries(), ...approvalEntries()]) {
       if (seen.has(entry.id)) continue
+      // Operator-dismissed approval banners ("×") never render again — the
+      // dismissal is durable (KV), so restarts keep them hidden too.
+      if (entry.kind === "approve" && dismissedApprovalMap()[dismissKeyFor(entry)]) continue
       seen.add(entry.id)
       merged.push(entry)
     }
@@ -370,6 +385,13 @@ export function useSpineProjection(props: ShellProps, input: {
     return approvals().find(a => a.approvalId === id)
   }
 
+  // Operator "×" on an approval banner: hide the row durably (survives
+  // restarts). Cancelling the underlying live approval is the shell's job —
+  // it owns the approval controller.
+  const dismissSpineEntry = (entry: SpineEntry) => {
+    setDismissedApprovalMap((prev) => ({ ...prev, [dismissKeyFor(entry)]: true }))
+  }
+
   return {
     headerSegments,
     trust,
@@ -386,6 +408,7 @@ export function useSpineProjection(props: ShellProps, input: {
     thinkContentWidth,
     runState,
     getApprovalForEntry,
+    dismissSpineEntry,
     fallbackChildSessionID,
   }
 }

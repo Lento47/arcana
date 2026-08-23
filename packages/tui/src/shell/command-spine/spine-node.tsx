@@ -1,7 +1,7 @@
 import { For, Show, createMemo } from "solid-js"
+import type { MouseEvent } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
-import { ShimmerText } from "../../component/shimmer-text"
 import { displayWidth, truncate } from "../../util/locale"
 import {
   compactSpineElapsed,
@@ -11,9 +11,9 @@ import {
   type SpineKind,
   type SpineLayout,
 } from "./spine-types"
-import { SPINNER_FRAMES_BRAILLE_FLOW } from "../../util/spinner-style"
-import { streamTextCue, thinkingRowChrome, toolChipChrome } from "./spine-chrome"
+import { thinkingRowChrome, toolChipChrome } from "./spine-chrome"
 import { useSpineMotion } from "./spine-motion"
+import { ShimmerText } from "../../component/shimmer-text"
 
 /**
  * Meta parts that must live in a `flexShrink={0}` sibling box beside the
@@ -45,7 +45,7 @@ function patchSummaryColor(part: string, index: number, theme: Theme) {
   return index === 0 ? theme.spineDiffMuted : theme.text
 }
 
-function PatchSummaryText(props: { summary: string; disclosure: string; theme: Theme }) {
+function PatchSummaryText(props: { summary: string; theme: Theme }) {
   const parts = createMemo(() => props.summary.split(/\s+·\s+/).filter(Boolean))
   return (
     <text wrapMode="word">
@@ -59,9 +59,6 @@ function PatchSummaryText(props: { summary: string; disclosure: string; theme: T
           </>
         )}
       </For>
-      <Show when={props.disclosure}>
-        <span style={{ fg: props.theme.spineDiffMuted }}> {props.disclosure}</span>
-      </Show>
     </text>
   )
 }
@@ -76,8 +73,8 @@ function truncateActor(name: string, width: number): string {
 /**
  * Compact tool / think header row.
  *
- * All props are read through accessors/memos so streaming chrome (spinner,
- * shimmer "Thinking") and summary text update without remounting the row.
+ * All props are read through accessors/memos so streaming chrome and summary
+ * text update without remounting the row.
  * Earlier versions captured props once at mount and froze "writing/thinking"
  * after the turn ended.
  */
@@ -94,12 +91,16 @@ export function SpineNode(props: {
   startMs?: number
   /** Optional disclosure chevron for collapsible rows (e.g. thinking). */
   disclosure?: "▸" | "▾" | ""
-  /** True while reasoning content is still streaming — shows animated shimmer. */
+  /** True while the row is still streaming. */
   streaming?: boolean
   /** Merged think verb for tool rows — shows inline after the tool glyph. */
   thinking?: string
   /** Stable row cue used by the shell's single-animation arbiter. */
   cueID?: string
+  /** Dedicated disclosure action; lets agent titles navigate while chevrons expand. */
+  onDisclosureMouseUp?: (event: MouseEvent) => void
+  /** Dismiss affordance ("×") for cancellable rows (approval banners). */
+  onDismiss?: () => void
 }) {
   const { theme } = useTheme()
   const motion = useSpineMotion()
@@ -120,11 +121,12 @@ export function SpineNode(props: {
   const live = createMemo(
     () => streaming() && typeof props.startMs === "number" && Number.isFinite(props.startMs),
   )
-  const animatedLive = createMemo(() => live() && (motion?.isCueActive(props.cueID) ?? true))
-  const spinnerGlyph = createMemo(() => {
-    if (!animatedLive()) return ""
-    const frames = SPINNER_FRAMES_BRAILLE_FLOW
-    return frames[Math.floor((motion?.phase() ?? 0) / 2) % frames.length] ?? "⠋"
+  const cueActive = createMemo(() => streaming() && (motion?.isCueActive(props.cueID) ?? true))
+  const activityColor = createMemo(() => {
+    if (!cueActive()) return kind() === "think" ? theme.spineThink : theme.accent
+    // Two interval phases per color produces a calm 2 Hz cue at the shared
+    // 250 ms cadence. The glyph and text geometry never change.
+    return Math.floor((motion?.phase() ?? 0) / 2) % 2 === 0 ? theme.accent : theme.spineRun
   })
   const elapsedText = createMemo(() => {
     const max = spineElapsedMax(props.layout)
@@ -144,8 +146,6 @@ export function SpineNode(props: {
     const k = kind()
     return k === "inspect" || k === "run" || k === "patch" || k === "fail" || k === "agent"
   })
-  const isThink = createMemo(() => kind() === "think")
-  const isThinkStreaming = createMemo(() => isThink() && streaming())
 
   const labelWidth = createMemo(() => {
     if (isChat()) return CHAT_LABEL_WIDTH
@@ -161,11 +161,10 @@ export function SpineNode(props: {
   const thinkChrome = createMemo(() =>
     thinkingRowChrome({ streaming: streaming(), title: summary() }),
   )
-  const streamCue = createMemo(() => streamTextCue(streaming()))
   const tone = createMemo(() => spineTone(kind(), theme))
   const summaryColor = createMemo(() => {
     if (kind() === "fail") return theme.spineFail
-    if (kind() === "think") return theme.spineThink
+    if (kind() === "think") return streaming() ? activityColor() : theme.spineThink
     if (isChat()) return theme.spineDiffMuted
     if (isTool()) return theme.text
     return theme.text
@@ -185,36 +184,32 @@ export function SpineNode(props: {
     kind() === "agent" ? truncateActor(label(), labelWidth()) : truncatedLabel(),
   )
 
-  const metaStrip = createMemo(() => nodeMetaStrip(disclosure(), elapsedText()))
-
   // M1: the wrapping text node carries ONLY the summary; the chevron + elapsed
   // render in a flexShrink={0} sibling so a wrapped summary can never strand
   // meta alone on its own line. No flexGrow on the summary box: meta follows
   // the content (not pinned to the right edge), so it stays visually identical
-  // to the pre-fix inline position and to the sibling isThinkStreaming path.
+  // to the pre-fix inline position.
   const summaryBody = () => (
     <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
       <box flexShrink={1} minWidth={0}>
-        <text fg={summaryColor()} wrapMode="word">
-          {summary() || " "}
-        </text>
+        <Show
+          when={kind() === "think" && streaming()}
+          fallback={
+            <text fg={summaryColor()} wrapMode="word">
+              {summary() || " "}
+            </text>
+          }
+        >
+          <ShimmerText text={summary() || "Thinking…"} active accent={theme.accent} cue={props.cueID} animation="sweep" />
+        </Show>
       </box>
-      <Show when={metaStrip().length > 0}>
-        <box flexShrink={0}>
-          <text wrapMode="none">
-            <For each={metaStrip()}>
-              {(part) => (
-                <span
-                  style={{
-                    fg: part.tone === "summary" ? summaryColor() : theme.spineGutterElapsed,
-                  }}
-                >
-                  {part.text}
-                </span>
-              )}
-            </For>
-          </text>
+      <Show when={disclosure()}>
+        <box flexShrink={0} onMouseUp={props.onDisclosureMouseUp}>
+          <text fg={summaryColor()} wrapMode="none"> {disclosure()}</text>
         </box>
+      </Show>
+      <Show when={elapsedText()}>
+        <text fg={theme.spineGutterElapsed} wrapMode="none"> · {elapsedText()}</text>
       </Show>
     </box>
   )
@@ -241,50 +236,31 @@ export function SpineNode(props: {
               {actorBox()}
               <Show when={thinking()}>
                 <box flexDirection="row" gap={1} flexShrink={0} alignItems="center">
-                  <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
-                    <ShimmerText
-                      text={summary() || thinkChrome().verb}
-                      background={theme.backgroundElement}
-                      cue={props.cueID}
-                    />
-                  </box>
-                  <Show when={streamCue().badge}>
-                    <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
-                      <text fg={theme.accent} wrapMode="none">{streamCue().badge}</text>
-                    </box>
-                  </Show>
+                  <text fg={activityColor()} wrapMode="none">
+                    {thinking() || thinkChrome().verb}
+                  </text>
                   <text fg={theme.spineDiffMuted}>·</text>
                 </box>
               </Show>
-              <Show when={isThinkStreaming()} fallback={summaryBody()}>
-                <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start" gap={1}>
-                  <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
-                    <ShimmerText
-                      text={summary() || thinkChrome().verb}
-                      active={true}
-                      background={theme.backgroundElement}
-                      cue={props.cueID}
-                    />
-                  </box>
-                  <Show when={thinkChrome().badge}>
-                    <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
-                      <text fg={theme.accent} wrapMode="none">{thinkChrome().badge}</text>
-                    </box>
-                  </Show>
-                  <Show when={elapsedText()}>
-                    <text fg={theme.spineGutterElapsed} wrapMode="none">{elapsedText()}</text>
-                  </Show>
-                </box>
-              </Show>
+              {summaryBody()}
             </box>
           }
         >
-          <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
+          <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1}>
             <text fg={isChat() ? theme.spineOk : summaryColor()} wrapMode="word">
               {isChat() ? `${label()}  ` : ""}
               {summary()}
-              {disclosure() ? ` ${disclosure()}` : ""}
             </text>
+            <Show when={disclosure()}>
+              <box flexShrink={0} onMouseUp={props.onDisclosureMouseUp}>
+                <text fg={summaryColor()} wrapMode="none"> {disclosure()}</text>
+              </box>
+            </Show>
+            <Show when={props.onDismiss}>
+              <box flexShrink={0} paddingLeft={1} onMouseUp={() => props.onDismiss?.()}>
+                <text fg={theme.textMuted} wrapMode="none">×</text>
+              </box>
+            </Show>
           </box>
         </Show>
       }
@@ -316,50 +292,20 @@ export function SpineNode(props: {
               </box>
             }
           >
-            <box
-              flexShrink={0}
-              width={labelWidth()}
-              backgroundColor={theme.backgroundElement}
-              border={["left"]}
-              borderColor={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? theme.accent : theme.spineOk}
-            >
-              {/* Subagent block: animated braille spinner + agent name while delegated.
-                  Inline frames (not the Spinner component) so the server renderer
-                  stays stable — no opentui-spinner element in the chip. */}
-              <Show
-                  when={kind() === "agent" && animatedLive()}
-                  fallback={
-                    <text
-                      fg={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? theme.accent : labelColor()}
-                      wrapMode="none"
-                    >
-                      {chip().glyph} {chipLabel()}
-                    </text>
-                  }
-                >
-                  <text
-                    fg={chip().status === "live" ? theme.accent : labelColor()}
-                    wrapMode="none"
-                  >
-                    {spinnerGlyph()} {chipLabel()}
-                  </text>
-                </Show>
+            <box flexShrink={0} width={labelWidth()}>
+              <text
+                fg={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? activityColor() : labelColor()}
+                wrapMode="none"
+              >
+                {chip().glyph} {chipLabel()}
+              </text>
             </box>
           </Show>
           {actorBox()}
           <Show when={thinking()}>
-            <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
-              <ShimmerText
-                text={thinking() || thinkChrome().verb}
-                background={theme.backgroundElement}
-                cue={props.cueID}
-              />
-            </box>
-            <Show when={streamCue().badge}>
-              <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
-                <text fg={theme.accent} wrapMode="none">{streamCue().badge}</text>
-              </box>
-            </Show>
+            <text fg={activityColor()} wrapMode="none">
+              {thinking() || thinkChrome().verb}
+            </text>
             <text fg={theme.spineDiffMuted} wrapMode="none">·</text>
           </Show>
           <box flexGrow={1} minWidth={0} flexShrink={1}>
@@ -368,16 +314,25 @@ export function SpineNode(props: {
               fallback={
                 <text fg={summaryColor()} wrapMode="word">
                   {summary()}
-                  {disclosure() ? ` ${disclosure()}` : ""}
                 </text>
               }
             >
-              <PatchSummaryText summary={summary()} disclosure={disclosure()} theme={theme} />
+              <PatchSummaryText summary={summary()} theme={theme} />
             </Show>
           </box>
+          <Show when={disclosure()}>
+            <box flexShrink={0} onMouseUp={props.onDisclosureMouseUp}>
+              <text fg={summaryColor()} wrapMode="none">{disclosure()}</text>
+            </box>
+          </Show>
           <Show when={elapsedText()}>
             <box flexShrink={0}>
               <text fg={theme.spineGutterElapsed} wrapMode="none">{elapsedText()}</text>
+            </box>
+          </Show>
+          <Show when={props.onDismiss}>
+            <box flexShrink={0} paddingLeft={1} onMouseUp={() => props.onDismiss?.()}>
+              <text fg={theme.textMuted} wrapMode="none">×</text>
             </box>
           </Show>
         </box>

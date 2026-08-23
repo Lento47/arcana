@@ -22,6 +22,9 @@ export function SpineEntryBinding(props: SpineEntryBindingProps) {
           onToggle={props.onToggle}
           onFocus={props.onFocus}
           onHover={props.onHover}
+          onContextMenu={props.onContextMenu}
+          onAction={props.onAction}
+          selectedAction={props.selectedAction}
           onNavigate={props.onNavigate}
           onResolveChild={props.onResolveChild}
           sessionID={props.sessionID}
@@ -29,6 +32,7 @@ export function SpineEntryBinding(props: SpineEntryBindingProps) {
           contentWidth={props.contentWidth}
           thinkContentWidth={props.thinkContentWidth}
           gutterWidth={props.gutterWidth}
+          onDismiss={props.onDismiss}
         />
       )}
     </Show>

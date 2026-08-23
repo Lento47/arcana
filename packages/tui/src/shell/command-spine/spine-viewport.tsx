@@ -1,4 +1,4 @@
-import { ErrorBoundary, For, Show } from "solid-js"
+import { ErrorBoundary, For, Show, createSignal } from "solid-js"
 import type { Accessor } from "solid-js"
 import type { MouseEvent, ScrollAcceleration, ScrollBoxRenderable } from "@opentui/core"
 import { useTheme } from "../../context/theme"
@@ -24,6 +24,11 @@ export function SpineViewport(props: {
   entryFocused: (entry: SpineEntry) => boolean
   onToggleEntry: (entry: SpineEntry) => void
   onFocusEntry: (entry: SpineEntry) => void
+  onContextMenu: (entry: SpineEntry) => void
+  onAction?: (entry: SpineEntry, action: "retry" | "switch-model") => void
+  /** Operator dismissal ("×") for approval banners. */
+  onDismissEntry?: (entry: SpineEntry) => void
+  actionIndex?: number
   onNavigate: (sessionID: string) => void
   onResolveChild?: (entry: SpineEntry) => void
   sessionID?: string
@@ -36,6 +41,7 @@ export function SpineViewport(props: {
   onScrollButton: () => void
 }) {
   const { theme } = useTheme()
+  const [scrollButtonHover, setScrollButtonHover] = createSignal(false)
 
   return (
     <box position="relative" flexDirection="column" flexGrow={1}>
@@ -88,6 +94,13 @@ export function SpineViewport(props: {
                     if (entry) props.onFocusEntry(entry)
                   }}
                   onNavigate={props.onNavigate}
+                  onContextMenu={(entry) => props.onContextMenu(entry)}
+                  onAction={(entry, action) => props.onAction?.(entry, action)}
+                  onDismiss={() => {
+                    const entry = getEntry()
+                    if (entry) props.onDismissEntry?.(entry)
+                  }}
+                  selectedAction={props.actionIndex}
                   onResolveChild={() => {
                     const entry = getEntry()
                     if (entry) props.onResolveChild?.(entry)
@@ -106,11 +119,14 @@ export function SpineViewport(props: {
           bottom={2}
           right={4}
           zIndex={50}
-          width={3}
+          width={10}
           height={1}
           onMouseUp={props.onScrollButton}
+          onMouseOver={() => setScrollButtonHover(true)}
+          onMouseOut={() => setScrollButtonHover(false)}
+          backgroundColor={scrollButtonHover() ? theme.backgroundElement : undefined}
         >
-          <text fg={theme.accent}>↓</text>
+          <text fg={theme.accent}>↓ latest</text>
         </box>
       </Show>
     </box>

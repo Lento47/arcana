@@ -1,4 +1,5 @@
 import { MouseButton, type MouseEvent } from "@opentui/core"
+import { useRenderer } from "@opentui/solid"
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
 import type { Message, Part, ToolPart } from "@arcana/sdk/v2"
 import { titlecase, truncate } from "../../util/locale"
@@ -8,7 +9,7 @@ import type {
   SpineLayout,
 } from "./spine-types"
 import { spineOuterPadding, spineRailWidth } from "./spine-types"
-import { useTheme } from "../../context/theme"
+import { selectedForeground, useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
 import { SpineGutter } from "./spine-gutter"
 import { SpineNode } from "./spine-node"
@@ -23,6 +24,7 @@ import { SpineChatCard } from "./spine-chat"
 import { SpineApprovalGate } from "./spine-approval-gate"
 import { SpineProof } from "./spine-proof"
 import { taskRowChrome } from "./spine-chrome"
+import { canToggleSpineEntry } from "./spine-navigation"
 import {
   toSpineEntryView,
   type ApprovalEntry,
@@ -120,7 +122,10 @@ export function rowFocusHighlight(focused: boolean, isChatProse: boolean): "row"
 function receiptHasContent(view: SpineEntryView): boolean {
   const r = (view as ToolEntry | RecoveryEntry).receipt
   if (!r) return false
-  if (r.status === "pending" || r.status === "fail") return true
+  // The composer owns the single authoritative shimmering activity cue.
+  // A pending receipt must not add a second, static "Working" row.
+  if (r.status === "pending") return false
+  if (r.status === "fail") return true
   if (r.files?.length) return true
   if (r.stats && (
     r.stats.passed !== undefined
@@ -153,14 +158,25 @@ function RowHeader(props: {
   focused?: boolean
   disclosure: ReturnType<typeof computeSpineToggle>["disclosure"]
   nodeSummary: string
+  cueID: string
   onHeaderMouseUp?: (event: MouseEvent) => void
+  onDisclosureMouseUp?: (event: MouseEvent) => void
+  /** Dismiss affordance ("×") for cancellable rows (approval banners). */
+  onDismiss?: () => void
 }) {
+  const { theme } = useTheme()
+  const [hovered, setHovered] = createSignal(false)
+  const actionable = () => props.onHeaderMouseUp !== undefined
+
   return (
     <box
       flexDirection="row"
       flexShrink={0}
       alignItems="flex-start"
       onMouseUp={props.onHeaderMouseUp}
+      onMouseOver={() => actionable() && setHovered(true)}
+      onMouseOut={() => setHovered(false)}
+      backgroundColor={actionable() && hovered() ? theme.backgroundElement : undefined}
     >
       <SpineRail
         layout={props.layout}
@@ -180,6 +196,9 @@ function RowHeader(props: {
         disclosure={props.disclosure}
         streaming={props.view.streaming === true}
         thinking={props.view.thinking}
+        cueID={props.cueID}
+        onDisclosureMouseUp={props.onDisclosureMouseUp}
+        onDismiss={props.onDismiss}
       />
     </box>
   )
@@ -257,9 +276,15 @@ export function SpineEntry(props: {
   onToggle?: () => void
   onFocus?: () => void
   onHover?: () => void
+  /** Opens the row action menu. Right-click is ignored while text is selected. */
+  onContextMenu?: (entry: SpineEntryType) => void
+  onAction?: (entry: SpineEntryType, action: "retry" | "switch-model") => void
+  selectedAction?: number
   onNavigate?: (sessionID: string) => void
   /** Agent rows: called when a dive target is unresolved (no child link yet). */
   onResolveChild?: () => void
+  /** Operator dismissal ("×") for approval banners; wired only for approve-kind rows. */
+  onDismiss?: () => void
   sessionID?: string  // Parent session ID for child lookup
   /** Newest child of the parent session, computed once in the projection. */
   fallbackChildSessionID?: string
@@ -274,11 +299,11 @@ export function SpineEntry(props: {
   const entry = () => props.entry
   const { theme } = useTheme()
   const sync = useSync()
+  const renderer = useRenderer()
 
   const [localExpanded, setLocalExpanded] = createSignal(
     props.entry.expandedByDefault ?? !props.entry.collapsible,
   )
-  const [openBtnHover, setOpenBtnHover] = createSignal(false)
   // Prefer controlled expanded from shell; fall back to local toggle state.
   const expanded = () => props.expanded ?? localExpanded()
   const kind = createMemo(() => entry().kind)
@@ -384,6 +409,7 @@ export function SpineEntry(props: {
   )
 
   const padLeft = () => spineOuterPadding(props.layout)
+  const entryToggleable = createMemo(() => canToggleSpineEntry(entry()))
 
   const nodeSummary = () => {
     if (isChatProse()) return ""
@@ -391,14 +417,11 @@ export function SpineEntry(props: {
     // duration; the reasoning title/body only appears when expanded.
     if (isThinkRow()) {
       const summary = (view() as Exclude<SpineEntryView, ChatEntry>).summary
-      return expanded() ? summary : (streaming() ? "Thinking" : "Thought")
+      if (!streaming()) return expanded() ? summary : "Thought"
+      return "Thinking…"
     }
     return (view() as Exclude<SpineEntryView, ChatEntry>).summary
   }
-
-  // M4: one focus per physical click. Focus lands on mousedown (row-level
-  // handleFocus); toggle actions fire on mouseup and never re-focus.
-  let lastToggleAt = 0
 
   const handleFocus = () => {
     props.onFocus?.()
@@ -411,38 +434,46 @@ export function SpineEntry(props: {
   const handleToggle = (event?: Pick<MouseEvent, "stopPropagation" | "preventDefault">) => {
     event?.stopPropagation?.()
     event?.preventDefault?.()
-    const now = Date.now()
-    if (now - lastToggleAt < 120) return
-    lastToggleAt = now
     if (props.onToggle) props.onToggle()
     else setLocalExpanded((value) => !value)
   }
 
-  /** Row-level toggle for collapsed blocks: expands without re-focusing
-   *  (focus already landed on mousedown - M4: one focus per click). */
-  const handleRowToggle = (event: MouseEvent) => {
-    if (event.button !== undefined && event.button !== MouseButton.LEFT && event.button !== MouseButton.RIGHT) return
-    event.stopPropagation?.()
-    event.preventDefault?.()
-    const now = Date.now()
-    if (now - lastToggleAt < 120) return
-    lastToggleAt = now
-    if (props.onToggle) props.onToggle()
-    else setLocalExpanded((value) => !value)
+  const hasMeaningfulSelection = () => {
+    return (renderer.getSelection()?.getSelectedText()?.length ?? 0) > 0
   }
 
-  // PR5: conventional left-click toggle timing - both buttons toggle on
-  // mouseup (release), never on press; right-click no longer differs.
+  const handleRowMouseDown = (event: MouseEvent) => {
+    if (event.button === undefined || event.button === MouseButton.LEFT) handleFocus()
+  }
+
+  const handleRowMouseUp = (event: MouseEvent) => {
+    if (hasMeaningfulSelection()) return
+    if (event.button === MouseButton.RIGHT) {
+      if (!props.onContextMenu) return
+      event.stopPropagation?.()
+      event.preventDefault?.()
+      props.onFocus?.()
+      props.onContextMenu(entry())
+      return
+    }
+    if (event.button !== undefined && event.button !== MouseButton.LEFT) return
+    // A collapsed row is one generous click target. Once expanded, body
+    // clicks remain available for selection and only the header/disclosure
+    // collapses it again.
+    if (entryToggleable() && !expanded()) handleToggle(event)
+  }
+
+  // Disclosure is a header action. Body clicks only focus/select text.
   const handleHeaderMouseUp = (event: MouseEvent) => {
-    if (!toggle().headerToggleable) return
-    if (event.button !== undefined && event.button !== MouseButton.LEFT && event.button !== MouseButton.RIGHT) return
+    if (!toggle().headerToggleable || !entryToggleable()) return
+    if (event.button !== undefined && event.button !== MouseButton.LEFT) return
     handleToggle(event)
   }
 
   // Subagent rows: clicking the header ENTERS the subagent's own context when a
   // child session resolves (running rows included); otherwise it toggles.
   const handleSubagentHeaderMouseUp = (event: MouseEvent) => {
-    if (event.button !== undefined && event.button !== MouseButton.LEFT && event.button !== MouseButton.RIGHT) return
+    if (event.button !== undefined && event.button !== MouseButton.LEFT) return
     const target = childSessionID()
     if (target) {
       event.stopPropagation?.()
@@ -478,12 +509,11 @@ export function SpineEntry(props: {
         backgroundColor={rowHighlight().bg}
         border={rowHighlight().border}
         borderColor={rowHighlight().borderColor}
+        focusable={entryToggleable()}
+        focused={props.focused === true}
         onMouseOver={handleHover}
-        onMouseDown={handleFocus}
-        // Collapsed toggleable rows expand on click anywhere on the block;
-        // once expanded, clicks inside the content do not collapse it (the
-        // header keeps that role). Focus stays on the row either way.
-        onMouseUp={toggle().headerToggleable && !expanded() ? handleRowToggle : undefined}
+        onMouseDown={handleRowMouseDown}
+        onMouseUp={handleRowMouseUp}
       >
         <SpineGutter
           index={props.index ?? entry().index}
@@ -502,12 +532,14 @@ export function SpineEntry(props: {
               <>
                 <Show when={!hasProse()}>
                   <RowHeader
+                    cueID={`entry:${entry().id}`}
                     view={v() as unknown as Exclude<SpineEntryView, ChatEntry>}
                     layout={props.layout}
                     focused={props.focused}
                     disclosure={toggle().disclosure}
                     nodeSummary={nodeSummary()}
                     onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
+                    onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                   />
                 </Show>
                 <Show when={hasProse()}>
@@ -534,12 +566,14 @@ export function SpineEntry(props: {
             {(v) => (
               <>
                 <RowHeader
+                  cueID={`entry:${entry().id}`}
                   view={v()}
                   layout={props.layout}
                   focused={props.focused}
                   disclosure={toggle().disclosure}
                   nodeSummary={nodeSummary()}
                   onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
+                  onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                 />
 
                 {/* Report body - scorecard + concern callouts, visible when expanded */}
@@ -679,12 +713,15 @@ export function SpineEntry(props: {
             {(v) => (
               <>
                 <RowHeader
+                  cueID={`entry:${entry().id}`}
                   view={v()}
                   layout={props.layout}
                   focused={props.focused}
                   disclosure={toggle().disclosure}
                   nodeSummary={nodeSummary()}
                   onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
+                  onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
+                  onDismiss={kind() === "approve" ? props.onDismiss : undefined}
                 />
                 {/* PENDING: no operator has acted yet - requester/agent or nothing. */}
                 <Show when={v().pending && v().requester}>
@@ -734,12 +771,15 @@ export function SpineEntry(props: {
             {(v) => (
               <>
                 <RowHeader
+                  cueID={`entry:${entry().id}`}
                   view={v()}
                   layout={props.layout}
                   focused={props.focused}
                   disclosure={toggle().disclosure}
                   nodeSummary={nodeSummary()}
                   onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
+                  onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
+                  onDismiss={kind() === "approve" ? props.onDismiss : undefined}
                 />
                 <Show when={hasChildren() && expanded()}>
                   <ChildrenGroup children={v().children!} layout={props.layout} contentWidth={props.contentWidth} />
@@ -778,7 +818,7 @@ export function SpineEntry(props: {
               // Live streaming text from the child (preliminary tool result).
               const liveWorkingText = () => v().liveOutput?.trim() || ""
               const statusLine = () =>
-                `${v().streaming ? "⠹" : "✓"} ${chrome().cue}${chrome().childHint ? ` · ${chrome().childHint}` : ""}` +
+                `${v().streaming ? "•" : "✓"} ${chrome().cue}${chrome().childHint ? ` · ${chrome().childHint}` : ""}` +
                 `${v().streaming && v().elapsed ? ` · ${v().elapsed}` : ""}` +
                 `${v().streaming && childSessionID() ? " · ↵ enter its context" : ""}`
               // Completed step list: the child session's tool calls, read from the
@@ -807,23 +847,26 @@ export function SpineEntry(props: {
               // Mirrors the legacy subagent route's onMount sync.
               createEffect(() => {
                 const childID = childSessionID()
-                if (childID && !sync.data.message[childID]?.length && !sync.session.isSynced(childID)) {
-                  void sync.session.sync(childID)
+                if (childID && !sync.data.message[childID]?.length && !sync.session.isHistoryReady(childID)) {
+                  sync.session.prefetch([childID], 50)
                 }
               })
               return (
                 <>
                   <RowHeader
+                    cueID={`entry:${entry().id}`}
                     view={v()}
                     layout={props.layout}
                     focused={props.focused}
                     disclosure={toggle().disclosure}
                     nodeSummary={nodeSummary()}
                     onHeaderMouseUp={toggle().headerToggleable ? handleSubagentHeaderMouseUp : undefined}
+                    onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                   />
 
-                  {/* Subagent card — bordered block. Single status text so
-                      separators always render (box gaps are unreliable here). */}
+                  {/* Live delegation keeps a restrained context surface. Once
+                      returned, the same content collapses to a normal branch
+                      receipt instead of leaving a permanent boxed card. */}
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail layout={props.layout} active={props.focused} />
                     <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1} paddingRight={1}>
@@ -831,17 +874,17 @@ export function SpineEntry(props: {
                         flexDirection="column"
                         flexShrink={0}
                         width="100%"
-                        border={["top", "bottom", "left", "right"]}
+                        border={v().streaming ? ["left"] : []}
                         borderColor={v().streaming ? theme.accent : theme.spineOk}
-                        backgroundColor={theme.backgroundPanel}
+                        backgroundColor={v().streaming ? theme.backgroundPanel : undefined}
                         paddingLeft={1}
-                        paddingRight={1}
+                        paddingRight={v().streaming ? 1 : 0}
                       >
                         <text fg={v().streaming ? theme.accent : theme.spineOk} wrapMode="none">
                           {statusLine()}
                         </text>
                         {/* Completed step list — what the subagent actually did. */}
-                        <Show when={!v().streaming && childSteps().length > 0}>
+                        <Show when={!v().streaming && bodyExpanded() && childSteps().length > 0}>
                           <box flexDirection="column" paddingTop={1}>
                             <For each={childSteps()}>
                               {(step) => (
@@ -887,32 +930,6 @@ export function SpineEntry(props: {
                     </box>
                   </box>
 
-                  {/* Open child session - polished button with rail alignment.
-                      Visible while running too (dive into its own context mid-flight). */}
-                  <Show when={bodyExpanded() && !!childSessionID()}>
-                    <box paddingTop={1} flexShrink={0} />
-                    <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-                      <SpineRail layout={props.layout} active={false} />
-                      <box
-                        flexGrow={1}
-                        minWidth={0}
-                        flexShrink={1}
-                        paddingLeft={1}
-                        backgroundColor={openBtnHover() ? theme.backgroundElement : undefined}
-                        onMouseOver={() => setOpenBtnHover(true)}
-                        onMouseOut={() => setOpenBtnHover(false)}
-                        onMouseUp={() => props.onNavigate?.(childSessionID()!)}
-                      >
-                        <text>
-                          {`\u2937 Open ${v().label || "subagent"}`}
-                          <Show when={!v().streaming}>
-                            <span style={{ fg: theme.spineDiffMuted }}> · its own context</span>
-                          </Show>
-                        </text>
-                      </box>
-                    </box>
-                  </Show>
-
                   <Show when={hasChildren() && expanded()}>
                     <ChildrenGroup children={v().children!} layout={props.layout} contentWidth={props.contentWidth} />
                   </Show>
@@ -926,12 +943,14 @@ export function SpineEntry(props: {
             {(v) => (
               <>
                 <RowHeader
+                  cueID={`entry:${entry().id}`}
                   view={v()}
                   layout={props.layout}
                   focused={props.focused}
                   disclosure={toggle().disclosure}
                   nodeSummary={nodeSummary()}
                   onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
+                  onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                 />
                 <Show when={hasReceipt()}>
                   <box flexDirection="row" flexShrink={0}>
@@ -955,6 +974,29 @@ export function SpineEntry(props: {
                         focused={props.focused}
                         contentWidth={props.contentWidth}
                       />
+                    </box>
+                  </box>
+                </Show>
+                <Show when={(v().actions?.length ?? 0) > 0}>
+                  <box flexDirection="row" flexShrink={0}>
+                    <SpineRail layout={props.layout} active={props.focused} />
+                    <box flexDirection="row" gap={1} paddingLeft={1} paddingTop={1}>
+                      <For each={v().actions}>
+                        {(action, actionIndex) => (
+                          <box
+                            paddingLeft={1}
+                            paddingRight={1}
+                            backgroundColor={props.focused && props.selectedAction === actionIndex() ? theme.accent : theme.backgroundElement}
+                            onMouseUp={(event) => {
+                              event.stopPropagation?.()
+                              event.preventDefault?.()
+                              props.onAction?.(entry(), action.id)
+                            }}
+                          >
+                            <text fg={props.focused && props.selectedAction === actionIndex() ? selectedForeground(theme, theme.accent) : theme.accent}>{action.label}</text>
+                          </box>
+                        )}
+                      </For>
                     </box>
                   </box>
                 </Show>
