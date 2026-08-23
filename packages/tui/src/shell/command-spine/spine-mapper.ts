@@ -595,74 +595,6 @@ function summarizeOutput(output: string): string {
   return `${matchCount} matches`
 }
 
-/**
- * Solid store mutates tool parts in place. If the assistant turn already
- * finished (or later parts arrived) while a tool stayed `running`/`pending`,
- * the spine would shimmer "Working" forever. Coerce unfinished tools for display.
- */
-function resolveToolState(part: ToolPart, message: Message, allParts: Part[]): ToolPart["state"] {
-  const state = part.state
-  if (state.status !== "pending" && state.status !== "running") return state
-
-  const turnDone = message.role === "assistant" && !!message.time?.completed
-  const idx = allParts.findIndex((p) => p.id === part.id)
-  // Later text/reasoning/tools after this one ⇒ this tool is no longer the active step
-  let superseded = false
-  if (idx >= 0) {
-    for (let i = idx + 1; i < allParts.length; i++) {
-      const p = allParts[i]!
-      if (p.type === "tool" || p.type === "text" || p.type === "reasoning" || p.type === "step-finish" || p.type === "patch") {
-        superseded = true
-        break
-      }
-    }
-  }
-
-  if (!turnDone && !superseded) return state
-
-  const end = (message.role === "assistant" ? message.time?.completed : undefined) ?? Date.now()
-  if (state.status === "running") {
-    const output =
-      "output" in state && typeof (state as { output?: string }).output === "string"
-        ? (state as { output: string }).output
-        : ""
-    return {
-      status: "completed",
-      input: state.input ?? {},
-      output,
-      title: state.title ?? part.tool,
-      metadata: state.metadata ?? {},
-      time: {
-        start: state.time?.start ?? message.time?.created,
-        end,
-      },
-    }
-  }
-
-  // Tool was "pending" and never started. If superseded by later content,
-  // mark as skipped (not an error). Otherwise leave as pending — the engine
-  // may transition it to running/completed later via SolidJS store reactivity.
-  if (superseded) {
-    return {
-      status: "completed",
-      input: state.input ?? {},
-      output: "",
-      title: part.tool,
-      metadata: {},
-      time: {
-        start: message.time?.created,
-        end,
-      },
-    }
-  }
-  return state
-}
-
-function isInterruptedToolState(state: ToolPart["state"], streamingCtx: StreamingCtx): boolean {
-  if (state.status !== "pending" && state.status !== "running") return false
-  return !streamingCtx.isLatestAssistant || !isSessionTurnActive(streamingCtx.sessionStatusType)
-}
-
 function toolStateToReceipt(tool: string, state: ToolPart["state"]): SpineReceipt | undefined {
   if (state.status === "pending" || state.status === "running") {
     return { label: tool, status: "pending" }
@@ -676,6 +608,15 @@ function toolStateToReceipt(tool: string, state: ToolPart["state"]): SpineReceip
       command: command || (state.error ? truncate(stripAnsi(state.error), 120) : undefined),
       status: "fail",
     }
+  }
+
+  if (state.status === "cancelled") {
+    const label = state.reason === "session_cancelled"
+      ? "Cancelled"
+      : state.reason === "superseded"
+        ? "Skipped"
+        : "Interrupted"
+    return { label: tool, command: label, status: "interrupted" }
   }
 
   if (state.status === "completed") {
@@ -1019,12 +960,10 @@ function toolPartToEntries(
   message: Message,
   part: ToolPart,
   partIndex: number,
-  allParts: Part[],
   streamingCtx: StreamingCtx,
 ): SpineEntry[] {
-  const state = resolveToolState(part, message, allParts)
-  const resolved: ToolPart = state === part.state ? part : { ...part, state }
-  const interrupted = isInterruptedToolState(state, streamingCtx)
+  const state = part.state
+  const resolved = part
   const toolKind = toolToSpineKind(resolved.tool)
   const agentName = taskToolAgent(resolved)
   const kind: SpineKind = state.status === "error" ? "fail" : agentName ? "agent" : toolKind
@@ -1033,14 +972,14 @@ function toolPartToEntries(
   // A tool row is live only when this is the latest assistant turn and the
   // engine explicitly says busy/retry. Hard exits can leave durable tool state
   // at running/pending; those rows become static recovery evidence instead.
-  const running = !interrupted && (state.status === "running" || state.status === "pending")
+  const running = (state.status === "running" || state.status === "pending")
+    && streamingCtx.isLatestAssistant
+    && isSessionTurnActive(streamingCtx.sessionStatusType)
   const startMs =
     running && "time" in state && state.time && typeof state.time.start === "number"
       ? state.time.start
       : undefined
-  let receipt: SpineReceipt | undefined = interrupted
-    ? { label: resolved.tool, status: "interrupted" }
-    : toolStateToReceipt(resolved.tool, state)
+  let receipt = toolStateToReceipt(resolved.tool, state)
   const baseId = `${message.id}:${resolved.id || `tool-${partIndex}`}`
 
   let summary = ""
@@ -1527,9 +1466,9 @@ function makeInlineThinkEntry(
     summary,
     body: hasText ? titleStrippedBody : undefined,
     bodyLabel: "reasoning",
-    collapsible: true,
+    collapsible: hasText,
     expandedByDefault: hasText && (streaming || options?.expandThinking === true),
-    hidden: false,
+    hidden: !hasText && !streaming,
     streaming,
     source: { messageID: message.id, partID: part.id, kind: "reasoning" },
   }
@@ -1575,9 +1514,9 @@ function makeThinkEntry(
     summary,
     body: hasText ? titleStrippedBody : undefined,
     bodyLabel: "reasoning",
-    collapsible: true,
+    collapsible: hasText,
     expandedByDefault,
-    hidden: false,
+    hidden: !hasText && !streaming,
     streaming,
     source: { messageID: message.id, partID: part.id, kind: "reasoning" },
   }
@@ -1676,6 +1615,46 @@ function assistantMessagePartsToEntries(
     sessionStatusType: options?.sessionStatusType,
   }
 
+  const errorEntry = (() => {
+    if (message.role !== "assistant" || !message.error) return undefined
+    const data = message.error.data as { message?: string; metadata?: Record<string, string> }
+    const retryCount = Number.parseInt(data.metadata?.retryCount ?? "", 10)
+    const exhausted = data.metadata?.retryExhausted === "true"
+    const aborted = message.error.name === "MessageAbortedError"
+    const summary = exhausted
+      ? `Provider unavailable · paused after ${Number.isFinite(retryCount) ? retryCount : 3} retries`
+      : aborted
+        ? "Interrupted before completion"
+        : data.message || message.error.name || "Assistant turn failed"
+    const retryParts = parts.filter((part) => part.type === "retry")
+    const history = retryParts.length > 0
+      ? retryParts.map((part) => `Attempt ${part.attempt}: ${part.error.data.message}`).join("\n")
+      : undefined
+    return {
+      id: `${message.id}:error`,
+      index: 0,
+      elapsed: "",
+      timestamp: formatTimestamp(message.time?.completed ?? message.time?.created),
+      occurredAt: message.time?.completed ?? message.time?.created,
+      kind: "fail" as const,
+      label: exhausted ? "provider paused" : aborted ? "interrupted" : "failed",
+      glyph: SPINE_GLYPH.fail,
+      summary,
+      body: [data.message, history].filter(Boolean).join("\n\n"),
+      bodyLabel: "details",
+      collapsible: Boolean(data.message || history),
+      expandedByDefault: exhausted,
+      streaming: false,
+      actions: exhausted && data.metadata?.retryResumed !== "true" && streamingCtx.isLatestAssistant
+        ? [
+            { id: "retry" as const, label: "Retry" },
+            { id: "switch-model" as const, label: "Switch model" },
+          ]
+        : undefined,
+      source: { messageID: message.id, kind: "message" as const },
+    }
+  })()
+
   const messageFinished =
     message.role === "assistant"
     && typeof message.finish === "string"
@@ -1729,8 +1708,8 @@ function assistantMessagePartsToEntries(
     const part = parts[i]
 
     if (part.type === "reasoning") {
-      // Always create a think entry — even empty-text reasoning-start
-      // gets a placeholder summary. makeThinkEntry handles empty text.
+      // Empty reasoning-start is a transient activity row, not a false
+      // disclosure. The same keyed row becomes expandable when text arrives.
       entries.push(makeThinkEntry(message, part, options, parts, streamingCtx))
       continue
     }
@@ -1751,7 +1730,7 @@ function assistantMessagePartsToEntries(
 
     if (part.type === "tool") {
       sawTool = true
-      entries.push(...toolPartToEntries(message, part, i, parts, streamingCtx))
+      entries.push(...toolPartToEntries(message, part, i, streamingCtx))
       continue
     }
 
@@ -1807,7 +1786,7 @@ function assistantMessagePartsToEntries(
 
   if (!sawTool && planEntry && !okEntry) {
     const thinkEntries = entries.filter((entry) => entry.kind === "think")
-    return [...thinkEntries, planEntry]
+    return [...thinkEntries, planEntry, ...(errorEntry ? [errorEntry] : [])]
   }
 
   const merged: SpineEntry[] = []
@@ -1826,6 +1805,7 @@ function assistantMessagePartsToEntries(
   if (!okEntry && shouldAddTrailingOk(merged, message)) {
     merged.push(makeOkEntry(message))
   }
+  if (errorEntry) merged.push(errorEntry)
 
   // Path ditto only — burst grouping runs once at session level so consecutive
   // shell tools across assistant steps still collapse into one expandable row.

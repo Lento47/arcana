@@ -27,13 +27,31 @@ export type VoiceOrchestrator = {
   cancel: () => void
 }
 
+export type VoiceOrchestratorServices = {
+  detectRecorder: typeof Recorder.detectRecorder
+  record: typeof Recorder.record
+  whisperStatus: typeof Whisper.whisperStatus
+  transcribe: typeof Whisper.transcribe
+  normalize: typeof Normalizer.normalize
+}
+
+const defaultServices: VoiceOrchestratorServices = {
+  detectRecorder: Recorder.detectRecorder,
+  record: Recorder.record,
+  whisperStatus: Whisper.whisperStatus,
+  transcribe: Whisper.transcribe,
+  normalize: Normalizer.normalize,
+}
+
 export function createVoiceOrchestrator(input: {
   config: () => Voice
   toast: ToastAPI
   lexicon: () => VoiceLexicon
   onResult: (text: string, autoSubmit: boolean) => void
   onStatusChange?: (status: VoiceStatus) => void
+  services?: VoiceOrchestratorServices
 }): VoiceOrchestrator {
+  const services = input.services ?? defaultServices
   const [status, setStatus] = createSignal<VoiceStatus>("idle")
   const [error, setError] = createSignal<string | null>(null)
 
@@ -87,22 +105,21 @@ export function createVoiceOrchestrator(input: {
     const captureAbort = abortController
 
     try {
-      const recorder = await Recorder.detectRecorder(cfg.recorder)
+      const recorder = await services.detectRecorder(cfg.recorder)
       if (captureAbort.signal.aborted) {
         setIdle()
         return
       }
       if (!recorder) {
-        showError(
-          "No microphone recorder found. Install ffmpeg/sox/arecord/rec or set `voice.recorder.binary`.",
-        )
+        showError("No microphone recorder found. Install ffmpeg/sox/arecord/rec or set `voice.recorder.binary`.")
         setIdle()
         return
       }
 
       // Fire-and-forget: the recorder process runs until stop() aborts the signal.
       // Never rethrow — an unhandled rejection kills the whole TUI (process.exit(1)).
-      recordingPromise = Recorder.record(recorder, captureAbort.signal)
+      recordingPromise = services
+        .record(recorder, captureAbort.signal)
         .then((path) => {
           if (!path && !captureAbort.signal.aborted && status() === "recording") {
             showError("Microphone capture failed. Check ffmpeg can open your recording device.")
@@ -154,7 +171,7 @@ export function createVoiceOrchestrator(input: {
       }
       notifyStatus("transcribing")
       const asr = cfg.asr as Whisper.WhisperConfig
-      const whisperReady = await Whisper.whisperStatus(asr)
+      const whisperReady = await services.whisperStatus(asr)
       if (whisperReady.missing.includes("model")) {
         input.toast.show({
           message: "Downloading whisper tiny.en (~75MB, once)…",
@@ -164,7 +181,7 @@ export function createVoiceOrchestrator(input: {
       } else {
         input.toast.show({ message: `${input.lexicon().transcribe}…`, variant: "info", duration: 3000 })
       }
-      const rawText = await Whisper.transcribe(wavPath, asr, pipelineAbort.signal)
+      const rawText = await services.transcribe(wavPath, asr, pipelineAbort.signal)
       if (!rawText.trim()) {
         throw new Error("Nothing was heard — try speaking closer to the microphone.")
       }
@@ -173,7 +190,11 @@ export function createVoiceOrchestrator(input: {
       input.toast.show({ message: `${input.lexicon().normalize}…`, variant: "info", duration: 3000 })
       let promptText = rawText.trim()
       try {
-        promptText = await Normalizer.normalize(rawText, cfg.normalizer as Normalizer.NormalizerConfig, pipelineAbort.signal)
+        promptText = await services.normalize(
+          rawText,
+          cfg.normalizer as Normalizer.NormalizerConfig,
+          pipelineAbort.signal,
+        )
       } catch {
         // superwhisper/s1-mini is preferred, but dictation still submits the ASR text.
       }

@@ -22,14 +22,15 @@ const entrySrc = readFileSync(
   "utf8",
 )
 
-check("row keeps onMouseDown={handleFocus}", entrySrc.includes("onMouseDown={handleFocus}"), true)
+check("row uses selection-safe mouse handler", entrySrc.includes("onMouseDown={handleRowMouseDown}"), true)
 check("row no longer binds onMouseUp={handleFocus}", entrySrc.includes("onMouseUp={handleFocus}"), false)
 check("suppressNextFocusMouseUp removed", entrySrc.includes("suppressNextFocusMouseUp"), false)
 check("releaseFocusSuppression removed", entrySrc.includes("releaseFocusSuppression"), false)
-check("handleToggle keeps lastToggleAt debounce", entrySrc.includes("lastToggleAt"), true)
-check("120ms debounce threshold kept", entrySrc.includes("now - lastToggleAt < 120"), true)
+check("timing debounce removed", entrySrc.includes("lastToggleAt"), false)
+check("body toggle removed", entrySrc.includes("handleRowToggle"), false)
 check("handleHeaderMouseDown removed (PR5: mouseup-only toggle)", entrySrc.includes("handleHeaderMouseDown"), false)
 check("handleHeaderMouseUp still wired", entrySrc.includes("handleHeaderMouseUp"), true)
+check("header ignores non-left buttons", entrySrc.includes("event.button !== MouseButton.LEFT"), true)
 
 if (failures > 0) {
   console.log(`${failures}/${assertions} M4 assertions FAILED`)

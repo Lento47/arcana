@@ -35,7 +35,8 @@ const spineProseSrc = read("../src/shell/command-spine/spine-prose.tsx")
 const shellSrc = read("../src/shell/command-spine/command-spine-shell.tsx")
 const indexSrc = read("../src/shell/command-spine/index.ts")
 const localeSrc = read("../src/util/locale.ts")
-const appSrc = read("../src/app.tsx")
+const proofDialogsSrc = read("../src/proof-view/run-proof-dialogs.tsx")
+const appEffectsSrc = read("../src/app-effects.tsx")
 const statusbarSrc = read("../src/feature-plugins/system/statusbar.tsx")
 const metricsBarSrc = read("../src/component/prompt/metrics-bar.tsx")
 const sidebarCtxSrc = read("../src/feature-plugins/sidebar/context.tsx")
@@ -68,10 +69,10 @@ check("sidebar/context uses Locale.currency", sidebarCtxSrc.includes("Locale.cur
 check("subagent-footer uses Locale.currency", subagentFooterSrc.includes("Locale.currency"), true)
 
 // ─── T7 ───────────────────────────────────────────────────────────────
-check("app.tsx truncateMiddle(id, 17)", appSrc.includes("truncateMiddle(id, 17)"), true)
-check("app.tsx truncate(label, 40)", appSrc.includes("truncate(label, 40)"), true)
-check("app.tsx no id.slice(0, 10)", appSrc.includes("id.slice(0, 10)"), false)
-check("app.tsx no label.slice(0, 37)", appSrc.includes("label.slice(0, 37)"), false)
+check("proof dialogs truncateMiddle(id, 17)", proofDialogsSrc.includes("truncateMiddle(id, 17)"), true)
+check("app effects truncate(label, 40)", appEffectsSrc.includes("truncate(label, 40)"), true)
+check("proof dialogs no id.slice(0, 10)", proofDialogsSrc.includes("id.slice(0, 10)"), false)
+check("app effects no label.slice(0, 37)", appEffectsSrc.includes("label.slice(0, 37)"), false)
 
 if (failures > 0) {
   console.log(`${failures}/${assertions} cleanup-pass assertions FAILED`)

@@ -44,6 +44,7 @@ describe("optimistic merge helpers", () => {
     const opts: OptimisticUserMessage[] = [
       {
         id: "optimistic-1",
+        messageID: "msg-1",
         sessionID: "s1",
         text: "can you create a game?",
         timestamp: 1,
@@ -51,9 +52,40 @@ describe("optimistic merge helpers", () => {
         model: { providerID: "x", modelID: "y" },
       },
     ]
-    expect(filterCoveredOptimistics(opts, [])).toHaveLength(1)
-    expect(filterCoveredOptimistics(opts, ["can you create a game?"])).toHaveLength(0)
-    expect(filterCoveredOptimistics(opts, ["can you create a game? please"])).toHaveLength(1)
+    expect(filterCoveredOptimistics(opts, new Set())).toHaveLength(1)
+    expect(filterCoveredOptimistics(opts, new Set(["msg-1"]))).toHaveLength(0)
+    expect(filterCoveredOptimistics(opts, new Set(["msg-other"]))).toHaveLength(1)
+  })
+
+  test("acknowledges identical prompts independently by message id", () => {
+    const base: OptimisticUserMessage = {
+      id: "optimistic-msg-1",
+      messageID: "msg-1",
+      sessionID: "s1",
+      text: "same text",
+      timestamp: 1,
+      agent: "build",
+      model: { providerID: "x", modelID: "y" },
+    }
+    const second = { ...base, id: "optimistic-msg-2", messageID: "msg-2", timestamp: 2 }
+
+    expect(filterCoveredOptimistics([base, second], new Set(["msg-1"]))).toEqual([second])
+  })
+
+  test("delivery promotion upserts the same message id", () => {
+    const base: OptimisticUserMessage = {
+      id: "optimistic-msg-1",
+      messageID: "msg-1",
+      sessionID: "pending",
+      text: "hello",
+      timestamp: 1,
+      agent: "build",
+      model: { providerID: "x", modelID: "y" },
+    }
+    addOptimisticMessage(base)
+    addOptimisticMessage({ ...base, sessionID: "real" })
+
+    expect(allOptimisticMessages()).toEqual([{ ...base, sessionID: "real" }])
   })
 
   test("normalizeOptimisticText trims", () => {
@@ -63,13 +95,14 @@ describe("optimistic merge helpers", () => {
   test("remapOptimisticSession moves only the pending stub's local echo", () => {
     const message = {
       id: "optimistic-1",
+      messageID: "msg-1",
       sessionID: "pending-stub",
       text: "hello",
       timestamp: 1,
       agent: "build",
       model: { providerID: "x", modelID: "y" },
     } satisfies OptimisticUserMessage
-    const unrelated = { ...message, id: "optimistic-2", sessionID: "other-session" }
+    const unrelated = { ...message, id: "optimistic-2", messageID: "msg-2", sessionID: "other-session" }
     addOptimisticMessage(message)
     addOptimisticMessage(unrelated)
 
@@ -83,6 +116,7 @@ describe("optimistic merge helpers", () => {
   test("clearOptimisticMessages removes only the requested session's echo", () => {
     const message = {
       id: "optimistic-1",
+      messageID: "msg-1",
       sessionID: "session-a",
       text: "hello",
       timestamp: 1,
@@ -90,12 +124,12 @@ describe("optimistic merge helpers", () => {
       model: { providerID: "x", modelID: "y" },
     } satisfies OptimisticUserMessage
     addOptimisticMessage(message)
-    addOptimisticMessage({ ...message, id: "optimistic-2", sessionID: "session-b" })
+    addOptimisticMessage({ ...message, id: "optimistic-2", messageID: "msg-2", sessionID: "session-b" })
 
     clearOptimisticMessages("session-a")
 
     expect(allOptimisticMessages()).toEqual([
-      { ...message, id: "optimistic-2", sessionID: "session-b" },
+      { ...message, id: "optimistic-2", messageID: "msg-2", sessionID: "session-b" },
     ])
   })
 })
@@ -119,6 +153,7 @@ describe("user ask never permanent ellipsis", () => {
     const thinking = { id: "a2", role: "assistant" as const, time: { created: 4000 } }
     const opt: OptimisticUserMessage = {
       id: "optimistic-1",
+      messageID: "msg-1",
       sessionID: "s1",
       text: "hello",
       timestamp: 3000,
@@ -199,6 +234,7 @@ describe("user ask never permanent ellipsis", () => {
     ]
     const opt: OptimisticUserMessage = {
       id: "optimistic-1",
+      messageID: "msg-1",
       sessionID: "s1",
       text: "hello",
       timestamp: 5000,
@@ -220,6 +256,7 @@ describe("user ask never permanent ellipsis", () => {
     ]
     const opt: OptimisticUserMessage = {
       id: "optimistic-1",
+      messageID: "msg-1",
       sessionID: "s1",
       text: "hello",
       timestamp: 5000,
@@ -238,6 +275,7 @@ describe("user ask never permanent ellipsis", () => {
     const history = [{ id: "u1", role: "user" as const, time: { created: 1000 } }]
     const opt: OptimisticUserMessage = {
       id: "optimistic-1",
+      messageID: "msg-1",
       sessionID: "s1",
       text: "hello",
       timestamp: 3000,

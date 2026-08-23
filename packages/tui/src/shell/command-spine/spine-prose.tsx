@@ -185,8 +185,8 @@ export function SpineProse(props: {
     return theme.markdownText ?? theme.text
   })
   const mdBg = createMemo(() => {
-    if (chatVoice() && (kind() === "plan" || kind() === "ok")) {
-      return (theme.backgroundPanel ?? theme.background) as any
+    if (chatVoice() && kind() === "ask") {
+      return theme.backgroundElement as any
     }
     return theme.background as any
   })
@@ -203,6 +203,7 @@ export function SpineProse(props: {
   const codeChrome = createMemo(() =>
     codeBlockChrome({ bodyLabel: bodyLabel(), filetype: ft(), streaming: liveStreaming() }),
   )
+  const criticalCode = createMemo(() => kind() === "fail" || bodyLabel()?.toLowerCase() === "error")
 
   const bodyNote = () => (
     <Show when={props.note?.trim()}>
@@ -314,22 +315,18 @@ export function SpineProse(props: {
             paddingRight={codePad()}
             paddingTop={codePadY()}
             paddingBottom={codePadY()}
-            border={true}
-            customBorderChars={RoundBorder}
+            border={criticalCode() ? true : ["left"]}
+            customBorderChars={criticalCode() ? RoundBorder : undefined}
             borderColor={(bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : (theme.borderSubtle ?? theme.textMuted)) as any}
           >
             <box flexDirection="row" flexShrink={0} gap={1} paddingBottom={1}>
-              <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
-                <text fg={theme.spineContext} wrapMode="none">
-                  {codeChrome().header}
-                </text>
-              </box>
+              <text fg={theme.spineContext} wrapMode="none">
+                {codeChrome().header}
+              </text>
               <Show when={codeChrome().badge}>
-                <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
-                  <text fg={theme.accent} wrapMode="none">
-                    {codeChrome().badge}
-                  </text>
-                </box>
+                <text fg={theme.accent} wrapMode="none">
+                  {codeChrome().badge}
+                </text>
               </Show>
             </box>
             <code

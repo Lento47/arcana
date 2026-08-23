@@ -27,6 +27,7 @@ export function SpineInsightCard(props: {
 }) {
   const { theme } = useTheme()
   const card = () => props.card
+  const critical = createMemo(() => card().severity === "HIGH")
   const header = createMemo(() => insightHeaderChrome({ title: card().title, severity: card().severity }))
   const metrics = () => card().metrics.slice(0, 8)
   const metricRows = createMemo(() => {
@@ -48,10 +49,10 @@ export function SpineInsightCard(props: {
       marginBottom={1}
       paddingLeft={1}
       paddingRight={1}
-      paddingTop={1}
-      paddingBottom={1}
-      border={true}
-      customBorderChars={RoundBorder}
+      paddingTop={critical() ? 1 : 0}
+      paddingBottom={critical() ? 1 : 0}
+      border={critical() ? true : ["left"]}
+      customBorderChars={critical() ? RoundBorder : undefined}
       borderColor={severityColor(card().severity, theme)}
       backgroundColor={theme.backgroundPanel}
     >
@@ -83,7 +84,7 @@ export function SpineInsightCard(props: {
                     flexShrink={0}
                     paddingLeft={1}
                     paddingRight={1}
-                    backgroundColor={theme.backgroundElement}
+                    backgroundColor={metric.tone === "fail" || metric.tone === "warn" ? theme.backgroundElement : undefined}
                   >
                     <text wrapMode="none">
                       <span style={{ fg: theme.spineContext }}>{metric.label} </span>

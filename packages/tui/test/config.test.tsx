@@ -58,6 +58,8 @@ test("resolves host-neutral defaults", () => {
   expect(config.status_segments).toBeUndefined()
   expect(config.keybinds.has("terminal.suspend")).toBe(true)
   expect(config.keybinds.has("session.list")).toBe(true)
+  expect(config.keybinds.has("agent.cycle")).toBe(false)
+  expect(config.keybinds.get("agent.cycle.reverse")).toMatchObject([{ key: "shift+tab" }])
 })
 
 test("resolves status-line customization from config", () => {

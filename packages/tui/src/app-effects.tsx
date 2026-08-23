@@ -225,7 +225,10 @@ export function useAppEffects(props: {
   // ── Continue effect (--continue flag) ──
   let continued = false
   createEffect(() => {
-    if (continued || sync.status === "loading" || !args.continue) return
+    // Session discovery is independent from provider/catalog bootstrap. Route
+    // as soon as the list is available so the cached shell can paint while the
+    // remaining startup projections settle in the background.
+    if (continued || !sync.session.listReady || !args.continue) return
     const match = sync.data.session
       .toSorted((a, b) => b.time.updated - a.time.updated)
       .find((x) => x.parentID === undefined)?.id

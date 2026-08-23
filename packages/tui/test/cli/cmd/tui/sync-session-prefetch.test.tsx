@@ -98,7 +98,7 @@ test("prefetch hydrates a session via the same sync path", async () => {
 
   try {
     sync.session.prefetch([sessionB])
-    await wait(() => sync.session.isSynced(sessionB))
+    await wait(() => sync.session.isHistoryReady(sessionB))
     expect(messageHits).toBe(1)
     expect(sync.data.message[sessionB]?.[0]?.id).toBe(messageB)
     expect(sync.data.part[messageB]?.[0]).toMatchObject({ text: "prefetched" })
@@ -168,10 +168,95 @@ test("prefetch of session B does not overwrite live parts of session A", async (
         },
       ]),
     )
-    await wait(() => sync.session.isSynced(sessionB))
+    await wait(() => sync.session.isHistoryReady(sessionB))
 
     expect(sync.data.part[messageA]?.[0]).toMatchObject({ text: "live-a" })
     expect(sync.data.part[messageB]?.[0]).toMatchObject({ text: "from-b" })
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("cold open starts metadata, history, and supplemental requests concurrently", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+
+  let resolveMetadata!: (response: Response) => void
+  const metadata = new Promise<Response>((resolve) => {
+    resolveMetadata = resolve
+  })
+  const hits = new Set<string>()
+  const { app, sync } = await mount((url) => {
+    if (!url.pathname.startsWith(`/session/${sessionA}`)) return undefined
+    hits.add(url.pathname)
+    if (url.pathname === `/session/${sessionA}`) return metadata
+    if (url.pathname === `/session/${sessionA}/message`) return json([])
+    if (url.pathname === `/session/${sessionA}/todo` || url.pathname === `/session/${sessionA}/diff`) return json([])
+    if (url.pathname === `/session/${sessionA}/governance`) return json({})
+    return undefined
+  }, tmp.path)
+
+  try {
+    const opening = sync.session.open(sessionA)
+    await wait(() =>
+      hits.has(`/session/${sessionA}`)
+      && hits.has(`/session/${sessionA}/message`)
+      && hits.has(`/session/${sessionA}/todo`)
+      && hits.has(`/session/${sessionA}/diff`)
+      && hits.has(`/session/${sessionA}/governance`),
+    )
+    expect(sync.session.loadState(sessionA).metadata).toBe("loading")
+    expect(sync.session.loadState(sessionA).history).toBe("ready")
+
+    resolveMetadata(json(sessionInfo(sessionA)))
+    await opening
+    expect(sync.session.loadState(sessionA).metadata).toBe("ready")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("open resolves at metadata readiness while history and governance remain progressive", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+
+  let resolveMessages!: (response: Response) => void
+  let resolveGovernance!: (response: Response) => void
+  const delayedMessages = new Promise<Response>((resolve) => {
+    resolveMessages = resolve
+  })
+  const delayedGovernance = new Promise<Response>((resolve) => {
+    resolveGovernance = resolve
+  })
+  const { app, sync } = await mount((url) => {
+    if (url.pathname === `/session/${sessionA}`) return json(sessionInfo(sessionA))
+    if (url.pathname === `/session/${sessionA}/message`) return delayedMessages
+    if (url.pathname === `/session/${sessionA}/todo` || url.pathname === `/session/${sessionA}/diff`) return json([])
+    if (url.pathname === `/session/${sessionA}/governance`) return delayedGovernance
+    return undefined
+  }, tmp.path)
+
+  try {
+    await sync.session.open(sessionA)
+    expect(sync.session.get(sessionA)?.id).toBe(sessionA)
+    expect(sync.session.loadState(sessionA)).toMatchObject({
+      metadata: "ready",
+      history: "loading",
+      supplemental: "loading",
+    })
+
+    resolveMessages(json([]))
+    await sync.session.hydrateHistory(sessionA)
+    expect(sync.session.loadState(sessionA)).toMatchObject({
+      metadata: "ready",
+      history: "ready",
+      supplemental: "loading",
+    })
+
+    resolveGovernance(json({}))
+    await sync.session.sync(sessionA)
+    expect(sync.session.isSynced(sessionA)).toBe(true)
+    expect(sync.session.loadState(sessionA).completedAt).toBeNumber()
   } finally {
     app.renderer.destroy()
   }

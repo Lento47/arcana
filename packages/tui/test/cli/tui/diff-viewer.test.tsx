@@ -3,6 +3,7 @@ import { expect, test } from "bun:test"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { DiffRenderable, type Renderable, ScrollBoxRenderable } from "@opentui/core"
 import { testRender, useRenderer } from "@opentui/solid"
+import { createSignal } from "solid-js"
 import type { TuiPluginApi, TuiPluginMeta, TuiRouteCurrent, TuiRouteDefinition } from "@arcana/plugin/tui"
 import type { Session } from "@arcana/sdk/v2"
 import { KVProvider } from "../../../src/context/kv"
@@ -11,7 +12,7 @@ import { ToastProvider } from "../../../src/ui/toast"
 import { TuiConfigProvider } from "../../../src/config"
 import { TuiKeybind } from "../../../src/config/keybind"
 import { OpencodeKeymapProvider } from "../../../src/keymap"
-import diffViewerPlugin from "../../../src/feature-plugins/system/diff-viewer"
+import diffViewerPlugin, { sameDiffRequest } from "../../../src/feature-plugins/system/diff-viewer"
 import { createTuiPluginApi } from "../../fixture/tui-plugin"
 import { createTuiResolvedConfig } from "../../fixture/tui-runtime"
 import { TestTuiContexts } from "../../fixture/tui-environment"
@@ -99,7 +100,71 @@ test("brackets navigate diff hunks", async () => {
   }
 })
 
-async function renderDiffViewer(vcsDiff: unknown[], height = 20) {
+test("equivalent diff requests do not invalidate the resource", () => {
+  expect(sameDiffRequest(
+    { mode: "last-turn", sessionID: "session-1", messageID: "message-1", directory: "/repo" },
+    { mode: "last-turn", sessionID: "session-1", messageID: "message-1", directory: "/repo" },
+  )).toBe(true)
+  expect(sameDiffRequest(
+    { mode: "git", sessionID: "session-1", directory: "/repo" },
+    { mode: "git", sessionID: "session-1", directory: "/other" },
+  )).toBe(false)
+})
+
+test("thinking-state invalidations keep one mounted diff and one request", async () => {
+  const viewer = await renderDiffViewer([singleFileDiff("const stableReview = true")])
+  try {
+    await viewer.app.waitForFrame((frame) => frame.includes("const stableReview"))
+    const mounted = findDiff(viewer.app.renderer.root)
+    expect(mounted).toBeDefined()
+
+    for (let frame = 1; frame <= 8; frame++) {
+      viewer.bumpSessionRevision()
+      await viewer.app.renderOnce()
+      expect(viewer.app.captureCharFrame()).toContain("const stableReview")
+      expect(findDiff(viewer.app.renderer.root)).toBe(mounted)
+    }
+
+    expect(viewer.vcsDiffCalls()).toBe(1)
+  } finally {
+    viewer.app.renderer.destroy()
+  }
+})
+
+test("a real diff refresh keeps the previous patch mounted until replacement is ready", async () => {
+  let resolveRefresh!: (value: unknown[]) => void
+  const refresh = new Promise<unknown[]>((resolve) => { resolveRefresh = resolve })
+  const viewer = await renderDiffViewer(
+    [singleFileDiff("const oldSnapshot = true")],
+    20,
+    async (_input, call) => call === 1 ? [singleFileDiff("const oldSnapshot = true")] : refresh,
+  )
+  try {
+    await viewer.app.waitForFrame((frame) => frame.includes("const oldSnapshot"))
+    const mounted = findDiff(viewer.app.renderer.root)
+
+    viewer.setDirectory("/repo/next")
+    await viewer.app.waitFor(() => viewer.vcsDiffCalls() === 2)
+    await viewer.app.renderOnce()
+    const refreshingFrame = viewer.app.captureCharFrame()
+    expect(refreshingFrame).toContain("const oldSnapshot")
+    expect(refreshingFrame).not.toContain("Loading diff")
+    expect(findDiff(viewer.app.renderer.root)).toBe(mounted)
+
+    resolveRefresh([singleFileDiff("const newSnapshot = true")])
+    await viewer.app.waitForFrame((frame) => frame.includes("const newSnapshot"))
+    expect(viewer.app.captureCharFrame()).not.toContain("const oldSnapshot")
+  } finally {
+    resolveRefresh([])
+    viewer.app.renderer.destroy()
+  }
+})
+
+async function renderDiffViewer(
+  vcsDiff: unknown[],
+  height = 20,
+  loadDiff?: (input: unknown, call: number) => unknown[] | Promise<unknown[]>,
+) {
   const commands = new Map<
     string,
     NonNullable<Parameters<TuiPluginApi["keymap"]["registerLayer"]>[0]["commands"]>[number]
@@ -107,8 +172,17 @@ async function renderDiffViewer(vcsDiff: unknown[], height = 20) {
   let current = startRoute
   let renderDiff: TuiRouteDefinition["render"] | undefined
   let vcsDiffInput: unknown
+  let vcsDiffCalls = 0
+  let bumpSessionRevision = () => {}
+  let setDirectory = (_directory: string) => {}
   const config = createTuiResolvedConfig()
   function Harness() {
+    const [liveSession, setLiveSession] = createSignal<Session>(session)
+    bumpSessionRevision = () => setLiveSession((current) => ({
+      ...current,
+      time: { ...current.time, updated: (current.time.updated ?? 0) + 1 },
+    }))
+    setDirectory = (directory) => setLiveSession((current) => ({ ...current, directory }))
     const renderer = useRenderer()
     const keymap = createDefaultOpenTuiKeymap(renderer)
     const registerLayer = keymap.registerLayer.bind(keymap)
@@ -122,14 +196,15 @@ async function renderDiffViewer(vcsDiff: unknown[], height = 20) {
         vcs: {
           diff: async (input: unknown) => {
             vcsDiffInput = input
-            return { data: vcsDiff }
+            vcsDiffCalls++
+            return { data: loadDiff ? await loadDiff(input, vcsDiffCalls) : vcsDiff }
           },
         },
         session: { diff: async () => ({ data: [] }) },
       } as unknown as TuiPluginApi["client"],
       state: {
         session: {
-          get: () => session,
+          get: () => liveSession(),
         },
       },
     })
@@ -176,6 +251,9 @@ async function renderDiffViewer(vcsDiff: unknown[], height = 20) {
     commands,
     current: () => current,
     vcsDiffInput: () => vcsDiffInput,
+    vcsDiffCalls: () => vcsDiffCalls,
+    bumpSessionRevision,
+    setDirectory,
   }
 }
 
@@ -189,6 +267,21 @@ function findScrollBox(root: Renderable): ScrollBoxRenderable | undefined {
 function containsDiff(root: Renderable): boolean {
   if (root instanceof DiffRenderable) return true
   return root.getChildren().some(containsDiff)
+}
+
+function findDiff(root: Renderable): DiffRenderable | undefined {
+  if (root instanceof DiffRenderable) return root
+  return root.getChildren().map(findDiff).find(Boolean)
+}
+
+function singleFileDiff(line: string) {
+  return {
+    file: "src/review.ts",
+    additions: 1,
+    deletions: 1,
+    status: "modified",
+    patch: `--- a/src/review.ts\n+++ b/src/review.ts\n@@ -1 +1 @@\n-const previous = false\n+${line}`,
+  }
 }
 
 const session = {

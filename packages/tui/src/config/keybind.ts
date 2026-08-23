@@ -125,11 +125,10 @@ export const Definitions = {
   provider_connect: keybind("none", "Connect provider"),
   console_org_switch: keybind("none", "Switch console organization"),
   agent_list: keybind("<leader>a", "List agents"),
-  // Tab in the prompt opens the agent picker (easy agent switch).
-  // When autocomplete is open, prompt.autocomplete.complete takes Tab first.
-  // When the prompt is unfocused, command-spine uses Tab for next entry.
-  agent_cycle: keybind("tab", "Open agent picker"),
-  agent_cycle_reverse: keybind("shift+tab", "Open agent picker"),
+  // Plain Tab belongs to the composer and local form/navigation modes.
+  // Shift+Tab is the sole global agent-switch shortcut.
+  agent_cycle: keybind("none", "Open agent picker"),
+  agent_cycle_reverse: keybind("shift+tab", "Cycle agent"),
   variant_cycle: keybind("ctrl+t", "Cycle model variants"),
   variant_list: keybind("none", "List model variants"),
 

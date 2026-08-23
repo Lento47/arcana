@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
+  diffFileTreeWidth,
   diffPatchPaneWidth,
+  diffViewerFileTreeVisible,
   homePromptMaxWidth,
   dialogVerticalPad,
   dialogMaxWidth,
@@ -24,6 +26,23 @@ describe("geometry.diffPatchPaneWidth (B5)", () => {
     expect(diffPatchPaneWidth(30, false)).toBe(26)
     expect(diffPatchPaneWidth(40, false)).toBe(36)
     expect(diffPatchPaneWidth(60, false)).toBe(56)
+  })
+})
+
+describe("responsive diff geometry", () => {
+  test("hides the tree below 100 columns and preserves a useful patch pane", () => {
+    expect(diffViewerFileTreeVisible(99, true, 2)).toBe(false)
+    expect(diffViewerFileTreeVisible(100, true, 2)).toBe(true)
+    expect(diffViewerFileTreeVisible(120, false, 2)).toBe(false)
+    expect(diffViewerFileTreeVisible(120, true, 0)).toBe(false)
+    expect(diffPatchPaneWidth(100, true, diffFileTreeWidth(100))).toBeGreaterThanOrEqual(64)
+  })
+
+  test("scales the tree between 20 and 32 columns", () => {
+    expect(diffFileTreeWidth(40)).toBe(20)
+    expect(diffFileTreeWidth(100)).toBe(26)
+    expect(diffFileTreeWidth(120)).toBe(31)
+    expect(diffFileTreeWidth(200)).toBe(32)
   })
 })
 

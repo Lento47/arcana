@@ -37,7 +37,7 @@ export function isSessionTurnActive(sessionStatusType?: string): boolean {
   return sessionStatusType === "busy" || sessionStatusType === "retry"
 }
 
-export type ComposerRunState = "idle" | "working" | "waiting" | "stop"
+export type ComposerRunState = "idle" | "working" | "retrying" | "waiting" | "stop"
 
 /**
  * Derive composer chrome from engine-authored lifecycle state.
@@ -56,6 +56,7 @@ export function deriveComposerRunState(input: {
 }): ComposerRunState {
   if (input.hasQuestions || input.hasLocalPermissions) return "stop"
   if (input.sessionStatusType === "waiting" || input.hasPermissions) return "waiting"
+  if (input.sessionStatusType === "retry") return "retrying"
   if (input.pending && isSessionTurnActive(input.sessionStatusType)) return "working"
   return "idle"
 }

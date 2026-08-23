@@ -28,7 +28,7 @@ const theme = {
 }
 
 describe("DiffViewerFileTree", () => {
-  test.skip("renders sorted hierarchical file rows", async () => {
+  test("renders sorted hierarchical file rows", async () => {
     const app = await testRender(
       () =>
         withTheme(() => (
@@ -52,7 +52,7 @@ describe("DiffViewerFileTree", () => {
 
     try {
       await renderOnceSettled(app)
-      const lines = visibleLines(app.captureCharFrame())
+      const lines = visibleLines(await captureSettledFrame(app))
 
       expect(lines).toEqual([
         "▾ a",

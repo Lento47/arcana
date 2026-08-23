@@ -20,6 +20,7 @@ const read = (rel: string) =>
 
 const spineDiff = () => read("../src/shell/command-spine/spine-diff.tsx")
 const app = () => read("../src/app.tsx")
+const providerTree = () => read("../src/provider-tree.tsx")
 const home = () => read("../src/routes/home.tsx")
 const session = () => read("../src/routes/session/index.tsx")
 
@@ -43,8 +44,9 @@ describe("D7 — toast surface is app-global, not per-route", () => {
   test("app.tsx renders one global <Toast /> surface", () => {
     const src = app()
     expect(src).toContain("<Toast />")
-    // Imported from ui/toast alongside the provider.
-    expect(src).toContain('ToastProvider, Toast, useToast } from "./ui/toast"')
+    expect(src).toContain('import { Toast, useToast } from "./ui/toast"')
+    // ProviderTree owns composition; App owns the single visible surface.
+    expect(providerTree()).toContain('import { ToastProvider } from "./ui/toast"')
   })
   test("home.tsx no longer renders or imports Toast", () => {
     const src = home()

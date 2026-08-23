@@ -124,7 +124,7 @@ function projectionWidth(projection: NavigationRailProjection): number {
   )
   const siblings = projection.siblingLabel ? displayWidth(` ‹ ${projection.siblingLabel} ›`) : 0
   const parent = projection.showParent ? displayWidth(" ↑") : 0
-  return repo + displayWidth("◇ ") + crumbs + siblings + parent
+  return repo + crumbs + siblings + parent
 }
 
 export function projectNavigationRail(input: {
@@ -216,7 +216,6 @@ export function SpineNavigationRail(props: {
           </>
         )}
       </Show>
-      <text fg={theme.spineRail} wrapMode="none">◇ </text>
       <For each={rail().crumbs}>
         {(crumb, index) => (
           <>

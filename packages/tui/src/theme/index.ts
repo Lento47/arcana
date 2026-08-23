@@ -19,6 +19,7 @@ import phosphor from "./assets/phosphor.json" with { type: "json" }
 import sakura from "./assets/sakura.json" with { type: "json" }
 import synthwave from "./assets/synthwave.json" with { type: "json" }
 import tokyonight from "./assets/tokyonight.json" with { type: "json" }
+import vercel from "./assets/vercel.json" with { type: "json" }
 import void_ from "./assets/void.json" with { type: "json" }
 import wraith from "./assets/wraith.json" with { type: "json" }
 
@@ -217,6 +218,7 @@ export const DEFAULT_THEMES: Record<string, ThemeJson> = {
   sakura,
   synthwave,
   tokyonight,
+  vercel,
   void: void_,
   wraith,
 }

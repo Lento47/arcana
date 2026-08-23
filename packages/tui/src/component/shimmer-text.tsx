@@ -1,8 +1,7 @@
-import { For, createEffect, createSignal, onCleanup } from "solid-js"
+import { Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useKV } from "../context/kv"
 import type { ColorInput, RGBA } from "@opentui/core"
-
-type Stop = readonly [position: number, color: readonly [number, number, number]]
+import { useSpineMotion } from "../shell/command-spine/spine-motion"
 
 interface ShimmerTextProps {
   text: string
@@ -11,6 +10,10 @@ interface ShimmerTextProps {
   background?: ColorInput
   /** Hex string or OpenTUI RGBA. Theme tokens are RGBA objects. */
   accent?: string | RGBA
+  /** Command-spine cue id. Only the shell-selected cue animates. */
+  cue?: string
+  /** Animation style: "sweep" (light glides across) or "pulse" (whole text breathes). */
+  animation?: "sweep" | "pulse"
 }
 
 const FALLBACK_ACCENT: [number, number, number] = [224, 166, 75]
@@ -41,76 +44,85 @@ function toHex(rgb: readonly [number, number, number]): string {
   return "#" + rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")
 }
 
-function makeStops(base: readonly [number, number, number], highlight: readonly [number, number, number]): readonly Stop[] {
-  const mid: [number, number, number] = [
-    base[0] + (highlight[0] - base[0]) * 0.55,
-    base[1] + (highlight[1] - base[1]) * 0.55,
-    base[2] + (highlight[2] - base[2]) * 0.55,
-  ]
-  const fade1: [number, number, number] = [
-    base[0] + (highlight[0] - base[0]) * 0.29,
-    base[1] + (highlight[1] - base[1]) * 0.29,
-    base[2] + (highlight[2] - base[2]) * 0.29,
-  ]
-  const fade2: [number, number, number] = [
-    base[0] + (highlight[0] - base[0]) * 0.18,
-    base[1] + (highlight[1] - base[1]) * 0.18,
-    base[2] + (highlight[2] - base[2]) * 0.18,
-  ]
-  return [
-    [-4.0, base],
-    [-2.6, fade2],
-    [-1.3, fade1],
-    [0.0, highlight],
-    [1.3, mid],
-    [2.6, fade2],
-    [4.0, base],
-  ]
-}
-
 export function ShimmerText(props: ShimmerTextProps) {
   const kv = useKV()
+  const motion = useSpineMotion()
   const animationsEnabled = () => kv.get("animations_enabled", true)
-  const accent = colorToRgb(props.accent)
-  // Base = dimmed accent (~40% brightness)
-  const base: [number, number, number] = [
-    Math.round(accent[0] * 0.4),
-    Math.round(accent[1] * 0.4),
-    Math.round(accent[2] * 0.4),
-  ]
-  const stops = makeStops(base, accent)
-  const characters = () => Array.from(props.text)
-  const [head, setHead] = createSignal(-4)
+  const accent = createMemo(() => colorToRgb(props.accent))
+  const base = createMemo<[number, number, number]>(() => [
+    Math.round(accent()[0] * 0.4),
+    Math.round(accent()[1] * 0.4),
+    Math.round(accent()[2] * 0.4),
+  ])
+  const characters = createMemo(() => Array.from(props.text))
+  const [localPhase, setLocalPhase] = createSignal(0)
+  const active = () =>
+    props.active !== false
+    && animationsEnabled()
+    && (motion ? (props.cue ? motion.isCueActive(props.cue) : true) : true)
+
+  // Smooth sweep: a continuous float center (in char units) ping-pongs across
+  // the text. Advanced by delta-time so speed is identical at any frame rate.
+  // SPEED = chars/sec, RADIUS = glow half-width (chars).
+  const SPEED = 6
+  const RADIUS = 2.4
+  const SIGMA = RADIUS / 2
 
   createEffect(() => {
-    if (props.active === false || !animationsEnabled()) {
-      setHead(-4)
-      return
-    }
-    const timer = setInterval(() => {
-      setHead((current) => (current > characters().length + 4 ? -4 : current + 0.35))
-    }, 70)
+    // Run our own smooth loop regardless of `motion`: the cue only gates
+    // visibility (active()); it must not dictate a stepped position.
+    if (!active()) return
+    const t0 = performance.now()
+    const timer = setInterval(() => setLocalPhase(performance.now() - t0), 16)
     onCleanup(() => clearInterval(timer))
   })
 
-  function shimmerColor(index: number): string {
-    const position = index - head()
-    if (position <= stops[0]![0] || position >= stops[stops.length - 1]![0]) return toHex(base)
-    for (let i = 0; i < stops.length - 1; i++) {
-      const [startPos, startColor] = stops[i]!
-      const [endPos, endColor] = stops[i + 1]!
-      if (position >= startPos && position <= endPos) {
-        return toHex(interpolate(startColor, endColor, (position - startPos) / (endPos - startPos)))
-      }
-    }
-    return toHex(base)
+  // One-directional sweep (left → right, wrapping). The gaussian falloff
+  // already drives intensity → 0 at both edges, so the wrap is invisible —
+  // no bounce, no teleport.
+  const span = () => characters().length + 2 * RADIUS
+
+  const center = createMemo(() => {
+    if (!active()) return -RADIUS - 1
+    const e = localPhase() / 1000
+    return (e * SPEED) % span() - RADIUS
+  })
+
+  // Whole-text breathing for the "pulse" variant: smooth 0→1→0 sine over a
+  // fixed period. No travelling band.
+  const pulseIntensity = createMemo(() => {
+    if (!active()) return 0
+    const e = localPhase() / 1000
+    const period = 1.8
+    return 0.5 - 0.5 * Math.cos((2 * Math.PI * e) / period)
+  })
+
+  const pulse = () => props.animation === "pulse"
+
+  // Per-character gaussian glow for "sweep" (a continuous gradient comet, not
+  // a stepped crawl); uniform breathing intensity for "pulse".
+  const shade = (i: number) => {
+    const intensity = pulse()
+      ? pulseIntensity()
+      : (() => {
+          const c = center()
+          const s = span()
+          // Circular distance over the loop period so the band wraps seamlessly:
+          // it exits the right edge exactly as its twin enters the left — no dark
+          // gap / blink at the loop boundary.
+          const d = ((c - i + s / 2) % s + s) % s - s / 2
+          return Math.exp(-(d * d) / (2 * SIGMA * SIGMA))
+        })()
+    return toHex(interpolate(base(), accent(), intensity))
   }
 
   return (
     <text bg={props.background}>
-      <For each={characters()}>
-        {(char, index) => <span style={{ fg: shimmerColor(index()) }}>{char}</span>}
-      </For>
+      <Show when={active()} fallback={<span style={{ fg: toHex(base()) }}>{props.text}</span>}>
+        {characters().map((c, i) => (
+          <span style={{ fg: shade(i) }}>{c}</span>
+        ))}
+      </Show>
     </text>
   )
 }

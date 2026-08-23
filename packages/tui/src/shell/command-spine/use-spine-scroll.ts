@@ -1,4 +1,4 @@
-import { createSignal, onMount } from "solid-js"
+import { createEffect, createSignal, onCleanup, onMount } from "solid-js"
 import type { Accessor, Setter } from "solid-js"
 import type { MouseEvent, ScrollBoxRenderable } from "@opentui/core"
 import { shouldShowScrollButton } from "../../util/geometry"
@@ -15,9 +15,12 @@ import { shouldShowScrollButton } from "../../util/geometry"
 export function useSpineScroll(input: {
   /** Forwarded to the ScrollBox ref so callers can also read the renderable. */
   onRef: (r: ScrollBoxRenderable) => void
+  /** Changes whenever mounted row content can change its rendered height. */
+  contentRevision?: Accessor<unknown>
 }) {
   const [showScrollButton, setShowScrollButton] = createSignal(false)
   let scroll: ScrollBoxRenderable | undefined
+  let refreshFrame: number | undefined
 
   const setScrollRef = (r: ScrollBoxRenderable) => {
     scroll = r
@@ -61,6 +64,26 @@ export function useSpineScroll(input: {
   }
 
   onMount(refreshScrollButton)
+
+  createEffect(() => {
+    input.contentRevision?.()
+    const s = scroll
+    if (!s || s.isDestroyed) return
+    const distance = s.scrollHeight - s.scrollTop - s.height
+    const wasFollowing = distance <= 2
+    if (refreshFrame !== undefined) cancelAnimationFrame(refreshFrame)
+    refreshFrame = requestAnimationFrame(() => {
+      refreshFrame = undefined
+      const current = scroll
+      if (!current || current.isDestroyed) return
+      if (wasFollowing) current.scrollTo(current.scrollHeight)
+      refreshScrollButton()
+    })
+  })
+
+  onCleanup(() => {
+    if (refreshFrame !== undefined) cancelAnimationFrame(refreshFrame)
+  })
 
   return {
     showScrollButton: showScrollButton as Accessor<boolean>,

@@ -5,8 +5,9 @@
  * S8: USE_SAMPLE_SPINE + SAMPLE_ENTRIES debug scaffolding deleted.
  * M11: four `Intl.NumberFormat("en-US", {currency:"USD"})` copies consolidated
  *      into one canonical Locale.currency (default locale, USD).
- * T7: app.tsx code-unit cuts (id.slice(0,10)…slice(-4), label.slice(0,37))
- *      replaced with display-width-aware truncateMiddle/truncate.
+ * T7: code-unit cuts (id.slice(0,10)…slice(-4), label.slice(0,37)) replaced
+ *      with display-width-aware truncateMiddle/truncate. The proof ID and
+ *      terminal-title call sites now live in their focused modules.
  *
  * Currency assertions are deliberately locale-robust (the fix's point is the
  * default locale): no exact "$1,234.56" strings, which would break on a
@@ -22,7 +23,8 @@ const spineProseSrc = read("../src/shell/command-spine/spine-prose.tsx")
 const shellSrc = read("../src/shell/command-spine/command-spine-shell.tsx")
 const indexSrc = read("../src/shell/command-spine/index.ts")
 const localeSrc = read("../src/util/locale.ts")
-const appSrc = read("../src/app.tsx")
+const proofDialogsSrc = read("../src/proof-view/run-proof-dialogs.tsx")
+const appEffectsSrc = read("../src/app-effects.tsx")
 const statusbarSrc = read("../src/feature-plugins/system/statusbar.tsx")
 const metricsBarSrc = read("../src/component/prompt/metrics-bar.tsx")
 const sidebarCtxSrc = read("../src/feature-plugins/sidebar/context.tsx")
@@ -104,10 +106,10 @@ describe("M11 consolidation contract", () => {
 })
 
 describe("T7 contract", () => {
-  test("app.tsx uses the width-aware helpers, code-unit cuts gone", () => {
-    expect(appSrc).toContain("truncateMiddle(id, 17)")
-    expect(appSrc).toContain("truncate(label, 40)")
-    expect(appSrc).not.toContain("id.slice(0, 10)")
-    expect(appSrc).not.toContain("label.slice(0, 37)")
+  test("focused call sites use width-aware helpers, code-unit cuts gone", () => {
+    expect(proofDialogsSrc).toContain("truncateMiddle(id, 17)")
+    expect(appEffectsSrc).toContain("truncate(label, 40)")
+    expect(proofDialogsSrc).not.toContain("id.slice(0, 10)")
+    expect(appEffectsSrc).not.toContain("label.slice(0, 37)")
   })
 })

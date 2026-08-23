@@ -145,7 +145,7 @@ test("run + fail receipt at minimal", async () => {
 
 // ---------- run + pending ----------
 
-test("run + pending receipt shows running indicator", async () => {
+test("run + pending receipt defers to the single composer shimmer", async () => {
   const frame = await capture(
     await renderReceipt(
       "run",
@@ -154,7 +154,7 @@ test("run + pending receipt shows running indicator", async () => {
       120,
     ),
   )
-  expect(frame).toContain("Working")
+  expect(frame).not.toContain("Working")
 })
 
 test("interrupted receipt is static recovery evidence", async () => {
@@ -166,7 +166,7 @@ test("interrupted receipt is static recovery evidence", async () => {
       120,
     ),
   )
-  expect(frame).toContain("Interrupted · recovery required")
+  expect(frame).toContain("cargo build")
   expect(frame).not.toContain("Working")
 })
 

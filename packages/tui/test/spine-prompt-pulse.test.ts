@@ -23,6 +23,10 @@ const shellSrc = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/command-spine-shell.tsx"),
   "utf8",
 )
+const motionSrc = readFileSync(
+  join(import.meta.dir, "../src/shell/command-spine/spine-motion.tsx"),
+  "utf8",
+)
 
 describe("pulseActive (M3-narrowed gating predicate)", () => {
   test("active while working", () => {
@@ -42,11 +46,12 @@ describe("S9 source contract", () => {
     expect(promptSrc).not.toMatch(/onMount\(/)
   })
 
-  test("interval lifecycle is effect-gated on state", () => {
-    expect(promptSrc).toContain("createEffect")
-    expect(promptSrc).toContain("setInterval")
-    expect(promptSrc).toContain("clearInterval(pulseTimer)")
-    expect(promptSrc).toContain("pulseActive(props.state())")
+  test("one shared interval is gated by the dominant motion cue", () => {
+    expect(promptSrc).not.toContain("setInterval")
+    expect(motionSrc).toContain("createEffect")
+    expect(motionSrc).toContain("setInterval")
+    expect(motionSrc).toContain("clearInterval(timer)")
+    expect(motionSrc).toContain("props.activeCue() !== undefined")
   })
 
   test("shell passes the state accessor typed, not as any", () => {
@@ -60,8 +65,8 @@ describe("M3 dead-branch contract", () => {
     expect(promptSrc).not.toContain('props.state() === "thinking"')
   })
 
-  test("state prop uses the shared lifecycle union including waiting", () => {
-    expect(promptSrc).toContain('export type SpinePromptState = "idle" | "working" | "waiting" | "stop"')
+  test("state prop uses the shared lifecycle union including waiting and retrying", () => {
+    expect(promptSrc).toContain('export type SpinePromptState = "idle" | "working" | "retrying" | "waiting" | "stop"')
     expect(promptSrc).toContain("state: () => SpinePromptState")
   })
 })

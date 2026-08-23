@@ -71,7 +71,7 @@ export type SpineReceipt = {
     added?: number
     removed?: number
   }
-  /** `interrupted` is a display-only recovery state; it never rewrites engine history. */
+  /** Terminal cancellation/interruption authored by the engine. */
   status: "ok" | "fail" | "pending" | "interrupted"
   files?: SpineReceiptFile[]
 }
@@ -164,6 +164,8 @@ export type SpineEntry = {
   bodyHint?: string
   /** Muted note under code/prose (EOF, truncation, line range). */
   bodyNote?: string
+  /** Operator recovery actions derived from durable engine state. */
+  actions?: readonly SpineEntryAction[]
   collapsible?: boolean
   expandedByDefault?: boolean
   receipt?: SpineReceipt
@@ -199,6 +201,11 @@ export type SpineEntry = {
    * Prefer this over stuffing entries into `body` as "file" source.
    */
   listing?: string[]
+}
+
+export type SpineEntryAction = {
+  id: "retry" | "switch-model"
+  label: string
 }
 
 export type SpineConcernSeverity = "HIGH" | "MEDIUM" | "LOW"

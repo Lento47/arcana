@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { SpineEntry } from "../src/shell/command-spine/spine-types"
-import { canToggleSpineEntry, nextSpineFocusID, navigableSpineEntries } from "../src/shell/command-spine/spine-navigation"
+import { activateSpineEntryDisclosure, canToggleSpineEntry, nextSpineFocusID, navigableSpineEntries } from "../src/shell/command-spine/spine-navigation"
 
 function entry(id: string, overrides: Partial<SpineEntry> = {}): SpineEntry {
   return {
@@ -39,5 +39,21 @@ describe("command-spine navigation", () => {
     expect(canToggleSpineEntry(entry("body", { body: "details" }))).toBe(true)
     expect(canToggleSpineEntry(entry("diff", { diff: { files: "a.ts", stats: "+1 -1", body: "diff --git" } }))).toBe(true)
     expect(canToggleSpineEntry(entry("locked", { body: "details", collapsible: false }))).toBe(false)
+  })
+
+  test("mouse and keyboard disclosure share focus-before-toggle semantics", () => {
+    const calls: string[] = []
+    const target = entry("thought", { kind: "think", body: "reasoning", collapsible: true })
+    expect(activateSpineEntryDisclosure(target, {
+      focus: () => calls.push("focus"),
+      toggle: () => calls.push("toggle"),
+    })).toBe(true)
+    expect(calls).toEqual(["focus", "toggle"])
+
+    expect(activateSpineEntryDisclosure(entry("empty", { kind: "think", collapsible: false }), {
+      focus: () => calls.push("bad-focus"),
+      toggle: () => calls.push("bad-toggle"),
+    })).toBe(false)
+    expect(calls).toEqual(["focus", "toggle"])
   })
 })

@@ -2,7 +2,7 @@
 import type { ColorInput, RGBA, ScrollBoxRenderable } from "@opentui/core"
 import { Locale } from "../../util/locale"
 import { tint } from "../../context/theme"
-import { createEffect, createMemo, For, Match, Switch } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Match, Switch } from "solid-js"
 import { buildFileTree, flattenFileTree, type FileTreeItem, type FileTreeRow } from "./diff-viewer-file-tree-utils"
 import { Panel } from "./diff-viewer-ui"
 
@@ -68,6 +68,7 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
           <Match when={props.files.length > 0}>
             <For each={rows()}>
               {(row, index) => {
+                const [hovered, setHovered] = createSignal(false)
                 const highlighted = () => props.focused && props.highlightedNode === row.id
                 const selected = () => row.fileIndex !== undefined && props.selectedFileIndex === row.fileIndex
                 const reviewed = () => {
@@ -82,8 +83,10 @@ export function DiffViewerFileTree(props: DiffViewerFileTreeProps) {
                   <box
                     flexDirection="row"
                     width="100%"
-                    backgroundColor={highlighted() ? props.theme.primary : undefined}
+                    backgroundColor={highlighted() ? props.theme.primary : hovered() ? props.theme.backgroundElement : undefined}
                     onMouseUp={() => props.onRowClick?.(row)}
+                    onMouseOver={() => setHovered(true)}
+                    onMouseOut={() => setHovered(false)}
                   >
                     <text fg={highlighted() ? props.theme.background : fadedColor()} wrapMode="none" flexShrink={0}>
                       {prefix()}

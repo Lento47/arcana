@@ -9,8 +9,9 @@
  * Fix: move the highlight to the OUTER row box so it spans the full row —
  * gutter (no left gap) + header + body — and extract the policy as a pure
  * `rowFocusHighlight(focused, isChatProse)` helper (S7 pattern). Chat prose
- * rows keep their own card chrome (`backgroundPanel` + left accent border in
- * SpineChatCard) and are gated out — no double-fill.
+ * rows keep their own conversation chrome (left accent border in
+ * SpineChatCard; user prompts alone carry a faint fill) and are gated out —
+ * no double-fill.
  *
  * Source contracts fail on the old code.
  */

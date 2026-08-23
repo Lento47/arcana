@@ -12,8 +12,19 @@
  * B5: the unclamped `termWidth - (tree ? 33 : 0) - 4` went negative at
  * ≤ 37 cols with the file tree open (-7 at 30) and was fed to PanelGroup.
  */
-export function diffPatchPaneWidth(termWidth: number, showFileTree: boolean): number {
-  return Math.max(1, termWidth - (showFileTree ? 33 : 0) - 4)
+export function diffFileTreeWidth(termWidth: number): number {
+  const term = Number.isFinite(termWidth) ? Math.max(1, Math.floor(termWidth)) : 1
+  return Math.min(32, Math.max(20, Math.floor(term * 0.26)))
+}
+
+export function diffPatchPaneWidth(termWidth: number, showFileTree: boolean, fileTreeWidth = 32): number {
+  return Math.max(1, termWidth - (showFileTree ? Math.max(1, fileTreeWidth) + 1 : 0) - 4)
+}
+
+/** Responsive tree policy: unified review gets 64 cols; split review gets 84. */
+export function diffViewerFileTreeVisible(termWidth: number, enabled: boolean, fileCount: number): boolean {
+  if (!enabled || fileCount === 0 || termWidth < 100) return false
+  return diffPatchPaneWidth(termWidth, true, diffFileTreeWidth(termWidth)) >= 64
 }
 
 /**

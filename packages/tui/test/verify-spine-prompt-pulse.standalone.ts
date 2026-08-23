@@ -31,13 +31,18 @@ const shellSrc = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/command-spine-shell.tsx"),
   "utf8",
 )
+const motionSrc = readFileSync(
+  join(import.meta.dir, "../src/shell/command-spine/spine-motion.tsx"),
+  "utf8",
+)
 
 check("no 'Persistent pulse' comment", promptSrc.includes("Persistent pulse"), false)
 check("no onMount interval", /onMount\(/.test(promptSrc), false)
-check("interval gated via createEffect", promptSrc.includes("createEffect"), true)
-check("setInterval still drives the cycle", promptSrc.includes("setInterval"), true)
-check("interval cleared on deactivate", promptSrc.includes("clearInterval(pulseTimer)"), true)
-check("gate reads pulseActive(props.state())", promptSrc.includes("pulseActive(props.state())"), true)
+check("prompt owns no interval", promptSrc.includes("setInterval"), false)
+check("shared interval gated via createEffect", motionSrc.includes("createEffect"), true)
+check("shared interval drives the cycle", motionSrc.includes("setInterval"), true)
+check("shared interval cleared on deactivate", motionSrc.includes("clearInterval(timer)"), true)
+check("gate reads dominant active cue", motionSrc.includes("props.activeCue() !== undefined"), true)
 check("shell passes state typed", shellSrc.includes("state={runState}"), true)
 check("no state as any", shellSrc.includes("state={runState as any}"), false)
 

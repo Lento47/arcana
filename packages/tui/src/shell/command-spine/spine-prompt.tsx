@@ -1,5 +1,3 @@
-import { createEffect, createSignal, onCleanup } from "solid-js"
-import { useKV } from "../../context/kv"
 import type { PromptRef } from "../../component/prompt"
 import { Prompt } from "../../component/prompt"
 import { PLACEHOLDER } from "../../branding"
@@ -7,8 +5,7 @@ import { useTheme } from "../../context/theme"
 import { type SpineLayout } from "./spine-types"
 import { SpineGutterSpacer, spineLeadMetrics } from "./spine-lead"
 import { SpineRail } from "./spine-rail"
-
-const PROMPT_PULSE_MS = 200
+import { useSpineMotion } from "./spine-motion"
 
 /**
  * S9: the composer marker pulse is signal-driven, so the interval must run
@@ -17,7 +14,7 @@ const PROMPT_PULSE_MS = 200
  * waste. Waiting is engine-authored for permission/approval gates and must
  * remain visually stable while the operator decides.
  */
-export type SpinePromptState = "idle" | "working" | "waiting" | "stop"
+export type SpinePromptState = "idle" | "working" | "retrying" | "waiting" | "stop"
 
 export function pulseActive(state: SpinePromptState): boolean {
   return state === "working"
@@ -36,37 +33,17 @@ export function SpinePrompt(props: {
   gutterWidth?: number
 }) {
   const { theme } = useTheme()
-  const kv = useKV()
-  const animationsEnabled = () => kv.get("animations_enabled", true)
+  const motion = useSpineMotion()
   const layout = () => props.layout()
   const metrics = () => spineLeadMetrics(layout(), props.gutterWidth)
-  const [pulseFrame, setPulseFrame] = createSignal(0)
-
-  // S9: start/stop the interval on session state instead of running it
-  // forever. Idle/stop render a static marker, so freezing pulseFrame there
-  // is invisible — no 5 Hz render-thread wakeups when the session is idle.
-  // The frame is intentionally NOT reset on restart, so the animation
-  // resumes mid-cycle with no color jump to palette[0].
-  let pulseTimer: ReturnType<typeof setInterval> | undefined
-  createEffect(() => {
-    const active = pulseActive(props.state()) && animationsEnabled()
-    if (active && !pulseTimer) {
-      pulseTimer = setInterval(() => setPulseFrame((frame) => (frame + 1) % 4), PROMPT_PULSE_MS)
-    } else if (!active && pulseTimer) {
-      clearInterval(pulseTimer)
-      pulseTimer = undefined
-    }
-  })
-  onCleanup(() => {
-    if (pulseTimer) clearInterval(pulseTimer)
-  })
-
   const markerColor = () => {
     if (props.state() === "stop") return theme.spineFail
+    if (props.state() === "retrying") return theme.warning
     if (props.state() === "waiting") return theme.warning
     if (props.state() === "working") {
       const pulse = [theme.spineRun, theme.spinePrompt, theme.spineBrand, theme.spinePrompt]
-      return pulse[pulseFrame()] ?? theme.spinePrompt
+      if (!motion?.isCueActive("composer")) return theme.spinePrompt
+      return pulse[Math.floor(motion.phase() / 2) % pulse.length] ?? theme.spinePrompt
     }
     return theme.spinePrompt
   }

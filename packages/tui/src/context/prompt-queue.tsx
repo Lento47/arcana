@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup } from "solid-js"
+import { batch, createEffect, createSignal, onCleanup } from "solid-js"
 import { createStore, produce, unwrap } from "solid-js/store"
 import type { OpencodeClient } from "@arcana/sdk/v2"
 import { createSimpleContext } from "./helper"
@@ -9,6 +9,7 @@ import { useEvent } from "./event"
 import { useToast } from "../ui/toast"
 import { errorMessage } from "../util/error"
 import { isRecord } from "../util/record"
+import { addOptimisticMessage, removeOptimisticMessage } from "../component/prompt/optimistic"
 
 export type QueuedPromptPayload = Parameters<OpencodeClient["session"]["promptAsync"]>[0]
 
@@ -31,6 +32,10 @@ const KV_KEY = "queued_prompts_v1"
 const BASE_RETRY_MS = 1_000
 const MAX_RETRY_MS = 30_000
 const MAX_ATTEMPTS = 5
+
+export function createQueuedMessageID(): string {
+  return `msg_${crypto.randomUUID().replaceAll("-", "")}`
+}
 
 export function isSessionWorking(status: unknown): boolean {
   return isRecord(status) && (status.type === "busy" || status.type === "retry" || status.type === "waiting")
@@ -250,9 +255,30 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
           }
           await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
           markActive(item.payload.sessionID)
-          remove(item.id)
+          const messageID = item.payload.messageID
+          const agent = item.payload.agent
+          const model = item.payload.model
+          batch(() => {
+            if (messageID && agent && model) {
+              addOptimisticMessage({
+                id: `optimistic-${messageID}`,
+                messageID,
+                sessionID: item.payload.sessionID,
+                text: item.label,
+                timestamp: item.createdAt,
+                agent,
+                model: {
+                  providerID: model.providerID,
+                  modelID: model.modelID,
+                  variant: item.payload.variant,
+                },
+              })
+            }
+            remove(item.id)
+          })
           return "sent"
         } catch (error) {
+          if (item.payload.messageID) removeOptimisticMessage(item.payload.messageID)
           const attempts = item.attempts + 1
           const retryable = isRetryablePromptError(error)
           const failed = !retryable || attempts >= MAX_ATTEMPTS
@@ -309,7 +335,7 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
         failed: false,
         payload: {
           ...payload,
-          messageID: payload.messageID ?? `msg_${id.replaceAll("-", "")}`,
+          messageID: payload.messageID ?? createQueuedMessageID(),
         },
       }
 
@@ -326,10 +352,12 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       if (releaseStale()) {
         // A stale session was just released (its turn is no longer ours to
         // wait on). Defer to drain instead of racing it with a direct send.
+        if (item.payload.messageID) removeOptimisticMessage(item.payload.messageID)
         queueMicrotask(() => void drain())
         return "queued"
       }
       if (sessionWorking(payload.sessionID)) {
+        if (item.payload.messageID) removeOptimisticMessage(item.payload.messageID)
         queueMicrotask(() => void drain())
         return "queued"
       }
@@ -389,6 +417,14 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
 
     return {
       list: () => store.items,
+      forSession: (sessionID: string) => store.items.filter((item) => item.payload.sessionID === sessionID),
+      state: (id: string): "queued" | "sending" | "needs-attention" => {
+        void inFlightCount()
+        const item = store.items.find((entry) => entry.id === id)
+        if (item?.failed) return "needs-attention"
+        if (deliveries.has(id)) return "sending"
+        return "queued"
+      },
       pendingCount: () => store.items.filter((item) => !item.failed).length,
       retrying: () => inFlightCount() > 0,
       submit,

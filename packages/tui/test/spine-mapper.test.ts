@@ -704,7 +704,7 @@ describe("collapsible think entries", () => {
     expect(result).toHaveLength(0)
   })
 
-  test("empty reasoning chunks render placeholder think entries so the spine shows thinking activity immediately", () => {
+  test("empty reasoning chunks are shimmer-only activity, never false disclosures", () => {
     const { messages: msgs, parts } = makeAssistantMessage("t4")
     parts.push({
       id: "p-empty-reason-1",
@@ -727,13 +727,16 @@ describe("collapsible think entries", () => {
       messages: msgs,
       getParts: partsLookup(parts),
       assistantDuration: new Map(),
+      sessionStatusType: "busy",
     })
-    // Empty reasoning parts now create placeholder think entries so the
-    // spine shows activity immediately during reasoning-start, before
-    // the first delta arrives.
     expect(result.length).toBeGreaterThanOrEqual(1)
     expect(result.every((e) => e.kind === "think")).toBe(true)
     expect(result.every((e) => e.expandedByDefault)).toBe(false)
+    expect(result.every((e) => e.collapsible === false)).toBe(true)
+    expect(result.every((e) => e.body === undefined)).toBe(true)
+    const visible = result.filter((entry) => !entry.hidden)
+    expect(visible).toHaveLength(1)
+    expect(visible[0]?.streaming).toBe(true)
   })
 })
 
@@ -842,6 +845,40 @@ describe("no trailing ok after failed tools", () => {
 
     const okEntries = result.filter((e) => e.kind === "ok")
     expect(okEntries).toHaveLength(0)
+  })
+
+  test("retry-exhausted empty assistant renders actionable failure", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("nf-retry", { finish: "error", completed: 2000 })
+    const message = msgs[0]
+    if (!message || message.role !== "assistant") throw new Error("assistant fixture expected")
+    message.error = {
+      name: "APIError",
+      data: {
+        message: "gateway overloaded",
+        isRetryable: true,
+        metadata: { retryExhausted: "true", retryCount: "3" },
+      },
+    }
+    parts.push({
+      id: "retry-3",
+      sessionID: "sess-1",
+      messageID: message.id,
+      type: "retry",
+      attempt: 3,
+      error: { name: "APIError", data: { message: "gateway overloaded", isRetryable: true } },
+      time: { created: 1900 },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.kind).toBe("fail")
+    expect(result[0]!.summary).toBe("Provider unavailable · paused after 3 retries")
+    expect(result[0]!.actions?.map((action) => action.id)).toStrictEqual(["retry", "switch-model"])
   })
 
   test("trailing ok suppressed when finish is content-filter", () => {
@@ -1811,7 +1848,7 @@ Diff excerpts can be improved later.`,
     expect(thinks.some((e) => e.summary === "⟐")).toBe(false)
   })
 
-  test("running skill superseded by later text does not leave Working forever", () => {
+  test("presentation does not invent a terminal state for a stale running skill", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a-skill-stop")
     parts.push({
       id: "p-skill",
@@ -1844,10 +1881,11 @@ Diff excerpts can be improved later.`,
 
     const skill = result.find((e) => e.source?.kind === "tool")
     expect(skill).toBeDefined()
-    expect(skill!.receipt?.status).not.toBe("pending")
+    expect(skill!.receipt?.status).toBe("pending")
+    expect(skill!.streaming).toBe(false)
   })
 
-  test("running bash on a finished turn does not leave Working forever", () => {
+  test("presentation never turns inconsistent running state into success", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a-stuck-bash", { completed: 5000 })
     parts.push({
       id: "p-bash",
@@ -1873,8 +1911,9 @@ Diff excerpts can be improved later.`,
 
     const run = result.find((e) => e.kind === "run")
     expect(run).toBeDefined()
-    expect(run!.receipt?.status).not.toBe("pending")
-    expect(run!.receipt?.status).toBe("ok")
+    expect(run!.receipt?.status).toBe("pending")
+    expect(run!.streaming).toBe(false)
+    expect(result.some((entry) => entry.kind === "ok")).toBe(false)
   })
 
   test("empty orphan assistant renders one static recovery row", () => {
@@ -1894,7 +1933,7 @@ Diff excerpts can be improved later.`,
     expect(result[0]!.source).toEqual({ messageID: "a-orphan-empty", kind: "message" })
   })
 
-  test("orphan running tool becomes interrupted instead of Working", () => {
+  test("orphan running tool becomes static until the engine persists recovery", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a-orphan-tool")
     parts.push({
       id: "p-orphan-tool",
@@ -1922,7 +1961,7 @@ Diff excerpts can be improved later.`,
     const run = result.find((entry) => entry.source?.partID === "p-orphan-tool")
 
     expect(run).toBeDefined()
-    expect(run!.receipt?.status).toBe("interrupted")
+    expect(run!.receipt?.status).toBe("pending")
     expect(run!.streaming).toBe(false)
     expect(run!.startMs).toBeUndefined()
     expect(run!.liveOutput).toBeUndefined()
@@ -1960,7 +1999,7 @@ Diff excerpts can be improved later.`,
     expect(run!.startMs).toBe(1000)
   })
 
-  test("cached busy tool remaps immediately when idle status is omitted", () => {
+  test("cached busy tool stops animating without fabricating a terminal receipt", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a-cached-orphan")
     parts.push({
       id: "p-cached-orphan",
@@ -1995,9 +2034,41 @@ Diff excerpts can be improved later.`,
     const after = inactive.entries.find((entry) => entry.source?.partID === "p-cached-orphan")
 
     expect(before!.receipt?.status).toBe("pending")
-    expect(after!.receipt?.status).toBe("interrupted")
+    expect(after!.receipt?.status).toBe("pending")
     expect(after!.streaming).toBe(false)
     expect(after).not.toBe(before)
+  })
+
+  test("engine-authored cancellation renders as interrupted evidence", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-cancelled", { completed: 5000 })
+    parts.push({
+      id: "p-cancelled",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-cancelled",
+      tool: "bash",
+      state: {
+        status: "cancelled",
+        reason: "recovered_stale",
+        input: { command: "bun test" },
+        title: "bash",
+        output: "partial output",
+        metadata: {},
+        time: { start: 1000, end: 5000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+      sessionStatusType: "idle",
+    })
+    const run = result.find((entry) => entry.source?.partID === "p-cancelled")
+
+    expect(run?.receipt).toMatchObject({ status: "interrupted", command: "Interrupted" })
+    expect(run?.streaming).toBe(false)
   })
 
   test("simple reply stops writing when session is idle even without time.completed", () => {

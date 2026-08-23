@@ -279,8 +279,13 @@ export function DialogSessionList() {
       }
       current={currentSessionID()}
       onFilter={setSearch}
-      onMove={() => {
+      onMove={(option) => {
         setToDelete(undefined)
+        const list = options()
+        const index = list.findIndex((item) => item.value === option.value)
+        const nearby = [option.value, list[index - 1]?.value, list[index + 1]?.value]
+          .filter((id): id is string => typeof id === "string")
+        sync.session.prefetch(nearby, 100)
       }}
       onSelect={(option) => {
         route.navigate({

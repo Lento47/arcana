@@ -1,10 +1,14 @@
-import { Show } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { spineOuterPadding, type SpineLayout } from "./spine-types"
 import type { SpineViewFilter } from "./spine-view-filter"
 import type { PromptRef } from "../../component/prompt"
 import { SubagentFooter } from "../../routes/session/subagent-footer"
 import { SpinePrompt, type SpinePromptState } from "./spine-prompt"
+import { truncate } from "../../util/locale"
+import { ShimmerText } from "../../component/shimmer-text"
+import { usePromptQueue } from "../../context/prompt-queue"
+import { useSpineMotion } from "./spine-motion"
 
 /**
  * Composer + footer region for the spine: the subagent footer (when inside a
@@ -23,35 +27,100 @@ export function SpineComposer(props: {
   toBottom: (text?: string) => void
   state: () => SpinePromptState
   gutterWidth: number
+  focusHint?: () => string
+  gateOpen?: () => boolean
+  retryStatus?: () => { attempt?: number; message?: string; next?: number } | undefined
 }) {
   const { theme } = useTheme()
+  const promptQueue = usePromptQueue()
+  const motion = useSpineMotion()
   const pad = spineOuterPadding(props.layout)
+  const queuedItems = createMemo(() => promptQueue.forSession(props.sessionID))
+  const visibleQueuedItems = createMemo(() => queuedItems().slice(0, 3))
+  const queuedOverflow = createMemo(() => Math.max(0, queuedItems().length - visibleQueuedItems().length))
+  const showsWorkingCue = () => props.state() === "working" && motion?.activeCue() === "composer"
+  const queueStatus = (id: string) => {
+    const state = promptQueue.state(id)
+    if (state === "needs-attention") return "needs attention"
+    return state
+  }
+  const queueColor = (id: string) => {
+    const state = promptQueue.state(id)
+    if (state === "needs-attention") return theme.warning
+    if (state === "sending") return theme.accent
+    return theme.spineDiffMuted
+  }
   const escapeHint = () => {
     const stage = props.escapeStage()
     if (stage === 0) return undefined
     if (stage === 1) return "esc again: leave prompt · navigate spine"
     return "esc again: interrupt session"
   }
+  const hintLimit = () => {
+    if (props.layout === "minimal") return 48
+    if (props.layout === "narrow") return 70
+    if (props.layout === "compact") return 90
+    return 118
+  }
+  const operatorHint = () => {
+    const escape = escapeHint()
+    if (escape) return escape
+    if (props.gateOpen?.()) return "decision active · arrows select · enter confirm"
+    const retry = props.retryStatus?.()
+    if (retry) {
+      const seconds = Math.max(0, Math.ceil(((retry.next ?? now()) - now()) / 1000))
+      return `retry ${retry.attempt ?? 1}/3${seconds > 0 ? ` in ${seconds}s` : " now"} · ${retry.message ?? "provider unavailable"}`
+    }
+    if (props.viewFilter !== "all") {
+      return `view: ${props.filterLabel(props.viewFilter)} · f cycles · security always visible`
+    }
+    return props.focusHint?.() ?? ""
+  }
+  const hintColor = () => props.retryStatus?.() ? theme.warning : escapeHint() || props.gateOpen?.() ? theme.accent : theme.spineDiffMuted
+  const [now, setNow] = createSignal(Date.now())
+  let retryTimer: ReturnType<typeof setInterval> | undefined
+  createEffect(() => {
+    if (props.retryStatus?.() && !retryTimer) retryTimer = setInterval(() => setNow(Date.now()), 1000)
+    if (!props.retryStatus?.() && retryTimer) {
+      clearInterval(retryTimer)
+      retryTimer = undefined
+    }
+  })
+  onCleanup(() => {
+    if (retryTimer) clearInterval(retryTimer)
+  })
 
   return (
     <>
-      <Show when={props.viewFilter !== "all"}>
-        <box flexDirection="row" flexShrink={0} paddingLeft={pad + 2}>
-          <text fg={theme.spineDiffMuted}>
-            view: {props.filterLabel(props.viewFilter)} · f cycles · security states always visible
-          </text>
-        </box>
-      </Show>
       <Show when={props.parentID}>
         <SubagentFooter />
       </Show>
-      <Show when={escapeHint()}>
-        {(hint) => (
-          <box flexDirection="row" flexShrink={0} paddingLeft={pad + 2}>
-            <text fg={theme.accent}>{hint()}</text>
-          </box>
-        )}
+      <Show when={queuedItems().length > 0}>
+        <box flexDirection="column" flexShrink={0} paddingLeft={pad + 2} paddingRight={pad + 2} minWidth={0}>
+          <For each={visibleQueuedItems()}>
+            {(item) => (
+              <box flexDirection="row" height={1} minWidth={0} flexShrink={0}>
+                <text fg={queueColor(item.id)} wrapMode="none">
+                  {truncate(`${queueStatus(item.id)} · ${item.label}`, hintLimit())}
+                </text>
+              </box>
+            )}
+          </For>
+          <Show when={queuedOverflow() > 0}>
+            <text fg={theme.spineDiffMuted} wrapMode="none">+{queuedOverflow()} queued</text>
+          </Show>
+        </box>
       </Show>
+      {/* Fixed-height operator line: changing focus/state never moves the
+          viewport or composer. Mouse-only discovery is never required. */}
+      <box flexDirection="row" flexShrink={0} height={1} paddingLeft={pad + 2} minWidth={0}>
+        <Show
+          when={showsWorkingCue()}
+          fallback={<text fg={hintColor()} wrapMode="none">{truncate(operatorHint(), hintLimit())}</text>}
+        >
+          <ShimmerText text="Working…" active accent={theme.accent} cue="composer" animation="pulse" />
+        </Show>
+      </box>
       <SpinePrompt
         bind={props.bind as any}
         disabled={props.disabled}

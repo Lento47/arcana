@@ -474,13 +474,13 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         prune(evt.properties.info.id)
       })
 
-      // Tier 1: idle-prefetch pinned / quick-switch slots so leader 1–9 is warm.
-      // Reuses sync.session.sync (same race guards). Cap handled inside prefetch queue.
+      // Tier 1: prefetch pinned / quick-switch metadata + recent history so
+      // leader 1–9 is warm without competing for governance/proof derivation.
       // Rollback: ARCANA_DISABLE_SESSION_PREFETCH=1
       createEffect(() => {
         if (Flag.ARCANA_DISABLE_SESSION_PREFETCH) return
         if (!sessionStore.ready) return
-        if (sync.status !== "complete") return
+        if (!sync.session.listReady) return
 
         const hot = slots()
         if (hot.length === 0) return
@@ -492,9 +492,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (st && st.type !== "idle") return
         }
 
-        const targets = hot.filter((id) => id !== current && !sync.session.isSynced(id))
+        const targets = hot.filter((id) => id !== current && !sync.session.isHistoryReady(id))
         if (targets.length === 0) return
-        sync.session.prefetch(targets)
+        sync.session.prefetch(targets, 10)
       })
 
       return {

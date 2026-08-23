@@ -1,6 +1,7 @@
 /**
- * Optimistic user messages: show the user's prompt in the chat instantly
- * after Enter, without waiting for the SSE message.updated round-trip.
+ * Optimistic user messages: show an admitted prompt without waiting for the
+ * SSE message.updated round-trip. Prompts waiting in the delivery queue stay
+ * in the fixed composer tray and never enter the transcript early.
  *
  * IMPORTANT: Do not drop optimistics when a bare user message row appears.
  * SSE often creates the user Message before any TextPart — dropping early
@@ -11,6 +12,8 @@ import { createSignal } from "solid-js"
 
 export interface OptimisticUserMessage {
   id: string
+  /** Stable client-selected id used by promptAsync and the SSE message. */
+  messageID: string
   sessionID: string
   text: string
   timestamp: number
@@ -27,9 +30,15 @@ const [state, setState] = createSignal<OptimisticUserMessage[]>([])
 /** Reactive accessor — call as `allOptimisticMessages()` inside a memo/effect. */
 export const allOptimisticMessages = state
 
-/** Add an optimistic user message. Called from submitInner after prompt send. */
+/** Add or update the local echo for one admitted server message id. */
 export function addOptimisticMessage(msg: OptimisticUserMessage) {
-  setState((prev) => [...prev, msg])
+  setState((prev) => {
+    const index = prev.findIndex((entry) => entry.messageID === msg.messageID)
+    if (index === -1) return [...prev, msg]
+    const next = prev.slice()
+    next[index] = msg
+    return next
+  })
 }
 
 /** Move local echo onto the real session id after create finishes. */
@@ -52,7 +61,7 @@ export function clearOptimisticMessages(sessionID?: string) {
   }
 }
 
-/** Normalize for optimistic ↔ real text matching. */
+/** Normalize prompt text for display-oriented tests and callers. */
 export function normalizeOptimisticText(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim()
 }
@@ -78,25 +87,22 @@ export function realUserMessageHasText(
 }
 
 /**
- * Keep optimistics that are not yet covered by a real user message with text.
- * Drops an optimistic when any real user message in-session has non-empty text
- * that matches (or when any real user text exists and we only have one optimistic).
+ * Keep optimistics until the exact server message id has arrived with text.
+ * Text is deliberately not used for correlation: repeated identical prompts
+ * are independent sends and must be acknowledged independently.
  */
 export function filterCoveredOptimistics(
   optimistics: OptimisticUserMessage[],
-  realUserTexts: string[],
+  acknowledgedMessageIDs: ReadonlySet<string>,
 ): OptimisticUserMessage[] {
   if (optimistics.length === 0) return optimistics
-  if (realUserTexts.length === 0) return optimistics
+  if (acknowledgedMessageIDs.size === 0) return optimistics
+  return optimistics.filter((message) => !acknowledgedMessageIDs.has(message.messageID))
+}
 
-  const covered = new Set(realUserTexts.map(normalizeOptimisticText).filter(Boolean))
-  return optimistics.filter((o) => {
-    const key = normalizeOptimisticText(o.text)
-    if (!key) return false
-    // Exact match only. Prefix-against-history dropped later sends like
-    // "fix" after "fix the tests".
-    return !covered.has(key)
-  })
+/** Remove one local echo when its delivery remains queued or fails. */
+export function removeOptimisticMessage(messageID: string) {
+  setState((prev) => prev.filter((message) => message.messageID !== messageID))
 }
 
 export type OptimisticMessageProxy = {

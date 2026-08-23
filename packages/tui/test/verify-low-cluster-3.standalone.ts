@@ -9,6 +9,7 @@ const read = (rel: string) => readFileSync(join(import.meta.dir, rel), "utf8").r
 
 const spineDiff = () => read("../src/shell/command-spine/spine-diff.tsx")
 const app = () => read("../src/app.tsx")
+const providerTree = () => read("../src/provider-tree.tsx")
 const home = () => read("../src/routes/home.tsx")
 const session = () => read("../src/routes/session/index.tsx")
 
@@ -45,8 +46,12 @@ console.log("D7 — toast surface app-global, not per-route:")
 const appSrc = app()
 check(appSrc.includes("<Toast />"), "app.tsx renders one global <Toast />")
 check(
-  appSrc.includes('ToastProvider, Toast, useToast } from "./ui/toast"'),
-  "app.tsx imports Toast with the provider",
+  appSrc.includes('import { Toast, useToast } from "./ui/toast"'),
+  "app.tsx imports the global Toast surface",
+)
+check(
+  providerTree().includes('import { ToastProvider } from "./ui/toast"'),
+  "provider-tree owns the Toast provider",
 )
 const homeSrc = home()
 check(!homeSrc.includes("<Toast />"), "home.tsx no longer renders <Toast />")

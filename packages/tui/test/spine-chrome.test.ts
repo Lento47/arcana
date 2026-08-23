@@ -7,6 +7,7 @@ import {
   chatCardChrome,
   codeBlockChrome,
   formatApprovalActionKeys,
+  focusedEntryActionHint,
   insightHeaderChrome,
   listingEntryChrome,
   packChipRows,
@@ -37,6 +38,30 @@ describe("toolChipChrome", () => {
     expect(toolChipChrome({ kind: "run", label: "bash" }).cue).toBe("")
     expect(toolChipChrome({ kind: "fail", label: "bash" }).status).toBe("fail")
     expect(toolChipChrome({ kind: "fail", label: "bash" }).cue).toBe("fail")
+  })
+})
+
+describe("focusedEntryActionHint", () => {
+  test("describes the shipped subagent split between open and preview", () => {
+    expect(focusedEntryActionHint({
+      layout: "wide",
+      agent: true,
+      hasSession: true,
+      toggleable: true,
+      expanded: false,
+      hasDetails: true,
+    })).toBe("enter open · space expand · o details · y copy")
+  })
+
+  test("prioritizes decision actions and trims optional actions by layout", () => {
+    expect(focusedEntryActionHint({
+      layout: "minimal",
+      approval: true,
+      canApprove: true,
+      canDeny: true,
+      toggleable: true,
+      hasDetails: true,
+    })).toBe("v inspect · a approve")
   })
 })
 

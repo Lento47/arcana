@@ -24,8 +24,8 @@ const entrySrc = readFileSync(
 )
 
 describe("M4 source contract — one focus per physical click", () => {
-  test("row box keeps onMouseDown={handleFocus} (immediate focus on press)", () => {
-    expect(entrySrc).toContain("onMouseDown={handleFocus}")
+  test("row box routes press handling through the selection-safe mouse contract", () => {
+    expect(entrySrc).toContain("onMouseDown={handleRowMouseDown}")
   })
 
   test("row box no longer binds onMouseUp={handleFocus} (the double-fire root)", () => {
@@ -42,16 +42,16 @@ describe("M4 source contract — one focus per physical click", () => {
     expect(entrySrc).not.toContain("releaseFocusSuppression")
   })
 
-  test("handleToggle keeps the 120ms lastToggleAt debounce (anti-double-toggle)", () => {
-    expect(entrySrc).toContain("lastToggleAt")
-    expect(entrySrc).toContain("now - lastToggleAt < 120")
+  test("header owns disclosure without a timing debounce", () => {
+    expect(entrySrc).not.toContain("lastToggleAt")
+    expect(entrySrc).not.toContain("handleRowToggle")
   })
 
   test("PR5: header toggles on mouseup only - no mousedown toggle handler", () => {
-    // Conventional left-click timing: both left- and right-click toggle on
-    // release. The old right-click-on-mousedown path (handleHeaderMouseDown)
-    // is gone, so right-click no longer differs from left-click.
+    // Conventional left-click timing: disclosure happens on release. Right
+    // click is reserved for the action menu and never toggles disclosure.
     expect(entrySrc).toContain("handleHeaderMouseUp")
     expect(entrySrc).not.toContain("handleHeaderMouseDown")
+    expect(entrySrc).toContain("event.button !== MouseButton.LEFT")
   })
 })

@@ -99,9 +99,10 @@ const thinkEntry: SpineEntryModel = {
   expandedByDefault: false,
 }
 
-test("spine entry hover highlights and right-click expands collapsible thinking", async () => {
+test("right-click opens entry actions without changing disclosure", async () => {
   let focusCount = 0
   let toggleCount = 0
+  let contextCount = 0
 
   const app = await testRender(
     () =>
@@ -124,6 +125,9 @@ test("spine entry hover highlights and right-click expands collapsible thinking"
                 toggleCount++
                 setExpanded((value) => !value)
               }}
+              onContextMenu={() => {
+                contextCount++
+              }}
             />
           </box>
         )
@@ -140,18 +144,15 @@ test("spine entry hover highlights and right-click expands collapsible thinking"
     await app.mockMouse.click(header.x, header.y, MouseButton.RIGHT)
     await renderSettled(app)
 
-    // M4: the row's onMouseUp was removed, so the right-click toggle path fires
-    // onFocus exactly once (handleToggle) — no leaked row-mouseup second fire.
     expect(focusCount).toBe(1)
-    expect(toggleCount).toBe(1)
-    const expandedFrame = await captureUntil(app, "full reasoning body")
-    expect(expandedFrame).toContain("reasoning header")
-    expect(expandedFrame).toContain("full reasoning body")
+    expect(contextCount).toBe(1)
+    expect(toggleCount).toBe(0)
+    expect(await capture(app)).not.toContain("full reasoning body")
   } finally {
     app.renderer.destroy()
   }
 })
-test("spine entry right-click toggles reasoning with local state", async () => {
+test("right-click without a menu handler still does not toggle local disclosure", async () => {
   const app = await testRender(
     () =>
       withProviders(() => (
@@ -170,9 +171,43 @@ test("spine entry right-click toggles reasoning with local state", async () => {
     await app.mockMouse.click(header.x, header.y, MouseButton.RIGHT)
     await renderSettled(app)
 
-    const expandedFrame = await captureUntil(app, "full reasoning body")
-    expect(expandedFrame).toContain("reasoning header")
-    expect(expandedFrame).toContain("full reasoning body")
+    expect(await capture(app)).not.toContain("full reasoning body")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("left-click anywhere on a collapsed thinking row expands it", async () => {
+  let toggleCount = 0
+  const app = await testRender(
+    () =>
+      withProviders(() => {
+        const [expanded, setExpanded] = createSignal(false)
+        return (
+          <box flexDirection="column" width="100%" height="100%">
+            <SpineEntry
+              entry={thinkEntry}
+              layout="wide"
+              thinkContentWidth={70}
+              expanded={expanded()}
+              onToggle={() => {
+                toggleCount++
+                setExpanded((value) => !value)
+              }}
+            />
+          </box>
+        )
+      }),
+    { width: 80, height: 12, useMouse: true, enableMouseMovement: true },
+  )
+
+  try {
+    const initialFrame = await capture(app)
+    const header = findText(initialFrame, "Thought")
+    await app.mockMouse.click(1, header.y, MouseButton.LEFT)
+
+    expect(await captureUntil(app, "full reasoning body")).toContain("full reasoning body")
+    expect(toggleCount).toBe(1)
   } finally {
     app.renderer.destroy()
   }
@@ -296,6 +331,69 @@ test("left-click on a collapsed governance block expands it and keeps focus", as
     const expandedFrame = await captureUntil(app, "Authorization requested")
     expect(expandedFrame).toContain("Authorization requested")
     expect(expandedFrame).toContain("Authorization allowed")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
+test("subagent title opens its session while the disclosure toggles its preview", async () => {
+  const agentEntry: SpineEntryModel = {
+    id: "agent-entry",
+    index: 1,
+    elapsed: "+1.4s",
+    kind: "agent",
+    glyph: "↳",
+    label: "review",
+    summary: "Inspect authority boundaries",
+    body: "Returned review summary",
+    collapsible: true,
+    expandedByDefault: false,
+    source: { messageID: "agent-message", partID: "agent-part", sessionID: "child-session", kind: "agent" },
+  }
+  let navigateCount = 0
+  let toggleCount = 0
+
+  const app = await testRender(
+    () => withProviders(() => {
+      const [expanded, setExpanded] = createSignal(false)
+      return (
+        <box flexDirection="column" width="100%" height="100%">
+          <SpineEntry
+            entry={agentEntry}
+            layout="wide"
+            contentWidth={70}
+            expanded={expanded()}
+            onToggle={() => {
+              toggleCount++
+              setExpanded((value) => !value)
+            }}
+            onNavigate={() => {
+              navigateCount++
+            }}
+          />
+        </box>
+      )
+    }),
+    { width: 100, height: 14, useMouse: true, enableMouseMovement: true },
+  )
+
+  try {
+    const initial = await capture(app)
+    const title = findText(initial, "Inspect authority boundaries")
+    await app.mockMouse.click(title.x + 3, title.y, MouseButton.LEFT)
+    await renderSettled(app)
+    expect(navigateCount).toBe(1)
+    expect(toggleCount).toBe(0)
+
+    const row = (await capture(app)).split("\n")[title.y] ?? ""
+    const disclosureX = row.lastIndexOf("▸")
+    expect(disclosureX).toBeGreaterThanOrEqual(0)
+    await app.mockMouse.click(disclosureX, title.y, MouseButton.LEFT)
+    await renderSettled(app)
+
+    expect(navigateCount).toBe(1)
+    expect(toggleCount).toBe(1)
+    expect(await captureUntil(app, "Returned review summary")).toContain("Returned review summary")
   } finally {
     app.renderer.destroy()
   }

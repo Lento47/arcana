@@ -18,7 +18,7 @@ import { DiffViewerFileTree } from "./diff-viewer-file-tree"
 import { Panel, PanelGroup, Separator } from "./diff-viewer-ui"
 import { DialogSelect } from "../../ui/dialog-select"
 import { getScrollAcceleration } from "../../util/scroll"
-import { diffPatchPaneWidth } from "../../util/geometry"
+import { diffFileTreeWidth, diffPatchPaneWidth, diffViewerFileTreeVisible } from "../../util/geometry"
 import {
   allExpandedFileTreeDirectories,
   buildFileTree,
@@ -37,8 +37,8 @@ import {
 } from "./diff-viewer-file-tree-utils"
 
 const ROUTE = "diff"
-const MIN_SPLIT_WIDTH = 100
-const FILE_TREE_WIDTH = 32
+const MIN_SPLIT_WIDTH = 84
+const MIN_SPLIT_TERMINAL_WIDTH = 120
 const PLAIN_TEXT_FILETYPE = "arcana-plain-text"
 const WORKING_TREE_DIFF_CONTEXT_LINES = 12
 const KV_SHOW_FILE_TREE = "diff_viewer_show_file_tree"
@@ -46,6 +46,12 @@ const KV_SINGLE_PATCH = "diff_viewer_single_patch"
 const KV_VIEW = "diff_viewer_view"
 type DiffMode = "git" | "last-turn"
 type DiffViewerFocus = "patches" | "files"
+type DiffRequest = {
+  mode: DiffMode
+  sessionID?: string
+  messageID?: string
+  directory?: string
+}
 type DiffView = "split" | "unified"
 type SelectedHunk = { readonly fileIndex: number; readonly hunkIndex: number; readonly scrollTop: number }
 
@@ -83,6 +89,13 @@ function storedView(value: unknown): DiffView | undefined {
   if (value === "split" || value === "unified") return value
 }
 
+export function sameDiffRequest(left: DiffRequest, right: DiffRequest): boolean {
+  return left.mode === right.mode
+    && left.sessionID === right.sessionID
+    && left.messageID === right.messageID
+    && left.directory === right.directory
+}
+
 function DiffViewer(props: { api: TuiPluginApi }) {
   const dimensions = useTerminalDimensions()
   const themeState = useTheme()
@@ -97,15 +110,20 @@ function DiffViewer(props: { api: TuiPluginApi }) {
         }
       | undefined
   const mode = () => params()?.mode ?? "git"
-  const diffInput = createMemo(() => {
-    const sessionID = params()?.sessionID
+  // Route/session stores can invalidate while an agent streams. Keep the
+  // resource source stable unless an actual diff request field changes; a
+  // freshly allocated but equivalent object must not refetch and remount every
+  // syntax-highlighted patch.
+  const diffInput = createMemo<DiffRequest, undefined>(() => {
+    const routeParams = params()
+    const sessionID = routeParams?.sessionID
     return {
-      mode: mode(),
+      mode: routeParams?.mode ?? "git",
       sessionID,
-      messageID: params()?.messageID,
+      messageID: routeParams?.messageID,
       directory: sessionID ? props.api.state.session.get(sessionID)?.directory : undefined,
     }
-  })
+  }, undefined, { equals: sameDiffRequest })
   const [diff] = createResource(diffInput, async (input) => {
     if (input.mode === "last-turn") {
       const sessionID = input.sessionID
@@ -123,16 +141,27 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     )
     return normalizeDiffs(result.data ?? [])
   })
-  const files = createMemo(() => diff() ?? [])
+  // `latest` remains the last resolved value while a resource refreshes. Keep
+  // that patch tree mounted until replacement data is ready so scroll state,
+  // selection, and Tree-sitter renderables cannot flash back to a loading view.
+  const hasDiffSnapshot = createMemo(() => diff.latest !== undefined)
+  const files = createMemo(() => diff.latest ?? [])
   const [focus, setFocus] = createSignal<DiffViewerFocus>("patches")
   const [fileTreeEnabled, setFileTreeEnabled] = createSignal(
     props.api.kv.get<boolean>(KV_SHOW_FILE_TREE, true) !== false,
   )
-  const showFileTree = createMemo(() => showDiffViewerFileTree(fileTreeEnabled(), files().length))
+  const treeWidth = createMemo(() => diffFileTreeWidth(dimensions().width))
+  const showFileTree = createMemo(() =>
+    showDiffViewerFileTree(fileTreeEnabled(), files().length)
+    && diffViewerFileTreeVisible(dimensions().width, true, files().length),
+  )
   const [singlePatch, setSinglePatch] = createSignal(props.api.kv.get<boolean>(KV_SINGLE_PATCH, false) === true)
-  const patchPaneWidth = createMemo(() => diffPatchPaneWidth(dimensions().width, showFileTree()))
+  const patchPaneWidth = createMemo(() => diffPatchPaneWidth(dimensions().width, showFileTree(), treeWidth()))
   const patchLeftBorder = createMemo<BorderSides[]>(() => (showFileTree() ? ["left"] : []))
-  const splitAvailable = createMemo(() => patchPaneWidth() >= MIN_SPLIT_WIDTH)
+  const patchBorderColor = createMemo(() => focus() === "patches" ? theme().primary : theme().border)
+  const splitAvailable = createMemo(() =>
+    dimensions().width >= MIN_SPLIT_TERMINAL_WIDTH && patchPaneWidth() >= MIN_SPLIT_WIDTH,
+  )
   const defaultView = createMemo(() => {
     if (props.api.tuiConfig.diff_style === "stacked") return "unified"
     return splitAvailable() ? "split" : "unified"
@@ -167,8 +196,45 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   const [selectedHunk, setSelectedHunk] = createSignal<SelectedHunk | undefined>()
   const [pendingPatchScrollFileIndex, setPendingPatchScrollFileIndex] = createSignal<number | undefined>()
   const [patchFillerHeight, setPatchFillerHeight] = createSignal(0)
+  const layoutFrames = new Map<string, number>()
+  const layoutGenerations = new Map<string, number>()
+  let nextLayoutGeneration = 0
 
-  onCleanup(() => props.api.ui.dialog.clear())
+  const afterLayout = (key: string, task: () => void, frames = 1) => {
+    const previous = layoutFrames.get(key)
+    if (previous !== undefined) cancelAnimationFrame(previous)
+    const generation = ++nextLayoutGeneration
+    layoutGenerations.set(key, generation)
+    const schedule = (remaining: number) => {
+      let callbackRan = false
+      const frame = requestAnimationFrame(() => {
+        callbackRan = true
+        if (layoutGenerations.get(key) !== generation) return
+        layoutFrames.delete(key)
+        if (remaining > 1) {
+          schedule(remaining - 1)
+          return
+        }
+        layoutGenerations.delete(key)
+        task()
+      })
+      // OpenTUI's test renderer may execute RAF synchronously. Do not publish
+      // a stale handle after a callback that already completed.
+      if (!callbackRan) layoutFrames.set(key, frame)
+    }
+    schedule(Math.max(1, frames))
+  }
+
+  onCleanup(() => {
+    for (const frame of layoutFrames.values()) cancelAnimationFrame(frame)
+    layoutFrames.clear()
+    layoutGenerations.clear()
+    props.api.ui.dialog.clear()
+  })
+
+  createEffect(() => {
+    if (!showFileTree() && focus() === "files") setFocus("patches")
+  })
 
   createEffect(() => {
     setExpandedFileNodes(allExpandedFileTreeDirectories(fileTree()))
@@ -205,14 +271,16 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     setSelectedHunk(undefined)
   }
 
+  const alignPatchNodeToTop = (patchNode: BoxRenderable) => {
+    if (!scroll || patchNode.isDestroyed) return
+    const scrollDelta = patchNode.y - scroll.viewport.y
+    const contentY = scroll.scrollTop + scrollDelta
+    const offset = contentY === 0 ? 0 : 1
+    scroll.scrollBy(scrollDelta + offset)
+  }
+
   const scrollPatchNodeToTop = (patchNode: BoxRenderable) => {
-    requestAnimationFrame(() => {
-      if (!scroll) return
-      const scrollDelta = patchNode.y - scroll.viewport.y
-      const contentY = scroll.scrollTop + scrollDelta
-      const offset = contentY === 0 ? 0 : 1
-      scroll.scrollBy(scrollDelta + offset)
-    })
+    afterLayout("patch-align", () => alignPatchNodeToTop(patchNode))
   }
 
   const revealFileTreeFile = (fileIndex: number) => {
@@ -336,26 +404,19 @@ function DiffViewer(props: { api: TuiPluginApi }) {
 
   const scrollToPatchFileIndexAfterRender = (fileIndex: number) => {
     setPendingPatchScrollFileIndex(fileIndex)
-    requestAnimationFrame(() => {
+    afterLayout("pending-patch", () => {
       const patchNode = patchNodeByFileIndex.get(fileIndex)
-      if (patchNode) scrollPatchNodeToTop(patchNode)
-      requestAnimationFrame(() => {
-        const patchNode = patchNodeByFileIndex.get(fileIndex)
-        if (patchNode) scrollPatchNodeToTop(patchNode)
-        setPendingPatchScrollFileIndex(undefined)
-      })
-    })
+      if (patchNode) alignPatchNodeToTop(patchNode)
+      setPendingPatchScrollFileIndex(undefined)
+    }, 2)
   }
 
   const scrollSinglePatchToTop = () => {
-    requestAnimationFrame(() => {
-      scroll?.scrollTo(0)
-      requestAnimationFrame(() => scroll?.scrollTo(0))
-    })
+    afterLayout("single-patch-top", () => scroll?.scrollTo(0), 2)
   }
 
   const measurePatchFiller = () => {
-    requestAnimationFrame(() => {
+    afterLayout("patch-filler", () => {
       if (!scroll) return
       const entries = visiblePatchFiles()
         .map((entry) => patchNodeByFileIndex.get(entry.fileIndex))
@@ -375,13 +436,10 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     patchNodeByFileIndex.set(fileIndex, element)
     measurePatchFiller()
     if (pendingPatchScrollFileIndex() !== fileIndex) return
-    requestAnimationFrame(() => {
-      scrollPatchNodeToTop(element)
-      requestAnimationFrame(() => {
-        scrollPatchNodeToTop(element)
-        setPendingPatchScrollFileIndex(undefined)
-      })
-    })
+    afterLayout("pending-patch", () => {
+      alignPatchNodeToTop(element)
+      setPendingPatchScrollFileIndex(undefined)
+    }, 2)
   }
 
   createEffect(() => {
@@ -746,25 +804,25 @@ function DiffViewer(props: { api: TuiPluginApi }) {
 
         <box flexGrow={1} minHeight={0}>
           <Switch>
-            <Match when={diff.loading}>
+            <Match when={diff.loading && !hasDiffSnapshot()}>
               <Separator axis="x" />
               <box flexGrow={1} paddingLeft={1}>
                 <text fg={theme().textMuted}>Loading diff...</text>
               </box>
             </Match>
-            <Match when={!diff.loading && files().length === 0}>
+            <Match when={hasDiffSnapshot() && files().length === 0}>
               <Separator axis="x" />
               <box flexGrow={1} paddingLeft={1}>
                 <text fg={theme().textMuted}>No diff!</text>
               </box>
             </Match>
-            <Match when={!diff.loading && diff.error}>
+            <Match when={!hasDiffSnapshot() && diff.error}>
               <Separator axis="x" />
               <box flexGrow={1} paddingLeft={1}>
                 <text fg={theme().error}>Failed to load diff</text>
               </box>
             </Match>
-            <Match when={!diff.loading}>
+            <Match when={hasDiffSnapshot()}>
               <PanelGroup axis="x">
                 <Show when={showFileTree()}>
                   <DiffViewerFileTree
@@ -773,7 +831,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                     error={diff.error}
                     theme={theme()}
                     focused={focus() === "files"}
-                    width={FILE_TREE_WIDTH}
+                    width={treeWidth()}
                     highlightedNode={highlightedFileNode()}
                     selectedFileIndex={selectedFileIndex()}
                     reviewedFileNames={reviewedFileNames()}
@@ -805,7 +863,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                               paddingLeft={1}
                               paddingRight={1}
                               border={patchLeftBorder()}
-                              borderColor={theme().border}
+                              borderColor={patchBorderColor()}
                             >
                               <text fg={reviewed() ? theme().textMuted : theme().text}>{entry.file.file}</text>
                               <box flexGrow={1} />
@@ -822,7 +880,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                               fallback={<text fg={theme().textMuted}>No patch available for this file.</text>}
                             >
                               {(patch) => (
-                                <box border={patchLeftBorder()} borderColor={theme().border}>
+                                <box border={patchLeftBorder()} borderColor={patchBorderColor()}>
                                   <diff
                                     ref={(element: DiffRenderable) => diffNodeByFileIndex.set(entry.fileIndex, element)}
                                     diff={patch()}
@@ -853,7 +911,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                       }}
                     </For>
                     <Show when={patchFillerHeight() > 0}>
-                      <box height={patchFillerHeight()} border={patchLeftBorder()} borderColor={theme().border} />
+                      <box height={patchFillerHeight()} border={patchLeftBorder()} borderColor={patchBorderColor()} />
                     </Show>
                   </scrollbox>
                   <Separator axis="x" start={showFileTree() ? "edge-in" : undefined} />
@@ -864,10 +922,10 @@ function DiffViewer(props: { api: TuiPluginApi }) {
         </box>
 
         <Panel flexShrink={0} gap={2} paddingLeft={1} border="none">
-          <Show when={switchFocusShortcut()}>
+          <Show when={showFileTree() && switchFocusShortcut()}>
             {(shortcut) => (
               <text fg={theme().text}>
-                {shortcut()} <span style={{ fg: theme().textMuted }}>focus file tree</span>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>{focus() === "files" ? "focus patches" : "focus file tree"}</span>
               </text>
             )}
           </Show>

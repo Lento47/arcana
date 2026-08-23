@@ -41,9 +41,9 @@ describe("deriveComposerRunState", () => {
     pending: true,
   }
 
-  test("works only for explicit busy/retry turns", () => {
+  test("distinguishes active work from provider retry backoff", () => {
     expect(deriveComposerRunState({ ...base, sessionStatusType: "busy" })).toBe("working")
-    expect(deriveComposerRunState({ ...base, sessionStatusType: "retry" })).toBe("working")
+    expect(deriveComposerRunState({ ...base, sessionStatusType: "retry" })).toBe("retrying")
     expect(deriveComposerRunState({ ...base, sessionStatusType: "idle" })).toBe("idle")
     expect(deriveComposerRunState({ ...base, sessionStatusType: undefined })).toBe("idle")
   })

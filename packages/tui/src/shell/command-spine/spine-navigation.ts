@@ -27,3 +27,17 @@ export function canToggleSpineEntry(entry: SpineEntry) {
   if (entry.children?.length) return true
   return false
 }
+
+/** One disclosure command shared by mouse, Enter, Space, and action menus. */
+export function activateSpineEntryDisclosure(
+  entry: SpineEntry,
+  actions: {
+    focus: (entry: SpineEntry) => void
+    toggle: (entry: SpineEntry) => void
+  },
+) {
+  if (!canToggleSpineEntry(entry)) return false
+  actions.focus(entry)
+  actions.toggle(entry)
+  return true
+}

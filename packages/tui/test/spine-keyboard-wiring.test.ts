@@ -76,7 +76,8 @@ describe("spine keyboard wiring source contract (F-24..F-28)", () => {
     // a message.
     expect(permissionSource).toContain("ARCANA_BASE_MODE")
     expect(permissionSource).toContain("mode: ARCANA_BASE_MODE")
-    expect(permissionSource.split("priority: 10").length - 1).toBeGreaterThanOrEqual(2)
+    expect(permissionSource).toContain("PERMISSION_DECISION_LAYER_PRIORITY = 10")
+    expect(permissionSource.split("priority: PERMISSION_DECISION_LAYER_PRIORITY").length - 1).toBeGreaterThanOrEqual(2)
     expect(permissionSource).not.toContain("PERMISSION_MODE")
     expect(permissionSource).not.toContain("modeStack.push")
   })

@@ -27,7 +27,7 @@ import { useSDK } from "../../context/sdk"
 import { useRoute } from "../../context/route"
 import { useProject } from "../../context/project"
 import { useSync } from "../../context/sync"
-import { type QueuedPromptPayload, usePromptQueue } from "../../context/prompt-queue"
+import { createQueuedMessageID, type QueuedPromptPayload, usePromptQueue } from "../../context/prompt-queue"
 import { useEvent } from "../../context/event"
 import { editorSelectionKey, useEditorContext, type EditorSelection } from "../../context/editor"
 import { normalizePromptContent, openEditor } from "../../editor"
@@ -1192,6 +1192,7 @@ export function Prompt(props: PromptProps) {
           ]
         : []
     const arcanaPromptCommand = parseArcanaPromptCommand(inputText)
+    const messageID = createQueuedMessageID()
 
     // Optimistic clear — composer empties on the first Enter, not after network.
     history.append({
@@ -1253,7 +1254,8 @@ export function Prompt(props: PromptProps) {
           && sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
         if (!isGoalCmd && !isServerSlash) {
           addOptimisticMessage({
-            id: `optimistic-${crypto.randomUUID()}`,
+            id: `optimistic-${messageID}`,
+            messageID,
             sessionID,
             text: inputText,
             timestamp: Date.now(),
@@ -1399,6 +1401,7 @@ export function Prompt(props: PromptProps) {
       const toolsOverride = toolsPayload(kv.get(toolsOverrideKey(targetSessionID)) as Record<string, boolean> | undefined)
       const payload: QueuedPromptPayload = {
         sessionID: targetSessionID,
+        messageID,
         agent: agent.name,
         model: {
           providerID: selectedModel.providerID,
@@ -1440,18 +1443,6 @@ export function Prompt(props: PromptProps) {
         ],
       }
       void promptQueue.submit(payload, task)
-      addOptimisticMessage({
-        id: `optimistic-${crypto.randomUUID()}`,
-        sessionID: targetSessionID,
-        text: task,
-        timestamp: Date.now(),
-        agent: agent.name,
-        model: {
-          providerID: selectedModel.providerID,
-          modelID: selectedModel.modelID,
-          variant,
-        },
-      })
     // ── /goal — standalone goal setter (does NOT require /loop) ──
     } else if (inputText.startsWith("/goal ")) {
       move.startSubmit()
@@ -1486,21 +1477,6 @@ export function Prompt(props: PromptProps) {
       })
     } else {
       move.startSubmit()
-      // Home path already added optimistic before navigate; in-session still needs it here.
-      if (!isHomeSend) {
-        addOptimisticMessage({
-          id: `optimistic-${crypto.randomUUID()}`,
-          sessionID: targetSessionID,
-          text: inputText,
-          timestamp: Date.now(),
-          agent: agent.name,
-          model: {
-            providerID: selectedModel.providerID,
-            modelID: selectedModel.modelID,
-            variant,
-          },
-        })
-      }
       // promptAsync: 204 + forked agent loop (same as workspace move path).
       // Avoids holding HTTP open for the full turn (session.prompt waits on loop).
       // Per-session tool overrides from /tools: only explicit user choices,
@@ -1509,6 +1485,7 @@ export function Prompt(props: PromptProps) {
       const toolsOverride = toolsPayload(kv.get(toolsOverrideKey(targetSessionID)) as Record<string, boolean> | undefined)
       const payload: QueuedPromptPayload = {
         sessionID: targetSessionID,
+        messageID,
         agent: agent.name,
         model: {
           providerID: selectedModel.providerID,

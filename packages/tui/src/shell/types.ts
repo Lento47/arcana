@@ -27,6 +27,8 @@ export interface ShellProps {
   scrollAcceleration: ScrollAcceleration
 
   messages: Accessor<Message[]>
+  /** Latest transcript page is still hydrating; cached metadata remains usable. */
+  historyLoading?: Accessor<boolean>
   getParts: (messageId: string) => Part[]
   getPartRevision: (messageId: string) => number
   revert: Accessor<RevertInfo | undefined>
@@ -45,7 +47,12 @@ export interface ShellProps {
     time?: { created?: number }
   }[]>
   /** Session turn status (idle/busy/retry/…) — stops assistant "writing" chrome. */
-  sessionStatus?: Accessor<{ type: string } | undefined>
+  sessionStatus?: Accessor<{
+    type: string
+    attempt?: number
+    message?: string
+    next?: number
+  } | undefined>
   visible: Accessor<boolean>
   disabled: Accessor<boolean>
   sessionID: string

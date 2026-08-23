@@ -1,11 +1,8 @@
-import { For, Show, createMemo } from "solid-js"
+import { For } from "solid-js"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
-import { ShimmerText } from "../../component/shimmer-text"
 import type { SpineKind, SpineReceipt as SpineReceiptType, SpineLayout } from "./spine-types"
 import { truncate } from "../../util/locale"
-import { projectInsightCard } from "./spine-insight"
-import { SpineInsightCard } from "./spine-insight-card"
 
 function extractErrorCode(msg: string): { code?: string; cause: string } {
   const match = msg.match(/^(?:error)?\[?([A-Z]\d{4})\]/)
@@ -16,8 +13,8 @@ function extractErrorCode(msg: string): { code?: string; cause: string } {
   return { cause: msg }
 }
 
-function renderInterruptedReceipt(layout: SpineLayout, t: Theme) {
-  const text = layout === "minimal" ? "INTERRUPTED" : "Interrupted · recovery required"
+function renderInterruptedReceipt(r: SpineReceiptType, layout: SpineLayout, t: Theme) {
+  const text = layout === "minimal" ? (r.command ?? "Interrupted").toUpperCase() : (r.command ?? "Interrupted")
   return <text fg={t.warning}>{text}</text>
 }
 
@@ -40,7 +37,7 @@ function renderRunReceipt(r: SpineReceiptType, layout: SpineLayout, t: Theme) {
   }
 
   if (r.status === "pending") {
-    return <ShimmerText text="Working" active={true} background={t.backgroundPanel} />
+    return null
   }
 
   if (r.stats && (r.stats.passed !== undefined || r.stats.failed !== undefined)) {
@@ -102,7 +99,7 @@ function renderPatchReceipt(r: SpineReceiptType, layout: SpineLayout, t: Theme) 
   const added = r.stats?.added
   const removed = r.stats?.removed
   if (added === undefined && removed === undefined) {
-    if (r.status === "pending") return <ShimmerText text="Working" active={true} background={t.backgroundPanel} />
+    if (r.status === "pending") return null
     return null
   }
 
@@ -139,7 +136,7 @@ function ShowCounts(props: { added: number; removed: number; theme: Theme }) {
 
 function renderInspectReceipt(r: SpineReceiptType, layout: SpineLayout, t: Theme) {
   if (r.status === "pending") {
-    return <ShimmerText text="Working" active={true} background={t.backgroundPanel} />
+    return null
   }
   if (r.status === "fail") {
     const msg = r.command ?? "failed"
@@ -161,7 +158,7 @@ function renderFailReceipt(r: SpineReceiptType, layout: SpineLayout, t: Theme) {
 
 function renderFallbackReceipt(r: SpineReceiptType, layout: SpineLayout, t: Theme) {
   if (r.status === "pending") {
-    return <ShimmerText text="Working" active={true} background={t.backgroundPanel} />
+    return null
   }
   if (r.status === "fail") {
     return renderFailReceipt(r, layout, t)
@@ -187,12 +184,11 @@ export function SpineReceipt(props: {
   const kind = () => props.kind
   const r = () => props.receipt
   const layout = () => props.layout
-  const insight = createMemo(() => projectInsightCard({ receipt: props.receipt }))
 
   const content = () => {
     const receipt = r()
     if (!receipt) return null
-    if (receipt.status === "interrupted") return renderInterruptedReceipt(layout(), theme)
+    if (receipt.status === "interrupted") return renderInterruptedReceipt(receipt, layout(), theme)
     switch (kind()) {
       case "run":
         return renderRunReceipt(receipt, layout(), theme)
@@ -209,14 +205,7 @@ export function SpineReceipt(props: {
   }
 
   const rendered = content()
-  if (!rendered && !insight()) return null
+  if (!rendered) return null
 
-  return (
-    <box flexDirection="column" flexShrink={0} minWidth={0}>
-      <Show when={insight()}>
-        {(card) => <SpineInsightCard card={card()} />}
-      </Show>
-      {rendered}
-    </box>
-  )
+  return <box flexDirection="column" flexShrink={0} minWidth={0}>{rendered}</box>
 }

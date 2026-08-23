@@ -1,6 +1,7 @@
 import type {
   SpineDiffExcerpt,
   SpineEntry,
+  SpineEntryAction,
   SpineKind,
   SpineLayout,
   SpineReceipt,
@@ -158,6 +159,7 @@ export type RecoveryEntry = SpineEntryViewBase & {
   bodyHint?: string
   bodyNote?: string
   receipt?: SpineReceipt
+  actions?: readonly SpineEntryAction[]
 }
 
 /** Grouped child row (tool burst / governance children). */
@@ -339,6 +341,7 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
       bodyHint: entry.bodyHint,
       bodyNote: entry.bodyNote,
       receipt: entry.receipt,
+      actions: entry.actions,
     }
   }
 

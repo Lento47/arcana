@@ -14,9 +14,9 @@ import { SpineProse } from "./spine-prose"
 import { chatCardChrome } from "./spine-chrome"
 
 /**
- * Chat voice card — one column, one accent line.
+ * Conversation voice — one column, one accent line.
  *
- *   [┃][pad 2][ ✦ speaker  assistant  live     +1.2s ]
+ *   [┃][pad 2][ ✦ speaker  live               +1.2s ]
  *   [┃][pad 2][ prose…                                   ]
  *
  * CRITICAL wrap rule: markdown sits in a SINGLE column with paddingLeft —
@@ -83,11 +83,9 @@ export function SpineChatCard(props: {
   const accentGlyph = createMemo(() => (isUser() ? Glyph.diamond : Glyph.star))
   const glyphCell = createMemo(() => spineRailCell(accentGlyph(), railW()))
 
-  const cardBg = createMemo(() => {
-    if (isAssistant()) return theme.backgroundPanel
-    if (isUser()) return theme.backgroundElement
-    return undefined
-  })
+  // Assistant prose stays open on the session surface. User prompts retain a
+  // faint fill so turn boundaries remain clear without becoming chat bubbles.
+  const cardBg = createMemo(() => (isUser() ? theme.backgroundElement : undefined))
 
   const bodyLabel = createMemo(
     () => props.bodyLabel ?? (isUser() ? "prompt" : "assistant"),
@@ -117,10 +115,10 @@ export function SpineChatCard(props: {
       borderColor={lineColor()}
       paddingLeft={SPINE_CHAT_CARD_CHROME.padL}
       paddingRight={SPINE_CHAT_CARD_CHROME.padR}
-      paddingTop={1}
+      paddingTop={isUser() ? 1 : 0}
       paddingBottom={1}
     >
-      {/* Header: glyph + speaker · role, live badge, elapsed */}
+      {/* Header: glyph + speaker, exceptional live state, elapsed. */}
       <box flexDirection="row" flexShrink={0} alignItems="center" width="100%" gap={1}>
         <box width={railW()} flexShrink={0}>
           <text fg={speakerColor()} wrapMode="none">
@@ -130,17 +128,10 @@ export function SpineChatCard(props: {
         <text fg={speakerColor()} wrapMode="none">
           {chrome().speaker}
         </text>
-        <Show when={!isUser()}>
-          <text fg={theme.spineDiffMuted} wrapMode="none">
-            {chrome().meta}
+        <Show when={!isUser() && streaming()}>
+          <text fg={theme.accent} wrapMode="none">
+            live
           </text>
-        </Show>
-        <Show when={chrome().badge}>
-          <box flexShrink={0} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
-            <text fg={theme.accent} wrapMode="none">
-              {chrome().badge}
-            </text>
-          </box>
         </Show>
         <box flexGrow={1} minWidth={1} />
         <Show when={hasRightTime()}>

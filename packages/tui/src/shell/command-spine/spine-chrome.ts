@@ -293,6 +293,38 @@ export function promptBarState(state: "idle" | "working" | "waiting" | "stop") {
   return { pulse: false, label: "idle", hint: "" }
 }
 
+export function focusedEntryActionHint(input: {
+  layout: SpineLayout
+  agent?: boolean
+  expanded?: boolean
+  toggleable?: boolean
+  hasSession?: boolean
+  hasDetails?: boolean
+  hasDiff?: boolean
+  approval?: boolean
+  canApprove?: boolean
+  canDeny?: boolean
+}): string {
+  const actions: string[] = []
+  if (input.approval) {
+    actions.push("v inspect")
+    if (input.canApprove) actions.push("a approve")
+    if (input.canDeny) actions.push("d deny")
+  }
+  if (input.agent && input.hasSession) actions.push("enter open")
+  if (input.toggleable) {
+    const action = input.expanded ? "collapse" : "expand"
+    actions.push(input.agent ? `space ${action}` : `enter/space ${action}`)
+  }
+  if (input.hasDetails) actions.push("o details")
+  if (input.hasDiff) actions.push("d diff")
+  if (!input.agent && input.hasSession) actions.push("g session")
+  actions.push("y copy")
+
+  const limit = input.layout === "minimal" ? 2 : input.layout === "narrow" ? 3 : input.layout === "compact" ? 4 : 5
+  return actions.slice(0, limit).join(" · ")
+}
+
 export function codeBlockChrome(input: {
   bodyLabel?: string
   filetype?: string

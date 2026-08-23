@@ -64,7 +64,7 @@ test("renders the repository and actionable session trail as one rail", async ()
   )
   try {
     const frame = await settle(app)
-    expect(frame).toContain("⌂ arcana ▸ … ▸ tui │ ◇ Fix stuck agent ▸ @review ‹ 2/2 › ↑")
+    expect(frame).toContain("⌂ arcana ▸ … ▸ tui │ Fix stuck agent ▸ @review ‹ 2/2 › ↑")
   } finally {
     app.renderer.destroy()
   }
