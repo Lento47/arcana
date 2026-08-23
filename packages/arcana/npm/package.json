@@ -12,12 +12,25 @@
   "keywords": [
     "ai",
     "agent",
+    "governance",
+    "autonomous-agents",
+    "policy-enforcement",
+    "provenance",
     "cli",
     "tui",
     "arcana",
     "llm",
     "coding-assistant"
   ],
+  "homepage": "https://arcana.otnelhq.com/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lento47/arcana.git",
+    "directory": "packages/arcana/npm"
+  },
+  "bugs": {
+    "url": "https://github.com/Lento47/arcana/issues"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=18"

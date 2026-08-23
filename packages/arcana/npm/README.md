@@ -1,48 +1,31 @@
 # arcana-ai
 
-Self-improving AI agent CLI — TUI, skills, memory, and proxy login.
+Arcana is a governed autonomy runtime, operator console, and proof system for AI agents. The model proposes; the engine decides; the proof records.
 
 ```bash
 npx arcana-ai
-npm install -g arcana-ai
-arcana --version
-```
-
-## Quick start
-
-```bash
-export OPENAI_API_KEY=sk-...   # or ANTHROPIC_API_KEY, etc.
-arcana console login           # optional: pair with https://arcana.otnelhq.com
-arcana trust                   # optional: trust project plugins/tools in this repo
-arcana run "explain this codebase"
-```
-
-## Docs
-
-- User reference: https://arcana.otnelhq.com/docs
-
-## What's inside
-
-- TUI (command spine, themes) + agent tools
-- Skills, memory, sessions, stats
-- Console device-flow login and hosted proxy
-- CLI: `run`, `console`, `models`, `providers`, `session`, `serve`, `trust`, …
-
-## Update
-
-```bash
-npx arcana-ai@latest
 # or
-npm install -g arcana-ai@latest
+npm install -g arcana-ai
+arcana
 ```
 
-## Thanks
+Arcana combines a terminal operator console with policy enforcement, persistent permissions, skills, memory, gateways, scheduled work, and evidence capture. Sensitive execution is evaluated by the runtime rather than delegated to model discretion.
 
-Arcana builds on open-source giants:
+## Start
 
-- **Hermes Agent** — autonomous AI agent framework
-- **Bun** — runtime + compiler producing the standalone binary
-- **models.dev** — community model catalog (200+ models, 33 providers)
-- **Effect** — typed functional effect system
-- **AI SDK** — unified LLM provider interface
-- 174 community-contributed skills
+Set a supported provider key, then launch the console:
+
+```bash
+export OPENAI_API_KEY=sk-...
+arcana
+```
+
+Use `arcana --help` for non-interactive commands and `arcana doctor` to inspect the local installation.
+
+## Verification
+
+Release builds are gated by Arcana's TypeScript/Rust ACEP-1 conformance suite and ship a machine-readable conformance report. Internal conformance is not presented as an external audit.
+
+- Documentation: https://arcana.otnelhq.com/docs
+- Source and reproducibility procedure: https://github.com/Lento47/arcana
+- Issues: https://github.com/Lento47/arcana/issues

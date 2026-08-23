@@ -1,29 +1,19 @@
-# arcana
+# `arcana-ai` CLI package
 
-CLI distribution and user commands for Arcana.
-
-## Overview
-
-The main CLI package that provides user-facing commands for managing Arcana sessions, proofs, and governance.
-
-## Commands
-
-- `arcana session` — Session management
-- `arcana proof` — RunProof verification
-- `arcana capability` — Capability management
-- `arcana mcp` — MCP server management
-
-## Usage
+This package provides Arcana's command-line distribution and the fast path into the governed TUI runtime.
 
 ```bash
-arcana session list          # List sessions
-arcana proof inspect <id>    # Inspect a proof
-arcana capability revoke     # Revoke capabilities
+bun run packages/arcana/src/index.ts --help
+bun run packages/arcana/src/index.ts doctor
+bun run packages/arcana/src/index.ts run "explain this repository"
 ```
 
-## Development
+The subcommand surface includes configuration, health checks, memory, skills, gateways, schedules, daemon operation, and non-interactive runs. Bare `arcana` starts the operator console through `packages/engine`.
+
+Protocol conformance is maintained at the repository root:
 
 ```bash
-bun run dev          # Start development
-bun test             # Run tests
+bun run conformance --output evidence/conformance.json
 ```
+
+See [assurance](../../docs/ASSURANCE.md) for the exact claim boundary and [ecosystem](../../docs/ECOSYSTEM.md) for adapter status.
