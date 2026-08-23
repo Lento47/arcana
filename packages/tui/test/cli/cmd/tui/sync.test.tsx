@@ -246,6 +246,79 @@ describe("tui sync", () => {
     }
   })
 
+  test("stale permission.routed never resurrects a replied request", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(`${tmp.path}/kv.json`, "{}")
+    const { app, emit, sync } = await mount(undefined, tmp.path)
+
+    try {
+      const request = {
+        id: "per_stale_1",
+        sessionID: "ses_stale_1",
+        permission: "bash",
+        patterns: ["git status"],
+        metadata: {},
+        always: ["git status"],
+        routing: {
+          route: "DESKTOP_PREFERRED",
+          decisionSurface: "DESKTOP",
+          localFallbackAllowed: true,
+          desktopOnline: true,
+        },
+      }
+      emit({
+        directory: "/tmp/other",
+        project: "proj_test",
+        payload: { id: "evt_permission_asked_stale", type: "permission.asked", properties: request },
+      } as unknown as GlobalEvent)
+      await wait(() => sync.data.permission["ses_stale_1"]?.length === 1)
+
+      emit({
+        directory: "/tmp/other",
+        project: "proj_test",
+        payload: {
+          id: "evt_permission_replied_stale",
+          type: "permission.replied",
+          properties: { sessionID: "ses_stale_1", requestID: "per_stale_1", reply: "once" },
+        },
+      } as unknown as GlobalEvent)
+      await wait(() => (sync.data.permission["ses_stale_1"]?.length ?? 0) === 0)
+
+      // The engine's routing monitor can publish an update that races past
+      // the reply. Routed is update-only in the projection: a late event for
+      // a settled request must not recreate the gate (nothing would ever
+      // remove it again), and a routed event for an unknown request must not
+      // create one either.
+      emit({
+        directory: "/tmp/other",
+        project: "proj_test",
+        payload: {
+          id: "evt_permission_routed_stale",
+          type: "permission.routed",
+          properties: {
+            ...request,
+            routing: { ...request.routing, decisionSurface: "LOCAL_TUI", desktopOnline: false },
+          },
+        },
+      } as unknown as GlobalEvent)
+      emit({
+        directory: "/tmp/other",
+        project: "proj_test",
+        payload: {
+          id: "evt_permission_routed_unknown",
+          type: "permission.routed",
+          properties: { ...request, id: "per_never_asked", sessionID: "ses_unknown_1" },
+        },
+      } as unknown as GlobalEvent)
+      await Bun.sleep(30)
+
+      expect(sync.data.permission["ses_stale_1"]).toHaveLength(0)
+      expect(sync.data.permission["ses_unknown_1"]).toBeUndefined()
+    } finally {
+      app.renderer.destroy()
+    }
+  })
+
   test("part updates, deltas, and removals advance the message part revision", async () => {
     await using tmp = await tmpdir()
     await Bun.write(`${tmp.path}/kv.json`, "{}")

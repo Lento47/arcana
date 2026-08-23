@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store"
 import { dirname } from "node:path"
-import { createMemo, For, Match, Show, Switch } from "solid-js"
+import { createMemo, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Portal, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import type { RGBA, TextareaRenderable } from "@opentui/core"
 import { useTheme, selectedForeground } from "../../context/theme"
@@ -12,15 +12,93 @@ import { filetype } from "../../util/filetype"
 import { Locale } from "../../util/locale"
 import { webSearchProviderLabel } from "../../util/tool-display"
 import { getScrollAcceleration } from "../../util/scroll"
+import { logPermissionDebug } from "../../util/permission-debug"
 import { useTuiConfig } from "../../config"
 import { ARCANA_BASE_MODE, useBindings, useCommandShortcut } from "../../keymap"
 import { usePathFormatter } from "../../context/path-format"
 import { SpineGutterSpacer, spineLeadMetrics } from "../../shell/command-spine/spine-lead"
 import { useSpineLayout } from "../../shell/command-spine/use-spine-layout"
 import { SpineRail } from "../../shell/command-spine/spine-rail"
-import { loadGovernanceConfig } from "@arcana/core/governance-config"
 
 type PermissionStage = "permission" | "always" | "reject"
+
+export const PERMISSION_DECISION_LAYER_PRIORITY = 10
+
+export function isContractAdmissionRequest(request: PermissionRequest) {
+  return request.permission === "contract.accept" && request.metadata?.kind === "contract_admission"
+}
+
+export function canRememberPermission(request: PermissionRequest) {
+  // The engine strips candidate patterns when policy/risk makes persistence
+  // ineligible. Clients must render that authoritative decision verbatim.
+  return request.always.length > 0
+}
+
+/**
+ * The generated SDK resolves (does not throw) provider errors unless
+ * `{ throwOnError }` is passed, so a settled/expired request surfaces as
+ * `result.error` — and thrown variants may arrive as HttpApi error objects.
+ * Both shapes identify the engine's "unknown request" 404, which means the
+ * gate is a phantom (engine restarted or turn aborted) and must be dropped.
+ */
+export function isPermissionNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false
+  const record = error as Record<string, unknown>
+  if (typeof record.requestID === "string") return true
+  const status = record.status
+  return status === 404 || status === "404"
+}
+
+export function permissionDecisionOptions(request: PermissionRequest): Record<string, string> {
+  const remember = canRememberPermission(request)
+  if (isContractAdmissionRequest(request)) {
+    return remember
+      ? { always: "Always activate", once: "Activate once", reject: "Decline" }
+      : { once: "Activate once", reject: "Decline" }
+  }
+  return remember
+    ? { once: "Allow once", always: "Allow always", reject: "Reject" }
+    : { once: "Allow once", reject: "Reject" }
+}
+
+export function createPermissionOptionBindings<T extends string>(input: {
+  keys: readonly T[]
+  selected: () => T
+  select: (value: T) => void
+  submit: (value: T) => void
+}) {
+  const move = (offset: number) => {
+    const index = input.keys.indexOf(input.selected())
+    const next = input.keys[(index + offset + input.keys.length) % input.keys.length]
+    input.select(next)
+  }
+  return [
+    { key: "left", desc: "Previous permission option", group: "Permission", cmd: () => move(-1) },
+    { key: "h", desc: "Previous permission option", group: "Permission", cmd: () => move(-1) },
+    { key: "right", desc: "Next permission option", group: "Permission", cmd: () => move(1) },
+    { key: "l", desc: "Next permission option", group: "Permission", cmd: () => move(1) },
+    {
+      key: "return",
+      desc: "Select permission option",
+      group: "Permission",
+      preventDefault: true,
+      cmd: () => input.submit(input.selected()),
+    },
+  ]
+}
+
+export function createPermissionRejectBindings(input: { cancel: () => void; confirm: () => void }) {
+  return [
+    { key: "escape", desc: "Cancel permission rejection", group: "Permission", cmd: input.cancel },
+    {
+      key: "return",
+      desc: "Confirm permission rejection",
+      group: "Permission",
+      preventDefault: true,
+      cmd: input.confirm,
+    },
+  ]
+}
 
 function EditBody(props: { request: PermissionRequest }) {
   const themeState = useTheme()
@@ -90,14 +168,17 @@ function EditBody(props: { request: PermissionRequest }) {
   )
 }
 
-function inspectFromMetadata(metadata: PermissionRequest["metadata"] | undefined): {
-  verdict: string
-  risk: string
-  lines: string[]
-} | undefined {
-  const action = metadata && typeof metadata === "object"
-    ? (metadata as { engine_action?: { inspect?: unknown } }).engine_action
-    : undefined
+function inspectFromMetadata(metadata: PermissionRequest["metadata"] | undefined):
+  | {
+      verdict: string
+      risk: string
+      lines: string[]
+    }
+  | undefined {
+  const action =
+    metadata && typeof metadata === "object"
+      ? (metadata as { engine_action?: { inspect?: unknown } }).engine_action
+      : undefined
   const inspect = action?.inspect
   if (!inspect || typeof inspect !== "object") return undefined
   const record = inspect as {
@@ -134,7 +215,11 @@ function InspectBody(props: { request: PermissionRequest }) {
             {`inspect ${report().verdict} · ${report().risk}`}
           </text>
           <For each={report().lines}>
-            {(line) => <text fg={theme.textMuted} wrapMode="word">{line}</text>}
+            {(line) => (
+              <text fg={theme.textMuted} wrapMode="word">
+                {line}
+              </text>
+            )}
           </For>
         </box>
       )}
@@ -152,11 +237,15 @@ function TextBody(props: { title: string; description?: string; icon?: string })
             {props.icon}
           </text>
         </Show>
-        <text fg={theme.textMuted} wrapMode="word">{props.title}</text>
+        <text fg={theme.textMuted} wrapMode="word">
+          {props.title}
+        </text>
       </box>
       <Show when={props.description}>
         <box paddingLeft={1}>
-          <text fg={theme.text} wrapMode="word">{props.description}</text>
+          <text fg={theme.text} wrapMode="word">
+            {props.description}
+          </text>
         </box>
       </Show>
     </>
@@ -171,9 +260,54 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
     stage: "permission" as PermissionStage,
     error: undefined as string | undefined,
   })
+  // Gate-flicker probe: a `prompt.create` line means a REAL component
+  // instance was constructed. Seeing create/dispose pairs around an approve
+  // points at store/reactivity; seeing none while the gate still flashes
+  // points at a renderer paint artifact.
+  logPermissionDebug("prompt.create", { id: props.request?.id, permission: props.request?.permission })
+  onCleanup(() => logPermissionDebug("prompt.dispose", { id: props.request?.id }))
   const pathFormatter = usePathFormatter()
 
   const session = createMemo(() => sync.data.session.find((s) => s.id === props.request.sessionID))
+
+  /**
+   * Single reply path (gate-freeze fix A): failures were previously silent
+   * `void`-fires, so a settled request left an unresponsive gate. NotFound
+   * drops the phantom locally so the next queued gate can surface; anything
+   * else surfaces inline instead of vanishing.
+   */
+  const sendReply = async (
+    reply: "once" | "always" | "reject",
+    options?: { message?: string },
+  ): Promise<"ok" | "notfound" | "failed"> => {
+    const handle = (error: unknown): "notfound" | "failed" => {
+      if (isPermissionNotFoundError(error)) {
+        logPermissionDebug("reply.notfound", { id: props.request.id, reply })
+        sync.permission.dropLocal(props.request.sessionID, props.request.id)
+        return "notfound"
+      }
+      logPermissionDebug("reply.failed", { id: props.request.id, reply, error: String(error) })
+      setStore("error", "Decision was not delivered — the request may have changed. Try again.")
+      return "failed"
+    }
+    try {
+      const res = await sdk.client.permission.reply({
+        reply,
+        requestID: props.request.id,
+        directory: props.directory,
+        workspace: project.workspace.current(),
+        ...(options?.message ? { message: options.message } : {}),
+      })
+      const error = (res as { error?: unknown } | undefined)?.error
+      if (!error) {
+        setStore("error", undefined)
+        return "ok"
+      }
+      return handle(error)
+    } catch (error) {
+      return handle(error)
+    }
+  }
 
   const input = createMemo(() => {
     const tool = props.request.tool
@@ -188,29 +322,23 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   })
 
   const { theme } = useTheme()
-  const canRemember = createMemo(() => {
-    const directory = props.directory ?? project.instance.directory()
-    const policy = loadGovernanceConfig(directory).config.policy.rememberedPermissions
-    if (policy?.enabled === false) return false
-    const risk = inspectFromMetadata(props.request.metadata)?.risk
-    if (risk === "high" || risk === "critical") return false
-    if (policy?.maxRisk === "LOW" && risk !== "low") return false
-    return true
-  })
+  const contractAdmission = createMemo(() => isContractAdmissionRequest(props.request))
 
   return (
     <Switch>
       <Match when={store.stage === "always"}>
         <Prompt
-          title="Always allow"
+          title={contractAdmission() ? "Always activate" : "Always allow"}
           body={
             <Switch>
               <Match when={props.request.always.length === 1 && props.request.always[0] === "*"}>
                 <TextBody
                   title={
-                    "This will allow "
-                    + props.request.permission
-                    + " for this workspace and agent across future sessions."
+                    contractAdmission()
+                      ? "Future completion contracts will activate automatically for this workspace and agent. Tool and action approvals remain separate."
+                      : "This will allow " +
+                        props.request.permission +
+                        " for this workspace and agent across future sessions."
                   }
                 />
               </Match>
@@ -238,13 +366,15 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
           onSelect={(option) => {
             setStore("stage", "permission")
             if (option === "cancel") return
-            void sdk.client.permission.reply({
-              reply: "always",
-              requestID: props.request.id,
-              directory: props.directory,
-              workspace: project.workspace.current(),
-            }).catch(() => {
-              setStore("error", "Permission was not saved; choose Allow once or try again.")
+            void sendReply("always").then((result) => {
+              if (result === "failed") {
+                setStore(
+                  "error",
+                  contractAdmission()
+                    ? "Preference was not saved; choose Activate once or try again."
+                    : "Permission was not saved; choose Allow once or try again.",
+                )
+              }
             })
           }}
         />
@@ -252,13 +382,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
       <Match when={store.stage === "reject"}>
         <RejectPrompt
           onConfirm={(message) => {
-            void sdk.client.permission.reply({
-              reply: "reject",
-              requestID: props.request.id,
-              directory: props.directory,
-              message: message || undefined,
-              workspace: project.workspace.current(),
-            })
+            void sendReply("reject", { message })
           }}
           onCancel={() => {
             setStore("stage", "permission")
@@ -270,6 +394,21 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
           const info = () => {
             const permission = props.request.permission
             const data = input()
+
+            if (contractAdmission()) {
+              const objective = props.request.metadata?.objective
+              return {
+                icon: "◇",
+                title: typeof objective === "string" ? objective : "Activate completion contract",
+                body: (
+                  <box paddingLeft={1}>
+                    <text fg={theme.textMuted} wrapMode="word">
+                      This governs completion evidence only. Consequential actions still require their own authorization.
+                    </text>
+                  </box>
+                ),
+              }
+            }
 
             if (permission === "edit") {
               const raw = props.request.metadata?.filepath
@@ -462,14 +601,20 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
           const header = () => (
             <box flexDirection="column" gap={0} minWidth={0}>
               <box flexDirection="row" gap={1} flexShrink={0} minWidth={0}>
-                <text fg={theme.warning} flexShrink={0}>{"△"}</text>
-                <text fg={theme.text} wrapMode="word">ACTION GATE</text>
+                <text fg={theme.warning} flexShrink={0}>
+                  {"△"}
+                </text>
+                <text fg={theme.text} wrapMode="word">
+                  {contractAdmission() ? "COMPLETION CONTRACT" : "ACTION GATE"}
+                </text>
               </box>
               <box flexDirection="row" gap={1} paddingLeft={2} flexShrink={0} minWidth={0}>
                 <text fg={theme.textMuted} flexShrink={0}>
                   {current.icon}
                 </text>
-                <text fg={theme.text} wrapMode="word">{current.title}</text>
+                <text fg={theme.text} wrapMode="word">
+                  {current.title}
+                </text>
               </box>
             </box>
           )
@@ -482,14 +627,10 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
                 <box flexDirection="column" minWidth={0}>
                   {current.body}
                   <InspectBody request={props.request} />
-                  <Show when={store.error}>
-                    {(message) => <text fg={theme.error}>{message()}</text>}
-                  </Show>
+                  <Show when={store.error}>{(message) => <text fg={theme.error}>{message()}</text>}</Show>
                 </box>
               }
-              options={canRemember()
-                ? { once: "Allow once", always: "Allow always", reject: "Reject" }
-                : { once: "Allow once", reject: "Reject" }}
+              options={permissionDecisionOptions(props.request)}
               // Esc is intentionally NOT mapped on the gate: an accidental
               // Escape must never reject/decline the request. The operator
               // resolves the gate explicitly with ←/→ + Enter (Reject is a
@@ -505,20 +646,10 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
                     setStore("stage", "reject")
                     return
                   }
-                  void sdk.client.permission.reply({
-                    reply: "reject",
-                    requestID: props.request.id,
-                    directory: props.directory,
-                    workspace: project.workspace.current(),
-                  })
+                  void sendReply("reject")
                   return
                 }
-                void sdk.client.permission.reply({
-                  reply: "once",
-                  requestID: props.request.id,
-                  directory: props.directory,
-                  workspace: project.workspace.current(),
-                })
+                void sendReply("once")
               }}
             />
           )
@@ -561,10 +692,7 @@ function GateFrame(props: {
         marginTop={row.marginTop}
       >
         <SpineGutterSpacer layout={layout()} />
-        <Show
-          when={row.rail === "node"}
-          fallback={<SpineRail layout={layout()} glyph="│" color={theme.spineRail} />}
-        >
+        <Show when={row.rail === "node"} fallback={<SpineRail layout={layout()} glyph="│" color={theme.spineRail} />}>
           <SpineRail layout={layout()} glyph={glyph()} color={color()} active />
         </Show>
         <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
@@ -586,9 +714,15 @@ function GateFrame(props: {
         : {})}
     >
       <GateRow rail="node">{props.header}</GateRow>
-      <GateRow rail="line" marginTop={1}>{props.body}</GateRow>
+      <GateRow rail="line" marginTop={1}>
+        {props.body}
+      </GateRow>
       <Show when={props.footer}>
-        {(footer) => <GateRow rail="line" marginTop={1}>{footer()}</GateRow>}
+        {(footer) => (
+          <GateRow rail="line" marginTop={1}>
+            {footer()}
+          </GateRow>
+        )}
       </Show>
     </box>
   )
@@ -608,7 +742,7 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
     // Above command-spine entry toggle (priority 1) so Enter confirms rejection.
-    priority: 10,
+    priority: PERMISSION_DECISION_LAYER_PRIORITY,
     commands: [
       {
         name: "app.exit",
@@ -620,15 +754,15 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
       },
     ],
     bindings: [
-      { key: "escape", desc: "Cancel permission rejection", group: "Permission", cmd: () => props.onCancel() },
+      createPermissionRejectBindings({
+        cancel: props.onCancel,
+        confirm: () => props.onConfirm(input.plainText),
+      })[0],
       ...tuiConfig.keybinds.get("app.exit"),
-      {
-        key: "return",
-        desc: "Confirm permission rejection",
-        group: "Permission",
-        preventDefault: true,
-        cmd: () => props.onConfirm(input.plainText),
-      },
+      createPermissionRejectBindings({
+        cancel: props.onCancel,
+        confirm: () => props.onConfirm(input.plainText),
+      })[1],
     ],
   }))
 
@@ -639,10 +773,16 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
       header={
         <box flexDirection="column" gap={0} minWidth={0}>
           <box flexDirection="row" gap={1} minWidth={0}>
-            <text fg={theme.spineFail} flexShrink={0}>{"×"}</text>
-            <text fg={theme.spineFail} wrapMode="word">REJECT PERMISSION</text>
+            <text fg={theme.spineFail} flexShrink={0}>
+              {"×"}
+            </text>
+            <text fg={theme.spineFail} wrapMode="word">
+              REJECT PERMISSION
+            </text>
           </box>
-          <text fg={theme.text} wrapMode="word">Tell arcana what to do differently</text>
+          <text fg={theme.text} wrapMode="word">
+            Tell arcana what to do differently
+          </text>
         </box>
       }
       body={
@@ -671,8 +811,12 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
             onSubmit={() => props.onConfirm(input.plainText)}
           />
           <box flexDirection={narrow() ? "column" : "row"} gap={narrow() ? 0 : 2} flexShrink={0} minWidth={0}>
-            <text fg={theme.text}>enter <span style={{ fg: theme.spineContext }}>confirm</span></text>
-            <text fg={theme.text}>esc <span style={{ fg: theme.spineContext }}>cancel</span></text>
+            <text fg={theme.text}>
+              enter <span style={{ fg: theme.spineContext }}>confirm</span>
+            </text>
+            <text fg={theme.text}>
+              esc <span style={{ fg: theme.spineContext }}>cancel</span>
+            </text>
           </box>
         </box>
       }
@@ -692,7 +836,7 @@ function Prompt<const T extends Record<string, string>>(props: {
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
   const dimensions = useTerminalDimensions()
-  const keys = Object.keys(props.options) as (keyof T)[]
+  const keys = Object.keys(props.options) as Extract<keyof T, string>[]
   const [store, setStore] = createStore({
     selected: keys[0],
     expanded: false,
@@ -704,7 +848,7 @@ function Prompt<const T extends Record<string, string>>(props: {
     mode: ARCANA_BASE_MODE,
     // Above command-spine entry toggle (priority 1) so Enter confirms Decision,
     // including Always allow → Confirm, instead of expand/collapse on a message.
-    priority: 10,
+    priority: PERMISSION_DECISION_LAYER_PRIORITY,
     commands: [
       {
         name: "app.exit",
@@ -726,53 +870,12 @@ function Prompt<const T extends Record<string, string>>(props: {
       },
     ],
     bindings: [
-      {
-        key: "left",
-        desc: "Previous permission option",
-        group: "Permission",
-        cmd: () => {
-          const idx = keys.indexOf(store.selected)
-          const next = keys[(idx - 1 + keys.length) % keys.length]
-          setStore("selected", next)
-        },
-      },
-      {
-        key: "h",
-        desc: "Previous permission option",
-        group: "Permission",
-        cmd: () => {
-          const idx = keys.indexOf(store.selected)
-          const next = keys[(idx - 1 + keys.length) % keys.length]
-          setStore("selected", next)
-        },
-      },
-      {
-        key: "right",
-        desc: "Next permission option",
-        group: "Permission",
-        cmd: () => {
-          const idx = keys.indexOf(store.selected)
-          const next = keys[(idx + 1) % keys.length]
-          setStore("selected", next)
-        },
-      },
-      {
-        key: "l",
-        desc: "Next permission option",
-        group: "Permission",
-        cmd: () => {
-          const idx = keys.indexOf(store.selected)
-          const next = keys[(idx + 1) % keys.length]
-          setStore("selected", next)
-        },
-      },
-      {
-        key: "return",
-        desc: "Select permission option",
-        group: "Permission",
-        preventDefault: true,
-        cmd: () => props.onSelect(store.selected),
-      },
+      ...createPermissionOptionBindings({
+        keys,
+        selected: () => store.selected,
+        select: (next) => setStore("selected", next),
+        submit: props.onSelect,
+      }),
       ...(props.escapeKey
         ? [
             {
@@ -794,8 +897,12 @@ function Prompt<const T extends Record<string, string>>(props: {
   const defaultHeader = (
     <box flexDirection="column" gap={0} minWidth={0}>
       <box flexDirection="row" gap={1} minWidth={0}>
-        <text fg={theme.spineFix} flexShrink={0}>{"△"}</text>
-        <text fg={theme.spineFix} wrapMode="word">{props.title.toUpperCase()}</text>
+        <text fg={theme.spineFix} flexShrink={0}>
+          {"△"}
+        </text>
+        <text fg={theme.spineFix} wrapMode="word">
+          {props.title.toUpperCase()}
+        </text>
       </box>
     </box>
   )
@@ -803,13 +910,17 @@ function Prompt<const T extends Record<string, string>>(props: {
   const footer = (
     <box flexDirection="column" gap={1} minWidth={0}>
       <box flexDirection={narrow() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
-        <text fg={theme.spineContext} flexShrink={0}>Decision</text>
+        <text fg={theme.spineContext} flexShrink={0}>
+          Decision
+        </text>
         <box flexDirection={narrow() ? "column" : "row"} gap={1} flexShrink={0} minWidth={0}>
           <For each={keys}>
             {(option) => {
               const selected = createMemo(() => option === store.selected)
-              const reject = createMemo(() => String(option) === "reject" || props.options[option].toLowerCase().includes("reject"))
-              const color = createMemo(() => reject() ? theme.spineFail : theme.spineFix)
+              const reject = createMemo(
+                () => String(option) === "reject" || props.options[option].toLowerCase().includes("reject"),
+              )
+              const color = createMemo(() => (reject() ? theme.spineFail : theme.spineFix))
               return (
                 <box
                   paddingLeft={1}
@@ -822,7 +933,8 @@ function Prompt<const T extends Record<string, string>>(props: {
                   }}
                 >
                   <text fg={selected() ? selectedForeground(theme, color()) : theme.text} wrapMode="word">
-                    {selected() ? "▸ " : "  "}{props.options[option]}
+                    {selected() ? "▸ " : "  "}
+                    {props.options[option]}
                   </text>
                 </box>
               )
@@ -837,18 +949,15 @@ function Prompt<const T extends Record<string, string>>(props: {
           <text fg={theme.spineContext}>esc reject</text>
         </Show>
         <Show when={props.fullscreen}>
-          <text fg={theme.spineContext}>{fullscreenHint()} {hint()}</text>
+          <text fg={theme.spineContext}>
+            {fullscreenHint()} {hint()}
+          </text>
         </Show>
       </box>
     </box>
   )
 
   return (
-    <GateFrame
-      header={props.header ?? defaultHeader}
-      body={props.body}
-      footer={footer}
-      expanded={store.expanded}
-    />
+    <GateFrame header={props.header ?? defaultHeader} body={props.body} footer={footer} expanded={store.expanded} />
   )
 }

@@ -23,6 +23,7 @@ import type {
 } from "@arcana/sdk/v2"
 import type { ApprovalRecord } from "@arcana/core/crypto/approval-lifecycle"
 import { detectLocalOllama } from "@arcana/core/providers/ollama"
+import { Flag } from "@arcana/core/flag/flag"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useProject } from "./project"
 import { useEvent } from "./event"
@@ -31,6 +32,7 @@ import { shouldKeepLocalPart, shouldKeepLocalAuthoritative } from "../util/part-
 import { isPendingSessionID } from "../util/session"
 import { streamState, type TransportEnvelope } from "./stream-state"
 import { createMissingDeltaTracker } from "../util/missing-delta-tracker"
+import { logPermissionDebug } from "../util/permission-debug"
 import { useTuiStartup } from "./runtime"
 import { createSimpleContext } from "./helper"
 import { useExit } from "./exit"
@@ -63,6 +65,24 @@ export function splitMessageWindow<T>(
 }
 
 export type ReconcileReason = "heartbeat-gap" | "missing-part" | "reconnect" | "stream-reset" | "manual" | "turn-end"
+
+export type SessionLoadStatus = "idle" | "loading" | "ready" | "error"
+
+export interface SessionLoadState {
+  metadata: SessionLoadStatus
+  history: SessionLoadStatus
+  supplemental: SessionLoadStatus
+  startedAt?: number
+  inputReadyAt?: number
+  completedAt?: number
+  error?: string
+}
+
+const emptySessionLoadState = (): SessionLoadState => ({
+  metadata: "idle",
+  history: "idle",
+  supplemental: "idle",
+})
 
 /**
  * Part liveness window for hydration merges. An actively-streaming part
@@ -130,6 +150,10 @@ export const {
       }
       config: Config
       session: Session[]
+      session_list_ready: boolean
+      session_load: {
+        [sessionID: string]: SessionLoadState
+      }
       session_status: {
         [sessionID: string]: SessionStatus
       }
@@ -186,6 +210,8 @@ export const {
       provider: [],
       provider_default: {},
       session: [],
+      session_list_ready: false,
+      session_load: {},
       session_status: {},
       session_compacting: {},
       session_diff: {},
@@ -276,7 +302,13 @@ export const {
       setStore("part_revision", messageID, (revision) => (revision ?? 0) + 1)
     }
 
+    const metadataReadySessions = new Set<string>()
+    const historyReadySessions = new Set<string>()
+    const supplementalReadySessions = new Set<string>()
     const fullSyncedSessions = new Set<string>()
+    const metadataTasks = new Map<string, Promise<void>>()
+    const historyTasks = new Map<string, Promise<void>>()
+    const supplementalTasks = new Map<string, Promise<void>>()
     const syncingSessions = new Map<string, Promise<void>>()
     const hydratingSessions = new Map<string, { messages: Set<string>; parts: Set<string> }>()
     const olderCursors = new Map<string, string | undefined>()
@@ -290,6 +322,7 @@ export const {
     const reconcilingSessions = new Map<string, Promise<void>>()
     const reconcileGeneration = new Map<string, number>()
     const governanceRefreshGeneration = new Map<string, number>()
+    let bootstrapGeneration = 0
     const RECONCILE_TIMEOUT_MS = 15_000
 
     const mergeGovernanceEvents = (
@@ -306,12 +339,24 @@ export const {
         .slice(-500)
     }
 
+    const governanceApplied = new Map<string, string>()
     const refreshGovernance = (sessionID: string) => {
       const generation = (governanceRefreshGeneration.get(sessionID) ?? 0) + 1
       governanceRefreshGeneration.set(sessionID, generation)
       void loadGovernance(sessionID).then((authoritative) => {
         if (governanceRefreshGeneration.get(sessionID) !== generation) return
         const current = store.governance[sessionID]
+        // No-op guard: a full deep reconcile of up to 500 merged governance
+        // events is expensive on the TUI thread. When the authoritative
+        // snapshot carries the same proof hash and tail event as what we last
+        // applied, the store is already correct — skip entirely.
+        const fingerprint = [
+          authoritative.proof?.proofHash ?? "",
+          authoritative.events.length,
+          authoritative.events.at(-1)?.id ?? "",
+        ].join(":")
+        if (governanceApplied.get(sessionID) === fingerprint) return
+        governanceApplied.set(sessionID, fingerprint)
         setStore(
           "governance",
           sessionID,
@@ -348,9 +393,10 @@ export const {
      * authoritative, replace the truncated prefix).
      */
     const lastPartLiveAt = new Map<string, number>()
-    /** Serial idle-prefetch queue (concurrency cap 1). */
-    const prefetchQueue: string[] = []
-    let prefetchDraining = false
+    /** Essential idle-prefetch queue. Current/focused callers can request priority. */
+    const prefetchQueue: Array<{ id: string; priority: number }> = []
+    const PREFETCH_CONCURRENCY = 2
+    let prefetchActive = 0
     const touchMessage = (sessionID: string, messageID: string) => {
       hydratingSessions.get(sessionID)?.messages.add(messageID)
     }
@@ -388,6 +434,12 @@ export const {
           break
         case "permission.replied": {
           const requests = store.permission[event.properties.sessionID]
+          logPermissionDebug("replied", {
+            requestID: event.properties.requestID,
+            sessionID: event.properties.sessionID,
+            tracked: Boolean(requests?.some((r) => r.id === event.properties.requestID)),
+            queueBefore: requests?.length ?? -1,
+          })
           if (!requests) break
           const match = search(requests, event.properties.requestID, (r) => r.id)
           if (!match.found) break
@@ -398,13 +450,25 @@ export const {
               draft.splice(match.index, 1)
             }),
           )
+          logPermissionDebug("replied.applied", {
+            sessionID: event.properties.sessionID,
+            queueAfter: store.permission[event.properties.sessionID]?.length ?? -1,
+          })
           break
         }
 
-        case "permission.asked":
-        case "permission.routed": {
+        case "permission.asked": {
           const request = event.properties
           const requests = store.permission[request.sessionID]
+          logPermissionDebug("asked", {
+            id: request.id,
+            sessionID: request.sessionID,
+            permission: request.permission,
+            alwaysEligible: request.always.length > 0,
+            decisionSurface: request.routing?.decisionSurface,
+            desktopOnline: request.routing?.desktopOnline,
+            queueBefore: requests?.length ?? -1,
+          })
           if (!requests) {
             setStore("permission", request.sessionID, [request])
             break
@@ -421,6 +485,35 @@ export const {
               draft.splice(match.index, 0, request)
             }),
           )
+          break
+        }
+
+        case "permission.routed": {
+          // Routing updates describe an EXISTING pending request and must
+          // never create one. A routed event that races past its own
+          // permission.replied (engine monitorRoute fiber vs reply fiber)
+          // would otherwise resurrect a settled gate as an unresolvable
+          // phantom — nothing else ever removes entries from this map.
+          const request = event.properties
+          const requests = store.permission[request.sessionID]
+          const match = requests ? search(requests, request.id, (r) => r.id) : undefined
+          if (!requests || !match?.found) {
+            logPermissionDebug("routed.dropped-stale", {
+              id: request.id,
+              sessionID: request.sessionID,
+              decisionSurface: request.routing?.decisionSurface,
+              desktopOnline: request.routing?.desktopOnline,
+              queueLength: requests?.length ?? -1,
+            })
+            break
+          }
+          logPermissionDebug("routed.applied", {
+            id: request.id,
+            sessionID: request.sessionID,
+            decisionSurface: request.routing?.decisionSurface,
+            desktopOnline: request.routing?.desktopOnline,
+          })
+          setStore("permission", request.sessionID, match.index, reconcile(request))
           break
         }
 
@@ -486,6 +579,7 @@ export const {
               delete draft[event.properties.info.id]
             }),
           )
+          governanceApplied.delete(event.properties.info.id)
           break
         }
         case "governance.recorded": {
@@ -782,15 +876,251 @@ export const {
     const exit = useExit()
     const args = useArgs()
 
+    const loadErrorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+
+    async function profileSessionRequest<T>(sessionID: string, projection: string, run: () => Promise<T>): Promise<T> {
+      if (!Flag.ARCANA_PROFILE_SESSION_SWITCH) return run()
+      const started = performance.now()
+      try {
+        return await run()
+      } finally {
+        console.error("[session-load]", {
+          sessionID,
+          projection,
+          durationMs: Math.round(performance.now() - started),
+        })
+      }
+    }
+
+    function setSessionLoadPhase(
+      sessionID: string,
+      phase: "metadata" | "history" | "supplemental",
+      status: SessionLoadStatus,
+      error?: unknown,
+    ) {
+      const previous = store.session_load[sessionID] ?? emptySessionLoadState()
+      const now = Date.now()
+      const next: SessionLoadState = {
+        ...previous,
+        [phase]: status,
+        startedAt: previous.startedAt ?? now,
+        ...(phase === "metadata" && status === "ready" && previous.inputReadyAt === undefined
+          ? { inputReadyAt: now }
+          : {}),
+        ...(error === undefined ? {} : { error: loadErrorMessage(error) }),
+      }
+      if (status === "ready" && error === undefined) delete next.error
+      setStore("session_load", sessionID, next)
+    }
+
+    function markSessionLoadComplete(sessionID: string) {
+      const previous = store.session_load[sessionID] ?? emptySessionLoadState()
+      setStore("session_load", sessionID, {
+        ...previous,
+        completedAt: Date.now(),
+      })
+    }
+
+    function markSessionInputReady(sessionID: string) {
+      const previous = store.session_load[sessionID] ?? emptySessionLoadState()
+      if (previous.inputReadyAt !== undefined) return
+      const now = Date.now()
+      setStore("session_load", sessionID, {
+        ...previous,
+        startedAt: previous.startedAt ?? now,
+        inputReadyAt: now,
+      })
+    }
+
+    function ensureSessionMetadata(sessionID: string): Promise<void> {
+      if (metadataReadySessions.has(sessionID)) return Promise.resolve()
+      const existing = metadataTasks.get(sessionID)
+      if (existing) return existing
+      setSessionLoadPhase(sessionID, "metadata", "loading")
+      const task = profileSessionRequest(sessionID, "metadata", () =>
+        sdk.client.session.get({ sessionID }, { throwOnError: true }),
+      )
+        .then((session) => {
+          setStore(
+            "session",
+            produce((draft) => {
+              const match = search(draft, sessionID, (s) => s.id)
+              if (match.found) draft[match.index] = session.data!
+              else draft.splice(match.index, 0, session.data!)
+            }),
+          )
+          metadataReadySessions.add(sessionID)
+          setSessionLoadPhase(sessionID, "metadata", "ready")
+        })
+        .catch((error) => {
+          setSessionLoadPhase(sessionID, "metadata", "error", error)
+          throw error
+        })
+        .finally(() => metadataTasks.delete(sessionID))
+      metadataTasks.set(sessionID, task)
+      return task
+    }
+
+    function ensureSessionHistory(sessionID: string): Promise<void> {
+      if (historyReadySessions.has(sessionID)) return Promise.resolve()
+      const existing = historyTasks.get(sessionID)
+      if (existing) return existing
+      setSessionLoadPhase(sessionID, "history", "loading")
+      const tracker = { messages: new Set<string>(), parts: new Set<string>() }
+      hydratingSessions.set(sessionID, tracker)
+      const task = profileSessionRequest(sessionID, "history", () =>
+        sdk.client.session.messages({ sessionID, limit: 25 }, { throwOnError: true }),
+      )
+        .then((messages) => {
+          const responseData = extractMessages(messages)
+          const oldest = responseData[responseData.length - 1]
+          olderCursors.set(sessionID, oldest?.info?.id ?? undefined)
+
+          setStore(
+            produce((draft) => {
+              const currentMessages = draft.message[sessionID] ?? []
+              const infos = responseData.flatMap((message: any) => {
+                if (!tracker.messages.has(message.info.id)) return [message.info]
+                const current = currentMessages.find((item) => item.id === message.info.id)
+                return current ? [current] : []
+              })
+              infos.push(
+                ...currentMessages.filter(
+                  (message: any) => tracker.messages.has(message.id) && !infos.some((item: any) => item.id === message.id),
+                ),
+              )
+              const { visible, removed } = splitMessageWindow(infos)
+              const visibleIDs = new Set(visible.map((message: any) => message.id))
+              for (const message of responseData) {
+                if (!visibleIDs.has(message.info.id)) {
+                  delete draft.part[message.info.id]
+                  delete draft.part_revision[message.info.id]
+                  continue
+                }
+                const currentParts = draft.part[message.info.id] ?? []
+                const now = Date.now()
+                const parts = message.parts.flatMap((part: any) => {
+                  const current = currentParts.find((item) => item.id === part.id)
+                  if (
+                    shouldKeepLocalPart({
+                      rest: part,
+                      current,
+                      tracked: tracker.parts.has(part.id),
+                      lastEventAt: lastPartLiveAt.get(part.id) ?? 0,
+                      now,
+                      silenceMs: SSE_PART_LIVENESS_MS,
+                    })
+                  ) {
+                    return current ? [current] : []
+                  }
+                  return [part]
+                })
+                parts.push(
+                  ...currentParts.filter(
+                    (part: any) => tracker.parts.has(part.id) && !parts.some((item: any) => item.id === part.id),
+                  ),
+                )
+                draft.part[message.info.id] = parts
+                draft.part_revision[message.info.id] = (draft.part_revision[message.info.id] ?? 0) + 1
+              }
+              for (const message of removed) {
+                delete draft.part[message.id]
+                delete draft.part_revision[message.id]
+              }
+              draft.message[sessionID] = visible
+            }),
+          )
+          historyReadySessions.add(sessionID)
+          setSessionLoadPhase(sessionID, "history", "ready")
+        })
+        .catch((error) => {
+          setSessionLoadPhase(sessionID, "history", "error", error)
+        })
+        .finally(() => {
+          historyTasks.delete(sessionID)
+          hydratingSessions.delete(sessionID)
+        })
+      historyTasks.set(sessionID, task)
+      return task
+    }
+
+    function ensureSessionSupplemental(sessionID: string): Promise<void> {
+      if (supplementalReadySessions.has(sessionID)) return Promise.resolve()
+      const existing = supplementalTasks.get(sessionID)
+      if (existing) return existing
+      setSessionLoadPhase(sessionID, "supplemental", "loading")
+      const task = Promise.allSettled([
+        profileSessionRequest(sessionID, "todo", () =>
+          sdk.client.session.todo({ sessionID }, { throwOnError: true }),
+        ),
+        profileSessionRequest(sessionID, "diff", () =>
+          sdk.client.session.diff({ sessionID }, { throwOnError: true }),
+        ),
+        profileSessionRequest(sessionID, "governance", () => loadGovernance(sessionID)),
+      ]).then(([todo, diff, governance]) => {
+        batch(() => {
+          if (todo.status === "fulfilled") setStore("todo", sessionID, todo.value.data ?? [])
+          if (diff.status === "fulfilled") setStore("session_diff", sessionID, diff.value.data ?? [])
+          if (governance.status === "fulfilled") setStore("governance", sessionID, governance.value)
+        })
+        supplementalReadySessions.add(sessionID)
+        const failed = [todo, diff, governance].find((entry) => entry.status === "rejected")
+        if (failed?.status === "rejected") setSessionLoadPhase(sessionID, "supplemental", "error", failed.reason)
+        else setSessionLoadPhase(sessionID, "supplemental", "ready")
+      }).finally(() => supplementalTasks.delete(sessionID))
+      supplementalTasks.set(sessionID, task)
+      return task
+    }
+
+    function ensureEssentialSession(sessionID: string) {
+      return Promise.all([ensureSessionMetadata(sessionID), ensureSessionHistory(sessionID)]).then(() => undefined)
+    }
+
+    /**
+     * Authoritative pending-permission snapshot (gate-freeze fix C). The
+     * ACTION GATE queue is event-driven (`permission.asked/routed/replied`),
+     * so engine restarts and interrupted turns used to leave phantom gates
+     * that 404'd on every decision. This replaces the whole map from the
+     * engine's cross-session pending list — healing phantoms AND surfacing
+     * gates asked while the SSE was down.
+     */
+    async function refreshPermissions(reason: string) {
+      try {
+        const res = await sdk.client.permission.list({}, { throwOnError: true })
+        const requests = (res.data ?? []) as PermissionRequest[]
+        const grouped: Record<string, PermissionRequest[]> = {}
+        for (const request of requests) {
+          ;(grouped[request.sessionID] ??= []).push(request)
+        }
+        batch(() => {
+          setStore("permission", reconcile(grouped))
+        })
+        logPermissionDebug("permissions.refreshed", { reason, count: requests.length })
+      } catch (error) {
+        logPermissionDebug("permissions.refresh.failed", { reason, error: String(error) })
+      }
+    }
+
     async function bootstrap(input: { fatal?: boolean } = {}) {
       const fatal = input.fatal ?? true
       const workspace = project.workspace.current()
+      const generation = ++bootstrapGeneration
+      const active = () => generation === bootstrapGeneration && workspace === project.workspace.current()
       const projectPromise = project.sync()
 
       // Fire session list in parallel with project sync — before project.sync
       // the path filter falls back to { scope: "project" }, which is functionally
       // correct (just broader). This saves ~1 RTT of sequential wait on bootstrap.
-      const sessionListPromise = listSessions()
+      const sessionListPromise = listSessions().then(
+        (sessions) => {
+          if (active()) setStore("session_list_ready", true)
+          return sessions
+        },
+        (error) => {
+          if (active()) setStore("session_list_ready", true)
+          throw error
+        },
+      )
 
       // blocking — only the essentials needed before first paint.
       // agents and config are deferred to startupTasks (non-blocking before "complete").
@@ -818,6 +1148,7 @@ export const {
             consoleStateResponse,
             ...(sessionListResponse ? [sessionListResponse] : []),
           ]).then((responses) => {
+            if (!active()) return
             const providers = responses[0]
             const providerList = responses[1]
             const consoleState = responses[2]
@@ -831,6 +1162,9 @@ export const {
               if (sessions !== undefined) setStore("session", mergeSessionList(store.session, sessions))
             })
 
+            // Heal the gate queue against engine restarts / missed events.
+            void refreshPermissions("bootstrap")
+
             // Local Ollama discovery follows the arcana doctor: both use the
             // shared detectLocalOllama probe (packages/core/src/providers/
             // ollama.ts). No detection -> no entry, no log. Detected but no
@@ -839,6 +1173,7 @@ export const {
             // entry to the provider switcher when a daemon is actually
             // running.
             void detectLocalOllama().then((ollama) => {
+              if (!active()) return
               if (!ollama || ollama.models.length === 0) return
               const ollamaProvider = {
                 id: "ollama",
@@ -865,34 +1200,58 @@ export const {
           })
         })
         .then(() => {
+          if (!active()) return
           if (store.status !== "complete") setStore("status", "partial")
 
           // Keep startup completion tied to data that affects the initial route
           // and command surface. Slower catalogs can settle after the TUI is usable.
           const startupTasks = [
-            ...(args.continue ? [] : [sessionListPromise.then((sessions) => setStore("session", mergeSessionList(store.session, sessions)))]),
-            consoleStatePromise.then((consoleState) => setStore("console_state", reconcile(consoleState))),
-            sdk.client.app.agents({ workspace }).then((x) => setStore("agent", reconcile(x.data ?? []))),
-            sdk.client.config.get({ workspace }).then((x) => setStore("config", reconcile(x.data!))),
-            sdk.client.command.list({ workspace }).then((x) => setStore("command", reconcile(x.data ?? []))),
+            ...(args.continue ? [] : [sessionListPromise.then((sessions) => {
+              if (active()) setStore("session", mergeSessionList(store.session, sessions))
+            })]),
+            consoleStatePromise.then((consoleState) => {
+              if (active()) setStore("console_state", reconcile(consoleState))
+            }),
+            sdk.client.app.agents({ workspace }).then((x) => {
+              if (active()) setStore("agent", reconcile(x.data ?? []))
+            }),
+            sdk.client.config.get({ workspace }).then((x) => {
+              if (active()) setStore("config", reconcile(x.data!))
+            }),
+            sdk.client.command.list({ workspace }).then((x) => {
+              if (active()) setStore("command", reconcile(x.data ?? []))
+            }),
             sdk.client.session.status({ workspace }).then((x) => {
-              setStore("session_status", reconcile(x.data ?? {}))
+              if (active()) setStore("session_status", reconcile(x.data ?? {}))
             }),
           ]
 
           const catalogTasks = [
-            sdk.client.provider.auth({ workspace }).then((x) => setStore("provider_auth", reconcile(x.data ?? {}))),
-            sdk.client.lsp.status({ workspace }).then((x) => setStore("lsp", reconcile(x.data ?? []))),
-            sdk.client.mcp.status({ workspace }).then((x) => setStore("mcp", reconcile(x.data ?? {}))),
+            sdk.client.provider.auth({ workspace }).then((x) => {
+              if (active()) setStore("provider_auth", reconcile(x.data ?? {}))
+            }),
+            sdk.client.lsp.status({ workspace }).then((x) => {
+              if (active()) setStore("lsp", reconcile(x.data ?? []))
+            }),
+            sdk.client.mcp.status({ workspace }).then((x) => {
+              if (active()) setStore("mcp", reconcile(x.data ?? {}))
+            }),
             sdk.client.experimental.resource
               .list({ workspace })
-              .then((x) => setStore("mcp_resource", reconcile(x.data ?? {}))),
-            sdk.client.formatter.status({ workspace }).then((x) => setStore("formatter", reconcile(x.data ?? []))),
-            sdk.client.vcs.get({ workspace }).then((x) => setStore("vcs", reconcile(x.data))),
+              .then((x) => {
+                if (active()) setStore("mcp_resource", reconcile(x.data ?? {}))
+              }),
+            sdk.client.formatter.status({ workspace }).then((x) => {
+              if (active()) setStore("formatter", reconcile(x.data ?? []))
+            }),
+            sdk.client.vcs.get({ workspace }).then((x) => {
+              if (active()) setStore("vcs", reconcile(x.data))
+            }),
             project.workspace.sync(),
           ]
 
           void Promise.allSettled(startupTasks).then(() => {
+            if (!active()) return
             setStore("status", "complete")
             void Promise.allSettled(catalogTasks)
           })
@@ -915,20 +1274,18 @@ export const {
       void bootstrap()
     })
 
-    async function drainPrefetchQueue() {
-      if (prefetchDraining) return
-      prefetchDraining = true
-      try {
-        while (prefetchQueue.length > 0) {
-          const id = prefetchQueue.shift()
-          if (!id) continue
-          if (fullSyncedSessions.has(id)) continue
-          // Reuse sync() so live-hydration race guards stay identical.
-          await result.session.sync(id).catch(() => undefined)
-        }
-      } finally {
-        prefetchDraining = false
-        if (prefetchQueue.length > 0) void drainPrefetchQueue()
+    function drainPrefetchQueue() {
+      prefetchQueue.sort((a, b) => b.priority - a.priority)
+      while (prefetchActive < PREFETCH_CONCURRENCY && prefetchQueue.length > 0) {
+        const next = prefetchQueue.shift()
+        if (!next || historyReadySessions.has(next.id)) continue
+        prefetchActive++
+        void ensureEssentialSession(next.id)
+          .catch(() => undefined)
+          .finally(() => {
+            prefetchActive--
+            drainPrefetchQueue()
+          })
       }
     }
 
@@ -944,6 +1301,25 @@ export const {
       },
       get path() {
         return project.instance.path()
+      },
+      permission: {
+        /** Remove a phantom gate the engine no longer knows about (404 on reply). */
+        dropLocal(sessionID: string, requestID: string) {
+          const requests = store.permission[sessionID]
+          if (!requests) return
+          const index = requests.findIndex((request) => request.id === requestID)
+          if (index === -1) return
+          setStore(
+            "permission",
+            sessionID,
+            produce((draft) => {
+              draft.splice(index, 1)
+            }),
+          )
+          logPermissionDebug("dropped.local", { sessionID, requestID })
+        },
+        /** Re-sync the gate queue from the engine's authoritative pending list. */
+        refresh: () => refreshPermissions("manual"),
       },
       session: {
         get(sessionID: string) {
@@ -992,119 +1368,72 @@ export const {
           if (last.role === "user") return "working"
           return last.time?.completed ? "idle" : "working"
         },
-        /** True after a successful full hydrate (get+messages+todo+diff). Warm switches skip network. */
+        get listReady() {
+          return store.session_list_ready
+        },
+        loadState(sessionID: string): SessionLoadState {
+          return store.session_load[sessionID] ?? emptySessionLoadState()
+        },
+        /** True after metadata, history, and supplemental projections have settled. */
         isSynced(sessionID: string) {
           return fullSyncedSessions.has(sessionID)
         },
+        /** True once the latest message page is available for an instant back-switch. */
+        isHistoryReady(sessionID: string) {
+          return historyReadySessions.has(sessionID)
+        },
         /**
-         * Idle prefetch for pinned / quick-switch slots.
-         * Reuses `sync()` (same race guards). Concurrent work is serial (cap 1).
-         * Skips already-synced and in-flight sessions.
+         * Prefetch metadata + recent history without making proof/governance
+         * derivation compete with the active session. Higher priority entries
+         * are drained first; at most two essential hydrations run concurrently.
          */
-        prefetch(sessionIDs: string[]) {
+        prefetch(sessionIDs: string[], priority = 0) {
           for (const id of sessionIDs) {
             if (!id) continue
             if (isPendingSessionID(id)) continue
-            if (fullSyncedSessions.has(id)) continue
-            if (syncingSessions.has(id)) continue
-            if (prefetchQueue.includes(id)) continue
-            prefetchQueue.push(id)
+            if (historyReadySessions.has(id)) continue
+            if (historyTasks.has(id)) continue
+            if (prefetchQueue.some((entry) => entry.id === id)) continue
+            prefetchQueue.push({ id, priority })
           }
-          void drainPrefetchQueue()
+          drainPrefetchQueue()
         },
+        /**
+         * Make a session addressable as quickly as possible. All projections
+         * start concurrently, but this promise resolves at metadata readiness.
+         */
+        async open(sessionID: string) {
+          if (isPendingSessionID(sessionID)) return result.session.get(sessionID)
+          const cached = result.session.get(sessionID)
+          const metadata = ensureSessionMetadata(sessionID)
+          void ensureSessionHistory(sessionID)
+          void ensureSessionSupplemental(sessionID)
+          if (cached) markSessionInputReady(sessionID)
+          await metadata
+          return result.session.get(sessionID)
+        },
+        /** Await only the latest message page, never supplemental projections. */
+        async hydrateHistory(sessionID: string) {
+          if (isPendingSessionID(sessionID)) return
+          await ensureSessionHistory(sessionID)
+        },
+        /** Compatibility/full-hydration path for callers that need every projection. */
         async sync(sessionID: string) {
           if (isPendingSessionID(sessionID)) return
           if (fullSyncedSessions.has(sessionID)) return
           const syncing = syncingSessions.get(sessionID)
           if (syncing) return syncing
-          const tracker = { messages: new Set<string>(), parts: new Set<string>() }
-          hydratingSessions.set(sessionID, tracker)
-          const task = (async () => {
-            const session = await sdk.client.session.get({ sessionID }, { throwOnError: true })
-            // Make the session metadata visible before optional projections
-            // finish. A messages/todo/diff transport failure must never turn a
-            // successfully-fetched session into "Session not found".
-            setStore(
-              "session",
-              produce((draft) => {
-                const match = search(draft, sessionID, (s) => s.id)
-                if (match.found) draft[match.index] = session.data!
-                else draft.splice(match.index, 0, session.data!)
-              }),
-            )
-            const [messages, todo, diff, governance] = await Promise.all([
-              sdk.client.session.messages({ sessionID, limit: 25 }).catch(() => undefined),
-              sdk.client.session.todo({ sessionID }).catch(() => undefined),
-              sdk.client.session.diff({ sessionID }).catch(() => undefined),
-              loadGovernance(sessionID),
-            ])
-
-            // Store cursor for lazy-loading older messages
-            const responseData = extractMessages(messages)
-            const oldest = responseData[responseData.length - 1]
-            olderCursors.set(sessionID, oldest?.info?.id ?? undefined)
-
-            setStore(
-              produce((draft) => {
-                draft.todo[sessionID] = todo?.data ?? []
-                const currentMessages = draft.message[sessionID] ?? []
-                const infos = responseData.flatMap((message: any) => {
-                  if (!tracker.messages.has(message.info.id)) return [message.info]
-                  const current = currentMessages.find((item) => item.id === message.info.id)
-                  return current ? [current] : []
-                })
-                infos.push(
-                  ...currentMessages.filter(
-                    (message: any) => tracker.messages.has(message.id) && !infos.some((item: any) => item.id === message.id),
-                  ),
-                )
-                const { visible, removed } = splitMessageWindow(infos)
-                const visibleIDs = new Set(visible.map((message: any) => message.id))
-                for (const message of responseData) {
-                  if (!visibleIDs.has(message.info.id)) {
-                    delete draft.part[message.info.id]
-                    delete draft.part_revision[message.info.id]
-                    continue
-                  }
-                  const currentParts = draft.part[message.info.id] ?? []
-                  const now = Date.now()
-                  const parts = message.parts.flatMap((part: any) => {
-                    const current = currentParts.find((item) => item.id === part.id)
-                    if (
-                      shouldKeepLocalPart({
-                        rest: part,
-                        current,
-                        tracked: tracker.parts.has(part.id),
-                        lastEventAt: lastPartLiveAt.get(part.id) ?? 0,
-                        now,
-                        silenceMs: SSE_PART_LIVENESS_MS,
-                      })
-                    ) {
-                      return current ? [current] : []
-                    }
-                    return [part]
-                  })
-                  parts.push(
-                    ...currentParts.filter(
-                      (part: any) => tracker.parts.has(part.id) && !parts.some((item: any) => item.id === part.id),
-                    ),
-                  )
-                  draft.part[message.info.id] = parts
-                  draft.part_revision[message.info.id] = (draft.part_revision[message.info.id] ?? 0) + 1
-                }
-                for (const message of removed) {
-                  delete draft.part[message.id]
-                  delete draft.part_revision[message.id]
-                }
-                draft.message[sessionID] = visible
-                draft.session_diff[sessionID] = diff?.data ?? []
-                draft.governance[sessionID] = governance
-              }),
-            )
-            fullSyncedSessions.add(sessionID)
-          })().finally(() => {
+          const task = Promise.all([
+            ensureSessionMetadata(sessionID),
+            ensureSessionHistory(sessionID),
+            ensureSessionSupplemental(sessionID),
+          ]).then(() => {
+            if (metadataReadySessions.has(sessionID) && historyReadySessions.has(sessionID)) {
+              fullSyncedSessions.add(sessionID)
+              markSessionLoadComplete(sessionID)
+            }
+          }).finally(() => {
             syncingSessions.delete(sessionID)
-            hydratingSessions.delete(sessionID)
           })
           syncingSessions.set(sessionID, task)
           return task
@@ -1124,6 +1453,9 @@ export const {
          */
         async reconcile(sessionID: string, reason: ReconcileReason, head?: number) {
           if (isPendingSessionID(sessionID)) return
+          // Divergence implies the SSE window dropped events; the gate queue is
+          // event-only, so re-sync it alongside the message projection.
+          if (reason === "reconnect" || reason === "heartbeat-gap") void refreshPermissions(reason)
           const generation = (reconcileGeneration.get(sessionID) ?? 0) + 1
           reconcileGeneration.set(sessionID, generation)
           const running = reconcilingSessions.get(sessionID)
@@ -1136,7 +1468,16 @@ export const {
               if (reconcileGeneration.get(sessionID) !== generation) return // stale response: never commit
               // The projection was just rebuilt from REST: it is as fresh as a
               // full hydrate, so warm-switch sync() calls may skip the network.
+              metadataReadySessions.add(sessionID)
+              historyReadySessions.add(sessionID)
+              supplementalReadySessions.add(sessionID)
               fullSyncedSessions.add(sessionID)
+              batch(() => {
+                setSessionLoadPhase(sessionID, "metadata", "ready")
+                setSessionLoadPhase(sessionID, "history", "ready")
+                setSessionLoadPhase(sessionID, "supplemental", "ready")
+              })
+              markSessionLoadComplete(sessionID)
               const ackTo = head ?? streamState.lastReceived
               if (converged) {
                 streamState.lastApplied = Math.max(streamState.lastApplied, ackTo)
@@ -1301,6 +1642,9 @@ export const {
          */
         async resync(sessionID: string) {
           if (isPendingSessionID(sessionID)) return
+          metadataReadySessions.delete(sessionID)
+          historyReadySessions.delete(sessionID)
+          supplementalReadySessions.delete(sessionID)
           fullSyncedSessions.delete(sessionID)
           // The fresh hydrate resets the older-messages cursor; un-exhaust so
           // scrolled-up history stays reachable after the reconnect trim.
