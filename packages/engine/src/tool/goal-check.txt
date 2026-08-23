@@ -7,3 +7,4 @@ status values:
 - stale: goal may no longer match user intent
 
 When complete, show the verification check output as evidence. The check output is your proof of success.
+Prefer cheap-first ordering for checks (typecheck before test; build last) — they run in parallel, so the slowest check sets the wait.

@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect"
 import * as Tool from "./tool"
+import { InstanceState } from "@/effect/instance-state"
 import {
   getSessionGoal,
   claimSessionGoalCompletion,
@@ -163,10 +164,22 @@ export const GoalCheckTool = Tool.define<typeof CheckParams, CheckMetadata, neve
       }
 
       // Run the specified checks
+      // Checks run in the SESSION's project directory (not the engine
+      // process cwd), honor operator abort, and report per-check progress.
+      const instanceCtx = yield* InstanceState.context
       const result = yield* Effect.tryPromise(() =>
         runChecks({
           checks: checks as CheckName[],
-          cwd: process.cwd(),
+          cwd: instanceCtx.directory,
+          signal: ctx.abort,
+          onCheckStart: (name, index, total) => {
+            void Effect.runPromise(
+              ctx.metadata({
+                title: `verifying ${index + 1}/${total}: ${name}…`,
+                metadata: { status: "complete_pending_verify", goal: cur.goal },
+              }),
+            ).catch(() => {})
+          },
         }),
       ).pipe(Effect.catch(() => Effect.succeed({
         passed: false,
