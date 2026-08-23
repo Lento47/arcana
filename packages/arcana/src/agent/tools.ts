@@ -412,21 +412,67 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     async (args) => {
       const queryStr = String(args.query ?? "").trim()
       if (!queryStr) return "web_search needs a non-empty query."
-      const query = encodeURIComponent(queryStr)
       const limit = Math.min(Math.max(Number(args.limit ?? 5), 1), 10)
+
+      // ── Firecrawl-first (when FIRECRAWL_API_KEY is configured) ──────
+      const firecrawlKey = process.env.FIRECRAWL_API_KEY
+      if (firecrawlKey) {
+        const fcUrl = process.env.FIRECRAWL_SEARCH_URL ?? "https://api.firecrawl.dev/v2/search"
+        let results: Array<{ title: string; url: string; snippet: string }> = []
+        try {
+          const gated = await gatedNetwork("web_search", fcUrl, async () => {
+            const res = await fetch(fcUrl, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${firecrawlKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ query: queryStr, limit }),
+              signal: AbortSignal.timeout(15000),
+            })
+            const httpStatus = res.status
+            if (!res.ok) return { httpStatus, summary: `HTTP ${httpStatus}` }
+            const json = (await res.json()) as {
+              data?: Array<{ title?: string; description?: string; url?: string; markdown?: string }>
+            }
+            results = (json.data ?? []).map((r) => ({
+              title: String(r.title ?? r.url ?? "Untitled"),
+              url: String(r.url ?? ""),
+              snippet: String(r.description ?? (r.markdown ? r.markdown.slice(0, 200) : "")),
+            }))
+            return { httpStatus, summary: `${results.length} results` }
+          }, { method: "POST" })
+          if (gated.status !== "EXECUTED") return formatGateResult(gated)
+        } catch (e) {
+          // Firecrawl failure falls through to DuckDuckGo rather than dying.
+          console.error(`[web_search] firecrawl failed: ${e instanceof Error ? e.message : String(e)}`)
+        }
+        if (results.length > 0) {
+          return results.map((r, i) => `${i + 1}. **${r.title}**\n   ${r.snippet}\n   ${r.url}`).join("\n\n")
+        }
+      }
+
+      // ── DuckDuckGo HTML fallback (no key required) — gated ──────────
       try {
-        // DuckDuckGo HTML search — free, no API key required
-        const res = await fetch(`https://html.duckduckgo.com/html/?q=${query}`, {
-          headers: {
-            // Realistic UA — DDG rate-limits / degrades unknown agents
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            Accept: "text/html",
-          },
-          signal: AbortSignal.timeout(10000),
+        const query = encodeURIComponent(queryStr)
+        const searchUrl = `https://html.duckduckgo.com/html/?q=${query}`
+        let html = ""
+        const gated = await gatedNetwork("web_search", searchUrl, async () => {
+          const res = await fetch(searchUrl, {
+            headers: {
+              // Realistic UA — DDG rate-limits / degrades unknown agents
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+              Accept: "text/html",
+            },
+            signal: AbortSignal.timeout(10000),
+          })
+          const httpStatus = res.status
+          html = res.ok ? await res.text() : ""
+          return { httpStatus, summary: `${html.length} chars` }
         })
-        if (!res.ok) return `Search failed: HTTP ${res.status}`
-        const html = await res.text()
+        if (gated.status !== "EXECUTED") return formatGateResult(gated)
+        if (gated.httpStatus < 200 || gated.httpStatus >= 300) return `Search failed: HTTP ${gated.httpStatus}`
         // Extract result links from DDG HTML (title text may contain <b> highlights)
         const results: Array<{ title: string; snippet: string; url: string }> = []
         const linkRe = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
@@ -473,19 +519,28 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       if (!apiKey) return "Set ELEVENLABS_API_KEY to use speech."
       const text = String(args.text).slice(0, 500)
       const voiceId = String(args.voice ?? "21m00Tcm4TlvDq8ikWAM") // Rachel
+      let audioBuffer: Buffer | null = null
       try {
-        const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "xi-api-key": apiKey },
-          body: JSON.stringify({
-            text,
-            model_id: "eleven_flash_v2_5",
-            voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-          }),
-          signal: AbortSignal.timeout(15000),
-        })
-        if (!res.ok) return `TTS error: HTTP ${res.status}`
-        const audio = Buffer.from(await res.arrayBuffer())
+        const ttsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`
+        const gated = await gatedNetwork("speak", ttsUrl, async () => {
+          const res = await fetch(ttsUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "xi-api-key": apiKey },
+            body: JSON.stringify({
+              text,
+              model_id: "eleven_flash_v2_5",
+              voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+            }),
+            signal: AbortSignal.timeout(15000),
+          })
+          const httpStatus = res.status
+          // Audio bytes stay inside perform — only the summary enters the receipt.
+          audioBuffer = res.ok ? Buffer.from(await res.arrayBuffer()) : null
+          return { httpStatus, summary: audioBuffer ? `${audioBuffer.length} bytes audio` : `HTTP ${httpStatus}` }
+        }, { method: "POST" })
+        if (gated.status !== "EXECUTED") return formatGateResult(gated)
+        if (!audioBuffer) return `TTS error: HTTP ${gated.httpStatus}`
+        const audio = audioBuffer
         const tmp = join(homedir(), ".arcana", "cache", "speech.mp3")
         const cacheWrite = await gatedFileMutation(
           "speak",
@@ -622,9 +677,13 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
 
       // 7. Network connectivity
       try {
-        const dns = await fetch("https://cloudflare-dns.com", { signal: AbortSignal.timeout(5000) })
-        ok("Network", dns.ok, dns.ok ? "reachable" : `HTTP ${dns.status}`)
-      } catch { ok("Network", false, "unreachable — check internet connection") }
+        const dnsG = await gatedNetwork("env_network", "https://cloudflare-dns.com", async () => {
+          const res = await fetch("https://cloudflare-dns.com", { signal: AbortSignal.timeout(5000) })
+          return { httpStatus: res.status, summary: res.ok ? "reachable" : `HTTP ${res.status}` }
+        })
+        const dnsOk = dnsG.status === "EXECUTED" && dnsG.httpStatus >= 200 && dnsG.httpStatus < 500
+        ok("Network", dnsOk, dnsOk ? "reachable" : `unreachable (${dnsG.status})`)
+      } catch { ok("Network", false, "unreachable - check internet connection") }
 
       // 8. Disk space
       try {
@@ -733,13 +792,20 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       const urlError = validateUrl(url)
       if (urlError) return urlError
 
-      const res = await fetch(url, {
-        headers: { "User-Agent": "arcana-agent/0.1" },
-        signal: AbortSignal.timeout(15_000),
+      const gatedFetch = await gatedNetwork("web_fetch", url, async () => {
+        const res = await fetch(url, {
+          headers: { "User-Agent": "arcana-agent/0.1" },
+          signal: AbortSignal.timeout(15_000),
+        })
+        const text = res.ok ? await res.text() : ""
+        return { httpStatus: res.status, summary: `${text.length} chars`, text }
       })
-      if (!res.ok) return `HTTP ${res.status} for ${url}`
-      const text = await res.text()
-      const stripped = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+      if (gatedFetch.status !== "EXECUTED") return formatGateResult(gatedFetch)
+      if (gatedFetch.httpStatus !== 200) return `HTTP ${gatedFetch.httpStatus} for ${url}`
+      const stripped = gatedFetch.summary
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
       return stripped.slice(0, max) + (stripped.length > max ? `\n...(truncated, ${stripped.length} chars total)` : "")
     },
   )
@@ -831,12 +897,19 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
     async () => {
       const results: string[] = []
       try {
-        const dns = await fetch("https://cloudflare-dns.com", { signal: AbortSignal.timeout(5000) })
-        results.push(`DNS: OK (${dns.status})`)
+        const dnsG = await gatedNetwork("env_network", "https://cloudflare-dns.com", async () => {
+          const res = await fetch("https://cloudflare-dns.com", { signal: AbortSignal.timeout(5000) })
+          return { httpStatus: res.status, summary: "dns-probe" }
+        })
+        results.push(dnsG.status === "EXECUTED" ? `DNS: OK (${dnsG.httpStatus})` : `DNS: BLOCKED (${dnsG.status})`)
       } catch { results.push("DNS: UNREACHABLE") }
       try {
-        const models = await fetch("https://models.dev/api.json", { signal: AbortSignal.timeout(5000) })
-        results.push(`Models.dev: OK (${Math.round((await models.text()).length / 1024)}KB)`)
+        const modelsUrl = "https://models.dev/api.json"
+        const modelsG = await gatedNetwork("env_network", modelsUrl, async () => {
+          const res = await fetch(modelsUrl, { signal: AbortSignal.timeout(5000) })
+          return { httpStatus: res.status, summary: `${Math.round((await res.text()).length / 1024)}KB` }
+        })
+        results.push(modelsG.status === "EXECUTED" ? `Models.dev: OK (${modelsG.summary})` : `Models.dev: BLOCKED (${modelsG.status})`)
       } catch { results.push("Models.dev: UNREACHABLE") }
       return results.join("\n")
     },

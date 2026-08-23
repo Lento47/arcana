@@ -90,16 +90,28 @@ export function saveB64Image(
 async function downloadToFile(url: string, opts: { index?: number; prompt?: string } = {}): Promise<string> {
   const dir = imagesDir()
   mkdirSync(dir, { recursive: true })
-  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) })
-  if (!res.ok) throw new Error(`download failed: ${res.status}`)
-  const ct = res.headers.get("content-type") ?? "image/png"
-  const ext = mediaExt(ct)
+  // Authority Kernel M1: external image download is a mediated network effect.
+  const { gatedNetwork } = await import("./authority.js")
+  const gated = await gatedNetwork("image_generate", url, async () => {
+    const res = await fetch(url, { signal: AbortSignal.timeout(60_000) })
+    if (!res.ok) return { httpStatus: res.status, summary: `download failed: ${res.status}` }
+    const buf = Buffer.from(await res.arrayBuffer())
+    return {
+      httpStatus: res.status,
+      summary: `${buf.length} bytes`,
+      payload: { buf, contentType: res.headers.get("content-type") ?? "image/png" },
+    }
+  })
+  if (gated.status !== "EXECUTED") {
+    throw new Error(`download blocked by Authority Kernel (${gated.status})`)
+  }
+  const payload = gated.payload as { buf: Buffer; contentType: string }
+  const ext = mediaExt(payload.contentType)
   const ts = new Date().toISOString().replace(/[:.]/g, "-")
   const slug = slugPrompt(opts.prompt ?? "image")
   const idx = opts.index != null ? `-${opts.index + 1}` : ""
   const path = join(dir, `${ts}${idx}-${slug}.${ext}`)
-  const buf = Buffer.from(await res.arrayBuffer())
-  writeFileSync(path, buf)
+  writeFileSync(path, payload.buf)
   return path
 }
 

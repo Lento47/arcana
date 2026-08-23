@@ -14,6 +14,7 @@ import { join } from "node:path"
 import { createHash } from "node:crypto"
 import { authorizeProcess, type ProcessGateResult } from "@arcana/core/capability/process-gate"
 import { authorizeFileMutation, type FileMutationResult } from "@arcana/core/capability/fs-gate"
+import { authorizeNetwork, type NetworkGateResult } from "@arcana/core/capability/network-gate"
 
 let resolved: { dbPath: string; sessionId: string } | null = null
 
@@ -52,6 +53,25 @@ export function gatedSpawn(
 /** Stable per-workspace id used where a plain string tag is needed. */
 export function workspaceTag(): string {
   return createHash("sha256").update(process.cwd()).digest("hex").slice(0, 16)
+}
+
+/**
+ * Authorize-and-execute one outbound network call through the kernel.
+ * `perform` does the actual fetch (headers/keys stay caller-side) and returns
+ * the HTTP status + a short receipt summary. No connection on DENY.
+ */
+export function gatedNetwork(
+  toolName: string,
+  url: string,
+  perform: () => Promise<{ httpStatus: number; summary: string }>,
+  opts?: { method?: string },
+): Promise<NetworkGateResult> {
+  const { dbPath, sessionId } = resolveGateTarget()
+  return authorizeNetwork(
+    { dbPath, sessionId, principalId: "arcana-cli" },
+    { toolName, url, method: opts?.method },
+    perform,
+  )
 }
 
 /**
