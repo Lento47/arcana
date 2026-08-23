@@ -68,6 +68,8 @@ import {
   DRIVE_METADATA,
   continuationsUsed,
   decideDrive,
+  driveProgressFingerprint,
+  noProgressContinuations,
   resolveDriveConfig,
 } from "./drive"
 import * as DateTime from "effect/DateTime"
@@ -1644,12 +1646,16 @@ export const layer = Layer.effect(
           priorMeta &&
           (DRIVE_METADATA.continuations in priorMeta ||
             DRIVE_METADATA.exhausted in priorMeta ||
-            DRIVE_METADATA.decisionRequired in priorMeta)
+            DRIVE_METADATA.decisionRequired in priorMeta ||
+            DRIVE_METADATA.progressFingerprint in priorMeta ||
+            DRIVE_METADATA.noProgress in priorMeta)
         ) {
           const cleaned = { ...priorMeta }
           delete cleaned[DRIVE_METADATA.continuations]
           delete cleaned[DRIVE_METADATA.exhausted]
           delete cleaned[DRIVE_METADATA.decisionRequired]
+          delete cleaned[DRIVE_METADATA.progressFingerprint]
+          delete cleaned[DRIVE_METADATA.noProgress]
           session.metadata = cleaned
           yield* sessions.setMetadata({ sessionID, metadata: cleaned })
         }
@@ -1770,6 +1776,28 @@ export const layer = Layer.effect(
             const hadToolActivity = lastAssistantMsg?.parts.some(
               (part) => part.type === "tool",
             ) ?? false
+            const progressFingerprint = driveProgressFingerprint({
+              goalStatus: goal.status,
+              tools: (lastAssistantMsg?.parts ?? [])
+                .filter((part): part is SessionV1.ToolPart => part.type === "tool")
+                .map((part) => ({
+                  tool: part.tool,
+                  status: part.state.status,
+                  input: part.state.input,
+                  output:
+                    part.state.status === "completed"
+                      ? part.state.output
+                      : part.state.status === "error"
+                        ? part.state.error
+                        : part.state.status === "cancelled"
+                          ? part.state.output
+                          : undefined,
+                })),
+            })
+            const previousFingerprint = meta[DRIVE_METADATA.progressFingerprint]
+            const repeatedProgress = previousFingerprint === progressFingerprint
+              ? noProgressContinuations(meta) + 1
+              : 0
             const decision = decideDrive({
               enabled: driveCfg.enabled,
               agent: lastUser.agent,
@@ -1780,6 +1808,7 @@ export const layer = Layer.effect(
               cancelled: meta.__arcana_cancelled === true,
               pepDeniedRequired: false,
               hadToolActivity,
+              noProgressContinuations: repeatedProgress,
               continuationsUsed: used,
               maxContinuations: driveCfg.maxContinuations,
             })
@@ -1787,6 +1816,8 @@ export const layer = Layer.effect(
               session.metadata = {
                 ...session.metadata,
                 [DRIVE_METADATA.continuations]: used + 1,
+                [DRIVE_METADATA.progressFingerprint]: progressFingerprint,
+                [DRIVE_METADATA.noProgress]: repeatedProgress,
               }
               yield* sessions.setMetadata({ sessionID, metadata: session.metadata })
               yield* Effect.logInfo("drive continue", {
@@ -2015,6 +2046,14 @@ export const layer = Layer.effect(
             modelID: model.id,
             providerID: model.providerID,
             time: { created: Date.now() },
+            latency: {
+              // Only the first assistant step can represent admission/run
+              // queueing. Later assistant messages belong to the same tool
+              // loop, so measuring from the original user timestamp would
+              // incorrectly label prior model/tool work as queue latency.
+              queueMs: step === 1 ? Math.max(0, Date.now() - lastUser.time.created) : undefined,
+              attempts: [],
+            },
             sessionID,
           }
           yield* sessions.updateMessage(msg)
@@ -2091,6 +2130,7 @@ export const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
+            const contextAssemblyStarted = Date.now()
             const [skills, env, instructions, modelMsgs, memory] = yield* Effect.all([
               sys.skills(agent),
               sys.environment(model),
@@ -2098,6 +2138,10 @@ export const layer = Layer.effect(
               MessageV2.toModelMessagesEffect(msgs, model),
               sys.memory(),
             ])
+            msg.latency = {
+              ...(msg.latency ?? { attempts: [] }),
+              contextAssemblyMs: Math.max(0, Date.now() - contextAssemblyStarted),
+            }
             // Active goal inject (every turn) — session + actor agent labels.
             const goalBlock = formatActiveGoalBlock({
               sessionID,
@@ -2110,7 +2154,7 @@ export const layer = Layer.effect(
               ...instructions,
               ...(skills ? [skills] : []),
               ...(memory ? [memory] : []),
-              goalBlock,
+              ...(goalBlock ? [goalBlock] : []),
               ...(continuationsUsed(session.metadata as Record<string, unknown> | undefined) > 0
                 ? [DRIVE_CONTINUATION_REMINDER]
                 : []),
@@ -2144,6 +2188,11 @@ export const layer = Layer.effect(
             }
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
+            msg.latency = {
+              ...(msg.latency ?? { attempts: [] }),
+              preflightMs: Math.max(0, Date.now() - msg.time.created),
+            }
+            yield* sessions.updateMessage(msg)
             const result = yield* handle.process({
               user: lastUser,
               agent,

@@ -387,15 +387,9 @@ export function formatActiveGoalBlock(input: {
   const actorRole = input.actorRole ?? (actorAgent === sessionAgent ? "primary" : "subagent")
 
   if (snap.status === "unset") {
-    return [
-      "<active-goal>",
-      "  status: unset",
-      `  session_agent: ${sessionAgent}`,
-      `  actor_agent: ${actorAgent}`,
-      `  actor_role: ${actorRole}`,
-      "  note: No active goal. Set one only for an explicit multi-step mutation objective.",
-      "</active-goal>",
-    ].join("\n")
+    // No goal = no block. Injecting 7 lines of "unset" state wastes
+    // ~20 tokens per turn and dilutes the prompt with non-actionable content.
+    return ""
   }
 
   const board =

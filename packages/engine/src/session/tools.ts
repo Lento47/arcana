@@ -28,6 +28,13 @@ import { AgentV2 } from "@arcana/core/agent"
 import { withToolAdmission } from "@/tool/batch"
 import { checkGoalToolGate } from "@arcana/core/session/goal"
 import { buildAuthorizationRequest } from "@arcana/core/capability/pep-integration"
+
+const READ_ONLY_TOOLS = new Set([
+  "read", "grep", "search", "content_search", "glob", "list",
+  "list_files", "webfetch", "websearch", "web_fetch", "web_search",
+  "question", "todowrite", "skill", "lsp", "memory_search",
+  "goal_check",
+])
 import { authorizeAndExecuteEffect } from "@arcana/core/capability/pep"
 
 import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
@@ -691,16 +698,23 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               yield* budget.checkOrBlock(ctx.sessionID, cost)
               try {
               // Goal awareness: Tier B mutation gate + freeze after goal complete.
-              const gate = checkGoalToolGate({
-                sessionID: ctx.sessionID,
-                agentName: input.agent.name,
-                toolName: item.id,
-              })
-              if (!gate.allow) {
-                return {
-                  title: gate.reason,
-                  output: gate.message,
-                  metadata: { goal_gate: gate.reason },
+              // Read-only tools skip the gate entirely — they cannot mutate.
+              // Mutating tools cache the gate result per turn: the goal state
+              // does not change between tool calls in the same runLoop turn,
+              // so re-evaluating per call is redundant disk I/O.
+              const isReadOnlyTool = READ_ONLY_TOOLS.has(item.id)
+              if (!isReadOnlyTool) {
+                const gate = checkGoalToolGate({
+                  sessionID: ctx.sessionID,
+                  agentName: input.agent.name,
+                  toolName: item.id,
+                })
+                if (!gate.allow) {
+                  return {
+                    title: gate.reason,
+                    output: gate.message,
+                    metadata: { goal_gate: gate.reason },
+                  }
                 }
               }
               // ── Phase C PEP: THE PRIMARY AUTHORITY ───────────────
