@@ -11,9 +11,10 @@ function okResponse(): Response {
 }
 
 describe("usage metrics reporter", () => {
-  test("sharing is off by default", () => {
-    expect(usageMetricsSharingEnabled({})).toBe(false)
+  test("sharing is on by default; explicit opt-out disables", () => {
+    expect(usageMetricsSharingEnabled({})).toBe(true)
     expect(usageMetricsSharingEnabled({ ARCANA_METRICS_SHARING: "0" })).toBe(false)
+    expect(usageMetricsSharingEnabled({ ARCANA_METRICS_SHARING: "false" })).toBe(false)
     expect(usageMetricsSharingEnabled({ ARCANA_METRICS_SHARING: "1" })).toBe(true)
     expect(usageMetricsSharingEnabled({ ARCANA_METRICS_SHARING: "true" })).toBe(true)
   })
@@ -145,26 +146,27 @@ describe("usage metrics reporter", () => {
     expect(batches).toBeGreaterThanOrEqual(1)
   })
 
-  test("proxied traffic and disabled sharing are excluded at the gate", () => {
-    const enabledEnv = { ARCANA_METRICS_SHARING: "1" }
-    expect(shouldReportCompletionUsage({ env: enabledEnv })).toBe(true)
-    expect(shouldReportCompletionUsage({ env: {} })).toBe(false)
+  test("proxied traffic and opted-out sharing are excluded at the gate", () => {
+    // On by default — an empty env enables.
+    expect(shouldReportCompletionUsage({ env: {} })).toBe(true)
+    const disabledEnv = { ARCANA_METRICS_SHARING: "0" }
+    expect(shouldReportCompletionUsage({ env: disabledEnv })).toBe(false)
     expect(
       shouldReportCompletionUsage({
-        env: enabledEnv,
+        env: {},
         baseURL: "https://proxy-arcana.otnelhq.com/v1",
       }),
     ).toBe(false)
     expect(
       shouldReportCompletionUsage({
-        env: enabledEnv,
+        env: {},
         baseURL: "https://arcana-proxy.lejzerv.workers.dev/v1",
       }),
     ).toBe(false)
     // Lookalike hosts are NOT Arcana infrastructure — they must be reported.
     expect(
       shouldReportCompletionUsage({
-        env: enabledEnv,
+        env: {},
         baseURL: "https://proxy-arcana.otnelhq.com.evil.io/v1",
       }),
     ).toBe(true)
@@ -174,16 +176,16 @@ describe("usage metrics reporter", () => {
     // The shared singleton reads process.env at construction; drive the gate
     // logic directly instead of mutating process state.
     const gatedDirect = shouldReportCompletionUsage({
-      env: { ARCANA_METRICS_SHARING: "1" },
+      env: {},
       baseURL: undefined,
     })
     const gatedProxy = shouldReportCompletionUsage({
-      env: { ARCANA_METRICS_SHARING: "1" },
+      env: {},
       baseURL: "https://proxy-arcana.otnelhq.com/v1",
     })
     expect(gatedDirect).toBe(true)
     expect(gatedProxy).toBe(false)
-    // Unconditional call safety: no model, disabled env — must not throw.
+    // Unconditional call safety: no model, opted-out env — must not throw.
     expect(() => reportCompletionUsage({ sessionId: "s" })).not.toThrow()
   })
 })

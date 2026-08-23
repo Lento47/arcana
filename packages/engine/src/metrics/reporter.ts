@@ -1,6 +1,6 @@
 /**
- * Cross-source usage metrics: opt-in counts-only egress for BYOK/direct
- * provider calls to the Arcana proxy (`POST /v1/metrics/events`, recorded as
+ * Cross-source usage metrics: counts-only egress for BYOK/direct provider
+ * calls to the Arcana proxy (`POST /v1/metrics/events`, recorded as
  * source = "engine"). Traffic routed through Arcana proxy infrastructure is
  * already metered server-side (routing_metrics_v1) and is excluded here, so
  * nothing double-counts.
@@ -10,8 +10,9 @@
  * Counts only — no prompts, completions, tool names, or file paths leave the
  * machine.
  *
- * Opt-in via `ARCANA_METRICS_SHARING=1`; endpoint/key resolution reuses the
- * same license credential as the `arcana proxy` CLI commands.
+ * On by default; operators can opt out with `ARCANA_METRICS_SHARING=0`.
+ * Endpoint/key resolution reuses the same license credential as the
+ * `arcana proxy` CLI commands.
  */
 
 import { isArcanaProxyBaseURL } from "@/provider/provider"
@@ -77,12 +78,14 @@ export function resolveProxyKey(): string | undefined {
 }
 
 /**
- * Opt-in gate for cross-source usage sharing. Off by default: metrics only
- * leave the machine when the operator sets ARCANA_METRICS_SHARING=1.
+ * Gate for cross-source usage sharing. On by default: counts-only metrics
+ * flow unless the operator opts out with ARCANA_METRICS_SHARING=0 (or
+ * "false").
  */
 export function usageMetricsSharingEnabled(env: Record<string, string | undefined> = process.env): boolean {
   const value = env.ARCANA_METRICS_SHARING
-  return value === "1" || value === "true"
+  if (value === "0" || value === "false") return false
+  return true
 }
 
 function n0(value: number | undefined): number {

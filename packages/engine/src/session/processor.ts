@@ -895,8 +895,9 @@ export const layer = Layer.effect(
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
             // Counts-only metrics egress for direct/BYOK provider calls
-            // (opt-in via ARCANA_METRICS_SHARING; proxied traffic is excluded
-            // server-side of this call). Fire-and-forget, never throws.
+            // (on by default; ARCANA_METRICS_SHARING=0 disables. Proxied
+            // traffic is excluded inside the reporter). Fire-and-forget,
+            // never throws.
             reportCompletionUsage({
               sessionId: ctx.sessionID,
               providerID: ctx.model.providerID,
