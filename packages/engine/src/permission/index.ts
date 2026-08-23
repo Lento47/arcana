@@ -203,7 +203,7 @@ export const layer = Layer.effect(
       const rememberedPolicy = governance.config.policy.rememberedPermissions
       const rememberedEligible =
         rememberedPolicy?.enabled !== false
-        && !forceFreshAskFromRisk
+        && engineRisk?.level !== "critical"
         // Missing risk metadata is treated as MODERATE for persistence. It
         // may pass the default ceiling, but never a LOW-only policy.
         && (rememberedPolicy?.maxRisk !== "LOW" || engineRisk?.level === "low")
