@@ -41,6 +41,13 @@ export const Event = {
       sessionID: PermissionV1.Request.fields.sessionID,
       requestID: PermissionV1.ID,
       reply: PermissionV1.Reply,
+      /**
+       * Why the request settled. Absent for operator replies; set when the
+       * engine settles a gate without an operator decision so clients can
+       * clear phantom gates (an interrupted ask is already rejected
+       * downstream — this only makes the transcript truthful).
+       */
+      reason: Schema.optional(Schema.Literals(["aborted", "instance_disposed"])),
     },
   }),
   Allowed: EventV2.define({
@@ -113,6 +120,16 @@ export const layer = Layer.effect(
         yield* Effect.addFinalizer(() =>
           Effect.gen(function* () {
             for (const item of state.pending.values()) {
+              // Best-effort terminal event so connected clients clear gates
+              // for this instance; transports may already be tearing down.
+              yield* events
+                .publish(Event.Replied, {
+                  sessionID: item.info.sessionID,
+                  requestID: item.info.id,
+                  reply: "reject",
+                  reason: "instance_disposed",
+                })
+                .pipe(Effect.catch(() => Effect.void))
               yield* Deferred.fail(item.deferred, new PermissionV1.RejectedError())
             }
             state.pending.clear()
@@ -359,6 +376,21 @@ export const layer = Layer.effect(
       return yield* Effect.ensuring(
         Effect.raceFirst(Deferred.await(deferred), monitorRoute),
         Effect.gen(function* () {
+          // Terminal-event parity (gate-freeze fix): an interrupted ask must
+          // reach clients exactly like an operator reply, or the TUI keeps a
+          // phantom ACTION GATE that 404s on every later decision. Skip when
+          // reply() already settled it (it marks `resolved` before publishing).
+          const st = yield* InstanceState.get(state)
+          if (!st.resolved.has(id)) {
+            yield* events
+              .publish(Event.Replied, {
+                sessionID: info.sessionID,
+                requestID: id,
+                reply: "reject",
+                reason: "aborted",
+              })
+              .pipe(Effect.catch(() => Effect.void))
+          }
           pending.delete(id)
           yield* refreshPermissionStatus(info.sessionID)
         }),
