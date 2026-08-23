@@ -2373,4 +2373,44 @@ describe("shell metadata stays out of the operator body", () => {
     expect(run.body).not.toContain("<shell_metadata>")
     expect(run.body).not.toContain("Command failed with exit code")
   })
+
+  test("strips <installation_status> approval notices from tool output", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-install")
+    parts.push({
+      id: "p-install",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c-install",
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "bunx vitest run test/adversarial-corpus.test.ts" },
+        output: [
+          "<installation_status>",
+          "Operator approved this installation request.",
+          "Command: bunx vitest run test/adversarial-corpus.test.ts",
+          "If the command succeeded, proceed to use the installed binary in this session.",
+          "Do not ask the user to edit permission JSON. Do not treat this as a new install request unless the command failed.",
+          "</installation_status>",
+          "",
+          "7 matches",
+        ].join("\n"),
+        title: "bash",
+        metadata: { exit: 0, failed: false },
+        time: { start: 1000, end: 1100 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    const run = result.find((entry) => entry.kind === "run")!
+    // Model-directed notice is hidden; the real command output survives.
+    expect(run.body).not.toContain("installation_status")
+    expect(run.body).not.toContain("Operator approved this installation request.")
+    expect(run.body).toContain("7 matches")
+  })
 })

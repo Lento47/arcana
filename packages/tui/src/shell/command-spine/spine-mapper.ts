@@ -148,6 +148,7 @@ function preserveBodyText(text: string): string {
 function stripEngineMetadataBlocks(text: string): string {
   return text
     .replace(/\n*<shell_metadata\b[^>]*>[\s\S]*?<\/shell_metadata>/gi, "")
+    .replace(/\n*<installation_status\b[^>]*>[\s\S]*?<\/installation_status>/gi, "")
     .replace(/\n*<metadata\b[^>]*>[\s\S]*?<\/metadata>/gi, "")
 }
 
