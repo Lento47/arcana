@@ -52,5 +52,8 @@ jobs:
       - name: Authority Kernel secret-gate tests (M1)
         run: bun test packages/core/src/capability/secret-gate.test.ts
 
+      - name: Authority Kernel K3a replay suite
+        run: bun test packages/core/src/capability/replay-k3a.test.ts
+
       - name: Dynamic authority audit (exercised-path claim)
         run: bun run script/authority-dynamic.ts
