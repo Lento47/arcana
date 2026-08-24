@@ -2,7 +2,7 @@ import { LayerNode } from "@arcana/core/effect/layer-node"
 import { ConfigPermissionV1 } from "@arcana/core/v1/config/permission"
 import { InstanceState } from "@/effect/instance-state"
 import { Wildcard } from "@arcana/core/util/wildcard"
-import { Context, Deferred, Effect, Layer, Schema } from "effect"
+import { Cause, Context, Deferred, Effect, Layer, Schema } from "effect"
 import { existsSync } from "node:fs"
 import os from "os"
 import path from "node:path"
@@ -441,6 +441,7 @@ export const layer = Layer.effect(
       }
 
       let effectiveReply = input.reply
+      let persist: (() => Effect.Effect<void>) | undefined
       if (input.reply === "always" && existing.info.always.length) {
         const governance = loadGovernanceConfig(yield* InstanceState.directory)
         const risk = riskFromMetadata(existing.info.metadata)
@@ -453,12 +454,25 @@ export const layer = Layer.effect(
           && !commandLooksLikeOpaqueExec(command)
           && (maxRisk !== "LOW" || risk?.level === "low")
         if (eligible) {
-          yield* saved.add({
+          const addInput = {
             projectID: existing.info.projectID ?? ProjectV2.ID.global,
             agentID: existing.info.agentID ?? AgentV2.defaultID,
             action: existing.info.permission,
             resources: existing.info.always,
-          })
+          }
+          // Persistence is deferred until AFTER the gate is resolved below:
+          // a failed save (e.g. FK/constraint) must degrade this reply to
+          // "remembered=no" instead of defecting out and leaving the pending
+          // request wedged open forever.
+          persist = () =>
+            saved.add(addInput).pipe(
+              Effect.catchDefect((defect) =>
+                Effect.logWarning("PermissionSaved.add failed; preference not remembered", {
+                  action: existing.info.permission,
+                  cause: Cause.pretty(defect as Cause.Cause<never>),
+                }),
+              ),
+            )
         } else effectiveReply = "once"
       }
       if (input.reply === "always" && existing.info.always.length === 0) effectiveReply = "once"
@@ -471,6 +485,7 @@ export const layer = Layer.effect(
         reply: effectiveReply,
       })
       yield* Deferred.succeed(existing.deferred, undefined)
+      if (persist) yield* persist()
       if (effectiveReply === "once") {
         yield* refreshPermissionStatus(existing.info.sessionID)
         return

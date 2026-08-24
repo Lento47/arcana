@@ -1973,6 +1973,11 @@ export const layer = Layer.effect(
                       sessionID,
                       permission: "contract.accept",
                       patterns: [sessionID],
+                      // Registered project id (hash), not the raw instance
+                      // path: PermissionSaved.add inserts under a FOREIGN KEY
+                      // on project(id). The raw-path fallback in Permission.ask
+                      // fails that constraint and wedges "Always activate".
+                      projectID: session.projectID,
                       metadata: {
                         kind: "contract_admission",
                         contractId: contract.id,
