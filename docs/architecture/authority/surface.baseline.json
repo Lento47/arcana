@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-24T06:59:37.852Z",
+  "generatedAt": "2026-08-24T14:09:29.937Z",
   "entries": {
     "packages/arcana/src/agent/authority.ts": {
       "classes": [
@@ -284,7 +284,7 @@
         "Bun.spawn"
       ]
     },
-    "packages/core/src/capability/process-gate.ts": {
+    "packages/core/src/capability/spawn-executor.ts": {
       "classes": [
         "ProcessExecution"
       ],
@@ -879,6 +879,14 @@
         "node:fs"
       ]
     },
+    "packages/engine/src/session/tool-breaker.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
     "packages/engine/src/skill/cache.ts": {
       "classes": [
         "FsMutation"
@@ -1103,6 +1111,14 @@
       ]
     },
     "packages/tui/src/util/artifacts.ts": {
+      "classes": [
+        "FsMutation"
+      ],
+      "modules": [
+        "node:fs"
+      ]
+    },
+    "packages/tui/src/util/message-debug.ts": {
       "classes": [
         "FsMutation"
       ],
