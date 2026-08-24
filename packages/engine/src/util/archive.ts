@@ -5,9 +5,10 @@ export async function extractZip(zipPath: string, destDir: string) {
   if (process.platform === "win32") {
     const winZipPath = path.resolve(zipPath)
     const winDestDir = path.resolve(destDir)
-    // $global:ProgressPreference suppresses PowerShell's blue progress bar popup
-    const cmd = `$global:ProgressPreference = 'SilentlyContinue'; Expand-Archive -Path '${winZipPath}' -DestinationPath '${winDestDir}' -Force`
-    await Process.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd])
+    // bsdtar ships with Windows 10+ and extracts zip natively. Expand-Archive
+    // broke whenever the parent env carried another PowerShell edition's
+    // PSModulePath (module autoload failure).
+    await Process.run(["tar", "-xf", winZipPath, "-C", winDestDir])
     return
   }
 

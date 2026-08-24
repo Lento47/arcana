@@ -56,16 +56,16 @@ export namespace RipgrepBinary {
         const dir = yield* fs.makeTempDirectoryScoped({ directory: Global.Path.bin, prefix: "ripgrep-" })
 
         if (config.extension === "zip") {
-          const shell = (yield* Effect.sync(() => which("powershell.exe") ?? which("pwsh.exe"))) ?? "powershell.exe"
-          const result = yield* run(shell, [
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            `$global:ProgressPreference = 'SilentlyContinue'; Expand-Archive -LiteralPath '${archive.replaceAll("'", "''")}' -DestinationPath '${dir.replaceAll("'", "''")}' -Force`,
-          ])
+          // bsdtar ships with Windows 10+ and extracts zip archives natively.
+          // The previous Expand-Archive approach failed whenever the parent
+          // process env carried another PowerShell edition's PSModulePath
+          // (module autoload error), breaking the grep tool entirely.
+          const result = yield* run("tar", ["-xf", archive, "-C", dir])
           if (result.code !== 0)
             throw new Error(
-              result.stderr.trim() || result.stdout.trim() || `ripgrep extraction failed with code ${result.code}`,
+              result.stderr.trim() || result.stdout.trim() ||
+              `ripgrep zip extraction failed (tar exit ${result.code}). ` +
+              `Install ripgrep manually (winget install BurntSushi.ripgrep.MSVC) or set ARCANA_RIPGREP_PATH.`,
             )
         }
 
@@ -91,7 +91,20 @@ export namespace RipgrepBinary {
       return Service.of({
         filepath: yield* Effect.cached(
           Effect.gen(function* () {
-            const system = yield* Effect.sync(() => which(process.platform === "win32" ? "rg.exe" : "rg"))
+            const system = yield* Effect.sync(() => {
+              // Operator override wins outright; validated by isFile below.
+              const override = process.env.ARCANA_RIPGREP_PATH
+              if (override) return override
+              // Probe the bare name too: on Windows, npm installs ripgrep as
+              // rg.cmd/rg.ps1 shims resolvable via PATHEXT — probing only
+              // rg.exe missed working installations and forced a re-download.
+              const names = process.platform === "win32" ? ["rg.exe", "rg"] : ["rg"]
+              for (const name of names) {
+                const found = which(name)
+                if (found) return found
+              }
+              return null
+            })
             if (system && (yield* fs.isFile(system).pipe(Effect.orDie))) return system
 
             const target = path.join(Global.Path.bin, `rg${process.platform === "win32" ? ".exe" : ""}`)
