@@ -10,6 +10,8 @@ import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
 import { Snapshot } from "@/snapshot"
 import { Session } from "./session"
+import { ToolBreaker } from "./tool-breaker"
+import { NamedError } from "@arcana/core/util/error"
 import { LLM } from "./llm"
 import { MessageV2 } from "./message-v2"
 import { compactionPressure } from "./overflow"
@@ -391,6 +393,32 @@ export const layer = Layer.effect(
             time: { start: match.part.state.time.start, end: Date.now() },
           },
         })
+        // Runtime self-heal (circuit breaker): when DISTINCT tools start
+        // failing with the identical signature inside the window, the
+        // runtime itself is degraded (poisoned boot, corrupted store) — not
+        // the individual tool. Surface it to the operator and hard-restart
+        // so the supervisor/TUI respawns a healthy process. The restart
+        // guard prevents a tight crash loop when a restart cannot help.
+        if (!(error instanceof PermissionV1.RejectedError) && !(error instanceof Question.RejectedError)) {
+          const decision = ToolBreaker.recordToolFailure(match.part.tool ?? toolCallID, error)
+          if (decision.trip) {
+            yield* Effect.logError("tool breaker tripped — runtime degraded", {
+              signature: decision.signature,
+              distinctTools: decision.distinctTools,
+              sessionID: ctx.sessionID,
+            })
+            yield* events.publish(Session.Event.Error, {
+              sessionID: ctx.sessionID,
+              error: new NamedError.Unknown({
+                message: `Runtime degraded: ${decision.distinctTools} tools failing identically (${decision.signature}). Restarting the engine — your session is safe.`,
+              }).toObject(),
+            })
+            if (ToolBreaker.shouldHardRestart()) {
+              // A local `process` shadows Node's global in this scope.
+              yield* Effect.sleep(300).pipe(Effect.andThen(Effect.sync(() => globalThis.process!.exit(1))))
+            }
+          }
+        }
         if (error instanceof PermissionV1.RejectedError || error instanceof Question.RejectedError) {
           ctx.blocked = ctx.shouldBreak
         }

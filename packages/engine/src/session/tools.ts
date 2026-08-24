@@ -35,6 +35,26 @@ import {
   normalizeInfluenceClaims,
 } from "@arcana/core/capability/argument-provenance"
 
+// Boot canary (stale-daemon self-heal, layer 1): a daemon started while
+// source was mid-edit could load K7 call sites without their import binding
+// and then die per tool call with `ReferenceError` for hours. Assert the
+// bindings the admission path depends on BEFORE the first turn — a broken
+// boot must crash loudly here (the supervisor/TUI respawns), never sit
+// silently poisoning every tool call.
+const provenanceCanary: Record<string, unknown> = {
+  deriveGateInfluenceClaims,
+  evaluateInfluenceEscalation,
+  augmentProvenanceForEscalation,
+  normalizeInfluenceClaims,
+}
+for (const [canaryName, canaryFn] of Object.entries(provenanceCanary)) {
+  if (typeof canaryFn !== "function") {
+    throw new Error(
+      `[arcana boot] broken import: ${canaryName} from @arcana/core/capability/argument-provenance resolved to ${String(canaryFn)}`,
+    )
+  }
+}
+
 const READ_ONLY_TOOLS = new Set([
   "read", "grep", "search", "content_search", "glob", "list",
   "list_files", "webfetch", "websearch", "web_fetch", "web_search",
