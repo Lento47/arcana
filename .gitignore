@@ -95,6 +95,18 @@ packages/core/src/crypto/.test-crash-recovery/
 # Raw test evidence is committed for the completion gate.
 !docs/evidence/*.log
 !docs/evidence/*.log.err
-
 # Authority dynamic-audit transient report
 .authority-dynamic.json
+
+# Bun runtime download cache (never commit binaries)
+packages/engine/.bun-cache/
+packages/*/.bun-cache/
+
+# Kernel bench/probe transients
+.tmp-probe*.ts
+.tmp-marker.txt
+.tmp-fs-probe.*
+.tmp-effect-claim/
+.tmp-replay-k3b/
+.tmp-claim-probe.db*
+.tmp-authprobe*
