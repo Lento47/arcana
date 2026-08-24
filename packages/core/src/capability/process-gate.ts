@@ -25,12 +25,16 @@ import { Effect } from "effect"
 import { authorizeAndExecuteEffect } from "./pep"
 import type { EnforcementResult } from "./pep"
 import { buildAuthorizationRequest } from "./pep-integration"
+import { computeRequestHash } from "./request-hash"
 import { SqliteGrantStore } from "./grant-store-sqlite"
 import { SessionPolicyProvider } from "./grant-store"
 import { ensureSessionAgentGrants } from "./session-grants"
 import { Database } from "../database/database"
+import { gateTransportExec, type GateTransport } from "./replay-transport"
 
 export interface ProcessGateOptions {
+  /** K3b: record effect outputs by request hash, or replay recorded ones. */
+  transport?: GateTransport
   /** SQLite database backing the grant store (e.g. `<cwd>/.arcana/authority.db` or `:memory:`). */
   dbPath: string
   /** Logical agent identity (matches engine `agentPrincipalId` convention: the agent name). */
@@ -67,6 +71,8 @@ export interface ProcessGateRequest {
   parentInstanceId?: string
   onBehalfOf?: string
   toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
+  /** K3b transport: record outputs, or substitute recorded ones (zero dispatch). */
+  transport?: GateTransport
 }
 
 export type ProcessGateResult =
@@ -156,32 +162,38 @@ export async function authorizeProcess(
 
   let executorCalls = 0
 
+  const authReqHash = computeRequestHash(authReq)
+
   const result = await withGate(options, (provider) =>
     authorizeAndExecuteEffect(
       {
         request: authReq,
         executeExact: () =>
           Effect.sync(() => {
-            executorCalls++
-            let env: Record<string, string> | undefined
-            if (request.env) {
-              env = {}
-              for (const [k, v] of Object.entries(request.env)) {
-                if (typeof v === "string") env[k] = v
+            const tr = gateTransportExec(options.transport ?? request.transport, authReqHash, () => {
+              executorCalls++
+              let env: Record<string, string> | undefined
+              if (request.env) {
+                env = {}
+                for (const [k, v] of Object.entries(request.env)) {
+                  if (typeof v === "string") env[k] = v
+                }
               }
-            }
-            const spawned = Bun.spawnSync({
-              cmd: request.argv,
-              cwd: request.cwd ?? undefined,
-              stdout: "pipe",
-              stderr: "pipe",
-              env,
+              const spawned = Bun.spawnSync({
+                cmd: request.argv,
+                cwd: request.cwd ?? undefined,
+                stdout: "pipe",
+                stderr: "pipe",
+                env,
+              })
+              return {
+                stdout: new TextDecoder().decode(spawned.stdout),
+                stderr: new TextDecoder().decode(spawned.stderr),
+                exitCode: spawned.exitCode,
+              }
             })
-            return {
-              stdout: new TextDecoder().decode(spawned.stdout),
-              stderr: new TextDecoder().decode(spawned.stderr),
-              exitCode: spawned.exitCode,
-            }
+            void executorCalls
+            return tr.value
           }),
       },
       provider,
@@ -205,10 +217,15 @@ export async function authorizeProcess(
       }
     case "STALE_DECISION":
     case "EXECUTION_FAILED": {
+      const r = result as { reason?: string; error?: unknown }
       const detail =
-        "reason" in result && typeof (result as { reason?: string }).reason === "string"
-          ? (result as { reason: string }).reason
-          : result.status
+        typeof r.reason === "string"
+          ? r.reason
+          : r.error instanceof Error
+            ? r.error.message
+            : r.error != null
+              ? String(r.error)
+              : result.status
       return { status: result.status, detail }
     }
   }

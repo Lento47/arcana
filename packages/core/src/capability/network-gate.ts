@@ -16,8 +16,10 @@
 import { Effect } from "effect"
 import { authorizeAndExecuteEffect } from "./pep"
 import { buildAuthorizationRequest } from "./pep-integration"
+import { computeRequestHash } from "./request-hash"
 import { noopEmitter, withGate } from "./process-gate"
 import type { ProcessGateOptions } from "./process-gate"
+import { gateTransportExec } from "./replay-transport"
 
 export interface NetworkGateRequest {
   /** Tool name driving the request (web_fetch, web_search, speak, image_generate, env_network, …). */
@@ -34,6 +36,8 @@ export interface NetworkGateRequest {
   parentInstanceId?: string
   onBehalfOf?: string
   toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
+  /** K3b transport: record {status,summary} outcomes, or replay recorded ones. Payload is NOT recorded. */
+  transport?: import("./replay-transport").GateTransport
 }
 
 export interface NetworkExecResult {
@@ -86,13 +90,26 @@ export async function authorizeNetwork(
     toolInstance: request.toolInstance,
   })
 
+  const reqHash = computeRequestHash(authReq)
+
   const result = await withGate(options, (provider) =>
     authorizeAndExecuteEffect(
       {
         request: authReq,
         executeExact: () =>
           Effect.promise(async () => {
+            // K3b replay: substitute the recorded observation — zero egress.
+            const t = options.transport ?? request.transport
+            if (t?.mode === "replay") {
+              if (!t.ledger.has(reqHash)) {
+                throw new Error(`REPLAY_GAP:${reqHash}`)
+              }
+              return t.ledger.get(reqHash) as NetworkExecResult
+            }
             const exec = await perform()
+            if (t?.mode === "record") {
+              t.ledger.put(reqHash, exec)
+            }
             return exec
           }),
       },

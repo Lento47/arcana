@@ -15,6 +15,8 @@ import type { EnforcementResult } from "./pep"
 import { buildAuthorizationRequest } from "./pep-integration"
 import { noopEmitter, withGate } from "./process-gate"
 import type { ProcessGateOptions } from "./process-gate"
+import { computeRequestHash } from "./request-hash"
+import { gateTransportExec } from "./replay-transport"
 
 export interface FileMutationRequest {
   /** Mapped tool name: "write" | "edit" | "patch" | "skill_create" | "env_write" | … */
@@ -35,6 +37,8 @@ export interface FileMutationRequest {
   parentInstanceId?: string
   onBehalfOf?: string
   toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
+  /** K3b transport: record this mutation's output, or replay a recorded one. */
+  transport?: import("./replay-transport").GateTransport
 }
 
 export type FileMutationResult =
@@ -77,11 +81,17 @@ export async function authorizeFileMutation(
     toolInstance: request.toolInstance,
   })
 
+  const reqHash = computeRequestHash(authReq)
+
   const result = await withGate(options, (provider) =>
     authorizeAndExecuteEffect(
       {
         request: authReq,
-        executeExact: () => Effect.sync(perform),
+        executeExact: () =>
+          Effect.sync(() => {
+            const tr = gateTransportExec(options.transport ?? request.transport, reqHash, perform)
+            return tr.value
+          }),
       },
       provider,
       noopEmitter,
@@ -101,10 +111,15 @@ export async function authorizeFileMutation(
       }
     case "STALE_DECISION":
     case "EXECUTION_FAILED": {
+      const r = result as { reason?: string; error?: unknown }
       const detail =
-        "reason" in result && typeof (result as { reason?: string }).reason === "string"
-          ? (result as { reason: string }).reason
-          : result.status
+        typeof r.reason === "string"
+          ? r.reason
+          : r.error instanceof Error
+            ? r.error.message
+            : r.error != null
+              ? String(r.error)
+              : result.status
       return { status: result.status, detail }
     }
   }
