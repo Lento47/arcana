@@ -2,7 +2,7 @@ import { ErrorBoundary, For, Show, createSignal } from "solid-js"
 import type { Accessor } from "solid-js"
 import type { MouseEvent, ScrollAcceleration, ScrollBoxRenderable } from "@opentui/core"
 import { useTheme } from "../../context/theme"
-import { type SpineLayout, type SpineEntry } from "./spine-types"
+import { type SpineLayout, type SpineEntry, type SpineEntryAction } from "./spine-types"
 import { SpineEntryBinding } from "./spine-entry-binding"
 import { SpineRowError } from "./spine-row-error"
 
@@ -25,7 +25,7 @@ export function SpineViewport(props: {
   onToggleEntry: (entry: SpineEntry) => void
   onFocusEntry: (entry: SpineEntry) => void
   onContextMenu: (entry: SpineEntry) => void
-  onAction?: (entry: SpineEntry, action: "retry" | "switch-model") => void
+  onAction?: (entry: SpineEntry, action: SpineEntryAction["id"]) => void
   /** Operator dismissal ("×") for approval banners. */
   onDismissEntry?: (entry: SpineEntry) => void
   actionIndex?: number

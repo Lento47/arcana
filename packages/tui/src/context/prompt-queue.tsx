@@ -9,7 +9,7 @@ import { useEvent } from "./event"
 import { useToast } from "../ui/toast"
 import { errorMessage } from "../util/error"
 import { isRecord } from "../util/record"
-import { addOptimisticMessage, removeOptimisticMessage } from "../component/prompt/optimistic"
+import { addOptimisticMessage, markOptimisticQueued, removeOptimisticMessage } from "../component/prompt/optimistic"
 
 export type QueuedPromptPayload = Parameters<OpencodeClient["session"]["promptAsync"]>[0]
 
@@ -214,7 +214,12 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
         "items",
         produce((items) => {
           const index = items.findIndex((item) => item.id === id)
-          if (index !== -1) items.splice(index, 1)
+          if (index !== -1) {
+            // Dropping a queued prompt also removes its linear timeline echo.
+            const item = items[index]
+            if (item) removeOptimisticMessage(item.payload.messageID!)
+            items.splice(index, 1)
+          }
         }),
       )
       persist()
@@ -272,13 +277,16 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
                   modelID: model.modelID,
                   variant: item.payload.variant,
                 },
+                queued: false,
               })
             }
             remove(item.id)
           })
           return "sent"
         } catch (error) {
-          if (item.payload.messageID) removeOptimisticMessage(item.payload.messageID)
+          // Keep the linear timeline row visible — it stays queued (or
+          // needs-attention after retries exhaust) until delivery succeeds.
+          markOptimisticQueued(item.payload.messageID!, true)
           const attempts = item.attempts + 1
           const retryable = isRetryablePromptError(error)
           const failed = !retryable || attempts >= MAX_ATTEMPTS
@@ -348,16 +356,16 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       persist()
 
       // A live query owns the session. Queue the new message and let the
-      // status observer drain it as soon as the turn returns to idle.
+      // status observer drain it as soon as the turn returns to idle. The
+      // optimistic timeline row submitted by the prompt STAYS — linear chat:
+      // queued messages are visible where they will land, marked queued.
       if (releaseStale()) {
-        // A stale session was just released (its turn is no longer ours to
-        // wait on). Defer to drain instead of racing it with a direct send.
-        if (item.payload.messageID) removeOptimisticMessage(item.payload.messageID)
+        markOptimisticQueued(item.payload.messageID!, true)
         queueMicrotask(() => void drain())
         return "queued"
       }
       if (sessionWorking(payload.sessionID)) {
-        if (item.payload.messageID) removeOptimisticMessage(item.payload.messageID)
+        markOptimisticQueued(item.payload.messageID!, true)
         queueMicrotask(() => void drain())
         return "queued"
       }
@@ -380,6 +388,23 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       persist()
       void drain()
     }
+
+    /**
+     * Steer: deliver this queued message NOW, interrupting the running turn.
+     * The engine accepts mid-turn prompts (delivery: "steer") and feeds them
+     * into the live session, so this bypasses the idle gate only — delivery
+     * itself still flows through the same gated path as any other send.
+     */
+    const steerNow = (id: string): Promise<"sent" | "queued"> => {
+      const item = store.items.find((entry) => entry.id === id)
+      if (!item || deliveries.has(id)) return Promise.resolve("queued")
+      markActive(item.payload.sessionID)
+      return sendStored(item)
+    }
+
+    /** Look up a queued item by its optimistic/message ID (for row actions). */
+    const byMessageID = (messageID: string) =>
+      store.items.find((entry) => entry.payload.messageID === messageID)
 
     const clear = (sessionID?: string) => {
       setStore(
@@ -429,6 +454,8 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       retrying: () => inFlightCount() > 0,
       submit,
       retry,
+      steerNow,
+      byMessageID,
       remove,
       clear,
       drain,

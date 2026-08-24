@@ -32,24 +32,9 @@ export function SpineComposer(props: {
   retryStatus?: () => { attempt?: number; message?: string; next?: number } | undefined
 }) {
   const { theme } = useTheme()
-  const promptQueue = usePromptQueue()
   const motion = useSpineMotion()
   const pad = spineOuterPadding(props.layout)
-  const queuedItems = createMemo(() => promptQueue.forSession(props.sessionID))
-  const visibleQueuedItems = createMemo(() => queuedItems().slice(0, 3))
-  const queuedOverflow = createMemo(() => Math.max(0, queuedItems().length - visibleQueuedItems().length))
   const showsWorkingCue = () => props.state() === "working" && motion?.activeCue() === "composer"
-  const queueStatus = (id: string) => {
-    const state = promptQueue.state(id)
-    if (state === "needs-attention") return "needs attention"
-    return state
-  }
-  const queueColor = (id: string) => {
-    const state = promptQueue.state(id)
-    if (state === "needs-attention") return theme.warning
-    if (state === "sending") return theme.accent
-    return theme.spineDiffMuted
-  }
   const escapeHint = () => {
     const stage = props.escapeStage()
     if (stage === 0) return undefined
@@ -95,22 +80,8 @@ export function SpineComposer(props: {
       <Show when={props.parentID}>
         <SubagentFooter />
       </Show>
-      <Show when={queuedItems().length > 0}>
-        <box flexDirection="column" flexShrink={0} paddingLeft={pad + 2} paddingRight={pad + 2} minWidth={0}>
-          <For each={visibleQueuedItems()}>
-            {(item) => (
-              <box flexDirection="row" height={1} minWidth={0} flexShrink={0}>
-                <text fg={queueColor(item.id)} wrapMode="none">
-                  {truncate(`${queueStatus(item.id)} · ${item.label}`, hintLimit())}
-                </text>
-              </box>
-            )}
-          </For>
-          <Show when={queuedOverflow() > 0}>
-            <text fg={theme.spineDiffMuted} wrapMode="none">+{queuedOverflow()} queued</text>
-          </Show>
-        </box>
-      </Show>
+      {/* Queued prompts render as linear timeline rows (steer/drop chips on
+          the queued ask row) — the old composer strip was removed. */}
       {/* Fixed-height operator line: changing focus/state never moves the
           viewport or composer. Mouse-only discovery is never required. */}
       <box flexDirection="row" flexShrink={0} height={1} paddingLeft={pad + 2} minWidth={0}>

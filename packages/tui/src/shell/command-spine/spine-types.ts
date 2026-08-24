@@ -164,8 +164,10 @@ export type SpineEntry = {
   bodyHint?: string
   /** Muted note under code/prose (EOF, truncation, line range). */
   bodyNote?: string
-  /** Operator recovery actions derived from durable engine state. */
-  actions?: readonly SpineEntryAction[]
+   /** Operator recovery actions derived from durable engine state. */
+   actions?: readonly SpineEntryAction[]
+  /** Queued prompt row (linear timeline; not yet delivered). Shows steer/drop. */
+  queued?: boolean
   collapsible?: boolean
   expandedByDefault?: boolean
   receipt?: SpineReceipt
@@ -204,7 +206,7 @@ export type SpineEntry = {
 }
 
 export type SpineEntryAction = {
-  id: "retry" | "switch-model"
+  id: "retry" | "switch-model" | "steer" | "drop"
   label: string
 }
 

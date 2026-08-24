@@ -23,6 +23,8 @@ export interface OptimisticUserMessage {
     modelID: string
     variant?: string
   }
+  /** True while delivery is held in the local queue (linear timeline row). */
+  queued?: boolean
 }
 
 const [state, setState] = createSignal<OptimisticUserMessage[]>([])
@@ -105,6 +107,17 @@ export function removeOptimisticMessage(messageID: string) {
   setState((prev) => prev.filter((message) => message.messageID !== messageID))
 }
 
+/** Flip one local echo's queued marker without touching the rest. */
+export function markOptimisticQueued(messageID: string, queued: boolean) {
+  setState((prev) => {
+    const index = prev.findIndex((message) => message.messageID === messageID)
+    if (index === -1) return prev
+    const next = prev.slice()
+    next[index] = { ...next[index]!, queued }
+    return next
+  })
+}
+
 export type OptimisticMessageProxy = {
   id: string
   sessionID: string
@@ -113,6 +126,7 @@ export type OptimisticMessageProxy = {
   agent: string
   model: OptimisticUserMessage["model"]
   text: string
+  queued?: boolean
 }
 
 function toProxy(o: OptimisticUserMessage): OptimisticMessageProxy {
@@ -124,6 +138,7 @@ function toProxy(o: OptimisticUserMessage): OptimisticMessageProxy {
     agent: o.agent,
     model: o.model,
     text: o.text,
+    queued: o.queued,
   }
 }
 

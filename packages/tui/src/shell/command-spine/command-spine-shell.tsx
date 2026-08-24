@@ -5,8 +5,9 @@ import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordan
 import type { PermissionRequest } from "@arcana/sdk/v2"
 import { useTheme } from "../../context/theme"
 import { useKV } from "../../context/kv"
+import { usePromptQueue } from "../../context/prompt-queue"
 import type { ShellProps } from "../types"
-import type { SpineEntry } from "./spine-types"
+import type { SpineEntry, SpineEntryAction } from "./spine-types"
 import { frameChrome, isDensity, spineViewportWidth } from "./spine-types"
 import { useSpineLayout } from "./use-spine-layout"
 import { useSpineProjection } from "./use-spine-projection"
@@ -46,6 +47,7 @@ export function CommandSpineShell(props: ShellProps) {
   const renderer = useRenderer()
   const clipboard = useClipboard()
   const toast = useToast()
+  const promptQueue = usePromptQueue()
   const dialog = useDialog()
   const route = useRoute()
   const keymap = useOpencodeKeymap()
@@ -464,7 +466,25 @@ export function CommandSpineShell(props: ShellProps) {
     }
   }
 
-  const activateRecoveryAction = (entry: SpineEntry, action: "retry" | "switch-model") => {
+  const activateQueueAction = (entry: SpineEntry, action: SpineEntryAction["id"]): boolean => {
+    if (!entry.queued || !entry.source?.messageID) return false
+    const item = promptQueue.byMessageID(entry.source.messageID)
+    if (!item) return false
+    if (action === "steer") void promptQueue.steerNow(item.id)
+    else if (action === "drop") promptQueue.remove(item.id)
+    else if (action === "retry") promptQueue.retry(item.id)
+    else return false
+    navigation.focusEntry(entry)
+    toast.show({
+      title: action === "steer" ? "Steering the running turn" : action === "retry" ? "Retrying queued message" : "Queued message dropped",
+      message: item.label,
+      variant: "info",
+    })
+    return true
+  }
+
+  const activateRecoveryAction = (entry: SpineEntry, action: SpineEntryAction["id"]) => {
+    if (activateQueueAction(entry, action)) return
     navigation.focusEntry(entry)
     if (action === "retry") {
       void retryFailedEntry(entry)

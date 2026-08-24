@@ -4,6 +4,7 @@ import {
   allOptimisticMessages,
   clearOptimisticMessages,
   filterCoveredOptimistics,
+  markOptimisticQueued,
   mergeOptimisticMessages,
   orderTranscriptMessages,
   pinUserBeforeOpenAssistants,
@@ -461,5 +462,43 @@ describe("refreshTranscriptOrder", () => {
     const next = refreshTranscriptOrder([u1, a1, u2], first)
     expect(next.map((m) => m.id)).toEqual(["u1", "a1", "u2"])
     expect(next).not.toBe(first)
+  })
+})
+
+describe("queued optimistic rows", () => {
+  afterEach(() => {
+    clearOptimisticMessages()
+  })
+
+  function opt(messageID: string, text: string): OptimisticUserMessage {
+    return {
+      id: `optimistic-${messageID}`,
+      messageID,
+      sessionID: "ses_q",
+      text,
+      timestamp: Date.now(),
+      agent: "build",
+      model: { providerID: "p", modelID: "m" },
+    }
+  }
+
+  test("queued flag round-trips through the optimistic proxy", () => {
+    addOptimisticMessage(opt("mid-1", "hey"))
+    expect(allOptimisticMessages()[0]!.queued).toBeUndefined()
+
+    markOptimisticQueued("mid-1", true)
+    const merged = mergeOptimisticMessages([], allOptimisticMessages())
+    const row = merged.find((m) => m.id === "optimistic-mid-1") as
+      | { queued?: boolean }
+      | undefined
+    expect(row?.queued).toBe(true)
+
+    // Delivery flips the marker; the row stays until real-message ack.
+    markOptimisticQueued("mid-1", false)
+    const delivered = mergeOptimisticMessages([], allOptimisticMessages())
+    const deliveredRow = delivered.find((m) => m.id === "optimistic-mid-1") as
+      | { queued?: boolean }
+      | undefined
+    expect(deliveredRow?.queued ?? false).toBe(false)
   })
 })

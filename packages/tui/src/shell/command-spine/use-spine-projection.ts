@@ -7,6 +7,7 @@ import { useSync } from "../../context/sync"
 import { useTuiConfig } from "../../config"
 import { useGovernanceConfig } from "../../context/governance-config"
 import { useKV } from "../../context/kv"
+import { usePromptQueue } from "../../context/prompt-queue"
 import { shouldShowGovernanceEvent } from "@arcana/core/governance-config"
 import { spineProseWidth, spineGutterDigits, type SpineLayout, type SpineEntry } from "./spine-types"
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
@@ -70,6 +71,7 @@ export function useSpineProjection(props: ShellProps, input: {
   const tuiConfig = useTuiConfig()
   const governanceConfig = useGovernanceConfig()
   const kv = useKV()
+  const promptQueue = usePromptQueue()
   const layout = input.layout
   const viewportWidth = input.viewportWidth
 
@@ -195,9 +197,43 @@ export function useSpineProjection(props: ShellProps, input: {
     }
     return newest
   })
+  // ── Queued prompt annotation (linear chat + steer/drop) ────────────
+  const queuedByMessageID = createMemo(() => {
+    const map = new Map<string, { failed: boolean }>()
+    for (const item of promptQueue.forSession(props.sessionID)) {
+      const messageID = item.payload.messageID
+      if (!messageID) continue
+      map.set(messageID, { failed: item.failed })
+    }
+    return map
+  })
+  const queuedAnnotatedEntries = createMemo(() => {
+    const qmap = queuedByMessageID()
+    if (qmap.size === 0) return entries().entries
+    return entries().entries.map((entry) => {
+      if (entry.kind !== "ask" || !entry.source?.messageID) return entry
+      const queued = qmap.get(entry.source.messageID)
+      if (!queued) return entry
+      return {
+        ...entry,
+        queued: true,
+        summary: `queued · ${entry.summary}`,
+        actions: (queued.failed
+          ? [
+              { id: "retry" as const, label: "retry" },
+              { id: "drop" as const, label: "drop" },
+            ]
+          : [
+              { id: "steer" as const, label: "steer" },
+              { id: "drop" as const, label: "drop" },
+            ]),
+      }
+    })
+  })
+
   const entriesWithChildSessions = createMemo(() =>
     stampAgentChildSessions({
-      entries: entries().entries,
+      entries: queuedAnnotatedEntries(),
       sessions: sync.data.session,
       parentSessionID: props.sessionID,
     })

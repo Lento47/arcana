@@ -5,6 +5,7 @@ import type { Message, Part, ToolPart } from "@arcana/sdk/v2"
 import { titlecase, truncate } from "../../util/locale"
 import type {
   SpineEntry as SpineEntryType,
+  SpineEntryAction,
   SpineKind,
   SpineLayout,
 } from "./spine-types"
@@ -278,7 +279,7 @@ export function SpineEntry(props: {
   onHover?: () => void
   /** Opens the row action menu. Right-click is ignored while text is selected. */
   onContextMenu?: (entry: SpineEntryType) => void
-  onAction?: (entry: SpineEntryType, action: "retry" | "switch-model") => void
+  onAction?: (entry: SpineEntryType, action: SpineEntryAction["id"]) => void
   selectedAction?: number
   onNavigate?: (sessionID: string) => void
   /** Agent rows: called when a dive target is unresolved (no child link yet). */
@@ -556,6 +557,31 @@ export function SpineEntry(props: {
                     bodyLabel={v().bodyLabel}
                     contentWidth={props.contentWidth}
                   />
+                </Show>
+                {/* Queued prompt actions (steer/drop/retry) — same chip
+                    pattern as recovery actions on tool rows. */}
+                <Show when={(v().actions?.length ?? 0) > 0}>
+                  <box flexDirection="row" flexShrink={0}>
+                    <SpineRail layout={props.layout} active={props.focused} />
+                    <box flexDirection="row" gap={1} paddingLeft={1} paddingTop={1}>
+                      <For each={v().actions}>
+                        {(action) => (
+                          <box
+                            paddingLeft={1}
+                            paddingRight={1}
+                            backgroundColor={theme.backgroundElement}
+                            onMouseUp={(event) => {
+                              event.stopPropagation?.()
+                              event.preventDefault?.()
+                              props.onAction?.(entry(), action.id)
+                            }}
+                          >
+                            <text fg={theme.accent}>{action.label}</text>
+                          </box>
+                        )}
+                      </For>
+                    </box>
+                  </box>
                 </Show>
               </>
             )}

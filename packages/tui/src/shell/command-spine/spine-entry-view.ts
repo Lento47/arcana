@@ -48,6 +48,9 @@ export type ChatEntry = SpineEntryViewBase & {
   streaming?: boolean
   reminders?: string[]
   bodyLabel?: string
+  /** Queued prompt row (delivered when idle; steer/drop actions available). */
+  queued?: boolean
+  actions?: readonly SpineEntryAction[]
 }
 
 /** Tool / thinking / run / inspect / patch / fix rows with header + artifacts. */
@@ -248,6 +251,8 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
       streaming: entry.streaming === true,
       reminders: entry.reminders,
       bodyLabel: entry.bodyLabel,
+      queued: entry.queued === true,
+      actions: entry.actions,
     }
   }
 
