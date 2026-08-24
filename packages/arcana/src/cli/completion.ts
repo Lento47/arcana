@@ -18,6 +18,26 @@ const SUBCOMMANDS = [
   { name: "feedback", desc: "send feedback about arcana, or review past feedback" },
   { name: "web", desc: "start the optional Arcana web app" },
   { name: "completion", desc: "generate shell completion script" },
+  // Bridged to the engine CLI (same implementations, routed verbatim).
+  { name: "console", desc: "pair the CLI with your Arcana account (device flow)" },
+  { name: "trust", desc: "manage workspace trust" },
+  { name: "models", desc: "list available models" },
+  { name: "providers", desc: "manage provider credentials" },
+  { name: "session", desc: "list sessions" },
+  { name: "stats", desc: "usage and cost statistics" },
+  { name: "mcp", desc: "manage MCP servers" },
+  { name: "serve", desc: "run the headless HTTP server" },
+  { name: "license", desc: "activate, inspect, or deactivate your license" },
+  { name: "proxy", desc: "inspect your Arcana proxy account" },
+  { name: "audit", desc: "query audit logs (Team/Enterprise)" },
+  { name: "capability", desc: "revoke a session capability" },
+  { name: "epistemic", desc: "inspect a session's epistemic record" },
+  { name: "node", desc: "distributed node enrollment (Phase D)" },
+  { name: "launch", desc: "launch an external coding agent under supervision" },
+  { name: "agent", desc: "create and list agents" },
+  { name: "plugin-store", desc: "search, install, create, and publish plugins" },
+  { name: "proof", desc: "inspect, verify, and export RunProof records" },
+  { name: "replay", desc: "audit and deterministic replay of sessions" },
 ]
 
 export function bashCompletionScript(): string {

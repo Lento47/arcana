@@ -18,7 +18,7 @@ function profileEmit(phase: string, ts_ms: number) {
 profileEmit("arcana_entry", performance.now())
 const args = process.argv.slice(2)
 const HELP_FLAGS = new Set(["--help", "-h", "--version", "-v"])
-const ENGINE_BRIDGED = [
+const ENGINE_BRIDGED = new Set([
   "console",
   "trust",
   "models",
@@ -38,7 +38,7 @@ const ENGINE_BRIDGED = [
   "plugin-store",
   "proof",
   "replay",
-] as const
+])
 const SUBCOMMANDS = [
   "run", "skills", "cron", "memory", "gateway", "completion", "config", "learn",
   "doctor", "history", "theme", "feedback", "web", "daemon",
