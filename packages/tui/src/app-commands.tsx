@@ -30,8 +30,58 @@ import { loadActiveRunProof, stageActiveRunProofRollbackRestore, approveActiveRu
 import { displaySessionTitle } from "./util/session"
 import { isSpinnerStyle, nextSpinnerStyle, spinnerStyleName } from "./util/spinner-style"
 import { densityName, isDensity, nextDensity } from "./shell/command-spine/spine-types"
+import { errorMessage } from "./util/error"
+import { DialogAlert } from "./ui/dialog-alert"
+import path from "node:path"
 import type { TuiPluginHost } from "./plugin/runtime"
 import type { CliRenderer } from "@opentui/core"
+
+// ─── Bridged CLI runner (read-only verbs) ───────────────────────────
+
+const ENGINE_CLI_ENTRY = path.join(import.meta.dir, "../../engine/src/index.ts")
+const BRIDGE_OUTPUT_CAP = 20_000
+
+/** Pure arg builder — exported for tests. */
+export function buildEngineCliCommand(verb: string, args: string[] = [], entry = ENGINE_CLI_ENTRY): string[] {
+  return ["bun", "--conditions=browser", entry, verb, ...args]
+}
+
+/**
+ * Run a bridged engine CLI verb and render its output in a dismissible
+ * dialog. Read-only verbs only (status/list/inspect/show) — palette must
+ * never mutate state invisibly.
+ */
+async function runBridgedCommand(
+  deps: { dialog: any; toast: any },
+  verb: string,
+  args: string[] = [],
+): Promise<void> {
+  try {
+    const proc = Bun.spawn(buildEngineCliCommand(verb, args), {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, PWD: process.cwd() },
+    })
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ])
+    const code = await proc.exited
+    let text = (stdout + (stderr ? "\n" + stderr : "")).trim()
+    if (text.length > BRIDGE_OUTPUT_CAP) text = text.slice(0, BRIDGE_OUTPUT_CAP) + "\n… truncated"
+    deps.dialog.replace(() => (
+      <DialogAlert
+        title={`arcana ${verb}${args.length ? " " + args.join(" ") : ""} — exit ${code}`}
+        message={text || "(no output)"}
+      />
+    ))
+    if (code !== 0) {
+      deps.toast.show({ title: `arcana ${verb} exited ${code}`, variant: "warning" })
+    }
+  } catch (error) {
+    deps.toast.show({ title: `arcana ${verb} failed`, message: errorMessage(error), variant: "error" })
+  }
+}
 
 // ─── RunProof surface helper ────────────────────────────────────────
 
@@ -384,6 +434,7 @@ export function buildAppCommands(deps: {
       title: "Switch agent",
       category: "Agent",
       slashName: "agents",
+      slashAliases: ["mode"],
       run: () => {
         deps.dialog.replace(() => <DialogAgent />)
       },
@@ -762,6 +813,92 @@ export function buildAppCommands(deps: {
         await deps.sync.session.refresh()
         deps.dialog.clear()
       },
+    },
+
+    // ── Bridged CLI verbs (Arcana) — read-only, rendered in a dialog ──
+    {
+      name: "stats.show",
+      title: "Usage and cost statistics",
+      category: "Arcana",
+      slashName: "stats",
+      run: () => void runBridgedCommand(deps, "stats"),
+    },
+    {
+      name: "proof.inspect",
+      title: "Inspect RunProof for this session",
+      category: "Arcana",
+      slashName: "proof",
+      run: () => {
+        const sessionID = deps.route.data.type === "session" ? deps.route.data.sessionID : undefined
+        if (!sessionID) {
+          deps.toast.show({ variant: "warning", message: "Open a session first" })
+          return
+        }
+        void runBridgedCommand(deps, "proof", ["inspect", sessionID])
+      },
+    },
+    {
+      name: "license.status",
+      title: "License status",
+      category: "Arcana",
+      slashName: "license",
+      run: () => void runBridgedCommand(deps, "license", ["status"]),
+    },
+    {
+      name: "proxy.status",
+      title: "Proxy account status",
+      category: "Arcana",
+      slashName: "proxy",
+      run: () => void runBridgedCommand(deps, "proxy", ["status"]),
+    },
+    {
+      name: "audit.status",
+      title: "Audit log status (Team/Enterprise)",
+      category: "Arcana",
+      slashName: "audit",
+      run: () => void runBridgedCommand(deps, "audit", ["status"]),
+    },
+    {
+      name: "epistemic.proof",
+      title: "Epistemic proof for this session",
+      category: "Arcana",
+      slashName: "epistemic",
+      run: () => {
+        const sessionID = deps.route.data.type === "session" ? deps.route.data.sessionID : undefined
+        if (!sessionID) {
+          deps.toast.show({ variant: "warning", message: "Open a session first" })
+          return
+        }
+        void runBridgedCommand(deps, "epistemic", ["proof", sessionID])
+      },
+    },
+    {
+      name: "trust.status",
+      title: "Workspace trust status",
+      category: "Arcana",
+      slashName: "trust",
+      run: () => void runBridgedCommand(deps, "trust", ["status"]),
+    },
+    {
+      name: "doctor.run",
+      title: "Run system diagnostics",
+      category: "Arcana",
+      slashName: "doctor",
+      run: () => void runBridgedCommand(deps, "doctor"),
+    },
+    {
+      name: "cron.list",
+      title: "Scheduled jobs",
+      category: "Arcana",
+      slashName: "cron",
+      run: () => void runBridgedCommand(deps, "cron", ["list"]),
+    },
+    {
+      name: "memory.facts",
+      title: "Memory facts",
+      category: "Arcana",
+      slashName: "memory",
+      run: () => void runBridgedCommand(deps, "memory", ["facts"]),
     },
   ].map((command) => ({
     namespace: "palette",
