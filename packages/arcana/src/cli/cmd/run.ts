@@ -17,6 +17,7 @@ import { maybeEvolve, incrementSessionCount, getActivePrompt } from "../../agent
 import { detectInjection, auditLog } from "../../agent/guard.js"
 import { createSandbox } from "../../agent/sandbox.js"
 import { createProofRuntime } from "../run/proof-runtime.js"
+import { RunScorecard } from "../agent/run-scorecard.js"
 
 const SYSTEM_PROMPT = `You are Arcana, a self-improving AI agent. You have access to:
 - memory_search: search past sessions and conversations
@@ -242,6 +243,8 @@ export const RunCommand: CommandModule = {
       },
       sandbox,
     )
+    // K6: always-on scorecard — governance visibility is never optional.
+    const scorecard = new RunScorecard()
     if (memory) {
       registerBuiltinTools(runner, memory, config.skillsDirs)
     } else {
@@ -492,12 +495,19 @@ export const RunCommand: CommandModule = {
 
       // Stream tokens in REPL mode (async iterable not available; use callback)
       let streamed = false
+      const turnStart = Date.now()
       const result = await runner.run(history, (chunk) => {
         if (!streamed) {
           process.stdout.write(c.cyan("\narcana> "))
           streamed = true
         }
         process.stdout.write(chunk)
+      })
+      scorecard.recordTurn({
+        toolCalls: result.toolCalls ?? 0,
+        inputTokens: result.inputTokens ?? 0,
+        outputTokens: result.outputTokens ?? 0,
+        durationMs: Date.now() - turnStart,
       })
 
       if (streamed) process.stdout.write("\n")
@@ -527,6 +537,7 @@ export const RunCommand: CommandModule = {
         const reply = await runTurn(oneShotPrompt)
         process.stdout.write(reply + "\n")
 
+        console.log(scorecard.render())
         await proofRuntime.finalizeCompleted(
           "One-shot run completed. Diff gates and independent verifier are not wired yet; human review remains recommended.",
           25,
@@ -608,6 +619,8 @@ export const RunCommand: CommandModule = {
       }
 
       if (input === "/exit" || input === "/quit") {
+        // Scorecard first — governance visibility is never optional (K6).
+        console.log(scorecard.render())
         // Extract learnings from this session before exiting
         const msgs = sessionMgr?.getHistory() ?? []
         const turns = msgs.filter((m) => m.role === "user")

@@ -25,6 +25,7 @@
     "smoke": "bun run script/smoke.ts",
     "authority": "bun run script/authority-scan.ts",
     "authority:dynamic": "bun run script/authority-dynamic.ts",
+    "authority:bench": "bun run packages/core/scripts/kernel-bench.ts",
     "clean": "bun turbo clean",
     "postinstall": "bun run script/patch-opentui.ts"
   },

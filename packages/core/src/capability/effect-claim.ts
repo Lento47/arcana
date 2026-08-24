@@ -18,6 +18,7 @@ import {
   type ClaimState,
   type EffectClaimRecord,
 } from "./eclaim-store"
+import { recordClaimTerminal } from "./authority-metrics"
 
 export { SqliteEffectClaimStore, deriveIdempotencyKey, makeEffectId }
 export type { ClaimState, EffectClaimRecord }
@@ -109,6 +110,7 @@ async function runLifecycle(
   try {
     const outcome = await input.dispatch()
     if (!outcome.settled) {
+      recordClaimTerminal("AMBIGUOUS")
       store.transition(effectId, "AMBIGUOUS", { receipt: outcome.receipt || "unsettled" })
       return {
         status: "AMBIGUOUS",
@@ -117,14 +119,17 @@ async function runLifecycle(
         detail: outcome.receipt || "dispatch returned unsettled",
       }
     }
+    recordClaimTerminal("SETTLED")
     store.transition(effectId, "SETTLED", { receipt: outcome.receipt })
     return { status: "SETTLED", effectId, idempotencyKey, receipt: outcome.receipt }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if ((error as { preDispatch?: boolean })?.preDispatch === true) {
+      recordClaimTerminal("FAILED")
       store.transition(effectId, "FAILED", { receipt: `pre-dispatch failure: ${message}` })
       return { status: "FAILED", effectId, idempotencyKey, detail: message }
     }
+    recordClaimTerminal("AMBIGUOUS")
     store.transition(effectId, "AMBIGUOUS", { receipt: `dispatch error: ${message}` })
     return { status: "AMBIGUOUS", effectId, idempotencyKey, detail: message }
   }
@@ -166,10 +171,12 @@ export async function reconcileClaim(
 
     const probed = await probe(claim.idempotencyKey)
     if (probed.verdict === "SETTLED") {
+      recordClaimTerminal("SETTLED")
       store.amendClaim(effectId, `reconciled settled: ${probed.receipt}`, "SETTLED")
       return { status: "SETTLED", detail: probed.receipt }
     }
     if (probed.verdict === "NOT_FOUND") {
+      recordClaimTerminal("FAILED")
       store.amendClaim(effectId, "reconciled: downstream never received the effect", "FAILED")
       return { status: "FAILED", detail: "proven no effect (downstream NOT_FOUND)" }
     }

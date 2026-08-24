@@ -15,6 +15,7 @@ import type { EnforcementResult } from "./pep"
 import { buildAuthorizationRequest } from "./pep-integration"
 import { noopEmitter, withGate } from "./process-gate"
 import type { ProcessGateOptions } from "./process-gate"
+import { recordDecision, observeLatency } from "./authority-metrics"
 import { computeRequestHash } from "./request-hash"
 import { gateTransportExec } from "./replay-transport"
 
@@ -59,6 +60,7 @@ export async function authorizeFileMutation(
   request: FileMutationRequest,
   perform: () => string,
 ): Promise<FileMutationResult> {
+  const __t0 = Date.now()
   const authReq = buildAuthorizationRequest({
     toolName: request.toolName,
     principalId: options.principalId ?? "arcana-cli",
@@ -98,6 +100,8 @@ export async function authorizeFileMutation(
     ),
   )
 
+  recordDecision(result.status)
+  observeLatency("gate_total_ms", Math.max(0, Date.now() - __t0))
   switch (result.status) {
     case "EXECUTED":
       return { status: "EXECUTED", output: String(result.value ?? ""), requestHash: result.requestHash }

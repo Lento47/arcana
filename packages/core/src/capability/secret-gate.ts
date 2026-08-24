@@ -24,6 +24,7 @@ import type { CapabilityGrant } from "./types"
 import type { CapabilityGrantStore } from "./grant-store"
 import { noopEmitter, withGate } from "./process-gate"
 import type { ProcessGateOptions } from "./process-gate"
+import { recordDecision, observeLatency } from "./authority-metrics"
 import { Database } from "../database/database"
 import { randomUUID } from "node:crypto"
 
@@ -101,6 +102,7 @@ export async function authorizeSecretUse(
   request: SecretUseRequest,
   resolve: (secretName: string) => string | undefined,
 ): Promise<SecretGateResult> {
+  const __t0 = Date.now()
   const authReq = buildAuthorizationRequest({
     toolName: "secret_use",
     principalId: options.principalId ?? "arcana-cli",
@@ -138,6 +140,8 @@ export async function authorizeSecretUse(
     ),
   )
 
+  recordDecision(result.status)
+  observeLatency("gate_total_ms", Math.max(0, Date.now() - __t0))
   switch (result.status) {
     case "EXECUTED":
       return { status: "EXECUTED", value: result.value as string, requestHash: result.requestHash }

@@ -31,6 +31,7 @@ import { SessionPolicyProvider } from "./grant-store"
 import { ensureSessionAgentGrants } from "./session-grants"
 import { Database } from "../database/database"
 import { gateTransportExec, type GateTransport } from "./replay-transport"
+import { recordDecision, observeLatency } from "./authority-metrics"
 
 export interface ProcessGateOptions {
   /** K3b: record effect outputs by request hash, or replay recorded ones. */
@@ -162,6 +163,8 @@ export async function authorizeProcess(
 
   let executorCalls = 0
 
+  const __t0 = Date.now()
+
   const authReqHash = computeRequestHash(authReq)
 
   const result = await withGate(options, (provider) =>
@@ -201,6 +204,8 @@ export async function authorizeProcess(
     ),
   )
 
+  recordDecision(result.status)
+  observeLatency("gate_total_ms", Math.max(0, Date.now() - __t0))
   switch (result.status) {
     case "EXECUTED": {
       const value = result.value as { stdout: string; stderr: string; exitCode: number | null }

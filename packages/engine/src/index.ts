@@ -291,6 +291,8 @@ const commandLoaders = {
   plugin: () => import("./cli/cmd/plug").then((m) => m.PluginCommand),
   workflow: () => import("./cli/cmd/workflow").then((m) => m.WorkflowCommand),
   "plugin-store": () => import("./cli/cmd/plugin-store").then((m) => m.PluginStoreCommand),
+  proof: () => import("./cli/cmd/proof").then((m) => m.ProofCommand),
+  replay: () => import("./cli/cmd/replay").then((m) => new m.ReplayCommand()),
   db: () => import("./cli/cmd/db").then((m) => m.DbCommand),
   license: () => import("./cli/cmd/license").then((m) => m.LicenseCommand),
   proxy: () => import("./cli/cmd/proxy").then((m) => m.ProxyCommand),

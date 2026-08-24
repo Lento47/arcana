@@ -19,6 +19,7 @@ import { buildAuthorizationRequest } from "./pep-integration"
 import { computeRequestHash } from "./request-hash"
 import { noopEmitter, withGate } from "./process-gate"
 import type { ProcessGateOptions } from "./process-gate"
+import { recordDecision, observeLatency } from "./authority-metrics"
 import { gateTransportExec } from "./replay-transport"
 
 export interface NetworkGateRequest {
@@ -71,6 +72,7 @@ export async function authorizeNetwork(
     host = new URL(request.url).host
   } catch {}
 
+  const __t0 = Date.now()
   const authReq = buildAuthorizationRequest({
     toolName: request.toolName,
     principalId: options.principalId ?? "arcana-cli",
@@ -118,6 +120,8 @@ export async function authorizeNetwork(
     ),
   )
 
+  recordDecision(result.status)
+  observeLatency("gate_total_ms", Math.max(0, Date.now() - __t0))
   switch (result.status) {
     case "EXECUTED": {
       const value = result.value as NetworkExecResult

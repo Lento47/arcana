@@ -18,7 +18,32 @@ function profileEmit(phase: string, ts_ms: number) {
 profileEmit("arcana_entry", performance.now())
 const args = process.argv.slice(2)
 const HELP_FLAGS = new Set(["--help", "-h", "--version", "-v"])
-const SUBCOMMANDS = ["run", "skills", "cron", "memory", "gateway", "completion", "config", "learn", "doctor", "history", "theme", "feedback", "web", "daemon"]
+const ENGINE_BRIDGED = [
+  "console",
+  "trust",
+  "models",
+  "providers",
+  "session",
+  "stats",
+  "mcp",
+  "serve",
+  "license",
+  "proxy",
+  "audit",
+  "capability",
+  "epistemic",
+  "node",
+  "launch",
+  "agent",
+  "plugin-store",
+  "proof",
+  "replay",
+] as const
+const SUBCOMMANDS = [
+  "run", "skills", "cron", "memory", "gateway", "completion", "config", "learn",
+  "doctor", "history", "theme", "feedback", "web", "daemon",
+  ...ENGINE_BRIDGED,
+]
 const firstArg = args[0]
 const DAEMON_FLAG = args.includes("--daemon")
 const isArcanaSubcommand = firstArg && (SUBCOMMANDS.includes(firstArg) || HELP_FLAGS.has(firstArg))
@@ -76,6 +101,25 @@ if (!isArcanaSubcommand) {
 }
 // === Subcommand path (lazy — only loaded when needed) ===
 profileEmit("subcommand_path_enter", performance.now())
+
+// === Engine-command bridge ================================================
+// Every documented CLI verb exists in the engine CLI. Commands not
+// implemented locally are routed there verbatim — inherited stdio, operator
+// cwd preserved (trust/launch/git-sensitive), exit code propagated. This is
+// pure wiring: the engine owns the implementations.
+if (firstArg && ENGINE_BRIDGED.has(firstArg)) {
+  const engineDir = path.join(currentDir(import.meta), "../../engine")
+  const engineEntry = path.join(engineDir, "src/index.ts")
+  const child = Bun.spawn({
+    cmd: ["bun", "--conditions=browser", engineEntry, ...args],
+    stdio: ["inherit", "inherit", "inherit"],
+    cwd: process.cwd(),
+    env: { ...process.env, PWD: process.cwd() },
+  })
+  process.exitCode = await child.exited
+  process.exit()
+}
+
 const yargsImportStart = performance.now()
 const { default: yargs } = await import("yargs")
 profileEmit("subcommand_yargs_import_done", performance.now())
@@ -132,6 +176,12 @@ const cli = yargs(args)
     type: "string",
     choices: ["DEBUG", "INFO", "WARN", "ERROR"] as const,
   })
+  .option("json", {
+    describe: "output machine-readable JSON to stdout",
+    type: "boolean",
+    default: false,
+    global: true,
+  })
   .middleware(async (opts) => {
     if (opts.logLevel) process.env.ARCANA_LOG_LEVEL = opts.logLevel as string
     process.env.ARCANA = "1"
@@ -178,7 +228,10 @@ try {
   }
 } catch (e) {
   process.stderr.write(`\nError: ${e instanceof Error ? e.message : String(e)}\n`)
-  process.exitCode = 1
+  // Contract (docs/cli-json): 0 success, 1 user/validation error,
+  // 2 internal error. yargs validation failures already exit(1) in .fail();
+  // anything that escapes a handler is an unexpected internal error.
+  process.exitCode = 2
 } finally {
   process.exit()
 }

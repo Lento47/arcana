@@ -58,5 +58,11 @@ jobs:
       - name: Authority Kernel effect-claim tests (K4)
         run: bun test packages/core/src/capability/effect-claim.test.ts
 
+      - name: Authority Kernel K5 performance SLOs (fail-closed)
+        run: bun run authority:bench
+
+      - name: Run Scorecard tests (K6)
+        run: bun test packages/arcana/src/agent/run-scorecard.test.ts
+
       - name: Dynamic authority audit (exercised-path claim)
         run: bun run script/authority-dynamic.ts
