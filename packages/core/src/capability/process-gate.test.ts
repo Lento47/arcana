@@ -9,6 +9,7 @@ import { describe, expect, it } from "bun:test"
 import { existsSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { authorizeProcess } from "./process-gate"
+import { countingSpawnExecutor } from "./spawn-executor"
 
 const tmp = (n: string) => {
   const dir = join(import.meta.dir, ".tmp-process-gate")
@@ -92,6 +93,30 @@ describe("process-gate (Authority Kernel M1)", () => {
       expect(a.requestHash).toBe(a2.requestHash)
     }
     rmSync(db, { force: true })
+  })
+
+  it("S4 seam: injected executor replaces Bun.spawnSync — zero real children", async () => {
+    const { executor, calls } = countingSpawnExecutor({ stdout: "injected", exitCode: 0 })
+    const marker = tmp("inject-marker.txt")
+    rmSync(marker, { force: true })
+    // This command WOULD create the marker if a real child ran. It must not.
+    const result = await authorizeProcess(
+      {
+        dbPath: tmp("inj.db"),
+        principalId: "test-agent",
+        sessionId: "s-inject",
+        skipBootstrap: false,
+        spawnExecutor: executor,
+      },
+      {
+        toolName: "shell",
+        argv: [process.execPath, "-e", `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran')`],
+      },
+    )
+    expect(result.status).toBe("EXECUTED")
+    if (result.status === "EXECUTED") expect(result.stdout).toBe("injected")
+    expect(calls.length).toBe(1) // our executor ran
+    expect(existsSync(marker)).toBe(false) // real child never created
   })
 
   it("CRITICAL/unwired approval surface fails closed (no execution)", async () => {

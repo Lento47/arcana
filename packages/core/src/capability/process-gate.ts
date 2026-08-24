@@ -32,6 +32,7 @@ import { ensureSessionAgentGrants } from "./session-grants"
 import { Database } from "../database/database"
 import { gateTransportExec, type GateTransport } from "./replay-transport"
 import { recordDecision, observeLatency } from "./authority-metrics"
+import { bunSpawnExecutor, type SpawnExecutor } from "./spawn-executor"
 import {
   deriveGateInfluenceClaims,
   evaluateInfluenceEscalation,
@@ -51,6 +52,11 @@ export interface ProcessGateOptions {
   sessionId: string
   /** Skip ensureSessionAgentGrants bootstrap (tests: prove fail-closed deny). */
   skipBootstrap?: boolean
+  /**
+   * S4 seam: the executor that performs the spawn on ALLOW. Defaults to the
+   * in-process Bun executor; S4 IPC mode substitutes a wire client here.
+   */
+  spawnExecutor?: SpawnExecutor
 }
 
 export interface ProcessGateRequest {
@@ -195,6 +201,7 @@ export async function authorizeProcess(
   const __t0 = Date.now()
 
   const authReqHash = computeRequestHash(authReq)
+  const spawnExecutor = options.spawnExecutor ?? bunSpawnExecutor
 
   const result = await withGate(options, (provider) =>
     authorizeAndExecuteEffect(
@@ -202,7 +209,7 @@ export async function authorizeProcess(
         request: authReq,
         executeExact: () =>
           Effect.sync(() => {
-            const tr = gateTransportExec(options.transport ?? request.transport, authReqHash, () => {
+            const tr = gateTransportExec(request.transport, authReqHash, () => {
               executorCalls++
               let env: Record<string, string> | undefined
               if (request.env) {
@@ -211,18 +218,7 @@ export async function authorizeProcess(
                   if (typeof v === "string") env[k] = v
                 }
               }
-              const spawned = Bun.spawnSync({
-                cmd: request.argv,
-                cwd: request.cwd ?? undefined,
-                stdout: "pipe",
-                stderr: "pipe",
-                env,
-              })
-              return {
-                stdout: new TextDecoder().decode(spawned.stdout),
-                stderr: new TextDecoder().decode(spawned.stderr),
-                exitCode: spawned.exitCode,
-              }
+              return spawnExecutor(request.argv, { cwd: request.cwd, env })
             })
             void executorCalls
             return tr.value
