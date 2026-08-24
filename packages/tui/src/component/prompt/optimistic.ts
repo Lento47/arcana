@@ -9,6 +9,7 @@
  * carry non-empty text (Grok keeps local echo until content is present).
  */
 import { createSignal } from "solid-js"
+import { logMessageDebug } from "../../util/message-debug"
 
 export interface OptimisticUserMessage {
   id: string
@@ -40,6 +41,12 @@ export function addOptimisticMessage(msg: OptimisticUserMessage) {
     const next = prev.slice()
     next[index] = msg
     return next
+  })
+  logMessageDebug("echo.add", {
+    id: msg.id,
+    sessionID: msg.sessionID,
+    queued: msg.queued ?? false,
+    chars: msg.text.length,
   })
 }
 
@@ -105,15 +112,21 @@ export function filterCoveredOptimistics(
 /** Remove one local echo when its delivery remains queued or fails. */
 export function removeOptimisticMessage(messageID: string) {
   setState((prev) => prev.filter((message) => message.messageID !== messageID))
+  logMessageDebug("echo.remove", { messageID })
 }
 
 /** Flip one local echo's queued marker without touching the rest. */
 export function markOptimisticQueued(messageID: string, queued: boolean) {
   setState((prev) => {
     const index = prev.findIndex((message) => message.messageID === messageID)
-    if (index === -1) return prev
+    if (index === -1) {
+      // No echo to flip — a caller assumed one existed (pre-POST add missed).
+      logMessageDebug("echo.queued.missing", { messageID, queued })
+      return prev
+    }
     const next = prev.slice()
     next[index] = { ...next[index]!, queued }
+    logMessageDebug("echo.queued", { messageID, queued })
     return next
   })
 }

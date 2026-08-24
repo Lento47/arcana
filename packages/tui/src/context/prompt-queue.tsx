@@ -10,6 +10,7 @@ import { useToast } from "../ui/toast"
 import { errorMessage } from "../util/error"
 import { isRecord } from "../util/record"
 import { addOptimisticMessage, markOptimisticQueued, removeOptimisticMessage } from "../component/prompt/optimistic"
+import { logMessageDebug } from "../util/message-debug"
 
 export type QueuedPromptPayload = Parameters<OpencodeClient["session"]["promptAsync"]>[0]
 
@@ -269,6 +270,11 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
           const agent = item.payload.agent
           const model = item.payload.model
           batch(() => {
+            // Drop the queue entry FIRST, then restore the echo: remove()
+            // deletes the optimistic row for the dropped entry, so adding
+            // before removing let the success path delete the very echo it
+            // just restored — reopening the pre-SSE visibility gap.
+            remove(item.id)
             if (messageID && agent && model) {
               addOptimisticMessage({
                 id: `optimistic-${messageID}`,
@@ -285,7 +291,12 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
                 queued: false,
               })
             }
-            remove(item.id)
+          })
+          logMessageDebug("delivery.sent", {
+            sessionID: item.payload.sessionID,
+            messageID,
+            attempts: item.attempts,
+            ms: Date.now() - deliveryStarted,
           })
           if (profileDelivery) {
             console.error("[prompt-delivery]", {
@@ -305,6 +316,14 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
           const retryable = isRetryablePromptError(error)
           const failed = !retryable || attempts >= MAX_ATTEMPTS
           const nextRetryAt = retryable && !failed ? Date.now() + retryDelay(attempts) : Number.POSITIVE_INFINITY
+          logMessageDebug("delivery.failed", {
+            sessionID: item.payload.sessionID,
+            messageID: item.payload.messageID,
+            attempts,
+            retryable,
+            failed,
+            error: errorMessage(error),
+          })
           update(item.id, {
             attempts,
             lastError: errorMessage(error),
@@ -378,6 +397,33 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       )
       persist()
 
+      // Optimistic echo BEFORE any gating or HTTP (message-delay fix): the
+      // transcript must render the sent message on the next Solid flush, not
+      // after the promptAsync round-trip. Idempotent — the Home-send path may
+      // have already inserted this messageID; the post-204 upsert below only
+      // flips queued→false.
+      if (item.payload.messageID && item.payload.agent && item.payload.model) {
+        addOptimisticMessage({
+          id: `optimistic-${item.payload.messageID}`,
+          messageID: item.payload.messageID,
+          sessionID: item.payload.sessionID,
+          text: label,
+          timestamp: item.createdAt,
+          agent: item.payload.agent,
+          model: {
+            providerID: item.payload.model.providerID,
+            modelID: item.payload.model.modelID,
+            variant: item.payload.variant,
+          },
+          queued: false,
+        })
+      }
+      logMessageDebug("submit.entry", {
+        sessionID: item.payload.sessionID,
+        messageID: item.payload.messageID,
+        chars: label.length,
+      })
+
       // Operator sends are IMMEDIATE unless the turn is provably busy right
       // now — i.e. a working status was observed within the last 1.5 s.
       // Lingering stale "busy" state must never delay a normal interaction:
@@ -388,6 +434,11 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
         sinceLastWorking !== undefined && Date.now() - sinceLastWorking <= SUBMIT_QUEUE_WINDOW_MS
       if (recentlyWorking && sessionWorking(payload.sessionID)) {
         markOptimisticQueued(item.payload.messageID!, true)
+        logMessageDebug("submit.gated-busy", {
+          sessionID: payload.sessionID,
+          messageID: item.payload.messageID,
+          sinceWorkingMs: sinceLastWorking !== undefined ? Date.now() - sinceLastWorking : undefined,
+        })
         queueMicrotask(() => void drain())
         return "queued"
       }

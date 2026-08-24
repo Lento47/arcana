@@ -32,6 +32,7 @@ import { shouldKeepLocalPart, shouldKeepLocalAuthoritative } from "../util/part-
 import { isPendingSessionID } from "../util/session"
 import { streamState, type TransportEnvelope } from "./stream-state"
 import { createMissingDeltaTracker } from "../util/missing-delta-tracker"
+import { logMessageDebug } from "../util/message-debug"
 import { logPermissionDebug } from "../util/permission-debug"
 import { useTuiStartup } from "./runtime"
 import { createSimpleContext } from "./helper"
@@ -691,6 +692,10 @@ export const {
         case "message.updated": {
           touchMessage(event.properties.info.sessionID, event.properties.info.id)
           const info = event.properties.info
+          // Delivery-tail probe: the SSE ack the optimistic echo waits for.
+          if (info.role === "user") {
+            logMessageDebug("sse.user-message", { sessionID: info.sessionID, messageID: info.id })
+          }
           // Turn-end converge (F2): a terminal finish on the wire must be
           // reflected in the projection — live deltas can lag the durable
           // terminal state. Any non-empty finish is terminal (matches
