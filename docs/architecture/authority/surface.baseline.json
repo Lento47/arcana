@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-24T04:30:37.835Z",
+  "generatedAt": "2026-08-24T05:39:33.749Z",
   "entries": {
     "packages/arcana/src/agent/authority.ts": {
       "classes": [
@@ -1014,6 +1014,14 @@
       ],
       "modules": [
         "node:fs/promises"
+      ]
+    },
+    "packages/tui/src/app-commands.tsx": {
+      "classes": [
+        "ProcessExecution"
+      ],
+      "modules": [
+        "Bun.spawn"
       ]
     },
     "packages/tui/src/audio.ts": {
