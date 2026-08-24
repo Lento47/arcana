@@ -28,6 +28,12 @@ import { AgentV2 } from "@arcana/core/agent"
 import { withToolAdmission } from "@/tool/batch"
 import { checkGoalToolGate } from "@arcana/core/session/goal"
 import { buildAuthorizationRequest } from "@arcana/core/capability/pep-integration"
+import {
+  deriveGateInfluenceClaims,
+  evaluateInfluenceEscalation,
+  augmentProvenanceForEscalation,
+  normalizeInfluenceClaims,
+} from "@arcana/core/capability/argument-provenance"
 
 const READ_ONLY_TOOLS = new Set([
   "read", "grep", "search", "content_search", "glob", "list",
@@ -735,6 +741,38 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                   Effect.catch(() => Effect.void),
                 )
               }
+              // ── K7: consequential-argument influence claims ─────────
+              // Derive gate-default claims for this tool's consequential
+              // arguments and evaluate escalation. Escalated requests augment
+              // provenance with UNTRUSTED_REMOTE so the existing Phase C
+              // provenance rules carry enforcement (fixtures D1/D10).
+              const k7Claims = normalizeInfluenceClaims(
+                deriveGateInfluenceClaims({
+                  toolName: item.id,
+                  assertedBy: input.agent.name,
+                  argv:
+                    typeof args.command === "string"
+                      ? [String(args.command)]
+                      : typeof args.cmd === "string"
+                        ? [String(args.cmd)]
+                        : undefined,
+                  filePath:
+                    typeof args.filePath === "string"
+                      ? args.filePath
+                      : typeof args.path === "string"
+                        ? String(args.path)
+                        : undefined,
+                  url: typeof args.url === "string" ? args.url : undefined,
+                  secretName: item.id.startsWith("secret") || item.id.includes("key") ? item.id : undefined,
+                }),
+              )
+              const { escalate: k7Escalate } = evaluateInfluenceEscalation(k7Claims)
+              const k7Provenance = augmentProvenanceForEscalation(
+                extractProvenance(item.id, args as Record<string, unknown>),
+                k7Escalate,
+                k7Claims,
+              )
+
               // APPROVAL HASH BOUNDARY: construct once and reuse this exact
               // immutable request across every parked approval retry.
               const authReq = buildAuthorizationRequest({
