@@ -32,6 +32,13 @@ import { ensureSessionAgentGrants } from "./session-grants"
 import { Database } from "../database/database"
 import { gateTransportExec, type GateTransport } from "./replay-transport"
 import { recordDecision, observeLatency } from "./authority-metrics"
+import {
+  deriveGateInfluenceClaims,
+  evaluateInfluenceEscalation,
+  augmentProvenanceForEscalation,
+  normalizeInfluenceClaims,
+} from "./argument-provenance"
+import type { ArgumentInfluenceClaim } from "./types"
 
 export interface ProcessGateOptions {
   /** K3b: record effect outputs by request hash, or replay recorded ones. */
@@ -74,6 +81,8 @@ export interface ProcessGateRequest {
   toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
   /** K3b transport: record outputs, or substitute recorded ones (zero dispatch). */
   transport?: GateTransport
+  /** K7: caller-supplied influence claims (merged over gate-derived defaults). */
+  influenceClaims?: ArgumentInfluenceClaim[]
 }
 
 export type ProcessGateResult =
@@ -139,6 +148,25 @@ export async function authorizeProcess(
 ): Promise<ProcessGateResult> {
   const principalId = options.principalId ?? "arcana-cli"
 
+  // K7: gate-default influence claims + caller extras, then escalation.
+  const derived = deriveGateInfluenceClaims({
+    toolName: request.toolName,
+    assertedBy: request.instanceId,
+    argv: request.argv,
+  })
+  const claims = normalizeInfluenceClaims([...derived, ...(request.influenceClaims ?? [])])
+  const { escalate, triggeringArguments } = evaluateInfluenceEscalation(claims)
+
+  // K7 enforcement: escalated requests never reach executeExact on this
+  // runner (no approval surface wired). Fail closed with the trigger list.
+  if (escalate) {
+    recordDecision("APPROVAL_REQUIRED")
+    return {
+      status: "APPROVAL_REQUIRED",
+      message: `K7 escalation: untrusted/unknown influence on ${triggeringArguments.join(", ")}`,
+    }
+  }
+
   const authReq = buildAuthorizationRequest({
     toolName: request.toolName,
     principalId,
@@ -151,7 +179,7 @@ export async function authorizeProcess(
     executable: request.argv[0],
     arguments: request.argv.slice(1),
     workingDirectory: request.cwd,
-    provenance: ["USER_INSTRUCTION"],
+    provenance: augmentProvenanceForEscalation(["USER_INSTRUCTION"], escalate, claims),
     nonce: request.nonce,
     requestedAt: request.requestedAt,
     requestId: request.requestId,
@@ -159,6 +187,7 @@ export async function authorizeProcess(
     parentInstanceId: request.parentInstanceId,
     onBehalfOf: request.onBehalfOf,
     toolInstance: request.toolInstance,
+    influenceClaims: claims,
   })
 
   let executorCalls = 0

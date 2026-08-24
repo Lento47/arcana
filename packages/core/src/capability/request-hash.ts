@@ -114,6 +114,26 @@ export function canonicalizeRequest(req: AuthorizationRequest): Buffer {
     }
   }
 
+  // K7 influence claims — tagged extension, present only when supplied.
+  if (req.influenceClaims && req.influenceClaims.length > 0) {
+    parts.push(str("influence-k7-v1"))
+    const sorted = [...req.influenceClaims].sort((a, b) =>
+      a.argument < b.argument ? -1 : a.argument > b.argument ? 1 : 0,
+    )
+    parts.push(str(String(sorted.length)))
+    for (const c of sorted) {
+      parts.push(str(c.argument))
+      parts.push(strOpt(c.value))
+      parts.push(labelArr(c.claimedSources ?? []))
+      const objective = [
+        ...(c.availableSources ?? []),
+        ...(c.directDerivations ?? []),
+      ].sort()
+      parts.push(labelArr(objective))
+      parts.push(strOpt(c.assertedBy))
+    }
+  }
+
   return Buffer.concat(parts)
 }
 

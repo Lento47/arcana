@@ -148,8 +148,27 @@ export interface CanonicalResource {
   secretKind?: string
 }
 
-export interface AuthorizationRequest {
-  schemaVersion: "1"
+/**
+ * K7: recorded influence claim for one consequential argument.
+ * The model's causal story (`claimed_sources`) is itself untrusted —
+ * policy consumes the LABELS, never the narrative.
+ */
+export interface ArgumentInfluenceClaim {
+  /** Consequential argument identifier (e.g. "network.host", "process.command"). */
+  argument: string
+  /** The value that will be executed/used. */
+  value?: string
+  /** Objective context provenance IDs available during assembly (deterministic). */
+  availableSources?: string[]
+  /** Deterministic direct derivations (exact value matches in sources). */
+  directDerivations?: string[]
+  /** Model-asserted causal sources — UNTRUSTED, supplemental. */
+  claimedSources: string[]
+  /** Instance that asserted this claim. */
+  assertedBy?: string
+}
+
+export interface AuthorizationRequest {  schemaVersion: "1"
   requestId: string
 
   principalId: string
@@ -174,6 +193,10 @@ export interface AuthorizationRequest {
   requestedAt: string
   nonce: string
 
+  // ── K7 consequential-argument provenance (optional) ─────────────────
+  // Influence claims for consequential arguments. Hashed via the tagged
+  // "influence-k7-v1" block; absent ⇒ legacy semantics unchanged.
+  influenceClaims?: ArgumentInfluenceClaim[]
   // ── K2 identity chain (optional) ─────────────────────────────────────
   // Presence binds this request to a specific agent INSTANCE and TOOL
   // instance. Absent ⇒ legacy identity semantics (principal+session only).

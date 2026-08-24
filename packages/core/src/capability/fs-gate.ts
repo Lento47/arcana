@@ -17,6 +17,12 @@ import { noopEmitter, withGate } from "./process-gate"
 import type { ProcessGateOptions } from "./process-gate"
 import { recordDecision, observeLatency } from "./authority-metrics"
 import { computeRequestHash } from "./request-hash"
+import {
+  deriveGateInfluenceClaims,
+  evaluateInfluenceEscalation,
+  augmentProvenanceForEscalation,
+  normalizeInfluenceClaims,
+} from "./argument-provenance"
 import { gateTransportExec } from "./replay-transport"
 
 export interface FileMutationRequest {
@@ -40,6 +46,8 @@ export interface FileMutationRequest {
   toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
   /** K3b transport: record this mutation's output, or replay a recorded one. */
   transport?: import("./replay-transport").GateTransport
+  /** K7: caller-supplied influence claims (merged over gate-derived defaults). */
+  influenceClaims?: import("./types").ArgumentInfluenceClaim[]
 }
 
 export type FileMutationResult =
@@ -61,6 +69,23 @@ export async function authorizeFileMutation(
   perform: () => string,
 ): Promise<FileMutationResult> {
   const __t0 = Date.now()
+
+  // K7: gate-default claims + caller extras + escalation.
+  const derived = deriveGateInfluenceClaims({
+    toolName: request.toolName,
+    assertedBy: request.instanceId,
+    filePath: request.filePath,
+  })
+  const claims = normalizeInfluenceClaims([...derived, ...(request.influenceClaims ?? [])])
+  const { escalate } = evaluateInfluenceEscalation(claims)
+
+  if (escalate) {
+    recordDecision("APPROVAL_REQUIRED")
+    return {
+      status: "APPROVAL_REQUIRED",
+      message: "K7 escalation: untrusted/unknown influence on consequential arguments",
+    }
+  }
   const authReq = buildAuthorizationRequest({
     toolName: request.toolName,
     principalId: options.principalId ?? "arcana-cli",
@@ -73,7 +98,8 @@ export async function authorizeFileMutation(
       cwd: request.cwd ?? null,
     },
     workingDirectory: request.cwd,
-    provenance: ["USER_INSTRUCTION"],
+    provenance: augmentProvenanceForEscalation(["USER_INSTRUCTION"], escalate, claims),
+    influenceClaims: claims,
     nonce: request.nonce,
     requestedAt: request.requestedAt,
     requestId: request.requestId,

@@ -119,6 +119,8 @@ export interface ToolCallContext {
   parentInstanceId?: string
   onBehalfOf?: string
   toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
+  // ── K7 consequential-argument influence claims (optional) ───────────
+  influenceClaims?: import("./types").ArgumentInfluenceClaim[]
 }
 
 /**
@@ -164,6 +166,7 @@ export function buildAuthorizationRequest(ctx: ToolCallContext): AuthorizationRe
     parentInstanceId: ctx.parentInstanceId,
     onBehalfOf: ctx.onBehalfOf,
     toolInstance: ctx.toolInstance,
+    influenceClaims: ctx.influenceClaims,
   }
 }
 

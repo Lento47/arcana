@@ -17,6 +17,12 @@ import { Effect } from "effect"
 import { authorizeAndExecuteEffect } from "./pep"
 import { buildAuthorizationRequest } from "./pep-integration"
 import { computeRequestHash } from "./request-hash"
+import {
+  deriveGateInfluenceClaims,
+  evaluateInfluenceEscalation,
+  augmentProvenanceForEscalation,
+  normalizeInfluenceClaims,
+} from "./argument-provenance"
 import { noopEmitter, withGate } from "./process-gate"
 import type { ProcessGateOptions } from "./process-gate"
 import { recordDecision, observeLatency } from "./authority-metrics"
@@ -39,6 +45,8 @@ export interface NetworkGateRequest {
   toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
   /** K3b transport: record {status,summary} outcomes, or replay recorded ones. Payload is NOT recorded. */
   transport?: import("./replay-transport").GateTransport
+  /** K7: caller-supplied influence claims (merged over gate-derived defaults). */
+  influenceClaims?: import("./types").ArgumentInfluenceClaim[]
 }
 
 export interface NetworkExecResult {
@@ -73,6 +81,23 @@ export async function authorizeNetwork(
   } catch {}
 
   const __t0 = Date.now()
+
+  // K7: gate-default claims + caller extras + escalation.
+  const derived = deriveGateInfluenceClaims({
+    toolName: request.toolName,
+    assertedBy: request.instanceId,
+    url: request.url,
+  })
+  const claims = normalizeInfluenceClaims([...derived, ...(request.influenceClaims ?? [])])
+  const { escalate } = evaluateInfluenceEscalation(claims)
+
+  if (escalate) {
+    recordDecision("APPROVAL_REQUIRED")
+    return {
+      status: "APPROVAL_REQUIRED",
+      message: "K7 escalation: untrusted/unknown influence on consequential arguments",
+    }
+  }
   const authReq = buildAuthorizationRequest({
     toolName: request.toolName,
     principalId: options.principalId ?? "arcana-cli",
@@ -82,7 +107,8 @@ export async function authorizeNetwork(
       method: request.method ?? "GET",
     },
     networkDestination: host,
-    provenance: ["USER_INSTRUCTION"],
+    provenance: augmentProvenanceForEscalation(["USER_INSTRUCTION"], escalate, claims),
+    influenceClaims: claims,
     nonce: request.nonce,
     requestedAt: request.requestedAt,
     requestId: request.requestId,

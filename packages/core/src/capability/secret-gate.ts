@@ -27,6 +27,13 @@ import type { ProcessGateOptions } from "./process-gate"
 import { recordDecision, observeLatency } from "./authority-metrics"
 import { Database } from "../database/database"
 import { randomUUID } from "node:crypto"
+import {
+  deriveGateInfluenceClaims,
+  evaluateInfluenceEscalation,
+  augmentProvenanceForEscalation,
+  normalizeInfluenceClaims,
+} from "./argument-provenance"
+import type { ArgumentInfluenceClaim } from "./types"
 
 export interface SecretUseRequest {
   /** Registered secret name (e.g. "ELEVENLABS_API_KEY"). */
@@ -41,6 +48,8 @@ export interface SecretUseRequest {
   parentInstanceId?: string
   onBehalfOf?: string
   toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
+  /** K7: caller-supplied influence claims (secret identifier is itself the claim). */
+  influenceClaims?: ArgumentInfluenceClaim[]
 }
 
 export type SecretGateResult =
@@ -103,6 +112,23 @@ export async function authorizeSecretUse(
   resolve: (secretName: string) => string | undefined,
 ): Promise<SecretGateResult> {
   const __t0 = Date.now()
+
+  // K7: the secret identifier IS the consequential argument.
+  const derived = deriveGateInfluenceClaims({
+    toolName: "secret_use",
+    assertedBy: request.instanceId,
+    secretName: request.secretName,
+  })
+  const claims = normalizeInfluenceClaims([...derived, ...(request.influenceClaims ?? [])])
+  const { escalate } = evaluateInfluenceEscalation(claims)
+
+  if (escalate) {
+    recordDecision("APPROVAL_REQUIRED")
+    return {
+      status: "APPROVAL_REQUIRED",
+      message: "K7 escalation: untrusted/unknown influence on consequential arguments",
+    }
+  }
   const authReq = buildAuthorizationRequest({
     toolName: "secret_use",
     principalId: options.principalId ?? "arcana-cli",
@@ -112,7 +138,8 @@ export async function authorizeSecretUse(
       secretKind: request.secretName,
       purpose: request.purpose ?? null,
     },
-    provenance: ["USER_INSTRUCTION"],
+    provenance: augmentProvenanceForEscalation(["USER_INSTRUCTION"], escalate, claims),
+    influenceClaims: claims,
     nonce: request.nonce,
     requestedAt: request.requestedAt,
     requestId: request.requestId,
