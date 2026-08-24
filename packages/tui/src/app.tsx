@@ -1,6 +1,11 @@
 import { render, TimeToFirstDraw, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
-import "opentui-spinner/solid"
+// Spinner registration (spinner-crash fix B): explicit + idempotent, imported
+// FIRST so it always evaluates before any component tree mounts. Bare
+// side-effect imports scattered through components are tree-shake/chunk-order
+// fragile under Bun compile and caused "[Reconciler] Unknown component type:
+// spinner" fatals.
+import "./bootstrap-spinner"
 
 import { Deferred, Effect } from "effect"
 import { Global } from "@arcana/core/global"
