@@ -1,9 +1,9 @@
 import type { CommandModule } from "yargs"
-import { spawnSync } from "node:child_process"
 import { Gateway } from "@arcana/gateway"
 import { loadConfig, getDataDir } from "../../config.js"
 import { openMemoryDB, MemoryStore } from "@arcana/memory"
 import type { AgentRunner } from "../../agent/runner.js"
+import { gatedSpawn, formatGateResult } from "../../agent/authority.js"
 import { createDelegatedRunner } from "../../agent/delegated.js"
 
 // Platform SDK install helper (mirrors the engine gateway command).
@@ -13,20 +13,25 @@ const PLATFORM_SDKS: Record<string, string> = {
   slack: "@slack/bolt",
 }
 
-function installPlatform(platform: string): boolean {
+async function installPlatform(platform: string): Promise<boolean> {
   const pkg = PLATFORM_SDKS[platform]
   if (!pkg) {
     console.error(`Unknown platform: ${platform}. Choices: ${Object.keys(PLATFORM_SDKS).join(", ")}`)
     return false
   }
   console.log(`Installing ${pkg} for the arcana gateway.`)
-  const r = spawnSync("bun", ["add", pkg], { stdio: "inherit", timeout: 60_000 })
-  if (r.status !== 0) {
-    console.error(`Install failed (exit ${r.status}). Try manually: bun add ${pkg}`)
-    return false
+  // Routed through the Authority Kernel (M1): mediated process execution.
+  const result = await gatedSpawn("env_install", ["bun", "add", pkg])
+  if (result.status === "EXECUTED" && result.exitCode === 0) {
+    console.log(`✓ ${platform} SDK installed. Run: arcana gateway`)
+    return true
   }
-  console.log(`✓ ${platform} SDK installed. Run: arcana gateway`)
-  return true
+  const detail =
+    result.status === "EXECUTED"
+      ? `exit ${result.exitCode}: ${result.stderr.slice(0, 300)}`
+      : formatGateResult(result)
+  console.error(`Install failed. ${detail}\nTry manually: bun add ${pkg}`)
+  return false
 }
 
 export const GatewayCommand: CommandModule = {
@@ -43,7 +48,7 @@ export const GatewayCommand: CommandModule = {
 
     if (action === "install") {
       const platform = String((args as { platform?: string }).platform ?? "")
-      process.exitCode = installPlatform(platform) ? 0 : 1
+      process.exitCode = (await installPlatform(platform)) ? 0 : 1
       return
     }
 
