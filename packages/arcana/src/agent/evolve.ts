@@ -6,7 +6,12 @@
 import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
+import { createHash } from "node:crypto"
 import type { AgentRunner } from "./runner.js"
+import {
+  evaluatePromotion,
+  certificateIntegrityHash,
+} from "./evolution-certificate.js"
 
 const EVOLVE_DIR = join(homedir(), ".arcana", "prompts")
 const ACTIVE_PROMPT = join(EVOLVE_DIR, "_active.txt")
@@ -78,14 +83,70 @@ NEW SYSTEM PROMPT:`
       if (!proposed || proposed.length < 50) return currentPrompt
 
       const id = `v${Date.now()}`
+      const candidateHash = createHash("sha256").update(proposed).digest("hex")
       writeFileSync(join(EVOLVE_DIR, `${id}.txt`), proposed, "utf8")
-      writeFileSync(join(EVOLVE_DIR, `${id}.json`), JSON.stringify({ score: 0.5, ts: new Date().toISOString(), reason: "auto-evolved" }), "utf8")
+      writeFileSync(
+        join(EVOLVE_DIR, `${id}.json`),
+        JSON.stringify({ score: 0.5, ts: new Date().toISOString(), reason: "auto-evolved", proposedBy: "arcana-evolver", candidateHash }),
+        "utf8",
+      )
       pruneProposals() // bound `.arcana/prompts/` growth — proposals accumulated forever
 
-      const best = findBest()
-      if (best && best.score > 0.6) {
-        writeFileSync(ACTIVE_PROMPT, readFileSync(join(EVOLVE_DIR, `${best.id}.txt`), "utf8"), "utf8")
-        return readFileSync(ACTIVE_PROMPT, "utf8").trim()
+      // ── K9 promotion gate: paired judge evaluation → certificate ─────
+      // The proposer never grades its own candidate. A judge call scores
+      // INCUMBENT vs CANDIDATE on a shared rubric; only a certificate with
+      // paired superiority beyond margin promotes.
+      const incumbent = getActivePrompt(currentPrompt) || currentPrompt
+      const judgePrompt = `You are an impartial prompt evaluator. Compare two system prompts for an autonomous coding agent on this rubric (0-10 each): clarity, guardrail quality, tool-coverage preservation, concision.
+
+DATA BASIS:
+${data.slice(0, 1200)}
+
+=== PROMPT INCUMBENT ===
+${incumbent}
+
+=== PROMPT CANDIDATE ===
+${proposed}
+
+Output ONLY JSON: {"incumbentScore": <0-10>, "candidateScore": <0-10>}`
+
+      let incumbentScore = NaN
+      let candidateScore = NaN
+      try {
+        const judged = await runner.run([{ role: "user", content: judgePrompt }])
+        const parsed = JSON.parse(judged.content.trim().replace(/^```json\s*|```$/g, "")) as {
+          incumbentScore?: number
+          candidateScore?: number
+        }
+        incumbentScore = Number(parsed.incumbentScore)
+        candidateScore = Number(parsed.candidateScore)
+      } catch { /* judge failure ⇒ no promotion this cycle */ }
+
+      if (Number.isFinite(incumbentScore) && Number.isFinite(candidateScore)) {
+        const decision = evaluatePromotion({
+          candidateId: id,
+          candidateHash,
+          proposedBy: "arcana-evolver",
+          evaluatedBy: "arcana-judge",
+          evidence: {
+            metric: "llm_judge_paired_10",
+            candidateValue: candidateScore,
+            baselineValue: incumbentScore,
+            sampleCount: 1,
+          },
+          minMargin: 0.5,
+          minSamples: 1,
+        })
+
+        if (decision.verdict === "promote") {
+          const cert = {
+            ...decision.certificate,
+            integrityHash: certificateIntegrityHash(decision.certificate),
+          }
+          writeFileSync(join(EVOLVE_DIR, `${id}.cert.json`), JSON.stringify(cert, null, 2), "utf8")
+          writeFileSync(ACTIVE_PROMPT, readFileSync(join(EVOLVE_DIR, `${id}.txt`), "utf8"), "utf8")
+          return readFileSync(ACTIVE_PROMPT, "utf8").trim()
+        }
       }
     } catch { /* evolution is best-effort */ }
   } finally {
@@ -119,17 +180,3 @@ function pruneProposals(keep = 10): void {
   } catch { /* best-effort */ }
 }
 
-function findBest(): { id: string; score: number } | null {
-  if (!existsSync(EVOLVE_DIR)) return null
-  const proposals = readdirSync(EVOLVE_DIR)
-    .filter((f) => f.endsWith(".json") && !f.startsWith("_"))
-    .map((f) => {
-      try {
-        const data = JSON.parse(readFileSync(join(EVOLVE_DIR, f), "utf8"))
-        return { id: f.replace(".json", ""), score: data.score ?? 0 }
-      } catch { return null }
-    })
-    .filter(Boolean)
-    .sort((a, b) => b!.score - a!.score)
-  return proposals[0] ?? null
-}
