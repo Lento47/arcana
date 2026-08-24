@@ -25,6 +25,7 @@ import { homedir } from "node:os"
 import type { AgentRunner } from "./runner.js"
 import { resolveProvider } from "./providers.js"
 import type { MemoryStore } from "@arcana/memory"
+import type { ModelsDevProvider } from "./models-dev.js"
 
 export type CouncilModelSpec = string // "provider/model"
 export type VoteMode = "majority" | "ranked" | "judge"
@@ -87,6 +88,110 @@ async function buildModel(spec: CouncilModelSpec, baseApiKey?: string) {
     baseURL: profile.baseURL ?? `https://api.${provider}.com/v1`,
     name: provider,
   })(model)
+}
+
+// ---------------------------------------------------------------------------
+// Roster discovery (consensus C1): make model selection work from reality.
+// ---------------------------------------------------------------------------
+
+const COUNCIL_MAX_MODELS = 5
+/** Proxy catalog IDs are prefixed "~" (e.g. "~openai/gpt-x"); strip before use. */
+function stripTildePrefix(spec: string): string {
+  return spec.replace(/^~+/, "")
+}
+
+/**
+ * True when the given provider/model spec can be paid for right now: its
+ * provider advertises an env key that is set, it is the licensed Arcana
+ * Proxy, or a base key was supplied.
+ */
+async function hasCredential(spec: CouncilModelSpec, baseApiKey?: string): Promise<boolean> {
+  const clean = stripTildePrefix(spec)
+  const [provider] = clean.split("/", 2) as [string, string | undefined]
+  if (!provider) return false
+  try {
+    const profile = await resolveProvider(provider)
+    if (provider === "arcana-proxy") return Boolean(process.env.ARCANA_PROXY_KEY?.trim() || baseApiKey)
+    if (profile.envKey && process.env[profile.envKey]) return true
+    return Boolean(baseApiKey)
+  } catch {
+    // Unknown provider id: only the proxy can vouch for it.
+    return provider === "arcana-proxy" && Boolean(process.env.ARCANA_PROXY_KEY?.trim())
+  }
+}
+
+/**
+ * Build the default council roster from credentials that actually exist:
+ * explicit preferences first, then env-keyed providers (one model each,
+ * deterministic order), then the licensed Arcana Proxy catalog to fill
+ * remaining seats with cross-provider diversity. Returns 0-5 specs plus the
+ * skipped candidates for auditability.
+ */
+export async function defaultCouncilRoster(
+  preferred?: CouncilModelSpec[],
+  baseApiKey?: string,
+): Promise<{ roster: CouncilModelSpec[]; skipped: string[] }> {
+  const { fetchModelsDev } = await import("./models-dev.js")
+  const merged: Record<string, ModelsDevProvider> = {}
+  try {
+    Object.assign(merged, await fetchModelsDev())
+  } catch {}
+
+  const skipped: string[] = []
+  const roster: CouncilModelSpec[] = []
+  const seen = new Set<string>()
+  const push = async (specRaw: CouncilModelSpec) => {
+    const spec = stripTildePrefix(specRaw)
+    if (roster.length >= COUNCIL_MAX_MODELS || seen.has(spec)) return
+    if (!(await hasCredential(spec, baseApiKey))) {
+      skipped.push(spec)
+      return
+    }
+    seen.add(spec)
+    roster.push(spec)
+  }
+
+  // 1. Explicit preferences first (operator intent wins).
+  for (const spec of preferred ?? []) await push(spec)
+
+  // 2. Env-keyed providers, one model each.
+  for (const id of Object.keys(merged).sort()) {
+    if (roster.length >= COUNCIL_MAX_MODELS) break
+    if (id === "arcana-proxy") continue
+    const md = merged[id]!
+    const envKey = md.env?.find((k) => process.env[k]?.trim())
+    if (!envKey) continue
+    const model = md.models ? Object.keys(md.models)[0] : undefined
+    if (!model) continue
+    await push(`${id}/${model}`)
+  }
+
+  // 3. Licensed proxy fills remaining seats with catalog diversity
+  //    (one model per top-level provider prefix, alphabetical).
+  if (roster.length < COUNCIL_MAX_MODELS && process.env.ARCANA_PROXY_KEY?.trim()) {
+    try {
+      const res = await fetch("https://proxy-arcana.otnelhq.com/v1/models", {
+        headers: { Authorization: `Bearer ${process.env.ARCANA_PROXY_KEY}` },
+        signal: AbortSignal.timeout(3500),
+      })
+      if (res.ok) {
+        const json = (await res.json()) as { data?: Array<{ id?: string }> }
+        const byProvider = new Map<string, string>()
+        for (const raw of (json.data ?? []).map((m) => m.id ?? "").sort()) {
+          const id = stripTildePrefix(raw)
+          if (!id) continue
+          const provider = id.split("/")[0]!
+          if (!byProvider.has(provider)) byProvider.set(provider, id)
+        }
+        for (const [, id] of byProvider) {
+          if (roster.length >= COUNCIL_MAX_MODELS) break
+          await push(`arcana-proxy/${id}`)
+        }
+      }
+    } catch {}
+  }
+
+  return { roster, skipped }
 }
 
 const PROPOSE_INSTRUCTIONS = `You are a council member. State your answer in ≤250 words.\nBe specific, not hedged. If you would change your mind after hearing others, say so.`
@@ -156,8 +261,12 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner, memory?
     }
   }
 
-  // 2. Validate args
-  const models = args.models?.slice(0, 5) ?? []
+  // 2. Validate args - models are OPTIONAL (consensus C1): filled from live
+  // credentials when omitted/partially-credentialed (operator picks first,
+  // then env-keyed providers, then the licensed Arcana Proxy catalog).
+  const preferred = (args.models ?? []).map(stripTildePrefix).slice(0, COUNCIL_MAX_MODELS)
+  const { roster, skipped } = await defaultCouncilRoster(preferred, runner.config.apiKey)
+  const models = roster
   if (models.length < 2) {
     await runner.config.proofGate?.recordConsensus?.({
       prompt: args.prompt,
@@ -165,9 +274,14 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner, memory?
       rounds: args.rounds ?? 1,
       vote_mode: args.vote_mode ?? "majority",
       status: "failed",
-      errored: ["council needs at least 2 models"],
+      errored: [
+        "council needs at least 2 credentialed models",
+        ...(skipped.length ? [`skipped (no credential): ${skipped.join(", ")}`] : []),
+      ],
     })
-    return "council: needs at least 2 models"
+    return "council: needs at least 2 credentialed models. " +
+      (skipped.length ? `Skipped (no credential): ${skipped.join(", ")}` : "") +
+      "Set provider API keys or ensure ~/.arcana/proxy_key exists for the Arcana Proxy."
   }
   const rounds = Math.min(args.rounds ?? 1, 2) as 1 | 2
   const voteMode: VoteMode = args.vote_mode ?? "majority"
