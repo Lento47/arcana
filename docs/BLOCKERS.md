@@ -39,7 +39,7 @@ Each blocker row states:
 | Phase B — Verification & Replay | COMPLETE / FROZEN | 0 | [§Phase B](#phase-b--verification-and-replay) |
 | Phase C — Local Governed Autonomy | EVALUATION PASS, signed with exceptions | 0 (scope-limited) | [§Phase C](#phase-c--local-governed-autonomy) |
 | Goal verification + reserved memory boundary | COMMITTED (5bb8d9e8); focused tests 63/0; full TUI suite green (1218/0) | 0 | [§Goal verification](#goal-verification-and-memory-boundary) |
-| TUI 1.0 (TUI-2.1 freeze) | MOUNTED; current working-tree suite has 42 pre-existing failures; freeze NOT authorized | 8 | [§TUI 1.0 / TUI-2.1](#tui-10--tui-21) |
+| TUI 1.0 (TUI-2.1 freeze) | MOUNTED; suite green at this branch tip (1218/0, coordinator-verified; the 42-failure figure is the stale 2026-08-22 working-tree snapshot, superseded by BLK-GOAL-03 closure); freeze NOT authorized | 8 | [§TUI 1.0 / TUI-2.1](#tui-10--tui-21) |
 | Goal Verification & Memory Boundary | COMMITTED (5bb8d9e8); focused tests 63/0; full suite green (1218/0) | 0 | [§Goal Verification](#goal-verification-and-memory-boundary) |
 | CLI 1.0 | PARTIAL — no frozen contract | 5 | [§CLI 1.0](#cli-10) |
 | Phase D — Distributed Governed Autonomy | Implementation coverage: HIGH; release readiness: BLOCKED | 9 | [§Phase D](#phase-d--distributed-governed-autonomy) |
@@ -281,8 +281,11 @@ all eight (`BLK-TUI-01..08`) remain open.
 ## Goal Verification and Memory Boundary
 
 **Status: COMMITTED — goal verification and reserved memory keys are committed
-in `5bb8d9e8`. Focused tests pass (63/0 across 6 files). Full TUI suite has
-42 pre-existing failures unrelated to these changes.**
+in `5bb8d9e8`. Focused tests pass (63/0 across 6 files). Full TUI suite at
+this branch tip: 1218 pass / 0 fail (coordinator-verified). The earlier
+"42 pre-existing failures" figure described the stale 2026-08-22 working-tree
+snapshot before the lexicon fix (PR #147) landed and no longer reproduces;
+BLK-GOAL-03 governs the branch-tip result.**
 
 ## Open blockers
 
