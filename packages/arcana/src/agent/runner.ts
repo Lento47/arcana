@@ -231,6 +231,13 @@ export class AgentRunner {
 
   registerTool(name: string, def: ToolDef, handler: ToolHandler): void {
     this.tools.set(name, { def, handler })
+    // K10-minimal supply-chain attribution: digest the tool's declared
+    // surface so every receipt can name the exact implementation instance.
+    try {
+      recordToolSchema(name, JSON.stringify(def.function ?? def))
+    } catch {
+      /* attribution is best-effort; never blocks registration */
+    }
   }
 
   getToolDefs(): ToolDef[] {

@@ -54,16 +54,29 @@ export function gateIdentity(): { instanceId: string } {
  * Authorize-and-execute one process spawn through the Authority Kernel.
  * The child is created ONLY when the PDP allows this exact request.
  */
-/**
- * K10-minimal tool-instance attribution: every gated call from this runtime
- * carries the invoking tool id plus a stable origin tag. Schema-hash
- * enrichment arrives with the full supply-chain workstream (K10).
- */
+// ── K10-minimal: tool-instance schema registry ─────────────────────────
+const toolSchemaHashes = new Map<string, string>()
+
+/** Called by AgentRunner.registerTool — records the declared tool surface. */
+export function recordToolSchema(toolName: string, canonicalDefJson: string): void {
+  toolSchemaHashes.set(
+    toolName,
+    createHash("sha256").update(canonicalDefJson).digest("hex").slice(0, 16),
+  )
+}
+
+/** K10-minimal tool-instance attribution for gated calls. */
 export function toolInstanceFor(toolName: string): {
   toolId: string
   origin: string
+  schemaHash?: string
 } {
-  return { toolId: toolName, origin: "arcana-cli/agent-tools" }
+  const schemaHash = toolSchemaHashes.get(toolName)
+  return {
+    toolId: toolName,
+    origin: "arcana-cli/agent-tools",
+    ...(schemaHash !== undefined ? { schemaHash } : {}),
+  }
 }
 
 /**
