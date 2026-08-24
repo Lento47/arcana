@@ -240,8 +240,13 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
 
     const sendStored = (item: QueuedPrompt): Promise<"sent" | "queued"> =>
       deliveries.run(item.id, async () => {
+        const deliveryStarted = Date.now()
+        const profileDelivery = process.env.ARCANA_PROFILE_SESSION_SWITCH === "1"
         try {
-          if (item.payload.messageID) {
+          // Duplicate guard is only meaningful for RETRIES: fresh sends mint
+          // a brand-new message id and cannot already exist — skipping the
+          // round-trip keeps the critical path to promptAsync at one call.
+          if (item.attempts > 0 && item.payload.messageID) {
             const existing = await sdk.client.session
               .message({
                 sessionID: item.payload.sessionID,
@@ -282,6 +287,15 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
             }
             remove(item.id)
           })
+          if (profileDelivery) {
+            console.error("[prompt-delivery]", {
+              sessionID: item.payload.sessionID,
+              label: item.label.slice(0, 40),
+              attempts: item.attempts,
+              ms: Date.now() - deliveryStarted,
+              outcome: "sent",
+            })
+          }
           return "sent"
         } catch (error) {
           // Keep the linear timeline row visible — it stays queued (or
@@ -298,6 +312,15 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
             nextRetryAt,
           })
           scheduleNext()
+          if (profileDelivery) {
+            console.error("[prompt-delivery]", {
+              sessionID: item.payload.sessionID,
+              label: item.label.slice(0, 40),
+              attempts,
+              ms: Date.now() - deliveryStarted,
+              outcome: failed ? "failed" : "retry-scheduled",
+            })
+          }
           toast.show({
             title: failed ? "Queued message needs attention" : "Message queued for retry",
             message: failed
@@ -355,21 +378,20 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       )
       persist()
 
-      // A live query owns the session. Queue the new message and let the
-      // status observer drain it as soon as the turn returns to idle. The
-      // optimistic timeline row submitted by the prompt STAYS — linear chat:
-      // queued messages are visible where they will land, marked queued.
-      if (releaseStale()) {
+      // Operator sends are IMMEDIATE unless the turn is provably busy right
+      // now — i.e. a working status was observed within the last 1.5 s.
+      // Lingering stale "busy" state must never delay a normal interaction:
+      // the engine steers or queues mid-turn prompts server-side anyway.
+      const SUBMIT_QUEUE_WINDOW_MS = 1_500
+      const sinceLastWorking = activeSince.get(payload.sessionID)
+      const recentlyWorking =
+        sinceLastWorking !== undefined && Date.now() - sinceLastWorking <= SUBMIT_QUEUE_WINDOW_MS
+      if (recentlyWorking && sessionWorking(payload.sessionID)) {
         markOptimisticQueued(item.payload.messageID!, true)
         queueMicrotask(() => void drain())
         return "queued"
       }
-      if (sessionWorking(payload.sessionID)) {
-        markOptimisticQueued(item.payload.messageID!, true)
-        queueMicrotask(() => void drain())
-        return "queued"
-      }
-
+      releaseStale()
       return sendStored(item)
     }
 
