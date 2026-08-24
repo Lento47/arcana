@@ -7,6 +7,7 @@ import { EventV2 } from "@arcana/core/event"
 import { Location } from "@arcana/core/location"
 import { Project } from "@arcana/core/project"
 import { AbsolutePath } from "@arcana/core/schema"
+import { resetActivity } from "./daemon/activity"
 import "@arcana/core/account"
 import "@arcana/core/catalog"
 import "@arcana/core/session/event"
@@ -21,6 +22,17 @@ export const layer = Layer.effect(
 
     const publish: EventV2.Interface["publish"] = (definition, data, options) =>
       Effect.gen(function* () {
+        // Any published session event counts as daemon activity. Long quiet
+        // operations (local-ollama inference, slow verification checks) emit
+        // no HTTP traffic — without this reset the 5-minute idle fuse could
+        // fire MID-TURN and kill the server out from under the operator.
+        yield* Effect.sync(() => {
+          try {
+            resetActivity()
+          } catch {
+            /* activity tracking must never break event flow */
+          }
+        })
         if (options?.location) return yield* events.publish(definition, data, options)
         const ctx = yield* InstanceRef
         if (!ctx) return yield* events.publish(definition, data, options)

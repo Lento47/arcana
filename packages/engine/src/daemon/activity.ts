@@ -23,7 +23,25 @@ export function __setIdleTimeoutForTest(ms: number): void {
   idleTimeoutMs = ms
 }
 
-let idleTimeoutMs = IDLE_TIMEOUT_MS
+/**
+ * Resolution order:
+ *   ARCANA_DAEMON_IDLE_TIMEOUT_MS   operator override ("0" disables idle-stop)
+ *   5 min                            dedicated daemon process (ARCANA_DAEMON=1)
+ *   15 min                           dev/TUI-hosted default (long quiet turns —
+ *                                    e.g. local-ollama inference or slow
+ *                                    verification checks — must never cross
+ *                                    the fuse while work is live)
+ */
+function resolveIdleTimeoutMs(): number {
+  const raw = process.env.ARCANA_DAEMON_IDLE_TIMEOUT_MS
+  if (raw !== undefined && raw !== "") {
+    const parsed = Number(raw)
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed
+  }
+  return process.env.ARCANA_DAEMON === "1" ? IDLE_TIMEOUT_MS : 15 * 60 * 1000
+}
+
+let idleTimeoutMs = resolveIdleTimeoutMs()
 
 type IdleHandle = {
   cwd: string
@@ -38,6 +56,8 @@ let sseClients = 0
 function arm(): void {
   if (timer) clearTimeout(timer)
   timer = undefined
+  // ARCANA_DAEMON_IDLE_TIMEOUT_MS=0 disables the idle self-destruct entirely.
+  if (idleTimeoutMs === 0) return
   if (suspended || !handle) return
   timer = setTimeout(() => {
     if (!handle) return
