@@ -53,6 +53,12 @@ export interface ShellProps {
     message?: string
     next?: number
   } | undefined>
+  /**
+   * Turn status for EVERY known session, keyed by sessionID (subagent-liveness
+   * S1): lets the projection present a settled subagent row as alive while its
+   * child session is busy again (e.g. resumed manually after a failure).
+   */
+  childStatuses?: Accessor<Record<string, { type: string; attempt?: number; message?: string; next?: number } | undefined>>
   visible: Accessor<boolean>
   disabled: Accessor<boolean>
   sessionID: string

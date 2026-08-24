@@ -1177,6 +1177,7 @@ export function Session() {
         session,
         sessionList: () => sync.data.session,
         sessionStatus: () => sync.data.session_status[route.sessionID],
+        childStatuses: () => sync.data.session_status,
         visible,
         disabled,
         sessionID: route.sessionID,

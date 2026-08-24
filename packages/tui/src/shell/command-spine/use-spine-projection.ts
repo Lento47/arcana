@@ -239,6 +239,16 @@ export function useSpineProjection(props: ShellProps, input: {
     })
   )
   const visibleEntries = createMemo(() => [...entriesWithChildSessions(), ...gateEntries()])
+  // Subagent liveness (S1): a settled agent/fail row is a static artifact of
+  // the parent tool part — but the child session keeps living (manual resume,
+  // follow-up chat). Project child turn-status back onto the row so the main
+  // chat shows it as alive instead of frozen at ✗.
+  const livenedEntries = createMemo(() =>
+    projectSubagentLiveness({
+      entries: visibleEntries(),
+      statuses: props.childStatuses?.() ?? {},
+    })
+  )
 
   // Child sessions are created by the engine but may not yet appear in the
   // local session list. When an agent entry has no linked sessionID and no
@@ -328,7 +338,7 @@ export function useSpineProjection(props: ShellProps, input: {
   const allVisibleEntries = createMemo(() => {
     const seen = new Set<string>()
     const merged: SpineEntry[] = []
-    for (const entry of [...visibleEntries(), ...governanceEntries(), ...approvalEntries()]) {
+    for (const entry of [...livenedEntries(), ...governanceEntries(), ...approvalEntries()]) {
       if (seen.has(entry.id)) continue
       // Operator-dismissed approval banners ("×") never render again — the
       // dismissal is durable (KV), so restarts keep them hidden too.
@@ -499,4 +509,51 @@ export function stampAgentChildSessions(input: {
       source: { ...entry.source, sessionID: matched?.id ?? newestChildID } as SpineEntry["source"],
     }
   })
+}
+
+/**
+ * Subagent liveness projection (S1). A settled agent/fail row is a static
+ * artifact of the parent tool part — but the child session keeps living after
+ * the parent turn ends (manual resume, follow-up chat). When the child's turn
+ * status is busy/retry, present the row as alive instead of frozen; when idle,
+ * keep terminal history and mark it resumed so operators know work continued.
+ * Rows without a stamped child or unknown status pass through untouched — no
+ * false positives.
+ */
+export function projectSubagentLiveness(input: {
+  entries: SpineEntry[]
+  statuses: Record<string, { type: string } | undefined>
+}): SpineEntry[] {
+  const alive = (type: string | undefined) => type === "busy" || type === "retry"
+  let changed = false
+  const result = input.entries.map((entry): SpineEntry => {
+    const isAgentRow = entry.kind === "agent" || (entry.kind === "fail" && entry.source?.kind === "subtask")
+    if (!isAgentRow) return entry
+    const childID = entry.source?.sessionID
+    if (!childID) return entry
+    const status = input.statuses[childID]
+    if (!alive(status?.type)) {
+      // Terminal child: annotate a fail row whose child ran again, so the ✗
+      // history stays truthful but shows continuation happened.
+      if (status?.type === "idle" && entry.kind === "fail" && !entry.summary.includes("· resumed")) {
+        changed = true
+        return { ...entry, summary: `${entry.summary} · resumed` }
+      }
+      return entry
+    }
+    changed = true
+    const wasFailed = entry.kind === "fail"
+    return {
+      ...entry,
+      kind: "agent",
+      streaming: true,
+      startMs: Date.now(),
+      summary: wasFailed
+        ? `resumed · ${entry.summary}`
+        : entry.summary.includes("· alive")
+          ? entry.summary
+          : `${entry.summary} · alive`,
+    }
+  })
+  return changed ? result : input.entries
 }
