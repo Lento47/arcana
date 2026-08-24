@@ -209,7 +209,7 @@ export async function authorizeProcess(
         request: authReq,
         executeExact: () =>
           Effect.sync(() => {
-            const tr = gateTransportExec(request.transport, authReqHash, () => {
+            const tr = gateTransportExec(options.transport ?? request.transport, authReqHash, () => {
               executorCalls++
               let env: Record<string, string> | undefined
               if (request.env) {
