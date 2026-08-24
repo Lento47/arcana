@@ -18,9 +18,14 @@ import { authorizeNetwork, type NetworkGateResult } from "@arcana/core/capabilit
 import { authorizeSecretUse, seedNamedSecretGrant } from "@arcana/core/capability/secret-gate"
 import { authorizeNetwork, type NetworkGateResult } from "@arcana/core/capability/network-gate"
 
-let resolved: { dbPath: string; sessionId: string } | null = null
+let resolved: { dbPath: string; sessionId: string; instanceId: string } | null = null
 
-function resolveGateTarget(): { dbPath: string; sessionId: string } {
+/**
+ * Process-lifetime agent INSTANCE id (K2): distinct from principal (agent
+ * name) and from interactive session id — identifies THIS runner execution
+ * so receipts can attribute effects to a concrete run.
+ */
+function resolveGateTarget(): { dbPath: string; sessionId: string; instanceId: string } {
   if (resolved) return resolved
   const cwd = process.cwd()
   const dir = join(cwd, ".arcana")
@@ -32,8 +37,17 @@ function resolveGateTarget(): { dbPath: string; sessionId: string } {
   const sessionId =
     (typeof process.env.ARCANA_SESSION_ID === "string" && process.env.ARCANA_SESSION_ID) ||
     `cli-${cwd.replace(/[^a-zA-Z0-9]+/g, "_").slice(-48)}`
-  resolved = { dbPath: join(dir, "authority.db"), sessionId }
+  const instanceId = `cli-inst-${createHash("sha256")
+    .update(`${cwd}|${process.pid}|${Date.now()}`)
+    .digest("hex")
+    .slice(0, 16)}`
+  resolved = { dbPath: join(dir, "authority.db"), sessionId, instanceId }
   return resolved
+}
+
+/** K2 identity injected into every gated request from this runtime. */
+export function gateIdentity(): { instanceId: string } {
+  return { instanceId: resolveGateTarget().instanceId }
 }
 
 /**
@@ -48,7 +62,7 @@ export function gatedSpawn(
   const { dbPath, sessionId } = resolveGateTarget()
   return authorizeProcess(
     { dbPath, sessionId, principalId: "arcana-cli" },
-    { toolName, argv, cwd: opts?.cwd, env: opts?.env },
+    { toolName, argv, cwd: opts?.cwd, env: opts?.env, instanceId: resolveGateTarget().instanceId },
   )
 }
 
@@ -89,8 +103,7 @@ export async function useSecret(name: string, toolName: string): Promise<string 
   await ensureSecretsProvisioned()
   if (!provisioned.has(name)) return undefined
   const result = await authorizeSecretUse(
-    { dbPath: resolveGateTarget().dbPath, sessionId: resolveGateTarget().sessionId, principalId: "arcana-cli" },
-    { secretName: name, purpose: toolName },
+    { dbPath: resolveGateTarget().dbPath, sessionId: resolveGateTarget().sessionId, principalId: "arcana-cli" }, { secretName: name, purpose: toolName, instanceId: resolveGateTarget().instanceId },
     (n) => secretValues.get(n),
   )
   if (result.status === "EXECUTED") return result.value
@@ -116,8 +129,7 @@ export function gatedNetwork(
 ): Promise<NetworkGateResult> {
   const { dbPath, sessionId } = resolveGateTarget()
   return authorizeNetwork(
-    { dbPath, sessionId, principalId: "arcana-cli" },
-    { toolName, url, method: opts?.method },
+    { dbPath, sessionId, principalId: "arcana-cli" }, { toolName, url, method: opts?.method, instanceId: resolveGateTarget().instanceId },
     perform,
   )
 }
@@ -133,8 +145,7 @@ export async function gatedFileMutation(
 ): Promise<FileMutationResult> {
   const { dbPath, sessionId } = resolveGateTarget()
   return authorizeFileMutation(
-    { dbPath, sessionId, principalId: "arcana-cli" },
-    { toolName, ...req },
+    { dbPath, sessionId, principalId: "arcana-cli" }, { toolName, ...req, instanceId: resolveGateTarget().instanceId },
     perform,
   )
 }

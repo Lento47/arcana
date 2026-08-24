@@ -92,6 +92,28 @@ export function canonicalizeRequest(req: AuthorizationRequest): Buffer {
   parts.push(str(req.requestedAt))
   parts.push(str(req.nonce))
 
+  // K2 identity chain — tagged extension, emitted only when present so
+  // legacy (principal+session) request hashes remain byte-identical.
+  if (
+    req.instanceId !== undefined ||
+    req.parentInstanceId !== undefined ||
+    req.onBehalfOf !== undefined ||
+    req.toolInstance !== undefined
+  ) {
+    parts.push(str("identity-k2-v1"))
+    parts.push(strOpt(req.instanceId))
+    parts.push(strOpt(req.parentInstanceId))
+    parts.push(strOpt(req.onBehalfOf))
+    if (req.toolInstance) {
+      parts.push(Buffer.from([0x01]))
+      parts.push(str(req.toolInstance.toolId))
+      parts.push(strOpt(req.toolInstance.origin))
+      parts.push(strOpt(req.toolInstance.schemaHash))
+    } else {
+      parts.push(Buffer.from([0x00]))
+    }
+  }
+
   return Buffer.concat(parts)
 }
 

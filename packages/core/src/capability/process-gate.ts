@@ -62,6 +62,11 @@ export interface ProcessGateRequest {
   requestedAt?: string
   /** Captured request identity — supply when replaying a recorded authorization. */
   requestId?: string
+  /** K2: bind this request to the calling agent instance / tool instance. */
+  instanceId?: string
+  parentInstanceId?: string
+  onBehalfOf?: string
+  toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
 }
 
 export type ProcessGateResult =
@@ -143,6 +148,10 @@ export async function authorizeProcess(
     nonce: request.nonce,
     requestedAt: request.requestedAt,
     requestId: request.requestId,
+    instanceId: request.instanceId,
+    parentInstanceId: request.parentInstanceId,
+    onBehalfOf: request.onBehalfOf,
+    toolInstance: request.toolInstance,
   })
 
   let executorCalls = 0

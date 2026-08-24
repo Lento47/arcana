@@ -113,6 +113,12 @@ export interface ToolCallContext {
   requestedAt?: string
   /** Captured request identity — supply when replaying a recorded authorization. */
   requestId?: string
+
+  // ── K2 identity chain (optional) ─────────────────────────────────────
+  instanceId?: string
+  parentInstanceId?: string
+  onBehalfOf?: string
+  toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
 }
 
 /**
@@ -154,6 +160,10 @@ export function buildAuthorizationRequest(ctx: ToolCallContext): AuthorizationRe
     sensitivity: ctx.sensitivity ?? ["PUBLIC"],
     requestedAt: ctx.requestedAt ?? new Date().toISOString(),
     nonce: ctx.nonce ?? randomUUID(),
+    instanceId: ctx.instanceId,
+    parentInstanceId: ctx.parentInstanceId,
+    onBehalfOf: ctx.onBehalfOf,
+    toolInstance: ctx.toolInstance,
   }
 }
 

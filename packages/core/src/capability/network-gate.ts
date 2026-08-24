@@ -29,6 +29,11 @@ export interface NetworkGateRequest {
   nonce?: string
   requestedAt?: string
   requestId?: string
+  /** K2: bind this request to the calling agent instance / tool instance. */
+  instanceId?: string
+  parentInstanceId?: string
+  onBehalfOf?: string
+  toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
 }
 
 export interface NetworkExecResult {
@@ -75,6 +80,10 @@ export async function authorizeNetwork(
     nonce: request.nonce,
     requestedAt: request.requestedAt,
     requestId: request.requestId,
+    instanceId: request.instanceId,
+    parentInstanceId: request.parentInstanceId,
+    onBehalfOf: request.onBehalfOf,
+    toolInstance: request.toolInstance,
   })
 
   const result = await withGate(options, (provider) =>

@@ -74,6 +74,26 @@ describe("process-gate (Authority Kernel M1)", () => {
     rmSync(tmp("det.db"), { force: true })
   })
 
+  it("K2: instance identity participates in the request hash", async () => {
+    const db = tmp("k2.db")
+    // Two different agent instances, same captured inputs ⇒ different hashes.
+    const req = { toolName: "shell", argv: [process.execPath, "-e", "console.log(2)"], nonce: "n-k2", requestedAt: "2026-08-23T00:00:00Z", requestId: "req-k2" }
+    const a = await authorizeProcess({ dbPath: db, principalId: "test-agent", sessionId: "s" }, { ...req, instanceId: "inst-A" })
+    const b = await authorizeProcess({ dbPath: db, principalId: "test-agent", sessionId: "s" }, { ...req, instanceId: "inst-B" })
+    expect(a.status).toBe("EXECUTED")
+    expect(b.status).toBe("EXECUTED")
+    if (a.status === "EXECUTED" && b.status === "EXECUTED") {
+      expect(a.requestHash).not.toBe(b.requestHash)
+    }
+    // Same instance + identical captured inputs ⇒ identical hash.
+    const a2 = await authorizeProcess({ dbPath: db, principalId: "test-agent", sessionId: "s" }, { ...req, instanceId: "inst-A" })
+    expect(a2.status).toBe("EXECUTED")
+    if (a.status === "EXECUTED" && a2.status === "EXECUTED") {
+      expect(a.requestHash).toBe(a2.requestHash)
+    }
+    rmSync(db, { force: true })
+  })
+
   it("CRITICAL/unwired approval surface fails closed (no execution)", async () => {
     const db = tmp("approval.db")
     // git.push is CRITICAL-class; DEFAULT_AGENT_ACTIONS excludes it, so the

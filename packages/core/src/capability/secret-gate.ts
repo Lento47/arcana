@@ -35,6 +35,11 @@ export interface SecretUseRequest {
   nonce?: string
   requestedAt?: string
   requestId?: string
+  /** K2: bind this request to the calling agent instance / tool instance. */
+  instanceId?: string
+  parentInstanceId?: string
+  onBehalfOf?: string
+  toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
 }
 
 export type SecretGateResult =
@@ -109,6 +114,10 @@ export async function authorizeSecretUse(
     nonce: request.nonce,
     requestedAt: request.requestedAt,
     requestId: request.requestId,
+    instanceId: request.instanceId,
+    parentInstanceId: request.parentInstanceId,
+    onBehalfOf: request.onBehalfOf,
+    toolInstance: request.toolInstance,
   })
 
   const result = await withGate(options, (provider) =>

@@ -173,6 +173,16 @@ export interface AuthorizationRequest {
 
   requestedAt: string
   nonce: string
+
+  // ── K2 identity chain (optional) ─────────────────────────────────────
+  // Presence binds this request to a specific agent INSTANCE and TOOL
+  // instance. Absent ⇒ legacy identity semantics (principal+session only).
+  // Hashed via the tagged "identity-k2-v1" block so legacy request hashes
+  // are unchanged when the fields are absent.
+  instanceId?: string
+  parentInstanceId?: string
+  onBehalfOf?: string
+  toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
 }
 
 // ─── Authorization Decision ───────────────────────────────────────────
