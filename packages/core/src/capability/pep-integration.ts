@@ -78,6 +78,9 @@ export function toolToAction(toolName: string): {
       return { action: "git.commit", resourceKind: "git" }
     case "git_push":
       return { action: "git.push", resourceKind: "git" }
+    case "secret_use":
+      // Reserved kernel-internal tool name: mediation of credential access.
+      return { action: "secret.use", resourceKind: "secret" }
     default:
       // Unknown tools default to the most restrictive action
       return { action: "process.execute", resourceKind: "process" }

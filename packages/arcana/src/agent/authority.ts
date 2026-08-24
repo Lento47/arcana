@@ -15,6 +15,8 @@ import { createHash } from "node:crypto"
 import { authorizeProcess, type ProcessGateResult } from "@arcana/core/capability/process-gate"
 import { authorizeFileMutation, type FileMutationResult } from "@arcana/core/capability/fs-gate"
 import { authorizeNetwork, type NetworkGateResult } from "@arcana/core/capability/network-gate"
+import { authorizeSecretUse, seedNamedSecretGrant } from "@arcana/core/capability/secret-gate"
+import { authorizeNetwork, type NetworkGateResult } from "@arcana/core/capability/network-gate"
 
 let resolved: { dbPath: string; sessionId: string } | null = null
 
@@ -48,6 +50,52 @@ export function gatedSpawn(
     { dbPath, sessionId, principalId: "arcana-cli" },
     { toolName, argv, cwd: opts?.cwd, env: opts?.env },
   )
+}
+
+// ── Secret provisioning & mediated use ────────────────────────────────
+// Values live ONLY in this registry (populated once from env at startup).
+// Tool code resolves them exclusively via useSecret(), which mediates every
+// access through the kernel — one receipt per use, fail-closed otherwise.
+
+const secretValues = new Map<string, string>()
+const provisioned = new Set<string>()
+
+/** Names this runner provisions from the environment at startup. */
+const MANAGED_SECRETS = ["ELEVENLABS_API_KEY", "FIRECRAWL_API_KEY"] as const
+
+let secretsInitialized = false
+async function ensureSecretsProvisioned(): Promise<void> {
+  if (secretsInitialized) return
+  const { dbPath, sessionId } = resolveGateTarget()
+  for (const name of MANAGED_SECRETS) {
+    const value = process.env[name]
+    if (!value) continue
+    secretValues.set(name, value)
+    try {
+      await seedNamedSecretGrant({ dbPath, sessionId, principalId: "arcana-cli" }, name)
+      provisioned.add(name)
+    } catch (e) {
+      console.error(`[authority] secret grant seeding failed for ${name}`, e)
+    }
+  }
+  secretsInitialized = true
+}
+
+/**
+ * Mediated secret resolution for tool handlers. Returns undefined when the
+ * secret is unregistered/unprovisioned — callers must degrade gracefully.
+ */
+export async function useSecret(name: string, toolName: string): Promise<string | undefined> {
+  await ensureSecretsProvisioned()
+  if (!provisioned.has(name)) return undefined
+  const result = await authorizeSecretUse(
+    { dbPath: resolveGateTarget().dbPath, sessionId: resolveGateTarget().sessionId, principalId: "arcana-cli" },
+    { secretName: name, purpose: toolName },
+    (n) => secretValues.get(n),
+  )
+  if (result.status === "EXECUTED") return result.value
+  console.error(`[authority] secret.use denied: ${name} for ${toolName} (${result.status})`)
+  return undefined
 }
 
 /** Stable per-workspace id used where a plain string tag is needed. */

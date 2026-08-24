@@ -414,8 +414,8 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       if (!queryStr) return "web_search needs a non-empty query."
       const limit = Math.min(Math.max(Number(args.limit ?? 5), 1), 10)
 
-      // ── Firecrawl-first (when FIRECRAWL_API_KEY is configured) ──────
-      const firecrawlKey = process.env.FIRECRAWL_API_KEY
+      // ── Firecrawl-first (when FIRECRAWL_API_KEY is provisioned) ─────
+      const firecrawlKey = await useSecret("FIRECRAWL_API_KEY", "web_search")
       if (firecrawlKey) {
         const fcUrl = process.env.FIRECRAWL_SEARCH_URL ?? "https://api.firecrawl.dev/v2/search"
         let results: Array<{ title: string; url: string; snippet: string }> = []
@@ -515,7 +515,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       },
     },
     async (args) => {
-      const apiKey = process.env.ELEVENLABS_API_KEY
+      const apiKey = await useSecret("ELEVENLABS_API_KEY", "speak")
       if (!apiKey) return "Set ELEVENLABS_API_KEY to use speech."
       const text = String(args.text).slice(0, 500)
       const voiceId = String(args.voice ?? "21m00Tcm4TlvDq8ikWAM") // Rachel
