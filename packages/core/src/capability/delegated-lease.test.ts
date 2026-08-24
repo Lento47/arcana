@@ -12,6 +12,7 @@ import {
   verifyLease,
   type DelegatedLease,
   type EffectiveScope,
+  type SignedLease,
 } from "./delegated-lease"
 
 const keys = generateIssuerKeyPair()
