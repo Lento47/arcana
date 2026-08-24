@@ -3,7 +3,7 @@ document_class: roadmap
 authority: execution_priority
 status: current
 owner: maintainer
-last_updated: 2026-08-05
+last_updated: 2026-08-23
 ---
 
 # Arcana roadmap
