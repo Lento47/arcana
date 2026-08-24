@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-23T08:23:14.242Z",
+  "generatedAt": "2026-08-24T04:30:37.835Z",
   "entries": {
     "packages/arcana/src/agent/authority.ts": {
       "classes": [
@@ -137,6 +137,14 @@
       "modules": [
         "node:fs",
         "node:fs/promises"
+      ]
+    },
+    "packages/arcana/src/cli/cmd/gateway.ts": {
+      "classes": [
+        "ProcessExecution"
+      ],
+      "modules": [
+        "node:child_process"
       ]
     },
     "packages/arcana/src/cli/cmd/learn.ts": {
