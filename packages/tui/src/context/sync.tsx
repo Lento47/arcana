@@ -53,6 +53,23 @@ function extractMessages(res: any): Array<{ info: Message; parts: any[] }> {
 /** Newest-message window kept in the local sync store per session. */
 export const SESSION_MESSAGE_WINDOW = 100
 
+/**
+ * Mirror of the engine's MessageV2.cursor wire format: base64url JSON
+ * `{ id, time }`. Server responses carry encoded cursors per page; this
+ * synthesizes one after local window pruning, where no server response is
+ * at hand. Raw message ids are NOT valid cursors — sending one fails the
+ * request with BadRequest and permanently latched scroll-history off
+ * (fixed 2026-08-23).
+ */
+export function encodeMessageCursor(id: string, timeCreated: number): string {
+  return Buffer.from(JSON.stringify({ id, time: timeCreated })).toString("base64url")
+}
+
+/** Extract the server-issued page cursor from a messages response. */
+function responseCursor(res: unknown): string | undefined {
+  return (res as { data?: { cursor?: string } } | undefined)?.data?.cursor
+}
+
 export function splitMessageWindow<T>(
   messages: readonly T[],
   keep = SESSION_MESSAGE_WINDOW,
@@ -973,8 +990,9 @@ export const {
       )
         .then((messages) => {
           const responseData = extractMessages(messages)
-          const oldest = responseData[responseData.length - 1]
-          olderCursors.set(sessionID, oldest?.info?.id ?? undefined)
+          // Server-owned cursor. Undefined ⇒ end of history; never fabricate
+          // one from raw message ids (server rejects them with BadRequest).
+          olderCursors.set(sessionID, responseCursor(messages))
 
           setStore(
             produce((draft) => {
@@ -1531,8 +1549,7 @@ export const {
             loadGovernance(sessionID, signal),
           ])
           const responseData = extractMessages(messages)
-          const oldest = responseData[responseData.length - 1]
-          olderCursors.set(sessionID, oldest?.info?.id ?? undefined)
+          olderCursors.set(sessionID, responseCursor(messages))
           let converged = true
           // What CHANGED, not just that a reconcile ran: per-part decisions
           // with the before/after state, logged after the apply.
@@ -1678,9 +1695,10 @@ export const {
                 return 0
               }
 
-              // Update cursor: oldest msg ID from this page becomes the new cursor
-              const oldest = data[data.length - 1]
-              olderCursors.set(sessionID, oldest?.info?.id ?? undefined)
+              // Server-owned cursor: undefined ⇒ end of history reached.
+              const nextCursor = responseCursor(res)
+              if (nextCursor) olderCursors.set(sessionID, nextCursor)
+              else exhaustedOlderSessions.add(sessionID)
 
               setStore(
                 produce((draft) => {
@@ -1715,7 +1733,9 @@ export const {
             .catch(() => 0)
 
           loadingOlderSessions.delete(sessionID)
-          return count >= 25
+          // Partial final pages are SUCCESS — rows were loaded. Exhaustion
+          // is decided exclusively by the server-cursor rule above.
+          return count > 0
         },
         /**
          * Drop extra older-message pages loaded while this session was
@@ -1738,7 +1758,15 @@ export const {
               draft.message[sessionID] = visible
             }),
           )
-          olderCursors.set(sessionID, visible[0]?.id)
+          // Synthesize a wire-valid cursor for the pruned boundary — raw ids
+          // are rejected by the server.
+          const oldestVisible = visible[0]
+          olderCursors.set(
+            sessionID,
+            oldestVisible
+              ? encodeMessageCursor(oldestVisible.id, oldestVisible.time?.created ?? 0)
+              : undefined,
+          )
           exhaustedOlderSessions.delete(sessionID)
         },
       },

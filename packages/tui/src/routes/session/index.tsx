@@ -595,7 +595,12 @@ export function Session() {
   let scroll: ScrollBoxRenderable
   let prompt: PromptRef | undefined
   let scrollInterval: ReturnType<typeof setInterval> | undefined
-  let scrollExhausted = false
+  // Failure backoff for load-older — transient errors RETRY, they never
+  // permanently latch history off (the old scrollExhausted boolean did).
+  let loadOlderFailures = 0
+  let loadOlderNotBefore = 0
+  /** Rows of headroom that count as "at the top" (absorbs momentum settle). */
+  const LOAD_TOP_THRESHOLD = 8
   /**
    * Open-sequence latch: older-page polling must not race the initial
    * hydration + snap-to-bottom. Before this flips true, scroll.y is ~0 on a
@@ -614,7 +619,8 @@ export function Session() {
         if (id === prev) return
         lastSwitch = undefined
         seeded = false
-        scrollExhausted = false
+        loadOlderFailures = 0
+        loadOlderNotBefore = 0
         historySettled = false
         orderedTranscript = undefined
         if (prev) sync.session.pruneLoaded(prev)
@@ -653,21 +659,33 @@ export function Session() {
   onMount(() => {
     scrollInterval = setInterval(async () => {
       if (!scroll || scroll.isDestroyed) return
-      if (scrollExhausted) return
       // Older-page latch: ignore ticks until the open sequence has hydrated
       // and snapped to bottom — see historySettled above.
       if (!historySettled) return
-      // Trigger when within 3 rows of the top
-      if (scroll.y > 3) return
-      const prevHeight = scroll.scrollHeight
-      const loaded = await sync.session.loadOlder(route.sessionID)
-      if (!loaded) {
-        scrollExhausted = true
-        return
+      if (Date.now() < loadOlderNotBefore) return
+      // Trigger when within the top headroom
+      if (scroll.y > LOAD_TOP_THRESHOLD) return
+      let loadedAny = false
+      // Bounded burst: while the operator holds the top, keep paging without
+      // waiting out the poll interval between pages.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        if (!scroll || scroll.isDestroyed) break
+        if (scroll.y > LOAD_TOP_THRESHOLD * 4) break // user scrolled away mid-load
+        const prevHeight = scroll.scrollHeight
+        const got = await sync.session.loadOlder(route.sessionID)
+        if (!got) {
+          if (!loadedAny) {
+            loadOlderFailures += 1
+            loadOlderNotBefore = Date.now() + Math.min(1000 * 2 ** Math.min(loadOlderFailures, 4), 15_000)
+          }
+          return
+        }
+        loadedAny = true
+        loadOlderFailures = 0
+        // Compensate scroll position by the added content height so the
+        // user stays at the same viewport position.
+        scroll.scrollBy(scroll.scrollHeight - prevHeight)
       }
-      // Compensate scroll position by the added content height so the
-      // user stays at the same viewport position.
-      scroll.scrollBy(scroll.scrollHeight - prevHeight)
     }, 500)
   })
   onCleanup(() => clearInterval(scrollInterval))
