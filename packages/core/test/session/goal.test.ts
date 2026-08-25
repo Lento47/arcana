@@ -73,10 +73,9 @@ describe("session goal store", () => {
     expect(block).toContain("src &amp; &lt;private&gt;")
   })
 
-  test("unset block is explicit", () => {
+  test("unset goal does not inject a prompt block", () => {
     const block = formatActiveGoalBlock({ sessionID: "empty", sessionAgent: "build" })
-    expect(block).toContain("status: unset")
-    expect(block).toContain("explicit multi-step mutation objective")
+    expect(block).toBe("")
   })
 
   test("tier B denies build edit without goal", () => {

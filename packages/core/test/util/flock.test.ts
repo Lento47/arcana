@@ -130,13 +130,17 @@ describe("util.flock", () => {
           done,
           active,
           holdMs: 30,
-          staleMs: 1_000,
+          // This case validates exclusion, not stale recovery. Leave enough
+          // lease headroom for 16 workers under full-suite scheduler pressure.
+          staleMs: 10_000,
           timeoutMs: 15_000,
         }),
       ),
     )
 
-    expect(out.map((x) => x.code)).toEqual(Array.from({ length: n }, () => 0))
+    expect(
+      out.filter((x) => x.code !== 0).map((x) => ({ code: x.code, stderr: x.stderr.toString() })),
+    ).toEqual([])
     expect(out.map((x) => x.stderr.toString()).filter(Boolean)).toEqual([])
 
     const lines = (await fs.readFile(done, "utf8"))
