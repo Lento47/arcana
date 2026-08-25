@@ -12,6 +12,8 @@
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { createHash } from "node:crypto"
+import { spawn as childSpawn } from "node:child_process"
+import net from "node:net"
 import { authorizeProcess, type ProcessGateResult } from "@arcana/core/capability/process-gate"
 import { authorizeFileMutation, type FileMutationResult } from "@arcana/core/capability/fs-gate"
 import { authorizeNetwork, type NetworkGateResult } from "@arcana/core/capability/network-gate"
@@ -57,12 +59,44 @@ export function gateIdentity(): { instanceId: string } {
 const toolSchemaHashes = new Map<string, string>()
 
 /**
- * S4 M-d transport selection: when ARCANA_TRANSPORT=ipc, gated calls route
- * through the kernel's IPC surface instead of in-process execution.
+ * S4 M-d transport selection. DEFAULT IS IPC — every gated call routes
+ * through the kernel's IPC surface. Set ARCANA_TRANSPORT=local to opt out
+ * (debug/emergency only).
  */
 function resolveTransportMode(): "local" | "ipc" {
-  return process.env.ARCANA_TRANSPORT === "ipc" ? "ipc" : "local"
+  return process.env.ARCANA_TRANSPORT === "local" ? "local" : "ipc"
 }
+
+// ── Kernel auto-start ─────────────────────────────────────────────────
+// When transport is IPC and no kernel is listening, spawn one as a detached
+// child process. The agent retries connection until the pipe appears.
+
+let kernelChild: import("node:child_process").ChildProcess | null = null
+
+function ensureKernelRunning(pipePath: string): void {
+  // Probe: try connecting; if it fails, spawn the kernel.
+  const probe = net.createConnection(pipePath)
+  probe.once("connect", () => { probe.destroy() })
+  probe.once("error", () => {
+    probe.destroy()
+    if (kernelChild) return // already spawning
+    const entry = join(process.cwd(), "packages", "arcana", "src", "kernel-entry.ts")
+    kernelChild = spawn(process.execPath, [entry], {
+      detached: false,
+      stdio: "ignore",
+      env: { ...process.env, ARCANA_KERNEL_PIPE: pipePath },
+    })
+    kernelChild.unref()
+    // Wait for the pipe to appear before returning.
+    const retry = setInterval(() => {
+      const p = net.createConnection(pipePath)
+      p.once("connect", () => { p.destroy(); clearInterval(retry) })
+      p.once("error", () => p.destroy())
+    }, 200)
+    setTimeout(() => clearInterval(retry), 10_000)
+  })
+}
+
 
 /** Called by AgentRunner.registerTool — records the declared tool surface. */
 export function recordToolSchema(toolName: string, canonicalDefJson: string): void {
@@ -100,12 +134,11 @@ export function gatedSpawn(
 
   // S4 M-d: route through kernel IPC when transport mode is "ipc".
   if (resolveTransportMode() === "ipc") {
+    ensureKernelRunning("\\\\.\\pipe\\arcana-kernel")
     const { createIpcSpawnExecutor } = require("@arcana/core/capability/ipc-spawn-executor") as {
       createIpcSpawnExecutor: typeof import("@arcana/core/capability/ipc-spawn-executor").createIpcSpawnExecutor
     }
-    const { join } = require("node:path") as typeof import("node:path")
-    const pipePath = process.env.ARCANA_KERNEL_PIPE ?? "\\\\.\\pipe\\arcana-kernel"
-    gateOpts.spawnExecutor = createIpcSpawnExecutor({ pipePath })
+    gateOpts.spawnExecutor = createIpcSpawnExecutor({ pipePath: "\\\\.\\pipe\\arcana-kernel" })
   }
 
   return authorizeProcess(gateOpts, {
