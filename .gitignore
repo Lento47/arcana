@@ -113,3 +113,6 @@ packages/*/.bun-cache/
 
 # Process-gate test transients
 packages/core/src/capability/.tmp-process-gate/
+
+# Capability gate runtime scratch
+packages/core/src/capability/.tmp-process-gate/
