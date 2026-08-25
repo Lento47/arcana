@@ -49,7 +49,7 @@ describe("lexicon voice", () => {
     expect(VerbPool.pending.shell[0]).toBe("Running")
     expect(VerbPool.thinking[0]).toBe("Thinking")
     expect(PLACEHOLDER).toBe(PLAIN_PLACEHOLDER)
-    expect(PLACEHOLDER.normal[0]).toBe("Ask anything…")
+    expect(PLACEHOLDER.normal[0]).toBe("Ask anything...  (!shell  /commands  @files)")
     expect(PROMPT_FRAME).toBe(PLAIN_PROMPT_FRAME)
     expect(PROMPT_FRAME.shell).toBe("Run a command…")
     expect(COPY).toBe(PLAIN_COPY)
