@@ -42,10 +42,13 @@ function record(api: string): void {
 
 // ── fetch ───────────────────────────────────────────────────────────────
 const originalFetch = globalThis.fetch
-;(globalThis as any).fetch = function wrappedFetch(input: any, init?: any) {
+const wrappedFetch = function wrappedFetch(input: any, init?: any) {
   record("fetch")
   return originalFetch.call(this, input, init)
-} as typeof fetch
+}
+;(globalThis as any).fetch = Object.assign(wrappedFetch, {
+  preconnect: originalFetch.preconnect.bind(originalFetch),
+}) satisfies typeof fetch
 
 // ── Bun.spawn / spawnSync / write ───────────────────────────────────────
 const bunAny = Bun as any

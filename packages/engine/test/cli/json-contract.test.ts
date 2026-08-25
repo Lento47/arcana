@@ -94,16 +94,25 @@ describe("CLI --json contract", () => {
       Effect.gen(function* () {
         const r = yield* opencode.spawn(["providers", "list", "--json"])
         opencode.expectExit(r, 0, "providers list --json")
-        const parsed = parseJson(r.stdout) as { credentials: Array<{ provider: string; name: string; type: string }> }
+        const parsed = parseJson(r.stdout) as {
+          credentials: Array<{ provider: string; name: string; type: string }>
+          environment: Array<{ provider: string; envVar: string }>
+        }
+        expect(Object.keys(parsed).sort()).toEqual(["credentials", "environment"])
         expect(Array.isArray(parsed.credentials)).toBe(true)
         for (const cred of parsed.credentials) {
+          expect(Object.keys(cred).sort()).toEqual(["name", "provider", "type"])
           expect(typeof cred.provider).toBe("string")
+          expect(typeof cred.name).toBe("string")
           expect(typeof cred.type).toBe("string")
         }
-        // Redaction rule: no keys, tokens, or passwords in --json output.
-        expect(r.stdout.toLowerCase()).not.toContain("sk-")
-        expect(r.stdout.toLowerCase()).not.toContain("token")
-        expect(r.stdout.toLowerCase()).not.toContain("password")
+        expect(Array.isArray(parsed.environment)).toBe(true)
+        for (const item of parsed.environment) {
+          // Environment-variable names are safe metadata; values must never be present.
+          expect(Object.keys(item).sort()).toEqual(["envVar", "provider"])
+          expect(typeof item.provider).toBe("string")
+          expect(item.envVar).toMatch(/^[A-Z][A-Z0-9_]*$/)
+        }
       }),
     60_000,
   )

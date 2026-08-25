@@ -3,14 +3,15 @@
 // Authority Kernel S4/M-a — the spawn-executor SEAM.
 //
 // The gate calls this interface; it never touches Bun.spawnSync directly.
-// Today the only implementation is the in-process Bun executor. At S4 the
-// same interface is fulfilled by an IPC client that serializes the request
-// to the privileged kernel process — making "zero OS children without
-// authority" DIRECTLY testable via a counting/failing executor.
+// Today the only production implementation is the in-process Bun executor.
+// At S4 the same interface is fulfilled by an IPC client that serializes
+// the request to the privileged kernel process.
 //
 // Contract (matches current executeExact behavior exactly):
 //   - stdout/stderr decoded utf-8
 //   - env: when provided, REPLACES inherited environment (undefined dropped)
+//   - async-capable: implementations may return Promise<SpawnResult> for
+//     IPC/wire transports; the gate wraps in Effect.promise accordingly
 
 export interface SpawnResult {
   stdout: string
@@ -18,8 +19,11 @@ export interface SpawnResult {
   exitCode: number | null
 }
 
+export type SpawnResultOrPromise = SpawnResult | Promise<SpawnResult>
+
 export interface SpawnExecutor {
-  (argv: string[], opts?: { cwd?: string; env?: Record<string, string> }): SpawnResult
+  (argv: string[], opts?: { cwd?: string; env?: Record<string, string> }):
+    SpawnResult | SpawnResultOrPromise
 }
 
 /** In-process executor — current production behavior, moved verbatim. */

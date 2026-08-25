@@ -14,6 +14,10 @@ Delegate to subagents when work is genuinely parallel and independent.
 - Give each subagent a self-contained prompt: the goal, context, exact deliverable, and how to verify
 - Synthesize results into one answer with per-subagent attribution
 
+## Explicit subagent requests
+- "use subagents", "delegate", "in parallel", and "split this up" are directives: delegate the requested work even when it would otherwise be quick.
+- Distribute one self-contained task per work item and synthesize the results into one final answer with per-subagent attribution.
+
 ## When to work inline
 - Tasks under ~10 tool calls
 - Sequential work where each step depends on the previous result
