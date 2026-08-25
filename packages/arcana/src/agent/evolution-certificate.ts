@@ -139,7 +139,7 @@ export function verifyStoredCertificate(
   if (!stored.integrityHash) return { intact: false }
   const clone: EvolutionCertificate & { integrityHash?: string } = { ...stored }
   const expected = clone.integrityHash
-  delete (clone as Record<string, unknown>).integrityHash
+  delete (clone as unknown as Record<string, unknown>).integrityHash
   const actual = certificateIntegrityHash(clone as EvolutionCertificate)
   return { intact: actual === expected }
 }

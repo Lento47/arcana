@@ -7,8 +7,14 @@ export const toolHistory: Array<{ name: string; ts: number }> = []
 
 import { homedir } from "node:os"
 import { basename, join, dirname, resolve, sep } from "node:path"
-import { mkdirSync, writeFileSync, existsSync } from "node:fs"
-import { gatedSpawn, formatGateResult } from "./authority.js"
+import { mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs"
+import {
+  gatedFileMutation,
+  gatedNetwork,
+  gatedSpawn,
+  formatGateResult,
+  useSecret,
+} from "./authority.js"
 import { initBoard, loadBoard, saveBoard, addCard, moveCard, archiveDone, formatBoard, type KanbanCard } from "./kanban.js"
 import { fetchAccountSnapshot, formatAccountSnapshot } from "../proxy-client.js"
 import { generateAndSaveImages, formatImageGenerateResult } from "./image-generate.js"
@@ -519,7 +525,6 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       if (!apiKey) return "Set ELEVENLABS_API_KEY to use speech."
       const text = String(args.text).slice(0, 500)
       const voiceId = String(args.voice ?? "21m00Tcm4TlvDq8ikWAM") // Rachel
-      let audioBuffer: Buffer | null = null
       try {
         const ttsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`
         const gated = await gatedNetwork("speak", ttsUrl, async () => {
@@ -535,12 +540,16 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
           })
           const httpStatus = res.status
           // Audio bytes stay inside perform — only the summary enters the receipt.
-          audioBuffer = res.ok ? Buffer.from(await res.arrayBuffer()) : null
-          return { httpStatus, summary: audioBuffer ? `${audioBuffer.length} bytes audio` : `HTTP ${httpStatus}` }
+          const audioBuffer = res.ok ? Buffer.from(await res.arrayBuffer()) : null
+          return {
+            httpStatus,
+            summary: audioBuffer ? `${audioBuffer.length} bytes audio` : `HTTP ${httpStatus}`,
+            payload: audioBuffer,
+          }
         }, { method: "POST" })
         if (gated.status !== "EXECUTED") return formatGateResult(gated)
-        if (!audioBuffer) return `TTS error: HTTP ${gated.httpStatus}`
-        const audio = audioBuffer
+        if (!Buffer.isBuffer(gated.payload)) return `TTS error: HTTP ${gated.httpStatus}`
+        const audio = gated.payload
         const tmp = join(homedir(), ".arcana", "cache", "speech.mp3")
         const cacheWrite = await gatedFileMutation(
           "speak",
@@ -802,7 +811,8 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       })
       if (gatedFetch.status !== "EXECUTED") return formatGateResult(gatedFetch)
       if (gatedFetch.httpStatus !== 200) return `HTTP ${gatedFetch.httpStatus} for ${url}`
-      const stripped = gatedFetch.summary
+      const body = typeof gatedFetch.payload === "string" ? gatedFetch.payload : ""
+      const stripped = body
         .replace(/<[^>]+>/g, " ")
         .replace(/\s+/g, " ")
         .trim()
@@ -832,7 +842,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
 
       const tools = ["git", "docker", "python", "python3", "node", "npm", "pnpm", "yarn", "cargo", "go", "rustc"]
         // Bun.which resolves PATH natively — no process spawn needed at all.
-        .filter((t) => { try { return Bun.which(t).length > 0 } catch { return false } })
+        .filter((t) => { try { return Bun.which(t) !== null } catch { return false } })
 
       return [
         `OS: ${os}`,
@@ -1106,7 +1116,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
       try {
         await runGit("git_commit", gitAddArgs(args.files), { cwd })
         await runGit("git_commit", gitCommitArgs(args.message), { cwd })
-        const hash = await runGit("git_commit", ["rev-parse", "HEAD"], { cwd }).slice(0, 8)
+        const hash = (await runGit("git_commit", ["rev-parse", "HEAD"], { cwd })).slice(0, 8)
         return `Committed: ${hash} — ${String(args.message)}`
       } catch (e: any) {
         if (e.message?.includes("not a git repository")) return "Not a git repository."
@@ -1146,7 +1156,7 @@ export function registerBuiltinTools(runner: AgentRunner, memory: MemoryStore, s
         }
         await runGit("git_autocommit", ["add", "-A"], { cwd })
         await runGit("git_autocommit", gitCommitArgs(msg), { cwd })
-        const hash = await runGit("git_commit", ["rev-parse", "HEAD"], { cwd }).slice(0, 8)
+        const hash = (await runGit("git_commit", ["rev-parse", "HEAD"], { cwd })).slice(0, 8)
         let result = `✅ Committed ${hash}: ${msg}`
         if (args.push) {
           await runGit("git_push", ["push"], { cwd })

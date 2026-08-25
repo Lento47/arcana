@@ -17,7 +17,7 @@ import { maybeEvolve, incrementSessionCount, getActivePrompt } from "../../agent
 import { detectInjection, auditLog } from "../../agent/guard.js"
 import { createSandbox } from "../../agent/sandbox.js"
 import { createProofRuntime } from "../run/proof-runtime.js"
-import { RunScorecard } from "../agent/run-scorecard.js"
+import { RunScorecard } from "../../agent/run-scorecard.js"
 
 const SYSTEM_PROMPT = `You are Arcana, a self-improving AI agent. You have access to:
 - memory_search: search past sessions and conversations

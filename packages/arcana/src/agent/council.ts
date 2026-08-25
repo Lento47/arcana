@@ -279,9 +279,11 @@ export async function runCouncil(args: CouncilArgs, runner: AgentRunner, memory?
         ...(skipped.length ? [`skipped (no credential): ${skipped.join(", ")}`] : []),
       ],
     })
-    return "council: needs at least 2 credentialed models. " +
-      (skipped.length ? `Skipped (no credential): ${skipped.join(", ")}` : "") +
-      "Set provider API keys or ensure ~/.arcana/proxy_key exists for the Arcana Proxy."
+    return [
+      "council: needs at least 2 credentialed models.",
+      ...(skipped.length ? [`Skipped (no credential): ${skipped.join(", ")}.`] : []),
+      "Set provider API keys or ensure ~/.arcana/proxy_key exists for the Arcana Proxy.",
+    ].join(" ")
   }
   const rounds = Math.min(args.rounds ?? 1, 2) as 1 | 2
   const voteMode: VoteMode = args.vote_mode ?? "majority"

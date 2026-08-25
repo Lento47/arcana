@@ -10,7 +10,7 @@ import type { AgentConfig, ChatMessage, TurnResult, ToolDef, ToolHandler, ToolRe
 import { redactSecrets, redactGitEmails, redactPII, redactGitAuthorNames, checkDangerousCommand, RateLimiter, auditLog, detectInjection } from "./guard.js"
 import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
-import { gatedSpawn, formatGateResult } from "./authority.js"
+import { gatedSpawn, formatGateResult, recordToolSchema } from "./authority.js"
 import { isPermissionPolicyPath, isSelfAwarenessPath } from "@arcana/core/util/self-awareness"
 import { analyzeDiff, classifyGuard, DEFAULT_THRESHOLDS, isDependencyManifest } from "@arcana/core/util/file-edit-guard"
 import {

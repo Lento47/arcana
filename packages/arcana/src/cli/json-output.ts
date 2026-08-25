@@ -25,8 +25,8 @@ export function outputJson(data: unknown): void {
 /**
  * Check whether the --json flag is present in parsed yargs arguments.
  */
-export function isJsonMode(args: { json?: boolean }): boolean {
-  return args.json === true
+export function isJsonMode(args: unknown): boolean {
+  return typeof args === "object" && args !== null && (args as { json?: unknown }).json === true
 }
 
 /**
