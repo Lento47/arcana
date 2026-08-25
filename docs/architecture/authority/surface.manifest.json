@@ -1,5 +1,5 @@
 {
-  "$comment": "Authority Surface manifest — frozen policy input for the K0 gate. See AUTHORITY-KERNEL.md §3. rawModules maps a raw authority source (module specifier or Bun API) to its effect class. kernelDeclaredPaths are the ONLY paths allowed to hold raw sources without a baseline grandfather entry; it is intentionally empty until M1 migrates the first effect class. enforcement:'audit' means new undeclared sources FAIL while grandfathered baseline entries remain recorded.",
+  "$comment": "Authority Surface manifest — frozen policy input for the K0 gate. See AUTHORITY-KERNEL.md §3. rawModules maps a raw authority source (module specifier or Bun API) to its effect class. kernelDeclaredPaths are the ONLY privileged adapter paths allowed to hold raw sources without a baseline grandfather entry. enforcement:'audit' means new undeclared sources FAIL while grandfathered baseline entries remain recorded.",
   "version": 1,
   "enforcement": "audit",
   "scan": {
@@ -21,6 +21,9 @@
     "Bun.write": "FsMutation",
     "Bun.$shell": "ProcessExecution"
   },
+  "kernelDeclaredPaths": [
+    "packages/core/src/capability/kernel-ipc.ts"
+  ],
   "$packageRulesComment": "forbiddenModules under pathPrefix fail REGARDLESS of baseline — grandfathering never rescues a forbidden class. Used by M1 to make agent-path process execution bypass-proof.",
   "packageRules": [
     {

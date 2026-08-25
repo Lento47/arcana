@@ -31,6 +31,7 @@ interface Manifest {
   enforcement: string
   scan: { roots: string[]; excludeFilePatterns: string[] }
   rawModules: Record<string, string>
+  kernelDeclaredPaths?: string[]
 }
 type Baseline = { generatedAt: string; entries: Record<string, { classes: string[]; modules: string[] }> }
 type Actual = Record<string, { classes: Set<string>; modules: Set<string> }>
@@ -147,7 +148,7 @@ const baseline: Baseline = existsSync(BASELINE_PATH)
   ? JSON.parse(readFileSync(BASELINE_PATH, "utf8"))
   : { generatedAt: "", entries: {} }
 
-const declared = new Set<string>()
+const declared = new Set(manifest.kernelDeclaredPaths ?? [])
 const known = new Set<string>([...declared, ...Object.keys(baseline.entries)])
 
 const undeclared: string[] = []
