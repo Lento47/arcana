@@ -22,7 +22,9 @@
     "Bun.$shell": "ProcessExecution"
   },
   "kernelDeclaredPaths": [
-    "packages/core/src/capability/kernel-ipc.ts"
+    "packages/core/src/capability/kernel-ipc.ts",
+    "packages/core/src/capability/ipc-spawn-executor.ts",
+    "packages/arcana/src/agent/authority.ts"
   ],
   "$packageRulesComment": "forbiddenModules under pathPrefix fail REGARDLESS of baseline — grandfathering never rescues a forbidden class. Used by M1 to make agent-path process execution bypass-proof.",
   "packageRules": [
