@@ -12,6 +12,7 @@ import {
   decodeFrame,
   FrameError,
   FrameSequencer,
+  assertResponseId,
   frameRequestId,
   IPC_PROTOCOL_VERSION,
   MAX_FRAME_BYTES,
@@ -53,7 +54,17 @@ describe("ipc-frame codec", () => {
     expect(seq.accept(2)).toBe(false) // duplicate
     expect(seq.accept(1)).toBe(false) // regression
     expect(seq.accept(5)).toBe(true) // gap tolerated (loss ≠ replay)
+    expect(seq.accept(Number.NaN)).toBe(false)
     expect(seq.current).toBe(5)
+
+    const resumed = new FrameSequencer(10)
+    expect(resumed.accept(10)).toBe(false)
+    expect(resumed.accept(11)).toBe(true)
+  })
+
+  it("rejects a response id that does not echo the request id", () => {
+    expect(() => assertResponseId("req-1", "req-2")).toThrow(FrameError)
+    expect(() => assertResponseId("req-1", "req-1")).not.toThrow()
   })
 
   it("frame ids are deterministic from seed", () => {

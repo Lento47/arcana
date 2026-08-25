@@ -16,7 +16,6 @@ import { authorizeProcess, type ProcessGateResult } from "@arcana/core/capabilit
 import { authorizeFileMutation, type FileMutationResult } from "@arcana/core/capability/fs-gate"
 import { authorizeNetwork, type NetworkGateResult } from "@arcana/core/capability/network-gate"
 import { authorizeSecretUse, seedNamedSecretGrant } from "@arcana/core/capability/secret-gate"
-import { authorizeNetwork, type NetworkGateResult } from "@arcana/core/capability/network-gate"
 
 let resolved: { dbPath: string; sessionId: string; instanceId: string } | null = null
 

@@ -12,7 +12,10 @@ import { describe, expect, it, afterAll } from "bun:test"
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import net from "node:net"
 import { startKernelServer, ipcSpawnViaKernel } from "./kernel-ipc"
+import { decodeFrame, encodeFrame, IPC_PROTOCOL_VERSION, MAX_FRAME_BYTES } from "./ipc-frame"
+import { countingSpawnExecutor } from "./spawn-executor"
 
 const workDir = mkdtempSync(join(tmpdir(), "arcana-kernel-ipc-"))
 
@@ -25,9 +28,40 @@ afterAll(() => {
 })
 
 const listenPath =
-  process.platform === "win32"
-    ? `\\\\.\\pipe\\arcana-kernel-test-${Date.now()}`
-    : join(workDir, "kernel.sock")
+  process.platform === "win32" ? `\\\\.\\pipe\\arcana-kernel-test-${Date.now()}` : join(workDir, "kernel.sock")
+
+function collectFrames(socket: net.Socket, count: number): Promise<Array<Record<string, unknown>>> {
+  return new Promise((resolve, reject) => {
+    let buffer = Buffer.alloc(0)
+    const frames: Array<Record<string, unknown>> = []
+    const timeout = setTimeout(() => reject(new Error("timed out waiting for IPC frames")), 5_000)
+
+    socket.on("data", (chunk: Buffer) => {
+      buffer = Buffer.concat([buffer, chunk])
+      while (buffer.length >= 4) {
+        const length = buffer.readUInt32BE(0)
+        if (buffer.length < 4 + length) return
+        frames.push(decodeFrame<Record<string, unknown>>(buffer.subarray(4, 4 + length)))
+        buffer = buffer.subarray(4 + length)
+        if (frames.length === count) {
+          clearTimeout(timeout)
+          resolve(frames)
+          return
+        }
+      }
+    })
+    socket.once("error", reject)
+  })
+}
+
+async function connect(path: string): Promise<net.Socket> {
+  const socket = net.connect(path)
+  await new Promise<void>((resolve, reject) => {
+    socket.once("connect", resolve)
+    socket.once("error", reject)
+  })
+  return socket
+}
 
 describe("kernel IPC server (S4 M-c)", () => {
   it("ALLOW path: mediated spawn executes the real child and returns output", async () => {
@@ -72,24 +106,120 @@ describe("kernel IPC server (S4 M-c)", () => {
     }
   })
 
-  it("malformed frames get an error frame back, connection stays usable", async () => {
-    const net = await import("node:net")
-    const kernel = await startKernelServer({ listenPath: `${listenPath}-bad`, dbPath: ":memory:", principalId: "t", sessionId: "s" })
+  it("uses the kernel-side injected executor after mediation", async () => {
+    const { executor, calls } = countingSpawnExecutor({ stdout: "from-kernel" })
+    const path = `${listenPath}-injected`
+    const kernel = await startKernelServer({
+      listenPath: path,
+      dbPath: ":memory:",
+      principalId: "test-agent",
+      sessionId: "s-injected",
+      spawnExecutor: executor,
+    })
     try {
-      const socket = net.connect(`${listenPath}-bad`)
+      const result = await ipcSpawnViaKernel(path, {
+        argv: ["definitely-not-a-real-executable", "arg"],
+        sessionId: "s-injected",
+        instanceId: "agent-process-1",
+      })
+      expect(result.status).toBe("EXECUTED")
+      if (result.status === "EXECUTED") expect(result.stdout).toBe("from-kernel")
+      expect(calls).toEqual([["definitely-not-a-real-executable", "arg"]])
+    } finally {
+      await kernel.close()
+    }
+  })
+
+  it("rejects a duplicate sequence on one connection before a second dispatch", async () => {
+    const { executor, calls } = countingSpawnExecutor()
+    const path = `${listenPath}-sequence`
+    const kernel = await startKernelServer({
+      listenPath: path,
+      dbPath: ":memory:",
+      principalId: "test-agent",
+      sessionId: "s-sequence",
+      spawnExecutor: executor,
+    })
+    try {
+      const socket = await connect(path)
       try {
-        socket.write(Buffer.from([0, 0, 0, 2])) // truncated garbage
-        // Give the server a beat; then confirm it is still alive by making a
-        // well-formed request through the same connection type.
-        await new Promise((r) => setTimeout(r, 150))
-        const result = await ipcSpawnViaKernel(`${listenPath}-bad`, {
-          argv: [process.execPath, "-e", "process.exit(0)"],
-          sessionId: "s-alive",
+        const responses = collectFrames(socket, 2)
+        const request = (id: string) => ({
+          v: IPC_PROTOCOL_VERSION,
+          id,
+          seq: 1,
+          kind: "process" as const,
+          payload: { toolName: "shell", argv: ["mock-process"] },
+          auth: { instanceId: "agent-process-1" },
         })
-        expect(result.status).toBe("EXECUTED")
+        socket.write(Buffer.concat([encodeFrame(request("first")), encodeFrame(request("duplicate"))]))
+
+        const received = await responses
+        const duplicate = received.find((frame) => frame["id"] === "duplicate") as {
+          error?: { code?: string }
+        }
+        expect(duplicate.error?.code).toBe("SEQ_REGRESSION")
+        expect(calls).toHaveLength(1)
       } finally {
         socket.destroy()
       }
+    } finally {
+      await kernel.close()
+    }
+  })
+
+  it("rejects an oversized prefix without buffering the declared body", async () => {
+    const path = `${listenPath}-oversize`
+    const kernel = await startKernelServer({
+      listenPath: path,
+      dbPath: ":memory:",
+      principalId: "test-agent",
+      sessionId: "s-oversize",
+    })
+    try {
+      const socket = await connect(path)
+      try {
+        const response = collectFrames(socket, 1)
+        const prefix = Buffer.alloc(4)
+        prefix.writeUInt32BE(MAX_FRAME_BYTES + 1)
+        socket.write(prefix)
+        const [frame] = await response
+        expect((frame?.["error"] as { code?: string } | undefined)?.code).toBe("OVERSIZE")
+      } finally {
+        socket.destroy()
+      }
+    } finally {
+      await kernel.close()
+    }
+  })
+
+  it("returns a protocol error for malformed JSON and remains available", async () => {
+    const path = `${listenPath}-bad`
+    const kernel = await startKernelServer({
+      listenPath: path,
+      dbPath: ":memory:",
+      principalId: "t",
+      sessionId: "s",
+    })
+    try {
+      const socket = await connect(path)
+      try {
+        const response = collectFrames(socket, 1)
+        const body = Buffer.from("{x", "utf8")
+        const prefix = Buffer.alloc(4)
+        prefix.writeUInt32BE(body.length)
+        socket.write(Buffer.concat([prefix, body]))
+        const [frame] = await response
+        expect((frame?.["error"] as { code?: string } | undefined)?.code).toBe("BAD_JSON")
+      } finally {
+        socket.destroy()
+      }
+
+      const result = await ipcSpawnViaKernel(path, {
+        argv: [process.execPath, "-e", "process.exit(0)"],
+        sessionId: "s-alive",
+      })
+      expect(result.status).toBe("EXECUTED")
     } finally {
       await kernel.close()
     }

@@ -91,8 +91,11 @@ export function decodeFrame<T>(body: Buffer): T {
  * violation (replay protection lives in the PEP layer, this is transport).
  */
 export class FrameSequencer {
-  private last = 0
-  constructor(private readonly startAt = 0) {}
+  private last: number
+
+  constructor(startAt = 0) {
+    this.last = startAt
+  }
 
   next(): number {
     return ++this.last
@@ -100,13 +103,20 @@ export class FrameSequencer {
 
   /** Returns true when seq strictly advances; false on regression/duplicate. */
   accept(seq: number): boolean {
-    if (seq <= this.last) return false
+    if (!Number.isSafeInteger(seq) || seq <= this.last) return false
     this.last = seq
     return true
   }
 
   get current(): number {
     return this.last
+  }
+}
+
+/** Reject a response that is not correlated to the outstanding request. */
+export function assertResponseId(expected: string, actual: unknown): asserts actual is string {
+  if (actual !== expected) {
+    throw new FrameError("ID_ECHO_MISMATCH", `expected response id ${expected}, received ${String(actual)}`)
   }
 }
 
