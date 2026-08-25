@@ -56,6 +56,14 @@ export function gateIdentity(): { instanceId: string } {
 // ── K10-minimal: tool-instance schema registry ─────────────────────────
 const toolSchemaHashes = new Map<string, string>()
 
+/**
+ * S4 M-d transport selection: when ARCANA_TRANSPORT=ipc, gated calls route
+ * through the kernel's IPC surface instead of in-process execution.
+ */
+function resolveTransportMode(): "local" | "ipc" {
+  return process.env.ARCANA_TRANSPORT === "ipc" ? "ipc" : "local"
+}
+
 /** Called by AgentRunner.registerTool — records the declared tool surface. */
 export function recordToolSchema(toolName: string, canonicalDefJson: string): void {
   toolSchemaHashes.set(
@@ -88,10 +96,23 @@ export function gatedSpawn(
   opts?: { cwd?: string; env?: Record<string, string | undefined> },
 ): Promise<ProcessGateResult> {
   const { dbPath, sessionId } = resolveGateTarget()
-  return authorizeProcess(
-    { dbPath, sessionId, principalId: "arcana-cli" },
-    { toolName, argv, cwd: opts?.cwd, env: opts?.env, instanceId: resolveGateTarget().instanceId, toolInstance: toolInstanceFor(toolName) },
-  )
+  const gateOpts: ProcessGateOptions = { dbPath, sessionId, principalId: "arcana-cli" }
+
+  // S4 M-d: route through kernel IPC when transport mode is "ipc".
+  if (resolveTransportMode() === "ipc") {
+    const { createIpcSpawnExecutor } = require("@arcana/core/capability/ipc-spawn-executor") as {
+      createIpcSpawnExecutor: typeof import("@arcana/core/capability/ipc-spawn-executor").createIpcSpawnExecutor
+    }
+    const { join } = require("node:path") as typeof import("node:path")
+    const pipePath = process.env.ARCANA_KERNEL_PIPE ?? "\\\\.\\pipe\\arcana-kernel"
+    gateOpts.spawnExecutor = createIpcSpawnExecutor({ pipePath })
+  }
+
+  return authorizeProcess(gateOpts, {
+    toolName, argv, cwd: opts?.cwd, env: opts?.env,
+    instanceId: resolveGateTarget().instanceId,
+    toolInstance: toolInstanceFor(toolName),
+  })
 }
 
 // ── Secret provisioning & mediated use ────────────────────────────────
