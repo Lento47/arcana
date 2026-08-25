@@ -84,6 +84,15 @@ export function canonicalizeRequest(req: AuthorizationRequest): Buffer {
   parts.push(strOpt(req.workingDirectory))
   parts.push(strOpt(req.networkDestination))
 
+  // Exact child-environment binding. Values never enter the request object;
+  // only the process gate's canonical digest is retained. Tagged and optional
+  // so requests without an explicit environment keep their v1 byte stream.
+  if (req.environment !== undefined) {
+    parts.push(str("process-environment-v1"))
+    parts.push(labelArr(req.environment.variableNames))
+    parts.push(str(req.environment.digest))
+  }
+
   // Provenance and sensitivity (sorted for determinism)
   parts.push(labelArr(req.provenance))
   parts.push(labelArr(req.sensitivity))

@@ -149,6 +149,15 @@ export interface CanonicalResource {
 }
 
 /**
+ * Non-plaintext binding for the exact child-process environment.
+ * Variable names remain inspectable; values contribute only through digest.
+ */
+export interface ProcessEnvironmentBinding {
+  variableNames: string[]
+  digest: string
+}
+
+/**
  * K7: recorded influence claim for one consequential argument.
  * The model's causal story (`claimed_sources`) is itself untrusted —
  * policy consumes the LABELS, never the narrative.
@@ -186,6 +195,7 @@ export interface AuthorizationRequest {  schemaVersion: "1"
   arguments?: string[]
   workingDirectory?: string
   networkDestination?: string
+  environment?: ProcessEnvironmentBinding
 
   provenance: ProvenanceLabel[]
   sensitivity: SensitivityLabel[]

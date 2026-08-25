@@ -8,7 +8,14 @@
 
 import { authorizeAndExecute } from "./pep"
 import type { PreparedEffect, PolicyContextProvider, EnforcementResult } from "./pep"
-import type { AuthorizationRequest, CapabilityAction, ProvenanceLabel, SensitivityLabel, CanonicalResource } from "./types"
+import type {
+  AuthorizationRequest,
+  CapabilityAction,
+  ProvenanceLabel,
+  SensitivityLabel,
+  CanonicalResource,
+  ProcessEnvironmentBinding,
+} from "./types"
 import type { PolicyContext } from "./pdp"
 import { randomUUID } from "node:crypto"
 
@@ -102,6 +109,7 @@ export interface ToolCallContext {
   arguments?: string[]
   workingDirectory?: string
   networkDestination?: string
+  environment?: ProcessEnvironmentBinding
   provenance?: ProvenanceLabel[]
   sensitivity?: SensitivityLabel[]
   /**
@@ -158,6 +166,7 @@ export function buildAuthorizationRequest(ctx: ToolCallContext): AuthorizationRe
     arguments: ctx.arguments ?? extractArguments(ctx),
     workingDirectory: ctx.workingDirectory ?? extractWorkingDirectory(ctx),
     networkDestination: ctx.networkDestination ?? host,
+    environment: ctx.environment,
     provenance: ctx.provenance ?? ["USER_INSTRUCTION"],
     sensitivity: ctx.sensitivity ?? ["PUBLIC"],
     requestedAt: ctx.requestedAt ?? new Date().toISOString(),

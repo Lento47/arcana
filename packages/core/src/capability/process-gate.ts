@@ -22,6 +22,7 @@
 // connection pooling is an optimization deferred until measured to matter.
 
 import { Effect } from "effect"
+import { createHash } from "node:crypto"
 import { authorizeAndExecuteEffect } from "./pep"
 import type { EnforcementResult } from "./pep"
 import { buildAuthorizationRequest } from "./pep-integration"
@@ -40,6 +41,7 @@ import {
   normalizeInfluenceClaims,
 } from "./argument-provenance"
 import type { ArgumentInfluenceClaim } from "./types"
+import type { ProcessEnvironmentBinding } from "./types"
 
 export interface ProcessGateOptions {
   /** K3b: record effect outputs by request hash, or replay recorded ones. */
@@ -101,6 +103,33 @@ export const noopEmitter = {
   emit: () => undefined,
 } as const
 
+function lengthPrefixed(value: string): Buffer {
+  const bytes = Buffer.from(value, "utf8")
+  const length = Buffer.alloc(4)
+  length.writeUInt32BE(bytes.length)
+  return Buffer.concat([length, bytes])
+}
+
+/**
+ * Bind the exact replacement environment without retaining plaintext values
+ * in the authorization request or its emitted evidence.
+ */
+export function fingerprintProcessEnvironment(
+  env: Readonly<Record<string, string>>,
+): ProcessEnvironmentBinding {
+  const entries = Object.entries(env).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  const hash = createHash("sha256")
+  hash.update("arcana-process-environment-v1")
+  for (const [name, value] of entries) {
+    hash.update(lengthPrefixed(name))
+    hash.update(lengthPrefixed(value))
+  }
+  return {
+    variableNames: entries.map(([name]) => name),
+    digest: hash.digest("hex"),
+  }
+}
+
 /**
  * Shared gate plumbing: opens the authority store inside one scoped program,
  * bootstraps session grants (unless suppressed), builds the policy provider,
@@ -153,12 +182,35 @@ export async function authorizeProcess(
   request: ProcessGateRequest,
 ): Promise<ProcessGateResult> {
   const principalId = options.principalId ?? "arcana-cli"
+  if (
+    !Array.isArray(request.argv) ||
+    request.argv.length === 0 ||
+    request.argv.some((argument) => typeof argument !== "string")
+  ) {
+    recordDecision("EXECUTION_FAILED")
+    return { status: "EXECUTION_FAILED", detail: "argv must be a non-empty string array" }
+  }
+
+  // Snapshot every dispatched field before the first await. The PEP hashes
+  // and freezes its request, but executeExact must also avoid retaining the
+  // caller's mutable argv/env objects across policy evaluation.
+  const argv = [...request.argv]
+  const cwd = request.cwd
+  let env: Record<string, string> | undefined
+  if (request.env !== undefined) {
+    env = {}
+    for (const [key, value] of Object.entries(request.env)) {
+      if (typeof value === "string") env[key] = value
+    }
+  }
+  const environment = env === undefined ? undefined : fingerprintProcessEnvironment(env)
+  const transport = options.transport ?? request.transport
 
   // K7: gate-default influence claims + caller extras, then escalation.
   const derived = deriveGateInfluenceClaims({
     toolName: request.toolName,
     assertedBy: request.instanceId,
-    argv: request.argv,
+    argv,
   })
   const claims = normalizeInfluenceClaims([...derived, ...(request.influenceClaims ?? [])])
   const { escalate, triggeringArguments } = evaluateInfluenceEscalation(claims)
@@ -178,13 +230,14 @@ export async function authorizeProcess(
     principalId,
     sessionId: options.sessionId,
     args: {
-      command: request.argv.join(" "),
-      argv: request.argv,
-      cwd: request.cwd ?? null,
+      command: argv.join(" "),
+      argv,
+      cwd: cwd ?? null,
     },
-    executable: request.argv[0],
-    arguments: request.argv.slice(1),
-    workingDirectory: request.cwd,
+    executable: argv[0],
+    arguments: argv.slice(1),
+    workingDirectory: cwd,
+    environment,
     provenance: augmentProvenanceForEscalation(["USER_INSTRUCTION"], escalate, claims),
     nonce: request.nonce,
     requestedAt: request.requestedAt,
@@ -209,16 +262,9 @@ export async function authorizeProcess(
         request: authReq,
         executeExact: () =>
           Effect.sync(() => {
-            const tr = gateTransportExec(options.transport ?? request.transport, authReqHash, () => {
+            const tr = gateTransportExec(transport, authReqHash, () => {
               executorCalls++
-              let env: Record<string, string> | undefined
-              if (request.env) {
-                env = {}
-                for (const [k, v] of Object.entries(request.env)) {
-                  if (typeof v === "string") env[k] = v
-                }
-              }
-              return spawnExecutor(request.argv, { cwd: request.cwd, env })
+              return spawnExecutor(argv, { cwd, env })
             })
             void executorCalls
             return tr.value

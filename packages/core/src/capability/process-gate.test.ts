@@ -8,7 +8,7 @@
 import { describe, expect, it } from "bun:test"
 import { existsSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
-import { authorizeProcess } from "./process-gate"
+import { authorizeProcess, fingerprintProcessEnvironment } from "./process-gate"
 import { countingSpawnExecutor } from "./spawn-executor"
 
 const tmp = (n: string) => {
@@ -73,6 +73,114 @@ describe("process-gate (Authority Kernel M1)", () => {
       if (fresh.status === "EXECUTED") expect(fresh.requestHash).not.toBe(a.requestHash)
     }
     rmSync(tmp("det.db"), { force: true })
+  })
+
+  it("binds replacement environment values without retaining their plaintext", async () => {
+    const db = tmp("environment.db")
+    const { executor } = countingSpawnExecutor()
+    const opts = {
+      dbPath: db,
+      principalId: "test-agent",
+      sessionId: "sess-environment",
+      spawnExecutor: executor,
+    }
+    const captured = {
+      toolName: "shell",
+      argv: ["mock-process"],
+      nonce: "environment-nonce",
+      requestedAt: "2026-08-25T00:00:00.000Z",
+      requestId: "req-environment",
+    }
+
+    const ordered = await authorizeProcess(opts, {
+      ...captured,
+      env: { ALPHA: "one", TOKEN: "high-entropy-secret-value" },
+    })
+    const reordered = await authorizeProcess(opts, {
+      ...captured,
+      env: { TOKEN: "high-entropy-secret-value", ALPHA: "one" },
+    })
+    const changed = await authorizeProcess(opts, {
+      ...captured,
+      env: { ALPHA: "one", TOKEN: "different-secret-value" },
+    })
+    const inherited = await authorizeProcess(opts, captured)
+    const empty = await authorizeProcess(opts, { ...captured, env: {} })
+
+    expect(ordered.status).toBe("EXECUTED")
+    expect(reordered.status).toBe("EXECUTED")
+    expect(changed.status).toBe("EXECUTED")
+    expect(inherited.status).toBe("EXECUTED")
+    expect(empty.status).toBe("EXECUTED")
+    if (
+      ordered.status === "EXECUTED" &&
+      reordered.status === "EXECUTED" &&
+      changed.status === "EXECUTED" &&
+      inherited.status === "EXECUTED" &&
+      empty.status === "EXECUTED"
+    ) {
+      expect(ordered.requestHash).toBe(reordered.requestHash)
+      expect(changed.requestHash).not.toBe(ordered.requestHash)
+      expect(inherited.requestHash).not.toBe(empty.requestHash)
+    }
+
+    const binding = fingerprintProcessEnvironment({ TOKEN: "high-entropy-secret-value" })
+    expect(binding.variableNames).toEqual(["TOKEN"])
+    expect(JSON.stringify(binding)).not.toContain("high-entropy-secret-value")
+    rmSync(db, { force: true })
+  })
+
+  it("dispatches the argv and environment snapshot that was authorized", async () => {
+    const seen: Array<{
+      argv: string[]
+      env: Record<string, string> | undefined
+    }> = []
+    const argv = ["mock-process", "original"]
+    const env: Record<string, string | undefined> = { MODE: "original", DROPPED: undefined }
+    const pending = authorizeProcess(
+      {
+        dbPath: tmp("snapshot.db"),
+        principalId: "test-agent",
+        sessionId: "sess-snapshot",
+        spawnExecutor: (capturedArgv, options) => {
+          seen.push({ argv: [...capturedArgv], env: options?.env })
+          return { stdout: "", stderr: "", exitCode: 0 }
+        },
+      },
+      { toolName: "shell", argv, env },
+    )
+
+    argv[1] = "mutated"
+    env.MODE = "mutated"
+    env.ADDED = "after-authorization"
+
+    const result = await pending
+    expect(result.status).toBe("EXECUTED")
+    expect(seen).toEqual([
+      {
+        argv: ["mock-process", "original"],
+        env: { MODE: "original" },
+      },
+    ])
+    rmSync(tmp("snapshot.db"), { force: true })
+  })
+
+  it("rejects an empty argv before policy evaluation or dispatch", async () => {
+    const { executor, calls } = countingSpawnExecutor()
+    const result = await authorizeProcess(
+      {
+        dbPath: tmp("invalid-argv.db"),
+        principalId: "test-agent",
+        sessionId: "sess-invalid-argv",
+        spawnExecutor: executor,
+      },
+      { toolName: "shell", argv: [] },
+    )
+    expect(result).toEqual({
+      status: "EXECUTION_FAILED",
+      detail: "argv must be a non-empty string array",
+    })
+    expect(calls).toHaveLength(0)
   })
 
   it("K2: instance identity participates in the request hash", async () => {
