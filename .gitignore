@@ -110,3 +110,6 @@ packages/*/.bun-cache/
 .tmp-replay-k3b/
 .tmp-claim-probe.db*
 .tmp-authprobe*
+
+# Process-gate test transients
+packages/core/src/capability/.tmp-process-gate/
