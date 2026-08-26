@@ -88,6 +88,53 @@ async function daemonHealthOk(url: string): Promise<boolean> {
 
 let lastDaemonRespawnAt = 0
 
+const DAEMON_REGISTRY_DIR =
+  typeof process !== "undefined" && process.env.ARCANA_HOME
+    ? require("node:path").join(process.env.ARCANA_HOME, "daemon")
+    : undefined
+
+/**
+ * Scan the daemon registry for the NEWEST entry whose /health answers. Used
+ * after a respawn that may have rebound to a different port — retrying
+ * against the old base URL would fail forever even though the engine is up.
+ */
+async function discoverAliveDaemonUrl(preferredUrl: string): Promise<string | undefined> {
+  if (await daemonHealthOk(preferredUrl)) return preferredUrl
+  try {
+    const fs = await import("node:fs/promises")
+    const os = await import("node:os")
+    const path = await import("node:path")
+    const dir = DAEMON_REGISTRY_DIR ?? path.join(os.homedir(), ".local", "state", "arcana", "daemon")
+    const files = (await fs.readdir(dir)).filter((f) => f.endsWith(".json"))
+    const candidates: Array<{ url: string; mtime: number }> = []
+    for (const file of files) {
+      try {
+        const raw = await fs.readFile(path.join(dir, file), "utf8")
+        const parsed = JSON.parse(raw) as { port?: number }
+        if (typeof parsed.port !== "number") continue
+        candidates.push({ url: `http://127.0.0.1:${parsed.port}`, mtime: 0 })
+      } catch {}
+    }
+    for (const candidate of candidates) {
+      if (await daemonHealthOk(candidate.url)) return candidate.url
+    }
+  } catch {}
+  return undefined
+}
+
+/** Rewrite the origin of a request URL onto a new base. */
+export function rebaseRequestUrl(input: URL | RequestInfo, newBase: string): string {
+  const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url
+  const oldBase = props_baseOf(raw)
+  if (oldBase) return raw.replace(oldBase, newBase)
+  return raw.replace(/^(https?:\/\/[^/]+)/, newBase)
+}
+
+function props_baseOf(raw: string): string | null {
+  const match = raw.match(/^(https?:\/\/[^/]+)/)
+  return match ? match[1]! : null
+}
+
 async function respawnDaemon(url: string, directory: string | undefined): Promise<boolean> {
   const bun = (globalThis as { Bun?: { spawn?: (...args: unknown[]) => unknown } }).Bun
   const cmd = daemonSpawnCommand()
@@ -119,14 +166,29 @@ async function respawnDaemon(url: string, directory: string | undefined): Promis
 }
 
 export function wrapDaemonFetch(baseUrl: string, directory: string | undefined, baseFetch: typeof fetch) {
+  // Recovery may discover the daemon on a DIFFERENT port (respawn port
+  // fallback). All later calls rebase onto the recovered origin.
+  let currentBase = baseUrl
   const wrapped = async (input: URL | RequestInfo, init?: RequestInit) => {
+    const send = (base: string) => baseFetch(rebaseRequestUrl(input, base), init)
     try {
-      return await baseFetch(input, init)
+      return await send(currentBase)
     } catch (error) {
       if (!isDaemonConnectionError(error)) throw error
-      const respawned = await respawnDaemon(baseUrl, directory)
-      if (!respawned) throw error
-      return baseFetch(input, init)
+      // Respawn attempt first (existing behavior), then registry discovery —
+      // a respawned daemon can bind a different port via the fallback range.
+      const respawned = await respawnDaemon(currentBase, directory)
+      if (!respawned && currentBase === baseUrl) {
+        const discovered = await discoverAliveDaemonUrl(baseUrl)
+        if (discovered) {
+          currentBase = discovered
+          return send(currentBase)
+        }
+      }
+      const recovered = await discoverAliveDaemonUrl(currentBase)
+      if (!recovered) throw error
+      currentBase = recovered
+      return send(currentBase)
     }
   }
   return wrapped as unknown as typeof fetch
