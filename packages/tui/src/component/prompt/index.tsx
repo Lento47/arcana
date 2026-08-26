@@ -1338,6 +1338,8 @@ export function Prompt(props: PromptProps) {
           if (finishMoveProgress) move.finishSubmit()
           clearOptimisticMessages(pendingStubID)
           sync.session.forget(pendingStubID)
+          // The session will never exist — strand nothing on the stub id.
+          promptQueue.failForSession(pendingStubID, "session was never created")
           console.log("Creating a session failed:", res.error)
           setStore("prompt", { input: inputText, parts: nonTextParts })
           writeInput(inputText)
@@ -1354,6 +1356,8 @@ export function Prompt(props: PromptProps) {
       }
 
       remapOptimisticSession(pendingStubID, createdID)
+      // Queued payloads minted against the stub follow the echoes to the real id.
+      promptQueue.rebindSession(pendingStubID, createdID)
       sessionID = createdID
       route.navigate({
         type: "session",

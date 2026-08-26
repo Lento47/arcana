@@ -123,6 +123,9 @@ function sanitize(items: unknown): QueuedPrompt[] {
   })
 }
 
+/** lastError stamped on items stranded by a not-yet-created (stub) session. */
+const STUB_SESSION_LAST_ERROR = "session was still being created when this was queued"
+
 export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimpleContext({
   name: "PromptQueue",
   init: () => {
@@ -240,13 +243,80 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       persist()
     }
 
+    /** Point stranded items at the real session once session.create resolves.
+     *  Items the stub-guard already failed revive here so delivery retries
+     *  against the real id instead of lingering as needs-attention. */
+    const rebindSession = (fromSessionID: string, toSessionID: string) => {
+      if (fromSessionID === toSessionID) return
+      let touched = false
+      setStore(
+        "items",
+        produce((items) => {
+          for (const item of items) {
+            if (item.payload.sessionID !== fromSessionID) continue
+            item.payload.sessionID = toSessionID
+            touched = true
+            if (item.failed && item.lastError === STUB_SESSION_LAST_ERROR) {
+              item.failed = false
+              item.nextRetryAt = Date.now()
+            }
+          }
+        }),
+      )
+      if (touched) {
+        persist()
+        scheduleNext()
+      }
+    }
+
+    /** Mark everything bound to a dead/never-created session as needs-attention. */
+    const failForSession = (sessionID: string, lastError: string) => {
+      let touched = false
+      setStore(
+        "items",
+        produce((items) => {
+          for (const item of items) {
+            if (item.payload.sessionID !== sessionID || item.failed) continue
+            item.attempts += 1
+            item.lastError = lastError
+            item.failed = true
+            item.nextRetryAt = Number.POSITIVE_INFINITY
+            touched = true
+          }
+        }),
+      )
+      if (touched) persist()
+    }
+
     const sendStored = (item: QueuedPrompt): Promise<"sent" | "queued"> =>
       deliveries.run(item.id, async () => {
         const deliveryStarted = Date.now()
         const profileDelivery = process.env.ARCANA_PROFILE_SESSION_SWITCH === "1"
         try {
+          // A queued item must never be delivered against a missing or
+          // client-side stub id ("pending-…"): only session.create's remap
+          // turns it into a real resource, so posting here can only 404.
+          // This also catches an undefined sessionID BEFORE the duplicate-
+          // guard round-trip below can request /session/undefined/… and
+          // surface "Session not found: undefined".
+          const queuedSessionID = item.payload.sessionID
+          if (!queuedSessionID || isPendingSessionID(queuedSessionID)) {
+            const attempts = item.attempts + 1
+            update(item.id, {
+              attempts,
+              lastError: STUB_SESSION_LAST_ERROR,
+              failed: true,
+              nextRetryAt: Number.POSITIVE_INFINITY,
+            })
+            toast.show({
+              title: "Queued message needs attention",
+              message: `${item.label}\nIts session no longer exists. Re-send in an open session.`,
+              variant: "warning",
+            })
+            return "queued"
+          }
           // Duplicate guard is only meaningful for RETRIES: fresh sends mint
-          // a brand-new message id and cannot already exist — skipping the
+          // a brand-new message id and cannot already exist - skipping the
           // round-trip keeps the critical path to promptAsync at one call.
           if (item.attempts > 0 && item.payload.messageID) {
             const existing = await sdk.client.session
@@ -264,26 +334,6 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
               })
               return "sent"
             }
-          }
-          // A queued item must never be delivered against a client-side stub
-          // id ("pending-…"): only session.create's remap turns it into a real
-          // resource, so posting here can only 404. Surface it as failed
-          // instead of retrying forever against an endpoint that will never
-          // exist.
-          if (isPendingSessionID(item.payload.sessionID)) {
-            const attempts = item.attempts + 1
-            update(item.id, {
-              attempts,
-              lastError: "session was still being created when this was queued",
-              failed: true,
-              nextRetryAt: Number.POSITIVE_INFINITY,
-            })
-            toast.show({
-              title: "Queued message needs attention",
-              message: `${item.label}\nIts session no longer exists. Re-send in an open session.`,
-              variant: "warning",
-            })
-            return "queued"
           }
           await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
           markActive(item.payload.sessionID)
@@ -553,6 +603,8 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
       remove,
       clear,
       drain,
+      rebindSession,
+      failForSession,
     }
   },
 })
