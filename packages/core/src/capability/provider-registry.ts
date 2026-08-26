@@ -1,17 +1,8 @@
 /**
- * Provider identity registry (K10) — durable record of every external
- * provider (skill, MCP server) loaded into agent context, with drift
- * detection against the identity that was previously recorded.
- *
- * Contract: content-derived identity at load time; ANY hash change on a
- * subsequent load ⇒ drift ⇒ trust inheritance stops ⇒ re-approval required.
- * First sight of a provider records its baseline (grant-by-first-use);
- * `approveProvider` re-pins the baseline after an operator has reviewed
- * drifted content.
- *
- * Persistence: one JSON file (default under ~/.config/arcana/), written
- * atomically on every mutation. The file is small (one record per provider)
- * and loads are infrequent — simplicity over throughput.
+ * Provider identity registry (K10) — durable record of external providers
+ * (skills, MCP servers) with drift detection against the previously recorded
+ * identity. Any hash change on a later load ⇒ drift ⇒ re-approval required.
+ * Persisted atomically to one JSON file under ~/.config/arcana/.
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
@@ -72,8 +63,7 @@ function hydrate(path: string): void {
     if (parsed.version !== REGISTRY_VERSION || !parsed.providers) return
     for (const [key, rec] of Object.entries(parsed.providers)) cache.set(key, rec)
   } catch {
-    // Corrupt registry ⇒ start empty (fail-open on RECORDS, never on enforcement:
-    // an unreadable baseline simply means every load looks like first sight).
+    // Corrupt registry ⇒ start empty; every load then looks like first sight.
     cache = new Map()
   }
 }
@@ -100,9 +90,7 @@ export function allProviderRecords(path: string = defaultRegistryPath()): readon
 
 /**
  * Record a provider load: compute the content-derived identity, compare it
- * against the previously recorded identity, and update the stored record.
- * Returns the drift report the caller MUST act on (drift ⇒ untrusted until
- * re-approved).
+ * against the stored record, and persist. Drift ⇒ untrusted until re-approved.
  */
 export function recordProviderLoad(
   input: {
@@ -121,8 +109,6 @@ export function recordProviderLoad(
     kind: input.kind,
     providerId: input.providerId,
     version: input.version,
-    // NOTE: sourceDir deliberately NOT passed — hashing the directory PATH
-    // would make identity move-sensitive. Content hashes only.
     manifestJson: input.manifestJson,
     schemaDeclarations: input.schemaDeclarations,
     description: input.description,
@@ -144,22 +130,21 @@ export function recordProviderLoad(
 }
 
 /**
- * Re-pin a provider's approved baseline to its currently recorded identity.
- * Called after an operator reviews drifted content and accepts it. Subsequent
- * identical loads report no drift again.
+ * Re-pin a provider's approved baseline to its current identity after an
+ * operator has reviewed drifted content.
  */
 export function approveProvider(key: string, path: string = defaultRegistryPath()): boolean {
   hydrate(path)
   const rec = cache!.get(key)
   if (!rec) return false
-  rec.first_seen_at = Date.now() // approval timestamp proxy
+  rec.first_seen_at = Date.now()
   rec.last_load_drifted = false
   rec.last_drift_fields = []
   saveProviderRegistry(path)
   return true
 }
 
-/** Observability: how many tracked providers are currently in drift state. */
+/** Providers currently in drift state. */
 export function driftSummary(path: string = defaultRegistryPath()): { total: number; drifted: number; keys: string[] } {
   const all = allProviderRecords(path)
   const map = new Map(all.map((r) => [providerKey(r.identity.kind, r.identity.provider_id), r]))

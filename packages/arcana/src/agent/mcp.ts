@@ -48,11 +48,9 @@ export interface McpRegistrationReport {
 }
 
 /**
- * Register MCP tools with K10 supply-chain identity: each tool's inputSchema
- * is hashed into a durable provider identity at registration time; any change
- * on a later registration is reported as drift (trust inheritance stops,
- * re-approval required). Drifted tools get a visible `[K10 DRIFT]` marker in
- * their description so the model cannot mistake them for approved surface.
+ * Register MCP tools with K10 identity: inputSchema hashed into a durable
+ * provider record; later schema changes report drift and get a visible
+ * `[K10 DRIFT]` marker in the tool description.
  */
 export async function registerMcpTools(
   runner: AgentRunner,

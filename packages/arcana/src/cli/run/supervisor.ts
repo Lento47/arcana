@@ -1,17 +1,9 @@
 // packages/arcana/src/cli/run/supervisor.ts
 //
-// Authority Kernel S4 M-e — supervised dual-process launch.
-//
-// Spawns the privileged kernel server FIRST, waits until its pipe is
-// accepting connections, then starts the agent process with
-// ARCANA_KERNEL_PIPE + ARCANA_TRANSPORT=ipc so every gated effect is
-// mediated over IPC. Kernel death while the agent runs fails closed by
-// construction (stateless frames, no ambient authority).
-//
-// Layout:
-//   supervisor (this process)
-//   ├── kernel child  — packages/arcana/src/kernel-entry.ts
-//   └── agent child   — operator command (e.g. `arcana run ...`)
+// Authority Kernel S4 — supervised dual-process launch: kernel child first,
+// agent second with ARCANA_KERNEL_PIPE + ARCANA_TRANSPORT=ipc so every gated
+// effect is mediated over IPC. Kernel death while the agent runs fails closed
+// by construction (stateless frames, no ambient authority).
 
 import { spawn, type ChildProcess } from "node:child_process"
 import { connect as netConnect } from "node:net"
@@ -50,9 +42,8 @@ export function defaultKernelListenPath(sessionId = "supervised"): string {
 }
 
 /**
- * Poll-connect until the kernel accepts or the deadline passes.
- * A raw connect+destroy is harmless: frames are stateless and an empty
- * socket close is ignored by the mediator.
+ * Poll-connect until the kernel accepts or the deadline passes. A raw
+ * connect+destroy is harmless: frames are stateless.
  */
 export function waitForKernelReady(listenPath: string, timeoutMs = 15_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
@@ -149,7 +140,7 @@ export async function runSupervised(
     })
 
     const finish = (agentCode: number | null, outcome: SupervisedRunResult["outcome"], stderr?: string) => {
-      // Teardown order: agent already dead (or dying) → stop the kernel last.
+      // Teardown order: agent first (already dead or dying), kernel last.
       try {
         kernel.child.kill()
       } catch { /* already gone */ }
@@ -159,18 +150,14 @@ export async function runSupervised(
     agent.on("exit", (code) => finish(code, "agent-exited"))
     agent.on("error", (err) => finish(null, "spawn-error", err.message))
 
-    const forward = () => {
-      if (agent.exitCode === null && !agent.signalCode) agent.kill()
-      else finish(agent.exitCode, "agent-exited")
-    }
-    process.once("SIGINT", forward)
-    process.once("SIGTERM", forward)
+    process.once("SIGINT", () => agent.kill())
+    process.once("SIGTERM", () => agent.kill())
 
-    // Fail closed loudly if the KERNEL dies mid-run: report via stderr and let
-    // the agent discover dead-pipe failures on its next gated call.
+    // Kernel death mid-run fails closed: the agent discovers the dead pipe on
+    // its next gated call.
     kernel.child.on("exit", (code, signal) => {
       if (agent.exitCode === null && !agent.signalCode) {
-        console.error(`[supervisor] kernel exited prematurely (code=${code} signal=${signal}) — agent now fails closed`)
+        console.error(`[supervisor] kernel exited prematurely (code=${code} signal=${signal})`)
       }
     })
   })

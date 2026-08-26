@@ -1,14 +1,10 @@
 // packages/core/src/capability/sandbox-profile.ts
 //
-// Authority Kernel S5 M-a — OS-native spawn restriction profiles.
-//
-// Translates a sandbox budget into platform-enforceable spawn restrictions,
-// wrapped around ANY SpawnExecutor (local Bun or S4 IPC client) so the same
-// policy applies at every choke point.
-//
-// Enforcement honesty contract: `enforcement()` reports exactly what IS and
-// IS NOT enforced per platform. Application-level checks (path/network guards)
-// are a SEPARATE layer — never claim containment this module cannot deliver.
+// Authority Kernel S5 — OS-native spawn restriction profiles. Translates a
+// sandbox budget into platform-enforceable spawn restrictions, wrapped around
+// any SpawnExecutor (local Bun or S4 IPC client). enforcement() reports what
+// IS and IS NOT enforced per platform; application-level path/network guards
+// are a separate layer.
 
 import type { SpawnExecutor } from "./spawn-executor"
 

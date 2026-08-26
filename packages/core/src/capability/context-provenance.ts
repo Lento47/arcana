@@ -135,26 +135,15 @@ export interface ProvenanceSeedMessage {
 /** Tools whose output is remote content by nature. */
 const REMOTE_TOOL_PREFIXES = ["mcp_", "web_"]
 
-/**
- * Objective trust label for a tool OUTPUT, by tool identity (not by
- * escalation outcome): remote-content tools are untrusted whatever the
- * request decided.
- */
+/** Remote-content tools are untrusted whatever the request decided. */
 export function labelForToolOutput(tool: string): SourceTrustLabel {
   return REMOTE_TOOL_PREFIXES.some((p) => tool.startsWith(p)) ? "UNTRUSTED_REMOTE" : "TRUSTED_LOCAL"
 }
 
 /**
- * Seed a tracker from recorded session history so objective derivations work
- * ACROSS turns and across daemon restarts: the tracker becomes a deterministic
- * projection of durable context, not ambient mutable state.
- *
- * Labels are structural (by source kind), never content-classified:
- *   user text/files → USER_AUTHORITY · assistant text → GENERATED ·
- *   completed tool outputs → UNTRUSTED_REMOTE (mcp_/web_ prefixes) or
- *   TRUSTED_LOCAL.
- * Incomplete tool states (pending/running/error/cancelled) carry no
- * trustworthy content and are skipped.
+ * Seed a tracker from recorded session history so derivations work across
+ * turns. Structural labels only: user → USER_AUTHORITY, assistant → GENERATED,
+ * completed tool outputs by tool identity. Incomplete states are skipped.
  */
 export function seedContextProvenance(
   tracker: ContextProvenanceTracker,

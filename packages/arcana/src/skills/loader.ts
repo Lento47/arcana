@@ -130,24 +130,7 @@ export async function loadSkillBody(skillId: string, skillDirs: string[]): Promi
 }
 
 async function findSkillBodyFile(dir: string, skillId: string): Promise<string | null> {
-  const entries = await readdir(dir, { withFileTypes: true })
-  for (const e of entries) {
-    const full = join(dir, e.name)
-    if (!e.isDirectory()) continue
-    const mdPath = join(full, "SKILL.md")
-    try {
-      const raw = await readFile(mdPath, "utf8")
-      const parsed = matter(raw)
-      const name = parsed.data?.name
-      if (name) {
-        const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
-        if (id === skillId) return parsed.content.trim()
-      }
-    } catch (e) { console.warn(`[arcana] Failed to read skill body ${mdPath}:`, e instanceof Error ? e.message : String(e)) }
-    const sub = await findSkillBodyFile(full, skillId)
-    if (sub !== null) return sub
-  }
-  return null
+  return (await findSkillEntry(dir, skillId))?.body ?? null
 }
 
 // ── K10 supply-chain identity ────────────────────────────────────────────
@@ -224,7 +207,7 @@ export async function loadSkillBodyWithIdentity(skillId: string, skillDirs: stri
   }
 }
 
-/** Like findSkillBodyFile but also returns frontmatter metadata. */
+/** Recursive SKILL.md scan; returns the body plus frontmatter metadata. */
 async function findSkillEntry(
   dir: string,
   skillId: string,
@@ -243,7 +226,7 @@ async function findSkillEntry(
         const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
         if (id === skillId) return { body: parsed.content.trim(), name, description: meta?.description }
       }
-    } catch { /* same warn policy as findSkillBodyFile — skip silently here */ }
+    } catch { /* skip unreadable SKILL.md */ }
     const sub = await findSkillEntry(full, skillId)
     if (sub !== null) return sub
   }

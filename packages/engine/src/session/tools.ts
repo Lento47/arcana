@@ -541,23 +541,10 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   promptOps: TaskPromptOps
 }) {
   const tools: Record<string, AITool> = {}
-  // ── K7-full: session context provenance tracker ────────────────────────
-  // One tracker per resolve() scope (= one turn's tool surface), SEEDED from
-  // the durable session history so objective derivations work across turns
-  // and daemon restarts. Every tool OUTPUT entering agent context is tracked
-  // with objective trust labels; later gated calls derive influence-claim
-  // sources from it via exact substring matching (deterministic, no model
-  // attribution).
+  // K7: session provenance tracker — seeded from durable history so objective
+  // derivations work across turns; tool outputs are tracked as they enter context.
   const provenance = new ContextProvenanceTracker()
-  try {
-    // Widening cast: SessionV1.WithParts (schema-generated DeepMutable unions)
-    // satisfies the seeder's structural shape but TS can't prove it across
-    // the Part union. The seeder narrows defensively field-by-field.
-    seedContextProvenance(provenance, input.messages as unknown as readonly ProvenanceSeedMessage[])
-  } catch {
-    // Seeding must never break tool resolution — an unseeded tracker only
-    // loses objective derivations, never gains false ones.
-  }
+  seedContextProvenance(provenance, input.messages as unknown as readonly ProvenanceSeedMessage[])
   // InstanceRef is request-derived context: it is provided by the HTTP
   // middleware for the turn that started the request, but a turn resumed or
   // re-driven after a daemon re-registration can run without it (the in-memory
@@ -780,15 +767,10 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 )
               }
               // ── K7: consequential-argument influence claims ─────────
-              // Derive gate-default claims for this tool's consequential
-              // arguments and evaluate escalation. Escalated requests augment
-              // provenance with UNTRUSTED_REMOTE so the existing Phase C
-              // provenance rules carry enforcement (fixtures D1/D10).
-              //
-              // K7-full: each claim's value is matched against the session
-              // provenance tracker (exact substring). A match attaches the
-              // tracked items' OBJECTIVE trust labels as availableSources —
-              // untracked values keep their gate-default claims unchanged.
+              // Gate-default claims, then objective trust labels from the
+              // session tracker for values matching tracked context. Escalated
+              // requests augment provenance with UNTRUSTED_REMOTE so the
+              // existing Phase C provenance rules carry enforcement (D1/D10).
               const gateClaims = deriveGateInfluenceClaims({
                 toolName: item.id,
                 assertedBy: input.agent.name,
@@ -1080,18 +1062,14 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 })
 
               const result = yield* runThroughPep(0)
-              // K7-full: track this output as context entering the agent.
-              // Label follows the request's own escalation state — an escalated
-              // call's output is untrusted remote content by construction.
-              try {
-                const outText =
-                  typeof result?.output === "string"
-                    ? result.output
-                    : result?.output !== undefined
-                      ? JSON.stringify(result.output)
-                      : JSON.stringify(result ?? {})
-                provenance.track(`tool:${item.id}`, outText, [labelForToolOutput(item.id)])
-              } catch { /* tracking must never break execution */ }
+              // K7: track this output as context entering the agent.
+              const outText =
+                typeof result?.output === "string"
+                  ? result.output
+                  : result?.output !== undefined
+                    ? JSON.stringify(result.output)
+                    : JSON.stringify(result ?? {})
+              provenance.track(`tool:${item.id}`, outText, [labelForToolOutput(item.id)])
               const output = {
                 ...result,
                 attachments: result.attachments?.map((attachment: any) => ({
@@ -1319,12 +1297,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               }
             }
           }
-          // K7-full: MCP output is external-server content — tracked as
-          // UNTRUSTED_REMOTE so later consequential arguments quoting it
-          // escalate objectively.
-          try {
-            provenance.track(`mcp:${key}`, textParts.join("\n\n"), ["UNTRUSTED_REMOTE"])
-          } catch { /* tracking must never break execution */ }
+          // K7: MCP output is remote content — tracked so later arguments
+          // quoting it escalate objectively.
+          provenance.track(`mcp:${key}`, textParts.join("\n\n"), ["UNTRUSTED_REMOTE"])
 
           const truncated = yield* truncate.output(textParts.join("\n\n"), {}, input.agent)
           const metadata = {
