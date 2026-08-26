@@ -38,9 +38,9 @@ Each blocker row states:
 | Phase A — Epistemic Foundation | COMPLETE / FROZEN | 0 | [§Phase A](#phase-a--epistemic-foundation) |
 | Phase B — Verification & Replay | COMPLETE / FROZEN | 0 | [§Phase B](#phase-b--verification-and-replay) |
 | Phase C — Local Governed Autonomy | EVALUATION PASS, signed with exceptions | 0 (scope-limited) | [§Phase C](#phase-c--local-governed-autonomy) |
-| Goal verification + reserved memory boundary | COMMITTED (5bb8d9e8); focused tests 63/0; full TUI suite has 42 pre-existing failures | 1 (BLK-GOAL-03: full suite green) | [§Goal verification](#goal-verification-and-memory-boundary) |
-| TUI 1.0 (TUI-2.1 freeze) | MOUNTED; current working-tree suite has 42 pre-existing failures; freeze NOT authorized | 8 | [§TUI 1.0 / TUI-2.1](#tui-10--tui-21) |
-| Goal Verification & Memory Boundary | COMMITTED (5bb8d9e8); focused tests 63/0; full suite has 42 pre-existing TUI failures | 1 (BLK-GOAL-03) | [§Goal Verification](#goal-verification-and-memory-boundary) |
+| Goal verification + reserved memory boundary | COMMITTED (5bb8d9e8); focused tests 63/0; full TUI suite green (1229/0) | 0 | [§Goal verification](#goal-verification-and-memory-boundary) |
+| TUI 1.0 (TUI-2.1 freeze) | MOUNTED; suite green (1229/0 across 161 files, coordinator-verified at base `680ab7a1` — the lexicon fix landed on the line in `680ab7a1`, making PR #147 redundant; the 42-failure figure is the stale 2026-08-22 working-tree snapshot, superseded by BLK-GOAL-03 closure); freeze NOT authorized | 8 | [§TUI 1.0 / TUI-2.1](#tui-10--tui-21) |
+| Goal Verification & Memory Boundary | COMMITTED (5bb8d9e8); focused tests 63/0; full suite green (1229/0) | 0 | [§Goal Verification](#goal-verification-and-memory-boundary) |
 | CLI 1.0 | PARTIAL — no frozen contract | 5 | [§CLI 1.0](#cli-10) |
 | Phase D — Distributed Governed Autonomy | Implementation coverage: HIGH; release readiness: BLOCKED | 9 | [§Phase D](#phase-d--distributed-governed-autonomy) |
 | Phase E — Protocol, SDKs, Adapters | PARTIAL — conformance 5/5 + adapters + certified vectors; freeze pending live/L3 | 10 | [§Phase E](#phase-e--protocol-sdks-adapters) |
@@ -281,16 +281,20 @@ all eight (`BLK-TUI-01..08`) remain open.
 ## Goal Verification and Memory Boundary
 
 **Status: COMMITTED — goal verification and reserved memory keys are committed
-in `5bb8d9e8`. Focused tests pass (63/0 across 6 files). Full TUI suite has
-42 pre-existing failures unrelated to these changes.**
+in `5bb8d9e8`. Focused tests pass (63/0 across 6 files). Full TUI suite at
+base `680ab7a1`: 1229 pass / 0 fail, 161 files (coordinator-verified; the
+lexicon assertion fix landed on the line in `680ab7a1`, superseding PR #147).
+The earlier "42 pre-existing failures" figure described the stale 2026-08-22
+working-tree snapshot and no longer reproduces; BLK-GOAL-03 governs the
+branch-tip result.**
 
 ## Open blockers
 
 | ID | Blocks | Gap evidence | Acceptance evidence required |
 |---|---|---|---|
-| BLK-GOAL-01 | Goal verification system operational | **COMMITTED (5bb8d9e8)**: deterministic gate + model verifier in `packages/engine/src/session/goal-verifier.ts`; goal state machine in `packages/core/src/session/goal.ts`; CLI agent verifier in `packages/arcana/src/agent/runner.ts`. Focused tests pass: goal-verifier.test.ts (5/0), goal.test.ts core (19/0), goal.test.ts engine (3/0), runner-proof.test.ts (4/0). | End-to-end verification: goal_set → work → goal_check complete → verifier rejects/verifies → goal archived/reopened. **DONE** in focused tests. Full suite green at exact commit remains pending (BLK-GOAL-03). |
-| BLK-GOAL-02 | Reserved memory keys isolation | **COMMITTED (5bb8d9e8)**: `isReservedMemoryKey()` in `packages/memory/src/store.ts`; filters in FACTS.md, cloud sync, prompts, search, CLI merge. Focused tests pass: store.test.ts (28/0), facts-md.test.ts (4/0). | Write-rejection + filtering verified in focused tests. **DONE**. Full suite green at exact commit remains pending (BLK-GOAL-03). |
-| BLK-GOAL-03 | TUI/engine suite green under pinned Bun | 42 TUI failures under pinned Bun 1.3.14 (same under Bun 1.4.0). **Root cause: test infrastructure** — all 42 failures share the same `TypeError: sdk.event.on` at `project.tsx:65` because `ProjectProvider` calls `sdk.event.on()` during initialization but the test environment doesn't properly mock the SDK context. **Classification: 0 product bugs, 42 test infrastructure issues.** Categories: session sync/hydration (12), SDK/project setup (7), useEvent (3), spine interaction (3), voice parsing (2), renderer interaction (3), other (12). Can be documented as known test limitations. | Document as known test infrastructure limitation OR fix SDK mock in test fixtures; product is functional |
+| BLK-GOAL-01 | Goal verification system operational | **COMMITTED (5bb8d9e8)**: deterministic gate + model verifier in `packages/engine/src/session/goal-verifier.ts`; goal state machine in `packages/core/src/session/goal.ts`; CLI agent verifier in `packages/arcana/src/agent/runner.ts`. Focused tests pass: goal-verifier.test.ts (5/0), goal.test.ts core (19/0), goal.test.ts engine (3/0), runner-proof.test.ts (4/0). | End-to-end verification: goal_set → work → goal_check complete → verifier rejects/verifies → goal archived/reopened. **DONE** in focused tests. Full suite green at exact commit: **DONE** (BLK-GOAL-03 closed). |
+| BLK-GOAL-02 | Reserved memory keys isolation | **COMMITTED (5bb8d9e8)**: `isReservedMemoryKey()` in `packages/memory/src/store.ts`; filters in FACTS.md, cloud sync, prompts, search, CLI merge. Focused tests pass: store.test.ts (28/0), facts-md.test.ts (4/0). | Write-rejection + filtering verified in focused tests. **DONE**. Full suite green at exact commit: **DONE** (BLK-GOAL-03 closed). |
+| BLK-GOAL-03 | TUI/engine suite green under pinned Bun | **RESOLVED**: on arcanagov the cited 42 `sdk.event.on` failures no longer reproduce — the SDK event mock was already fixed on the line. The single remaining failure was a stale assertion in `packages/tui/test/lexicon.test.ts` (`PLAIN_PLACEHOLDER.normal[0]` expected the old prompt string while `branding.ts` had moved on), fixed by a one-line test update that landed directly on the line in `680ab7a1` (PR #147 carried the identical change and is superseded). Full TUI suite verified by coordinator at base `680ab7a1`: **1229 pass / 0 fail**, 161 files. | Full suite run green at pinned Bun: **DONE** (1229/0). |
 
 ## CLI 1.0
 
