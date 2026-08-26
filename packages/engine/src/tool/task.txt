@@ -20,3 +20,7 @@ Synthesize results into one answer with per-subagent attribution.
 - Launch ONE task call per work item in the same message so independent work runs concurrently.
 - Each prompt must be self-contained (handover): restate the goal, include required context, name the exact deliverable, explain verification, and list what to return.
 - After all subagents finished, write ONE synthesized final answer that merges the results with per-subagent attribution.
+
+## Relaunching or retrying a subagent
+- To continue or retry an earlier subagent's work, pass its session id as `task_id` — the same child context (files read, findings so far) is resumed instead of starting a duplicate from scratch.
+- If a subagent failed on a permission/scope denial, do NOT blindly relaunch: report the denied path to the user and ask them to grant access. Relaunching without the grant repeats the failure.

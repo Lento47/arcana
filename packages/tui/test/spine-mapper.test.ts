@@ -1379,6 +1379,44 @@ describe("edge cases", () => {
     expect(result[0]!.liveOutput).toBeUndefined()
   })
 
+  test("running task part is NOT streaming when session turn is not active (stale interrupt fix)", () => {
+    // Regression (2026-08-25): after an interrupt, durable tool parts can
+    // remain status:"running" while the engine's status map is empty. The
+    // card must derive liveness from the TURN, not from the stale part —
+    // otherwise it pulses "Working… +Nm" forever on dead work.
+    const { messages: msgs, parts } = makeAssistantMessage("e8-idle")
+    parts.push({
+      id: "p-tool-task-idle",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "task-idle",
+      tool: "task",
+      state: {
+        status: "running",
+        input: {
+          subagent_type: "reviewer",
+          description: "Review backtest/research integrity",
+          prompt: "Review it.",
+        },
+        title: "Working",
+        metadata: {},
+        time: { start: 1000 },
+      },
+    } as Part)
+
+    // No sessionStatusType passed => missing map entry === idle.
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    expect(result[0]!.kind).toBe("agent")
+    expect(result[0]!.streaming).toBe(false)
+    expect(result[0]!.liveOutput).toBeUndefined()
+    expect(result[0]!.startMs).toBeUndefined()
+  })
+
   test("running subagent streams live text onto the parent row", () => {
     const { messages: msgs, parts } = makeAssistantMessage("e8c")
     parts.push({
