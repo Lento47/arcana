@@ -1,5 +1,5 @@
 import { Effect, Context, Layer } from "effect"
-import { and, desc, eq, like, or } from "drizzle-orm"
+import { and, desc, eq, like, or, sql } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { Database } from "@arcana/core/database/database"
 import { LayerNode } from "@arcana/core/effect/layer-node"
@@ -44,6 +44,8 @@ export interface Interface {
   }) => Effect.Effect<ArcanaEvent>
   readonly list: (limit?: number) => Effect.Effect<ArcanaEvent[]>
   readonly listGovernance: (sessionId: string, limit?: number) => Effect.Effect<ArcanaEvent[]>
+  /** Durable per-session governance totals (monotonic; SQL-counted). */
+  readonly governanceTotals: (sessionId: string) => Effect.Effect<{ events: number; denied: number }>
   readonly listType: (sessionId: string, type: ArcanaEvent["type"], limit?: number) => Effect.Effect<ArcanaEvent[]>
   readonly listen: (listener: Listener) => Effect.Effect<Unsubscribe>
   readonly verify: () => Effect.Effect<{ valid: boolean; breaksAt?: number }>
@@ -224,8 +226,20 @@ export const layer = Layer.effect(
       }))
     })
 
-    const listGovernance = Effect.fn("EventStore.listGovernance")(function* (sessionId: string, limit = 500) {
-      const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 1_000))
+    const governanceTotals = Effect.fn("EventStore.governanceTotals")(function* (sessionId: string) {
+      const rows = yield* db
+        .select({
+          total: sql<number>`count(*)`,
+          denied: sql<number>`count(*) filter (where ${EventTable.type} = 'authorization.denied')`,
+        })
+        .from(EventTable)
+        .where(eq(EventTable.session_id, sessionId))
+        .pipe(Effect.orDie)
+      const row = rows[0]
+      return { events: Number(row?.total ?? 0), denied: Number(row?.denied ?? 0) }
+    })
+
+    const listGovernance = Effect.fn("EventStore.listGovernance")(function* (sessionId: string, limit = 500) {      const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 1_000))
       const rows = yield* db.select().from(EventTable)
         .where(
           and(
@@ -343,6 +357,7 @@ export const layer = Layer.effect(
       append: trackedAppend as Interface["append"],
       list,
       listGovernance,
+      governanceTotals,
       listType,
       listen,
       verify,

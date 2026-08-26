@@ -185,10 +185,11 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       // open slow and heavy. Cap to the most recent window — the TUI only
       // renders the tail by default.
       const limit = Math.min(Math.max(ctx.query.limit ?? 300, 50), 1000)
-      const [events, trace, proof] = yield* Effect.all([
+      const [events, trace, proof, totals] = yield* Effect.all([
         eventStore.listGovernance(ctx.params.sessionID, limit),
         eventStore.sessionTraceHealth(ctx.params.sessionID),
         runProof.derive(ctx.params.sessionID),
+        eventStore.governanceTotals(ctx.params.sessionID),
       ])
       return {
         sessionId: ctx.params.sessionID,
@@ -196,6 +197,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
         events,
         eventsLimit: limit,
         ...(events.length === limit ? { eventsTruncated: true } : {}),
+        totals,
         proof: {
           proofHash: proof.proofHash,
           runRoot: proof.runRoot,

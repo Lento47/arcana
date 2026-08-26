@@ -109,6 +109,14 @@ export const GovernanceSnapshot = Schema.Struct({  sessionId: Schema.String,
     ),
   }),
   events: Schema.Array(ArcanaEvent),
+  eventsLimit: Schema.optional(Schema.Number),
+  eventsTruncated: Schema.optional(Schema.Boolean),
+  totals: Schema.optional(
+    Schema.Struct({
+      events: Schema.Number,
+      denied: Schema.Number,
+    }),
+  ),
   proof: RunProofSnapshot,
 })
 

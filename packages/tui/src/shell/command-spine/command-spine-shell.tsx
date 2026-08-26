@@ -770,7 +770,7 @@ export function CommandSpineShell(props: ShellProps) {
             segments={projection.headerSegments()}
             trust={projection.trust()}
             charter={projection.sessionCharter()}
-            governed={projection.governedTally()}
+            governed={projection.governedChip()}
             onNavigateToSession={props.onNavigateToSession}
             onPreviousSession={() => keymap.dispatchCommand("session.child.previous")}
             onNextSession={() => keymap.dispatchCommand("session.child.next")}

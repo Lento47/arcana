@@ -407,6 +407,23 @@ export function useSpineProjection(props: ShellProps, input: {
     })
   })
   const governedTally = createMemo(() => projectGovernedTally(groupedVisibleEntries()))
+
+  // Prefer DURABLE governance totals (server SQL counts) over the rendered
+  // tally: the render window slides, so its count drifts while the model
+  // works. Falls back to the visible tally until governance has loaded.
+  const governedChip = createMemo(() => {
+    const gov = (sync.data as { governance?: Record<string, { totals?: { events?: number; denied?: number } }> })
+      .governance?.[props.sessionID]
+    const events = Number(gov?.totals?.events)
+    if (!Number.isFinite(events) || events <= 0) return governedTally()
+    const denied = Math.max(0, Math.floor(Number(gov?.totals?.denied ?? 0)))
+    const extra = denied > 0 ? ` | ${denied} denied` : ""
+    return {
+      key: "governed" as const,
+      label: `${Math.floor(events)} governed${extra}`,
+      tone: denied > 0 ? ("error" as const) : ("ok" as const),
+    }
+  })
   const gutterWidth = createMemo(() => {
     if (props.showGutter && !props.showGutter()) return 0
     return spineGutterDigits(displayRows().reduce((max, entry) => Math.max(max, entry.index), 0))
@@ -444,6 +461,7 @@ export function useSpineProjection(props: ShellProps, input: {
     sessionCharter,
     sessionProof,
     governedTally,
+    governedChip,
     approvals,
     approvalEntries,
     allVisibleEntries,
