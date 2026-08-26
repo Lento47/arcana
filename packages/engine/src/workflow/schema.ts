@@ -9,9 +9,10 @@ export const WorkflowStep = Schema.Struct({
   prompt: Schema.optional(Schema.String),
   sources: Schema.optional(Schema.Array(Schema.String)),
   mergeStrategy: Schema.optional(Schema.Literals(["concat", "summarize", "conflict_resolve"])),
-  // condition steps: evaluate `condition` (a JS expression over prior step outputs,
-  // each output bound by its step id) → boolean. The branch NOT taken (its listed
-  // step ids) is marked skipped; skip propagates to steps whose deps are all skipped.
+  // condition steps: evaluate `condition` — a restricted expression over prior
+  // step outputs (each bound by its step id) → boolean; see expression.ts. The
+  // branch NOT taken (its listed step ids) is marked skipped; skip propagates
+  // to steps whose deps are all skipped.
   condition: Schema.optional(Schema.String),
   ifTrue: Schema.optional(Schema.Array(Schema.String)),
   ifFalse: Schema.optional(Schema.Array(Schema.String)),

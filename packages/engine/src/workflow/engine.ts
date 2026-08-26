@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import type { WorkflowPlan, WorkflowStep, StepRun, StepStatus, WorkflowSnapshot } from "./schema"
+import { evalCondition } from "./expression"
 
 /**
  * Side-effecting capabilities the engine needs, injected by the workflow tool
@@ -166,22 +167,6 @@ function runStep(
     case "condition":
       // Conditions are resolved in the scheduler; never reached here.
       return Effect.succeed("")
-  }
-}
-
-/**
- * Evaluates a condition expression with each prior step output bound to its step
- * id. The expression is author/model-supplied and runs in-process with only the
- * outputs in scope (same trust boundary as the model issuing tool calls).
- */
-function evalCondition(expr: string | undefined, outputs: Record<string, string>): boolean {
-  if (!expr) return false
-  try {
-    const keys = Object.keys(outputs)
-    const fn = new Function(...keys, `"use strict"; return (${expr})`)
-    return Boolean(fn(...keys.map((k) => outputs[k])))
-  } catch {
-    return false
   }
 }
 
