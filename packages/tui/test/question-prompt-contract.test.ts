@@ -8,8 +8,25 @@ test("question form uses explicit stacked navigation and submission", () => {
   expect(source).toContain('key: "tab"')
   expect(source).toContain('key: "shift+tab"')
   expect(source).toContain('key: "escape"')
-  expect(source).toContain('if (busy() || !complete()) return')
+  // Enter on the submit chip while incomplete must never be silent: it jumps
+  // to the first unanswered question and pulses it.
+  expect(source).toContain("focusFirstUnanswered")
   expect(source).not.toContain('if (single())')
+})
+
+test("number shortcuts exclude the custom-answer slot", () => {
+  expect(source).toContain("optionCount, 9")
+  expect(source).not.toContain("Math.min(total, 9)")
+})
+
+test("esc dismiss is armed (double-esc) instead of instant", () => {
+  expect(source).toContain("Esc again to discard")
+  expect(source).toContain("dismissIntent")
+})
+
+test("reply/dismiss dismiss the form locally (SSE-miss resilience)", () => {
+  expect(source).toContain("dismissLocal")
+  expect(source).toContain("isAlreadyAnsweredError")
 })
 
 test("plain Tab does not open the agent picker", () => {
