@@ -26,7 +26,10 @@ test("esc dismiss is armed (double-esc) instead of instant", () => {
 
 test("reply/dismiss dismiss the form locally (SSE-miss resilience)", () => {
   expect(source).toContain("dismissLocal")
-  expect(source).toContain("isAlreadyAnsweredError")
+  expect(source).toContain("dropLocal")
+  // Structural 404 detection shared with the permission gate — not message regex.
+  expect(source).toContain("isUnknownRequestNotFoundError")
+  expect(source).not.toContain("isAlreadyAnsweredError")
 })
 
 test("plain Tab does not open the agent picker", () => {

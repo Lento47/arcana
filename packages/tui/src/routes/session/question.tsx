@@ -2,7 +2,6 @@ import { type ScrollBoxRenderable, type TextareaRenderable } from "@opentui/core
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import type { QuestionAnswer, QuestionRequest } from "@arcana/sdk/v2"
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js"
-import { produce } from "solid-js/store"
 import { useTuiConfig } from "../../config"
 import { useSync } from "../../context/sync"
 import { useSDK } from "../../context/sdk"
@@ -12,6 +11,7 @@ import { SpineGutterSpacer, spineLeadMetrics } from "../../shell/command-spine/s
 import { SpineRail } from "../../shell/command-spine/spine-rail"
 import { useSpineLayout } from "../../shell/command-spine/use-spine-layout"
 import { useToast } from "../../ui/toast"
+import { isUnknownRequestNotFoundError } from "../../util/api-error"
 import { errorMessage } from "../../util/error"
 
 const QUESTION_MODE = "question"
@@ -174,21 +174,9 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     setEditingQuestion(undefined)
   }
 
-  /** Optimistic local dismissal — mirrors the engine's question.replied. */
+  /** Optimistic local dismissal — mirrors the engine's question.replied SSE cleanup. */
   function dismissLocal() {
-    const sid = props.request.sessionID
-    sync.set(
-      "question",
-      sid,
-      produce((draft: QuestionRequest[]) => {
-        const index = draft.findIndex((r) => r.id === props.request.id)
-        if (index !== -1) draft.splice(index, 1)
-      }),
-    )
-  }
-
-  function isAlreadyAnsweredError(error: unknown): boolean {
-    return /not found/i.test(errorMessage(error))
+    sync.question.dropLocal(props.request.sessionID, props.request.id)
   }
 
   async function submit(): Promise<boolean> {
@@ -204,11 +192,11 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
       // Optimistic dismissal (A8): the form must close even if the SSE
       // question.replied event is missed. An already-answered 404 means the
       // reply DID land — close instead of surfacing a phantom failure.
-      if (err && !isAlreadyAnsweredError(err)) throw err
+      if (err && !isUnknownRequestNotFoundError(err)) throw err
       dismissLocal()
       return true
     } catch (error) {
-      if (isAlreadyAnsweredError(error)) {
+      if (isUnknownRequestNotFoundError(error)) {
         dismissLocal()
         return true
       }
@@ -227,7 +215,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
       dismissLocal()
       return true
     } catch (error) {
-      if (isAlreadyAnsweredError(error)) {
+      if (isUnknownRequestNotFoundError(error)) {
         dismissLocal()
         return true
       }

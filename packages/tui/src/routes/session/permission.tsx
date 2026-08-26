@@ -34,20 +34,10 @@ export function canRememberPermission(request: PermissionRequest) {
   return request.always.length > 0
 }
 
-/**
- * The generated SDK resolves (does not throw) provider errors unless
- * `{ throwOnError }` is passed, so a settled/expired request surfaces as
- * `result.error` — and thrown variants may arrive as HttpApi error objects.
- * Both shapes identify the engine's "unknown request" 404, which means the
- * gate is a phantom (engine restarted or turn aborted) and must be dropped.
- */
-export function isPermissionNotFoundError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false
-  const record = error as Record<string, unknown>
-  if (typeof record.requestID === "string") return true
-  const status = record.status
-  return status === 404 || status === "404"
-}
+// Shared "unknown request" 404 detector lives in util/api-error.ts; the
+// permission-scoped alias below keeps existing call sites and tests working.
+import { isUnknownRequestNotFoundError } from "../../util/api-error"
+export { isUnknownRequestNotFoundError as isPermissionNotFoundError }
 
 export function permissionDecisionOptions(request: PermissionRequest): Record<string, string> {
   const remember = canRememberPermission(request)
@@ -281,7 +271,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
     options?: { message?: string },
   ): Promise<"ok" | "notfound" | "failed"> => {
     const handle = (error: unknown): "notfound" | "failed" => {
-      if (isPermissionNotFoundError(error)) {
+      if (isUnknownRequestNotFoundError(error)) {
         logPermissionDebug("reply.notfound", { id: props.request.id, reply })
         sync.permission.dropLocal(props.request.sessionID, props.request.id)
         return "notfound"

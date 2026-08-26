@@ -1344,6 +1344,22 @@ export const {
         /** Re-sync the gate queue from the engine's authoritative pending list. */
         refresh: () => refreshPermissions("manual"),
       },
+      question: {
+        /** Remove a phantom question form the engine no longer knows about (404 on reply/reject). */
+        dropLocal(sessionID: string, requestID: string) {
+          const requests = store.question[sessionID]
+          if (!requests) return
+          const index = requests.findIndex((request) => request.id === requestID)
+          if (index === -1) return
+          setStore(
+            "question",
+            sessionID,
+            produce((draft) => {
+              draft.splice(index, 1)
+            }),
+          )
+        },
+      },
       session: {
         get(sessionID: string) {
           const match = search(store.session, sessionID, (s) => s.id)
