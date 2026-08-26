@@ -24,7 +24,9 @@
   "kernelDeclaredPaths": [
     "packages/core/src/capability/kernel-ipc.ts",
     "packages/core/src/capability/ipc-spawn-executor.ts",
-    "packages/arcana/src/agent/authority.ts"
+    "packages/core/src/capability/provider-registry.ts",
+    "packages/arcana/src/agent/authority.ts",
+    "packages/arcana/src/cli/run/supervisor.ts"
   ],
   "$packageRulesComment": "forbiddenModules under pathPrefix fail REGARDLESS of baseline — grandfathering never rescues a forbidden class. Used by M1 to make agent-path process execution bypass-proof.",
   "packageRules": [
