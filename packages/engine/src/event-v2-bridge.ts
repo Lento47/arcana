@@ -8,6 +8,7 @@ import { Location } from "@arcana/core/location"
 import { Project } from "@arcana/core/project"
 import { AbsolutePath } from "@arcana/core/schema"
 import { resetActivity } from "./daemon/activity"
+import { governanceSampler } from "./telemetry/governance-sampler"
 import "@arcana/core/account"
 import "@arcana/core/catalog"
 import "@arcana/core/session/event"
@@ -57,6 +58,11 @@ export const layer = Layer.effect(
           workspace: workspaceID,
           payload: { id: event.id, type: event.type, properties: event.data },
         })
+        try {
+          governanceSampler.record(event.type)
+        } catch {
+          /* metering must never break event flow */
+        }
         const sync = EventV2.registry.get(event.type)?.sync
         if (sync === undefined || event.seq === undefined || event.version === undefined) return
         const aggregateID = (event.data as Record<string, unknown>)[sync.aggregate]
