@@ -196,8 +196,11 @@ function childView(child: SpineEntry): SpineChildView {
     label: child.label,
     receipt: child.receipt,
     elapsed: child.elapsed,
-    body: child.body,
-    bodyLabel: child.bodyLabel,
+    // Patch children keep their diff in entry.diff.body, not body — without
+    // this fallback an expanded burst renders stats-only rows and every edit
+    // after the first looks unexpandable.
+    body: child.body ?? child.diff?.body,
+    bodyLabel: child.bodyLabel ?? (child.diff ? "diff" : undefined),
     bodyHint: child.bodyHint,
     bodyNote: child.bodyNote,
     governance: child.source?.kind === "governance",
