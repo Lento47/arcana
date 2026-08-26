@@ -91,8 +91,12 @@ export const RunProofSnapshot = Schema.Struct({
     intentTraceHealth: TraceHealth,
   }),
 })
-export const GovernanceSnapshot = Schema.Struct({
-  sessionId: Schema.String,
+export const GovernanceQuery = Schema.Struct({
+  ...WorkspaceRoutingQueryFields,
+  limit: Schema.optional(Schema.NumberFromString),
+})
+
+export const GovernanceSnapshot = Schema.Struct({  sessionId: Schema.String,
   trace: Schema.Struct({
     status: TraceHealth,
     expectedCriticalEvents: Schema.Number,
@@ -293,7 +297,7 @@ export const SessionApi = HttpApi.make("session")
         ),
         HttpApiEndpoint.get("governance", SessionPaths.governance, {
           params: { sessionID: SessionID },
-          query: WorkspaceRoutingQuery,
+          query: GovernanceQuery,
           success: described(GovernanceSnapshot, "Session governance events and trace health"),
           error: [HttpApiError.BadRequest, ApiNotFoundError],
         }).annotateMerge(

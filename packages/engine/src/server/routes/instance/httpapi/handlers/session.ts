@@ -177,10 +177,16 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
 
     const governance = Effect.fn("SessionHttpApi.governance")(function* (ctx: {
       params: { sessionID: SessionID }
+      query: { limit?: number }
     }) {
       yield* requireSession(ctx.params.sessionID)
+      // Payload slimming (2026-08-23 audit): long sessions accumulate
+      // thousands of governance events; returning all of them made session
+      // open slow and heavy. Cap to the most recent window — the TUI only
+      // renders the tail by default.
+      const limit = Math.min(Math.max(ctx.query.limit ?? 300, 50), 1000)
       const [events, trace, proof] = yield* Effect.all([
-        eventStore.listGovernance(ctx.params.sessionID),
+        eventStore.listGovernance(ctx.params.sessionID, limit),
         eventStore.sessionTraceHealth(ctx.params.sessionID),
         runProof.derive(ctx.params.sessionID),
       ])
@@ -188,6 +194,8 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
         sessionId: ctx.params.sessionID,
         trace,
         events,
+        eventsLimit: limit,
+        ...(events.length === limit ? { eventsTruncated: true } : {}),
         proof: {
           proofHash: proof.proofHash,
           runRoot: proof.runRoot,
