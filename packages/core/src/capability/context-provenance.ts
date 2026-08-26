@@ -75,6 +75,20 @@ export class ContextProvenanceTracker {
       .map((item) => item.id)
   }
 
+  /**
+   * Union of trust labels across all tracked items whose content contains
+   * `value` as an exact substring. Empty when the value derives from no
+   * tracked context (model-generated or untracked source).
+   */
+  labelsForValue(value: string): string[] {
+    if (!value || value.length < 4) return []
+    const out = new Set<string>()
+    for (const item of this.items) {
+      if (item.contentPrefix.includes(value)) for (const l of item.labels) out.add(l)
+    }
+    return [...out]
+  }
+
   /** Items carrying any of the escalating labels. */
   getUntrustedItems(): TrackedContextItem[] {
     return this.items.filter((i) => i.labels.has("UNTRUSTED_REMOTE"))

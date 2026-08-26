@@ -34,6 +34,7 @@ import {
   augmentProvenanceForEscalation,
   normalizeInfluenceClaims,
 } from "@arcana/core/capability/argument-provenance"
+import { ContextProvenanceTracker, type SourceTrustLabel } from "@arcana/core/capability/context-provenance"
 
 // Boot canary (stale-daemon self-heal, layer 1): a daemon started while
 // source was mid-edit could load K7 call sites without their import binding
@@ -540,6 +541,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   promptOps: TaskPromptOps
 }) {
   const tools: Record<string, AITool> = {}
+  // ── K7-full: session context provenance tracker ────────────────────────
+  // One tracker per resolve() scope (= one turn's tool surface). Every tool
+  // OUTPUT entering agent context is tracked with objective trust labels;
+  // later gated calls derive influence-claim sources from it via exact
+  // substring matching (deterministic, no model attribution).
+  const provenance = new ContextProvenanceTracker()
   // InstanceRef is request-derived context: it is provided by the HTTP
   // middleware for the turn that started the request, but a turn resumed or
   // re-driven after a daemon re-registration can run without it (the in-memory
@@ -766,26 +773,34 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               // arguments and evaluate escalation. Escalated requests augment
               // provenance with UNTRUSTED_REMOTE so the existing Phase C
               // provenance rules carry enforcement (fixtures D1/D10).
-              const k7Claims = normalizeInfluenceClaims(
-                deriveGateInfluenceClaims({
-                  toolName: item.id,
-                  assertedBy: input.agent.name,
-                  argv:
-                    typeof args.command === "string"
-                      ? [String(args.command)]
-                      : typeof args.cmd === "string"
-                        ? [String(args.cmd)]
-                        : undefined,
-                  filePath:
-                    typeof args.filePath === "string"
-                      ? args.filePath
-                      : typeof args.path === "string"
-                        ? String(args.path)
-                        : undefined,
-                  url: typeof args.url === "string" ? args.url : undefined,
-                  secretName: item.id.startsWith("secret") || item.id.includes("key") ? item.id : undefined,
-                }),
-              )
+              //
+              // K7-full: each claim's value is matched against the session
+              // provenance tracker (exact substring). A match attaches the
+              // tracked items' OBJECTIVE trust labels as availableSources —
+              // untracked values keep their gate-default claims unchanged.
+              const gateClaims = deriveGateInfluenceClaims({
+                toolName: item.id,
+                assertedBy: input.agent.name,
+                argv:
+                  typeof args.command === "string"
+                    ? [String(args.command)]
+                    : typeof args.cmd === "string"
+                      ? [String(args.cmd)]
+                      : undefined,
+                filePath:
+                  typeof args.filePath === "string"
+                    ? args.filePath
+                    : typeof args.path === "string"
+                      ? String(args.path)
+                      : undefined,
+                url: typeof args.url === "string" ? args.url : undefined,
+                secretName: item.id.startsWith("secret") || item.id.includes("key") ? item.id : undefined,
+              })
+              for (const claim of gateClaims) {
+                const objectiveLabels = claim.value ? provenance.labelsForValue(claim.value) : []
+                if (objectiveLabels.length) claim.availableSources = objectiveLabels
+              }
+              const k7Claims = normalizeInfluenceClaims(gateClaims)
               const { escalate: k7Escalate } = evaluateInfluenceEscalation(k7Claims)
               const k7Provenance = augmentProvenanceForEscalation(
                 extractProvenance(item.id, args as Record<string, unknown>),
@@ -1054,6 +1069,18 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                 })
 
               const result = yield* runThroughPep(0)
+              // K7-full: track this output as context entering the agent.
+              // Label follows the request's own escalation state — an escalated
+              // call's output is untrusted remote content by construction.
+              try {
+                const outText =
+                  typeof result?.output === "string"
+                    ? result.output
+                    : result?.output !== undefined
+                      ? JSON.stringify(result.output)
+                      : JSON.stringify(result ?? {})
+                provenance.track(`tool:${item.id}`, outText, k7Escalate ? ["UNTRUSTED_REMOTE"] : ["TRUSTED_LOCAL"])
+              } catch { /* tracking must never break execution */ }
               const output = {
                 ...result,
                 attachments: result.attachments?.map((attachment: any) => ({
@@ -1281,6 +1308,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               }
             }
           }
+          // K7-full: MCP output is external-server content — tracked as
+          // UNTRUSTED_REMOTE so later consequential arguments quoting it
+          // escalate objectively.
+          try {
+            provenance.track(`mcp:${key}`, textParts.join("\n\n"), ["UNTRUSTED_REMOTE"])
+          } catch { /* tracking must never break execution */ }
 
           const truncated = yield* truncate.output(textParts.join("\n\n"), {}, input.agent)
           const metadata = {
