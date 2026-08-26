@@ -25,11 +25,15 @@ import { Context, Deferred, Effect, Layer, Schema } from "effect"
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_BUDGET_CONFIG: BudgetConfig = {
-  maxDestructiveOps: 5,
-  maxFilesTouched: 50,
-  maxLocChanged: 2000,
-  maxExternalCalls: 10,
-  maxDurationMs: 15 * 60 * 1000,
+  // Softened (2026-08-24): long agentic turns — parallel tool waves,
+  // verification suites, local-model inference — were tripping the old
+  // 5-write / 10-network / 15-minute ceilings mid-task. These are per-turn
+  // occupancy guards, not product rate limits.
+  maxDestructiveOps: 25,
+  maxFilesTouched: 200,
+  maxLocChanged: 10_000,
+  maxExternalCalls: 60,
+  maxDurationMs: 60 * 60 * 1000,
 }
 
 const NonNegInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))

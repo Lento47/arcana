@@ -26,7 +26,8 @@ describe("SessionBudget queue (never errors)", () => {
   test("toolBudgetCost classifies shell as destructive+external", () => {
     expect(toolBudgetCost("shell")).toEqual({ destructive: 1, files: 1, external: 1 })
     expect(toolBudgetCost("read")).toEqual({ files: 1 })
-    expect(DEFAULT_BUDGET_CONFIG.maxExternalCalls).toBe(10)
+    // Softened 2026-08-24 (was 10) — long agentic turns tripped the old ceiling.
+    expect(DEFAULT_BUDGET_CONFIG.maxExternalCalls).toBe(60)
   })
 
   test("checkOrBlock never fails when under limit", async () => {
