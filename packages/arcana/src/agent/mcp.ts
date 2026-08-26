@@ -11,6 +11,8 @@ import { homedir } from "node:os"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { canonicalJson } from "@arcana/core/capability/supply-chain"
+import { recordProviderLoad, providerKey, type ProviderLoadReport } from "@arcana/core/capability/provider-registry"
 
 type McpServerConfig = {
   type?: "local" | "remote"
@@ -39,12 +41,36 @@ function loadMcpConfig(): Record<string, McpServerConfig> {
   return {}
 }
 
-export async function registerMcpTools(runner: AgentRunner, serverFilter?: string[]): Promise<string[]> {
+export interface McpRegistrationReport {
+  connected: string[]
+  /** Tools whose schema drifted vs the previously recorded identity (K10). */
+  drifted: Array<{ tool: string; fields: string[] }>
+}
+
+/**
+ * Register MCP tools with K10 supply-chain identity: each tool's inputSchema
+ * is hashed into a durable provider identity at registration time; any change
+ * on a later registration is reported as drift (trust inheritance stops,
+ * re-approval required). Drifted tools get a visible `[K10 DRIFT]` marker in
+ * their description so the model cannot mistake them for approved surface.
+ */
+export async function registerMcpTools(
+  runner: AgentRunner,
+  serverFilter?: string[],
+  onDrift?: (report: McpRegistrationReport) => void,
+): Promise<string[]> {
+  const report = await registerMcpToolsWithIdentity(runner, serverFilter)
+  if (onDrift && report.drifted.length) onDrift(report)
+  return report.connected
+}
+
+export async function registerMcpToolsWithIdentity(runner: AgentRunner, serverFilter?: string[]): Promise<McpRegistrationReport> {
   const config = loadMcpConfig()
   const entries = Object.entries(config)
-  if (!entries.length) return []
+  if (!entries.length) return { connected: [], drifted: [] }
 
   const connected: string[] = []
+  const drifted: McpRegistrationReport["drifted"] = []
   for (const [name, cfg] of entries) {
     if (serverFilter?.length && !serverFilter.includes(name)) continue
     try {
@@ -72,11 +98,26 @@ export async function registerMcpTools(runner: AgentRunner, serverFilter?: strin
 
       for (const tool of tools.tools) {
         const toolName = `mcp_${name}_${tool.name}`
+        // ── K10: content-derived identity at registration ────────────────
+        const schemaJson = canonicalJson(tool.inputSchema ?? {})
+        const load = recordProviderLoad({
+          kind: "mcp_server",
+          providerId: `${name}/${tool.name}`,
+          version: "unversioned",
+          manifestJson: canonicalJson({ server: name, command: cfg.command, url: cfg.url }),
+          schemaDeclarations: schemaJson,
+          description: tool.description ?? "",
+        })
+        let description = tool.description ?? `MCP tool from ${name}: ${tool.name}`
+        if (load.drift.drifted) {
+          drifted.push({ tool: toolName, fields: load.drift.changedFields })
+          description = `[K10 DRIFT: schema changed since approval — re-approval required] ${description}`
+        }
         const toolDef: ToolDef = {
           type: "function",
           function: {
             name: toolName,
-            description: tool.description ?? `MCP tool from ${name}: ${tool.name}`,
+            description,
             parameters: tool.inputSchema as Record<string, unknown>,
           },
         }
@@ -95,5 +136,5 @@ export async function registerMcpTools(runner: AgentRunner, serverFilter?: strin
       console.error(`[mcp] Failed to connect to ${name}: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
-  return connected
+  return { connected, drifted }
 }

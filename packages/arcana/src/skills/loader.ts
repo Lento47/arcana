@@ -9,6 +9,7 @@ import { join, dirname, relative } from "node:path"
 import { homedir } from "node:os"
 import { createHash } from "node:crypto"
 import matter from "gray-matter"
+import { recordProviderLoad, providerKey } from "@arcana/core/capability/provider-registry"
 
 export type SkillCatalog = {
   name: string
@@ -144,6 +145,106 @@ async function findSkillBodyFile(dir: string, skillId: string): Promise<string |
       }
     } catch (e) { console.warn(`[arcana] Failed to read skill body ${mdPath}:`, e instanceof Error ? e.message : String(e)) }
     const sub = await findSkillBodyFile(full, skillId)
+    if (sub !== null) return sub
+  }
+  return null
+}
+
+// ── K10 supply-chain identity ────────────────────────────────────────────
+
+export interface SkillLoadWithIdentity {
+  body: string
+  /** Stable registry key: `skill:<id>`. */
+  key: string
+  isNew: boolean
+  /** True when content changed vs the previously recorded identity. */
+  drifted: boolean
+  driftFields: string[]
+}
+
+/**
+ * Load a skill body WITH K10 provider identity: hashes the resolved body +
+ * frontmatter into a durable provider record; any change on a subsequent load
+ * reports drift (trust inheritance stops ⇒ re-approval required).
+ */
+export async function loadSkillBodyWithIdentity(skillId: string, skillDirs: string[]): Promise<SkillLoadWithIdentity> {
+  // Resolution mirrors loadSkillBody (cache-first, then filesystem scan) but
+  // also captures the frontmatter metadata needed for the manifest hash.
+  let resolved: { body: string; name?: string; description?: string } | null = null
+  try {
+    if (existsSync(CACHE_PATH)) {
+      const cached = JSON.parse(readFileSync(CACHE_PATH, "utf8"))
+      const skills = cached?.skills as Record<string, any> | undefined
+      if (skills) {
+        let info = skills[skillId]
+        if (!info) {
+          for (const [id, v] of Object.entries(skills)) {
+            const computed = ((v as any).name ?? id).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+            if (id === skillId || computed === skillId) { info = v; break }
+          }
+        }
+        if (typeof info?.content === "string" && info.content.trim()) {
+          resolved = { body: info.content.trim(), name: info.name, description: info.description }
+        } else if (info?.location && existsSync(info.location)) {
+          const raw = await readFile(info.location, "utf8")
+          const parsed = matter(raw)
+          resolved = {
+            body: parsed.content.trim(),
+            name: (parsed.data as { name?: string })?.name,
+            description: (parsed.data as { description?: string })?.description,
+          }
+        }
+      }
+    }
+  } catch { console.debug("[arcana] Skills identity: cache stale — falling back to scan") }
+
+  if (!resolved) {
+    for (const dir of skillDirs.filter((d) => existsSync(d))) {
+      const found = await findSkillEntry(dir, skillId)
+      if (found !== null) { resolved = found; break }
+    }
+  }
+  if (!resolved) throw new Error(`Skill not found: ${skillId}`)
+
+  const body = resolved.body
+  const load = recordProviderLoad({
+    kind: "skill",
+    providerId: skillId,
+    version: "unversioned",
+    manifestJson: JSON.stringify({ name: resolved.name ?? skillId, description: resolved.description ?? "" }),
+    schemaDeclarations: body,
+    description: resolved.description ?? "",
+  })
+  return {
+    body,
+    key: providerKey("skill", skillId),
+    isNew: load.isNew,
+    drifted: load.drift.drifted,
+    driftFields: load.drift.changedFields,
+  }
+}
+
+/** Like findSkillBodyFile but also returns frontmatter metadata. */
+async function findSkillEntry(
+  dir: string,
+  skillId: string,
+): Promise<{ body: string; name?: string; description?: string } | null> {
+  const entries = await readdir(dir, { withFileTypes: true })
+  for (const e of entries) {
+    const full = join(dir, e.name)
+    if (!e.isDirectory()) continue
+    const mdPath = join(full, "SKILL.md")
+    try {
+      const raw = await readFile(mdPath, "utf8")
+      const parsed = matter(raw)
+      const meta = parsed.data as { name?: string; description?: string } | undefined
+      const name = meta?.name
+      if (name) {
+        const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        if (id === skillId) return { body: parsed.content.trim(), name, description: meta?.description }
+      }
+    } catch { /* same warn policy as findSkillBodyFile — skip silently here */ }
+    const sub = await findSkillEntry(full, skillId)
     if (sub !== null) return sub
   }
   return null

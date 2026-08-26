@@ -72,6 +72,11 @@ function stableStringify(value: unknown): string {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`).join(",")}}`
 }
 
+/** Key-order-independent JSON serialization for content hashing (K10). */
+export function canonicalJson(value: unknown): string {
+  return stableStringify(value)
+}
+
 export function hashContent(content: string): string {
   return sha256(content)
 }
