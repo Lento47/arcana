@@ -47,6 +47,12 @@ export interface NetworkGateRequest {
   transport?: import("./replay-transport").GateTransport
   /** K7: caller-supplied influence claims (merged over gate-derived defaults). */
   influenceClaims?: import("./types").ArgumentInfluenceClaim[]
+  /**
+   * Participation taint (P6): set when the session context contains
+   * SECRET-labeled items. Forces APPROVAL_REQUIRED on ALL outbound calls,
+   * preventing secret exfiltration through any channel.
+   */
+  secretTainted?: boolean
 }
 
 export interface NetworkExecResult {
@@ -98,6 +104,17 @@ export async function authorizeNetwork(
       message: "K7 escalation: untrusted/unknown influence on consequential arguments",
     }
   }
+
+  // Participation taint (P6): session context contained SECRET-labeled items
+  // → all outbound calls escalate regardless of destination or method.
+  if (request.secretTainted) {
+    recordDecision("APPROVAL_REQUIRED")
+    return {
+      status: "APPROVAL_REQUIRED",
+      message: "Participation taint: session context contains SECRET-labeled items",
+    }
+  }
+
   const authReq = buildAuthorizationRequest({
     toolName: request.toolName,
     principalId: options.principalId ?? "arcana-cli",
