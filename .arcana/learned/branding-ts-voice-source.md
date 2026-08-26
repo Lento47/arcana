@@ -13,4 +13,4 @@ source: manual
 
 **How to apply:** When adding new arcane strings, extend branding.ts exports. Never hardcode voice strings in components. Import from branding.ts.
 
-Related: [[scramble-reruns-on-text-change]], [[corrupt-glyphs-error-effect]]
+Related: [[scramble-reruns-on-text-change]], [[corrupt-glyphs-error-effect]] [[keymash-noise-input-handling]]

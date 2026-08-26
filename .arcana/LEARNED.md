@@ -39,6 +39,7 @@
 - [[corrupt-glyphs-error-effect]] — CORRUPT_GLYPHS pool used for error "unencrypt" effect
 
 ## Patterns
+- [[keymash-noise-input-handling]] — Handle keyboard-mash/garbage input with a brief acknowledgment, then return to idle.
 - [[opentui-solidjs-reactivity]] — OpenTUI uses SolidJS (createMemo, createEffect, createSignal)
 - [[effect-ts-patterns]] — Server uses Effect.ts for dependency injection + error handling
 - [[caveman-compression]] — Tool/system prompts compressed ~40% by dropping articles/filler

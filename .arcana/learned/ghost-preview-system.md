@@ -244,3 +244,5 @@ date: YYYY-MM-DD
 - [[confidence-decay-pipeline]] — Model trust tracking and decay
 - [[run-budgets]] — Per-session safety budgets
 - [[session-lock]] — Concurrent session protection
+
+Related: [[keymash-noise-input-handling]]
