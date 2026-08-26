@@ -1427,10 +1427,35 @@ export const layer = Layer.effect(
               )
             }
             const stream = llm.stream(streamInput)
-
-            yield* stream.pipe(
-              Stream.tap(observe),
+            // openai-compatible >= 2.0.70 reports a stream that ends without a
+            // finish reason as an ERROR instead of a step-finish with an
+            // unmapped reason. Convert it into the same retryable
+            // ResponseStreamError the degenerate-empty gate throws - but ONLY
+            // for post-tool continuations, matching the gate's single-shot
+            // carve-out (benign empty single-shot still ends as "stop").
+            const streamWithErrorGate = stream.pipe(
               Stream.tap((event) => handleEvent(event)),
+              Stream.catchCause((cause) => {
+                const error = Cause.squash(cause)
+                const message = errorMessage(error)
+                const missingFinish = message.includes("ended without a finish reason")
+                // openai-compatible >= 2.0.70 turns a stream that ends
+                // without a finish reason into an error. Preserve the two
+                // pre-upgrade behaviors: post-tool continuations retry via
+                // the degenerate-empty gate; benign single-shot empty streams
+                // end the turn quietly (drive layer owns them).
+                if (missingFinish && ctx.followingToolResults) {
+                  return Stream.fail(
+                    new ProviderError.ResponseStreamError("Provider returned an empty response"),
+                  )
+                }
+                if (missingFinish) return Stream.empty
+                return Stream.failCause(cause)
+              }),
+            )
+
+            yield* streamWithErrorGate.pipe(
+              Stream.tap(observe),
               Stream.takeUntil(() => ctx.needsCompaction),
               Stream.runDrain,
               Effect.tap(() => finishAttempt("success")),
