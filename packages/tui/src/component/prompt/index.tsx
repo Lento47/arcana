@@ -44,6 +44,7 @@ import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import type { FilePart, Session, UserMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
 import { errorMessage } from "../../util/error"
+import { logMessageDebug } from "../../util/message-debug"
 import { formatDuration } from "../../util/format"
 import { createPendingSessionID, titleFromUserText } from "../../util/session"
 import { promptMaxHeight } from "../../util/geometry"
@@ -1192,6 +1193,18 @@ export function Prompt(props: PromptProps) {
       }),
     )
     const nonTextParts = promptSnapshot.parts.filter((part) => part.type !== "text")
+    /** Post-await composer restore must never crash the app: the route bounce
+     *  during an awaited create can destroy this editor's buffer ("EditBuffer
+     *  is destroyed" — daemon log, exit code=1), and a thrown cleanup used to
+     *  take the whole TUI down. Degrade to a debug line instead. */
+    const restoreComposer = (parts: typeof nonTextParts) => {
+      try {
+        setStore("prompt", { input: inputText, parts })
+        writeInput(inputText)
+      } catch (error) {
+        logMessageDebug("submit.restore.failed", { error: errorMessage(error) })
+      }
+    }
     const editorSelection = editorContext()
     const editorParts =
       editorSelection && editor.labelState() === "pending"
@@ -1310,8 +1323,7 @@ export function Prompt(props: PromptProps) {
         if (move.pending() && !directory) {
           clearOptimisticMessages(pendingStubID)
           sync.session.forget(pendingStubID)
-          setStore("prompt", { input: inputText, parts: nonTextParts })
-          writeInput(inputText)
+          restoreComposer(nonTextParts)
           route.navigate({ type: "home" })
           return false
         }
@@ -1338,14 +1350,28 @@ export function Prompt(props: PromptProps) {
           if (finishMoveProgress) move.finishSubmit()
           clearOptimisticMessages(pendingStubID)
           sync.session.forget(pendingStubID)
-          // The session will never exist — strand nothing on the stub id.
+          // The session will never exist - strand nothing on the stub id.
           promptQueue.failForSession(pendingStubID, "session was never created")
-          console.log("Creating a session failed:", res.error)
-          setStore("prompt", { input: inputText, parts: nonTextParts })
-          writeInput(inputText)
+          // The engine answers schema failures with an empty BadRequest, so
+          // capture whatever we can - invisibly console.log'ing it left every
+          // failure undiagnosable ("Open console" in a terminal TUI).
+          const status = (res.error as { status?: unknown } | undefined)?.status
+          const detail = errorMessage(res.error ?? "unknown error")
+          logMessageDebug("session.create.failed", {
+            status: status === undefined ? undefined : String(status),
+            error: detail,
+            directory,
+            agent: agent.name,
+          })
+          restoreComposer(nonTextParts)
           toast.show({
-            message: "Creating a session failed. Open console for more details.",
+            title: "Creating a session failed",
+            message:
+              [status !== undefined ? `HTTP ${String(status)}` : undefined, detail]
+                .filter(Boolean)
+                .join(" · ") || "Unknown error",
             variant: "error",
+            duration: 8000,
           })
           route.navigate({ type: "home" })
           return true
@@ -1391,9 +1417,8 @@ export function Prompt(props: PromptProps) {
     } else if (arcanaPromptCommand) {
       const task = arcanaPromptCommand.arguments.trim()
       if (!task) {
-        // Composer already cleared optimistically — restore so user can finish the command
-        setStore("prompt", { input: inputText, parts: [] })
-        writeInput(inputText)
+        // Composer already cleared optimistically - restore so user can finish the command
+        restoreComposer([])
         toast.show({
           title: `/${arcanaPromptCommand.command}`,
           message: `Add a task after /${arcanaPromptCommand.command}.`,
