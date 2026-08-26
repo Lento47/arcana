@@ -485,11 +485,12 @@ export function stampAgentChildSessions(input: {
   const children = sessions.filter((s) => s.parentID === parentSessionID)
   if (children.length === 0) return entries
 
-  const newestChild = children.reduce((max, s) =>
-    (s.time?.created ?? 0) > (max.time?.created ?? 0) ? s : max,
-  )
-  const newestChildID = newestChild.id
-
+  // Identity resolution order (subagent-card fix):
+  //   1. actor/title match on the child title ("@<agent> subagent")
+  //   2. newest child — ONLY when there is exactly ONE unstamped agent entry
+  //      and exactly ONE child. With retries/multiple same-agent children,
+  //      blanket-stamping made every card mirror the newest child's stream,
+  //      which read as "multiple cards showing the same subagent".
   const childByAgent = new Map<string, { id: string; created: number }>()
   for (const child of children) {
     const agentName = child.title?.match(/@([\w-]+)\s+subagent/i)?.[1]
@@ -501,12 +502,17 @@ export function stampAgentChildSessions(input: {
     }
   }
 
+  const unstamped = entries.filter((e) => e.kind === "agent" && !e.source?.sessionID)
+  const oneToOne = children.length === 1 && unstamped.length === 1
+
   return entries.map((entry): SpineEntry => {
     if (entry.kind !== "agent" || entry.source?.sessionID || !entry.actor) return entry
-    const matched = entry.actor ? childByAgent.get(entry.actor) : undefined
+    const matched = childByAgent.get(entry.actor)
+    const resolved = matched?.id ?? (oneToOne ? children.reduce((max, s) => ((s.time?.created ?? 0) > (max.time?.created ?? 0) ? s : max), children[0]!).id : undefined)
+    if (!resolved) return entry // leave unbound: card renders its own state, no dive target
     return {
       ...entry,
-      source: { ...entry.source, sessionID: matched?.id ?? newestChildID } as SpineEntry["source"],
+      source: { ...entry.source, sessionID: resolved } as SpineEntry["source"],
     }
   })
 }

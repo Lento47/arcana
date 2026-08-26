@@ -927,8 +927,8 @@ export function SpineEntry(props: {
                         <Show when={v().streaming}>
                           <Show when={!!liveWorkingText()} fallback={
                             <text fg={theme.spineContext} wrapMode="word">
-                              Working in the {v().label || "subagent"} context — its own tools, files
-                              and messages, not the shared session. Enter or click to watch it think.
+                              Working in the {v().label || "subagent"} context - no streamed output
+                              yet. Enter or click to watch it think.
                             </text>
                           }>
                             <text fg={theme.spineContext} wrapMode="word">
