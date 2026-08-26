@@ -94,6 +94,23 @@ const DAEMON_REGISTRY_DIR =
     : undefined
 
 /**
+ * Dev/default spawn command when the host didn't publish ARCANA_DAEMON_CMD:
+ * mirrors bare-`arcana`'s daemon branch (bun + engine entry + --daemon).
+ */
+function defaultDevDaemonSpawnCommand(directory: string | undefined): string[] | undefined {
+  try {
+    const path = require("node:path") as typeof import("node:path")
+    const fs = require("node:fs") as typeof import("node:fs")
+    const engineEntry = path.join(import.meta.dir, "../../engine/src/index.ts")
+    if (!fs.existsSync(engineEntry)) return undefined
+    void directory
+    return ["bun", "--conditions=browser", engineEntry, "--daemon"]
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Scan the daemon registry for the NEWEST entry whose /health answers. Used
  * after a respawn that may have rebound to a different port — retrying
  * against the old base URL would fail forever even though the engine is up.
@@ -104,19 +121,33 @@ async function discoverAliveDaemonUrl(preferredUrl: string): Promise<string | un
     const fs = await import("node:fs/promises")
     const os = await import("node:os")
     const path = await import("node:path")
-    const dir = DAEMON_REGISTRY_DIR ?? path.join(os.homedir(), ".local", "state", "arcana", "daemon")
+    // The daemon registry lives at ~/.arcana/daemon/<workspaceHash>.json
+    // (packages/engine/src/daemon/lock.ts).
+    const dir = path.join(os.homedir(), ".arcana", "daemon")
     const files = (await fs.readdir(dir)).filter((f) => f.endsWith(".json"))
-    const candidates: Array<{ url: string; mtime: number }> = []
+    const candidates: Array<{ port: number; mtimeMs: number }> = []
     for (const file of files) {
       try {
-        const raw = await fs.readFile(path.join(dir, file), "utf8")
+        const full = path.join(dir, file)
+        const raw = await fs.readFile(full, "utf8")
         const parsed = JSON.parse(raw) as { port?: number }
         if (typeof parsed.port !== "number") continue
-        candidates.push({ url: `http://127.0.0.1:${parsed.port}`, mtime: 0 })
+        let mtimeMs = 0
+        try {
+          mtimeMs = (await fs.stat(full)).mtimeMs
+        } catch {}
+        candidates.push({ port: parsed.port, mtimeMs })
       } catch {}
     }
-    for (const candidate of candidates) {
-      if (await daemonHealthOk(candidate.url)) return candidate.url
+    // Newest registrations first; then sweep the fixed fallback range so a
+    // freshly spawned daemon is found even before its registry entry lands.
+    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs)
+    const urls = candidates.map((c) => `http://127.0.0.1:${c.port}`)
+    for (let port = 9142; port <= 9150; port++) {
+      urls.push(`http://127.0.0.1:${port}`)
+    }
+    for (const url of urls) {
+      if (await daemonHealthOk(url)) return url
     }
   } catch {}
   return undefined
@@ -137,7 +168,7 @@ function props_baseOf(raw: string): string | null {
 
 async function respawnDaemon(url: string, directory: string | undefined): Promise<boolean> {
   const bun = (globalThis as { Bun?: { spawn?: (...args: unknown[]) => unknown } }).Bun
-  const cmd = daemonSpawnCommand()
+  const cmd = daemonSpawnCommand() ?? defaultDevDaemonSpawnCommand(directory)
   if (!bun?.spawn || !cmd?.length) return false
   const now = Date.now()
   if (now - lastDaemonRespawnAt < DAEMON_RESPAWN_DEBOUNCE_MS) return false
@@ -169,23 +200,25 @@ export function wrapDaemonFetch(baseUrl: string, directory: string | undefined, 
   // Recovery may discover the daemon on a DIFFERENT port (respawn port
   // fallback). All later calls rebase onto the recovered origin.
   let currentBase = baseUrl
+
+  async function recoverDaemonBase(): Promise<string | undefined> {
+    const deadline = Date.now() + DAEMON_RESPAWN_ATTEMPTS * 250
+    await respawnDaemon(currentBase, directory)
+    while (Date.now() < deadline) {
+      const found = await discoverAliveDaemonUrl(currentBase)
+      if (found) return found
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    }
+    return undefined
+  }
+
   const wrapped = async (input: URL | RequestInfo, init?: RequestInit) => {
     const send = (base: string) => baseFetch(rebaseRequestUrl(input, base), init)
     try {
       return await send(currentBase)
     } catch (error) {
       if (!isDaemonConnectionError(error)) throw error
-      // Respawn attempt first (existing behavior), then registry discovery —
-      // a respawned daemon can bind a different port via the fallback range.
-      const respawned = await respawnDaemon(currentBase, directory)
-      if (!respawned && currentBase === baseUrl) {
-        const discovered = await discoverAliveDaemonUrl(baseUrl)
-        if (discovered) {
-          currentBase = discovered
-          return send(currentBase)
-        }
-      }
-      const recovered = await discoverAliveDaemonUrl(currentBase)
+      const recovered = await recoverDaemonBase()
       if (!recovered) throw error
       currentBase = recovered
       return send(currentBase)
