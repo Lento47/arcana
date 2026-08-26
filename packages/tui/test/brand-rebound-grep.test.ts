@@ -95,10 +95,10 @@ describe("brand rebrand regression", () => {
   test("engine/src has no OpenCode Go / opencode.ai in user-facing copy", () => {
     for (const file of walk(ENGINE_SRC, [".ts", ".tsx"])) checkFile(file, ENGINE_SRC)
   })
-  test("BRAND_TIERS.go.name is Arcana Pro", () => {
+  test("BRAND_TIERS.go.name is Arcana Plan", () => {
     // import after the file scan to avoid pulling branding into both test contexts
     const { BRAND_TIERS } = require("../src/branding")
-    expect(BRAND_TIERS.go.name).toBe("Arcana Pro")
+    expect(BRAND_TIERS.go.name).toBe("Arcana Plan")
     expect(BRAND_TIERS.go.price).toBe("$10/month")
     expect(BRAND_TIERS.go.url).toMatch(/^https:\/\/arcana\.otnelhq\.com\//)
   })

@@ -14,15 +14,15 @@ export type Err = ReturnType<NamedError["toObject"]>
  */
 const BRAND_TIERS = {
   go: {
-    name: "Arcana Pro",
+    name: "Arcana Plan",
     price: "$10/month",
     url: "https://arcana.otnelhq.com/pro",
     limitReachedMessage:
-      "Free tier limit reached. Subscribe to Arcana Pro for higher rate limits and more models.",
+      "Free tier limit reached. Subscribe to Arcana Plan for higher rate limits and more models.",
   },
 } as const
 
-export const GO_UPSELL_MESSAGE = "Arcana subscription limit — upgrade to Arcana Pro for higher rate limits."
+export const GO_UPSELL_MESSAGE = "Arcana subscription limit — upgrade to Arcana Plan for higher rate limits."
 export const GO_UPSELL_URL = BRAND_TIERS.go.url
 export type RetryReason = "free_tier_limit" | "account_rate_limit" | (string & {})
 
@@ -138,7 +138,7 @@ export function retryable(error: Err, provider: string) {
         action: {
           reason: "account_rate_limit",
           provider,
-          title: "Arcana Pro limit reached",
+          title: "Arcana Plan limit reached",
           message,
           label: "open settings",
           link,

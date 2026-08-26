@@ -52,6 +52,13 @@ describe("providerOptions — arcana oauth", () => {
     expect(oauth?.description).toContain("unlock more models")
   })
 
+  test("opencode-go row is branded Arcana Plan regardless of server-provided name", () => {
+    const opts = providerOptions(SAMPLE)
+    const go = opts.find((o) => o.type === "provider" && o.providerID === "opencode-go")
+    expect(go?.title).toBe("Arcana Plan")
+    expect(go?.description).toBe("Low cost plan for everyone")
+  })
+
   test("other rows are still present and ordered", () => {
     const opts = providerOptions(SAMPLE, { showArcanaOauth: true })
     expect(opts.some((o) => o.type === "custom")).toBe(true)

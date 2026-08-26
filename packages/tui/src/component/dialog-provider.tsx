@@ -130,14 +130,14 @@ export function providerOptions(
     ),
     map((provider) => ({
       type: "provider" as const,
-      title: provider.name,
+      title: provider.id === "opencode-go" ? "Arcana Plan" : provider.name,
       value: provider.id,
       providerID: provider.id,
       description: {
         arcana: "(Recommended)",
         anthropic: "(API key)",
         openai: "(ChatGPT Plus/Pro or API key)",
-        "opencode-go": "Arcana Go — low cost plan for everyone",
+        "opencode-go": "Low cost plan for everyone",
       }[provider.id],
       category: provider.id in PROVIDER_PRIORITY ? "Popular" : "Providers",
     })),
