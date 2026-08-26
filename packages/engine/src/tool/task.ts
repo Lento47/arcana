@@ -20,6 +20,7 @@ import { Database } from "@arcana/core/database/database"
 import { getSessionGoal, setSessionGoal } from "@arcana/core/session/goal"
 import { SqliteGrantStore } from "@arcana/core/capability/grant-store-sqlite"
 import { delegateCapabilities, type CapabilityGrantDraft } from "@arcana/core/capability/delegation"
+import { ensureSessionAgentGrants } from "@arcana/core/capability/session-grants"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>
@@ -286,6 +287,19 @@ export const TaskTool = Tool.define(
 
         // Use parent.agent (from session lookup) not input.agent.name
         const parentPrincipalId = parent.agent
+
+        // Grant-race fix (E1): the parent's session-agent grants are
+        // provisioned lazily on first PEP admission. A subagent spawned on a
+        // brand-new session could fire its first read BEFORE that bootstrap,
+        // get denied by the capability layer, and have the whole review wave
+        // cancelled. Idempotent: existing grants are returned untouched.
+        if (parentPrincipalId) {
+          yield* ensureSessionAgentGrants(
+            grantStore,
+            { agentName: parentPrincipalId, sessionId: ctx.sessionID },
+          ).pipe(Effect.catch(() => Effect.succeed([] as const)))
+        }
+
         if (!parentPrincipalId) {
           // No agent identity on parent session — skip delegation
           return
