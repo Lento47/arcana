@@ -88,6 +88,9 @@ export function usageMetricsSharingEnabled(env: Record<string, string | undefine
   return true
 }
 
+/** Wire value sent as `source` on every reported event. */
+export const METRICS_SOURCE = "arcana-ai"
+
 function n0(value: number | undefined): number {
   const n = Number(value)
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0
@@ -118,6 +121,7 @@ export function createUsageMetricsReporter(
     const key = resolveKey()
     if (!key) return false
     const events = batch.map((e) => ({
+      source: "arcana-ai",
       eventId: crypto.randomUUID(),
       provider: e.providerID ?? "unknown",
       sessionId: e.sessionId,
@@ -191,13 +195,30 @@ export function createUsageMetricsReporter(
  * AND when the call was served through Arcana proxy infrastructure (already
  * metered server-side — pushing again would double-count).
  */
+/**
+ * Provider label for a completion: Arcana's own proxy infrastructure is
+ * reported as provider "arcana-proxy" (the runtime routed through it);
+ * anything else keeps its configured provider id.
+ */
+export function resolveCompletionProviderLabel(input: {
+  baseURL?: unknown
+  providerID?: string
+}): string {
+  if (isArcanaProxyBaseURL(input.baseURL)) return "arcana-proxy"
+  return input.providerID ?? "unknown"
+}
+
+/**
+ * Convenience gate used by the session processor: skips only when sharing is
+ * disabled. Proxied turns are INCLUDED and labeled provider "arcana-proxy"
+ * — each source section in the proxy summary is independent, so this is
+ * visibility, not double-counting.
+ */
 export function shouldReportCompletionUsage(input: {
   baseURL?: unknown
   env?: Record<string, string | undefined>
 }): boolean {
-  if (!usageMetricsSharingEnabled(input.env)) return false
-  if (isArcanaProxyBaseURL(input.baseURL)) return false
-  return true
+  return usageMetricsSharingEnabled(input.env)
 }
 
 const shared = createUsageMetricsReporter()
@@ -207,15 +228,20 @@ const shared = createUsageMetricsReporter()
  * Swallows everything; safe to call unconditionally.
  */
 export function reportCompletionUsage(input: UsageMetricsInput & {
-  /** Runtime model shape from the processor; used only for the proxy-host check. */
-  model?: { options?: Record<string, any>; api?: { url?: string } }
+  /** Runtime model shape from the processor; used for the provider label. */
+  model?: { providerID?: string; options?: Record<string, any>; api?: { url?: string } }
 }): void {
   try {
-    if (!shouldReportCompletionUsage({
-      baseURL: input.model?.options?.baseURL ?? input.model?.api?.url,
-    })) return
-    const { model: _model, ...event } = input
-    shared.record(event)
+    if (!usageMetricsSharingEnabled()) return
+    const { model, ...event } = input
+    const labeled = {
+      ...event,
+      providerID: resolveCompletionProviderLabel({
+        baseURL: model?.options?.baseURL ?? model?.api?.url,
+        providerID: model?.providerID ?? input.providerID,
+      }),
+    }
+    shared.record(labeled)
   } catch {}
 }
 

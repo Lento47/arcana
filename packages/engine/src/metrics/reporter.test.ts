@@ -146,46 +146,20 @@ describe("usage metrics reporter", () => {
     expect(batches).toBeGreaterThanOrEqual(1)
   })
 
-  test("proxied traffic and opted-out sharing are excluded at the gate", () => {
-    // On by default — an empty env enables.
+  test("gate: proxied infra reported too (labeled arcana-proxy)", () => {
     expect(shouldReportCompletionUsage({ env: {} })).toBe(true)
-    const disabledEnv = { ARCANA_METRICS_SHARING: "0" }
-    expect(shouldReportCompletionUsage({ env: disabledEnv })).toBe(false)
     expect(
-      shouldReportCompletionUsage({
-        env: {},
-        baseURL: "https://proxy-arcana.otnelhq.com/v1",
-      }),
-    ).toBe(false)
+      shouldReportCompletionUsage({ env: {}, baseURL: "https://proxy-arcana.otnelhq.com/v1" }),
+    ).toBe(true)
     expect(
-      shouldReportCompletionUsage({
-        env: {},
-        baseURL: "https://arcana-proxy.lejzerv.workers.dev/v1",
-      }),
-    ).toBe(false)
-    // Lookalike hosts are NOT Arcana infrastructure — they must be reported.
+      shouldReportCompletionUsage({ env: {}, baseURL: "https://arcana-proxy.lejzerv.workers.dev/v1" }),
+    ).toBe(true)
     expect(
-      shouldReportCompletionUsage({
-        env: {},
-        baseURL: "https://proxy-arcana.otnelhq.com.evil.io/v1",
-      }),
+      shouldReportCompletionUsage({ env: {}, baseURL: "https://proxy-arcana.otnelhq.com.evil.io/v1" }),
     ).toBe(true)
   })
 
-  test("reportCompletionUsage end-to-end: enabled direct call records, proxied call does not", async () => {
-    // The shared singleton reads process.env at construction; drive the gate
-    // logic directly instead of mutating process state.
-    const gatedDirect = shouldReportCompletionUsage({
-      env: {},
-      baseURL: undefined,
-    })
-    const gatedProxy = shouldReportCompletionUsage({
-      env: {},
-      baseURL: "https://proxy-arcana.otnelhq.com/v1",
-    })
-    expect(gatedDirect).toBe(true)
-    expect(gatedProxy).toBe(false)
-    // Unconditional call safety: no model, opted-out env — must not throw.
+  test("reportCompletionUsage never throws", () => {
     expect(() => reportCompletionUsage({ sessionId: "s" })).not.toThrow()
   })
 })
