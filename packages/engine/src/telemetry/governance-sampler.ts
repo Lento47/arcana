@@ -78,13 +78,13 @@ export function createGovernanceSampler(
   const resolveKey = options.resolveKey ?? (() => process.env.ARCANA_PROXY_KEY)
   const doFetch = options.fetchImpl ?? fetch
 
-  let openWindow: { start: number; counters: Record<string, number> } | undefined
-  let closed: Array<{ start: number; counters: Record<string, number> }> = []
+  let sealed: Array<{ start: number; counters: Record<string, number> }> = []
+  let open: { start: number; counters: Record<string, number> } | undefined
   let timer: ReturnType<typeof setInterval> | undefined
 
   const armTimer = () => {
     if (timer || !Number.isFinite(windowMs) || windowMs <= 0) return
-    timer = setInterval(() => void flush(), Math.max(5_000, windowMs))
+    timer = setInterval(() => void drainSealed(), Math.max(5_000, windowMs))
     timer.unref?.()
   }
 
@@ -112,22 +112,33 @@ export function createGovernanceSampler(
     return { delivered: false, retryable: true }
   }
 
+  /** Deliver everything currently sealed. Transport failures requeue (bounded). */
+  async function drainSealed(): Promise<void> {
+    let guard = 0
+    while (sealed.length > 0 && guard < 50) {
+      guard += 1
+      const batch = sealed.splice(0, Math.min(MAX_BUFFERED_WINDOWS, sealed.length))
+      const outcome = await deliver(batch)
+      if (!outcome.delivered && outcome.retryable) {
+        sealed.unshift(...batch.slice(-MAX_BUFFERED_WINDOWS))
+        return
+      }
+      // Non-retryable outcomes drop the batch permanently.
+    }
+  }
+
+  function sealOpen(): void {
+    if (open) {
+      sealed.push(open)
+      open = undefined
+    }
+  }
+
   async function flush(): Promise<void> {
-    // An explicit flush closes the open window so callers get deterministic
+    // Explicit flush seals the open window so callers get deterministic
     // delivery of everything recorded so far.
-    if (openWindow) {
-      closed.push(openWindow)
-      openWindow = undefined
-    }
-    if (closed.length === 0) return
-    const batch = closed.splice(0, MAX_BUFFERED_WINDOWS)
-    const outcome = await deliver(batch)
-    if (!outcome.delivered && outcome.retryable) {
-      // Transport failure: requeue (bounded) oldest-first so a transient
-      // outage retries without unbounded growth. Non-retryable outcomes
-      // (no credential / 4xx) drop the batch permanently.
-      closed = [...batch.slice(-MAX_BUFFERED_WINDOWS), ...closed]
-    }
+    sealOpen()
+    await drainSealed()
   }
 
   function record(eventType: string, at?: number): void {
@@ -136,30 +147,29 @@ export function createGovernanceSampler(
     if (!counter) return
     const now = at ?? Date.now()
     const windowStart = Math.floor(now / windowMs) * windowMs
-    if (!openWindow || openWindow.start !== windowStart) {
-      if (openWindow) closed.push(openWindow)
-      openWindow = { start: windowStart, counters: {} }
+    if (!open || open.start !== windowStart) {
+      sealOpen()
+      open = { start: windowStart, counters: {} }
       armTimer()
-      if (closed.length > 0) void flush()
     }
-    bump(openWindow.counters, counter)
-    if (Object.keys(openWindow.counters).length > 0 && closed.length >= MAX_BUFFERED_WINDOWS) {
-      void flush()
-    }
+    bump(open.counters, counter)
+    // Backpressure: if sealed windows pile up beyond the cap, attempt a
+    // bounded drain so memory stays flat during long outages.
+    if (sealed.length >= MAX_BUFFERED_WINDOWS) void drainSealed()
   }
 
   function dispose(): void {
     if (timer) clearInterval(timer)
     timer = undefined
-    closed = []
-    openWindow = undefined
+    sealed = []
+    open = undefined
   }
 
   return {
     record,
     flush,
     dispose,
-    pendingWindows: () => closed.length + (openWindow ? 1 : 0),
+    pendingWindows: () => sealed.length + (open ? 1 : 0),
   }
 }
 

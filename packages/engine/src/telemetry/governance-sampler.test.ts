@@ -37,7 +37,8 @@ describe("governance sampler", () => {
     const allCounters = bodies.flatMap((b) => b.windows.map((w: any) => w.counters))
     const flat: Record<string, number> = {}
     for (const c of allCounters) for (const [k, v] of Object.entries(c)) flat[k] = (flat[k] ?? 0) + (v as number)
-    expect(flat["turns_started"]).toBe(1)
+    // turns_started appears once per window (w1 opener + w2 opener).
+    expect(flat["turns_started"]).toBe(2)
     expect(flat["authority_denied"]).toBe(2)
     expect(flat["capabilities_created"]).toBe(1)
     sampler.dispose()
