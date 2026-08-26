@@ -6,7 +6,7 @@ function toneColor(palette: WidgetPaletteInput, tone: StatusTone) {
   if (tone === "ok") return palette.done
   if (tone === "warn") return palette.warn
   if (tone === "crit") return palette.sev1
-  return undefined
+  return palette.muted
 }
 
 export function statusWidget(
@@ -28,7 +28,9 @@ export function statusWidget(
     }),
   )
 
-  for (const item of items.slice(0, 12)) {
+  const GLYPH: Record<StatusTone, string> = { ok: "✓ ", warn: "⚠ ", crit: "✗ ", neutral: "· " }
+  const visible = items.slice(0, 12)
+  for (const item of visible) {
     const line = new BoxRenderable(renderer, {
       flexDirection: "row",
       width: "100%",
@@ -42,12 +44,20 @@ export function statusWidget(
     )
     line.add(
       new TextRenderable(renderer, {
-        content: item.value,
+        content: `${GLYPH[item.tone]}${item.value}`,
         fg: toneColor(palette, item.tone),
       }),
     )
 
     root.add(line)
+  }
+  if (items.length > 12) {
+    root.add(
+      new TextRenderable(renderer, {
+        content: `… +${items.length - 12} more`,
+        fg: palette.muted,
+      }),
+    )
   }
 
   return root

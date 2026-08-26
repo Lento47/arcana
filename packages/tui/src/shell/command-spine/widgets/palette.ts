@@ -1,4 +1,5 @@
 import type { ColorInput } from "@opentui/core"
+import type { Theme } from "../../../theme"
 
 /** Colors a widget needs; sourced from the active theme, never hardcoded in widgets. */
 export interface WidgetPaletteInput {
@@ -13,25 +14,31 @@ export interface WidgetPaletteInput {
 }
 
 /**
- * Map theme tokens to widget palette. Falls back only when a token is absent
- * (themes are expected to define all of these — arcana/ansi palettes do).
+ * Map theme tokens to widget palette. Accepts the resolved Theme (already
+ * run through applyReadabilityFloor) so contrast is preserved; falls back to
+ * textMuted with a warning instead of silent #888888 which erases S1/S2.
  */
-export function widgetPalette(theme: Record<string, unknown>): WidgetPaletteInput {
-  const pick = (...keys: string[]): ColorInput => {
+export function widgetPalette(theme: Theme | Record<string, unknown>): WidgetPaletteInput {
+  const raw = theme as unknown as Record<string, ColorInput | undefined>
+  const maybe = (value: unknown): ColorInput | undefined =>
+    typeof value === "string" || (value !== null && typeof value === "object" && "r" in (value as Record<string, unknown>)) ? (value as ColorInput) : undefined
+  const pick = (label: string, ...keys: Array<keyof Theme | string>): ColorInput => {
     for (const key of keys) {
-      const value = theme[key]
-      if (value !== undefined && value !== null) return value as ColorInput
+      const v = (theme as unknown as Record<string, unknown>)[key as string] ?? raw[key as string]
+      const col = maybe(v)
+      if (col !== undefined) return col
     }
-    return "#888888"
+    console.warn(`[widgets] missing theme token "${label}", falling back to textMuted`)
+    return (maybe(raw["textMuted"]) ?? maybe((theme as unknown as Record<string, unknown>)["textMuted"]) ?? "#888888") as ColorInput
   }
   return {
-    sev1: pick("error"),
-    sev2: pick("warning"),
-    sev3: pick("info", "spineInspect"),
-    open: pick("error"),
-    done: pick("success"),
-    mit: pick("accent"),
-    muted: pick("textMuted", "markdownText"),
-    warn: pick("warning"),
+    sev1: pick("error", "error"),
+    sev2: pick("warning", "warning"),
+    sev3: pick("info", "spineInspect", "info"),
+    open: pick("open", "error"),
+    done: pick("success", "success"),
+    mit: pick("accent", "accent"),
+    muted: pick("muted", "textMuted", "markdownText"),
+    warn: pick("warn", "warning"),
   }
 }

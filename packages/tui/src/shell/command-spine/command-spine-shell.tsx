@@ -503,7 +503,7 @@ export function CommandSpineShell(props: ShellProps) {
 
   const focusedActionHint = createMemo(() => {
     const entry = navigation.focusedEntry()
-    if (!entry) return ""
+    if (!entry) return composerFocused() ? "Esc spine · j/k rows · ? help" : ""
     if (entry.actions?.length) {
       const action = entry.actions[recoveryActionIndex() % entry.actions.length]
       return `←/→ choose · enter ${action?.label.toLowerCase() ?? "action"}`

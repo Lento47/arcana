@@ -175,6 +175,14 @@ export function ganttWidget(
       }),
     )
   }
+  if (parsed.rows.length > 0) {
+    root.add(
+      new TextRenderable(renderer, {
+        content: "— S1 red · S2 amber · S3 blue · ┿ mitigated · ▶ open",
+        fg: palette.muted,
+      }),
+    )
+  }
 
   return root
 }

@@ -33,6 +33,7 @@ export type NavigationRailProjection = {
   crumbs: NavigationCrumb[]
   siblingLabel?: string
   showParent: boolean
+  cycleWarning?: boolean
 }
 
 const SESSION_SEP_WIDTH = displayWidth(" ▸ ")
@@ -122,9 +123,10 @@ function projectionWidth(projection: NavigationRailProjection): number {
     (width, crumb, index) => width + (index > 0 ? SESSION_SEP_WIDTH : 0) + displayWidth(crumb.label),
     0,
   )
+  const cycle = projection.cycleWarning ? displayWidth(" ⚠ cycle") : 0
   const siblings = projection.siblingLabel ? displayWidth(` ‹ ${projection.siblingLabel} ›`) : 0
   const parent = projection.showParent ? displayWidth(" ↑") : 0
-  return repo + crumbs + siblings + parent
+  return repo + crumbs + cycle + siblings + parent
 }
 
 export function projectNavigationRail(input: {
@@ -144,10 +146,14 @@ export function projectNavigationRail(input: {
         ? `${input.model.siblingIndex}/${input.model.siblingTotal}`
         : undefined,
     showParent: input.model.canGoParent,
+    cycleWarning: input.model.cycleDetected || undefined,
   }
 
   // Session navigation is actionable, so repository context yields first.
   if (projectionWidth(projection) > room) projection = { ...projection, repo: undefined }
+  if (projectionWidth(projection) > room && projection.cycleWarning) {
+    projection = { ...projection, cycleWarning: undefined }
+  }
   if (projectionWidth(projection) > room && projection.crumbs.length > 1) {
     projection = { ...projection, crumbs: selectSessionCrumbs(input.model.crumbs, 1) }
   }
@@ -188,6 +194,16 @@ export function SpineNavigationRail(props: {
 }) {
   const { theme } = useTheme()
   const [hover, setHover] = createSignal<string>()
+  // Debounce hover clear so moving between adjacent crumbs doesn't flicker:
+  // onMouseOver on the next element cancels the pending clear.
+  let hoverClearTimer: ReturnType<typeof setTimeout> | undefined
+  const hoverSet = (id: string) => {
+    if (hoverClearTimer) { clearTimeout(hoverClearTimer); hoverClearTimer = undefined }
+    setHover(id)
+  }
+  const hoverClear = () => {
+    hoverClearTimer = setTimeout(() => setHover(undefined), 50)
+  }
 
   const model = createMemo(() => buildSessionNavigation({
     current: props.session,
@@ -225,8 +241,8 @@ export function SpineNavigationRail(props: {
             <box
               id={crumb.id ? `session-crumb-${crumb.id}` : undefined}
               backgroundColor={crumb.navigable ? bg(`crumb:${crumb.id}`) : undefined}
-              onMouseOver={() => crumb.navigable && setHover(`crumb:${crumb.id}`)}
-              onMouseOut={() => setHover()}
+              onMouseOver={() => crumb.navigable && hoverSet(`crumb:${crumb.id}`)}
+              onMouseOut={() => hoverClear()}
               onMouseUp={() => crumb.navigable && navigate(crumb.id)}
             >
               <text
@@ -239,6 +255,9 @@ export function SpineNavigationRail(props: {
           </>
         )}
       </For>
+      <Show when={rail().cycleWarning}>
+        <text fg={theme.warning} wrapMode="none"> ⚠ cycle</text>
+      </Show>
       <Show when={rail().siblingLabel}>
         {(label) => (
           <>
@@ -246,8 +265,8 @@ export function SpineNavigationRail(props: {
             <box
               id="session-nav-prev"
               backgroundColor={bg("prev")}
-              onMouseOver={() => setHover("prev")}
-              onMouseOut={() => setHover()}
+              onMouseOver={() => hoverSet("prev")}
+              onMouseOut={() => hoverClear()}
               onMouseUp={() => props.onPrevious?.()}
             >
               <text fg={theme.spineBrand}>‹</text>
@@ -256,8 +275,8 @@ export function SpineNavigationRail(props: {
             <box
               id="session-nav-next"
               backgroundColor={bg("next")}
-              onMouseOver={() => setHover("next")}
-              onMouseOut={() => setHover()}
+              onMouseOver={() => hoverSet("next")}
+              onMouseOut={() => hoverClear()}
               onMouseUp={() => props.onNext?.()}
             >
               <text fg={theme.spineBrand}>›</text>
@@ -271,8 +290,8 @@ export function SpineNavigationRail(props: {
           <box
             id="session-nav-parent"
             backgroundColor={bg("parent")}
-            onMouseOver={() => setHover("parent")}
-            onMouseOut={() => setHover()}
+            onMouseOver={() => hoverSet("parent")}
+            onMouseOut={() => hoverClear()}
             onMouseUp={() => props.onParent?.()}
           >
             <text fg={theme.spineBrand}>↑</text>
