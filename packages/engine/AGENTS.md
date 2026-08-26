@@ -129,3 +129,12 @@ Use `Effect.cached` when multiple concurrent callers should share a single in-fl
 Use `EffectBridge` for native or external callbacks (`@parcel/watcher`, `node-pty`, native `fs.watch`, plugin callbacks, etc.) that need to re-enter Effect services with instance/workspace context.
 
 Plain async code should pass explicit context or stay inside an Effect fiber; do not add ambient instance context shims.
+
+# Session/runtime gotchas (session-verified 2026-08)
+
+- **Stale daemon masquerades as code bugs.** Bun dev never reloads; a daemon started mid-edit keeps that module graph forever. Per-call `ReferenceError` on a symbol that exists on disk = stale process, not bad code. First diagnostic: compare `Win32_Process` CreationDate against file mtimes.
+- **Permission.reply ordering is load-bearing.** `pending.delete` / `resolved.add` / publish `Replied` / `Deferred.succeed` must run BEFORE persistence side-effects; a defect in `PermissionSaved.add` otherwise wedges the gate open permanently. Wrap saves with `Effect.catchDefect` and degrade to "not remembered".
+- **`ProjectV2.ID` is a brand-only string.** `ID.make(directory)` stores the raw path — inserting it into `permission.project_id` (FK → `project.id`, and `PRAGMA foreign_keys=ON`) fails. Always pass registered ids (`session.projectID`); tool asks do this, ad-hoc asks must too.
+- **TaskTool grant race:** parent session-agent grants bootstrap lazily on first PEP admission. A subagent spawned earlier fires its first read before grants exist → capability denial → whole sibling wave cancelled. `ensureSessionAgentGrants` runs inside the delegation block before the child loop (idempotent).
+- **RunProof.derive is memoized** on append-only signature `(count, max(sequence))` from one indexed query; events are append-only per session so a hit skips the full O(N) parse+SHA-256 chain. Invalidate by signature change only.
+- **Tool breaker:** `failToolCall` in processor.ts is the single funnel for every failed tool call. ≥3 DISTINCT tools failing with one error signature in 60s ⇒ runtime degraded: operator error event + hard restart (30s crash-loop guard file in tmp). Permission/Question rejects are exempt. Boot canary in tools.ts asserts K7 provenance imports resolve before first turn.
