@@ -117,3 +117,66 @@ export function deriveObjectiveInfluence(
     directDerivations: tracker.findDirectDerivations(value),
   }
 }
+
+// ── History seeding (K7-full: user-message tracking) ─────────────────────
+
+/** Structural subset of SessionV1.WithParts — decoupled from the schema module. */
+export interface ProvenanceSeedMessage {
+  role?: string
+  parts?: Array<{
+    type?: string
+    text?: string
+    tool?: string
+    state?: { status?: string; output?: string }
+    source?: { text?: string }
+  }>
+}
+
+/** Tools whose output is remote content by nature. */
+const REMOTE_TOOL_PREFIXES = ["mcp_", "web_"]
+
+/**
+ * Objective trust label for a tool OUTPUT, by tool identity (not by
+ * escalation outcome): remote-content tools are untrusted whatever the
+ * request decided.
+ */
+export function labelForToolOutput(tool: string): SourceTrustLabel {
+  return REMOTE_TOOL_PREFIXES.some((p) => tool.startsWith(p)) ? "UNTRUSTED_REMOTE" : "TRUSTED_LOCAL"
+}
+
+/**
+ * Seed a tracker from recorded session history so objective derivations work
+ * ACROSS turns and across daemon restarts: the tracker becomes a deterministic
+ * projection of durable context, not ambient mutable state.
+ *
+ * Labels are structural (by source kind), never content-classified:
+ *   user text/files → USER_AUTHORITY · assistant text → GENERATED ·
+ *   completed tool outputs → UNTRUSTED_REMOTE (mcp_/web_ prefixes) or
+ *   TRUSTED_LOCAL.
+ * Incomplete tool states (pending/running/error/cancelled) carry no
+ * trustworthy content and are skipped.
+ */
+export function seedContextProvenance(
+  tracker: ContextProvenanceTracker,
+  history: readonly ProvenanceSeedMessage[],
+): void {
+  for (const msg of history) {
+    const role = msg.role === "user" || msg.role === "assistant" ? msg.role : undefined
+    for (const part of msg.parts ?? []) {
+      if (part.type === "tool") {
+        if (!part.tool || !part.state || part.state.status !== "completed" || !part.state.output) continue
+        tracker.track(`tool:${part.tool}`, part.state.output, [labelForToolOutput(part.tool)])
+        continue
+      }
+      if (!role) continue
+      if (part.type === "text" && part.text) {
+        tracker.track(role, part.text, [role === "user" ? "USER_AUTHORITY" : "GENERATED"])
+      } else if (part.type === "file" && role === "user") {
+        // FilePart text lives under source.text when present; track whatever
+        // textual content the attachment carries.
+        const src = part.source?.text
+        if (src) tracker.track(role, src, ["USER_AUTHORITY"])
+      }
+    }
+  }
+}

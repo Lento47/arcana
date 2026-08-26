@@ -34,7 +34,7 @@ import {
   augmentProvenanceForEscalation,
   normalizeInfluenceClaims,
 } from "@arcana/core/capability/argument-provenance"
-import { ContextProvenanceTracker, type SourceTrustLabel } from "@arcana/core/capability/context-provenance"
+import { ContextProvenanceTracker, seedContextProvenance, labelForToolOutput, type ProvenanceSeedMessage } from "@arcana/core/capability/context-provenance"
 
 // Boot canary (stale-daemon self-heal, layer 1): a daemon started while
 // source was mid-edit could load K7 call sites without their import binding
@@ -542,11 +542,22 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
 }) {
   const tools: Record<string, AITool> = {}
   // ── K7-full: session context provenance tracker ────────────────────────
-  // One tracker per resolve() scope (= one turn's tool surface). Every tool
-  // OUTPUT entering agent context is tracked with objective trust labels;
-  // later gated calls derive influence-claim sources from it via exact
-  // substring matching (deterministic, no model attribution).
+  // One tracker per resolve() scope (= one turn's tool surface), SEEDED from
+  // the durable session history so objective derivations work across turns
+  // and daemon restarts. Every tool OUTPUT entering agent context is tracked
+  // with objective trust labels; later gated calls derive influence-claim
+  // sources from it via exact substring matching (deterministic, no model
+  // attribution).
   const provenance = new ContextProvenanceTracker()
+  try {
+    // Widening cast: SessionV1.WithParts (schema-generated DeepMutable unions)
+    // satisfies the seeder's structural shape but TS can't prove it across
+    // the Part union. The seeder narrows defensively field-by-field.
+    seedContextProvenance(provenance, input.messages as unknown as readonly ProvenanceSeedMessage[])
+  } catch {
+    // Seeding must never break tool resolution — an unseeded tracker only
+    // loses objective derivations, never gains false ones.
+  }
   // InstanceRef is request-derived context: it is provided by the HTTP
   // middleware for the turn that started the request, but a turn resumed or
   // re-driven after a daemon re-registration can run without it (the in-memory
@@ -1079,7 +1090,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     : result?.output !== undefined
                       ? JSON.stringify(result.output)
                       : JSON.stringify(result ?? {})
-                provenance.track(`tool:${item.id}`, outText, k7Escalate ? ["UNTRUSTED_REMOTE"] : ["TRUSTED_LOCAL"])
+                provenance.track(`tool:${item.id}`, outText, [labelForToolOutput(item.id)])
               } catch { /* tracking must never break execution */ }
               const output = {
                 ...result,
