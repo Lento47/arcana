@@ -708,15 +708,13 @@ export function Prompt(props: PromptProps) {
     props.ref?.(undefined)
   })
 
-  // A destroyed composer must neither be written to nor acted upon: async
-  // submit work resumes after awaits that can outlive the unmount (Home send
-  // navigates away mid-submit, dialog replaces, etc). OpenTUI throws
-  // "EditBuffer is destroyed" on any post-destroy call.
-  function uiAlive(): boolean {
-    return alive && !!input && !input.isDestroyed
-  }
+  // A destroyed composer must never be written to: async submit work can
+  // outlive the unmount (Home send navigates away mid-submit) and OpenTUI
+  // throws "EditBuffer is destroyed" on any post-destroy call. Global state
+  // reconciliation after those awaits still runs to completion — only buffer
+  // writes are suppressed.
   function writeInput(text: string): void {
-    if (!uiAlive()) return
+    if (!alive || !input || input.isDestroyed) return
     input.setText(text)
   }
 
@@ -1305,11 +1303,9 @@ export function Prompt(props: PromptProps) {
       let createdID: string | undefined
       if (!needsDestination && sessionPrewarm) {
         createdID = await sessionPrewarm.waitAndConsume()
-        if (!uiAlive()) return true
       }
       if (!createdID) {
         const directory = await move.getDirectory(inputText)
-        if (!uiAlive()) return true
         markSubmit("T2 getDirectory", t0)
         if (move.pending() && !directory) {
           clearOptimisticMessages(pendingStubID)
@@ -1337,7 +1333,6 @@ export function Prompt(props: PromptProps) {
           title: titleFromUserText(inputText) ?? undefined,
         })
         markSubmit("T3 session.create", t0, { error: Boolean(res.error) })
-        if (!uiAlive()) return true
 
         if (res.error || !res.data?.id) {
           if (finishMoveProgress) move.finishSubmit()
@@ -1412,7 +1407,6 @@ export function Prompt(props: PromptProps) {
           `${risk.level.toUpperCase()} risk Arcana task. ${risk.reasons.join(" ")}`,
           "keep editing",
         )
-        if (!uiAlive()) return true
         if (!approved) return false
       }
 

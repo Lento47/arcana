@@ -11,6 +11,7 @@ import { errorMessage } from "../util/error"
 import { isRecord } from "../util/record"
 import { addOptimisticMessage, markOptimisticQueued, removeOptimisticMessage } from "../component/prompt/optimistic"
 import { logMessageDebug } from "../util/message-debug"
+import { isPendingSessionID } from "../util/session"
 
 export type QueuedPromptPayload = Parameters<OpencodeClient["session"]["promptAsync"]>[0]
 
@@ -263,6 +264,26 @@ export const { use: usePromptQueue, provider: PromptQueueProvider } = createSimp
               })
               return "sent"
             }
+          }
+          // A queued item must never be delivered against a client-side stub
+          // id ("pending-…"): only session.create's remap turns it into a real
+          // resource, so posting here can only 404. Surface it as failed
+          // instead of retrying forever against an endpoint that will never
+          // exist.
+          if (isPendingSessionID(item.payload.sessionID)) {
+            const attempts = item.attempts + 1
+            update(item.id, {
+              attempts,
+              lastError: "session was still being created when this was queued",
+              failed: true,
+              nextRetryAt: Number.POSITIVE_INFINITY,
+            })
+            toast.show({
+              title: "Queued message needs attention",
+              message: `${item.label}\nIts session no longer exists. Re-send in an open session.`,
+              variant: "warning",
+            })
+            return "queued"
           }
           await sdk.client.session.promptAsync(item.payload, { throwOnError: true })
           markActive(item.payload.sessionID)
