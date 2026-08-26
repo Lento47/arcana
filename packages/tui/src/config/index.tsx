@@ -55,6 +55,36 @@ export const Prompt = Schema.Struct({
     description:
       "Show inline ghost-text suggestions for skills, agents, and plugins as you type. Press Tab to accept. Default: false",
   }),
+  predictor: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean).annotate({
+        description:
+          "Predict the next sentence while typing via a small LLM; dimmed ghost text, Tab accepts the next word. Default: false",
+      }),
+      source: Schema.optional(Schema.Literals(["ollama", "arcana-proxy", "openrouter", "custom"])).annotate({
+        description: "Prediction backend. Default: ollama",
+      }),
+      host: Schema.optional(Schema.String).annotate({
+        description: "Ollama host when source=ollama. Default http://localhost:11434",
+      }),
+      model: Schema.optional(Schema.String).annotate({
+        description:
+          "Model id. ollama default qwen2.5:0.5b; required for arcana-proxy/custom (any free model id)",
+      }),
+      base_url: Schema.optional(Schema.String).annotate({
+        description: "OpenAI-compatible base URL when source=custom (e.g. https://openrouter.ai/api/v1)",
+      }),
+      api_key: Schema.optional(Schema.String).annotate({
+        description: "API key when source=custom; arcana-proxy uses ARCANA_PROXY_KEY or ~/.arcana/proxy_key",
+      }),
+      max_tokens: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))).annotate({
+        description: "Max completion tokens per prediction. Default: 24",
+      }),
+      debounce_ms: Schema.optional(Schema.Int.check(Schema.isGreaterThan(0))).annotate({
+        description: "Idle time after the last keystroke before predicting. Default: 350",
+      }),
+    }).annotate({ description: "LLM sentence-prediction settings" }),
+  ),
 }).annotate({ description: "Prompt size settings" })
 
 export const Background = Schema.Struct({
@@ -245,6 +275,16 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
     prompt: {
       ...input.prompt,
       ai_suggestion: input.prompt?.ai_suggestion ?? false,
+      predictor: {
+        enabled: input.prompt?.predictor?.enabled ?? false,
+        source: input.prompt?.predictor?.source ?? "ollama",
+        host: input.prompt?.predictor?.host ?? "http://localhost:11434",
+        model: input.prompt?.predictor?.model,
+        base_url: input.prompt?.predictor?.base_url,
+        api_key: input.prompt?.predictor?.api_key,
+        max_tokens: input.prompt?.predictor?.max_tokens ?? 24,
+        debounce_ms: input.prompt?.predictor?.debounce_ms ?? 350,
+      },
     },
     voice: {
       enabled: input.voice?.enabled ?? true,

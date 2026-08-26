@@ -30,6 +30,7 @@ import { usePathFormatter } from "../../context/path-format"
 import { useDialog } from "../../ui/dialog"
 import { normalizePath } from "../../util/path"
 import { useTuiTerminalEnvironment } from "../../context/runtime"
+import { createWidgetRenderNode } from "../../shell/command-spine/widgets/registry"
 import stripAnsi from "strip-ansi"
 
 export const context = createContext<{
@@ -457,6 +458,10 @@ function ReasoningHeader(props: {
 function TextPart(props: { last: boolean; part: TextPart; message: AssistantMessage }) {
   const ctx = use()
   const { theme, syntax } = useTheme()
+  const renderer = useRenderer()
+  const widgetRenderNode = createMemo(() =>
+    createWidgetRenderNode({ renderer, theme: theme as any }),
+  )
   // Keep streaming true only while the assistant message is open. OpenTUI
   // finalizes trailing markdown tokens (bold, fences, lists) when this flips false.
   const streaming = createMemo(() => !props.message.time.completed)
@@ -475,6 +480,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
           conceal={ctx.conceal()}
           fg={theme.markdownText}
           bg={theme.background}
+          renderNode={widgetRenderNode()}
         />
       </box>
     </Show>
@@ -590,6 +596,10 @@ function GenericTool(props: ToolProps) {
   }
 
   const { theme } = useTheme()
+  const renderer = useRenderer()
+  const widgetRenderNode = createMemo(() =>
+    createWidgetRenderNode({ renderer, theme: theme as any }),
+  )
   const style = createSyntaxStyleMemo(() => generateSubtleSyntax(theme))
   const ctx = use()
   const output = createMemo(() => {
@@ -751,6 +761,7 @@ function GenericTool(props: ToolProps) {
                   conceal={true}
                   fg={theme.markdownText}
                   bg={theme.background}
+                  renderNode={widgetRenderNode()}
                 />
               </box>
             </Match>

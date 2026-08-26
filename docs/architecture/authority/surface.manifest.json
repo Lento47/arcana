@@ -25,6 +25,7 @@
     "packages/core/src/capability/kernel-ipc.ts",
     "packages/core/src/capability/ipc-spawn-executor.ts",
     "packages/core/src/capability/provider-registry.ts",
+    "packages/tui/src/component/prompt/predictor/client.ts",
     "packages/arcana/src/agent/authority.ts",
     "packages/arcana/src/cli/run/supervisor.ts"
   ],

@@ -23,6 +23,7 @@ import { displayCharAt, mentionTriggerIndex } from "../../prompt/display"
 import { arcanaDitherPattern, arcanaDitherTick } from "../../ui/arcana"
 import { RoundBorder } from "../../ui/chrome"
 import { IntentRegistry, type IntentSuggestion } from "./intent"
+import { PredictorController } from "./predictor/controller"
 
 function removeLineRange(input: string) {
   const hashIndex = input.lastIndexOf("#")
@@ -61,6 +62,8 @@ export type AutocompleteRef = {
   visible: false | "@" | "/"
   /** Reactive accessor for ghost-text intent suggestion. null when hidden. */
   intentSuggestion: () => IntentSuggestion | null
+  /** Reactive accessor for the LLM sentence-prediction ghost. null when none valid. */
+  prediction: () => string | null
 }
 
 export type AutocompleteOption = {
@@ -177,6 +180,10 @@ export function Autocomplete(props: {
    * `inline` — in-flow above composer (command-spine; reliable layout).
    */
   layout?: "overlay" | "inline"
+  /** True while the session is generating — suppresses predictions. */
+  busy?: () => boolean
+  /** One-time predictor failure notice. */
+  onPredictorDisabled?: (reason: string) => void
 }) {
   const editor = useEditorContext()
   const sdk = useSDK()
@@ -254,6 +261,41 @@ export function Autocomplete(props: {
       return
     }
     setIntentSuggestion(suggestion)
+  }
+
+  // -- Sentence prediction (LLM ghost text) --
+  const predictorSettings = createMemo(() => {
+    const p = tuiConfig.prompt?.predictor
+    if (!p?.enabled) return null
+    return {
+      enabled: true,
+      source: p.source ?? "ollama",
+      host: p.host,
+      model: p.model,
+      base_url: p.base_url,
+      api_key: p.api_key,
+      max_tokens: p.max_tokens,
+      debounce_ms: p.debounce_ms,
+    }
+  })
+  const predictor = new PredictorController(() => predictorSettings())
+  const [predictionVersion, setPredictionVersion] = createSignal(0)
+  predictor.onUpdate = () => setPredictionVersion((v) => v + 1)
+  predictor.onDisabled = (reason) => props.onPredictorDisabled?.(reason)
+
+  function currentPrediction(): string | null {
+    predictionVersion()
+    const ta = props.input()
+    return predictor.peek(ta.plainText.slice(0, ta.cursorOffset))
+  }
+
+  function runPredictor(value: string) {
+    predictor.schedule({
+      text: value,
+      cursorOffset: props.input().cursorOffset,
+      autocompleteVisible: store.visible !== false,
+      busy: props.busy?.() ?? false,
+    })
   }
 
   const [positionTick, setPositionTick] = createSignal(0)
@@ -834,10 +876,10 @@ export function Autocomplete(props: {
     ]),
   }))
 
-  // Tab to accept inline intent suggestion (ghost text)
+  // Tab: accept inline intent suggestion (name) or next predicted word (prose)
   useBindings(() => ({
     target: props.input,
-    enabled: () => !store.visible && !!intentSuggestion(),
+    enabled: () => !store.visible && (!!intentSuggestion() || !!currentPrediction()),
     bindings: [
       {
         key: "tab",
@@ -845,7 +887,11 @@ export function Autocomplete(props: {
         desc: "Accept inline suggestion",
         cmd: () => {
           const suggestion = intentSuggestion()
-          if (!suggestion) return false
+          if (!suggestion) {
+            const ta = props.input()
+            const before = ta.plainText.slice(0, ta.cursorOffset)
+            return predictor.acceptWord(before, /\S$/.test(before) ? " " : "") !== null
+          }
           const ta = props.input()
           // Find start of current word and delete it before inserting
           const cursor = ta.cursorOffset
@@ -886,6 +932,7 @@ export function Autocomplete(props: {
       })
     }
     setStore("visible", false)
+    predictor.clear()
   }
 
   onMount(() => {
@@ -903,6 +950,9 @@ export function Autocomplete(props: {
       },
       get intentSuggestion() {
         return intentSuggestion
+      },
+      get prediction() {
+        return currentPrediction
       },
       onInput(value) {
         if (store.visible) {
@@ -923,6 +973,7 @@ export function Autocomplete(props: {
         const offset = props.input().cursorOffset
         if (offset === 0) {
           runIntent("")
+          runPredictor(value)
           return
         }
 
@@ -943,6 +994,7 @@ export function Autocomplete(props: {
 
         // No "/" or "@" active — run intent suggestion classifier
         runIntent(value)
+        runPredictor(value)
       },
     })
   })

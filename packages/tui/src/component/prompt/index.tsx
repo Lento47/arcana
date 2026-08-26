@@ -257,6 +257,13 @@ export function Prompt(props: PromptProps) {
     return vc ? vc.visualRow : 0
   })
 
+  // LLM sentence-prediction ghost — same rail as intent ghost, dimmer
+  const predictGhost = createMemo(() => {
+    cursorVersion()
+    const prediction = auto()?.prediction?.()
+    return prediction && !intentGhost() ? prediction : null
+  })
+
   const currentProviderLabel = createMemo(() => {
     const p = local.model.parsed()
     const pid = p.providerID.toLowerCase()
@@ -1783,6 +1790,14 @@ export function Prompt(props: PromptProps) {
         promptPartTypeId={() => promptPartTypeId}
         variant={props.variant}
         layout={slotProps.layout}
+        busy={() => status().type !== "idle"}
+        onPredictorDisabled={(reason) => {
+          toast.show({
+            variant: "warning",
+            message: `Predictor disabled: ${reason}`,
+            duration: 4000,
+          })
+        }}
       />
     )
   }
@@ -1931,6 +1946,18 @@ export function Prompt(props: PromptProps) {
                       fg={theme.textMuted}
                     >
                       {ghost().name}
+                    </text>
+                  )}
+                </Show>
+                <Show when={predictGhost()}>
+                  {(ghost) => (
+                    <text
+                      position="absolute"
+                      top={intentGhostRow()}
+                      left={intentGhostCol()}
+                      fg={fadeColor(theme.textMuted, 0.55)}
+                    >
+                      {Locale.truncate(ghost(), Math.max(8, dimensions().width - intentGhostCol() - 2))}
                     </text>
                   )}
                 </Show>

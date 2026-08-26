@@ -1,5 +1,7 @@
 import { For, Match, Show, Switch, createMemo } from "solid-js"
+import { useRenderer } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
+import { createWidgetRenderNode } from "./widgets/registry"
 import { filetype } from "../../util/filetype"
 import type { SpineKind } from "./spine-types"
 import { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis } from "./chat-prose"
@@ -137,6 +139,10 @@ export function SpineProse(props: {
   contentWidth?: number
 }) {
   const { theme, syntax, subtleSyntax } = useTheme()
+  const renderer = useRenderer()
+  const widgetRenderNode = createMemo(() =>
+    createWidgetRenderNode({ renderer, theme: theme as any }),
+  )
   const kind = () => props.kind
   const bodyLabel = () => props.bodyLabel
   const hint = () => props.hint
@@ -244,6 +250,7 @@ export function SpineProse(props: {
         conceal={true}
         fg={fg() as any}
         bg={mdBg() as any}
+        renderNode={widgetRenderNode()}
       />
     </box>
   )
