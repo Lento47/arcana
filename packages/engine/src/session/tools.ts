@@ -847,6 +847,110 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     scopedStore,
                   )
                   if (pepResult.status === "DENIED") {
+                    // ── Subagent capability escalation ─────────────────
+                    // A subagent's capability deny MUST surface to the
+                    // operator (approve/reject on the MAIN session) instead
+                    // of silently failing the child. On approval, attenuated
+                    // child grants are minted from the parent session's
+                    // ACTIVE caps via delegateCapabilities — authority stays
+                    // ⪯ parent. True revocations/explicit denies and
+                    // delegation-amplification failures are never escalatable.
+                    const ESCALATABLE = new Set(["DENY_NO_MATCHING_CAPABILITY", "DENY_PRINCIPAL_MISMATCH"])
+                    const isSubagent = Boolean(input.session.parentID)
+                    const reasons_ = pepResult.decision.reasons ?? []
+                    const escalatable =
+                      isSubagent && attempt < 2 &&
+                      reasons_.length > 0 &&
+                      reasons_.every((r) => ESCALATABLE.has(r.code))
+                    if (escalatable && input.session.parentID) {
+                      const escalationId = `appr_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+                      const routingEsc = yield* resolveApprovalRoutingForRequest({
+                        workspaceCwd,
+                        sessionId: ctx.sessionID,
+                        action: authReq.action,
+                        riskClass: pepResult.decision.riskClass,
+                        requestId: authReq.requestId,
+                        requestHash: pepResult.decision.requestHash,
+                      }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+                      const scopedEsc = makePendingScopedApproval({
+                        approvalId: escalationId,
+                        requestHash: pepResult.decision.requestHash,
+                        principalId: authReq.principalId,
+                        sessionId: ctx.sessionID,
+                        parentSessionId: input.session.parentID,
+                        action: authReq.action ?? item.id,
+                        resource: authReq.resource,
+                        contractRevision: contractRevisionOf(authReq),
+                        ...(routingEsc ?? {}),
+                      })
+                      yield* persistApprovalWithSnapshot({
+                        store: scopedStore,
+                        scoped: scopedEsc,
+                        request: authReq,
+                        args: args as Record<string, unknown>,
+                        requestHash: pepResult.decision.requestHash,
+                        contractRevision: contractRevisionOf(authReq),
+                        riskClass: scopedEsc.riskClass ?? pepResult.decision.riskClass,
+                      })
+                      yield* publishApprovalCreated(input.session.parentID, scopedStore, escalationId)
+                      const escGate = createApprovalGate()
+                      parkedApprovals.set(escalationId, escGate)
+                      const escDecision = yield* awaitApprovalDecision({ gate: escGate, approval: scopedEsc, store: scopedStore })
+                      if (escDecision === "approved") {
+                        // Mint attenuated children from the parent session's
+                        // ACTIVE caps. Fail-closed if no parent authority
+                        // covers the denied action.
+                        const grantStore = new SqliteGrantStore(db)
+                        type CG = import("@arcana/core/capability/types").CapabilityGrant
+                        const parentCapIds = new Set<string>()
+                        const own = yield* grantStore
+                          .getGrantsForPrincipal(authReq.principalId, ctx.sessionID)
+                          .pipe(Effect.catch(() => Effect.succeed<readonly CG[]>([])))
+                        for (const g of own) {
+                          if (g.status === "ACTIVE" && g.issuer.kind === "parent_capability") parentCapIds.add(g.issuer.id)
+                        }
+                        parentCapIds.add(`cap-session-${input.session.parentID}-build`)
+                        const parentGrants: CG[] = []
+                        for (const capId of parentCapIds) {
+                          const g = yield* grantStore.getGrantById(capId).pipe(
+                            Effect.catch(() => Effect.succeed<CG | null>(null)),
+                          )
+                          if (g?.status === "ACTIVE") parentGrants.push(g)
+                        }
+                        const { delegateCapabilities } = yield* Effect.promise(() =>
+                          import("@arcana/core/capability/delegation"),
+                        )
+                        const contractId = intentAuthority.mode === "REQUIRED" ? intentAuthority.contractId : "none"
+                        const delegation = delegateCapabilities(
+                          {
+                            parentPrincipalId: "build",
+                            childPrincipalId: authReq.principalId,
+                            parentSessionId: input.session.parentID,
+                            childSessionId: ctx.sessionID,
+                            contractId,
+                            contractRevision: contractRevisionOf(authReq) ?? 0,
+                            requestedGrants: [
+                              {
+                                actions: [authReq.action ?? item.id],
+                                resources: authReq.resource ? [authReq.resource] : [],
+                                constraints: { toolNames: [item.id] },
+                              },
+                            ],
+                            delegatedContext: { contractId },
+                          } as never,
+                          parentGrants,
+                          parentGrants[0]?.createdEventId ?? `escalation-${escalationId}`,
+                        )
+                        if (delegation.status === "CREATED") {
+                          for (const child of delegation.childGrants) {
+                            yield* grantStore.putGrant(child).pipe(Effect.catch(() => Effect.void))
+                          }
+                          return yield* runThroughPep(attempt + 1)
+                        }
+                        // Delegation itself failed-closed → fall through to
+                        // the original denial below.
+                      }
+                    }
                     return {
                       title: `Authorization denied: ${item.id}`,
                       output: formatPepDenial({

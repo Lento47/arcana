@@ -408,6 +408,30 @@ export class SessionPolicyProvider {
         }
       }
 
+      // Load ancestor chains for DELEGATED grants. Ancestors live under the
+      // parent principal/session and are NOT returned by
+      // getGrantsForPrincipal — without loading them, PDP Step 5.25 fails
+      // closed with DENY_CAPABILITY_REVOKED ("Ancestor … not found in policy
+      // context") even when every link is ACTIVE, breaking all subagent
+      // delegation (2026-08-23 reviewer/glob incident).
+      const known = new Set(grants.map((g) => g.id))
+      const queue = grants.filter((g) => g.issuer.kind === "parent_capability")
+      let ancestryGuard = 0
+      while (queue.length > 0 && ancestryGuard < 32) {
+        ancestryGuard += 1
+        const current = queue.shift()!
+        if (current.issuer.kind !== "parent_capability") continue
+        const parentId = current.issuer.id
+        if (known.has(parentId)) continue
+        const parent = yield* this.store.getGrantById(parentId).pipe(
+          Effect.catch(() => Effect.succeed<CapabilityGrant | null>(null)),
+        )
+        if (!parent) continue
+        grants.push(parent)
+        known.add(parent.id)
+        queue.push(parent)
+      }
+
       // Load intent bindings
       let intentBindings: IntentBinding[] | undefined = undefined
       let intentStoreAvailable: boolean | undefined = undefined
