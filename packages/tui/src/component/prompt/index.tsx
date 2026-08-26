@@ -162,6 +162,7 @@ let stashed: { prompt: PromptInfo; cursor: number } | undefined
 export function Prompt(props: PromptProps) {
   let input: TextareaRenderable
   let anchor: BoxRenderable
+  let alive = true
   const [inputTarget, setInputTarget] = createSignal<TextareaRenderable | undefined>()
 
   const leader = useLeaderActive()
@@ -521,7 +522,7 @@ export function Prompt(props: PromptProps) {
           if (!content) return
           const normalized = normalizePromptContent(content)
 
-          input.setText(normalized)
+          writeInput(normalized)
 
           // Update positions for nonTextParts based on their location in new content
           // Filter out parts whose virtual text was deleted
@@ -592,7 +593,7 @@ export function Prompt(props: PromptProps) {
           dialog.replace(() => (
             <DialogSkill
               onSelect={(skill) => {
-                input.setText(`/${skill} `)
+                writeInput(`/${skill} `)
                 setStore("prompt", {
                   input: `/${skill} `,
                   parts: [],
@@ -663,7 +664,7 @@ export function Prompt(props: PromptProps) {
       input.blur()
     },
     set(prompt) {
-      input.setText(prompt.input)
+      writeInput(prompt.input)
       setStore("prompt", prompt)
       restoreExtmarksFromParts(prompt.parts)
       input.gotoBufferEnd()
@@ -690,7 +691,7 @@ export function Prompt(props: PromptProps) {
     stashed = undefined
     if (store.prompt.input) return
     if (saved && saved.prompt.input) {
-      input.setText(saved.prompt.input)
+      writeInput(saved.prompt.input)
       setStore("prompt", saved.prompt)
       restoreExtmarksFromParts(saved.prompt.parts)
       input.cursorOffset = saved.cursor
@@ -698,6 +699,7 @@ export function Prompt(props: PromptProps) {
   })
 
   onCleanup(() => {
+    alive = false
     if (store.prompt.input) {
       stashed = { prompt: unwrap(store.prompt), cursor: input.cursorOffset }
     }
@@ -705,6 +707,18 @@ export function Prompt(props: PromptProps) {
     setInputTarget(undefined)
     props.ref?.(undefined)
   })
+
+  // A destroyed composer must neither be written to nor acted upon: async
+  // submit work resumes after awaits that can outlive the unmount (Home send
+  // navigates away mid-submit, dialog replaces, etc). OpenTUI throws
+  // "EditBuffer is destroyed" on any post-destroy call.
+  function uiAlive(): boolean {
+    return alive && !!input && !input.isDestroyed
+  }
+  function writeInput(text: string): void {
+    if (!uiAlive()) return
+    input.setText(text)
+  }
 
   createEffect(() => {
     if (!input || input.isDestroyed) return
@@ -839,7 +853,7 @@ export function Prompt(props: PromptProps) {
         run: () => {
           const entry = stash.pop()
           if (entry) {
-            input.setText(entry.input)
+            writeInput(entry.input)
             setStore("prompt", { input: entry.input, parts: entry.parts })
             restoreExtmarksFromParts(entry.parts)
             input.gotoBufferEnd()
@@ -856,7 +870,7 @@ export function Prompt(props: PromptProps) {
           dialog.replace(() => (
             <DialogStash
               onSelect={(entry) => {
-                input.setText(entry.input)
+                writeInput(entry.input)
                 setStore("prompt", { input: entry.input, parts: entry.parts })
                 restoreExtmarksFromParts(entry.parts)
                 input.gotoBufferEnd()
@@ -996,7 +1010,7 @@ export function Prompt(props: PromptProps) {
 
             const item = history.move(-1, input.plainText)
             if (!item) return false
-            input.setText(item.input)
+            writeInput(item.input)
             setStore("prompt", item)
             setStore("mode", item.mode ?? "normal")
             restoreExtmarksFromParts(item.parts)
@@ -1032,7 +1046,7 @@ export function Prompt(props: PromptProps) {
 
             const item = history.move(1, input.plainText)
             if (!item) return false
-            input.setText(item.input)
+            writeInput(item.input)
             setStore("prompt", item)
             setStore("mode", item.mode ?? "normal")
             restoreExtmarksFromParts(item.parts)
@@ -1205,10 +1219,14 @@ export function Prompt(props: PromptProps) {
       ...promptSnapshot,
       mode: currentMode,
     })
-    input.extmarks.clear()
+    if (input && !input.isDestroyed) {
+      input.extmarks.clear()
+    }
     setStore("prompt", { input: "", parts: [] })
     setStore("extmarkToPartIndex", new Map())
-    input.clear()
+    if (input && !input.isDestroyed) {
+      input.clear()
+    }
     props.onSubmit?.()
     markSubmit("T1 clear", t0)
 
@@ -1287,15 +1305,17 @@ export function Prompt(props: PromptProps) {
       let createdID: string | undefined
       if (!needsDestination && sessionPrewarm) {
         createdID = await sessionPrewarm.waitAndConsume()
+        if (!uiAlive()) return true
       }
       if (!createdID) {
         const directory = await move.getDirectory(inputText)
+        if (!uiAlive()) return true
         markSubmit("T2 getDirectory", t0)
         if (move.pending() && !directory) {
           clearOptimisticMessages(pendingStubID)
           sync.session.forget(pendingStubID)
           setStore("prompt", { input: inputText, parts: nonTextParts })
-          input.setText(inputText)
+          writeInput(inputText)
           route.navigate({ type: "home" })
           return false
         }
@@ -1317,6 +1337,7 @@ export function Prompt(props: PromptProps) {
           title: titleFromUserText(inputText) ?? undefined,
         })
         markSubmit("T3 session.create", t0, { error: Boolean(res.error) })
+        if (!uiAlive()) return true
 
         if (res.error || !res.data?.id) {
           if (finishMoveProgress) move.finishSubmit()
@@ -1324,7 +1345,7 @@ export function Prompt(props: PromptProps) {
           sync.session.forget(pendingStubID)
           console.log("Creating a session failed:", res.error)
           setStore("prompt", { input: inputText, parts: nonTextParts })
-          input.setText(inputText)
+          writeInput(inputText)
           toast.show({
             message: "Creating a session failed. Open console for more details.",
             variant: "error",
@@ -1373,7 +1394,7 @@ export function Prompt(props: PromptProps) {
       if (!task) {
         // Composer already cleared optimistically — restore so user can finish the command
         setStore("prompt", { input: inputText, parts: [] })
-        input.setText(inputText)
+        writeInput(inputText)
         toast.show({
           title: `/${arcanaPromptCommand.command}`,
           message: `Add a task after /${arcanaPromptCommand.command}.`,
@@ -1391,6 +1412,7 @@ export function Prompt(props: PromptProps) {
           `${risk.level.toUpperCase()} risk Arcana task. ${risk.reasons.join(" ")}`,
           "keep editing",
         )
+        if (!uiAlive()) return true
         if (!approved) return false
       }
 
