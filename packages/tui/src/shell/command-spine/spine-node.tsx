@@ -2,6 +2,7 @@ import { For, Show, createMemo } from "solid-js"
 import type { MouseEvent } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
+import { Glyph } from "../../branding"
 import { displayWidth, truncate } from "../../util/locale"
 import {
   compactSpineElapsed,
@@ -87,6 +88,10 @@ export function SpineNode(props: {
   focused?: boolean
   /** Optional duration from the entry — shown muted after the label/summary. */
   elapsed?: string
+  /** Optional wall-clock timestamp (chat voice only) — shown on the right,
+      next to elapsed. Lets collapsed user prompts keep their timestamp visible
+      without rendering the full chat card. */
+  timestamp?: string
   /** Absolute start time (unix ms) — a ticking elapsed replaces `elapsed` while streaming. */
   startMs?: number
   /** Optional disclosure chevron for collapsible rows (e.g. thinking). */
@@ -147,6 +152,15 @@ export function SpineNode(props: {
     return k === "inspect" || k === "run" || k === "patch" || k === "fail" || k === "agent"
   })
 
+  // Wall-clock timestamp for chat voice — minimal layout skips timestamps
+  // entirely (no right column). Tool rows ignore the prop; only the chat
+  // path forwards a timestamp via RowHeader.
+  const timestampText = createMemo(() => {
+    if (props.layout === "minimal") return ""
+    return (props.timestamp ?? "").trim()
+  })
+  const showTimestamp = createMemo(() => !isChat() ? false : !!timestampText())
+
   const labelWidth = createMemo(() => {
     if (isChat()) return CHAT_LABEL_WIDTH
     if (kind() === "agent") return layout() === "minimal" ? 8 : 12
@@ -165,14 +179,38 @@ export function SpineNode(props: {
   const summaryColor = createMemo(() => {
     if (kind() === "fail") return theme.spineFail
     if (kind() === "think") return streaming() ? activityColor() : theme.spineThink
-    if (isChat()) return theme.spineDiffMuted
+    // User chat voice: text reads against the soft row fill (backgroundElement).
+    // Use the bright text token so glyph/summary/meta stay legible without
+    // shouting. Assistant chat voice stays muted (text renders inside the
+    // bordered card against the panel background).
+    if (isChat()) return kind() === "ask" ? theme.text : theme.spineDiffMuted
     if (isTool()) return theme.text
     return theme.text
   })
+  // Right-side meta color (elapsed, timestamp). Same logic as summaryColor:
+  // bright on the soft user-row fill, muted on the assistant card.
+  const metaColor = createMemo(() =>
+    isChat() && kind() === "ask" ? theme.textMuted : theme.spineGutterElapsed,
+  )
   const labelColor = createMemo(() => {
-    if (isChat()) return theme.spineBrand
+    // Chat voice: user prompts get spineAsk (matches SpineChatCard convention)
+    // and assistant turns get spineBrand. The color shift is the only
+    // visual signal distinguishing user from assistant when the user row
+    // is collapsed — the box and background stay flat per design.
+    if (isChat()) {
+      return kind() === "ask" ? theme.spineAsk : theme.spineBrand
+    }
     if (isTool()) return theme.spineContext
     return tone()
+  })
+
+  // User chat rows render the speaker glyph in the row's contrast color
+  // (the panel background, since the outer row carries a spineAsk fill).
+  // No text label ("you") is needed — the colored row is the user identity.
+  // Assistant turns keep their full speaker label for attribution.
+  const labelText = createMemo(() => {
+    if (isChat() && kind() === "ask") return Glyph.diamond
+    return label()
   })
 
   const truncatedLabel = createMemo(() => truncate(label(), labelWidth()))
@@ -209,7 +247,10 @@ export function SpineNode(props: {
         </box>
       </Show>
       <Show when={elapsedText()}>
-        <text fg={theme.spineGutterElapsed} wrapMode="none"> · {elapsedText()}</text>
+        <text fg={metaColor()} wrapMode="none"> · {elapsedText()}</text>
+      </Show>
+      <Show when={showTimestamp()}>
+        <text fg={metaColor()} wrapMode="none"> · {timestampText()}</text>
       </Show>
     </box>
   )
@@ -270,13 +311,28 @@ export function SpineNode(props: {
         when={summary()}
         fallback={
           <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
-            <box flexShrink={0} width={isChat() ? labelWidth() : undefined}>
-              <text fg={labelColor()} wrapMode="none">
-                {isChat() ? label().padEnd(labelWidth()) : label()}
-              </text>
-            </box>
+            <Show
+              when={isChat() && kind() === "ask"}
+              fallback={
+                <box flexShrink={0}>
+                  <text fg={labelColor()} wrapMode="none">
+                    {isChat() ? labelText() : label()}
+                  </text>
+                </box>
+              }
+            >
+              {/* User chat voice: glyph in spineAsk (lavender) — the row
+                  carries a soft backgroundElement fill so the colored glyph
+                  is the row's identity marker without being loud. */}
+              <box flexShrink={0}>
+                <text fg={labelColor()} wrapMode="none">{labelText()}</text>
+              </box>
+            </Show>
             <Show when={elapsedText()}>
-              <text fg={theme.spineGutterElapsed} wrapMode="none">{` · ${elapsedText()}`}</text>
+              <text fg={metaColor()} wrapMode="none">{` · ${elapsedText()}`}</text>
+            </Show>
+            <Show when={showTimestamp()}>
+              <text fg={metaColor()} wrapMode="none"> · {timestampText()}</text>
             </Show>
             {actorBox()}
             <box flexGrow={1} minWidth={0} />
@@ -287,17 +343,38 @@ export function SpineNode(props: {
           <Show
             when={isTool()}
             fallback={
-              <box flexShrink={0} width={labelWidth()}>
-                <text fg={labelColor()}>{truncatedLabel()}</text>
-              </box>
+              <Show
+                when={isChat() && kind() === "ask"}
+                fallback={
+                  <box flexShrink={0}>
+                    <text fg={labelColor()}>{labelText()}</text>
+                  </box>
+                }
+              >
+                {/* User chat voice: glyph in spineAsk (lavender) — the row
+                    carries a soft backgroundElement fill so the colored
+                    glyph is the row's identity marker without being loud. */}
+                <box flexShrink={0}>
+                  <text fg={labelColor()} wrapMode="none">{labelText()}</text>
+                </box>
+              </Show>
             }
           >
-            <box flexShrink={0} width={labelWidth()}>
+            {/* Fail rows: glyph only, no chip label. The rail is already blank
+                for fail (see SpineRail call in spine-entry.tsx) and the summary
+                carries the actual error — printing "fail" as the chip label
+                would stack a third failure marker on the same line. Width is
+                dropped so the box hugs the glyph instead of reserving a full
+                label column for an empty string. */}
+            <box
+              flexShrink={0}
+              width={kind() === "fail" ? undefined : labelWidth()}
+            >
               <text
                 fg={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? activityColor() : labelColor()}
                 wrapMode="none"
               >
-                {chip().glyph} {chipLabel()}
+                {kind() === "fail" ? chip().glyph : `${chip().glyph} ${chipLabel()}`}
               </text>
             </box>
           </Show>
@@ -327,7 +404,12 @@ export function SpineNode(props: {
           </Show>
           <Show when={elapsedText()}>
             <box flexShrink={0}>
-              <text fg={theme.spineGutterElapsed} wrapMode="none">{elapsedText()}</text>
+              <text fg={metaColor()} wrapMode="none">{elapsedText()}</text>
+            </box>
+          </Show>
+          <Show when={showTimestamp()}>
+            <box flexShrink={0}>
+              <text fg={metaColor()} wrapMode="none"> · {timestampText()}</text>
             </box>
           </Show>
           <Show when={props.onDismiss}>

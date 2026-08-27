@@ -733,7 +733,11 @@ function userMessageToEntries(
       body: view.body,
       bodyLabel: "prompt",
       collapsible: view.collapsible,
-      expandedByDefault: view.expandedByDefault,
+      // User prompts always start collapsed — the default rendering is a
+      // single-line RowHeader (chip + text) and the user expands on demand
+      // into the full SpineChatCard. Assistant chat rows keep their
+      // view.expandedByDefault value (true for multi-line prose).
+      expandedByDefault: false,
       source: { messageID: message.id, partID: textPart?.id, kind: textPart ? "text" : "message" },
     },
   ]

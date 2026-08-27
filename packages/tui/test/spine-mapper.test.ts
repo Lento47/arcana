@@ -72,17 +72,20 @@ describe("user messages", () => {
     expect(result[0]!.body).toBeUndefined()
   })
 
-  test("multi-line user prompt keeps remainder as expanded body", () => {
+  test("multi-line user prompt keeps remainder as expandable body", () => {
     const text = `Please inspect the auth flow.
 Do not change public behavior.
 Report test impact.`
     const { messages, parts } = makeUserMessage("u3", text)
     const result = messagesToSpineEntries({ messages, getParts: partsLookup(parts), assistantDuration: new Map() })
 
+    // User prompts default to collapsed (single-line RowHeader) — the
+    // multi-line remainder sits in body and becomes visible only after
+    // the user expands the row via click or Space.
     expect(result[0]!.summary).toBe("Please inspect the auth flow.")
     expect(result[0]!.body).toBe("Do not change public behavior.\nReport test impact.")
     expect(result[0]!.collapsible).toBe(true)
-    expect(result[0]!.expandedByDefault).toBe(true)
+    expect(result[0]!.expandedByDefault).toBe(false)
     expect(result[0]!.source).toEqual({ messageID: "u3", partID: "u3-text-0", kind: "text" })
   })
 

@@ -58,7 +58,12 @@ export function SpineChatCard(props: {
   const hasRightTime = createMemo(() => !!(elapsedText() || timestampText()))
 
   const speaker = createMemo(() => {
-    if (isUser()) return "you"
+    // User prompts drop the speaker label entirely: the user already knows
+    // they sent the message, and rendering "you" beside the prompt text
+    // duplicates that knowledge. The ◆ glyph remains as the row marker so
+    // turn boundaries still read. Assistant turns keep the brand/name so
+    // attribution is unambiguous on multi-agent sessions.
+    if (isUser()) return ""
     const raw = (props.label ?? "").trim().toLowerCase()
     if (raw && raw !== "assistant" && raw !== "plan" && raw !== "ok" && raw !== "coda" && raw !== "insight") {
       return raw

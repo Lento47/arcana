@@ -150,6 +150,10 @@ type HeaderFields = {
   glyph: string
   streaming?: boolean
   thinking?: string
+  /** Wall-clock timestamp for chat voice. Forwarded to SpineNode so the
+      right column can render it for collapsed user prompts without
+      unrolling the full SpineChatCard chrome. */
+  timestamp?: string
 }
 
 /** Shared compact header for every non-chat row family. */
@@ -182,7 +186,12 @@ function RowHeader(props: {
       <SpineRail
         layout={props.layout}
         kind={props.view.kind}
-        glyph={props.view.kind === "think" ? "" : props.view.glyph}
+        // B8 audit: think uses "" so SpineRail falls back to the "│" rule
+        // (nullish-coalesce). Fail rows render an empty cell — a single space
+        // is a width-1 symbol so spineRailCell pads to the rail column without
+        // printing the fail glyph a second time. The chip in SpineNode owns
+        // the failure signal; the rail stays blank to avoid double-marking.
+        glyph={props.view.kind === "think" ? "" : props.view.kind === "fail" ? " " : props.view.glyph}
         active={props.focused}
       />
       <SpineNode
@@ -193,6 +202,7 @@ function RowHeader(props: {
         layout={props.layout}
         focused={props.focused}
         elapsed={props.view.elapsed}
+        timestamp={props.view.timestamp}
         startMs={props.view.startMs}
         disclosure={props.disclosure}
         streaming={props.view.streaming === true}
@@ -341,6 +351,7 @@ export function SpineEntry(props: {
   )
 
   const chatView = createMemo(() => (view().type === "chat" ? (view() as ChatEntry) : undefined))
+  const isUserVoice = createMemo(() => chatView()?.kind === "ask")
   const toolView = createMemo(() => (view().type === "tool" ? (view() as ToolEntry) : undefined))
   const approvalView = createMemo(() => (view().type === "approval" ? (view() as ApprovalEntry) : undefined))
   const governanceView = createMemo(
@@ -360,10 +371,18 @@ export function SpineEntry(props: {
   const isThinkRow = createMemo(() => toolView() !== undefined && kind() === "think")
   // C2: row-aligned focus highlight - the pure policy decides, the memo maps
   // the decision to theme tokens consumed by the OUTER row box (see render).
+  // User chat rows get a soft backgroundElement fill so the row reads as
+  // "me" without competing with the assistant's bordered card. The fill
+  // is one step lighter than the panel — visible at a glance but never loud.
   const rowHighlight = createMemo(() => {
     const mode = rowFocusHighlight(props.focused === true, isChatProse())
+    const isUserCollapsed = isChatProse() && isUserVoice() && !expanded()
     return {
-      bg: mode === "row" ? theme.backgroundElement : undefined,
+      bg: isUserCollapsed
+        ? theme.backgroundElement
+        : mode === "row"
+          ? theme.backgroundElement
+          : undefined,
       border: mode === "row" ? (["left"] as any) : undefined,
       borderColor: mode === "row" ? theme.accent : undefined,
     }
@@ -409,10 +428,29 @@ export function SpineEntry(props: {
     }),
   )
 
+  // Quiet the think row when expanded: the body renders directly below the
+  // header, so the disclosure chevron ("▾") is redundant — the user already
+  // sees the row is open. Collapsed think rows keep the chevron so the
+  // expansion affordance is visible. Tool/agent rows are unchanged because
+  // their bodies (diff, listing, children) often live off-row and the
+  // chevron is the only in-row signal that the row can be opened.
+  const displayDisclosure = createMemo(() => {
+    if (isThinkRow() && expanded() && hasThinkBody()) return ""
+    return toggle().disclosure
+  })
+
   const padLeft = () => spineOuterPadding(props.layout)
   const entryToggleable = createMemo(() => canToggleSpineEntry(entry()))
 
   const nodeSummary = () => {
+    // Collapsed user prompts render as a single-line RowHeader (chip + text)
+    // — the chat-card chrome is reserved for the expanded view. Return the
+    // first-line summary so it lines up inline with the ◆ marker. Assistant
+    // chat rows stay full-width (SpineChatCard) so nodeSummary stays empty
+    // for them.
+    if (isChatProse() && isUserVoice() && !expanded()) {
+      return (entry().summary ?? chatView()!.text).trim()
+    }
     if (isChatProse()) return ""
     // Progressive disclosure for thinking: the collapsed row is the verb +
     // duration; the reasoning title/body only appears when expanded.
@@ -516,34 +554,43 @@ export function SpineEntry(props: {
         onMouseDown={handleRowMouseDown}
         onMouseUp={handleRowMouseUp}
       >
-        <SpineGutter
-          index={props.index ?? entry().index}
-          layout={props.layout}
-          gutterWidth={props.gutterWidth}
-          active={props.focused}
-        />
+        <Show when={!isChatProse()}>
+          <SpineGutter
+            index={props.index ?? entry().index}
+            layout={props.layout}
+            gutterWidth={props.gutterWidth}
+            active={props.focused}
+          />
+        </Show>
         {/*
           flexShrink=0: never let the entry content column compress under the
           gutter. Chat/think markdown need a stable full remaining width.
         */}
         <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={0}>
-          {/* Chat prose — soft card, accent line, column-aligned speaker. */}
+          {/* Chat prose — soft card, accent line, column-aligned speaker.
+              User prompts are collapsible: they default to a single-line
+              RowHeader (chip + text, no card chrome) and expand on click/space
+              into the full SpineChatCard. Assistant chat rows are not
+              collapsible and always render the full card. */}
           <Show when={chatView()}>
             {(v) => (
               <>
-                <Show when={!hasProse()}>
+                <Show when={isUserVoice() && !expanded()}>
                   <RowHeader
                     cueID={`entry:${entry().id}`}
-                    view={v() as unknown as Exclude<SpineEntryView, ChatEntry>}
+                    view={{
+                      ...(v() as unknown as HeaderFields),
+                      timestamp: v().timestamp,
+                    }}
                     layout={props.layout}
                     focused={props.focused}
-                    disclosure={toggle().disclosure}
+                    disclosure={displayDisclosure()}
                     nodeSummary={nodeSummary()}
                     onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                     onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                   />
                 </Show>
-                <Show when={hasProse()}>
+                <Show when={!isUserVoice() || expanded()}>
                   <SpineChatCard
                     kind={v().kind}
                     label={v().label}
@@ -596,7 +643,7 @@ export function SpineEntry(props: {
                   view={v()}
                   layout={props.layout}
                   focused={props.focused}
-                  disclosure={toggle().disclosure}
+                  disclosure={displayDisclosure()}
                   nodeSummary={nodeSummary()}
                   onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                   onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
@@ -743,7 +790,7 @@ export function SpineEntry(props: {
                   view={v()}
                   layout={props.layout}
                   focused={props.focused}
-                  disclosure={toggle().disclosure}
+                  disclosure={displayDisclosure()}
                   nodeSummary={nodeSummary()}
                   onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                   onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
@@ -801,7 +848,7 @@ export function SpineEntry(props: {
                   view={v()}
                   layout={props.layout}
                   focused={props.focused}
-                  disclosure={toggle().disclosure}
+                  disclosure={displayDisclosure()}
                   nodeSummary={nodeSummary()}
                   onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                   onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
@@ -884,7 +931,7 @@ export function SpineEntry(props: {
                     view={v()}
                     layout={props.layout}
                     focused={props.focused}
-                    disclosure={toggle().disclosure}
+                    disclosure={displayDisclosure()}
                     nodeSummary={nodeSummary()}
                     onHeaderMouseUp={toggle().headerToggleable ? handleSubagentHeaderMouseUp : undefined}
                     onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
@@ -973,7 +1020,7 @@ export function SpineEntry(props: {
                   view={v()}
                   layout={props.layout}
                   focused={props.focused}
-                  disclosure={toggle().disclosure}
+                  disclosure={displayDisclosure()}
                   nodeSummary={nodeSummary()}
                   onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                   onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
