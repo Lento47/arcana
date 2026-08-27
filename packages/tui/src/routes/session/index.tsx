@@ -1240,12 +1240,10 @@ export function Session() {
           <box
             flexGrow={1}
             minHeight={0}
-            paddingBottom={density() === "compact" ? 0 : 1}
+            paddingBottom={0}
             paddingLeft={framePadding(density())}
             paddingRight={framePadding(density())}
             gap={1}
-            border={["left", "right"]}
-            borderColor={transBorder()}
           >
             <Show when={session() || allOptimisticMessages().some((item) => item.sessionID === route.sessionID)}>
               <Dynamic component={ShellCmp()} {...shellProps()} />

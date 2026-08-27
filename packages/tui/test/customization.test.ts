@@ -64,10 +64,10 @@ describe("density", () => {
     expect(framePadding("cozy")).toBe(2)
     expect(framePadding("spacious")).toBe(3)
     expect(framePadding(undefined)).toBe(2)
-    // chrome = padding * 2 + 1 border per side
-    expect(frameChrome("compact")).toBe(4)
-    expect(frameChrome("cozy")).toBe(6)
-    expect(frameChrome("spacious")).toBe(8)
+    // chrome = padding * 2 (borders removed)
+    expect(frameChrome("compact")).toBe(2)
+    expect(frameChrome("cozy")).toBe(4)
+    expect(frameChrome("spacious")).toBe(6)
   })
 
   test("cycles densities compact → cozy → spacious → compact", () => {
@@ -82,9 +82,9 @@ describe("density", () => {
   })
 
   test("viewport width subtracts exactly the density chrome", () => {
-    expect(spineViewportWidth(120, frameChrome("compact"))).toBe(116)
-    expect(spineViewportWidth(120, frameChrome("cozy"))).toBe(114)
-    expect(spineViewportWidth(120, frameChrome("spacious"))).toBe(112)
+    expect(spineViewportWidth(120, frameChrome("compact"))).toBe(118)
+    expect(spineViewportWidth(120, frameChrome("cozy"))).toBe(116)
+    expect(spineViewportWidth(120, frameChrome("spacious"))).toBe(114)
   })
 })
 

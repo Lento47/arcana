@@ -240,17 +240,16 @@ export function getSpineLayout(width: number, current?: SpineLayout): SpineLayou
  * Wide previously used 2; 1 is enough separation from the terminal edge.
  */
 export function spineOuterPadding(layout: SpineLayout) {
-  if (layout === "minimal") return 0
-  return 1
+  return 0
 }
 
 /**
- * Session route frame around the spine: paddingLeft 2 + paddingRight 2
- * + Yoga border 1 on left and right. OpenTUI setBorder(..., 1) per side.
- * Subtract this from terminal width before spineProseWidth — do not also
- * remove the session pad/border or wrap will undershoot twice.
+ * Session route frame around the spine: paddingLeft + paddingRight.
+ * Borders removed — chrome is padding only. Subtract this from terminal
+ * width before spineProseWidth - do not also remove the session pad or
+ * wrap will undershoot twice.
  */
-export const SESSION_FRAME_CHROME = 6
+export const SESSION_FRAME_CHROME = 4
 
 /**
  * User density preference: how much chrome the session frame and spine use.
@@ -283,9 +282,9 @@ export function framePadding(density?: Density): number {
   return 2
 }
 
-/** Total chrome (padding + borders) the frame consumes for a density. */
+/** Total chrome (padding only) the frame consumes for a density. */
 export function frameChrome(density?: Density): number {
-  return framePadding(density) * 2 + 2
+  return framePadding(density) * 2
 }
 
 export function spineViewportWidth(terminalWidth: number, chrome: number = SESSION_FRAME_CHROME): number {

@@ -52,22 +52,22 @@ describe("spineProseWidth", () => {
   })
 
   test("known chrome arithmetic per layout and variant", () => {
-    // wide: outerPad 1 + gutter 2 + scrollbar 2
+    // outerPad is now 0 for all layouts (removed)
     expect(spineChatCardChrome()).toBe(4) // border + padL + padR
-    expect(spineProseWidth(120, "wide", "chat")).toBe(111) // + 4 chat chrome
-    expect(spineProseWidth(120, "wide", "think")).toBe(112) // + rail 2 + 1
-    expect(spineProseWidth(120, "wide", "inline")).toBe(114) // + 1
-    // narrow: same outerPad as wide
-    expect(spineProseWidth(80, "narrow", "chat")).toBe(71)
+    expect(spineProseWidth(120, "wide", "chat")).toBe(112) // + 4 chat chrome
+    expect(spineProseWidth(120, "wide", "think")).toBe(113) // + rail 2 + 1
+    expect(spineProseWidth(120, "wide", "inline")).toBe(115) // + 1
+    // narrow: same outerPad as wide (now 0)
+    expect(spineProseWidth(80, "narrow", "chat")).toBe(72)
     // minimal: outerPad 0
     expect(spineProseWidth(60, "minimal", "chat")).toBe(52)
   })
 
-  test("session frame chrome is 6 cells; viewport is terminal minus that", () => {
-    expect(SESSION_FRAME_CHROME).toBe(6)
-    expect(spineViewportWidth(80)).toBe(74)
-    expect(spineViewportWidth(120)).toBe(114)
-    expect(spineProseWidth(spineViewportWidth(80), "narrow", "chat")).toBe(65)
-    expect(65).toBeLessThanOrEqual(67)
+  test("session frame chrome is 4 cells (padding only, no border); viewport is terminal minus that", () => {
+    expect(SESSION_FRAME_CHROME).toBe(4)
+    expect(spineViewportWidth(80)).toBe(76)
+    expect(spineViewportWidth(120)).toBe(116)
+    expect(spineProseWidth(spineViewportWidth(80), "narrow", "chat")).toBe(68)
+    expect(68).toBeLessThanOrEqual(69)
   })
 })

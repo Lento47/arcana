@@ -59,7 +59,6 @@ export function SpinePrompt(props: {
         alignItems="flex-start"
         width="100%"
       >
-        <SpineGutterSpacer layout={layout()} width={props.gutterWidth} />
         <SpineRail layout={layout()} glyph={"✶"} color={markerColor()} active />
         {/*
           Positioning host for the slash/@ panel.
