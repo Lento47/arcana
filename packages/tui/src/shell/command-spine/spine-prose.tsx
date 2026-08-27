@@ -335,44 +335,63 @@ export function SpineProse(props: {
         </Match>
 
         <Match when={mode() === "code"}>
-          <box
-            flexShrink={0}
-            minWidth={0}
-            width={wrapCols()}
-            backgroundColor={focused() ? (theme.backgroundElement as any) : theme.backgroundPanel}
-            paddingLeft={codePad()}
-            paddingRight={codePad()}
-            paddingTop={codePadY()}
-            paddingBottom={codePadY()}
-            border={criticalCode() ? true : ["left"]}
-            customBorderChars={criticalCode() ? RoundBorder : undefined}
-            borderColor={(bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : (theme.borderSubtle ?? theme.textMuted)) as any}
+          {/* Tool code blocks render flat — no background panel, no left
+              border, no language header. The row's outer rail (from
+              SpineRail) and the user's mental model of "this is shell/file
+              output" provide enough containment. Critical bodies (fail /
+              error) keep their bordered box so failures stand out. */}
+          <Show
+            when={criticalCode()}
+            fallback={
+              <code
+                width={wrapCols()}
+                filetype={ft()}
+                drawUnstyledText={true}
+                streaming={false}
+                syntaxStyle={style()}
+                content={text()}
+                conceal={false}
+                wrapMode="word"
+                fg={fg() as any}
+              />
+            }
           >
-            <box flexDirection="row" flexShrink={0} gap={1} paddingBottom={1}>
-              <text fg={theme.spineContext} wrapMode="none">
-                {codeChrome().header}
-              </text>
-              <Show when={codeChrome().badge}>
-                <text fg={theme.accent} wrapMode="none">
-                  {codeChrome().badge}
-                </text>
-              </Show>
-            </box>
-            <code
+            <box
+              flexShrink={0}
+              minWidth={0}
               width={wrapCols()}
-              filetype={ft()}
-              // Keep read/open output visible while Tree-sitter highlights it.
-              // Hiding the fallback produces a blank frame that looks like a
-              // code-preview flicker on every newly mounted tool result.
-              drawUnstyledText={true}
-              streaming={false}
-              syntaxStyle={style()}
-              content={text()}
-              conceal={false}
-              wrapMode="word"
-              fg={fg() as any}
-            />
-          </box>
+              backgroundColor={focused() ? (theme.backgroundElement as any) : theme.backgroundPanel}
+              paddingLeft={codePad()}
+              paddingRight={codePad()}
+              paddingTop={codePadY()}
+              paddingBottom={codePadY()}
+              border={true}
+              customBorderChars={RoundBorder}
+              borderColor={(bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : (theme.borderSubtle ?? theme.textMuted)) as any}
+            >
+              <box flexDirection="row" flexShrink={0} gap={1} paddingBottom={1}>
+                <text fg={theme.spineContext} wrapMode="none">
+                  {codeChrome().header}
+                </text>
+                <Show when={codeChrome().badge}>
+                  <text fg={theme.accent} wrapMode="none">
+                    {codeChrome().badge}
+                  </text>
+                </Show>
+              </box>
+              <code
+                width={wrapCols()}
+                filetype={ft()}
+                drawUnstyledText={true}
+                streaming={false}
+                syntaxStyle={style()}
+                content={text()}
+                conceal={false}
+                wrapMode="word"
+                fg={fg() as any}
+              />
+            </box>
+          </Show>
           {bodyNote()}
         </Match>
 

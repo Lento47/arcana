@@ -187,10 +187,28 @@ export function SpineNode(props: {
     if (isTool()) return theme.text
     return theme.text
   })
+  // Tool rows drop the chip box entirely — the rail glyph carries the
+  // kind identity (▸/◇/± etc.) and the inline status word ("ok"/"failed")
+  // carries the run state. Chat voice and agent subagent rows still need
+  // the chip box (color-coded speaker identity).
+  const showChip = createMemo(() => isChat() || kind() === "agent")
+
   // Right-side meta color (elapsed, timestamp). Same logic as summaryColor:
   // bright on the soft user-row fill, muted on the assistant card.
   const metaColor = createMemo(() =>
     isChat() && kind() === "ask" ? theme.textMuted : theme.spineGutterElapsed,
+  )
+  // Inline status word for tool rows: "ok" on success, "failed" on error,
+  // "" otherwise (chat/think/agent skip the word — status is conveyed by
+  // other means like the row chrome or the body content).
+  const statusText = createMemo(() => {
+    if (isChat() || kind() === "think" || kind() === "agent") return ""
+    if (kind() === "fail") return "failed"
+    if (chip().status === "live") return ""
+    return "ok"
+  })
+  const statusColor = createMemo(() =>
+    kind() === "fail" || chip().status === "fail" ? theme.spineFail : theme.spineOk,
   )
   const labelColor = createMemo(() => {
     // Chat voice: user prompts get spineAsk (matches SpineChatCard convention)
@@ -314,11 +332,11 @@ export function SpineNode(props: {
             <Show
               when={isChat() && kind() === "ask"}
               fallback={
-                <box flexShrink={0}>
-                  <text fg={labelColor()} wrapMode="none">
-                    {isChat() ? labelText() : label()}
-                  </text>
-                </box>
+                <Show when={isChat()}>
+                  <box flexShrink={0}>
+                    <text fg={labelColor()} wrapMode="none">{labelText()}</text>
+                  </box>
+                </Show>
               }
             >
               {/* User chat voice: glyph in spineAsk (lavender) — the row
@@ -360,23 +378,23 @@ export function SpineNode(props: {
               </Show>
             }
           >
-            {/* Fail rows: glyph only, no chip label. The rail is already blank
-                for fail (see SpineRail call in spine-entry.tsx) and the summary
-                carries the actual error — printing "fail" as the chip label
-                would stack a third failure marker on the same line. Width is
-                dropped so the box hugs the glyph instead of reserving a full
-                label column for an empty string. */}
-            <box
-              flexShrink={0}
-              width={kind() === "fail" ? undefined : labelWidth()}
-            >
-              <text
-                fg={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? activityColor() : labelColor()}
-                wrapMode="none"
+            {/* Tool rows skip the chip box — rail glyph carries kind identity,
+                inline status word carries state. Fail rows still show the ✗
+                glyph (rail is blank for fail) so the failure marker is
+                unambiguous. Width drops for fail so the box hugs the glyph. */}
+            <Show when={showChip() || kind() === "fail"}>
+              <box
+                flexShrink={0}
+                width={kind() === "fail" ? undefined : labelWidth()}
               >
-                {kind() === "fail" ? chip().glyph : `${chip().glyph} ${chipLabel()}`}
-              </text>
-            </box>
+                <text
+                  fg={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? activityColor() : labelColor()}
+                  wrapMode="none"
+                >
+                  {chip().glyph}
+                </text>
+              </box>
+            </Show>
           </Show>
           {actorBox()}
           <Show when={thinking()}>
@@ -397,6 +415,11 @@ export function SpineNode(props: {
               <PatchSummaryText summary={summary()} theme={theme} />
             </Show>
           </box>
+          <Show when={statusText()}>
+            <box flexShrink={0}>
+              <text fg={statusColor()} wrapMode="none"> · {statusText()}</text>
+            </box>
+          </Show>
           <Show when={disclosure()}>
             <box flexShrink={0} onMouseUp={props.onDisclosureMouseUp}>
               <text fg={summaryColor()} wrapMode="none">{disclosure()}</text>

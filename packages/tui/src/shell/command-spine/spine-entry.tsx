@@ -24,11 +24,13 @@ import { SpineListing } from "./spine-listing"
 import { SpineChatCard } from "./spine-chat"
 import { SpineApprovalGate } from "./spine-approval-gate"
 import { SpineProof } from "./spine-proof"
+import { ActivityReel } from "./spine-activity-reel"
 import { taskRowChrome } from "./spine-chrome"
 import { canToggleSpineEntry } from "./spine-navigation"
 import {
   toSpineEntryView,
   type ApprovalEntry,
+  type ActivityEntry,
   type ChatEntry,
   type GovernanceEntry,
   type ProofEntry,
@@ -59,6 +61,7 @@ export type SpineToggleFacts = {
   hasListing: boolean
   hasToolBody: boolean
   hasChildren: boolean
+  isActivity?: boolean
   childrenAreGovernance?: boolean
   childCount: number
   isAgentEntry: boolean
@@ -91,7 +94,7 @@ export function computeSpineToggle(facts: SpineToggleFacts): SpineToggle {
   let label: string
   if (facts.hasChildren) {
     const n = facts.childCount
-    const noun = facts.childrenAreGovernance === true ? "event" : "command"
+    const noun = facts.childrenAreGovernance === true ? "event" : facts.isActivity === true ? "step" : "command"
     label = facts.expanded
       ? `\u25BE hide ${n} ${noun}${n === 1 ? "" : "s"}`
       : `\u25B8 show ${n} ${noun}${n === 1 ? "" : "s"}`
@@ -220,15 +223,28 @@ function ChildrenGroup(props: {
   children: SpineChildView[]
   layout: SpineLayout
   contentWidth?: number
+  onNavigate?: (sessionID: string) => void
 }) {
   const { theme } = useTheme()
   const count = () => props.children.length
+  const openChildSession = (child: SpineChildView, event: MouseEvent) => {
+    if (!child.sessionID || !props.onNavigate) return
+    if (event.button !== undefined && event.button !== MouseButton.LEFT) return
+    event.stopPropagation?.()
+    event.preventDefault?.()
+    props.onNavigate(child.sessionID)
+  }
   return (
     <For each={props.children}>
       {(child, i) => (
         <Show when={child != null}>
           <box flexDirection="column" flexShrink={0} minWidth={0}>
-            <box flexDirection="row" flexShrink={0} alignItems="flex-start">
+            <box
+              flexDirection="row"
+              flexShrink={0}
+              alignItems="flex-start"
+              onMouseUp={(event) => openChildSession(child, event)}
+            >
               <SpineRail
                 layout={props.layout}
                 glyph={i() === 0 ? "\u250C" : i() === count() - 1 ? "\u2514" : "\u251C"}
@@ -250,6 +266,9 @@ function ChildrenGroup(props: {
                     {[child.receipt?.status, child.receipt?.summary, child.elapsed].filter(Boolean).join(" \u00B7 ")}
                   </text>
                 </Show>
+                <Show when={child.sessionID}>
+                  <text fg={theme.spineBrand} wrapMode="none">↵ open context</text>
+                </Show>
               </box>
             </box>
             <Show when={!!child.body?.trim()}>
@@ -268,6 +287,14 @@ function ChildrenGroup(props: {
                   />
                 </box>
               </box>
+            </Show>
+            <Show when={child.children?.length}>
+              <ChildrenGroup
+                children={child.children!}
+                layout={props.layout}
+                contentWidth={props.contentWidth}
+                onNavigate={props.onNavigate}
+              />
             </Show>
           </box>
         </Show>
@@ -351,6 +378,7 @@ export function SpineEntry(props: {
   )
 
   const chatView = createMemo(() => (view().type === "chat" ? (view() as ChatEntry) : undefined))
+  const activityView = createMemo(() => (view().type === "activity" ? (view() as ActivityEntry) : undefined))
   const isUserVoice = createMemo(() => chatView()?.kind === "ask")
   const toolView = createMemo(() => (view().type === "tool" ? (view() as ToolEntry) : undefined))
   const approvalView = createMemo(() => (view().type === "approval" ? (view() as ApprovalEntry) : undefined))
@@ -364,7 +392,7 @@ export function SpineEntry(props: {
   const viewChildren = createMemo(() => {
     const v = view()
     if (v.type === "chat" || v.type === "approval") return undefined
-    return (v as ToolEntry | GovernanceEntry | ProofEntry | SubagentEntry).children
+    return (v as ActivityEntry | ToolEntry | GovernanceEntry | ProofEntry | SubagentEntry).children
   })
 
   const isChatProse = createMemo(() => view().type === "chat")
@@ -420,6 +448,7 @@ export function SpineEntry(props: {
       hasListing: hasListing(),
       hasToolBody: hasToolBody(),
       hasChildren: hasChildren(),
+      isActivity: activityView() !== undefined,
       childrenAreGovernance: viewChildren()?.some((child) => child.governance) ?? false,
       childCount: childCount(),
       isAgentEntry: isAgentEntry(),
@@ -452,6 +481,7 @@ export function SpineEntry(props: {
       return (entry().summary ?? chatView()!.text).trim()
     }
     if (isChatProse()) return ""
+    if (activityView()) return (view() as ActivityEntry).summary
     // Progressive disclosure for thinking: the collapsed row is the verb +
     // duration; the reasoning title/body only appears when expanded.
     if (isThinkRow()) {
@@ -634,6 +664,31 @@ export function SpineEntry(props: {
             )}
           </Show>
 
+          {/* Turn-local work reel — user and assistant prose remain outside
+              the group, while each original work row stays expandable below. */}
+          <Show when={activityView()}>
+            {(v) => (
+              <>
+                <ActivityReel
+                  view={v()}
+                  layout={props.layout}
+                  expanded={expanded()}
+                  focused={props.focused}
+                  contentWidth={props.contentWidth}
+                  onToggle={() => handleToggle()}
+                />
+                <Show when={expanded()}>
+                  <ChildrenGroup
+                    children={v().children}
+                    layout={props.layout}
+                    contentWidth={props.contentWidth}
+                    onNavigate={props.onNavigate}
+                  />
+                </Show>
+              </>
+            )}
+          </Show>
+
           {/* Tool / think / run / inspect / patch / fix rows. */}
           <Show when={toolView()}>
             {(v) => (
@@ -742,21 +797,30 @@ export function SpineEntry(props: {
                 </Show>
 
                 <Show when={hasToolBody() && bodyExpanded() && !v().table && !hasListing()}>
-                  <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-                    <SpineRail layout={props.layout} active={props.focused} />
-                    <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
-                      <SpineProse
-                        kind={kind()}
-                        text={v().body!}
-                        bodyLabel={v().bodyLabel}
-                        hint={v().bodyHint || v().summary}
-                        note={v().bodyNote}
-                        streaming={false}
-                        focused={props.focused}
-                        reminders={entryReminders()}
-                        contentWidth={props.contentWidth}
-                      />
-                    </box>
+                  {/* Tool body uses a left border on the content box so every
+                      body line gets a vertical rule (matches the user's
+                      "minimal tool body" reference). The SpineRail sibling
+                      would only render on the first line, so we drop it
+                      here and rely on the border. */}
+                  <box
+                    flexGrow={1}
+                    minWidth={0}
+                    flexShrink={1}
+                    paddingLeft={1}
+                    border={["left"]}
+                    borderColor={theme.spineRail}
+                  >
+                    <SpineProse
+                      kind={kind()}
+                      text={v().body!}
+                      bodyLabel={v().bodyLabel}
+                      hint={v().bodyHint || v().summary}
+                      note={v().bodyNote}
+                      streaming={false}
+                      focused={props.focused}
+                      reminders={entryReminders()}
+                      contentWidth={props.contentWidth}
+                    />
                   </box>
                 </Show>
 
@@ -775,7 +839,12 @@ export function SpineEntry(props: {
 
                 {/* Grouped tool burst - each child command + optional output body. */}
                 <Show when={hasChildren() && expanded()}>
-                  <ChildrenGroup children={v().children!} layout={props.layout} contentWidth={props.contentWidth} />
+                  <ChildrenGroup
+                    children={v().children!}
+                    layout={props.layout}
+                    contentWidth={props.contentWidth}
+                    onNavigate={props.onNavigate}
+                  />
                 </Show>
               </>
             )}
@@ -855,7 +924,12 @@ export function SpineEntry(props: {
                   onDismiss={kind() === "approve" ? props.onDismiss : undefined}
                 />
                 <Show when={hasChildren() && expanded()}>
-                  <ChildrenGroup children={v().children!} layout={props.layout} contentWidth={props.contentWidth} />
+                  <ChildrenGroup
+                    children={v().children!}
+                    layout={props.layout}
+                    contentWidth={props.contentWidth}
+                    onNavigate={props.onNavigate}
+                  />
                 </Show>
                 <Show when={entry().proof}>
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
@@ -1004,7 +1078,12 @@ export function SpineEntry(props: {
                   </box>
 
                   <Show when={hasChildren() && expanded()}>
-                    <ChildrenGroup children={v().children!} layout={props.layout} contentWidth={props.contentWidth} />
+                    <ChildrenGroup
+                      children={v().children!}
+                      layout={props.layout}
+                      contentWidth={props.contentWidth}
+                      onNavigate={props.onNavigate}
+                    />
                   </Show>
                 </>
               )
