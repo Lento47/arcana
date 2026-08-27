@@ -24,14 +24,24 @@ export function useSpineFilters(input: {
   sessionID: Accessor<string>
 }) {
   const [viewFilter, setViewFilter] = createSignal<SpineViewFilter>("all")
+  // Per-session filter memory: switching A→B→A restores the curated view.
+  // In-memory only (not KV) — resets on TUI restart, which is the right
+  // default for a session-local preference.
+  const filterMemory = new Map<string, SpineViewFilter>()
 
   const cycleViewFilter = () => setViewFilter((current) => nextSpineViewFilter(current))
 
   const filteredRows = createMemo(() => applyViewFilter(input.displayRows(), viewFilter()))
 
-  createEffect(() => {
-    input.sessionID()
-    setViewFilter("all")
+  createEffect((prevSessionID?: string) => {
+    const id = input.sessionID()
+    if (prevSessionID !== undefined && prevSessionID !== id) {
+      // Save outgoing session's filter.
+      filterMemory.set(prevSessionID, viewFilter())
+    }
+    // Restore incoming session's filter, or default to "all" for first visits.
+    setViewFilter(filterMemory.get(id) ?? "all")
+    return id
   })
 
   return {
