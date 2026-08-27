@@ -146,6 +146,19 @@ export const TuiThreadCommand = cmd({
     await ensureSolidPreload()
     const unguard = win32InstallCtrlCGuard()
     try {
+      // TUI requires a real interactive terminal. OpenTUI's CliRenderer calls
+      // process.stdin.setRawMode() during construction, which throws on a
+      // non-TTY stdin (piped output, redirected I/O, CI, backgrounded jobs).
+      // Fail fast with a clear message instead of letting the bootstrap crash
+      // dump the renderer stack trace. ARCANA_FORCE_TUI bypasses the check
+      // for harnesses and deterministic tests that pre-create a renderer.
+      if (!process.env["ARCANA_FORCE_TUI"] && (!process.stdin.isTTY || !process.stdout.isTTY)) {
+        UI.error("arcana tui requires an interactive terminal (TTY).")
+        UI.error("Run from a real shell — not a pipe, redirect, or background job.")
+        UI.error("If you are running under a debugger or test harness, set ARCANA_FORCE_TUI=1.")
+        process.exitCode = 1
+        return
+      }
       const { TuiConfig } = await import("@/config/tui")
       if (args.fork && !args.continue && !args.session) {
         UI.error("--fork requires --continue or --session")
