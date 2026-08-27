@@ -37,9 +37,10 @@ export function SpinePrompt(props: {
   const layout = () => props.layout()
   const metrics = () => spineLeadMetrics(layout(), props.gutterWidth)
   const markerGlyph = () => {
-    if (props.state() === "working" && motion?.isCueActive("composer")) {
+    if (props.state() === "working") {
       const glyphs = ["✣","✭","⁂","◎","○","✺","◉","✢","✷","✽","✦","✹","⬤","◒","✫","✬","✩","◑","✮","✥","⁑","◌","∗","✶","✯","◍","✻","✤","◓","✼","✰","●","✪","✧","◐","✸"]
-      return glyphs[Math.floor(motion.phase() / 2) % glyphs.length] ?? "✶"
+      const phase = motion?.phase() ?? 0
+      return glyphs[Math.floor(phase / 2) % glyphs.length] ?? "✶"
     }
     return "✶"
   }
