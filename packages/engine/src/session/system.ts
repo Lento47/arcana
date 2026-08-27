@@ -10,7 +10,6 @@ import { InstanceState } from "@/effect/instance-state"
 import BASE_ARCANA from "./prompt/base-arcana.txt"
 import SHARED_BEHAVIORAL from "./prompt/shared-behavioral.txt"
 import PROMPT_ANTHROPIC from "./prompt/anthropic.txt"
-import PROMPT_DEFAULT from "./prompt/default.txt"
 import PROMPT_BEAST from "./prompt/beast.txt"
 import PROMPT_GEMINI from "./prompt/gemini.txt"
 import PROMPT_GPT from "./prompt/gpt.txt"
@@ -42,7 +41,7 @@ export function provider(model: Provider.Model) {
   if (model.api.id.includes("claude")) return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_ANTHROPIC]
   if (model.api.id.toLowerCase().includes("trinity")) return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_TRINITY]
   if (model.api.id.toLowerCase().includes("kimi")) return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_KIMI]
-  return [BASE_ARCANA, SHARED_BEHAVIORAL, PROMPT_DEFAULT]
+  return [BASE_ARCANA, SHARED_BEHAVIORAL]
 }
 
 // ---------------------------------------------------------------------------

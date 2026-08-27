@@ -12,6 +12,7 @@ import * as Selection from "./util/selection"
 import { parseStallIntervalMs, startStallWatchdog } from "./util/stall-watchdog"
 import { displaySessionTitle } from "./util/session"
 import { truncate } from "./util/locale"
+import { AnimatedTitle, emitWarpEvent } from "./util/warp-integration"
 import { getLastSseEventMeta } from "./context/sdk"
 import { DialogProvider as DialogProviderList } from "./component/dialog-provider"
 import { DialogConfirm } from "./ui/dialog-confirm"
@@ -126,11 +127,16 @@ export function useAppEffects(props: {
   )
   const [mlRuntimeEnabled, setMlRuntimeEnabled] = createSignal(kv.get("ml_runtime_enabled", Flag.ARCANA_ML_RUNTIME))
 
-  // ── Terminal title effect ──
+  // ── Animated terminal title + Warp sidebar integration ──
+  const warpDisabled = Flag.ARCANA_DISABLE_TERMINAL_TITLE || Flag.ARCANA_DISABLE_WARP_INTEGRATION
+  const animatedTitle = new AnimatedTitle(APP_ABBR)
+
+  // Keep session label in sync with route changes.
   createEffect(() => {
     if (!terminalTitleEnabled() || Flag.ARCANA_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
+      animatedTitle.reset()
       renderer.setTerminalTitle("⛧ ARCANA")
       return
     }
@@ -138,21 +144,39 @@ export function useAppEffects(props: {
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
       if (!session) {
+        animatedTitle.reset()
         renderer.setTerminalTitle("⛧ ARCANA")
         return
       }
-
-      const label = displaySessionTitle({
-        title: session.title,
-        created: session.time?.created,
-      })
-      const title = truncate(label, 40)
-      renderer.setTerminalTitle(`${APP_ABBR} | ${title}`)
+      const label = truncate(displaySessionTitle({ title: session.title, created: session.time?.created }), 40)
+      animatedTitle.updateSession(label)
+      if (!warpDisabled) emitWarpEvent({ event: "session_start", sessionID: route.data.sessionID })
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`${APP_ABBR} | ${route.data.id}`)
+      animatedTitle.updateSession(route.data.id)
+    }
+  })
+
+  // React to session status changes: start/stop spinner + emit Warp events.
+  createEffect(() => {
+    if (!terminalTitleEnabled() || Flag.ARCANA_DISABLE_TERMINAL_TITLE) return
+    if (route.data.type !== "session") return
+
+    const sessionID = route.data.sessionID
+    const status = sync.data.session_status[sessionID] as { type?: string } | undefined
+    const statusType = status?.type
+
+    if (statusType === "busy" || statusType === "retry") {
+      animatedTitle.start()
+      if (!warpDisabled) emitWarpEvent({ event: "prompt_submit", sessionID })
+    } else if (statusType === "waiting") {
+      animatedTitle.blocked()
+      if (!warpDisabled) emitWarpEvent({ event: "idle_prompt", sessionID })
+    } else {
+      animatedTitle.stop()
+      if (!warpDisabled) emitWarpEvent({ event: "stop", sessionID })
     }
   })
 
@@ -383,6 +407,7 @@ export function useAppEffects(props: {
 
   // ── Cleanup ──
   onCleanup(() => {
+    animatedTitle.dispose()
     offSelectionKeys()
     props.attention.dispose()
     for (const fn of eventUnsubs) {

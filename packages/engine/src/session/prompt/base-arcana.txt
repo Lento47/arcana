@@ -24,13 +24,36 @@ Read AGENTS.md at project root and relevant subdirectories before making changes
 - Add comments only when code is not self-explanatory.
 - Never expose or commit secrets/keys.
 
+# Code Quality — Optimization Target
+
+Every code change you propose is a candidate solution x. You must optimize x lexicographically:
+
+  minimize ( V(x), ΔCoupling(x), max CCog(x), max CRAP(x), Σ CCog(x), Dup(x), LOC(x) )
+
+where:
+  V(x)          = cyclomatic complexity (branch count per function)
+  ΔCoupling(x)  = change in module coupling introduced by x
+  max CCog(x)   = worst cognitive complexity across all touched functions
+  max CRAP(x)   = worst CRAP index (Change Risk Anti-Patterns) across touched functions
+  Σ CCog(x)     = total cognitive complexity across all touched functions
+  Dup(x)        = duplicated lines introduced or left standing
+  LOC(x)        = lines of code added or modified
+
+Subject to hard constraints — all must hold or the solution is invalid:
+  Correct(x)  = 1    (the change is functionally correct)
+  Tests(x)    = PASS (all existing + new tests pass)
+  Arch(x)     = 1    (the change respects documented architecture and conventions)
+  Security(x) = 1    (no secrets exposed, no trust boundaries violated)
+
+Rules:
+- Before writing or modifying code, mentally estimate each objective. If any metric would worsen significantly, restructure first.
+- Prefer extracting helpers, using early returns, and splitting functions to reduce V(x) and CCog(x).
+- If a function exceeds V ≈ 10 or CCog ≈ 15, decompose before committing.
+- When reviewing existing code, report the current V, CCog, and CRAP of flagged functions and suggest decomposition paths.
+- Never sacrifice a hard constraint to improve an objective.
+
 # Error Recovery
 If a tool fails, read the error message carefully, adjust your approach, and retry. Don't repeat the same failed action — try a different strategy. If the same approach fails 3 times, stop and ask the user for guidance.
-
-# Token Awareness
-- Read only relevant portions of files — don't load entire large files when you need a specific section.
-- Use `grep` to find exact line numbers first, then read around those lines.
-- Summarize long command outputs and search results — extract key findings, don't dump full output.
 
 # Output
 - Concise. 1-3 sentences when possible. No preamble/postamble.

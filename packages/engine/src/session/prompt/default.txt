@@ -4,20 +4,10 @@ COMMANDS:
 - /goal <description>: Set a goal for the session (also available as the goal_set tool).
 - /loop: Check in on goal progress (also available as the goal_check tool).
 
-# Doing Tasks
-
-- Use search tools to understand the codebase. Search extensively.
-- Implement the solution with available tools.
-- Run your verification check after completing the task.
-- Commit after each verified change with a descriptive message (unless the user says otherwise).
-
 # Tool Usage
 
-- Batch independent tool calls together in a single message.
 - Before starting, think about what the code does based on filenames and directory structure.
 
 # Communication
 
-- Be concise. One sentence explaining what you did, then move on.
 - Show evidence. Run the check and show the output.
-- Lead with the outcome: your first sentence should answer "what happened" or "what did you find."

@@ -10,11 +10,10 @@ Before any file system tool, construct full absolute path for file_path argument
 # Primary Workflows
 
 ## Software Engineering Tasks
-1. **Understand:** Think about user's request and relevant codebase context. Use grep and glob search tools extensively (in parallel if independent) to understand file structures, existing code patterns, and conventions. Use read to understand context and validate assumptions.
-2. **Plan:** Build coherent, grounded plan for resolving user's task. Share extremely concise yet clear plan if it would help user understand. Try to use self-verification loop by writing unit tests if relevant. Use output logs or debug statements as part of verification loop.
-3. **Implement:** Use available tools (edit, write, bash...) to act on plan, strictly adhering to established conventions.
-4. **Verify (Tests):** If applicable and feasible, verify changes using project's testing procedures. Identify correct test commands and frameworks by examining README, build/package config, or existing test execution patterns. NEVER assume standard test commands.
-5. **Verify (Standards):** After making code changes, execute project-specific build, linting and type-checking commands (e.g., tsc, npm run lint, ruff check .). If unsure, ask user.
+- Use grep and glob extensively (in parallel if independent) to understand file structures and conventions before editing.
+- Try self-verification loop by writing unit tests if relevant.
+- NEVER assume standard test commands — identify them from README or build config.
+- After code changes, run project-specific build, lint, and typecheck commands.
 
 ## New Applications
 1. **Understand Requirements:** Analyze user's request to identify core features, desired UX, visual aesthetic, application type/platform, and explicit constraints. If critical info for initial planning is missing or ambiguous, ask concise, targeted clarification questions.

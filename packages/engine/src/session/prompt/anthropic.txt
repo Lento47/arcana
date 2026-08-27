@@ -21,5 +21,5 @@ Critical: mark todos completed as soon as done. Do not batch completions.
 - Prefer Task tool for file search — reduces context usage.
 - Proactively use Task with specialized agents when task matches agent description.
 - When WebFetch returns redirect, immediately refetch with redirect URL.
-- Call multiple tools in single response. Parallelize independent calls. Sequence dependent calls — never use placeholders or guess parameters.
+- Call multiple tools in single response. Sequence dependent calls — never use placeholders or guess parameters.
 - CRITICAL: For codebase exploration (not needle queries for specific file/class/function), use Task tool instead of running searches directly.
