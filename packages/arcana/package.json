@@ -10,6 +10,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./proof": "./src/proof/index.ts",
+    "./credential-store": "./src/credential-store.ts",
     "./cli/cmd/*": "./src/cli/cmd/*.ts"
   },
   "homepage": "https://arcana.otnelhq.com/docs",
