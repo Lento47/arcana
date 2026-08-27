@@ -32,6 +32,15 @@
 - [[proxy-origin-check]] — PayPal endpoint Origin check, CF Function proxy, client never sees proxy URL
 
 ## Project: arcana
+- [[arcana-audit-baseline]] — Audit baseline: 1766/4/7 tests, authority scan 148 sources OK, proof suite 19/19, secrets clean, one SHA-1 helper
+- [[arcana-evalcondition-bypass]] — OPEN FINDING: workflow/engine.ts evalCondition runs model-authored JS via new Function, bypassing PDP/PEP
+- [[arcana-slash-command-sources]] — Arcana slash commands are defined across app-commands.tsx, session-commands.tsx, prompt/index.tsx, voice.tsx, diff-viewer.tsx
+- [[arcana-security-model]] — Arcana governance: model proposes, engine decides, proof records; risk-scaled intent binding per Master Design §8–15, §29
+- [[arcana-shell-execution-goal-gate]] — Shell execution in Arcana requires an active session goal; refusal message: 'No active goal for this session'
+- [[arcana-governance-model-location]] — Arcana security model is documented in Master Design §8–15 and §29; core invariant is ¬Authorized(q) ⇒ ¬Executed(q)
+- [[arcana-workspace-overview]] — Workspace is L:\PROJECTS\arcana, a governed autonomy runtime with engine/tui/core/cli/llm packages, Bun tooling, and strict working rules
+- [[arcana-slash-commands-source-files]] — Arcana TUI slash commands are registered across app-commands.tsx, session-commands.tsx, prompt/index.tsx, voice.tsx, diff-viewer.tsx
+- [[arcana-project-overview]] — Workspace L:\PROJECTS\arcana is a governed autonomy runtime with packages engine, tui, core, arcana CLI, llm
 - [[branding-ts-voice-source]] — branding.ts is the single source for voice/theme/lexicon/glyphs (packages/tui/src/branding.ts)
 - [[session-slugs-core-util]] — session slugs generated in packages/core/src/util/slug.ts
 - [[scramble-reruns-on-text-change]] — Scramble component re-animates on text prop change
@@ -39,11 +48,17 @@
 - [[corrupt-glyphs-error-effect]] — CORRUPT_GLYPHS pool used for error "unencrypt" effect
 
 ## Patterns
+- [[governed-codebase-audit-method]] — Audit order: sensitive-file inventory → built-in harnesses → dangerous-pattern sweeps → triage each hit
+- [[demo-gated-actions-via-minimal-goal]] — When demonstrating governed features, pre-bind a minimal goal so the gated action succeeds on first try
+- [[enumerate-features-from-source]] — When asked about available commands/capabilities, enumerate them from the source files that define them, citing file locations and aliases
+- [[enumerate-capabilities-from-source-not-memory]] — Answer 'what can you do / list commands' questions by grepping registration source files and reporting aliases
 - [[keymash-noise-input-handling]] — Handle keyboard-mash/garbage input with a brief acknowledgment, then return to idle.
 - [[opentui-solidjs-reactivity]] — OpenTUI uses SolidJS (createMemo, createEffect, createSignal)
 - [[effect-ts-patterns]] — Server uses Effect.ts for dependency injection + error handling
 - [[caveman-compression]] — Tool/system prompts compressed ~40% by dropping articles/filler
 
 ## Mistakes
+- [[shell-exec-needs-active-goal]] — Shell commands are refused with 'No active goal' unless a session goal is bound first
+- [[shell-run-before-binding-goal]] — First shell attempt ran without an active goal and was refused
 - [[bun-transpiler-transformSync-not-available]] — Bun.Transpiler.transformSync not in Bun 1.3.11; use `bun build`
 - [[engine-promise-all-batch]] — Batch tool used unbounded Promise.all fan-out; fixed with bounded mapPool + recursive auth

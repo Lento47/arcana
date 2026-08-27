@@ -41,3 +41,5 @@ anything written inside.
 - [[ghost-preview-system]] — Risk labels also inspect file content for dangerous patterns
 - [[negative-memory-system]] — Anti-patterns block known-bad suggestions
 - [[transactional-engineering-skill]] — Skill-level enforcement of security practices
+
+Related: [[arcana-governance-model-location]] [[arcana-shell-execution-goal-gate]] [[arcana-security-model]] [[demo-gated-actions-via-minimal-goal]] [[shell-run-before-binding-goal]] [[arcana-evalcondition-bypass]] [[arcana-audit-baseline]] [[governed-codebase-audit-method]]

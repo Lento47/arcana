@@ -57,6 +57,7 @@ import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
+import { contextPressure } from "../../util/context-pressure"
 import { SessionMetricsBar } from "./metrics-bar"
 import { VoiceWave, isVoiceUiActive } from "../voice-wave"
 import { useArgs } from "../../context/args"
@@ -75,9 +76,13 @@ import { readLocalAttachment } from "./local-attachment"
 import { addOptimisticMessage, clearOptimisticMessages, remapOptimisticSession } from "./optimistic"
 import { arcanaTaskInstruction, assessArcanaTaskRisk, parseArcanaPromptCommand } from "../../arcana/task"
 import { useSessionPrewarm } from "../../routes/home/prewarm-session"
+import { formatSessionMetrics, METRICS_BORDER_OVERHEAD, type SessionMetricSnapshot } from "./metrics"
+import { PromptMetricsBorder } from "./metrics-border"
 
 export type PromptProps = {
   sessionID?: string
+  /** Width of the prompt's actual parent frame (after session chrome). */
+  contentWidth?: number
   visible?: boolean
   disabled?: boolean
   onSubmit?: () => void
@@ -1329,36 +1334,19 @@ export function Prompt(props: PromptProps) {
         }
         finishMoveProgress = Boolean(move.progress())
 
-        const res = await sdk.client.session.create({
-          directory,
-          workspace: workspaceID,
-          agent: agent.name,
-          model: {
-            providerID: selectedModel.providerID,
-            id: selectedModel.modelID,
-            variant,
-          },
-          // Name the session from the first prompt line so the session list
-          // never shows the engine default ("New session - <ISO>" → Untitled)
-          // before the engine's own first-message title lands. undefined for
-          // empty text keeps the backfill-friendly default title.
-          title: titleFromUserText(inputText) ?? undefined,
-        })
-        markSubmit("T3 session.create", t0, { error: Boolean(res.error) })
-
-        if (res.error || !res.data?.id) {
+        const failSessionCreate = (failure: {
+          error: unknown
+          status?: unknown
+          contentType?: string | null
+        }) => {
           if (finishMoveProgress) move.finishSubmit()
           clearOptimisticMessages(pendingStubID)
           sync.session.forget(pendingStubID)
-          // The session will never exist - strand nothing on the stub id.
-          promptQueue.failForSession(pendingStubID, "session was never created")
-          // The engine answers schema failures with an empty BadRequest, so
-          // capture whatever we can - invisibly console.log'ing it left every
-          // failure undiagnosable ("Open console" in a terminal TUI).
-          const status = (res.error as { status?: unknown } | undefined)?.status
-          const detail = errorMessage(res.error ?? "unknown error")
+          promptQueue.failForSession(pendingStubID, "session creation did not complete")
+          const detail = errorMessage(failure.error)
           logMessageDebug("session.create.failed", {
-            status: status === undefined ? undefined : String(status),
+            status: failure.status === undefined ? undefined : String(failure.status),
+            contentType: failure.contentType ?? undefined,
             error: detail,
             directory,
             agent: agent.name,
@@ -1366,15 +1354,50 @@ export function Prompt(props: PromptProps) {
           restoreComposer(nonTextParts)
           toast.show({
             title: "Creating a session failed",
-            message:
-              [status !== undefined ? `HTTP ${String(status)}` : undefined, detail]
-                .filter(Boolean)
-                .join(" · ") || "Unknown error",
+            message: [failure.status !== undefined ? `HTTP ${String(failure.status)}` : undefined, detail]
+              .filter(Boolean)
+              .join(" · "),
             variant: "error",
             duration: 8000,
           })
           route.navigate({ type: "home" })
           return true
+        }
+
+        let res: Awaited<ReturnType<typeof sdk.client.session.create>>
+        try {
+          res = await sdk.client.session.create({
+            directory,
+            workspace: workspaceID,
+            agent: agent.name,
+            model: {
+              providerID: selectedModel.providerID,
+              id: selectedModel.modelID,
+              variant,
+            },
+            // Name the session from the first prompt line so the session list
+            // never shows the engine default ("New session - <ISO>" → Untitled)
+            // before the engine's own first-message title lands. undefined for
+            // empty text keeps the backfill-friendly default title.
+            title: titleFromUserText(inputText) ?? undefined,
+          })
+        } catch (error) {
+          markSubmit("T3 session.create", t0, { error: true })
+          return failSessionCreate({ error })
+        }
+        const responseError = "error" in res ? res.error : undefined
+        markSubmit("T3 session.create", t0, { error: Boolean(responseError) })
+
+        if (responseError || !res.data?.id) {
+          const status =
+            res.response?.status
+            ?? (responseError as { status?: unknown } | undefined)?.status
+          const contentType = res.response?.headers.get("content-type")
+          return failSessionCreate({
+            status,
+            contentType,
+            error: responseError ?? "Invalid session.create response: missing session id",
+          })
         }
 
         createdID = res.data.id
@@ -1809,6 +1832,100 @@ export function Prompt(props: PromptProps) {
     return theme.spinePrompt
   })
 
+  // ── Embedded border metrics ──────────────────────────────────────────
+  // Metrics data derived from sync store (same sources as metrics-bar.tsx).
+  const [tick, setTick] = createSignal(Date.now())
+  onMount(() => {
+    // The default shell owns SessionMetricsBar's clock. Keep this timer scoped
+    // to command-spine prompts so ordinary prompts do not wake twice per Hz.
+    if (!isCommandSpine()) return
+    const id = setInterval(() => setTick(Date.now()), 1000)
+    onCleanup(() => clearInterval(id))
+  })
+
+  const metricsSession = createMemo(() => {
+    const sid = props.sessionID
+    if (!sid) return undefined
+    return sync.session.get(sid)
+  })
+
+  const elapsed = createMemo(() => {
+    const s = metricsSession()
+    if (!s) return undefined
+    tick()
+    return Math.max(0, Math.floor((tick() - s.time.created) / 1000))
+  })
+
+  const tokens = createMemo(() => {
+    const s = metricsSession()
+    if (!s?.tokens) return undefined
+    return s.tokens
+  })
+
+  const lastAssistant = createMemo(() => {
+    const sid = props.sessionID
+    if (!sid) return undefined
+    const msgs = sync.data.message[sid] ?? []
+    return msgs.findLast((m) => m.role === "assistant")
+  })
+
+  const pressurePercent = createMemo(() => {
+    const last = lastAssistant() as { tokens?: { input: number; output: number; reasoning: number; cache: { read: number; write: number } }; providerID?: string; modelID?: string } | undefined
+    if (!last?.tokens) return undefined
+    const total = last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
+    if (!total) return undefined
+    const model = sync.data.provider.find((p) => p.id === last.providerID)?.models[last.modelID ?? ""]
+    const limit = (model as { limit?: { context?: number } } | undefined)?.limit?.context
+    if (!limit) return undefined
+    return Math.max(0, Math.min(100, Math.round((total / limit) * 100)))
+  })
+
+  const pressure = createMemo(() => contextPressure(pressurePercent()))
+
+  const ttft = createMemo(() => {
+    const last = lastAssistant() as { latency?: { attempts?: Array<{ firstContentMs?: number }> } | undefined } | undefined
+    const attempts = last?.latency?.attempts
+    if (!attempts?.length) return undefined
+    return attempts[attempts.length - 1]?.firstContentMs
+  })
+
+  const cacheRead = createMemo(() => {
+    const last = lastAssistant() as { tokens?: { cache?: { read?: number } } | undefined } | undefined
+    return last?.tokens?.cache?.read
+  })
+
+  const cacheWrite = createMemo(() => {
+    const last = lastAssistant() as { tokens?: { cache?: { write?: number } } | undefined } | undefined
+    return last?.tokens?.cache?.write
+  })
+
+  const frameWidth = createMemo(() => {
+    const candidate = props.contentWidth ?? dimensions().width
+    return Number.isFinite(candidate) ? Math.max(1, Math.floor(candidate)) : 1
+  })
+
+  const metricSnapshot = createMemo<SessionMetricSnapshot>(() => {
+    const t = tokens()
+    return {
+      elapsedSeconds: elapsed(),
+      inputTokens: t?.input,
+      outputTokens: t?.output,
+      totalTokens: (t?.input ?? 0) + (t?.output ?? 0) + (t?.reasoning ?? 0) +
+        (t?.cache?.read ?? 0) + (t?.cache?.write ?? 0),
+      ttftMs: ttft(),
+      cacheReadTokens: cacheRead(),
+      cacheWriteTokens: cacheWrite(),
+      costUsd: metricsSession()?.cost,
+      pressure: pressure(),
+    }
+  })
+
+  const metricsEnabled = createMemo(() => tuiConfig.prompt?.metrics_bar !== false)
+  const metricsText = createMemo(() => {
+    if (!metricsEnabled()) return ""
+    return formatSessionMetrics(metricSnapshot(), Math.max(0, frameWidth() - METRICS_BORDER_OVERHEAD))
+  })
+
   function AutocompleteSlot(slotProps: { layout: "inline" | "overlay" }) {
     return (
       <Autocomplete
@@ -1857,7 +1974,7 @@ export function Prompt(props: PromptProps) {
         ref={(r: BoxRenderable) => (anchor = r)}
         visible={props.visible !== false}
         width="100%"
-        border={isCommandSpine() ? ["top", "bottom", "left", "right"] : ["top", "bottom"]}
+        border={isCommandSpine() ? ["top", "left", "right"] : ["top", "bottom"]}
         customBorderChars={isCommandSpine() ? RoundBorder : undefined}
         borderColor={isCommandSpine() ? spineBorderColor() : borderHighlight()}
         backgroundColor={isCommandSpine() ? theme.background : undefined}
@@ -2076,6 +2193,14 @@ export function Prompt(props: PromptProps) {
 
         </box>
       </box>
+      <Show when={isCommandSpine()} fallback={<SessionMetricsBar sessionID={props.sessionID} freeUsage={null} />}>
+        {/* Command-spine bottom edge — metrics embedded in a width-safe border line. */}
+        <PromptMetricsBorder
+          frameWidth={frameWidth}
+          metrics={metricsText}
+          color={spineBorderColor()}
+        />
+      </Show>
       <Show when={isVoiceUiActive(voiceStatus())}>
         <box width="100%" flexShrink={0} paddingLeft={isCommandSpine() ? 1 : 2} paddingTop={0}>
           <VoiceWave status={voiceStatus} />
@@ -2214,13 +2339,10 @@ export function Prompt(props: PromptProps) {
             <Match when={true}>{props.hint ?? <text />}</Match>
           </Switch>
           {/* Keybind hint row removed for v0.3.18 — was "tab agents / ctrl+p commands" plus
-              the file-context label. The footer is now just the SessionMetricsBar
-              (elapsed · tokens · cost · context pressure · free-usage). The keybinds
-              are still discoverable via `?` (help.show) and the command palette. */}
+              the file-context label. The command-spine footer keeps metrics in its
+              rounded frame; the default shell retains the standalone metrics bar.
+              The keybinds are still discoverable via `?` (help.show) and the command palette. */}
       </box>
-      <Show when={!isCommandSpine()}>
-        <SessionMetricsBar sessionID={props.sessionID} freeUsage={null} />
-      </Show>
       {/* Default shell: absolute overlay relative to prompt parent. */}
       <Show when={!isCommandSpine()}>
         <AutocompleteSlot layout="overlay" />

@@ -247,7 +247,7 @@ export const ExperimentalApi = HttpApi.make("experimental")
             identifier: "experimental.console.loginComplete",
             summary: "Complete login + persist proxy key",
             description:
-              "On a successful device-code login, the Arcana console hands us a freshly-minted proxy license key as the OAuth access_token (see arcana-site/functions/auth/device/token.ts). No bind roundtrip is needed — the engine writes the access_token directly to ~/.arcana/proxy_key, writes .license-cache.json, and sets ARCANA_PROXY_KEY in the current process so the catalog refresh sees the new entitlement.",
+              "On successful device-code login, persist the proxy credential in Arcana's encrypted local credential store, refresh the current engine process, and update the best-effort license cache.",
           }),
         ),
         HttpApiEndpoint.get("consoleProxyKeyPresent", ExperimentalPaths.consoleProxyKeyPresent, {
@@ -258,7 +258,7 @@ export const ExperimentalApi = HttpApi.make("experimental")
             identifier: "experimental.console.proxyKeyPresent",
             summary: "Is a proxy key present on disk?",
             description:
-              "Returns { present: boolean } for whether ~/.arcana/proxy_key (or $ARCANA_PROXY_KEY) is set. The TUI uses this to decide whether to show the 'Sign in with arcana' option in /connect.",
+              "Returns { present: boolean } when an environment override, encrypted local credential, or migratable legacy proxy key is available. The credential value is never returned.",
           }),
         ),
         HttpApiEndpoint.post("consoleOpenUrl", ExperimentalPaths.consoleOpenUrl, {

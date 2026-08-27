@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { analyzeTool, analyzeTurn } from "./signals.js"
+import { analyzeTool, analyzeTurn, computeResponseFingerprint, detectCrossTurnLoop } from "./signals.js"
 import { formatTurnSignalForSystemPrompt } from "./llm.js"
 import { decideToolPolicy, decideTurnPolicy } from "./policy.js"
 import { rerankCandidates } from "./rerank.js"
@@ -298,5 +298,71 @@ describe("Arcana Signal Engine", () => {
     expect(plan.included.some((item) => item.id === "system-policy")).toBe(true)
     expect(plan.drop.some((item) => item.id === "system-policy")).toBe(false)
     expect(plan.warnings.some((warning) => warning.includes("preserved"))).toBe(true)
+  })
+
+  test("computeResponseFingerprint is stable for identical content", () => {
+    const text = "You should add error handling to the main function and run tests."
+    const a = computeResponseFingerprint(text)
+    const b = computeResponseFingerprint(text)
+    expect(a).toBe(b)
+    expect(typeof a).toBe("string")
+    expect(a.length).toBeGreaterThan(0)
+  })
+
+  test("computeResponseFingerprint differs for different content", () => {
+    const a = computeResponseFingerprint("Install the dependency with bun add effect.")
+    const b = computeResponseFingerprint("Deploy the application to the production server.")
+    expect(a).not.toBe(b)
+  })
+
+  test("detectCrossTurnLoop detects 3 consecutive similar turns", () => {
+    const fp = "abc123"
+    const result = detectCrossTurnLoop(fp, [
+      { hash: fp, timestamp: 1000 },
+      { hash: fp, timestamp: 2000 },
+      { hash: fp, timestamp: 3000 },
+    ])
+    expect(result.detected).toBe(true)
+    expect(result.consecutiveSimilar).toBe(3)
+    expect(result.warning).toContain("loop")
+    expect(result.warning).toContain("different strategy")
+  })
+
+  test("detectCrossTurnLoop does not trigger on 1 match", () => {
+    const fp = "abc123"
+    const result = detectCrossTurnLoop(fp, [
+      { hash: "other", timestamp: 1000 },
+      { hash: fp, timestamp: 2000 },
+    ])
+    expect(result.detected).toBe(false)
+    expect(result.consecutiveSimilar).toBe(1)
+    expect(result.warning).toBeNull()
+  })
+
+  test("detectCrossTurnLoop does not trigger with insufficient history", () => {
+    const fp = "abc123"
+    const result = detectCrossTurnLoop(fp, [
+      { hash: fp, timestamp: 1000 },
+    ])
+    expect(result.detected).toBe(false)
+    expect(result.consecutiveSimilar).toBe(0)
+  })
+
+  test("detectCrossTurnLoop resets counter on different fingerprint", () => {
+    const fp = "abc123"
+    const result = detectCrossTurnLoop(fp, [
+      { hash: fp, timestamp: 1000 },
+      { hash: "other", timestamp: 2000 },
+      { hash: fp, timestamp: 3000 },
+    ])
+    expect(result.detected).toBe(false)
+    expect(result.consecutiveSimilar).toBe(1)
+  })
+
+  test("detectCrossTurnLoop handles empty history", () => {
+    const result = detectCrossTurnLoop("abc", [])
+    expect(result.detected).toBe(false)
+    expect(result.consecutiveSimilar).toBe(0)
+    expect(result.warning).toBeNull()
   })
 })

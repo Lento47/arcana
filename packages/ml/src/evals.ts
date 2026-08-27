@@ -9,7 +9,20 @@ import {
   type InteractionIntervention,
   type QualityBar,
 } from "./expectation.js"
-import { planMachineResourceUse, type DiskPosture, type MachineResourceInput, type MachineResourcePlan } from "./machine.js"
+import {
+  planMachineResourceUse,
+  type DiskPosture,
+  type MachineResourceInput,
+  type MachineResourcePlan,
+} from "./machine.js"
+import {
+  createInferenceOptimizer,
+  type InferenceContextItem,
+  type InferenceOptimizerMode,
+  type InferencePreparationStatus,
+  type ResponseDisposition,
+  type ResponseEvidence,
+} from "./inference-optimizer.js"
 
 export type EvalStatus = "pass" | "fail"
 
@@ -76,12 +89,31 @@ type MachineFixture = {
   }
 }
 
+type InferenceFixture = {
+  name: string
+  request: string
+  mode?: InferenceOptimizerMode
+  contextWindow: number
+  requestedOutputTokens?: number
+  supportsTools?: boolean
+  contextItems?: Array<InferenceContextItem & { repeat?: number }>
+  response?: string
+  evidence?: ResponseEvidence[]
+  revisionAttempt?: number
+  expected: {
+    preparationStatus: InferencePreparationStatus
+    disposition?: ResponseDisposition
+    minimumTokenSavingsRatio?: number
+  }
+}
+
 const FIXTURE_FILES = {
   expectation: "expectation.fixtures.json",
   quality: "quality.fixtures.json",
   token: "token.fixtures.json",
   sql: "sql.fixtures.json",
   machine: "machine.fixtures.json",
+  inference: "inference-optimizer.fixtures.json",
 } as const
 
 function pass(suite: string, name: string): EvalCaseResult {
@@ -110,9 +142,15 @@ function runExpectationFixtures(fixtures: ExpectationFixture[]): EvalCaseResult[
     const errors = [
       assertEqual(actual.deliverable, fixture.expected.deliverable, "deliverable"),
       assertEqual(actual.qualityBar, fixture.expected.qualityBar, "qualityBar"),
-      fixture.expected.evidenceNeed ? assertEqual(actual.evidenceNeed, fixture.expected.evidenceNeed, "evidenceNeed") : null,
+      fixture.expected.evidenceNeed
+        ? assertEqual(actual.evidenceNeed, fixture.expected.evidenceNeed, "evidenceNeed")
+        : null,
       fixture.expected.interactionIntervention
-        ? assertEqual(actual.interactionIntervention, fixture.expected.interactionIntervention, "interactionIntervention")
+        ? assertEqual(
+            actual.interactionIntervention,
+            fixture.expected.interactionIntervention,
+            "interactionIntervention",
+          )
         : null,
     ].filter((error): error is string => Boolean(error))
     return errors.length ? fail("expectation", fixture.name, errors.join("; ")) : pass("expectation", fixture.name)
@@ -121,7 +159,9 @@ function runExpectationFixtures(fixtures: ExpectationFixture[]): EvalCaseResult[
 
 function runQualityFixtures(fixtures: QualityFixture[]): EvalCaseResult[] {
   return fixtures.map((fixture) => {
-    const expectation = fixture.expectation ? inferExpectationContract({ request: fixture.expectation.request }) : undefined
+    const expectation = fixture.expectation
+      ? inferExpectationContract({ request: fixture.expectation.request })
+      : undefined
     const actual = evaluateResponseQuality({ request: fixture.request, response: fixture.response, expectation })
     const errors = [
       assertEqual(actual.verdict, fixture.expectedVerdict, "verdict"),
@@ -158,7 +198,9 @@ function runSqlFixtures(fixtures: SqlFixture[]): EvalCaseResult[] {
       query: fixture.query,
       schemaSummary: fixture.schemaSummary,
     })
-    const categories = new Set<SqlOptimizationPlan["findings"][number]["category"]>(plan.findings.map((finding) => finding.category))
+    const categories = new Set<SqlOptimizationPlan["findings"][number]["category"]>(
+      plan.findings.map((finding) => finding.category),
+    )
     const missing = fixture.expectedCategories.filter((category) => !categories.has(category))
     const errors = [
       assertEqual(plan.intent, fixture.expectedIntent, "intent"),
@@ -180,6 +222,45 @@ function runMachineFixtures(fixtures: MachineFixture[]): EvalCaseResult[] {
   })
 }
 
+function runInferenceFixtures(fixtures: InferenceFixture[]): EvalCaseResult[] {
+  return fixtures.map((fixture) => {
+    const optimizer = createInferenceOptimizer({ mode: fixture.mode ?? "observe" })
+    const contextItems = (fixture.contextItems ?? []).map(({ repeat, ...item }) => ({
+      ...item,
+      content: item.content.repeat(repeat ?? 1),
+    }))
+    const preparation = optimizer.prepare({
+      request: fixture.request,
+      contextItems,
+      model: {
+        contextWindow: fixture.contextWindow,
+        requestedOutputTokens: fixture.requestedOutputTokens,
+        supportsTools: fixture.supportsTools,
+      },
+    })
+    const evaluation =
+      fixture.response === undefined
+        ? undefined
+        : optimizer.evaluate({
+            preparation,
+            response: fixture.response,
+            evidence: fixture.evidence,
+            revisionAttempt: fixture.revisionAttempt,
+          })
+    const errors = [
+      assertEqual(preparation.request, fixture.request, "request"),
+      assertEqual(preparation.status, fixture.expected.preparationStatus, "preparationStatus"),
+      fixture.expected.disposition
+        ? assertEqual(evaluation?.recommendedDisposition, fixture.expected.disposition, "disposition")
+        : null,
+      preparation.metrics.tokenSavingsRatio >= (fixture.expected.minimumTokenSavingsRatio ?? 0)
+        ? null
+        : `tokenSavingsRatio: expected at least ${fixture.expected.minimumTokenSavingsRatio ?? 0}, got ${preparation.metrics.tokenSavingsRatio}`,
+    ].filter((error): error is string => Boolean(error))
+    return errors.length ? fail("inference", fixture.name, errors.join("; ")) : pass("inference", fixture.name)
+  })
+}
+
 export async function runMlEvals(): Promise<EvalRunResult> {
   const results = [
     ...runExpectationFixtures(await readFixture<ExpectationFixture>(FIXTURE_FILES.expectation)),
@@ -187,6 +268,7 @@ export async function runMlEvals(): Promise<EvalRunResult> {
     ...runTokenFixtures(await readFixture<TokenFixture>(FIXTURE_FILES.token)),
     ...runSqlFixtures(await readFixture<SqlFixture>(FIXTURE_FILES.sql)),
     ...runMachineFixtures(await readFixture<MachineFixture>(FIXTURE_FILES.machine)),
+    ...runInferenceFixtures(await readFixture<InferenceFixture>(FIXTURE_FILES.inference)),
   ]
   const failed = results.filter((result) => result.status === "fail").length
   return { passed: results.length - failed, failed, total: results.length, results }

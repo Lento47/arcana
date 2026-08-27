@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite"
 import { randomUUID } from "node:crypto"
 import { exactHash, isNearDuplicate, normalize } from "./dedup.js"
+import { LearningStore } from "./learning-store.js"
 
 function now(): string {
   return new Date().toISOString()
@@ -612,6 +613,15 @@ export class MemoryStore {
     this.db
       .prepare(`INSERT INTO feedback (id, session_id, message_id, rating, category, note, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(fb.id, fb.session_id ?? null, fb.message_id ?? null, fb.rating ?? null, fb.category ?? null, fb.note ?? null, fb.source, fb.created_at)
+    if (fb.message_id && fb.rating) {
+      // Learning labels are best-effort and consent-gated. Feedback remains usable
+      // even when learning is disabled, revoked, stale, or has no matching example.
+      try {
+        new LearningStore(this.db).appendRatingForMessage(fb.message_id, fb.rating, fb.created_at)
+      } catch {
+        // The feedback table is authoritative for the user action; optimizer data is optional.
+      }
+    }
     return fb
   }
 

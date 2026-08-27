@@ -30,6 +30,12 @@ export const DRIVE_METADATA = {
   noProgress: "__arcana_drive_no_progress",
 } as const
 
+export const ML_METADATA = {
+  fingerprints: "__arcana_ml_fingerprints",
+  crossTurnLoopWarning: "__arcana_ml_cross_turn_loop_warning",
+  correction: "__arcana_ml_correction",
+} as const
+
 export type DriveSnapshot = {
   enabled: boolean
   agent: string

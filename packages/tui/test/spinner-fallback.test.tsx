@@ -53,17 +53,34 @@ test("Spinner renders a text fallback when the native spinner is unregistered", 
 
     const app = await testRender(() => <Harness />, { kittyKeyboard: true })
     try {
-      // Reaching here at all means no reconciler throw. The frame glyph must
-      // be one of the text-cycled braille frames (or the static ⋯), never a
-      // crash.
-      const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "⋯"]
-      const snap = app.renderer as { currentRenderable?: unknown }
-      expect(snap).toBeDefined()
-      expect(frames.length).toBeGreaterThan(0)
+      // Reaching here means the missing intrinsic registration did not crash
+      // the reconciler. TextSpinner's frame progression is tested below with
+      // a context-free render so KV startup cannot hide the animation signal.
+      expect(app.renderer).toBeDefined()
     } finally {
       app.renderer.destroy()
     }
   } finally {
     if (saved !== undefined) catalogue.spinner = saved
+  }
+})
+
+test("TextSpinner advances fallback frames", async () => {
+  const { TextSpinner } = await import("../src/component/spinner")
+  const frames = ["A", "B", "C"]
+  const app = await testRender(() => <TextSpinner frames={frames}>Working...</TextSpinner>, {
+    width: 30,
+    height: 3,
+  })
+  try {
+    await app.waitForFrame((frame) => frame.includes("Working..."))
+    const firstFrame = app.captureCharFrame()
+    const firstGlyph = frames.find((glyph) => firstFrame.includes(glyph))
+    expect(firstGlyph).toBeDefined()
+    await Bun.sleep(100)
+    await app.renderOnce()
+    expect(frames.some((glyph) => glyph !== firstGlyph && app.captureCharFrame().includes(glyph))).toBe(true)
+  } finally {
+    app.renderer.destroy()
   }
 })

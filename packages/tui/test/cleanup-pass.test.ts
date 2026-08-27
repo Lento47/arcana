@@ -4,7 +4,8 @@
  * M9: spine-prose codePad dead ternary (identical branches) → constant 1.
  * S8: USE_SAMPLE_SPINE + SAMPLE_ENTRIES debug scaffolding deleted.
  * M11: four `Intl.NumberFormat("en-US", {currency:"USD"})` copies consolidated
- *      into one canonical Locale.currency (default locale, USD).
+ *      into canonical Locale.currency usage. Prompt metrics share one formatter
+ *      so the command-spine and standalone metrics bar cannot drift.
  * T7: code-unit cuts (id.slice(0,10)…slice(-4), label.slice(0,37)) replaced
  *      with display-width-aware truncateMiddle/truncate. The proof ID and
  *      terminal-title call sites now live in their focused modules.
@@ -27,6 +28,7 @@ const proofDialogsSrc = read("../src/proof-view/run-proof-dialogs.tsx")
 const appEffectsSrc = read("../src/app-effects.tsx")
 const statusbarSrc = read("../src/feature-plugins/system/statusbar.tsx")
 const metricsBarSrc = read("../src/component/prompt/metrics-bar.tsx")
+const metricsFormatterSrc = read("../src/component/prompt/metrics.ts")
 const sidebarCtxSrc = read("../src/feature-plugins/sidebar/context.tsx")
 const subagentFooterSrc = read("../src/routes/session/subagent-footer.tsx")
 
@@ -97,9 +99,10 @@ describe("M11 consolidation contract", () => {
     }
   })
 
-  test("all four sites format via Locale.currency", () => {
+  test("currency call sites use Locale.currency directly or via the shared formatter", () => {
     expect(statusbarSrc).toContain("Locale.currency")
-    expect(metricsBarSrc).toContain("Locale.currency")
+    expect(metricsBarSrc).toContain("formatSessionMetrics")
+    expect(metricsFormatterSrc).toContain("Locale.currency")
     expect(sidebarCtxSrc).toContain("Locale.currency")
     expect(subagentFooterSrc).toContain("Locale.currency")
   })

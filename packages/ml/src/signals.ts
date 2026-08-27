@@ -1,3 +1,4 @@
+import { STOP_WORDS } from "./stop-words.js"
 import type {
   ExecutionPosture,
   ModelRouteHint,
@@ -201,4 +202,72 @@ export function analyzeTool(input: ToolSignalInput): ToolSignal {
 
 export function createSignalEngine(): SignalEngine {
   return { analyzeTurn, analyzeTool }
+}
+
+// --- Cross-turn loop detection ---
+
+function simpleHash(input: string): string {
+  let hash = 0
+  for (let i = 0; i < input.length; i++) {
+    const char = input.charCodeAt(i)
+    hash = ((hash << 5) - hash + char) | 0
+  }
+  return hash.toString(36)
+}
+
+/**
+ * Compute a semantic fingerprint for a response.
+ * Uses content-bearing tokens only (filters stop words, short tokens).
+ * Returns a compact hash string stable for identical content.
+ */
+export function computeResponseFingerprint(response: string): string {
+  const tokens = (response.toLowerCase().match(/[a-z0-9_./-]+/g) ?? [])
+    .filter((t) => t.length >= 3 && !STOP_WORDS.has(t))
+  const unique = [...new Set(tokens)].sort().slice(0, 30)
+  return simpleHash(unique.join("|"))
+}
+
+export type CrossTurnLoopResult = {
+  detected: boolean
+  consecutiveSimilar: number
+  warning: string | null
+}
+
+/**
+ * Detect whether the agent is stuck in a cross-turn loop by comparing
+ * the current response's fingerprint against recent turn fingerprints.
+ * A loop is detected when ≥2 consecutive recent turns have the same fingerprint.
+ */
+export function detectCrossTurnLoop(
+  currentFingerprint: string,
+  recentFingerprints: ReadonlyArray<{ readonly hash: string; readonly timestamp: number }>,
+): CrossTurnLoopResult {
+  if (recentFingerprints.length < 2) {
+    return { detected: false, consecutiveSimilar: 0, warning: null }
+  }
+
+  const recent = recentFingerprints.slice(-5)
+  let consecutive = 0
+  for (let i = recent.length - 1; i >= 0; i--) {
+    if (recent[i].hash === currentFingerprint) {
+      consecutive++
+    } else {
+      break
+    }
+  }
+
+  if (consecutive >= 2) {
+    return {
+      detected: true,
+      consecutiveSimilar: consecutive,
+      warning: [
+        `You have produced ${consecutive + 1} consecutive responses with the same approach.`,
+        "This is a loop. You MUST try a fundamentally different strategy.",
+        "Do NOT repeat the same tool calls, the same analysis, or the same suggestions.",
+        "If you are stuck, explicitly state what is not working and ask the user for clarification.",
+      ].join(" "),
+    }
+  }
+
+  return { detected: false, consecutiveSimilar: consecutive, warning: null }
 }

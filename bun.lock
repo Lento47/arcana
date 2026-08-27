@@ -420,6 +420,7 @@
       "name": "@arcana/memory",
       "version": "0.1.0",
       "dependencies": {
+        "@arcana/ml": "workspace:*",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -433,6 +434,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@arcana/core": "workspace:*",
+        "zod": "catalog:",
       },
       "devDependencies": {
         "@types/bun": "catalog:",

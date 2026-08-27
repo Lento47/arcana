@@ -74,6 +74,7 @@ import { Question } from "@/question"
 import {
   DRIVE_CONTINUATION_REMINDER,
   DRIVE_METADATA,
+  ML_METADATA,
   continuationsUsed,
   decideDrive,
   driveProgressFingerprint,
@@ -677,7 +678,7 @@ export const layer = Layer.effect(
           tools: {},
           model: mdl,
           sessionID: input.session.id,
-          retries: 2,
+          retries: 0,
           messages: [{ role: "user", content: "Generate a title for this conversation:\n" }, ...msgs],
         })
         .pipe(
@@ -1664,6 +1665,8 @@ export const layer = Layer.effect(
         let structured: unknown
         let step = 0
         let resumePending = input.failedMessageID !== undefined
+        /** Cross-turn loop warning from the previous turn, for the current turn's preflight. */
+        let previousCrossTurnLoopWarning: string | undefined
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
         // New user prompt: do not inherit the previous drive counter.
         const priorMeta = session.metadata as Record<string, unknown> | undefined
@@ -1681,6 +1684,9 @@ export const layer = Layer.effect(
           delete cleaned[DRIVE_METADATA.decisionRequired]
           delete cleaned[DRIVE_METADATA.progressFingerprint]
           delete cleaned[DRIVE_METADATA.noProgress]
+          // Clean up ML state that should only apply once (fingerprints persist)
+          delete cleaned[ML_METADATA.crossTurnLoopWarning]
+          delete cleaned[ML_METADATA.correction]
           session.metadata = cleaned
           yield* sessions.setMetadata({ sessionID, metadata: cleaned })
         }
@@ -1887,14 +1893,9 @@ export const layer = Layer.effect(
             // Instant name from first user text (no model) so the session list
             // never stays on "New session - <ISO>" under rate limits.
             yield* ensureHeuristicTitle({ session, history: msgs }).pipe(Effect.ignore)
-            // LLM polish only if still default (e.g. image-only / empty text).
-            // Uses first real user message even when later turns already exist.
-            yield* title({
-              session,
-              modelID: lastUser.model.modelID,
-              providerID: lastUser.model.providerID,
-              history: msgs,
-            }).pipe(Effect.ignore, Effect.forkIn(scope))
+            // LLM title polish is deferred until after the main agent call
+            // completes (see titleFork after handle.process) to avoid
+            // concurrent LLM requests hitting upstream rate limits.
 
             // P3 inter preflight: before first sample of a new user turn, compact if
             // context is still hot (with hysteresis) so the model never starts over limit.
@@ -2115,8 +2116,12 @@ export const layer = Layer.effect(
               assistantMessage: msg,
               sessionID,
               model,
+              crossTurnLoopWarning: previousCrossTurnLoopWarning,
             })
             .pipe(Effect.onInterrupt(() => finalizeInterruptedAssistant))
+
+          // Capture cross-turn loop warning for the next turn's preflight
+          previousCrossTurnLoopWarning = handle.crossTurnLoopWarning ?? undefined
 
           const outcome: "break" | "continue" = yield* Effect.gen(function* () {
             const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
@@ -2247,6 +2252,17 @@ export const layer = Layer.effect(
               model,
               toolChoice: format.type === "json_schema" ? "required" : undefined,
             })
+
+            // LLM title polish: fire AFTER the main call completes to avoid
+            // concurrent LLM requests hitting upstream rate limits.
+            if (step === 1) {
+              yield* title({
+                session,
+                modelID: lastUser.model.modelID,
+                providerID: lastUser.model.providerID,
+                history: msgs,
+              }).pipe(Effect.ignore, Effect.forkIn(scope))
+            }
 
             if (structured !== undefined) {
               handle.message.structured = structured

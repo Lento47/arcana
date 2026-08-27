@@ -239,6 +239,7 @@ function fake(
       }
       return result
     }),
+    crossTurnLoopWarning: undefined,
   } satisfies SessionProcessorModule.SessionProcessor.Handle
 }
 

@@ -26,6 +26,8 @@ export function SpineComposer(props: {
   sessionID: string
   toBottom: (text?: string) => void
   state: () => SpinePromptState
+  /** Width of the session frame after route-level chrome. */
+  contentWidth?: number
   gutterWidth: number
   focusHint?: () => string
   gateOpen?: () => boolean
@@ -61,6 +63,7 @@ export function SpineComposer(props: {
     }
     return props.focusHint?.() ?? ""
   }
+  const hasOperatorCue = () => showsWorkingCue() || operatorHint().length > 0
   const hintColor = () => props.retryStatus?.() ? theme.warning : escapeHint() || props.gateOpen?.() ? theme.accent : theme.spineDiffMuted
   const [now, setNow] = createSignal(Date.now())
   let retryTimer: ReturnType<typeof setInterval> | undefined
@@ -82,16 +85,17 @@ export function SpineComposer(props: {
       </Show>
       {/* Queued prompts render as linear timeline rows (steer/drop chips on
           the queued ask row) — the old composer strip was removed. */}
-      {/* Fixed-height operator line: changing focus/state never moves the
-          viewport or composer. Mouse-only discovery is never required. */}
-      <box flexDirection="row" flexShrink={0} height={1} paddingLeft={pad + 2} minWidth={0}>
-        <Show
-          when={showsWorkingCue()}
-          fallback={<text fg={hintColor()} wrapMode="none">{truncate(operatorHint(), hintLimit())}</text>}
-        >
-          <ShimmerText text="Working…" active accent={theme.accent} cue="composer" animation="pulse" />
-        </Show>
-      </box>
+      {/* Idle/no-hint chrome collapses so the rounded frame starts immediately. */}
+      <Show when={hasOperatorCue()}>
+        <box flexDirection="row" flexShrink={0} height={1} paddingLeft={pad + 2} minWidth={0}>
+          <Show
+            when={showsWorkingCue()}
+            fallback={<text fg={hintColor()} wrapMode="none">{truncate(operatorHint(), hintLimit())}</text>}
+          >
+            <ShimmerText text="Working…" active accent={theme.accent} cue="composer" animation="pulse" />
+          </Show>
+        </box>
+      </Show>
       <SpinePrompt
         bind={props.bind as any}
         disabled={props.disabled}
@@ -100,6 +104,7 @@ export function SpineComposer(props: {
         toBottom={props.toBottom as any}
         layout={(() => props.layout) as any}
         state={props.state}
+        contentWidth={props.contentWidth}
         gutterWidth={props.gutterWidth}
       />
     </>

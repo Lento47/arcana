@@ -1,4 +1,5 @@
 import * as fs from "node:fs"
+import { randomUUID } from "node:crypto"
 import { generateText, Output, streamText, type ModelMessage } from "ai"
 import { z } from "zod"
 import { createOpenAI } from "@ai-sdk/openai"
@@ -13,11 +14,13 @@ import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./san
 import { gatedSpawn, formatGateResult, recordToolSchema } from "./authority.js"
 import { isPermissionPolicyPath, isSelfAwarenessPath } from "@arcana/core/util/self-awareness"
 import { analyzeDiff, classifyGuard, DEFAULT_THRESHOLDS, isDependencyManifest } from "@arcana/core/util/file-edit-guard"
+import { createLearningExample } from "@arcana/ml"
 import {
   applyMlPreflight,
   buildMlRevisionMessages,
   evaluateMlFinalResponse,
   getMlRuntimeModelOverrides,
+  noteMlRevision,
   prepareMlRuntime,
 } from "./ml-runtime.js"
 import {
@@ -900,6 +903,8 @@ export class AgentRunner {
     messages: ChatMessage[],
     onChunk?: (text: string) => void,
   ): Promise<TurnResult> {
+    const learningStartedAt = performance.now()
+    const learningMessageId = randomUUID()
     const systemMsg = messages.find((m) => m.role === "system")
     const rest = messages.filter((m) => m.role !== "system")
     let history: ChatMessage[]
@@ -940,7 +945,19 @@ export class AgentRunner {
     }
 
     const availableTools = this.getToolDefs().map((tool) => tool.function.name)
-    const mlRuntime = prepareMlRuntime(history, this.config, Boolean(this.sandbox), availableTools)
+    let calibrationProfile = null
+    try {
+      calibrationProfile = this.config.learning?.store.getActiveProfile(this.config.learning.workspace) ?? null
+    } catch {
+      // Invalid or unavailable learning state always falls back to baseline behavior.
+    }
+    const mlRuntime = prepareMlRuntime(
+      history,
+      this.config,
+      Boolean(this.sandbox),
+      availableTools,
+      calibrationProfile,
+    )
     history = applyMlPreflight(history, mlRuntime)
     const mlOverrides = getMlRuntimeModelOverrides(mlRuntime)
 
@@ -1088,7 +1105,11 @@ export class AgentRunner {
             })
             totalInput += revised.usage?.inputTokens ?? 0
             totalOutput += revised.usage?.outputTokens ?? 0
-            if (revised.text.trim()) finalText = revised.text
+            if (revised.text.trim()) {
+              finalText = revised.text
+              noteMlRevision(mlRuntime)
+              evaluateMlFinalResponse(mlRuntime, finalText)
+            }
           } catch (error) {
             if (!this.config.godlike) {
               auditLog({
@@ -1141,6 +1162,54 @@ export class AgentRunner {
     if (this.config.maxTokensPerSession && totalInput > this.config.maxTokensPerSession * 0.8) {
     }
 
+    if (mlRuntime.enabled && !mlRuntime.finalEvaluation && finalContent.trim()) {
+      evaluateMlFinalResponse(mlRuntime, finalContent)
+    }
+    const learning = this.config.learning
+    if (
+      learning &&
+      mlRuntime.optimization &&
+      mlRuntime.initialEvaluation &&
+      mlRuntime.finalEvaluation &&
+      finalContent.trim()
+    ) {
+      try {
+        if (!learning.store.resolveConsent(learning.workspace).allowed) {
+          return { content: finalContent, toolCalls, inputTokens: totalInput, outputTokens: totalOutput }
+        }
+        const refs = learning.store.references({
+          workspace: learning.workspace,
+          sessionId: this.sessionId ?? "standalone",
+          messageId: learningMessageId,
+        })
+        learning.store.appendExample(
+          learning.workspace,
+          createLearningExample({
+            ...refs,
+            runtime: "standalone",
+            intent: mlRuntime.turnSignal?.intent ?? "unknown",
+            provider: this.config.provider ?? "unknown",
+            model: this.config.model ?? "default",
+            request: mlRuntime.request,
+            draftResponse: mlRuntime.draftResponse,
+            finalResponse: finalContent,
+            preparation: mlRuntime.optimization,
+            initialEvaluation: mlRuntime.initialEvaluation,
+            finalEvaluation: mlRuntime.finalEvaluation,
+            revisions: mlRuntime.revisions,
+            usage: {
+              inputTokens: totalInput,
+              outputTokens: totalOutput,
+              toolTokens: 0,
+              latencyMilliseconds: performance.now() - learningStartedAt,
+            },
+            evidenceTypes: this.verificationEvidence.map((item) => item.tool),
+          }),
+        )
+      } catch {
+        // Learning is optional telemetry and must never break the requested turn.
+      }
+    }
     return { content: finalContent, toolCalls, inputTokens: totalInput, outputTokens: totalOutput }
   }
 }

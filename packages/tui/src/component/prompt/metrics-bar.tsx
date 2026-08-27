@@ -1,11 +1,15 @@
 /**
  * Session metrics bar — sticky, single-line, right-aligned status below the
- * input prompt. Renders cumulative session metrics:
+ * input prompt. Renders cumulative session metrics plus per-turn TTFT and
+ * cache stats:
  *
- *   ⌬ 4m 12s  ·  12.4k↓  3.1k↑  ·  $0.08  ·  compact soon
+ *   ⌬ 4m 12s  ·  12.4k↓  3.1k↑  ·  42.8k total  ·  340ms ttft  ·  8.2k↺  ·  $0.08
  *
  *   ⌬   elapsed since session.time.created (1Hz tick)
  *   ↓↑  cumulative input / output tokens
+ *   total  all tokens (input+output+reasoning+cache)
+ *   ttft  per-turn time to first content (last response)
+ *   ↺↻   per-turn cache read (hit) / write (miss) tokens
  *   $   session.cost (hidden when zero / free model)
  *   …   context pressure: "compact soon" (≥85%) or "compact now" (≥95%)
  *
@@ -20,10 +24,9 @@ import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
 import { useTuiConfig } from "../../config"
-import { Locale } from "../../util/locale"
-import { formatDuration } from "../../util/format"
 import { contextPressure } from "../../util/context-pressure"
-import type { JSX } from "@opentui/solid"
+import { formatSessionMetrics, type SessionMetricSnapshot } from "./metrics"
+import { useTerminalDimensions, type JSX } from "@opentui/solid"
 
 function clampPercent(pct: number): number {
   return Math.max(0, Math.min(100, pct))
@@ -33,6 +36,7 @@ export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { sta
   const { theme } = useTheme()
   const sync = useSync()
   const tuiConfig = useTuiConfig()
+  const dimensions = useTerminalDimensions()
 
   const enabled = createMemo(() => tuiConfig.prompt?.metrics_bar !== false)
 
@@ -88,6 +92,26 @@ export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { sta
 
   const pressure = createMemo(() => contextPressure(percent()))
 
+  // Per-turn TTFT from the last assistant message's latest attempt.
+  const ttft = createMemo(() => {
+    const last = lastAssistant() as { latency?: { attempts?: Array<{ firstContentMs?: number }> } | undefined } | undefined
+    const attempts = last?.latency?.attempts
+    if (!attempts?.length) return undefined
+    return attempts[attempts.length - 1]?.firstContentMs
+  })
+
+  // Per-turn cache read (hit) tokens from the last assistant message.
+  const cacheRead = createMemo(() => {
+    const last = lastAssistant() as { tokens?: { cache?: { read?: number } } | undefined } | undefined
+    return last?.tokens?.cache?.read
+  })
+
+  // Per-turn cache write (miss) tokens from the last assistant message.
+  const cacheWrite = createMemo(() => {
+    const last = lastAssistant() as { tokens?: { cache?: { write?: number } } | undefined } | undefined
+    return last?.tokens?.cache?.write
+  })
+
   // Free-tier remaining time from the proxy's /v1/free/usage snapshot.
   // Only show when the user is on the free tier (state: "active" or
   // "expired"), not when licensed or eligible. Updates when the parent
@@ -110,6 +134,27 @@ export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { sta
     return Boolean(session())
   })
 
+  const metricSnapshot = createMemo<SessionMetricSnapshot>(() => {
+    const t = tokens()
+    return {
+      elapsedSeconds: elapsed(),
+      inputTokens: t?.input,
+      outputTokens: t?.output,
+      totalTokens: (t?.input ?? 0) + (t?.output ?? 0) + (t?.reasoning ?? 0) +
+        (t?.cache?.read ?? 0) + (t?.cache?.write ?? 0),
+      ttftMs: ttft(),
+      cacheReadTokens: cacheRead(),
+      cacheWriteTokens: cacheWrite(),
+      costUsd: session()?.cost,
+      pressure: pressure(),
+      freeRemaining: freeRemaining(),
+    }
+  })
+
+  const metricsText = createMemo(() =>
+    formatSessionMetrics(metricSnapshot(), Math.max(0, dimensions().width - 4)),
+  )
+
   return (
     <Show when={showAny()}>
       <box
@@ -122,49 +167,7 @@ export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { sta
         paddingBottom={0}
         flexShrink={0}
       >
-        <text fg={theme.textMuted}>
-          <Show when={elapsed() !== undefined}>
-            <span style={{ fg: theme.accent }}>⌬ </span>
-            <span style={{ fg: theme.textMuted }}>{formatDuration(elapsed()!)}</span>
-          </Show>
-          <Show when={tokens()}>
-            {(t) => (
-              <>
-                <span style={{ fg: theme.textMuted }}>  ·  </span>
-                <span style={{ fg: theme.textMuted }}>{Locale.number(t().input)}</span>
-                <span style={{ fg: theme.textMuted }}>↓ </span>
-                <span style={{ fg: theme.textMuted }}>{Locale.number(t().output)}</span>
-                <span style={{ fg: theme.textMuted }}>↑</span>
-              </>
-            )}
-          </Show>
-          <Show when={tokens()?.input || tokens()?.output || tokens()?.reasoning || tokens()?.cache.read || tokens()?.cache.write}>
-            <span style={{ fg: theme.textMuted }}>  ·  </span>
-            <span style={{ fg: theme.textMuted }}>{Locale.number(
-              (tokens()?.input ?? 0) + (tokens()?.output ?? 0) + (tokens()?.reasoning ?? 0) +
-              (tokens()?.cache.read ?? 0) + (tokens()?.cache.write ?? 0),
-            )}</span>
-            <span style={{ fg: theme.textMuted }}> total</span>
-          </Show>
-          <Show when={(session()?.cost ?? 0) > 0}>
-            <span style={{ fg: theme.textMuted }}>  ·  </span>
-            <span style={{ fg: theme.textMuted }}>{Locale.currency(session()!.cost ?? 0)}</span>
-          </Show>
-          <Show when={pressure()}>
-            {(label) => (
-              <span style={{ fg: label() === "compact now" ? theme.error : theme.warning }}>
-                {"  ·  "}{label()}
-              </span>
-            )}
-          </Show>
-          <Show when={freeRemaining()}>
-            {(mins) => (
-              <span style={{ fg: theme.accent }}>
-                {"  ·  "}free {mins()}
-              </span>
-            )}
-          </Show>
-        </text>
+        <text fg={theme.textMuted} wrapMode="none">{metricsText()}</text>
       </box>
     </Show>
   )

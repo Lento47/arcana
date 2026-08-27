@@ -10,7 +10,7 @@ import { SessionManager } from "../../agent/session.js"
 import { registerBuiltinTools, TOOL_SELECTION_GUIDE } from "../../agent/tools.js"
 import { loadBoard, initBoard, addCard, moveCard, saveBoard, type KanbanBoard } from "../../agent/kanban.js"
 import { registerMcpTools } from "../../agent/mcp.js"
-import { isReservedMemoryKey, openMemoryDB, MemoryStore } from "@arcana/memory"
+import { isReservedMemoryKey, LearningStore, openMemoryDB, MemoryStore } from "@arcana/memory"
 import { loadSkills, loadSkillBody, type SkillCatalog } from "../../skills/loader.js"
 import { EXTRACTION_PROMPT, extractAndMerge, type LearningExtraction } from "../../learning.js"
 import { maybeEvolve, incrementSessionCount, getActivePrompt } from "../../agent/evolve.js"
@@ -194,11 +194,13 @@ export const RunCommand: CommandModule = {
     await mkdir(dataDir, { recursive: true })
 
     let memory: MemoryStore | null = null
-    if (useMemory) {
-      try {
-        const db = openMemoryDB(dataDir)
-        memory = new MemoryStore(db)
-      } catch (e) {
+    let learningStore: LearningStore | null = null
+    try {
+      const db = openMemoryDB(dataDir)
+      learningStore = new LearningStore(db)
+      if (useMemory) memory = new MemoryStore(db)
+    } catch (e) {
+      if (useMemory || process.env.ARCANA_ML_RUNTIME) {
         process.stderr.write(c.yellow(`Warning: memory unavailable (${String(e)})\n`))
       }
     }
@@ -240,6 +242,7 @@ export const RunCommand: CommandModule = {
         safeMode: args.safe === true,
         toolTimeout: args.toolTimeout as number | undefined,
         proofGate: proofRuntime.enabled ? proofRuntime : undefined,
+        learning: learningStore ? { store: learningStore, workspace: sandbox?.root ?? process.cwd() } : undefined,
       },
       sandbox,
     )

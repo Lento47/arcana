@@ -21,6 +21,8 @@
     "./quality": "./src/quality.ts",
     "./response-pipeline": "./src/response-pipeline.ts",
     "./context": "./src/context.ts",
+    "./inference-optimizer": "./src/inference-optimizer.ts",
+    "./learning": "./src/learning.ts",
     "./evals": "./src/evals.ts"
   },
   "scripts": {
@@ -28,10 +30,12 @@
     "test": "bun test src --only-failures",
     "test:all": "bun test src",
     "eval": "bun src/evals.ts",
+    "bench": "bun src/inference-optimizer.bench.ts",
     "build": "true"
   },
   "dependencies": {
-    "@arcana/core": "workspace:*"
+    "@arcana/core": "workspace:*",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "catalog:",

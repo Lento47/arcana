@@ -68,3 +68,5 @@ If the same mistake class appears 3 times, the skill instructs the model to auto
 - [[prompt-injection-guard]] — Different attack vector, different defense layer
 - [[confidence-decay-pipeline]] — Model trust decay is another form of negative memory
 - [[transactional-engineering-skill]] — The skill that enforces anti-pattern checks
+
+Related: [[arcana-governance-model-location]] [[arcana-shell-execution-goal-gate]] [[arcana-security-model]] [[demo-gated-actions-via-minimal-goal]] [[shell-run-before-binding-goal]] [[arcana-evalcondition-bypass]] [[arcana-audit-baseline]] [[governed-codebase-audit-method]]

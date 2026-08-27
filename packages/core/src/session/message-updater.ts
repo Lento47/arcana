@@ -243,6 +243,12 @@ export function update(adapter: Adapter, event: SessionEvent.Event) {
           if (match) match.text = event.data.text
         })
       },
+      "session.next.text.revised": (event) => {
+        return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
+          const match = latestText(draft, event.data.textID)
+          if (match) match.text = event.data.text
+        })
+      },
       "session.next.tool.input.started": (event) => {
         return updateOwnedAssistant(event.data.assistantMessageID, (draft) => {
           draft.content.push(

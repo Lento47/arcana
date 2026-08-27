@@ -13,7 +13,7 @@ import type { Session } from "@arcana/sdk/v2"
  * - Starts as soon as sync is ready (model optional on create).
  * - Upserts the session into the sync store so navigate does not flash missing.
  * - Refills after consume so /new → Home is ready again.
- * - Retries once after a failed create (network blip).
+ * - Retries explicit server failures; uncertain transport outcomes require a later user-triggered ensure.
  */
 
 type PrewarmState = {
@@ -148,7 +148,8 @@ export function SessionPrewarmProvider(props: ParentProps) {
         if (cancelled) return
         setState({ creating: false, failedAt: Date.now(), sessionID: undefined })
         resolveWaiters(undefined)
-        scheduleRetry()
+        // A thrown transport error may have happened after the engine accepted
+        // the create. Do not automatically replay an operation with unknown outcome.
       })
   }
 

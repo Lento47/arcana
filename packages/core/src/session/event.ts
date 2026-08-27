@@ -255,6 +255,22 @@ export namespace Text {
     },
   })
   export type Ended = typeof Ended.Type
+
+  /** Published when an async ML revision replaces the original text. */
+  export const Revised = EventV2.define({
+    type: "session.next.text.revised",
+    ...options,
+    schema: {
+      ...Base,
+      assistantMessageID: SessionMessageID.ID,
+      textID: Schema.String,
+      text: Schema.String,
+      reason: Schema.Literal("ml_quality_revision"),
+      originalScore: Schema.Number,
+      revisedScore: Schema.Number,
+    },
+  })
+  export type Revised = typeof Revised.Type
 }
 
 export namespace Reasoning {
@@ -495,6 +511,7 @@ const DurableDefinitions = [
   Step.Failed,
   Text.Started,
   Text.Ended,
+  Text.Revised,
   Tool.Input.Started,
   Tool.Input.Ended,
   Tool.Called,

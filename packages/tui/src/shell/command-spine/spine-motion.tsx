@@ -23,7 +23,7 @@ export function SpineMotionProvider(props: ParentProps<{ activeCue: Accessor<str
   let timer: ReturnType<typeof setInterval> | undefined
 
   // Composer star is a liveness indicator, not decorative motion — it ticks
-  // while working even when animations are disabled.
+  // while working or retrying even when animations are disabled.
   const composerActive = () => props.activeCue() === "composer"
   createEffect(() => {
     const running = (animationsEnabled() && props.activeCue() !== undefined) || composerActive()

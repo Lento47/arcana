@@ -48,8 +48,8 @@ describe("deriveComposerRunState", () => {
     expect(deriveComposerRunState({ ...base, sessionStatusType: undefined })).toBe("idle")
   })
 
-  test("pending message is required for working chrome", () => {
-    expect(deriveComposerRunState({ ...base, pending: false, sessionStatusType: "busy" })).toBe("idle")
+  test("busy starts working chrome before the assistant row exists", () => {
+    expect(deriveComposerRunState({ ...base, pending: false, sessionStatusType: "busy" })).toBe("working")
   })
 
   test("operator gates take precedence over active work", () => {

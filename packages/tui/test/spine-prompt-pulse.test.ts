@@ -23,6 +23,10 @@ const shellSrc = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/command-spine-shell.tsx"),
   "utf8",
 )
+const composerSrc = readFileSync(
+  join(import.meta.dir, "../src/shell/command-spine/spine-composer.tsx"),
+  "utf8",
+)
 const motionSrc = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/spine-motion.tsx"),
   "utf8",
@@ -31,6 +35,7 @@ const motionSrc = readFileSync(
 describe("pulseActive (M3-narrowed gating predicate)", () => {
   test("active while working", () => {
     expect(pulseActive("working")).toBe(true)
+    expect(pulseActive("retrying")).toBe(true)
   })
 
   test("stopped in idle, waiting, and stop", () => {
@@ -58,10 +63,21 @@ describe("S9 source contract", () => {
     expect(shellSrc).toContain("state={runState}")
     expect(shellSrc).not.toContain("state={runState as any}")
   })
+
+  test("composer frame owns the left edge and receives measured width", () => {
+    expect(promptSrc).not.toContain("<SpineRail")
+    expect(promptSrc).toContain("contentWidth?: number")
+    expect(shellSrc).toContain("contentWidth={viewportWidth()}")
+  })
+
+  test("idle operator hint row collapses instead of reserving blank height", () => {
+    expect(composerSrc).toContain("const hasOperatorCue = () =>")
+    expect(composerSrc).toContain("<Show when={hasOperatorCue()}>")
+  })
 })
 
 describe("M3 dead-branch contract", () => {
-  test("thinking palette branch deleted — only working pulses", () => {
+  test("thinking palette branch deleted — working/retrying pulses", () => {
     expect(promptSrc).not.toContain('props.state() === "thinking"')
   })
 

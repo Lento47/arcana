@@ -14,12 +14,21 @@ import { writeHeapSnapshot } from "node:v8"
 import { validateSession } from "../tui/validate-session"
 import { win32InstallCtrlCGuard } from "@arcana/tui/terminal-win32"
 import { mark, measure } from "../../cli/profile"
+import { assertEngineHealthy, createDaemonTransport } from "../tui/daemon-transport"
+import { DAEMON_LOG, daemonLog } from "../../daemon/log"
 
 declare global {
   const ARCANA_WORKER_PATH: string
 }
 
 type RpcClient = ReturnType<typeof Rpc.client<typeof rpc>>
+
+function reportStartupFailure(error: unknown): void {
+  const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+  daemonLog(`[tui] engine bootstrap failed pid=${process.pid} ${detail}`)
+  UI.error(`Arcana engine failed to start. Diagnostic log: ${DAEMON_LOG}`)
+  process.exitCode = 1
+}
 
 function createWorkerFetch(client: RpcClient): typeof fetch {
   const fn = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -160,62 +169,40 @@ export const TuiThreadCommand = cmd({
       const cwd = Filesystem.resolve(process.cwd())
 
       // ── Daemon detection: try existing daemon, auto-spawn if missing ──
-      let daemonUrl: string | null = null
       const isCompiled = typeof Bun !== "undefined" && (Bun as any).isCompiled
       const daemonCmd = isCompiled
         ? [process.execPath, "--daemon"]
         : [process.execPath, "--conditions=browser", daemonScript, "--daemon"]
-      // The TUI respawns the daemon on connection failure (idle-stop / crash).
-      // Publish the exact spawn command so the TUI never re-derives it.
-      process.env.ARCANA_DAEMON_CMD = JSON.stringify(daemonCmd)
-      try {
-        const { readLock: readDaemonLock, isLockStale: isDaemonLockStale, removeLock: removeDaemonLock } = await import("../../daemon/lock")
-        const { healthCheck } = await import("../../daemon/lifecycle")
-        const lock = readDaemonLock(cwd)
-        if (lock && !isDaemonLockStale(lock) && await healthCheck(lock.port)) {
-          daemonUrl = `http://127.0.0.1:${lock.port}`
-        } else {
-          // No running daemon — spawn one as detached child, wait for ready
-          if (lock) removeDaemonLock(cwd)
-          const daemonProc = Bun.spawn({
-            cmd: daemonCmd,
-            stdio: ["ignore", "ignore", "ignore"],
-            cwd,
-            env: {
-              ...(process.env as Record<string, string>),
-              ARCANA_DAEMON: "1",
-              ARCANA_DAEMON_CWD: cwd,
-            },
-          })
-          daemonProc.unref()
-          // Wait for daemon to be ready (health check with backoff)
-          for (let attempt = 0; attempt < 30; attempt++) {
-            await new Promise(r => setTimeout(r, 200))
-            const newLock = readDaemonLock(cwd)
-            if (newLock && !isDaemonLockStale(newLock) && await healthCheck(newLock.port)) {
-              daemonUrl = `http://127.0.0.1:${newLock.port}`
-              break
-            }
-          }
-        }
-      } catch {
-        // Daemon unavailable — fall through to Worker path
+      // The engine host owns daemon lifecycle and injects the resulting
+      // workspace-bound transport into the presentation package.
+      const daemonAttempt = await createDaemonTransport({
+        directory: cwd,
+        command: daemonCmd,
+      })
+      const daemonTransport = daemonAttempt.status === "connected" ? daemonAttempt.transport : undefined
+      if (daemonAttempt.status === "unavailable") {
+        daemonLog(`[tui] daemon unavailable pid=${process.pid} reason=${daemonAttempt.reason}; trying worker fallback`)
       }
 
       let client: ReturnType<typeof Rpc.client<typeof rpc>> | undefined
       let worker: Worker | undefined
       let stop: () => Promise<void> = async () => {}
 
-      if (!daemonUrl) {
+      if (!daemonTransport) {
         mark("worker-create")
         // bun Workers do NOT inherit process.env — forward it so the engine running
         // in the worker sees ARCANA_PROXY_KEY / OPENAI_API_KEY etc.
-        worker = new Worker(file, {
-          env: {
-            ...(process.env as Record<string, string>),
-            ...(process.env.ARCANA_PROXY_KEY ? { ARCANA_PROXY_KEY: process.env.ARCANA_PROXY_KEY } : {}),
-          },
-        })
+        try {
+          worker = new Worker(file, {
+            env: {
+              ...(process.env as Record<string, string>),
+              ...(process.env.ARCANA_PROXY_KEY ? { ARCANA_PROXY_KEY: process.env.ARCANA_PROXY_KEY } : {}),
+            },
+          })
+        } catch (error) {
+          reportStartupFailure(error)
+          return
+        }
         client = Rpc.client<typeof rpc>(worker)
         const reload = () => {
           client!.call("reload", undefined).catch(() => {})
@@ -246,19 +233,29 @@ export const TuiThreadCommand = cmd({
         network.port !== 0 ||
         network.hostname !== "127.0.0.1"
 
-      const transport = daemonUrl
-        ? { url: daemonUrl, fetch: undefined, events: undefined }
-        : external
-        ? {
-            url: (await client!.call("server", network)).url,
-            fetch: undefined,
-            events: undefined,
-          }
-        : {
-            url: "http://arcana.internal",
-            fetch: createWorkerFetch(client!),
-            events: createEventSource(client!),
-          }
+      let transport: { url: string; fetch?: typeof fetch; events?: EventSource }
+      try {
+        transport = daemonTransport
+          ? { ...daemonTransport, events: undefined }
+          : external
+          ? {
+              url: (await client!.call("server", network)).url,
+              fetch: undefined,
+              events: undefined,
+            }
+          : {
+              url: "http://arcana.internal",
+              fetch: createWorkerFetch(client!),
+              events: createEventSource(client!),
+            }
+        // Worker RPC does not consume Fetch's AbortSignal, so enforce the
+        // bootstrap deadline at the host boundary as well.
+        await withTimeout(assertEngineHealthy(transport), 3_000, "Arcana engine health check timed out")
+      } catch (error) {
+        await stop()
+        reportStartupFailure(error)
+        return
+      }
 
       try {
         await validateSession({
@@ -268,6 +265,7 @@ export const TuiThreadCommand = cmd({
           fetch: transport.fetch,
         })
       } catch (error) {
+        await stop()
         UI.error(errorMessage(error))
         process.exitCode = 1
         return
@@ -326,7 +324,6 @@ export const TuiThreadCommand = cmd({
         unguard?.()
       } catch {}
     }
-    process.exit(0)
   },
 })
 // scratch

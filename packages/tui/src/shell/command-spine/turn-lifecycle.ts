@@ -57,7 +57,10 @@ export function deriveComposerRunState(input: {
   if (input.hasQuestions || input.hasLocalPermissions) return "stop"
   if (input.sessionStatusType === "waiting" || input.hasPermissions) return "waiting"
   if (input.sessionStatusType === "retry") return "retrying"
-  if (input.pending && isSessionTurnActive(input.sessionStatusType)) return "working"
+  // Busy is the authoritative liveness signal. The assistant row is created
+  // asynchronously after submission, so requiring `pending` leaves a visible
+  // gap where work is running but the composer appears idle.
+  if (input.sessionStatusType === "busy") return "working"
   return "idle"
 }
 

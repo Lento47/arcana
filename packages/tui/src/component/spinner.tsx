@@ -29,9 +29,10 @@ export function Spinner(props: { children?: JSX.Element; color?: RGBA }) {
     return isSpinnerStyle(stored) ? stored : "braille"
   }
   const frames = () => spinnerFrames(style())
+  const shouldAnimate = () => kv.get("animations_enabled", true) && style() !== "none"
   // Missing native registration forces the text path regardless of style, so
   // busy indicators survive with only an animation-quality downgrade.
-  const useTextFallback = () => !HAS_NATIVE_SPINNER || !kv.get("animations_enabled", true) || style() === "none"
+  const useTextFallback = () => !HAS_NATIVE_SPINNER || !shouldAnimate()
   return (
     <Show
       when={useTextFallback()}
@@ -44,14 +45,14 @@ export function Spinner(props: { children?: JSX.Element; color?: RGBA }) {
         </box>
       }
     >
-      <TextSpinner frames={style() === "none" || !HAS_NATIVE_SPINNER ? [] : frames()} color={color()}>
+      <TextSpinner frames={shouldAnimate() ? frames() : []} color={color()}>
         {props.children}
       </TextSpinner>
     </Show>
   )
 }
 
-function TextSpinner(props: { frames: string[]; color?: RGBA; children?: JSX.Element }) {
+export function TextSpinner(props: { frames: string[]; color?: RGBA; children?: JSX.Element }) {
   const [i, setI] = createSignal(0)
   createEffect(() => {
     if (props.frames.length === 0) return

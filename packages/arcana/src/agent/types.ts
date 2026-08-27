@@ -1,3 +1,5 @@
+import type { LearningStore } from "@arcana/memory"
+
 export type Role = "system" | "user" | "assistant" | "tool"
 
 export type ToolCall = {
@@ -34,7 +36,7 @@ export type AgentConfig = {
   godlike?: boolean
   allowedTools?: string
   safeMode?: boolean
-  toolTimeout?: number  // milliseconds, default 30000
+  toolTimeout?: number // milliseconds, default 30000
   maxToolRounds?: number
   maxHistoryTurns?: number
   maxToolsPerSession?: number
@@ -44,14 +46,35 @@ export type AgentConfig = {
   mlRuntime?: boolean
   /** Maximum silent quality revisions per final assistant response. Default: 1 when ML runtime is enabled. */
   mlSilentRevisions?: number
+  /** Consent-gated local optimizer learning. Never implies consent by itself. */
+  learning?: { store: LearningStore; workspace: string }
   proofGate?: {
     gateShellCommand(
       command: string,
-      options?: { cwd?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean } },
+      options?: {
+        cwd?: string
+        approved?: boolean
+        sandboxEnabled?: boolean
+        userSovereignty?: {
+          requireApprovalForWrites?: boolean
+          requireApprovalForNetwork?: boolean
+          preferLocal?: boolean
+        }
+      },
     ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
     gateFileMutation(
       path: string,
-      options?: { operation?: string; approved?: boolean; sandboxEnabled?: boolean; userSovereignty?: { requireApprovalForWrites?: boolean; requireApprovalForNetwork?: boolean; preferLocal?: boolean }; guardRules?: readonly string[] },
+      options?: {
+        operation?: string
+        approved?: boolean
+        sandboxEnabled?: boolean
+        userSovereignty?: {
+          requireApprovalForWrites?: boolean
+          requireApprovalForNetwork?: boolean
+          preferLocal?: boolean
+        }
+        guardRules?: readonly string[]
+      },
     ): Promise<{ blocked: boolean; risk: string; reasons: string[] }>
     recordMlSignal?(input: {
       kind: "turn" | "tool"

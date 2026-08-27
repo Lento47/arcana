@@ -14555,6 +14555,7 @@ export type SessionGovernanceData = {
   query?: {
     directory?: string
     workspace?: string
+    limit?: string
   }
   url: "/session/{sessionID}/governance"
 }
@@ -14633,6 +14634,12 @@ export type SessionGovernanceResponses = {
         | "verification.recorded"
       payload: unknown
     }>
+    eventsLimit?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    eventsTruncated?: boolean
+    totals?: {
+      events: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      denied: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    }
     proof: {
       proofHash: string
       runRoot: string

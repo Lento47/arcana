@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 import { existsSync } from "node:fs"
 import { currentDir } from "./util/path.js"
+import { makeCredentialStore } from "./credential-store.js"
 
 export type ArcanaConfig = {
   provider?: string
@@ -50,6 +51,16 @@ export async function loadConfig(): Promise<ArcanaConfig> {
   // Load proxy_key from disk before auto-detect. The arcana CLI spawns the
   // engine as a child process, so engine/src/index.ts side-effects run too
   // late — auto-detect in this process needs ARCANA_PROXY_KEY already set.
+  if (!process.env.ARCANA_PROXY_KEY) {
+    try {
+      const home = getArcanaHome()
+      const stored = makeCredentialStore({
+        storePath: join(home, "credential_store"),
+        keyPath: join(home, "credential_key"),
+      }).load()?.trim()
+      if (stored) process.env.ARCANA_PROXY_KEY = stored
+    } catch {}
+  }
   if (!process.env.ARCANA_PROXY_KEY) {
     try {
       const keyPath = join(getArcanaHome(), "proxy_key")

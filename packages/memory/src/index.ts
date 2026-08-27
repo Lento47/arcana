@@ -1,4 +1,14 @@
 export { openMemoryDB } from "./db.js"
+export { LearningStore } from "./learning-store.js"
+export { exportLearningDataset } from "./learning-export.js"
+export { runLearningDataCommand } from "./learning-command.js"
+export type {
+  EffectiveLearningConsent,
+  LearningCalibrationRun,
+  LearningStoreStatus,
+} from "./learning-store.js"
+export type { LearningExportOptions, LearningExportResult } from "./learning-export.js"
+export type { LearningDataCommandInput, LearningDataCommandResult } from "./learning-command.js"
 export {
   MemoryStore,
   RECENCY_HALFLIFE_DAYS,

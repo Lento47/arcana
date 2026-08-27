@@ -10,6 +10,7 @@ import { errorMessage } from "./util/error"
 import { Heap } from "./cli/heap"
 import { createKernelContract } from "./kernel/kernel"
 import { daemonLog } from "./daemon/log"
+import { readProxyKey } from "./account/license-bind"
 mark("cli-import-end")
 
 /**
@@ -167,16 +168,14 @@ function defaultTuiArgs() {
 // Auto-configure proxy auth from stored license key
 if (!exitsBeforeRuntime && !process.env.ARCANA_PROXY_KEY) {
   try {
-    const { readFileSync, existsSync } = require("node:fs") as typeof import("node:fs")
-    const { join } = require("node:path") as typeof import("node:path")
-    const home = process.env.ARCANA_HOME ?? join(process.env.USERPROFILE ?? process.env.HOME ?? ".", ".arcana")
-    const keyFile = join(home, "proxy_key")
-    if (existsSync(keyFile)) {
-      process.env.ARCANA_PROXY_KEY = readFileSync(keyFile, "utf8").trim()
+    const storedKey = readProxyKey()
+    if (storedKey) {
+      process.env.ARCANA_PROXY_KEY = storedKey
       // Silent by default - this fired on every command (incl. --help and piped
-      // usage), leaking the local key path. Only surface it under --print-logs.
+      // usage), leaking credential-storage details. Only acknowledge the load
+      // under explicit diagnostic logging, without printing a path or value.
       if (process.argv.includes("--print-logs") || process.env.ARCANA_PRINT_LOGS === "1") {
-        process.stderr.write(`[arcana] proxy key loaded from ${keyFile}\n`)
+        process.stderr.write("[arcana] proxy credential loaded\n")
       }
     }
   } catch {}
@@ -310,6 +309,7 @@ const commandLoaders = {
   skills: () => import("./cli/cmd/skills").then((m) => m.SkillsCommand),
   memory: () => import("./cli/cmd/memory").then((m) => m.MemoryCommand),
   feedback: () => import("./cli/cmd/feedback").then((m) => m.FeedbackCommand),
+  "ml-data": () => import("./cli/cmd/ml-data").then((m) => m.MlDataCommand),
   cron: () => import("./cli/cmd/cron").then((m) => m.CronCommand),
   gateway: () => import("./cli/cmd/gateway").then((m) => m.GatewayCommand),
   epistemic: () => import("./cli/cmd/epistemic").then((m) => m.EpistemicCommand),

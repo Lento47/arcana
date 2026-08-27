@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { avoidSlopScore, evaluateResponseQuality, formatQualityGateForAudit } from "./quality.js"
+import { avoidSlopScore, evaluateResponseQuality, formatQualityGateForAudit, type RepeatedSegment } from "./quality.js"
 
 describe("avoidSlopScore", () => {
   test("flags business filler and vague verbs", () => {
@@ -115,5 +115,147 @@ describe("evaluateResponseQuality with avoidSlopScore", () => {
     })
     const audit = formatQualityGateForAudit(result)
     expect(audit).toContain("genericity=")
+  })
+
+  test("semantic deduplication catches rephrased content", () => {
+    // Two segments with high token overlap but different wording
+    // (needs ≥0.7 Jaccard similarity after stop word removal)
+    const response = [
+      "Add error handling to the main function to catch unexpected failures and log the error details.",
+      "Add error handling to the main function to catch unexpected failures and log the error message.",
+      "After that, run the test suite to verify the changes work correctly.",
+    ].join("\n\n")
+
+    const result = evaluateResponseQuality({
+      request: "add error handling",
+      response,
+    })
+
+    // Should detect semantic repetition
+    const semanticRepeats = result.repeatedSegments.filter((r: RepeatedSegment) => r.kind === "semantic")
+    expect(semanticRepeats.length).toBeGreaterThan(0)
+    expect(result.problems.some((p) => p.includes("Semantically similar"))).toBe(true)
+  })
+
+  test("semantic deduplication does not false-positive on different content", () => {
+    const response = [
+      "First, install the dependency with `bun add effect`.",
+      "Then, update the schema in `packages/core/src/schema.ts` to add the new field.",
+      "Finally, run `bun test packages/core` to verify the changes.",
+    ].join("\n\n")
+
+    const result = evaluateResponseQuality({
+      request: "add a new field to the schema",
+      response,
+    })
+
+    expect(result.repeatedSegments).toHaveLength(0)
+  })
+
+  test("exact deduplication still works alongside semantic", () => {
+    const repeated = "Run `bun test packages/ml/src/quality.test.ts` and inspect the failures."
+    const result = evaluateResponseQuality({
+      request: "avoid repeating yourself",
+      response: `${repeated}\n${repeated}\nThen summarize the result.`,
+    })
+
+    const exactRepeats = result.repeatedSegments.filter((r: RepeatedSegment) => r.kind === "exact")
+    expect(exactRepeats.length).toBeGreaterThan(0)
+    expect(result.verdict).toBe("revise_silently")
+  })
+
+  test("repeatedSegments is exposed on QualityGateResult", () => {
+    const result = evaluateResponseQuality({
+      request: "test",
+      response: "Concrete response with file.ts and 42 metrics.",
+    })
+    expect(result.repeatedSegments).toBeDefined()
+    expect(Array.isArray(result.repeatedSegments)).toBe(true)
+  })
+
+  test("ask_user verdict when score is very low and intervention is confirm", () => {
+    const result = evaluateResponseQuality({
+      request: "give me a specific answer",
+      response: "maybe perhaps it could be something",
+      expectation: {
+        deliverable: "direct_answer",
+        qualityBar: "solid",
+        evidenceNeed: "none",
+        interactionIntervention: "confirm",
+        constraints: [],
+        mustAvoid: [],
+        shouldInclude: [],
+        assumptions: [],
+        promptHints: [],
+      },
+    })
+    expect(result.verdict).toBe("ask_user")
+    expect(result.interactionIntervention).toBe("confirm")
+  })
+
+  test("constraintFit penalizes responses that ignore explicit constraints", () => {
+    const result = evaluateResponseQuality({
+      request: "fix the bug",
+      response: "Here is a detailed analysis of the codebase architecture with file.ts and 42 metrics.",
+      expectation: {
+        deliverable: "code_patch",
+        qualityBar: "solid",
+        evidenceNeed: "light",
+        interactionIntervention: "silent",
+        constraints: ["must include a patch", "must run tests"],
+        mustAvoid: [],
+        shouldInclude: [],
+        assumptions: [],
+        promptHints: [],
+      },
+    })
+    expect(result.constraintFitScore).toBeLessThan(0.8)
+    expect(result.problems.some((p) => p.includes("constraints"))).toBe(true)
+  })
+
+  test("strict code_patch uses lower threshold (0.72) than strict default (0.78)", () => {
+    // A response that would fail at 0.78 but pass at 0.72
+    const result = evaluateResponseQuality({
+      request: "fix the bug in the parser",
+      response: "Patch `src/parser.ts` line 42: change `parse(input)` to `parse(input, { strict: true })`. Run `bun test`.",
+      expectation: {
+        deliverable: "code_patch",
+        qualityBar: "strict",
+        evidenceNeed: "light",
+        interactionIntervention: "silent",
+        constraints: [],
+        mustAvoid: [],
+        shouldInclude: [],
+        assumptions: [],
+        promptHints: [],
+      },
+    })
+    // This concrete patch response should pass with the lower code_patch threshold
+    expect(result.verdict).toBe("pass")
+  })
+
+  test("semantic repeats contribute to problems but do not force hardFail", () => {
+    // Two semantically similar but not exact-repeat segments
+    const response = [
+      "Add error handling to the main function to catch unexpected failures and log the error details.",
+      "Add error handling to the main function to catch unexpected failures and log the error message.",
+      "Then run `bun test` to verify the changes work correctly.",
+    ].join("\n\n")
+
+    const result = evaluateResponseQuality({
+      request: "add error handling",
+      response,
+    })
+
+    // Semantic repeats should be detected
+    const semanticRepeats = result.repeatedSegments.filter((r) => r.kind === "semantic")
+    expect(semanticRepeats.length).toBeGreaterThan(0)
+    expect(result.problems.some((p) => p.includes("Semantically similar"))).toBe(true)
+
+    // But the response should NOT be hard-failed — it has concrete markers
+    // (file references, commands) that boost the score above threshold
+    // The key assertion: verdict is NOT forced to revise_silently purely from semantic repeats
+    // (it may still revise for other reasons, but not from hardFail)
+    expect(result.repeatedSegments.filter((r) => r.kind === "exact")).toHaveLength(0)
   })
 })

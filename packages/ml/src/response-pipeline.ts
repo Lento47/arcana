@@ -11,6 +11,8 @@ export type ResponsePipelinePreflightInput = ExpectationInput & {
   availableTools?: string[]
   priorTurnCount?: number
   hasToolHistory?: boolean
+  /** Warning injected when cross-turn loop detection fires. */
+  crossTurnLoopWarning?: string
 }
 
 export type ResponsePipelinePreflight = {
@@ -58,8 +60,15 @@ export function prepareResponsePreflight(input: ResponsePipelinePreflightInput):
     `machine_posture=${machine.posture}`,
     thinking.promptAddendum,
     "rules=avoid generic output; preserve user intent; revise silently when quality is low; ask only when ambiguity blocks correctness",
+    "avoid_phrases=best practices,robust solution,scalable solution,seamless experience,cutting-edge,game changer,leverage,streamline,enhance,it depends,might be,perhaps,generally",
+    expectation.deliverable !== "direct_answer"
+      ? "evidence_required=when claiming done/fixed/verified, include file path, command output, test result, or diff"
+      : "",
+    input.crossTurnLoopWarning
+      ? `loop_warning=${input.crossTurnLoopWarning}`
+      : "",
     "</arcana-response-pipeline>",
-  ].join("\n")
+  ].filter(Boolean).join("\n")
 
   return { expectation, tokenBudget, machine, thinking, promptAddendum }
 }

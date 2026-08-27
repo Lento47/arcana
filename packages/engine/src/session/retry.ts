@@ -41,6 +41,10 @@ export type Retryable = {
 export const RETRY_INITIAL_DELAY = 2000
 export const RETRY_BACKOFF_FACTOR = 2
 export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
+/** Minimum delay for 429 rate-limit retries without Retry-After headers.
+ *  RPM limits typically have 60-second windows — retrying after 2-8 seconds
+ *  just amplifies the rate limit pressure. */
+export const RETRY_RATE_LIMIT_MIN_DELAY = 60_000 // 60 seconds
 export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
 /** Automatic retries after the initial provider request. */
 export const RETRY_MAX_ATTEMPTS = 3
@@ -52,6 +56,8 @@ function cap(ms: number) {
 export function delay(attempt: number, error?: SessionV1.APIError) {
   if (error) {
     const headers = error.data.responseHeaders
+    const isRateLimit = error.data.statusCode === 429
+
     if (headers) {
       const retryAfterMs = headers["retry-after-ms"]
       if (retryAfterMs) {
@@ -75,12 +81,24 @@ export function delay(attempt: number, error?: SessionV1.APIError) {
         }
       }
 
+      // For 429 rate limits without Retry-After headers, use a much longer
+      // delay. RPM limits typically have 60-second windows — retrying after
+      // 2-8 seconds just amplifies the rate limit pressure.
+      if (isRateLimit) {
+        return cap(RETRY_RATE_LIMIT_MIN_DELAY * attempt)
+      }
+
       return cap(
         Math.min(
           RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1),
           RETRY_MAX_DELAY_NO_HEADERS,
         ),
       )
+    }
+
+    // 429 without any headers — use long delay
+    if (isRateLimit) {
+      return cap(RETRY_RATE_LIMIT_MIN_DELAY * attempt)
     }
   }
 

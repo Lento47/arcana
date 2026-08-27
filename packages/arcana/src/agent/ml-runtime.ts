@@ -1,7 +1,12 @@
 import {
   analyzeTurn,
-  evaluateResponsePostflight,
+  buildRevisionPrompt,
+  createInferenceOptimizer,
   prepareResponsePreflight,
+  type InferenceCalibrationProfileV1,
+  type InferencePreparation,
+  type InferenceResponseEvaluation,
+  type InferenceOptimizer,
   type ResponsePipelinePostflight,
   type ResponsePipelinePreflight,
 } from "@arcana/ml"
@@ -11,9 +16,15 @@ export type MlRuntimeState = {
   enabled: boolean
   request: string
   preflight: ResponsePipelinePreflight | null
+  optimizer: InferenceOptimizer | null
+  optimization: InferencePreparation | null
   maxSilentRevisions: number
   thinkingStyle?: "quick" | "balanced" | "deep" | "staged"
   turnSignal?: ReturnType<typeof analyzeTurn>
+  initialEvaluation?: InferenceResponseEvaluation
+  finalEvaluation?: InferenceResponseEvaluation
+  draftResponse?: string
+  revisions: number
 }
 
 function parseEnvFlag(value: string | undefined): boolean {
@@ -41,19 +52,27 @@ export function appendMlPromptAddendum(messages: ChatMessage[], addendum: string
   return [mlMessage, ...messages]
 }
 
-
 export function prepareMlRuntime(
   messages: ChatMessage[],
   config: AgentConfig,
   sandboxEnabled: boolean,
   availableTools?: string[],
+  calibrationProfile?: InferenceCalibrationProfileV1 | null,
 ): MlRuntimeState {
   const enabled = isMlRuntimeEnabled(config)
   const request = getLastUserRequest(messages)
   const maxSilentRevisions = Math.max(0, Math.floor(config.mlSilentRevisions ?? 1))
 
   if (!enabled || !request.trim()) {
-    return { enabled: false, request, preflight: null, maxSilentRevisions: 0 }
+    return {
+      enabled: false,
+      request,
+      preflight: null,
+      optimizer: null,
+      optimization: null,
+      maxSilentRevisions: 0,
+      revisions: 0,
+    }
   }
 
   const priorTurnCount = messages.filter((m) => m.role === "user").length
@@ -90,19 +109,62 @@ export function prepareMlRuntime(
     ],
   })
 
+  const optimizer = createInferenceOptimizer({
+    mode: "optimize",
+    maxSilentRevisions,
+    calibrationProfile: calibrationProfile ?? undefined,
+  })
+  const lastUserIndex = messages.findLastIndex((message) => message.role === "user")
+  const optimization = optimizer.prepare({
+    request,
+    phase: /\b(implement|change|edit|fix|build|create|write)\b/i.test(request) ? "editing" : "analysis",
+    explicitConstraints: [
+      "Preserve the user's request and do not rewrite their intent.",
+      "Avoid generic filler; use concrete evidence and validation when applicable.",
+    ],
+    systemPrompt: messages.find((message) => message.role === "system")?.content,
+    contextItems: messages.flatMap((message, index) => {
+      if (index === lastUserIndex || message.content === null) return []
+      return [
+        {
+          id: `turn-${index}-${message.role}`,
+          kind:
+            message.role === "system"
+              ? ("system" as const)
+              : message.role === "tool"
+                ? ("tool_output" as const)
+                : ("message" as const),
+          content: message.content,
+          priority: message.role === "system" ? 1 : undefined,
+          pinned: message.role === "system",
+          canSummarize: message.role !== "system",
+          canDrop: message.role !== "system",
+        },
+      ]
+    }),
+    model: {
+      contextWindow: 128_000,
+      requestedOutputTokens: config.maxTokens,
+      supportsTools: Boolean(availableTools?.length),
+    },
+  })
+
   return {
     enabled: true,
     request,
     preflight,
+    optimizer,
+    optimization,
     maxSilentRevisions: Math.min(maxSilentRevisions, preflight.thinking.budget.maxSilentRevisions),
     thinkingStyle: preflight.thinking.budget.style,
     turnSignal,
+    revisions: 0,
   }
 }
 
 export function applyMlPreflight(messages: ChatMessage[], state: MlRuntimeState): ChatMessage[] {
-  if (!state.enabled || !state.preflight) return messages
-  return appendMlPromptAddendum(messages, state.preflight.promptAddendum)
+  if (!state.enabled || !state.optimization) return messages
+  return appendMlPromptAddendum(messages, state.optimization.promptAddendum)
 }
 
 export function getMlRuntimeModelOverrides(state: MlRuntimeState): Partial<{
@@ -113,19 +175,40 @@ export function getMlRuntimeModelOverrides(state: MlRuntimeState): Partial<{
   if (!state.enabled || !state.preflight) return {}
   const { budget } = state.preflight.thinking
   return {
-    maxTokens: budget.reasoningTokens,
+    maxTokens: state.optimization?.tokenAllocation.outputReserveTokens ?? budget.reasoningTokens,
     temperature: budget.temperature,
     maxToolRounds: budget.maxToolRounds,
   }
 }
 
 export function evaluateMlFinalResponse(state: MlRuntimeState, response: string): ResponsePipelinePostflight | null {
-  if (!state.enabled || !state.preflight || !state.request.trim()) return null
-  return evaluateResponsePostflight({
-    request: state.request,
+  if (!state.enabled || !state.preflight || !state.optimizer || !state.optimization || !state.request.trim())
+    return null
+  const evaluation = state.optimizer.evaluate({
+    preparation: state.optimization,
     response,
-    expectation: state.preflight.expectation,
+    revisionAttempt: state.revisions,
+    previousScore: state.finalEvaluation?.score,
   })
+  state.initialEvaluation ??= evaluation
+  state.finalEvaluation = evaluation
+  if (evaluation.recommendedDisposition === "revise" && state.initialEvaluation === evaluation) {
+    state.draftResponse = response
+  }
+  const shouldRevise = evaluation.recommendedDisposition === "revise"
+  return {
+    quality: evaluation.quality,
+    shouldRespond: evaluation.recommendedDisposition === "respond",
+    shouldRevise,
+    shouldAskUser: evaluation.recommendedDisposition === "ask_user",
+    revisionPrompt: shouldRevise
+      ? (evaluation.revisionPacket?.instruction ?? buildRevisionPrompt(evaluation.quality))
+      : null,
+  }
+}
+
+export function noteMlRevision(state: MlRuntimeState): void {
+  state.revisions += 1
 }
 
 export function buildMlRevisionMessages(state: MlRuntimeState, draft: string, revisionPrompt: string): ChatMessage[] {
@@ -133,7 +216,9 @@ export function buildMlRevisionMessages(state: MlRuntimeState, draft: string, re
     state.preflight?.promptAddendum,
     revisionPrompt,
     "Return the revised answer only. Do not mention this revision step.",
-  ].filter(Boolean).join("\n\n")
+  ]
+    .filter(Boolean)
+    .join("\n\n")
 
   return [
     { role: "system", content: systemContent },

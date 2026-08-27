@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { buildAppCommands, buildEngineCliCommand } from "../src/app-commands"
+import { buildAppCommands, buildEngineCliCommand, buildMlConsentArgs } from "../src/app-commands"
 
 /**
  * Command-parity registry tests: the documented Arcana verbs must be
@@ -107,5 +107,27 @@ describe("engine CLI arg builder", () => {
   test("supports verbs without extra args", () => {
     const cmd = buildEngineCliCommand("stats")
     expect(cmd[cmd.length - 1]).toBe("stats")
+  })
+
+  test("adds explicit confirmation only to GUI consent grants", () => {
+    expect(buildMlConsentArgs("grant", "workspace")).toEqual([
+      "consent",
+      "grant",
+      "--scope",
+      "workspace",
+      "--yes",
+    ])
+    expect(buildMlConsentArgs("revoke", "workspace")).toEqual([
+      "consent",
+      "revoke",
+      "--scope",
+      "workspace",
+    ])
+    expect(buildMlConsentArgs("inherit", "workspace")).toEqual([
+      "consent",
+      "inherit",
+      "--scope",
+      "workspace",
+    ])
   })
 })

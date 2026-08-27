@@ -15,6 +15,7 @@ import { NamedError } from "@arcana/core/util/error"
 import { LLM } from "./llm"
 import { MessageV2 } from "./message-v2"
 import { compactionPressure } from "./overflow"
+import { ML_METADATA } from "./drive"
 import { PartID } from "./schema"
 import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
@@ -37,10 +38,16 @@ import * as DateTime from "effect/DateTime"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Usage, type LLMEvent } from "@arcana/llm"
 import {
-  prepareResponsePreflight,
-  evaluateResponsePostflight,
-  type ResponsePipelinePostflight,
-} from "@arcana/ml/response-pipeline"
+  computeResponseFingerprint,
+  createInferenceOptimizer,
+  createLearningExample,
+  detectCrossTurnLoop,
+  type InferenceOptimizer,
+  type InferencePreparation,
+  type InferenceResponseEvaluation,
+} from "@arcana/ml"
+import { LearningStore, openMemoryDB } from "@arcana/memory"
+import { memoryDataDir } from "@/memory/paths"
 import { EventStore } from "./epistemic/event-store"
 import {
   collapseWholeResponseReplay,
@@ -67,12 +74,16 @@ export interface Handle {
     },
   ) => Effect.Effect<void>
   readonly process: (streamInput: LLM.StreamInput) => Effect.Effect<Result>
+  /** Cross-turn loop warning for the next turn's preflight prompt. */
+  readonly crossTurnLoopWarning: string | undefined
 }
 
 type Input = {
   assistantMessage: SessionV1.Assistant
   sessionID: SessionID
   model: Provider.Model
+  /** Cross-turn loop warning from the previous turn, injected into the system prompt. */
+  crossTurnLoopWarning?: string
 }
 
 export interface Interface {
@@ -108,10 +119,27 @@ interface ProcessorContext extends Input {
   v2AssistantMessageID: SessionMessage.ID | undefined
   mlRequest: string | undefined
   mlRevisionsUsed: number
+  mlStore: LearningStore | undefined
+  mlWorkspace: string | undefined
+  mlOptimizer: InferenceOptimizer | undefined
+  mlPreparation: InferencePreparation | undefined
+  mlInitialEvaluation: InferenceResponseEvaluation | undefined
+  mlFinalEvaluation: InferenceResponseEvaluation | undefined
+  mlDraftResponse: string | undefined
+  mlFinalResponse: string | undefined
+  mlStartedAt: number
   /** Throttled persistence state for the active text part (see delta cases). */
   textPersist: { lastAt: number; count: number }
   /** Throttled persistence state per reasoning part id. */
   reasoningPersist: Record<string, { lastAt: number; count: number }>
+  /** Recent turn response fingerprints for cross-turn loop detection. */
+  recentTurnFingerprints: Array<{ hash: string; timestamp: number }>
+  /** Cross-turn loop warning from the current turn, for the next turn's preflight. */
+  crossTurnLoopWarning: string | undefined
+  /** Quality gate correction data to inject into the next turn's system prompt. */
+  mlCorrection: { problems: string[]; hints: string[]; score: number } | undefined
+  /** The textID that was evaluated by the ML quality gate. */
+  mlEvaluatedTextID: string | undefined
 }
 
 /**
@@ -185,9 +213,22 @@ export const layer = Layer.effect(
         v2AssistantMessageID: undefined,
         mlRequest: undefined,
         mlRevisionsUsed: 0,
+        mlStore: undefined,
+        mlWorkspace: undefined,
+        mlOptimizer: undefined,
+        mlPreparation: undefined,
+        mlInitialEvaluation: undefined,
+        mlFinalEvaluation: undefined,
+        mlDraftResponse: undefined,
+        mlFinalResponse: undefined,
+        mlStartedAt: Date.now(),
         textPersist: { lastAt: 0, count: 0 },
         reasoningPersist: {},
         followingToolResults: false,
+        recentTurnFingerprints: [],
+        crossTurnLoopWarning: undefined,
+        mlCorrection: undefined,
+        mlEvaluatedTextID: undefined,
       }
       const mirrorAssistant = flags.experimentalEventSystem && !input.assistantMessage.summary
       let aborted = false
@@ -222,6 +263,105 @@ export const layer = Layer.effect(
             ctx.mlRequest = text
             break
           }
+        }
+        if (ctx.mlRequest) {
+          const sessionInfo = yield* session.get(input.sessionID).pipe(Effect.option)
+          const workspace = sessionInfo._tag === "Some" ? sessionInfo.value.directory : globalThis.process.cwd()
+          // Read persisted fingerprints and correction data from session metadata
+          const sessionMeta = sessionInfo._tag === "Some"
+            ? (sessionInfo.value.metadata ?? {}) as Record<string, unknown>
+            : {}
+          const persistedFingerprints = sessionMeta[ML_METADATA.fingerprints]
+          if (
+            Array.isArray(persistedFingerprints) &&
+            persistedFingerprints.every(
+              (f) => typeof f === "object" && f !== null && typeof (f as Record<string, unknown>).hash === "string",
+            )
+          ) {
+            ctx.recentTurnFingerprints = persistedFingerprints as Array<{ hash: string; timestamp: number }>
+          }
+          // Read correction data from previous turn's quality gate
+          const persistedCorrection = sessionMeta[ML_METADATA.correction]
+          if (
+            persistedCorrection &&
+            typeof persistedCorrection === "object" &&
+            Array.isArray((persistedCorrection as Record<string, unknown>).problems) &&
+            Array.isArray((persistedCorrection as Record<string, unknown>).hints)
+          ) {
+            ctx.mlCorrection = persistedCorrection as { problems: string[]; hints: string[]; score: number }
+          }
+          yield* Effect.sync(() => {
+            const store = new LearningStore(openMemoryDB(memoryDataDir()))
+            const profile = store.getActiveProfile(workspace)
+            const optimizer = createInferenceOptimizer({
+              mode: "optimize",
+              maxSilentRevisions: 1,
+              calibrationProfile: profile ?? undefined,
+            })
+            const preparation = optimizer.prepare({
+              request: ctx.mlRequest!,
+              phase: /\b(implement|change|edit|fix|build|create|write)\b/i.test(ctx.mlRequest!)
+                ? "editing"
+                : "analysis",
+              explicitConstraints: [
+                "Preserve the user's request and do not rewrite their intent.",
+                "Avoid generic filler; use concrete evidence and validation when applicable.",
+                "Avoid these phrases: best practices, robust solution, scalable solution, seamless experience, cutting-edge, game changer, leverage, streamline, enhance, it depends, might be, perhaps, generally.",
+                "When claiming work is done, fixed, verified, or passed, include a file path, command output, test result, or diff as evidence.",
+              ],
+              contextItems: history.flatMap((entry) => {
+                const content = entry.parts
+                  .filter((part): part is SessionV1.TextPart => part.type === "text")
+                  .map((part) => part.text)
+                  .join("\n")
+                if (!content.trim() || entry.info.id === ctx.assistantMessage.parentID) return []
+                return [{
+                  id: store.reference("context", entry.info.id),
+                  kind: entry.info.role === "user" || entry.info.role === "assistant"
+                    ? "message" as const
+                    : "artifact" as const,
+                  content,
+                  canSummarize: true,
+                  canDrop: true,
+                }]
+              }),
+              model: {
+                contextWindow: Math.max(8_192, input.model.limit.context),
+                supportsTools: true,
+              },
+            })
+            ctx.mlStore = store
+            ctx.mlWorkspace = workspace
+            ctx.mlOptimizer = optimizer
+            ctx.mlPreparation = preparation
+            // Append cross-turn loop warning as a separate block
+            if (input.crossTurnLoopWarning && preparation.promptAddendum) {
+              preparation.promptAddendum = [
+                preparation.promptAddendum,
+                `<arcana-loop-warning>${input.crossTurnLoopWarning}</arcana-loop-warning>`,
+              ].join("\n")
+            }
+            // Append quality gate correction from previous turn (zero token cost)
+            if (ctx.mlCorrection && preparation.promptAddendum) {
+              const correction = [
+                "Your previous response had quality issues. Fix them in this turn:",
+                ...ctx.mlCorrection.problems.map((p) => `- ${p}`),
+                "",
+                "Revision requirements:",
+                ...ctx.mlCorrection.hints.map((h) => `- ${h}`),
+              ].join("\n")
+              preparation.promptAddendum = [
+                preparation.promptAddendum,
+                `<arcana-correction>${correction}</arcana-correction>`,
+              ].join("\n")
+            }
+          }).pipe(
+            Effect.catch((error) =>
+              Effect.logWarning("arcana.ml learning initialization failed", {
+                error: errorMessage(error),
+              }),
+            ),
+          )
         }
       }
 
@@ -1117,76 +1257,98 @@ export const layer = Layer.effect(
               },
               { text: ctx.currentText.text },
             )).text
-            // ML runtime postflight: if enabled and we have a captured user
-            // request, score the final text. When the quality gate asks for a
-            // silent revision we annotate the text part so the user sees ML
-            // intervened (engine streams can't issue a follow-up LLM call
-            // mid-`text-end` without a much larger refactor; the postflight
-            // signal is the user-visible value here, matching the engine's
-            // role as a single-shot processor).
-            if (flags.mlRuntime && ctx.mlRequest && ctx.currentText.text.trim().length > 0) {
-              const postflight: ResponsePipelinePostflight | null = yield* Effect.sync(() => {
-                const preflight = prepareResponsePreflight({
-                  request: ctx.mlRequest!,
-                  reservedOutputTokens: 4096,
-                  machine: {
-                    operation: "engine session postflight",
-                    persistent: false,
-                    canRegenerate: false,
-                    needsCache: false,
-                    containsUserData: false,
-                  },
-                  explicitConstraints: [
-                    "Preserve the user's request and do not rewrite their intent.",
-                    "Avoid generic AI filler; prefer concrete files, commands, tradeoffs, and validation when applicable.",
-                  ],
-                })
-                return evaluateResponsePostflight({
-                  request: ctx.mlRequest!,
-                  response: ctx.currentText!.text,
-                  expectation: preflight.expectation,
-                })
-              }).pipe(Effect.orElseSucceed(() => null))
-              if (postflight) {
-                ctx.currentText.metadata = {
-                  ...(ctx.currentText.metadata),
-                  "arcana.ml": {
-                    verdict: postflight.quality.verdict,
-                    score: postflight.quality.score,
-                    shouldRevise: postflight.shouldRevise,
-                    shouldAskUser: postflight.shouldAskUser,
-                    problems: postflight.quality.problems,
-                  },
-                }
-                if (postflight.shouldRevise && ctx.mlRevisionsUsed === 0) {
-                  ctx.mlRevisionsUsed += 1
-                  const reasons = postflight.quality.problems.join("; ") || "low specificity"
-                  const annotation = `\n\n<arcana-ml>quality=${postflight.quality.verdict} score=${postflight.quality.score.toFixed(2)} reasons=${reasons}</arcana-ml>`
-                  ctx.currentText.text = `${ctx.currentText.text}${annotation}`
-                  // Publish synthetic delta so streaming clients receive the annotation
-                  if (mirrorAssistant && ctx.currentText.id) {
-                    yield* events.publish(SessionEvent.Text.Delta, {
-                      sessionID: ctx.sessionID,
-                      assistantMessageID: yield* currentV2AssistantMessage(),
-                      textID: ctx.currentText.id,
-                      delta: annotation,
-                      timestamp: DateTime.makeUnsafe(Date.now()),
-                    })
+            // ML runtime postflight scores the completed draft. A requested
+            // revision is queued for the bounded async revision fiber after
+            // stream cleanup; learning capture runs only after that settles.
+            if (
+              flags.mlRuntime &&
+              ctx.mlRequest &&
+              ctx.mlOptimizer &&
+              ctx.mlPreparation &&
+              ctx.currentText.text.trim().length > 0
+            ) {
+              const originalResponse = ctx.currentText.text
+              const evaluation = yield* Effect.sync(() =>
+                ctx.mlOptimizer!.evaluate({
+                  preparation: ctx.mlPreparation!,
+                  response: originalResponse,
+                  revisionAttempt: 0,
+                }),
+              ).pipe(Effect.orElseSucceed(() => null))
+              if (evaluation) {
+                ctx.mlInitialEvaluation ??= evaluation
+                ctx.mlFinalEvaluation = evaluation
+                ctx.mlFinalResponse = originalResponse
+                ctx.mlEvaluatedTextID = ctx.currentText.id
+                if (evaluation.recommendedDisposition === "revise") {
+                  // Store correction data for next-turn injection (zero token cost).
+                  // The quality gate's problems and hints will be injected into
+                  // the next turn's system prompt so the model self-corrects.
+                  ctx.mlDraftResponse = originalResponse
+                  ctx.mlCorrection = {
+                    problems: evaluation.problems,
+                    hints: evaluation.quality.revisionHints,
+                    score: evaluation.score,
                   }
-                  yield* Effect.logWarning("arcana.ml postflight revise", {
+                  yield* Effect.logDebug("arcana.ml postflight correction queued for next turn", {
                     sessionID: ctx.sessionID,
                     messageID: ctx.assistantMessage.id,
-                    score: postflight.quality.score,
-                    problems: postflight.quality.problems,
+                    score: evaluation.score,
+                    problems: evaluation.problems,
                   })
-                } else if (postflight.shouldRevise) {
-                  yield* Effect.logDebug("arcana.ml postflight revision cap reached", {
-                    sessionID: ctx.sessionID,
-                    messageID: ctx.assistantMessage.id,
-                    revisionsUsed: ctx.mlRevisionsUsed,
-                  })
+                }
+                if (evaluation.recommendedDisposition === "ask_user") {
+                  ctx.currentText.metadata = {
+                    ...(ctx.currentText.metadata),
+                    "arcana.ml": {
+                      profileID: ctx.mlPreparation.calibrationProfileId,
+                      verdict: evaluation.quality.verdict,
+                      score: evaluation.score,
+                      disposition: evaluation.recommendedDisposition,
+                      shouldRevise: false,
+                      shouldAskUser: true,
+                      problems: evaluation.problems,
+                    },
+                  }
                 }
               }
+            }
+            // Cross-turn loop detection: compute fingerprint and check for loops.
+            // Store the warning on the processor context so the next turn's
+            // preflight can inject it into the system prompt.
+            if (flags.mlRuntime && ctx.mlRequest && ctx.currentText.text.trim().length > 0) {
+              const fingerprint = computeResponseFingerprint(ctx.currentText.text)
+              const loopResult = detectCrossTurnLoop(fingerprint, ctx.recentTurnFingerprints)
+              ctx.recentTurnFingerprints.push({ hash: fingerprint, timestamp: Date.now() })
+              if (ctx.recentTurnFingerprints.length > 5) {
+                ctx.recentTurnFingerprints = ctx.recentTurnFingerprints.slice(-5)
+              }
+              if (loopResult.detected) {
+                ctx.crossTurnLoopWarning = loopResult.warning ?? undefined
+                yield* Effect.logWarning("arcana.ml cross-turn loop detected", {
+                  sessionID: ctx.sessionID,
+                  messageID: ctx.assistantMessage.id,
+                  consecutive: loopResult.consecutiveSimilar,
+                })
+              }
+              // Persist fingerprints to session metadata for cross-turn detection
+              const currentSessionMeta = yield* session.get(ctx.sessionID).pipe(
+                Effect.map((s) => (s.metadata ?? {}) as Record<string, unknown>),
+                Effect.orElseSucceed(() => ({} as Record<string, unknown>)),
+              )
+              yield* session.setMetadata({
+                sessionID: ctx.sessionID,
+                metadata: {
+                  ...currentSessionMeta,
+                  [ML_METADATA.fingerprints]: ctx.recentTurnFingerprints,
+                  ...(ctx.crossTurnLoopWarning
+                    ? { [ML_METADATA.crossTurnLoopWarning]: ctx.crossTurnLoopWarning }
+                    : {}),
+                  ...(ctx.mlCorrection
+                    ? { [ML_METADATA.correction]: ctx.mlCorrection }
+                    : {}),
+                },
+              }).pipe(Effect.catch(() => Effect.void))
             }
             if (!ctx.assistantMessage.summary) {
               // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
@@ -1357,6 +1519,78 @@ export const layer = Layer.effect(
         yield* status.set(ctx.sessionID, { type: "idle" })
       })
 
+      // REMOVED: attemptAsyncRevision — replaced by zero-cost next-turn correction injection.
+      // Quality gate findings are persisted to session metadata and injected into
+      // the next turn's system prompt as <arcana-correction>.
+
+      const captureLearningExample = Effect.fn("SessionProcessor.captureLearningExample")(function* () {
+        if (
+          !ctx.mlStore ||
+          !ctx.mlWorkspace ||
+          !ctx.mlRequest ||
+          !ctx.mlPreparation ||
+          !ctx.mlInitialEvaluation ||
+          !ctx.mlFinalEvaluation ||
+          !ctx.mlFinalResponse
+        ) return
+        const learningSnapshot = {
+          store: ctx.mlStore,
+          workspace: ctx.mlWorkspace,
+          request: ctx.mlRequest,
+          preparation: ctx.mlPreparation,
+          initialEvaluation: ctx.mlInitialEvaluation,
+          finalEvaluation: ctx.mlFinalEvaluation,
+          draftResponse: ctx.mlDraftResponse,
+          finalResponse: ctx.mlFinalResponse,
+          revisions: ctx.mlRevisionsUsed,
+          startedAt: ctx.mlStartedAt,
+          sessionId: ctx.sessionID,
+          messageId: ctx.assistantMessage.id,
+          provider: ctx.model.providerID,
+          model: ctx.model.id,
+          inputTokens: ctx.assistantMessage.tokens.input ?? 0,
+          outputTokens: ctx.assistantMessage.tokens.output ?? 0,
+        }
+        yield* Effect.sync(() => {
+          if (!learningSnapshot.store.resolveConsent(learningSnapshot.workspace).allowed) return
+          const refs = learningSnapshot.store.references({
+            workspace: learningSnapshot.workspace,
+            sessionId: learningSnapshot.sessionId,
+            messageId: learningSnapshot.messageId,
+          })
+          learningSnapshot.store.appendExample(
+            learningSnapshot.workspace,
+            createLearningExample({
+              ...refs,
+              runtime: "engine",
+              intent: learningSnapshot.preparation.expectation.deliverable,
+              provider: learningSnapshot.provider,
+              model: learningSnapshot.model,
+              request: learningSnapshot.request,
+              draftResponse: learningSnapshot.draftResponse,
+              finalResponse: learningSnapshot.finalResponse,
+              preparation: learningSnapshot.preparation,
+              initialEvaluation: learningSnapshot.initialEvaluation,
+              finalEvaluation: learningSnapshot.finalEvaluation,
+              revisions: learningSnapshot.revisions,
+              usage: {
+                inputTokens: learningSnapshot.inputTokens,
+                outputTokens: learningSnapshot.outputTokens,
+                toolTokens: 0,
+                latencyMilliseconds: Math.max(0, Date.now() - learningSnapshot.startedAt),
+              },
+              evidenceTypes: [],
+            }),
+          )
+        }).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("arcana.ml learning capture failed", {
+              error: errorMessage(error),
+            }),
+          ),
+        )
+      })
+
       const process = Effect.fn("SessionProcessor.process")(function* (streamInput: LLM.StreamInput) {
         yield* Effect.logInfo("process", {
           "session.id": input.sessionID,
@@ -1378,6 +1612,11 @@ export const layer = Layer.effect(
             ctx.ignoredTextIDs.clear()
             ctx.reasoningMap = {}
             ctx.mlRevisionsUsed = 0
+            ctx.mlInitialEvaluation = undefined
+            ctx.mlFinalEvaluation = undefined
+            ctx.mlDraftResponse = undefined
+            ctx.mlFinalResponse = undefined
+            ctx.mlStartedAt = Date.now()
             yield* status.set(ctx.sessionID, { type: "busy" })
             const attempt = attemptBase + retryCount + 1
             const attemptStarted = Date.now()
@@ -1426,7 +1665,21 @@ export const layer = Layer.effect(
                 ),
               )
             }
-            const stream = llm.stream(streamInput)
+            const firstNonSystem = streamInput.messages.findIndex((message) => message.role !== "system")
+            const systemPrefixEnd = firstNonSystem === -1 ? streamInput.messages.length : firstNonSystem
+            const effectiveStreamInput =
+              ctx.mlPreparation?.effectiveDirective === "use_optimized_prompt" &&
+              ctx.mlPreparation.promptAddendum.trim()
+                ? {
+                    ...streamInput,
+                    messages: [
+                      ...streamInput.messages.slice(0, systemPrefixEnd),
+                      { role: "system" as const, content: ctx.mlPreparation.promptAddendum },
+                      ...streamInput.messages.slice(systemPrefixEnd),
+                    ],
+                  }
+                : streamInput
+            const stream = llm.stream(effectiveStreamInput)
             // openai-compatible >= 2.0.70 reports a stream that ends without a
             // finish reason as an ERROR instead of a step-finish with an
             // unmapped reason. Convert it into the same retryable
@@ -1547,7 +1800,13 @@ export const layer = Layer.effect(
               }),
             ),
             Effect.catch(halt),
-            Effect.ensuring(cleanup()),
+            Effect.ensuring(cleanup().pipe(Effect.catch(() => Effect.void))),
+          )
+
+          // Capture learning example (fire-and-forget, zero token cost)
+          yield* captureLearningExample().pipe(
+            Effect.catch(() => Effect.void),
+            Effect.forkIn(scope),
           )
 
           const latency = ctx.assistantMessage.latency ?? { attempts: [] }
@@ -1576,6 +1835,9 @@ export const layer = Layer.effect(
         updateToolCall,
         completeToolCall,
         process,
+        get crossTurnLoopWarning() {
+          return ctx.crossTurnLoopWarning
+        },
       } as Handle
       // CAST BOUNDARY #1 — Effect.fn generator return type
       // Upstream: Effect.fn wraps generator functions, but the return type inference

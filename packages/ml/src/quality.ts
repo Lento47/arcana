@@ -1,4 +1,5 @@
 import type { ExpectationContract } from "./expectation.js"
+import { STOP_WORDS } from "./stop-words.js"
 
 export type QualityGateVerdict = "pass" | "revise_silently" | "ask_user"
 
@@ -6,6 +7,12 @@ export type QualityGateInput = {
   request: string
   response: string
   expectation?: ExpectationContract
+}
+
+export type RepeatedSegment = {
+  text: string
+  similarity: number
+  kind: "exact" | "semantic"
 }
 
 export type QualityGateResult = {
@@ -18,6 +25,7 @@ export type QualityGateResult = {
   problems: string[]
   revisionHints: string[]
   interactionIntervention: "silent" | "nudge" | "confirm"
+  repeatedSegments: RepeatedSegment[]
 }
 
 // Generic / AI-slop phrase taxonomy. Each category is weighted separately so
@@ -150,8 +158,6 @@ const GENERIC_PHRASES = {
   ],
 }
 
-const _GENERIC_PHRASE_FLAT = Object.values(GENERIC_PHRASES).flat()
-
 const ACTION_TERMS = [
   "add",
   "remove",
@@ -220,22 +226,66 @@ function hasEvidenceMarkers(response: string): boolean {
   )
 }
 
-function repeatedSegments(response: string): string[] {
+const SEMANTIC_SIMILARITY_THRESHOLD = 0.7
+
+function tokenizeForSimilarity(text: string): Set<string> {
+  return new Set(
+    (text.toLowerCase().match(/[a-z0-9_./-]+/g) ?? [])
+      .filter((t) => t.length >= 3 && !STOP_WORDS.has(t)),
+  )
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0
+  let intersection = 0
+  for (const token of a) {
+    if (b.has(token)) intersection++
+  }
+  const union = a.size + b.size - intersection
+  return union === 0 ? 0 : intersection / union
+}
+
+function repeatedSegments(response: string): RepeatedSegment[] {
   const segments = response
     .split(/\n+|(?<=[.!?])\s+/)
     .map((item) => item.trim().replace(/\s+/g, " "))
     .filter((item) => item.length >= 24)
 
-  const counts = new Map<string, number>()
+  const results: RepeatedSegment[] = []
+  const tokenSets = segments.map(tokenizeForSimilarity)
+
+  // Exact match pass (preserves current behavior)
+  const exactCounts = new Map<string, number>()
   for (const segment of segments) {
     const normalized = segment.toLowerCase()
-    counts.set(normalized, (counts.get(normalized) ?? 0) + 1)
+    exactCounts.set(normalized, (exactCounts.get(normalized) ?? 0) + 1)
+  }
+  for (const [segment, count] of exactCounts) {
+    if (count >= 2) {
+      results.push({ text: segment, similarity: 1.0, kind: "exact" })
+    }
   }
 
-  return [...counts.entries()]
-    .filter(([, count]) => count >= 2)
-    .map(([segment]) => segment)
-    .slice(0, 5)
+  // Semantic similarity pass — compares segments within a sliding window
+  // to catch "same meaning, different words" patterns.
+  const WINDOW = 5
+  for (let i = 0; i < segments.length; i++) {
+    for (let j = i + 1; j < Math.min(segments.length, i + WINDOW); j++) {
+      const sim = jaccardSimilarity(tokenSets[i], tokenSets[j])
+      if (sim >= SEMANTIC_SIMILARITY_THRESHOLD) {
+        const isExact = segments[i].toLowerCase() === segments[j].toLowerCase()
+        if (!isExact) {
+          results.push({
+            text: `${segments[i].slice(0, 60)}... ≈ ${segments[j].slice(0, 60)}...`,
+            similarity: sim,
+            kind: "semantic",
+          })
+        }
+      }
+    }
+  }
+
+  return results.slice(0, 8)
 }
 
 function actionability(response: string): number {
@@ -353,12 +403,24 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
     revisionHints.push(...slop.revisionHints)
   }
   if (repeats.length) {
-    problems.push(
-      `Repeated response segments detected: ${repeats.slice(0, 3).join(" | ")}${repeats.length > 3 ? "..." : ""}`,
-    )
-    revisionHints.push(
-      "Remove repeated sentences or lines; keep one clear statement and continue with new evidence or next steps.",
-    )
+    const exactRepeats = repeats.filter((r) => r.kind === "exact")
+    const semanticRepeats = repeats.filter((r) => r.kind === "semantic")
+    if (exactRepeats.length) {
+      problems.push(
+        `Repeated response segments: ${exactRepeats.slice(0, 3).map((r) => r.text).join(" | ")}${exactRepeats.length > 3 ? "..." : ""}`,
+      )
+      revisionHints.push(
+        "Remove repeated sentences or lines; keep one clear statement and continue with new evidence or next steps.",
+      )
+    }
+    if (semanticRepeats.length) {
+      problems.push(
+        `Semantically similar segments (rephrasing same content): ${semanticRepeats.slice(0, 3).map((r) => r.text).join(" | ")}${semanticRepeats.length > 3 ? "..." : ""}`,
+      )
+      revisionHints.push(
+        "You are restating the same idea in different words. Progress to the next step or provide new information.",
+      )
+    }
   }
   if (unsupportedCompletionClaim) {
     problems.push("Completion claim is not backed by evidence.")
@@ -394,9 +456,10 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
   // strict threshold (see fixture `quality/specific patch answer can pass`).
   const isCodePatch = input.expectation?.deliverable === "code_patch"
   const threshold = strict ? (isCodePatch ? 0.72 : 0.78) : 0.64
+  const hasExactRepeats = repeats.some((r) => r.kind === "exact")
   const hardFail =
     input.response.trim().length === 0 ||
-    repeats.length > 0 ||
+    hasExactRepeats ||
     unsupportedCompletionClaim ||
     (strict && problems.length > 0) ||
     (strict && genericHits.length > 0)
@@ -412,7 +475,8 @@ export function evaluateResponseQuality(input: QualityGateInput): QualityGateRes
     constraintFitScore,
     problems,
     revisionHints: [...new Set(revisionHints)],
-    interactionIntervention: verdict === "ask_user" ? "confirm" : verdict === "revise_silently" ? "silent" : "silent",
+    interactionIntervention: verdict === "ask_user" ? "confirm" : "silent",
+    repeatedSegments: repeats,
   }
 }
 

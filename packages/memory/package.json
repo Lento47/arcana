@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@arcana/ml": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {

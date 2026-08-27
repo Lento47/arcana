@@ -39,6 +39,7 @@ const proofDialogsSrc = read("../src/proof-view/run-proof-dialogs.tsx")
 const appEffectsSrc = read("../src/app-effects.tsx")
 const statusbarSrc = read("../src/feature-plugins/system/statusbar.tsx")
 const metricsBarSrc = read("../src/component/prompt/metrics-bar.tsx")
+const metricsFormatterSrc = read("../src/component/prompt/metrics.ts")
 const sidebarCtxSrc = read("../src/feature-plugins/sidebar/context.tsx")
 const subagentFooterSrc = read("../src/routes/session/subagent-footer.tsx")
 
@@ -64,7 +65,8 @@ check("metrics-bar no USD formatter", metricsBarSrc.includes('currency: "USD"'),
 check("sidebar/context no USD formatter", sidebarCtxSrc.includes('currency: "USD"'), false)
 check("subagent-footer no USD formatter", subagentFooterSrc.includes('currency: "USD"'), false)
 check("statusbar uses Locale.currency", statusbarSrc.includes("Locale.currency"), true)
-check("metrics-bar uses Locale.currency", metricsBarSrc.includes("Locale.currency"), true)
+check("metrics-bar delegates currency to shared formatter", metricsBarSrc.includes("formatSessionMetrics"), true)
+check("shared metrics formatter uses Locale.currency", metricsFormatterSrc.includes("Locale.currency"), true)
 check("sidebar/context uses Locale.currency", sidebarCtxSrc.includes("Locale.currency"), true)
 check("subagent-footer uses Locale.currency", subagentFooterSrc.includes("Locale.currency"), true)
 

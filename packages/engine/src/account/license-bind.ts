@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { Effect } from "effect"
 
-import { makeCredentialStore, type CredentialStoreConfig } from "@arcana/credential-store"
+import { makeCredentialStore, type CredentialStoreConfig } from "arcana-ai/credential-store"
 
 /**
  * Arcana license-server hosts. Order matters: try the primary (`*.otnelhq.com`)
@@ -24,19 +24,50 @@ export function getArcanaHome(): string {
   return process.env.ARCANA_HOME ?? join(homedir(), ".arcana")
 }
 
-const PROXY_KEY_PATH = join(getArcanaHome(), "proxy_key")
-const CREDENTIAL_STORE_CONFIG: CredentialStoreConfig = {
-  storePath: join(getArcanaHome(), "credential_store"),
-  keyPath: join(getArcanaHome(), "credential_key"),
+function proxyKeyPath(): string {
+  return join(getArcanaHome(), "proxy_key")
+}
+
+function licenseCachePath(): string {
+  return join(getArcanaHome(), ".license-cache.json")
+}
+
+function credentialStoreConfig(): CredentialStoreConfig {
+  return {
+    storePath: join(getArcanaHome(), "credential_store"),
+    keyPath: join(getArcanaHome(), "credential_key"),
+  }
+}
+
+export function readProxyKey(): string | null {
+  const override = process.env.ARCANA_PROXY_KEY?.trim()
+  if (override) return override
+  try {
+    const stored = makeCredentialStore(credentialStoreConfig()).load()?.trim()
+    if (stored) return stored
+  } catch {
+    // Fall through to the legacy read path during migration.
+  }
+  try {
+    const legacyPath = proxyKeyPath()
+    if (!existsSync(legacyPath)) return null
+    return readFileSync(legacyPath, "utf8").trim() || null
+  } catch {
+    return null
+  }
+}
+
+export function proxyKeyPresent(): boolean {
+  return readProxyKey() !== null
 }
 
 /** Migrate legacy plaintext proxy_key to the encrypted credential store. */
 export function migrateLegacyKeyToSecureStore(): void {
-  const legacyPath = PROXY_KEY_PATH
+  const legacyPath = proxyKeyPath()
   // credential-store's migrateFromLegacy handles the read + write + delete
   // We use the synchronous makeCredentialStore for this
   try {
-    const store = makeCredentialStore(CREDENTIAL_STORE_CONFIG)
+    const store = makeCredentialStore(credentialStoreConfig())
     store.migrateFromLegacy(legacyPath)
   } catch {
     // non-fatal: if migration fails, keep legacy path working
@@ -45,36 +76,34 @@ export function migrateLegacyKeyToSecureStore(): void {
 
 /**
  * Write proxy key via the encrypted credential store instead of plaintext file.
- * Remove global env mirror — keep ARCANA_PROXY_KEY as explicit override only
- * to avoid 97-reader refactor blast radius.
+ * Existing provider readers use the process environment, so the in-memory
+ * mirror is updated only after durable storage succeeds.
  */
 export function writeProxyKey(key: string): void {
+  const value = key.trim()
+  if (!value) throw new Error("Proxy key cannot be empty")
   const home = getArcanaHome()
   if (!existsSync(home)) mkdirSync(home, { recursive: true })
-  try {
-    const store = makeCredentialStore(CREDENTIAL_STORE_CONFIG)
-    store.save(key.trim())
-  } catch {
-    // Fallback: write plaintext proxy_key if secure store fails
-    writeFileSync(PROXY_KEY_PATH, key.trim(), "utf8")
-  }
-  // NO LONGER: process.env.ARCANA_PROXY_KEY = key.trim()
-  // ARCANA_PROXY_KEY env override is honored by resolveProxyKey fallback chain only
+  const store = makeCredentialStore(credentialStoreConfig())
+  store.save(value)
+  // Existing provider readers consume the process-local environment. Persist
+  // securely first, then update memory so a failed save never grants a
+  // non-durable credential to the running engine.
+  process.env.ARCANA_PROXY_KEY = value
 }
 
-/**
- * Write proxy key to plaintext legacy path (for backward compatibility).
- * Kept for 97-readers that read ~/.arcana/proxy_key directly.
- * Use credential-store.writeProxyKey() for new code.
- */
-export function writeProxyKeyLegacy(key: string): void {
-  const home = getArcanaHome()
-  if (!existsSync(home)) mkdirSync(home, { recursive: true })
+export function writeLicenseCache(data: { tier: string; [k: string]: unknown }, ttlMs = 86_400_000): void {
   try {
-    writeFileSync(PROXY_KEY_PATH, key.trim(), "utf8")
-    NodeJS.chmodSync?.(PROXY_KEY_PATH, 0o600)
+    const cachePath = licenseCachePath()
+    mkdirSync(dirname(cachePath), { recursive: true })
+    writeFileSync(
+      cachePath,
+      JSON.stringify({ data, expiresAt: Date.now() + ttlMs }),
+      { encoding: "utf8", mode: 0o600 },
+    )
+    chmodSync(cachePath, 0o600)
   } catch {
-    // non-fatal
+    // Cache is best-effort; the persisted proxy credential is authoritative.
   }
 }
 

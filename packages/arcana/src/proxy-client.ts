@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs"
 import { readFile } from "node:fs/promises"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { getArcanaHome } from "./config.js"
+import { makeCredentialStore, type CredentialStoreConfig } from "./credential-store"
 
 /** Prefer working origins first. proxy-arcana.otnelhq.com is the canonical AI Gateway API. */
 export const PROXY_BASES = [
@@ -10,15 +12,38 @@ export const PROXY_BASES = [
   "https://arcana-proxy.lejzerv.workers.dev",
 ].filter(Boolean) as string[]
 
+function credentialStoreConfig(): CredentialStoreConfig {
+  return {
+    storePath: join(getArcanaHome(), "credential_store"),
+    keyPath: join(getArcanaHome(), "credential_key"),
+  }
+}
+
 export async function resolveProxyKey(): Promise<string | null> {
+  // Explicit environment configuration overrides persisted credentials.
   if (process.env.ARCANA_PROXY_KEY?.trim()) return process.env.ARCANA_PROXY_KEY.trim()
+
+  // Prefer the encrypted portable store. File modes are enforced where the
+  // host filesystem supports them; OS keychain integration is separate work.
+  try {
+    const store = makeCredentialStore(credentialStoreConfig())
+    const stored = store.load()
+    if (stored) return stored
+  } catch {
+    // non-fatal: fall through to legacy stores
+  }
+
+  // 2. Fall back to legacy proxy_key file
   try {
     const keyPath = join(getArcanaHome(), "proxy_key")
     if (existsSync(keyPath)) {
-      const key = (await readFile(keyPath, "utf8")).trim()
-      if (key) return key
+      const key = readFileSync(keyPath, "utf8").trim()
+      if (key) {
+        return key
+      }
     }
   } catch {}
+
   return null
 }
 

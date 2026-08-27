@@ -151,6 +151,7 @@ const commandLoaders = {
   lexicon: () => import("./cli/cmd/lexicon.js").then((m) => m.LexiconCommand),
   daemon: () => import("./cli/cmd/daemon.js").then((m) => m.DaemonCommand),
   feedback: () => import("./cli/cmd/feedback.js").then((m) => m.FeedbackCommand),
+  "ml-data": () => import("./cli/cmd/ml-data.js").then((m) => m.MlDataCommand),
   web: () => import("./cli/cmd/web.js").then((m) => m.WebCommand),
 }
 async function loadCommandsFor(arg: string | undefined) {

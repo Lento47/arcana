@@ -87,6 +87,111 @@ CREATE TABLE IF NOT EXISTS feedback (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ml_learning_metadata (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ml_learning_consent_events (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT NOT NULL UNIQUE,
+  schema_version TEXT NOT NULL,
+  scope_type TEXT NOT NULL CHECK(scope_type IN ('device', 'workspace')),
+  scope_ref TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('grant', 'revoke', 'inherit')),
+  disclosure_digest TEXT NOT NULL,
+  retention_days INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ml_learning_consent_scope
+ON ml_learning_consent_events(scope_type, scope_ref, sequence DESC);
+
+CREATE TABLE IF NOT EXISTS ml_learning_examples (
+  id TEXT PRIMARY KEY,
+  schema_version TEXT NOT NULL,
+  consent_receipt_id TEXT NOT NULL REFERENCES ml_learning_consent_events(id),
+  consent_scope_type TEXT NOT NULL CHECK(consent_scope_type IN ('device', 'workspace')),
+  consent_scope_ref TEXT NOT NULL,
+  workspace_ref TEXT NOT NULL,
+  session_ref TEXT NOT NULL,
+  message_ref TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ml_learning_examples_scope
+ON ml_learning_examples(consent_scope_type, consent_scope_ref, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ml_learning_examples_workspace
+ON ml_learning_examples(workspace_ref, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ml_learning_examples_message
+ON ml_learning_examples(message_ref, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ml_learning_examples_expiry
+ON ml_learning_examples(expires_at);
+
+CREATE TABLE IF NOT EXISTS ml_learning_labels (
+  id TEXT PRIMARY KEY,
+  example_id TEXT NOT NULL REFERENCES ml_learning_examples(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  source TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ml_learning_labels_example
+ON ml_learning_labels(example_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ml_learning_profiles (
+  id TEXT PRIMARY KEY,
+  schema_version TEXT NOT NULL,
+  scope_type TEXT NOT NULL CHECK(scope_type IN ('device', 'workspace')),
+  scope_ref TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('candidate', 'active', 'retired', 'rolled_back', 'invalidated')),
+  profile_digest TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  activated_at TEXT,
+  expires_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ml_learning_profiles_scope
+ON ml_learning_profiles(scope_type, scope_ref, status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ml_learning_profile_examples (
+  profile_id TEXT NOT NULL REFERENCES ml_learning_profiles(id) ON DELETE CASCADE,
+  example_id TEXT NOT NULL REFERENCES ml_learning_examples(id) ON DELETE CASCADE,
+  PRIMARY KEY (profile_id, example_id)
+);
+
+CREATE TABLE IF NOT EXISTS ml_learning_activation_events (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT NOT NULL UNIQUE,
+  scope_type TEXT NOT NULL CHECK(scope_type IN ('device', 'workspace')),
+  scope_ref TEXT NOT NULL,
+  profile_id TEXT,
+  action TEXT NOT NULL CHECK(action IN ('activate', 'rollback', 'invalidate')),
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ml_learning_activation_scope
+ON ml_learning_activation_events(scope_type, scope_ref, sequence DESC);
+
+CREATE TABLE IF NOT EXISTS ml_learning_exports (
+  id TEXT PRIMARY KEY,
+  scope_type TEXT,
+  scope_ref TEXT,
+  include_content INTEGER NOT NULL,
+  example_count INTEGER NOT NULL,
+  label_count INTEGER NOT NULL,
+  destination_digest TEXT NOT NULL,
+  jsonl_sha256 TEXT NOT NULL,
+  manifest_sha256 TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,

@@ -68,12 +68,23 @@ export function ShimmerText(props: ShimmerTextProps) {
   const RADIUS = 2.4
   const SIGMA = RADIUS / 2
 
+  // Hoist the sweep start time so it survives effect re-runs triggered by
+  // activeCue re-evaluation. Without this, every SSE tick would capture a
+  // fresh performance.now(), resetting the sweep to the left edge.
+  let sweepStartTime = 0
+
   createEffect(() => {
     // Run our own smooth loop regardless of `motion`: the cue only gates
     // visibility (active()); it must not dictate a stepped position.
-    if (!active()) return
-    const t0 = performance.now()
-    const timer = setInterval(() => setLocalPhase(performance.now() - t0), 16)
+    if (!active()) {
+      sweepStartTime = 0
+      return
+    }
+    // Only capture the origin on the inactive → active transition so the
+    // sweep continues uninterrupted across re-evaluations that return the
+    // same value.
+    if (sweepStartTime === 0) sweepStartTime = performance.now()
+    const timer = setInterval(() => setLocalPhase(performance.now() - sweepStartTime), 16)
     onCleanup(() => clearInterval(timer))
   })
 

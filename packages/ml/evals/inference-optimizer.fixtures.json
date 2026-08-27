@@ -1,0 +1,78 @@
+[
+  {
+    "name": "generic implementation answer receives one revision",
+    "request": "Implement and test token-aware context packing",
+    "mode": "optimize",
+    "contextWindow": 32768,
+    "response": "This robust solution will optimize and enhance everything.",
+    "evidence": [
+      {
+        "id": "test",
+        "type": "test",
+        "status": "passed",
+        "reference": "bun test packages/ml/src"
+      }
+    ],
+    "expected": {
+      "preparationStatus": "ready",
+      "disposition": "revise"
+    }
+  },
+  {
+    "name": "specific implementation answer with evidence passes",
+    "request": "Implement and test token-aware context packing",
+    "mode": "optimize",
+    "contextWindow": 32768,
+    "response": "Changed the token context packing patch in `packages/ml/src/inference-optimizer.ts`. Run `bun test packages/ml/src` to verify the implementation.",
+    "evidence": [
+      {
+        "id": "test",
+        "type": "test",
+        "status": "passed",
+        "reference": "bun test packages/ml/src"
+      }
+    ],
+    "expected": {
+      "preparationStatus": "ready",
+      "disposition": "respond"
+    }
+  },
+  {
+    "name": "bulky optional history is compacted",
+    "request": "Explain token budget evidence from the current run",
+    "contextWindow": 1024,
+    "requestedOutputTokens": 128,
+    "supportsTools": false,
+    "contextItems": [
+      {
+        "id": "history",
+        "kind": "memory",
+        "content": "Old unrelated history. Current token budget evidence is 640 input tokens. ",
+        "repeat": 400
+      }
+    ],
+    "expected": {
+      "preparationStatus": "ready",
+      "minimumTokenSavingsRatio": 0.8
+    }
+  },
+  {
+    "name": "oversized pinned evidence fails closed",
+    "request": "Explain the required evidence",
+    "contextWindow": 512,
+    "requestedOutputTokens": 64,
+    "supportsTools": false,
+    "contextItems": [
+      {
+        "id": "required-evidence",
+        "kind": "memory",
+        "content": "Required evidence must remain verbatim. ",
+        "repeat": 1000,
+        "pinned": true
+      }
+    ],
+    "expected": {
+      "preparationStatus": "requires_compaction"
+    }
+  }
+]

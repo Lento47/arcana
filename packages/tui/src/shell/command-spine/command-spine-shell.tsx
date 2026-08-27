@@ -820,6 +820,7 @@ export function CommandSpineShell(props: ShellProps) {
             sessionID={props.sessionID}
             toBottom={props.toBottom as any}
             state={runState}
+            contentWidth={viewportWidth()}
             gutterWidth={projection.gutterWidth()}
             focusHint={focusedActionHint}
             gateOpen={gatesOpen}

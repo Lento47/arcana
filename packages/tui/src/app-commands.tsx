@@ -22,6 +22,12 @@ import { DialogSoul } from "./component/dialog-soul"
 import { DialogTools } from "./component/dialog-tools"
 import { DialogVariant } from "./component/dialog-variant"
 import { DialogWorkspaceList } from "./component/dialog-workspace-list"
+import {
+  DialogMlDataConsent,
+  type MlConsentDecision,
+  type MlConsentScope,
+  type MlDataCommandOutput,
+} from "./component/dialog-ml-data-consent"
 import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
@@ -46,6 +52,39 @@ export function buildEngineCliCommand(verb: string, args: string[] = [], entry =
   return ["bun", "--conditions=browser", entry, verb, ...args]
 }
 
+/** Pure consent arg builder — grant always carries the explicit GUI confirmation. */
+export function buildMlConsentArgs(decision: MlConsentDecision, scope: MlConsentScope): string[] {
+  const args = ["consent", decision, "--scope", scope]
+  if (decision === "grant") args.push("--yes")
+  return args
+}
+
+async function runEngineCli(
+  verb: string,
+  args: string[] = [],
+  cwd = process.cwd(),
+  env: Record<string, string> = {},
+): Promise<MlDataCommandOutput> {
+  const proc = Bun.spawn(buildEngineCliCommand(verb, args), {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, PWD: cwd, ...env },
+  })
+  const [stdoutValue, stderrValue, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  const cap = (value: string) =>
+    value.length > BRIDGE_OUTPUT_CAP ? value.slice(0, BRIDGE_OUTPUT_CAP) + "\n… truncated" : value
+  return {
+    exitCode,
+    stdout: cap(stdoutValue.trim()),
+    stderr: cap(stderrValue.trim()),
+  }
+}
+
 /**
  * Run a bridged engine CLI verb and render its output in a dismissible
  * dialog. Read-only verbs only (status/list/inspect/show) — palette must
@@ -57,26 +96,16 @@ async function runBridgedCommand(
   args: string[] = [],
 ): Promise<void> {
   try {
-    const proc = Bun.spawn(buildEngineCliCommand(verb, args), {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, PWD: process.cwd() },
-    })
-    const [stdout, stderr] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ])
-    const code = await proc.exited
-    let text = (stdout + (stderr ? "\n" + stderr : "")).trim()
-    if (text.length > BRIDGE_OUTPUT_CAP) text = text.slice(0, BRIDGE_OUTPUT_CAP) + "\n… truncated"
+    const result = await runEngineCli(verb, args)
+    const text = [result.stdout, result.stderr].filter(Boolean).join("\n")
     deps.dialog.replace(() => (
       <DialogAlert
-        title={`arcana ${verb}${args.length ? " " + args.join(" ") : ""} — exit ${code}`}
+        title={`arcana ${verb}${args.length ? " " + args.join(" ") : ""} — exit ${result.exitCode}`}
         message={text || "(no output)"}
       />
     ))
-    if (code !== 0) {
-      deps.toast.show({ title: `arcana ${verb} exited ${code}`, variant: "warning" })
+    if (result.exitCode !== 0) {
+      deps.toast.show({ title: `arcana ${verb} exited ${result.exitCode}`, variant: "warning" })
     }
   } catch (error) {
     deps.toast.show({ title: `arcana ${verb} failed`, message: errorMessage(error), variant: "error" })
@@ -292,6 +321,32 @@ export function buildAppCommands(deps: {
           return next
         })
         deps.dialog.clear()
+      },
+    },
+    {
+      name: "ml.data",
+      title: "Manage ML learning consent",
+      desc: "Review disclosure and manage workspace or device learning consent",
+      category: "ML",
+      slashName: "ml-data",
+      run: () => {
+        const sessionDirectory =
+          deps.route.data.type === "session"
+            ? deps.sync.session.get(deps.route.data.sessionID)?.directory
+            : undefined
+        const workspace = sessionDirectory ?? deps.currentWorktreeWorkspace()?.directory ?? process.cwd()
+        deps.dialog.replace(() => (
+          <DialogMlDataConsent
+            workspace={workspace}
+            loadStatus={() => runEngineCli("ml-data", ["status"], workspace)}
+            loadDisclosure={() => runEngineCli("ml-data", ["consent", "grant", "--scope", "workspace"], workspace)}
+            changeConsent={(decision, scope) =>
+              runEngineCli("ml-data", buildMlConsentArgs(decision, scope), workspace, {
+                ARCANA_ML_CONSENT_SOURCE: "tui",
+              })
+            }
+          />
+        ))
       },
     },
     {
