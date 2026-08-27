@@ -1,4 +1,4 @@
-import { For, Match, Show, Switch, createMemo } from "solid-js"
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useRenderer } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import { createWidgetRenderNode } from "./widgets/registry"
@@ -184,6 +184,28 @@ export function SpineProse(props: {
     // Strip horizontal rules (full-width dash rows) only outside fenced code blocks
     return stripMarkdownHorizontalRules(noEmphasis)
   })
+  /**
+   * Debounce content updates during streaming to prevent Tree-sitter
+   * re-highlight flicker on completed code blocks. Every token changes the
+   * overall markdownContent string (prose grows), which triggers a full
+   * MarkdownRenderable re-parse → Tree-sitter re-highlights ALL blocks
+   * including stable completed code fences → brief flash of unstyled text.
+   * Batching at 50ms (~20 updates/sec) is imperceptible but eliminates the
+   * flicker. When streaming ends, apply immediately to finalize.
+   */
+  const [debouncedContent, setDebouncedContent] = createSignal(markdownContent())
+  let contentTimer: ReturnType<typeof setTimeout> | undefined
+  createEffect(() => {
+    const content = markdownContent()
+    if (liveStreaming()) {
+      if (contentTimer) clearTimeout(contentTimer)
+      contentTimer = setTimeout(() => setDebouncedContent(content), 50)
+    } else {
+      if (contentTimer) { clearTimeout(contentTimer); contentTimer = undefined }
+      setDebouncedContent(content)
+    }
+  })
+  onCleanup(() => { if (contentTimer) clearTimeout(contentTimer) })
   const ft = createMemo(() => resolveFiletype(bodyLabel(), hint(), text(), hint()))
   const fg = createMemo(() => {
     if (kind() === "think") return theme.textMuted
@@ -238,7 +260,7 @@ export function SpineProse(props: {
     <box flexShrink={0} minWidth={0} width={wrapCols()}>
       <markdown
         width={wrapCols()}
-        content={markdownContent()}
+        content={debouncedContent()}
         syntaxStyle={style()}
         streaming={liveStreaming()}
         internalBlockMode="top-level"
