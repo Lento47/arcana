@@ -64,8 +64,13 @@ describe("S9 source contract", () => {
     expect(shellSrc).not.toContain("state={runState as any}")
   })
 
-  test("composer frame owns the left edge and receives measured width", () => {
-    expect(promptSrc).not.toContain("<SpineRail")
+  test("composer lead owns the left edge and frame receives rail-adjusted width", () => {
+    expect(promptSrc).toContain("<SpineRail")
+    expect(promptSrc).toContain("glyph={markerGlyph()}")
+    expect(promptSrc).toContain('return "✶"')
+    expect(promptSrc).toContain("const phase = motion?.phase() ?? 0")
+    expect(promptSrc).toContain("spineRailWidth(props.layout())")
+    expect(promptSrc).toContain("contentWidth={promptContentWidth()}")
     expect(promptSrc).toContain("contentWidth?: number")
     expect(shellSrc).toContain("contentWidth={viewportWidth()}")
   })
