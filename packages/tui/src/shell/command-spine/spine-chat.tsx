@@ -1,6 +1,6 @@
 import { Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
-import { APP_NAME, Glyph } from "../../branding"
+import { Glyph } from "../../branding"
 import {
   compactSpineElapsed,
   SPINE_CHAT_CARD_CHROME,
@@ -11,7 +11,6 @@ import {
   type SpineLayout,
 } from "./spine-types"
 import { SpineProse } from "./spine-prose"
-import { chatCardChrome } from "./spine-chrome"
 
 /**
  * Conversation voice — one column, one accent line.
@@ -57,27 +56,10 @@ export function SpineChatCard(props: {
   })
   const hasRightTime = createMemo(() => !!(elapsedText() || timestampText()))
 
-  const speaker = createMemo(() => {
-    // User prompts drop the speaker label entirely: the user already knows
-    // they sent the message, and rendering "you" beside the prompt text
-    // duplicates that knowledge. The ◆ glyph remains as the row marker so
-    // turn boundaries still read. Assistant turns keep the brand/name so
-    // attribution is unambiguous on multi-agent sessions.
-    if (isUser()) return ""
-    const raw = (props.label ?? "").trim().toLowerCase()
-    if (raw && raw !== "assistant" && raw !== "plan" && raw !== "ok" && raw !== "coda" && raw !== "insight") {
-      return raw
-    }
-    return APP_NAME
-  })
-
   const speakerColor = createMemo(() => {
     if (isUser()) return theme.spineAsk
     return theme.spineBrand
   })
-  const chrome = createMemo(() =>
-    chatCardChrome({ speaker: speaker(), streaming: streaming(), isUser: isUser() }),
-  )
 
   const lineColor = createMemo(() => {
     if (focused()) return theme.accent
@@ -123,16 +105,16 @@ export function SpineChatCard(props: {
       paddingTop={isUser() ? 1 : 0}
       paddingBottom={1}
     >
-      {/* Header: glyph + speaker, exceptional live state, elapsed. */}
+      {/* Header: glyph only — no speaker text. Matches the user-prompt
+          RowHeader treatment (glyph-only chip) so the visual grammar is
+          consistent across the chat voice. Assistant identity comes from
+          the bordered card chrome and the glyph color (spineBrand). */}
       <box flexDirection="row" flexShrink={0} alignItems="center" width="100%" gap={1}>
         <box width={railW()} flexShrink={0}>
           <text fg={speakerColor()} wrapMode="none">
             {glyphCell()}
           </text>
         </box>
-        <text fg={speakerColor()} wrapMode="none">
-          {chrome().speaker}
-        </text>
         <Show when={!isUser() && streaming()}>
           <text fg={theme.accent} wrapMode="none">
             live
