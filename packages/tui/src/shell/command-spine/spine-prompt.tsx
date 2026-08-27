@@ -36,12 +36,26 @@ export function SpinePrompt(props: {
   const motion = useSpineMotion()
   const layout = () => props.layout()
   const metrics = () => spineLeadMetrics(layout(), props.gutterWidth)
+  const markerGlyph = () => {
+    if (props.state() === "working" && motion?.isCueActive("composer")) {
+      const glyphs = ["✶", "✷", "✸", "✹"]
+      return glyphs[Math.floor(motion.phase() / 2) % glyphs.length] ?? "✶"
+    }
+    return "✶"
+  }
   const markerColor = () => {
     if (props.state() === "stop") return theme.spineFail
     if (props.state() === "retrying") return theme.warning
     if (props.state() === "waiting") return theme.warning
     if (props.state() === "working") {
-      const pulse = [theme.spineRun, theme.spinePrompt, theme.spineBrand, theme.spinePrompt]
+      const pulse = [
+        theme.spineRun,
+        theme.spinePrompt,
+        theme.spineBrand,
+        theme.spineInspect,
+        theme.accent,
+        theme.success,
+      ]
       if (!motion?.isCueActive("composer")) return theme.spinePrompt
       return pulse[Math.floor(motion.phase() / 2) % pulse.length] ?? theme.spinePrompt
     }
@@ -59,7 +73,7 @@ export function SpinePrompt(props: {
         alignItems="flex-start"
         width="100%"
       >
-        <SpineRail layout={layout()} glyph={"✶"} color={markerColor()} active />
+        <SpineRail layout={layout()} glyph={markerGlyph()} color={markerColor()} active />
         {/*
           Positioning host for the slash/@ panel.
           Prompt may render autocomplete inline above the composer.
