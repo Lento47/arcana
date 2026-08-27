@@ -37,7 +37,7 @@ export function SpinePrompt(props: {
   const layout = () => props.layout()
   const metrics = () => spineLeadMetrics(layout(), props.gutterWidth)
   const markerGlyph = () => {
-    if (props.state() === "working") {
+    if (props.state() === "working" || props.state() === "retrying") {
       const glyphs = ["✣","✭","⁂","◎","○","✺","◉","✢","✷","✽","✦","✹","⬤","◒","✫","✬","✩","◑","✮","✥","⁑","◌","∗","✶","✯","◍","✻","✤","◓","✼","✰","●","✪","✧","◐","✸"]
       const phase = motion?.phase() ?? 0
       return glyphs[Math.floor(phase / 2) % glyphs.length] ?? "✶"
@@ -46,9 +46,8 @@ export function SpinePrompt(props: {
   }
   const markerColor = () => {
     if (props.state() === "stop") return theme.spineFail
-    if (props.state() === "retrying") return theme.warning
     if (props.state() === "waiting") return theme.warning
-    if (props.state() === "working") {
+    if (props.state() === "retrying" || props.state() === "working") {
       const pulse = [
         theme.spineRun,
         theme.spinePrompt,
@@ -57,8 +56,8 @@ export function SpinePrompt(props: {
         theme.accent,
         theme.success,
       ]
-      if (!motion?.isCueActive("composer")) return theme.spinePrompt
-      return pulse[Math.floor(motion.phase() / 2) % pulse.length] ?? theme.spinePrompt
+      const phase = motion?.phase() ?? 0
+      return pulse[Math.floor(phase / 2) % pulse.length] ?? theme.spinePrompt
     }
     return theme.spinePrompt
   }

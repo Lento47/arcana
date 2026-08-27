@@ -57,5 +57,5 @@ export function dominantMotionCue(
 ): string | undefined {
   const thinking = entries.filter((entry) => entry.streaming === true && entry.kind === "think").at(-1)
   if (thinking) return `entry:${thinking.id}`
-  return runState === "working" ? "composer" : undefined
+  return runState === "working" || runState === "retrying" ? "composer" : undefined
 }
