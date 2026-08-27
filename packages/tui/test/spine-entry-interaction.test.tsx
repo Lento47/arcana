@@ -336,6 +336,111 @@ test("left-click on a collapsed governance block expands it and keeps focus", as
   }
 })
 
+test("activity reel expands once and exposes the original work steps", async () => {
+  const activityEntry: SpineEntryModel = {
+    id: "activity:turn-1",
+    index: 1,
+    elapsed: "+1.2s",
+    kind: "think",
+    glyph: "●",
+    label: "work",
+    summary: "3 steps · 2 tools · 1 thought",
+    collapsible: true,
+    expandedByDefault: false,
+    streaming: true,
+    activity: { type: "work", turnID: "turn-1", childCount: 3 },
+    source: { messageID: "turn-1", kind: "reasoning" },
+    children: [
+      {
+        id: "think-1",
+        index: 1,
+        elapsed: "",
+        kind: "think",
+        glyph: "●",
+        label: "think",
+        summary: "Plan the change",
+        streaming: true,
+        source: { messageID: "turn-1", kind: "reasoning" },
+      },
+      {
+        id: "run-1",
+        index: 2,
+        elapsed: "+400ms",
+        kind: "run",
+        glyph: "✓",
+        label: "run",
+        summary: "bun test packages/tui",
+        source: { messageID: "turn-1", kind: "tool" },
+      },
+      {
+        id: "inspect-1",
+        index: 3,
+        elapsed: "+600ms",
+        kind: "inspect",
+        glyph: "✓",
+        label: "inspect",
+        summary: "packages/tui/src",
+        source: { messageID: "turn-1", kind: "tool" },
+      },
+    ],
+  }
+  let toggleCount = 0
+  const app = await testRender(
+    () => withProviders(() => {
+      const [expanded, setExpanded] = createSignal(false)
+      return (
+        <box flexDirection="column" width="100%" height="100%">
+          <SpineEntry
+            entry={activityEntry}
+            layout="wide"
+            contentWidth={70}
+            expanded={expanded()}
+            focused
+            onToggle={() => {
+              toggleCount++
+              setExpanded((value) => !value)
+            }}
+          />
+        </box>
+      )
+    }),
+    { width: 100, height: 14, useMouse: true, enableMouseMovement: true },
+  )
+
+  try {
+    const initial = await capture(app)
+    expect(initial).toContain("working")
+    expect(initial).toContain("show 3 steps")
+    expect(initial).not.toContain("[1/3]")
+    expect(initial).not.toContain("‹")
+    expect(initial).not.toContain("›")
+    expect(initial).not.toContain("bun test packages/tui")
+
+    // A live turn refreshes its elapsed duration, but the summary never
+    // rotates through child details or wraps back to an earlier step.
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    const later = await capture(app)
+    expect(later).toContain("working")
+    expect(later).toContain("show 3 steps")
+    expect(later).not.toContain("[2/3]")
+    expect(later).not.toContain("[3/3]")
+    expect(later).not.toContain("‹")
+    expect(later).not.toContain("›")
+
+    const summary = findText(initial, "3 steps")
+    await app.mockMouse.click(summary.x, summary.y, MouseButton.LEFT)
+
+    const expanded = await captureUntil(app, "bun test packages/tui")
+    expect(toggleCount).toBe(1)
+    expect(expanded).toContain("Plan the change")
+    expect(expanded).toContain("bun test packages/tui")
+    expect(expanded).toContain("packages/tui/src")
+    expect(expanded).toContain("hide 3 steps")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
 test("subagent title opens its session while the disclosure toggles its preview", async () => {
   const agentEntry: SpineEntryModel = {
     id: "agent-entry",

@@ -213,3 +213,71 @@ test("live SpineHeader at 80 cols fits the session frame when contentWidth is pa
   expect(displayWidth(visible)).toBeLessThanOrEqual(80)
   expect(visible).not.toContain("L:/PROJECTS")
 })
+
+test("modern wide header gives the session title priority and keeps metadata secondary", async () => {
+  const width = 140
+  const charter = projectSessionCharter({
+    proofLevel: "P1",
+    integrityStatus: "VALID",
+  })
+  const app = await testRender(
+    () => (
+      <TestTuiContexts>
+        <TuiConfigProvider config={createTuiResolvedConfig()}>
+          <KVProvider>
+            <ToastProvider>
+              <ThemeProvider mode="dark">
+                <box width={width} height={8}>
+                  <SpineHeader
+                    layout="wide"
+                    contentWidth={width}
+                    segments={buildStatusSegments({
+                      branch: "arcanagov",
+                      model: "Free Models Router",
+                      ctxPercent: 8,
+                      path: "L:/PROJECTS/arcana",
+                      sessionID: "ses_fbac9abcdef",
+                    })}
+                    session={() => ({ id: "ses_fbac9abcdef", title: "hello" })}
+                    trust={{
+                      state: "healthy",
+                      connection: "connected",
+                      trace: "COMPLETE",
+                      integrity: "VALID",
+                      proofLevel: "P1",
+                      pendingApprovals: 0,
+                      workspaceTrusted: true,
+                      authorityActionsDisabled: false,
+                    }}
+                    charter={charter}
+                    governed={{ key: "governed", label: "5 governed", tone: "ok" }}
+                  />
+                </box>
+              </ThemeProvider>
+            </ToastProvider>
+          </KVProvider>
+        </TuiConfigProvider>
+      </TestTuiContexts>
+    ),
+    { width, height: 8 },
+  )
+  for (let attempt = 0; attempt < 40; attempt++) {
+    await Bun.sleep(10)
+    await app.renderOnce()
+    if (app.captureCharFrame().includes("ARCANA")) break
+  }
+  const frame = app.captureCharFrame()
+  app.renderer.destroy()
+
+  expect(frame).toContain("ARCANA")
+  expect(frame).toContain("/ hello")
+  expect(frame).toContain("◆ LIVE")
+  expect(frame).toContain("P1 ✓ verified")
+  expect(frame).toContain("5 governed")
+  expect(frame).toContain("⎇ arcanagov")
+  expect(frame).toContain("Free Models Router")
+  expect(frame).toContain("CTX 8%")
+  expect(frame).toContain("ses_fbac9")
+  expect(frame).not.toContain("none")
+  expect(frame).not.toContain("│ hello")
+})

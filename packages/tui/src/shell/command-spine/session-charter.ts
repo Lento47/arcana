@@ -68,6 +68,31 @@ export type HeaderStatusItem = {
   tone: SessionCharterTone
 }
 
+/**
+ * Human-readable labels for the compact header surface.
+ *
+ * The underlying charter keeps the canonical values (for inspectors and
+ * proof views). The header is a scan surface, so it removes an empty contract
+ * chip and gives integrity states an explicit, non-colour cue.
+ */
+export function formatHeaderStatusLabel(item: Pick<HeaderStatusItem, "key" | "label">): string {
+  const raw = item.label.trim()
+  if (!raw) return ""
+  if (item.key === "contract" && raw.toLowerCase() === "none") return ""
+  if (item.key === "live") return raw.toUpperCase()
+  if (item.key === "proof") {
+    const match = raw.match(/^(\S+)\s+(valid|invalid|unverified)$/i)
+    if (match) {
+      const state = match[2]!.toLowerCase()
+      const glyph = state === "valid" ? "✓" : state === "invalid" ? "×" : "?"
+      const word = state === "valid" ? "verified" : state
+      return `${match[1]} ${glyph} ${word}`
+    }
+  }
+  if (item.key === "governed") return raw.replace(/\s*\|\s*/g, " · ")
+  return raw
+}
+
 /** Tokens for the header status line — always joined with " | ", never concatenated. */
 export function buildHeaderStatusItems(input: {
   live: string

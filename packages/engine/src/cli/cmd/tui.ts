@@ -12,7 +12,7 @@ import type { GlobalEvent } from "@arcana/sdk/v2"
 import type { EventSource } from "@arcana/tui/context/sdk"
 import { writeHeapSnapshot } from "node:v8"
 import { validateSession } from "../tui/validate-session"
-import { win32InstallCtrlCGuard } from "@arcana/tui/terminal-win32"
+import { win32InstallCtrlCGuard, win32RestoreTerminal } from "@arcana/tui/terminal-win32"
 import { mark, measure } from "../../cli/profile"
 import { assertEngineHealthy, createDaemonTransport } from "../tui/daemon-transport"
 import { DAEMON_LOG, daemonLog } from "../../daemon/log"
@@ -71,6 +71,14 @@ async function target() {
   const dist = new URL("./cli/tui/worker.js", import.meta.url)
   if (await Filesystem.exists(fileURLToPath(dist))) return dist
   return new URL("../tui/worker.ts", import.meta.url)
+}
+
+function isInteractiveTerminal() {
+  // On some Windows hosts stdin.isTTY is false even for an interactive console
+  // (see input() below), so win32 only requires stdout to be a TTY. Elsewhere
+  // both must be TTYs (pipes/redirects/CI/background jobs hard-fail).
+  if (process.platform === "win32") return !!process.stdout.isTTY
+  return !!process.stdin.isTTY && !!process.stdout.isTTY
 }
 
 async function input(value?: string) {
@@ -152,7 +160,7 @@ export const TuiThreadCommand = cmd({
       // Fail fast with a clear message instead of letting the bootstrap crash
       // dump the renderer stack trace. ARCANA_FORCE_TUI bypasses the check
       // for harnesses and deterministic tests that pre-create a renderer.
-      if (!process.env["ARCANA_FORCE_TUI"] && (!process.stdin.isTTY || !process.stdout.isTTY)) {
+      if (!process.env["ARCANA_FORCE_TUI"] && !isInteractiveTerminal()) {
         UI.error("arcana tui requires an interactive terminal (TTY).")
         UI.error("Run from a real shell — not a pipe, redirect, or background job.")
         UI.error("If you are running under a debugger or test harness, set ARCANA_FORCE_TUI=1.")
@@ -216,6 +224,14 @@ export const TuiThreadCommand = cmd({
           reportStartupFailure(error)
           return
         }
+        // A crashed worker otherwise leaves every RPC promise pending forever —
+        // the TUI freezes with no recovery. Surface the death instead.
+        worker.onerror = (error) => {
+          const detail = error?.message ? String(error.message) : String(error)
+          daemonLog(`[tui] worker crashed pid=${process.pid} ${detail}`)
+          UI.error(`Arcana engine worker crashed: ${detail}`)
+          process.exitCode = 1
+        }
         client = Rpc.client<typeof rpc>(worker)
         const reload = () => {
           client!.call("reload", undefined).catch(() => {})
@@ -263,7 +279,7 @@ export const TuiThreadCommand = cmd({
             }
         // Worker RPC does not consume Fetch's AbortSignal, so enforce the
         // bootstrap deadline at the host boundary as well.
-        await withTimeout(assertEngineHealthy(transport), 3_000, "Arcana engine health check timed out")
+        await withTimeout(assertEngineHealthy(transport), 10_000, "Arcana engine health check timed out")
       } catch (error) {
         await stop()
         reportStartupFailure(error)
@@ -329,6 +345,13 @@ export const TuiThreadCommand = cmd({
             },
           }),
         )
+      } catch (error) {
+        const detail = error instanceof Error ? (error.stack ?? error.message) : String(error)
+        process.stderr.write(`[arcana] TUI runtime crashed:\n${detail}\n`)
+        daemonLog(`[crash] tui runtime pid=${process.pid}\n${detail}`)
+        UI.error(errorMessage(error))
+        win32RestoreTerminal()
+        process.exitCode = 1
       } finally {
         await stop()
       }

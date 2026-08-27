@@ -82,6 +82,9 @@ export function isQuietGovernanceLedger(entry: SpineEntry): boolean {
 export function entryMatchesViewFilter(entry: SpineEntry, filter: SpineViewFilterInput): boolean {
   const active = normalizeSpineViewFilter(filter)
   if (isSecurityCritical(entry)) return true
+  if (entry.activity?.type === "work") {
+    return active === "all" || active === "tools"
+  }
   if (active === "all" && isQuietGovernanceLedger(entry)) return false
   if (active === "all") return true
 

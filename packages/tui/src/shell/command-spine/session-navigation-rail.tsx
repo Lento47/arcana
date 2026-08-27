@@ -118,7 +118,9 @@ function selectSessionCrumbs(crumbs: readonly NavigationCrumb[], max: number): N
 }
 
 function projectionWidth(projection: NavigationRailProjection): number {
-  const repo = projection.repo ? displayWidth(`⌂ ${projection.repo} │ `) : 0
+  const repo = projection.repo
+    ? displayWidth(`⌂ ${projection.repo}`) + (projection.crumbs.length > 0 ? displayWidth(" │ ") : 0)
+    : 0
   const crumbs = projection.crumbs.reduce(
     (width, crumb, index) => width + (index > 0 ? SESSION_SEP_WIDTH : 0) + displayWidth(crumb.label),
     0,
@@ -134,13 +136,18 @@ export function projectNavigationRail(input: {
   path?: string
   layout: SpineLayout
   width: number
+  /** Hide the current leaf when the session title is rendered elsewhere. */
+  showCurrent?: boolean
 }): NavigationRailProjection {
   const room = Math.max(8, Math.floor(input.width))
   const repoSegments = input.layout === "wide" ? 3 : input.layout === "compact" ? 2 : input.layout === "narrow" ? 1 : 0
   const sessionSegments = input.layout === "wide" ? 3 : input.layout === "minimal" ? 1 : 2
+  const sessionCrumbs = input.showCurrent === false
+    ? input.model.crumbs.filter((crumb) => !crumb.current)
+    : input.model.crumbs
   let projection: NavigationRailProjection = {
     repo: input.path && repoSegments > 0 ? breadcrumbFromPath(input.path, repoSegments) : undefined,
-    crumbs: selectSessionCrumbs(input.model.crumbs, sessionSegments),
+    crumbs: selectSessionCrumbs(sessionCrumbs, sessionSegments),
     siblingLabel:
       input.model.siblingTotal > 1 && input.model.siblingIndex > 0
         ? `${input.model.siblingIndex}/${input.model.siblingTotal}`
@@ -155,7 +162,7 @@ export function projectNavigationRail(input: {
     projection = { ...projection, cycleWarning: undefined }
   }
   if (projectionWidth(projection) > room && projection.crumbs.length > 1) {
-    projection = { ...projection, crumbs: selectSessionCrumbs(input.model.crumbs, 1) }
+    projection = { ...projection, crumbs: selectSessionCrumbs(sessionCrumbs, 1) }
   }
   if (projectionWidth(projection) > room && projection.showParent) {
     projection = { ...projection, showParent: false }
@@ -187,6 +194,8 @@ export function SpineNavigationRail(props: {
   path?: string
   session: SessionNavigationLike
   sessions?: readonly SessionNavigationLike[]
+  /** Hide the current leaf when a parent component owns the session title. */
+  showCurrent?: boolean
   onNavigate?: (sessionID: string) => void
   onPrevious?: () => void
   onNext?: () => void
@@ -214,6 +223,7 @@ export function SpineNavigationRail(props: {
     path: props.path,
     layout: props.layout,
     width: props.width,
+    showCurrent: props.showCurrent,
   }))
 
   const navigate = (id: string | undefined) => {
@@ -228,7 +238,9 @@ export function SpineNavigationRail(props: {
         {(repo) => (
           <>
             <text fg={theme.spineContext} wrapMode="none">⌂ {repo()}</text>
-            <text fg={theme.borderSubtle} wrapMode="none"> │ </text>
+            <Show when={rail().crumbs.length > 0}>
+              <text fg={theme.borderSubtle} wrapMode="none"> │ </text>
+            </Show>
           </>
         )}
       </Show>

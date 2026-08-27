@@ -95,6 +95,19 @@ export function win32FlushInputBuffer() {
 }
 
 /**
+ * Restore the console to its pre-TUI state. Runs the Ctrl+C guard's unhook
+ * (re-applies the captured SetConsoleMode) and flushes queued input.
+ * Idempotent; safe to call on any exit path. No-op off win32 or pre-boot.
+ */
+export function win32RestoreTerminal() {
+  if (process.platform !== "win32") return
+  try {
+    unhook?.()
+  } catch {}
+  win32FlushInputBuffer()
+}
+
+/**
  * Force UTF-8 code pages on the console output/input handles (Windows).
  *
  * Without this, Unicode glyphs used across the TUI (◆ ▸ ⎇ · box rails) are

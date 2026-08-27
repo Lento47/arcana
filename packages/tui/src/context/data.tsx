@@ -439,6 +439,10 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       }
     })
 
+    function ensureLocationStore(key: string) {
+      if (!store.location[key]) setStore("location", key, {})
+    }
+
     const result = {
       session: {
         get(sessionID: string) {
@@ -505,6 +509,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           async refresh(ref?: LocationRef) {
             const result = await sdk.client.v2.agent.list({ location: locationQuery(ref) }, { throwOnError: true })
             const key = locationKey(result.data.location)
+            ensureLocationStore(key)
             setStore("location", key, "agent", result.data.data)
           },
         },
@@ -515,6 +520,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           async refresh(ref?: LocationRef) {
             const result = await sdk.client.v2.command.list({ location: locationQuery(ref) }, { throwOnError: true })
             const key = locationKey(result.data.location)
+            ensureLocationStore(key)
             setStore("location", key, "command", result.data.data)
           },
         },
@@ -528,6 +534,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
               { throwOnError: true },
             )
             const key = locationKey(result.data.location)
+            ensureLocationStore(key)
             setStore("location", key, "integration", result.data.data)
           },
         },
@@ -538,6 +545,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           async refresh(ref?: LocationRef) {
             const result = await sdk.client.v2.model.list({ location: locationQuery(ref) }, { throwOnError: true })
             const key = locationKey(result.data.location)
+            ensureLocationStore(key)
             setStore("location", key, "model", result.data.data)
           },
         },
@@ -548,6 +556,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           async refresh(ref?: LocationRef) {
             const result = await sdk.client.v2.provider.list({ location: locationQuery(ref) }, { throwOnError: true })
             const key = locationKey(result.data.location)
+            ensureLocationStore(key)
             setStore("location", key, "provider", result.data.data)
           },
         },
@@ -558,6 +567,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           async refresh(ref?: LocationRef) {
             const result = await sdk.client.v2.reference.list({ location: locationQuery(ref) }, { throwOnError: true })
             const key = locationKey(result.data.location)
+            ensureLocationStore(key)
             setStore("location", key, "reference", result.data.data)
           },
         },
@@ -568,6 +578,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
           async refresh(ref?: LocationRef) {
             const result = await sdk.client.v2.skill.list({ location: locationQuery(ref) }, { throwOnError: true })
             const key = locationKey(result.data.location)
+            ensureLocationStore(key)
             setStore("location", key, "skill", result.data.data)
           },
         },

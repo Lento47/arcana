@@ -9,6 +9,12 @@ export function spineEntryCopyText(entry: SpineEntry) {
   const lines: string[] = []
   const head = [entry.kind, entry.actor, entry.summary].filter(Boolean).join(" · ")
   pushLine(lines, head)
+
+  if (entry.activity?.type === "work" && entry.children?.length) {
+    for (const child of entry.children) pushLine(lines, spineEntryCopyText(child))
+    return lines.join("\n").trim()
+  }
+
   pushLine(lines, entry.body)
 
   if (entry.receipt) {

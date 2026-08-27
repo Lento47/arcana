@@ -11,6 +11,7 @@ import { Heap } from "./cli/heap"
 import { createKernelContract } from "./kernel/kernel"
 import { daemonLog } from "./daemon/log"
 import { readProxyKey } from "./account/license-bind"
+import { win32RestoreTerminal } from "@arcana/tui/terminal-win32"
 mark("cli-import-end")
 
 /**
@@ -103,6 +104,10 @@ process.on("SIGTERM", () => {
 })
 process.on("exit", (code) => {
   // Normal exits (including process.exit from the handlers above) land here.
+  // Restore console modes BEFORE termination: on Windows these are console-global
+  // and are NOT auto-restored on process exit — skipping this leaves the user's
+  // terminal raw/broken after a crash. No-op off win32 or pre-TUI-boot.
+  win32RestoreTerminal()
   daemonLog(`[exit] code=${code} pid=${process.pid}`)
 })
 

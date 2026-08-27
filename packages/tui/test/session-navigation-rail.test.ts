@@ -95,6 +95,33 @@ describe("session navigation fitting", () => {
     expect(projection.crumbs.map((crumb) => crumb.label)).toEqual(["@validate"])
   })
 
+  test("can omit the current leaf when the title is rendered by the header", () => {
+    const projection = projectNavigationRail({
+      model,
+      path: "L:/PROJECTS/arcana/packages/tui",
+      layout: "wide",
+      width: 120,
+      showCurrent: false,
+    })
+
+    expect(projection.crumbs.map((crumb) => crumb.label)).toEqual(["Fix stuck agent", "@research", "@review"])
+    expect(projection.crumbs.some((crumb) => crumb.current)).toBe(false)
+    expect(navigationRailDisplayWidth(projection)).toBeLessThanOrEqual(120)
+  })
+
+  test("keeps the current leaf hidden when a narrow rail collapses ancestry", () => {
+    const projection = projectNavigationRail({
+      model,
+      path: "L:/PROJECTS/arcana/packages/tui",
+      layout: "narrow",
+      width: 8,
+      showCurrent: false,
+    })
+
+    expect(projection.crumbs.some((crumb) => crumb.current)).toBe(false)
+    expect(navigationRailDisplayWidth(projection)).toBeLessThanOrEqual(8)
+  })
+
   test("always fits tiny budgets by yielding passive and secondary controls first", () => {
     for (const width of [8, 10, 12, 16, 20]) {
       const projection = projectNavigationRail({

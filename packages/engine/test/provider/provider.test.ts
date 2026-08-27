@@ -1796,3 +1796,12 @@ it.effect("opencode loader keeps paid models when auth exists", () =>
     expect(keyedCount).toBeGreaterThan(0)
   }).pipe(provideMultiInstance),
 )
+
+test("defaultModelIDs tolerates providers with no models", () => {
+  expect(Provider.defaultModelIDs({ p: { models: {} } })).toEqual({})
+  expect(
+    Provider.defaultModelIDs({
+      p: { models: { a: { id: "a" }, b: { id: "b" } } },
+    }),
+  ).toEqual({ p: "b" })
+})

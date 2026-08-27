@@ -16,6 +16,13 @@ describe("dominantMotionCue", () => {
     expect(cue).toBe("entry:thought")
   })
 
+  test("keeps a live activity summary on the shared liveness cue", () => {
+    expect(dominantMotionCue([
+      { id: "thought", kind: "think", streaming: true },
+      { id: "activity", kind: "think", streaming: true, activity: { type: "work" } },
+    ], "working")).toBe("entry:activity")
+  })
+
   test("falls back from thinking to the composer", () => {
     expect(dominantMotionCue([{ id: "thought", kind: "think", streaming: true }], "working"))
       .toBe("entry:thought")

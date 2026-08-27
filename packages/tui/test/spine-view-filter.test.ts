@@ -60,6 +60,21 @@ describe("spine view filters (TUI-2.1 P2)", () => {
     expect(entryMatchesViewFilter(governance, "tools")).toBe(false)
   })
 
+  test("activity reels follow the tools lane and never leak into conversation/governance", () => {
+    const activity = entry({
+      id: "activity:turn-1",
+      kind: "think",
+      label: "work",
+      activity: { type: "work", turnID: "turn-1", childCount: 3 },
+      children: [entry({ id: "run-1", kind: "run" })],
+    })
+
+    expect(entryMatchesViewFilter(activity, "all")).toBe(true)
+    expect(entryMatchesViewFilter(activity, "tools")).toBe(true)
+    expect(entryMatchesViewFilter(activity, "conversation")).toBe(false)
+    expect(entryMatchesViewFilter(activity, "governance")).toBe(false)
+  })
+
   test("governance filter keeps event groups and leftover proof rows; hides chat/tools", () => {
     const governance = entry({
       id: "governance-group:g1",

@@ -52,9 +52,11 @@ export function useSpineMotion(): SpineMotion | undefined {
 }
 
 export function dominantMotionCue(
-  entries: readonly { id: string; kind: string; streaming?: boolean }[],
+  entries: readonly { id: string; kind: string; streaming?: boolean; activity?: { type?: string } }[],
   runState: "idle" | "working" | "retrying" | "waiting" | "stop",
 ): string | undefined {
+  const activity = entries.findLast((entry) => entry.streaming === true && entry.activity?.type === "work")
+  if (activity) return `entry:${activity.id}`
   const thinking = entries.filter((entry) => entry.streaming === true && entry.kind === "think").at(-1)
   if (thinking) return `entry:${thinking.id}`
   return runState === "working" || runState === "retrying" ? "composer" : undefined

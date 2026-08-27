@@ -270,7 +270,14 @@ export function toPublicInfo(provider: Info): Info {
 }
 
 export function defaultModelIDs<T extends { models: Record<string, { id: string }> }>(providers: Record<string, T>) {
-  return mapValues(providers, (item) => sort(Object.values(item.models))[0].id)
+  const defaults: Record<string, string> = {}
+  for (const [id, provider] of Object.entries(providers)) {
+    const models = Object.values(provider.models)
+    // A provider with zero models has no default — skip instead of crashing on
+    // models[0] (which turned /config and /providers into 500s).
+    if (models.length > 0) defaults[id] = sort(models)[0]!.id
+  }
+  return defaults
 }
 
 export class ModelNotFoundError extends Schema.TaggedErrorClass<ModelNotFoundError>()("ProviderModelNotFoundError", {

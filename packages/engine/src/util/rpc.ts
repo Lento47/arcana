@@ -4,10 +4,25 @@ type Definition = {
 
 export function listen(rpc: Definition) {
   onmessage = async (evt) => {
-    const parsed = JSON.parse(evt.data)
+    let parsed: { type?: string; method?: string; input?: unknown; id?: number }
+    try {
+      parsed = JSON.parse(evt.data)
+    } catch {
+      console.error("[arcana] rpc: ignoring malformed frame", evt.data)
+      return
+    }
     if (parsed.type === "rpc.request") {
-      const result = await rpc[parsed.method](parsed.input)
-      postMessage(JSON.stringify({ type: "rpc.result", result, id: parsed.id }))
+      const method = rpc[parsed.method ?? ""]
+      if (typeof method !== "function") {
+        console.error(`[arcana] rpc: unknown method ${String(parsed.method)}`)
+        return
+      }
+      try {
+        const result = await method(parsed.input)
+        postMessage(JSON.stringify({ type: "rpc.result", result, id: parsed.id }))
+      } catch (error) {
+        console.error(`[arcana] rpc: method ${String(parsed.method)} failed`, error)
+      }
     }
   }
 }
@@ -24,19 +39,31 @@ export function client<T extends Definition>(target: {
   const listeners = new Map<string, Set<(data: any) => void>>()
   let id = 0
   target.onmessage = async (evt) => {
-    const parsed = JSON.parse(evt.data)
+    let parsed: { type?: string; id?: number; result?: unknown; event?: string; data?: unknown }
+    try {
+      parsed = JSON.parse(evt.data)
+    } catch {
+      console.error("[arcana] rpc: ignoring malformed frame", evt.data)
+      return
+    }
     if (parsed.type === "rpc.result") {
-      const resolve = pending.get(parsed.id)
+      const id = parsed.id
+      if (id === undefined) return
+      const resolve = pending.get(id)
       if (resolve) {
         resolve(parsed.result)
-        pending.delete(parsed.id)
+        pending.delete(id)
       }
     }
     if (parsed.type === "rpc.event") {
-      const handlers = listeners.get(parsed.event)
+      const handlers = listeners.get(parsed.event ?? "")
       if (handlers) {
         for (const handler of handlers) {
-          handler(parsed.data)
+          try {
+            handler(parsed.data)
+          } catch (error) {
+            console.error("[arcana] rpc: event handler threw", error)
+          }
         }
       }
     }

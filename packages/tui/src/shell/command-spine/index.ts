@@ -1,5 +1,5 @@
 export { CommandSpineShell } from "./command-spine-shell"
-export type { SpineKind, SpineLayout, SpineEntry, SpineReceipt, SpineDiffExcerpt } from "./spine-types"
+export type { SpineKind, SpineLayout, SpineEntry, SpineReceipt, SpineDiffExcerpt, SpineActivity } from "./spine-types"
 export { getSpineLayout, spineTone, SPINE_GLYPH } from "./spine-types"
 export { messagesToSpineEntries } from "./spine-mapper"
 export {
@@ -46,6 +46,7 @@ export { projectSessionCharter, projectGovernedTally, buildHeaderStatusItems, jo
 export type { SessionCharter, SessionCharterChip } from "./session-charter"
 export type { SpineTrustStatus, SpineTrustInput, SpineTrustState, SpineTrustConnection } from "./spine-trust"
 export { attachProofContinuations } from "./spine-proof-attach"
+export { collapseWorkActivities, isWorkActivityEntry, isWorkActivityKind, summarizeWorkActivity } from "./spine-activity"
 export { projectInsightCard } from "./spine-insight"
 export type { InsightCardModel, InsightMetric } from "./spine-insight"
 export {

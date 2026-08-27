@@ -55,6 +55,17 @@ describe("spine keyboard wiring source contract (F-24..F-28)", () => {
     expect(shellSource).toContain("composerFocused: composerFocused()")
   })
 
+  test("activity review has no backward, wrapping, or bracket navigation", () => {
+    expect(shellSource).toContain('key: "j,down"')
+    expect(shellSource).toContain("Focus next spine entry")
+    expect(shellSource).not.toContain('key: "["')
+    expect(shellSource).not.toContain('key: "]"')
+    expect(shellSource).not.toContain("Previous activity detail")
+    expect(shellSource).not.toContain("Next activity detail")
+    expect(shellSource).not.toContain("activityCursor")
+    expect(shellSource).not.toContain("onActivityCycle")
+  })
+
   test("F-28: v on a focused permission gate opens the read-only PermissionInspector", () => {
     expect(shellSource).toContain("<PermissionInspector request={gate} />")
     expect(shellSource).toContain("focusedGateRequest()")

@@ -4,6 +4,7 @@ import { join } from "node:path"
 import {
   buildHeaderStatusItems,
   fitHeaderStatusItems,
+  formatHeaderStatusLabel,
   headerLineDisplayWidth,
   joinHeaderStatus,
   projectGovernedTally,
@@ -39,6 +40,14 @@ describe("projectSessionCharter", () => {
     expect(charter!.proof.tone).toBe("error")
     expect(charter!.proof.label).toContain("invalid")
     expect(charter!.contract.label).toBe("none")
+  })
+
+  test("header labels are explicit without leaking an empty contract", () => {
+    expect(formatHeaderStatusLabel({ key: "live", label: "live" })).toBe("LIVE")
+    expect(formatHeaderStatusLabel({ key: "contract", label: "none" })).toBe("")
+    expect(formatHeaderStatusLabel({ key: "proof", label: "P1 valid" })).toBe("P1 ✓ verified")
+    expect(formatHeaderStatusLabel({ key: "proof", label: "P1 invalid" })).toBe("P1 × invalid")
+    expect(formatHeaderStatusLabel({ key: "governed", label: "3 governed | 1 denied" })).toBe("3 governed · 1 denied")
   })
 
   test("header status line never concatenates tokens", () => {

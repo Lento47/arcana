@@ -3,36 +3,21 @@ import type { RGBA } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import { spineOuterPadding, statusToneColor, type SpineLayout, type StatusSegment, type StatusTone } from "./spine-types"
-import { truncate } from "../../util/locale"
+import { displayWidth, truncate } from "../../util/locale"
 import { useTuiConfig } from "../../config"
 import type { SpineTrustStatus } from "./spine-trust"
 import type { SessionCharter, SessionCharterChip, SessionCharterTone } from "./session-charter"
-import { buildHeaderStatusItems, fitHeaderStatusItems } from "./session-charter"
+import {
+  buildHeaderStatusItems,
+  fitHeaderStatusItems,
+  formatHeaderStatusLabel,
+  headerLineDisplayWidth,
+} from "./session-charter"
 import { applyConfiguredSegments } from "./spine-segments"
 import { partitionHeaderStatusItems } from "./spine-chrome"
-import { SpineNavigationRail, type SessionNavigationLike } from "./session-navigation-rail"
+import { navigationSessionLabel, SpineNavigationRail, type SessionNavigationLike } from "./session-navigation-rail"
 
 // Truncation: shared display-width-aware helper from util/locale (audit T5/O6).
-
-function valueLimit(segment: StatusSegment, layout: SpineLayout): number {
-  if (segment.key === "path") {
-    if (layout === "wide") return 54
-    if (layout === "compact") return 42
-    return 0
-  }
-  if (segment.key === "model") {
-    if (layout === "wide") return 22
-    if (layout === "compact") return 18
-    return 14
-  }
-  if (segment.key === "branch") return layout === "wide" ? 18 : 14
-  if (segment.key === "agent") return layout === "wide" ? 14 : 11
-  if (segment.key === "session") return layout === "wide" ? 10 : 9
-  if (segment.key === "state") return 9
-  if (segment.key === "drive") return 10
-  if (segment.key === "ctx") return 8
-  return layout === "wide" ? 16 : 12
-}
 
 function prioritizeSegments(segments: StatusSegment[], layout: SpineLayout): StatusSegment[] {
   const primary = segments.filter((s) => s.key !== "path" && s.key !== "tok" && s.key !== "proj" && s.key !== "mode")
@@ -75,22 +60,72 @@ const ZONE_SEP = "│"
 /** Context-zone glyphs: structure marks, not labels. */
 const CONTEXT_GLYPHS: Record<string, string> = { branch: "⎇" }
 
+const STATUS_DROP_ORDER = ["contract", "pending", "governed"] as const
+const CONTEXT_DROP_ORDER = ["session", "drive", "agent", "branch", "model", "ctx"] as const
+
+function titleLimit(layout: SpineLayout): number {
+  if (layout === "wide") return 48
+  if (layout === "compact") return 36
+  if (layout === "narrow") return 26
+  return 22
+}
+
+function contextValueLimit(segment: StatusSegment, layout: SpineLayout): number {
+  if (segment.key === "model") return layout === "wide" ? 28 : layout === "compact" ? 20 : 14
+  if (segment.key === "branch") return layout === "wide" ? 18 : layout === "compact" ? 14 : 11
+  if (segment.key === "ctx") return 8
+  if (segment.key === "drive") return 10
+  if (segment.key === "agent") return layout === "wide" ? 14 : 10
+  return layout === "wide" ? 16 : 12
+}
+
+function contextItem(segment: StatusSegment, layout: SpineLayout, theme: Theme): ZonedItem | undefined {
+  const value = truncate(segment.value, contextValueLimit(segment, layout))
+  if (!value) return undefined
+  const label =
+    segment.key === "ctx" ? `CTX ${value}`
+      : segment.key === "drive" ? `DRIVE ${value}`
+        : segment.key === "agent" ? `@${value}`
+          : value
+  return {
+    key: segment.key,
+    label,
+    tone: "muted",
+    fg: segmentFg(segment.tone, theme),
+  }
+}
+
+function zonedDisplayWidth(items: readonly ZonedItem[]): number {
+  const width = headerLineDisplayWidth(items)
+  const runtime = items.some((item) => item.key === "live") ? 2 : 0
+  const branch = items.some((item) => item.key === "branch") ? 2 : 0
+  return width + runtime + branch
+}
+
+function navigationMinimum(layout: SpineLayout): number {
+  if (layout === "wide") return 24
+  if (layout === "compact") return 18
+  if (layout === "narrow") return 12
+  return 8
+}
+
 /**
- * Option A header: three zones — runtime state (dot + word beside the
- * wordmark), governance (proof/contract/tally kept together so security
- * state never drowns), and a context breadcrumb trail of bare values.
- * Zone separator `│` (borderSubtle); within governance `·`; within context
- * the breadcrumb arrow `▸`. All separators render as space+glyph+space so
- * the 3-cell-per-separator width budget in fitHeaderStatusItems stays
- * accurate. Hints are intentionally dropped — arrows carry the structure.
+ * Status line renderer shared by the primary trust row and the secondary
+ * metadata row. Major zones use `│`; items within a zone use a quiet middle
+ * dot. Context can opt into the breadcrumb arrow when it is carrying a trail.
  */
-function ZonedStatusLine(props: { items: ZonedItem[]; theme: Theme }) {
+function ZonedStatusLine(props: {
+  items: ZonedItem[]
+  theme: Theme
+  leading?: boolean
+  contextSeparator?: string
+}) {
   const zones = createMemo(() => {
     const parts = partitionHeaderStatusItems(props.items)
     return [
       { kind: "runtime" as const, items: parts.runtime, inner: "·", dot: true },
       { kind: "governance" as const, items: parts.governance, inner: "·", dot: false },
-      { kind: "context" as const, items: parts.context, inner: "▸", dot: false },
+      { kind: "context" as const, items: parts.context, inner: props.contextSeparator ?? "▸", dot: false },
     ].filter((zone) => zone.items.length > 0)
   })
   return (
@@ -112,7 +147,7 @@ function ZonedStatusLine(props: { items: ZonedItem[]; theme: Theme }) {
                       : item.label
                 return (
                   <>
-                    <Show when={zoneIndex() === 0 && index() === 0}>
+                    <Show when={props.leading !== false && zoneIndex() === 0 && index() === 0}>
                       <span> </span>
                     </Show>
                     <Show when={index() > 0}>
@@ -187,42 +222,71 @@ export function SpineHeader(props: {
         : undefined,
       governed: props.governed,
       pending: t.pendingApprovals,
-    })
+    }).map((item) => ({
+      ...item,
+      label: formatHeaderStatusLabel(item),
+    })).filter((item) => item.label.length > 0)
   })
-  const lineItems = createMemo(() => {
-    const items: ZonedItem[] = [...statusItems()]
+  const finiteWidth = createMemo(() => {
+    const width = props.contentWidth
+    return typeof width === "number" && Number.isFinite(width) ? Math.floor(width) : 120
+  })
+  const contentWidth = createMemo(() => Math.max(8, finiteWidth() - pad() * 2))
+  const brandWidth = createMemo(() => showBrand() ? 8 : 0)
+  const primaryWidth = createMemo(() => Math.max(8, contentWidth() - brandWidth()))
+  const statusBudget = createMemo(() => {
+    const titleReserve = props.layout === "wide" ? 24 : props.layout === "compact" ? 18 : 12
+    return Math.max(10, primaryWidth() - titleReserve - 3)
+  })
+  const visibleStatus = createMemo(() => fitHeaderStatusItems(statusItems(), statusBudget(), STATUS_DROP_ORDER))
+  const statusWidth = createMemo(() => zonedDisplayWidth(visibleStatus()))
+  const sessionTitle = createMemo(() => {
+    const current = props.session()
+    if (!current) return ""
+    const available = Math.max(8, primaryWidth() - statusWidth() - 3)
+    const limit = Math.min(titleLimit(props.layout), available)
+    const raw = navigationSessionLabel(current)
+    return truncate(raw, Math.max(4, limit - (showBrand() ? 3 : 0)))
+  })
+  const titleWidth = createMemo(() => {
+    const available = Math.max(8, primaryWidth() - statusWidth() - 3)
+    return Math.max(8, Math.min(titleLimit(props.layout), available))
+  })
+  const contextItems = createMemo(() => {
+    const items: ZonedItem[] = []
     for (const segment of segments()) {
-      if (segment.key === "state" || segment.key === "path") continue
-      if (items.some((item) => item.key === segment.key)) continue
-      const label = truncate(segment.value, valueLimit(segment, props.layout))
-      if (!label) continue
-      items.push({
-        key: segment.key,
-        hint: segment.label,
-        label,
-        tone: "muted",
-        fg: segmentFg(segment.tone, theme),
-      })
+      if (segment.key === "state" || segment.key === "path" || segment.key === "session") continue
+      const item = contextItem(segment, props.layout, theme)
+      if (item) items.push(item)
     }
     return items
   })
-  const statusBudget = createMemo(() => {
-    const inner = props.contentWidth
-    if (typeof inner !== "number" || !Number.isFinite(inner)) {
-      return Number.POSITIVE_INFINITY
-    }
-    const brand = showBrand() ? 8 : 0
-    // Runtime zone renders a leading "◆ " before the state word.
-    const runtimeDot = statusItems().some((item) => item.key === "live") ? 2 : 0
-    const pads = pad() * 2
-    return Math.max(1, Math.floor(inner) - brand - runtimeDot - pads)
+  const sessionMeta = createMemo(() => {
+    if (!isWide()) return ""
+    const configured = configuredSegments()
+    if (configured && !configured.some((segment) => segment.key === "session")) return ""
+    const segment = props.segments.find((item) => item.key === "session")
+    const value = segment?.value ?? props.session()?.id
+    return value ? truncate(value, 14) : ""
   })
-  const visibleItems = createMemo(() => fitHeaderStatusItems(lineItems(), statusBudget()))
+  const hasNavigation = createMemo(() => {
+    const current = props.session()
+    return Boolean(showPath() || current?.parentID)
+  })
+  const contextBudget = createMemo(() => {
+    const sessionWidth = sessionMeta() ? displayWidth(sessionMeta()) + 2 : 0
+    const reservedRail = hasNavigation() ? navigationMinimum(props.layout) : 0
+    return Math.max(1, contentWidth() - brandWidth() - sessionWidth - reservedRail - 3)
+  })
+  const visibleContext = createMemo(() =>
+    fitHeaderStatusItems(contextItems(), contextBudget(), CONTEXT_DROP_ORDER),
+  )
   const navigationWidth = createMemo(() => {
-    const inner = typeof props.contentWidth === "number" && Number.isFinite(props.contentWidth)
-      ? Math.floor(props.contentWidth)
-      : 120
-    return Math.max(8, inner - pad() * 2 - (showBrand() ? 8 : 0))
+    if (!hasNavigation()) return 0
+    const body = Math.max(8, contentWidth() - brandWidth())
+    const sessionWidth = sessionMeta() ? displayWidth(sessionMeta()) + 2 : 0
+    const metadataWidth = visibleContext().length ? zonedDisplayWidth(visibleContext()) + 3 : 0
+    return Math.max(navigationMinimum(props.layout), body - sessionWidth - metadataWidth)
   })
   const lockReason = createMemo(() => {
     const t = trust()
@@ -235,7 +299,7 @@ export function SpineHeader(props: {
 
   return (
     <box flexDirection="column" flexShrink={0}>
-      <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()} minWidth={0} alignItems="flex-start">
+      <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()} minWidth={0} alignItems="center">
         <Show when={showBrand()}>
           <box flexShrink={0} paddingRight={2}>
             <text fg={theme.spineBrand} wrapMode="none">
@@ -243,36 +307,71 @@ export function SpineHeader(props: {
             </text>
           </box>
         </Show>
-        <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
-          <ZonedStatusLine items={visibleItems()} theme={theme} />
-          <Show when={lockReason()}>
-            <text fg={theme.warning} wrapMode="word">
-              {lockReason()}
+        <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="center">
+          <box width={titleWidth()} minWidth={0} flexShrink={1} overflow="hidden">
+            <text wrapMode="none">
+              <Show when={showBrand()}>
+                <span style={{ fg: theme.spineDiffMuted }}> / </span>
+              </Show>
+              <strong><span style={{ fg: theme.text }}>{sessionTitle()}</span></strong>
             </text>
+          </box>
+          <box flexGrow={1} minWidth={0} />
+          <Show when={visibleStatus().length > 0}>
+            <box minWidth={0} flexShrink={1} overflow="hidden">
+              <ZonedStatusLine items={visibleStatus()} theme={theme} leading={false} />
+            </box>
           </Show>
         </box>
       </box>
+      <Show when={lockReason()}>
+        <box paddingLeft={pad() + brandWidth()} paddingRight={pad()} minWidth={0}>
+          <text fg={theme.warning} wrapMode="none">
+            ⚠ {lockReason()}
+          </text>
+        </box>
+      </Show>
       <Show when={props.session()}>
         {(session) => (
           <box flexDirection="row" paddingLeft={pad()} paddingRight={pad()} minWidth={0}>
             <Show when={showBrand()}>
               <box width={8} flexShrink={0} />
             </Show>
-            <SpineNavigationRail
-              layout={props.layout}
-              width={navigationWidth()}
-              path={showPath() ? pathSegment()?.value : undefined}
-              session={session()}
-              sessions={props.sessions}
-              onNavigate={props.onNavigateToSession}
-              onPrevious={props.onPreviousSession}
-              onNext={props.onNextSession}
-              onParent={props.onParentSession}
-            />
+            <Show when={hasNavigation()}>
+              <box width={navigationWidth()} minWidth={0} flexShrink={1} overflow="hidden">
+                <SpineNavigationRail
+                  layout={props.layout}
+                  width={navigationWidth()}
+                  path={showPath() ? pathSegment()?.value : undefined}
+                  session={session()}
+                  sessions={props.sessions}
+                  showCurrent={false}
+                  onNavigate={props.onNavigateToSession}
+                  onPrevious={props.onPreviousSession}
+                  onNext={props.onNextSession}
+                  onParent={props.onParentSession}
+                />
+              </box>
+            </Show>
+            <Show when={visibleContext().length > 0}>
+              <box minWidth={0} flexGrow={1} flexShrink={1} overflow="hidden" paddingLeft={hasNavigation() ? 2 : 0}>
+                <ZonedStatusLine
+                  items={visibleContext()}
+                  theme={theme}
+                  leading={false}
+                  contextSeparator="·"
+                />
+              </box>
+            </Show>
+            <Show when={sessionMeta()}>
+              <box flexShrink={0} paddingLeft={2}>
+                <text fg={theme.spineDiffMuted} wrapMode="none">{sessionMeta()}</text>
+              </box>
+            </Show>
           </box>
         )}
       </Show>
-      <Show when={showBrand() || visibleItems().length > 0 || lockReason() || props.session()}>
+      <Show when={showBrand() || visibleStatus().length > 0 || visibleContext().length > 0 || lockReason() || props.session()}>
         <box border={["bottom"]} borderColor={theme.borderSubtle} marginTop={1} marginBottom={1} />
       </Show>
     </box>

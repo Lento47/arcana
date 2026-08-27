@@ -28,6 +28,7 @@ import {
   productionInputToSpineEntry,
 } from "./production-spine-input"
 import { collapseGovernanceEntries } from "./spine-governance-group"
+import { collapseWorkActivities } from "./spine-activity"
 import { buildTrustStatus, eventGapFromTrace } from "./spine-trust"
 import { projectGovernedTally, projectSessionCharter } from "./session-charter"
 import { getSessionGoal } from "@arcana/core/session/goal"
@@ -392,7 +393,8 @@ export function useSpineProjection(props: ShellProps, input: {
   // ── Turn grouping + display indices + geometry ───────────────────
   const groupedVisibleEntries = createMemo(() => {
     const tui = governanceConfig.config().display.tui
-    return collapseGovernanceEntries(entriesWithProof(), {
+    const withActivity = collapseWorkActivities(entriesWithProof())
+    return collapseGovernanceEntries(withActivity, {
       enabled: tui.collapseGovernanceGroups,
       maxGroupSize: tui.collapseThreshold,
     })

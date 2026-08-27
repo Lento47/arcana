@@ -139,6 +139,14 @@ export type SpineProofContinuation = {
   completedAt?: string
 }
 
+/** Presentation-only grouping metadata for a turn's non-conversational work. */
+export type SpineActivity = {
+  type: "work"
+  /** Source assistant turn that owns every child in the group. */
+  turnID: string
+  childCount: number
+}
+
 export type SpineEntry = {
   id: string
   index: number
@@ -183,6 +191,8 @@ export type SpineEntry = {
   liveOutput?: string
   /** Grouped child entries (when this entry is a parent row). */
   children?: SpineEntry[]
+  /** Derived activity reel marker; children remain the source of truth. */
+  activity?: SpineActivity
   /** System-reminder blocks extracted from read tool output — rendered as callouts. */
   reminders?: string[]
   /** Structured subagent report data — when kind is "report". */

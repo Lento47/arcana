@@ -205,6 +205,9 @@ export function CommandSpineShell(props: ShellProps) {
       latest?.body?.length ?? 0,
       latest?.thinking?.length ?? 0,
       latest?.children?.length ?? 0,
+      latest?.activity?.childCount ?? 0,
+      latest?.children?.at(-1)?.summary?.length ?? 0,
+      latest?.streaming === true ? "streaming" : "settled",
       expanded,
     ].join(":")
   })

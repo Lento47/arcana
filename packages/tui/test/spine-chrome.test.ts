@@ -63,6 +63,14 @@ describe("focusedEntryActionHint", () => {
       hasDetails: true,
     })).toBe("v inspect · a approve")
   })
+
+  test("keeps activity review on the standard disclosure actions", () => {
+    expect(focusedEntryActionHint({
+      layout: "wide",
+      toggleable: true,
+      expanded: false,
+    })).toBe("enter/space expand · y copy")
+  })
 })
 
 describe("thinkingRowChrome + classifyThinking", () => {

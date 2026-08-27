@@ -8,6 +8,7 @@ import type {
   SpineReportData,
   SpineApprovalSnapshot,
   SpineProofContinuation,
+  SpineActivity,
 } from "./spine-types"
 import { joinSpineProse } from "./spine-prose"
 
@@ -80,6 +81,20 @@ export type ToolEntry = SpineEntryViewBase & {
   children?: SpineChildView[]
   childSessionID?: string
   proof?: SpineProofContinuation
+}
+
+/** Collapsed turn-local work reel; children retain the original work rows. */
+export type ActivityEntry = SpineEntryViewBase & {
+  type: "activity"
+  kind: SpineKind
+  label?: string
+  glyph: string
+  summary: string
+  elapsed?: string
+  startMs?: number
+  streaming?: boolean
+  children: SpineChildView[]
+  activity: SpineActivity
 }
 
 /** Approval row (durable approval or permission/question gate). */
@@ -167,11 +182,16 @@ export type RecoveryEntry = SpineEntryViewBase & {
 
 /** Grouped child row (tool burst / governance children). */
 export type SpineChildView = {
+  id?: string
   kind: SpineKind
   summary?: string
   label?: string
   receipt?: SpineReceipt
   elapsed?: string
+  streaming?: boolean
+  /** Agent children retain their dive target while shown inside a reel. */
+  sessionID?: string
+  children?: SpineChildView[]
   body?: string
   bodyLabel?: string
   bodyHint?: string
@@ -182,6 +202,7 @@ export type SpineChildView = {
 
 export type SpineEntryView =
   | ChatEntry
+  | ActivityEntry
   | ToolEntry
   | ApprovalEntry
   | GovernanceEntry
@@ -191,11 +212,15 @@ export type SpineEntryView =
 
 function childView(child: SpineEntry): SpineChildView {
   return {
+    id: child.id,
     kind: child.kind,
     summary: child.summary,
     label: child.label,
     receipt: child.receipt,
     elapsed: child.elapsed,
+    streaming: child.streaming === true,
+    sessionID: child.kind === "agent" ? child.source?.sessionID : undefined,
+    children: childrenViews(child.children),
     // Patch children keep their diff in entry.diff.body, not body — without
     // this fallback an expanded burst renders stats-only rows and every edit
     // after the first looks unexpandable.
@@ -239,6 +264,23 @@ export function toSpineEntryView(entry: SpineEntry, ctx: {
     thinkContentWidth: ctx.thinkContentWidth,
     gutterWidth: ctx.gutterWidth,
   }
+
+  if (entry.activity?.type === "work") {
+    return {
+      ...base,
+      type: "activity",
+      kind: entry.kind,
+      label: entry.label,
+      glyph: entry.glyph,
+      summary: entry.summary,
+      elapsed: entry.elapsed,
+      startMs: entry.startMs,
+      streaming: entry.streaming === true,
+      children: childrenViews(entry.children) ?? [],
+      activity: entry.activity,
+    }
+  }
+
   const isChat = (entry.kind === "ask" || entry.kind === "plan" || entry.kind === "ok") &&
     entry.source?.kind !== "governance"
 
