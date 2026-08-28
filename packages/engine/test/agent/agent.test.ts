@@ -82,14 +82,7 @@ it.instance("verifier agent is hidden, bounded, and has no tool authority", () =
   }),
 )
 
-it.instance("plan agent is hidden unless experimental CLI plan mode is enabled", () =>
-  Effect.gen(function* () {
-    const plan = yield* load((svc) => svc.get("plan"))
-    expect(plan?.hidden).toBe(true)
-  }),
-)
-
-experimentalIt.instance("experimental CLI plan mode exposes the plan agent", () =>
+it.instance("plan agent is always visible", () =>
   Effect.gen(function* () {
     const plan = yield* load((svc) => svc.get("plan"))
     expect(plan?.hidden).not.toBe(true)
@@ -791,8 +784,12 @@ it.instance("defaultInfo returns resolved build agent when no default_agent conf
 )
 
 it.instance(
-  "defaultAgent rejects plan when experimental plan mode is disabled",
-  () => expectDefaultAgentError('default agent "plan" is hidden'),
+  "defaultAgent accepts plan as default agent",
+  () =>
+    Effect.gen(function* () {
+      const agent = yield* load((svc) => svc.defaultAgent())
+      expect(agent).toBe("plan")
+    }),
   {
     config: {
       default_agent: "plan",
@@ -850,13 +847,12 @@ it.instance(
 )
 
 it.instance(
-  "defaultAgent skips disabled plan mode when build is disabled",
+  "defaultAgent returns plan when build is disabled",
   () =>
     Effect.gen(function* () {
       const agent = yield* load((svc) => svc.defaultAgent())
-      // build is disabled, so it should return the next available primary
-      // agent rather than routing into unavailable plan mode.
-      expect(agent).toBe("client")
+      // build is disabled, so it should return the next available primary agent.
+      expect(agent).toBe("plan")
     }),
   {
     config: {

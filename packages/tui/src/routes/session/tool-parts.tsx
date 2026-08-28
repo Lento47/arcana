@@ -561,6 +561,12 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
         <Match when={display() === "skill"}>
           <Skill {...toolprops} />
         </Match>
+        <Match when={display() === "plan_enter"}>
+          <PlanEnter {...toolprops} />
+        </Match>
+        <Match when={display() === "plan_exit"}>
+          <PlanExit {...toolprops} />
+        </Match>
         <Match when={true}>
           <GenericTool {...toolprops} />
         </Match>
@@ -1572,6 +1578,29 @@ function Skill(props: ToolProps) {
   )
 }
 
+function PlanEnter(props: ToolProps) {
+  const { theme } = useTheme()
+  return (
+    <InlineTool icon="◈" pending="Entering plan mode…" complete={props.part.state.status === "completed"} part={props.part}>
+      <span style={{ fg: theme.accent }}>Plan mode</span>{" "}— read-only exploration and design
+    </InlineTool>
+  )
+}
+
+function PlanExit(props: ToolProps) {
+  const { theme } = useTheme()
+  const title = createMemo(() => stringValue(props.metadata.title) || "Switching to build agent")
+  const output = createMemo(() => stringValue(props.output))
+  return (
+    <InlineTool icon="◈" pending="Finalizing plan…" complete={props.part.state.status === "completed"} part={props.part}>
+      <span style={{ fg: theme.accent }}>{title()}</span>
+      <Show when={output()}>
+        <span style={{ fg: theme.textMuted }}> {Glyph.sep} </span>{output()}
+      </Show>
+    </InlineTool>
+  )
+}
+
 function Diagnostics(props: { diagnostics: unknown; filePath: string }) {
   const { theme } = useTheme()
   const terminalEnvironment = useTuiTerminalEnvironment()
@@ -1640,6 +1669,8 @@ const toolDisplays = new Set([
   "todowrite",
   "question",
   "skill",
+  "plan_enter",
+  "plan_exit",
 ])
 
 export function toolDisplay(tool: string) {

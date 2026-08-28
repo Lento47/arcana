@@ -69,12 +69,12 @@ export class Service extends ConfigService.Service<Service>()("@arcana/RuntimeFl
 export type Info = Context.Service.Shape<typeof Service>
 
 /**
- * Plan mode is a coordinated CLI capability: the agent, prompt guidance, and
- * `plan_exit` tool must be exposed together. Keep the predicate here so a
- * caller cannot accidentally enable only one side of that contract.
+ * Plan mode: the agent, prompt guidance, and `plan_exit` tool must be
+ * exposed together. Keep the predicate here so a caller cannot accidentally
+ * enable only one side of that contract.
  */
-export function planModeAvailable(flags: Pick<Info, "experimentalPlanMode" | "client">): boolean {
-  return flags.experimentalPlanMode && flags.client === "cli"
+export function planModeAvailable(flags: Pick<Info, "experimentalPlanMode">): boolean {
+  return flags.experimentalPlanMode
 }
 
 const emptyConfigLayer = Service.defaultLayer.pipe(

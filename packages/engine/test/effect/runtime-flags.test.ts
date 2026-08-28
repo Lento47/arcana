@@ -9,10 +9,9 @@ const fromConfig = (input: Record<string, unknown>) =>
 const readFlags = RuntimeFlags.Service.useSync((flags) => flags)
 
 describe("RuntimeFlags", () => {
-  test("plan mode requires both the experiment and the CLI surface", () => {
-    expect(RuntimeFlags.planModeAvailable({ experimentalPlanMode: true, client: "cli" })).toBe(true)
-    expect(RuntimeFlags.planModeAvailable({ experimentalPlanMode: true, client: "desktop" })).toBe(false)
-    expect(RuntimeFlags.planModeAvailable({ experimentalPlanMode: false, client: "cli" })).toBe(false)
+  test("plan mode requires the experimental flag", () => {
+    expect(RuntimeFlags.planModeAvailable({ experimentalPlanMode: true })).toBe(true)
+    expect(RuntimeFlags.planModeAvailable({ experimentalPlanMode: false })).toBe(false)
   })
 
   it.effect("defaultLayer defaults autoShare to false", () =>

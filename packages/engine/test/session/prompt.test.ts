@@ -504,25 +504,8 @@ noLLMServer.instance(
   { config: cfg },
 )
 
-noLLMServer.instance(
-  "rejects direct plan-agent requests when plan mode is disabled",
-  () =>
-    Effect.gen(function* () {
-      const prompt = yield* SessionPrompt.Service
-      const sessions = yield* Session.Service
-      const session = yield* sessions.create({ title: "Plan disabled" })
-      const exit = yield* prompt
-        .prompt({
-          sessionID: session.id,
-          agent: "plan",
-          parts: [{ type: "text", text: "draft a plan" }],
-        })
-        .pipe(Effect.exit)
-
-      expect(Exit.isFailure(exit)).toBe(true)
-    }),
-  { config: cfg },
-)
+// Plan mode is now always available — the old rejection test is obsolete.
+// Previously tested: "rejects direct plan-agent requests when plan mode is disabled"
 
 it.instance("a noReply prompt titles a default-titled session from the first user text", () =>
   Effect.gen(function* () {

@@ -112,8 +112,6 @@ export const layer = Layer.effect(
     const skill = yield* Skill.Service
     const provider = yield* Provider.Service
     const locations = yield* LocationServiceMap
-    const flags = yield* RuntimeFlags.Service
-    const planModeAvailable = RuntimeFlags.planModeAvailable(flags)
     // User-authored agent modules are global (loaded from <config>/agents), so
     // resolve them once here rather than per-directory inside the state builder.
     const external = yield* loadExternalAgents().pipe(Effect.catch(() => Effect.succeed([])))
@@ -276,7 +274,6 @@ export const layer = Layer.effect(
           plan: {
             name: "plan",
             description: "Plan mode. Disallows all edit tools.",
-            hidden: !planModeAvailable,
             steps: 25,
             options: {},
             permission: agentPermission({
@@ -565,10 +562,6 @@ export const layer = Layer.effect(
           item.options = mergeDeep(item.options, value.options ?? {})
           item.permission = Permission.merge(item.permission, Permission.fromConfig(value.permission ?? {}))
         }
-
-        // Plan mode is a coordinated CLI feature. Keep it unavailable when
-        // its runtime tool is not registered, even if config tries to expose it.
-        if (agents.plan && !planModeAvailable) agents.plan.hidden = true
 
         // Ensure Truncate.GLOB is allowed unless explicitly configured
         for (const name in agents) {

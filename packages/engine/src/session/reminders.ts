@@ -4,7 +4,6 @@ import { Effect } from "effect"
 import { Agent } from "@/agent/agent"
 import { FSUtil } from "@arcana/core/fs-util"
 import { InstanceState } from "@/effect/instance-state"
-import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Session } from "./session"
 import BUILD_SWITCH from "./prompt/build-switch.txt"
 import PLAN_MODE from "./prompt/plan-mode.txt"
@@ -20,23 +19,10 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   agent: Agent.Info
   session: Session.Info
 }) {
-  const flags = yield* RuntimeFlags.Service
   const fsys = yield* FSUtil.Service
   const system: string[] = []
   const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
   if (!userMessage) return { messages: input.messages, system }
-
-  // Keep prompt guidance aligned with the agent and tool registry. A plan
-  // reminder must never appear on a surface where plan mode cannot complete
-  // its hand-off through the matching `plan_exit` tool.
-  const planModeAvailable = RuntimeFlags.planModeAvailable(flags)
-  if (!planModeAvailable) {
-    const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
-    if (wasPlan && input.agent.name === "build") {
-      system.push(BUILD_SWITCH)
-    }
-    return { messages: input.messages, system }
-  }
 
   const assistantMessage = input.messages.findLast((msg) => msg.info.role === "assistant")
   if (input.agent.name !== "plan" && assistantMessage?.info.agent === "plan") {

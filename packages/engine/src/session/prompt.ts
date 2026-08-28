@@ -2080,14 +2080,6 @@ export const layer = Layer.effect(
             yield* events.publish(Session.Event.Error, { sessionID, error: error.toObject() })
             throw error
           }
-          const planModeAvailable = RuntimeFlags.planModeAvailable(flags)
-          if (agent.name === "plan" && !planModeAvailable) {
-            const error = new NamedError.Unknown({
-              message: "Plan mode is disabled. Enable ARCANA_EXPERIMENTAL_PLAN_MODE for the CLI to use it.",
-            })
-            yield* events.publish(Session.Event.Error, { sessionID, error: error.toObject() })
-            throw error
-          }
           const maxSteps = normalizeStepLimit(agent.steps)
           // `toolTurns` counts only provider turns that may execute external
           // tools. The finalization turn is deliberately outside this budget.
