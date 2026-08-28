@@ -1,4 +1,6 @@
 export { CommandSpineShell } from "./command-spine-shell"
+export { SpineToolChip } from "./spine-tool-chip"
+export type { ToolChipLifecycle, ToolChipModel } from "./spine-chrome"
 export type { SpineKind, SpineLayout, SpineEntry, SpineReceipt, SpineDiffExcerpt, SpineActivity } from "./spine-types"
 export { getSpineLayout, spineTone, SPINE_GLYPH } from "./spine-types"
 export { messagesToSpineEntries } from "./spine-mapper"

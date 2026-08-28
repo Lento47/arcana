@@ -3,7 +3,7 @@
  * Pure: tests feed fixtures and assert labels/cues without mounting the TUI.
  */
 
-import type { SpineApprovalSnapshot, SpineKind, SpineLayout } from "./spine-types"
+import type { SpineApprovalSnapshot, SpineKind, SpineLayout, SpineReceipt } from "./spine-types"
 import { selectionActions } from "../../util/selection"
 import { displayWidth } from "../../util/locale"
 
@@ -137,6 +137,134 @@ export function headerChipBudget(layout: SpineLayout): number {
 }
 
 export type ToolChipStatus = "live" | "done" | "fail" | "idle"
+
+/**
+ * Lifecycle vocabulary used by the shared tool-chip renderer.  The existing
+ * `ToolChipStatus` export is kept for compatibility with the older chrome
+ * helper; this richer state is what the visual surface consumes.
+ */
+export type ToolChipLifecycle = "queued" | "running" | "success" | "failure" | "interrupted"
+
+export type ToolChipModel = {
+  label: string
+  summary: string
+  lifecycle: ToolChipLifecycle
+  glyph: "·" | "●" | "✓" | "✗" | "!"
+  /** Human-readable status used when a meaningful outcome is unavailable. */
+  statusLabel: "queued" | "running" | "success" | "failed" | "interrupted"
+  /** Compact result/error text. Exact command/output remains in the receipt/body. */
+  outcome?: string
+}
+
+/** Stable category labels shared by both shell implementations. */
+export function toolCategoryLabel(tool: string): string {
+  const value = normalizeToolText(tool).toLowerCase()
+  if (!value) return "tool"
+  if (value === "inspect" || value === "patch" || value === "run" || value === "agent" || value === "report") return value
+  if (value === "fix") return "edit"
+  const tokens = value.split(/[^a-z0-9]+/).filter(Boolean)
+  const has = (...names: string[]) => tokens.some((token) => names.some((name) => token === name || token.startsWith(name)))
+  if (has("task", "subtask", "subagent")) return "task"
+  if (has("search", "grep", "ripgrep", "find")) return "search"
+  if (has("fetch", "url", "http")) return "fetch"
+  if (has("read")) return "read"
+  if (has("glob", "list", "directory")) return "list"
+  if (has("edit", "write", "patch", "rename", "move", "copy")) return "edit"
+  if (has("bash", "shell", "exec", "terminal", "run", "command", "powershell")) return "run"
+  if (has("question")) return "question"
+  if (has("skill")) return "skill"
+  if (has("todo")) return "todo"
+  return "tool"
+}
+
+function normalizeToolText(value: string | undefined): string {
+  return (value ?? "").replace(/\s+/g, " ").trim()
+}
+
+function stripLeadingOutcomeGlyph(value: string): string {
+  return value.replace(/^(?:[✓✗×!·]\s*)+/, "").trim()
+}
+
+function receiptOutcome(receipt: SpineReceipt | undefined, lifecycle: ToolChipLifecycle): string | undefined {
+  // The glyph already communicates a terminal failure/interruption. Without a
+  // receipt there is no useful second fact to add, so avoid generic filler
+  // such as "· failed" beside an already-specific summary.
+  if (!receipt) return undefined
+
+  if (lifecycle === "failure") {
+    const failure = normalizeToolText(receipt.summary || receipt.command)
+    return failure ? stripLeadingOutcomeGlyph(failure) : "failed"
+  }
+  if (lifecycle === "interrupted") {
+    const interruption = normalizeToolText(receipt.summary || receipt.command)
+    return interruption ? stripLeadingOutcomeGlyph(interruption) : "interrupted"
+  }
+
+  const stats = receipt.stats
+  if (stats && (stats.passed !== undefined || stats.failed !== undefined)) {
+    const passed = stats.passed ?? 0
+    const failed = stats.failed ?? 0
+    const ignored = stats.ignored !== undefined && stats.ignored > 0 ? ` · ${stats.ignored} skipped` : ""
+    return `${passed} passed · ${failed} failed${ignored}${stats.duration ? ` · ${stats.duration}` : ""}`
+  }
+  if (stats && (stats.added !== undefined || stats.removed !== undefined)) {
+    return `+${stats.added ?? 0} -${stats.removed ?? 0}`
+  }
+  const summary = normalizeToolText(receipt.summary)
+  if (summary) return stripLeadingOutcomeGlyph(summary)
+  if (!stats) return undefined
+  return normalizeToolText(stats.duration)
+}
+
+/**
+ * Build the single semantic model used by command-spine and legacy tool rows.
+ * This function is intentionally pure: state comes from the mapper/adapter and
+ * the renderer only decides how much of the model fits in the terminal.
+ */
+export function toolChipModel(input: {
+  kind: string
+  label?: string
+  summary?: string
+  receipt?: SpineReceipt
+  streaming?: boolean
+  lifecycle?: ToolChipLifecycle
+}): ToolChipModel {
+  const receiptStatus = input.receipt?.status
+  const lifecycle: ToolChipLifecycle = input.lifecycle
+    ?? (input.kind === "fail" || receiptStatus === "fail"
+      ? "failure"
+      : receiptStatus === "interrupted"
+        ? "interrupted"
+        : input.streaming === true
+          ? "running"
+          : receiptStatus === "pending"
+            ? "queued"
+            : "success")
+  const labels: Record<ToolChipLifecycle, ToolChipModel["statusLabel"]> = {
+    queued: "queued",
+    running: "running",
+    success: "success",
+    failure: "failed",
+    interrupted: "interrupted",
+  }
+  const glyphs: Record<ToolChipLifecycle, ToolChipModel["glyph"]> = {
+    queued: "·",
+    running: "●",
+    success: "✓",
+    failure: "✗",
+    interrupted: "!",
+  }
+  const summary = normalizeToolText(input.summary)
+  const outcome = receiptOutcome(input.receipt, lifecycle)
+  return {
+    label: normalizeToolText(input.label) || toolCategoryLabel(input.kind),
+    summary,
+    lifecycle,
+    glyph: glyphs[lifecycle],
+    statusLabel: labels[lifecycle],
+    outcome: outcome && outcome !== summary ? outcome : undefined,
+  }
+}
 
 export function toolChipStatus(input: { kind: string; streaming?: boolean }): ToolChipStatus {
   if (input.kind === "fail") return "fail"

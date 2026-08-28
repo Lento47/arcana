@@ -24,12 +24,18 @@ function withTheme(component: () => JSX.Element) {
   )
 }
 
-function renderReceipt(kind: string, receipt: SpineReceiptType, layout: SpineLayout, width: number) {
+function renderReceipt(
+  kind: string,
+  receipt: SpineReceiptType,
+  layout: SpineLayout,
+  width: number,
+  detailsOnly = false,
+) {
   return testRender(
     () =>
       withTheme(() => (
         <box flexDirection="column" width={width}>
-          <SpineReceipt kind={kind as any} receipt={receipt} layout={layout} />
+          <SpineReceipt kind={kind as any} receipt={receipt} layout={layout} detailsOnly={detailsOnly} />
         </box>
       )),
     { width, height: 12 },
@@ -207,6 +213,26 @@ test("patch receipt at minimal", async () => {
     ),
   )
   expect(frame).toContain("+45/-12")
+})
+
+test("details-only receipt keeps file evidence without repeating status counts", async () => {
+  const frame = await capture(
+    await renderReceipt(
+      "patch",
+      {
+        label: "edit",
+        stats: { added: 45, removed: 12 },
+        files: [{ path: "src/app.tsx", added: 45, removed: 12 }],
+        status: "ok",
+      },
+      "wide",
+      120,
+      true,
+    ),
+  )
+  expect(frame).toContain("src/app.tsx")
+  expect(frame).toContain("45")
+  expect(frame).not.toContain("passed")
 })
 
 test("patch receipt with no stats returns null", async () => {

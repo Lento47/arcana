@@ -253,5 +253,8 @@ describe("Command Spine visual grammar", () => {
     expect(frame).not.toContain("assistant")
     expect(frame).not.toContain("arcana")
     expect(frame).toContain("restrained chrome")
+    // Receipt stats are carried by the chip; the legacy receipt row must not
+    // paint the same result a second time.
+    expect(frame.match(/1186 passed/g)?.length).toBe(1)
   })
 })

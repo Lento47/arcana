@@ -37,28 +37,33 @@ afterEach(() => {
   testSetup = undefined
 })
 
-type ToolFixture = { icon: string; label: string; error?: string }
+type ToolFixture = { tool: string; icon: string; label: string; error?: string }
 
 const tools: readonly ToolFixture[] = [
   {
+    tool: "grep",
     icon: "✱",
     label:
       'Grep "ARCANA.*DB|database|sqlite|drizzle|dev.*db|data.*dir|xdg|APPDATA" in packages/opencode/src (151 matches)',
   },
   {
+    tool: "glob",
     icon: "✱",
     label: 'Glob "**/*db*" in packages/opencode (6 matches)',
   },
   {
+    tool: "read",
     icon: "→",
     label: "Read packages/opencode/src/storage/db.ts [offset=1, limit=130]",
   },
   {
+    tool: "read",
     icon: "→",
     label: "Read packages/opencode/src/index.ts [offset=1, limit=100]",
     error: "No LSP server available for this file type.",
   },
   {
+    tool: "grep",
     icon: "✱",
     label:
       'Grep "export const ARCANA_DB|ARCANA_DB|ARCANA_DEV|Global\\.Path\\.data|data =" in packages/opencode/src (115 matches)',
@@ -97,6 +102,7 @@ function Fixture(props: { errorExpanded?: boolean; before?: "shell" | "user" }) 
           {(item) => (
             <InlineToolRow
               icon={item.icon}
+              tool={item.tool}
               complete={true}
               pending=""
               failed={Boolean(item.error)}
@@ -116,16 +122,16 @@ function Fixture(props: { errorExpanded?: boolean; before?: "shell" | "user" }) 
 function SubagentGroupFixture() {
   return (
     <box flexDirection="column" width={72}>
-      <InlineToolRow id="tool-inline-before" icon="✱" complete={true} pending="">
+      <InlineToolRow id="tool-inline-before" icon="✱" tool="grep" complete={true} pending="">
         Grep "Task" (2 matches)
       </InlineToolRow>
-      <InlineToolRow id="tool-inline-subagent-one" icon="⠙" complete={true} pending="" subagent={true}>
+      <InlineToolRow id="tool-inline-subagent-one" icon="⠙" tool="task" complete={true} pending="" subagent={true}>
         Explore Task — Inspect active task spacing
       </InlineToolRow>
-      <InlineToolRow id="tool-inline-subagent-two" icon="✓" complete={true} pending="" subagent={true}>
+      <InlineToolRow id="tool-inline-subagent-two" icon="✓" tool="task" complete={true} pending="" subagent={true}>
         {"General Task — Confirm completed task spacing\n↳ 1 toolcall · 501ms"}
       </InlineToolRow>
-      <InlineToolRow id="tool-inline-after" icon="→" complete={true} pending="">
+      <InlineToolRow id="tool-inline-after" icon="→" tool="read" complete={true} pending="">
         Read src/cli/cmd/tui/routes/session/index.tsx
       </InlineToolRow>
     </box>
@@ -135,13 +141,13 @@ function SubagentGroupFixture() {
 function LoadedReadBeforeSubagentFixture() {
   return (
     <box flexDirection="column" width={72}>
-      <InlineToolRow id="tool-inline-read" icon="→" complete={true} pending="">
+      <InlineToolRow id="tool-inline-read" icon="→" tool="read" complete={true} pending="">
         Read src/cli/cmd/tui/routes/session/index.tsx
       </InlineToolRow>
       <box id="tool-inline-loaded-read-child" paddingLeft={3}>
         <text paddingLeft={3}>↳ Loaded src/cli/cmd/tui/routes/session/tools.tsx</text>
       </box>
-      <InlineToolRow id="tool-inline-subagent-after-read" icon="✓" complete={true} pending="" subagent={true}>
+      <InlineToolRow id="tool-inline-subagent-after-read" icon="✓" tool="task" complete={true} pending="" subagent={true}>
         {"Explore Task — Inspect active task spacing\n↳ 1 toolcall · 501ms"}
       </InlineToolRow>
     </box>
@@ -154,7 +160,7 @@ function AssistantSummaryBeforeSubagentFixture() {
       <box id="assistant-summary-message-one" paddingLeft={3}>
         <text>▣ Build · Little Frank · 53.1s</text>
       </box>
-      <InlineToolRow id="tool-inline-subagent-one" icon="✓" complete={true} pending="" subagent={true}>
+      <InlineToolRow id="tool-inline-subagent-one" icon="✓" tool="task" complete={true} pending="" subagent={true}>
         {"Build Task — Review changes\n↳ 48 toolcalls · 1m 40s"}
       </InlineToolRow>
     </box>
@@ -167,7 +173,7 @@ function AssistantErrorBeforeSubagentFixture() {
       <box id="assistant-error-message-one" border={["left"]} paddingTop={1} paddingBottom={1} paddingLeft={2}>
         <text>Managed inference requires an active Member plan</text>
       </box>
-      <InlineToolRow id="tool-inline-subagent-one" icon="✓" complete={true} pending="" subagent={true}>
+      <InlineToolRow id="tool-inline-subagent-one" icon="✓" tool="task" complete={true} pending="" subagent={true}>
         {"Build Task — Review changes\n↳ 48 toolcalls · 1m 40s"}
       </InlineToolRow>
     </box>
@@ -188,7 +194,7 @@ function StickyScrollFixture(props: { separated: boolean; scroll: (scroll: Scrol
           <text>Assistant text</text>
         </box>
       </Show>
-      <InlineToolRow icon="→" complete={true} pending="">
+      <InlineToolRow icon="→" tool="read" complete={true} pending="">
         Read src/cli/cmd/tui/routes/session/index.tsx
       </InlineToolRow>
     </scrollbox>
@@ -197,7 +203,7 @@ function StickyScrollFixture(props: { separated: boolean; scroll: (scroll: Scrol
 
 function FailedPendingToolFixture() {
   return (
-    <InlineToolRow icon="%" complete={false} pending="Preparing patch..." failed={true} failure="Patch failed">
+    <InlineToolRow icon="%" tool="edit" complete={false} pending="Preparing patch..." failed={true} failure="Patch failed">
       Patch
     </InlineToolRow>
   )
@@ -205,7 +211,7 @@ function FailedPendingToolFixture() {
 
 function FailedCompleteToolFixture() {
   return (
-    <InlineToolRow icon="→" complete={true} pending="Reading file..." failed={true} failure="Read failed">
+    <InlineToolRow icon="→" tool="read" complete={true} pending="Reading file..." failed={true} failure="Read failed">
       Read src/index.ts
     </InlineToolRow>
   )
@@ -341,17 +347,17 @@ describe("TUI inline tool wrapping", () => {
     )
 
     await testSetup.renderOnce()
-    expect(scroll?.scrollHeight).toBe(4)
+    expect(scroll?.scrollHeight).toBe(3)
     expect(scroll?.scrollTop).toBe(Math.max(0, scroll!.scrollHeight - scroll!.viewport.height))
 
     setSeparated(true)
     await testSetup.renderOnce()
-    expect(scroll?.scrollHeight).toBe(6)
+    expect(scroll?.scrollHeight).toBe(5)
     expect(scroll?.scrollTop).toBe(Math.max(0, scroll!.scrollHeight - scroll!.viewport.height))
 
     setSeparated(false)
     await testSetup.renderOnce()
-    expect(scroll?.scrollHeight).toBe(4)
+    expect(scroll?.scrollHeight).toBe(3)
     expect(scroll?.scrollTop).toBe(Math.max(0, scroll!.scrollHeight - scroll!.viewport.height))
   })
 })

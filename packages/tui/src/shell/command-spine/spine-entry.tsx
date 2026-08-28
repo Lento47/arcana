@@ -14,6 +14,7 @@ import { selectedForeground, useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
 import { SpineGutter } from "./spine-gutter"
 import { SpineNode } from "./spine-node"
+import { SpineToolChip } from "./spine-tool-chip"
 import { SpineReceipt } from "./spine-receipt"
 import { SpineDiff } from "./spine-diff"
 import { SpineRail } from "./spine-rail"
@@ -129,17 +130,10 @@ function receiptHasContent(view: SpineEntryView): boolean {
   // The composer owns the single authoritative shimmering activity cue.
   // A pending receipt must not add a second, static "Working" row.
   if (r.status === "pending") return false
-  if (r.status === "fail") return true
-  if (r.files?.length) return true
-  if (r.stats && (
-    r.stats.passed !== undefined
-    || r.stats.failed !== undefined
-    || r.stats.added !== undefined
-    || r.stats.removed !== undefined
-    || r.stats.duration
-  )) return true
-  if (view.kind === "run" && r.status === "ok") return true
-  return false
+  // Status, errors, test counts, and durations are already rendered in the
+  // shared header chip. Keep only file-level evidence as a second row; this
+  // avoids painting the same receipt twice while preserving patch details.
+  return (r.files?.length ?? 0) > 0
 }
 
 /** Fields every non-chat row family shares for its compact header. */
@@ -149,6 +143,8 @@ type HeaderFields = {
   summary: string
   actor?: string
   elapsed?: string
+  receipt?: ToolEntry["receipt"] | RecoveryEntry["receipt"]
+  contentWidth?: number
   startMs?: number
   glyph: string
   streaming?: boolean
@@ -205,6 +201,8 @@ function RowHeader(props: {
         layout={props.layout}
         focused={props.focused}
         elapsed={props.view.elapsed}
+        receipt={props.view.receipt}
+        contentWidth={props.view.contentWidth}
         timestamp={props.view.timestamp}
         startMs={props.view.startMs}
         disclosure={props.disclosure}
@@ -243,29 +241,24 @@ function ChildrenGroup(props: {
               flexDirection="row"
               flexShrink={0}
               alignItems="flex-start"
-              onMouseUp={(event) => openChildSession(child, event)}
             >
               <SpineRail
                 layout={props.layout}
                 glyph={i() === 0 ? "\u250C" : i() === count() - 1 ? "\u2514" : "\u251C"}
                 active={false}
               />
-              <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>
-                <box flexDirection="row" flexShrink={0} gap={1} minWidth={0}>
-                  <box flexShrink={0} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement}>
-                    <text fg={theme.spineContext} wrapMode="none">
-                      {child.label || child.kind}
-                    </text>
-                  </box>
-                  <text fg={theme.text} wrapMode="word">
-                    {child.summary || child.receipt?.command || child.label || "action"}
-                  </text>
-                </box>
-                <Show when={child.receipt?.summary || child.elapsed}>
-                  <text fg={theme.spineDiffMuted} wrapMode="word">
-                    {[child.receipt?.status, child.receipt?.summary, child.elapsed].filter(Boolean).join(" \u00B7 ")}
-                  </text>
-                </Show>
+              <box flexDirection="column" flexGrow={1} minWidth={0} flexShrink={1}>
+                <SpineToolChip
+                  kind={child.kind}
+                  label={child.label || child.kind}
+                  summary={child.summary || child.receipt?.command || child.label || "action"}
+                  receipt={child.receipt}
+                  streaming={child.streaming}
+                  elapsed={child.elapsed}
+                  layout={props.layout}
+                  contentWidth={props.contentWidth}
+                  onMouseUp={(event) => openChildSession(child, event)}
+                />
                 <Show when={child.sessionID}>
                   <text fg={theme.spineBrand} wrapMode="none">↵ open context</text>
                 </Show>
@@ -727,7 +720,7 @@ export function SpineEntry(props: {
                   <box flexDirection="row" flexShrink={0}>
                     <SpineRail layout={props.layout} active={props.focused} />
                     <box flexGrow={1} minWidth={0}>
-                      <SpineReceipt kind={kind()} receipt={v().receipt!} layout={props.layout} />
+                      <SpineReceipt kind={kind()} receipt={v().receipt!} layout={props.layout} detailsOnly />
                     </box>
                   </box>
                 </Show>
@@ -944,7 +937,7 @@ export function SpineEntry(props: {
           </Show>
 
           {/* Subagent task row — a bordered block, not a transcript line. The
-              header chip (animated braille while delegated, check when returned)
+              header chip (stable live dot while delegated, check when returned)
               leads; the card below is the working/returned panel. The card is a
               self-contained unit so the delegation reads as a box even while
               collapsed, and Enter/click on the header dives into its own context. */}
@@ -1108,7 +1101,7 @@ export function SpineEntry(props: {
                   <box flexDirection="row" flexShrink={0}>
                     <SpineRail layout={props.layout} active={props.focused} />
                     <box flexGrow={1} minWidth={0}>
-                      <SpineReceipt kind={kind()} receipt={v().receipt!} layout={props.layout} />
+                      <SpineReceipt kind={kind()} receipt={v().receipt!} layout={props.layout} detailsOnly />
                     </box>
                   </box>
                 </Show>

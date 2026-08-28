@@ -32,6 +32,12 @@
 - [[proxy-origin-check]] — PayPal endpoint Origin check, CF Function proxy, client never sees proxy URL
 
 ## Project: arcana
+- [[arcana-authorize-execute-sync-issues]] — authorizeAndExecuteSync skips claimUse, fragile extractApprovalId, stray .db files
+- [[arcana-ancestors-intentbindings-failopen]] — validateAncestors/intentBindings only enforced if provider populates
+- [[arcana-deny-unlabeled-consequential-unenforced]] — DENY_UNLABELED_CONSEQUENTIAL declared but no push site in pdp.ts
+- [[arcana-agents-md-conventions]] — AGENTS.md: no export namespace, TUI strings from branding.ts
+- [[bash-tool-gated-on-goal]] — bash tool requires active goal_set to run
+- [[powershell-shell-constraints]] — Shell is PowerShell; bash loops/redirects fail, use rg + PS loops
 - [[env-shell-is-powershell]] — Agent shell is PowerShell, not bash; UNIX syntax breaks
 - [[arcana-tooling-stack]] — Arcana uses oxlint + Turborepo (bun turbo); no per-pkg typecheck script
 - [[arcana-monorepo-layout]] — Arcana is a TS/Effect monorepo (engine, core, tui, llm); tests live in sibling test/ dirs, not src/
@@ -51,6 +57,9 @@
 - [[corrupt-glyphs-error-effect]] — CORRUPT_GLYPHS pool used for error "unencrypt" effect
 
 ## Patterns
+- [[repo-wide-grep-to-confirm-gaps]] — Confirm negative claims repo-wide with grep before asserting
+- [[rg-output-token-collapse-artifact]] — ripgrep output may collapse tokens (e.g., to 'n'); empty result signals absence
+- [[verify-trash-untracked-before-deletion]] — Use git check-ignore to verify trash untracked before recommending deletion
 - [[pattern-count-tests-repo-wide]] — Count Arcana tests repo-wide via rg, not src-only glob
 - [[pattern-set-goal-before-shell]] — Set active goal before invoking bash/shell tool
 - [[pattern-rg-files-inventory]] — Use rg --files for fast, ignore-aware file inventory in monorepos

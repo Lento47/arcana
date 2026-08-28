@@ -175,10 +175,27 @@ function renderFallbackReceipt(r: SpineReceiptType, layout: SpineLayout, t: Them
   return <text fg={t.spineDiffMuted}>{r.label} · {r.status}</text>
 }
 
+/**
+ * Details that are not represented by the compact header chip.  The chip owns
+ * status, errors, counts, and duration; this row is reserved for file-level
+ * evidence, where paths and per-file additions/removals still matter.
+ */
+function renderReceiptDetails(r: SpineReceiptType, layout: SpineLayout, t: Theme) {
+  if (!r.files?.length) return null
+  if (layout === "wide") return renderPatchReceipt(r, layout, t)
+  return (
+    <text fg={t.spineDiffMuted} wrapMode="word">
+      {r.files.map((file) => file.path).join(" · ")}
+    </text>
+  )
+}
+
 export function SpineReceipt(props: {
   kind: SpineKind
   receipt: SpineReceiptType
   layout: SpineLayout
+  /** Render only file-level evidence already omitted from the header chip. */
+  detailsOnly?: boolean
 }) {
   const { theme } = useTheme()
   const kind = () => props.kind
@@ -188,6 +205,7 @@ export function SpineReceipt(props: {
   const content = () => {
     const receipt = r()
     if (!receipt) return null
+    if (props.detailsOnly) return renderReceiptDetails(receipt, layout(), theme)
     if (receipt.status === "interrupted") return renderInterruptedReceipt(receipt, layout(), theme)
     switch (kind()) {
       case "run":

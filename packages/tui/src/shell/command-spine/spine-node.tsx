@@ -1,7 +1,6 @@
-import { For, Show, createMemo } from "solid-js"
+import { Show, createMemo } from "solid-js"
 import type { MouseEvent } from "@opentui/core"
 import { useTheme } from "../../context/theme"
-import type { Theme } from "../../theme"
 import { Glyph } from "../../branding"
 import { displayWidth, truncate } from "../../util/locale"
 import {
@@ -11,10 +10,12 @@ import {
   spineTone,
   type SpineKind,
   type SpineLayout,
+  type SpineReceipt,
 } from "./spine-types"
-import { thinkingRowChrome, toolChipChrome } from "./spine-chrome"
+import { thinkingRowChrome } from "./spine-chrome"
 import { useSpineMotion } from "./spine-motion"
 import { ShimmerText } from "../../component/shimmer-text"
+import { SpineToolChip } from "./spine-tool-chip"
 
 /**
  * Meta parts that must live in a `flexShrink={0}` sibling box beside the
@@ -33,36 +34,8 @@ export function nodeMetaStrip(disclosure: string, elapsed: string): NodeMetaPart
   return parts
 }
 
-/** Max characters for the tool label column (short verbs: search, read, run). */
-const TOOL_LABEL_WIDTH = 7
 /** Wider column for chat voice so "assistant" / "you" are not truncated. */
 const CHAT_LABEL_WIDTH = 10
-
-function patchSummaryColor(part: string, index: number, theme: Theme) {
-  if (part.startsWith("+")) return theme.spineDiffAdd
-  if (part.startsWith("-")) return theme.spineDiffRemove
-  if (part === "diff") return theme.spineOk
-  if (part.includes("unavailable") || part.includes("incomplete") || part.includes("file-list only")) return theme.warning
-  return index === 0 ? theme.spineDiffMuted : theme.text
-}
-
-function PatchSummaryText(props: { summary: string; theme: Theme }) {
-  const parts = createMemo(() => props.summary.split(/\s+·\s+/).filter(Boolean))
-  return (
-    <text wrapMode="word">
-      <For each={parts()}>
-        {(part, index) => (
-          <>
-            <Show when={index() > 0}>
-              <span style={{ fg: props.theme.spineDiffMuted }}> · </span>
-            </Show>
-            <span style={{ fg: patchSummaryColor(part, index(), props.theme) }}>{part}</span>
-          </>
-        )}
-      </For>
-    </text>
-  )
-}
 
 /** Truncate/pad actor name to the column width, display-column aware (audit T4). */
 function truncateActor(name: string, width: number): string {
@@ -88,6 +61,10 @@ export function SpineNode(props: {
   focused?: boolean
   /** Optional duration from the entry — shown muted after the label/summary. */
   elapsed?: string
+  /** Receipt outcome shown in the shared semantic tool chip. */
+  receipt?: SpineReceipt
+  /** Measured content width used to truncate the collapsed chip preview. */
+  contentWidth?: number
   /** Optional wall-clock timestamp (chat voice only) — shown on the right,
       next to elapsed. Lets collapsed user prompts keep their timestamp visible
       without rendering the full chat card. */
@@ -120,9 +97,8 @@ export function SpineNode(props: {
   const streaming = createMemo(() => props.streaming === true)
 
   // Live ticking chrome: while a running row carries an absolute start time,
-  // re-render every second so subagents/tools show a spinning braille frame and
-  // a progress elapsed without waiting for the next engine update. Falls back to
-  // the static entry duration and a static glyph.
+  // refresh only the elapsed duration. The shared chip keeps its status glyph
+  // stable so progress never looks like a different operation.
   const live = createMemo(
     () => streaming() && typeof props.startMs === "number" && Number.isFinite(props.startMs),
   )
@@ -149,7 +125,7 @@ export function SpineNode(props: {
   })
   const isTool = createMemo(() => {
     const k = kind()
-    return k === "inspect" || k === "run" || k === "patch" || k === "fail" || k === "agent"
+    return k === "inspect" || k === "run" || k === "patch" || k === "fix" || k === "fail" || k === "agent" || k === "report"
   })
 
   // Wall-clock timestamp for chat voice — minimal layout skips timestamps
@@ -161,17 +137,11 @@ export function SpineNode(props: {
   })
   const showTimestamp = createMemo(() => !isChat() ? false : !!timestampText())
 
-  const labelWidth = createMemo(() => {
-    if (isChat()) return CHAT_LABEL_WIDTH
-    if (kind() === "agent") return layout() === "minimal" ? 8 : 12
-    return layout() === "minimal" ? 7 : 10
-  })
   const showLabel = createMemo(
-    () => !!label() && layout() !== "minimal" && kind() !== "think",
+    () => isTool() || (!!label() && layout() !== "minimal" && kind() !== "think"),
   )
   const showActor = createMemo(() => !!actor() && actor() === "you")
 
-  const chip = createMemo(() => toolChipChrome({ kind: kind(), label: label(), streaming: streaming() }))
   const thinkChrome = createMemo(() =>
     thinkingRowChrome({ streaming: streaming(), title: summary() }),
   )
@@ -187,28 +157,10 @@ export function SpineNode(props: {
     if (isTool()) return theme.text
     return theme.text
   })
-  // Tool rows drop the chip box entirely — the rail glyph carries the
-  // kind identity (▸/◇/± etc.) and the inline status word ("ok"/"failed")
-  // carries the run state. Chat voice and agent subagent rows still need
-  // the chip box (color-coded speaker identity).
-  const showChip = createMemo(() => isChat() || kind() === "agent")
-
   // Right-side meta color (elapsed, timestamp). Same logic as summaryColor:
   // bright on the soft user-row fill, muted on the assistant card.
   const metaColor = createMemo(() =>
     isChat() && kind() === "ask" ? theme.textMuted : theme.spineGutterElapsed,
-  )
-  // Inline status word for tool rows: "ok" on success, "failed" on error,
-  // "" otherwise (chat/think/agent skip the word — status is conveyed by
-  // other means like the row chrome or the body content).
-  const statusText = createMemo(() => {
-    if (isChat() || kind() === "think" || kind() === "agent") return ""
-    if (kind() === "fail") return "failed"
-    if (chip().status === "live") return ""
-    return "ok"
-  })
-  const statusColor = createMemo(() =>
-    kind() === "fail" || chip().status === "fail" ? theme.spineFail : theme.spineOk,
   )
   const labelColor = createMemo(() => {
     // Chat voice: user prompts get spineAsk (matches SpineChatCard convention)
@@ -230,15 +182,6 @@ export function SpineNode(props: {
     if (isChat() && kind() === "ask") return Glyph.diamond
     return label()
   })
-
-  const truncatedLabel = createMemo(() => truncate(label(), labelWidth()))
-  // Agent chips (subagent rows) pad the label to the full column width: the
-  // fixed-width box / row gap is not a reliable separator across renderers,
-  // so the chip text itself carries trailing spaces and the summary can
-  // never merge into the agent name ("generalSimple").
-  const chipLabel = createMemo(() =>
-    kind() === "agent" ? truncateActor(label(), labelWidth()) : truncatedLabel(),
-  )
 
   // M1: the wrapping text node carries ONLY the summary; the chevron + elapsed
   // render in a flexShrink={0} sibling so a wrapped summary can never strand
@@ -324,123 +267,85 @@ export function SpineNode(props: {
         </Show>
       }
     >
-      {/* Labeled tool / chat header */}
+      {/* Tool rows use one explicit semantic chip.  Chat voice keeps its
+          existing prose chrome so the tool grammar never leaks into replies. */}
       <Show
-        when={summary()}
+        when={isTool()}
         fallback={
-          <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
-            <Show
-              when={isChat() && kind() === "ask"}
-              fallback={
-                <Show when={isChat()}>
+          <Show
+            when={summary()}
+            fallback={
+              <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start">
+                <Show
+                  when={isChat() && kind() === "ask"}
+                  fallback={
+                    <Show when={isChat()}>
+                      <box flexShrink={0}>
+                        <text fg={labelColor()} wrapMode="none">{labelText()}</text>
+                      </box>
+                    </Show>
+                  }
+                >
                   <box flexShrink={0}>
                     <text fg={labelColor()} wrapMode="none">{labelText()}</text>
                   </box>
                 </Show>
-              }
-            >
-              {/* User chat voice: glyph in spineAsk (lavender) — the row
-                  carries a soft backgroundElement fill so the colored glyph
-                  is the row's identity marker without being loud. */}
-              <box flexShrink={0}>
-                <text fg={labelColor()} wrapMode="none">{labelText()}</text>
+                <Show when={elapsedText()}>
+                  <text fg={metaColor()} wrapMode="none">{` · ${elapsedText()}`}</text>
+                </Show>
+                <Show when={showTimestamp()}>
+                  <text fg={metaColor()} wrapMode="none"> · {timestampText()}</text>
+                </Show>
+                {actorBox()}
+                <box flexGrow={1} minWidth={0} />
               </box>
-            </Show>
-            <Show when={elapsedText()}>
-              <text fg={metaColor()} wrapMode="none">{` · ${elapsedText()}`}</text>
-            </Show>
-            <Show when={showTimestamp()}>
-              <text fg={metaColor()} wrapMode="none"> · {timestampText()}</text>
-            </Show>
-            {actorBox()}
-            <box flexGrow={1} minWidth={0} />
-          </box>
-        }
-      >
-        <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start" gap={1}>
-          <Show
-            when={isTool()}
-            fallback={
-              <Show
-                when={isChat() && kind() === "ask"}
-                fallback={
-                  <box flexShrink={0}>
-                    <text fg={labelColor()}>{labelText()}</text>
-                  </box>
-                }
-              >
-                {/* User chat voice: glyph in spineAsk (lavender) — the row
-                    carries a soft backgroundElement fill so the colored
-                    glyph is the row's identity marker without being loud. */}
-                <box flexShrink={0}>
-                  <text fg={labelColor()} wrapMode="none">{labelText()}</text>
-                </box>
-              </Show>
             }
           >
-            {/* Tool rows skip the chip box — rail glyph carries kind identity,
-                inline status word carries state. Fail rows still show the ✗
-                glyph (rail is blank for fail) so the failure marker is
-                unambiguous. Width drops for fail so the box hugs the glyph. */}
-            <Show when={showChip() || kind() === "fail"}>
-              <box
-                flexShrink={0}
-                width={kind() === "fail" ? undefined : labelWidth()}
-              >
-                <text
-                  fg={chip().status === "fail" ? theme.spineFail : chip().status === "live" ? activityColor() : labelColor()}
-                  wrapMode="none"
-                >
-                  {chip().glyph}
-                </text>
+            <box flexDirection="row" flexGrow={1} minWidth={0} flexShrink={1} alignItems="flex-start" gap={1}>
+              <Show when={isChat() && kind() === "ask"} fallback={<box flexShrink={0}><text fg={labelColor()}>{labelText()}</text></box>}>
+                <box flexShrink={0}><text fg={labelColor()} wrapMode="none">{labelText()}</text></box>
+              </Show>
+              {actorBox()}
+              <Show when={thinking()}>
+                <text fg={activityColor()} wrapMode="none">{thinking() || thinkChrome().verb}</text>
+                <text fg={theme.spineDiffMuted} wrapMode="none">·</text>
+              </Show>
+              <box flexGrow={1} minWidth={0} flexShrink={1}>
+                <text fg={summaryColor()} wrapMode="word">{summary()}</text>
               </box>
-            </Show>
-          </Show>
-          {actorBox()}
-          <Show when={thinking()}>
-            <text fg={activityColor()} wrapMode="none">
-              {thinking() || thinkChrome().verb}
-            </text>
-            <text fg={theme.spineDiffMuted} wrapMode="none">·</text>
-          </Show>
-          <box flexGrow={1} minWidth={0} flexShrink={1}>
-            <Show
-              when={kind() === "patch"}
-              fallback={
-                <text fg={summaryColor()} wrapMode="word">
-                  {summary()}
-                </text>
-              }
-            >
-              <PatchSummaryText summary={summary()} theme={theme} />
-            </Show>
-          </box>
-          <Show when={statusText()}>
-            <box flexShrink={0}>
-              <text fg={statusColor()} wrapMode="none"> · {statusText()}</text>
+              <Show when={disclosure()}>
+                <box flexShrink={0} onMouseUp={props.onDisclosureMouseUp}>
+                  <text fg={summaryColor()} wrapMode="none">{disclosure()}</text>
+                </box>
+              </Show>
+              <Show when={elapsedText()}>
+                <box flexShrink={0}><text fg={metaColor()} wrapMode="none">{elapsedText()}</text></box>
+              </Show>
+              <Show when={showTimestamp()}>
+                <box flexShrink={0}><text fg={metaColor()} wrapMode="none"> · {timestampText()}</text></box>
+              </Show>
+              <Show when={props.onDismiss}>
+                <box flexShrink={0} paddingLeft={1} onMouseUp={() => props.onDismiss?.()}>
+                  <text fg={theme.textMuted} wrapMode="none">×</text>
+                </box>
+              </Show>
             </box>
           </Show>
-          <Show when={disclosure()}>
-            <box flexShrink={0} onMouseUp={props.onDisclosureMouseUp}>
-              <text fg={summaryColor()} wrapMode="none">{disclosure()}</text>
-            </box>
-          </Show>
-          <Show when={elapsedText()}>
-            <box flexShrink={0}>
-              <text fg={metaColor()} wrapMode="none">{elapsedText()}</text>
-            </box>
-          </Show>
-          <Show when={showTimestamp()}>
-            <box flexShrink={0}>
-              <text fg={metaColor()} wrapMode="none"> · {timestampText()}</text>
-            </box>
-          </Show>
-          <Show when={props.onDismiss}>
-            <box flexShrink={0} paddingLeft={1} onMouseUp={() => props.onDismiss?.()}>
-              <text fg={theme.textMuted} wrapMode="none">×</text>
-            </box>
-          </Show>
-        </box>
+        }
+      >
+        <SpineToolChip
+          kind={kind()}
+          label={label()}
+          summary={summary()}
+          receipt={props.receipt}
+          streaming={streaming()}
+          elapsed={elapsedText()}
+          disclosure={disclosure()}
+          layout={layout()}
+          contentWidth={props.contentWidth}
+          onDisclosureMouseUp={props.onDisclosureMouseUp}
+          onMouseUp={props.onDismiss ? () => props.onDismiss?.() : undefined}
+        />
       </Show>
     </Show>
   )

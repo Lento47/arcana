@@ -18,6 +18,8 @@ import {
   streamTextCue,
   taskRowChrome,
   thinkingRowChrome,
+  toolCategoryLabel,
+  toolChipModel,
   toolChipChrome,
 } from "../src/shell/command-spine/spine-chrome"
 import { classifyThinking } from "../src/context/thinking"
@@ -70,6 +72,59 @@ describe("focusedEntryActionHint", () => {
       toggleable: true,
       expanded: false,
     })).toBe("enter/space expand · y copy")
+  })
+})
+
+describe("toolChipModel", () => {
+  test("normalizes tool families without losing semantic identity", () => {
+    expect(toolCategoryLabel("mcp__filesystem__read")).toBe("read")
+    expect(toolCategoryLabel("server__grep")).toBe("search")
+    expect(toolCategoryLabel("thread_list")).toBe("list")
+    expect(toolCategoryLabel("write_file")).toBe("edit")
+    expect(toolCategoryLabel("fix")).toBe("edit")
+    expect(toolCategoryLabel("custom_operation")).toBe("tool")
+  })
+
+  test("keeps the lifecycle vocabulary stable across terminal states", () => {
+    const queued = toolChipModel({
+      kind: "inspect",
+      label: "read",
+      summary: "src/index.ts",
+      receipt: { label: "read", status: "pending" },
+    })
+    const running = toolChipModel({ kind: "run", label: "run", streaming: true })
+    const success = toolChipModel({
+      kind: "inspect",
+      label: "search",
+      summary: "database",
+      receipt: { label: "grep", status: "ok", summary: "✓ 4 matches" },
+    })
+    const failure = toolChipModel({
+      kind: "run",
+      label: "run",
+      summary: "bun test",
+      receipt: { label: "bash", status: "fail", command: "E1001: proof missing" },
+    })
+    const interrupted = toolChipModel({
+      kind: "run",
+      label: "run",
+      receipt: { label: "bash", status: "interrupted", command: "Interrupted" },
+    })
+
+    expect(queued).toMatchObject({ lifecycle: "queued", glyph: "·", statusLabel: "queued" })
+    expect(running).toMatchObject({ lifecycle: "running", glyph: "●", statusLabel: "running" })
+    expect(success).toMatchObject({ lifecycle: "success", glyph: "✓", statusLabel: "success", outcome: "4 matches" })
+    expect(toolChipModel({
+      kind: "run",
+      label: "run",
+      receipt: { label: "test", status: "ok", stats: { passed: 12, failed: 0, duration: "1.2s" } },
+    }).outcome).toBe("12 passed · 0 failed · 1.2s")
+    expect(failure).toMatchObject({ lifecycle: "failure", glyph: "✗", statusLabel: "failed", outcome: "E1001: proof missing" })
+    expect(interrupted).toMatchObject({ lifecycle: "interrupted", glyph: "!", statusLabel: "interrupted", outcome: "Interrupted" })
+  })
+
+  test("collapses multiline summaries into a single preview", () => {
+    expect(toolChipModel({ kind: "inspect", summary: "first line\nsecond line" }).summary).toBe("first line second line")
   })
 })
 

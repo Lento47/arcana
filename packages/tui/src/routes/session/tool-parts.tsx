@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import { batch, For, Show, Switch, Match, createContext, createMemo, createSignal, createEffect, onMount, useContext, type JSX } from "solid-js"
 import { Dynamic } from "solid-js/web"
-import { BoxRenderable, TextAttributes, RGBA } from "@opentui/core"
+import { BoxRenderable, RGBA } from "@opentui/core"
 import type { AssistantMessage, Part, ToolPart, TextPart, UserMessage, Provider } from "@arcana/sdk/v2"
 import type { ReasoningPart as ReasoningPartType } from "@arcana/sdk/v2"
 import { Lexicon, Glyph, AgentSigil, VerbPool } from "../../branding"
@@ -20,7 +20,6 @@ import { useCommandShortcut } from "../../keymap"
 import { setPreLayoutSiblingMargin } from "../../util/layout"
 import { Scramble } from "../../component/scramble"
 import { SigilSpinner } from "../../component/sigil-spinner"
-import { Spinner } from "../../component/spinner"
 import { SplitBorder } from "../../ui/border"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { TodoItem } from "../../component/todo-item"
@@ -31,6 +30,8 @@ import { useDialog } from "../../ui/dialog"
 import { normalizePath } from "../../util/path"
 import { useTuiTerminalEnvironment } from "../../context/runtime"
 import { createWidgetRenderNode } from "../../shell/command-spine/widgets/registry"
+import { SpineToolChip } from "../../shell/command-spine/spine-tool-chip"
+import { toolCategoryLabel, type ToolChipLifecycle } from "../../shell/command-spine/spine-chrome"
 import stripAnsi from "strip-ansi"
 
 export const context = createContext<{
@@ -330,8 +331,6 @@ const PART_MAPPING = {
   tool: ToolPart,
   reasoning: ReasoningPart,
 }
-
-const INLINE_TOOL_ICON_WIDTH = 2
 
 export function ReasoningPart(props: { last: boolean; part: ReasoningPartType; message: AssistantMessage }) {
   const { theme } = useTheme()
@@ -839,6 +838,13 @@ function InlineTool(props: {
 
   const failed = createMemo(() => Boolean(error() && !denied()))
   const clickable = createMemo(() => Boolean(props.onClick || failed()))
+  const chipLifecycle = createMemo<ToolChipLifecycle>(() => {
+    if (failed() || denied()) return "failure"
+    if (props.part.state.status === "cancelled") return "interrupted"
+    if (props.spinner || props.part.state.status === "running") return "running"
+    if (props.part.state.status === "pending") return "queued"
+    return props.complete ? "success" : "running"
+  })
   const fg = createMemo(() => {
     if (props.color) return props.color
     if (permission()) return theme.warning
@@ -852,6 +858,8 @@ function InlineTool(props: {
     <InlineToolRow
       id={`tool-inline-${props.subagent ? "subagent-" : ""}${props.part.messageID}-${props.part.id}`}
       icon={props.icon}
+      tool={props.part.tool}
+      label={toolCategoryLabel(props.part.tool)}
       iconColor={props.iconColor}
       color={fg()}
       errorColor={theme.error}
@@ -865,7 +873,9 @@ function InlineTool(props: {
       pending={props.pending}
       failure={props.failure}
       spinner={props.spinner}
+      lifecycle={chipLifecycle()}
       subagent={props.subagent}
+      contentWidth={Math.max(1, ctx.width - 4)}
       separateAfter={(id) => id !== undefined && ctx.userMessageIDs().has(id)}
       onMouseOver={() => clickable() && setHover(true)}
       onMouseOut={() => setHover(false)}
@@ -886,6 +896,9 @@ function InlineTool(props: {
 export function InlineToolRow(props: {
   id?: string
   icon: string
+  /** Canonical tool name used for the shared semantic category pill. */
+  tool?: string
+  label?: string
   iconColor?: RGBA
   color?: RGBA
   errorColor?: RGBA
@@ -899,13 +912,27 @@ export function InlineToolRow(props: {
   pending: string
   failure?: string
   spinner?: boolean
+  lifecycle?: ToolChipLifecycle
   subagent?: boolean
+  /** Available row width after the legacy left border/indent. */
+  contentWidth?: number
   children: JSX.Element
   separateAfter?: (id: string | undefined) => boolean
   onMouseOver?: () => void
   onMouseOut?: () => void
   onMouseUp?: () => void
 }) {
+  const lifecycle = createMemo<ToolChipLifecycle>(() => {
+    if (props.lifecycle) return props.lifecycle
+    if (props.failed || props.denied) return "failure"
+    if (props.spinner || !props.complete) return "running"
+    return "success"
+  })
+  const category = createMemo(() => toolCategoryLabel(props.tool ?? props.label ?? "tool"))
+  const statusSummary = createMemo(() => {
+    if (props.failed && !props.complete && props.failure) return props.failure
+    return undefined
+  })
   return (
     <box
       id={props.id}
@@ -930,55 +957,33 @@ export function InlineToolRow(props: {
         })
       }}
     >
-      <Switch>
-        <Match when={props.spinner}>
-          <Spinner color={props.color} children={props.children} />
-        </Match>
-        <Match when={true}>
-          <Show
-            fallback={
-              <text
-                paddingLeft={3}
-                fg={props.color}
-                attributes={props.denied ? TextAttributes.STRIKETHROUGH : undefined}
-              >
-                {arcanaDitherTick(props.pending)} {props.pending}
-              </text>
-            }
-            when={props.complete || props.failed}
+      <Show
+        when={statusSummary()}
+        fallback={
+          <SpineToolChip
+            kind={category()}
+            label={props.label ?? category()}
+            lifecycle={lifecycle()}
+            layout="wide"
+            contentWidth={props.contentWidth}
           >
-            <box flexDirection="row">
-              <text
-                width={INLINE_TOOL_ICON_WIDTH}
-                fg={props.failed ? props.errorColor : (props.iconColor ?? props.color)}
-                attributes={props.denied ? TextAttributes.STRIKETHROUGH : undefined}
-              >
-                {arcanaDitherTick(props.pending)} {props.icon}
-              </text>
-              <Show
-                when={props.failed && !props.complete && props.failure}
-                fallback={
-                  <text
-                    flexGrow={1}
-                    fg={props.failed ? props.errorColor : props.color}
-                    attributes={props.denied ? TextAttributes.STRIKETHROUGH : undefined}
-                  >
-                    {props.children}
-                  </text>
-                }
-              >
-                {/* Scramble renders its own <text>; wrap in a flex box rather than nesting
-                    a text-returning component inside <text> (rejected under SSR rendering). */}
-                <box flexGrow={1}>
-                  <Scramble error text={props.failure!} fg={props.errorColor} />
-                </box>
-              </Show>
-            </box>
-          </Show>
-        </Match>
-      </Switch>
+            {props.children}
+          </SpineToolChip>
+        }
+      >
+        {(failure) => (
+          <SpineToolChip
+            kind={category()}
+            label={props.label ?? category()}
+            summary={failure()}
+            lifecycle={lifecycle()}
+            layout="wide"
+            contentWidth={props.contentWidth}
+          />
+        )}
+      </Show>
       <Show when={(props.failed || props.denied) && props.errorExpanded}>
-        <box paddingLeft={INLINE_TOOL_ICON_WIDTH}>
+        <box paddingLeft={4}>
           <Scramble error text={props.error ?? ""} fg={props.errorColor} />
         </box>
       </Show>
@@ -994,9 +999,17 @@ function BlockTool(props: {
   spinner?: boolean
 }) {
   const { theme } = useTheme()
+  const ctx = use()
   const renderer = useRenderer()
   const [hover, setHover] = createSignal(false)
   const error = createMemo(() => (props.part?.state.status === "error" ? props.part.state.error : undefined))
+  const lifecycle = createMemo<ToolChipLifecycle>(() => {
+    if (error()) return "failure"
+    if (props.part?.state.status === "cancelled") return "interrupted"
+    if (props.spinner || props.part?.state.status === "running") return "running"
+    if (props.part?.state.status === "completed") return "success"
+    return "queued"
+  })
   return (
     <box
       id={props.part ? `tool-block-${props.part.messageID}-${props.part.id}` : undefined}
@@ -1017,16 +1030,14 @@ function BlockTool(props: {
         props.onClick?.()
       }}
     >
-      <Show
-        when={props.spinner}
-        fallback={
-          <text paddingLeft={3} fg={theme.textMuted}>
-            {arcanaDitherPattern(props.title, 8)} {props.title}
-          </text>
-        }
-      >
-        <Spinner color={theme.textMuted}>{props.title.replace(/^# /, "")}</Spinner>
-      </Show>
+      <SpineToolChip
+        kind={toolCategoryLabel(props.part?.tool ?? props.title)}
+        label={toolCategoryLabel(props.part?.tool ?? props.title)}
+        summary={props.title.replace(/^# /, "")}
+        lifecycle={lifecycle()}
+        layout="wide"
+        contentWidth={ctx.width}
+      />
       {props.children}
       <Show when={error()}>
         <Scramble error text={error() ?? ""} fg={theme.error} />
