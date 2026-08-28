@@ -185,13 +185,14 @@ export function SpineProse(props: {
     return stripMarkdownHorizontalRules(noEmphasis)
   })
   /**
-   * Debounce content updates during streaming to prevent Tree-sitter
-   * re-highlight flicker on completed code blocks. Every token changes the
+   * Debounce content updates during streaming to reduce Tree-sitter
+   * re-highlight work on completed code blocks. Every token changes the
    * overall markdownContent string (prose grows), which triggers a full
-   * MarkdownRenderable re-parse → Tree-sitter re-highlights ALL blocks
-   * including stable completed code fences → brief flash of unstyled text.
-   * Batching at 50ms (~20 updates/sec) is imperceptible but eliminates the
-   * flicker. When streaming ends, apply immediately to finalize.
+   * MarkdownRenderable re-parse → Tree-sitter re-highlights ALL blocks,
+   * including stable completed code fences. The OpenTUI patch keeps the last
+   * styled frame visible during that async work; batching at 50ms (~20
+   * updates/sec) is only a throughput optimization. When streaming ends,
+   * apply immediately to finalize.
    */
   const [debouncedContent, setDebouncedContent] = createSignal(markdownContent())
   let contentTimer: ReturnType<typeof setTimeout> | undefined

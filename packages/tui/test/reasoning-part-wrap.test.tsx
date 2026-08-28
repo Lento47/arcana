@@ -23,10 +23,9 @@ const REASONING_PARTIAL =
   'The user said "hi" - a simple greeting. I should respond briefly and directly per the SOUL.md instructions (terse'
 const TAIL = "direct, no fluff)"
 
-// The reasoning <code filetype="markdown"> renderable defers ALL text rendering
-// to async tree-sitter highlighting while styled (drawUnstyledText=false).
-// The real WASM client's highlight never resolves inside the test env, leaving
-// the body blank. Install the official mock client (auto-resolve with zero
+// The reasoning <code filetype="markdown"> renderable highlights asynchronously.
+// Arcana keeps its first frame visible and retains the last styled frame while
+// a refresh is pending. Install the official mock client (auto-resolve with zero
 // highlights -> falls back to plain text immediately) so frames are
 // deterministic. Mirrors OpenTUI's internal singleton registry exactly:
 // globalThis[Symbol.for("@opentui/core/singleton")] with key "tree-sitter-client"

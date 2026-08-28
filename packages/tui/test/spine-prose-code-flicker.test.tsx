@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { afterEach, expect, test } from "bun:test"
-import { CodeRenderable, RGBA, SyntaxStyle, type Renderable } from "@opentui/core"
+import { CodeRenderable, RGBA, SyntaxStyle, type CapturedFrame, type Renderable } from "@opentui/core"
 import { MockTreeSitterClient } from "@opentui/core/testing"
 import { testRender } from "@opentui/solid"
 import { readFileSync } from "node:fs"
@@ -16,6 +16,14 @@ const SOURCE = [
 const syntaxStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromHex("#ffffff") },
 })
+const highlightedSyntaxStyle = SyntaxStyle.fromStyles({
+  default: { fg: RGBA.fromHex("#ffffff") },
+  keyword: { fg: RGBA.fromHex("#ff5f87") },
+})
+const recoloredSyntaxStyle = SyntaxStyle.fromStyles({
+  default: { fg: RGBA.fromHex("#ffffff") },
+  keyword: { fg: RGBA.fromHex("#5fd7ff") },
+})
 
 const spineProseSource = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/spine-prose.tsx"),
@@ -29,6 +37,18 @@ const openTuiPatchSource = readFileSync(
 function findCodeRenderable(root: Renderable, filetype: string): CodeRenderable | undefined {
   if (root instanceof CodeRenderable && root.filetype === filetype) return root
   return root.getChildren().map((child) => findCodeRenderable(child, filetype)).find(Boolean)
+}
+
+function findSpanContaining(frame: CapturedFrame, needle: string) {
+  for (const line of frame.lines) {
+    const span = line.spans.find((candidate) => candidate.text.includes(needle))
+    if (span) return span
+  }
+  return undefined
+}
+
+function colorOf(span: ReturnType<typeof findSpanContaining>) {
+  return span?.fg.toString()
 }
 
 let app: Awaited<ReturnType<typeof testRender>> | undefined
@@ -67,6 +87,109 @@ test("read preview remains visible while Tree-sitter highlighting is pending", a
   expect(spineProseSource).toMatch(
     /filetype=\{ft\(\)\}[\s\S]{0,300}drawUnstyledText=\{true\}/,
   )
+})
+
+test("retains the last styled frame while content and theme colors re-highlight", async () => {
+  const initial = "export function answer(): number {"
+  const next = "export const answer = 42"
+  const [content, setContent] = createSignal(initial)
+  const [style, setStyle] = createSignal(highlightedSyntaxStyle)
+  treeSitter = new MockTreeSitterClient()
+  treeSitter.setMockResult({ highlights: [[0, 6, "keyword"]] })
+
+  app = await testRender(
+    () => (
+      <code
+        content={content()}
+        filetype="typescript"
+        syntaxStyle={style()}
+        treeSitterClient={treeSitter}
+        drawUnstyledText={false}
+        width={72}
+      />
+    ),
+    { width: 80, height: 8 },
+  )
+
+  // The first frame is visible even when a caller opts out of the upstream
+  // unstyled gate; Arcana only uses that gate as a first-frame fallback.
+  await app.renderOnce()
+  expect(app.captureCharFrame()).toContain(initial)
+  await app.waitFor(() => treeSitter?.isHighlighting() === true)
+  treeSitter.resolveHighlightOnce()
+  await app.flush()
+  await app.renderOnce()
+
+  const styled = app.captureSpans()
+  const styledSpan = findSpanContaining(styled, "export")
+  expect(styledSpan).toBeDefined()
+  const initialColor = colorOf(styledSpan)
+  expect(initialColor).toBeDefined()
+
+  // Content and syntax style updates happen before their asynchronous
+  // highlight completes. The old text/color frame must remain intact.
+  setContent(next)
+  setStyle(recoloredSyntaxStyle)
+  await app.renderOnce()
+  const pending = app.captureSpans()
+  expect(app.captureCharFrame()).toContain(initial)
+  expect(colorOf(findSpanContaining(pending, "export"))).toBe(initialColor)
+
+  await app.waitFor(() => treeSitter?.isHighlighting() === true)
+  treeSitter.resolveHighlightOnce()
+  await app.flush()
+  await app.renderOnce()
+  const recolored = app.captureSpans()
+  expect(app.captureCharFrame()).toContain(next)
+  const recoloredColor = colorOf(findSpanContaining(recolored, "export"))
+  expect(recoloredColor).toBeDefined()
+  expect(recoloredColor).not.toBe(initialColor)
+})
+
+test("retains the last styled frame when a refresh fails", async () => {
+  const initial = "const stable = true"
+  const next = "const changed = false"
+  const pending: Array<{
+    resolve: (value: { highlights: any[] }) => void
+    reject: (error: Error) => void
+  }> = []
+  const treeSitterClient = {
+    highlightOnce: () =>
+      new Promise<{ highlights: any[] }>((resolve, reject) => pending.push({ resolve, reject })),
+  }
+  const [content, setContent] = createSignal(initial)
+
+  app = await testRender(
+    () => (
+      <code
+        content={content()}
+        filetype="typescript"
+        syntaxStyle={highlightedSyntaxStyle}
+        treeSitterClient={treeSitterClient as any}
+        drawUnstyledText={true}
+        width={72}
+      />
+    ),
+    { width: 80, height: 8 },
+  )
+  await app.renderOnce()
+  pending.shift()?.resolve({ highlights: [[0, 5, "keyword"]] })
+  await app.flush()
+  await app.renderOnce()
+  const styled = app.captureSpans()
+  const styledColor = colorOf(findSpanContaining(styled, "const"))
+  expect(styledColor).toBeDefined()
+
+  setContent(next)
+  await app.renderOnce()
+  expect(app.captureCharFrame()).toContain(initial)
+  expect(colorOf(findSpanContaining(app.captureSpans(), "const"))).toBe(styledColor)
+
+  pending.shift()?.reject(new Error("synthetic highlight failure"))
+  await app.flush()
+  await app.renderOnce()
+  expect(app.captureCharFrame()).toContain(initial)
+  expect(colorOf(findSpanContaining(app.captureSpans(), "const"))).toBe(styledColor)
 })
 
 test("streaming fenced code keeps its visible fallback across review updates", async () => {
@@ -128,6 +251,8 @@ test("streaming fenced code keeps its visible fallback across review updates", a
   expect(findCodeRenderable(app.renderer.root, "typescript")).toBe(code)
   expect(code?.drawUnstyledText).toBe(true)
   expect(code?.content).toContain("export const reviewed")
+  expect(openTuiPatchSource).toContain("retain last styled code frame")
+  expect(openTuiPatchSource).toContain("chunk-node-")
   expect(openTuiPatchSource).toContain("drawUnstyledText: true")
   expect(openTuiPatchSource).toContain("renderable.drawUnstyledText = true")
 })

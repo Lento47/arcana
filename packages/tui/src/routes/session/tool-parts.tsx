@@ -394,7 +394,9 @@ export function ReasoningPart(props: { last: boolean; part: ReasoningPartType; m
           >
             <code
               filetype="markdown"
-              drawUnstyledText={!isDone()}
+              // Keep the first frame visible; the Arcana OpenTUI patch retains
+              // the last styled frame while a final highlight is pending.
+              drawUnstyledText={true}
               streaming={!isDone()}
               syntaxStyle={syntax()}
               content={summary().body}
