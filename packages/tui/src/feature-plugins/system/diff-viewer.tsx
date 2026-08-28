@@ -44,6 +44,43 @@ const WORKING_TREE_DIFF_CONTEXT_LINES = 12
 const KV_SHOW_FILE_TREE = "diff_viewer_show_file_tree"
 const KV_SINGLE_PATCH = "diff_viewer_single_patch"
 const KV_VIEW = "diff_viewer_view"
+// VCS diff is a local read, but git can block on a stale worktree or filesystem.
+// Keep this bound local to the viewer; the shared SDK GET transport also carries
+// SSE and health requests that must remain long-lived.
+export const DIFF_REQUEST_TIMEOUT_MS = 15_000
+
+export class DiffRequestTimeoutError extends Error {
+  readonly timeoutMs: number
+
+  constructor(timeoutMs = DIFF_REQUEST_TIMEOUT_MS) {
+    super(`Diff request timed out after ${timeoutMs}ms`)
+    this.name = "DiffRequestTimeoutError"
+    this.timeoutMs = timeoutMs
+  }
+}
+
+export function withDiffRequestTimeout<T>(
+  task: (signal: AbortSignal) => Promise<T>,
+  timeoutMs = DIFF_REQUEST_TIMEOUT_MS,
+  controller = new AbortController(),
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let onAbort: (() => void) | undefined
+  const request = Promise.resolve().then(() => task(controller.signal))
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(controller.signal.reason ?? new Error("Diff request aborted"))
+    if (controller.signal.aborted) onAbort()
+    else controller.signal.addEventListener("abort", onAbort, { once: true })
+  })
+
+  timer = setTimeout(() => controller.abort(new DiffRequestTimeoutError(timeoutMs)), timeoutMs)
+  return Promise.race([request, aborted]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer)
+    if (onAbort) controller.signal.removeEventListener("abort", onAbort)
+    if (!controller.signal.aborted) controller.abort()
+  })
+}
+
 type DiffMode = "git" | "last-turn"
 type DiffViewerFocus = "patches" | "files"
 type DiffRequest = {
@@ -124,22 +161,32 @@ function DiffViewer(props: { api: TuiPluginApi }) {
       directory: sessionID ? props.api.state.session.get(sessionID)?.directory : undefined,
     }
   }, undefined, { equals: sameDiffRequest })
+  let activeDiffRequest: AbortController | undefined
   const [diff] = createResource(diffInput, async (input) => {
-    if (input.mode === "last-turn") {
-      const sessionID = input.sessionID
-      if (!sessionID) return []
-      const result = await props.api.client.session.diff(
-        { sessionID, messageID: input.messageID },
-        { throwOnError: true },
-      )
-      return normalizeDiffs(result.data ?? [])
-    }
+    activeDiffRequest?.abort()
+    const controller = new AbortController()
+    activeDiffRequest = controller
+    try {
+      return await withDiffRequestTimeout(async (signal) => {
+        if (input.mode === "last-turn") {
+          const sessionID = input.sessionID
+          if (!sessionID) return []
+          const result = await props.api.client.session.diff(
+            { sessionID, messageID: input.messageID },
+            { throwOnError: true, signal },
+          )
+          return normalizeDiffs(result.data ?? [])
+        }
 
-    const result = await props.api.client.vcs.diff(
-      { directory: input.directory, mode: "git", context: WORKING_TREE_DIFF_CONTEXT_LINES },
-      { throwOnError: true },
-    )
-    return normalizeDiffs(result.data ?? [])
+        const result = await props.api.client.vcs.diff(
+          { directory: input.directory, mode: "git", context: WORKING_TREE_DIFF_CONTEXT_LINES },
+          { throwOnError: true, signal },
+        )
+        return normalizeDiffs(result.data ?? [])
+      }, DIFF_REQUEST_TIMEOUT_MS, controller)
+    } finally {
+      if (activeDiffRequest === controller) activeDiffRequest = undefined
+    }
   })
   // `latest` remains the last resolved value while a resource refreshes. Keep
   // that patch tree mounted until replacement data is ready so scroll state,
@@ -226,6 +273,8 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   }
 
   onCleanup(() => {
+    activeDiffRequest?.abort()
+    activeDiffRequest = undefined
     for (const frame of layoutFrames.values()) cancelAnimationFrame(frame)
     layoutFrames.clear()
     layoutGenerations.clear()
@@ -819,7 +868,9 @@ function DiffViewer(props: { api: TuiPluginApi }) {
             <Match when={!hasDiffSnapshot() && diff.error}>
               <Separator axis="x" />
               <box flexGrow={1} paddingLeft={1}>
-                <text fg={theme().error}>Failed to load diff</text>
+                <text fg={theme().error}>
+                  {diff.error instanceof DiffRequestTimeoutError ? "Diff request timed out" : "Failed to load diff"}
+                </text>
               </box>
             </Match>
             <Match when={hasDiffSnapshot()}>

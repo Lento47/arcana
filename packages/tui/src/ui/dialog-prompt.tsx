@@ -84,7 +84,15 @@ export function DialogPrompt(props: DialogPromptProps) {
         </text>
       </box>
       <box width="100%" minWidth={0} gap={1}>
-        {typeof props.description === "function" ? props.description() : props.description}
+        {typeof props.description === "function" ? (
+          props.description()
+        ) : typeof props.description === "string" ? (
+          <text width="100%" minWidth={0} fg={theme.textMuted} wrapMode="word">
+            {props.description}
+          </text>
+        ) : (
+          props.description
+        )}
         <textarea
           width="100%"
           minWidth={0}

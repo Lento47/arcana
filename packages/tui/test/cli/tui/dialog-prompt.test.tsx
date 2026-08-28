@@ -5,7 +5,7 @@ import { testRender, useRenderer } from "@opentui/solid"
 import { expect, test } from "bun:test"
 import { mkdir } from "node:fs/promises"
 import path from "node:path"
-import { onCleanup } from "solid-js"
+import { onCleanup, onMount } from "solid-js"
 import { tmpdir } from "../../fixture/fixture"
 import { createTuiResolvedConfig } from "../../fixture/tui-runtime"
 import type { TuiKeybind } from "../../../src/config/keybind"
@@ -22,6 +22,8 @@ async function wait(fn: () => boolean, timeout = 2000) {
 async function mountPrompt(input: {
   root: string
   keybinds: Partial<TuiKeybind.Keybinds>
+  description?: string
+  mountAsDialog?: boolean
   onConfirm: (value: string) => void
 }) {
   const state = path.join(input.root, "state")
@@ -29,7 +31,7 @@ async function mountPrompt(input: {
   await Bun.write(path.join(state, "kv.json"), "{}")
 
   const [
-    { DialogProvider },
+    { Dialog, DialogProvider, useDialog },
     { DialogPrompt },
     { KVProvider },
     { ThemeProvider },
@@ -56,6 +58,21 @@ async function mountPrompt(input: {
     const off = registerOpencodeKeymap(keymap, renderer, resolvedConfig)
     onCleanup(off)
 
+    function Launcher() {
+      const dialog = useDialog()
+      onMount(() => {
+        dialog.replace(() => (
+          <DialogPrompt
+            title="Rename Session"
+            description={input.description}
+            value="draft"
+            onConfirm={input.onConfirm}
+          />
+        ))
+      })
+      return null
+    }
+
     return (
       <TestTuiContexts
         directory={input.root}
@@ -71,7 +88,16 @@ async function mountPrompt(input: {
               <ToastProvider>
                 <ThemeProvider mode="dark">
                   <DialogProvider>
-                    <DialogPrompt title="Rename Session" value="draft" onConfirm={input.onConfirm} />
+                    {input.mountAsDialog ? (
+                      <Launcher />
+                    ) : (
+                      <DialogPrompt
+                        title="Rename Session"
+                        description={input.description}
+                        value="draft"
+                        onConfirm={input.onConfirm}
+                      />
+                    )}
                   </DialogProvider>
                 </ThemeProvider>
               </ToastProvider>
@@ -90,6 +116,24 @@ async function mountPrompt(input: {
     },
   }
 }
+
+test("dialog prompt mounts string descriptions without an orphan text error", async () => {
+  await using tmp = await tmpdir()
+  const prompt = await mountPrompt({
+    root: tmp.path,
+    keybinds: { input_submit: "return" },
+    description: "Appended to every session's system prompt. Leave empty to remove.",
+    mountAsDialog: true,
+    onConfirm: () => {},
+  })
+
+  try {
+    await wait(() => prompt.app.renderer.currentFocusedEditor instanceof TextareaRenderable)
+    expect(prompt.app.renderer.currentFocusedEditor).toBeInstanceOf(TextareaRenderable)
+  } finally {
+    await prompt.cleanup()
+  }
+})
 
 test("dialog prompt submit wins when return is also input newline", async () => {
   await using tmp = await tmpdir()

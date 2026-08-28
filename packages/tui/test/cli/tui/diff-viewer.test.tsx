@@ -12,7 +12,11 @@ import { ToastProvider } from "../../../src/ui/toast"
 import { TuiConfigProvider } from "../../../src/config"
 import { TuiKeybind } from "../../../src/config/keybind"
 import { OpencodeKeymapProvider } from "../../../src/keymap"
-import diffViewerPlugin, { sameDiffRequest } from "../../../src/feature-plugins/system/diff-viewer"
+import diffViewerPlugin, {
+  DiffRequestTimeoutError,
+  sameDiffRequest,
+  withDiffRequestTimeout,
+} from "../../../src/feature-plugins/system/diff-viewer"
 import { createTuiPluginApi } from "../../fixture/tui-plugin"
 import { createTuiResolvedConfig } from "../../fixture/tui-runtime"
 import { TestTuiContexts } from "../../fixture/tui-environment"
@@ -109,6 +113,23 @@ test("equivalent diff requests do not invalidate the resource", () => {
     { mode: "git", sessionID: "session-1", directory: "/repo" },
     { mode: "git", sessionID: "session-1", directory: "/other" },
   )).toBe(false)
+})
+
+test("diff requests abort and reject when the VCS read exceeds its bound", async () => {
+  let signal: AbortSignal | undefined
+  let error: unknown
+
+  try {
+    await withDiffRequestTimeout((requestSignal) => {
+      signal = requestSignal
+      return new Promise<never>(() => {})
+    }, 10)
+  } catch (cause) {
+    error = cause
+  }
+
+  expect(error).toBeInstanceOf(DiffRequestTimeoutError)
+  expect(signal?.aborted).toBe(true)
 })
 
 test("thinking-state invalidations keep one mounted diff and one request", async () => {
