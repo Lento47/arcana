@@ -1104,8 +1104,6 @@ export function Prompt(props: PromptProps) {
     if (props.disabled) return false
     if (workspace.creating() || move.creating()) return false
     if (!liveText.trim()) return false
-    const agent = local.agent.current()
-    if (!agent) return false
     const trimmed = liveText.trim()
     if (trimmed === "exit" || trimmed === "quit" || trimmed === ":q") {
       void exit()
@@ -1145,6 +1143,13 @@ export function Prompt(props: PromptProps) {
         return true
       }
     }
+
+    // Model-backed sends need an active agent; UI slash commands above do not.
+    // Keep this guard after slash dispatch so commands such as /soul, /diff,
+    // /models, and /sessions remain usable while sync is still hydrating (or
+    // when no agent is configured).
+    const agent = local.agent.current()
+    if (!agent) return false
 
     const selectedModel = local.model.current()
     if (!selectedModel) {
