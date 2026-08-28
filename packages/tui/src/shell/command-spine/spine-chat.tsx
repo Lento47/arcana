@@ -11,6 +11,7 @@ import {
   type SpineLayout,
 } from "./spine-types"
 import { SpineProse } from "./spine-prose"
+import { HairlineBorder } from "../../ui/border"
 
 /**
  * Conversation voice — one column, one accent line.
@@ -100,6 +101,7 @@ export function SpineChatCard(props: {
       backgroundColor={cardBg()}
       border={["left"]}
       borderColor={lineColor()}
+      customBorderChars={HairlineBorder}
       paddingLeft={SPINE_CHAT_CARD_CHROME.padL}
       paddingRight={SPINE_CHAT_CARD_CHROME.padR}
       paddingTop={isUser() ? 1 : 0}

@@ -2,6 +2,7 @@ import { For, Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
 import type { Theme } from "../../theme"
 import { RoundBorder } from "../../ui/chrome"
+import { HairlineBorder } from "../../ui/border"
 import type { InsightCardModel, InsightMetricTone } from "./spine-insight"
 import { chipCellWidth, insightHeaderChrome, packChipRows } from "./spine-chrome"
 
@@ -52,7 +53,7 @@ export function SpineInsightCard(props: {
       paddingTop={critical() ? 1 : 0}
       paddingBottom={critical() ? 1 : 0}
       border={critical() ? true : ["left"]}
-      customBorderChars={critical() ? RoundBorder : undefined}
+      customBorderChars={critical() ? RoundBorder : HairlineBorder}
       borderColor={severityColor(card().severity, theme)}
       backgroundColor={theme.backgroundPanel}
     >

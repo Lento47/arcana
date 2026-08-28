@@ -20,7 +20,7 @@ import { useCommandShortcut } from "../../keymap"
 import { setPreLayoutSiblingMargin } from "../../util/layout"
 import { Scramble } from "../../component/scramble"
 import { SigilSpinner } from "../../component/sigil-spinner"
-import { SplitBorder } from "../../ui/border"
+import { SplitBorder, HairlineBorder } from "../../ui/border"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { TodoItem } from "../../component/todo-item"
 import { webSearchProviderLabel } from "../../util/tool-display"
@@ -390,6 +390,7 @@ export function ReasoningPart(props: { last: boolean; part: ReasoningPartType; m
             marginTop={1}
             border={["left"]}
             borderColor={theme.borderThinking}
+            customBorderChars={HairlineBorder}
             width={reasoningBodyWidth()}
           >
             <code

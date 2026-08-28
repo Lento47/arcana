@@ -28,6 +28,7 @@ import { SpineProof } from "./spine-proof"
 import { ActivityReel } from "./spine-activity-reel"
 import { taskRowChrome } from "./spine-chrome"
 import { canToggleSpineEntry } from "./spine-navigation"
+import { HairlineBorder } from "../../ui/border"
 import {
   toSpineEntryView,
   type ApprovalEntry,
@@ -802,6 +803,7 @@ export function SpineEntry(props: {
                     paddingLeft={1}
                     border={["left"]}
                     borderColor={theme.spineRail}
+                    customBorderChars={HairlineBorder}
                   >
                     <SpineProse
                       kind={kind()}
@@ -1016,6 +1018,7 @@ export function SpineEntry(props: {
                         width="100%"
                         border={v().streaming ? ["left"] : []}
                         borderColor={v().streaming ? theme.accent : theme.spineOk}
+                        customBorderChars={HairlineBorder}
                         backgroundColor={v().streaming ? theme.backgroundPanel : undefined}
                         paddingLeft={1}
                         paddingRight={v().streaming ? 1 : 0}

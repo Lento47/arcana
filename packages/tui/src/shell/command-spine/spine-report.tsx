@@ -5,6 +5,7 @@ import type { Theme } from "../../theme"
 import { displayWidth, truncate } from "../../util/locale"
 import { projectInsightCard } from "./spine-insight"
 import { SpineInsightCard } from "./spine-insight-card"
+import { HairlineBorder } from "../../ui/border"
 
 // Scorecard geometry (audit O2). A badge is `[pad][label] [glyph][pad]` —
 // 2 padding cells + 1 space + 1 glyph; badges are separated by a 1-col gap.
@@ -141,6 +142,7 @@ export function SpineReport(props: {
                 flexShrink={0}
                 border={["left"]}
                 borderColor={severityColor(concern.severity, theme)}
+                customBorderChars={HairlineBorder}
                 paddingLeft={2}
                 paddingTop={0}
                 paddingBottom={1}

@@ -7,6 +7,7 @@ import type { SpineKind } from "./spine-types"
 import { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis } from "./chat-prose"
 import { codeBlockChrome, streamTextCue } from "./spine-chrome"
 import { RoundBorder } from "../../ui/chrome"
+import { HairlineBorder } from "../../ui/border"
 
 export type SpineProseMode = "markdown" | "code" | "plain"
 
@@ -190,20 +191,31 @@ export function SpineProse(props: {
    * overall markdownContent string (prose grows), which triggers a full
    * MarkdownRenderable re-parse → Tree-sitter re-highlights ALL blocks,
    * including stable completed code fences. The OpenTUI patch keeps the last
-   * styled frame visible during that async work; batching at 50ms (~20
-   * updates/sec) is only a throughput optimization. When streaming ends,
-   * apply immediately to finalize.
+   * styled frame visible during that async work.
+   *
+   * The debounce interval is 150ms during streaming (~6.7 Hz). At 50ms
+   * (~20 Hz) the styled→unstyled→styled transitions from Tree-sitter
+   * re-highlight cycles are perceptible as color flicker. 150ms keeps the
+   * latency under one perceptual frame (200 ms) while pushing the
+   * re-highlight frequency below the flicker-fusion threshold.
+   *
+   * Content identity check: skip the signal update (and downstream
+   * markdown re-parse + Yoga layout) when the debounced value already
+   * matches. This eliminates redundant work when multiple SSE deltas
+   * arrive within the same debounce window but the resulting markdown
+   * is identical (e.g. whitespace-only deltas).
    */
+  const STREAMING_DEBOUNCE_MS = 150
   const [debouncedContent, setDebouncedContent] = createSignal(markdownContent())
   let contentTimer: ReturnType<typeof setTimeout> | undefined
   createEffect(() => {
     const content = markdownContent()
     if (liveStreaming()) {
       if (contentTimer) clearTimeout(contentTimer)
-      contentTimer = setTimeout(() => setDebouncedContent(content), 50)
+      contentTimer = setTimeout(() => setDebouncedContent(content), STREAMING_DEBOUNCE_MS)
     } else {
       if (contentTimer) { clearTimeout(contentTimer); contentTimer = undefined }
-      setDebouncedContent(content)
+      if (debouncedContent() !== content) setDebouncedContent(content)
     }
   })
   onCleanup(() => { if (contentTimer) clearTimeout(contentTimer) })
@@ -287,6 +299,7 @@ export function SpineProse(props: {
             minWidth={0}
             border={["left"]}
             borderColor={theme.warning as any}
+            customBorderChars={HairlineBorder}
             paddingLeft={2}
             paddingRight={1}
             marginBottom={1}
@@ -300,7 +313,7 @@ export function SpineProse(props: {
               syntaxStyle={subtleSyntax()}
               streaming={false}
               conceal={true}
-              drawUnstyledText={true}
+              drawUnstyledText={false}
               wrapMode="word"
               fg={theme.textMuted as any}
               bg={theme.background as any}
@@ -347,7 +360,7 @@ export function SpineProse(props: {
               <code
                 width={wrapCols()}
                 filetype={ft()}
-                drawUnstyledText={true}
+                drawUnstyledText={false}
                 streaming={false}
                 syntaxStyle={style()}
                 content={text()}
@@ -383,7 +396,7 @@ export function SpineProse(props: {
               <code
                 width={wrapCols()}
                 filetype={ft()}
-                drawUnstyledText={true}
+                drawUnstyledText={false}
                 streaming={false}
                 syntaxStyle={style()}
                 content={text()}
