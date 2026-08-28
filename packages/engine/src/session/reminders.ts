@@ -5,11 +5,15 @@ import { Agent } from "@/agent/agent"
 import { FSUtil } from "@arcana/core/fs-util"
 import { InstanceState } from "@/effect/instance-state"
 import { RuntimeFlags } from "@/effect/runtime-flags"
-import { PartID } from "./schema"
 import { Session } from "./session"
-import PROMPT_PLAN from "./prompt/plan.txt"
 import BUILD_SWITCH from "./prompt/build-switch.txt"
 import PLAN_MODE from "./prompt/plan-mode.txt"
+
+export interface Result {
+  readonly messages: SessionV1.WithParts[]
+  /** Runtime-controlled instructions that belong in the privileged system context. */
+  readonly system: readonly string[]
+}
 
 export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   messages: SessionV1.WithParts[]
@@ -18,33 +22,20 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
 }) {
   const flags = yield* RuntimeFlags.Service
   const fsys = yield* FSUtil.Service
-  const sessions = yield* Session.Service
+  const system: string[] = []
   const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
-  if (!userMessage) return input.messages
+  if (!userMessage) return { messages: input.messages, system }
 
-  if (!flags.experimentalPlanMode) {
-    if (input.agent.name === "plan") {
-      userMessage.parts.push({
-        id: PartID.ascending(),
-        messageID: userMessage.info.id,
-        sessionID: userMessage.info.sessionID,
-        type: "text",
-        text: PROMPT_PLAN,
-        synthetic: true,
-      })
-    }
+  // Keep prompt guidance aligned with the agent and tool registry. A plan
+  // reminder must never appear on a surface where plan mode cannot complete
+  // its hand-off through the matching `plan_exit` tool.
+  const planModeAvailable = RuntimeFlags.planModeAvailable(flags)
+  if (!planModeAvailable) {
     const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
     if (wasPlan && input.agent.name === "build") {
-      userMessage.parts.push({
-        id: PartID.ascending(),
-        messageID: userMessage.info.id,
-        sessionID: userMessage.info.sessionID,
-        type: "text",
-        text: BUILD_SWITCH,
-        synthetic: true,
-      })
+      system.push(BUILD_SWITCH)
     }
-    return input.messages
+    return { messages: input.messages, system }
   }
 
   const assistantMessage = input.messages.findLast((msg) => msg.info.role === "assistant")
@@ -52,40 +43,30 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
     const ctx = yield* InstanceState.context
     const plan = Session.plan(input.session, ctx)
     const exists = yield* fsys.existsSafe(plan)
-    const part = yield* sessions.updatePart({
-      id: PartID.ascending(),
-      messageID: userMessage.info.id,
-      sessionID: userMessage.info.sessionID,
-      type: "text",
-      text: exists
+    system.push(
+      exists
         ? `${BUILD_SWITCH}\n\nA plan file exists at ${plan}. You should execute on the plan defined within it`
         : BUILD_SWITCH,
-      synthetic: true,
-    })
-    userMessage.parts.push(part)
-    return input.messages
+    )
+    return { messages: input.messages, system }
   }
 
-  if (input.agent.name !== "plan" || assistantMessage?.info.agent === "plan") return input.messages
+  if (input.agent.name !== "plan" || assistantMessage?.info.agent === "plan") {
+    return { messages: input.messages, system }
+  }
 
   const ctx = yield* InstanceState.context
   const plan = Session.plan(input.session, ctx)
   const exists = yield* fsys.existsSafe(plan)
   if (!exists) yield* fsys.ensureDir(path.dirname(plan)).pipe(Effect.catch(Effect.die))
-  const part = yield* sessions.updatePart({
-    id: PartID.ascending(),
-    messageID: userMessage.info.id,
-    sessionID: userMessage.info.sessionID,
-    type: "text",
-    text: PLAN_MODE.replace("${planInfo}", () =>
+  system.push(
+    PLAN_MODE.replace("${planInfo}", () =>
       exists
         ? `A plan file already exists at ${plan}. You can read it and make incremental edits using the edit tool.`
         : `No plan file exists yet. You should create your plan at ${plan} using the write tool.`,
     ),
-    synthetic: true,
-  })
-  userMessage.parts.push(part)
-  return input.messages
+  )
+  return { messages: input.messages, system }
 })
 
 export * as SessionReminders from "./reminders"

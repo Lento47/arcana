@@ -31,6 +31,7 @@ const agentLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
   )
 
 const it = testEffect(agentLayer())
+const experimentalIt = testEffect(agentLayer({ experimentalPlanMode: true, client: "cli" }))
 
 // Helper to evaluate permission for a tool with wildcard pattern
 function evalPerm(agent: Agent.Info | undefined, permission: string): PermissionV1.Action | undefined {
@@ -78,6 +79,20 @@ it.instance("verifier agent is hidden, bounded, and has no tool authority", () =
     expect(evalPerm(verifier, "edit")).toBe("deny")
     expect(evalPerm(verifier, "bash")).toBe("deny")
     expect(evalPerm(verifier, "task")).toBe("deny")
+  }),
+)
+
+it.instance("plan agent is hidden unless experimental CLI plan mode is enabled", () =>
+  Effect.gen(function* () {
+    const plan = yield* load((svc) => svc.get("plan"))
+    expect(plan?.hidden).toBe(true)
+  }),
+)
+
+experimentalIt.instance("experimental CLI plan mode exposes the plan agent", () =>
+  Effect.gen(function* () {
+    const plan = yield* load((svc) => svc.get("plan"))
+    expect(plan?.hidden).not.toBe(true)
   }),
 )
 
@@ -776,12 +791,8 @@ it.instance("defaultInfo returns resolved build agent when no default_agent conf
 )
 
 it.instance(
-  "defaultAgent respects default_agent config set to plan",
-  () =>
-    Effect.gen(function* () {
-      const agent = yield* load((svc) => svc.defaultAgent())
-      expect(agent).toBe("plan")
-    }),
+  "defaultAgent rejects plan when experimental plan mode is disabled",
+  () => expectDefaultAgentError('default agent "plan" is hidden'),
   {
     config: {
       default_agent: "plan",
@@ -839,12 +850,13 @@ it.instance(
 )
 
 it.instance(
-  "defaultAgent returns plan when build is disabled and default_agent not set",
+  "defaultAgent skips disabled plan mode when build is disabled",
   () =>
     Effect.gen(function* () {
       const agent = yield* load((svc) => svc.defaultAgent())
-      // build is disabled, so it should return plan (next primary agent)
-      expect(agent).toBe("plan")
+      // build is disabled, so it should return the next available primary
+      // agent rather than routing into unavailable plan mode.
+      expect(agent).toBe("client")
     }),
   {
     config: {

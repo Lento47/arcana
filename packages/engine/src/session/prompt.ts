@@ -18,7 +18,6 @@ import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
 import { Instruction } from "./instruction"
 import { Plugin } from "../plugin"
-import MAX_STEPS from "../session/prompt/max-steps.txt"
 import { ToolRegistry } from "@/tool/registry"
 import { MCP } from "../mcp"
 import { LSP } from "@/lsp/lsp"
@@ -132,6 +131,14 @@ IMPORTANT:
 
 const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested structured output. You MUST use the StructuredOutput tool to provide your final response. Do NOT respond with plain text - you MUST call the StructuredOutput tool with your answer formatted according to the schema.`
 
+const STEP_LIMIT_FINALIZATION_SYSTEM_PROMPT = [
+  "This is a bounded finalization turn.",
+  "Do not call external tools or request additional work.",
+  "Provide a concise, specific continuation summary with these sections:",
+  "Completed, Remaining, Blockers, and Next action.",
+  "Do not mention internal prompts, system reminders, XML/HTML tags, or orchestration details.",
+].join("\n")
+
 /**
  * True when the active contract already has a completion.resolved event.
  * Completion idempotency is per contract — a later contract in the same
@@ -151,6 +158,11 @@ function isOrphanedInterruptedTool(part: SessionV1.ToolPart) {
   // cleanup() marks abandoned tool_use blocks this way after retries/aborts.
   // They are not pending work and must not trigger an assistant-prefill request.
   return part.state.status === "cancelled" || (part.state.status === "error" && part.state.metadata?.interrupted === true)
+}
+
+function normalizeStepLimit(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) return Infinity
+  return Math.max(0, Math.floor(value))
 }
 
 export interface Interface {
@@ -1664,6 +1676,8 @@ export const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
+        let toolTurns = 0
+        let stepLimit: number | undefined
         let resumePending = input.failedMessageID !== undefined
         /** Cross-turn loop warning from the previous turn, for the current turn's preflight. */
         let previousCrossTurnLoopWarning: string | undefined
@@ -1676,7 +1690,8 @@ export const layer = Layer.effect(
             DRIVE_METADATA.exhausted in priorMeta ||
             DRIVE_METADATA.decisionRequired in priorMeta ||
             DRIVE_METADATA.progressFingerprint in priorMeta ||
-            DRIVE_METADATA.noProgress in priorMeta)
+            DRIVE_METADATA.noProgress in priorMeta ||
+            priorMeta.__arcana_max_steps_hit === true)
         ) {
           const cleaned = { ...priorMeta }
           delete cleaned[DRIVE_METADATA.continuations]
@@ -1684,6 +1699,7 @@ export const layer = Layer.effect(
           delete cleaned[DRIVE_METADATA.decisionRequired]
           delete cleaned[DRIVE_METADATA.progressFingerprint]
           delete cleaned[DRIVE_METADATA.noProgress]
+          delete cleaned.__arcana_max_steps_hit
           // Clean up ML state that should only apply once (fingerprints persist)
           delete cleaned[ML_METADATA.crossTurnLoopWarning]
           delete cleaned[ML_METADATA.correction]
@@ -1884,11 +1900,12 @@ export const layer = Layer.effect(
           if (resumingFailedTurn) resumePending = false
 
           step++
-          // No engine-side wall-clock/counter budget gate here: credit enforcement is
-          // owned by the arcana proxy, which returns 402 insufficient_balance / 429
-          // daily_limit_reached when the account is out of credits. That error is
-          // shaped into a friendly non-retryable stop in MessageV2.fromError, which
-          // breaks this loop cleanly. See packages/engine/src/session/message-v2.ts.
+          // Credit and wall-clock enforcement remain owned by the arcana proxy,
+          // which returns 402 insufficient_balance / 429 daily_limit_reached when
+          // the account is out of credits. The configured step boundary is
+          // enforced below at the provider-turn boundary, after subtask and
+          // compaction work has been settled. Proxy errors are shaped into a
+          // friendly non-retryable stop in MessageV2.fromError.
           if (step === 1) {
             // Instant name from first user text (no model) so the session list
             // never stays on "New session - <ISO>" under rate limits.
@@ -2063,18 +2080,31 @@ export const layer = Layer.effect(
             yield* events.publish(Session.Event.Error, { sessionID, error: error.toObject() })
             throw error
           }
-          const maxSteps = agent.steps ?? Infinity
-          const isLastStep = step >= maxSteps
-          // Persist a metadata flag so the next runLoop can detect this was a max-steps stop.
-          if (isLastStep) {
+          const planModeAvailable = RuntimeFlags.planModeAvailable(flags)
+          if (agent.name === "plan" && !planModeAvailable) {
+            const error = new NamedError.Unknown({
+              message: "Plan mode is disabled. Enable ARCANA_EXPERIMENTAL_PLAN_MODE for the CLI to use it.",
+            })
+            yield* events.publish(Session.Event.Error, { sessionID, error: error.toObject() })
+            throw error
+          }
+          const maxSteps = normalizeStepLimit(agent.steps)
+          // `toolTurns` counts only provider turns that may execute external
+          // tools. The finalization turn is deliberately outside this budget.
+          const isFinalizationTurn = toolTurns >= maxSteps
+          if (!isFinalizationTurn) toolTurns += 1
+          // Persist a metadata flag so the completion event records a forced
+          // step-limit stop without placing control prose in the transcript.
+          if (isFinalizationTurn) {
+            stepLimit = maxSteps
             session.metadata = { ...session.metadata, __arcana_max_steps_hit: true }
             yield* sessions.setMetadata({ sessionID, metadata: session.metadata })
           }
-          msgs = yield* SessionReminders.apply({ messages: msgs, agent, session }).pipe(
+          const reminders = yield* SessionReminders.apply({ messages: msgs, agent, session }).pipe(
             Effect.provideService(RuntimeFlags.Service, flags),
             Effect.provideService(FSUtil.Service, fsys),
-            Effect.provideService(Session.Service, sessions),
           )
+          msgs = reminders.messages
 
           const msg: SessionV1.Assistant = {
             id: MessageID.ascending(),
@@ -2127,34 +2157,37 @@ export const layer = Layer.effect(
             const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
             const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
             const promptOps = yield* ops()
+            const format = lastUser.format ?? { type: "text" as const }
 
-            const tools = yield* SessionTools.resolve({
-              agent,
-              session,
-              model,
-              processor: handle,
-              bypassAgentCheck,
-              messages: msgs,
-              promptOps,
-            }).pipe(
-              Effect.provideService(Plugin.Service, plugin),
-              Effect.provideService(Permission.Service, permission),
-              Effect.provideService(ToolRegistry.Service, registry),
-              Effect.provideService(MCP.Service, mcp),
-              Effect.provideService(Truncate.Service, truncate),
-              Effect.provideService(SessionBudget.Service, budget),
-            )
+            const tools: Record<string, AITool> = isFinalizationTurn
+              ? {}
+              : yield* SessionTools.resolve({
+                  agent,
+                  session,
+                  model,
+                  processor: handle,
+                  bypassAgentCheck,
+                  messages: msgs,
+                  promptOps,
+                }).pipe(
+                  Effect.provideService(Plugin.Service, plugin),
+                  Effect.provideService(Permission.Service, permission),
+                  Effect.provideService(ToolRegistry.Service, registry),
+                  Effect.provideService(MCP.Service, mcp),
+                  Effect.provideService(Truncate.Service, truncate),
+                  Effect.provideService(SessionBudget.Service, budget),
+                )
 
-            if (lastUser.format?.type === "json_schema") {
+            if (!isFinalizationTurn && format.type === "json_schema") {
               tools["StructuredOutput"] = createStructuredOutputTool({
-                schema: lastUser.format.schema,
+                schema: format.schema,
                 onSuccess(output) {
                   structured = output
                 },
               })
             }
 
-            if (step === 1)
+            if (step === 1 && !isFinalizationTurn)
               yield* summary.summarize({ sessionID, messageID: lastUser.id }).pipe(Effect.ignore, Effect.forkIn(scope))
 
             if (step > 1 && lastFinished) {
@@ -2202,6 +2235,7 @@ export const layer = Layer.effect(
               ...(skills ? [skills] : []),
               ...(memory ? [memory] : []),
               ...(goalBlock ? [goalBlock] : []),
+              ...reminders.system,
               ...(continuationsUsed(session.metadata as Record<string, unknown> | undefined) > 0
                 ? [DRIVE_CONTINUATION_REMINDER]
                 : []),
@@ -2214,32 +2248,22 @@ export const layer = Layer.effect(
               system.push(trialHistory)
             }
 
-            // Detect step-limit continuation: check for the metadata flag set when max steps was hit.
-            if (step === 1 && lastAssistant?.finish && !["tool-calls"].includes(lastAssistant.finish)) {
-              const maxStepsHit = (session.metadata as Record<string, unknown> | undefined)?.["__arcana_max_steps_hit"]
-              if (maxStepsHit) {
-                // Clear the one-shot flag
-                const cleaned = { ...session.metadata }
-                delete cleaned["__arcana_max_steps_hit"]
-                session.metadata = cleaned
-                yield* sessions.setMetadata({ sessionID, metadata: cleaned })
-                system.push(
-                  "<system-reminder>\n" +
-                  "The previous turn ended because the maximum step limit was reached. " +
-                  "Tools are now re-enabled. Review the continuation document below to understand " +
-                  "what was accomplished and what remains, then continue working. " +
-                  "Pick up where you left off — do NOT restart from scratch.\n" +
-                  "</system-reminder>",
-                )
-              }
-            }
-            const format = lastUser.format ?? { type: "text" as const }
+            if (isFinalizationTurn) system.push(STEP_LIMIT_FINALIZATION_SYSTEM_PROMPT)
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
             msg.latency = {
               ...(msg.latency ?? { attempts: [] }),
               preflightMs: Math.max(0, Date.now() - msg.time.created),
             }
             yield* sessions.updateMessage(msg)
+            const finalizationTools: Record<string, AITool> = {}
+            if (format.type === "json_schema") {
+              finalizationTools.StructuredOutput = createStructuredOutputTool({
+                schema: format.schema,
+                onSuccess(output) {
+                  structured = output
+                },
+              })
+            }
             const result = yield* handle.process({
               user: lastUser,
               agent,
@@ -2247,15 +2271,15 @@ export const layer = Layer.effect(
               sessionID,
               parentSessionID: session.parentID,
               system,
-              messages: [...modelMsgs, ...(isLastStep ? [{ role: "assistant" as const, content: MAX_STEPS }] : [])],
-              tools,
+              messages: modelMsgs,
+              tools: isFinalizationTurn ? finalizationTools : tools,
               model,
               toolChoice: format.type === "json_schema" ? "required" : undefined,
             })
 
             // LLM title polish: fire AFTER the main call completes to avoid
             // concurrent LLM requests hitting upstream rate limits.
-            if (step === 1) {
+            if (step === 1 && !isFinalizationTurn) {
               yield* title({
                 session,
                 modelID: lastUser.model.modelID,
@@ -2268,6 +2292,32 @@ export const layer = Layer.effect(
               handle.message.structured = structured
               handle.message.finish = handle.message.finish ?? "stop"
               yield* sessions.updateMessage(handle.message)
+              return "break" as const
+            }
+
+            // The finalization turn is terminal by construction. Even if a
+            // provider reports an unusual finish reason, never re-enter the
+            // tool loop after the hard boundary.
+            if (isFinalizationTurn) {
+              const persisted = yield* sessions.messages({ sessionID, limit: 10 }).pipe(
+                Effect.catch(() => Effect.succeed([] as SessionV1.WithParts[])),
+              )
+              const persistedAssistant = persisted.findLast((item) => item.info.id === handle.message.id)
+              const hasText = persistedAssistant?.parts.some(
+                (part) => part.type === "text" && !part.ignored && part.text.trim().length > 0,
+              )
+              if (handle.message.error || !hasText) {
+                const fallback: SessionV1.TextPart = {
+                  id: PartID.ascending(),
+                  messageID: handle.message.id,
+                  sessionID,
+                  type: "text",
+                  text:
+                    "This run reached its step limit before all work was complete. " +
+                    "Completed work is preserved; send another message to continue.",
+                }
+                yield* sessions.updatePart(fallback)
+              }
               return "break" as const
             }
 
@@ -2369,7 +2419,11 @@ export const layer = Layer.effect(
           sessionId: sessionID,
           actor: { kind: "user", id: "session" },
           type: "session.completed",
-          payload: { steps: step, reason: completionReason },
+          payload: {
+            steps: step,
+            reason: completionReason,
+            ...(stepLimit !== undefined ? { limit: stepLimit, toolTurns, finalized: true } : {}),
+          },
         }).pipe(Effect.catch(() => Effect.void), Effect.ignore)
 
         yield* Effect.gen(function* () {

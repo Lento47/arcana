@@ -276,7 +276,7 @@ export const layer = Layer.effect(
             tool.workflow,
             tool.patch,
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
-            ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
+            ...(RuntimeFlags.planModeAvailable(flags) ? [tool.plan] : []),
           ],
           task: tool.task,
           read: tool.read,

@@ -41,6 +41,7 @@ import { LocationServiceMap } from "@arcana/core/location-layer"
 import { PluginBoot } from "@arcana/core/plugin/boot"
 import { Reference } from "@arcana/core/reference"
 import { Location } from "@arcana/core/location"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 
 export const Info = Schema.Struct({
   name: Schema.String,
@@ -111,6 +112,8 @@ export const layer = Layer.effect(
     const skill = yield* Skill.Service
     const provider = yield* Provider.Service
     const locations = yield* LocationServiceMap
+    const flags = yield* RuntimeFlags.Service
+    const planModeAvailable = RuntimeFlags.planModeAvailable(flags)
     // User-authored agent modules are global (loaded from <config>/agents), so
     // resolve them once here rather than per-directory inside the state builder.
     const external = yield* loadExternalAgents().pipe(Effect.catch(() => Effect.succeed([])))
@@ -273,6 +276,7 @@ export const layer = Layer.effect(
           plan: {
             name: "plan",
             description: "Plan mode. Disallows all edit tools.",
+            hidden: !planModeAvailable,
             steps: 25,
             options: {},
             permission: agentPermission({
@@ -562,6 +566,10 @@ export const layer = Layer.effect(
           item.permission = Permission.merge(item.permission, Permission.fromConfig(value.permission ?? {}))
         }
 
+        // Plan mode is a coordinated CLI feature. Keep it unavailable when
+        // its runtime tool is not registered, even if config tries to expose it.
+        if (agents.plan && !planModeAvailable) agents.plan.hidden = true
+
         // Ensure Truncate.GLOB is allowed unless explicitly configured
         for (const name in agents) {
           const agent = agents[name]
@@ -744,6 +752,7 @@ export const defaultLayer = layer.pipe(
   Layer.provide(Skill.defaultLayer),
   Layer.provide(LocationServiceMap.layer),
   Layer.provide(FSUtil.defaultLayer),
+  Layer.provide(RuntimeFlags.defaultLayer),
 )
 
 const locationServiceMapNode = LayerNode.make(LocationServiceMap.layer, [])
@@ -756,6 +765,7 @@ export const node = LayerNode.make(layer, [
   Provider.node,
   locationServiceMapNode,
   FSUtil.node,
+  RuntimeFlags.node,
 ])
 
 export * as Agent from "./agent"

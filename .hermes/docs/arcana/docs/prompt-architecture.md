@@ -33,8 +33,7 @@ packages/engine/src/session/prompt/
 ├── plan.txt                 # Plan mode prompt
 ├── plan-mode.txt            # Plan mode activation
 ├── plan-reminder-anthropic.txt  # Dormant legacy asset; not imported by the runtime
-├── max-steps.txt            # Injected when step limit hit
-└── build-switch.txt         # Injected during build switching
+└── build-switch.txt         # Privileged guidance during build switching
 ```
 
 ---
@@ -91,7 +90,7 @@ System Prompt = [
 ```
 
 **Additional dynamic sections:**
-- Runtime-generated reminder text for queued follow-ups and step-limit continuation
+- Runtime-generated privileged guidance for queued follow-ups, plan/build switching, and bounded finalization
 - Structured output system prompt when JSON schema is requested
 - Plugin transforms that may modify the assembled system array
 
@@ -223,28 +222,20 @@ Capped at 40 skills (configurable via `ARCANA_MAX_SKILLS`).
 
 ### Plan Mode (`plan.txt`, `plan-mode.txt`)
 
-Injected when the agent enters plan mode. Contains guidance for planning workflows.
+Plan guidance is added to the privileged system context only when experimental
+CLI plan mode is enabled. It is never appended to a user message or persisted
+as a synthetic transcript part. The plan agent and `plan_exit` tool use the
+same availability gate.
 
 `plan-reminder-anthropic.txt` is not imported by current source code. Changing it has no runtime effect unless it is explicitly wired in later.
 
-### Max Steps (`max-steps.txt`)
+### Max Steps
 
-Appended as a final assistant message when the step limit is hit:
-
-```
-The maximum number of steps has been reached.
-[Continuation document with todo list and progress]
-```
-
-On the next turn, a `<system-reminder>` is injected:
-
-```xml
-<system-reminder>
-The previous turn ended because the maximum step limit was reached.
-Tools are now re-enabled. Review the continuation document below to understand
-what was accomplished and what remains, then continue working.
-</system-reminder>
-```
+The session loop enforces the configured step limit at runtime. Once the
+external-tool turn budget is exhausted, Arcana performs one bounded,
+tool-free finalization turn and then completes with `reason: "step_limit"`.
+The old assistant-prefill continuation prompt and next-turn XML reminder are
+not part of the model or user transcript.
 
 ---
 

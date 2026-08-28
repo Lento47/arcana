@@ -504,6 +504,26 @@ noLLMServer.instance(
   { config: cfg },
 )
 
+noLLMServer.instance(
+  "rejects direct plan-agent requests when plan mode is disabled",
+  () =>
+    Effect.gen(function* () {
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({ title: "Plan disabled" })
+      const exit = yield* prompt
+        .prompt({
+          sessionID: session.id,
+          agent: "plan",
+          parts: [{ type: "text", text: "draft a plan" }],
+        })
+        .pipe(Effect.exit)
+
+      expect(Exit.isFailure(exit)).toBe(true)
+    }),
+  { config: cfg },
+)
+
 it.instance("a noReply prompt titles a default-titled session from the first user text", () =>
   Effect.gen(function* () {
     // The run loop never reaches its step-1 title path under noReply, so the
@@ -891,6 +911,58 @@ it.instance("loop continues when finish is tool-calls", () =>
       expect(result.info.finish).toBe("stop")
     }
   }),
+)
+
+it.instance(
+  "enforces the step limit with a tool-free finalization turn",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        agent: { build: { steps: 1 } },
+      }))
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({
+        title: "Step limit",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+
+      yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "inspect the workspace" }],
+      })
+      yield* llm.tool("glob", { pattern: "**/*.txt" })
+      yield* llm.text("Completed: workspace inspection. Remaining: none. Blockers: none. Next action: review the results.")
+
+      const result = yield* prompt.loop({ sessionID: session.id })
+      expect(result.info.role).toBe("assistant")
+      expect(yield* llm.calls).toBe(2)
+
+      const requests = yield* llm.inputs
+      const finalizer = requests.find((body) => JSON.stringify(body.messages).includes('"role":"tool"'))
+      expect(finalizer).toBeDefined()
+      expect(!finalizer || !Array.isArray(finalizer.tools) || finalizer.tools.length === 0).toBe(true)
+      expect(JSON.stringify(requests)).not.toContain("MAXIMUM STEPS REACHED")
+      expect(JSON.stringify(requests)).not.toContain("Plan Mode - System Reminder")
+
+      const messages = yield* MessageV2.filterCompactedEffect(session.id)
+      const text = messages
+        .flatMap((message) => message.parts)
+        .filter((part): part is SessionV1.TextPart => part.type === "text")
+        .map((part) => part.text)
+        .join("\n")
+      expect(text).not.toContain("MAXIMUM STEPS REACHED")
+      expect(text).not.toContain("Plan Mode - System Reminder")
+      expect(text).toContain("Completed: workspace inspection")
+
+      const eventStore = yield* EventStore.Service
+      const events = yield* eventStore.listType(session.id, "session.completed")
+      const completion = events.at(-1)
+      expect(completion?.payload).toMatchObject({ reason: "step_limit", limit: 1, toolTurns: 1, finalized: true })
+    }),
 )
 
 it.instance("glob tool keeps instance context during prompt runs", () =>

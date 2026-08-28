@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { ConfigProvider, Effect, Layer } from "effect"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
 import { it } from "../lib/effect"
@@ -9,6 +9,12 @@ const fromConfig = (input: Record<string, unknown>) =>
 const readFlags = RuntimeFlags.Service.useSync((flags) => flags)
 
 describe("RuntimeFlags", () => {
+  test("plan mode requires both the experiment and the CLI surface", () => {
+    expect(RuntimeFlags.planModeAvailable({ experimentalPlanMode: true, client: "cli" })).toBe(true)
+    expect(RuntimeFlags.planModeAvailable({ experimentalPlanMode: true, client: "desktop" })).toBe(false)
+    expect(RuntimeFlags.planModeAvailable({ experimentalPlanMode: false, client: "cli" })).toBe(false)
+  })
+
   it.effect("defaultLayer defaults autoShare to false", () =>
     Effect.gen(function* () {
       const flags = yield* readFlags.pipe(Effect.provide(fromConfig({})))
