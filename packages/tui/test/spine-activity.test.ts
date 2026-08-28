@@ -37,10 +37,15 @@ function turnEntry(
 
 describe("spine activity reel projection", () => {
   test("recognizes only the approved work primitives", () => {
-    for (const kind of ["think", "run", "inspect", "patch", "agent"] as const) {
+    for (const kind of ["think", "run", "inspect", "patch"] as const) {
       expect(isWorkActivityKind(kind)).toBe(true)
       expect(isWorkActivityEntry(turnEntry(kind, kind))).toBe(true)
     }
+    // Delegated sessions are navigation boundaries. They stay as independent
+    // rows so Enter/j/k can address each subagent without opening a sibling's
+    // context through a shared activity reel.
+    expect(isWorkActivityKind("agent")).toBe(false)
+    expect(isWorkActivityEntry(turnEntry("agent", "agent"))).toBe(false)
     expect(isWorkActivityEntry(turnEntry("fail", "fail"))).toBe(false)
     expect(isWorkActivityEntry(turnEntry("approval", "approve"))).toBe(false)
     expect(isWorkActivityEntry(turnEntry("governance", "inspect", "g", {
@@ -97,7 +102,7 @@ describe("spine activity reel projection", () => {
     expect(settled[0]!.elapsed).toBe("+50ms")
   })
 
-  test("does not create nested reels and keeps an agent's child context atomic", () => {
+  test("keeps an agent row outside the reel so its child context stays addressable", () => {
     const groupedRun = turnEntry("run-group", "run", "turn-1", {
       children: [
         turnEntry("run-a", "run", "turn-1"),
@@ -108,10 +113,12 @@ describe("spine activity reel projection", () => {
       children: [turnEntry("child-run", "run", "child-turn")],
     })
     const rows = collapseWorkActivities([groupedRun, agent])
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.children?.map((child) => child.id)).toEqual(["run-a", "run-b", "agent-1"])
-    expect(rows[0]!.children?.some((child) => child.activity?.type === "work")).toBe(false)
-    expect(rows[0]!.children?.find((child) => child.id === "agent-1")?.children).toHaveLength(1)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.activity?.type).toBe("work")
+    expect(rows[0]!.children?.map((child) => child.id)).toEqual(["run-a", "run-b"])
+    expect(rows[1]!.id).toBe("agent-1")
+    expect(rows[1]!.kind).toBe("agent")
+    expect(rows[1]!.children).toHaveLength(1)
     expect(agent.children).toHaveLength(1)
   })
 

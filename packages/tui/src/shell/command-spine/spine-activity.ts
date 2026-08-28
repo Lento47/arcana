@@ -9,7 +9,10 @@
 
 import { formatElapsedMs, type SpineEntry, type SpineKind } from "./spine-types"
 
-export const WORK_ACTIVITY_KINDS: readonly SpineKind[] = ["think", "run", "inspect", "patch", "agent"]
+// Delegation is a navigation boundary, not just another tool step. Keeping
+// agent rows out of the reel means each subagent remains a first-class row
+// that can receive focus and open its own session independently.
+export const WORK_ACTIVITY_KINDS: readonly SpineKind[] = ["think", "run", "inspect", "patch"]
 
 const WORK_ACTIVITY_KIND_SET = new Set<SpineKind>(WORK_ACTIVITY_KINDS)
 
@@ -34,9 +37,9 @@ export function activityTurnID(entry: Pick<SpineEntry, "source">): string | unde
 function flattenWorkEntry(entry: SpineEntry): SpineEntry[] {
   if (!isWorkActivityEntry(entry)) return []
   // The mapper already collapses homogeneous run/inspect/patch bursts. Those
-  // synthetic parents may join a wider turn reel, but agent rows must remain
-  // atomic: their children describe a separate context and must not be
-  // mistaken for siblings of the parent delegation step.
+  // synthetic parents may join a wider turn reel. Agent rows are deliberately
+  // excluded above: their children describe a separate context and must not
+  // be mistaken for siblings of the parent delegation step.
   const canFlatten = entry.kind === "run" || entry.kind === "inspect" || entry.kind === "patch"
   if (!canFlatten || !entry.children?.length) return [entry]
   const flattened: SpineEntry[] = []

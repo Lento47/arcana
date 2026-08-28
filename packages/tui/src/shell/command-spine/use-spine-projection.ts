@@ -182,21 +182,18 @@ export function useSpineProjection(props: ShellProps, input: {
     pendingGateEntries({ permissions: props.permissions(), questions: props.questions() }),
   )
   // Running subagents: the tool metadata has no sessionId yet, but the child
-  // session exists in sync (parentID). Stamp it so Enter / click-to-dive and
-  // the open-subagent button all resolve the child context reliably.
+  // session exists in sync (parentID). The safe fallback is intentionally
+  // narrow: one unstamped card and one child. With multiple cards/children,
+  // title matching below must establish identity rather than making every
+  // card point at the newest child.
   const fallbackChildSessionID = createMemo(() => {
     const parentID = props.sessionID
-    let newest: string | undefined
-    let newestCreated = -1
-    for (const session of sync.data.session) {
-      if (session.parentID !== parentID) continue
-      const created = session.time?.created ?? 0
-      if (created >= newestCreated) {
-        newestCreated = created
-        newest = session.id
-      }
-    }
-    return newest
+    const unstamped = entries().entries.filter(
+      (entry) => entry.kind === "agent" && !entry.source?.sessionID && Boolean(entry.actor),
+    )
+    if (unstamped.length !== 1) return undefined
+    const children = sync.data.session.filter((session) => session.parentID === parentID)
+    return children.length === 1 ? children[0]?.id : undefined
   })
   // ── Queued prompt annotation (linear chat + steer/drop) ────────────
   const queuedByMessageID = createMemo(() => {
@@ -483,9 +480,9 @@ export function useSpineProjection(props: ShellProps, input: {
  * Running subagent rows carry no child sessionID in the tool metadata until the
  * engine records it. The child session is already visible in sync (parentID), so
  * stamp a matching child onto agent entries without one. Matching prefers the
- * child whose title names the entry's actor (`@agent subagent`), with a fallback
- * to the newest child — this is what Enter-to-dive, the open-subagent button,
- * and the inline working panel all rely on.
+ * child whose title names the entry's actor (`@agent subagent`). The newest
+ * child fallback is permitted only for the unambiguous one-card/one-child case;
+ * ambiguous cards stay unbound instead of opening another subagent's context.
  */
 export function stampAgentChildSessions(input: {
   entries: SpineEntry[]
@@ -511,30 +508,40 @@ export function stampAgentChildSessions(input: {
   //      and exactly ONE child. With retries/multiple same-agent children,
   //      blanket-stamping made every card mirror the newest child's stream,
   //      which read as "multiple cards showing the same subagent".
-  const childByAgent = new Map<string, { id: string; created: number }>()
+  // Matching children are kept as a list so repeated same-agent rows receive
+  // distinct children in creation order instead of all mirroring one retry.
+  const childByAgent = new Map<string, Array<{ id: string; created: number }>>()
   for (const child of children) {
     const agentName = child.title?.match(/@([\w-]+)\s+subagent/i)?.[1]
     if (!agentName) continue
     const created = child.time?.created ?? 0
-    const existing = childByAgent.get(agentName)
-    if (!existing || created > existing.created) {
-      childByAgent.set(agentName, { id: child.id, created })
-    }
+    const list = childByAgent.get(agentName.toLowerCase()) ?? []
+    list.push({ id: child.id, created })
+    list.sort((a, b) => a.created - b.created || a.id.localeCompare(b.id))
+    childByAgent.set(agentName.toLowerCase(), list)
   }
 
   const unstamped = entries.filter((e) => e.kind === "agent" && !e.source?.sessionID)
   const oneToOne = children.length === 1 && unstamped.length === 1
+  const claimed = new Set(
+    entries.flatMap((entry) => (entry.kind === "agent" && entry.source?.sessionID ? [entry.source.sessionID] : [])),
+  )
+  let changed = false
 
-  return entries.map((entry): SpineEntry => {
+  const result = entries.map((entry): SpineEntry => {
     if (entry.kind !== "agent" || entry.source?.sessionID || !entry.actor) return entry
-    const matched = childByAgent.get(entry.actor)
-    const resolved = matched?.id ?? (oneToOne ? children.reduce((max, s) => ((s.time?.created ?? 0) > (max.time?.created ?? 0) ? s : max), children[0]!).id : undefined)
+    const matched = childByAgent.get(entry.actor.toLowerCase())?.find((candidate) => !claimed.has(candidate.id))
+    const resolved = matched?.id
+      ?? (oneToOne && !claimed.has(children[0]!.id) ? children[0]!.id : undefined)
     if (!resolved) return entry // leave unbound: card renders its own state, no dive target
+    claimed.add(resolved)
+    changed = true
     return {
       ...entry,
       source: { ...entry.source, sessionID: resolved } as SpineEntry["source"],
     }
   })
+  return changed ? result : entries
 }
 
 /**

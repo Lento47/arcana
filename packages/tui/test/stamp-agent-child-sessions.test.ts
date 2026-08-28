@@ -23,14 +23,21 @@ describe("stampAgentChildSessions", () => {
     expect(result[0]!.source?.sessionID).toBeUndefined()
   })
 
-  test("stamps the newest child when no agent name matches", () => {
+  test("leaves an unmatched card unbound when multiple children are possible", () => {
     const entries = [agentEntry("p1", "unmatched")]
     const sessions = [
       { id: "child-1", parentID: "parent", time: { created: 1000 }, title: "task (@research subagent)" },
       { id: "child-2", parentID: "parent", time: { created: 2000 }, title: "task (@general subagent)" },
     ]
     const result = stampAgentChildSessions({ entries, sessions, parentSessionID: "parent" })
-    expect(result[0]!.source?.sessionID).toBe("child-2")
+    expect(result[0]!.source?.sessionID).toBeUndefined()
+  })
+
+  test("uses the only child for the only unstamped card", () => {
+    const entries = [agentEntry("p1", "unmatched")]
+    const sessions = [{ id: "child-1", parentID: "parent", time: { created: 1000 }, title: "task" }]
+    const result = stampAgentChildSessions({ entries, sessions, parentSessionID: "parent" })
+    expect(result[0]!.source?.sessionID).toBe("child-1")
   })
 
   test("matches each agent row to the child whose title names its actor", () => {
@@ -46,7 +53,18 @@ describe("stampAgentChildSessions", () => {
     const result = stampAgentChildSessions({ entries, sessions, parentSessionID: "parent" })
     expect(result[0]!.source?.sessionID).toBe("research-child")
     expect(result[1]!.source?.sessionID).toBe("general-child")
-    expect(result[2]!.source?.sessionID).toBe("research-child")
+    expect(result[2]!.source?.sessionID).toBeUndefined()
+  })
+
+  test("does not point repeated same-agent cards at the same retry", () => {
+    const entries = [agentEntry("p1", "research"), agentEntry("p2", "research")]
+    const sessions = [
+      { id: "research-1", parentID: "parent", time: { created: 1000 }, title: "first (@research subagent)" },
+      { id: "research-2", parentID: "parent", time: { created: 2000 }, title: "retry (@research subagent)" },
+    ]
+    const result = stampAgentChildSessions({ entries, sessions, parentSessionID: "parent" })
+    expect(result[0]!.source?.sessionID).toBe("research-1")
+    expect(result[1]!.source?.sessionID).toBe("research-2")
   })
 
   test("does not overwrite an existing per-part sessionID", () => {

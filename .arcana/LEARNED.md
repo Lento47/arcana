@@ -32,6 +32,9 @@
 - [[proxy-origin-check]] — PayPal endpoint Origin check, CF Function proxy, client never sees proxy URL
 
 ## Project: arcana
+- [[env-shell-is-powershell]] — Agent shell is PowerShell, not bash; UNIX syntax breaks
+- [[arcana-tooling-stack]] — Arcana uses oxlint + Turborepo (bun turbo); no per-pkg typecheck script
+- [[arcana-monorepo-layout]] — Arcana is a TS/Effect monorepo (engine, core, tui, llm); tests live in sibling test/ dirs, not src/
 - [[arcana-audit-baseline]] — Audit baseline: 1766/4/7 tests, authority scan 148 sources OK, proof suite 19/19, secrets clean, one SHA-1 helper
 - [[arcana-evalcondition-bypass]] — OPEN FINDING: workflow/engine.ts evalCondition runs model-authored JS via new Function, bypassing PDP/PEP
 - [[arcana-slash-command-sources]] — Arcana slash commands are defined across app-commands.tsx, session-commands.tsx, prompt/index.tsx, voice.tsx, diff-viewer.tsx
@@ -48,6 +51,9 @@
 - [[corrupt-glyphs-error-effect]] — CORRUPT_GLYPHS pool used for error "unencrypt" effect
 
 ## Patterns
+- [[pattern-count-tests-repo-wide]] — Count Arcana tests repo-wide via rg, not src-only glob
+- [[pattern-set-goal-before-shell]] — Set active goal before invoking bash/shell tool
+- [[pattern-rg-files-inventory]] — Use rg --files for fast, ignore-aware file inventory in monorepos
 - [[governed-codebase-audit-method]] — Audit order: sensitive-file inventory → built-in harnesses → dangerous-pattern sweeps → triage each hit
 - [[demo-gated-actions-via-minimal-goal]] — When demonstrating governed features, pre-bind a minimal goal so the gated action succeeds on first try
 - [[enumerate-features-from-source]] — When asked about available commands/capabilities, enumerate them from the source files that define them, citing file locations and aliases
@@ -58,6 +64,10 @@
 - [[caveman-compression]] — Tool/system prompts compressed ~40% by dropping articles/filler
 
 ## Mistakes
+- [[mistake-bash-syntax-powershell]] — Used bash for/redirect syntax in PowerShell shell; commands broke
+- [[mistake-bash-before-goal]] — Bash tool blocked because no active goal was set
+- [[mistake-walked-node-modules]] — Inventory command recursively walked node_modules; timed out
+- [[mistake-src-only-test-scan]] — Undercounted Arcana tests via src-only glob; missed sibling test/ dirs
 - [[shell-exec-needs-active-goal]] — Shell commands are refused with 'No active goal' unless a session goal is bound first
 - [[shell-run-before-binding-goal]] — First shell attempt ran without an active goal and was refused
 - [[bun-transpiler-transformSync-not-available]] — Bun.Transpiler.transformSync not in Bun 1.3.11; use `bun build`

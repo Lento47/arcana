@@ -8,8 +8,11 @@ const src = (path: string) => readFileSync(join(root, path), "utf8").replace(/\r
 describe("subagent dive/back UX source contracts", () => {
   test("spine rows do not scan the project session list for childSessionID", () => {
     const entry = src("src/shell/command-spine/spine-entry.tsx")
+    const projection = src("src/shell/command-spine/use-spine-projection.ts")
     expect(entry).toContain("props.fallbackChildSessionID")
     expect(entry).not.toContain(".filter((s: any) => s.parentID === props.sessionID)")
+    expect(projection).toContain("unstamped.length !== 1")
+    expect(projection).toContain("children.length === 1")
   })
 
   test("the header owns session navigation and the route no longer renders a duplicate breadcrumb", () => {

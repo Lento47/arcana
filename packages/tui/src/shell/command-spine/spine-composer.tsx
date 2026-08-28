@@ -39,6 +39,7 @@ export function SpineComposer(props: {
   const showsWorkingCue = () => props.state() === "working" && motion?.activeCue() === "composer"
   const escapeHint = () => {
     const stage = props.escapeStage()
+    if (props.parentID) return "esc return to parent"
     if (stage === 0) return undefined
     if (stage === 1) return "esc again: leave prompt · navigate spine"
     return "esc again: interrupt session"

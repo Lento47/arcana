@@ -1,9 +1,11 @@
 /**
  * Resolve a subagent card's child session for dive navigation.
  *
- * Prefers the child whose title names the card's actor (`@<agent> subagent`),
- * then falls back to the newest child of the parent. Pure so the matching
- * policy is unit-testable; callers refresh the session list first.
+ * Prefers the child whose title names the card's actor (`@<agent> subagent`).
+ * A newest-child fallback is safe only when there is exactly one child; an
+ * ambiguous list must not send one subagent card into another card's session.
+ * Pure so the matching policy is unit-testable; callers refresh the session
+ * list first.
  */
 export type ChildSessionLike = {
   id: string
@@ -29,5 +31,6 @@ export function resolveChildSession(input: {
         .filter((session) => new RegExp(`@${escapeRegExp(actor)}\\s+subagent`, "i").test(session.title ?? ""))
         .sort((a, b) => (b.time?.created ?? 0) - (a.time?.created ?? 0))[0]
     : undefined
-  return matched?.id ?? [...children].sort((a, b) => (b.time?.created ?? 0) - (a.time?.created ?? 0))[0]?.id
+  if (matched) return matched.id
+  return children.length === 1 ? children[0]?.id : undefined
 }

@@ -16,8 +16,13 @@ describe("resolveChildSession", () => {
     expect(resolveChildSession({ actor: "explore", parentID: "parent", sessions })).toBe("explore-1")
   })
 
-  test("falls back to the newest child when the actor does not match", () => {
-    expect(resolveChildSession({ actor: "unknown", parentID: "parent", sessions })).toBe("reviewer-2")
+  test("does not guess when the actor does not match multiple children", () => {
+    expect(resolveChildSession({ actor: "unknown", parentID: "parent", sessions })).toBeUndefined()
+  })
+
+  test("falls back when the parent has exactly one child", () => {
+    const only = [{ id: "only-child", parentID: "parent", time: { created: 2000 }, title: "untitled" }]
+    expect(resolveChildSession({ actor: "unknown", parentID: "parent", sessions: only })).toBe("only-child")
   })
 
   test("ignores sessions belonging to other parents", () => {
