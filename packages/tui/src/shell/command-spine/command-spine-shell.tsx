@@ -71,7 +71,24 @@ export function CommandSpineShell(props: ShellProps) {
     return current
   })
 
+  // Child sessions are their own workspaces. Esc is an unambiguous escape
+  // hatch back to the owning chat; it must not make the operator step through
+  // the root shell's three-stage focus/interrupt gesture first.
+  const returnToParentSession = (): boolean => {
+    const parentID = props.session()?.parentID
+    if (!parentID) return false
+    if (escapeResetTimer) {
+      clearTimeout(escapeResetTimer)
+      escapeResetTimer = undefined
+    }
+    setEscapeStage(0)
+    blurComposer()
+    route.navigate({ type: "session", sessionID: parentID })
+    return true
+  }
+
   const advanceEscape = () => {
+    if (returnToParentSession()) return
     const next = escapeStage() + 1
     if (next === 1) {
       promptRef.current?.focus()
@@ -612,7 +629,7 @@ export function CommandSpineShell(props: ShellProps) {
     priority: 1,
     bindings: [
       { key: "j,down", desc: "Focus next spine entry", group: "Command Spine", cmd: () => navigation.focusRelativeEntry(1) },
-      { key: "k,up", desc: "Focus previous spine entry", group: "Command Spine", cmd: () => navigation.focusRelativeEntry(-1) },
+      { key: "k", desc: "Focus previous spine entry", group: "Command Spine", cmd: () => navigation.focusRelativeEntry(-1) },
       { key: "return", desc: "Enter subagent context or expand/collapse entry", group: "Command Spine", cmd: activateFocusedEntry },
       { key: "space", desc: "Expand or collapse spine entry", group: "Command Spine", cmd: toggleFocusedEntry },
       { key: "y", desc: "Copy focused spine entry", group: "Command Spine", cmd: copyFocusedEntry },
@@ -658,6 +675,24 @@ export function CommandSpineShell(props: ShellProps) {
         group: "Command Spine",
         cmd: filters.cycleViewFilter,
       },
+    ],
+  }))
+
+  // The session route owns the configured `session.parent` binding (up by
+  // default) while viewing a child. Keep the vim-style up navigation here for
+  // root sessions only so the footer's parent action is not shadowed by the
+  // spine's generic `up` binding.
+  useBindings(() => ({
+    mode: ARCANA_BASE_MODE,
+    enabled: () =>
+      !props.session()?.parentID
+      && spineNavigationEnabled({
+        composerFocused: composerFocused(),
+        hasRows: projection.displayRows().length > 0,
+      }),
+    priority: 1,
+    bindings: [
+      { key: "up", desc: "Focus previous spine entry", group: "Command Spine", cmd: () => navigation.focusRelativeEntry(-1) },
     ],
   }))
 
@@ -807,8 +842,10 @@ export function CommandSpineShell(props: ShellProps) {
             scrollAcceleration={props.scrollAcceleration}
             setScrollRef={scroll.setScrollRef}
             handleMouseScroll={scroll.handleMouseScroll}
-            showScrollButton={scroll.showScrollButton()}
-            onScrollButton={scroll.scrollToBottom}
+            showScrollUpButton={scroll.showScrollUpButton()}
+            showScrollDownButton={scroll.showScrollDownButton()}
+            onScrollToTop={scroll.scrollToTop}
+            onScrollToBottom={scroll.scrollToBottom}
           />
           <AuthorityGate permissions={props.permissions()} questions={props.questions()} />
           <SpineComposer

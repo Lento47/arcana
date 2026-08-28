@@ -11,7 +11,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { shouldShowScrollButton } from "../src/util/geometry"
+import { hasContentAbove, hasContentBelow, shouldShowScrollButton } from "../src/util/geometry"
 
 const shellSrc = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/command-spine-shell.tsx"),
@@ -70,6 +70,34 @@ describe("shouldShowScrollButton (pure geometry policy)", () => {
   })
 })
 
+describe("hasContentAbove / hasContentBelow (split scroll indicators)", () => {
+  test("hasContentAbove: hides at the top", () => {
+    expect(hasContentAbove(0)).toBe(false)
+  })
+
+  test("hasContentAbove: shows when scrolled past zero", () => {
+    expect(hasContentAbove(1)).toBe(true)
+    expect(hasContentAbove(50)).toBe(true)
+  })
+
+  test("hasContentBelow: hides when fully at the bottom", () => {
+    // scrollHeight - scrollTop - viewportHeight === 0 → at the bottom
+    expect(hasContentBelow(100, 90, 10)).toBe(false)
+  })
+
+  test("hasContentBelow: shows when even one pixel is hidden", () => {
+    expect(hasContentBelow(101, 90, 10)).toBe(true)
+  })
+
+  test("hasContentBelow: hides on degenerate zero-height viewport", () => {
+    expect(hasContentBelow(100, 0, 0)).toBe(false)
+  })
+
+  test("hasContentBelow: hides when content fits the viewport", () => {
+    expect(hasContentBelow(10, 0, 10)).toBe(false)
+  })
+})
+
 describe("D10 source contract", () => {
   test("shell no longer polls with scrollPollInterval", () => {
     expect(shellSrc).not.toContain("scrollPollInterval")
@@ -87,8 +115,8 @@ describe("D10 source contract", () => {
     expect(scrollSrc).toContain("scrollChildIntoView(entryID)")
   })
 
-  test("scroll hook recomputes the button from geometry (refreshScrollButton)", () => {
-    expect(scrollSrc).toContain("refreshScrollButton")
+  test("scroll hook recomputes the indicators from geometry (refreshScrollIndicators)", () => {
+    expect(scrollSrc).toContain("refreshScrollIndicators")
   })
 
   test("entry root boxes carry id={entry().id} for findDescendantById", () => {

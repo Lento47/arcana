@@ -9,9 +9,12 @@ import { SpineRowError } from "./spine-row-error"
 /**
  * Scroll/visible-region rendering container for the spine.
  *
- * Renders the <scrollbox> plus the scroll-to-bottom button. Each row is a
- * keyed <For> over stable ids; the binding resolves the current entry object
- * per render (streaming updates swap content without remounting rows).
+ * Renders the <scrollbox> plus two independent scroll indicators: a `↑`
+ * when content is hidden above the viewport (click to scroll to top) and
+ * a `↓` when content is hidden below (click to scroll to bottom). Each
+ * hides when there's nothing to reveal in its direction. Rows are a
+ * keyed <For> over stable ids; the binding resolves the current entry
+ * object per render (streaming updates swap content without remounting).
  */
 export function SpineViewport(props: {
   visibleEntryIDs: Accessor<readonly string[]>
@@ -37,11 +40,14 @@ export function SpineViewport(props: {
   scrollAcceleration: ScrollAcceleration
   setScrollRef: (r: ScrollBoxRenderable) => void
   handleMouseScroll: (event: MouseEvent) => void
-  showScrollButton: boolean
-  onScrollButton: () => void
+  showScrollUpButton: boolean
+  showScrollDownButton: boolean
+  onScrollToTop: () => void
+  onScrollToBottom: () => void
 }) {
   const { theme } = useTheme()
-  const [scrollButtonHover, setScrollButtonHover] = createSignal(false)
+  const [upHover, setUpHover] = createSignal(false)
+  const [downHover, setDownHover] = createSignal(false)
 
   return (
     <box position="relative" flexDirection="column" flexGrow={1}>
@@ -113,20 +119,36 @@ export function SpineViewport(props: {
           }}
         </For>
       </scrollbox>
-      <Show when={props.showScrollButton}>
+      <Show when={props.showScrollUpButton}>
         <box
           position="absolute"
-          bottom={2}
+          top={1}
           right={4}
           zIndex={50}
-          width={10}
+          width={2}
           height={1}
-          onMouseUp={props.onScrollButton}
-          onMouseOver={() => setScrollButtonHover(true)}
-          onMouseOut={() => setScrollButtonHover(false)}
-          backgroundColor={scrollButtonHover() ? theme.backgroundElement : undefined}
+          onMouseUp={props.onScrollToTop}
+          onMouseOver={() => setUpHover(true)}
+          onMouseOut={() => setUpHover(false)}
+          backgroundColor={upHover() ? theme.backgroundElement : undefined}
         >
-          <text fg={theme.accent}>↓ latest</text>
+          <text fg={theme.accent}>↑</text>
+        </box>
+      </Show>
+      <Show when={props.showScrollDownButton}>
+        <box
+          position="absolute"
+          bottom={1}
+          right={4}
+          zIndex={50}
+          width={2}
+          height={1}
+          onMouseUp={props.onScrollToBottom}
+          onMouseOver={() => setDownHover(true)}
+          onMouseOut={() => setDownHover(false)}
+          backgroundColor={downHover() ? theme.backgroundElement : undefined}
+        >
+          <text fg={theme.accent}>↓</text>
         </box>
       </Show>
     </box>

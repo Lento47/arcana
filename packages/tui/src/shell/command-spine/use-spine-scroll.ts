@@ -1,16 +1,17 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js"
 import type { Accessor, Setter } from "solid-js"
 import type { MouseEvent, ScrollBoxRenderable } from "@opentui/core"
-import { shouldShowScrollButton } from "../../util/geometry"
+import { hasContentAbove, hasContentBelow } from "../../util/geometry"
 
 /**
  * Scrolling state and actions for the spine viewport.
  *
- * Owns the ScrollBox ref, the scroll-to-bottom button signal, and the
+ * Owns the ScrollBox ref, two independent scroll-indicator signals (↑ when
+ * content is hidden above, ↓ when content is hidden below), and the
  * scroll-triggering actions (wheel observe, keyboard H/G, entry-into-view).
- * The shell binds the ref into its <scrollbox> and forwards the button signal
- * to the viewport; every scroll-triggering action re-evaluates the button via
- * refreshScrollButton (event-driven, audit D10).
+ * The shell binds the ref into its <scrollbox> and forwards the indicator
+ * signals to the viewport; every scroll-triggering action re-evaluates the
+ * indicators via refreshScrollIndicators (event-driven, audit D10).
  */
 export function useSpineScroll(input: {
   /** Forwarded to the ScrollBox ref so callers can also read the renderable. */
@@ -18,7 +19,8 @@ export function useSpineScroll(input: {
   /** Changes whenever mounted row content can change its rendered height. */
   contentRevision?: Accessor<unknown>
 }) {
-  const [showScrollButton, setShowScrollButton] = createSignal(false)
+  const [showScrollUpButton, setShowScrollUpButton] = createSignal(false)
+  const [showScrollDownButton, setShowScrollDownButton] = createSignal(false)
   let scroll: ScrollBoxRenderable | undefined
   let refreshFrame: number | undefined
 
@@ -27,30 +29,31 @@ export function useSpineScroll(input: {
     input.onRef(r)
   }
 
-  const refreshScrollButton = () => {
+  const refreshScrollIndicators = () => {
     const s = scroll
     if (!s || s.isDestroyed) return
-    setShowScrollButton(shouldShowScrollButton(s.scrollHeight, s.y, s.height))
+    setShowScrollUpButton(hasContentAbove(s.y))
+    setShowScrollDownButton(hasContentBelow(s.scrollHeight, s.y, s.height))
   }
 
   const handleMouseScroll = (event: MouseEvent) => {
     const direction = event.scroll?.direction
     if (direction !== "up" && direction !== "down") return
-    queueMicrotask(refreshScrollButton)
+    queueMicrotask(refreshScrollIndicators)
   }
 
   const scrollToTop = () => {
     const s = scroll
     if (!s || s.isDestroyed) return
     s.scrollTo(0)
-    refreshScrollButton()
+    refreshScrollIndicators()
   }
 
   const scrollToBottom = () => {
     const s = scroll
     if (!s || s.isDestroyed) return
     s.scrollTo(s.scrollHeight)
-    refreshScrollButton()
+    refreshScrollIndicators()
   }
 
   /** D10: native DOM-style "nearest" scroll via the entry's id root box. */
@@ -59,11 +62,11 @@ export function useSpineScroll(input: {
       const s = scroll
       if (!s || s.isDestroyed) return
       s.scrollChildIntoView(entryID)
-      refreshScrollButton()
+      refreshScrollIndicators()
     })
   }
 
-  onMount(refreshScrollButton)
+  onMount(refreshScrollIndicators)
 
   createEffect(() => {
     input.contentRevision?.()
@@ -77,7 +80,7 @@ export function useSpineScroll(input: {
       const current = scroll
       if (!current || current.isDestroyed) return
       if (wasFollowing) current.scrollTo(current.scrollHeight)
-      refreshScrollButton()
+      refreshScrollIndicators()
     })
   })
 
@@ -86,10 +89,12 @@ export function useSpineScroll(input: {
   })
 
   return {
-    showScrollButton: showScrollButton as Accessor<boolean>,
-    setShowScrollButton: setShowScrollButton as Setter<boolean>,
+    showScrollUpButton: showScrollUpButton as Accessor<boolean>,
+    setShowScrollUpButton: setShowScrollUpButton as Setter<boolean>,
+    showScrollDownButton: showScrollDownButton as Accessor<boolean>,
+    setShowScrollDownButton: setShowScrollDownButton as Setter<boolean>,
     setScrollRef,
-    refreshScrollButton,
+    refreshScrollIndicators,
     handleMouseScroll,
     scrollToTop,
     scrollToBottom,

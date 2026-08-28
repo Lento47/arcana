@@ -96,3 +96,25 @@ export function shouldShowScrollButton(scrollHeight: number, scrollTop: number, 
   if (viewportHeight <= 0) return false
   return scrollHeight - scrollTop - viewportHeight > viewportHeight / 2
 }
+
+/**
+ * Scroll indicator policy (split): independent above/below checks so the
+ * viewport can render a `↑` when content is hidden above and a `↓` when
+ * content is hidden below. Each hides when there's nothing to reveal in
+ * that direction. The threshold is `> 0` — any pixel of hidden content
+ * shows the arrow, since the alternative ("hide until half a viewport")
+ * leaves users wondering why they can't get back to a recent entry that
+ * scrolled off the top.
+ */
+export function hasContentAbove(scrollTop: number): boolean {
+  return scrollTop > 0
+}
+
+export function hasContentBelow(
+  scrollHeight: number,
+  scrollTop: number,
+  viewportHeight: number,
+): boolean {
+  if (viewportHeight <= 0) return false
+  return scrollHeight - scrollTop - viewportHeight > 0
+}
