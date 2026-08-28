@@ -1665,18 +1665,16 @@ export const layer = Layer.effect(
                 ),
               )
             }
-            const firstNonSystem = streamInput.messages.findIndex((message) => message.role !== "system")
-            const systemPrefixEnd = firstNonSystem === -1 ? streamInput.messages.length : firstNonSystem
             const effectiveStreamInput =
               ctx.mlPreparation?.effectiveDirective === "use_optimized_prompt" &&
               ctx.mlPreparation.promptAddendum.trim()
                 ? {
                     ...streamInput,
-                    messages: [
-                      ...streamInput.messages.slice(0, systemPrefixEnd),
-                      { role: "system" as const, content: ctx.mlPreparation.promptAddendum },
-                      ...streamInput.messages.slice(systemPrefixEnd),
-                    ],
+                    // Keep the optimizer addendum in the trusted system
+                    // channel. Putting it in `messages` triggers AI SDK's
+                    // prompt-injection warning and makes the TUI console
+                    // overlay render an internal diagnostic.
+                    system: [...streamInput.system, ctx.mlPreparation.promptAddendum],
                   }
                 : streamInput
             const stream = llm.stream(effectiveStreamInput)

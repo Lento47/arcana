@@ -35,6 +35,14 @@ type PrepareInput = {
 
 export type Prepared = {
   readonly system: string[]
+  /**
+   * Engine-owned instructions for the AI SDK `system` option.
+   *
+   * Provider-specific instruction paths (OpenAI OAuth and workflow models)
+   * keep this undefined because they receive the same content through their
+   * native integration instead.
+   */
+  readonly systemOption: string | undefined
   readonly messages: ModelMessage[]
   readonly tools: Record<string, Tool>
   readonly params: {
@@ -108,18 +116,12 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
   }
   if (isOpenaiOauth) options.instructions = system.join("\n")
 
-  const messages =
-    isOpenaiOauth || input.isWorkflow
-      ? input.messages
-      : [
-          ...system.map(
-            (x): ModelMessage => ({
-              role: "system",
-              content: x,
-            }),
-          ),
-          ...input.messages,
-        ]
+  // Keep system instructions out of `messages`. AI SDK treats system-role
+  // entries there as potentially untrusted prompt content and warns (or can
+  // reject them). The dedicated system option preserves the same model
+  // semantics without crossing that trust boundary.
+  const messages = input.messages
+  const systemOption = isOpenaiOauth || input.isWorkflow ? undefined : system.join("\n")
 
   const params = yield* input.plugin.trigger(
     "chat.params",
@@ -184,6 +186,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
 
   return {
     system,
+    systemOption,
     messages,
     tools: Object.fromEntries(Object.entries(tools).toSorted(([a], [b]) => a.localeCompare(b))),
     params,

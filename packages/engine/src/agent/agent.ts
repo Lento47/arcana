@@ -4,7 +4,7 @@ import { Config } from "@/config/config"
 import { serviceUse } from "@arcana/core/effect/service-use"
 import { Provider } from "@/provider/provider"
 
-import { generateObject, streamObject, type ModelMessage } from "ai"
+import { generateObject, streamObject } from "ai"
 import { Truncate } from "@/tool/truncate"
 import { Auth } from "../auth"
 import { ProviderTransform } from "@/provider/transform"
@@ -693,20 +693,14 @@ export const layer = Layer.effect(
             },
           },
           temperature: 0.3,
+          ...(isOpenaiOauth ? {} : { system: system.join("\n") }),
           messages: [
-            ...(isOpenaiOauth
-              ? []
-              : system.map(
-                  (item): ModelMessage => ({
-                    role: "system",
-                    content: item,
-                  }),
-                )),
             {
               role: "user",
               content: `Create an agent configuration based on this request: "${input.description}".\n\nIMPORTANT: The following identifiers already exist and must NOT be used: ${existing.map((i) => i.name).join(", ")}\n  Return ONLY the JSON object, no other text, do not wrap in backticks`,
             },
           ],
+          allowSystemInMessages: false,
           model: language,
           schema: Object.assign(
             Schema.toStandardSchemaV1(GeneratedAgent),

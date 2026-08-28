@@ -246,6 +246,7 @@ const live: Layer.Layer<
           provider: item,
           auth: info,
           llmClient,
+          system: prepared.system,
           messages: prepared.messages,
           tools: prepared.tools,
           toolChoice: input.toolChoice,
@@ -338,6 +339,11 @@ const live: Layer.Layer<
           abortSignal: input.abort,
           headers: prepared.headers,
           maxRetries: input.retries ?? 0,
+          // System instructions are supplied through the dedicated option;
+          // fail closed if a future caller accidentally reintroduces a
+          // system-role message into the conversation history.
+          allowSystemInMessages: false,
+          ...(prepared.systemOption !== undefined ? { system: prepared.systemOption } : {}),
           messages: prepared.messages,
           model: wrapLanguageModel({
             model: language,
