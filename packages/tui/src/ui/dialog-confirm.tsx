@@ -54,17 +54,19 @@ export function DialogConfirm(props: DialogConfirmProps) {
     ],
   }))
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
+    <box width="100%" minWidth={0} paddingLeft={2} paddingRight={2} gap={1}>
+      <box flexDirection="row" justifyContent="space-between" minWidth={0}>
+        <text attributes={TextAttributes.BOLD} fg={theme.text} flexShrink={1} overflow="hidden" wrapMode="none">
           {props.title}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+        <text fg={theme.textMuted} flexShrink={0} onMouseUp={() => dialog.clear()}>
           esc
         </text>
       </box>
-      <box paddingBottom={1}>
-        <text fg={theme.textMuted}>{props.message}</text>
+      <box width="100%" minWidth={0} paddingBottom={1}>
+        <text fg={theme.textMuted} width="100%" minWidth={0} wrapMode="word">
+          {props.message}
+        </text>
       </box>
       <box flexDirection="row" justifyContent="flex-end" paddingBottom={1}>
         <For each={["cancel", "confirm"] as const}>

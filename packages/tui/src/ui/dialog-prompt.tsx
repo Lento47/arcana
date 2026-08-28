@@ -74,18 +74,21 @@ export function DialogPrompt(props: DialogPromptProps) {
   })
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
+    <box width="100%" minWidth={0} minHeight={0} paddingLeft={2} paddingRight={2} gap={1}>
+      <box flexDirection="row" justifyContent="space-between" minWidth={0}>
+        <text attributes={TextAttributes.BOLD} fg={theme.text} flexShrink={1} overflow="hidden" wrapMode="none">
           {props.title}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+        <text fg={theme.textMuted} flexShrink={0} onMouseUp={() => dialog.clear()}>
           esc
         </text>
       </box>
-      <box gap={1}>
+      <box width="100%" minWidth={0} gap={1}>
         {typeof props.description === "function" ? props.description() : props.description}
         <textarea
+          width="100%"
+          minWidth={0}
+          flexShrink={1}
           height={props.height ?? 3}
           ref={(val: TextareaRenderable) => {
             textarea = val
@@ -102,7 +105,7 @@ export function DialogPrompt(props: DialogPromptProps) {
           <Spinner color={theme.textMuted}>{props.busyText ?? "Working..."}</Spinner>
         </Show>
       </box>
-      <box paddingBottom={1} gap={1} flexDirection="row">
+      <box minWidth={0} paddingBottom={1} gap={1} flexDirection="row">
         <Show when={!props.busy} fallback={<text fg={theme.textMuted}>processing...</text>}>
           <Show when={submitShortcut()}>
             <text fg={theme.text}>

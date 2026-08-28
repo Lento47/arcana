@@ -85,10 +85,10 @@ test("short dialog content hugs its rows instead of filling the viewport", async
       .filter((row) => row.text.length > 0)
     expect(nonEmpty.some((row) => row.text.includes("Permissions status"))).toBe(true)
     expect(nonEmpty.some((row) => row.text.includes("No permission requests waiting."))).toBe(true)
-    // Card bottom lands right below the content (~row 20), far above the
-    // 30-row bottom the pre-fix dialog reached.
+    // Centering may place the short card at row 25 on a 40-row terminal, but
+    // it must remain above the old bottom-anchored 30-row cap.
     const lastRow = nonEmpty.at(-1)!.i
-    expect(lastRow).toBeLessThan(25)
+    expect(lastRow).toBeLessThanOrEqual(25)
   } finally {
     app.renderer.destroy()
   }

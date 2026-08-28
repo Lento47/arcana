@@ -10,7 +10,6 @@ import {
 import type { Binding } from "@opentui/keymap"
 import { useTheme, selectedForeground } from "../context/theme"
 import { COPY, Glyph } from "../branding"
-import { RoundBorder } from "./chrome"
 import { isDeepEqual } from "remeda"
 import { batch, createEffect, createMemo, createSignal, For, Show, type JSX, on } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -238,7 +237,10 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   })
 
   const dimensions = useTerminalDimensions()
-  const height = createMemo(() => Math.min(rows(), Math.floor(dimensions().height / 2) - 6))
+  // Keep the picker body useful on short terminals. The previous expression
+  // could hand Yoga a zero/negative maxHeight, collapsing the dialog and
+  // making the filter/footer appear detached from the card.
+  const height = createMemo(() => Math.max(1, Math.min(rows(), Math.floor(dimensions().height / 2) - 6)))
 
   const selected = createMemo(() => flat()[store.selected])
 
@@ -518,9 +520,10 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   return (
     <box
       width="100%"
-      border={["top", "bottom", "left", "right"]}
-      customBorderChars={RoundBorder}
-      borderColor={theme.borderActive}
+      minWidth={0}
+      minHeight={0}
+      flexDirection="column"
+      overflow="hidden"
       backgroundColor={theme.background}
     >
       {/* Header — background panel, gold title, sigil close */}
@@ -533,13 +536,19 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         border={["bottom"]}
         borderColor={theme.borderSubtle}
       >
-        <box flexDirection="row" justifyContent="space-between">
+        <box flexDirection="row" justifyContent="space-between" minWidth={0}>
           {props.titleView ?? (
-            <text fg={theme.primary} attributes={TextAttributes.BOLD}>
+            <text
+              fg={theme.primary}
+              attributes={TextAttributes.BOLD}
+              flexShrink={1}
+              overflow="hidden"
+              wrapMode="none"
+            >
               {props.title}
             </text>
           )}
-          <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+          <text fg={theme.textMuted} flexShrink={0} onMouseUp={() => dialog.clear()}>
             [esc] close
           </text>
         </box>
@@ -549,6 +558,9 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
       <Show when={props.renderFilter !== false}>
         <box paddingLeft={3} paddingRight={3} paddingTop={1} paddingBottom={1}>
           <input
+            width="100%"
+            minWidth={0}
+            flexShrink={1}
             onInput={(e) => {
               if (props.locked) return
               batch(() => {
@@ -573,7 +585,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           />
         </box>
       </Show>
-      <box flexGrow={1} flexShrink={1}>
+      <box flexGrow={1} flexShrink={1} minWidth={0} minHeight={0}>
         <Show
           when={grouped().length > 0}
           fallback={
@@ -585,6 +597,11 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           }
         >
           <scrollbox
+            width="100%"
+            minWidth={0}
+            minHeight={1}
+            flexGrow={1}
+            flexShrink={1}
             paddingLeft={1}
             paddingRight={1}
             scrollbarOptions={{ visible: true }}
@@ -696,6 +713,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
       </box>
       <Show when={props.footer || visibleActions().length} fallback={<box flexShrink={0} />}>
         <box
+          minWidth={0}
+          flexWrap="wrap"
           paddingRight={3}
           paddingLeft={3}
           paddingTop={1}
@@ -707,11 +726,11 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           border={["top"]}
           borderColor={theme.borderSubtle}
         >
-          <box flexDirection="row" gap={2}>
+          <box flexDirection="row" gap={2} minWidth={0} flexShrink={1}>
             {props.footer}
             <For each={left()}>{(item) => <FooterAction item={item} />}</For>
           </box>
-          <box flexDirection="row" gap={2}>
+          <box flexDirection="row" gap={2} minWidth={0} flexShrink={1}>
             <For each={right()}>{(item) => <FooterAction item={item} />}</For>
           </box>
         </box>

@@ -8,6 +8,7 @@ import {
   dialogMaxWidth,
   dialogMaxHeight,
   dialogContentMaxHeight,
+  dialogWidth,
 } from "../src/util/geometry"
 
 describe("geometry.diffPatchPaneWidth (B5)", () => {
@@ -106,5 +107,21 @@ describe("geometry dialog height (O3)", () => {
     expect(dialogContentMaxHeight(12)).toBe(6)
     expect(dialogContentMaxHeight(20)).toBe(12)
     expect(dialogContentMaxHeight(2)).toBe(1)
+  })
+})
+
+describe("geometry.dialogWidth", () => {
+  test("keeps normal dialogs visually inset while respecting size caps", () => {
+    expect(dialogWidth(120, "medium")).toBe(60)
+    expect(dialogWidth(120, "large")).toBe(88)
+    expect(dialogWidth(120, "xlarge")).toBe(103)
+    expect(dialogWidth(160, "xlarge")).toBe(116)
+  })
+
+  test("shrinks every size to the viewport at narrow terminals", () => {
+    expect(dialogWidth(80, "medium")).toBe(57)
+    expect(dialogWidth(80, "large")).toBe(62)
+    expect(dialogWidth(80, "xlarge")).toBe(68)
+    expect(dialogWidth(1, "xlarge")).toBe(1)
   })
 })

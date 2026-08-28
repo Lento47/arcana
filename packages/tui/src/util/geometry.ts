@@ -55,6 +55,24 @@ export function dialogMaxWidth(termWidth: number): number {
 }
 
 /**
+ * Responsive dialog card width. A fixed xlarge card looked like a full-screen
+ * pane on ordinary terminals; keep the established size caps while reserving
+ * a visual gutter and still allowing the card to use the available width on
+ * small terminals.
+ */
+export function dialogWidth(
+  termWidth: number,
+  size: "medium" | "large" | "xlarge",
+): number {
+  const term = Number.isFinite(termWidth) ? Math.max(1, Math.floor(termWidth)) : 1
+  const cap = size === "xlarge" ? 116 : size === "large" ? 88 : 60
+  const minimum = size === "xlarge" ? 64 : size === "large" ? 48 : 40
+  const ratio = size === "xlarge" ? 0.86 : size === "large" ? 0.78 : 0.72
+  const responsive = Math.max(minimum, Math.floor(term * ratio))
+  return Math.max(1, Math.min(cap, responsive, dialogMaxWidth(term)))
+}
+
+/**
  * Dialog card height below its top inset. O3: an unbounded card let long
  * content render past the terminal with no viewport or reachable tail.
  */

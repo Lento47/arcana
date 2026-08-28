@@ -13,12 +13,12 @@ import {
   type ParentProps,
 } from "solid-js"
 import { useTheme } from "../context/theme"
-import { dialogContentMaxHeight, dialogMaxHeight, dialogMaxWidth, dialogVerticalPad } from "../util/geometry"
+import { dialogContentMaxHeight, dialogMaxHeight, dialogMaxWidth, dialogWidth } from "../util/geometry"
 import { COPY } from "../branding"
 import { MouseButton, Renderable, RGBA } from "@opentui/core"
 import { createStore } from "solid-js/store"
 import { useToast } from "./toast"
-import { RoundBorder, Size } from "./chrome"
+import { RoundBorder } from "./chrome"
 import { Flag } from "@arcana/core/flag/flag"
 import { useBindings, useOpencodeModeStack } from "../keymap"
 import { useClipboard } from "../context/clipboard"
@@ -41,11 +41,7 @@ export function Dialog(
   })
 
   let dismiss = false
-  const width = () => {
-    if (props.size === "xlarge") return Size.dialogXLarge
-    if (props.size === "large") return Size.dialogLarge
-    return Size.dialogMedium
-  }
+  const width = () => dialogWidth(dimensions().width, props.size ?? "medium")
   const contentCap = createMemo(() => dialogContentMaxHeight(dimensions().height))
 
   // The scrollbox's internal content node forces minHeight "100%", so a bare
@@ -82,6 +78,7 @@ export function Dialog(
 
   return (
     <box
+      id="arcana-dialog-overlay"
       onMouseDown={() => {
         dismiss = !!renderer.getSelection()
       }}
@@ -94,15 +91,18 @@ export function Dialog(
       }}
       width={dimensions().width}
       height={dimensions().height}
+      flexDirection="column"
       alignItems="center"
+      justifyContent="center"
       position="absolute"
       zIndex={3000}
-      paddingTop={dialogVerticalPad(dimensions().height)}
       left={0}
       top={0}
       backgroundColor={dimmer()}
+      overflow="hidden"
     >
       <box
+        id="arcana-dialog-card"
         onMouseUp={(e: { stopPropagation(): void }) => {
           dismiss = false
           e.stopPropagation()
@@ -110,21 +110,31 @@ export function Dialog(
         width={width()}
         maxWidth={dialogMaxWidth(dimensions().width)}
         maxHeight={dialogMaxHeight(dimensions().height)}
+        minWidth={0}
+        minHeight={0}
+        alignSelf="center"
+        flexDirection="column"
         flexShrink={1}
         backgroundColor={theme.backgroundPanel}
         border={["top", "bottom", "left", "right"]}
         customBorderChars={RoundBorder}
         borderColor={theme.borderActive}
         paddingTop={1}
+        overflow="hidden"
       >
         <scrollbox
+          id="arcana-dialog-body"
           width="100%"
+          minWidth={0}
+          minHeight={0}
           height={bodyHeight()}
           maxHeight={contentCap()}
           flexShrink={1}
           viewportCulling={true}
         >
-          <box ref={(el) => { contentBox = el }}>{props.children}</box>
+          <box ref={(el) => { contentBox = el }} width="100%" minWidth={0}>
+            {props.children}
+          </box>
         </scrollbox>
       </box>
     </box>
@@ -296,7 +306,16 @@ export function DialogProvider(props: ParentProps) {
   return (
     <ctx.Provider value={value}>
       {props.children}
+      {/*
+        Keep this host intrinsic. Making it viewport-sized adds a hit-grid
+        surface above the app and steals wheel/click/selection events even
+        when no dialog is open. Dialog owns the full viewport.
+        Intentionally disabled here — do not restore:
+        left={0}, top={0}, width="100%", height="100%",
+        minWidth={0}, minHeight={0}, flexDirection="column".
+      */}
       <box
+        id="arcana-dialog-host"
         position="absolute"
         zIndex={3000}
         onMouseDown={(evt: { button: number; preventDefault(): void; stopPropagation(): void }) => {

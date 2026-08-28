@@ -10,7 +10,6 @@ import { useBindings } from "../../keymap"
 import type { PromptInfo } from "../../component/prompt/history"
 import { stripPromptPartIDs as strip } from "../../prompt/part"
 import { Glyph } from "../../branding"
-import { DoubleBorder } from "../../ui/chrome"
 import { TextAttributes } from "@opentui/core"
 import { promptTextFromPart } from "../../arcana/task"
 
@@ -175,28 +174,31 @@ export function DialogMessage(props: {
 
   return (
     <box
-      flexGrow={1}
-      border={["top", "bottom", "left", "right"]}
-      customBorderChars={DoubleBorder}
-      borderColor={theme.borderActive}
+      width="100%"
+      minWidth={0}
+      minHeight={0}
+      flexDirection="column"
+      overflow="hidden"
       backgroundColor={theme.background}
     >
       {/* Header — compact single line */}
       <box
+        width="100%"
+        minWidth={0}
         paddingLeft={2} paddingRight={2}
         backgroundColor={theme.backgroundPanel}
         border={["bottom"]} borderColor={theme.borderSubtle}
         flexDirection="row" gap={1}
         height={1}
       >
-        <text fg={theme.primary} attributes={TextAttributes.BOLD}>acts</text>
-        <text fg={theme.textMuted}>scry…_</text>
+        <text fg={theme.primary} attributes={TextAttributes.BOLD} flexShrink={0}>acts</text>
+        <text fg={theme.textMuted} flexShrink={0}>scry…_</text>
         <box flexGrow={1} />
-        <text fg={theme.textMuted} onMouseUp={clear}>[esc] close</text>
+        <text fg={theme.textMuted} flexShrink={0} onMouseUp={clear}>[esc] close</text>
       </box>
 
       {/* Body: compact rail timeline */}
-      <box flexGrow={1}>
+      <box width="100%" minWidth={0} minHeight={0} flexGrow={1} flexShrink={1}>
         <For each={acts}>
           {(act, i) => {
             const isFocused = () => i() === focused()
@@ -206,6 +208,8 @@ export function DialogMessage(props: {
               <box
                 flexDirection="row"
                 paddingLeft={3}
+                paddingRight={2}
+                minWidth={0}
                 onMouseOver={() => setFocused(i())}
               >
                 {/* Rail column — compact */}
@@ -223,14 +227,17 @@ export function DialogMessage(props: {
                 </box>
 
                 {/* Action label + desc */}
-                <box flexDirection="row" flexGrow={1} gap={1}>
+                <box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0} gap={1}>
                   <text
+                    flexShrink={0}
                     fg={isFocused() ? theme.primary : theme.text}
                     attributes={isFocused() ? TextAttributes.BOLD : undefined}
                   >
                     {isFocused() ? `━ ${act.label}` : `  ${act.label}`}
                   </text>
-                  <text fg={theme.textMuted}>{act.desc}</text>
+                  <text fg={theme.textMuted} flexGrow={1} flexShrink={1} wrapMode="word">
+                    {act.desc}
+                  </text>
                 </box>
               </box>
             )
@@ -240,15 +247,19 @@ export function DialogMessage(props: {
 
       {/* Detail + Footer — compact combined row */}
       <box
+        width="100%"
+        minWidth={0}
         paddingLeft={3} paddingRight={2} paddingTop={1} paddingBottom={1}
         backgroundColor={theme.backgroundPanel}
         border={["top"]} borderColor={theme.borderSubtle}
       >
-        <box flexDirection="row" gap={1}>
-          <text fg={theme.accent} attributes={TextAttributes.BOLD}>{active().label.toUpperCase()}</text>
-          <text fg={theme.textMuted}>{active().desc} · message details below.</text>
+        <box flexDirection="row" minWidth={0} gap={1}>
+          <text fg={theme.accent} attributes={TextAttributes.BOLD} flexShrink={0}>{active().label.toUpperCase()}</text>
+          <text fg={theme.textMuted} flexGrow={1} flexShrink={1} wrapMode="word">
+            {active().desc} · message details below.
+          </text>
         </box>
-        <box flexDirection="row" gap={1} paddingTop={1}>
+        <box flexDirection="row" flexWrap="wrap" gap={1} paddingTop={1}>
           <text fg={theme.primary}>enter</text>
           <text fg={theme.textMuted}>seal</text>
           <text fg={theme.textMuted}>·</text>
