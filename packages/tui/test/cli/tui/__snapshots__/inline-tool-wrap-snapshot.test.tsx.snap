@@ -1,20 +1,20 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
 exports[`TUI inline tool wrapping snapshots consecutive grep, glob, and read rows at a narrow width 1`] = `
-"     ✓ search  Grep "ARCANA.*DB|database|s.../opencode/src (151 matches)
-     ✓ list  Glob "**/*db*" in packages/opencode (6 matches)
-     ✓ read  Read packages/opencode/src/s.../db.ts [offset=1, limit=130]
-     ✗ read  Read packages/opencode/src/index.ts [offset=1, limit=100]
-     ✓ search  Grep "export const ARCANA_D.../opencode/src (115 matches)"
+"    ✓ search  Grep "ARCANA.*DB|database|s...s/opencode/src (151 matches)
+    ✓ list  Glob "**/*db*" in packages/opencode (6 matches)
+    ✓ read  Read packages/opencode/src/s...e/db.ts [offset=1, limit=130]
+    ✗ read  Read packages/opencode/src/index.ts [offset=1, limit=100]
+    ✓ search  Grep "export const ARCANA_D...s/opencode/src (115 matches)"
 `;
 
 exports[`TUI inline tool wrapping snapshots expanded tool errors under the tool text 1`] = `
-"     ✓ search  Grep "ARCANA.*DB|database|s.../opencode/src (151 matches)
-     ✓ list  Glob "**/*db*" in packages/opencode (6 matches)
-     ✓ read  Read packages/opencode/src/s.../db.ts [offset=1, limit=130]
-     ✗ read  Read packages/opencode/src/index.ts [offset=1, limit=100]
-        No LSP server available for this file type.
-     ✓ search  Grep "export const ARCANA_D.../opencode/src (115 matches)"
+"    ✓ search  Grep "ARCANA.*DB|database|s...s/opencode/src (151 matches)
+    ✓ list  Glob "**/*db*" in packages/opencode (6 matches)
+    ✓ read  Read packages/opencode/src/s...e/db.ts [offset=1, limit=130]
+    ✗ read  Read packages/opencode/src/index.ts [offset=1, limit=100]
+       No LSP server available for this file type.
+    ✓ search  Grep "export const ARCANA_D...s/opencode/src (115 matches)"
 `;
 
 exports[`TUI inline tool wrapping keeps separation after a shell output block 1`] = `
@@ -26,11 +26,11 @@ exports[`TUI inline tool wrapping keeps separation after a shell output block 1`
 
   file.ts
 
-     ✓ search  Grep "ARCANA.*DB|database|s.../opencode/src (151 matches)
-     ✓ list  Glob "**/*db*" in packages/opencode (6 matches)
-     ✓ read  Read packages/opencode/src/s.../db.ts [offset=1, limit=130]
-     ✗ read  Read packages/opencode/src/index.ts [offset=1, limit=100]
-     ✓ search  Grep "export const ARCANA_D.../opencode/src (115 matches)"
+    ✓ search  Grep "ARCANA.*DB|database|s...s/opencode/src (151 matches)
+    ✓ list  Glob "**/*db*" in packages/opencode (6 matches)
+    ✓ read  Read packages/opencode/src/s...e/db.ts [offset=1, limit=130]
+    ✗ read  Read packages/opencode/src/index.ts [offset=1, limit=100]
+    ✓ search  Grep "export const ARCANA_D...s/opencode/src (115 matches)"
 `;
 
 exports[`TUI inline tool wrapping keeps separation after a padded user message 1`] = `
@@ -38,36 +38,36 @@ exports[`TUI inline tool wrapping keeps separation after a padded user message 1
   Check whether the next tool remains separated.
 
 
-     ✓ search  Grep "ARCANA.*DB|database|s.../opencode/src (151 matches)
-     ✓ list  Glob "**/*db*" in packages/opencode (6 matches)
-     ✓ read  Read packages/opencode/src/s.../db.ts [offset=1, limit=130]
-     ✗ read  Read packages/opencode/src/index.ts [offset=1, limit=100]
-     ✓ search  Grep "export const ARCANA_D.../opencode/src (115 matches)"
+    ✓ search  Grep "ARCANA.*DB|database|s...s/opencode/src (151 matches)
+    ✓ list  Glob "**/*db*" in packages/opencode (6 matches)
+    ✓ read  Read packages/opencode/src/s...e/db.ts [offset=1, limit=130]
+    ✗ read  Read packages/opencode/src/index.ts [offset=1, limit=100]
+    ✓ search  Grep "export const ARCANA_D...s/opencode/src (115 matches)"
 `;
 
 exports[`TUI inline tool wrapping separates a contiguous subagent group from inline tools 1`] = `
-"     ✓ search  Grep "Task" (2 matches)
+"    ✓ search  Grep "Task" (2 matches)
 
-     ✓ task  Explore Task — Inspect active task spacing
-     ✓ task  General Task — Confirm completed task spacing
-             ↳ 1 toolcall · 501ms
+    ✓ task  Explore Task — Inspect active task spacing
+    ✓ task  General Task — Confirm completed task spacing
+            ↳ 1 toolcall · 501ms
 
-     ✓ read  Read src/cli/cmd/tui/routes/session/index.tsx"
+    ✓ read  Read src/cli/cmd/tui/routes/session/index.tsx"
 `;
 
 exports[`TUI inline tool wrapping separates a subagent group after an expanded read 1`] = `
-"     ✓ read  Read src/cli/cmd/tui/routes/session/index.tsx
+"    ✓ read  Read src/cli/cmd/tui/routes/session/index.tsx
    ↳ Loaded src/cli/cmd/tui/routes/session/tools.tsx
 
-     ✓ task  Explore Task — Inspect active task spacing
-             ↳ 1 toolcall · 501ms"
+    ✓ task  Explore Task — Inspect active task spacing
+            ↳ 1 toolcall · 501ms"
 `;
 
 exports[`TUI inline tool wrapping separates a subagent from the previous assistant summary 1`] = `
 "   ▣ Build · Little Frank · 53.1s
 
-     ✓ task  Build Task — Review changes
-             ↳ 48 toolcalls · 1m 40s"
+    ✓ task  Build Task — Review changes
+            ↳ 48 toolcalls · 1m 40s"
 `;
 
 exports[`TUI inline tool wrapping separates a subagent from the previous assistant error 1`] = `
@@ -75,6 +75,6 @@ exports[`TUI inline tool wrapping separates a subagent from the previous assista
 │  Managed inference requires an active Member plan
 │
 
-     ✓ task  Build Task — Review changes
-             ↳ 48 toolcalls · 1m 40s"
+    ✓ task  Build Task — Review changes
+            ↳ 48 toolcalls · 1m 40s"
 `;

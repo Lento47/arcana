@@ -945,8 +945,8 @@ export function InlineToolRow(props: {
     <box
       id={props.id}
       paddingLeft={3}
-      border={["left"]}
-      borderColor={props.glowing ? props.glowColor : "transparent"}
+      border={props.glowing ? ["left"] : undefined}
+      borderColor={props.glowColor}
       onMouseOver={props.onMouseOver}
       onMouseOut={props.onMouseOut}
       onMouseUp={props.onMouseUp}
