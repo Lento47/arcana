@@ -80,6 +80,7 @@ describe("Home backdrop dither", () => {
     expect(first.every((cell) => cell.x >= 0 && cell.x < 160 && cell.y >= 0 && cell.y < 50)).toBe(true)
     expect(first.every((cell) => cell.strength > 0 && cell.strength <= 1)).toBe(true)
     expect(first.every((cell) => cell.tone > 0 && cell.tone <= 1)).toBe(true)
+    expect(first.every((cell) => cell.shade > 0 && cell.shade <= 1)).toBe(true)
     expect(first.every((cell) => cell.variant >= 0 && cell.variant < 1)).toBe(true)
     expect(first).not.toEqual(homeDitherCells(160, 50, { seed: 0x2468ace0, scene: "fortress" }))
   })
