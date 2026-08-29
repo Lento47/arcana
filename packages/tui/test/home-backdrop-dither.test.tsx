@@ -1,5 +1,4 @@
 /** @jsxImportSource @opentui/solid */
-import { RGBA } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import { afterEach, describe, expect, test } from "bun:test"
 import { KVContext } from "../src/context/kv"
@@ -7,10 +6,13 @@ import { ThemeProvider } from "../src/context/theme"
 import { ToastProvider } from "../src/ui/toast"
 import { TuiConfigProvider } from "../src/config"
 import {
+  HOME_BACKDROP_SCENES,
+  HOME_DITHER_GLYPHS,
   buildHomeDitherChunks,
   HomeBackdropDither,
   homeDitherCells,
   homeDitherRowStrength,
+  selectHomeScene,
 } from "../src/component/home-backdrop-dither"
 import { TestTuiContexts } from "./fixture/tui-environment"
 import { createTuiResolvedConfig } from "./fixture/tui-runtime"
@@ -28,7 +30,7 @@ const kv = {
 }
 
 let app: Awaited<ReturnType<typeof testRender>> | undefined
-const DITHER_GLYPHS = ["·", ":", "+", "-", "x"] as const
+const DITHER_GLYPHS = HOME_DITHER_GLYPHS
 
 function stripDitherGlyphs(value: string) {
   return DITHER_GLYPHS.reduce((result, glyph) => result.replaceAll(glyph, " "), value)
@@ -47,7 +49,7 @@ function Harness() {
           <ToastProvider>
             <ThemeProvider mode="dark">
               <box width="100%" height="100%" position="relative">
-                <HomeBackdropDither />
+                <HomeBackdropDither seed={0x13579bdf} scene="fortress" />
                 <text>stable Home content</text>
               </box>
             </ThemeProvider>
@@ -70,17 +72,32 @@ describe("Home backdrop dither", () => {
   })
 
   test("keeps the mesh deterministic and bounded", () => {
-    const first = homeDitherCells(160, 50)
-    const second = homeDitherCells(160, 50)
+    const first = homeDitherCells(160, 50, { seed: 0x13579bdf, scene: "fortress" })
+    const second = homeDitherCells(160, 50, { seed: 0x13579bdf, scene: "fortress" })
 
     expect(first).toEqual(second)
-    expect(first.length).toBeLessThanOrEqual(2048)
+    expect(first.length).toBeLessThanOrEqual(3072)
     expect(first.every((cell) => cell.x >= 0 && cell.x < 160 && cell.y >= 0 && cell.y < 50)).toBe(true)
     expect(first.every((cell) => cell.strength > 0 && cell.strength <= 1)).toBe(true)
+    expect(first.every((cell) => cell.tone > 0 && cell.tone <= 1)).toBe(true)
+    expect(first.every((cell) => cell.variant >= 0 && cell.variant < 1)).toBe(true)
+    expect(first).not.toEqual(homeDitherCells(160, 50, { seed: 0x2468ace0, scene: "fortress" }))
+  })
+
+  test("selects only authored environments and changes by seed", () => {
+    expect(HOME_BACKDROP_SCENES).toHaveLength(6)
+    expect(new Set(HOME_BACKDROP_SCENES.map((scene) => scene.id)).size).toBe(HOME_BACKDROP_SCENES.length)
+    expect(selectHomeScene(0).id).toBe(HOME_BACKDROP_SCENES[0]?.id)
+    expect(selectHomeScene(1).id).toBe(HOME_BACKDROP_SCENES[1]?.id)
+    expect(selectHomeScene(0xffffffff).id).toBe(HOME_BACKDROP_SCENES[0xffffffff % HOME_BACKDROP_SCENES.length]?.id)
+    expect(selectHomeScene(0x13579bdf)).not.toEqual(selectHomeScene(0x2468ace0))
   })
 
   test("emits only low-contrast background mesh glyphs", () => {
-    const chunks = buildHomeDitherChunks(80, 24)
+    const chunks = buildHomeDitherChunks(80, 24, undefined, undefined, {
+      seed: 0x13579bdf,
+      scene: "fortress",
+    })
     const text = chunks.map((chunk) => chunk.text).join("")
     const glyphs = chunks.filter((chunk) => chunk.fg).map((chunk) => chunk.text)
 
@@ -92,13 +109,25 @@ describe("Home backdrop dither", () => {
         .every((char) => DITHER_GLYPHS.includes(char as (typeof DITHER_GLYPHS)[number])),
     ).toBe(true)
     expect(glyphs.length).toBeGreaterThan(0)
-    expect(new Set(glyphs)).toEqual(new Set(DITHER_GLYPHS))
+    expect(new Set(glyphs).size).toBeGreaterThanOrEqual(3)
     expect(
       chunks
         .filter((chunk) => chunk.fg)
-        .every((chunk) => chunk.fg instanceof RGBA && chunk.fg.a > 0 && chunk.fg.a <= 0.27),
+        // OpenTUI stores channel values as bytes, so 0.3 may round to 77/255.
+        .every((chunk) => typeof chunk.fg?.a === "number" && chunk.fg.a > 0 && chunk.fg.a <= 0.31),
     ).toBe(true)
     expect(chunks.filter((chunk) => chunk.fg).every((chunk) => !chunk.bg)).toBe(true)
+
+    const allSceneGlyphs = new Set(
+      HOME_BACKDROP_SCENES.flatMap((scene) =>
+        buildHomeDitherChunks(80, 24, undefined, undefined, { seed: 0x13579bdf, scene: scene.id })
+          .filter((chunk) => chunk.fg)
+          .map((chunk) => chunk.text),
+      ),
+    )
+    expect(allSceneGlyphs.has("-")).toBe(true)
+    expect(allSceneGlyphs.has("+")).toBe(true)
+    expect(allSceneGlyphs.has("x")).toBe(true)
   })
 
   test("stays behind Home content and settles without leaving visible text", async () => {
