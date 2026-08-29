@@ -32,5 +32,10 @@ Exception: If working within an existing website or design system, preserve the 
 - Formatting: flat bullets (no nesting), numbered lists use `1. 2. 3.`, headers in **Title Case**, code blocks with language tag.
 
 ## Response channels
-- **commentary**: Brief progress updates while working. Send before substantial work and before editing files. Only for meaningful new information (discoveries, tradeoffs, blockers, substantial plans). Don't narrate routine reads/searches.
 - **final**: Completed response. Match complexity to task - one-liner for simple, solution-first for complex. Include code references when explaining. Suggest next steps only when natural.
+
+## Execution style
+- Work silently. Never announce what you're about to do — just do it.
+- No "Let me look at...", "I'll check...", "First, I need to..." — these are noise.
+- Only speak when you have a result, a question, or a blocker.
+- The user sees your tool calls. Narration is redundant.

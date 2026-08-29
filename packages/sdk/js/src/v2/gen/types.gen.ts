@@ -22,6 +22,7 @@ export type Event =
   | EventSessionNextTextStarted
   | EventSessionNextTextDelta
   | EventSessionNextTextEnded
+  | EventSessionNextTextRevised
   | EventSessionNextReasoningStarted
   | EventSessionNextReasoningDelta
   | EventSessionNextReasoningEnded
@@ -96,6 +97,7 @@ export type Event =
   | EventWorkspaceReady
   | EventWorkspaceFailed
   | EventWorkspaceStatus
+  | EventServerHeartbeat
   | EventServerInstanceDisposed
 
 export type QuestionReplied = {
@@ -806,6 +808,11 @@ export type GlobalEvent = {
   directory: string
   project?: string
   workspace?: string
+  transport?: {
+    streamID: string
+    sequence: number
+    headSequence?: number
+  }
   payload:
     | {
         id: string
@@ -1000,6 +1007,20 @@ export type GlobalEvent = {
           assistantMessageID: string
           textID: string
           text: string
+        }
+      }
+    | {
+        id: string
+        type: "session.next.text.revised"
+        properties: {
+          timestamp: number
+          sessionID: string
+          assistantMessageID: string
+          textID: string
+          text: string
+          reason: "ml_quality_revision"
+          originalScore: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          revisedScore: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
         }
       }
     | {
@@ -1785,6 +1806,43 @@ export type GlobalEvent = {
           [key: string]: unknown
         }
       }
+    | {
+        id: string
+        type: "file.edited"
+        properties: {
+          file: string
+        }
+      }
+    | {
+        id: string
+        type: "session.compacted"
+        properties: {
+          sessionID: string
+        }
+      }
+    | {
+        id: string
+        type: "workspace.ready"
+        properties: {
+          name: string
+        }
+      }
+    | {
+        id: string
+        type: "workspace.failed"
+        properties: {
+          message: string
+        }
+      }
+    | {
+        id: string
+        type: "workspace.status"
+        properties: {
+          workspaceID: string
+          status: "connected" | "connecting" | "disconnected" | "error"
+        }
+      }
+    | EventServerHeartbeat
     | EventServerInstanceDisposed
     | SyncEventSessionNextAgentSwitched
     | SyncEventSessionNextModelSwitched
@@ -1802,6 +1860,7 @@ export type GlobalEvent = {
     | SyncEventSessionNextStepFailed
     | SyncEventSessionNextTextStarted
     | SyncEventSessionNextTextEnded
+    | SyncEventSessionNextTextRevised
     | SyncEventSessionNextReasoningStarted
     | SyncEventSessionNextReasoningEnded
     | SyncEventSessionNextToolInputStarted
@@ -3304,6 +3363,14 @@ export type QuestionV2Tool = {
 
 export type QuestionV2Answer = Array<string>
 
+export type EventServerHeartbeat = {
+  id: string
+  type: "server.heartbeat"
+  properties: {
+    headSequence?: number
+  }
+}
+
 export type EventServerInstanceDisposed = {
   id: string
   type: "server.instance.disposed"
@@ -3604,6 +3671,27 @@ export type SyncEventSessionNextTextEnded = {
       assistantMessageID: string
       textID: string
       text: string
+    }
+  }
+}
+
+export type SyncEventSessionNextTextRevised = {
+  type: "sync"
+  id: string
+  syncEvent: {
+    type: "session.next.text.revised.1"
+    id: string
+    seq: number
+    aggregateID: string
+    data: {
+      timestamp: number
+      sessionID: string
+      assistantMessageID: string
+      textID: string
+      text: string
+      reason: "ml_quality_revision"
+      originalScore: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+      revisedScore: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
     }
   }
 }
@@ -4831,6 +4919,21 @@ export type EventSessionNextTextEnded = {
   }
 }
 
+export type EventSessionNextTextRevised = {
+  id: string
+  type: "session.next.text.revised"
+  properties: {
+    timestamp: number
+    sessionID: string
+    assistantMessageID: string
+    textID: string
+    text: string
+    reason: "ml_quality_revision"
+    originalScore: number | "NaN" | "Infinity" | "-Infinity"
+    revisedScore: number | "NaN" | "Infinity" | "-Infinity"
+  }
+}
+
 export type EventSessionNextReasoningStarted = {
   id: string
   type: "session.next.reasoning.started"
@@ -5837,7 +5940,10 @@ export type GlobalHealthResponse = GlobalHealthResponses[keyof GlobalHealthRespo
 export type GlobalEventData = {
   body?: never
   path?: never
-  query?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
   url: "/global/event"
 }
 

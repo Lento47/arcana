@@ -12,6 +12,7 @@ import {
 } from "./spine-types"
 import { SpineProse } from "./spine-prose"
 import { HairlineBorder } from "../../ui/border"
+import type { StreamFrameGate } from "../../util/stream-frame"
 
 /**
  * Conversation voice — one column, one accent line.
@@ -37,6 +38,8 @@ export function SpineChatCard(props: {
   bodyLabel?: string
   /** Measured wrap width for the answer body (terminal − gutters − card chrome). */
   contentWidth?: number
+  /** Shared session frame gate for streaming prose commits. */
+  streamFrame?: StreamFrameGate
 }) {
   const { theme } = useTheme()
 
@@ -159,6 +162,7 @@ export function SpineChatCard(props: {
           streaming={streaming()}
           focused={focused()}
           reminders={props.reminders}
+          streamFrame={props.streamFrame}
           chatVoice
         />
       </box>

@@ -354,6 +354,11 @@ describe("HttpApi SDK", () => {
 
       expect(health.response.status).toBe(200)
       expect(health.data).toMatchObject({ healthy: true })
+      expect(yield* firstEvent((signal) => sdk.global.event(undefined, { signal }))).toMatchObject({
+        payload: { type: "server.connected" },
+      })
+      // Keep the pre-query generated-client call shape working for ACP and
+      // third-party SDK consumers that pass request options as the first arg.
       expect(yield* firstEvent((signal) => sdk.global.event({ signal }))).toMatchObject({
         payload: { type: "server.connected" },
       })
@@ -431,7 +436,7 @@ describe("HttpApi SDK", () => {
   serverPathParity("matches generated SDK global event stream", (serverPath) =>
     Effect.gen(function* () {
       const sdk = yield* client(serverPath)
-      const event = yield* firstEvent((signal) => sdk.global.event({ signal }))
+      const event = yield* firstEvent((signal) => sdk.global.event(undefined, { signal }))
       return { type: record(record(event).payload).type }
     }),
   )
@@ -816,96 +821,97 @@ describe("HttpApi SDK", () => {
 
   serverPathParity(
     "streams and persists production PEP governance events",
-    (serverPath) => withFakeLlm(serverPath, ({ sdk, llm }) =>
-      Effect.gen(function* () {
-        yield* llm.tool("glob", { pattern: "**/*.txt" })
-        yield* llm.text("governance recorded")
-        const session = yield* capture(() =>
-          sdk.session.create({
-            title: "governance runtime",
-            permission: [{ permission: "*", pattern: "*", action: "allow" }],
-          }),
-        )
-        const sessionID = String(record(session.data).id)
+    (serverPath) =>
+      withFakeLlm(serverPath, ({ sdk, llm }) =>
+        Effect.gen(function* () {
+          yield* llm.tool("glob", { pattern: "**/*.txt" })
+          yield* llm.text("governance recorded")
+          const session = yield* capture(() =>
+            sdk.session.create({
+              title: "governance runtime",
+              permission: [{ permission: "*", pattern: "*", action: "allow" }],
+            }),
+          )
+          const sessionID = String(record(session.data).id)
 
-        const controller = new AbortController()
-        yield* Effect.addFinalizer(() => Effect.sync(() => controller.abort()))
-        const stream = yield* call(() => sdk.event.subscribe(undefined, { signal: controller.signal }))
-        yield* Effect.addFinalizer(() =>
-          call(async () => void (await stream.stream.return?.(undefined))).pipe(Effect.ignore),
-        )
+          const controller = new AbortController()
+          yield* Effect.addFinalizer(() => Effect.sync(() => controller.abort()))
+          const stream = yield* call(() => sdk.event.subscribe(undefined, { signal: controller.signal }))
+          yield* Effect.addFinalizer(() =>
+            call(async () => void (await stream.stream.return?.(undefined))).pipe(Effect.ignore),
+          )
 
-        const ready = yield* Deferred.make<void>()
-        const recorded = yield* Deferred.make<unknown>()
-        yield* call(async () => {
-          for await (const event of stream.stream) {
-            const payload = record(event).payload ?? event
-            const envelope = record(payload)
-            if (envelope.type === "server.connected") {
-              Deferred.doneUnsafe(ready, Effect.void)
-              continue
+          const ready = yield* Deferred.make<void>()
+          const recorded = yield* Deferred.make<unknown>()
+          yield* call(async () => {
+            for await (const event of stream.stream) {
+              const payload = record(event).payload ?? event
+              const envelope = record(payload)
+              if (envelope.type === "server.connected") {
+                Deferred.doneUnsafe(ready, Effect.void)
+                continue
+              }
+              if (envelope.type !== "governance.recorded") continue
+              const properties = record(envelope.properties)
+              if (properties.sessionID !== sessionID) continue
+              Deferred.doneUnsafe(recorded, Effect.succeed(properties))
+              return
             }
-            if (envelope.type !== "governance.recorded") continue
-            const properties = record(envelope.properties)
-            if (properties.sessionID !== sessionID) continue
-            Deferred.doneUnsafe(recorded, Effect.succeed(properties))
-            return
-          }
-        }).pipe(Effect.forkScoped)
+          }).pipe(Effect.forkScoped)
 
-        yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for /event server.connected", "2 seconds")
-        const prompt = yield* capture(() =>
-          sdk.session.prompt({
-            sessionID,
-            agent: "build",
-            model: { providerID: "test", modelID: "test-model" },
-            parts: [{ type: "text", text: "find text files" }],
-          }),
-        )
-        const live = yield* awaitWithTimeout(
-          Deferred.await(recorded),
-          "timed out waiting for governance.recorded over /event",
-          "5 seconds",
-        )
-        const governance = yield* capture(() => sdk.session.governance({ sessionID }))
-        const governanceSnapshot = record(governance.data)
-        const durableEvents = array(governanceSnapshot.events)
-        const eventTypes = durableEvents.map((event) => String(record(event).type))
-        const proof = record(governanceSnapshot.proof)
-        const authorization = record(proof.authorizationProfile)
+          yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for /event server.connected", "2 seconds")
+          const prompt = yield* capture(() =>
+            sdk.session.prompt({
+              sessionID,
+              agent: "build",
+              model: { providerID: "test", modelID: "test-model" },
+              parts: [{ type: "text", text: "find text files" }],
+            }),
+          )
+          const live = yield* awaitWithTimeout(
+            Deferred.await(recorded),
+            "timed out waiting for governance.recorded over /event",
+            "5 seconds",
+          )
+          const governance = yield* capture(() => sdk.session.governance({ sessionID }))
+          const governanceSnapshot = record(governance.data)
+          const durableEvents = array(governanceSnapshot.events)
+          const eventTypes = durableEvents.map((event) => String(record(event).type))
+          const proof = record(governanceSnapshot.proof)
+          const authorization = record(proof.authorizationProfile)
 
-        expect(session.status).toBe(200)
-        expect(prompt.status).toBe(200)
-        expect(governance.status).toBe(200)
-        // Production contract admission runs first: the contract is proposed,
-        // accepted (allow-all session permission), and activated before tool
-        // authorization, so intent enforcement is REQUIRED end-to-end.
-        expect(eventTypes).toContain("contract.proposed")
-        expect(eventTypes).toContain("contract.activated")
-        expect(eventTypes).toContain("intent.enforcement_required")
-        expect(eventTypes).toContain("capability.created")
-        expect(eventTypes).toContain("authorization.requested")
-        expect(eventTypes).toContain("authorization.allowed")
-        expect(eventTypes).toContain("authorization.executed")
-        // The production verifier resolves the seeded obligation from the
-        // executed-effect evidence, so completion is verified end-to-end.
-        expect(eventTypes).toContain("obligation.created")
-        expect(eventTypes).toContain("obligation.resolved")
-        expect(eventTypes).toContain("completion.resolved")
-        // Verified completion revokes the session's capability grants.
-        expect(eventTypes).toContain("capability.revoked")
-        expect(proof.integrityStatus).toBe("VALID")
-        expect(record(proof).contractStatus).toBe("resolved")
-        expect(record(proof).completionMethod).toBe("VERIFIED_COMPLETE")
-        expect(record(record(proof).assuranceProfile).verification).toBe("VERIFIED")
-        expect(record(record(proof).obligationsByStatus).satisfied).toBe(1)
-        expect(authorization.authorizationTraceHealth).toBe("COMPLETE")
-        expect(authorization.intentEnforcementMode).toBe("REQUIRED")
-        expect(authorization.intentTraceHealth).toBe("COMPLETE")
-        expect(authorization.unauthorizedExecutions).toBe(0)
-        expect(record(record(live).event).type).toBe("contract.proposed")
-      }),
-    ),
+          expect(session.status).toBe(200)
+          expect(prompt.status).toBe(200)
+          expect(governance.status).toBe(200)
+          // Production contract admission runs first: the contract is proposed,
+          // accepted (allow-all session permission), and activated before tool
+          // authorization, so intent enforcement is REQUIRED end-to-end.
+          expect(eventTypes).toContain("contract.proposed")
+          expect(eventTypes).toContain("contract.activated")
+          expect(eventTypes).toContain("intent.enforcement_required")
+          expect(eventTypes).toContain("capability.created")
+          expect(eventTypes).toContain("authorization.requested")
+          expect(eventTypes).toContain("authorization.allowed")
+          expect(eventTypes).toContain("authorization.executed")
+          // The production verifier resolves the seeded obligation from the
+          // executed-effect evidence, so completion is verified end-to-end.
+          expect(eventTypes).toContain("obligation.created")
+          expect(eventTypes).toContain("obligation.resolved")
+          expect(eventTypes).toContain("completion.resolved")
+          // Verified completion revokes the session's capability grants.
+          expect(eventTypes).toContain("capability.revoked")
+          expect(proof.integrityStatus).toBe("VALID")
+          expect(record(proof).contractStatus).toBe("resolved")
+          expect(record(proof).completionMethod).toBe("VERIFIED_COMPLETE")
+          expect(record(record(proof).assuranceProfile).verification).toBe("VERIFIED")
+          expect(record(record(proof).obligationsByStatus).satisfied).toBe(1)
+          expect(authorization.authorizationTraceHealth).toBe("COMPLETE")
+          expect(authorization.intentEnforcementMode).toBe("REQUIRED")
+          expect(authorization.intentTraceHealth).toBe("COMPLETE")
+          expect(authorization.unauthorizedExecutions).toBe(0)
+          expect(record(record(live).event).type).toBe("contract.proposed")
+        }),
+      ),
     30_000,
   )
 
@@ -1123,18 +1129,13 @@ describe("HttpApi SDK", () => {
           }),
         )
         expect(revoked.status).toBe(200)
-        expect(array(record(revoked.data).revokedIds).sort()).toEqual([
-          "cap-cascade-child",
-          "cap-cascade-parent",
-        ])
+        expect(array(record(revoked.data).revokedIds).sort()).toEqual(["cap-cascade-child", "cap-cascade-parent"])
 
         const after = yield* capture(() => sdk.session.governance({ sessionID }))
         const revokedEvents = array(record(after.data).events).filter(
           (event) => record(event).type === "capability.revoked",
         )
-        const ids = revokedEvents
-          .map((event) => String(record(record(event).payload).capabilityId))
-          .sort()
+        const ids = revokedEvents.map((event) => String(record(record(event).payload).capabilityId)).sort()
         expect(ids).toEqual(["cap-cascade-child", "cap-cascade-parent"])
 
         const childEvent = revokedEvents.find(
@@ -1188,7 +1189,7 @@ describe("HttpApi SDK", () => {
         )
         expect(command.status).toBe(200)
         const parts = array(record(command.data).parts) as Array<{ type?: string; text?: string }>
-        const text = parts.map((part) => (part.type === "text" ? part.text ?? "" : "")).join("\n")
+        const text = parts.map((part) => (part.type === "text" ? (part.text ?? "") : "")).join("\n")
         expect(text).toContain("cap-cmd-parent")
         expect(text).toContain("cap-cmd-child")
 

@@ -29,6 +29,10 @@ const entrySrc = readFileSync(
   join(import.meta.dir, "../src/shell/command-spine/spine-entry.tsx"),
   "utf8",
 )
+const streamFrameSrc = readFileSync(
+  join(import.meta.dir, "../src/util/stream-frame.ts"),
+  "utf8",
+)
 
 describe("shouldShowScrollButton (pure geometry policy)", () => {
   test("stays hidden when at the bottom", () => {
@@ -125,5 +129,18 @@ describe("D10 source contract", () => {
 
   test("entry no longer exposes the nodeRef registration prop", () => {
     expect(entrySrc).not.toContain("nodeRef")
+  })
+
+  test("stream revision does not use per-token text lengths", () => {
+    expect(shellSrc).not.toContain("latest?.body?.length")
+    expect(shellSrc).not.toContain("latest?.summary.length")
+    expect(shellSrc).not.toContain("latest?.thinking?.length")
+    expect(shellSrc).toContain("frameGate: streamFrame")
+  })
+
+  test("scroll reconciliation is keyed and checks manual scroll at commit", () => {
+    expect(scrollSrc).toContain('frameGate.schedule("scroll-reconcile"')
+    expect(scrollSrc).toContain("distance <= 2 && current.scrollTop < current.scrollHeight")
+    expect(streamFrameSrc).toContain("batch(() =>")
   })
 })

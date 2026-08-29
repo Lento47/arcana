@@ -82,4 +82,4 @@ const r = await fetch('/api/create-sub', {  // never sees proxy URL
 - [[arcana-site-seo-spa]] — The site that calls this endpoint
 - [[ghost-preview-system]] — Same security-first philosophy applied to TUI
 
-Related: [[arcana-governance-model-location]] [[arcana-shell-execution-goal-gate]] [[arcana-security-model]] [[demo-gated-actions-via-minimal-goal]] [[shell-run-before-binding-goal]] [[arcana-evalcondition-bypass]] [[arcana-audit-baseline]] [[governed-codebase-audit-method]]
+Related: [[arcana-governance-model-location]] [[arcana-shell-execution-goal-gate]] [[arcana-security-model]] [[demo-gated-actions-via-minimal-goal]] [[shell-run-before-binding-goal]] [[arcana-evalcondition-bypass]] [[arcana-audit-baseline]] [[governed-codebase-audit-method]] [[arcana-pdp-deny-unlabeled-gap]] [[arcana-validate-ancestors-fail-open]] [[arcana-governance-deny-unlabeled-gap]] [[remote-search-blocked]]

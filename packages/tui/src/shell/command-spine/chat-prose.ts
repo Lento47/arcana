@@ -36,6 +36,61 @@ function endsWithHardBreak(line: string): boolean {
   return / {2,}$/.test(line)
 }
 
+function getInlineCodeInfo(text: string): { inside: boolean; openLen: number } {
+  let inside = false
+  let openLen = 0
+  let i = 0
+  while (i < text.length) {
+    if (text[i] === "\\" && i + 1 < text.length && text[i + 1] === "`") {
+      i += 2
+      continue
+    }
+    if (text[i] === "`") {
+      let j = i
+      while (j < text.length && text[j] === "`") j++
+      const run = j - i
+      if (!inside) {
+        inside = true
+        openLen = run
+      } else if (run === openLen) {
+        inside = false
+        openLen = 0
+      }
+      i = j
+      continue
+    }
+    i++
+  }
+  return { inside, openLen }
+}
+
+function endsWithBacktickRun(text: string, len: number): boolean {
+  if (len <= 0) return false
+  if (text.length < len) return false
+  for (let k = text.length - len; k < text.length; k++) if (text[k] !== "`") return false
+  if (text.length > len && text[text.length - len - 1] === "`") return false
+  if (text.length > len && text[text.length - len - 1] === "\\") return false
+  return true
+}
+
+function startsWithBacktickRun(text: string, len: number): boolean {
+  if (len <= 0) return false
+  if (text.length < len) return false
+  for (let k = 0; k < len; k++) if (text[k] !== "`") return false
+  if (text.length > len && text[len] === "`") return false
+  return true
+}
+
+function joinWithInlineAware(a: string, bTrimmed: string, bTrimStart: string): string {
+  const base = a.replace(/\s+$/, "")
+  const info = getInlineCodeInfo(a)
+  if (!info.inside) return base + " " + bTrimmed
+  const aEndsDelim = endsWithBacktickRun(base, info.openLen)
+  const bStartsDelim = startsWithBacktickRun(bTrimStart, info.openLen)
+  if (aEndsDelim || bStartsDelim) return base + bTrimmed
+  return base + " " + bTrimmed
+}
+
 /**
  * Normalize soft-wrapped chat prose for markdown rendering.
  * Does not invent structure — only joins accidental hard wraps.
@@ -91,7 +146,7 @@ function normalizeProseRegion(region: string): string {
       && isListOrQuoteLine(last)
       && !endsWithHardBreak(last)
     ) {
-      out[out.length - 1] = last.replace(/\s+$/, "") + " " + line.trim()
+      out[out.length - 1] = joinWithInlineAware(last, line.trim(), line.trimStart())
       continue
     }
 
@@ -99,10 +154,11 @@ function normalizeProseRegion(region: string): string {
     if (buf) {
       if (endsWithHardBreak(buf)) {
         // Keep trailing spaces (markdown hard break) on the finished line.
+        // Hard break wins even inside inline code.
         out.push(buf)
         buf = line
       } else {
-        buf = buf.replace(/\s+$/, "") + " " + line.trim()
+        buf = joinWithInlineAware(buf, line.trim(), line.trimStart())
       }
     } else {
       // Preserve trailing spaces so hard-break detection works next line.

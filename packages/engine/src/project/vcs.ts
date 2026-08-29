@@ -1,5 +1,5 @@
 import { LayerNode } from "@arcana/core/effect/layer-node"
-import { Effect, Layer, Context, Schema, Scope } from "effect"
+import { Duration, Effect, Layer, Context, Schema, Scope } from "effect"
 import { formatPatch, structuredPatch } from "diff"
 import { InstanceState } from "@/effect/instance-state"
 import { Watcher } from "@arcana/core/filesystem/watcher"
@@ -10,6 +10,10 @@ import { EventV2 } from "@arcana/core/event"
 const PATCH_CONTEXT_LINES = 2_147_483_647
 const MAX_PATCH_BYTES = 10_000_000
 const MAX_TOTAL_PATCH_BYTES = 10_000_000
+// Bound VCS diff collection so a blocked git child cannot hang the HTTP handler.
+// Kept below the TUI's 15s client race (diff-viewer.tsx DIFF_REQUEST_TIMEOUT_MS)
+// so the server returns a clean error first.
+const DIFF_TIMEOUT = Duration.seconds(12)
 type DiffOptions = {
   readonly context?: number
 }
@@ -380,28 +384,45 @@ export const layer: Layer.Layer<Service, never, Git.Service | EventV2Bridge.Serv
         const value = yield* InstanceState.get(state)
         const ctx = yield* InstanceState.context
         if (ctx.project.vcs !== "git") return []
-        if (mode === "git") {
-          return yield* track(git, ctx.directory, (yield* git.hasHead(ctx.directory)) ? "HEAD" : undefined, options)
-        }
-
-        if (!value.root) return []
-        if (value.current && value.current === value.root.name) return []
-        const ref = yield* git.mergeBase(ctx.directory, value.root.ref)
-        if (!ref) return []
-        return yield* diffAgainstRef(git, ctx.directory, ref, options)
+        const inner =
+          mode === "git"
+            ? Effect.gen(function* () {
+                const hasHead = yield* git.hasHead(ctx.directory)
+                return yield* track(git, ctx.directory, hasHead ? "HEAD" : undefined, options)
+              })
+            : Effect.gen(function* () {
+                if (!value.root) return []
+                if (value.current && value.current === value.root.name) return []
+                const ref = yield* git.mergeBase(ctx.directory, value.root.ref)
+                if (!ref) return []
+                return yield* diffAgainstRef(git, ctx.directory, ref, options)
+              })
+        return yield* inner.pipe(
+          Effect.timeoutOrElse({
+            duration: DIFF_TIMEOUT,
+            orElse: () => Effect.die(new Error("VCS diff timed out")),
+          }),
+        )
       }),
       diffRaw: Effect.fn("Vcs.diffRaw")(function* () {
         const ctx = yield* InstanceState.context
         if (ctx.project.vcs !== "git") return ""
-        const [hasHead, status] = yield* Effect.all([git.hasHead(ctx.directory), git.status(ctx.directory)], {
-          concurrency: 2,
-        })
-        const tracked = hasHead ? (yield* git.patchAll(ctx.directory, "HEAD")).text : ""
-        const untracked = yield* Effect.forEach(
-          status.filter((item) => item.code === "??"),
-          (item) => git.patchUntracked(ctx.directory, item.file).pipe(Effect.map((patch) => patch.text)),
+        return yield* Effect.gen(function* () {
+          const [hasHead, status] = yield* Effect.all([git.hasHead(ctx.directory), git.status(ctx.directory)], {
+            concurrency: 2,
+          })
+          const tracked = hasHead ? (yield* git.patchAll(ctx.directory, "HEAD")).text : ""
+          const untracked = yield* Effect.forEach(
+            status.filter((item) => item.code === "??"),
+            (item) => git.patchUntracked(ctx.directory, item.file).pipe(Effect.map((patch) => patch.text)),
+          )
+          return [tracked, ...untracked].filter(Boolean).join("\n")
+        }).pipe(
+          Effect.timeoutOrElse({
+            duration: DIFF_TIMEOUT,
+            orElse: () => Effect.die(new Error("VCS diff timed out")),
+          }),
         )
-        return [tracked, ...untracked].filter(Boolean).join("\n")
       }),
       apply: Effect.fn("Vcs.apply")(function* (input: ApplyInput) {
         const ctx = yield* InstanceState.context

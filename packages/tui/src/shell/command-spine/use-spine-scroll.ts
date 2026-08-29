@@ -2,6 +2,7 @@ import { createEffect, createSignal, onCleanup, onMount } from "solid-js"
 import type { Accessor, Setter } from "solid-js"
 import type { MouseEvent, ScrollBoxRenderable } from "@opentui/core"
 import { hasContentAbove, hasContentBelow } from "../../util/geometry"
+import { createStreamFrameGate, type StreamFrameGate } from "../../util/stream-frame"
 
 /**
  * Scrolling state and actions for the spine viewport.
@@ -18,11 +19,14 @@ export function useSpineScroll(input: {
   onRef: (r: ScrollBoxRenderable) => void
   /** Changes whenever mounted row content can change its rendered height. */
   contentRevision?: Accessor<unknown>
+  /** Shared with the session route so follow and reconciliation commit together. */
+  frameGate?: StreamFrameGate
 }) {
   const [showScrollUpButton, setShowScrollUpButton] = createSignal(false)
   const [showScrollDownButton, setShowScrollDownButton] = createSignal(false)
   let scroll: ScrollBoxRenderable | undefined
-  let refreshFrame: number | undefined
+  const ownedGate = input.frameGate ? undefined : createStreamFrameGate()
+  const frameGate = input.frameGate ?? ownedGate!
 
   const setScrollRef = (r: ScrollBoxRenderable) => {
     scroll = r
@@ -70,22 +74,22 @@ export function useSpineScroll(input: {
 
   createEffect(() => {
     input.contentRevision?.()
-    const s = scroll
-    if (!s || s.isDestroyed) return
-    const distance = s.scrollHeight - s.scrollTop - s.height
-    const wasFollowing = distance <= 2
-    if (refreshFrame !== undefined) cancelAnimationFrame(refreshFrame)
-    refreshFrame = requestAnimationFrame(() => {
-      refreshFrame = undefined
+    frameGate.schedule("scroll-reconcile", () => {
       const current = scroll
       if (!current || current.isDestroyed) return
-      if (wasFollowing) current.scrollTo(current.scrollHeight)
+      // Check following at commit time. If the operator scrolled up while a
+      // frame was pending, never yank the viewport back to the bottom.
+      const distance = current.scrollHeight - current.scrollTop - current.height
+      if (distance <= 2 && current.scrollTop < current.scrollHeight) {
+        current.scrollTo(current.scrollHeight)
+      }
       refreshScrollIndicators()
     })
   })
 
   onCleanup(() => {
-    if (refreshFrame !== undefined) cancelAnimationFrame(refreshFrame)
+    frameGate.cancel("scroll-reconcile")
+    ownedGate?.dispose()
   })
 
   return {

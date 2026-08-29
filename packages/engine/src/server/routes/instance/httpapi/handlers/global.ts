@@ -10,14 +10,66 @@ import * as Stream from "effect/Stream"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import * as Sse from "effect/unstable/encoding/Sse"
+import { resetActivity, sseConnected, sseDisconnected } from "@/daemon/activity"
 import { RootHttpApi } from "../api"
 import { GlobalUpgradeInput } from "../groups/global"
+import path from "path"
 
-function eventData(data: unknown): Sse.Event {
+type GlobalEventFilter = {
+  readonly directory?: string
+  readonly workspace?: string
+}
+
+type GlobalWireEvent = GlobalBusEvent & {
+  readonly directory: string
+  readonly transport: {
+    readonly streamID: string
+    readonly sequence: number
+    readonly headSequence?: number
+  }
+}
+
+const GLOBAL_QUEUE_CAPACITY = 4096
+
+function normalizeDirectory(value: string) {
+  // HttpApi has already decoded query parameters. Decoding a second time would
+  // turn a literal "%20" in a directory name into a space and could make two
+  // distinct locations compare equal.
+  const normalized = path.normalize(value)
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized
+}
+
+function isGlobalEvent(event: GlobalBusEvent) {
+  return (
+    (event.directory === undefined || event.directory.length === 0 || event.directory === "global") &&
+    event.workspace === undefined
+  )
+}
+
+function belongsToFilter(event: GlobalBusEvent, filter: GlobalEventFilter) {
+  // Installation/lifecycle events without an instance location are global by
+  // definition and must remain visible to every local operator console.
+  if (isGlobalEvent(event)) return true
+
+  // Workspace-scoped control-plane events intentionally have no instance
+  // directory. Match the workspace when one was selected; otherwise preserve
+  // the legacy global-stream behavior and expose them to unscoped clients.
+  if (event.directory === undefined || event.directory.length === 0 || event.directory === "global") {
+    return filter.workspace === undefined || event.workspace === filter.workspace
+  }
+
+  if (filter.directory && normalizeDirectory(event.directory ?? "") !== normalizeDirectory(filter.directory))
+    return false
+  if (filter.workspace && event.workspace !== undefined && event.workspace !== filter.workspace) return false
+  return true
+}
+
+function eventData(data: GlobalWireEvent): Sse.Event {
+  const kind = data.transport.headSequence === undefined ? "event" : "heartbeat"
   return {
     _tag: "Event",
     event: "message",
-    id: undefined,
+    id: `${data.transport.streamID}:${kind}:${data.transport.sequence}`,
     data: JSON.stringify(data),
   }
 }
@@ -30,28 +82,102 @@ function parseBody(body: string) {
   }
 }
 
-function eventResponse() {
+function eventResponse(filter: GlobalEventFilter) {
   return Effect.gen(function* () {
-    yield* Effect.logInfo("global event connected")
-    const events = Stream.callback<GlobalBusEvent>((queue) => {
-      const handler = (event: GlobalBusEvent) => Queue.offerUnsafe(queue, event)
-      return Effect.acquireRelease(
-        Effect.sync(() => GlobalBus.on("event", handler)),
-        () => Effect.sync(() => GlobalBus.off("event", handler)),
-      )
-    })
-    const heartbeat = Stream.tick("10 seconds").pipe(
-      Stream.drop(1),
-      Stream.map(() => ({ payload: { id: EventV2.ID.create(), type: "server.heartbeat", properties: {} } })),
+    const streamID = `stm_${EventV2.ID.create()}`
+    let wireSequence = 0
+    let heartbeatSequence = 0
+    let offered = 0
+    let delivered = 0
+    let lastReportedDropped = 0
+
+    // The old Stream.callback path had no explicit capacity and registered
+    // lazily after server.connected. A slow TUI could retain every unrelated
+    // project's event, and a fast producer could race the first frame. Use an
+    // eager bounded queue so registration happens before the response returns.
+    const queue = yield* Queue.sliding<GlobalBusEvent>(GLOBAL_QUEUE_CAPACITY)
+    const handler = (event: GlobalBusEvent) => {
+      if (!belongsToFilter(event, filter)) return
+      offered += 1
+      Queue.offerUnsafe(queue, event)
+    }
+    yield* Effect.sync(() => GlobalBus.on("event", handler))
+    yield* Effect.addFinalizer(() => Effect.sync(() => GlobalBus.off("event", handler)))
+
+    const stream = Stream.fromQueue(queue).pipe(
+      Stream.tap(() =>
+        Effect.sync(() => {
+          delivered += 1
+        }),
+      ),
+      Stream.map((event) => ({
+        ...event,
+        directory: event.directory ?? "global",
+        transport: {
+          streamID,
+          sequence: ++wireSequence,
+        },
+      })),
     )
 
+    const heartbeat = Stream.tick("10 seconds").pipe(
+      Stream.drop(1),
+      Stream.mapEffect(() =>
+        Effect.gen(function* () {
+          const queueDepth = yield* Queue.size(queue)
+          const estimatedDropped = Math.max(0, offered - delivered - queueDepth)
+          // A global stream is still a live TUI connection. Keep the daemon's
+          // idle lease alive during quiet periods just like the instance SSE.
+          resetActivity()
+          if (estimatedDropped > lastReportedDropped) {
+            lastReportedDropped = estimatedDropped
+            yield* Effect.logWarning(
+              `[sse] global subscriber overflow stream=${streamID} droppedOffers=${estimatedDropped} queue=${queueDepth} offered=${offered} delivered=${delivered} head=${wireSequence}`,
+            )
+          }
+          return {
+            directory: filter.directory ?? "global",
+            ...(filter.workspace ? { workspace: filter.workspace } : {}),
+            payload: {
+              id: EventV2.ID.create(),
+              type: "server.heartbeat",
+              properties: { headSequence: wireSequence },
+            },
+            transport: {
+              streamID,
+              sequence: ++heartbeatSequence,
+              headSequence: wireSequence,
+            },
+          } as GlobalWireEvent
+        }),
+      ),
+    )
+
+    yield* Effect.logInfo(`global event connected stream=${streamID}`)
+    yield* Effect.sync(() => {
+      sseConnected()
+      resetActivity()
+    })
+
     return HttpServerResponse.stream(
-      Stream.make({ payload: { id: EventV2.ID.create(), type: "server.connected", properties: {} } }).pipe(
-        Stream.concat(events.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }))),
+      Stream.make({
+        directory: filter.directory ?? "global",
+        ...(filter.workspace ? { workspace: filter.workspace } : {}),
+        payload: { id: EventV2.ID.create(), type: "server.connected", properties: {} },
+        transport: { streamID, sequence: 0 },
+      } as GlobalWireEvent).pipe(
+        Stream.concat(stream.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }))),
         Stream.map(eventData),
         Stream.pipeThroughChannel(Sse.encode()),
         Stream.encodeText,
-        Stream.ensuring(Effect.logInfo("global event disconnected")),
+        Stream.ensuring(
+          Effect.gen(function* () {
+            yield* Effect.logInfo(
+              `[sse] global subscriber closed stream=${streamID} offered=${offered} delivered=${delivered} estimatedDropped=${lastReportedDropped} head=${wireSequence}`,
+            )
+            yield* Effect.sync(() => sseDisconnected())
+          }),
+        ),
       ),
       {
         contentType: "text/event-stream",
@@ -75,8 +201,8 @@ export const globalHandlers = HttpApiBuilder.group(RootHttpApi, "global", (handl
       return { healthy: true as const, version: InstallationVersion }
     })
 
-    const event = Effect.fn("GlobalHttpApi.event")(function* () {
-      return yield* eventResponse()
+    const event = Effect.fn("GlobalHttpApi.event")(function* (ctx: { query: GlobalEventFilter }) {
+      return yield* eventResponse(ctx.query)
     })
 
     const configGet = Effect.fn("GlobalHttpApi.configGet")(function* () {

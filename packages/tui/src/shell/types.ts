@@ -8,6 +8,7 @@ import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordan
 import type { ApprovalShellController } from "./command-spine/approval-shell-controller"
 import type { ApprovalSnapshotDetail } from "./command-spine/approval-http-bridge"
 import type { Theme } from "../theme"
+import type { StreamFrameGate } from "../util/stream-frame"
 
 export interface RevertInfo {
   messageID: string
@@ -64,6 +65,8 @@ export interface ShellProps {
   sessionID: string
 
   toBottom: () => void
+  /** Shared stream frame gate for viewport follow/reconciliation. */
+  streamFrame?: StreamFrameGate
   bind: (r: PromptRef | undefined) => void
   setPrompt: (info: PromptInfo) => void
 

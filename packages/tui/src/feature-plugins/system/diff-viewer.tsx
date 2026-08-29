@@ -48,6 +48,7 @@ const KV_VIEW = "diff_viewer_view"
 // Keep this bound local to the viewer; the shared SDK GET transport also carries
 // SSE and health requests that must remain long-lived.
 export const DIFF_REQUEST_TIMEOUT_MS = 15_000
+const MAX_VISIBLE_FILES = 50
 
 export class DiffRequestTimeoutError extends Error {
   readonly timeoutMs: number
@@ -443,6 +444,18 @@ function DiffViewer(props: { api: TuiPluginApi }) {
     )
     const file = fileIndex === undefined ? undefined : files()[fileIndex]
     return file && fileIndex !== undefined ? [{ file, fileIndex }] : []
+  })
+
+  const renderedPatchFiles = createMemo(() => {
+    const visible = visiblePatchFiles()
+    if (!singlePatch() && visible.length > MAX_VISIBLE_FILES) {
+      return visible.slice(0, MAX_VISIBLE_FILES)
+    }
+    return visible
+  })
+  const remainingFiles = createMemo(() => {
+    if (singlePatch()) return 0
+    return Math.max(0, visiblePatchFiles().length - renderedPatchFiles().length)
   })
 
   const ensureHighlightedPatchFile = () => {
@@ -901,7 +914,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                     verticalScrollbarOptions={{ visible: false }}
                     horizontalScrollbarOptions={{ visible: false }}
                   >
-                    <For each={visiblePatchFiles()}>
+                     <For each={renderedPatchFiles()}>
                       {(entry, index) => {
                         const reviewed = () => reviewedFileNames().has(entry.file.file)
                         return (
@@ -959,9 +972,16 @@ function DiffViewer(props: { api: TuiPluginApi }) {
                             </Show>
                           </box>
                         )
-                      }}
-                    </For>
-                    <Show when={patchFillerHeight() > 0}>
+                       }}
+                     </For>
+                     <Show when={remainingFiles() > 0}>
+                       <box paddingTop={1} paddingLeft={1} border={patchLeftBorder()} borderColor={patchBorderColor()}>
+                         <text fg={theme().textMuted}>
+                           + {remainingFiles()} more {remainingFiles() === 1 ? "file" : "files"} hidden — enable single-patch or narrow selection via file tree
+                         </text>
+                       </box>
+                     </Show>
+                     <Show when={patchFillerHeight() > 0}>
                       <box height={patchFillerHeight()} border={patchLeftBorder()} borderColor={patchBorderColor()} />
                     </Show>
                   </scrollbox>

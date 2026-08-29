@@ -1048,7 +1048,7 @@ export class Console extends HeyApiClient {
   /**
    * Complete login + persist proxy key
    *
-   * On a successful device-code login, the Arcana console hands us a freshly-minted proxy license key as the OAuth access_token (see arcana-site/functions/auth/device/token.ts). No bind roundtrip is needed — the engine writes the access_token directly to ~/.arcana/proxy_key, writes .license-cache.json, and sets ARCANA_PROXY_KEY in the current process so the catalog refresh sees the new entitlement.
+   * On successful device-code login, persist the proxy credential in Arcana's encrypted local credential store, refresh the current engine process, and update the best-effort license cache.
    */
   public loginComplete<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -1076,7 +1076,7 @@ export class Console extends HeyApiClient {
   /**
    * Is a proxy key present on disk?
    *
-   * Returns { present: boolean } for whether ~/.arcana/proxy_key (or $ARCANA_PROXY_KEY) is set. The TUI uses this to decide whether to show the 'Sign in with arcana' option in /connect.
+   * Returns { present: boolean } when an environment override, encrypted local credential, or migratable legacy proxy key is available. The credential value is never returned.
    */
   public proxyKeyPresent<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
     return (options?.client ?? this.client).get<
@@ -1641,10 +1641,36 @@ export class Global extends HeyApiClient {
    *
    * Subscribe to global events from the Arcana system using server-sent events.
    */
-  public event<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).sse.get<GlobalEventResponses, GlobalEventErrors, ThrowOnError>({
+  public event<ThrowOnError extends boolean = false>(
+    parametersOrOptions?:
+      | {
+          directory?: string
+          workspace?: string
+        }
+      | Options<never, ThrowOnError>,
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const hasParameters =
+      parametersOrOptions !== undefined && ("directory" in parametersOrOptions || "workspace" in parametersOrOptions)
+    const parameters = hasParameters ? (parametersOrOptions as { directory?: string; workspace?: string }) : undefined
+    const requestOptions = (options ?? (hasParameters ? undefined : parametersOrOptions)) as
+      | Options<never, ThrowOnError>
+      | undefined
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (requestOptions?.client ?? this.client).sse.get<GlobalEventResponses, GlobalEventErrors, ThrowOnError>({
       url: "/global/event",
-      ...options,
+      ...requestOptions,
+      ...params,
     })
   }
 

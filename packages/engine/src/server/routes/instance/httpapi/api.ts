@@ -33,7 +33,7 @@ import { TuiApi } from "./groups/tui"
 import { WorkspaceApi } from "./groups/workspace"
 import { Api } from "@arcana/server/api"
 // GlobalEventSchema snapshots the registry after event-producing groups register their variants.
-import { GlobalApi } from "./groups/global"
+import { GlobalApi, ServerHeartbeat } from "./groups/global"
 import { Authorization } from "./middleware/authorization"
 import { SchemaErrorMiddleware } from "./middleware/schema-error"
 import "@/session/epistemic/governance-event"
@@ -49,6 +49,7 @@ const EventSchema = Schema.Union([
       }).annotate({ identifier: `Event.${definition.type}` }),
     )
     .toArray(),
+  ServerHeartbeat,
   InstanceDisposed,
 ]).annotate({ identifier: "Event" })
 

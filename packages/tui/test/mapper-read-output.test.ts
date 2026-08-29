@@ -1,6 +1,6 @@
 /**
  * Unit coverage for the carved-out Read-output parser (mapper/read-output.ts).
- * Behavior contract: numbered-body parsing with entry footers, boilerplate
+ * Behavior contract: numbered-body parsing with entry footers, all
  * system-reminder suppression, and memoization by output identity.
  */
 import { describe, expect, test } from "bun:test"
@@ -27,13 +27,12 @@ describe("parseReadToolOutput", () => {
     expect(out.body).not.toContain("do NOT execute")
   })
 
-  test("non-boilerplate system reminders are captured into reminders[]", () => {
+  test("non-boilerplate system reminders are suppressed from body and not shown", () => {
     const text = "real content"
     const note = "<system-reminder>the build output above was truncated at 500 lines</system-reminder>"
     const out = parseReadToolOutput(`${text}\n${note}`)
     expect(out.body).not.toContain("truncated at 500 lines")
-    expect(out.reminders.length).toBe(1)
-    expect(out.reminders[0]).toContain("truncated at 500 lines")
+    expect(out.reminders.length).toBe(0)
   })
 
   test("memoizes identical outputs to the same object identity", () => {

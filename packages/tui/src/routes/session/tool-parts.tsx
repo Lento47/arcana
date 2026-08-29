@@ -32,6 +32,7 @@ import { useTuiTerminalEnvironment } from "../../context/runtime"
 import { createWidgetRenderNode } from "../../shell/command-spine/widgets/registry"
 import { SpineToolChip } from "../../shell/command-spine/spine-tool-chip"
 import { toolCategoryLabel, type ToolChipLifecycle } from "../../shell/command-spine/spine-chrome"
+import { stripMarkdownEmphasis } from "../../shell/command-spine/chat-prose"
 import stripAnsi from "strip-ansi"
 
 export const context = createContext<{
@@ -359,7 +360,7 @@ export function ReasoningPart(props: { last: boolean; part: ReasoningPartType; m
   const reasoningBodyWidth = createMemo(() =>
     Math.max(1, ctx.width - 3 - (inMinimal() ? 2 : 0) - 1),
   )
-  const syntax = createSyntaxStyleMemo(() => generateSubtleSyntax(theme))
+  const body = createMemo(() => stripMarkdownEmphasis(summary().body))
 
   const toggle = () => {
     setExpanded((prev) => !prev)
@@ -384,7 +385,7 @@ export function ReasoningPart(props: { last: boolean; part: ReasoningPartType; m
             verbSeed={props.message.sessionID}
           />
         </box>
-        <Show when={(!inMinimal() || expanded()) && summary().body}>
+        <Show when={(!inMinimal() || expanded()) && body()}>
           <box
             paddingLeft={inMinimal() ? 2 : 0}
             marginTop={1}
@@ -393,19 +394,20 @@ export function ReasoningPart(props: { last: boolean; part: ReasoningPartType; m
             customBorderChars={HairlineBorder}
             width={reasoningBodyWidth()}
           >
-            <code
-              filetype="markdown"
-              // Keep the first frame visible; the Arcana OpenTUI patch retains
-              // the last styled frame while a final highlight is pending.
-              drawUnstyledText={true}
-              streaming={!isDone()}
-              syntaxStyle={syntax()}
-              content={summary().body}
-              conceal={ctx.conceal()}
+            {/*
+              Reasoning is plain muted prose by design. A markdown code
+              renderer can paint token backgrounds and publish asynchronous
+              highlight frames, making streamed thoughts look inverted or
+              flicker. OpenTUI's native text node keeps the theme foreground
+              and the surrounding background without any highlight attribute.
+            */}
+            <text
               fg={theme.textMuted}
               wrapMode="word"
               width={reasoningBodyWidth()}
-            />
+            >
+              {body()}
+            </text>
           </box>
         </Show>
       </box>
@@ -947,6 +949,7 @@ export function InlineToolRow(props: {
       id={props.id}
       paddingLeft={3}
       border={props.glowing ? ["left"] : undefined}
+      customBorderChars={HairlineBorder}
       borderColor={props.glowColor}
       onMouseOver={props.onMouseOver}
       onMouseOut={props.onMouseOut}
@@ -1141,6 +1144,7 @@ function Write(props: ToolProps) {
               filetype={filetype(stringValue(props.input.filePath))}
               syntaxStyle={syntax()}
               content={code()}
+              drawUnstyledText={false}
             />
           </line_number>
           <Diagnostics diagnostics={props.metadata.diagnostics} filePath={stringValue(props.input.filePath) ?? ""} />

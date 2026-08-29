@@ -623,6 +623,22 @@ export function buildAppCommands(deps: {
       },
     },
     {
+      name: "effort",
+      title: "Set reasoning effort",
+      category: "Agent",
+      slashName: "effort",
+      run: () => {
+        if (deps.local.model.variant.list().length === 0) {
+          return deps.toast.show({
+            title: "No effort levels available",
+            message: "The current model does not support effort levels.",
+            variant: "info",
+          })
+        }
+        deps.dialog.replace(() => <DialogVariant />)
+      },
+    },
+    {
       name: "agent.cycle.reverse",
       title: "Cycle agent",
       category: "Agent",

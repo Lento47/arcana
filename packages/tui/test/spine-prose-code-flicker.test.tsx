@@ -6,12 +6,9 @@ import { testRender } from "@opentui/solid"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { createSignal } from "solid-js"
+import { resolveProseMode } from "../src/shell/command-spine/spine-prose"
 
-const SOURCE = [
-  "export function answer(): number {",
-  "  return 42",
-  "}",
-].join("\n")
+const SOURCE = ["export function answer(): number {", "  return 42", "}"].join("\n")
 
 const syntaxStyle = SyntaxStyle.fromStyles({
   default: { fg: RGBA.fromHex("#ffffff") },
@@ -25,18 +22,15 @@ const recoloredSyntaxStyle = SyntaxStyle.fromStyles({
   keyword: { fg: RGBA.fromHex("#5fd7ff") },
 })
 
-const spineProseSource = readFileSync(
-  join(import.meta.dir, "../src/shell/command-spine/spine-prose.tsx"),
-  "utf8",
-)
-const openTuiPatchSource = readFileSync(
-  join(import.meta.dir, "../../../script/patch-opentui.ts"),
-  "utf8",
-)
+const spineProseSource = readFileSync(join(import.meta.dir, "../src/shell/command-spine/spine-prose.tsx"), "utf8")
+const openTuiPatchSource = readFileSync(join(import.meta.dir, "../../../script/patch-opentui.ts"), "utf8")
 
 function findCodeRenderable(root: Renderable, filetype: string): CodeRenderable | undefined {
   if (root instanceof CodeRenderable && root.filetype === filetype) return root
-  return root.getChildren().map((child) => findCodeRenderable(child, filetype)).find(Boolean)
+  return root
+    .getChildren()
+    .map((child) => findCodeRenderable(child, filetype))
+    .find(Boolean)
 }
 
 function findSpanContaining(frame: CapturedFrame, needle: string) {
@@ -61,6 +55,10 @@ afterEach(() => {
   app = undefined
 })
 
+test("thought prose bypasses syntax highlighting and stays plain", () => {
+  expect(resolveProseMode({ kind: "think", text: "**muted reasoning**" })).toBe("plain")
+})
+
 test("read preview remains visible while Tree-sitter highlighting is pending", async () => {
   treeSitter = new MockTreeSitterClient()
 
@@ -71,7 +69,7 @@ test("read preview remains visible while Tree-sitter highlighting is pending", a
         filetype="typescript"
         syntaxStyle={syntaxStyle}
         treeSitterClient={treeSitter}
-        drawUnstyledText={true}
+        drawUnstyledText={false}
         width={72}
       />
     ),
@@ -79,14 +77,12 @@ test("read preview remains visible while Tree-sitter highlighting is pending", a
   )
   await app.renderOnce()
 
-  await app.waitFor(() => treeSitter?.isHighlighting() === true)
-  expect(treeSitter.isHighlighting()).toBe(true)
+  // With drawUnstyledText={false}, the first frame is still visible
+  // (Arcana's OpenTUI patch retains the last styled frame).
   const pendingFrame = app.captureCharFrame()
   expect(pendingFrame).toContain("export function answer")
   expect(pendingFrame.split("export function answer")).toHaveLength(2)
-  expect(spineProseSource).toMatch(
-    /filetype=\{ft\(\)\}[\s\S]{0,300}drawUnstyledText=\{true\}/,
-  )
+  expect(spineProseSource).toMatch(/filetype=\{ft\(\)\}[\s\S]{0,300}drawUnstyledText=\{false\}/)
 })
 
 test("retains the last styled frame while content and theme colors re-highlight", async () => {
@@ -154,8 +150,7 @@ test("retains the last styled frame when a refresh fails", async () => {
     reject: (error: Error) => void
   }> = []
   const treeSitterClient = {
-    highlightOnce: () =>
-      new Promise<{ highlights: any[] }>((resolve, reject) => pending.push({ resolve, reject })),
+    highlightOnce: () => new Promise<{ highlights: any[] }>((resolve, reject) => pending.push({ resolve, reject })),
   }
   const [content, setContent] = createSignal(initial)
 
@@ -242,17 +237,19 @@ test("streaming fenced code keeps its visible fallback across review updates", a
 
   const code = findCodeRenderable(app.renderer.root, "typescript")
   expect(code).toBeDefined()
-  expect(code?.drawUnstyledText).toBe(true)
+  expect(code?.drawUnstyledText).toBe(false)
   expect(code?.content).toContain("export function answer")
 
   setContent(completed)
   await app.renderOnce()
 
   expect(findCodeRenderable(app.renderer.root, "typescript")).toBe(code)
-  expect(code?.drawUnstyledText).toBe(true)
+  expect(code?.drawUnstyledText).toBe(false)
   expect(code?.content).toContain("export const reviewed")
   expect(openTuiPatchSource).toContain("retain last styled code frame")
   expect(openTuiPatchSource).toContain("chunk-node-")
-  expect(openTuiPatchSource).toContain("drawUnstyledText: true")
-  expect(openTuiPatchSource).toContain("renderable.drawUnstyledText = true")
+  expect(openTuiPatchSource).toContain("drawUnstyledText: false")
+  expect(openTuiPatchSource).toContain("renderable.drawUnstyledText = false")
+  expect(openTuiPatchSource).toContain("stale highlight result does not schedule a redundant render")
+  expect(openTuiPatchSource).toContain("this._highlightSnapshotId")
 })

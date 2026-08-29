@@ -76,7 +76,7 @@ function renderContent(content: string, type: string, theme: any, syntaxStyle: a
         content={content}
         syntaxStyle={syntaxStyle}
         fg={theme.text}
-        drawUnstyledText={true}
+        drawUnstyledText={false}
       />
     )
   }

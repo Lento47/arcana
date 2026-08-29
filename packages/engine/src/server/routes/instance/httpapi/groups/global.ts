@@ -9,6 +9,7 @@ import "@/session/epistemic/governance-event"
 import { Schema } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
 import { described } from "./metadata"
+import { WorkspaceRoutingQuery } from "../middleware/workspace-routing"
 
 const GlobalHealth = Schema.Struct({
   healthy: Schema.Literal(true),
@@ -35,10 +36,28 @@ const SyncEventSchemas = EventV2.registry
   })
   .toArray()
 
+const TransportEnvelope = Schema.Struct({
+  streamID: Schema.String,
+  sequence: Schema.Finite,
+  headSequence: Schema.optional(Schema.Finite),
+})
+
+// Heartbeats are transport control frames, not durable EventV2 records. Keep
+// them in the HTTP contract so schema-aware clients can validate every frame
+// without registering a synthetic event in the persistence/event registry.
+export const ServerHeartbeat = Schema.Struct({
+  id: EventV2.ID,
+  type: Schema.Literal("server.heartbeat"),
+  properties: Schema.Struct({
+    headSequence: Schema.optional(Schema.Finite),
+  }),
+}).annotate({ identifier: "Event.server.heartbeat" })
+
 const GlobalEventSchema = Schema.Struct({
   directory: Schema.String,
   project: Schema.optional(Schema.String),
   workspace: Schema.optional(Schema.String),
+  transport: Schema.optional(TransportEnvelope),
   payload: Schema.Union([
     ...EventV2.registry
       .values()
@@ -46,6 +65,7 @@ const GlobalEventSchema = Schema.Struct({
         Schema.Struct({ id: EventV2.ID, type: Schema.Literal(definition.type), properties: definition.data }),
       )
       .toArray(),
+    ServerHeartbeat,
     InstanceDisposed,
     ...SyncEventSchemas,
   ]),
@@ -87,6 +107,10 @@ export const GlobalApi = HttpApi.make("global").add(
         }),
       ),
       HttpApiEndpoint.get("event", GlobalPaths.event, {
+        // The global stream is also used by local TUI clients. Accept the
+        // same location selectors that the client interceptor adds to every
+        // GET request so one TUI cannot receive another project's delta flood.
+        query: WorkspaceRoutingQuery,
         success: GlobalEventSchema,
       }).annotateMerge(
         OpenApi.annotations({

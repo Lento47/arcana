@@ -10,6 +10,7 @@ import { Heap } from "@/cli/heap"
 import { AppRuntime } from "@/effect/app-runtime"
 import { Effect } from "effect"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
+import path from "node:path"
 
 if (process.env["ARCANA_PROFILE_STARTUP"]) performance.mark("worker-init-start")
 
@@ -38,8 +39,22 @@ process.on("unhandledRejection", (reason) => {
 
 Heap.start()
 
-// Subscribe to global events and forward them via RPC
+// Subscribe to global events and forward them via RPC. The worker is scoped to
+// the TUI's current working directory, so drop foreign instance events before
+// JSON serialization crosses the worker boundary. Locationless lifecycle and
+// installation events remain visible to the operator.
+const normalizeWorkerDirectory = (value: string) => {
+  const normalized = path.normalize(value)
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized
+}
+const workerDirectory = normalizeWorkerDirectory(process.cwd())
+const workerEventBelongs = (event: { directory?: string }) => {
+  if (!event.directory || event.directory === "global") return true
+  return normalizeWorkerDirectory(event.directory) === workerDirectory
+}
+
 GlobalBus.on("event", (event) => {
+  if (!workerEventBelongs(event)) return
   Rpc.emit("global.event", event)
 })
 

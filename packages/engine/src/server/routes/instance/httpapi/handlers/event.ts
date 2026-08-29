@@ -11,11 +11,17 @@ import { resetActivity, sseConnected, sseDisconnected } from "@/daemon/activity"
 import { EventApi } from "../groups/event"
 import path from "path"
 
-function eventData(data: unknown): Sse.Event {
+function normalizeDirectory(value: string) {
+  const normalized = path.normalize(value)
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized
+}
+
+function eventData(data: { transport?: { streamID: string; sequence: number; headSequence?: number } }): Sse.Event {
+  const kind = data.transport && "headSequence" in data.transport ? "heartbeat" : "event"
   return {
     _tag: "Event",
     event: "message",
-    id: undefined,
+    id: data.transport ? `${data.transport.streamID}:${kind}:${data.transport.sequence}` : undefined,
     data: JSON.stringify(data),
   }
 }
@@ -57,35 +63,36 @@ function eventResponse(events: EventV2.Interface) {
     // Normalize paths for comparison to handle Windows mixed separators (\ vs /)
     // and case differences. path.normalize handles separator normalization;
     // lowercase ensures case-insensitive matching on Windows.
-    const normalizedInstanceDir = path.normalize(instance.directory).toLowerCase()
+    const normalizedInstanceDir = normalizeDirectory(instance.directory)
     const belongsToSubscriber = (event: EventV2.Payload) => {
       if (!event.location?.directory) return false
-      const normalizedEventDir = path.normalize(event.location.directory).toLowerCase()
+      const normalizedEventDir = normalizeDirectory(event.location.directory)
       return (
         normalizedEventDir === normalizedInstanceDir &&
         (event.location.workspaceID === undefined || event.location.workspaceID === workspaceID)
       )
     }
-    const unsubscribe = yield* events.listen((event) =>
-      Effect.sync(() => {
-        offered += 1
-        // Pre-filter before the offer: foreign events never consume queue
-        // budget (F-A2). The post-stream filter below remains as
-        // defense-in-depth and keeps the wire sequence gapless over exactly
-        // this subscriber's events.
-        if (!belongsToSubscriber(event)) return
-        Queue.offerUnsafe(queue, event)
-      }),
-    )
-    yield* Effect.addFinalizer(() => unsubscribe)
-
-    // Per-subscriber wire counters. All increments happen on the single-threaded
-    // event loop (no awaits between read and write), so plain numbers are safe.
+    // Per-subscriber counters are declared before listener registration. The
+    // bridge can publish synchronously while it installs a listener; keeping
+    // these out of the temporal-dead-zone avoids a first-event crash.
     let wireSeq = 0 // state-bearing events emitted to the wire (post-filter)
     let hbSeq = 0 // heartbeat sequence (own counter, never pollutes wireSeq)
     let offered = 0 // events offered to the sliding queue
     let delivered = 0 // events pulled from the queue by the stream
     let lastReportedDropped = 0
+
+    const unsubscribe = yield* events.listen((event) =>
+      Effect.sync(() => {
+        // Pre-filter before the offer: foreign events never consume queue
+        // budget (F-A2). The post-stream filter below remains as
+        // defense-in-depth and keeps the wire sequence gapless over exactly
+        // this subscriber's events.
+        if (!belongsToSubscriber(event)) return
+        offered += 1
+        Queue.offerUnsafe(queue, event)
+      }),
+    )
+    yield* Effect.addFinalizer(() => unsubscribe)
 
     const stream = Stream.fromQueue(queue).pipe(
       Stream.tap(() =>
@@ -119,7 +126,9 @@ function eventResponse(events: EventV2.Interface) {
       Stream.map((event) => ({
         id: (event as { id?: string }).id ?? eventID(),
         type: (event as { type: string }).type,
-        properties: ((event as { data?: unknown }).data ?? (event as { properties?: unknown }).properties ?? {}) as unknown,
+        properties: ((event as { data?: unknown }).data ??
+          (event as { properties?: unknown }).properties ??
+          {}) as unknown,
         transport: { streamID, sequence: ++wireSeq },
       })),
     )
@@ -166,7 +175,7 @@ function eventResponse(events: EventV2.Interface) {
         id: eventID(),
         type: "server.connected",
         properties: {},
-        transport: { streamID, sequence: 0, headSequence: 0 },
+        transport: { streamID, sequence: 0 },
       }).pipe(
         Stream.concat(output.pipe(Stream.merge(heartbeat, { haltStrategy: "left" }))),
         Stream.map(eventData),

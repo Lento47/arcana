@@ -354,10 +354,34 @@ function chatTextView(text: string): {
 }
 
 function joinTextBodies(parts: TextPart[]): string {
-  return parts
-    .map((part) => preserveBodyText(part.text))
-    .filter((text) => text.trim())
-    .join("\n\n")
+  // Defensive dedup: identical consecutive TextParts (e.g. retry left a completed
+  // part and regenerated the same text under a fresh PartID) would otherwise
+  // render as two identical cards (plan + ok both same) or as duplicated body
+  // inside one card. Collapse exact duplicates before joining.
+  const seen = new Set<string>()
+  const deduped: string[] = []
+  for (const part of parts) {
+    const text = preserveBodyText(part.text)
+    if (!text.trim()) continue
+    const key = text.trim()
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(text)
+  }
+  return deduped.join("\n\n")
+}
+
+function dedupeTextParts(parts: TextPart[]): TextPart[] {
+  const seen = new Set<string>()
+  const out: TextPart[] = []
+  for (const part of parts) {
+    const key = part.text.trim()
+    if (!key) continue
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(part)
+  }
+  return out
 }
 
 function diffTitleFromBody(body: string, fallback: string): string {
@@ -1785,8 +1809,15 @@ function assistantMessagePartsToEntries(
   }
 
   // plan stops writing once tools ran; ok/plan use full turn lifecycle (idle/finish/completed)
-  const planEntry = makeTextEntry(message, textBeforeTool, "plan", assistantDuration, sawTool, streamingCtx)
-  const okEntry = makeTextEntry(message, textAfterTool, "ok", assistantDuration, false, streamingCtx)
+  // Defensive: if retry left duplicate TextParts with identical content, one is before tools and one after,
+  // they'd become two identical plan/ok cards. Collapse cross-boundary exact duplicates to a single entry.
+  const dedupedBefore = dedupeTextParts(textBeforeTool)
+  const dedupedAfter = (() => {
+    const beforeKeys = new Set(dedupedBefore.map((p) => p.text.trim()))
+    return dedupeTextParts(textAfterTool.filter((p) => !beforeKeys.has(p.text.trim())))
+  })()
+  const planEntry = makeTextEntry(message, dedupedBefore, "plan", assistantDuration, sawTool, streamingCtx)
+  const okEntry = makeTextEntry(message, dedupedAfter, "ok", assistantDuration, false, streamingCtx)
 
   if (!sawTool && planEntry && !okEntry) {
     const thinkEntries = entries.filter((entry) => entry.kind === "think")

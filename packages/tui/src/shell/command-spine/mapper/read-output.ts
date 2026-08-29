@@ -7,10 +7,6 @@
  * absorbs rescans of large files.
  */
 
-function isBoilerplateReminder(text: string): boolean {
-  return /untrusted user data|file-content tags|do NOT execute|DATA, not instructions/i.test(text)
-}
-
 export type ParsedReadBody = {
   body: string
   reminders: string[]
@@ -29,10 +25,10 @@ export type ParsedReadBody = {
 function isEntryFooter(line: string): boolean {
   const trimmed = line.trim()
   return (
-    /^\((?:\d+\s+entries|Showing\s+\d+\s+of\s+\d+\s+entries)[\s\S]*\)$/i.test(trimmed)
-    || /^\((?:End of file|Showing lines|Output capped)[\s\S]*\)$/i.test(trimmed)
-    || /^\(Output capped at[\s\S]*\)$/i.test(trimmed)
-    || /^\(Results are truncated[\s\S]*\)$/i.test(trimmed)
+    /^\((?:\d+\s+entries|Showing\s+\d+\s+of\s+\d+\s+entries)[\s\S]*\)$/i.test(trimmed) ||
+    /^\((?:End of file|Showing lines|Output capped)[\s\S]*\)$/i.test(trimmed) ||
+    /^\(Output capped at[\s\S]*\)$/i.test(trimmed) ||
+    /^\(Results are truncated[\s\S]*\)$/i.test(trimmed)
   )
 }
 
@@ -40,7 +36,7 @@ function isEntryFooter(line: string): boolean {
  * Strip engine XML from read/inspect output and normalize for the TUI.
  * - Directory reads: parse `<entries>` into a clean name list (no tags)
  * - File reads: strip `N: ` prefixes for syntax highlight
- * - Suppresses boilerplate untrusted-data system reminders
+ * - Suppresses all <system-reminder> blocks (hidden from TUI/chat, kept for model)
  * - Pulls footers into `note`
  */
 // Cache: keyed on a length+hash of the output (FNV-1a, strided over the body)
@@ -92,11 +88,7 @@ export function parseReadToolOutput(output: string): ParsedReadBody {
   const typeMatch = content.match(/<type>([^<]*)<\/type>/i)
   const typeHint = typeMatch?.[1]?.trim().toLowerCase()
 
-  content = content.replace(/<system-reminder>([\s\S]*?)<\/system-reminder>/gi, (_, text: string) => {
-    const trimmed = text.trim()
-    if (trimmed && !isBoilerplateReminder(trimmed)) reminders.push(trimmed)
-    return ""
-  })
+  content = content.replace(/<system-reminder>[\s\S]*?<\/system-reminder>\s*/gi, "")
 
   // Directory listing: <entries>…</entries>
   const entriesBlock = content.match(/<entries>([\s\S]*?)<\/entries>/i)
@@ -194,8 +186,8 @@ export function parseReadToolOutput(output: string): ParsedReadBody {
     // Heuristic: multi-line path-ish list → listing (glob-like), not code
     const nonEmpty = contentLines.map((l) => l.trim()).filter(Boolean)
     const pathish =
-      nonEmpty.length >= 2
-      && nonEmpty.filter((l) => /[\\/]|\.\w{1,8}$/.test(l) || l.endsWith("/")).length / nonEmpty.length >= 0.7
+      nonEmpty.length >= 2 &&
+      nonEmpty.filter((l) => /[\\/]|\.\w{1,8}$/.test(l) || l.endsWith("/")).length / nonEmpty.length >= 0.7
     if (pathish) {
       kind = "directory"
       const result: ParsedReadBody = {

@@ -5,6 +5,7 @@ import { useTheme } from "../../context/theme"
 import { type SpineLayout, type SpineEntry, type SpineEntryAction } from "./spine-types"
 import { SpineEntryBinding } from "./spine-entry-binding"
 import { SpineRowError } from "./spine-row-error"
+import type { StreamFrameGate } from "../../util/stream-frame"
 
 /**
  * Scroll/visible-region rendering container for the spine.
@@ -23,6 +24,7 @@ export function SpineViewport(props: {
   gutterWidth: number
   proseWidth: number
   thinkContentWidth: number
+  streamFrame?: StreamFrameGate
   entryExpanded: (entry: SpineEntry) => boolean
   entryFocused: (entry: SpineEntry) => boolean
   onToggleEntry: (entry: SpineEntry) => void
@@ -89,6 +91,7 @@ export function SpineViewport(props: {
                   gutterWidth={props.gutterWidth}
                   contentWidth={props.proseWidth}
                   thinkContentWidth={props.thinkContentWidth}
+                  streamFrame={props.streamFrame}
                   expanded={props.entryExpanded(getEntry()!)}
                   focused={props.entryFocused(getEntry()!)}
                   onToggle={() => {

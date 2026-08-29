@@ -41,6 +41,7 @@ import { focusedEntryActionHint } from "./spine-chrome"
 import { DialogModel } from "../../component/dialog-model"
 import { useLocal } from "../../context/local"
 import { errorMessage } from "../../util/error"
+import { useStreamFrameGate } from "../../util/stream-frame"
 
 export function CommandSpineShell(props: ShellProps) {
   const { theme } = useTheme()
@@ -56,6 +57,9 @@ export function CommandSpineShell(props: ShellProps) {
   const sdk = useSDK()
   const local = useLocal()
   const dims = useTerminalDimensions()
+  // Use the session gate when provided; legacy shell callers get one gate for
+  // the whole shell instead of one timer per streamed prose component.
+  const streamFrame = useStreamFrameGate(props.streamFrame)
   const [escapeStage, setEscapeStage] = createSignal<0 | 1 | 2>(0)
   const [recoveryActionIndex, setRecoveryActionIndex] = createSignal(0)
   let escapeResetTimer: ReturnType<typeof setTimeout> | undefined
@@ -164,11 +168,7 @@ export function CommandSpineShell(props: ShellProps) {
   const [expandedEntries, setExpandedEntries] = createSignal<Record<string, boolean>>({})
   const entryExpanded = (entry: { id: string; expandedByDefault?: boolean; collapsible?: boolean }) =>
     expandedEntries()[entry.id] ?? entry.expandedByDefault ?? entry.collapsible !== true
-  const toggleEntry = (entry: {
-    id: string
-    collapsible?: boolean
-    expandedByDefault?: boolean
-  }) => {
+  const toggleEntry = (entry: { id: string; collapsible?: boolean; expandedByDefault?: boolean }) => {
     setExpandedEntries((prev) => {
       const current = prev[entry.id] ?? entry.expandedByDefault ?? entry.collapsible !== true
       return { ...prev, [entry.id]: !current }
@@ -214,23 +214,32 @@ export function CommandSpineShell(props: ShellProps) {
   const scrollContentRevision = createMemo(() => {
     const rows = filters.filteredRows()
     const latest = rows.at(-1)
-    const expanded = Object.entries(expandedEntries()).filter(([, value]) => value).map(([id]) => id).join(",")
+    const expanded = Object.entries(expandedEntries())
+      .filter(([, value]) => value)
+      .map(([id]) => id)
+      .join(",")
+    // Keep this a stable primitive. Raw token lengths made the scroll effect
+    // run for every SSE delta, even though SpineProse had not published a new
+    // visual frame yet. Actual text-height changes mark the renderable itself;
+    // this revision is only for structural changes that need reconciliation.
     return [
       rows.length,
-      latest?.id,
-      latest?.summary.length ?? 0,
-      latest?.body?.length ?? 0,
-      latest?.thinking?.length ?? 0,
+      latest?.id ?? "",
+      latest?.kind ?? "",
+      latest?.bodyLabel ?? "",
       latest?.children?.length ?? 0,
       latest?.activity?.childCount ?? 0,
-      latest?.children?.at(-1)?.summary?.length ?? 0,
       latest?.streaming === true ? "streaming" : "settled",
       expanded,
     ].join(":")
   })
 
   // Reconcile after streaming height changes while preserving manual scrollback.
-  const scroll = useSpineScroll({ onRef: props.scrollRef, contentRevision: scrollContentRevision })
+  const scroll = useSpineScroll({
+    onRef: props.scrollRef,
+    contentRevision: scrollContentRevision,
+    frameGate: streamFrame,
+  })
 
   // Route navigation + focus state. The shell supplies the side effects
   // (controller selection, composer blur, scroll-into-view) via callbacks.
@@ -318,14 +327,15 @@ export function CommandSpineShell(props: ShellProps) {
   const dismissApprovalEntry = (entry: SpineEntry) => {
     const record = projection.getApprovalForEntry(entry)
     const ctrl = controller()
-    const deny = record && ctrl
-      ? ctrl.deny({
-          approvalId: record.approvalId,
-          expectedVersion: record.version,
-          expectedRequestHash: record.requestHash,
-          expectedContractRevision: record.contractRevision,
-        })
-      : undefined
+    const deny =
+      record && ctrl
+        ? ctrl.deny({
+            approvalId: record.approvalId,
+            expectedVersion: record.version,
+            expectedRequestHash: record.requestHash,
+            expectedContractRevision: record.contractRevision,
+          })
+        : undefined
     projection.dismissSpineEntry(entry)
     toast.show({ title: "Dismissed", message: "Approval removed from this chat", variant: "info" })
     if (deny) void deny.catch(() => {})
@@ -336,7 +346,8 @@ export function CommandSpineShell(props: ShellProps) {
   // expanded forever and forces huge scroll distances through old turns.
   let seenUserMessageID: string | undefined
   createEffect(() => {
-    const lastUser = projection.displayRows()
+    const lastUser = projection
+      .displayRows()
       .filter((entry) => entry.kind === "ask" && entry.source?.kind === "message")
       .at(-1)
     const id = lastUser?.id
@@ -414,7 +425,8 @@ export function CommandSpineShell(props: ShellProps) {
 
     const text = spineEntryCopyText(entry)
     if (!text || !clipboard.write) return
-    clipboard.write(text)
+    clipboard
+      .write(text)
       .then(() => toast.show({ message: "Spine entry copied", variant: "success" }))
       .catch(() => toast.show({ message: "Failed to copy spine entry", variant: "error" }))
   }
@@ -426,7 +438,9 @@ export function CommandSpineShell(props: ShellProps) {
       return
     }
 
-    dialog.replace(() => <DialogMessage messageID={messageID} sessionID={props.sessionID} setPrompt={props.setPrompt} />)
+    dialog.replace(() => (
+      <DialogMessage messageID={messageID} sessionID={props.sessionID} setPrompt={props.setPrompt} />
+    ))
   }
   const openFocusedEntryDiff = () => {
     const entry = navigation.focusedEntry()
@@ -464,10 +478,7 @@ export function CommandSpineShell(props: ShellProps) {
     navigateToChildSession(sessionID)
   }
 
-  const retryFailedEntry = async (
-    entry: SpineEntry,
-    model = local.model.current(),
-  ) => {
+  const retryFailedEntry = async (entry: SpineEntry, model = local.model.current()) => {
     const failedMessageID = entry.source?.messageID
     if (!failedMessageID) return
     try {
@@ -496,7 +507,12 @@ export function CommandSpineShell(props: ShellProps) {
     else return false
     navigation.focusEntry(entry)
     toast.show({
-      title: action === "steer" ? "Steering the running turn" : action === "retry" ? "Retrying queued message" : "Queued message dropped",
+      title:
+        action === "steer"
+          ? "Steering the running turn"
+          : action === "retry"
+            ? "Retrying queued message"
+            : "Queued message dropped",
       message: item.label,
       variant: "info",
     })
@@ -510,9 +526,7 @@ export function CommandSpineShell(props: ShellProps) {
       void retryFailedEntry(entry)
       return
     }
-    dialog.replace(() => (
-      <DialogModel onSelect={(model) => void retryFailedEntry(entry, model)} />
-    ))
+    dialog.replace(() => <DialogModel onSelect={(model) => void retryFailedEntry(entry, model)} />)
   }
 
   const moveRecoveryAction = (direction: 1 | -1) => {
@@ -599,12 +613,7 @@ export function CommandSpineShell(props: ShellProps) {
     }
 
     dialog.replace(() => (
-      <DialogSelect
-        title="Entry actions"
-        options={options}
-        skipFilter={true}
-        renderFilter={false}
-      />
+      <DialogSelect title="Entry actions" options={options} skipFilter={true} renderFilter={false} />
     ))
   }
 
@@ -628,9 +637,24 @@ export function CommandSpineShell(props: ShellProps) {
       }),
     priority: 1,
     bindings: [
-      { key: "j,down", desc: "Focus next spine entry", group: "Command Spine", cmd: () => navigation.focusRelativeEntry(1) },
-      { key: "k", desc: "Focus previous spine entry", group: "Command Spine", cmd: () => navigation.focusRelativeEntry(-1) },
-      { key: "return", desc: "Enter subagent context or expand/collapse entry", group: "Command Spine", cmd: activateFocusedEntry },
+      {
+        key: "j,down",
+        desc: "Focus next spine entry",
+        group: "Command Spine",
+        cmd: () => navigation.focusRelativeEntry(1),
+      },
+      {
+        key: "k",
+        desc: "Focus previous spine entry",
+        group: "Command Spine",
+        cmd: () => navigation.focusRelativeEntry(-1),
+      },
+      {
+        key: "return",
+        desc: "Enter subagent context or expand/collapse entry",
+        group: "Command Spine",
+        cmd: activateFocusedEntry,
+      },
       { key: "space", desc: "Expand or collapse spine entry", group: "Command Spine", cmd: toggleFocusedEntry },
       { key: "y", desc: "Copy focused spine entry", group: "Command Spine", cmd: copyFocusedEntry },
       { key: "o", desc: "Open spine entry details", group: "Command Spine", cmd: openFocusedEntryDetails },
@@ -685,14 +709,19 @@ export function CommandSpineShell(props: ShellProps) {
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
     enabled: () =>
-      !props.session()?.parentID
-      && spineNavigationEnabled({
+      !props.session()?.parentID &&
+      spineNavigationEnabled({
         composerFocused: composerFocused(),
         hasRows: projection.displayRows().length > 0,
       }),
     priority: 1,
     bindings: [
-      { key: "up", desc: "Focus previous spine entry", group: "Command Spine", cmd: () => navigation.focusRelativeEntry(-1) },
+      {
+        key: "up",
+        desc: "Focus previous spine entry",
+        group: "Command Spine",
+        cmd: () => navigation.focusRelativeEntry(-1),
+      },
     ],
   }))
 
@@ -700,9 +729,7 @@ export function CommandSpineShell(props: ShellProps) {
   // focused. Other rows leave those keys available to their contextual UI.
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
-    enabled: () =>
-      !composerFocused()
-      && Boolean(navigation.focusedEntry()?.actions?.length),
+    enabled: () => !composerFocused() && Boolean(navigation.focusedEntry()?.actions?.length),
     priority: 2,
     bindings: [
       { key: "left", desc: "Previous recovery action", group: "Command Spine", cmd: () => moveRecoveryAction(-1) },
@@ -756,10 +783,10 @@ export function CommandSpineShell(props: ShellProps) {
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
     enabled: () =>
-      spineEscInert({ gatesOpen: gatesOpen(), submitting: authority.approvalSubmitting() })
-      && inspectorApprovalId() === undefined
-      && navigation.focusedApproval() === undefined
-      && dialog.stack.length === 0,
+      spineEscInert({ gatesOpen: gatesOpen(), submitting: authority.approvalSubmitting() }) &&
+      inspectorApprovalId() === undefined &&
+      navigation.focusedApproval() === undefined &&
+      dialog.stack.length === 0,
     priority: 3,
     bindings: [
       {
@@ -775,8 +802,8 @@ export function CommandSpineShell(props: ShellProps) {
   useBindings(() => ({
     mode: ARCANA_BASE_MODE,
     enabled: () =>
-      spineEscInert({ gatesOpen: gatesOpen(), submitting: authority.approvalSubmitting() })
-      && authority.approvalEscapeEnabled(),
+      spineEscInert({ gatesOpen: gatesOpen(), submitting: authority.approvalSubmitting() }) &&
+      authority.approvalEscapeEnabled(),
     // Above session.interrupt (default 0) so Esc does not become "again to
     // interrupt" while the exact-request inspector is open.
     priority: 3,
@@ -792,84 +819,87 @@ export function CommandSpineShell(props: ShellProps) {
 
   return (
     <Show when={props.session()}>
-      <ErrorBoundary fallback={(error) => (
-        <box flexDirection="column" padding={1} flexGrow={1}>
-          <text fg={theme.text}>{`\u26A0 Spine render error: ${error.message}`}</text>
-          <text fg={theme.textMuted}>Session may be partially rendered</text>
-        </box>
-      )}>
+      <ErrorBoundary
+        fallback={(error) => (
+          <box flexDirection="column" padding={1} flexGrow={1}>
+            <text fg={theme.text}>{`\u26A0 Spine render error: ${error.message}`}</text>
+            <text fg={theme.textMuted}>Session may be partially rendered</text>
+          </box>
+        )}
+      >
         <SpineMotionProvider activeCue={activeMotionCue}>
-        <box flexDirection="column" flexGrow={1} minHeight={0}>
-          <SpineHeader
-            session={props.session}
-            sessions={props.sessionList?.()}
-            layout={layout()}
-            contentWidth={viewportWidth()}
-            segments={projection.headerSegments()}
-            trust={projection.trust()}
-            charter={projection.sessionCharter()}
-            governed={projection.governedChip()}
-            onNavigateToSession={props.onNavigateToSession}
-            onPreviousSession={() => keymap.dispatchCommand("session.child.previous")}
-            onNextSession={() => keymap.dispatchCommand("session.child.next")}
-            onParentSession={() => keymap.dispatchCommand("session.parent")}
-          />
-          <Show when={props.historyLoading?.() && props.messages().length === 0}>
-            <box paddingLeft={1} paddingRight={1} height={1}>
-              <text fg={theme.textMuted}>Loading recent history…</text>
-            </box>
-          </Show>
-          <SpineViewport
-            visibleEntryIDs={visibleEntryIDs}
-            visibleEntryByID={visibleEntryByID}
-            layout={layout()}
-            gutterWidth={projection.gutterWidth()}
-            proseWidth={projection.proseWidth()}
-            thinkContentWidth={projection.thinkContentWidth()}
-            entryExpanded={entryExpanded}
-            entryFocused={navigation.entryFocused}
-            onToggleEntry={activateDisclosure}
-            onFocusEntry={(entry) => navigation.focusEntry(entry)}
-            onContextMenu={openEntryActions}
-            onAction={activateRecoveryAction}
-            onDismissEntry={dismissApprovalEntry}
-            actionIndex={recoveryActionIndex()}
-            onNavigate={navigateToChildSession}
-            onResolveChild={props.onResolveChild}
-            sessionID={route.data?.type === "session" ? (route.data as any).sessionID : undefined}
-            fallbackChildSessionID={projection.fallbackChildSessionID()}
-            showScrollbar={props.showScrollbar()}
-            scrollAcceleration={props.scrollAcceleration}
-            setScrollRef={scroll.setScrollRef}
-            handleMouseScroll={scroll.handleMouseScroll}
-            showScrollUpButton={scroll.showScrollUpButton()}
-            showScrollDownButton={scroll.showScrollDownButton()}
-            onScrollToTop={scroll.scrollToTop}
-            onScrollToBottom={scroll.scrollToBottom}
-          />
-          <AuthorityGate permissions={props.permissions()} questions={props.questions()} />
-          <SpineComposer
-            escapeStage={escapeStage as () => 0 | 1 | 2}
-            layout={layout()}
-            parentID={props.session()?.parentID}
-            viewFilter={filters.viewFilter()}
-            filterLabel={filters.spineFilterLabel}
-            bind={props.bind}
-            disabled={props.disabled}
-            visible={props.visible}
-            sessionID={props.sessionID}
-            toBottom={props.toBottom as any}
-            state={runState}
-            contentWidth={viewportWidth()}
-            gutterWidth={projection.gutterWidth()}
-            focusHint={focusedActionHint}
-            gateOpen={gatesOpen}
-            retryStatus={() => {
-              const status = props.sessionStatus?.()
-              return status?.type === "retry" ? status : undefined
-            }}
-          />
-        </box>
+          <box flexDirection="column" flexGrow={1} minHeight={0}>
+            <SpineHeader
+              session={props.session}
+              sessions={props.sessionList?.()}
+              layout={layout()}
+              contentWidth={viewportWidth()}
+              segments={projection.headerSegments()}
+              trust={projection.trust()}
+              charter={projection.sessionCharter()}
+              governed={projection.governedChip()}
+              onNavigateToSession={props.onNavigateToSession}
+              onPreviousSession={() => keymap.dispatchCommand("session.child.previous")}
+              onNextSession={() => keymap.dispatchCommand("session.child.next")}
+              onParentSession={() => keymap.dispatchCommand("session.parent")}
+            />
+            <Show when={props.historyLoading?.() && props.messages().length === 0}>
+              <box paddingLeft={1} paddingRight={1} height={1}>
+                <text fg={theme.textMuted}>Loading recent history…</text>
+              </box>
+            </Show>
+            <SpineViewport
+              visibleEntryIDs={visibleEntryIDs}
+              visibleEntryByID={visibleEntryByID}
+              layout={layout()}
+              gutterWidth={projection.gutterWidth()}
+              proseWidth={projection.proseWidth()}
+              thinkContentWidth={projection.thinkContentWidth()}
+              streamFrame={streamFrame}
+              entryExpanded={entryExpanded}
+              entryFocused={navigation.entryFocused}
+              onToggleEntry={activateDisclosure}
+              onFocusEntry={(entry) => navigation.focusEntry(entry)}
+              onContextMenu={openEntryActions}
+              onAction={activateRecoveryAction}
+              onDismissEntry={dismissApprovalEntry}
+              actionIndex={recoveryActionIndex()}
+              onNavigate={navigateToChildSession}
+              onResolveChild={props.onResolveChild}
+              sessionID={route.data?.type === "session" ? (route.data as any).sessionID : undefined}
+              fallbackChildSessionID={projection.fallbackChildSessionID()}
+              showScrollbar={props.showScrollbar()}
+              scrollAcceleration={props.scrollAcceleration}
+              setScrollRef={scroll.setScrollRef}
+              handleMouseScroll={scroll.handleMouseScroll}
+              showScrollUpButton={scroll.showScrollUpButton()}
+              showScrollDownButton={scroll.showScrollDownButton()}
+              onScrollToTop={scroll.scrollToTop}
+              onScrollToBottom={scroll.scrollToBottom}
+            />
+            <AuthorityGate permissions={props.permissions()} questions={props.questions()} />
+            <SpineComposer
+              escapeStage={escapeStage as () => 0 | 1 | 2}
+              layout={layout()}
+              parentID={props.session()?.parentID}
+              viewFilter={filters.viewFilter()}
+              filterLabel={filters.spineFilterLabel}
+              bind={props.bind}
+              disabled={props.disabled}
+              visible={props.visible}
+              sessionID={props.sessionID}
+              toBottom={props.toBottom as any}
+              state={runState}
+              contentWidth={viewportWidth()}
+              gutterWidth={projection.gutterWidth()}
+              focusHint={focusedActionHint}
+              gateOpen={gatesOpen}
+              retryStatus={() => {
+                const status = props.sessionStatus?.()
+                return status?.type === "retry" ? status : undefined
+              }}
+            />
+          </box>
         </SpineMotionProvider>
       </ErrorBoundary>
     </Show>

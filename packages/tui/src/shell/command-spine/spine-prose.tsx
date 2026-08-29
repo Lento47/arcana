@@ -8,8 +8,11 @@ import { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis } from "./
 import { codeBlockChrome, streamTextCue } from "./spine-chrome"
 import { RoundBorder } from "../../ui/chrome"
 import { HairlineBorder } from "../../ui/border"
+import { useStreamFrameGate, type StreamFrameGate } from "../../util/stream-frame"
 
 export type SpineProseMode = "markdown" | "code" | "plain"
+
+let nextStreamContentKey = 0
 
 export { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis } from "./chat-prose"
 
@@ -58,12 +61,7 @@ export function stripMarkdownHorizontalRules(text: string): string {
 }
 
 function looksLikeDiff(text: string): boolean {
-  return (
-    text.includes("@@ ")
-    || text.startsWith("diff --git")
-    || /^---\s/m.test(text)
-    || /^\+\+\+\s/m.test(text)
-  )
+  return text.includes("@@ ") || text.startsWith("diff --git") || /^---\s/m.test(text) || /^\+\+\+\s/m.test(text)
 }
 
 export function resolveProseMode(input: {
@@ -77,7 +75,12 @@ export function resolveProseMode(input: {
   if (input.kind === "ask") {
     return looksLikeMarkdown(input.text) ? "markdown" : "plain"
   }
-  if (input.kind === "think" || input.kind === "agent") return "markdown"
+  // Thought text is intentionally plain. Markdown/tree-sitter styling can
+  // apply token backgrounds and asynchronous highlight frames, which makes
+  // streamed reasoning look inverted and flicker. Keep assistant prose
+  // markdown-rendered, but render the model's thought as muted terminal text.
+  if (input.kind === "think") return "plain"
+  if (input.kind === "agent") return "markdown"
   if (label === "diff" || looksLikeDiff(input.text)) return "code"
   if (label === "error" || input.kind === "fail") return "code"
   if (label === "written content" || label === "output" || label === "file") return "code"
@@ -138,12 +141,12 @@ export function SpineProse(props: {
   reminders?: string[]
   chatVoice?: boolean
   contentWidth?: number
+  /** Session/shell-owned frame gate; keeps all streamed prose in one commit. */
+  streamFrame?: StreamFrameGate
 }) {
   const { theme, syntax, subtleSyntax } = useTheme()
   const renderer = useRenderer()
-  const widgetRenderNode = createMemo(() =>
-    createWidgetRenderNode({ renderer, theme: theme as any }),
-  )
+  const widgetRenderNode = createMemo(() => createWidgetRenderNode({ renderer, theme: theme as any }))
   const kind = () => props.kind
   const bodyLabel = () => props.bodyLabel
   const hint = () => props.hint
@@ -181,44 +184,44 @@ export function SpineProse(props: {
     // Strip emphasis/strikethrough markers (`**`, `~~`) so raw syntax never
     // leaks into chat text (OpenTUI inline conceal depends on tree-sitter
     // markdown_inline injection; strip guarantees clean text regardless).
-    const noEmphasis = mode() === "markdown" ? stripMarkdownEmphasis(raw) : raw
+    const noEmphasis = mode() === "markdown" || kind() === "think" ? stripMarkdownEmphasis(raw) : raw
     // Strip horizontal rules (full-width dash rows) only outside fenced code blocks
-    return stripMarkdownHorizontalRules(noEmphasis)
+    return mode() === "markdown" ? stripMarkdownHorizontalRules(noEmphasis) : noEmphasis
   })
   /**
-   * Debounce content updates during streaming to reduce Tree-sitter
-   * re-highlight work on completed code blocks. Every token changes the
-   * overall markdownContent string (prose grows), which triggers a full
-   * MarkdownRenderable re-parse → Tree-sitter re-highlights ALL blocks,
-   * including stable completed code fences. The OpenTUI patch keeps the last
-   * styled frame visible during that async work.
-   *
-   * The debounce interval is 150ms during streaming (~6.7 Hz). At 50ms
-   * (~20 Hz) the styled→unstyled→styled transitions from Tree-sitter
-   * re-highlight cycles are perceptible as color flicker. 150ms keeps the
-   * latency under one perceptual frame (200 ms) while pushing the
-   * re-highlight frequency below the flicker-fusion threshold.
-   *
-   * Content identity check: skip the signal update (and downstream
-   * markdown re-parse + Yoga layout) when the debounced value already
-   * matches. This eliminates redundant work when multiple SSE deltas
-   * arrive within the same debounce window but the resulting markdown
-   * is identical (e.g. whitespace-only deltas).
+   * Frame-budgeted streaming updates. The shared gate replaces the previous
+   * per-renderable timer so content publication, scroll following, and other
+   * stream work can commit as one complete terminal frame.
    */
-  const STREAMING_DEBOUNCE_MS = 150
+  const streamFrame = useStreamFrameGate(props.streamFrame)
+  const streamContentKey = `content:${nextStreamContentKey++}`
   const [debouncedContent, setDebouncedContent] = createSignal(markdownContent())
-  let contentTimer: ReturnType<typeof setTimeout> | undefined
+  let pendingContent = markdownContent()
+  let publishedContent = pendingContent
+
+  const publishContent = () => {
+    if (pendingContent !== publishedContent) {
+      publishedContent = pendingContent
+      setDebouncedContent(publishedContent)
+    }
+  }
+
   createEffect(() => {
     const content = markdownContent()
-    if (liveStreaming()) {
-      if (contentTimer) clearTimeout(contentTimer)
-      contentTimer = setTimeout(() => setDebouncedContent(content), STREAMING_DEBOUNCE_MS)
-    } else {
-      if (contentTimer) { clearTimeout(contentTimer); contentTimer = undefined }
-      if (debouncedContent() !== content) setDebouncedContent(content)
+    const streaming = props.streaming === true
+    pendingContent = content
+
+    if (!streaming) {
+      streamFrame.cancel(streamContentKey)
+      publishContent()
+      return
     }
+
+    streamFrame.schedule(streamContentKey, publishContent)
   })
-  onCleanup(() => { if (contentTimer) clearTimeout(contentTimer) })
+  // An external session gate outlives rows while the route swaps. Remove this
+  // row's pending callback so a late delta cannot publish into a new row.
+  onCleanup(() => streamFrame.cancel(streamContentKey))
   const ft = createMemo(() => resolveFiletype(bodyLabel(), hint(), text(), hint()))
   const fg = createMemo(() => {
     if (kind() === "think") return theme.textMuted
@@ -231,7 +234,7 @@ export function SpineProse(props: {
     }
     return theme.background as any
   })
-  const style = () => (kind() === "think" || kind() === "fail" ? subtleSyntax() : syntax())
+  const style = () => (kind() === "fail" ? subtleSyntax() : syntax())
   const codePad = () => 1
   const codePadY = () => (bodyLabel() === "file" ? 0 : 1)
 
@@ -363,7 +366,7 @@ export function SpineProse(props: {
                 drawUnstyledText={false}
                 streaming={false}
                 syntaxStyle={style()}
-                content={text()}
+                content={debouncedContent()}
                 conceal={false}
                 wrapMode="word"
                 fg={fg() as any}
@@ -381,7 +384,9 @@ export function SpineProse(props: {
               paddingBottom={codePadY()}
               border={true}
               customBorderChars={RoundBorder}
-              borderColor={(bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : (theme.borderSubtle ?? theme.textMuted)) as any}
+              borderColor={
+                (bodyLabel() === "file" ? (theme.spineInspect ?? fg()) : (theme.borderSubtle ?? theme.textMuted)) as any
+              }
             >
               <box flexDirection="row" flexShrink={0} gap={1} paddingBottom={1}>
                 <text fg={theme.spineContext} wrapMode="none">
@@ -399,7 +404,7 @@ export function SpineProse(props: {
                 drawUnstyledText={false}
                 streaming={false}
                 syntaxStyle={style()}
-                content={text()}
+                content={debouncedContent()}
                 conceal={false}
                 wrapMode="word"
                 fg={fg() as any}
@@ -411,7 +416,7 @@ export function SpineProse(props: {
 
         <Match when={true}>
           <text fg={fg() as any} wrapMode="word" width={wrapCols()}>
-            {text()}
+            {debouncedContent()}
           </text>
           {bodyNote()}
         </Match>

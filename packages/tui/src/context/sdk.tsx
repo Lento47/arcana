@@ -90,9 +90,12 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     // aborts, remaining events are lost, and the SSE loop reconnects.
     const emitter = createIsolatedEmitter<GlobalEvent>()
 
+    const LOCAL_EVENT_QUEUE_CAPACITY = 4096
     let queue: GlobalEvent[] = []
+    let droppedLocalEvents = 0
     let timer: Timer | undefined
     let last = 0
+    let lastEventID: string | undefined
     const retryDelay = 1000
     // Cap reconnect backoff at 5s — engine runs on localhost; if it's
     // down longer than that, a faster retry won't hurt and the user sees
@@ -102,6 +105,10 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
 
     const flush = () => {
       if (queue.length === 0) return
+      // Keep the protocol fan-out one-for-one for every retained event. Each
+      // canonical delta advances semantic revisions, missing-delta diagnostics,
+      // and audit projections; only renderers may coalesce work
+      // (SpineProse's frame scheduler).
       const events = queue
       queue = []
       timer = undefined
@@ -134,6 +141,18 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       }
       if (tr && tr.headSequence === undefined) {
         if (tr.sequence > streamState.lastReceived) streamState.lastReceived = tr.sequence
+      }
+      // The transport queues are bounded, but a slow Solid/OpenTUI frame can
+      // still let the local event queue grow between flushes. Keep this
+      // buffer bounded as a last line of defence; the transport sequence and
+      // heartbeat gap detector will force a REST reconcile if an item is
+      // evicted here.
+      if (queue.length >= LOCAL_EVENT_QUEUE_CAPACITY) {
+        queue.shift()
+        droppedLocalEvents += 1
+        if (droppedLocalEvents === 1 || droppedLocalEvents % 256 === 0) {
+          console.warn(`[arcana] local SSE event queue dropped ${droppedLocalEvents} event(s)`)
+        }
       }
       queue.push(event)
       // Any event proves the connection is alive — push the silence window
@@ -187,9 +206,16 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
           let events: Awaited<ReturnType<typeof sdk.global.event>> | undefined
           let attempted = false
           try {
-            events = await sdk.global.event({
+            events = await sdk.global.event(undefined, {
               signal: ctrl.signal,
               sseMaxRetryAttempts: 0,
+              onSseEvent: (frame) => {
+                // The generated SSE parser preserves the last event id. Keep
+                // it outside this parser instance so the outer reconnect loop
+                // can send it on the next request as Last-Event-ID.
+                if (frame.id) lastEventID = frame.id
+              },
+              ...(lastEventID ? { headers: { "Last-Event-ID": lastEventID } } : {}),
             })
             attempted = true
           } catch (error) {
@@ -238,10 +264,10 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
           // attempted this cycle (a watchdog trip that aborted the fetch
           // must not emit a phantom reconnect; the next real attempt emits
           // it). The stream just dropped (daemon re-registration, transient
-          // fetch error, silent death, or partial event left in the parser
-          // buffer at EOF). SSE events carry no id, so Last-Event-ID replay
-          // is impossible — listeners (session route) re-sync the active
-          // session from REST to close the gap.
+          // fetch error, silent death, or a partial event left in the parser
+          // buffer at EOF). The server IDs identify the last frame, but this
+          // endpoint has no replay buffer, so listeners still re-sync the
+          // active session from REST to close any gap.
           if (attempted && !abort.signal.aborted && gen === generation) {
             emitter.emit({
               directory: props.directory ?? "",

@@ -47,4 +47,4 @@ source: session-hardening-15-failure-modes
 - [[prompt-injection-guard]] — Different defense layer against different attack vector
 - [[session-lock]] — Concurrent session protection at the OS level
 
-Related: [[arcana-governance-model-location]] [[arcana-shell-execution-goal-gate]] [[arcana-security-model]] [[demo-gated-actions-via-minimal-goal]] [[shell-run-before-binding-goal]] [[arcana-evalcondition-bypass]] [[arcana-audit-baseline]] [[governed-codebase-audit-method]]
+Related: [[arcana-governance-model-location]] [[arcana-shell-execution-goal-gate]] [[arcana-security-model]] [[demo-gated-actions-via-minimal-goal]] [[shell-run-before-binding-goal]] [[arcana-evalcondition-bypass]] [[arcana-audit-baseline]] [[governed-codebase-audit-method]] [[arcana-pdp-deny-unlabeled-gap]] [[arcana-validate-ancestors-fail-open]] [[arcana-governance-deny-unlabeled-gap]] [[remote-search-blocked]]

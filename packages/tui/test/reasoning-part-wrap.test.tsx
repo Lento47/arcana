@@ -1,7 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import { testRender, type JSX } from "@opentui/solid"
 import { MouseButton } from "@opentui/core"
-import { MockTreeSitterClient } from "@opentui/core/testing"
 import { afterEach, describe, expect, test } from "bun:test"
 import { createSignal } from "solid-js"
 import { context as SessionRouteContext, ReasoningPart } from "../src/routes/session/index"
@@ -13,9 +12,7 @@ import { KVProvider } from "../src/context/kv"
 import { TestTuiContexts } from "./fixture/tui-environment"
 import { createTuiResolvedConfig } from "./fixture/tui-runtime"
 
-// Exact reasoning payload observed in the live store (133 chars, finalized):
-// the session-route <code> renderable previously clipped it at the right edge
-// because CodeRenderable defaults to wrapMode="none".
+// Exact reasoning payload observed in the live store (133 chars, finalized).
 const REASONING_FULL =
   'The user said "hi" - a simple greeting. I should respond briefly and directly per the SOUL.md instructions (terse, direct, no fluff).'
 // Mid-stream snapshot: the stream was still producing when the user copied.
@@ -23,26 +20,11 @@ const REASONING_PARTIAL =
   'The user said "hi" - a simple greeting. I should respond briefly and directly per the SOUL.md instructions (terse'
 const TAIL = "direct, no fluff)"
 
-// The reasoning <code filetype="markdown"> renderable highlights asynchronously.
-// Arcana keeps its first frame visible and retains the last styled frame while
-// a refresh is pending. Install the official mock client (auto-resolve with zero
-// highlights -> falls back to plain text immediately) so frames are
-// deterministic. Mirrors OpenTUI's internal singleton registry exactly:
-// globalThis[Symbol.for("@opentui/core/singleton")] with key "tree-sitter-client"
-// (see lib/singleton.ts and the getTreeSitterClient implementation).
-function installMockTreeSitter() {
-  const bag = ((globalThis as any)[Symbol.for("@opentui/core/singleton")] ??= {})
-  bag["tree-sitter-client"] = new MockTreeSitterClient({ autoResolveTimeout: 0 })
-}
-installMockTreeSitter()
-
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined
 
 afterEach(() => {
   testSetup?.renderer.destroy()
   testSetup = undefined
-  // renderer.destroy() destroys the tree-sitter singleton; re-install the mock.
-  installMockTreeSitter()
 })
 
 function makePart(text: string, ended: boolean) {
@@ -212,8 +194,6 @@ describe("ReasoningPart wrap (session route)", () => {
     for (const width of [59, 80, 100, 120, 180]) {
       const [part] = createSignal(makePart(REASONING_FULL, true))
       testSetup?.renderer.destroy()
-      // renderer.destroy() destroys the tree-sitter singleton; re-install.
-      installMockTreeSitter()
       testSetup = await testRender(
         () => <Harness part={part} mode={() => "show"} terminalWidth={() => width} />,
         { width, height: 12 },

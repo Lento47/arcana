@@ -31,14 +31,87 @@ export function SigilSpinner(props: {
   const frames = () => props.frames ?? (style() === undefined ? SIGIL : spinnerFrames(style()!))
   const animate = () => kv.get("animations_enabled", true) && style() !== "none"
   const [i, setI] = createSignal(0)
+  let animationFrame: number | undefined
+  let animationTimer: ReturnType<typeof setInterval> | undefined
+  let animationRetryTimer: ReturnType<typeof setTimeout> | undefined
+  let lastTick = 0
+
+  const stopAnimation = () => {
+    if (animationFrame !== undefined) {
+      cancelAnimationFrame(animationFrame)
+      animationFrame = undefined
+    }
+    if (animationTimer !== undefined) {
+      clearInterval(animationTimer)
+      animationTimer = undefined
+    }
+    if (animationRetryTimer !== undefined) {
+      clearTimeout(animationRetryTimer)
+      animationRetryTimer = undefined
+    }
+  }
+
+  const tick = () => {
+    if (!animate()) {
+      lastTick = 0
+      return
+    }
+    const interval = props.interval ?? 80
+    // OpenTUI supplies RAF callbacks with frame delta, not an absolute
+    // timestamp. Use the monotonic clock for interval accounting.
+    const now = performance.now()
+    const frameSet = frames()
+    if (frameSet.length === 0) return
+    // Render the initial glyph before advancing, matching the prior interval
+    // behaviour while keeping the mutation inside the renderer frame.
+    if (lastTick === 0) {
+      lastTick = now
+      return
+    }
+    if (now - lastTick >= interval) {
+      setI((value) => (value + 1) % frameSet.length)
+      lastTick = now
+    }
+  }
+
+  // Wake on a timer, then commit one frame through OpenTUI's renderer RAF.
+  // This keeps motion smooth without pinning static screens to a live loop.
+  const queueFrame = () => {
+    if (!animate() || animationFrame !== undefined) return
+    animationFrame = requestAnimationFrame(() => {
+      animationFrame = undefined
+      if (animationRetryTimer !== undefined) {
+        clearTimeout(animationRetryTimer)
+        animationRetryTimer = undefined
+      }
+      tick()
+    })
+    // Retry a stranded one-shot request if it was queued during a renderer
+    // pass. This preserves renderer-backed commits without a perpetual loop.
+    animationRetryTimer = setTimeout(() => {
+      animationRetryTimer = undefined
+      if (animationFrame === undefined || !animate()) return
+      cancelAnimationFrame(animationFrame)
+      animationFrame = undefined
+      queueFrame()
+    }, 8)
+  }
 
   createEffect(() => {
-    if (!animate()) return
-    const timer = setInterval(() => setI((v) => (v + 1) % frames().length), props.interval ?? 80)
-    onCleanup(() => clearInterval(timer))
+    const running = animate()
+    stopAnimation()
+    if (!running) {
+      lastTick = 0
+      return
+    }
+    queueFrame()
+    animationTimer = setInterval(queueFrame, Math.max(16, props.interval ?? 80))
+    onCleanup(stopAnimation)
   })
 
-  const glyph = () => (animate() ? frames()[i()] : "⛧")
+  onCleanup(stopAnimation)
+
+  const glyph = () => (animate() ? (frames()[i()] ?? "⛧") : "⛧")
 
   return (
     <box flexDirection="row" gap={1}>

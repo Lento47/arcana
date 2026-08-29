@@ -355,7 +355,7 @@ function pickView(data: SessionData, subagent: SubagentData, order: Map<string, 
   const ordered = visible
     .map((req) => req.id)
     .filter((id) => data.permissions.some((p) => p.id === id))
-    .sort((a, b) => (blockerOrder(order, a) - blockerOrder(order, b)) || a.localeCompare(b))
+    .sort((a, b) => blockerOrder(order, a) - blockerOrder(order, b) || a.localeCompare(b))
   return pickBlockerView({
     permission: firstByOrder(data.permissions, visible, order),
     permissions: ordered.map((id) => data.permissions.find((p) => p.id === id)!).filter(Boolean),
@@ -481,7 +481,7 @@ function createLayer(input: StreamInput) {
         const events = yield* Scope.provide(scope)(
           Effect.acquireRelease(
             Effect.promise(() =>
-              input.sdk.global.event({
+              input.sdk.global.event(undefined, {
                 signal: abort.signal,
               }),
             ),
@@ -682,7 +682,9 @@ function createLayer(input: StreamInput) {
                 ? {}
                 : { limit: Math.max(input.replayLimit, SUBAGENT_BOOTSTRAP_LIMIT) }),
             }),
-          ).pipe(Effect.flatMap((item) => (item.error ? Effect.fail(item.error) : Effect.succeed(item.data?.items ?? []))))
+          ).pipe(
+            Effect.flatMap((item) => (item.error ? Effect.fail(item.error) : Effect.succeed(item.data?.items ?? []))),
+          )
 
         const replayRequests = () =>
           Effect.all(
@@ -1070,9 +1072,7 @@ function createLayer(input: StreamInput) {
           input.trace?.write("replay.resize.start", {
             sessionID: input.sessionID,
           })
-          const source = yield* Effect.all([replayMessages(), replayRequests()], { concurrency: 2 }).pipe(
-            Effect.exit,
-          )
+          const source = yield* Effect.all([replayMessages(), replayRequests()], { concurrency: 2 }).pipe(Effect.exit)
           if (Exit.isFailure(source)) {
             input.trace?.write("replay.resize.abort", {
               sessionID: input.sessionID,

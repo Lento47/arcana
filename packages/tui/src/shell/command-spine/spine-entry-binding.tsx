@@ -31,6 +31,7 @@ export function SpineEntryBinding(props: SpineEntryBindingProps) {
           fallbackChildSessionID={props.fallbackChildSessionID}
           contentWidth={props.contentWidth}
           thinkContentWidth={props.thinkContentWidth}
+          streamFrame={props.streamFrame}
           gutterWidth={props.gutterWidth}
           onDismiss={props.onDismiss}
         />

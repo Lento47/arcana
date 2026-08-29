@@ -72,11 +72,72 @@ export function ShimmerText(props: ShimmerTextProps) {
   // activeCue re-evaluation. Without this, every SSE tick would capture a
   // fresh performance.now(), resetting the sweep to the left edge.
   let sweepStartTime = 0
+  let animationFrame: number | undefined
+  let animationTimer: ReturnType<typeof setInterval> | undefined
+  let animationRetryTimer: ReturnType<typeof setTimeout> | undefined
+
+  const stopAnimation = () => {
+    if (animationFrame !== undefined) {
+      cancelAnimationFrame(animationFrame)
+      animationFrame = undefined
+    }
+    if (animationTimer !== undefined) {
+      clearInterval(animationTimer)
+      animationTimer = undefined
+    }
+    if (animationRetryTimer !== undefined) {
+      clearTimeout(animationRetryTimer)
+      animationRetryTimer = undefined
+    }
+  }
+
+  const tick = () => {
+    if (!active()) {
+      sweepStartTime = 0
+      return
+    }
+    // OpenTUI's renderer passes frame delta (rather than the browser's
+    // absolute DOMHighResTimeStamp) to RAF callbacks. Read the monotonic clock
+    // here so the sweep remains correct in both OpenTUI and browser-like test
+    // renderers.
+    const now = performance.now()
+    if (sweepStartTime === 0) sweepStartTime = now
+    setLocalPhase(Math.max(0, now - sweepStartTime))
+  }
+
+  // Timers only wake the animation at its target cadence. The mutation itself
+  // is committed through one renderer RAF, so OpenTUI can settle between
+  // frames instead of being kept in a perpetual live loop.
+  const queueFrame = () => {
+    if (!active() || animationFrame !== undefined) return
+    animationFrame = requestAnimationFrame(() => {
+      animationFrame = undefined
+      if (animationRetryTimer !== undefined) {
+        clearTimeout(animationRetryTimer)
+        animationRetryTimer = undefined
+      }
+      tick()
+    })
+    // If a stream update arrives during an OpenTUI render, the renderer can
+    // strand a one-shot RAF. Retry after the pass so motion remains smooth
+    // without pinning the whole TUI to a continuous live loop.
+    animationRetryTimer = setTimeout(() => {
+      animationRetryTimer = undefined
+      if (animationFrame === undefined || !active()) return
+      cancelAnimationFrame(animationFrame)
+      animationFrame = undefined
+      queueFrame()
+    }, 8)
+  }
 
   createEffect(() => {
-    // Run our own smooth loop regardless of `motion`: the cue only gates
-    // visibility (active()); it must not dictate a stepped position.
-    if (!active()) {
+    // Run the timer/renderer cadence regardless of `motion`: the cue only
+    // gates visibility (active()); it must not dictate a stepped position.
+    // Each wake publishes through one requestAnimationFrame so the phase stays
+    // in the same frame as the rest of OpenTUI instead of racing stream timers.
+    const running = active()
+    stopAnimation()
+    if (!running) {
       sweepStartTime = 0
       return
     }
@@ -84,9 +145,12 @@ export function ShimmerText(props: ShimmerTextProps) {
     // sweep continues uninterrupted across re-evaluations that return the
     // same value.
     if (sweepStartTime === 0) sweepStartTime = performance.now()
-    const timer = setInterval(() => setLocalPhase(performance.now() - sweepStartTime), 16)
-    onCleanup(() => clearInterval(timer))
+    queueFrame()
+    animationTimer = setInterval(queueFrame, 16)
+    onCleanup(stopAnimation)
   })
+
+  onCleanup(stopAnimation)
 
   // One-directional sweep (left → right, wrapping). The gaussian falloff
   // already drives intensity → 0 at both edges, so the wrap is invisible —

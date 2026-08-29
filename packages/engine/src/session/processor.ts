@@ -116,6 +116,9 @@ interface ProcessorContext extends Input {
   completedTextIDs: Set<string>
   ignoredTextIDs: Set<string>
   reasoningMap: Record<string, SessionV1.ReasoningPart>
+  /** DB IDs of text/reasoning parts created in the current LLM attempt — pruned on retry to avoid duplicate cards. */
+  attemptTextPartIDs: Set<string>
+  attemptReasoningPartIDs: Set<string>
   v2AssistantMessageID: SessionMessage.ID | undefined
   mlRequest: string | undefined
   mlRevisionsUsed: number
@@ -210,6 +213,8 @@ export const layer = Layer.effect(
         completedTextIDs: new Set(),
         ignoredTextIDs: new Set(),
         reasoningMap: {},
+        attemptTextPartIDs: new Set<string>(),
+        attemptReasoningPartIDs: new Set<string>(),
         v2AssistantMessageID: undefined,
         mlRequest: undefined,
         mlRevisionsUsed: 0,
@@ -715,6 +720,7 @@ export const layer = Layer.effect(
               metadata: value.providerMetadata,
             }
             ctx.reasoningPersist[value.id] = { lastAt: Date.now(), count: 0 }
+            ctx.attemptReasoningPartIDs.add(ctx.reasoningMap[value.id].id)
             yield* session.updatePart(ctx.reasoningMap[value.id])
             return
 
@@ -1181,6 +1187,7 @@ export const layer = Layer.effect(
             }
             ctx.currentTextID = value.id
             ctx.textPersist = { lastAt: Date.now(), count: 0 }
+            ctx.attemptTextPartIDs.add(ctx.currentText.id)
             yield* session.updatePart(ctx.currentText)
             return
 
@@ -1605,6 +1612,10 @@ export const layer = Layer.effect(
         const attemptBase = ctx.assistantMessage.latency?.attempts.length ?? 0
 
         return yield* Effect.gen(function* () {
+          // Per-process attempt tracking reset — each drive iteration (LLM call) gets a fresh
+          // attempt window. Retries within the same process reuse the same window until pruned.
+          ctx.attemptTextPartIDs.clear()
+          ctx.attemptReasoningPartIDs.clear()
           yield* Effect.gen(function* () {
             ctx.currentText = undefined
             ctx.currentTextID = undefined
@@ -1744,12 +1755,22 @@ export const layer = Layer.effect(
                   // would duplicate it. The in-flight set is by construction
                   // exactly this attempt's unfinished parts (reset at process
                   // start, created only by text-start/reasoning-start, removed
-                  // at text-end/reasoning-end). Committed blocks and tool parts
-                  // are never touched.
+                  // at text-end/reasoning-end). Previously-completed text/
+                  // reasoning blocks from the same attempt were not pruned,
+                  // which left duplicate TextParts (two identical cards) when
+                  // a retry fired after text-end but before step-finish.
                   const stale: SessionV1.Part[] = []
                   if (ctx.currentText) stale.push(ctx.currentText)
                   for (const part of Object.values(ctx.reasoningMap)) stale.push(part)
-                  const prune = Effect.forEach(stale, (part) =>
+                  // Include already-completed text/reasoning parts from this attempt.
+                  // Their provider IDs are in completedTextIDs/attemptReasoningPartIDs;
+                  // we track DB IDs directly in attemptTextPartIDs/attemptReasoningPartIDs.
+                  const staleDBIds = new Set<string>()
+                  for (const id of ctx.attemptTextPartIDs) staleDBIds.add(id)
+                  for (const id of ctx.attemptReasoningPartIDs) staleDBIds.add(id)
+                  // Avoid double-removing the in-flight currentText/reasoning already in `stale`.
+                  for (const p of stale) staleDBIds.delete(p.id)
+                  const pruneInFlight = Effect.forEach(stale, (part) =>
                     session
                       .removePart({
                         sessionID: part.sessionID,
@@ -1757,6 +1778,29 @@ export const layer = Layer.effect(
                         partID: part.id,
                       })
                       .pipe(Effect.ignore),
+                  )
+                  const pruneCompleted = Effect.forEach([...staleDBIds], (partID) =>
+                    session
+                      .removePart({
+                        sessionID: ctx.sessionID,
+                        messageID: ctx.assistantMessage.id,
+                        partID: partID as SessionV1.Part["id"],
+                      })
+                      .pipe(Effect.ignore),
+                  )
+                  const prune = pruneInFlight.pipe(Effect.andThen(() => pruneCompleted)).pipe(
+                    Effect.andThen(
+                      Effect.sync(() => {
+                        ctx.attemptTextPartIDs.clear()
+                        ctx.attemptReasoningPartIDs.clear()
+                        // Also clear the per-attempt provider retry tracking so the next
+                        // attempt doesn't incorrectly ignore its own text-start as "replayed".
+                        // completedTextIDs holds provider-level IDs; dropping them ensures
+                        // the regenerated text with fresh provider IDs is accepted.
+                        ctx.completedTextIDs.clear()
+                        ctx.ignoredTextIDs.clear()
+                      }),
+                    ),
                   )
                   // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
                   const event = mirrorAssistant

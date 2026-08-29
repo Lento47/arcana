@@ -119,6 +119,7 @@ import { ArtifactViewer } from "./artifact-viewer"
 import { getArtifact } from "../../util/artifacts"
 import { arcanaTaskFromPart, promptTextFromPart } from "../../arcana/task"
 import { arcanaDitherPattern, arcanaDitherTick } from "../../ui/arcana"
+import { useStreamFrameGate } from "../../util/stream-frame"
 
 addDefaultParsers(parsers.parsers)
 
@@ -126,6 +127,7 @@ addDefaultParsers(parsers.parsers)
 const EMPTY_PARTS: Part[] = []
 
 /** Once-per-session attempt to replace ISO default titles when messages load. */
+const TITLE_BACKFILL_MAX_SIZE = 1000
 const titleBackfillAttempted = new Set<string>()
 
 const GO_UPSELL_FREE_TIER_LAST_SEEN_AT = "go_upsell_last_seen_at"
@@ -216,6 +218,9 @@ export function Session() {
   const kv = useKV()
   const { theme } = useTheme()
   const promptRef = usePromptRef()
+  // One session-owned gate coalesces stream-follow and shell scroll work. It
+  // is disposed with the session so a late SSE delta cannot move a new route.
+  const streamFrame = useStreamFrameGate()
   const session = createMemo(() => sync.session.get(route.sessionID))
 
   // Density (compact/cozy/spacious): the frame chrome must match what the
@@ -248,6 +253,9 @@ export function Session() {
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
   let orderedTranscript: Message[] | undefined
+  onCleanup(() => {
+    orderedTranscript = undefined
+  })
   const messages = createMemo(() => {
     const stored = sync.data.message[route.sessionID] ?? EMPTY_MESSAGES
     const allOpt = allOptimisticMessages()
@@ -346,6 +354,10 @@ export function Session() {
   // that REPLACES the array, so the key change forces a rebuild here too.)
   let cachedDurationMap: Map<string, number> = new Map()
   let cachedDurationKey: unknown = undefined
+  onCleanup(() => {
+    cachedDurationMap = new Map()
+    cachedDurationKey = undefined
+  })
   const assistantDuration = createMemo<Map<string, number>>(() => {
     const list = messages()
     const key = list
@@ -511,6 +523,16 @@ export function Session() {
         !titleBackfillAttempted.has(sessionID)
       ) {
         titleBackfillAttempted.add(sessionID)
+        // Evict oldest entries if the set grows beyond the cap.
+        if (titleBackfillAttempted.size > TITLE_BACKFILL_MAX_SIZE) {
+          const evict = titleBackfillAttempted.size - TITLE_BACKFILL_MAX_SIZE
+          const iterator = titleBackfillAttempted.values()
+          for (let i = 0; i < evict; i++) {
+            const next = iterator.next()
+            if (next.done) break
+            titleBackfillAttempted.delete(next.value)
+          }
+        }
         const messages = sync.data.message[sessionID] ?? []
         let raw: string | undefined
         for (const msg of messages) {
@@ -617,6 +639,7 @@ export function Session() {
       () => route.sessionID,
       (id, prev) => {
         if (id === prev) return
+        streamFrame.cancel("follow")
         lastSwitch = undefined
         seeded = false
         loadOlderFailures = 0
@@ -722,10 +745,10 @@ export function Session() {
   onCleanup(unsubStatus)
 
   // SSE gap-closer: the event stream can drop mid-exchange (daemon
-  // re-registration, parser buffer discard at EOF). Events carry no id,
-  // so replay is impossible — re-hydrate the active session from REST
-  // after every reconnect. Idempotent; failure just leaves the sync
-  // guard cleared for the next attempt.
+  // re-registration, parser buffer discard at EOF). Frame IDs identify the
+  // last delivery, but this endpoint has no replay buffer, so re-hydrate the
+  // active session from REST after every reconnect. Idempotent; failure just
+  // leaves the sync guard cleared for the next attempt.
   const unsubReconnect = event.subscribe((evt) => {
     if ((evt as { type: string }).type !== "sse.reconnected") return
     void sync.session.resync(route.sessionID).catch(() => {})
@@ -760,17 +783,31 @@ export function Session() {
   // Helper: Find next visible message boundary in direction.
   // Build a single Set of message IDs with valid text parts so we do not
   // perform an O(n) find + per-child parts scan for every renderable child.
-  // Cache key includes message ids + part revisions so streaming text does
-  // not reuse a stale set, while n/p in an unchanged scene still skips the scan.
-  let visibleIDsCache: { key: string; ids: Set<string> } | undefined
+  // Cache key uses a fast numeric hash of message IDs + part revisions so
+  // streaming text does not reuse a stale set, while n/p in an unchanged
+  // scene still skips the scan. The hash is O(n) but avoids building a
+  // potentially huge string key.
+  let visibleIDsCache: { key: number; ids: Set<string> } | undefined
+  onCleanup(() => {
+    visibleIDsCache = undefined
+  })
   const computeVisibleIDs = (childrenCount: number): Set<string> => {
     const messagesList = messages()
     const revisions = sync.data.part_revision
-    let key = `${messagesList.length}:${childrenCount}`
+    // FNV-1a inspired hash: fast, good distribution, no string allocation.
+    let hash = 0x811c9dc5 ^ messagesList.length ^ (childrenCount * 2654435761)
     for (const message of messagesList) {
-      key += `|${message.id}:${revisions[message.id] ?? 0}`
+      const rev = revisions[message.id] ?? 0
+      // Mix message ID (first 8 chars as uint32) with revision.
+      const idPart = message.id.length >= 8 ? message.id.slice(0, 8) : message.id
+      for (let i = 0; i < idPart.length; i++) {
+        hash ^= idPart.charCodeAt(i)
+        hash = Math.imul(hash, 0x01000193)
+      }
+      hash ^= rev
+      hash = Math.imul(hash, 0x01000193)
     }
-    if (visibleIDsCache && visibleIDsCache.key === key) return visibleIDsCache.ids
+    if (visibleIDsCache && visibleIDsCache.key === hash) return visibleIDsCache.ids
     const ids = new Set<string>()
     for (const message of messagesList) {
       const parts = sync.data.part[message.id]
@@ -779,7 +816,7 @@ export function Session() {
         ids.add(message.id)
       }
     }
-    visibleIDsCache = { key, ids }
+    visibleIDsCache = { key: hash, ids }
     return ids
   }
 
@@ -825,13 +862,13 @@ export function Session() {
   }
 
   function followIfAtBottom() {
-    setTimeout(() => {
+    streamFrame.schedule("follow", () => {
       if (!scroll || scroll.isDestroyed) return
       const s = scroll
       const remaining = s.scrollHeight - s.y - s.height
       if (remaining > 3) return
-      s.scrollTo(s.scrollHeight)
-    }, 50)
+      if (s.y < s.scrollHeight) s.scrollTo(s.scrollHeight)
+    })
   }
 
   const local = useLocal()
@@ -1195,6 +1232,7 @@ export function Session() {
         governanceProof: () => governanceSnapshot()?.proof,
 
         toBottom,
+        streamFrame,
         bind,
         setPrompt: (info) => prompt?.set(info),
 

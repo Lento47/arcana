@@ -2,10 +2,11 @@
 /**
  * Applies Arcana's version-pinned @opentui/core compatibility fixes.
  *
- * Upstream bug (0.4.5): `normalizeLoadedFilePath(loadedPath)` throws
- * "undefined is not an object (evaluating 'loadedPath.startsWith')" when
- * `import(..., { with: { type: "file" } })` returns a module without a
- * default export. Bun compile bundles `parser.worker.js` as a JS module
+ * OpenTUI 0.5.9 still calls `normalizeLoadedFilePath(loadedPath)` without a
+ * null guard. When `import(..., { with: { type: "file" } })` returns a module
+ * without a default export, it can throw
+ * "undefined is not an object (evaluating 'loadedPath.startsWith')". Bun
+ * compile bundles `parser.worker.js` as a JS module
  * (no default export), so OpenTUI's eager module-load call
  * `resolveBundledFilePath("@opentui/core/parser.worker.js", …)` crashes the
  * TUI on Windows before the first frame.
@@ -15,7 +16,7 @@
  * `OTUI_TREE_SITTER_WORKER_PATH` define; in dev mode OpenTUI's own file
  * loader returns a path string and the guard is a no-op.
  *
- * OpenTUI 0.4.5 also hides the unstyled fallback for fenced code while a
+ * OpenTUI 0.5.9 also hides the unstyled fallback for fenced code while a
  * MarkdownRenderable is streaming. Every incremental review update starts an
  * async Tree-sitter pass, leaving the code block blank until highlighting
  * completes. Arcana keeps that fallback visible in both the Bun and Node
@@ -29,13 +30,13 @@
  * still visible immediately as plain text, and a failed refresh keeps the
  * last good frame.
  *
- * Version-pinned to @opentui/core 0.4.5. Re-run after `bun install`
+ * Version-pinned to @opentui/core 0.5.9. Re-run after `bun install`
  * (wired as the root `postinstall` script).
  */
 import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
-const TARGET_VERSION = "0.4.5"
+const TARGET_VERSION = "0.5.9"
 const MARKER = "// [arcana] OpenTUI file-loader null guard (patch-opentui.ts)"
 const SIGNATURE = "function normalizeLoadedFilePath(loadedPath, baseUrl) {"
 const GUARD = `\n${MARKER}\n  if (loadedPath == null) {\n    return undefined\n  }`
@@ -154,9 +155,26 @@ const CODE_ERROR_FALLBACK_PATCH = `      if (this.isDestroyed)
       this._shouldRenderTextBuffer = true;`
 const CODE_STREAMING_RESET = `      this._hadInitialContent = false;
       this._lastHighlights = [];
-      this._highlightsDirty = true;`
+      this.invalidateHighlights();`
 const CODE_STREAMING_RESET_PATCH = `      this._hadInitialContent = false;
-      this._highlightsDirty = true;`
+      this.invalidateHighlights();`
+const CODE_STALE_HIGHLIGHT_MARKER = "// [arcana] stale highlight result does not schedule a redundant render (patch-opentui.ts)"
+const CODE_STALE_HIGHLIGHT = `      if (snapshotId !== this._highlightSnapshotId) {
+        this.requestRender();
+        return;
+      }`
+const CODE_STALE_HIGHLIGHT_PATCH = `      if (snapshotId !== this._highlightSnapshotId) {
+        ${CODE_STALE_HIGHLIGHT_MARKER}
+        return;
+      }`
+const CODE_STALE_HIGHLIGHT_NESTED = `        if (snapshotId !== this._highlightSnapshotId) {
+          this.requestRender();
+          return;
+        }`
+const CODE_STALE_HIGHLIGHT_NESTED_PATCH = `        if (snapshotId !== this._highlightSnapshotId) {
+          ${CODE_STALE_HIGHLIGHT_MARKER}
+          return;
+        }`
 const CODE_RENDER_SIGNATURE = "  renderSelf(buffer) {"
 const CODE_RENDER_PATCH = `  ${CODE_FRAME_RELEASE_MARKER}
   destroy() {
@@ -172,10 +190,20 @@ const CODE_RENDER_PATCH_PREFIX = `  ${CODE_FRAME_RELEASE_MARKER}
 `
 const MARKDOWN_CREATE_SIGNATURE = "drawUnstyledText: !this._streaming,"
 const MARKDOWN_CREATE_PATCH =
-  "drawUnstyledText: true, // [arcana] keep streaming markdown code visible (patch-opentui.ts)"
+  "drawUnstyledText: false, // [arcana] retain last styled frame, no flicker (patch-opentui.ts)"
 const MARKDOWN_UPDATE_SIGNATURE = "renderable.drawUnstyledText = !this._streaming;"
 const MARKDOWN_UPDATE_PATCH =
+  "renderable.drawUnstyledText = false; // [arcana] retain last styled frame, no flicker (patch-opentui.ts)"
+const LEGACY_MARKDOWN_CREATE_PATCH =
+  "drawUnstyledText: true, // [arcana] keep streaming markdown code visible (patch-opentui.ts)"
+const LEGACY_MARKDOWN_UPDATE_PATCH =
   "renderable.drawUnstyledText = true; // [arcana] keep streaming markdown code visible (patch-opentui.ts)"
+const MARKDOWN_APPLY_SIGNATURE = "renderable.drawUnstyledText = initialStyledText !== undefined;"
+const MARKDOWN_APPLY_PATCH =
+  "renderable.drawUnstyledText = false; // [arcana] retain last styled frame, no flicker (patch-opentui.ts)"
+const MARKDOWN_CREATE_INLINE_SIGNATURE = "drawUnstyledText: initialStyledText !== undefined,"
+const MARKDOWN_CREATE_INLINE_PATCH =
+  "drawUnstyledText: false, // [arcana] retain last styled frame, no flicker (patch-opentui.ts)"
 
 function coreDirs(): string[] {
   const out = new Set<string>()
@@ -293,6 +321,15 @@ function patchCodeRenderable(source: string): string | undefined {
     code = code.replace(CODE_RENDER_SIGNATURE, CODE_RENDER_PATCH)
   }
 
+  // A newer content snapshot already requested its own frame. A stale async
+  // highlight completion must not enqueue an extra repaint, or it can land
+  // between the stream frame and its layout commit and flash the whole TUI.
+  if (!code.includes(CODE_STALE_HIGHLIGHT_MARKER) || code.includes(CODE_STALE_HIGHLIGHT_NESTED)) {
+    code = code
+      .replaceAll(CODE_STALE_HIGHLIGHT_NESTED, CODE_STALE_HIGHLIGHT_NESTED_PATCH)
+      .replaceAll(CODE_STALE_HIGHLIGHT, CODE_STALE_HIGHLIGHT_PATCH)
+  }
+
   return patched.slice(0, adjustedClassStart) + code + patched.slice(adjustedClassEnd)
 }
 
@@ -335,10 +372,7 @@ for (const chunk of collectChunks()) {
   }
 
   const index = source.indexOf(SIGNATURE)
-  const inserted =
-    source.slice(0, index + SIGNATURE.length)
-    + GUARD
-    + source.slice(index + SIGNATURE.length)
+  const inserted = source.slice(0, index + SIGNATURE.length) + GUARD + source.slice(index + SIGNATURE.length)
   writeFileSync(chunk, inserted, "utf-8")
   console.log(`[patch-opentui] patched ${chunk}`)
   ready++
@@ -396,26 +430,61 @@ for (const bundle of collectEntryBundles()) {
   const source = readFileSync(bundle, "utf-8")
   const createReady = source.includes(MARKDOWN_CREATE_PATCH)
   const updateReady = source.includes(MARKDOWN_UPDATE_PATCH)
-  if (createReady && updateReady) {
+  const applyReady = source.includes(MARKDOWN_APPLY_PATCH)
+  const inlineReady = source.includes(MARKDOWN_CREATE_INLINE_PATCH)
+  if (createReady && updateReady && applyReady && inlineReady) {
     console.log(`[patch-opentui] markdown fallback already patched ${bundle}`)
     markdownReady++
     skipped++
     continue
   }
 
+  // Apply the applyMarkdownCodeRenderable patch if create/update are already patched
+  if (createReady && updateReady && !applyReady && source.includes(MARKDOWN_APPLY_SIGNATURE)) {
+    const next = source.replace(MARKDOWN_APPLY_SIGNATURE, MARKDOWN_APPLY_PATCH)
+    writeFileSync(bundle, next, "utf-8")
+    console.log(`[patch-opentui] patched markdown applyMarkdownCodeRenderable ${bundle}`)
+    markdownReady++
+    markdownPatched++
+    continue
+  }
+
+  // Migrate bundles patched by the previous release, which forced the
+  // unstyled fallback on during streaming. The retained-frame patch now keeps
+  // the last highlighted frame stable instead, eliminating color flicker.
+  if (source.includes(LEGACY_MARKDOWN_CREATE_PATCH) && source.includes(LEGACY_MARKDOWN_UPDATE_PATCH)) {
+    let next = source
+      .replace(LEGACY_MARKDOWN_CREATE_PATCH, MARKDOWN_CREATE_PATCH)
+      .replace(LEGACY_MARKDOWN_UPDATE_PATCH, MARKDOWN_UPDATE_PATCH)
+    if (source.includes(MARKDOWN_APPLY_SIGNATURE)) {
+      next = next.replace(MARKDOWN_APPLY_SIGNATURE, MARKDOWN_APPLY_PATCH)
+    }
+    writeFileSync(bundle, next, "utf-8")
+    console.log(`[patch-opentui] migrated markdown fallback patch ${bundle}`)
+    markdownReady++
+    markdownPatched++
+    continue
+  }
+
   if (
-    createReady !== updateReady
-    || !source.includes(MARKDOWN_CREATE_SIGNATURE)
-    || !source.includes(MARKDOWN_UPDATE_SIGNATURE)
+    createReady !== updateReady ||
+    !source.includes(MARKDOWN_CREATE_SIGNATURE) ||
+    !source.includes(MARKDOWN_UPDATE_SIGNATURE)
   ) {
     console.error(`[patch-opentui] markdown fallback signatures incomplete in ${bundle}`)
     process.exitCode = 1
     continue
   }
 
-  const next = source
+  let next = source
     .replace(MARKDOWN_CREATE_SIGNATURE, MARKDOWN_CREATE_PATCH)
     .replace(MARKDOWN_UPDATE_SIGNATURE, MARKDOWN_UPDATE_PATCH)
+  if (source.includes(MARKDOWN_APPLY_SIGNATURE)) {
+    next = next.replace(MARKDOWN_APPLY_SIGNATURE, MARKDOWN_APPLY_PATCH)
+  }
+  if (source.includes(MARKDOWN_CREATE_INLINE_SIGNATURE)) {
+    next = next.replace(MARKDOWN_CREATE_INLINE_SIGNATURE, MARKDOWN_CREATE_INLINE_PATCH)
+  }
   writeFileSync(bundle, next, "utf-8")
   console.log(`[patch-opentui] patched markdown fallback ${bundle}`)
   markdownReady++
@@ -431,9 +500,7 @@ if (targets === 0) {
 if (markdownTargets === 0) {
   console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} entry bundles found to patch`)
 } else if (markdownReady !== markdownTargets) {
-  console.error(
-    `[patch-opentui] patched ${markdownReady}/${markdownTargets} markdown fallback bundle(s)`,
-  )
+  console.error(`[patch-opentui] patched ${markdownReady}/${markdownTargets} markdown fallback bundle(s)`)
   process.exitCode = 1
 }
 if (codeTargets === 0) {

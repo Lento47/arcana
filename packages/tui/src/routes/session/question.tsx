@@ -373,7 +373,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                           flexDirection="column"
                           marginLeft={2}
                           paddingLeft={1}
-                          backgroundColor={active(optionNumber()) ? theme.backgroundElement : undefined}
+                          backgroundColor={active(optionNumber()) ? theme.accent : undefined}
                           onMouseOver={() => setHover({ q: index(), o: optionNumber() })}
                           onMouseOut={() => setHover(undefined)}
                           onMouseUp={() => {
@@ -384,7 +384,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                             choose(index(), optionNumber())
                           }}
                         >
-                          <text fg={active(optionNumber()) ? selectedForeground(theme, theme.backgroundElement) : selected(optionNumber()) ? theme.success : theme.text} wrapMode="word">
+                          <text fg={active(optionNumber()) ? selectedForeground(theme, theme.accent) : selected(optionNumber()) ? theme.success : theme.text} wrapMode="word">
                             {question.multiple === true ? `[${selected(optionNumber()) ? "✓" : " "}] ` : selected(optionNumber()) ? "● " : "○ "}{option.label}
                           </text>
                           <Show when={option.description}>
@@ -398,7 +398,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                     <box
                       marginLeft={2}
                       paddingLeft={1}
-                      backgroundColor={focused() && optionIndex() === options().length ? theme.backgroundElement : undefined}
+                      backgroundColor={focused() && optionIndex() === options().length ? theme.accent : undefined}
                       onMouseOver={() => setHover({ q: index(), o: options().length })}
                       onMouseOut={() => setHover(undefined)}
                       onMouseUp={() => {
@@ -418,7 +418,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                           focused={true}
                         />
                       }>
-                        <text fg={(customValues()[index()] ?? "") ? theme.success : theme.textMuted} wrapMode="word">
+                        <text fg={focused() && optionIndex() === options().length ? selectedForeground(theme, theme.accent) : (customValues()[index()] ?? "") ? theme.success : theme.textMuted} wrapMode="word">
                           {(customValues()[index()] ?? "") ? `Custom: ${customValues()[index()]}` : "Custom answer…"}
                         </text>
                       </Show>

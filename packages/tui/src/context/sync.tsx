@@ -582,7 +582,8 @@ export const {
           break
 
         case "session.deleted": {
-          const result = search(store.session, event.properties.info.id, (s) => s.id)
+          const deletedID = event.properties.info.id
+          const result = search(store.session, deletedID, (s) => s.id)
           if (result.found) {
             setStore(
               "session",
@@ -594,10 +595,26 @@ export const {
           setStore(
             "governance",
             produce((draft) => {
-              delete draft[event.properties.info.id]
+              delete draft[deletedID]
             }),
           )
-          governanceApplied.delete(event.properties.info.id)
+          // Clean up all per-session tracking state to prevent unbounded growth.
+          governanceApplied.delete(deletedID)
+          metadataReadySessions.delete(deletedID)
+          historyReadySessions.delete(deletedID)
+          supplementalReadySessions.delete(deletedID)
+          fullSyncedSessions.delete(deletedID)
+          metadataTasks.delete(deletedID)
+          historyTasks.delete(deletedID)
+          supplementalTasks.delete(deletedID)
+          syncingSessions.delete(deletedID)
+          hydratingSessions.delete(deletedID)
+          olderCursors.delete(deletedID)
+          loadingOlderSessions.delete(deletedID)
+          exhaustedOlderSessions.delete(deletedID)
+          reconcilingSessions.delete(deletedID)
+          reconcileGeneration.delete(deletedID)
+          governanceRefreshGeneration.delete(deletedID)
           break
         }
         case "governance.recorded": {

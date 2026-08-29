@@ -54,11 +54,82 @@ export function Spinner(props: { children?: JSX.Element; color?: RGBA }) {
 
 export function TextSpinner(props: { frames: string[]; color?: RGBA; children?: JSX.Element }) {
   const [i, setI] = createSignal(0)
+  let animationFrame: number | undefined
+  let animationTimer: ReturnType<typeof setInterval> | undefined
+  let animationRetryTimer: ReturnType<typeof setTimeout> | undefined
+  let lastTick = 0
+
+  const stopAnimation = () => {
+    if (animationFrame !== undefined) {
+      cancelAnimationFrame(animationFrame)
+      animationFrame = undefined
+    }
+    if (animationTimer !== undefined) {
+      clearInterval(animationTimer)
+      animationTimer = undefined
+    }
+    if (animationRetryTimer !== undefined) {
+      clearTimeout(animationRetryTimer)
+      animationRetryTimer = undefined
+    }
+  }
+
+  const tick = () => {
+    if (props.frames.length === 0) {
+      lastTick = 0
+      return
+    }
+    // OpenTUI supplies RAF callbacks with frame delta, not an absolute
+    // timestamp. Use the monotonic clock for interval accounting.
+    const now = performance.now()
+    // Match the previous interval semantics: render the first glyph, then
+    // advance only after one full cadence has elapsed.
+    if (lastTick === 0) {
+      lastTick = now
+      return
+    }
+    if (now - lastTick >= 80) {
+      setI((value) => (value + 1) % props.frames.length)
+      lastTick = now
+    }
+  }
+
+  // Wake on the target cadence and use a single renderer RAF for the actual
+  // mutation. This avoids a perpetual OpenTUI live loop on static screens.
+  const queueFrame = () => {
+    if (props.frames.length === 0 || animationFrame !== undefined) return
+    animationFrame = requestAnimationFrame(() => {
+      animationFrame = undefined
+      if (animationRetryTimer !== undefined) {
+        clearTimeout(animationRetryTimer)
+        animationRetryTimer = undefined
+      }
+      tick()
+    })
+    // A frame can be requested while OpenTUI is already rendering. In that
+    // case the renderer may leave the one-shot request queued after it drops
+    // back to idle; retrying releases the request without starting a loop.
+    animationRetryTimer = setTimeout(() => {
+      animationRetryTimer = undefined
+      if (animationFrame === undefined || props.frames.length === 0) return
+      cancelAnimationFrame(animationFrame)
+      animationFrame = undefined
+      queueFrame()
+    }, 8)
+  }
+
   createEffect(() => {
-    if (props.frames.length === 0) return
-    const timer = setInterval(() => setI((v) => (v + 1) % props.frames.length), 80)
-    onCleanup(() => clearInterval(timer))
+    const running = props.frames.length > 0
+    stopAnimation()
+    if (!running) {
+      lastTick = 0
+      return
+    }
+    queueFrame()
+    animationTimer = setInterval(queueFrame, 80)
+    onCleanup(stopAnimation)
   })
+  onCleanup(stopAnimation)
   const glyph = () => (props.frames.length === 0 ? "⋯" : props.frames[i()])
   return (
     <box flexDirection="row" gap={1}>

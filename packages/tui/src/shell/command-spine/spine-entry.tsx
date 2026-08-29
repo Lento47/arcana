@@ -29,6 +29,7 @@ import { ActivityReel } from "./spine-activity-reel"
 import { taskRowChrome } from "./spine-chrome"
 import { canToggleSpineEntry } from "./spine-navigation"
 import { HairlineBorder } from "../../ui/border"
+import type { StreamFrameGate } from "../../util/stream-frame"
 import {
   toSpineEntryView,
   type ApprovalEntry,
@@ -223,6 +224,7 @@ function ChildrenGroup(props: {
   layout: SpineLayout
   contentWidth?: number
   onNavigate?: (sessionID: string) => void
+  streamFrame?: StreamFrameGate
 }) {
   const { theme } = useTheme()
   const count = () => props.children.length
@@ -278,6 +280,7 @@ function ChildrenGroup(props: {
                     streaming={false}
                     focused={false}
                     contentWidth={Math.max(1, (props.contentWidth ?? 1) - spineRailWidth(props.layout) - 2)}
+                    streamFrame={props.streamFrame}
                   />
                 </box>
               </box>
@@ -288,6 +291,7 @@ function ChildrenGroup(props: {
                 layout={props.layout}
                 contentWidth={props.contentWidth}
                 onNavigate={props.onNavigate}
+                streamFrame={props.streamFrame}
               />
             </Show>
           </box>
@@ -324,6 +328,8 @@ export function SpineEntry(props: {
   contentWidth?: number
   /** Think-body wrap width (slightly different chrome tax). */
   thinkContentWidth?: number
+  /** Shared frame gate for all streamed descendants in this session. */
+  streamFrame?: StreamFrameGate
 }) {
   // Always read through props.entry inside reactive scopes. Solid components
   // run once - capturing `const e = props.entry` freezes the first object and
@@ -571,6 +577,7 @@ export function SpineEntry(props: {
         paddingLeft={padLeft()}
         backgroundColor={rowHighlight().bg}
         border={rowHighlight().border}
+        customBorderChars={rowHighlight().border ? HairlineBorder : undefined}
         borderColor={rowHighlight().borderColor}
         focusable={entryToggleable()}
         focused={props.focused === true}
@@ -627,6 +634,7 @@ export function SpineEntry(props: {
                     reminders={v().reminders}
                     bodyLabel={v().bodyLabel}
                     contentWidth={props.contentWidth}
+                    streamFrame={props.streamFrame}
                   />
                 </Show>
                 {/* Queued prompt actions (steer/drop/retry) — same chip
@@ -677,6 +685,7 @@ export function SpineEntry(props: {
                     layout={props.layout}
                     contentWidth={props.contentWidth}
                     onNavigate={props.onNavigate}
+                    streamFrame={props.streamFrame}
                   />
                 </Show>
               </>
@@ -751,6 +760,7 @@ export function SpineEntry(props: {
                       focused={props.focused}
                       reminders={entryReminders()}
                       contentWidth={props.thinkContentWidth ?? props.contentWidth}
+                      streamFrame={props.streamFrame}
                     />
                   </box>
                 </Show>
@@ -815,6 +825,7 @@ export function SpineEntry(props: {
                       focused={props.focused}
                       reminders={entryReminders()}
                       contentWidth={props.contentWidth}
+                      streamFrame={props.streamFrame}
                     />
                   </box>
                 </Show>
@@ -839,6 +850,7 @@ export function SpineEntry(props: {
                     layout={props.layout}
                     contentWidth={props.contentWidth}
                     onNavigate={props.onNavigate}
+                    streamFrame={props.streamFrame}
                   />
                 </Show>
               </>
@@ -895,6 +907,7 @@ export function SpineEntry(props: {
                         streaming={false}
                         focused={props.focused}
                         contentWidth={props.contentWidth}
+                        streamFrame={props.streamFrame}
                       />
                     </box>
                   </box>
@@ -924,6 +937,7 @@ export function SpineEntry(props: {
                     layout={props.layout}
                     contentWidth={props.contentWidth}
                     onNavigate={props.onNavigate}
+                    streamFrame={props.streamFrame}
                   />
                 </Show>
                 <Show when={entry().proof}>
@@ -1066,6 +1080,7 @@ export function SpineEntry(props: {
                               focused={props.focused}
                               reminders={entryReminders()}
                               contentWidth={props.contentWidth}
+                              streamFrame={props.streamFrame}
                             />
                           </box>
                         </Show>
@@ -1079,6 +1094,7 @@ export function SpineEntry(props: {
                       layout={props.layout}
                       contentWidth={props.contentWidth}
                       onNavigate={props.onNavigate}
+                      streamFrame={props.streamFrame}
                     />
                   </Show>
                 </>
@@ -1121,6 +1137,7 @@ export function SpineEntry(props: {
                         streaming={false}
                         focused={props.focused}
                         contentWidth={props.contentWidth}
+                        streamFrame={props.streamFrame}
                       />
                     </box>
                   </box>
