@@ -1,6 +1,7 @@
 import { Prompt, type PromptRef } from "../component/prompt"
 import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { Logo } from "../component/logo"
+import { HomeBackdropDither } from "../component/home-backdrop-dither"
 import { Scramble } from "../component/scramble"
 import { useSync } from "../context/sync"
 import { useArgs } from "../context/args"
@@ -83,7 +84,14 @@ export function Home() {
 
   return (
     <HomeSessionDestinationProvider>
-      <box flexGrow={1} alignItems="center" paddingLeft={2} paddingRight={2}>
+      <box
+        flexGrow={1}
+        alignItems="center"
+        paddingLeft={2}
+        paddingRight={2}
+        position="relative"
+      >
+        <HomeBackdropDither />
         <box flexGrow={1} minHeight={0} />
         <box height={4} minHeight={0} flexShrink={1} />
         <box flexShrink={0}>
