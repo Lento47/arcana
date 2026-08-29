@@ -1,6 +1,15 @@
-import { BoxRenderable, MouseButton, MouseEvent, RGBA, TextAttributes } from "@opentui/core"
+import {
+  BoxRenderable,
+  MouseButton,
+  MouseEvent,
+  RGBA,
+  StyledText,
+  TextAttributes,
+  TextRenderable,
+  type TextChunk,
+} from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
-import { For, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
+import { For, batch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useTheme, tint } from "../context/theme"
 import { useKV } from "../context/kv"
 import { go, logo } from "../logo"
@@ -87,6 +96,10 @@ const TRACE = 0.033
 const TAIL = 1.8
 const TRACE_IN = 200
 const GLOW_OUT = 1600
+// Keep pointer-driven waves bounded. A fast click stream can otherwise leave
+// hundreds of live rings in the per-frame field calculations; the animation
+// remains intact while native render work stays within a predictable budget.
+const MAX_ACTIVE_RINGS = 32
 
 type Ring = {
   x: number
@@ -556,6 +569,176 @@ function buildIdleState(t: number, ctx: LogoContext): IdleState {
   return { cfg, reach, rings, active }
 }
 
+type LogoTheme = ReturnType<typeof useTheme>["theme"]
+
+type LogoLineProps = {
+  line: string
+  y: number
+  ink: () => RGBA
+  bold: boolean
+  off: number
+  frame: () => Frame
+  dusk: () => Frame
+  state: () => IdleState | undefined
+  ctx: LogoContext
+  theme: LogoTheme
+  subpixel: () => boolean
+}
+
+/**
+ * Build the exact per-cell styling used by the logo, but hand it to one
+ * StyledText renderable per line. Recreating one native <text> renderable for
+ * every cell on every frame made rapid pointer input grow a destroy queue in
+ * OpenTUI. Stable line renderables keep the visual recipe unchanged while
+ * updating only their styled text buffers.
+ */
+function buildLineChunks(props: LogoLineProps, frame: Frame, dusk: Frame, state: IdleState | undefined): TextChunk[] {
+  const ink = props.ink()
+  const theme = props.theme
+  const shadow = tint(theme.background, ink, 0.25)
+  const peak = peakFor(ink)
+  const attrs = props.bold ? TextAttributes.BOLD : undefined
+  const chunks: TextChunk[] = []
+
+  for (const [i, char] of Array.from(props.line).entries()) {
+    if (char === " ") {
+      chunks.push({ __isChunk: true, text: char, fg: ink, attributes: attrs })
+      continue
+    }
+
+    const x = props.off + i
+    const h = field(x, props.y, frame, props.ctx)
+    const charLit = lit(char)
+    // Sub-pixel sampling: cells are 2 pixels tall. Sample at top (y*2) and bottom (y*2+1) pixel rows.
+    const pulseTop = state ? idle(x, props.y * 2, frame, props.ctx, state) : { glow: 0, peak: 0, primary: 0 }
+    const pulseBot = state ? idle(x, props.y * 2 + 1, frame, props.ctx, state) : { glow: 0, peak: 0, primary: 0 }
+    const peakMixTop = charLit ? Math.min(1, pulseTop.peak) : 0
+    const peakMixBot = charLit ? Math.min(1, pulseBot.peak) : 0
+    const primaryMixTop = charLit ? Math.min(1, pulseTop.primary) : 0
+    const primaryMixBot = charLit ? Math.min(1, pulseBot.primary) : 0
+    // Layer primary tint first, then the high-contrast peak on top — so the halo/tail pulls toward primary,
+    // while the bright core stays readable against the ink color.
+    const inkTopTint = primaryMixTop > 0 ? tint(ink, theme.primary, primaryMixTop) : ink
+    const inkBotTint = primaryMixBot > 0 ? tint(ink, theme.primary, primaryMixBot) : ink
+    const inkTop = peakMixTop > 0 ? tint(inkTopTint, peak, peakMixTop) : inkTopTint
+    const inkBot = peakMixBot > 0 ? tint(inkBotTint, peak, peakMixBot) : inkBotTint
+    // For the non-peak-aware brightness channels, use the average of top/bot
+    const pulse = {
+      glow: (pulseTop.glow + pulseBot.glow) / 2,
+      peak: (pulseTop.peak + pulseBot.peak) / 2,
+      primary: (pulseTop.primary + pulseBot.primary) / 2,
+    }
+    const peakMix = charLit ? Math.min(1, pulse.peak) : 0
+    const primaryMix = charLit ? Math.min(1, pulse.primary) : 0
+    const inkPrimary = primaryMix > 0 ? tint(ink, theme.primary, primaryMix) : ink
+    const inkTinted = peakMix > 0 ? tint(inkPrimary, peak, peakMix) : inkPrimary
+    const shadowMixCfg = state?.cfg.shadowMix ?? shimmerConfig.shadowMix
+    const shadowMixTop = Math.min(1, pulseTop.peak * shadowMixCfg)
+    const shadowMixBot = Math.min(1, pulseBot.peak * shadowMixCfg)
+    const shadowTop = shadowMixTop > 0 ? tint(shadow, peak, shadowMixTop) : shadow
+    const shadowBot = shadowMixBot > 0 ? tint(shadow, peak, shadowMixBot) : shadow
+    const shadowMix = Math.min(1, pulse.peak * shadowMixCfg)
+    const shadowTinted = shadowMix > 0 ? tint(shadow, peak, shadowMix) : shadow
+    const n = wave(x, props.y, frame, charLit, props.ctx) + h
+    const s = wave(x, props.y, dusk, false, props.ctx) + h
+    const p = charLit ? pick(x, props.y, frame, props.ctx) : 0
+    const e = charLit ? trace(x, props.y, frame, props.ctx) : 0
+    const b = charLit ? bloom(x, props.y, frame, props.ctx) : 0
+    const q = shimmer(x, props.y, frame, props.ctx)
+
+    if (char === "_") {
+      chunks.push({
+        __isChunk: true,
+        text: " ",
+        fg: shade(inkTinted, theme, s * 0.08, peak),
+        bg: shade(shadowTinted, theme, ghost(s, 0.24) + ghost(q, 0.06), peak),
+        attributes: attrs,
+      })
+      continue
+    }
+
+    if (char === "^") {
+      chunks.push({
+        __isChunk: true,
+        text: "▀",
+        fg: shade(inkTop, theme, n + p + e + b, peak),
+        bg: shade(shadowBot, theme, ghost(s, 0.18) + ghost(q, 0.05) + ghost(b, 0.08), peak),
+        attributes: attrs,
+      })
+      continue
+    }
+
+    if (char === "~") {
+      chunks.push({
+        __isChunk: true,
+        text: "▀",
+        fg: shade(shadowTop, theme, ghost(s, 0.22) + ghost(q, 0.05), peak),
+        attributes: attrs,
+      })
+      continue
+    }
+
+    if (char === ",") {
+      chunks.push({
+        __isChunk: true,
+        text: "▄",
+        fg: shade(shadowBot, theme, ghost(s, 0.22) + ghost(q, 0.05), peak),
+        attributes: attrs,
+      })
+      continue
+    }
+
+    // Solid █: render as ▀ so the top pixel (fg) and bottom pixel (bg) can carry independent shimmer values
+    if (char === "█" && props.subpixel()) {
+      chunks.push({
+        __isChunk: true,
+        text: "▀",
+        fg: shade(inkTop, theme, n + p + e + b, peak),
+        bg: shade(inkBot, theme, n + p + e + b, peak),
+        attributes: attrs,
+      })
+      continue
+    }
+
+    // ▀ top-half-lit: fg uses top-pixel sample, bg stays transparent/panel
+    if (char === "▀") {
+      chunks.push({ __isChunk: true, text: char, fg: shade(inkTop, theme, n + p + e + b, peak), attributes: attrs })
+      continue
+    }
+
+    // ▄ bottom-half-lit: fg uses bottom-pixel sample
+    if (char === "▄") {
+      chunks.push({ __isChunk: true, text: char, fg: shade(inkBot, theme, n + p + e + b, peak), attributes: attrs })
+      continue
+    }
+
+    chunks.push({ __isChunk: true, text: char, fg: shade(inkTinted, theme, n + p + e + b, peak), attributes: attrs })
+  }
+
+  return chunks
+}
+
+function LogoLine(props: LogoLineProps) {
+  let node: TextRenderable | undefined
+  let latest: StyledText | undefined
+
+  createEffect(() => {
+    const next = new StyledText(buildLineChunks(props, props.frame(), props.dusk(), props.state()))
+    latest = next
+    if (node && !node.isDestroyed) node.content = next
+  })
+
+  return (
+    <text
+      ref={(value: TextRenderable) => {
+        node = value
+        if (latest && !value.isDestroyed) value.content = latest
+      }}
+      selectable={false}
+    />
+  )
+}
+
 export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = {}) {
   const ctx = props.shape ? build(props.shape) : DEFAULT
   const { theme } = useTheme()
@@ -576,33 +759,47 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
   }
 
   const tick = () => {
-    const t = performance.now()
-    setNow(t)
-    const item = hold()
-    if (item && t - item.at >= CHARGE) {
-      burst(item.x, item.y)
+    // A timer can already be queued while OpenTUI is tearing a route down.
+    // Never touch Solid state after the native renderer has been destroyed.
+    if (renderer.isDestroyed) {
+      stop()
+      return
     }
-    let live = false
-    setRings((list) => {
-      const next = list.filter((item) => t - item.at < LIFE)
-      live = next.length > 0
-      return next
+    // Timer callbacks are not automatically batched by Solid. One animation
+    // tick can touch several signals, so batch it into one reconciler commit;
+    // this is especially important while pointer events arrive back-to-back.
+    batch(() => {
+      const t = performance.now()
+      setNow(t)
+      const item = hold()
+      if (item && t - item.at >= CHARGE) {
+        burst(item.x, item.y)
+      }
+      let live = false
+      setRings((list) => {
+        const next = list.filter((item) => t - item.at < LIFE)
+        live = next.length > 0
+        // Avoid invalidating the ring signal when no ring expired. The clock
+        // signal still drives the visual frame, but this removes a redundant
+        // collection update from every idle tick.
+        return next.length === list.length ? list : next
+      })
+      const flash = glow()
+      if (flash && t - flash.at >= GLOW_OUT) {
+        setGlow(undefined)
+      }
+      if (!live) setRelease(undefined)
+      if (live || hold() || release() || glow()) return
+      // Ambient idle breathing honors the animations kill switch: a user press
+      // may have restarted the timer, but with animations off the loop must
+      // still wind down once the interactive effect finishes.
+      if (props.idle && kv.get("animations_enabled", true)) return
+      stop()
     })
-    const flash = glow()
-    if (flash && t - flash.at >= GLOW_OUT) {
-      setGlow(undefined)
-    }
-    if (!live) setRelease(undefined)
-    if (live || hold() || release() || glow()) return
-    // Ambient idle breathing honors the animations kill switch: a user press
-    // may have restarted the timer, but with animations off the loop must
-    // still wind down once the interactive effect finishes.
-    if (props.idle && kv.get("animations_enabled", true)) return
-    stop()
   }
 
   const start = () => {
-    if (timer) return
+    if (timer || renderer.isDestroyed) return
     timer = setInterval(tick, 16)
   }
 
@@ -632,38 +829,46 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
   }
 
   const press = (x: number, y: number, t: number) => {
-    const last = hold()
-    if (last) burst(last.x, last.y)
-    setNow(t)
-    if (!last) setRelease(undefined)
-    setHold({ x, y, at: t, glyph: select(x, y, ctx) })
-    start()
+    batch(() => {
+      const last = hold()
+      if (last) burst(last.x, last.y)
+      setNow(t)
+      if (!last) setRelease(undefined)
+      setHold({ x, y, at: t, glyph: select(x, y, ctx) })
+      start()
+    })
   }
 
   const burst = (x: number, y: number) => {
-    const item = hold()
-    if (!item) return
-    const t = performance.now()
-    const age = t - item.at
-    const rise = ramp(age, HOLD, CHARGE)
-    const level = push(rise)
-    setHold(undefined)
-    setRelease({ x, y, at: t, glyph: item.glyph, level, rise })
-    if (item.glyph !== undefined) {
-      setGlow({ glyph: item.glyph, at: t, force: lerp(0.18, 1.5, rise * level) })
-    }
-    setRings((list) => [
-      ...list,
-      {
-        x: x + 0.5,
-        y: y * 2 + 1,
-        at: t,
-        force: lerp(0.82, 2.55, level),
-        kick: lerp(0.32, 0.32 + KICK, level),
-      },
-    ])
-    setNow(t)
-    start()
+    batch(() => {
+      const item = hold()
+      if (!item) return
+      const t = performance.now()
+      const age = t - item.at
+      const rise = ramp(age, HOLD, CHARGE)
+      const level = push(rise)
+      setHold(undefined)
+      setRelease({ x, y, at: t, glyph: item.glyph, level, rise })
+      if (item.glyph !== undefined) {
+        setGlow({ glyph: item.glyph, at: t, force: lerp(0.18, 1.5, rise * level) })
+      }
+      setRings((list) => {
+        const ring: Ring = {
+          x: x + 0.5,
+          y: y * 2 + 1,
+          at: t,
+          force: lerp(0.82, 2.55, level),
+          kick: lerp(0.32, 0.32 + KICK, level),
+        }
+        // Keep the newest waves so a deliberate rapid-click interaction still
+        // looks responsive without allowing unbounded native work.
+        const next = list.length >= MAX_ACTIVE_RINGS ? list.slice(list.length - MAX_ACTIVE_RINGS + 1) : list.slice()
+        next.push(ring)
+        return next
+      })
+      setNow(t)
+      start()
+    })
   }
 
   const frame = createMemo(() => {
@@ -696,152 +901,8 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
   const idleState = createMemo(() => (props.idle ? buildIdleState(frame().t, ctx) : undefined))
   const useSubpixelBlocks = () => renderer.capabilities?.rgb === true
 
-  const renderLine = (
-    line: string,
-    y: number,
-    ink: RGBA,
-    bold: boolean,
-    off: number,
-    frame: Frame,
-    dusk: Frame,
-    state: IdleState | undefined,
-  ): JSX.Element[] => {
-    const shadow = tint(theme.background, ink, 0.25)
-    const peak = peakFor(ink)
-    const attrs = bold ? TextAttributes.BOLD : undefined
-
-    return Array.from(line).map((char, i) => {
-      if (char === " ") {
-        return (
-          <text fg={ink} attributes={attrs} selectable={false}>
-            {char}
-          </text>
-        )
-      }
-
-      const h = field(off + i, y, frame, ctx)
-      const charLit = lit(char)
-      // Sub-pixel sampling: cells are 2 pixels tall. Sample at top (y*2) and bottom (y*2+1) pixel rows.
-      const pulseTop = state ? idle(off + i, y * 2, frame, ctx, state) : { glow: 0, peak: 0, primary: 0 }
-      const pulseBot = state ? idle(off + i, y * 2 + 1, frame, ctx, state) : { glow: 0, peak: 0, primary: 0 }
-      const peakMixTop = charLit ? Math.min(1, pulseTop.peak) : 0
-      const peakMixBot = charLit ? Math.min(1, pulseBot.peak) : 0
-      const primaryMixTop = charLit ? Math.min(1, pulseTop.primary) : 0
-      const primaryMixBot = charLit ? Math.min(1, pulseBot.primary) : 0
-      // Layer primary tint first, then the high-contrast peak on top — so the halo/tail pulls toward primary,
-      // while the bright core stays readable against the ink color.
-      const inkTopTint = primaryMixTop > 0 ? tint(ink, theme.primary, primaryMixTop) : ink
-      const inkBotTint = primaryMixBot > 0 ? tint(ink, theme.primary, primaryMixBot) : ink
-      const inkTop = peakMixTop > 0 ? tint(inkTopTint, peak, peakMixTop) : inkTopTint
-      const inkBot = peakMixBot > 0 ? tint(inkBotTint, peak, peakMixBot) : inkBotTint
-      // For the non-peak-aware brightness channels, use the average of top/bot
-      const pulse = {
-        glow: (pulseTop.glow + pulseBot.glow) / 2,
-        peak: (pulseTop.peak + pulseBot.peak) / 2,
-        primary: (pulseTop.primary + pulseBot.primary) / 2,
-      }
-      const peakMix = charLit ? Math.min(1, pulse.peak) : 0
-      const primaryMix = charLit ? Math.min(1, pulse.primary) : 0
-      const inkPrimary = primaryMix > 0 ? tint(ink, theme.primary, primaryMix) : ink
-      const inkTinted = peakMix > 0 ? tint(inkPrimary, peak, peakMix) : inkPrimary
-      const shadowMixCfg = state?.cfg.shadowMix ?? shimmerConfig.shadowMix
-      const shadowMixTop = Math.min(1, pulseTop.peak * shadowMixCfg)
-      const shadowMixBot = Math.min(1, pulseBot.peak * shadowMixCfg)
-      const shadowTop = shadowMixTop > 0 ? tint(shadow, peak, shadowMixTop) : shadow
-      const shadowBot = shadowMixBot > 0 ? tint(shadow, peak, shadowMixBot) : shadow
-      const shadowMix = Math.min(1, pulse.peak * shadowMixCfg)
-      const shadowTinted = shadowMix > 0 ? tint(shadow, peak, shadowMix) : shadow
-      const n = wave(off + i, y, frame, charLit, ctx) + h
-      const s = wave(off + i, y, dusk, false, ctx) + h
-      const p = charLit ? pick(off + i, y, frame, ctx) : 0
-      const e = charLit ? trace(off + i, y, frame, ctx) : 0
-      const b = charLit ? bloom(off + i, y, frame, ctx) : 0
-      const q = shimmer(off + i, y, frame, ctx)
-
-      if (char === "_") {
-        return (
-          <text
-            fg={shade(inkTinted, theme, s * 0.08, peak)}
-            bg={shade(shadowTinted, theme, ghost(s, 0.24) + ghost(q, 0.06), peak)}
-            attributes={attrs}
-            selectable={false}
-          >
-            {" "}
-          </text>
-        )
-      }
-
-      if (char === "^") {
-        return (
-          <text
-            fg={shade(inkTop, theme, n + p + e + b, peak)}
-            bg={shade(shadowBot, theme, ghost(s, 0.18) + ghost(q, 0.05) + ghost(b, 0.08), peak)}
-            attributes={attrs}
-            selectable={false}
-          >
-            ▀
-          </text>
-        )
-      }
-
-      if (char === "~") {
-        return (
-          <text fg={shade(shadowTop, theme, ghost(s, 0.22) + ghost(q, 0.05), peak)} attributes={attrs} selectable={false}>
-            ▀
-          </text>
-        )
-      }
-
-      if (char === ",") {
-        return (
-          <text fg={shade(shadowBot, theme, ghost(s, 0.22) + ghost(q, 0.05), peak)} attributes={attrs} selectable={false}>
-            ▄
-          </text>
-        )
-      }
-
-      // Solid █: render as ▀ so the top pixel (fg) and bottom pixel (bg) can carry independent shimmer values
-      if (char === "█" && useSubpixelBlocks()) {
-        return (
-          <text
-            fg={shade(inkTop, theme, n + p + e + b, peak)}
-            bg={shade(inkBot, theme, n + p + e + b, peak)}
-            attributes={attrs}
-            selectable={false}
-          >
-            ▀
-          </text>
-        )
-      }
-
-      // ▀ top-half-lit: fg uses top-pixel sample, bg stays transparent/panel
-      if (char === "▀") {
-        return (
-          <text fg={shade(inkTop, theme, n + p + e + b, peak)} attributes={attrs} selectable={false}>
-            ▀
-          </text>
-        )
-      }
-
-      // ▄ bottom-half-lit: fg uses bottom-pixel sample
-      if (char === "▄") {
-        return (
-          <text fg={shade(inkBot, theme, n + p + e + b, peak)} attributes={attrs} selectable={false}>
-            ▄
-          </text>
-        )
-      }
-
-      return (
-        <text fg={shade(inkTinted, theme, n + p + e + b, peak)} attributes={attrs} selectable={false}>
-          {char}
-        </text>
-      )
-    })
-  }
-
   const mouse = (evt: MouseEvent) => {
-    if (!box) return
+    if (!box || renderer.isDestroyed) return
     if ((evt.type === "down" || evt.type === "drag") && evt.button === MouseButton.LEFT) {
       const x = evt.x - box.x
       const y = evt.y - box.y
@@ -877,19 +938,34 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean } = 
         {(line, index) => (
           <box flexDirection="row" gap={1}>
             <box flexDirection="row">
-              {renderLine(line, index(), props.ink ?? theme.textMuted, !!props.ink, 0, frame(), dusk(), idleState())}
+              <LogoLine
+                line={line}
+                y={index()}
+                ink={() => props.ink ?? theme.textMuted}
+                bold={!!props.ink}
+                off={0}
+                frame={frame}
+                dusk={dusk}
+                state={idleState}
+                ctx={ctx}
+                theme={theme}
+                subpixel={useSubpixelBlocks}
+              />
             </box>
             <box flexDirection="row">
-              {renderLine(
-                ctx.shape.right[index()],
-                index(),
-                props.ink ?? theme.text,
-                true,
-                ctx.LEFT + GAP,
-                frame(),
-                dusk(),
-                idleState(),
-              )}
+              <LogoLine
+                line={ctx.shape.right[index()]}
+                y={index()}
+                ink={() => props.ink ?? theme.text}
+                bold={true}
+                off={ctx.LEFT + GAP}
+                frame={frame}
+                dusk={dusk}
+                state={idleState}
+                ctx={ctx}
+                theme={theme}
+                subpixel={useSubpixelBlocks}
+              />
             </box>
           </box>
         )}
