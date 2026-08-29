@@ -196,6 +196,8 @@ function atmosphereTone(seed: HomeBackdropSeed, x: number, y: number) {
 function fortressField(x: number, y: number, seed: HomeBackdropSeed) {
   const ridge = 0.56 + Math.sin(x * 7.5 + seed * 0.000001) * 0.035 + (sceneTexture(seed, x, y) - 0.5) * 0.06
   const distantHill = smoothstep(ridge - 0.04, ridge + 0.08, y) * 0.2
+  const moon = softEllipse(x, y, 0.78, 0.13, 0.075, 0.085, 0.1)
+  const moonShadow = softEllipse(x, y, 0.805, 0.115, 0.064, 0.073, 0.1)
   const leftTower = softRect(x, y, 0.14, 0.28, 0.23, 0.72, 0.018)
   const rightTower = softRect(x, y, 0.71, 0.84, 0.17, 0.72, 0.018)
   const leftRoof = softTriangle(x, y, 0.21, 0.11, 0.08, 0.27, 0.018)
@@ -205,7 +207,14 @@ function fortressField(x: number, y: number, seed: HomeBackdropSeed) {
   const wall = softRect(x, y, 0.23, 0.78, 0.48, 0.76, 0.025)
   const gate = softEllipse(x, y, 0.5, 0.68, 0.07, 0.17, 0.08)
   const masonry = 0.78 + sceneTexture(seed ^ 0x51ed2705, x * 4, y * 5) * 0.22
-  return clamp(distantHill + (leftTower * 0.7 + rightTower * 0.78 + keep * 0.8 + wall * 0.45) * masonry + (leftRoof * 0.58 + rightRoof * 0.72 + keepRoof * 0.9) - gate * 0.28)
+  return clamp(
+    distantHill +
+      moon * 0.34 -
+      moonShadow * 0.24 +
+      (leftTower * 0.7 + rightTower * 0.78 + keep * 0.8 + wall * 0.45) * masonry +
+      (leftRoof * 0.58 + rightRoof * 0.72 + keepRoof * 0.9) -
+      gate * 0.28,
+  )
 }
 
 function mountainPassField(x: number, y: number, seed: HomeBackdropSeed) {
@@ -214,7 +223,15 @@ function mountainPassField(x: number, y: number, seed: HomeBackdropSeed) {
   const rear = smoothstep(primary - 0.025, primary + 0.1, y) * 0.38
   const front = smoothstep(secondary - 0.04, secondary + 0.1, y) * 0.62
   const pass = softEllipse(x, y, 0.5, 0.58, 0.18, 0.24, 0.12)
-  return clamp(rear + front * (1 - pass * 0.55) + sceneTexture(seed ^ 0x17c6e3, x * 3, y * 4) * 0.12)
+  const moon = softEllipse(x, y, 0.73, 0.15, 0.085, 0.085, 0.1)
+  const moonShadow = softEllipse(x, y, 0.758, 0.13, 0.072, 0.07, 0.1)
+  return clamp(
+    moon * 0.32 -
+      moonShadow * 0.2 +
+      rear +
+      front * (1 - pass * 0.55) +
+      sceneTexture(seed ^ 0x17c6e3, x * 3, y * 4) * 0.12,
+  )
 }
 
 function observatoryField(x: number, y: number, seed: HomeBackdropSeed) {
@@ -490,6 +507,12 @@ function quietZoneFactor(x: number, y: number) {
   return Math.min(logo, prompt)
 }
 
+function vignetteFactor(x: number) {
+  // Let the sides dissolve before the center, where the Home identity and
+  // prompt need the cleanest negative space.
+  return smoothstep(0.02, 0.2, Math.min(x, 1 - x))
+}
+
 function rowStratifiedSample(cells: readonly HomeDitherCell[], seed: HomeBackdropSeed, rows: number) {
   if (cells.length <= MAX_DITHER_CELLS) return [...cells]
 
@@ -558,7 +581,10 @@ export function homeDitherCells(width: number, height: number, options: HomeDith
       // a luminance image instead of a repeated terminal-wide stripe.
       const atmosphere = atmosphereTone(seed, normalizedX, normalizedY)
       const ambient = 0.46 * atmosphere * (1 - normalizedY) ** 0.92
-      const tone = clamp((ambient + structure * (1.08 + atmosphere * 0.18)) * rowStrength * quiet)
+      const scanline = y % 2 === 0 ? 1 : 0.93
+      const edgeFade = vignetteFactor(normalizedX)
+      const envelope = rowStrength * scanline * edgeFade * quiet
+      const tone = clamp((ambient + structure * (1.08 + atmosphere * 0.18)) * envelope)
       if (tone <= 0.015) continue
       // Keep a non-zero display band for the very last cells in the fade. The
       // continuous tone still controls whether a cell is emitted, preventing
@@ -577,7 +603,7 @@ export function homeDitherCells(width: number, height: number, options: HomeDith
       cells.push({
         x,
         y,
-        strength: clamp(rowStrength * quiet),
+        strength: clamp(envelope),
         tone,
         shade,
         variant: cellRank(seed ^ 0xa5a5a5a5, x, y),
@@ -671,6 +697,14 @@ export function HomeBackdropDither(props: HomeBackdropDitherProps = {}) {
   const dimensions = useTerminalDimensions()
   const seed = normalizeSeed(props.seed ?? createHomeBackdropSeed())
   const scene = props.scene ?? selectHomeScene(seed).id
+  // Keep the raster monochrome, but move it toward the theme's success/phosphor
+  // channel. Arcana's default theme is a soft terminal green; other themes
+  // still retain their own semantic hue instead of receiving a hard-coded RGB.
+  const phosphorInk = RGBA.fromValues(
+    theme.textMuted.r * 0.42 + theme.success.r * 0.58,
+    theme.textMuted.g * 0.42 + theme.success.g * 0.58,
+    theme.textMuted.b * 0.42 + theme.success.b * 0.58,
+  )
   let node: TextRenderable | undefined
   let latest: StyledText | undefined
 
@@ -680,7 +714,7 @@ export function HomeBackdropDither(props: HomeBackdropDitherProps = {}) {
         dimensions().width,
         dimensions().height,
         theme.background,
-        theme.textMuted,
+        phosphorInk,
         { seed, scene },
       ),
     )
