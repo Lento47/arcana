@@ -10,11 +10,42 @@ const DITHER_JITTER = 0.11
 const MAX_DITHER_CELLS = 3072
 const MAX_DOT_ALPHA = 0.3
 const SCENE_WIDTH = 0.84
-const SCENE_SPAN = 0.48
+const SCENE_SPAN = 0.56
 const QUIET_FEATHER = 0.06
 
-/** The public allow-list is also used by the renderer tests. */
-export const HOME_DITHER_GLYPHS = ["·", ".", ":", "~", "-", "|", "/", "\\", "+", "^", "x", "*", "#"] as const
+/**
+ * The public allow-list is also used by the renderer tests. Braille cells give
+ * the backdrop a 2×4 subpixel grid, so its raster can carry much more detail
+ * than a single terminal character while remaining one cell wide.
+ */
+const ASCII_DITHER_GLYPHS = [
+  "·",
+  ".",
+  ":",
+  "~",
+  "-",
+  "|",
+  "/",
+  "\\",
+  "+",
+  "^",
+  "x",
+  "*",
+  "#",
+  "%",
+  "░",
+  "▒",
+  "▓",
+  "█",
+] as const
+const BRAILLE_BANDS = [
+  [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80],
+  [0x03, 0x09, 0x12, 0x24, 0x41, 0x82, 0xc0, 0x48],
+  [0x13, 0x2c, 0x61, 0x86, 0x3c, 0xc3, 0x7e, 0xdb],
+  [0x17, 0x2f, 0x77, 0xb7, 0xef, 0xfb, 0xff],
+] as const
+const BRAILLE_DITHER_GLYPHS = [...new Set(BRAILLE_BANDS.flat())].map((mask) => String.fromCodePoint(0x2800 + mask))
+export const HOME_DITHER_GLYPHS: readonly string[] = [...ASCII_DITHER_GLYPHS, ...BRAILLE_DITHER_GLYPHS]
 
 /**
  * A small motif tile keeps the field feeling like a mesh instead of a sheet of
@@ -48,7 +79,7 @@ const BAYER_8X8 = [
 
 export type HomeBackdropSeed = number
 
-type HomeSceneField = (x: number, y: number, seed: HomeBackdropSeed) => number
+export type HomeSceneField = (x: number, y: number, seed: HomeBackdropSeed) => number
 
 export type HomeSceneId =
   | "fortress"
@@ -109,12 +140,12 @@ function softRect(x: number, y: number, left: number, right: number, top: number
   const outsideX = Math.max(left - x, 0, x - right)
   const outsideY = Math.max(top - y, 0, y - bottom)
   const outside = Math.max(outsideX, outsideY)
-  return outside === 0 ? 1 : 1 - smoothstep(0, feather, outside)
+  return outside === 0 ? 1 : 1 - smoothstep(0, Math.max(feather, 0.035), outside)
 }
 
 function softEllipse(x: number, y: number, centerX: number, centerY: number, radiusX: number, radiusY: number, feather = 0.05) {
   const distance = Math.hypot((x - centerX) / radiusX, (y - centerY) / radiusY)
-  return 1 - smoothstep(1, 1 + feather, distance - 0.0001)
+  return 1 - smoothstep(1, 1 + Math.max(feather, 0.07), distance - 0.0001)
 }
 
 function softTriangle(
@@ -129,7 +160,7 @@ function softTriangle(
   const normalizedX = Math.abs(x - centerX) / halfWidth
   const roofLine = top + normalizedX * (bottom - top)
   const outside = Math.max(normalizedX - 1, top - y, y - bottom, roofLine - y)
-  return outside <= 0 ? 1 : 1 - smoothstep(0, feather, outside)
+  return outside <= 0 ? 1 : 1 - smoothstep(0, Math.max(feather, 0.035), outside)
 }
 
 function smoothNoise(seed: HomeBackdropSeed, x: number, y: number) {
@@ -148,6 +179,18 @@ function sceneTexture(seed: HomeBackdropSeed, x: number, y: number) {
     smoothNoise(seed ^ 0x2468ace0, x * 8.5, y * 6.5) * 0.3 +
     smoothNoise(seed ^ 0x9e3779b9, x * 19, y * 14) * 0.15
   )
+}
+
+/**
+ * A low-frequency sky field keeps the dither from forming identical horizontal
+ * stripes across the entire terminal. It is intentionally soft: the authored
+ * scene remains the subject, while the atmosphere gives it photographic depth.
+ */
+function atmosphereTone(seed: HomeBackdropSeed, x: number, y: number) {
+  const cloud = smoothNoise(seed ^ 0x6d2b79f5, x * 2.2, y * 1.8)
+  const veil = smoothNoise(seed ^ 0x1b873593, x * 5.5, y * 3.2)
+  const horizon = 1 - smoothstep(0.35, 0.9, y)
+  return clamp(0.72 + cloud * 0.42 + veil * 0.12 + horizon * 0.08)
 }
 
 function fortressField(x: number, y: number, seed: HomeBackdropSeed) {
@@ -393,7 +436,7 @@ export function homeDitherRowStrength(height: number, row: number) {
   const rows = integerDimension(height)
   if (rows <= 1) return row === 0 ? 1 : 0
   const normalized = clamp(row / (rows - 1))
-  return (1 - normalized) ** 1.35
+  return (1 - normalized) ** 1.18
 }
 
 function cellRank(seed: HomeBackdropSeed, x: number, y: number) {
@@ -420,7 +463,18 @@ function sceneFor(options: HomeDitherOptions) {
  */
 function sceneToneAt(scene: HomeBackdropScene, x: number, y: number, seed: HomeBackdropSeed) {
   const space = sceneSpace(x, y)
-  return space ? clamp(scene.field(space.x, space.y, seed)) : 0
+  if (!space) return 0
+
+  // A tiny three-tap footprint acts as a cheap anti-aliasing pass at terminal
+  // resolution. Hard one-cell edges are what make geometric masks feel like
+  // childish ASCII art; averaging their immediate neighbours gives the field a
+  // much more photographic transition.
+  const samples = [
+    scene.field(space.x, space.y, seed),
+    scene.field(space.x + 0.018, space.y, seed),
+    scene.field(space.x - 0.018, space.y, seed),
+  ]
+  return clamp(samples.reduce((sum, value) => sum + clamp(value), 0) / samples.length)
 }
 
 function roundedZoneFactor(x: number, y: number, left: number, right: number, top: number, bottom: number) {
@@ -485,6 +539,8 @@ export function homeDitherCells(width: number, height: number, options: HomeDith
   const seed = normalizeSeed(options.seed ?? DEFAULT_SEED)
   const scene = sceneFor(options)
   const cells: HomeDitherCell[] = []
+  const phaseX = seed & 7
+  const phaseY = (seed >>> 3) & 7
 
   for (let y = 0; y < rows; y++) {
     const rowStrength = homeDitherRowStrength(rows, y)
@@ -497,17 +553,26 @@ export function homeDitherCells(width: number, height: number, options: HomeDith
 
       const structure = sceneToneAt(scene, normalizedX, normalizedY, seed)
       // Keep the upper field richly textured; the monotonic envelope still
-      // carries it gently into the untouched dark background below.
-      const ambient = 0.55 * (1 - normalizedY) ** 1.1
-      const tone = clamp((ambient + structure * 1.15) * rowStrength * quiet)
+      // carries it gently into the untouched dark background below. The
+      // atmosphere term varies the sky horizontally so the halftone feels like
+      // a luminance image instead of a repeated terminal-wide stripe.
+      const atmosphere = atmosphereTone(seed, normalizedX, normalizedY)
+      const ambient = 0.46 * atmosphere * (1 - normalizedY) ** 0.92
+      const tone = clamp((ambient + structure * (1.08 + atmosphere * 0.18)) * rowStrength * quiet)
       if (tone <= 0.015) continue
       // Keep a non-zero display band for the very last cells in the fade. The
       // continuous tone still controls whether a cell is emitted, preventing
       // quantization from cutting the backdrop off in a hard horizontal line.
       const shade = Math.max(1 / (DITHER_LEVELS - 1), quantizeTone(tone))
 
-      const ordered = (BAYER_8X8[y & 7]![x & 7]! + 0.5) / 64
-      const threshold = ordered + (cellRank(seed, x, y) - 0.5) * DITHER_JITTER
+      const ordered = (BAYER_8X8[(y + phaseY) & 7]![(x + phaseX) & 7]! + 0.5) / 64
+      // Blend the ordered matrix with a deterministic grain sample. Pure
+      // Bayer thresholds can reveal eight-cell stripes at small terminal
+      // sizes; the grain preserves the ordered character while breaking that
+      // mechanical banding into a finer, blue-noise-like surface.
+      const grain = cellRank(seed ^ 0x7f4a7c15, x, y)
+      const jitter = (cellRank(seed ^ 0x94d049bb, x, y) - 0.5) * DITHER_JITTER
+      const threshold = ordered * 0.78 + grain * 0.22 + jitter * 0.35
       if (threshold >= tone * DITHER_DENSITY) continue
       cells.push({
         x,
@@ -528,22 +593,28 @@ function ditherGlyph(cell: HomeDitherCell) {
   const motif = GLYPH_PATTERN[cell.y & 3]![cell.x & 7]! / 8
   const sample = clamp(cell.variant * 0.78 + motif * 0.22)
 
-  // The halftone is carried by the Bayer mask and tone, not by large glyphs.
-  // Keep those marks rare enough that the eye blends them into a continuous
-  // image, while still allowing the darker forms to develop visible texture.
-  if (sample < 0.58) return "·"
-  if (sample < 0.76) return band <= 1 ? LIGHT_GLYPHS[Math.floor(sample * LIGHT_GLYPHS.length)]! : "."
-  if (sample < 0.88) return band <= 1 ? ":" : band === 2 ? MID_GLYPHS[Math.floor(sample * MID_GLYPHS.length)]! : ":"
-  if (band <= 1) return "."
-  if (band === 2) return DARK_GLYPHS[Math.floor(sample * DARK_GLYPHS.length)]!
-  if (sample < 0.93) return "+"
-  return DEEPEST_GLYPHS[Math.floor(sample * DEEPEST_GLYPHS.length)]!
+  // Keep a few ASCII accents in the deepest values. They are spatially rare,
+  // so the eye reads them as grain and contour texture rather than lettering.
+  const accentRoll = (cell.x * 17 + cell.y * 31) & 63
+  if (band >= 2 && accentRoll === 0) return "-"
+  if (band >= 2 && accentRoll === 1) return "+"
+  if (band >= 2 && accentRoll === 2) return "x"
+  if (band === 3 && accentRoll === 3) return "░"
+  if (band === 3 && accentRoll === 4) return "▒"
+  if (band === 3 && accentRoll === 5) return "▓"
+  if (band === 3 && accentRoll === 6) return "█"
+  if (band === 3 && accentRoll === 7) return "#"
+
+  const palette = BRAILLE_BANDS[band] ?? BRAILLE_BANDS[0]
+  const mask = palette[Math.min(palette.length - 1, Math.floor(sample * palette.length))]!
+  return String.fromCodePoint(0x2800 + mask)
 }
 
 function ditherInk(background: RGBA, ink: RGBA, strength: number, tone: number, glyph: string) {
   const shade = quantizeTone(tone)
   const amount = 0.5 + shade * 0.3
-  const weight = glyph === "·" || glyph === "." || glyph === ":" ? 1 : 0.82
+  const codePoint = glyph.codePointAt(0) ?? 0
+  const weight = codePoint >= 0x2800 && codePoint <= 0x28ff || glyph === "·" || glyph === "." || glyph === ":" ? 1 : 0.82
   return RGBA.fromValues(
     background.r + (ink.r - background.r) * amount,
     background.g + (ink.g - background.g) * amount,
@@ -585,7 +656,7 @@ export function buildHomeDitherChunks(
       chunks.push({
         __isChunk: true,
         text: glyph,
-        fg: ditherInk(background, ink, cell.strength, cell.shade, glyph),
+        fg: ditherInk(background, ink, cell.strength, cell.tone, glyph),
       })
       cursor = cell.x + 1
     }
