@@ -81,7 +81,11 @@ describe("Home backdrop dither", () => {
     expect(first.every((cell) => cell.strength > 0 && cell.strength <= 1)).toBe(true)
     expect(first.every((cell) => cell.tone > 0 && cell.tone <= 1)).toBe(true)
     expect(first.every((cell) => cell.shade > 0 && cell.shade <= 1)).toBe(true)
+    expect(first.every((cell) => cell.definition >= 0 && cell.definition <= 1)).toBe(true)
+    expect(first.some((cell) => cell.definition > 0.18)).toBe(true)
     expect(first.every((cell) => cell.variant >= 0 && cell.variant < 1)).toBe(true)
+    expect(first.filter((cell) => cell.y < 5).length).toBeGreaterThan(first.filter((cell) => cell.y >= 25).length)
+    expect(first.some((cell) => cell.y >= 25)).toBe(true)
     expect(first).not.toEqual(homeDitherCells(160, 50, { seed: 0x2468ace0, scene: "fortress" }))
   })
 

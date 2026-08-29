@@ -5,13 +5,33 @@ import { useTheme } from "../context/theme"
 
 const DEFAULT_SEED = 0x00c0ffee
 const DITHER_LEVELS = 4
-const DITHER_DENSITY = 0.9
+const DITHER_DENSITY = 0.86
 const DITHER_JITTER = 0.11
 const MAX_DITHER_CELLS = 3072
 const MAX_DOT_ALPHA = 0.3
 const SCENE_WIDTH = 0.84
 const SCENE_SPAN = 0.56
 const QUIET_FEATHER = 0.06
+
+// These values describe the visual contract of the backdrop. The scene is a
+// quiet atmospheric watermark: bright and legible near the upper edge, then
+// progressively less present toward the prompt and the lower terminal rows.
+const VERTICAL_FADE_EXPONENT = 1.26
+const ATMOSPHERE_FADE_EXPONENT = 1.08
+const AMBIENT_GAIN = 0.44
+const STRUCTURE_GAIN = 1.04
+const STRUCTURE_ATMOSPHERE_GAIN = 0.16
+const DEFINITION_TONE_GAIN = 0.08
+const CONTOUR_DEFINITION_THRESHOLD = 0.18
+const CRT_SCANLINE_DROP = 0.035
+const SCANLINE_FRAGMENT_GAIN = 0.055
+const SCANLINE_FRAGMENT_PERIOD = 4
+const SCANLINE_FRAGMENT_GROUP = 3
+const SCANLINE_FRAGMENT_THRESHOLD = 0.63
+const SCANLINE_FRAGMENT_SEED = 0x04b1d2f7
+const SCENE_SAMPLE_X = 0.018
+const SCENE_SAMPLE_Y = 0.022
+const SCENE_RELIEF_GAIN = 0.14
 
 /**
  * The public allow-list is also used by the renderer tests. Braille cells give
@@ -57,14 +77,6 @@ const GLYPH_PATTERN = [
   [2, 0, 1, 0, 0, 2, 0, 1],
   [0, 2, 0, 1, 4, 0, 1, 5],
 ] as const
-
-// Most cells stay tiny and quiet. Heavier marks are introduced only as the
-// luminance field gets darker, which keeps the scene photographic instead of
-// turning it into an outline drawing.
-const LIGHT_GLYPHS = ["·", ".", "·", ":"] as const
-const MID_GLYPHS = ["·", ".", ":", "·", "-", "+"] as const
-const DARK_GLYPHS = [".", "·", ":", "-", "+", "x"] as const
-const DEEPEST_GLYPHS = [":", "·", "+", "x", "*"] as const
 
 const BAYER_8X8 = [
   [0, 48, 12, 60, 3, 51, 15, 63],
@@ -112,6 +124,8 @@ export type HomeDitherCell = Readonly<{
   tone: number
   /** Four-level quantized tone used for the ordered retro shading pattern. */
   shade: number
+  /** Local scene contrast used for sparse contour accents. */
+  definition: number
   /** Seeded glyph variation; it is stable for this terminal cell. */
   variant: number
 }>
@@ -122,6 +136,7 @@ function sceneRows(...rows: string[]): readonly string[] {
 }
 
 type SceneSpace = Readonly<{ x: number; y: number }>
+type SceneToneSample = Readonly<{ tone: number; definition: number }>
 
 function sceneSpace(x: number, y: number): SceneSpace | undefined {
   if (y > SCENE_SPAN) return
@@ -453,7 +468,7 @@ export function homeDitherRowStrength(height: number, row: number) {
   const rows = integerDimension(height)
   if (rows <= 1) return row === 0 ? 1 : 0
   const normalized = clamp(row / (rows - 1))
-  return (1 - normalized) ** 1.18
+  return (1 - normalized) ** VERTICAL_FADE_EXPONENT
 }
 
 function cellRank(seed: HomeBackdropSeed, x: number, y: number) {
@@ -478,20 +493,23 @@ function sceneFor(options: HomeDitherOptions) {
  * metadata and a design reference, while the field is what gives the output
  * its soft, image-like halftone treatment.
  */
-function sceneToneAt(scene: HomeBackdropScene, x: number, y: number, seed: HomeBackdropSeed) {
+function sceneToneAt(scene: HomeBackdropScene, x: number, y: number, seed: HomeBackdropSeed): SceneToneSample {
   const space = sceneSpace(x, y)
-  if (!space) return 0
+  if (!space) return { tone: 0, definition: 0 }
 
-  // A tiny three-tap footprint acts as a cheap anti-aliasing pass at terminal
-  // resolution. Hard one-cell edges are what make geometric masks feel like
-  // childish ASCII art; averaging their immediate neighbours gives the field a
-  // much more photographic transition.
-  const samples = [
-    scene.field(space.x, space.y, seed),
-    scene.field(space.x + 0.018, space.y, seed),
-    scene.field(space.x - 0.018, space.y, seed),
-  ]
-  return clamp(samples.reduce((sum, value) => sum + clamp(value), 0) / samples.length)
+  // A small cross-shaped footprint gives the masks a measured photographic
+  // edge instead of a one-cell outline. The relief term restores a little
+  // local contrast at ridges, roofs, and shorelines without drawing a hard
+  // contour over the scene.
+  const sample = (offsetX: number, offsetY: number) =>
+    clamp(scene.field(clamp(space.x + offsetX), clamp(space.y + offsetY), seed))
+  const center = sample(0, 0)
+  const horizontal = (sample(SCENE_SAMPLE_X, 0) + sample(-SCENE_SAMPLE_X, 0)) / 2
+  const vertical = (sample(0, SCENE_SAMPLE_Y) + sample(0, -SCENE_SAMPLE_Y)) / 2
+  const neighborhood = horizontal * 0.58 + vertical * 0.42
+  const body = center * 0.72 + neighborhood * 0.28
+  const relief = Math.abs(center - neighborhood)
+  return { tone: clamp(body + relief * SCENE_RELIEF_GAIN), definition: clamp(relief) }
 }
 
 function roundedZoneFactor(x: number, y: number, left: number, right: number, top: number, bottom: number) {
@@ -574,17 +592,31 @@ export function homeDitherCells(width: number, height: number, options: HomeDith
       const quiet = quietZoneFactor(normalizedX, normalizedY)
       if (quiet <= 0) continue
 
-      const structure = sceneToneAt(scene, normalizedX, normalizedY, seed)
+      const sceneSample = sceneToneAt(scene, normalizedX, normalizedY, seed)
+      const structure = sceneSample.tone
+      const definition = sceneSample.definition
       // Keep the upper field richly textured; the monotonic envelope still
       // carries it gently into the untouched dark background below. The
       // atmosphere term varies the sky horizontally so the halftone feels like
       // a luminance image instead of a repeated terminal-wide stripe.
       const atmosphere = atmosphereTone(seed, normalizedX, normalizedY)
-      const ambient = 0.46 * atmosphere * (1 - normalizedY) ** 0.92
-      const scanline = y % 2 === 0 ? 1 : 0.93
+      const ambient = AMBIENT_GAIN * atmosphere * (1 - normalizedY) ** ATMOSPHERE_FADE_EXPONENT
+      // A fixed, low-amplitude CRT cadence gives the phosphor surface texture
+      // without making the backdrop animate or compete with foreground text.
+      const scanline = y % 2 === 0 ? 1 : 1 - CRT_SCANLINE_DROP
+      // Below the authored scene, leave only grouped, broken scanline fragments
+      // as a residual signal. They keep the fade feeling intentional instead of
+      // ending on a perfectly clean horizontal cutoff.
+      const fragmentSeed = cellRank(seed ^ SCANLINE_FRAGMENT_SEED, Math.floor(x / SCANLINE_FRAGMENT_GROUP), y)
+      const scanlineFragment =
+        normalizedY > 0.48 && y % SCANLINE_FRAGMENT_PERIOD === 1 && fragmentSeed > SCANLINE_FRAGMENT_THRESHOLD
+          ? SCANLINE_FRAGMENT_GAIN * (1 - normalizedY) ** 0.7
+          : 0
       const edgeFade = vignetteFactor(normalizedX)
       const envelope = rowStrength * scanline * edgeFade * quiet
-      const tone = clamp((ambient + structure * (1.08 + atmosphere * 0.18)) * envelope)
+      const tone = clamp(
+        (ambient + structure * (STRUCTURE_GAIN + atmosphere * STRUCTURE_ATMOSPHERE_GAIN) + definition * DEFINITION_TONE_GAIN + scanlineFragment) * envelope,
+      )
       if (tone <= 0.015) continue
       // Keep a non-zero display band for the very last cells in the fade. The
       // continuous tone still controls whether a cell is emitted, preventing
@@ -606,6 +638,7 @@ export function homeDitherCells(width: number, height: number, options: HomeDith
         strength: clamp(envelope),
         tone,
         shade,
+        definition,
         variant: cellRank(seed ^ 0xa5a5a5a5, x, y),
       })
     }
@@ -622,6 +655,15 @@ function ditherGlyph(cell: HomeDitherCell) {
   // Keep a few ASCII accents in the deepest values. They are spatially rare,
   // so the eye reads them as grain and contour texture rather than lettering.
   const accentRoll = (cell.x * 17 + cell.y * 31) & 63
+  // Local relief gets an even smaller family of directional marks. They give
+  // a roofline, ridge, or shoreline definition without turning every edge into
+  // a literal ASCII outline.
+  const contourRoll = (cell.x * 29 + cell.y * 13 + Math.floor(cell.variant * 17)) & 127
+  if (cell.definition > CONTOUR_DEFINITION_THRESHOLD && band >= 2) {
+    if (contourRoll === 0) return "|"
+    if (contourRoll === 1) return cell.y & 1 ? "\\" : "/"
+    if (contourRoll === 2) return "~"
+  }
   if (band >= 2 && accentRoll === 0) return "-"
   if (band >= 2 && accentRoll === 1) return "+"
   if (band >= 2 && accentRoll === 2) return "x"
