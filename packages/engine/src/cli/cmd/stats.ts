@@ -7,7 +7,7 @@ import { SessionTable } from "@arcana/core/session/sql"
 import { Project } from "@/project/project"
 import { InstanceRef } from "@/effect/instance-ref"
 
-interface SessionStats {
+export interface SessionStats {
   totalSessions: number
   totalMessages: number
   totalCost: number
@@ -289,98 +289,157 @@ const aggregateSessionStats = Effect.fn("Cli.stats.aggregate")(function* (
   return stats
 })
 
-export function displayStats(stats: SessionStats, toolLimit?: number, modelLimit?: number) {
-  const width = 56
+/**
+ * Render stats as a complete, width-safe terminal frame.
+ *
+ * `width` is the total frame width, including both vertical borders. The
+ * default preserves the standalone CLI's compact 58-column frame. The TUI
+ * supplies a dialog-safe width through `ARCANA_STATS_WIDTH` so this output can
+ * be shown in a padded dialog without wrapping its borders.
+ */
+export function formatStats(
+  stats: SessionStats,
+  toolLimit?: number,
+  modelLimit?: number,
+  width = statsFrameWidth(),
+): string {
+  const frameWidth = statsFrameWidth(width)
+  const contentWidth = frameWidth - 2
+  const horizontal = (char: string) => char.repeat(contentWidth)
+  const top = `┌${horizontal("─")}┐`
+  const divider = `├${horizontal("─")}┤`
+  const bottom = `└${horizontal("─")}┘`
 
-  function renderRow(label: string, value: string): string {
-    const availableWidth = width - 1
-    const paddingNeeded = availableWidth - label.length - value.length
-    const padding = Math.max(0, paddingNeeded)
-    return `│${label}${" ".repeat(padding)}${value} │`
+  const frame = (content = "") => `│${fitText(content, contentWidth).padEnd(contentWidth, " ")}│`
+  const heading = (label: string) => {
+    const title = fitText(label, contentWidth)
+    const left = Math.max(0, Math.floor((contentWidth - displayWidth(title)) / 2))
+    return frame(" ".repeat(left) + title)
   }
+  const renderRow = (label: string, value: string) => {
+    const safeValue = fitText(value, Math.max(1, contentWidth - 1))
+    const valueWidth = displayWidth(safeValue)
+    const safeLabel = fitText(label, Math.max(1, contentWidth - valueWidth - 1))
+    const gap = Math.max(1, contentWidth - displayWidth(safeLabel) - valueWidth)
+    return frame(safeLabel + " ".repeat(gap) + safeValue)
+  }
+  const section = (title: string, rows: string[]) => [top, heading(title), divider, ...rows, bottom]
+  const lines: string[] = []
 
   // Overview section
-  console.log("┌────────────────────────────────────────────────────────┐")
-  console.log("│                       OVERVIEW                         │")
-  console.log("├────────────────────────────────────────────────────────┤")
-  console.log(renderRow("Sessions", stats.totalSessions.toLocaleString()))
-  console.log(renderRow("Messages", stats.totalMessages.toLocaleString()))
-  console.log(renderRow("Days", stats.days.toString()))
-  console.log("└────────────────────────────────────────────────────────┘")
-  console.log()
+  lines.push(
+    ...section("OVERVIEW", [
+      renderRow("Sessions", stats.totalSessions.toLocaleString()),
+      renderRow("Messages", stats.totalMessages.toLocaleString()),
+      renderRow("Days", stats.days.toString()),
+    ]),
+    "",
+  )
 
   // Cost & Tokens section
-  console.log("┌────────────────────────────────────────────────────────┐")
-  console.log("│                    COST & TOKENS                       │")
-  console.log("├────────────────────────────────────────────────────────┤")
-  const cost = isNaN(stats.totalCost) ? 0 : stats.totalCost
-  const costPerDay = isNaN(stats.costPerDay) ? 0 : stats.costPerDay
-  const tokensPerSession = isNaN(stats.tokensPerSession) ? 0 : stats.tokensPerSession
-  console.log(renderRow("Total Cost", `$${cost.toFixed(2)}`))
-  console.log(renderRow("Avg Cost/Day", `$${costPerDay.toFixed(2)}`))
-  console.log(renderRow("Avg Tokens/Session", formatNumber(Math.round(tokensPerSession))))
-  const medianTokensPerSession = isNaN(stats.medianTokensPerSession) ? 0 : stats.medianTokensPerSession
-  console.log(renderRow("Median Tokens/Session", formatNumber(Math.round(medianTokensPerSession))))
-  console.log(renderRow("Input", formatNumber(stats.totalTokens.input)))
-  console.log(renderRow("Output", formatNumber(stats.totalTokens.output)))
-  console.log(renderRow("Cache Read", formatNumber(stats.totalTokens.cache.read)))
-  console.log(renderRow("Cache Write", formatNumber(stats.totalTokens.cache.write)))
-  console.log("└────────────────────────────────────────────────────────┘")
-  console.log()
+  const cost = Number.isFinite(stats.totalCost) ? stats.totalCost : 0
+  const costPerDay = Number.isFinite(stats.costPerDay) ? stats.costPerDay : 0
+  const tokensPerSession = Number.isFinite(stats.tokensPerSession) ? stats.tokensPerSession : 0
+  const medianTokensPerSession = Number.isFinite(stats.medianTokensPerSession) ? stats.medianTokensPerSession : 0
+  lines.push(
+    ...section("COST & TOKENS", [
+      renderRow("Total Cost", `$${cost.toFixed(2)}`),
+      renderRow("Avg Cost/Day", `$${costPerDay.toFixed(2)}`),
+      renderRow("Avg Tokens/Session", formatNumber(Math.round(tokensPerSession))),
+      renderRow("Median Tokens/Session", formatNumber(Math.round(medianTokensPerSession))),
+      renderRow("Input", formatNumber(stats.totalTokens.input)),
+      renderRow("Output", formatNumber(stats.totalTokens.output)),
+      renderRow("Cache Read", formatNumber(stats.totalTokens.cache.read)),
+      renderRow("Cache Write", formatNumber(stats.totalTokens.cache.write)),
+    ]),
+    "",
+  )
 
   // Model Usage section
   if (modelLimit !== undefined && Object.keys(stats.modelUsage).length > 0) {
     const sortedModels = Object.entries(stats.modelUsage).sort(([, a], [, b]) => b.messages - a.messages)
-    const modelsToDisplay = modelLimit === Infinity ? sortedModels : sortedModels.slice(0, modelLimit)
-
-    console.log("┌────────────────────────────────────────────────────────┐")
-    console.log("│                      MODEL USAGE                       │")
-    console.log("├────────────────────────────────────────────────────────┤")
+    const modelsToDisplay = modelLimit === Infinity ? sortedModels : sortedModels.slice(0, Math.max(0, modelLimit))
+    const modelRows: string[] = []
 
     for (const [model, usage] of modelsToDisplay) {
-      console.log(`│ ${model.padEnd(54)} │`)
-      console.log(renderRow("  Messages", usage.messages.toLocaleString()))
-      console.log(renderRow("  Input Tokens", formatNumber(usage.tokens.input)))
-      console.log(renderRow("  Output Tokens", formatNumber(usage.tokens.output)))
-      console.log(renderRow("  Cache Read", formatNumber(usage.tokens.cache.read)))
-      console.log(renderRow("  Cache Write", formatNumber(usage.tokens.cache.write)))
-      console.log(renderRow("  Cost", `$${usage.cost.toFixed(4)}`))
-      console.log("├────────────────────────────────────────────────────────┤")
+      modelRows.push(
+        frame(` ${fitText(model, Math.max(1, contentWidth - 1))}`),
+        renderRow("  Messages", usage.messages.toLocaleString()),
+        renderRow("  Input Tokens", formatNumber(usage.tokens.input)),
+        renderRow("  Output Tokens", formatNumber(usage.tokens.output)),
+        renderRow("  Cache Read", formatNumber(usage.tokens.cache.read)),
+        renderRow("  Cache Write", formatNumber(usage.tokens.cache.write)),
+        renderRow("  Cost", `$${usage.cost.toFixed(4)}`),
+      )
+      if (model !== modelsToDisplay.at(-1)?.[0]) modelRows.push(divider)
     }
-    // Remove last separator and add bottom border
-    process.stdout.write("\x1B[1A") // Move up one line
-    console.log("└────────────────────────────────────────────────────────┘")
+    lines.push(...section("MODEL USAGE", modelRows), "")
   }
-  console.log()
 
   // Tool Usage section
   if (Object.keys(stats.toolUsage).length > 0) {
     const sortedTools = Object.entries(stats.toolUsage).sort(([, a], [, b]) => b - a)
-    const toolsToDisplay = toolLimit ? sortedTools.slice(0, toolLimit) : sortedTools
-
-    console.log("┌────────────────────────────────────────────────────────┐")
-    console.log("│                      TOOL USAGE                        │")
-    console.log("├────────────────────────────────────────────────────────┤")
-
-    const maxCount = Math.max(...toolsToDisplay.map(([, count]) => count))
-    const totalToolUsage = Object.values(stats.toolUsage).reduce((a, b) => a + b, 0)
-
-    for (const [tool, count] of toolsToDisplay) {
-      const barLength = Math.max(1, Math.floor((count / maxCount) * 20))
-      const bar = "█".repeat(barLength)
-      const percentage = ((count / totalToolUsage) * 100).toFixed(1)
-
-      const maxToolLength = 18
-      const truncatedTool = tool.length > maxToolLength ? tool.substring(0, maxToolLength - 2) + ".." : tool
-      const toolName = truncatedTool.padEnd(maxToolLength)
-
-      const content = ` ${toolName} ${bar.padEnd(20)} ${count.toString().padStart(3)} (${percentage.padStart(4)}%)`
-      const padding = Math.max(0, width - content.length - 1)
-      console.log(`│${content}${" ".repeat(padding)} │`)
+    const toolsToDisplay = toolLimit !== undefined ? sortedTools.slice(0, Math.max(0, toolLimit)) : sortedTools
+    if (toolsToDisplay.length > 0) {
+      const maxCount = Math.max(1, ...toolsToDisplay.map(([, count]) => count))
+      const totalToolUsage = Math.max(
+        1,
+        Object.values(stats.toolUsage).reduce((a, b) => a + b, 0),
+      )
+      const toolNameWidth = Math.min(18, Math.max(5, Math.floor(contentWidth * 0.32)))
+      const countWidth = 3
+      const percentageWidth = 6
+      const prefixWidth = 1 + toolNameWidth + 1
+      const suffixWidth = 1 + countWidth + 2 + percentageWidth
+      const barWidth = Math.max(1, Math.min(20, contentWidth - prefixWidth - suffixWidth))
+      const toolRows = toolsToDisplay.map(([tool, count]) => {
+        const name = fitText(tool, toolNameWidth).padEnd(toolNameWidth, " ")
+        const barLength = Math.max(1, Math.floor((count / maxCount) * barWidth))
+        const bar = "█".repeat(barLength).padEnd(barWidth, " ")
+        const percentage = `${((count / totalToolUsage) * 100).toFixed(1).padStart(4)}%`
+        return frame(` ${name} ${bar} ${count.toString().padStart(countWidth)} (${percentage})`)
+      })
+      lines.push(...section("TOOL USAGE", toolRows), "")
     }
-    console.log("└────────────────────────────────────────────────────────┘")
   }
-  console.log()
+
+  return lines.join("\n").replace(/\n+$/, "")
+}
+
+/** Print the formatted frame without emitting cursor-control sequences. */
+export function displayStats(stats: SessionStats, toolLimit?: number, modelLimit?: number) {
+  console.log(formatStats(stats, toolLimit, modelLimit))
+}
+
+const DEFAULT_STATS_FRAME_WIDTH = 58
+const MIN_STATS_FRAME_WIDTH = 20
+const MAX_STATS_FRAME_WIDTH = 160
+
+export function statsFrameWidth(width?: number): number {
+  const fromEnv = Number(process.env.ARCANA_STATS_WIDTH)
+  const requested = width ?? (Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : DEFAULT_STATS_FRAME_WIDTH)
+  const candidate = Number.isFinite(requested) && requested > 0 ? requested : DEFAULT_STATS_FRAME_WIDTH
+  return Math.max(MIN_STATS_FRAME_WIDTH, Math.min(MAX_STATS_FRAME_WIDTH, Math.floor(candidate)))
+}
+
+function displayWidth(value: string): number {
+  return Bun.stringWidth(value)
+}
+
+function fitText(value: string, width: number): string {
+  const budget = Math.max(0, Math.floor(width))
+  if (displayWidth(value) <= budget) return value
+  if (budget <= 1) return "…".slice(0, budget)
+
+  let output = ""
+  let used = 0
+  for (const character of value) {
+    const next = displayWidth(character)
+    if (used + next > budget - 1) break
+    output += character
+    used += next
+  }
+  return output + "…"
 }
 
 function formatNumber(num: number): string {
