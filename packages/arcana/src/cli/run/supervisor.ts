@@ -1,18 +1,20 @@
 // packages/arcana/src/cli/run/supervisor.ts
 //
 // Authority Kernel S4 — supervised dual-process launch: kernel child first,
-// agent second with ARCANA_KERNEL_PIPE + ARCANA_TRANSPORT=ipc so every gated
-// effect is mediated over IPC. Kernel death while the agent runs fails closed
-// by construction (stateless frames, no ambient authority).
+// agent second with ARCANA_KERNEL_PIPE + ARCANA_TRANSPORT=ipc so each gated
+// process request uses IPC. This does not contain raw filesystem/network access.
 
 import { spawn, type ChildProcess } from "node:child_process"
 import { connect as netConnect } from "node:net"
 import { existsSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
+import { createHash } from "node:crypto"
 import { homedir } from "node:os"
 
 export interface SupervisorKernelOptions {
   sessionId?: string
+  /** Distinct endpoint for concurrent runner processes sharing a session. */
+  endpointId?: string
   /** Listen target override. Default: OS-specific path keyed by session id. */
   listenPath?: string
   /** Authority DB owned by the kernel child. Default: ./.arcana/authority.db */
@@ -36,37 +38,45 @@ function kernelEntryPath(): string {
 
 /** OS-appropriate default listen target keyed by session id. */
 export function defaultKernelListenPath(sessionId = "supervised"): string {
+  const endpoint = createHash("sha256").update(sessionId).digest("hex").slice(0, 24)
   return process.platform === "win32"
-    ? `\\\\.\\pipe\\arcana-kernel-${sessionId}`
-    : join(homedir(), ".arcana", `kernel-${sessionId}.sock`)
+    ? `\\\\.\\pipe\\arcana-kernel-${endpoint}`
+    : join(homedir(), ".arcana", `kernel-${endpoint}.sock`)
 }
 
 /**
  * Poll-connect until the kernel accepts or the deadline passes. A raw
  * connect+destroy is harmless: frames are stateless.
  */
-export function waitForKernelReady(listenPath: string, timeoutMs = 15_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
+export function waitForKernelReady(listenPath: string, timeoutMs = 15_000, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
+    let socket: ReturnType<typeof netConnect> | undefined
+    let retry: ReturnType<typeof setTimeout> | undefined
+    let settled = false
+    const finish = (error?: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(deadline)
+      clearTimeout(retry)
+      socket?.destroy()
+      signal?.removeEventListener("abort", aborted)
+      if (error) reject(error)
+      else resolve()
+    }
+    const aborted = () => finish(new Error("kernel startup cancelled"))
+    const deadline = setTimeout(() => finish(new Error(`kernel not ready within ${timeoutMs}ms at ${listenPath}`)), timeoutMs)
     const attempt = () => {
-      const socket = netConnect(listenPath)
-      const giveUp = setTimeout(() => {
-        socket.destroy()
-        reject(new Error(`kernel not ready within ${timeoutMs}ms at ${listenPath}`))
-      }, deadline - Date.now())
-      socket.once("connect", () => {
-        clearTimeout(giveUp)
-        socket.destroy()
-        resolve()
-      })
+      if (settled) return
+      socket = netConnect(listenPath)
+      socket.once("connect", () => finish())
       socket.once("error", () => {
-        clearTimeout(giveUp)
-        socket.destroy()
-        if (Date.now() >= deadline) reject(new Error(`kernel not ready within ${timeoutMs}ms at ${listenPath}`))
-        else setTimeout(attempt, 100)
+        socket?.destroy()
+        if (!settled) retry = setTimeout(attempt, 100)
       })
     }
-    attempt()
+    signal?.addEventListener("abort", aborted, { once: true })
+    if (signal?.aborted) aborted()
+    else attempt()
   })
 }
 
@@ -81,7 +91,7 @@ export interface SpawnedKernel {
  */
 export async function spawnKernelProcess(opts: SupervisorKernelOptions = {}): Promise<SpawnedKernel> {
   const sessionId = opts.sessionId ?? "supervised"
-  const listenPath = opts.listenPath ?? defaultKernelListenPath(sessionId)
+  const listenPath = opts.listenPath ?? defaultKernelListenPath(opts.endpointId ?? sessionId)
   if (process.platform !== "win32") {
     mkdirSync(join(homedir(), ".arcana"), { recursive: true })
   }
@@ -95,13 +105,24 @@ export async function spawnKernelProcess(opts: SupervisorKernelOptions = {}): Pr
       ...(opts.dbPath ? { ARCANA_AUTHORITY_DB: opts.dbPath } : {}),
       ARCANA_SESSION_ID: sessionId,
     },
-    stdio: ["ignore", "inherit", "inherit"],
+    stdio: ["ignore", "ignore", "inherit"],
   })
+  const startup = new AbortController()
+  let rejectLaunch: (error: Error) => void = () => {}
+  const failed = new Promise<never>((_, reject) => { rejectLaunch = reject })
+  const onError = (error: Error) => rejectLaunch(error)
+  const onExit = (code: number | null) => rejectLaunch(new Error(`kernel exited before readiness (${code})`))
+  child.once("error", onError)
+  child.once("exit", onExit)
   try {
-    await waitForKernelReady(listenPath)
+    await Promise.race([waitForKernelReady(listenPath, 15_000, startup.signal), failed])
   } catch (err) {
     child.kill()
     throw err
+  } finally {
+    startup.abort()
+    child.off("error", onError)
+    child.off("exit", onExit)
   }
   return { child, listenPath }
 }
@@ -121,7 +142,7 @@ export async function runSupervised(
     kernel = await spawnKernelProcess(opts)
   } catch (err) {
     return {
-      listenPath: opts.listenPath ?? defaultKernelListenPath(opts.sessionId ?? "supervised"),
+      listenPath: opts.listenPath ?? defaultKernelListenPath(opts.endpointId ?? opts.sessionId ?? "supervised"),
       agentCode: null,
       outcome: "kernel-failed-to-start",
       stderr: err instanceof Error ? err.message : String(err),
@@ -134,12 +155,20 @@ export async function runSupervised(
         ...process.env,
         ARCANA_KERNEL_PIPE: kernel.listenPath,
         ARCANA_TRANSPORT: "ipc",
+        ARCANA_SESSION_ID: opts.sessionId ?? "supervised",
         ARCANA_AUTHORITY_DB: opts.dbPath ?? join(process.cwd(), ".arcana", "authority.db"),
       },
       stdio: "inherit",
     })
 
+    const onInterrupt = () => agent.kill("SIGINT")
+    const onTerminate = () => agent.kill("SIGTERM")
+    let finished = false
     const finish = (agentCode: number | null, outcome: SupervisedRunResult["outcome"], stderr?: string) => {
+      if (finished) return
+      finished = true
+      process.off("SIGINT", onInterrupt)
+      process.off("SIGTERM", onTerminate)
       // Teardown order: agent first (already dead or dying), kernel last.
       try {
         kernel.child.kill()
@@ -150,8 +179,8 @@ export async function runSupervised(
     agent.on("exit", (code) => finish(code, "agent-exited"))
     agent.on("error", (err) => finish(null, "spawn-error", err.message))
 
-    process.once("SIGINT", () => agent.kill())
-    process.once("SIGTERM", () => agent.kill())
+    process.once("SIGINT", onInterrupt)
+    process.once("SIGTERM", onTerminate)
 
     // Kernel death mid-run fails closed: the agent discovers the dead pipe on
     // its next gated call.

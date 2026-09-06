@@ -17,7 +17,7 @@ describe("S5 sandbox profiles", () => {
     const p = buildSandboxProfile(budget, "linux")
     const wrapped = p.apply(["bun", "script.ts"])
     expect(wrapped[0]).toBe("/bin/sh")
-    expect(wrapped[2]).toContain("ulimit -v")
+    expect(wrapped[2]).toContain("ulimit -Hv")
     // 512MB → 524288 KB
     expect(wrapped[2]).toContain("524288")
     expect(wrapped.slice(4)).toEqual(["bun", "script.ts"])
@@ -25,7 +25,7 @@ describe("S5 sandbox profiles", () => {
 
   it("linux ulimit math floors to KB correctly", () => {
     const p = buildSandboxProfile({ maxMemoryMB: 1, toolTimeoutMs: 1000 }, "linux")
-    expect(p.apply(["x"])[2]).toContain("ulimit -v 1024;")
+    expect(p.apply(["x"])[2]).toContain("ulimit -Hv 1024 &&")
   })
 
   it("win32/darwin profiles do not pretend to wrap (honesty contract)", () => {
@@ -51,7 +51,7 @@ describe("S5 sandbox profiles", () => {
       expect(out["ARCANA_KERNEL_PIPE"]).toBeUndefined()
       expect(out["ARCANA_TRANSPORT"]).toBeUndefined()
       expect(out["NODE_OPTIONS"]).toBeUndefined()
-      expect(p.sanitizeEnv(undefined)).toBeUndefined()
+      expect(p.sanitizeEnv(undefined)).toBeDefined()
     }
   })
 
@@ -78,4 +78,26 @@ describe("S5 sandbox profiles", () => {
       expect(report.gaps.join(" ")).toMatch(/timeout/i)
     }
   })
+})
+
+it("filters inherited environment and Windows case aliases", () => {
+  const old = process.env.ARCANA_PROFILE_TEST
+  process.env.ARCANA_PROFILE_TEST = "not-for-child"
+  try {
+    const p = buildSandboxProfile(budget, "win32")
+    expect(p.sanitizeEnv(undefined)?.ARCANA_PROFILE_TEST).toBeUndefined()
+    expect(p.sanitizeEnv({ Arcana_Kernel_Pipe: "pipe", Node_Options: "inject", Path: "bin" })).toEqual({ Path: "bin" })
+  } finally {
+    if (old === undefined) delete process.env.ARCANA_PROFILE_TEST
+    else process.env.ARCANA_PROFILE_TEST = old
+  }
+})
+
+it("rejects invalid budgets before spawn and permits an explicit environment-only profile", () => {
+  for (const maxMemoryMB of [NaN, Infinity, -1, 0]) {
+    expect(() => buildSandboxProfile({ ...budget, maxMemoryMB })).toThrow()
+  }
+  const p = buildSandboxProfile({ toolTimeoutMs: 30_000 }, "linux")
+  expect(p.apply(["tool"])).toEqual(["tool"])
+  expect(p.enforcement().gaps).toContain("no memory limit configured")
 })

@@ -131,3 +131,39 @@ Hard requirements:
 | Kill-test matrix across boundary | 1 |
 | Soak + flip default | 0.5 |
 | **Total** | **~4.5 sessions** |
+
+
+## Integration repair: process IPC and spawn restrictions
+
+The CLI runner now sends process requests directly to the kernel through the
+shared `kernel-client.ts` transport. The kernel owns process authorization and
+use accounting; the runner does not first consume a second local grant. The
+legacy `SpawnExecutor` adapter uses the same wire client and rejects every
+non-executed outcome. Responses require matching IDs, valid framing, a known
+result status, and the fields appropriate to that status. Transport loss is
+an uncertain execution outcome; the client never retries a dispatched effect.
+
+Cold start uses `spawnKernelProcess` from the supervisor module and awaits its
+readiness promise. Concurrent calls share the launch. The source entry resolves
+relative to the supervisor module, independently of the user's working directory.
+`ARCANA_KERNEL_PIPE` selects an externally managed kernel; failure does not start
+an alternate kernel or silently select local execution. Auto-started kernels have
+per-runner endpoints and are terminated when the runner exits. A dead kernel is
+not automatically replaced during a run. Packaged deployments must provide the
+kernel entry; missing entry files fail closed.
+
+Kernel process dispatch applies environment filtering before request hashing:
+`ARCANA_*` and `NODE_OPTIONS` are removed, including Windows case aliases and
+implicit inherited environments. Linux additionally supports an opt-in positive
+`ARCANA_KERNEL_MAX_MEMORY_MB` hard per-process address-space limit. No memory
+limit is imposed by default because runtimes may reserve large virtual address
+spaces. The kernel prints enforced restrictions and remaining gaps at startup.
+
+These repairs do **not** establish host containment. Filesystem and network
+operations in the CLI binding remain cooperative local gates, same-user socket
+access is not authenticated workload identity, other inherited credentials are
+not a credential-custody boundary, and IPC timeouts do not cancel remote effects.
+The full `runSupervised` wrapper remains available to embedders; the CLI reuses
+its kernel launcher without recursively wrapping the entire application.
+Filesystem/network isolation and moving all effect classes behind credential or
+OS boundaries require a separate deployment implementation and acceptance tests.
