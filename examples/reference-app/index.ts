@@ -82,9 +82,9 @@ async function main() {
       // Typed against the real ApprovalCommandPayload schema (groups/approval.ts).
       const sessionCommand: SessionApprovalCommand = {
         command: "APPROVE_ONCE",
-        expectedVersion: wire.version,
+        expectedVersion: Number(wire.version),
         expectedRequestHash: wire.requestHash,
-        expectedContractRevision: wire.contractRevision,
+        expectedContractRevision: Number(wire.contractRevision),
       }
       await client.approval.command({ sessionID, approvalID, ...sessionCommand })
     }
@@ -94,9 +94,9 @@ async function main() {
     for (const record of runtimeApprovals.data ?? []) {
       // Typed against the real RuntimeApprovalCommandPayload schema (groups/runtime.ts).
       const runtimeCommand: RuntimeApprovalCommand = {
-        expectedVersion: record.version,
+        expectedVersion: Number(record.version),
         expectedRequestHash: record.requestHash,
-        expectedContractRevision: record.contractRevision,
+        expectedContractRevision: Number(record.contractRevision),
       }
       await client.runtime.approvals.approve({ approvalID: record.approvalId, ...runtimeCommand })
     }
