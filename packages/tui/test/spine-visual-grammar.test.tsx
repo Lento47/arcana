@@ -187,6 +187,14 @@ afterEach(() => {
   app = undefined
 })
 
+// The grain caret (░▒▓▌) flickers at 120ms while a streaming entry is live,
+// so raw frames never converge. Strip the grain glyph tail before comparing
+// frames for stability — same pattern as the dither backdrop test.
+const GRAIN_CARET = "░▒▓▌"
+function stripGrainCaret(frame: string): string {
+  return frame.replace(new RegExp(`[${GRAIN_CARET}]`, "g"), "")
+}
+
 async function renderAt(width: number) {
   installMockTreeSitter()
   const layout = getSpineLayout(width)
@@ -217,7 +225,7 @@ async function renderAt(width: number) {
   for (let attempt = 0; attempt < 30; attempt++) {
     await app.renderOnce()
     await app.flush()
-    const frame = app.captureCharFrame()
+    const frame = stripGrainCaret(app.captureCharFrame())
     if (frame.includes("Review the governed") && frame === stable) break
     stable = frame
     await Bun.sleep(25)

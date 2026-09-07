@@ -1,6 +1,7 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useRenderer } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
+import { useKV } from "../../context/kv"
 import { createWidgetRenderNode } from "./widgets/registry"
 import { filetype } from "../../util/filetype"
 import type { SpineKind } from "./spine-types"
@@ -208,21 +209,29 @@ export function SpineProse(props: {
     }),
   )
 
-  // Blinking stream caret. 500ms on/off — a calm 1Hz cursor, not a strobe.
-  // Only while assistant prose is live; the caret is the liveness signal at
-  // the stream point, so the composer "Working…" pulse can stay quiet.
+  // Grain stream caret. While assistant prose is live, the caret flickers
+  // through the dither ramp (░▒▓▌) instead of blinking on/off — constant
+  // one-cell width, so no layout shift and no blank frame mid-stream. The
+  // caret is the liveness signal at the stream point, so the composer
+  // "Working…" pulse can stay quiet. Static ▌ when animations are disabled
+  // (global animations_enabled KV). Only while assistant prose is live.
   // Defined before markdownContent: the initial signal value reads the memo
-  // eagerly, so caretOn must already be initialized.
-  const [caretOn, setCaretOn] = createSignal(true)
+  // eagerly, so caretPhase must already be initialized.
+  const kv = useKV()
+  const GRAIN_CARET = "░▒▓▌"
+  const GRAIN_CARET_MS = 120
+  const [caretPhase, setCaretPhase] = createSignal(0)
   let caretTimer: ReturnType<typeof setInterval> | undefined
+  const grainActive = () => caretTimer !== undefined
   createEffect(() => {
-    const show = mode() === "markdown" && props.streaming === true
+    const show =
+      mode() === "markdown" && props.streaming === true && kv.get("animations_enabled", true)
     if (show && !caretTimer) {
-      caretTimer = setInterval(() => setCaretOn((v) => !v), 500)
+      caretTimer = setInterval(() => setCaretPhase((v) => (v + 1) % GRAIN_CARET.length), GRAIN_CARET_MS)
     } else if (!show && caretTimer) {
       clearInterval(caretTimer)
       caretTimer = undefined
-      setCaretOn(true)
+      setCaretPhase(0)
     }
   })
   onCleanup(() => {
@@ -237,13 +246,13 @@ export function SpineProse(props: {
     const noEmphasis = mode() === "markdown" || kind() === "think" ? stripMarkdownEmphasis(raw) : raw
     // Strip horizontal rules (full-width dash rows) only outside fenced code blocks
     const stripped = mode() === "markdown" ? stripMarkdownHorizontalRules(noEmphasis) : noEmphasis
-    // Stream caret: a blinking block at the end of live assistant prose. The
-    // caret is the liveness signal at the stream point — no layout shift, no
-    // per-token re-render. Suppressed for think (shimmer + elapsed already
+    // Stream caret: a grain-flicker caret at the end of live assistant prose.
+    // The caret is the liveness signal at the stream point — no layout shift,
+    // no per-token re-render. Suppressed for think (shimmer + elapsed already
     // cue) and code (tool output is never streamed live).
     if (mode() === "markdown" && props.streaming === true) {
-      void caretOn()
-      return stripped + (caretOn() ? STREAM_CARET : "")
+      void caretPhase()
+      return stripped + (grainActive() ? GRAIN_CARET[caretPhase()] : STREAM_CARET)
     }
     return stripped
   })

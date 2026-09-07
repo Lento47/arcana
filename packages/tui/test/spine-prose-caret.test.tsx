@@ -1,10 +1,10 @@
 /** @jsxImportSource @opentui/solid */
 import { afterEach, expect, test } from "bun:test"
 import { testRender, type JSX } from "@opentui/solid"
-import { createSignal } from "solid-js"
+import { createSignal, type ParentProps } from "solid-js"
 import { ArgsProvider } from "../src/context/args"
 import { ExitProvider } from "../src/context/exit"
-import { KVProvider } from "../src/context/kv"
+import { KVContext, KVProvider } from "../src/context/kv"
 import { ProjectProvider } from "../src/context/project"
 import { SDKProvider } from "../src/context/sdk"
 import { SyncProvider } from "../src/context/sync"
@@ -17,6 +17,7 @@ import { createEventSource, createFetch, directory } from "./fixture/tui-sdk"
 import { SpineChatCard } from "../src/shell/command-spine/spine-chat"
 import { getSpineLayout } from "../src/shell/command-spine/spine-types"
 
+const GRAIN = "░▒▓▌"
 const CARET = "▌"
 
 let app: Awaited<ReturnType<typeof testRender>> | undefined
@@ -25,7 +26,14 @@ afterEach(() => {
   app = undefined
 })
 
-function withProviders(component: () => JSX.Element) {
+// The KV level must be passed as a dynamic component (capitalized ref), not a
+// function call wrapping pre-evaluated children: under the test preload Solid
+// evaluates JSX eagerly, so a wrapper invoked at argument position runs the
+// provider chain BEFORE KVContext.Provider establishes the KV context.
+function withProviders(
+  component: () => JSX.Element,
+  KVSlot: (props: ParentProps) => JSX.Element = KVProvider,
+) {
   const calls = createFetch()
   const events = createEventSource()
   return (
@@ -33,7 +41,7 @@ function withProviders(component: () => JSX.Element) {
       <ExitProvider exit={() => {}}>
         <ArgsProvider>
           <TuiConfigProvider config={createTuiResolvedConfig()}>
-            <KVProvider>
+            <KVSlot>
               <SDKProvider url="http://test" directory={directory} fetch={calls.fetch} events={events.source}>
                 <ProjectProvider>
                   <SyncProvider>
@@ -43,12 +51,30 @@ function withProviders(component: () => JSX.Element) {
                   </SyncProvider>
                 </ProjectProvider>
               </SDKProvider>
-            </KVProvider>
+            </KVSlot>
           </TuiConfigProvider>
         </ArgsProvider>
       </ExitProvider>
     </TestTuiContexts>
   )
+}
+
+// Minimal KV via the raw context with animations disabled — swaps the KV
+// provider level (the real provider's async ready-gate would withhold
+// children on a single renderOnce).
+const animationsOffKV: any = {
+  ready: true,
+  store: {},
+  signal: (_name: string, def: unknown) => [() => def, () => {}],
+  get: (key: string, def?: unknown) => (key === "animations_enabled" ? false : def),
+  set: () => {},
+}
+
+function withAnimationsOff(component: () => JSX.Element) {
+  const AnimationsOffKV = (props: ParentProps) => (
+    <KVContext.Provider value={animationsOffKV}>{props.children}</KVContext.Provider>
+  )
+  return withProviders(component, AnimationsOffKV)
 }
 
 async function pump() {
@@ -59,42 +85,62 @@ async function pump() {
   }
 }
 
-async function renderChat(opts: { streaming?: boolean }) {
+async function renderChat(opts: { streaming?: boolean; animationsOff?: boolean }) {
   const [text, setText] = createSignal("")
   const [streaming, setStreaming] = createSignal(opts.streaming ?? false)
   const layout = getSpineLayout(100)
+  const card = () => (
+    <box width="100%" height="100%" flexDirection="column" paddingLeft={2} paddingRight={2}>
+      <SpineChatCard kind="plan" text={text()} layout={layout} streaming={streaming()} contentWidth={90} />
+    </box>
+  )
   app = await testRender(
-    () =>
-      withProviders(() => (
-        <box width="100%" height="100%" flexDirection="column" paddingLeft={2} paddingRight={2}>
-          <SpineChatCard kind="plan" text={text()} layout={layout} streaming={streaming()} contentWidth={90} />
-        </box>
-      )),
+    () => (opts.animationsOff ? withAnimationsOff(card) : withProviders(card)),
     { width: 100, height: 40 },
   )
   await pump()
   return { setText, setStreaming }
 }
 
-test("streaming assistant prose shows a blinking caret at the stream point", async () => {
+test("streaming assistant prose shows a grain caret at the stream point", async () => {
   const { setText, setStreaming } = await renderChat({ streaming: true })
   setText("hello")
   await pump()
-  // Caret is on by default (initial signal true) and the 500ms blink has not
-  // fired within the ~150ms pump window.
-  expect(app!.captureCharFrame()).toContain(`hello${CARET}`)
+  // Animations on: the caret flickers through the dither ramp (░▒▓▌) at
+  // 120ms/tick and never blanks — any one of the four glyphs is a valid
+  // stream point, and the cell is always occupied (no layout shift).
+  const frame = app!.captureCharFrame()
+  expect(frame).toMatch(new RegExp(`hello[${GRAIN}]`))
+  expect(frame).not.toMatch(/hello\s/)
   // Once idle, the caret disappears and the text finalizes.
   setStreaming(false)
   await pump()
+  const idle = app!.captureCharFrame()
+  expect(idle).toContain("hello")
+  for (const glyph of GRAIN) {
+    expect(idle).not.toContain(`hello${glyph}`)
+  }
+})
+
+test("streaming with animations disabled keeps a static caret", async () => {
+  const { setText, setStreaming } = await renderChat({ streaming: true, animationsOff: true })
+  setText("hello")
+  await pump()
+  // Animations off: no flicker — the caret is the static block, always.
   const frame = app!.captureCharFrame()
-  expect(frame).toContain("hello")
-  expect(frame).not.toContain(CARET)
+  expect(frame).toContain(`hello${CARET}`)
+  setStreaming(false)
+  await pump()
+  expect(app!.captureCharFrame()).not.toContain(CARET)
 })
 
 test("idle assistant prose never shows a caret", async () => {
   const { setText } = await renderChat({ streaming: false })
   setText("done")
   await pump()
-  expect(app!.captureCharFrame()).toContain("done")
-  expect(app!.captureCharFrame()).not.toContain(CARET)
+  const frame = app!.captureCharFrame()
+  expect(frame).toContain("done")
+  for (const glyph of GRAIN) {
+    expect(frame).not.toContain(`done${glyph}`)
+  }
 })
