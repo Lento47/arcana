@@ -12,8 +12,8 @@
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import { createHash } from "node:crypto"
-import { spawn as childSpawn } from "node:child_process"
-import net from "node:net"
+import { spawnKernelProcess, waitForKernelReady, type SpawnedKernel } from "../cli/run/supervisor"
+import { ipcSpawnViaKernel } from "@arcana/core/capability/kernel-client"
 import { authorizeProcess, type ProcessGateResult } from "@arcana/core/capability/process-gate"
 import { authorizeFileMutation, type FileMutationResult } from "@arcana/core/capability/fs-gate"
 import { authorizeNetwork, type NetworkGateResult } from "@arcana/core/capability/network-gate"
@@ -42,7 +42,7 @@ function resolveGateTarget(): { dbPath: string; sessionId: string; instanceId: s
     .update(`${cwd}|${process.pid}|${Date.now()}`)
     .digest("hex")
     .slice(0, 16)}`
-  resolved = { dbPath: join(dir, "authority.db"), sessionId, instanceId }
+  resolved = { dbPath: process.env.ARCANA_AUTHORITY_DB ?? join(dir, "authority.db"), sessionId, instanceId }
   return resolved
 }
 
@@ -67,36 +67,30 @@ function resolveTransportMode(): "local" | "ipc" {
   return process.env.ARCANA_TRANSPORT === "local" ? "local" : "ipc"
 }
 
-// ── Kernel auto-start ─────────────────────────────────────────────────
-// When transport is IPC and no kernel is listening, spawn one as a detached
-// child process. The agent retries connection until the pipe appears.
+// One launch promise per runner; concurrent tools wait for the same readiness gate.
+// A dispatched request is never automatically retried (its effect may have run).
+let kernelReady: Promise<string> | undefined
+let ownedKernel: SpawnedKernel | undefined
 
-let kernelChild: import("node:child_process").ChildProcess | null = null
-
-function ensureKernelRunning(pipePath: string): void {
-  // Probe: try connecting; if it fails, spawn the kernel.
-  const probe = net.createConnection(pipePath)
-  probe.once("connect", () => { probe.destroy() })
-  probe.once("error", () => {
-    probe.destroy()
-    if (kernelChild) return // already spawning
-    const entry = join(process.cwd(), "packages", "arcana", "src", "kernel-entry.ts")
-    kernelChild = spawn(process.execPath, [entry], {
-      detached: false,
-      stdio: "ignore",
-      env: { ...process.env, ARCANA_KERNEL_PIPE: pipePath },
-    })
-    kernelChild.unref()
-    // Wait for the pipe to appear before returning.
-    const retry = setInterval(() => {
-      const p = net.createConnection(pipePath)
-      p.once("connect", () => { p.destroy(); clearInterval(retry) })
-      p.once("error", () => p.destroy())
-    }, 200)
-    setTimeout(() => clearInterval(retry), 10_000)
-  })
+async function ensureKernelRunning(): Promise<string> {
+  if (!kernelReady) {
+    const { sessionId, dbPath, instanceId } = resolveGateTarget()
+    kernelReady = (async () => {
+      const configured = process.env.ARCANA_KERNEL_PIPE
+      if (configured) {
+        // An externally supervised kernel must not be replaced on failure.
+        await waitForKernelReady(configured)
+        return configured
+      }
+      const kernel = await spawnKernelProcess({ sessionId, dbPath, endpointId: instanceId })
+      ownedKernel = kernel
+      process.once("exit", () => ownedKernel?.child.kill())
+      kernel.child.unref()
+      return kernel.listenPath
+    })()
+  }
+  return kernelReady
 }
-
 
 /** Called by AgentRunner.registerTool — records the declared tool surface. */
 export function recordToolSchema(toolName: string, canonicalDefJson: string): void {
@@ -124,28 +118,30 @@ export function toolInstanceFor(toolName: string): {
  * Authorize-and-execute one process spawn through the Authority Kernel.
  * The child is created ONLY when the PDP allows this exact request.
  */
-export function gatedSpawn(
+export async function gatedSpawn(
   toolName: string,
   argv: string[],
   opts?: { cwd?: string; env?: Record<string, string | undefined> },
 ): Promise<ProcessGateResult> {
-  const { dbPath, sessionId } = resolveGateTarget()
-  const gateOpts: ProcessGateOptions = { dbPath, sessionId, principalId: "arcana-cli" }
-
-  // S4 M-d: route through kernel IPC when transport mode is "ipc".
-  if (resolveTransportMode() === "ipc") {
-    ensureKernelRunning("\\\\.\\pipe\\arcana-kernel")
-    const { createIpcSpawnExecutor } = require("@arcana/core/capability/ipc-spawn-executor") as {
-      createIpcSpawnExecutor: typeof import("@arcana/core/capability/ipc-spawn-executor").createIpcSpawnExecutor
-    }
-    gateOpts.spawnExecutor = createIpcSpawnExecutor({ pipePath: "\\\\.\\pipe\\arcana-kernel" })
+  const { dbPath, sessionId, instanceId } = resolveGateTarget()
+  // Snapshot before startup awaits; the kernel authorizes exactly these values.
+  const request = {
+    toolName, argv: [...argv], cwd: opts?.cwd ?? process.cwd(),
+    env: opts?.env === undefined ? undefined : Object.fromEntries(
+      Object.entries(opts.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+    ),
+    instanceId, toolInstance: toolInstanceFor(toolName),
   }
-
-  return authorizeProcess(gateOpts, {
-    toolName, argv, cwd: opts?.cwd, env: opts?.env,
-    instanceId: resolveGateTarget().instanceId,
-    toolInstance: toolInstanceFor(toolName),
-  })
+  if (resolveTransportMode() === "local") {
+    return authorizeProcess({ dbPath, sessionId, principalId: "arcana-cli" }, request)
+  }
+  try {
+    const pipe = await ensureKernelRunning()
+    // Authorization and use accounting happen once, inside the kernel.
+    return await ipcSpawnViaKernel(pipe, { ...request, sessionId })
+  } catch (error) {
+    return { status: "EXECUTION_FAILED", detail: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 // ── Secret provisioning & mediated use ────────────────────────────────
