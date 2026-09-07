@@ -27,6 +27,7 @@ export const ARCANA_ERROR_CODES = [
   "ARC_FREE_SESSION_EXPIRED",
   "ARC_FREE_CONVERSATION_MISMATCH",
   "ARC_FREE_TURN_BUDGET_REACHED",
+  "ARC_PROVIDER_NOT_CONFIGURED",
   "ARC_INTERNAL",
 ] as const
 
@@ -112,6 +113,7 @@ export function codeToType(code: ArcanaErrorCode): ArcanaErrorType {
       return "model"
     case "ARC_PROVIDER_UNAVAILABLE":
     case "ARC_ALL_PROVIDERS_FAILED":
+    case "ARC_PROVIDER_NOT_CONFIGURED":
       return "provider"
     case "ARC_NETWORK":
       return "network"
@@ -220,6 +222,12 @@ export const ARCANA_ERROR_CATALOG: Record<
     recovery: ["Retry shortly", "Change model", "Check account credits and proxy health"],
     retryable: true,
     httpStatus: 502,
+  },
+  ARC_PROVIDER_NOT_CONFIGURED: {
+    message: "No provider is configured for this model route.",
+    recovery: ["Check that provider API keys are set in the proxy", "Pick a model backed by a configured provider"],
+    retryable: false,
+    httpStatus: 500,
   },
   ARC_IMAGE_FAILED: {
     message: "Image generation failed.",

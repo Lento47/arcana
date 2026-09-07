@@ -110,6 +110,13 @@ export function retryable(error: Err, provider: string) {
   if (SessionV1.ContextOverflowError.isInstance(error)) return undefined
   if (SessionV1.APIError.isInstance(error)) {
     const status = error.data.statusCode
+    // Explicit non-retryable wins over the 5xx heuristic. The proxy marks
+    // persistent failures (missing provider keys, plan not configured) as
+    // retryable:false — retrying those burns requests against a config that
+    // won't change in the retry window and can trip the proxy's own rate
+    // limiter. Only an explicit false short-circuits; undefined + 5xx still
+    // retries as a transient server failure.
+    if (error.data.isRetryable === false) return undefined
     // 5xx errors are transient server failures and should always be retried,
     // even when the provider SDK doesn't explicitly mark them as retryable.
     // 429 (rate-limit) is NOT unconditionally retried — the proxy returns

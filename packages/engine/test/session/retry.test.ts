@@ -211,7 +211,11 @@ describe("session.retry.retryable", () => {
     expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
   })
 
-  test("retries 500 errors even when isRetryable is false", () => {
+  test("does not retry 5xx when isRetryable is explicitly false", () => {
+    // The proxy marks persistent failures (missing provider keys, plan not
+    // configured) as retryable:false even though they surface as 5xx.
+    // Retrying them burns requests against a config that won't change in the
+    // retry window and can trip the proxy's own rate limiter.
     const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
       new SessionV1.APIError({
         message: "Internal server error",
@@ -221,10 +225,10 @@ describe("session.retry.retryable", () => {
       }).toObject(),
     )
 
-    expect(SessionRetry.retryable(error, retryProvider)).toEqual({ message: "Internal server error" })
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
   })
 
-  test("retries 502 bad gateway errors", () => {
+  test("does not retry 502 when isRetryable is explicitly false", () => {
     const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
       new SessionV1.APIError({
         message: "Bad gateway",
@@ -233,10 +237,10 @@ describe("session.retry.retryable", () => {
       }).toObject(),
     )
 
-    expect(SessionRetry.retryable(error, retryProvider)).toEqual({ message: "Bad gateway" })
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
   })
 
-  test("retries 503 service unavailable errors", () => {
+  test("does not retry 503 when isRetryable is explicitly false", () => {
     const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
       new SessionV1.APIError({
         message: "Service unavailable",
@@ -244,6 +248,18 @@ describe("session.retry.retryable", () => {
         statusCode: 503,
       }).toObject(),
     )
+
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+  })
+
+  test("retries 5xx when isRetryable is unset (transient server failure)", () => {
+    // isRetryable is required by the schema, but a raw APIError built without
+    // it carries undefined — the 5xx heuristic still retries that as transient.
+    const error = new SessionV1.APIError({
+      message: "Service unavailable",
+      statusCode: 503,
+      isRetryable: undefined as unknown as boolean,
+    }).toObject()
 
     expect(SessionRetry.retryable(error, retryProvider)).toEqual({ message: "Service unavailable" })
   })
@@ -294,7 +310,7 @@ describe("session.retry.retryable", () => {
         provider: "arcana",
         title: "Free limit reached",
         message:
-          "Free tier limit reached. Subscribe to Arcana Pro for higher rate limits and more models.",
+          "Free tier limit reached. Subscribe to Arcana Plan for higher rate limits and more models.",
         label: "subscribe",
         link: SessionRetry.GO_UPSELL_URL,
       },
@@ -330,7 +346,7 @@ describe("session.retry.retryable", () => {
       action: {
         reason: "account_rate_limit",
         provider: "opencode-go",
-        title: "Arcana Pro limit reached",
+        title: "Arcana Plan limit reached",
         message:
           "5 hour usage limit reached. It will reset in 5 hours 23 minutes. To continue using this model now, enable usage from your available balance",
         label: "open settings",
