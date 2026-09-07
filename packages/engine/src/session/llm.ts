@@ -37,6 +37,7 @@ import * as OtelTracer from "@effect/opentelemetry/Tracer"
 import { LLMAISDK } from "./llm/ai-sdk"
 import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
+import { resumableFetch } from "./resumable-fetch"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -338,6 +339,9 @@ const live: Layer.Layer<
           maxOutputTokens: prepared.params.maxOutputTokens,
           abortSignal: input.abort,
           headers: prepared.headers,
+          // Resume proxy SSE streams mid-drop instead of re-issuing the whole
+          // request (which re-runs upstream and trips the proxy rate limiter).
+          fetch: resumableFetch,
           maxRetries: input.retries ?? 0,
           // System instructions are supplied through the dedicated option;
           // fail closed if a future caller accidentally reintroduces a
@@ -373,7 +377,10 @@ const live: Layer.Layer<
               sessionId: input.sessionID,
             },
           },
-        }),
+          // AI SDK's CallSettings doesn't declare `fetch`, but streamText
+          // forwards it through ...settings to the provider's doStream.
+          // Cast the options object so the rest stays type-checked.
+        } as Parameters<typeof streamText>[0]),
       }
     })
 
