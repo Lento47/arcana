@@ -59,5 +59,12 @@ export function dominantMotionCue(
   if (activity) return `entry:${activity.id}`
   const thinking = entries.filter((entry) => entry.streaming === true && entry.kind === "think").at(-1)
   if (thinking) return `entry:${thinking.id}`
+  // Assistant prose streaming (plan/ok): the growing text + stream caret are
+  // the liveness signal, so the composer "Working…" pulse stays quiet — two
+  // cues for one state is noise, not signal.
+  const chat = entries.findLast(
+    (entry) => entry.streaming === true && (entry.kind === "plan" || entry.kind === "ok"),
+  )
+  if (chat) return `entry:${chat.id}`
   return runState === "working" || runState === "retrying" ? "composer" : undefined
 }

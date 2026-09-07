@@ -10,6 +10,7 @@ export const STREAM_FRAME_INTERVAL_MS = 50
 type FrameHandle =
   | { kind: "raf"; id: number }
   | { kind: "timeout"; id: ReturnType<typeof setTimeout> }
+  | { kind: "pending" }
 
 export type StreamFrameGate = {
   /** Replace the pending callback for a key and schedule one frame commit. */
@@ -39,7 +40,7 @@ function cancelFrame(handle: FrameHandle | undefined): void {
     globalThis.cancelAnimationFrame(handle.id)
     return
   }
-  clearTimeout(handle.id)
+  if (handle.kind === "timeout") clearTimeout(handle.id)
 }
 
 /**
@@ -69,6 +70,24 @@ export function createStreamFrameGate(intervalMs = STREAM_FRAME_INTERVAL_MS): St
     })
   }
 
+  /**
+   * Reserve the frame slot BEFORE scheduling. A synchronous RAF (bun test,
+   * jsdom) runs the callback before `requestFrame` returns, so assigning the
+   * handle after the call would overwrite the `undefined` the callback just
+   * wrote — leaving a stale handle that blocks every later commit. The
+   * `pending` sentinel is claimed by the real handle only when the callback
+   * has not already run.
+   */
+  const commitFrame = () => {
+    if (disposed || frame) return
+    frame = { kind: "pending" }
+    const handle = requestFrame(() => {
+      frame = undefined
+      runPending()
+    })
+    if (frame !== undefined) frame = handle
+  }
+
   const requestCommit = (delay: number) => {
     if (disposed || frame) return
     if (delay > 0) {
@@ -76,7 +95,7 @@ export function createStreamFrameGate(intervalMs = STREAM_FRAME_INTERVAL_MS): St
       timer = setTimeout(() => {
         timer = undefined
         if (disposed || pending.size === 0) return
-        frame = requestFrame(runPending)
+        commitFrame()
       }, delay)
       return
     }
@@ -87,7 +106,7 @@ export function createStreamFrameGate(intervalMs = STREAM_FRAME_INTERVAL_MS): St
       clearTimeout(timer)
       timer = undefined
     }
-    frame = requestFrame(runPending)
+    commitFrame()
   }
 
   const schedule = (key: string, callback: () => void) => {
@@ -111,7 +130,7 @@ export function createStreamFrameGate(intervalMs = STREAM_FRAME_INTERVAL_MS): St
       clearTimeout(timer)
       timer = undefined
     }
-    if (!frame) frame = requestFrame(runPending)
+    if (!frame) commitFrame()
   }
 
   const dispose = () => {

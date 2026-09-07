@@ -35,6 +35,16 @@ describe("dominantMotionCue", () => {
       .toBe("composer")
   })
 
+  test("suppresses the composer pulse while assistant prose streams", () => {
+    expect(dominantMotionCue([{ id: "answer", kind: "plan", streaming: true }], "working"))
+      .toBe("entry:answer")
+    expect(dominantMotionCue([{ id: "answer", kind: "ok", streaming: true }], "working"))
+      .toBe("entry:answer")
+    // A finished answer is not a live cue — composer takes over again.
+    expect(dominantMotionCue([{ id: "answer", kind: "plan", streaming: false }], "working"))
+      .toBe("composer")
+  })
+
   test("ignores static historical rows", () => {
     expect(dominantMotionCue([
       { id: "old-run", kind: "run", streaming: false },

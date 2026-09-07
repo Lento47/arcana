@@ -14,6 +14,9 @@ export type SpineProseMode = "markdown" | "code" | "plain"
 
 let nextStreamContentKey = 0
 
+/** Blinking block caret shown at the end of live assistant prose. */
+const STREAM_CARET = "▌"
+
 export { looksLikeMarkdown, normalizeChatProse, stripMarkdownEmphasis } from "./chat-prose"
 
 /**
@@ -205,6 +208,27 @@ export function SpineProse(props: {
     }),
   )
 
+  // Blinking stream caret. 500ms on/off — a calm 1Hz cursor, not a strobe.
+  // Only while assistant prose is live; the caret is the liveness signal at
+  // the stream point, so the composer "Working…" pulse can stay quiet.
+  // Defined before markdownContent: the initial signal value reads the memo
+  // eagerly, so caretOn must already be initialized.
+  const [caretOn, setCaretOn] = createSignal(true)
+  let caretTimer: ReturnType<typeof setInterval> | undefined
+  createEffect(() => {
+    const show = mode() === "markdown" && props.streaming === true
+    if (show && !caretTimer) {
+      caretTimer = setInterval(() => setCaretOn((v) => !v), 500)
+    } else if (!show && caretTimer) {
+      clearInterval(caretTimer)
+      caretTimer = undefined
+      setCaretOn(true)
+    }
+  })
+  onCleanup(() => {
+    if (caretTimer) clearInterval(caretTimer)
+  })
+
   const markdownContent = createMemo(() => {
     const raw = mode() === "markdown" ? escapeMarkdownUnderscoreEmphasis(text()) : text()
     // Strip emphasis/strikethrough markers (`**`, `~~`) so raw syntax never
@@ -212,7 +236,16 @@ export function SpineProse(props: {
     // markdown_inline injection; strip guarantees clean text regardless).
     const noEmphasis = mode() === "markdown" || kind() === "think" ? stripMarkdownEmphasis(raw) : raw
     // Strip horizontal rules (full-width dash rows) only outside fenced code blocks
-    return mode() === "markdown" ? stripMarkdownHorizontalRules(noEmphasis) : noEmphasis
+    const stripped = mode() === "markdown" ? stripMarkdownHorizontalRules(noEmphasis) : noEmphasis
+    // Stream caret: a blinking block at the end of live assistant prose. The
+    // caret is the liveness signal at the stream point — no layout shift, no
+    // per-token re-render. Suppressed for think (shimmer + elapsed already
+    // cue) and code (tool output is never streamed live).
+    if (mode() === "markdown" && props.streaming === true) {
+      void caretOn()
+      return stripped + (caretOn() ? STREAM_CARET : "")
+    }
+    return stripped
   })
   /**
    * Frame-budgeted streaming updates. The shared gate replaces the previous
