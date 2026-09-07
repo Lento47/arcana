@@ -251,6 +251,30 @@ const MARKDOWN_APPLY_TS_PATCH =
 // Older unguarded variant (overrode the leaf's default client with undefined).
 const MARKDOWN_APPLY_TS_OLD_PATCH =
   "    renderable.treeSitterClient = this._treeSitterClient; // [arcana] propagate treeSitterClient to markdown leaves (patch-opentui.ts)"
+const MARKDOWN_STREAMING_FINALIZE_MARKER =
+  "// [arcana] reuse blocks on streaming flip, no full re-render (patch-opentui.ts)"
+const MARKDOWN_STREAMING_SIGNATURE = `  set streaming(value) {
+    if (this.isDestroyed)
+      return;
+    if (this._streaming !== value) {
+      this._streaming = value;
+      this.updateBlocks(true);
+    }
+  }`
+const MARKDOWN_STREAMING_PATCH = `  set streaming(value) {
+    if (this.isDestroyed)
+      return;
+    if (this._streaming !== value) {
+      this._streaming = value;
+      ${MARKDOWN_STREAMING_FINALIZE_MARKER}
+      // Reuse stable blocks instead of forcing a full re-render. The upstream
+      // forceTableRefresh destroys and re-creates every block on the
+      // streaming→idle flip, dropping their retained styled frames — the whole
+      // answer flashes to raw text and re-highlights. Reuse keeps stable blocks
+      // in place; only the trailing block re-parses.
+      this.updateBlocks(false);
+    }
+  }`
 
 function coreDirs(): string[] {
   const out = new Set<string>()
@@ -610,6 +634,38 @@ for (const bundle of collectEntryBundles()) {
   parsePatched++
 }
 
+let streamingTargets = 0
+let streamingReady = 0
+let streamingPatched = 0
+
+for (const bundle of collectEntryBundles()) {
+  const version = versionOf(bundle)
+  if (version !== TARGET_VERSION) {
+    console.log(`[patch-opentui] skip ${bundle} (version ${version ?? "unknown"} != ${TARGET_VERSION})`)
+    skipped++
+    continue
+  }
+
+  streamingTargets++
+  const source = readFileSync(bundle, "utf-8")
+  if (source.includes(MARKDOWN_STREAMING_FINALIZE_MARKER)) {
+    console.log(`[patch-opentui] markdown streaming flip already patched ${bundle}`)
+    streamingReady++
+    skipped++
+    continue
+  }
+  if (!source.includes(MARKDOWN_STREAMING_SIGNATURE)) {
+    console.error(`[patch-opentui] markdown streaming flip signature missing in ${bundle}`)
+    process.exitCode = 1
+    continue
+  }
+  const next = source.replace(MARKDOWN_STREAMING_SIGNATURE, MARKDOWN_STREAMING_PATCH)
+  writeFileSync(bundle, next, "utf-8")
+  console.log(`[patch-opentui] patched markdown streaming flip ${bundle}`)
+  streamingReady++
+  streamingPatched++
+}
+
 if (targets === 0) {
   console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} chunks found to patch`)
 } else if (ready === 0) {
@@ -640,6 +696,12 @@ if (tsClientTargets === 0) {
   console.error(`[patch-opentui] patched ${tsClientReady}/${tsClientTargets} markdown treeSitterClient bundle(s)`)
   process.exitCode = 1
 }
+if (streamingTargets === 0) {
+  console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} entry bundles found for markdown streaming flip`)
+} else if (streamingReady !== streamingTargets) {
+  console.error(`[patch-opentui] patched ${streamingReady}/${streamingTargets} markdown streaming flip bundle(s)`)
+  process.exitCode = 1
+}
 console.log(
-  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} skipped=${skipped}`,
+  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} streaming_patched=${streamingPatched} skipped=${skipped}`,
 )
