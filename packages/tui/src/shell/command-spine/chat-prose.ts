@@ -194,6 +194,11 @@ export function stripMarkdownEmphasis(text: string): string {
             .replace(/\*\*\*([^*\n]+)\*\*\*/g, "$1")
             .replace(/\*\*([^*\n]+)\*\*/g, "$1")
             .replace(/~~([^~\n]+)~~/g, "$1")
+            // Streaming: strip a lone opening marker that has no closer yet, so
+            // raw `**`/`~~` never flashes while the model is mid-emphasis. Only
+            // word-boundary openers (not arithmetic like "3 ** 4"); the lookahead
+            // requires no `*`/`~` later in the segment, i.e. the marker is unpaired.
+            .replace(/(^|\s)(\*\*\*|\*\*|~~)(?!\s)(?=[^*~]*$)/g, "$1")
         })
         .join("")
     })

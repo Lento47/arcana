@@ -218,6 +218,39 @@ const PARSE_REUSE_PATCH = `if (offset + tokenLength <= newContent.length && newC
           break;
         }
       }`
+const MARKDOWN_TS_CLIENT_SIGNATURE = `  set content(value) {
+    if (this.isDestroyed)
+      return;
+    if (this._content !== value) {
+      this._content = value;
+      this.updateBlocks();
+      this.requestRender();
+    }
+  }`
+const MARKDOWN_TS_CLIENT_PATCH = `  set content(value) {
+    if (this.isDestroyed)
+      return;
+    if (this._content !== value) {
+      this._content = value;
+      this.updateBlocks();
+      this.requestRender();
+    }
+  }
+  get treeSitterClient() {
+    return this._treeSitterClient;
+  }
+  set treeSitterClient(value) {
+    if (this._treeSitterClient !== value) {
+      this._treeSitterClient = value;
+      this._styleDirty = true;
+    }
+  }`
+const MARKDOWN_APPLY_TS_SIGNATURE = "renderable.streaming = true;"
+const MARKDOWN_APPLY_TS_PATCH =
+  "renderable.streaming = true;\n    if (this._treeSitterClient) renderable.treeSitterClient = this._treeSitterClient; // [arcana] propagate treeSitterClient to markdown leaves (patch-opentui.ts)"
+// Older unguarded variant (overrode the leaf's default client with undefined).
+const MARKDOWN_APPLY_TS_OLD_PATCH =
+  "    renderable.treeSitterClient = this._treeSitterClient; // [arcana] propagate treeSitterClient to markdown leaves (patch-opentui.ts)"
 
 function coreDirs(): string[] {
   const out = new Set<string>()
@@ -505,6 +538,46 @@ for (const bundle of collectEntryBundles()) {
   markdownPatched++
 }
 
+let tsClientTargets = 0
+let tsClientReady = 0
+let tsClientPatched = 0
+
+for (const bundle of collectEntryBundles()) {
+  const version = versionOf(bundle)
+  if (version !== TARGET_VERSION) {
+    console.log(`[patch-opentui] skip ${bundle} (version ${version ?? "unknown"} != ${TARGET_VERSION})`)
+    skipped++
+    continue
+  }
+
+  tsClientTargets++
+  const source = readFileSync(bundle, "utf-8")
+  const setterReady = source.includes(MARKDOWN_TS_CLIENT_PATCH)
+  const applyReady = source.includes(MARKDOWN_APPLY_TS_PATCH)
+  const oldApplyGone = !source.includes(MARKDOWN_APPLY_TS_OLD_PATCH)
+  if (setterReady && applyReady && oldApplyGone) {
+    console.log(`[patch-opentui] markdown treeSitterClient already patched ${bundle}`)
+    tsClientReady++
+    skipped++
+    continue
+  }
+
+  if (!source.includes(MARKDOWN_TS_CLIENT_SIGNATURE) || !source.includes(MARKDOWN_APPLY_TS_SIGNATURE)) {
+    console.error(`[patch-opentui] markdown treeSitterClient signatures incomplete in ${bundle}`)
+    process.exitCode = 1
+    continue
+  }
+
+  const next = source
+    .replace(MARKDOWN_TS_CLIENT_SIGNATURE, MARKDOWN_TS_CLIENT_PATCH)
+    .replaceAll(MARKDOWN_APPLY_TS_OLD_PATCH, "")
+    .replace(MARKDOWN_APPLY_TS_SIGNATURE, MARKDOWN_APPLY_TS_PATCH)
+  writeFileSync(bundle, next, "utf-8")
+  console.log(`[patch-opentui] patched markdown treeSitterClient ${bundle}`)
+  tsClientReady++
+  tsClientPatched++
+}
+
 let parseTargets = 0
 let parseReady = 0
 let parsePatched = 0
@@ -561,6 +634,12 @@ if (parseTargets === 0) {
   console.error(`[patch-opentui] patched ${parseReady}/${parseTargets} parseMarkdownIncremental bundle(s)`)
   process.exitCode = 1
 }
+if (tsClientTargets === 0) {
+  console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} entry bundles found for markdown treeSitterClient`)
+} else if (tsClientReady !== tsClientTargets) {
+  console.error(`[patch-opentui] patched ${tsClientReady}/${tsClientTargets} markdown treeSitterClient bundle(s)`)
+  process.exitCode = 1
+}
 console.log(
-  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} skipped=${skipped}`,
+  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} tsclient_patched=${tsClientPatched} skipped=${skipped}`,
 )

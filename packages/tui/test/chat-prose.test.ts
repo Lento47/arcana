@@ -36,6 +36,24 @@ describe("stripMarkdownEmphasis", () => {
     expect(stripMarkdownEmphasis("")).toBe("")
     expect(stripMarkdownEmphasis("plain text")).toBe("plain text")
   })
+
+  test("strips a lone trailing opener while streaming (mid-emphasis)", () => {
+    expect(stripMarkdownEmphasis("I can help with **Core cap")).toBe("I can help with Core cap")
+    expect(stripMarkdownEmphasis("**Core cap")).toBe("Core cap")
+    expect(stripMarkdownEmphasis("and **more")).toBe("and more")
+    expect(stripMarkdownEmphasis("~~strike")).toBe("strike")
+    expect(stripMarkdownEmphasis("***both")).toBe("both")
+  })
+
+  test("keeps a lone opener that is arithmetic, not emphasis", () => {
+    expect(stripMarkdownEmphasis("3 ** 4")).toBe("3 ** 4")
+    expect(stripMarkdownEmphasis("use ** for bold")).toBe("use ** for bold")
+  })
+
+  test("does not strip an opener that already has a closer", () => {
+    expect(stripMarkdownEmphasis("**Core cap**")).toBe("Core cap")
+    expect(stripMarkdownEmphasis("**bold** and **more**")).toBe("bold and more")
+  })
 })
 
 describe("normalizeChatProse", () => {
