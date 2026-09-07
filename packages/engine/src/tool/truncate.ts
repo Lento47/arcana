@@ -12,8 +12,8 @@ import { TRUNCATION_DIR } from "./truncation-dir"
 
 const RETENTION = Duration.days(7)
 
-export const MAX_LINES = 2000
-export const MAX_BYTES = 50 * 1024
+export const MAX_LINES = 1_000_000
+export const MAX_BYTES = 100 * 1024 * 1024
 export const DIR = TRUNCATION_DIR
 export const GLOB = path.join(TRUNCATION_DIR, "*")
 

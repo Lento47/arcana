@@ -64,7 +64,7 @@ export const GrepTool = Tool.define(
             cwd,
             pattern: params.pattern,
             include: params.include,
-            limit: 100,
+            limit: 10_000,
           })
           if (result.length === 0) return empty
 
@@ -74,7 +74,7 @@ export const GrepTool = Tool.define(
             text: item.text,
           }))
 
-          const limit = 100
+          const limit = 10_000
           const truncated = rows.length === limit
           const final = rows
           if (final.length === 0) return empty
