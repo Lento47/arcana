@@ -17,19 +17,22 @@ const assert = (cond: boolean, msg: string) => {
 }
 
 // --- stripMarkdownHorizontalRules ---
-assert(stripMarkdownHorizontalRules("a\n---\nb") === "a\nb", "plain --- stripped")
+// A real HR is preceded by a blank line — `a\n---\nb` is a setext H2, not an HR.
+assert(stripMarkdownHorizontalRules("a\n\n---\n\nb") === "a\n\n\nb", "plain --- stripped")
 assert(stripMarkdownHorizontalRules("a\n────\nb") === "a\nb", "box-drawing ─ stripped")
 assert(stripMarkdownHorizontalRules("a\n━━━\nb") === "a\nb", "box-drawing ━ stripped")
 assert(stripMarkdownHorizontalRules("a\n═══\nb") === "a\nb", "box-drawing ═ stripped")
-assert(stripMarkdownHorizontalRules("a\n---  \nb") === "a\nb", "trailing whitespace stripped")
+assert(stripMarkdownHorizontalRules("a\n\n---  \n\nb") === "a\n\n\nb", "trailing whitespace stripped")
 assert(stripMarkdownHorizontalRules("a\n--\nb") === "a\n--\nb", "short -- preserved")
+assert(stripMarkdownHorizontalRules("Heading\n-------\n\nbody") === "Heading\n-------\n\nbody", "setext H2 underline preserved")
+assert(stripMarkdownHorizontalRules("- item\n---\nnext") === "- item\nnext", "rule after list item stripped")
 
 const fenced = "```js\nconst a = 1\n---\nconst b = 2\n```"
 assert(stripMarkdownHorizontalRules(fenced) === fenced, "HR inside fence preserved")
 
-const mixed = "top\n---\n```js\n---\nconst x = 1\n```\nbottom\n---"
+const mixed = "top\n\n---\n\n```js\n---\nconst x = 1\n```\nbottom\n\n---"
 assert(
-  stripMarkdownHorizontalRules(mixed) === "top\n```js\n---\nconst x = 1\n```\nbottom",
+  stripMarkdownHorizontalRules(mixed) === "top\n\n\n```js\n---\nconst x = 1\n```\nbottom\n",
   "outside stripped, inside fence preserved",
 )
 

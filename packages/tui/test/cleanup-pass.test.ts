@@ -111,7 +111,7 @@ describe("M11 consolidation contract", () => {
 describe("T7 contract", () => {
   test("focused call sites use width-aware helpers, code-unit cuts gone", () => {
     expect(proofDialogsSrc).toContain("truncateMiddle(id, 17)")
-    expect(appEffectsSrc).toContain("truncate(label, 40)")
+    expect(appEffectsSrc).toContain("truncate(displaySessionTitle")
     expect(proofDialogsSrc).not.toContain("id.slice(0, 10)")
     expect(appEffectsSrc).not.toContain("label.slice(0, 37)")
   })

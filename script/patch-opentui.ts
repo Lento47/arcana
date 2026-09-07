@@ -204,6 +204,20 @@ const MARKDOWN_APPLY_PATCH =
 const MARKDOWN_CREATE_INLINE_SIGNATURE = "drawUnstyledText: initialStyledText !== undefined,"
 const MARKDOWN_CREATE_INLINE_PATCH =
   "drawUnstyledText: false, // [arcana] retain last styled frame, no flicker (patch-opentui.ts)"
+const PARSE_REUSE_MARKER = "// [arcana] paragraph token stable only at block boundary (patch-opentui.ts)"
+const PARSE_REUSE_SIGNATURE = "if (offset + tokenLength <= newContent.length && newContent.startsWith(token.raw, offset)) {"
+const PARSE_REUSE_PATCH = `if (offset + tokenLength <= newContent.length && newContent.startsWith(token.raw, offset)) {
+      ${PARSE_REUSE_MARKER}
+      // A paragraph token is only stable if it ends at a block boundary. If the
+      // content after it continues the same paragraph (single newline + text, or
+      // same-line continuation), the token is a prefix of a longer paragraph —
+      // re-lex it so the paragraph isn't split into two blocks.
+      if (token.type === "paragraph") {
+        const after = newContent.slice(offset + tokenLength);
+        if (after.length > 0 && !/^\\n\\s*\\n/.test(after)) {
+          break;
+        }
+      }`
 
 function coreDirs(): string[] {
   const out = new Set<string>()
@@ -491,6 +505,38 @@ for (const bundle of collectEntryBundles()) {
   markdownPatched++
 }
 
+let parseTargets = 0
+let parseReady = 0
+let parsePatched = 0
+
+for (const bundle of collectEntryBundles()) {
+  const version = versionOf(bundle)
+  if (version !== TARGET_VERSION) {
+    console.log(`[patch-opentui] skip ${bundle} (version ${version ?? "unknown"} != ${TARGET_VERSION})`)
+    skipped++
+    continue
+  }
+
+  parseTargets++
+  const source = readFileSync(bundle, "utf-8")
+  if (source.includes(PARSE_REUSE_MARKER)) {
+    console.log(`[patch-opentui] parseMarkdownIncremental already patched ${bundle}`)
+    parseReady++
+    skipped++
+    continue
+  }
+  if (!source.includes(PARSE_REUSE_SIGNATURE)) {
+    console.error(`[patch-opentui] parseMarkdownIncremental signature missing in ${bundle}`)
+    process.exitCode = 1
+    continue
+  }
+  const next = source.replace(PARSE_REUSE_SIGNATURE, PARSE_REUSE_PATCH)
+  writeFileSync(bundle, next, "utf-8")
+  console.log(`[patch-opentui] patched parseMarkdownIncremental ${bundle}`)
+  parseReady++
+  parsePatched++
+}
+
 if (targets === 0) {
   console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} chunks found to patch`)
 } else if (ready === 0) {
@@ -509,6 +555,12 @@ if (codeTargets === 0) {
   console.error(`[patch-opentui] patched ${codeReady}/${codeTargets} CodeRenderable bundle(s)`)
   process.exitCode = 1
 }
+if (parseTargets === 0) {
+  console.log(`[patch-opentui] no @opentui/core ${TARGET_VERSION} entry bundles found for parseMarkdownIncremental`)
+} else if (parseReady !== parseTargets) {
+  console.error(`[patch-opentui] patched ${parseReady}/${parseTargets} parseMarkdownIncremental bundle(s)`)
+  process.exitCode = 1
+}
 console.log(
-  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} skipped=${skipped}`,
+  `[patch-opentui] loader_patched=${patched} markdown_patched=${markdownPatched} code_patched=${codePatched} parse_patched=${parsePatched} skipped=${skipped}`,
 )

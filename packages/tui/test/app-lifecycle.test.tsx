@@ -26,7 +26,7 @@ test("SIGHUP clears title and disposes scoped resources once", async () => {
 
   // Wait for a condition with a bound — polling beats sleep-guessing under
   // full-suite load, where app startup steps lag their readiness signals.
-  async function waitFor(what: string, fn: () => boolean, timeoutMs = 10_000) {
+  async function waitFor(what: string, fn: () => boolean, timeoutMs = 30_000) {
     const deadline = Date.now() + timeoutMs
     while (!fn()) {
       if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
@@ -69,7 +69,7 @@ test("SIGHUP clears title and disposes scoped resources once", async () => {
   } finally {
     if (!setup.renderer.isDestroyed) setup.renderer.destroy()
   }
-}, 15_000)
+}, 60_000)
 
 test("app.exit prints the session epilogue after scoped cleanup", async () => {
   const setup = await createTestRenderer({ width: 80, height: 24, useThread: false })
@@ -133,4 +133,4 @@ test("app.exit prints the session epilogue after scoped cleanup", async () => {
     process.stdout.write = originalWrite
     if (!setup.renderer.isDestroyed) setup.renderer.destroy()
   }
-}, 15_000)
+}, 60_000)

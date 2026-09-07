@@ -109,19 +109,18 @@ export function SpineToolChip(props: {
   // Reserve the non-wrapping cells before truncating the summary.  When a
   // caller cannot provide a measured width, the flex row still clips safely;
   // no fixed 80-column fallback is introduced here.
-  const summaryBudget = createMemo(() => {
-    const width = props.contentWidth
-    if (typeof width !== "number" || !Number.isFinite(width) || width <= 0) return undefined
-    const chipWidth = 2 + displayWidth(model().glyph) + 1 + displayWidth(labelText())
-    const outcomeWidth = showOutcome() ? 3 + displayWidth(outcomeText()) : 0
-    const elapsedWidth = showElapsed() ? 3 + displayWidth(elapsed()) : 0
-    const disclosureWidth = showDisclosure() ? displayWidth(disclosure()) + 1 : 0
-    // The preview container has one leading column of breathing room in
-    // addition to the status pill and optional right-side metadata.
-    const previewPadding = summaryText() || hasRichSummary() ? 1 : 0
-    const separator = summaryText() ? 1 : 0
-    return Math.max(1, Math.floor(width - chipWidth - previewPadding - outcomeWidth - elapsedWidth - disclosureWidth - separator))
-  })
+  const summaryBudget = createMemo(() =>
+    toolChipSummaryBudget({
+      layout: layout(),
+      contentWidth: props.contentWidth,
+      glyphWidth: displayWidth(model().glyph),
+      label: labelText(),
+      outcome: showOutcome() ? outcomeText() : "",
+      elapsed: showElapsed() ? elapsed() : "",
+      disclosure: showDisclosure() ? disclosure() : "",
+      hasSummary: !!summaryText() || hasRichSummary(),
+    }),
+  )
   const preview = createMemo(() => {
     const text = summaryText()
     const budget = summaryBudget()
@@ -172,4 +171,33 @@ export function SpineToolChip(props: {
       </Show>
     </box>
   )
+}
+
+/**
+ * Width left over for the chip's summary preview after the fixed cells (status
+ * pill, optional right-side metadata). Undefined when no usable width was given.
+ * Shared with the expanded-body "full command" row so a caller can tell whether
+ * the chip truncated its summary without guessing.
+ */
+export function toolChipSummaryBudget(input: {
+  layout: SpineLayout
+  contentWidth?: number
+  glyphWidth: number
+  label: string
+  outcome?: string
+  elapsed?: string
+  disclosure?: string
+  hasSummary: boolean
+}): number | undefined {
+  const width = input.contentWidth
+  if (typeof width !== "number" || !Number.isFinite(width) || width <= 0) return undefined
+  const chipWidth = 2 + input.glyphWidth + 1 + displayWidth(input.label)
+  const outcomeWidth = input.outcome ? 3 + displayWidth(input.outcome) : 0
+  const elapsedWidth = input.elapsed ? 3 + displayWidth(input.elapsed) : 0
+  const disclosureWidth = input.disclosure ? displayWidth(input.disclosure) + 1 : 0
+  // One leading column of breathing room + the separator, both only when a
+  // summary preview is present.
+  const previewPadding = input.hasSummary ? 1 : 0
+  const separator = input.hasSummary ? 1 : 0
+  return Math.max(1, Math.floor(width - chipWidth - previewPadding - outcomeWidth - elapsedWidth - disclosureWidth - separator))
 }

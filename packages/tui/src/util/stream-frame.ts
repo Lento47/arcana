@@ -32,6 +32,7 @@ function requestFrame(callback: (time: number) => void): FrameHandle {
   }
 }
 
+function requestFrameCount() { return (globalThis as any).__rfCalls ?? 0 }
 function cancelFrame(handle: FrameHandle | undefined): void {
   if (!handle) return
   if (handle.kind === "raf" && typeof globalThis.cancelAnimationFrame === "function") {

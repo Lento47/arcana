@@ -52,8 +52,8 @@ describe("spine keyboard wiring source contract (F-24..F-28)", () => {
   })
 
   test("the configured parent shortcut is not shadowed by root spine up navigation", () => {
-    expect(shellSource).toContain('{ key: "k", desc: "Focus previous spine entry"')
-    expect(shellSource).toContain('key: "up", desc: "Focus previous spine entry"')
+    expect(shellSource).toMatch(/key: "k",\s+desc: "Focus previous spine entry"/)
+    expect(shellSource).toMatch(/key: "up",\s+desc: "Focus previous spine entry"/)
     expect(shellSource).toContain("!props.session()?.parentID")
   })
 

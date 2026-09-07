@@ -2,7 +2,7 @@ import { MouseButton, type MouseEvent } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
 import type { Message, Part, ToolPart } from "@arcana/sdk/v2"
-import { titlecase, truncate } from "../../util/locale"
+import { displayWidth, titlecase, truncate } from "../../util/locale"
 import type {
   SpineEntry as SpineEntryType,
   SpineEntryAction,
@@ -26,7 +26,8 @@ import { SpineChatCard } from "./spine-chat"
 import { SpineApprovalGate } from "./spine-approval-gate"
 import { SpineProof } from "./spine-proof"
 import { ActivityReel } from "./spine-activity-reel"
-import { taskRowChrome } from "./spine-chrome"
+import { taskRowChrome, toolChipModel } from "./spine-chrome"
+import { toolChipSummaryBudget } from "./spine-tool-chip"
 import { canToggleSpineEntry } from "./spine-navigation"
 import { HairlineBorder } from "../../ui/border"
 import type { StreamFrameGate } from "../../util/stream-frame"
@@ -492,6 +493,38 @@ export function SpineEntry(props: {
     return (view() as Exclude<SpineEntryView, ChatEntry>).summary
   }
 
+  // The run chip's summary IS the command. Decide whether expanding needs a
+  // full-width copy by replicating the chip's truncation budget exactly.
+  const commandNeedsFullDisplay = (view: ToolEntry): boolean => {
+    const command = view.receipt?.command
+    const width = props.contentWidth
+    if (!command || typeof width !== "number" || !Number.isFinite(width) || width <= 0) return false
+    const model = toolChipModel({
+      kind: String(view.kind),
+      label: view.label,
+      summary: nodeSummary(),
+      receipt: view.receipt,
+      streaming: view.streaming === true,
+    })
+    const labelMax = props.layout === "minimal" ? 8 : props.layout === "narrow" ? 10 : 16
+    const labelText = truncate(model.label, labelMax)
+    const outcomeText = model.outcome
+      ? truncate(model.outcome, Math.max(8, Math.min(36, Math.floor(width * 0.4))))
+      : ""
+    const budget = toolChipSummaryBudget({
+      layout: props.layout,
+      contentWidth: width,
+      glyphWidth: displayWidth(model.glyph),
+      label: labelText,
+      outcome: outcomeText || "",
+      elapsed: view.elapsed ?? "",
+      disclosure: displayDisclosure() || "",
+      hasSummary: !!model.summary,
+    })
+    if (budget === undefined) return false
+    return displayWidth(command) > budget
+  }
+
   const handleFocus = () => {
     props.onFocus?.()
   }
@@ -765,8 +798,17 @@ export function SpineEntry(props: {
                   </box>
                 </Show>
 
-                {/* Incantation row - compact command text before output */}
-                <Show when={(kind() === "run" || kind() === "inspect") && v().receipt?.command && bodyExpanded()}>
+                {/* Incantation row - full-width command before output. Only when
+                    the header chip truncated it (chip summary is the command for
+                    run rows, so a short command would otherwise be duplicated). */}
+                <Show
+                  when={
+                    (kind() === "run" || kind() === "inspect")
+                    && v().receipt?.command
+                    && bodyExpanded()
+                    && commandNeedsFullDisplay(v())
+                  }
+                >
                   <box flexDirection="row" flexShrink={0} alignItems="flex-start">
                     <SpineRail layout={props.layout} active={props.focused} />
                     <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={1}>

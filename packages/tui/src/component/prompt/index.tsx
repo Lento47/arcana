@@ -383,6 +383,20 @@ export function Prompt(props: PromptProps) {
     ),
   )
 
+  // Idle placeholder rotation — the home epigram rotates every 12s; the prompt
+  // placeholder should feel equally alive. Only advances while the input is
+  // empty (placeholder visible) so typing never sees the text change.
+  createEffect(() => {
+    if (store.prompt.input) return
+    if (props.disabled) return
+    const id = setInterval(() => {
+      const pool = store.mode === "shell" ? shell() : list()
+      if (pool.length === 0) return
+      setStore("placeholder", (store.placeholder + 1) % pool.length)
+    }, 12000)
+    onCleanup(() => clearInterval(id))
+  })
+
   // Initialize agent/model/variant from last user message when session changes
   let syncedSessionID: string | undefined
   createEffect(() => {
@@ -1809,7 +1823,7 @@ export function Prompt(props: PromptProps) {
       return list()[store.placeholder % list().length]
     }
     if (store.mode === "shell") {
-      if (!shell().length) return undefined
+      if (!shell().length) return PROMPT_FRAME.shell
       return shell()[store.placeholder % shell().length]
     }
     if (!list().length) return undefined
