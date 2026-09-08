@@ -303,6 +303,31 @@ describe("search scoring (5.3)", () => {
     expect(results.some((r) => r.type === "user_fact")).toBe(true)
   })
 
+  test("search with FTS5 metacharacters does not throw and still matches (regression: fts5 syntax error)", () => {
+    const { store } = freshStore()
+    const session = store.createSession({ title: "Fix the project.tsx crash" })
+    store.addMessage(session.id, "user", "we fixed the project.tsx crash yesterday", 0)
+    store.recordUserFact("user.editor", "uses VS Code daily")
+    store.saveArtifact({ title: "project.tsx crash notes", content: "postmortem of the crash", tags: ["crash"] })
+
+    // Previously: SQLiteError: fts5: syntax error near "."
+    expect(() => store.search("project.tsx")).not.toThrow()
+    expect(() => store.search("NEAR(a b)")).not.toThrow()
+    expect(() => store.search('"quoted" -x')).not.toThrow()
+    expect(() => store.search("(a AND b)")).not.toThrow()
+    expect(() => store.search("!!!")).not.toThrow()
+    expect(() => store.searchArtifacts("project.tsx")).not.toThrow()
+
+    // Token-split search still finds punctuated content
+    const results = store.search("project.tsx crash")
+    expect(results.length).toBeGreaterThan(0)
+    expect(results.some((r) => r.type === "message" || r.type === "session")).toBe(true)
+    expect(store.searchArtifacts("project.tsx").length).toBeGreaterThan(0)
+
+    // Plain queries unaffected
+    expect(store.search("VS Code").some((r) => r.type === "user_fact")).toBe(true)
+  })
+
   test("composite score is bm25 × recency × confidence", () => {
     const { store } = freshStore()
     store.recordUserFact("user.theme", "the user strongly prefers dark mode for the editor")

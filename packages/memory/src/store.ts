@@ -162,6 +162,33 @@ export function decayedConfidence(fact: { confidence: number; last_accessed_at?:
   return fact.confidence * Math.pow(2, -ageDays / CONFIDENCE_HALFLIFE_DAYS)
 }
 
+/**
+ * Sanitize an arbitrary search string into a safe FTS5 MATCH expression.
+ *
+ * Raw queries with FTS5 metacharacters (`.`, `(`, `"`, `-`-prefixed, …)
+ * throw `fts5: syntax error` at prepare time. Strategy: keep Unicode
+ * letters/digits as tokens, drop everything else, double-quote each token
+ * (quoting disables ALL FTS5 syntax — column filters, NEAR, operators),
+ * append `*` to the last token for prefix match, join with spaces
+ * (implicit AND). Returns `""` for punctuation-only input — a valid MATCH
+ * matching nothing — instead of throwing.
+ */
+export function ftsSafeQuery(query: string): string {
+  const tokens = query
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t.length > 0)
+  if (tokens.length === 0) return '""'
+  return tokens
+    .map((t, i) => {
+      const quoted = `"${t.replace(/"/g, "")}"`
+      // Prefix-match only the last token; earlier tokens must hit exactly.
+      return i === tokens.length - 1 ? `${quoted}*` : quoted
+    })
+    .join(" ")
+}
+
 export class MemoryStore {
   constructor(private readonly db: Database) {}
 
@@ -232,6 +259,7 @@ export class MemoryStore {
   search(query: string, limit = 10): SearchResult[] {
     const merged: SearchResult[] = []
     const asOf = now()
+    const safeQuery = ftsSafeQuery(query)
 
     // Sessions — FTS5 virtual table stores title + summary; updated_at comes
     // from the sessions row via JOIN.
@@ -246,7 +274,7 @@ export class MemoryStore {
          ORDER BY bm25
          LIMIT ?`,
       )
-      .all(query, limit * 2) as Array<{ id: string; snippet: string; bm25: number; updated_at: string }>
+      .all(safeQuery, limit * 2) as Array<{ id: string; snippet: string; bm25: number; updated_at: string }>
 
     for (const r of sessionResults) {
       const recency = recencyWeight(r.updated_at, asOf)
@@ -266,7 +294,7 @@ export class MemoryStore {
          ORDER BY bm25
          LIMIT ?`,
       )
-      .all(query, limit * 2) as Array<{ id: string; session_id: string; snippet: string; bm25: number; created_at: string }>
+      .all(safeQuery, limit * 2) as Array<{ id: string; session_id: string; snippet: string; bm25: number; created_at: string }>
 
     for (const r of messageResults) {
       const recency = recencyWeight(r.created_at, asOf)
@@ -280,28 +308,8 @@ export class MemoryStore {
       })
     }
 
-    // User facts — FTS5 query sanitization.
-    // Strategy: split into tokens, append `*` to the last token for prefix
-    // match (so "type" matches "typescript", "mac" matches "macos"), and
-    // join with spaces (FTS5 implicit AND). Each token is individually
-    // double-quoted to avoid FTS5 syntax collisions.
-    const queryTokens = query
-      .replace(/[^\p{L}\p{N}\s]+/gu, " ")
-      .trim()
-      .split(/\s+/)
-      .filter((t) => t.length > 0)
-    const factQuery = queryTokens.length === 0
-      ? '""'
-      : queryTokens.length === 1
-        ? `"${queryTokens[0]!.replace(/"/g, '""')}"`
-        : queryTokens
-            .map((t, i) => {
-              const escaped = t.replace(/"/g, '""')
-              // Prefix-match only the last token to keep the AND set tight;
-              // earlier tokens must hit exactly.
-              return i === queryTokens.length - 1 ? `"${escaped}"*` : `"${escaped}"`
-            })
-            .join(" ")
+    // User facts — sanitized FTS5 query (see ftsSafeQuery).
+    const factQuery = ftsSafeQuery(query)
     const factResults = this.db
       .prepare(
         `SELECT f.id, f.key, f.value, f.confidence,
@@ -560,7 +568,7 @@ export class MemoryStore {
   searchArtifacts(query: string, limit = 10): Artifact[] {
     return this.db
       .prepare(`SELECT a.* FROM artifact_fts f JOIN artifacts a ON f.id = a.id WHERE artifact_fts MATCH ? ORDER BY rank LIMIT ?`)
-      .all(query, limit) as Artifact[]
+      .all(ftsSafeQuery(query), limit) as Artifact[]
   }
 
   listArtifacts(limit = 20): Artifact[] {
