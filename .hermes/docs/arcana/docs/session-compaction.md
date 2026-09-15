@@ -21,11 +21,12 @@ After a **successful** compact, Arcana stores on the session:
 
 | Metadata key | Purpose |
 |--------------|---------|
-| `__arcana_last_compact_tokens` | Provider usage total (`tokenCount`) at last success — same metric used for inter/intra decide |
-| `__arcana_last_compact_at` | Timestamp |
+| `__arcana_last_compact_tokens` | Hysteresis baseline. Written from a text estimate on success, then **rebased to provider usage** (`tokenCount`) at the first provider measurement completed after the compaction — the same metric used for inter/intra decide. |
+| `__arcana_last_compact_result_pending` | Set on success, cleared by the rebase. While present the baseline above is provisional. |
+| `__arcana_last_compact_at` | Timestamp (also the rebase guard: measurements completed at or before it are pre-compaction and never rebase). |
 | `__arcana_last_compact_pass` | `inter` \| `intra` \| `inline` \| `manual` |
 
-Inter/intra will not fire again until usage grows by at least **max(5 000 tokens, 5% of context)**. Soft-failed compacts do not update these fields. Inter/intra are allowed when context is hot via **either** the percent threshold **or** the usable hard ceiling (`isOverflow`), then apply hysteresis. Intra hard-breach may lower the min step floor to 2 but **never** skips hysteresis (avoids mid-loop thrash).
+Inter/intra will not fire again until usage grows by at least **max(5 000 tokens, 5% of context)** from the baseline. Soft-failed compacts do not update these fields. Inter/intra are allowed when context is hot via **either** the percent threshold **or** the usable hard ceiling (`isOverflow`), then apply hysteresis. Intra hard-breach may lower the min step floor to 2 but **never** skips hysteresis (avoids mid-loop thrash).
 
 ## Config
 

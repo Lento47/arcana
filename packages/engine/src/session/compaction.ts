@@ -967,19 +967,14 @@ export const layer = Layer.effect(
 
       // Same metric for pressure decision + hysteresis store.
       const count = usageForHysteresis(input.tokens)
-      const pressure = compactionPressure({
-        cfg,
-        tokens: input.tokens,
-        model,
-        outputTokenMax: flags.outputTokenMax,
-      })
-      if (!pressure.hot) return false
 
       const sess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (!sess) return false
       let meta = (sess.metadata ?? {}) as Record<string, unknown>
-      // Rebase the provisional post-compaction baseline to provider usage once a
-      // genuine post-compaction measurement exists (same metric as `count`).
+      // Rebase the provisional post-compaction baseline to provider usage at the
+      // first opportunity after the compaction — hot or not. Measuring only once
+      // context is hot again would rebase to the hot count itself and make the
+      // growth gate compare a count against itself.
       const rebased = rebaseCompactBaseline(meta, { count, completedAt: input.completedAt })
       if (rebased.rebound) {
         yield* session.setMetadata({ sessionID: input.sessionID, metadata: rebased.metadata })
@@ -989,6 +984,15 @@ export const layer = Layer.effect(
         })
         meta = rebased.metadata
       }
+
+      const pressure = compactionPressure({
+        cfg,
+        tokens: input.tokens,
+        model,
+        outputTokenMax: flags.outputTokenMax,
+      })
+      if (!pressure.hot) return false
+
       const lastTokens = readLastCompactTokens(meta)
       // alreadyHot: percent gate already satisfied via isOverflow (hard ceiling OK).
       if (
@@ -1073,18 +1077,12 @@ export const layer = Layer.effect(
       if (!model) return false
 
       const count = usageForHysteresis(input.tokens)
-      const pressure = compactionPressure({
-        cfg,
-        tokens: input.tokens,
-        model,
-        outputTokenMax: flags.outputTokenMax,
-      })
-      if (!pressure.hot) return false
 
       const sess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (!sess) return false
       let meta = (sess.metadata ?? {}) as Record<string, unknown>
-      // Same rebase as maybeInter: provider-measured baseline once one exists.
+      // Same rebase as maybeInter: provider-measured baseline at the first
+      // post-compaction measurement, before any hot gating.
       const rebased = rebaseCompactBaseline(meta, { count, completedAt: input.completedAt })
       if (rebased.rebound) {
         yield* session.setMetadata({ sessionID: input.sessionID, metadata: rebased.metadata })
@@ -1094,6 +1092,15 @@ export const layer = Layer.effect(
         })
         meta = rebased.metadata
       }
+
+      const pressure = compactionPressure({
+        cfg,
+        tokens: input.tokens,
+        model,
+        outputTokenMax: flags.outputTokenMax,
+      })
+      if (!pressure.hot) return false
+
       const lastTokens = readLastCompactTokens(meta)
 
       // Hard usable breach: only relaxes min steps (to 2), never hysteresis (P4 M1/M2).

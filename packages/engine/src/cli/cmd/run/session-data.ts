@@ -35,6 +35,7 @@ const money = new Intl.NumberFormat("en-US", {
 })
 
 type Tokens = {
+  total?: number
   input?: number
   output?: number
   reasoning?: number
@@ -139,12 +140,15 @@ function formatUsage(
   limit: number | undefined,
   cost: number | undefined,
 ): string | undefined {
-  const total =
+  // Canonical context size — mirrors engine `session/overflow.tokenCount`:
+  // prefer the provider-filled total, else sum the non-overlapping buckets.
+  const summed =
     (tokens?.input ?? 0) +
     (tokens?.output ?? 0) +
     (tokens?.reasoning ?? 0) +
     (tokens?.cache?.read ?? 0) +
     (tokens?.cache?.write ?? 0)
+  const total = tokens?.total != null && Number.isFinite(tokens.total) ? tokens.total : summed
 
   if (total <= 0) {
     if (typeof cost === "number" && cost > 0) {

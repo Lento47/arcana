@@ -246,6 +246,10 @@ describe("compaction-inter.metadata", () => {
     const pre = rebaseCompactBaseline(meta, { count: 140_000, completedAt: (meta[META_LAST_COMPACT_AT] as number) - 5 })
     expect(pre.rebound).toBe(false)
     expect(pre.metadata[META_LAST_COMPACT_RESULT_PENDING]).toBe(true)
+    // Same-millisecond completion is ambiguous — must not rebase either.
+    const sameMs = rebaseCompactBaseline(meta, { count: 140_000, completedAt: meta[META_LAST_COMPACT_AT] as number })
+    expect(sameMs.rebound).toBe(false)
+    expect(sameMs.metadata[META_LAST_COMPACT_RESULT_PENDING]).toBe(true)
     // Post-compaction measurement — rebase both baseline keys and clear marker.
     const post = rebaseCompactBaseline(meta, { count: 42_000, completedAt: (meta[META_LAST_COMPACT_AT] as number) + 1 })
     expect(post.rebound).toBe(true)

@@ -166,7 +166,10 @@ export function rebaseCompactBaseline(
   if (typeof input.completedAt !== "number" || !Number.isFinite(input.completedAt)) {
     return { metadata: current, rebound: false }
   }
-  if (typeof compactedAt !== "number" || !Number.isFinite(compactedAt) || input.completedAt < compactedAt) {
+  // Strictly after the compaction: same-millisecond measurements are ambiguous
+  // (a preserved tail message could share the summary's completion tick) and
+  // must not rebase. The pending marker survives for the next real measurement.
+  if (typeof compactedAt !== "number" || !Number.isFinite(compactedAt) || input.completedAt <= compactedAt) {
     return { metadata: current, rebound: false }
   }
   const next = { ...current }

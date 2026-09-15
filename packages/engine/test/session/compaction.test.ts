@@ -11,6 +11,13 @@ import { Image } from "@/image/image"
 import { Agent } from "../../src/agent/agent"
 import { LLM } from "../../src/session/llm"
 import { SessionCompaction } from "../../src/session/compaction"
+import {
+  META_LAST_COMPACT_AT,
+  META_LAST_COMPACT_RESULT_PENDING,
+  META_LAST_COMPACT_RESULT_TOKENS,
+  META_LAST_COMPACT_SOURCE_TOKENS,
+  META_LAST_COMPACT_TOKENS,
+} from "../../src/session/compaction-inter"
 import { Token } from "@/util/token"
 import { Permission } from "../../src/permission"
 import { Plugin } from "../../src/plugin"
@@ -1905,4 +1912,58 @@ describe("SessionNs.getUsage", () => {
     expect(result.tokens.cache.read).toBe(200)
     expect(result.tokens.cache.write).toBe(300)
   })
+})
+
+describe("session.compaction.hysteresis rebase", () => {
+  it.instance(
+    "replaces the estimated baseline with provider usage at the first post-compaction measurement",
+    () => {
+      return Effect.gen(function* () {
+        const test = yield* TestInstance
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        const user = yield* createUserMessage(session.id, "hello")
+        const assistant = yield* createAssistantMessage(session.id, user.id, test.directory)
+        const compactedAt = Date.now() - 1_000
+
+        yield* ssn.setMetadata({
+          sessionID: session.id,
+          metadata: {
+            [META_LAST_COMPACT_TOKENS]: 5_000,
+            [META_LAST_COMPACT_RESULT_TOKENS]: 5_000,
+            [META_LAST_COMPACT_SOURCE_TOKENS]: 90_000,
+            [META_LAST_COMPACT_AT]: compactedAt,
+            [META_LAST_COMPACT_RESULT_PENDING]: true,
+          },
+        })
+
+        const finished = yield* ssn.updateMessage({
+          ...assistant,
+          tokens: { input: 30_000, output: 1_000, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: assistant.time.created, completed: compactedAt + 500 },
+        })
+
+        const compact = yield* SessionCompaction.Service
+        const did = yield* compact.maybeInter({
+          sessionID: session.id,
+          agent: "build",
+          model: ref,
+          tokens: finished.tokens,
+          completedAt: finished.time.completed,
+          reason: "preflight",
+        })
+        // 31k tokens is below the 85% safety band and below the 96k performance band,
+        // so no compaction runs — but the baseline must still be rebased.
+        expect(did).toBe(false)
+
+        const after = yield* ssn.get(session.id)
+        const meta = (after.metadata ?? {}) as Record<string, unknown>
+        expect(meta[META_LAST_COMPACT_TOKENS]).toBe(31_000)
+        expect(meta[META_LAST_COMPACT_RESULT_TOKENS]).toBe(31_000)
+        expect(META_LAST_COMPACT_RESULT_PENDING in meta).toBe(false)
+        expect(meta[META_LAST_COMPACT_SOURCE_TOKENS]).toBe(90_000)
+      })
+    },
+    { git: true },
+  )
 })
