@@ -155,7 +155,7 @@ function fileTreeGuides(rows: readonly FileTreeRow[]): FileTreeGuides {
   const cached = fileTreeGuidesCache.get(rows)
   if (cached) return cached
 
-  const branch = new Array<boolean>(rows.length).fill(false)
+  const branch = Array.from({ length: rows.length }, () => false)
   const stack: number[] = []
   for (let i = 0; i < rows.length; i++) {
     const depth = rows[i]!.depth
@@ -169,7 +169,7 @@ function fileTreeGuides(rows: readonly FileTreeRow[]): FileTreeGuides {
     stack.push(i)
   }
 
-  const indentation = new Array<string>(rows.length).fill("")
+  const indentation = Array.from({ length: rows.length }, () => "")
   const lastAtDepth: number[] = []
   for (let i = 0; i < rows.length; i++) {
     const depth = rows[i]!.depth
