@@ -48,7 +48,13 @@ export function defaultKernelListenPath(sessionId = "supervised"): string {
  * Poll-connect until the kernel accepts or the deadline passes. A raw
  * connect+destroy is harmless: frames are stateless.
  */
-export function waitForKernelReady(listenPath: string, timeoutMs = 15_000, signal?: AbortSignal): Promise<void> {
+export function waitForKernelReady(
+  listenPath: string,
+  timeoutMs = 15_000,
+  signal?: AbortSignal,
+  /** Test seam: defaults to node:net connect; production callers omit it. */
+  connectImpl: typeof netConnect = netConnect,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     let socket: ReturnType<typeof netConnect> | undefined
     let retry: ReturnType<typeof setTimeout> | undefined
@@ -67,7 +73,7 @@ export function waitForKernelReady(listenPath: string, timeoutMs = 15_000, signa
     const deadline = setTimeout(() => finish(new Error(`kernel not ready within ${timeoutMs}ms at ${listenPath}`)), timeoutMs)
     const attempt = () => {
       if (settled) return
-      socket = netConnect(listenPath)
+      socket = connectImpl(listenPath)
       socket.once("connect", () => finish())
       socket.once("error", () => {
         socket?.destroy()
