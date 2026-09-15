@@ -139,7 +139,7 @@ export function DialogPermissions() {
     // subagent approval re-broadcasts through its child session, never the
     // parent's.
     if (!approval) return
-    setResendState(approvalId, { phase: "sending", label: "sending…" })
+    setResendState(approvalId, { phase: "sending", label: "Sending…" })
     const outcome = await resendApproval({
       baseUrl: sdk.url,
       fetchImpl: sdk.fetch,
