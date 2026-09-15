@@ -36,7 +36,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Arcana
         uses: ./.github/actions/setup-arcana
@@ -49,7 +49,7 @@ jobs:
 
       - name: Upload conformance evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: conformance-${{ runner.os }}-${{ github.sha }}
           path: conformance-${{ runner.os }}-${{ github.sha }}.json
