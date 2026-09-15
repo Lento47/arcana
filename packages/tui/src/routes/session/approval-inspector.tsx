@@ -71,13 +71,16 @@ export function ApprovalInspector(props: {
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>[Esc] Close</text>
       </box>
 
-      <box
-        flexDirection="column"
+      <scrollbox
+        flexGrow={1}
+        minHeight={0}
         paddingTop={1}
         paddingBottom={2}
         paddingLeft={2}
         paddingRight={2}
-        gap={0}
+        verticalScrollbarOptions={{
+          trackOptions: { backgroundColor: theme.background, foregroundColor: theme.borderActive },
+        }}
       >
         <For each={rows()}>
           {([label, value]) => (
@@ -146,7 +149,7 @@ export function ApprovalInspector(props: {
             </text>
           </box>
         </Show>
-      </box>
+      </scrollbox>
     </box>
   )
 }

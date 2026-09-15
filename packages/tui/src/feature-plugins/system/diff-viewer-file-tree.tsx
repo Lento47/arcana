@@ -136,25 +136,77 @@ function scrollFileTreeRowIntoView(scroll: ScrollBoxRenderable | undefined, inde
   }
 }
 
+interface FileTreeGuides {
+  /** Per row: does this row have a later sibling at the same depth? */
+  branch: boolean[]
+  /** Precomputed indentation cells (one per ancestor depth). */
+  indentation: string[]
+}
+
+const fileTreeGuidesCache = new WeakMap<readonly FileTreeRow[], FileTreeGuides>()
+
+/**
+ * One pass answers "does row i have a later row at depth ≤ d" for every row:
+ * a monotonic stack resolves each row's own-depth branch question, and the
+ * indentation cells reuse the nearest ancestor's answer. Replaces the old
+ * per-cell `rows.slice().find()` scan (O(n²) and one array copy per column).
+ */
+function fileTreeGuides(rows: readonly FileTreeRow[]): FileTreeGuides {
+  const cached = fileTreeGuidesCache.get(rows)
+  if (cached) return cached
+
+  const branch = new Array<boolean>(rows.length).fill(false)
+  const stack: number[] = []
+  for (let i = 0; i < rows.length; i++) {
+    const depth = rows[i]!.depth
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1]!
+      if (rows[top]!.depth < depth) break
+      stack.pop()
+      // First later row at depth ≤ top's depth decides the branch glyph.
+      branch[top] = rows[top]!.depth === depth
+    }
+    stack.push(i)
+  }
+
+  const indentation = new Array<string>(rows.length).fill("")
+  const lastAtDepth: number[] = []
+  for (let i = 0; i < rows.length; i++) {
+    const depth = rows[i]!.depth
+    let guides = ""
+    for (let d = 0; d < depth; d++) {
+      const ancestor = lastAtDepth[d]
+      if (ancestor === undefined) {
+        guides += "   "
+      } else if (d === 0) {
+        // Root-level gutter is one column wide (matches the root's own glyph).
+        guides += branch[ancestor] ? "│  " : " "
+      } else {
+        guides += branch[ancestor] ? "│  " : "   "
+      }
+    }
+    indentation[i] = guides
+    lastAtDepth[depth] = i
+  }
+
+  const guides = { branch, indentation }
+  fileTreeGuidesCache.set(rows, guides)
+  return guides
+}
+
 function fileTreeRowPrefix(
   rows: readonly FileTreeRow[],
   index: number,
   row: FileTreeRow,
   expandedNodes: ReadonlySet<number> | undefined,
 ) {
-  const indentation = Array.from({ length: row.depth }, (_, depth) => {
-    if (depth === 0 && !hasLaterSibling(rows, 0, 0)) return " "
-    return hasLaterSibling(rows, index, depth) ? "│  " : "   "
-  }).join("")
+  const guides = fileTreeGuides(rows)
+  const indentation = guides.indentation[index] ?? ""
   const topRoot = index === 0 && row.depth === 0
-  const branch = topRoot ? " " : hasLaterSibling(rows, index, row.depth) ? "├─ " : "└─ "
+  const branch = topRoot ? " " : guides.branch[index] ? "├─ " : "└─ "
   const marker = row.kind === "directory" ? (expandedNodes && !expandedNodes.has(row.id) ? "▸ " : "▾ ") : ""
 
   return `${indentation}${branch}${marker}`
-}
-
-function hasLaterSibling(rows: readonly FileTreeRow[], index: number, depth: number) {
-  return rows.slice(index + 1).find((row) => row.depth <= depth)?.depth === depth
 }
 
 function fileTreeRowStatus(row: FileTreeRow, files: readonly FileTreeItem[], reviewed: boolean) {
