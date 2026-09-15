@@ -48,7 +48,7 @@ const VoiceContext = createSimpleContext({
         const current = promptRef.current
         if (!current) {
           toast.show({
-            message: `${lexicon().error}: No prompt is available to receive voice input`,
+            message: `${lexicon().error}: No prompt is available to receive voice input — open a session first.`,
             variant: "error",
           })
           return

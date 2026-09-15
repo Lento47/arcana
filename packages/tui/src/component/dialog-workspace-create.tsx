@@ -67,7 +67,7 @@ async function loadWorkspaceAdapters(input: {
   } catch (err) {
     input.toast.show({
       title: "Failed to load workspace adapters",
-      message: errorMessage(err),
+      message: `${errorMessage(err)} — retry from the workspace dialog.`,
       variant: "error",
     })
     return undefined

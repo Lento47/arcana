@@ -187,7 +187,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           .then((res: any) => copy(res.data!.share!.url))
           .catch((error: any) => {
             toast.show({
-              message: error instanceof Error ? error.message : "Failed to share session",
+              message: error instanceof Error ? `${error.message} — try again.` : "Failed to share session — try again.",
               variant: "error",
             })
           })

@@ -263,7 +263,7 @@ export function useAppEffects(props: {
           if (result.data?.id) {
             route.navigate({ type: "session", sessionID: result.data.id })
           } else {
-            toast.show({ message: "Failed to fork session", variant: "error" })
+            toast.show({ message: "Failed to fork session — try again.", variant: "error" })
           }
         })
       } else {
@@ -281,7 +281,7 @@ export function useAppEffects(props: {
       if (result.data?.id) {
         route.navigate({ type: "session", sessionID: result.data.id })
       } else {
-        toast.show({ message: "Failed to fork session", variant: "error" })
+        toast.show({ message: "Failed to fork session — try again.", variant: "error" })
       }
     })
   })

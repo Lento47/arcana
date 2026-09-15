@@ -121,7 +121,7 @@ async function runBridgedCommand(
       deps.toast.show({ title: `arcana ${verb} exited ${result.exitCode}`, variant: "warning" })
     }
   } catch (error) {
-    deps.toast.show({ title: `arcana ${verb} failed`, message: errorMessage(error), variant: "error" })
+    deps.toast.show({ title: `arcana ${verb} failed`, message: `${errorMessage(error)} — try again, or run it in a terminal for details.`, variant: "error" })
   }
 }
 
