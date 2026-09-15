@@ -6,6 +6,10 @@ import type { ArtifactSummary } from "../../util/artifacts"
 
 const id = "internal:sidebar-artifacts"
 
+/** Sidebar rows are a preview, not a browser; cap the list so a large
+ *  ~/.arcana/artifacts directory cannot bloat the sidebar render. */
+const MAX_VISIBLE_ARTIFACTS = 12
+
 function View(props: { api: TuiPluginApi; session_id: string }) {
   const theme = () => props.api.theme.current
   const [selectedId, setSelectedId] = createSignal<string | null>(null)
@@ -16,22 +20,25 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
     return listArtifacts()
   })
 
-  const hasArtifacts = createMemo(() => artifacts().length > 0)
+  const visible = createMemo(() => artifacts().slice(0, MAX_VISIBLE_ARTIFACTS))
+  const hidden = createMemo(() => Math.max(0, artifacts().length - visible().length))
 
   return (
-    <Show when={hasArtifacts()}>
+    <Show when={artifacts().length > 0}>
       <box flexDirection="column" gap={1}>
         <text fg={theme().text}>
           <span style={{ fg: theme().accent }}>◇ </span>
           <b>ARTIFACTS</b>
         </text>
-        <For each={artifacts()}>
+        <For each={visible()}>
           {(item) => (
             <box
               onMouseUp={() => setSelectedId(selectedId() === item.id ? null : item.id)}
             >
               <text
                 fg={selectedId() === item.id ? theme().accent : theme().textMuted}
+                wrapMode="none"
+                truncate
               >
                 {item.type === "svg" || item.type === "html" ? "◈ " : "▣ "}
                 {item.title}
@@ -40,6 +47,9 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
             </box>
           )}
         </For>
+        <Show when={hidden() > 0}>
+          <text fg={theme().textMuted}>+{hidden()} more in ~/.arcana/artifacts</text>
+        </Show>
       </box>
     </Show>
   )

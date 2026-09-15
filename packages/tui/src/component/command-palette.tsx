@@ -1,4 +1,4 @@
-import { createMemo, createSignal } from "solid-js"
+import { createMemo, createSignal, Show } from "solid-js"
 import { DialogSelect, type DialogSelectRef } from "../ui/dialog-select"
 import { type DialogContext } from "../ui/dialog"
 import {
@@ -9,6 +9,8 @@ import {
   useOpencodeKeymap,
 } from "../keymap"
 import { useTuiConfig } from "../config"
+import { useTheme } from "../context/theme"
+import { Locale } from "../util/locale"
 import { arcanaDitherPattern } from "../ui/arcana"
 
 type PaletteCommandEntry = ReturnType<OpenTuiKeymap["getCommandEntries"]>[number]
@@ -26,6 +28,7 @@ function isSuggestedPaletteCommand(entry: PaletteCommandEntry) {
 
 export function CommandPaletteDialog() {
   const config = useTuiConfig()
+  const { theme } = useTheme()
   const keymap = useOpencodeKeymap()
   const entries = useKeymapSelector((keymap: OpenTuiKeymap) => {
     // "registered" lists all palette commands; "reachable" was mode/focus gated
@@ -79,5 +82,25 @@ export function CommandPaletteDialog() {
     return result
   })
 
-  return <DialogSelect ref={setRef} title={`ARCANA ${arcanaDitherPattern("commands", 12)} commands`} options={list()} />
+  return (
+    <DialogSelect
+      ref={setRef}
+      title={`ARCANA ${arcanaDitherPattern("commands", 12)} commands`}
+      options={list()}
+      emptyView={
+        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+          <Show
+            when={ref()?.filter}
+            fallback={<text fg={theme.textMuted}>No commands available. Press esc to close.</text>}
+          >
+            {(query) => (
+              <text fg={theme.textMuted} wrapMode="word">
+                No commands match "{Locale.truncate(query(), 40)}". Press esc to close.
+              </text>
+            )}
+          </Show>
+        </box>
+      }
+    />
+  )
 }

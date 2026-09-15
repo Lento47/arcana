@@ -32,7 +32,7 @@ export function DialogVariant() {
   return (
     <DialogSelect<string>
       options={options()}
-      title={`${Glyph.sigil} Select variant`}
+      title={`${Glyph.sigil} Select Variant`}
       current={local.model.variant.selected()}
       flat={true}
     />

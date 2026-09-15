@@ -2,8 +2,14 @@ import { TextAttributes } from "@opentui/core"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { createStore } from "solid-js/store"
-import { For } from "solid-js"
+import { For, Show, createSignal } from "solid-js"
 import { useBindings } from "../keymap"
+
+type RecoveryOptionID = "delete" | "force-delete" | "restore" | "dismiss"
+
+function isDestructiveOption(id: RecoveryOptionID): boolean {
+  return id === "delete" || id === "force-delete"
+}
 
 export function DialogSessionDeleteFailed(props: {
   session: string
@@ -17,8 +23,12 @@ export function DialogSessionDeleteFailed(props: {
   const dialog = useDialog()
   const { theme } = useTheme()
   const [store, setStore] = createStore({
-    active: "delete" as "delete" | "force-delete" | "restore" | "dismiss",
+    active: "delete" as RecoveryOptionID,
   })
+  // Destructive recovery options are two-step: the first enter/click arms the
+  // option, the second confirms. Esc cancels the confirmation first.
+  const [confirming, setConfirming] = createSignal(false)
+  const [failure, setFailure] = createSignal<string | null>(null)
 
   const options = [
     {
@@ -47,46 +57,64 @@ export function DialogSessionDeleteFailed(props: {
     },
   ]
 
-  async function confirm() {
-    const result = await options.find((item) => item.id === store.active)?.run?.()
-    if (result === false) return
-    props.onDone?.()
-    if (!props.onDone) dialog.clear()
+  function confirmText(id: RecoveryOptionID): string {
+    return id === "delete"
+      ? `Press enter again to delete "${props.workspace}" and every session attached to it. This cannot be undone.`
+      : `Press enter again to delete the session "${props.session}" record. This cannot be undone.`
+  }
+
+  async function runOption(id: RecoveryOptionID) {
+    const option = options.find((item) => item.id === id)
+    if (!option?.run) return
+    if (isDestructiveOption(id) && !(confirming() && store.active === id)) {
+      setStore("active", id)
+      setConfirming(true)
+      setFailure(null)
+      return
+    }
+    try {
+      const result = await option.run()
+      // `false` is not always a failure: restore hands off to the workspace
+      // picker. Callers surface their own error toasts; just disarm here.
+      setConfirming(false)
+      if (result === false) return
+      setFailure(null)
+      props.onDone?.()
+      if (!props.onDone) dialog.clear()
+    } catch (error) {
+      setFailure(
+        `The recovery action failed — ${error instanceof Error ? error.message : String(error)}. Press esc to dismiss and try again.`,
+      )
+      setConfirming(false)
+    }
+  }
+
+  function move(offset: number) {
+    setConfirming(false)
+    setFailure(null)
+    setStore("active", (prev) => {
+      const ids = options.map((o) => o.id)
+      return ids[(ids.indexOf(prev) + offset + ids.length) % ids.length]!
+    })
   }
 
   function dismiss() {
+    if (confirming()) {
+      setConfirming(false)
+      return
+    }
     props.onDismiss?.()
     dialog.clear()
   }
 
   useBindings(() => ({
     bindings: [
-      { key: "return", desc: "Confirm recovery option", group: "Dialog", cmd: () => void confirm() },
+      { key: "return", desc: "Confirm recovery option", group: "Dialog", cmd: () => void runOption(store.active) },
       { key: "escape", desc: "Dismiss", group: "Dialog", cmd: dismiss },
-      { key: "left", desc: "Previous option", group: "Dialog",
-        cmd: () => setStore("active", (prev) => {
-          const ids = options.map((o) => o.id)
-          return ids[(ids.indexOf(prev) - 1 + ids.length) % ids.length]!
-        }),
-      },
-      { key: "up", desc: "Previous option", group: "Dialog",
-        cmd: () => setStore("active", (prev) => {
-          const ids = options.map((o) => o.id)
-          return ids[(ids.indexOf(prev) - 1 + ids.length) % ids.length]!
-        }),
-      },
-      { key: "right", desc: "Next option", group: "Dialog",
-        cmd: () => setStore("active", (prev) => {
-          const ids = options.map((o) => o.id)
-          return ids[(ids.indexOf(prev) + 1) % ids.length]!
-        }),
-      },
-      { key: "down", desc: "Next option", group: "Dialog",
-        cmd: () => setStore("active", (prev) => {
-          const ids = options.map((o) => o.id)
-          return ids[(ids.indexOf(prev) + 1) % ids.length]!
-        }),
-      },
+      { key: "left", desc: "Previous option", group: "Dialog", cmd: () => move(-1) },
+      { key: "up", desc: "Previous option", group: "Dialog", cmd: () => move(-1) },
+      { key: "right", desc: "Next option", group: "Dialog", cmd: () => move(1) },
+      { key: "down", desc: "Next option", group: "Dialog", cmd: () => move(1) },
     ],
   }))
 
@@ -115,11 +143,14 @@ export function DialogSessionDeleteFailed(props: {
               paddingRight={1}
               paddingTop={1}
               paddingBottom={1}
-              backgroundColor={item.id === store.active ? theme.primary : undefined}
-              onMouseUp={() => {
-                setStore("active", item.id)
-                void confirm()
-              }}
+              backgroundColor={
+                confirming() && item.id === store.active
+                  ? theme.error
+                  : item.id === store.active
+                    ? theme.primary
+                    : undefined
+              }
+              onMouseUp={() => void runOption(item.id)}
             >
               <text
                 attributes={TextAttributes.BOLD}
@@ -127,9 +158,22 @@ export function DialogSessionDeleteFailed(props: {
               >
                 {item.title}
               </text>
-              <text fg={item.id === store.active ? theme.selectedListItemText : theme.textMuted} wrapMode="word">
+              <text
+                fg={item.id === store.active ? theme.selectedListItemText : theme.textMuted}
+                wrapMode="word"
+              >
                 {item.description}
               </text>
+              <Show when={confirming() && item.id === store.active}>
+                <text fg={theme.selectedListItemText} wrapMode="word">
+                  {confirmText(item.id)}
+                </text>
+              </Show>
+              <Show when={failure() && item.id === store.active}>
+                <text fg={theme.selectedListItemText} wrapMode="word">
+                  {failure()}
+                </text>
+              </Show>
             </box>
           )}
         </For>

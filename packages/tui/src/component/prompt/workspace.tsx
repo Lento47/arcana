@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { createMemo, createSignal } from "solid-js"
 import { useDialog } from "../../ui/dialog"
 import { useSDK } from "../../context/sdk"
 import { useProject } from "../../context/project"
@@ -21,7 +21,6 @@ export function usePromptWorkspace(sessionID?: string) {
   const toast = useToast()
   const [selection, setSelection] = createSignal<WorkspaceSelection>()
   const [creating, setCreating] = createSignal(false)
-  const [creatingDots, setCreatingDots] = createSignal(3)
   const [notice, setNotice] = createSignal<string>()
 
   async function create(selection: Extract<WorkspaceSelection, { type: "new" }>) {
@@ -32,7 +31,11 @@ export function usePromptWorkspace(sessionID?: string) {
     } catch (err) {
       setSelection(undefined)
       setCreating(false)
-      toast.show({ title: "Creating workspace failed", message: errorMessage(err), variant: "error" })
+      toast.show({
+        title: "Creating workspace failed",
+        message: `${errorMessage(err)} — retry the action, or check the logs.`,
+        variant: "error",
+      })
       return
     }
     if (result.error || !result.data) {
@@ -40,7 +43,7 @@ export function usePromptWorkspace(sessionID?: string) {
       setCreating(false)
       toast.show({
         title: "Creating workspace failed",
-        message: errorMessage(result.error ?? "no response"),
+        message: `${errorMessage(result.error ?? "no response")} — retry the action, or check the logs.`,
         variant: "error",
       })
       return
@@ -106,15 +109,6 @@ export function usePromptWorkspace(sessionID?: string) {
     void openWorkspaceSelect({ dialog, sdk, sync, project, toast, onSelect: warp })
   }
 
-  createEffect(() => {
-    if (!creating()) {
-      setCreatingDots(3)
-      return
-    }
-    const timer = setInterval(() => setCreatingDots((dots) => (dots % 3) + 1), 1000)
-    onCleanup(() => clearInterval(timer))
-  })
-
   const label = createMemo<
     | { type: "new"; workspaceType: string }
     | { type: "existing"; workspaceType: string; workspaceName: string; status?: WorkspaceStatus }
@@ -133,5 +127,5 @@ export function usePromptWorkspace(sessionID?: string) {
     }
   })
 
-  return { selection, creating, creatingDots, notice, label, open, warp, clearNotice }
+  return { selection, creating, notice, label, open, warp, clearNotice }
 }

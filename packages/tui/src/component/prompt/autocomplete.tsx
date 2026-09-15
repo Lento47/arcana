@@ -543,7 +543,7 @@ export function Autocomplete(props: {
       // Add file options. Trust the order returned by fff (frecency, fuzzy
       // score, filename bonus, etc. are already factored in).
       if (!result.error && result.data) {
-        const width = props.anchor().width - 4
+        const width = Math.max(8, props.anchor().width - 4)
         options.push(
           ...result.data.data.map((item): AutocompleteOption => {
             const { filename, url: _url, part } = createFilePart(item.path, lineRange)
@@ -571,7 +571,7 @@ export function Autocomplete(props: {
     if (!store.visible || store.visible === "/") return []
 
     const options: AutocompleteOption[] = []
-    const width = props.anchor().width - 4
+    const width = Math.max(8, props.anchor().width - 4)
 
     for (const res of Object.values(sync.data.mcp_resource)) {
       const text = `${res.name} (${res.uri})`
@@ -1103,7 +1103,7 @@ export function Autocomplete(props: {
           each={options()}
           fallback={
             <box paddingLeft={1} paddingRight={1}>
-              <text fg={theme.textMuted}>No matching items</text>
+              <text fg={theme.textMuted}>{files.loading ? "Loading…" : "No matching items"}</text>
             </box>
           }
         >

@@ -4,7 +4,7 @@ import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { useSync } from "../context/sync"
 import { useProject } from "../context/project"
 import { useRoute } from "../context/route"
-import { createMemo, createSignal, onMount } from "solid-js"
+import { createMemo, createSignal, onMount, Show } from "solid-js"
 import { errorMessage } from "../util/error"
 import { useSDK } from "../context/sdk"
 import { useToast } from "../ui/toast"
@@ -13,6 +13,8 @@ import { useTheme } from "../context/theme"
 import { Glyph } from "../branding"
 import { DialogAlert } from "../ui/dialog-alert"
 import { DialogWorkspaceFileChanges } from "./dialog-workspace-file-changes"
+import { TextAttributes } from "@opentui/core"
+import { useBindings } from "../keymap"
 
 type Adapter = ExperimentalWorkspaceAdapterListResponse[number]
 
@@ -115,7 +117,7 @@ export async function warpWorkspaceSession(input: {
   } catch (err) {
     input.toast.show({
       title: "Failed to warp session",
-      message: errorMessage(err),
+      message: `${errorMessage(err)} — try again.`,
       variant: "error",
     })
     return false
@@ -132,7 +134,7 @@ export async function warpWorkspaceSession(input: {
 
     input.toast.show({
       title: "Failed to warp session",
-      message: errorMessage(result?.error ?? "no response"),
+      message: `${errorMessage(result?.error ?? "no response")} — try again.`,
       variant: "error",
     })
     return false
@@ -194,16 +196,22 @@ export function DialogWorkspaceSelect(props: {
   const sdk = useSDK()
   const toast = useToast()
   const [adapters, setAdapters] = createSignal<Adapter[] | undefined>(props.adapters)
+  const [loadFailed, setLoadFailed] = createSignal(false)
   const omittedWorkspaceID = createMemo(() => (route.data.type === "session" ? project.workspace.current() : undefined))
+
+  const load = async () => {
+    setLoadFailed(false)
+    const res = await loadWorkspaceAdapters({ sdk, sync, toast })
+    if (!res) {
+      setLoadFailed(true)
+      return
+    }
+    setAdapters(res)
+  }
 
   onMount(() => {
     dialog.setSize("medium")
-    void (async () => {
-      if (adapters()) return
-      const res = await loadWorkspaceAdapters({ sdk, sync, toast })
-      if (!res) return
-      setAdapters(res)
-    })()
+    if (!adapters()) void load()
   })
 
   const options = createMemo<DialogSelectOption<WorkspaceSelectValue>[]>(() => {
@@ -251,33 +259,41 @@ export function DialogWorkspaceSelect(props: {
     ]
   })
 
-  if (!adapters()) return null
   return (
-    <DialogSelect<WorkspaceSelectValue>
-      title={`${Glyph.sigil} Warp`}
-      skipFilter={true}
-      renderFilter={false}
-      options={options()}
-      onSelect={(option) => {
-        if (!option.value) return
-        if (option.value.type === "none") {
-          void props.onSelect(option.value)
-          return
-        }
-        if (option.value.type === "new") {
-          void props.onSelect(option.value)
-          return
-        }
-        if (option.value.type === "existing") {
-          void props.onSelect(option.value)
-          return
-        }
+    <Show
+      when={adapters()}
+      fallback={
+        <Show when={loadFailed()} fallback={<DialogWorkspaceLoading />}>
+          <DialogWorkspaceError onRetry={() => void load()} />
+        </Show>
+      }
+    >
+      <DialogSelect<WorkspaceSelectValue>
+        title={`${Glyph.sigil} Warp`}
+        skipFilter={true}
+        renderFilter={false}
+        options={options()}
+        onSelect={(option) => {
+          if (!option.value) return
+          if (option.value.type === "none") {
+            void props.onSelect(option.value)
+            return
+          }
+          if (option.value.type === "new") {
+            void props.onSelect(option.value)
+            return
+          }
+          if (option.value.type === "existing") {
+            void props.onSelect(option.value)
+            return
+          }
 
-        dialog.replace(() => (
-          <DialogExistingWorkspaceSelect omitWorkspaceID={omittedWorkspaceID()} onSelect={props.onSelect} />
-        ))
-      }}
-    />
+          dialog.replace(() => (
+            <DialogExistingWorkspaceSelect omitWorkspaceID={omittedWorkspaceID()} onSelect={props.onSelect} />
+          ))
+        }}
+      />
+    </Show>
   )
 }
 
@@ -286,6 +302,7 @@ function DialogExistingWorkspaceSelect(props: {
   onSelect: (selection: WorkspaceSelection) => Promise<void> | void
 }) {
   const project = useProject()
+  const { theme } = useTheme()
 
   const options = createMemo<DialogSelectOption<ExistingWorkspaceSelectValue>[]>(() =>
     project.workspace
@@ -303,6 +320,11 @@ function DialogExistingWorkspaceSelect(props: {
     <DialogSelect<ExistingWorkspaceSelectValue>
       title={`${Glyph.sigil} Existing Workspace`}
       options={options()}
+      emptyView={
+        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+          <text fg={theme.textMuted}>No connected workspaces available.</text>
+        </box>
+      }
       onSelect={(option) => {
         void props.onSelect({
           type: "existing",
@@ -330,14 +352,26 @@ function DialogWorkspaceLoading() {
 function DialogWorkspaceError(props: { onRetry: () => void }) {
   const { theme } = useTheme()
   const dialog = useDialog()
+  useBindings(() => ({
+    bindings: [
+      { key: "return", desc: "Retry workspace adapters", group: "Dialog", cmd: () => props.onRetry() },
+    ],
+  }))
   return (
     <box padding={3} gap={1}>
-      <text fg={theme.error}>Failed to load workspace adapters.</text>
+      <text fg={theme.error} attributes={TextAttributes.BOLD}>
+        Failed to load workspace adapters
+      </text>
+      <text fg={theme.textMuted} wrapMode="word">
+        Check that the engine is reachable, then press Enter to retry.
+      </text>
       <box flexDirection="row" gap={2} paddingTop={1}>
         <box backgroundColor={theme.primary} paddingLeft={3} paddingRight={3} onMouseUp={props.onRetry}>
           <text fg={theme.selectedListItemText}>Retry</text>
         </box>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>Cancel</text>
+        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+          Cancel
+        </text>
       </box>
     </box>
   )

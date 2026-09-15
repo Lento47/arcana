@@ -46,10 +46,10 @@ function Install(props: { api: TuiPluginApi }) {
 
   return (
     <props.api.ui.DialogPrompt
-      title="Install plugin"
+      title="Install Plugin"
       placeholder="npm package name"
       busy={busy()}
-      busyText="Installing plugin..."
+      busyText="Installing plugin…"
       description={() => (
         <box flexDirection="row" gap={1}>
           <text fg={props.api.theme.current.textMuted}>scope:</text>
@@ -67,7 +67,7 @@ function Install(props: { api: TuiPluginApi }) {
         if (!mod) {
           props.api.ui.toast({
             variant: "error",
-            message: "Plugin package name is required",
+            message: "Plugin package name is required — type a package name to install",
           })
           return
         }
@@ -188,7 +188,7 @@ function View(props: { api: TuiPluginApi }) {
         if (!ok) {
           props.api.ui.toast({
             variant: "error",
-            message: `Failed to update plugin ${item.id}`,
+            message: `Failed to update plugin ${item.id} — try again`,
           })
         }
         setList(props.api.plugins.list())
@@ -206,7 +206,7 @@ function View(props: { api: TuiPluginApi }) {
       onMove={(item) => setCur(item.value)}
       actions={[
         {
-          title: "toggle",
+          title: "Toggle",
           command: "plugins.toggle",
           hidden: lock(),
           onTrigger: (item) => {
@@ -215,7 +215,7 @@ function View(props: { api: TuiPluginApi }) {
           },
         },
         {
-          title: "install",
+          title: "Install",
           command: "dialog.plugins.install",
           hidden: lock(),
           onTrigger: () => {

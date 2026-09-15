@@ -119,7 +119,7 @@ function init() {
           ? err.message
           : typeof err === "string" && err.trim()
             ? err.trim()
-            : "An unknown error has occurred"
+            : "An unknown error occurred — retry the action; if it persists, check the logs"
       toast.show({ variant: "error", message, duration: DEFAULT_ERROR_DURATION_MS })
     },
     get toasts(): readonly ToastOptions[] {

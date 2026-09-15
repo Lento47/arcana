@@ -6,6 +6,8 @@ import { Locale } from "../../util/locale"
 import { useSDK } from "../../context/sdk"
 import { useRoute } from "../../context/route"
 import { useDialog, type DialogContext } from "../../ui/dialog"
+import { useToast } from "../../ui/toast"
+import { errorMessage } from "../../util/error"
 import type { PromptInfo } from "../../component/prompt/history"
 import { stripPromptPartIDs as strip } from "../../prompt/part"
 import { Glyph } from "../../branding"
@@ -16,6 +18,7 @@ export function DialogForkFromTimeline(props: { sessionID: string; onMove: (mess
   const dialog = useDialog()
   const sdk = useSDK()
   const route = useRoute()
+  const toast = useToast()
 
   onMount(() => {
     dialog.setSize("large")
@@ -27,9 +30,15 @@ export function DialogForkFromTimeline(props: { sessionID: string; onMove: (mess
       title: "Full session",
       value: undefined,
       onSelect: async (dialog: DialogContext) => {
-        const forked = await sdk.client.session.fork({ sessionID: props.sessionID })
+        const forked = await sdk.client.session
+          .fork({ sessionID: props.sessionID })
+          .catch((error) => ({ error: errorMessage(error) }) as never)
+        if (forked.error || !forked.data?.id) {
+          toast.show({ message: "Fork failed — try again", variant: "error" })
+          return
+        }
         route.navigate({
-          sessionID: forked.data!.id,
+          sessionID: forked.data.id,
           type: "session",
         })
         dialog.clear()
@@ -47,10 +56,16 @@ export function DialogForkFromTimeline(props: { sessionID: string; onMove: (mess
         value: message.id,
         footer: Locale.time(message.time.created),
         onSelect: async (dialog) => {
-          const forked = await sdk.client.session.fork({
-            sessionID: props.sessionID,
-            messageID: message.id,
-          })
+          const forked = await sdk.client.session
+            .fork({
+              sessionID: props.sessionID,
+              messageID: message.id,
+            })
+            .catch((error) => ({ error: errorMessage(error) }) as never)
+          if (forked.error || !forked.data?.id) {
+            toast.show({ message: "Fork failed — try again", variant: "error" })
+            return
+          }
           const parts = sync.data.part[message.id] ?? []
           const prompt = parts.reduce(
             (agg, part) => {
@@ -63,7 +78,7 @@ export function DialogForkFromTimeline(props: { sessionID: string; onMove: (mess
             { input: "", parts: [] as PromptInfo["parts"] },
           )
           route.navigate({
-            sessionID: forked.data!.id,
+            sessionID: forked.data.id,
             type: "session",
             prompt,
           })

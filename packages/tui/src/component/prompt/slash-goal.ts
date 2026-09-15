@@ -69,7 +69,11 @@ export function runGoalCommand(deps: SlashGoalDeps): true | undefined {
       })
     })
     .catch((error: unknown) => {
-      toast.show({ title: "Goal command failed", message: errorMessage(error), variant: "error" })
+      toast.show({
+        title: "Goal command failed",
+        message: `${errorMessage(error)} — retry the command.`,
+        variant: "error",
+      })
     })
   return undefined
 }
@@ -111,7 +115,11 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
         })
       })
       .catch((error: unknown) => {
-        toast.show({ title: "Loop command failed", message: errorMessage(error), variant: "error" })
+        toast.show({
+          title: "Loop command failed",
+          message: `${errorMessage(error)} — retry the command.`,
+          variant: "error",
+        })
       })
   } else if (subcommand === "set") {
     // /loop set <description> — set goal + start loop
@@ -126,7 +134,11 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
         toast.show({ title: "Goal set", message: description, variant: "success" })
       })
       .catch((error: unknown) => {
-        toast.show({ title: "Loop command failed", message: errorMessage(error), variant: "error" })
+        toast.show({
+          title: "Loop command failed",
+          message: `${errorMessage(error)} — retry the command.`,
+          variant: "error",
+        })
       })
   } else if (subcommand === "done" || subcommand === "blocked" || subcommand === "stale") {
     // /loop done|blocked|stale — mark goal status
@@ -150,7 +162,11 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
         toast.show({ title: "Goal marked", message: mapped, variant: "success" })
       })
       .catch((error: unknown) => {
-        toast.show({ title: "Loop command failed", message: errorMessage(error), variant: "error" })
+        toast.show({
+          title: "Loop command failed",
+          message: `${errorMessage(error)} — retry the command.`,
+          variant: "error",
+        })
       })
   } else {
     // /loop <text> — auto-set goal from text, start loop
@@ -168,7 +184,11 @@ export function runLoopCommand(deps: SlashGoalDeps): true | undefined {
         }
       })
       .catch((error: unknown) => {
-        toast.show({ title: "Loop command failed", message: errorMessage(error), variant: "error" })
+        toast.show({
+          title: "Loop command failed",
+          message: `${errorMessage(error)} — retry the command.`,
+          variant: "error",
+        })
       })
   }
 }

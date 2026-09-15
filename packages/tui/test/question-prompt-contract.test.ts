@@ -24,6 +24,12 @@ test("esc dismiss is armed (double-esc) instead of instant", () => {
   expect(source).toContain("dismissIntent")
 })
 
+test("custom-answer editor scrolls its question into view before focusing", () => {
+  // The focused editor must never sit outside the scroll viewport.
+  expect(source).toContain("scroller?.scrollChildIntoView")
+  expect(source).toContain("textarea?.focus()")
+})
+
 test("reply/dismiss dismiss the form locally (SSE-miss resilience)", () => {
   expect(source).toContain("dismissLocal")
   expect(source).toContain("dropLocal")

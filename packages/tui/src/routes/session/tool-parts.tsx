@@ -16,6 +16,7 @@ import { createSyntaxStyleMemo, generateSubtleSyntax, selectedForeground, useThe
 import { reasoningSummary, type ThinkingMode } from "../../context/thinking"
 import { useSync } from "../../context/sync"
 import { useLocal } from "../../context/local"
+import { useKV } from "../../context/kv.tsx"
 import { useCommandShortcut } from "../../keymap"
 import { setPreLayoutSiblingMargin } from "../../util/layout"
 import { Scramble } from "../../component/scramble"
@@ -794,9 +795,11 @@ function formatPermissionDenial(error: string): string {
     if (!Array.isArray(rules)) return "Permission denied by user rules."
     const denyRules = rules.filter(r => r.action === "deny")
     if (!denyRules.length) return "Permission denied by user rules."
-    return "Permission denied:\n" + denyRules.map(r =>
-      `  deny ${r.permission || "?"} → ${r.pattern || "*"}`
-    ).join("\n")
+    return (
+      "Permission denied:\n" +
+      denyRules.map(r => `  deny ${r.permission || "?"} → ${r.pattern || "*"}`).join("\n") +
+      "\n  Update the matching rule to allow this action."
+    )
   } catch {
     return "Permission denied by user rules."
   }
@@ -819,11 +822,18 @@ function InlineTool(props: {
   const ctx = use()
   const sync = useSync()
   const renderer = useRenderer()
+  const kv = useKV()
+  const animationsEnabled = createMemo(() => kv.get("animations_enabled", true))
   const [hover, setHover] = createSignal(false)
   const [errorExpanded, setErrorExpanded] = createSignal(false)
-  // Glow flash when tool transitions from running → complete
+  // Glow flash when tool transitions from running → complete.
+  // Gated by animations_enabled so motion-off sessions settle instantly.
   const [glowing, setGlowing] = createSignal(false)
   createEffect(() => {
+    if (!animationsEnabled()) {
+      setGlowing(false)
+      return
+    }
     if (props.complete && props.pending) {
       setGlowing(true)
       const timer = setTimeout(() => setGlowing(false), 600)

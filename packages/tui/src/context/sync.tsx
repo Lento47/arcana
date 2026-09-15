@@ -1195,9 +1195,13 @@ export const {
             const sessions = responses[3]
 
             batch(() => {
-              setStore("provider", reconcile(providers.providers))
-              setStore("provider_default", reconcile(providers.default))
-              setStore("provider_next", reconcile(providerList))
+              // Provider slices carry hard shape invariants ([] / {} /
+              // {all,default,connected}); a partial 200 must not be able to
+              // null them and crash every reader. Coalesce to the declared
+              // empty shape on the bootstrap path.
+              setStore("provider", reconcile(providers?.providers ?? []))
+              setStore("provider_default", reconcile(providers?.default ?? {}))
+              setStore("provider_next", reconcile(providerList ?? { all: [], default: {}, connected: [] }))
               setStore("console_state", reconcile(consoleState))
               if (sessions !== undefined) setStore("session", mergeSessionList(store.session, sessions))
             })
@@ -1256,7 +1260,7 @@ export const {
               if (active()) setStore("agent", reconcile(x.data ?? []))
             }),
             sdk.client.config.get({ workspace }).then((x) => {
-              if (active()) setStore("config", reconcile(x.data!))
+              if (active()) setStore("config", reconcile(x.data ?? {}))
             }),
             sdk.client.command.list({ workspace }).then((x) => {
               if (active()) setStore("command", reconcile(x.data ?? []))

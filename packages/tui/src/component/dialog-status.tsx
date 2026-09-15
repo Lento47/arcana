@@ -7,6 +7,11 @@ import { For, Match, Switch, Show, createMemo } from "solid-js"
 
 export type DialogStatusProps = {}
 
+/** Numerals for counts, with the singular form when there is exactly one. */
+function countLabel(count: number, singular: string) {
+  return `${count} ${count === 1 ? singular : `${singular}s`}`
+}
+
 export function DialogStatus() {
   const sync = useSync()
   const { theme } = useTheme()
@@ -52,7 +57,7 @@ export function DialogStatus() {
       </box>
       <Show when={Object.keys(sync.data.mcp).length > 0} fallback={<text fg={theme.text}>No MCP Servers</text>}>
         <box>
-          <text fg={theme.text}>{Object.keys(sync.data.mcp).length} MCP Servers</text>
+          <text fg={theme.text}>{countLabel(Object.keys(sync.data.mcp).length, "MCP Server")}</text>
           <For each={Object.entries(sync.data.mcp)}>
             {([key, item]) => (
               <box flexDirection="row" gap={1}>
@@ -95,7 +100,7 @@ export function DialogStatus() {
       </Show>
       {sync.data.lsp.length > 0 && (
         <box>
-          <text fg={theme.text}>{sync.data.lsp.length} LSP Servers</text>
+          <text fg={theme.text}>{countLabel(sync.data.lsp.length, "LSP Server")}</text>
           <For each={sync.data.lsp}>
             {(item) => (
               <box flexDirection="row" gap={1}>
@@ -120,7 +125,7 @@ export function DialogStatus() {
       )}
       <Show when={enabledFormatters().length > 0} fallback={<text fg={theme.text}>No Formatters</text>}>
         <box>
-          <text fg={theme.text}>{enabledFormatters().length} Formatters</text>
+          <text fg={theme.text}>{countLabel(enabledFormatters().length, "Formatter")}</text>
           <For each={enabledFormatters()}>
             {(item) => (
               <box flexDirection="row" gap={1}>
@@ -142,7 +147,7 @@ export function DialogStatus() {
       </Show>
       <Show when={plugins().length > 0} fallback={<text fg={theme.text}>No Plugins</text>}>
         <box>
-          <text fg={theme.text}>{plugins().length} Plugins</text>
+          <text fg={theme.text}>{countLabel(plugins().length, "Plugin")}</text>
           <For each={plugins()}>
             {(item) => (
               <box flexDirection="row" gap={1}>

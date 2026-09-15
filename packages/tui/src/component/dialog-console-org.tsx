@@ -1,10 +1,11 @@
-import { createResource, createMemo } from "solid-js"
+import { createResource, createMemo, createSignal } from "solid-js"
 import { DialogSelect } from "../ui/dialog-select"
 import { useSDK } from "../context/sdk"
 import { useDialog } from "../ui/dialog"
 import { useToast } from "../ui/toast"
 import { useTheme } from "../context/theme"
 import { Glyph } from "../branding"
+import { Locale } from "../util/locale"
 import type { ExperimentalConsoleListOrgsResponse } from "@arcana/sdk/v2"
 
 type OrgOption = ExperimentalConsoleListOrgsResponse["orgs"][number]
@@ -26,19 +27,46 @@ export function DialogConsoleOrg() {
   const toast = useToast()
   const { theme } = useTheme()
 
-  const [orgs] = createResource(async () => {
+  const [orgs, { refetch: refetchOrgs }] = createResource(async () => {
     const result = await sdk.client.experimental.console.listOrgs({}, { throwOnError: true })
     return result.data?.orgs ?? []
   })
+  // Guard against double-submit while the org switch is in flight. The row
+  // shows "Switching…" so the operator gets feedback without a busy overlay.
+  const [switching, setSwitching] = createSignal<string | undefined>(undefined)
 
   const current = createMemo(() => orgs()?.find((item) => item.active))
 
   const options = createMemo(() => {
+    if (orgs.loading) {
+      return [
+        {
+          title: "Loading orgs…",
+          description: "Fetching organizations for this account.",
+          value: "loading",
+          onSelect: () => {},
+        },
+      ]
+    }
+
+    if (orgs.error) {
+      return [
+        {
+          title: "Could not load orgs",
+          description:
+            "Press enter to retry. If it keeps failing, check your connection, then sign in with `arcana console login`.",
+          value: "error",
+          onSelect: () => void refetchOrgs(),
+        },
+      ]
+    }
+
     const listed = orgs()
     if (listed === undefined) {
       return [
         {
-          title: "Loading orgs...",
+          title: "Loading orgs…",
+          description: "Fetching organizations for this account.",
           value: "loading",
           onSelect: () => {},
         },
@@ -49,6 +77,7 @@ export function DialogConsoleOrg() {
       return [
         {
           title: "No orgs found",
+          description: "Join or create an org in the Arcana console, then reopen this dialog.",
           value: "empty",
           onSelect: () => {},
         },
@@ -72,30 +101,42 @@ export function DialogConsoleOrg() {
         category: accountLabel(item),
         categoryView: (
           <box flexDirection="row" gap={2}>
-            <text fg={theme.accent}>{item.accountEmail}</text>
-            <text fg={theme.textMuted}>{accountHost(item.accountUrl)}</text>
+            <text fg={theme.accent}>{Locale.truncate(item.accountEmail, 40)}</text>
+            <text fg={theme.textMuted}>{Locale.truncate(accountHost(item.accountUrl), 40)}</text>
           </box>
         ),
+        description: switching() === item.orgID ? "Switching…" : undefined,
         onSelect: async () => {
           if (item.active) {
             dialog.clear()
             return
           }
+          if (switching()) return
 
-          await sdk.client.experimental.console.switchOrg(
-            {
-              accountID: item.accountID,
-              orgID: item.orgID,
-            },
-            { throwOnError: true },
-          )
+          setSwitching(item.orgID)
+          try {
+            await sdk.client.experimental.console.switchOrg(
+              {
+                accountID: item.accountID,
+                orgID: item.orgID,
+              },
+              { throwOnError: true },
+            )
 
-          await sdk.client.instance.dispose()
-          toast.show({
-            message: `Switched to ${item.orgName}`,
-            variant: "info",
-          })
-          dialog.clear()
+            await sdk.client.instance.dispose()
+            toast.show({
+              message: `Switched to ${item.orgName}`,
+              variant: "info",
+            })
+            dialog.clear()
+          } catch {
+            toast.show({
+              message: `Could not switch to ${item.orgName} — check your connection and try again.`,
+              variant: "error",
+            })
+          } finally {
+            setSwitching(undefined)
+          }
         },
       }))
   })

@@ -2,8 +2,10 @@ import { createSignal, Show } from "solid-js"
 import { Global } from "@arcana/core/global"
 import { useDialog } from "../ui/dialog"
 import { DialogPrompt } from "../ui/dialog-prompt"
+import { useTheme } from "../context/theme"
 import { useToast } from "../ui/toast"
 import { Glyph } from "../branding"
+import { Spinner } from "./spinner"
 import { soulFilePath } from "../util/config-edit"
 import { readText, writeText } from "../util/persistence"
 import { createEffect } from "solid-js"
@@ -16,6 +18,7 @@ import { createEffect } from "solid-js"
 export function DialogSoul() {
   const dialog = useDialog()
   const toast = useToast()
+  const { theme } = useTheme()
   const [content, setContent] = createSignal<string | undefined>(undefined)
   const [saving, setSaving] = createSignal(false)
 
@@ -35,20 +38,31 @@ export function DialogSoul() {
       toast.show({ message: "Personal instructions saved — applies to the next turn.", variant: "success" })
       dialog.clear()
     } catch (error) {
-      toast.show({ message: error instanceof Error ? error.message : "Failed to save", variant: "error" })
+      toast.show({
+        message: error instanceof Error ? `${error.message} — try again.` : "Failed to save — try again.",
+        variant: "error",
+      })
       setSaving(false)
     }
   }
 
   return (
-    <Show when={content() !== undefined}>
+    <Show
+      when={content() !== undefined}
+      fallback={
+        <box paddingLeft={2} paddingRight={2} paddingTop={1} flexDirection="row" gap={1}>
+          <Spinner />
+          <text fg={theme.textMuted}>Loading personal instructions…</text>
+        </box>
+      }
+    >
       <DialogPrompt
-        title={`${Glyph.sigil} Personal instructions`}
+        title={`${Glyph.sigil} Personal Instructions`}
         description="Appended to every session's system prompt. Leave empty to remove."
         value={content() ?? ""}
         height={8}
         busy={saving()}
-        busyText="Saving..."
+        busyText="Saving…"
         onConfirm={handleSave}
         onCancel={() => dialog.clear()}
       />

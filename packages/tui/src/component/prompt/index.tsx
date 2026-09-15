@@ -389,6 +389,8 @@ export function Prompt(props: PromptProps) {
   createEffect(() => {
     if (store.prompt.input) return
     if (props.disabled) return
+    // Idle rotation is motion chrome: honor the global animation switch.
+    if (!animationsEnabled()) return
     const id = setInterval(() => {
       const pool = store.mode === "shell" ? shell() : list()
       if (pool.length === 0) return
@@ -1373,9 +1375,9 @@ export function Prompt(props: PromptProps) {
           restoreComposer(nonTextParts)
           toast.show({
             title: "Creating a session failed",
-            message: [failure.status !== undefined ? `HTTP ${String(failure.status)}` : undefined, detail]
+            message: `${[failure.status !== undefined ? `HTTP ${String(failure.status)}` : undefined, detail]
               .filter(Boolean)
-              .join(" · "),
+              .join(" · ")} — retry the action, or check the logs.`,
             variant: "error",
             duration: 8000,
           })
@@ -2308,7 +2310,9 @@ export function Prompt(props: PromptProps) {
             <Match when={workspace.notice()}>
               {(notice) => (
                 <box paddingLeft={3}>
-                  <text fg={theme.accent}>{notice()}</text>
+                  <text fg={theme.accent}>
+                    {Locale.truncate(notice(), Math.max(20, dimensions().width - 8))}
+                  </text>
                 </box>
               )}
             </Match>
@@ -2323,7 +2327,7 @@ export function Prompt(props: PromptProps) {
                       const item = label()
                       if (item.type === "new") {
                         if (workspace.creating())
-                          return `Creating ${item.workspaceType}${".".repeat(workspace.creatingDots())}`
+                          return `Creating ${item.workspaceType}…`
                         return (
                           <>
                             Workspace <span style={{ fg: theme.textMuted }}>(new {item.workspaceType})</span>
@@ -2332,7 +2336,13 @@ export function Prompt(props: PromptProps) {
                       }
                       return (
                         <>
-                          Workspace <span style={{ fg: theme.textMuted }}>{item.workspaceName}</span>
+                          Workspace{" "}
+                          <span style={{ fg: theme.textMuted }}>
+                            {Locale.truncateMiddle(
+                              item.workspaceName,
+                              Math.max(12, Math.min(48, Math.floor(dimensions().width / 3))),
+                            )}
+                          </span>
                         </>
                       )
                     })()}
@@ -2345,7 +2355,7 @@ export function Prompt(props: PromptProps) {
                 <box paddingLeft={3}>
                   <Spinner color={theme.accent}>
                     {progress()}
-                    <span style={{ fg: theme.textMuted }}>{".".repeat(move.creatingDots())}</span>
+                    <span style={{ fg: theme.textMuted }}>…</span>
                   </Spinner>
                 </box>
               )}

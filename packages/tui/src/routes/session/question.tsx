@@ -122,7 +122,12 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
     const options = question.options ?? []
     if (selected === options.length && question.custom !== false) {
       setEditingQuestion(index)
-      queueMicrotask(() => textarea?.focus())
+      // The editor must be visible while it owns focus: scroll its question
+      // row into view before focusing the textarea.
+      queueMicrotask(() => {
+        scroller?.scrollChildIntoView(`question-${index}`)
+        textarea?.focus()
+      })
       return
     }
     const option = options[selected]
@@ -200,7 +205,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
         dismissLocal()
         return true
       }
-      toast.show({ title: "Question reply failed", message: errorMessage(error), variant: "error" })
+      toast.show({ title: "Question reply failed", message: `${errorMessage(error)} — try again`, variant: "error" })
       return false
     } finally {
       setBusy(false)
@@ -219,7 +224,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
         dismissLocal()
         return true
       }
-      toast.show({ title: "Question dismiss failed", message: errorMessage(error), variant: "error" })
+      toast.show({ title: "Question dismiss failed", message: `${errorMessage(error)} — try again`, variant: "error" })
       return false
     } finally {
       setBusy(false)

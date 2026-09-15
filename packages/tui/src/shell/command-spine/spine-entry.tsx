@@ -1025,10 +1025,10 @@ export function SpineEntry(props: {
               const childSteps = createMemo(() => {
                 const childID = childSessionID()
                 if (!childID) return []
-                const messages = sync.data.message[childID] ?? []
+                const messages = sync.data.message?.[childID] ?? []
                 const steps: Array<{ label: string; status: "ok" | "fail" }> = []
                 for (const msg of messages) {
-                  const parts = sync.data.part[msg.id] ?? []
+                  const parts = sync.data.part?.[msg.id] ?? []
                   for (const part of parts) {
                     if (part.type !== "tool") continue
                     const state = (part as ToolPart).state
@@ -1045,7 +1045,7 @@ export function SpineEntry(props: {
               // Mirrors the legacy subagent route's onMount sync.
               createEffect(() => {
                 const childID = childSessionID()
-                if (childID && !sync.data.message[childID]?.length && !sync.session.isHistoryReady(childID)) {
+                if (childID && !sync.data.message?.[childID]?.length && !sync.session.isHistoryReady(childID)) {
                   sync.session.prefetch([childID], 50)
                 }
               })
@@ -1100,8 +1100,8 @@ export function SpineEntry(props: {
                         <Show when={v().streaming}>
                           <Show when={!!liveWorkingText()} fallback={
                             <text fg={theme.spineContext} wrapMode="word">
-                              Working in the {v().label || "subagent"} context - no streamed output
-                              yet. Enter or click to watch it think.
+                              Working in the {v().label || "subagent"} context… no streamed output
+                              yet · Enter or click to watch it think.
                             </text>
                           }>
                             <text fg={theme.spineContext} wrapMode="word">

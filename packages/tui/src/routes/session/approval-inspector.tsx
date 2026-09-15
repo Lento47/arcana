@@ -68,7 +68,7 @@ export function ApprovalInspector(props: {
           {a().state} · version {a().version}
         </text>
         <box flexGrow={1} />
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>[esc] close</text>
+        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>[Esc] Close</text>
       </box>
 
       <box
@@ -129,7 +129,7 @@ export function ApprovalInspector(props: {
             <text fg={theme.textMuted} wrapMode="word">
               {" "}
               This approval has no verified immutable request snapshot (engine failed closed — the exact request behind
-              this hash cannot be reviewed).
+              this hash cannot be reviewed). Do not approve or deny until a snapshot is available.
             </text>
           </box>
         </Show>
@@ -141,7 +141,8 @@ export function ApprovalInspector(props: {
             </text>
             <text fg={theme.textMuted} wrapMode="word">
               {" "}
-              Could not reach the engine to fetch the verified request snapshot.
+              Could not reach the engine to fetch the verified request snapshot — close and reopen the inspector to
+              retry.
             </text>
           </box>
         </Show>

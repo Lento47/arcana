@@ -5,6 +5,7 @@ import type { TextPart } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
 import { DialogMessage } from "./dialog-message"
 import { useDialog } from "../../ui/dialog"
+import { useTheme } from "../../context/theme"
 import type { PromptInfo } from "../../component/prompt/history"
 import { Glyph } from "../../branding"
 
@@ -15,6 +16,7 @@ export function DialogTimeline(props: {
 }) {
   const sync = useSync()
   const dialog = useDialog()
+  const { theme } = useTheme()
 
   onMount(() => {
     dialog.setSize("large")
@@ -44,5 +46,16 @@ export function DialogTimeline(props: {
     return result
   })
 
-  return <DialogSelect onMove={(option) => props.onMove(option.value)} title={`${Glyph.sigil} Chronicle`} options={options()} />
+  return (
+    <DialogSelect
+      onMove={(option) => props.onMove(option.value)}
+      title={`${Glyph.sigil} Chronicle`}
+      options={options()}
+      emptyView={
+        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+          <text fg={theme.textMuted}>No messages to jump to yet — send one first.</text>
+        </box>
+      }
+    />
+  )
 }

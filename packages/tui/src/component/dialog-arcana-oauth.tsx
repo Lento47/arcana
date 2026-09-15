@@ -8,6 +8,7 @@ import { useTheme } from "../context/theme"
 import { useBindings } from "../keymap"
 import { useClipboard } from "../context/clipboard"
 import { DialogModel } from "./dialog-model"
+import { SigilSpinner } from "./sigil-spinner"
 import { COPY, Glyph } from "../branding"
 import { errorMessage } from "../util/error"
 import { Locale } from "../util/locale"
@@ -274,23 +275,25 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
         </text>
       </box>
       <Show when={phase() === "starting"}>
-        <text fg={theme.textMuted}>Generating sign-in code…</text>
+        <SigilSpinner color={theme.textMuted}>Generating sign-in code…</SigilSpinner>
       </Show>
       <Show when={phase() === "waiting" || phase() === "binding" || phase() === "success"}>
         <box gap={1}>
-          <text fg={theme.textMuted}>
+          <text fg={theme.textMuted} wrapMode="word">
             Visit{" "}
-            <span style={{ fg: theme.primary, attributes: TextAttributes.UNDERLINE }}>{url()}</span>{" "}
+            <span style={{ fg: theme.primary, attributes: TextAttributes.UNDERLINE }}>
+              {Locale.truncateMiddle(url(), 76)}
+            </span>{" "}
             and enter this code:
           </text>
           <text attributes={TextAttributes.BOLD} fg={theme.primary}>
             {user() || "…"}
           </text>
           <Show when={phase() === "waiting"}>
-            <text fg={theme.textMuted}>Waiting for confirmation…</text>
+            <SigilSpinner color={theme.textMuted}>Waiting for confirmation…</SigilSpinner>
           </Show>
           <Show when={phase() === "binding"}>
-            <text fg={theme.textMuted}>Confirmed. Unlocking more models…</text>
+            <SigilSpinner color={theme.textMuted}>Confirmed. Unlocking more models…</SigilSpinner>
           </Show>
           <Show when={phase() === "success"}>
             <text fg={theme.success}>

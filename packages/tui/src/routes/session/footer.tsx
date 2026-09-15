@@ -5,11 +5,13 @@ import { useDirectory } from "../../context/directory"
 import { useConnected } from "../../component/use-connected"
 import { createStore } from "solid-js/store"
 import { useRoute } from "../../context/route"
+import { useKV } from "../../context/kv.tsx"
 
 export function Footer() {
   const { theme } = useTheme()
   const sync = useSync()
   const route = useRoute()
+  const kv = useKV()
   const mcp = createMemo(() => Object.values(sync.data.mcp).filter((x) => x.status === "connected").length)
   const mcpError = createMemo(() => Object.values(sync.data.mcp).some((x) => x.status === "failed"))
   const lsp = createMemo(() => Object.keys(sync.data.lsp))
@@ -30,6 +32,11 @@ export function Footer() {
 
     function tick() {
       if (connected()) return
+      if (!kv.get("animations_enabled", true)) {
+        // Static hint: no alternating flash and no reschedule.
+        if (!store.welcome) setStore("welcome", true)
+        return
+      }
       if (!store.welcome) {
         setStore("welcome", true)
         timeouts.push(setTimeout(() => tick(), 5000))

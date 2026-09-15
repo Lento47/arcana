@@ -1,6 +1,7 @@
 import { createMemo, createSignal, Show } from "solid-js"
 import { useLocal } from "../context/local"
 import { useTuiPaths } from "../context/runtime"
+import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { DialogSelect } from "../ui/dialog-select"
 import { DialogPrompt } from "../ui/dialog-prompt"
@@ -21,6 +22,7 @@ export function DialogAgentPrompt() {
   const paths = useTuiPaths()
   const dialog = useDialog()
   const toast = useToast()
+  const { theme } = useTheme()
   const [agent, setAgent] = createSignal<string | null>(null)
   const [saving, setSaving] = createSignal(false)
 
@@ -52,7 +54,10 @@ export function DialogAgentPrompt() {
       }
       dialog.clear()
     } catch (error) {
-      toast.show({ message: error instanceof Error ? error.message : "Failed to save prompt", variant: "error" })
+      toast.show({
+        message: error instanceof Error ? `${error.message} — try again.` : "Failed to save prompt — try again.",
+        variant: "error",
+      })
       setSaving(false)
     }
   }
@@ -62,20 +67,25 @@ export function DialogAgentPrompt() {
       when={agent() === null}
       fallback={
         <DialogPrompt
-          title={`${Glyph.sigil} Edit prompt: ${agent()}`}
+          title={`${Glyph.sigil} Edit Prompt: ${agent()}`}
           description="This replaces the agent's built-in system prompt. Leave empty to remove the override."
           value={local.agent.list().find((item) => item.name === agent())?.prompt ?? ""}
           height={6}
           busy={saving()}
-          busyText="Saving..."
+          busyText="Saving…"
           onConfirm={handleSave}
           onCancel={() => dialog.clear()}
         />
       }
     >
       <DialogSelect
-        title={`${Glyph.sigil} Edit agent prompt`}
+        title={`${Glyph.sigil} Edit Agent Prompt`}
         options={options()}
+        emptyView={
+          <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+            <text fg={theme.textMuted}>No agents available.</text>
+          </box>
+        }
         onSelect={(option) => setAgent(option.value)}
       />
     </Show>

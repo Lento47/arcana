@@ -7,6 +7,8 @@ import { useTheme } from "../context/theme"
 import { useToast } from "../ui/toast"
 import { DialogSelect, type DialogSelectOption } from "../ui/dialog-select"
 import { Glyph } from "../branding"
+import { Spinner } from "./spinner"
+import { errorMessage } from "../util/error"
 import { disabledToolCount, nextToolState, toolEnabled, toolsOverrideKey } from "../util/tools-override"
 import { TextAttributes } from "@opentui/core"
 
@@ -34,8 +36,10 @@ export function DialogTools(props: { sessionID: string }) {
   const kv = useKV()
   const sdk = useSDK()
   const toast = useToast()
+  const { theme } = useTheme()
   const [tools, setTools] = createSignal<ToolItem[]>([])
   const [loaded, setLoaded] = createSignal(false)
+  const [loadError, setLoadError] = createSignal<string>()
   const [loadingTool, setLoadingTool] = createSignal<string | null>(null)
 
   const overrides = createMemo<Record<string, boolean>>(
@@ -55,11 +59,15 @@ export function DialogTools(props: { sessionID: string }) {
           provider: model.providerID,
           model: model.modelID,
         })
+        if (res.error) throw new Error(errorMessage(res.error))
         const data = res.data
+        setLoadError(undefined)
         setTools(Array.isArray(data) ? data : [])
       } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to load tools"
+        setLoadError(message)
         toast.show({
-          message: error instanceof Error ? error.message : "Failed to load tools",
+          message: `${message} — reopen this dialog to retry.`,
           variant: "error",
         })
       } finally {
@@ -85,7 +93,7 @@ export function DialogTools(props: { sessionID: string }) {
   const actions = createMemo(() => [
     {
       command: "dialog.tools.toggle",
-      title: "toggle",
+      title: "Toggle",
       onTrigger: async (option: DialogSelectOption<string>) => {
         if (loadingTool() !== null) return
         setLoadingTool(option.value)
@@ -97,7 +105,7 @@ export function DialogTools(props: { sessionID: string }) {
     },
     {
       command: "dialog.tools.reset",
-      title: "reset",
+      title: "Reset",
       onTrigger: () => {
         kv.set(toolsOverrideKey(props.sessionID), {})
         toast.show({ message: "Tool overrides cleared for this session", variant: "success" })
@@ -119,6 +127,25 @@ export function DialogTools(props: { sessionID: string }) {
         </Show>
       }
       options={options()}
+      emptyView={
+        <Show
+          when={loaded()}
+          fallback={
+            <box paddingLeft={4} paddingRight={4} paddingTop={1} flexDirection="row" gap={1}>
+              <Spinner />
+              <text fg={theme.textMuted}>Loading tools…</text>
+            </box>
+          }
+        >
+          <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+            <text fg={loadError() ? theme.error : theme.textMuted}>
+              {loadError()
+                ? `Failed to load tools — ${loadError()}. Reopen this dialog to retry.`
+                : "No tools are available for this model."}
+            </text>
+          </box>
+        </Show>
+      }
       actions={actions()}
       onSelect={() => {
         // Toggle via action; escape closes.

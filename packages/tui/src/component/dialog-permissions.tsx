@@ -59,16 +59,34 @@ export function DialogPermissions() {
     return id ? sync.data.session?.find((session) => session.id === id)?.projectID : undefined
   })
   const [remembered, setRemembered] = createSignal<PermissionSavedInfo[]>([])
+  // Fail closed: a failed load is an unavailable projection, never rendered as
+  // "No remembered permissions." (same rule as the authorization section).
+  const [rememberedError, setRememberedError] = createSignal<string | null>(null)
+  const [rememberedLoading, setRememberedLoading] = createSignal(false)
 
   const refreshRemembered = async (id: string) => {
-    const response = await sdk.client.v2.permission.saved.list({ projectID: id }, { throwOnError: true })
-    setRemembered(response.data.data)
+    setRememberedLoading(true)
+    try {
+      const response = await sdk.client.v2.permission.saved.list({ projectID: id }, { throwOnError: true })
+      setRemembered(response.data.data)
+      setRememberedError(null)
+    } catch {
+      setRemembered([])
+      setRememberedError("Remembered permissions could not be loaded — reopen this dialog to retry.")
+    } finally {
+      setRememberedLoading(false)
+    }
   }
 
   createEffect(() => {
     const id = projectID()
-    if (id) void refreshRemembered(id).catch(() => setRemembered([]))
-    else setRemembered([])
+    if (id) {
+      void refreshRemembered(id)
+      return
+    }
+    setRemembered([])
+    setRememberedError(null)
+    setRememberedLoading(false)
   })
 
   const revokeRemembered = async (id: string) => {
@@ -78,7 +96,7 @@ export function DialogPermissions() {
       if (project) await refreshRemembered(project)
       toast.show({ message: "Remembered permission revoked", variant: "success" })
     } catch {
-      toast.show({ message: "Could not revoke remembered permission", variant: "error" })
+      toast.show({ message: "Could not revoke remembered permission — try again.", variant: "error" })
     }
   }
 
@@ -272,23 +290,40 @@ export function DialogPermissions() {
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
           Remembered permissions
         </text>
-        <Show when={remembered().length > 0} fallback={<text fg={theme.textMuted}>No remembered permissions.</text>}>
-          <For each={remembered()}>
-            {(rule) => (
-              <box flexDirection="row" gap={1}>
-                <text fg={theme.text} wrapMode="word">
-                  {rule.agentID} · {rule.action} · {rule.resource}
-                </text>
-                <text
-                  fg={theme.textMuted}
-                  attributes={TextAttributes.UNDERLINE}
-                  onMouseUp={() => void revokeRemembered(rule.id)}
+        <Show
+          when={rememberedError()}
+          fallback={
+            <Show
+              when={remembered().length > 0}
+              fallback={
+                <Show
+                  when={rememberedLoading()}
+                  fallback={<text fg={theme.textMuted}>No remembered permissions.</text>}
                 >
-                  [revoke]
-                </text>
-              </box>
-            )}
-          </For>
+                  <text fg={theme.textMuted}>Loading remembered permissions…</text>
+                </Show>
+              }
+            >
+              <For each={remembered()}>
+                {(rule) => (
+                  <box flexDirection="row" gap={1}>
+                    <text fg={theme.text} wrapMode="word">
+                      {rule.agentID} · {rule.action} · {rule.resource}
+                    </text>
+                    <text
+                      fg={theme.textMuted}
+                      attributes={TextAttributes.UNDERLINE}
+                      onMouseUp={() => void revokeRemembered(rule.id)}
+                    >
+                      [revoke]
+                    </text>
+                  </box>
+                )}
+              </For>
+            </Show>
+          }
+        >
+          {(message) => <text fg={theme.warning}>{message()}</text>}
         </Show>
       </box>
 

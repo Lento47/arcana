@@ -96,6 +96,15 @@ describe("spine keyboard wiring source contract (F-24..F-28)", () => {
     expect(shellSource).toContain("priority: 2")
   })
 
+  test("approval command failures surface as an error toast with retry guidance", () => {
+    // The controller returns { status: "ERROR" } instead of throwing; the hook
+    // must hand that result to the shell so a failed approve/deny is not silent.
+    expect(authorityActionsSource).toContain("onCommandError")
+    expect(authorityActionsSource).toContain('result.status === "ERROR"')
+    expect(shellSource).toContain("Approval command failed")
+    expect(shellSource).toContain("press v to inspect the request")
+  })
+
   test("permission gates override base-mode decision keys at priority 10", () => {
     // The gate must fight in the shared base mode (where the spine/composer live)
     // rather than push a private mode that can be lost when the mode stack is

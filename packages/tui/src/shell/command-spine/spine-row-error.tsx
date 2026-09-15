@@ -13,7 +13,7 @@ export function SpineRowError(props: {
   return (
     <box flexDirection="row" flexShrink={0} width="100%" paddingLeft={1}>
       <text fg={theme.error} wrapMode="word">
-        spine row error
+        Spine row error
       </text>
       <text fg={theme.textMuted} wrapMode="word">
         {" \u00B7 file: "}{props.file}{" \u00B7 "}{props.error.message}

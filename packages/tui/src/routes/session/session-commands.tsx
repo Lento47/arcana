@@ -129,7 +129,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
         }
         await recordTuiFeedback({ sessionID: route.sessionID, messageID: msg.id, rating: "up" })
           .then(() => toast.show({ message: "Thanks — feedback recorded 👍", variant: "success" }))
-          .catch(() => toast.show({ message: "Failed to record feedback", variant: "error" }))
+          .catch(() => toast.show({ message: "Failed to record feedback — try again", variant: "error" }))
         dialog.clear()
       },
     },
@@ -146,7 +146,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
         }
         await recordTuiFeedback({ sessionID: route.sessionID, messageID: msg.id, rating: "down" })
           .then(() => toast.show({ message: "Thanks — feedback recorded 👎", variant: "success" }))
-          .catch(() => toast.show({ message: "Failed to record feedback", variant: "error" }))
+          .catch(() => toast.show({ message: "Failed to record feedback — try again", variant: "error" }))
         dialog.clear()
       },
     },
@@ -164,7 +164,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           clipboard
             .write?.(url)
             .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
-            .catch(() => toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }))
+            .catch(() => toast.show({ message: "Failed to copy URL to clipboard — try again", variant: "error" }))
         const url = session()?.share?.url
         if (url) {
           await copy(url)
@@ -172,7 +172,11 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           return
         }
         if (!kv.get("share_consent", false)) {
-          const ok = await DialogConfirm.show(dialog, "Share Session", "Are you sure you want to share it?")
+          const ok = await DialogConfirm.show(
+            dialog,
+            "Share Session",
+            "Share this session publicly? Anyone with the link can read the transcript.",
+          )
           if (ok !== true) return
           kv.set("share_consent", true)
         }
@@ -273,7 +277,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
             if (response.error) {
               toast.show({
                 variant: "error",
-                message: `Compaction failed: ${String(response.error)}`,
+                message: `Compaction failed: ${String(response.error)} — try again`,
                 duration: 5000,
               })
             }
@@ -281,7 +285,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           .catch((error: any) => {
             toast.show({
               variant: "error",
-              message: `Compaction failed: ${error instanceof Error ? error.message : String(error)}`,
+              message: `Compaction failed: ${error instanceof Error ? error.message : String(error)} — try again`,
               duration: 5000,
             })
           })
@@ -297,6 +301,12 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
         name: "unshare",
       },
       run: async () => {
+        const ok = await DialogConfirm.show(
+          dialog,
+          "Unshare Session",
+          "Remove the public link for this session? Anyone with the link will lose access.",
+        )
+        if (ok !== true) return
         await sdk.client.session
           .unshare({
             sessionID: route.sessionID,
@@ -304,7 +314,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           .then(() => toast.show({ message: "Session unshared successfully", variant: "success" }))
           .catch((error: any) => {
             toast.show({
-              message: error instanceof Error ? error.message : "Failed to unshare session",
+              message: error instanceof Error ? error.message : "Failed to unshare session — try again",
               variant: "error",
             })
           })
@@ -597,7 +607,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           (msg) => msg.role === "assistant" && (!revertID || msg.id < revertID),
         )
         if (!lastAssistantMessage) {
-          toast.show({ message: "No assistant messages found", variant: "error" })
+          toast.show({ message: "No assistant messages to copy yet", variant: "error" })
           dialog.clear()
           return
         }
@@ -605,7 +615,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
         const parts = sync.data.part[lastAssistantMessage.id] ?? []
         const textParts = parts.filter((part: any) => part.type === "text")
         if (textParts.length === 0) {
-          toast.show({ message: "No text parts found in last assistant message", variant: "error" })
+          toast.show({ message: "Last assistant message has no text to copy", variant: "error" })
           dialog.clear()
           return
         }
@@ -616,7 +626,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           .trim()
         if (!text) {
           toast.show({
-            message: "No text content found in last assistant message",
+            message: "Last assistant message has no text to copy",
             variant: "error",
           })
           dialog.clear()
@@ -626,7 +636,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
         clipboard
           .write?.(text)
           .then(() => toast.show({ message: "Message copied to clipboard!", variant: "success" }))
-          .catch(() => toast.show({ message: "Failed to copy to clipboard", variant: "error" }))
+          .catch(() => toast.show({ message: "Failed to copy to clipboard — try again", variant: "error" }))
         dialog.clear()
       },
     },
@@ -655,7 +665,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
           await clipboard.write?.(transcript)
           toast.show({ message: "Session transcript copied to clipboard!", variant: "success" })
         } catch {
-          toast.show({ message: "Failed to copy session transcript", variant: "error" })
+          toast.show({ message: "Failed to copy session transcript — try again", variant: "error" })
         }
         dialog.clear()
       },
@@ -730,7 +740,7 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
             toast.show({ message: `Session exported to ${filename}`, variant: "success" })
           }
         } catch {
-          toast.show({ message: "Failed to export session", variant: "error" })
+          toast.show({ message: "Failed to export session — check the target folder and try again", variant: "error" })
         }
         dialog.clear()
       },

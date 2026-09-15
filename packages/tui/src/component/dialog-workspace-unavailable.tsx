@@ -13,6 +13,10 @@ export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | 
   })
 
   const options = ["cancel", "restore"] as const
+  const labels: Record<(typeof options)[number], string> = {
+    cancel: "Cancel",
+    restore: "Restore",
+  }
 
   async function confirm() {
     if (store.active === "cancel") {
@@ -47,6 +51,7 @@ export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | 
       <text fg={theme.textMuted} wrapMode="word">
         Would you like to restore this session into a new workspace?
       </text>
+      <text fg={theme.textMuted}>left/right to choose · Enter to confirm</text>
       <box flexDirection="row" justifyContent="flex-end" paddingBottom={1} gap={1}>
         <For each={options}>
           {(item) => (
@@ -59,7 +64,7 @@ export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | 
                 void confirm()
               }}
             >
-              <text fg={item === store.active ? theme.selectedListItemText : theme.textMuted}>{item}</text>
+              <text fg={item === store.active ? theme.selectedListItemText : theme.textMuted}>{labels[item]}</text>
             </box>
           )}
         </For>

@@ -630,6 +630,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                   <For each={options}>
                     {(option) => {
                       const active = createMemo(() => !props.locked && fastEqual(option.value, selected()?.value))
+                      const selectedRow = createMemo(() => fastEqual(option.value, selected()?.value))
                       const current = createMemo(() => fastEqual(option.value, props.current))
                       const optIndex = createMemo(() => flatIndexByOption().get(option) ?? -1)
                       return (
@@ -667,11 +668,15 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                             paddingRight={3}
                             gap={1}
                             backgroundColor={
-                              active()
-                                ? actionFocused()
+                              props.locked
+                                ? selectedRow()
                                   ? theme.backgroundElement
-                                  : (option.bg ?? theme.primary)
-                                : inactiveBg()
+                                  : inactiveBg()
+                                : active()
+                                  ? actionFocused()
+                                    ? theme.backgroundElement
+                                    : (option.bg ?? theme.primary)
+                                  : inactiveBg()
                             }
                           >
                             <Show when={!current() && option.margin}>

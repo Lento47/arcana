@@ -156,7 +156,7 @@ export function SpineApprovalGate(props: {
       </For>
       <GateRow label="request" value={shortHash(snapshot()?.requestHash, 12)} theme={theme} />
       <Show when={!snapshot()?.available}>
-        <text fg={theme.error}>snapshot unavailable · fail-closed</text>
+        <text fg={theme.error}>snapshot unavailable · fail-closed · press v to inspect</text>
       </Show>
       <ActionKeys theme={theme} layout={props.layout} />
     </box>

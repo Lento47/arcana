@@ -38,7 +38,7 @@ export function ArtifactViewer(props: { artifact: ArtifactDisplay; onClose?: () 
         gap={2}
       >
         <text fg={theme.accent}>◇</text>
-        <text fg={theme.text}>
+        <text fg={theme.text} wrapMode="none" truncate>
           <b>{props.artifact.title}</b>
         </text>
         <text fg={theme.textMuted}>{props.artifact.type}</text>
@@ -48,7 +48,7 @@ export function ArtifactViewer(props: { artifact: ArtifactDisplay; onClose?: () 
         <box flexGrow={1} minHeight={0} />
         <Show when={props.onClose}>
           <box onMouseUp={props.onClose}>
-            <text fg={theme.textMuted}>✕ close</text>
+            <text fg={theme.textMuted}>✕ Close</text>
           </box>
         </Show>
       </box>
@@ -61,7 +61,14 @@ export function ArtifactViewer(props: { artifact: ArtifactDisplay; onClose?: () 
         paddingRight={2}
         paddingTop={1}
       >
-        {renderContent(content(), props.artifact.type, theme, syntax())}
+        <Show
+          when={content().trim()}
+          fallback={
+            <text fg={theme.textMuted}>No content in this artifact yet — it may not have been written.</text>
+          }
+        >
+          {renderContent(content(), props.artifact.type, theme, syntax())}
+        </Show>
       </box>
     </box>
   )

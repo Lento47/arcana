@@ -5,8 +5,10 @@ import { useRoute } from "../../context/route"
 import { useClipboard } from "../../context/clipboard"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
+import { useToast } from "../../ui/toast"
 import { useTuiConfig } from "../../config"
 import { useBindings } from "../../keymap"
+import { errorMessage } from "../../util/error"
 import type { PromptInfo } from "../../component/prompt/history"
 import { stripPromptPartIDs as strip } from "../../prompt/part"
 import { Glyph } from "../../branding"
@@ -32,6 +34,7 @@ export function DialogMessage(props: {
   const clipboard = useClipboard()
   const { theme } = useTheme()
   const dialog = useDialog()
+  const toast = useToast()
   const tuiConfig = useTuiConfig()
   const [focused, setFocused] = createSignal(0)
 
@@ -46,14 +49,21 @@ export function DialogMessage(props: {
   const acts: Act[] = [
     {
       key: "unravel",
-      label: "unravel",
+      label: "Unravel",
       desc: "rewind before this point",
       onSelect() {
         const msg = message()
         if (!msg) return
-        void sdk.client.session.revert({ sessionID: props.sessionID, messageID: msg.id })
+        void sdk.client.session
+          .revert({ sessionID: props.sessionID, messageID: msg.id })
+          .then((res: { error?: unknown }) => {
+            if (res?.error) toast.show({ message: "Undo failed — try again", variant: "error" })
+          })
+          .catch((error: unknown) => {
+            toast.show({ message: `${errorMessage(error)} — try again`, variant: "error" })
+          })
         if (props.setPrompt) {
-          const parts = sync.data.part[msg.id]
+          const parts = sync.data.part[msg.id] ?? []
           const promptInfo = parts.reduce(
             (agg, part) => {
               if (part.type === "text") agg.input += promptTextFromPart(part)
@@ -69,13 +79,19 @@ export function DialogMessage(props: {
     },
     {
       key: "scission",
-      label: "scission",
+      label: "Scission",
       desc: "split into alternate trace",
       async onSelect() {
-        const result = await sdk.client.session.fork({ sessionID: props.sessionID, messageID: props.messageID })
+        const result = await sdk.client.session
+          .fork({ sessionID: props.sessionID, messageID: props.messageID })
+          .catch((error) => ({ error: errorMessage(error) }) as never)
+        if (result.error || !result.data?.id) {
+          toast.show({ message: "Fork failed — try again", variant: "error" })
+          return
+        }
         const msg = message()
         const prompt = msg
-          ? sync.data.part[msg.id].reduce(
+          ? (sync.data.part[msg.id] ?? []).reduce(
               (agg, part) => {
                 if (part.type === "text") agg.input += promptTextFromPart(part)
                 if (part.type === "file") agg.parts.push(part)
@@ -84,18 +100,18 @@ export function DialogMessage(props: {
               { input: "", parts: [] as PromptInfo["parts"] },
             )
           : undefined
-        route.navigate({ sessionID: result.data!.id, type: "session", prompt })
+        route.navigate({ sessionID: result.data.id, type: "session", prompt })
         clear()
       },
     },
     {
       key: "inscribe",
-      label: "inscribe",
+      label: "Inscribe",
       desc: "capture visible output",
       async onSelect() {
         const msg = message()
         if (!msg) return
-        const parts = sync.data.part[msg.id]
+        const parts = sync.data.part[msg.id] ?? []
         const text = parts.reduce((agg, part) => {
           if (part.type === "text") agg += promptTextFromPart(part)
           return agg
@@ -106,12 +122,12 @@ export function DialogMessage(props: {
     },
     {
       key: "bind",
-      label: "bind",
+      label: "Bind",
       desc: "attach context",
       onSelect() {
         const msg = message()
         if (!msg || !props.setPrompt) return
-        const parts = sync.data.part[msg.id]
+        const parts = sync.data.part[msg.id] ?? []
         const promptInfo = parts.reduce(
           (agg, part) => {
             if (part.type === "text") agg.input += promptTextFromPart(part)
@@ -126,7 +142,7 @@ export function DialogMessage(props: {
     },
     {
       key: "veil",
-      label: "veil",
+      label: "Veil",
       desc: "redact exposed output",
       onSelect() {
         clear()
@@ -141,19 +157,19 @@ export function DialogMessage(props: {
     commands: [
       {
         name: "dialog.select.prev",
-        title: "Previous act",
+        title: "Previous Act",
         category: "Acts",
         run: () => setFocused((f) => (f - 1 + acts.length) % acts.length),
       },
       {
         name: "dialog.select.next",
-        title: "Next act",
+        title: "Next Act",
         category: "Acts",
         run: () => setFocused((f) => (f + 1) % acts.length),
       },
       {
         name: "dialog.select.submit",
-        title: "Seal act",
+        title: "Seal Act",
         category: "Acts",
         run: () => acts[focused()]?.onSelect(),
       },
@@ -191,10 +207,10 @@ export function DialogMessage(props: {
         flexDirection="row" gap={1}
         height={1}
       >
-        <text fg={theme.primary} attributes={TextAttributes.BOLD} flexShrink={0}>acts</text>
+        <text fg={theme.primary} attributes={TextAttributes.BOLD} flexShrink={0}>Acts</text>
         <text fg={theme.textMuted} flexShrink={0}>scry…_</text>
         <box flexGrow={1} />
-        <text fg={theme.textMuted} flexShrink={0} onMouseUp={clear}>[esc] close</text>
+        <text fg={theme.textMuted} flexShrink={0} onMouseUp={clear}>[Esc] Close</text>
       </box>
 
       {/* Body: compact rail timeline */}

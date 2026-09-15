@@ -238,6 +238,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   const toggleViewShortcut = useCommandShortcut("diff.toggle_view")
   const markReviewedShortcut = useCommandShortcut("diff.mark_reviewed")
   const helpShortcut = useCommandShortcut("diff.help")
+  const closeShortcut = useCommandShortcut("diff.close")
   let scroll: ScrollBoxRenderable | undefined
   const patchNodeByFileIndex = new Map<number, BoxRenderable>()
   const diffNodeByFileIndex = new Map<number, DiffRenderable>()
@@ -812,7 +813,7 @@ function DiffViewer(props: { api: TuiPluginApi }) {
   const openSwitchDiffDialog = () => {
     props.api.ui.dialog.replace(() => (
       <DialogSelect
-        title="Switch source"
+        title="Switch Source"
         skipFilter={true}
         renderFilter={false}
         current={mode()}
@@ -869,20 +870,22 @@ function DiffViewer(props: { api: TuiPluginApi }) {
             <Match when={diff.loading && !hasDiffSnapshot()}>
               <Separator axis="x" />
               <box flexGrow={1} paddingLeft={1}>
-                <text fg={theme().textMuted}>Loading diff...</text>
+                <text fg={theme().textMuted}>Loading diff…</text>
               </box>
             </Match>
             <Match when={hasDiffSnapshot() && files().length === 0}>
               <Separator axis="x" />
               <box flexGrow={1} paddingLeft={1}>
-                <text fg={theme().textMuted}>No diff!</text>
+                <text fg={theme().textMuted}>No diff — the working tree is clean</text>
               </box>
             </Match>
             <Match when={!hasDiffSnapshot() && diff.error}>
               <Separator axis="x" />
               <box flexGrow={1} paddingLeft={1}>
                 <text fg={theme().error}>
-                  {diff.error instanceof DiffRequestTimeoutError ? "Diff request timed out" : "Failed to load diff"}
+                  {diff.error instanceof DiffRequestTimeoutError
+                    ? "Diff request timed out — press q to close, then reopen the viewer to retry"
+                    : "Failed to load diff — press q to close, then reopen the viewer to retry"}
                 </text>
               </box>
             </Match>
@@ -1042,6 +1045,13 @@ function DiffViewer(props: { api: TuiPluginApi }) {
               </text>
             )}
           </Show>
+          <Show when={closeShortcut()}>
+            {(shortcut) => (
+              <text fg={theme().text}>
+                {shortcut()} <span style={{ fg: theme().textMuted }}>close</span>
+              </text>
+            )}
+          </Show>
           <Show when={helpShortcut()}>
             {(shortcut) => (
               <text fg={theme().text}>
@@ -1124,7 +1134,7 @@ function DiffViewerHelpDialog() {
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          Diff shortcuts
+          Diff Shortcuts
         </text>
         <text fg={theme.textMuted}>esc</text>
       </box>

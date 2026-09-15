@@ -36,6 +36,7 @@ export function DialogStash(props: { onSelect: (entry: StashEntry) => void }) {
 
   const [toDelete, setToDelete] = createSignal<number>()
   const deleteHint = useCommandShortcut("stash.delete")
+  const stashHint = useCommandShortcut("prompt.stash")
 
   const options = createMemo(() => {
     const entries = stash.list()
@@ -59,6 +60,15 @@ export function DialogStash(props: { onSelect: (entry: StashEntry) => void }) {
     <DialogSelect
       title={`${Glyph.sigil} Stash`}
       options={options()}
+      emptyView={
+        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+          <text fg={theme.textMuted}>
+            {stashHint()
+              ? `No stashed prompts yet — press ${stashHint()} in the composer to stash one.`
+              : "No stashed prompts yet."}
+          </text>
+        </box>
+      }
       onMove={() => {
         setToDelete(undefined)
       }}
@@ -75,7 +85,7 @@ export function DialogStash(props: { onSelect: (entry: StashEntry) => void }) {
       actions={[
         {
           command: "stash.delete",
-          title: "delete",
+          title: "Delete",
           onTrigger: (option) => {
             if (toDelete() === option.value) {
               stash.remove(option.value)

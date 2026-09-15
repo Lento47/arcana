@@ -13,6 +13,11 @@ const options = ["no", "yes"] as const
 
 export type WorkspaceFileChangesChoice = (typeof options)[number]
 
+const labels: Record<WorkspaceFileChangesChoice, string> = {
+  no: "No",
+  yes: "Yes",
+}
+
 function statusLabel(status: VcsFileStatus["status"]) {
   if (status === "added") return "A"
   if (status === "deleted") return "D"
@@ -121,7 +126,7 @@ export function DialogWorkspaceFileChanges(props: {
                 dialog.clear()
               }}
             >
-              <text fg={item === store.active ? theme.selectedListItemText : theme.textMuted}>{item}</text>
+              <text fg={item === store.active ? theme.selectedListItemText : theme.textMuted}>{labels[item]}</text>
             </box>
           )}
         </For>

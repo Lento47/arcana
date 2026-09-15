@@ -30,16 +30,23 @@ export function DialogSessionList() {
   const local = useLocal()
   const toast = useToast()
   const [toDelete, setToDelete] = createSignal<string>()
+  const [deleting, setDeleting] = createSignal<string>()
   const [search, setSearch] = createDebouncedSignal("", 150)
   const deleteHint = useCommandShortcut("session.delete")
   const quickSwitch1 = useCommandShortcut("session.quick_switch.1")
   const quickSwitch9 = useCommandShortcut("session.quick_switch.9")
 
+  const [searchError, setSearchError] = createSignal<unknown>()
   const [searchResults, { refetch }] = createResource(
     () => ({ query: search(), filter: sync.session.query() }),
     async (input) => {
       if (!input.query) return undefined
       const result = await sdk.client.session.list({ search: input.query, limit: 30, ...input.filter })
+      if (result.error) {
+        setSearchError(result.error)
+        return []
+      }
+      setSearchError(undefined)
       return result.data ?? []
     },
   )
@@ -60,7 +67,7 @@ export function DialogSessionList() {
         } catch (err) {
           toast.show({
             title: "Failed to create workspace",
-            message: errorMessage(err),
+            message: `${errorMessage(err)} — try again.`,
             variant: "error",
           })
           return
@@ -69,7 +76,7 @@ export function DialogSessionList() {
         if (!workspace) {
           toast.show({
             title: "Failed to create workspace",
-            message: errorMessage(result?.error ?? "no response"),
+            message: `${errorMessage(result?.error ?? "no response")} — try again.`,
             variant: "error",
           })
           return
@@ -104,7 +111,7 @@ export function DialogSessionList() {
             toast.show({
               variant: "error",
               title: "Failed to delete workspace",
-              message: errorMessage(result.error),
+              message: `${errorMessage(result.error)} — try again.`,
             })
             return false
           }
@@ -137,7 +144,7 @@ export function DialogSessionList() {
             toast.show({
               variant: "error",
               title: "Failed to force delete session",
-              message: errorMessage(result.error),
+              message: `${errorMessage(result.error)} — try again.`,
             })
             return false
           }
@@ -220,10 +227,11 @@ export function DialogSessionList() {
         directory && directory !== project.data.project.mainDir ? Locale.truncate(path.basename(directory), 20) : ""
 
       const isDeleting = toDelete() === x.id
+      const isRemoving = deleting() === x.id
       const status = sync.data.session_status?.[x.id]
       const isWorking = status?.type === "busy" || status?.type === "retry"
       const slot = slotByID.get(x.id)
-      const gutter = isWorking
+      const gutter = isWorking || isRemoving
         ? () => <Spinner />
         : slot !== undefined
           ? () => <text fg={theme.accent}>{slot}</text>
@@ -234,7 +242,11 @@ export function DialogSessionList() {
         firstUserText: firstUserText(x.id),
       })
       return {
-        title: isDeleting ? `Press ${deleteHint()} again to confirm` : label,
+        title: isRemoving
+          ? "Deleting…"
+          : isDeleting
+            ? `Press ${deleteHint()} again to confirm`
+            : label,
         bg: isDeleting ? theme.error : undefined,
         value: x.id,
         category,
@@ -266,14 +278,30 @@ export function DialogSessionList() {
       options={options()}
       skipFilter={true}
       emptyView={
-        <Show when={searchResults.loading} fallback={
-          <box paddingLeft={4} paddingRight={4} paddingTop={1}>
-            <text fg={theme.textMuted}>{COPY.chronicleEmpty}</text>
-          </box>
-        }>
+        <Show
+          when={searchResults.loading}
+          fallback={
+            <Show
+              when={searchError()}
+              fallback={
+                <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+                  <text fg={theme.textMuted}>
+                    {search() ? "No sessions match this search — try a different query." : COPY.chronicleEmpty}
+                  </text>
+                </box>
+              }
+            >
+              <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+                <text fg={theme.error}>
+                  Search failed — {errorMessage(searchError())}. Try another query.
+                </text>
+              </box>
+            </Show>
+          }
+        >
           <box paddingLeft={4} paddingRight={4} paddingTop={1} flexDirection="row" gap={1}>
             <Spinner />
-            <text fg={theme.textMuted}>Searching...</text>
+            <text fg={theme.textMuted}>Searching…</text>
           </box>
         </Show>
       }
@@ -297,62 +325,63 @@ export function DialogSessionList() {
       actions={[
         {
           command: "session.pin.toggle",
-          title: "pin/unpin",
+          title: "Pin/Unpin",
           onTrigger: (option: { value: string }) => {
             local.session.togglePin(option.value)
           },
         },
         {
           command: "session.delete",
-          title: "delete",
+          title: "Delete",
           onTrigger: async (option) => {
-            if (toDelete() === option.value) {
-              const session = sessions().find((item) => item.id === option.value)
-              const status = session?.workspaceID ? project.workspace.status(session.workspaceID) : undefined
+            if (deleting()) return
+            if (toDelete() !== option.value) {
+              setToDelete(option.value)
+              return
+            }
+            const session = sessions().find((item) => item.id === option.value)
+            const status = session?.workspaceID ? project.workspace.status(session.workspaceID) : undefined
 
-              try {
-                const result = await sdk.client.session.delete({
-                  sessionID: option.value,
-                })
-                if (result.error) {
-                  if (session?.workspaceID) {
-                    recover(session)
-                  } else {
-                    toast.show({
-                      variant: "error",
-                      title: "Failed to delete session",
-                      message: errorMessage(result.error),
-                    })
-                  }
-                  setToDelete(undefined)
-                  return
-                }
-              } catch (err) {
+            setDeleting(option.value)
+            try {
+              const result = await sdk.client.session.delete({
+                sessionID: option.value,
+              })
+              if (result.error) {
                 if (session?.workspaceID) {
                   recover(session)
                 } else {
                   toast.show({
                     variant: "error",
                     title: "Failed to delete session",
-                    message: errorMessage(err),
+                    message: `${errorMessage(result.error)} — try again.`,
                   })
                 }
-                setToDelete(undefined)
                 return
               }
               if (status && status !== "connected") {
                 await sync.session.refresh()
               }
               if (search()) await refetch()
+            } catch (err) {
+              if (session?.workspaceID) {
+                recover(session)
+              } else {
+                toast.show({
+                  variant: "error",
+                  title: "Failed to delete session",
+                  message: `${errorMessage(err)} — try again.`,
+                })
+              }
+            } finally {
+              setDeleting(undefined)
               setToDelete(undefined)
-              return
             }
-            setToDelete(option.value)
           },
         },
         {
           command: "session.rename",
-          title: "rename",
+          title: "Rename",
           onTrigger: async (option) => {
             dialog.replace(() => <DialogSessionRename session={option.value} />)
           },

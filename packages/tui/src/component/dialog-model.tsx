@@ -9,6 +9,7 @@ import { DialogVariant } from "./dialog-variant"
 import * as fuzzysort from "fuzzysort"
 import { useConnected } from "./use-connected"
 import { useSync } from "../context/sync"
+import { useTheme } from "../context/theme"
 
 export function DialogModel(props: {
   providerID?: string
@@ -17,6 +18,7 @@ export function DialogModel(props: {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
+  const { theme } = useTheme()
   const [query, setQuery] = createSignal("")
 
   const connected = useConnected()
@@ -136,7 +138,7 @@ export function DialogModel(props: {
 
   const title = createMemo(() => {
     const value = provider()
-    if (!value) return `${Glyph.sigil} Select model`
+    if (!value) return `${Glyph.sigil} Select Model`
     return `${Glyph.sigil} ${value.name}`
   })
 
@@ -181,6 +183,11 @@ export function DialogModel(props: {
       skipFilter={true}
       title={title()}
       current={local.model.current()}
+      emptyView={
+        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+          <text fg={theme.textMuted}>No models found — try another search or connect a provider.</text>
+        </box>
+      }
     />
   )
 }

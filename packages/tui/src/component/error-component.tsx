@@ -53,7 +53,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
   if (props.error.stack) {
     issueURL.searchParams.set(
       "description",
-      "```\n" + props.error.stack.substring(0, 6000 - issueURL.toString().length) + "...\n```",
+      "```\n" + props.error.stack.substring(0, 6000 - issueURL.toString().length) + "…\n```",
     )
   }
 
@@ -74,13 +74,13 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
         </text>
         <box onMouseUp={copyIssueURL} backgroundColor={colors.primary} padding={1}>
           <text attributes={TextAttributes.BOLD} fg={colors.primaryText}>
-            Copy issue URL (exception info pre-filled)
+            Copy Issue URL (exception info pre-filled)
           </text>
         </box>
-        {copied() && <text fg={colors.muted}>Successfully copied</text>}
+        {copied() && <text fg={colors.muted}>Copied issue URL</text>}
       </box>
       <box flexDirection="row" gap={2} alignItems="center">
-        <text fg={colors.text}>A fatal error occurred!</text>
+        <text fg={colors.text}>Press Reset TUI to restart, or Exit to close Arcana.</text>
         <box onMouseUp={props.reset} backgroundColor={colors.primary} padding={1}>
           <text fg={colors.primaryText}>Reset TUI</text>
         </box>

@@ -349,7 +349,7 @@ export function createDialogProviderOptions() {
 
 export function DialogProvider() {
   const options = createDialogProviderOptions()
-  return <DialogSelect title={`${Glyph.sigil} Connect a provider`} options={options()} />
+  return <DialogSelect title={`${Glyph.sigil} Connect a Provider`} options={options()} />
 }
 
 interface AutoMethodProps {
@@ -419,7 +419,7 @@ function AutoMethod(props: AutoMethodProps) {
         <Link href={props.authorization.url} fg={theme.primary} />
         <text fg={theme.textMuted}>{props.authorization.instructions}</text>
       </box>
-      <text fg={theme.textMuted}>Waiting for authorization...</text>
+      <text fg={theme.textMuted}>Waiting for authorization…</text>
       <text fg={theme.text}>
         c <span style={{ fg: theme.textMuted }}>copy</span>
       </text>
@@ -439,31 +439,39 @@ function CodeMethod(props: CodeMethodProps) {
   const sync = useSync()
   const dialog = useDialog()
   const [error, setError] = createSignal(false)
+  const [busy, setBusy] = createSignal(false)
 
   return (
     <DialogPrompt
       title={props.title}
       placeholder="Authorization code"
+      busy={busy()}
+      busyText="Verifying code…"
       onConfirm={async (value) => {
-        const { error } = await sdk.client.provider.oauth.callback({
-          providerID: props.providerID,
-          method: props.index,
-          code: value,
-        })
-        if (!error) {
-          await sdk.client.instance.dispose()
-          await sync.bootstrap()
-          dialog.replace(() => <DialogModel providerID={props.providerID} />)
-          return
+        setBusy(true)
+        try {
+          const { error } = await sdk.client.provider.oauth.callback({
+            providerID: props.providerID,
+            method: props.index,
+            code: value,
+          })
+          if (!error) {
+            await sdk.client.instance.dispose()
+            await sync.bootstrap()
+            dialog.replace(() => <DialogModel providerID={props.providerID} />)
+            return
+          }
+          setError(true)
+        } finally {
+          setBusy(false)
         }
-        setError(true)
       }}
       description={() => (
         <box gap={1}>
           <text fg={theme.textMuted}>{props.authorization.instructions}</text>
           <Link href={props.authorization.url} fg={theme.primary} />
           <Show when={error()}>
-            <text fg={theme.error}>Invalid code</text>
+            <text fg={theme.error}>Invalid code — check it and try again.</text>
           </Show>
         </box>
       )}
@@ -654,7 +662,10 @@ function ApiMethod(props: ApiMethodProps) {
             },
           })
           if (error) {
-            toast.show({ variant: "error", message: `Failed to save key: ${errorMessage(error)}` })
+            toast.show({
+              variant: "error",
+              message: `Failed to save key: ${errorMessage(error)}. Check the key and try again.`,
+            })
             return
           }
 
@@ -676,7 +687,7 @@ function ApiMethod(props: ApiMethodProps) {
           // Never let a failure die silently — every path must surface here.
           toast.show({
             variant: "error",
-            message: `Provider setup failed: ${err instanceof Error ? err.message : String(err)}`,
+            message: `Provider setup failed: ${err instanceof Error ? err.message : String(err)} — try again.`,
           })
         } finally {
           setBusy(false)

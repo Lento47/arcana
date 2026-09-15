@@ -1,15 +1,19 @@
-import { createMemo, createResource } from "solid-js"
+import { createMemo, createResource, createSignal, Show } from "solid-js"
 import { DialogSelect } from "../ui/dialog-select"
 import { useDialog } from "../ui/dialog"
 import { useProject } from "../context/project"
 import { useSDK } from "../context/sdk"
+import { useTheme } from "../context/theme"
 import { createStore } from "solid-js/store"
 import { Glyph } from "../branding"
+import { errorMessage } from "../util/error"
 
 export function DialogTag(props: { onSelect?: (value: string) => void }) {
   const sdk = useSDK()
   const dialog = useDialog()
   const project = useProject()
+  const { theme } = useTheme()
+  const [loadError, setLoadError] = createSignal<unknown>()
 
   const [store] = createStore({
     filter: "",
@@ -18,13 +22,22 @@ export function DialogTag(props: { onSelect?: (value: string) => void }) {
   const [files] = createResource(
     () => [store.filter],
     async () => {
-      const result = await sdk.client.find.files({
-        query: store.filter,
-        workspace: project.workspace.current(),
-      })
-      if (result.error) return []
-      const sliced = (result.data ?? []).slice(0, 5)
-      return sliced
+      try {
+        const result = await sdk.client.find.files({
+          query: store.filter,
+          workspace: project.workspace.current(),
+        })
+        if (result.error) {
+          setLoadError(result.error)
+          return []
+        }
+        setLoadError(undefined)
+        const sliced = (result.data ?? []).slice(0, 5)
+        return sliced
+      } catch (error) {
+        setLoadError(error)
+        return []
+      }
     },
   )
 
@@ -39,6 +52,28 @@ export function DialogTag(props: { onSelect?: (value: string) => void }) {
     <DialogSelect
       title={`${Glyph.sigil} Autocomplete`}
       options={options()}
+      emptyView={
+        <Show
+          when={loadError()}
+          fallback={
+            <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+              <text fg={theme.textMuted}>
+                {files.loading
+                  ? "Searching files…"
+                  : store.filter
+                    ? "No matching files."
+                    : "Type to search files."}
+              </text>
+            </box>
+          }
+        >
+          <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+            <text fg={theme.error}>
+              Failed to search files — {errorMessage(loadError())}. Keep typing to retry.
+            </text>
+          </box>
+        </Show>
+      }
       onSelect={(option) => {
         props.onSelect?.(option.value)
         dialog.clear()

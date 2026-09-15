@@ -93,7 +93,10 @@ export function OpencodeShell(props: ShellProps) {
                         paddingLeft={2}
                         backgroundColor={hover() ? theme.backgroundElement : theme.backgroundPanel}
                       >
-                        <text fg={theme.textMuted}>{props.revert()!.reverted.length} message reverted</text>
+                        <text fg={theme.textMuted}>
+                          {props.revert()!.reverted.length}{" "}
+                          {props.revert()!.reverted.length === 1 ? "message" : "messages"} reverted
+                        </text>
                         <text fg={theme.textMuted}>
                           <span style={{ fg: theme.text }}>{redoShortcut()}</span> or /redo to restore
                         </text>

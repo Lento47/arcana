@@ -216,6 +216,7 @@ export function Session() {
   const paths = useTuiPaths()
   const tuiConfig = useTuiConfig()
   const kv = useKV()
+  const [animationsEnabled, _setAnimationsEnabled] = kv.signal("animations_enabled", true)
   const { theme } = useTheme()
   const promptRef = usePromptRef()
   // One session-owned gate coalesces stream-follow and shell scroll work. It
@@ -232,10 +233,15 @@ export function Session() {
 
   // Border pulse on session transition — flash accent, then fade to subtle.
   // Resting color is `borderSubtle`; pulse to `accent` on every sessionID change.
+  // Honors animations_enabled: when motion is off the border rests subtle.
   const [transBorder, setTransBorder] = createSignal(theme.borderSubtle)
   createEffect(() => {
     // Trigger pulse when sessionID changes
     void route.sessionID
+    if (!animationsEnabled()) {
+      setTransBorder(theme.borderSubtle)
+      return
+    }
     setTransBorder(theme.accent)
     const timer = setTimeout(() => setTransBorder(theme.borderSubtle), 800)
     return () => clearTimeout(timer)
@@ -392,7 +398,6 @@ export function Session() {
   const [showAssistantMetadata, _setShowAssistantMetadata] = kv.signal("assistant_metadata_visibility", true)
   const [showScrollbar, setShowScrollbar] = kv.signal("scrollbar_visible", false)
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
-  const [_animationsEnabled, _setAnimationsEnabled] = kv.signal("animations_enabled", true)
   const [showGenericToolOutput, setShowGenericToolOutput] = kv.signal("generic_tool_output_visibility", false)
   const [showGutter, setShowGutter] = kv.signal("gutter_visible", true)
   const [viewingArtifact, setViewingArtifact] = createSignal<string | null>(null)
@@ -489,7 +494,7 @@ export function Session() {
         const pendingEcho = allOptimisticMessages().some((item) => item.sessionID === sessionID)
         if (pendingEcho) return
         toast.show({
-          message: `Session not found: ${sessionID}`,
+          message: `Session not found: ${sessionID} — returning to Home`,
           variant: "error",
           duration: 5000,
         })
@@ -604,7 +609,7 @@ export function Session() {
     })().catch((error) => {
       if (route.sessionID !== sessionID) return
       toast.show({
-        message: errorMessage(error),
+        message: `${errorMessage(error)} — returning to Home`,
         variant: "error",
         duration: 5000,
       })
@@ -911,7 +916,7 @@ export function Session() {
     await sync.session.open(sessionID).catch(() => undefined)
     if (!sync.session.get(sessionID)) {
       toast.show({
-        message: `Session not found: ${sessionID.slice(0, 8)}…`,
+        message: `Session not found: ${sessionID.slice(0, 8)}… — open /sessions to refresh the list`,
         variant: "error",
         duration: 5000,
       })
@@ -1063,6 +1068,20 @@ export function Session() {
     enabled: hasForegroundTasks(),
     priority: 1,
     bindings: tuiConfig.keybinds.get("session.background"),
+  }))
+
+  // The artifact viewer owns the screen while open; Esc closes it so the
+  // overlay is keyboard-reachable (the header keeps the mouse affordance).
+  useBindings(() => ({
+    enabled: viewingArtifact() !== null,
+    bindings: [
+      {
+        key: "escape",
+        desc: "Close artifact viewer",
+        group: "Artifacts",
+        cmd: () => setViewingArtifact(null),
+      },
+    ],
   }))
 
   const revertInfo = createMemo(() => session()?.revert)
@@ -1283,7 +1302,14 @@ export function Session() {
             paddingRight={framePadding(density())}
             gap={1}
           >
-            <Show when={session() || allOptimisticMessages().some((item) => item.sessionID === route.sessionID)}>
+            <Show
+              when={session() || allOptimisticMessages().some((item) => item.sessionID === route.sessionID)}
+              fallback={
+                <box paddingTop={1} paddingLeft={1}>
+                  <text fg={theme.textMuted}>Loading session…</text>
+                </box>
+              }
+            >
               <Dynamic component={ShellCmp()} {...shellProps()} />
             </Show>
           </box>

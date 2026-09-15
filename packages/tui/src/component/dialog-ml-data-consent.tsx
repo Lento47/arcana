@@ -4,6 +4,7 @@ import { Show, createSignal, onMount } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../keymap"
 import { useDialog } from "../ui/dialog"
+import { Locale } from "../util/locale"
 
 export type MlConsentScope = "workspace" | "device"
 export type MlConsentDecision = "grant" | "revoke" | "inherit"
@@ -22,8 +23,28 @@ export type DialogMlDataConsentProps = {
 }
 
 type PendingDecision = {
-  decision: "grant" | "inherit"
+  decision: "grant" | "inherit" | "revoke"
   scope: MlConsentScope
+}
+
+function cmdError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return `${Locale.truncate(message, 160)} — close this dialog and reopen to retry.`
+}
+
+/** Confirmation copy for the active consent change. */
+function consentConfirmMessage(choice: PendingDecision): string {
+  if (choice.decision === "revoke") {
+    return choice.scope === "device"
+      ? "This revokes device consent. Workspaces set to inherit device consent stop collecting new learning data; already retained data is not purged."
+      : "This revokes workspace consent. New learning data collection stops in this workspace; already retained data is not purged."
+  }
+  if (choice.decision === "inherit") {
+    return "This workspace will follow device consent. If device consent is granted now or later, local learning collection will be enabled here under the disclosure above."
+  }
+  return choice.scope === "device"
+    ? "This records device consent. Every workspace set to inherit device consent may then retain learning data under the disclosure above."
+    : "This records consent for this workspace under the disclosure above."
 }
 
 function commandMessage(result: MlDataCommandOutput): string {
@@ -42,7 +63,12 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
   const refresh = async () => {
     const result = await props.loadStatus()
     const message = commandMessage(result)
-    setStatus(message || (result.exitCode === 0 ? "No learning status was returned." : "Could not load learning status."))
+    setStatus(
+      message ||
+        (result.exitCode === 0
+          ? "No learning status was returned."
+          : "Could not load learning status — close this dialog and reopen to retry."),
+    )
   }
 
   const runDecision = async (decision: MlConsentDecision, scope: MlConsentScope) => {
@@ -51,10 +77,13 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
     setFeedback("")
     try {
       const result = await props.changeConsent(decision, scope)
-      setFeedback(commandMessage(result) || `Consent command exited ${result.exitCode}.`)
+      const output = commandMessage(result)
+      if (output) setFeedback(output)
+      else if (result.exitCode === 0) setFeedback("Consent updated.")
+      else setFeedback(`Consent command exited ${result.exitCode} — close this dialog and reopen to retry.`)
       await refresh()
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : String(error))
+      setFeedback(cmdError(error))
     } finally {
       setBusy(false)
       setPending(undefined)
@@ -73,6 +102,12 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
     setPending({ decision: "inherit", scope: "workspace" })
   }
 
+  const requestRevoke = (scope: MlConsentScope) => {
+    if (busy()) return
+    setFeedback("")
+    setPending({ decision: "revoke", scope })
+  }
+
   const confirmPending = () => {
     const value = pending()
     if (value) void runDecision(value.decision, value.scope)
@@ -86,7 +121,7 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
         setStatus(commandMessage(statusResult) || "No learning status was returned.")
       })
       .catch((error) => {
-        setStatus(error instanceof Error ? error.message : String(error))
+        setStatus(cmdError(error))
       })
   })
 
@@ -108,13 +143,13 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
         key: "r",
         desc: "Revoke workspace learning consent",
         group: "ML consent",
-        cmd: () => void runDecision("revoke", "workspace"),
+        cmd: () => requestRevoke("workspace"),
       },
       {
         key: "x",
         desc: "Revoke device learning consent",
         group: "ML consent",
-        cmd: () => void runDecision("revoke", "device"),
+        cmd: () => requestRevoke("device"),
       },
       {
         key: "i",
@@ -188,7 +223,7 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
               <text
                 fg={!busy() ? theme.warning : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
-                onMouseUp={() => void runDecision("revoke", "workspace")}
+                onMouseUp={() => requestRevoke("workspace")}
               >
                 [r] revoke
               </text>
@@ -218,7 +253,7 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
               <text
                 fg={!busy() ? theme.warning : theme.textMuted}
                 attributes={TextAttributes.UNDERLINE}
-                onMouseUp={() => void runDecision("revoke", "device")}
+                onMouseUp={() => requestRevoke("device")}
               >
                 [x] revoke device
               </text>
@@ -232,11 +267,7 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
               Confirm {choice().scope} {choice().decision}
             </text>
             <text fg={theme.text} wrapMode="word">
-              {choice().decision === "inherit"
-                ? "This workspace will follow device consent. If device consent is granted now or later, local learning collection will be enabled here under the disclosure above."
-                : choice().scope === "device"
-                  ? "This records device consent. Every workspace set to inherit device consent may then retain learning data under the disclosure above."
-                  : "This records consent for this workspace under the disclosure above."}
+              {consentConfirmMessage(choice())}
             </text>
             <box flexDirection="row" gap={2}>
               <text

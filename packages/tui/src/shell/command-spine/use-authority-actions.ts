@@ -35,6 +35,12 @@ export function useAuthorityActions(input: {
   onOpenInspector?: (liveApproval: Accessor<ApprovalRecord>) => void
   /** Called to clear the focused entry (Esc clears selection). */
   onClearFocus?: () => void
+  /**
+   * Called when an approval command returns a terminal error. Without this the
+   * controller's ERROR result was dropped and a failed approve/deny looked like
+   * a no-op (failures must surface next to the action with retry guidance).
+   */
+  onCommandError?: (message: string) => void
   setInspectorApprovalId: (id: string | undefined) => void
   inspectorApprovalId: Accessor<string | undefined>
 }) {
@@ -101,12 +107,13 @@ export function useAuthorityActions(input: {
     if (!approval || !ctrl || !canApprove()) return
     setApprovalSubmitting(true)
     try {
-      await ctrl.approveOnce({
+      const result = await ctrl.approveOnce({
         approvalId: approval.approvalId,
         expectedVersion: approval.version,
         expectedRequestHash: approval.requestHash,
         expectedContractRevision: approval.contractRevision,
       })
+      if (result.status === "ERROR") input.onCommandError?.(result.error ?? "Approval command failed")
     } finally {
       setApprovalSubmitting(false)
     }
@@ -118,12 +125,13 @@ export function useAuthorityActions(input: {
     if (!approval || !ctrl || !canDeny()) return
     setApprovalSubmitting(true)
     try {
-      await ctrl.deny({
+      const result = await ctrl.deny({
         approvalId: approval.approvalId,
         expectedVersion: approval.version,
         expectedRequestHash: approval.requestHash,
         expectedContractRevision: approval.contractRevision,
       })
+      if (result.status === "ERROR") input.onCommandError?.(result.error ?? "Approval command failed")
     } finally {
       setApprovalSubmitting(false)
     }

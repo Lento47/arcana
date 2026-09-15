@@ -31,6 +31,8 @@ export function SpineComposer(props: {
   gutterWidth: number
   focusHint?: () => string
   gateOpen?: () => boolean
+  /** Approval command in flight — shows progress in the operator hint row. */
+  submitting?: () => boolean
   retryStatus?: () => { attempt?: number; message?: string; next?: number } | undefined
 }) {
   const { theme } = useTheme()
@@ -53,6 +55,9 @@ export function SpineComposer(props: {
   const operatorHint = () => {
     const escape = escapeHint()
     if (escape) return escape
+    // In-flight progress: an approval command is awaited before the durable
+    // event lands, so the operator must see that the decision is being sent.
+    if (props.submitting?.()) return "approval submitting…"
     if (props.gateOpen?.()) return "decision active · arrows select · enter confirm"
     const retry = props.retryStatus?.()
     if (retry) {
@@ -65,7 +70,14 @@ export function SpineComposer(props: {
     return props.focusHint?.() ?? ""
   }
   const hasOperatorCue = () => showsWorkingCue() || operatorHint().length > 0
-  const hintColor = () => props.retryStatus?.() ? theme.warning : escapeHint() || props.gateOpen?.() ? theme.accent : theme.spineDiffMuted
+  const hintColor = () =>
+    props.submitting?.()
+      ? theme.accent
+      : props.retryStatus?.()
+        ? theme.warning
+        : escapeHint() || props.gateOpen?.()
+          ? theme.accent
+          : theme.spineDiffMuted
   const [now, setNow] = createSignal(Date.now())
   let retryTimer: ReturnType<typeof setInterval> | undefined
   createEffect(() => {

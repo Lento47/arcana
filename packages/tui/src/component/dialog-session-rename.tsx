@@ -5,6 +5,7 @@ import { createMemo, createSignal } from "solid-js"
 import { useSDK } from "../context/sdk"
 import { Glyph } from "../branding"
 import { useToast } from "../ui/toast"
+import { errorMessage } from "../util/error"
 
 interface DialogSessionRenameProps {
   session: string
@@ -20,8 +21,8 @@ export function DialogSessionRename(props: DialogSessionRenameProps) {
 
   const validate = (value: string): string | undefined => {
     const trimmed = value.trim()
-    if (!trimmed) return "Session name cannot be empty."
-    if (trimmed.length > 200) return "Session name must be 200 characters or fewer."
+    if (!trimmed) return "Enter a session name."
+    if (trimmed.length > 200) return "Shorten the session name to 200 characters or fewer."
     return undefined
   }
 
@@ -31,15 +32,23 @@ export function DialogSessionRename(props: DialogSessionRenameProps) {
 
     setBusy(true)
     try {
-      await sdk.client.session.update({
+      const { error } = await sdk.client.session.update({
         sessionID: props.session,
         title: value.trim(),
       })
+      if (error) {
+        toast.show({
+          message: `${errorMessage(error)} — try again.`,
+          variant: "error",
+        })
+        setBusy(false)
+        return
+      }
       toast.show({ message: "Session renamed.", variant: "success" })
       dialog.clear()
     } catch (e) {
       toast.show({
-        message: e instanceof Error ? e.message : "Failed to rename session.",
+        message: e instanceof Error ? `${e.message} — try again.` : "Failed to rename session — try again.",
         variant: "error",
       })
       setBusy(false)
@@ -51,7 +60,7 @@ export function DialogSessionRename(props: DialogSessionRenameProps) {
       title={`${Glyph.sigil} Rename Session`}
       value={session()?.title}
       busy={busy()}
-      busyText="Renaming..."
+      busyText="Renaming…"
       onConfirm={handleConfirm}
       onCancel={() => dialog.clear()}
     />

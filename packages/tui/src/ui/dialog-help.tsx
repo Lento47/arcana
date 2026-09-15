@@ -50,7 +50,7 @@ export function DialogHelp() {
 
       <box flexDirection="row" justifyContent="flex-end" paddingTop={1}>
         <box paddingLeft={3} paddingRight={3} backgroundColor={theme.primary} onMouseUp={() => dialog.clear()}>
-          <text fg={theme.selectedListItemText}>ok</text>
+          <text fg={theme.selectedListItemText}>OK</text>
         </box>
       </box>
     </box>

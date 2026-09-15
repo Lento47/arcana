@@ -112,10 +112,18 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
   })
 
   const options = createMemo<DialogSelectOption<MoveSessionSelection | undefined>[]>(() => {
-    if (showError()) return []
+    if (showError()) {
+      return [
+        {
+          title: "Retry loading project directories",
+          description: errorMessage(loadError()),
+          value: undefined,
+        },
+      ]
+    }
     const data = directoryData()
     const current = currentRoot()?.directory
-    if (directories.loading && !data && !current) return [{ title: "Loading project directories...", value: undefined }]
+    if (directories.loading && !data && !current) return [{ title: "Loading project directories…", value: undefined }]
     const roots = [...(data ?? [])]
     if (current && !roots.some((item) => item.directory === current)) roots.unshift({ directory: current })
     roots.sort((a, b) => {
@@ -163,7 +171,7 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
       return {
         title,
         titleView: isRemoving ? (
-          <span style={{ fg: theme.error }}>Deleting {item.location}</span>
+          <span style={{ fg: theme.error }}>Deleting {item.location}…</span>
         ) : deleting ? (
           <span style={{ fg: theme.text }}>Press {deleteHint()} again to confirm</span>
         ) : suffix ? (
@@ -257,7 +265,7 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
           toast.show({
             variant: "error",
             title: "Failed to delete project copy",
-            message: errorMessage(forced.error),
+            message: `${errorMessage(forced.error)} — try again.`,
           })
           reopen()
           return
@@ -271,7 +279,7 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
       toast.show({
         variant: "error",
         title: "Failed to delete project copy",
-        message: errorMessage(result.error),
+        message: `${errorMessage(result.error)} — try again.`,
       })
       return
     }
@@ -288,11 +296,11 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
   return (
     <box minHeight={showError() ? 5 : fullHeight()}>
       <DialogSelect
-        title={`${Glyph.sigil} Move session`}
+        title={`${Glyph.sigil} Move Session`}
         titleView={
           <box flexDirection="row" gap={1}>
             <text fg={theme.text} attributes={TextAttributes.BOLD}>
-              Move session
+              Move Session
             </text>
             <Show when={working() || directories.loading || loadedProject.loading}>
               <Spinner />
@@ -308,13 +316,18 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
                 Could not load project directories
               </text>
               <text fg={theme.textMuted}>{errorMessage(loadError())}</text>
+              <text fg={theme.textMuted}>Check that the engine is reachable, then press Enter to retry.</text>
             </box>
           ) : undefined
         }
-        locked={showError() || directories.loading || loadedProject.loading || Boolean(removing())}
+        locked={directories.loading || loadedProject.loading || Boolean(removing())}
         current={current()}
         onSelect={(option) => {
-          if (option.value) props.onSelect(option.value)
+          if (!option.value) {
+            if (showError()) void refetch()
+            return
+          }
+          props.onSelect(option.value)
         }}
         onMove={() => setToDelete(undefined)}
         actions={
@@ -323,12 +336,12 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
             : [
                 {
                   command: "dialog.move_session.new",
-                  title: "new",
+                  title: "New",
                   onTrigger: () => props.onSelect({ type: "new" }),
                 },
                 {
                   command: "dialog.move_session.delete",
-                  title: "delete",
+                  title: "Delete",
                   disabled: (option) => {
                     const value = option?.value
                     if (!value || value.type !== "directory" || value.subdirectory) return true
@@ -338,7 +351,7 @@ export function DialogMoveSession(props: DialogMoveSessionProps) {
                 },
                 {
                   command: "dialog.move_session.refresh",
-                  title: "refresh",
+                  title: "Refresh",
                   onTrigger: () => void refetch(),
                 },
               ]

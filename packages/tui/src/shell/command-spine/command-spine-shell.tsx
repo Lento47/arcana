@@ -317,6 +317,15 @@ export function CommandSpineShell(props: ShellProps) {
     onBlurComposer: blurComposer,
     onOpenInspector: openApprovalInspector,
     onClearFocus: () => navigation.setFocusedEntryID(undefined),
+    // Rule: failures surface next to the action with retry guidance. The
+    // controller returns ERROR results instead of throwing; without this they
+    // were silently dropped and a failed approve/deny looked like a no-op.
+    onCommandError: (message) =>
+      toast.show({
+        title: "Approval command failed",
+        message: `${message} · press v to inspect the request`,
+        variant: "error",
+      }),
     setInspectorApprovalId,
     inspectorApprovalId,
   })
@@ -674,7 +683,7 @@ export function CommandSpineShell(props: ShellProps) {
             return
           }
           toast.show({
-            message: "No approval to inspect - v inspects approvals; use o for entry details",
+            message: "No approval to inspect · v inspects approvals · use o for entry details",
             variant: "info",
           })
         },
@@ -823,7 +832,7 @@ export function CommandSpineShell(props: ShellProps) {
         fallback={(error) => (
           <box flexDirection="column" padding={1} flexGrow={1}>
             <text fg={theme.text}>{`\u26A0 Spine render error: ${error.message}`}</text>
-            <text fg={theme.textMuted}>Session may be partially rendered</text>
+            <text fg={theme.textMuted}>Switch sessions or restart the TUI to recover</text>
           </box>
         )}
       >
@@ -846,6 +855,13 @@ export function CommandSpineShell(props: ShellProps) {
             <Show when={props.historyLoading?.() && props.messages().length === 0}>
               <box paddingLeft={1} paddingRight={1} height={1}>
                 <text fg={theme.textMuted}>Loading recent history…</text>
+              </box>
+            </Show>
+            {/* Explicit empty state: a newly created session must say what to do
+                next instead of rendering a silently blank viewport. */}
+            <Show when={!props.historyLoading?.() && props.messages().length === 0}>
+              <box paddingLeft={1} paddingRight={1}>
+                <text fg={theme.textMuted}>No messages yet · type a prompt below to start</text>
               </box>
             </Show>
             <SpineViewport
@@ -894,6 +910,7 @@ export function CommandSpineShell(props: ShellProps) {
               gutterWidth={projection.gutterWidth()}
               focusHint={focusedActionHint}
               gateOpen={gatesOpen}
+              submitting={authority.approvalSubmitting}
               retryStatus={() => {
                 const status = props.sessionStatus?.()
                 return status?.type === "retry" ? status : undefined

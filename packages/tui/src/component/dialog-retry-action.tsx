@@ -1,8 +1,9 @@
 import { RGBA, TextAttributes } from "@opentui/core"
 import open from "open"
-import { createMemo, createSignal } from "solid-js"
+import { createMemo, createSignal, Show } from "solid-js"
 import { selectedForeground, useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "../ui/dialog"
+import { useKV } from "../context/kv"
 import { Link } from "../ui/link"
 import { BgPulse } from "./bg-pulse"
 import { useBindings } from "../keymap"
@@ -39,9 +40,12 @@ function panelOverlay(color: RGBA) {
 export function DialogRetryAction(props: DialogRetryActionProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
+  const kv = useKV()
   const fg = selectedForeground(theme)
   const showGoTreatment = () => props.link === GO_URL
   const textBg = () => (showGoTreatment() ? panelOverlay(theme.backgroundPanel) : undefined)
+  // The pulse is decorative; the global animations_enabled KV disables it.
+  const motionEnabled = () => showGoTreatment() && kv.get("animations_enabled", true)
   const inactiveBg = createMemo(() => textBg() ?? (theme.background.a < 1 ? theme.backgroundPanel : theme.background))
   const [selected, setSelected] = createSignal<"dismiss" | "action">("action")
 
@@ -79,14 +83,14 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
 
   return (
     <box>
-      {showGoTreatment() ? (
+      <Show when={motionEnabled()}>
         <box position="absolute" top={-PAD_TOP_OUTER} left={0} right={0} bottom={0} zIndex={0}>
           <BgPulse />
         </box>
-      ) : null}
+      </Show>
       <box zIndex={1} paddingLeft={PAD_X} paddingRight={PAD_X} paddingBottom={1} gap={1}>
         <box flexDirection="row" justifyContent="space-between">
-          <text attributes={TextAttributes.BOLD} fg={theme.text} bg={textBg()}>
+          <text attributes={TextAttributes.BOLD} fg={theme.text} bg={textBg()} wrapMode="word">
             {props.title}
           </text>
           <text fg={theme.textMuted} bg={textBg()} onMouseUp={() => dialog.clear()}>
@@ -94,7 +98,7 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
           </text>
         </box>
         <box gap={0}>
-          <text fg={theme.textMuted} bg={textBg()}>
+          <text fg={theme.textMuted} bg={textBg()} wrapMode="word">
             {props.message}
           </text>
         </box>

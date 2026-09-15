@@ -8,6 +8,7 @@ import { useArgs } from "../context/args"
 import { useRouteData } from "../context/route"
 import { usePromptRef } from "../context/prompt"
 import { useLocal } from "../context/local"
+import { useKV } from "../context/kv.tsx"
 import { usePluginRuntime } from "../plugin/runtime"
 import { useEditorContext } from "../context/editor"
 import { useTerminalDimensions } from "@opentui/solid"
@@ -42,11 +43,25 @@ export function Home() {
   const [epigram, setEpigram] = createSignal(
     IDLE_PHRASES[Math.floor(Math.random() * IDLE_PHRASES.length)],
   )
-  const epigramTimer = setInterval(() => {
-    const others = IDLE_PHRASES.filter((p) => p !== epigram())
-    setEpigram(others[Math.floor(Math.random() * others.length)])
-  }, 12000)
-  onCleanup(() => clearInterval(epigramTimer))
+  const kv = useKV()
+  let epigramTimer: ReturnType<typeof setInterval> | undefined
+  // The rotating epigram is motion: honor animations_enabled (the Scramble
+  // reveal itself is gated inside Scramble). Off = one steady phrase.
+  createEffect(() => {
+    const enabled = kv.get("animations_enabled", true)
+    if (epigramTimer) {
+      clearInterval(epigramTimer)
+      epigramTimer = undefined
+    }
+    if (!enabled) return
+    epigramTimer = setInterval(() => {
+      const others = IDLE_PHRASES.filter((p) => p !== epigram())
+      setEpigram(others[Math.floor(Math.random() * others.length)])
+    }, 12000)
+  })
+  onCleanup(() => {
+    if (epigramTimer) clearInterval(epigramTimer)
+  })
 
   const prewarm = useSessionPrewarm()
 

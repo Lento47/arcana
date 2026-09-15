@@ -231,7 +231,7 @@ const TIPS: Tip[] = [
   "Define custom formatter commands with file extensions in config",
   'Set {highlight}"lsp": true{/highlight} in config to enable built-in LSP servers for code analysis',
   "Create {highlight}.ts{/highlight} files in {highlight}.arcana/tools/{/highlight} to define new LLM tools",
-  "Tool definitions can invoke scripts written in Python, Go, etc",
+  "Tool definitions can invoke scripts written in Python, Go, or any other language",
   "Add {highlight}.ts{/highlight} files to {highlight}.arcana/plugins/{/highlight} for event hooks",
   "Use plugins to send OS notifications when sessions complete",
   "Create a plugin to prevent arcana from reading sensitive files",
@@ -285,7 +285,8 @@ const TIPS: Tip[] = [
   "The kanban board auto-saves to .vault/kanban.md as a wiki",
   "When all todowrite tasks complete, arcana auto-generates a vault wiki entry",
   "Use {highlight}/rename{/highlight} to rename the current session",
-  (shortcuts) => `Use ${commandText("/themes", shortcuts.themeList())} to scry alternate realms — 22 arcane themes await`,
+  (shortcuts) =>
+    `Use ${commandText("/themes", shortcuts.themeList())} to scry alternate realms — ${themeCount} arcane themes await`,
   "Each arcane session bears a two-word sigil — whispered names like gilded-grimoire or void-oracle",
   "The idle epigram beneath the wordmark shifts every 12 seconds — new truths emerge from the veil",
 ]

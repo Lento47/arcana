@@ -12,6 +12,7 @@ import { createStore } from "solid-js/store"
 import { errorMessage } from "../util/error"
 import { useSDK } from "../context/sdk"
 import { useToast } from "../ui/toast"
+import { useCommandShortcut } from "../keymap"
 
 type WorkspaceOption = { workspace: Workspace }
 
@@ -26,6 +27,7 @@ export function DialogWorkspaceList() {
   const [deleting, setDeleting] = createSignal<string>()
   const [removing, setRemoving] = createSignal<string>()
   const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
+  const deleteHint = useCommandShortcut("session.delete")
 
   const current = createMemo(() => {
     if (route.data.type === "session") return sync.session.get(route.data.sessionID)?.workspaceID
@@ -41,10 +43,11 @@ export function DialogWorkspaceList() {
         return {
           title:
             removing() === workspace.id
-              ? "Deleting..."
+              ? "Deleting…"
               : deleting() === workspace.id
-                ? `Delete ${workspace.name}? Press delete again`
+                ? `Press ${deleteHint()} again to confirm`
                 : workspace.name,
+          bg: deleting() === workspace.id ? theme.error : undefined,
           value: { workspace },
           footer: workspace.type,
           details: expanded[workspace.id] && workspace.directory ? [workspace.directory] : undefined,
@@ -79,7 +82,7 @@ export function DialogWorkspaceList() {
       toast.show({
         variant: "error",
         title: "Failed to delete workspace",
-        message: errorMessage(result.error),
+        message: `${errorMessage(result.error)} — try again.`,
       })
       return
     }
@@ -103,6 +106,11 @@ export function DialogWorkspaceList() {
     <DialogSelect
       title={`${Glyph.sigil} Workspaces`}
       options={options()}
+      emptyView={
+        <box paddingLeft={4} paddingRight={4} paddingTop={1}>
+          <text fg={theme.textMuted}>No workspaces yet — move a session to create one.</text>
+        </box>
+      }
       onMove={(_option) => {
         setDeleting(undefined)
       }}
@@ -110,7 +118,7 @@ export function DialogWorkspaceList() {
       actions={[
         {
           command: "session.delete",
-          title: "delete",
+          title: "Delete",
           onTrigger: (option) => void remove(option.value.workspace),
         },
       ]}

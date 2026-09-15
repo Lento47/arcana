@@ -19,6 +19,7 @@ import { usePathFormatter } from "../../context/path-format"
 import { SpineGutterSpacer, spineLeadMetrics } from "../../shell/command-spine/spine-lead"
 import { useSpineLayout } from "../../shell/command-spine/use-spine-layout"
 import { SpineRail } from "../../shell/command-spine/spine-rail"
+import { SigilSpinner } from "../../component/sigil-spinner"
 
 type PermissionStage = "permission" | "always" | "reject"
 
@@ -151,7 +152,7 @@ function EditBody(props: { request: PermissionRequest }) {
       </Show>
       <Show when={!diff()}>
         <box paddingLeft={1}>
-          <text fg={theme.textMuted}>No diff provided</text>
+          <text fg={theme.textMuted}>No diff provided for this edit — review the request details before deciding.</text>
         </box>
       </Show>
     </box>
@@ -249,6 +250,8 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   const [store, setStore] = createStore({
     stage: "permission" as PermissionStage,
     error: undefined as string | undefined,
+    /** A decision reply is in flight; bindings are gated so Enter cannot double-send. */
+    busy: false,
   })
   // Gate-flicker probe: a `prompt.create` line means a REAL component
   // instance was constructed. Seeing create/dispose pairs around an approve
@@ -314,11 +317,28 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
   const { theme } = useTheme()
   const contractAdmission = createMemo(() => isContractAdmissionRequest(props.request))
 
+  /** Single decision path: gate re-entry, flag in-flight, surface failures. */
+  const decide = (reply: "once" | "always" | "reject", options?: { message?: string }) => {
+    if (store.busy) return
+    setStore("busy", true)
+    void sendReply(reply, options).then((result) => {
+      setStore("busy", false)
+      if (result !== "failed" || reply !== "always") return
+      setStore(
+        "error",
+        contractAdmission()
+          ? "Preference was not saved; choose Activate once or try again."
+          : "Permission was not saved; choose Allow once or try again.",
+      )
+    })
+  }
+
   return (
     <Switch>
       <Match when={store.stage === "always"}>
         <Prompt
           title={contractAdmission() ? "Always activate" : "Always allow"}
+          busy={store.busy}
           body={
             <Switch>
               <Match when={props.request.always.length === 1 && props.request.always[0] === "*"}>
@@ -335,7 +355,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               <Match when={true}>
                 <box paddingLeft={1} gap={1}>
                   <text fg={theme.textMuted}>
-                    This will allow the following patterns for this workspace and agent across future sessions
+                    This will allow the following patterns for this workspace and agent across future sessions.
                   </text>
                   <box>
                     <For each={props.request.always}>
@@ -356,23 +376,15 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
           onSelect={(option) => {
             setStore("stage", "permission")
             if (option === "cancel") return
-            void sendReply("always").then((result) => {
-              if (result === "failed") {
-                setStore(
-                  "error",
-                  contractAdmission()
-                    ? "Preference was not saved; choose Activate once or try again."
-                    : "Permission was not saved; choose Allow once or try again.",
-                )
-              }
-            })
+            decide("always")
           }}
         />
       </Match>
       <Match when={store.stage === "reject"}>
         <RejectPrompt
+          busy={store.busy}
           onConfirm={(message) => {
-            void sendReply("reject", { message })
+            decide("reject", { message })
           }}
           onCancel={() => {
             setStore("stage", "permission")
@@ -613,6 +625,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
             <Prompt
               title="Action gate"
               header={header()}
+              busy={store.busy}
               body={
                 <box flexDirection="column" minWidth={0}>
                   {current.body}
@@ -636,10 +649,10 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
                     setStore("stage", "reject")
                     return
                   }
-                  void sendReply("reject")
+                  decide("reject")
                   return
                 }
-                void sendReply("once")
+                decide("once")
               }}
             />
           )
@@ -723,7 +736,7 @@ function GateFrame(props: {
     </Show>
   )
 }
-function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: () => void }) {
+function RejectPrompt(props: { busy?: boolean; onConfirm: (message: string) => void; onCancel: () => void }) {
   let input: TextareaRenderable
   const { theme } = useTheme()
   const tuiConfig = useTuiConfig()
@@ -733,6 +746,8 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
     mode: ARCANA_BASE_MODE,
     // Above command-spine entry toggle (priority 1) so Enter confirms rejection.
     priority: PERMISSION_DECISION_LAYER_PRIORITY,
+    // While the reply is in flight the rejection cannot be confirmed again.
+    enabled: !props.busy,
     commands: [
       {
         name: "app.exit",
@@ -798,15 +813,27 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
             textColor={theme.text}
             focusedTextColor={theme.text}
             cursorColor={theme.primary}
-            onSubmit={() => props.onConfirm(input.plainText)}
+            onSubmit={() => {
+              if (props.busy) return
+              props.onConfirm(input.plainText)
+            }}
           />
           <box flexDirection={narrow() ? "column" : "row"} gap={narrow() ? 0 : 2} flexShrink={0} minWidth={0}>
-            <text fg={theme.text}>
-              enter <span style={{ fg: theme.spineContext }}>confirm</span>
-            </text>
-            <text fg={theme.text}>
-              esc <span style={{ fg: theme.spineContext }}>cancel</span>
-            </text>
+            <Show
+              when={props.busy}
+              fallback={
+                <>
+                  <text fg={theme.text}>
+                    enter <span style={{ fg: theme.spineContext }}>confirm</span>
+                  </text>
+                  <text fg={theme.text}>
+                    esc <span style={{ fg: theme.spineContext }}>cancel</span>
+                  </text>
+                </>
+              }
+            >
+              <SigilSpinner color={theme.spineContext}>Sending…</SigilSpinner>
+            </Show>
           </box>
         </box>
       }
@@ -821,6 +848,8 @@ function Prompt<const T extends Record<string, string>>(props: {
   options: T
   escapeKey?: keyof T
   fullscreen?: boolean
+  /** A decision reply is in flight: bindings are gated and the footer reports it. */
+  busy?: boolean
   onSelect: (option: keyof T) => void
 }) {
   const { theme } = useTheme()
@@ -839,6 +868,8 @@ function Prompt<const T extends Record<string, string>>(props: {
     // Above command-spine entry toggle (priority 1) so Enter confirms Decision,
     // including Always allow → Confirm, instead of expand/collapse on a message.
     priority: PERMISSION_DECISION_LAYER_PRIORITY,
+    // In-flight replies cannot be confirmed twice (Enter is inert until settled).
+    enabled: !props.busy,
     commands: [
       {
         name: "app.exit",
@@ -933,15 +964,24 @@ function Prompt<const T extends Record<string, string>>(props: {
         </box>
       </box>
       <box flexDirection={narrow() ? "column" : "row"} gap={narrow() ? 0 : 2} flexShrink={0} minWidth={0}>
-        <text fg={theme.spineContext}>←/→ select</text>
-        <text fg={theme.spineContext}>enter confirm</text>
-        <Show when={props.escapeKey}>
-          <text fg={theme.spineContext}>esc reject</text>
-        </Show>
-        <Show when={props.fullscreen}>
-          <text fg={theme.spineContext}>
-            {fullscreenHint()} {hint()}
-          </text>
+        <Show
+          when={props.busy}
+          fallback={
+            <>
+              <text fg={theme.spineContext}>←/→ select</text>
+              <text fg={theme.spineContext}>enter confirm</text>
+              <Show when={props.escapeKey}>
+                <text fg={theme.spineContext}>esc reject</text>
+              </Show>
+              <Show when={props.fullscreen}>
+                <text fg={theme.spineContext}>
+                  {fullscreenHint()} {hint()}
+                </text>
+              </Show>
+            </>
+          }
+        >
+          <SigilSpinner color={theme.spineContext}>Sending…</SigilSpinner>
         </Show>
       </box>
     </box>

@@ -7,8 +7,8 @@ import { onCleanup } from "solid-js"
 export function DialogThemeList() {
   const theme = useTheme()
   const mode = () => (theme.mode() === "dark" ? "Dark" : "Light")
-  const modeAction = () => (theme.mode() === "dark" ? "Switch to light" : "Switch to dark")
-  const lockAction = () => (theme.locked() ? "Unlock mode" : "Lock mode")
+  const modeAction = () => (theme.mode() === "dark" ? "Switch to Light" : "Switch to Dark")
+  const lockAction = () => (theme.locked() ? "Unlock Mode" : "Lock Mode")
   const options = Object.keys(theme.all())
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
     .map((value) => ({

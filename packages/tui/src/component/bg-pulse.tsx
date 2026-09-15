@@ -8,16 +8,20 @@ import {
 import { extend, useRenderer } from "@opentui/solid"
 import { onCleanup, onMount } from "solid-js"
 import { tint, useTheme } from "../context/theme"
+import { useKV } from "../context/kv"
 import { GoUpsellArtPainter } from "./bg-pulse-render"
 
 type GoUpsellArtOptions = RenderableOptions<FrameBufferRenderable> & {
   backgroundPanel?: RGBA
   primary?: RGBA
   logoBase?: RGBA
+  /** Global animations kill switch (mirrors the class accessor). */
+  animated?: boolean
 }
 
 class GoUpsellArtRenderable extends FrameBufferRenderable {
   private painter = new GoUpsellArtPainter()
+  private _animated = true
 
   constructor(ctx: RenderContext, options: GoUpsellArtOptions = {}) {
     const width = typeof options.width === "number" ? options.width : 1
@@ -37,6 +41,22 @@ class GoUpsellArtRenderable extends FrameBufferRenderable {
     this.painter.setLogoBase(options.logoBase)
   }
 
+  /**
+   * Global animations kill switch. When off the painter freezes on the current
+   * frame (deltaTime 0), the continuous repaint stops, and one final frame is
+   * requested so the backdrop stays visible without ambient motion.
+   */
+  set animated(value: boolean) {
+    if (this._animated === value) return
+    this._animated = value
+    this.live = value
+    this.requestRender()
+  }
+
+  get animated(): boolean {
+    return this._animated
+  }
+
   set backgroundPanel(value: RGBA | undefined) {
     if (this.painter.setBackgroundPanel(value)) this.requestRender()
   }
@@ -53,7 +73,7 @@ class GoUpsellArtRenderable extends FrameBufferRenderable {
     if (!this.visible || this.isDestroyed) return
 
     this.painter.render(this.frameBuffer, {
-      deltaTime,
+      deltaTime: this.animated ? deltaTime : 0,
       rgb: this._ctx.capabilities?.rgb === true,
     })
     super.renderSelf(buffer)
@@ -77,6 +97,10 @@ let _savedFps: { targetFps: number; maxFps: number } | null = null
 export function BgPulse() {
   const { theme } = useTheme()
   const renderer = useRenderer()
+  const kv = useKV()
+  // Global animations kill switch: static art (one frozen frame) instead of a
+  // continuously repainting backdrop when the operator disabled animations.
+  const animationsEnabled = () => kv.get("animations_enabled", true)
 
   onMount(() => {
     if (_bgPulseCount === 0) {
@@ -103,7 +127,8 @@ export function BgPulse() {
       backgroundPanel={theme.backgroundPanel}
       primary={theme.primary}
       logoBase={tint(theme.background, theme.text, 0.62)}
-      live
+      live={animationsEnabled()}
+      animated={animationsEnabled()}
     />
   )
 }
