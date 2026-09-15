@@ -1,6 +1,7 @@
 import type { JSX } from "solid-js"
 import type { RGBA } from "@opentui/core"
 import open from "open"
+import { useToast } from "./toast"
 
 export interface LinkProps {
   href: string
@@ -17,6 +18,7 @@ export interface LinkProps {
  */
 export function Link(props: LinkProps) {
   const displayText = props.children ?? props.href
+  const toast = useToast()
 
   return (
     <text
@@ -25,7 +27,14 @@ export function Link(props: LinkProps) {
       width={props.width}
       wrapMode={props.wrapMode}
       onMouseUp={() => {
-        open(props.href).catch(() => {})
+        // A failed open used to be swallowed silently; tell the operator what
+        // to do instead of leaving the click with no visible effect.
+        void open(props.href).catch(() => {
+          toast.show({
+            variant: "error",
+            message: "Could not open the link in your browser — copy the URL and open it manually.",
+          })
+        })
       }}
     >
       {displayText}
