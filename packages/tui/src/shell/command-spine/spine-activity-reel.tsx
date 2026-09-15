@@ -32,7 +32,6 @@ export function ActivityReel(props: {
   const { theme } = useTheme()
   const motion = useSpineMotion()
 
-  const count = createMemo(() => props.view.children.length)
   // The shared tick only invalidates the live duration. It must never choose
   // a different child or otherwise animate the activity summary.
   const phase = createMemo(() => motion?.phase() ?? 0)
@@ -46,20 +45,20 @@ export function ActivityReel(props: {
   const activityText = createMemo(() => {
     const width = activityWidth()
     const status = props.view.streaming === true ? "working" : "work"
-    const hint = width >= 28
-      ? `${props.expanded ? "▾ hide" : "▸ show"} ${count()} ${count() === 1 ? "step" : "steps"}`
-      : `${props.expanded ? "▾" : "▸"} ${count()}`
+    // The summary already owns the step count; the chevron is the affordance,
+    // not a second count ("hide 2 steps" beside "2 actions" was the noise).
+    const hint = props.expanded ? "▾" : "▸"
     const tailParts = [
       width >= 52 ? elapsed() : "",
-      hint,
     ].filter(Boolean)
     const tail = tailParts.join(" · ")
     const prefixWidth = displayWidth(`${status} · `)
-    const tailWidth = tail ? displayWidth(` · ${tail}`) : 0
+    const tailWidth = tail ? displayWidth(` · ${tail}`) + displayWidth(` ${hint}`) : displayWidth(` ${hint}`)
     const summaryBudget = Math.max(1, width - prefixWidth - tailWidth)
     return {
       summary: truncate(props.view.summary, summaryBudget),
       tail,
+      hint,
     }
   })
 
@@ -91,6 +90,7 @@ export function ActivityReel(props: {
             <span style={{ fg: theme.spineDiffMuted }}> · </span>
             <span style={{ fg: theme.text }}>{activityText().summary}</span>
             <span style={{ fg: theme.spineDiffMuted }}>{activityText().tail ? ` · ${activityText().tail}` : ""}</span>
+            <span style={{ fg: theme.spineDiffMuted }}>{` ${activityText().hint}`}</span>
           </text>
         </box>
       </box>

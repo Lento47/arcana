@@ -139,7 +139,7 @@ describe("spine activity reel projection", () => {
   test("passes through a lone work row instead of inventing a disclosure parent", () => {
     const lone = turnEntry("run-1", "run", "turn-1")
     expect(collapseWorkActivities([lone])).toEqual([lone])
-    expect(summarizeWorkActivity([lone], false)).toBe("1 actions · 1 tools")
+    expect(summarizeWorkActivity([lone], false)).toBe("1 action · 1 tool")
   })
 
   test("classifies a reel at the render boundary and forwards child liveness", () => {

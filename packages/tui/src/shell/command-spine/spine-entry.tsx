@@ -270,7 +270,7 @@ function ChildrenGroup(props: {
             </box>
             <Show when={!!child.body?.trim()}>
               <box flexDirection="row" flexShrink={0} alignItems="flex-start">
-                <SpineRail layout={props.layout} glyph="\u2502" active={false} />
+                <SpineRail layout={props.layout} glyph={"│"} active={false} />
                 <box flexGrow={1} minWidth={0} flexShrink={1} paddingLeft={2}>
                   <SpineProse
                     kind={child.kind}

@@ -99,8 +99,8 @@ export function SpineChatCard(props: {
       flexShrink={0}
       width="100%"
       minWidth={0}
-      marginTop={isAssistant() ? 1 : 0}
-      marginBottom={1}
+      marginTop={1}
+      marginBottom={0}
       backgroundColor={cardBg()}
       border={["left"]}
       borderColor={lineColor()}
@@ -151,7 +151,6 @@ export function SpineChatCard(props: {
         flexShrink={0}
         minWidth={0}
         width={bodyWidth() ?? ("100%" as any)}
-        marginTop={1}
         paddingLeft={0}
       >
         <SpineProse

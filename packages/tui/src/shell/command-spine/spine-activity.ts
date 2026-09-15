@@ -91,8 +91,10 @@ export function summarizeWorkActivity(units: readonly Pick<SpineEntry, "kind">[]
   const tools = units.filter((entry) => entry.kind !== "think" && entry.kind !== "agent").length
   const thoughts = units.filter((entry) => entry.kind === "think").length
   const agents = units.filter((entry) => entry.kind === "agent").length
-  const parts = [`${units.length} ${active ? "steps" : "actions"}`]
-  if (tools > 0) parts.push(`${tools} tools`)
+  const total = units.length
+  const totalNoun = active ? (total === 1 ? "step" : "steps") : total === 1 ? "action" : "actions"
+  const parts = [`${total} ${totalNoun}`]
+  if (tools > 0) parts.push(`${tools} tool${tools === 1 ? "" : "s"}`)
   if (thoughts > 0) parts.push(`${thoughts} thought${thoughts === 1 ? "" : "s"}`)
   if (agents > 0) parts.push(`${agents} agent${agents === 1 ? "" : "s"}`)
   return parts.join(" · ")

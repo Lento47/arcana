@@ -104,7 +104,7 @@ export function useSpineProjection(props: ShellProps, input: {
   const modelName = createMemo(() => {
     const last = lastAssistant()
     if (!last) return undefined
-    const provider = sync.data.provider.find((p) => p.id === last.providerID)
+    const provider = sync.data.provider?.find((p) => p.id === last.providerID)
     return provider?.models[last.modelID]?.name ?? last.modelID
   })
   // Canonical context usage — mirrors engine session/overflow (tokenCount +
@@ -114,7 +114,7 @@ export function useSpineProjection(props: ShellProps, input: {
   const ctxUsage = createMemo(() => {
     const last = lastUsageAssistant()
     if (!last) return undefined
-    const provider = sync.data.provider.find((p) => p.id === last.providerID)
+    const provider = sync.data.provider?.find((p) => p.id === last.providerID)
     const limit = provider?.models[last.modelID]?.limit
     if (!limit || limit.context <= 0) return undefined
     const tokens = contextTokenCount(last.tokens)
@@ -125,7 +125,7 @@ export function useSpineProjection(props: ShellProps, input: {
     }
   })
   const headerSegments = createMemo(() => {
-    const session = sync.data.session.find((s) => s.id === props.sessionID)
+    const session = sync.data.session?.find((s) => s.id === props.sessionID)
     const goal = getSessionGoal(props.sessionID)
     const meta = (session as { metadata?: Record<string, unknown> } | undefined)?.metadata
     const used = typeof meta?.__arcana_drive_continuations === "number" ? meta.__arcana_drive_continuations : 0
@@ -192,7 +192,7 @@ export function useSpineProjection(props: ShellProps, input: {
       (entry) => entry.kind === "agent" && !entry.source?.sessionID && Boolean(entry.actor),
     )
     if (unstamped.length !== 1) return undefined
-    const children = sync.data.session.filter((session) => session.parentID === parentID)
+    const children = sync.data.session?.filter((session) => session.parentID === parentID) ?? []
     return children.length === 1 ? children[0]?.id : undefined
   })
   // ── Queued prompt annotation (linear chat + steer/drop) ────────────
@@ -232,7 +232,7 @@ export function useSpineProjection(props: ShellProps, input: {
   const entriesWithChildSessions = createMemo(() =>
     stampAgentChildSessions({
       entries: queuedAnnotatedEntries(),
-      sessions: sync.data.session,
+      sessions: sync.data.session ?? [],
       parentSessionID: props.sessionID,
     })
   )
@@ -257,7 +257,7 @@ export function useSpineProjection(props: ShellProps, input: {
     const parentID = props.sessionID
     const needLink = entries().entries.some((e) => e.kind === "agent" && !e.source?.sessionID)
     if (!needLink) return
-    const hasChild = sync.data.session.some((s) => s.parentID === parentID)
+    const hasChild = (sync.data.session ?? []).some((s) => s.parentID === parentID)
     if (hasChild) return
     if (childRefreshRequested.has(parentID)) return
     childRefreshRequested.add(parentID)
