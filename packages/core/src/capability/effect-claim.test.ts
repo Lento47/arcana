@@ -18,6 +18,7 @@ import {
 } from "./effect-claim"
 
 const dir = join(import.meta.dir, ".tmp-effect-claim")
+mkdirSync(dir, { recursive: true })
 const DB = join(dir, "main.db")
 function dbPath(n: string): string {
   mkdirSync(dir, { recursive: true })

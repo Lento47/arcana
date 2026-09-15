@@ -156,7 +156,7 @@ function pickRandom<T>(arr: T[], n: number): T[] {
 export interface Interface {
   readonly environment: (model: Provider.Model) => Effect.Effect<string[]>
   readonly skills: (agent: Agent.Info) => Effect.Effect<string | undefined>
-  readonly memory: () => Effect.Effect<string | undefined>
+  readonly memory: (filter?: { keywords?: string[] }) => Effect.Effect<string | undefined>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@arcana/SystemPrompt") {}
@@ -207,29 +207,43 @@ export const layer = Layer.effect(
         ].filter((part): part is string => part !== undefined)
       }),
 
-      memory: Effect.fn("SystemPrompt.memory")(function* () {
+      memory: Effect.fn("SystemPrompt.memory")(function* (filter?: { keywords?: string[] }) {
         const parts: string[] = []
+        const keywords = filter?.keywords?.map((k) => k.toLowerCase()).filter(Boolean) ?? []
 
-        // Read user facts from shared SQLite DB (same as CLI writes to).
-        // Reuses one cached readonly handle + prepared statement across turns.
+        // Read user facts from shared SQLite DB — filter by relevance to current task.
+        // Previously sent all 20 facts (2,303 tok) every turn, even `l-drive` when task is `render`.
         const stmt = getMemoryStmt()
         if (stmt) {
           try {
             const rows = stmt.all() as Array<{ key: string; value: string; confidence: number }>
             if (rows.length) {
-              const facts = formatPersistentMemoryFacts(rows)
+              const filtered = keywords.length
+                ? rows.filter((r) => {
+                    const hay = `${r.key} ${r.value}`.toLowerCase()
+                    return keywords.some((k) => hay.includes(k))
+                  })
+                : rows
+              // If filter yields nothing, include at most 3 most recent facts as fallback (not all 20).
+              const toFormat = filtered.length > 0 ? filtered : rows.slice(-3)
+              const facts = formatPersistentMemoryFacts(toFormat)
               if (facts) parts.push(facts)
             }
           } catch {
-            // handle went bad (db replaced/corrupted) — drop it, retry next turn
             resetMemoryDb()
           }
         }
 
-        // Read learned wiki entries (cached; invalidated on dir mtime).
+        // Read learned wiki entries: only include if relevant to current task.
         const learned = getLearnedEntries()
         if (learned.length) {
-          const chosen = pickRandom(learned, 2)
+          const relevant = keywords.length
+            ? learned.filter((e) => {
+                const hay = `${e.slug} ${e.excerpt}`.toLowerCase()
+                return keywords.some((k) => hay.includes(k))
+              })
+            : []
+          const chosen = relevant.length > 0 ? relevant.slice(0, 2) : learned.slice(-1)
           const lines = chosen.map((e) => `- [[${e.slug}]]: ${e.excerpt}`)
           parts.push("<persistent-memory>\nKnowledge learned from past sessions:\n" + lines.join("\n") + "\n</persistent-memory>")
         }
@@ -240,25 +254,12 @@ export const layer = Layer.effect(
       skills: Effect.fn("SystemPrompt.skills")(function* (agent: Agent.Info) {
         if (Permission.disabled(["skill"], agent.permission).has("skill")) return
 
-        const list = yield* skill.available(agent)
-        // Cap how many skills are inlined in the system prompt. Overridable via
-        // ARCANA_MAX_SKILLS; defaults to 40. The rest stay reachable via skill_list.
-        const envMax = Number(process.env["ARCANA_MAX_SKILLS"])
-        const MAX_SKILLS = Number.isInteger(envMax) && envMax > 0 ? envMax : 40
-        const shown = list.length > MAX_SKILLS
-          ? list.slice(0, MAX_SKILLS)
-          : list
-        const note = list.length > MAX_SKILLS
-          ? `\n…and ${list.length - MAX_SKILLS} more skills available. Use \`skill_list\` to search.`
-          : ""
-
+        // Only show skills hint, not 40 inlined skills (saves ~1900 tok/turn).
+        // Agent can use `skill` tool to load a specific skill when needed.
         return [
           "Skills provide specialized instructions and workflows for specific tasks.",
-          "Use the skill tool to load a skill when a task matches its description.",
-          // Markdown bullets save ~40% tokens vs XML. Models handle both formats well.
-          Skill.fmt(shown, { verbose: false }),
-          note,
-        ].filter(Boolean).join("\n")
+          "Use the skill tool to load a skill when a task matches its description. Use `skill_list` to search available skills.",
+        ].join("\n")
       }),
     })
   }),

@@ -7,6 +7,8 @@ export type DialogAlertProps = {
   title: string
   message: string
   onConfirm?: () => void
+  /** Keep preformatted output (for example a box-drawn CLI report) intact. */
+  preformatted?: boolean
 }
 
 export function DialogAlert(props: DialogAlertProps) {
@@ -37,7 +39,7 @@ export function DialogAlert(props: DialogAlertProps) {
         </text>
       </box>
       <box width="100%" minWidth={0} paddingBottom={1}>
-        <text fg={theme.textMuted} width="100%" minWidth={0} wrapMode="word">
+        <text fg={theme.textMuted} width="100%" minWidth={0} wrapMode={props.preformatted ? "none" : "word"}>
           {props.message}
         </text>
       </box>

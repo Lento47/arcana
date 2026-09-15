@@ -746,14 +746,6 @@
         "node:fs"
       ]
     },
-    "packages/engine/src/index.ts": {
-      "classes": [
-        "FsMutation"
-      ],
-      "modules": [
-        "node:fs"
-      ]
-    },
     "packages/engine/src/memory/paths.ts": {
       "classes": [
         "FsMutation"

@@ -557,7 +557,8 @@ describe("inspect entries", () => {
     expect(entry!.body).toBeUndefined()
     expect(entry!.summary).toMatch(/4 entries/)
     expect(entry!.summary).toContain("arcana-proxy")
-    expect(entry!.bodyNote).toMatch(/4 entries/)
+    // A pure "{n} entries" note duplicates the chip summary — dropped.
+    expect(entry!.bodyNote).toBeUndefined()
     expect(JSON.stringify(entry!.listing)).not.toContain("<entries>")
     // Listings stay collapsed by default (toggle to expand)
     expect(entry!.expandedByDefault).toBe(false)
@@ -603,7 +604,8 @@ describe("inspect entries", () => {
     expect(entry!.body!.startsWith("line 1")).toBe(true)
     expect(entry!.expandedByDefault).toBe(false)
     expect(entry!.collapsible).toBe(true)
-    expect(entry!.bodyNote).toMatch(/Showing lines/i)
+    // Range already in the chip summary — note keeps only the continuation hint.
+    expect(entry!.bodyNote).toMatch(/Use offset/i)
   })
 })
 
@@ -2524,5 +2526,101 @@ describe("shell metadata stays out of the operator body", () => {
     expect(run.body).not.toContain("installation_status")
     expect(run.body).not.toContain("Operator approved this installation request.")
     expect(run.body).toContain("7 matches")
+  })
+})
+
+// ---------- display caps (P0: engine limits vs native TextBuffer) ----------
+
+describe("display output caps", () => {
+  test("read directory listing slices to MAX_DISPLAY_LISTING, keeps true total", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-cap-list")
+    const paths = Array.from({ length: 1500 }, (_, i) => `packages/${i % 7}/src/deep/${i}/file-${i}.ts`)
+    parts.push({
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "read",
+      state: {
+        status: "completed",
+        input: { filePath: "packages" },
+        output: `<path>packages</path>\n<type>directory</type>\n<entries>\n${paths.join("\n")}\n</entries>`,
+        title: "read",
+        metadata: {},
+        time: { start: 1000, end: 2000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    const entry = result.find((e) => e.kind === "inspect")!
+    expect(entry.listing?.length).toBe(500)
+    expect(entry.summary).toContain("1500 entries")
+    expect(entry.bodyNote).toContain("1000 more entries")
+  })
+
+  test("huge read body caps to MAX_DISPLAY_BODY_LINES with true remaining count", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-cap-body")
+    const body = Array.from({ length: 3000 }, (_, i) => `const line${i} = ${i * 7};`).join("\n")
+    parts.push({
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "read",
+      state: {
+        status: "completed",
+        input: { filePath: "big.ts" },
+        output: body,
+        title: "read",
+        metadata: {},
+        time: { start: 1000, end: 2000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    const entry = result.find((e) => e.kind === "inspect")!
+    const lines = entry.body?.split("\n") ?? []
+    expect(lines.length).toBeLessThanOrEqual(2001)
+    expect(entry.body).toContain("1000 more")
+  })
+
+  test("sub-2000-line bodies pass through uncapped", () => {
+    const { messages: msgs, parts } = makeAssistantMessage("a-cap-small")
+    const small = ["a", "b", "c"].join("\n")
+    parts.push({
+      id: "p-tool",
+      sessionID: "sess-1",
+      messageID: msgs[0]!.id,
+      type: "tool",
+      callID: "c1",
+      tool: "read",
+      state: {
+        status: "completed",
+        input: { filePath: "small.ts" },
+        output: small,
+        title: "read",
+        metadata: {},
+        time: { start: 1000, end: 2000 },
+      },
+    } as Part)
+
+    const result = messagesToSpineEntries({
+      messages: msgs,
+      getParts: partsLookup(parts),
+      assistantDuration: new Map(),
+    })
+    const entry = result.find((e) => e.kind === "inspect")!
+    expect(entry.body).toBe(small)
+    expect(entry.body).not.toContain("more —")
   })
 })

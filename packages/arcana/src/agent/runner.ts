@@ -13,6 +13,7 @@ import { toolHistory } from "./tools.js"
 import { checkSandboxPath, checkSandboxNetwork, type SandboxConfig } from "./sandbox.js"
 import { gatedSpawn, formatGateResult, recordToolSchema } from "./authority.js"
 import { isPermissionPolicyPath, isSelfAwarenessPath } from "@arcana/core/util/self-awareness"
+import { Token } from "@arcana/core/util/token"
 import { analyzeDiff, classifyGuard, DEFAULT_THRESHOLDS, isDependencyManifest } from "@arcana/core/util/file-edit-guard"
 import { createLearningExample } from "@arcana/ml"
 import {
@@ -32,7 +33,7 @@ import {
 } from "./tool-batch/index.js"
 import { publishBatchActivity } from "./tool-batch/activity-bridge.js"
 
-const TOOL_RESULT_MAX = 2000  // truncate large tool outputs to this many chars
+const TOOL_RESULT_MAX = 1_000_000  // full tool results, no truncation
 const LLM_STREAM_TIMEOUT_MS = 120_000   // total timeout for streaming LLM calls
 const LLM_CHUNK_TIMEOUT_MS = 30_000     // per-chunk inactivity timeout
 const LLM_COMPACTION_TIMEOUT_MS = 30_000 // timeout for compaction LLM calls
@@ -989,8 +990,50 @@ export class AgentRunner {
     const maxToolRounds = mlOverrides.maxToolRounds ?? this.config.maxToolRounds ?? 10
     let contextBudgetRecorded = false
     for (let round = 0; round < maxToolRounds; round++) {
+      // Ideal CIB: 1.2K budget (not 60K), causal + graph pack, zero unnecessary history
+      const historyForModel = (() => {
+        const budget = 1_200
+        const totalTokens = history.reduce((s, m) => s + Token.estimate(m.content ?? ""), 0)
+        if (totalTokens <= budget) return history
+        const goalKeywords = (mlRuntime.turnSignal as unknown as { keywords?: string[] })?.keywords ?? []
+        const entries = history.map((m, i) => ({ id: `${i}`, content: m.content ?? "", index: i }))
+        const packed: typeof entries = []
+        {
+          const scored = entries.map((e) => {
+            const recency = Math.pow(0.5, entries.length - 1 - e.index)
+            const relevance = goalKeywords.length > 0 && goalKeywords.some((k) => e.content.toLowerCase().includes(k.toLowerCase())) ? 1 : 0.1
+            const hasError = /(Error|FAIL|failed|exception)/i.test(e.content) ? 1 : 0
+            const score = Token.importance(e.content, { recency, relevance }) + hasError * 0.5
+            const tokens = Token.estimate(e.content)
+            return { e, score, tokens, density: score / Math.max(1, tokens) }
+          })
+          scored.sort((a, b) => b.density - a.density)
+          let used = 0
+          for (const s of scored) {
+            if (used + s.tokens <= budget) { packed.push(s.e); used += s.tokens }
+            else {
+              const lines = s.e.content.split("\n")
+              if (lines.length > 20) {
+                const header = lines.slice(0, 20).join("\n")
+                const packedContent = `${header}\n// ... ${lines.length - 20} lines, see disk`
+                const pt = Token.estimate(packedContent)
+                if (used + pt <= budget) { packed.push({ ...s.e, content: packedContent }); used += pt }
+              }
+            }
+          }
+          if (packed.length === 0 && scored.length > 0) packed.push(scored[0]!.e)
+          packed.sort((a, b) => a.index - b.index)
+        }
+        const keptIdx = new Set(packed.map((p) => p.index))
+        const packedHistory = history.filter((_, i) => keptIdx.has(i)).map((m, i) => {
+          const p = packed.find((x) => x.index === history.indexOf(m))
+          return p ? { ...m, content: p.content } : m
+        })
+        console.error(`[arcana] Ideal CIB: ${totalTokens} -> ${packed.reduce((s, p) => s + Token.estimate(p.content), 0)} tok, ${history.length} -> ${packedHistory.length} msgs`)
+        return packedHistory
+      })()
       const { model, tools } = await resolveModel(this.config, this.getToolDefs())
-      const coreMessages = toCoreMessages(history)
+      const coreMessages = toCoreMessages(historyForModel)
       const hasTools = Object.keys(tools).length > 0
       const mlMaxTokens = mlOverrides.maxTokens
       const mlTemperature = mlOverrides.temperature
@@ -1035,7 +1078,7 @@ export class AgentRunner {
         const result = await streamText({
           model,
           messages: coreMessages,
-          maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 4096,
+          maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 16_384,
           temperature: mlTemperature ?? this.config.temperature ?? 0.7,
           tools: hasTools ? tools : undefined,
           abortSignal: streamController.signal,
@@ -1080,7 +1123,7 @@ export class AgentRunner {
       const result = await generateText({
         model,
         messages: coreMessages,
-        maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 4096,
+        maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 16_384,
         temperature: mlTemperature ?? this.config.temperature ?? 0.7,
         tools: hasTools ? tools : undefined,
       })
@@ -1100,7 +1143,7 @@ export class AgentRunner {
             const revised = await generateText({
               model,
               messages: toCoreMessages(revisionMessages),
-              maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 4096,
+              maxOutputTokens: mlMaxTokens ?? this.config.maxTokens ?? 16_384,
               temperature: Math.min(mlTemperature ?? this.config.temperature ?? 0.7, 0.4),
             })
             totalInput += revised.usage?.inputTokens ?? 0

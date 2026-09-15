@@ -5,4 +5,4 @@ Fetch content from URL. Takes URL + optional format. Returns content in requeste
 - HTTP auto-upgraded to HTTPS
 - Format: "markdown" (default), "text", "html"
 - Read-only, no file modification
-- Large content may be summarized
+- Large content is returned in full

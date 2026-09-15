@@ -38,24 +38,50 @@ export function escapeMarkdownUnderscoreEmphasis(text: string): string {
 }
 
 /**
+ * True when `line` is a paragraph line that a `---` underline can turn into a
+ * setext H2. Must sit at column 0 (a setext heading paragraph is never
+ * indented) and must not be a block-level construct (heading, list item,
+ * blockquote, fence, HTML comment) or another rule line.
+ */
+function isSetextHeadingParagraph(line: string): boolean {
+  if (line.length === 0) return false
+  if (line[0] === " " || line[0] === "\t") return false
+  if (/^(#{1,6}\s|[-*+]\s+\S|\d+\.\s+\S|>\s?|```|~~~|<!--)/.test(line)) return false
+  if (/^[-─━═]{3,}\s*$/.test(line)) return false
+  return true
+}
+
+/**
  * Strip horizontal rules — OpenTUI renders them as full-width dashes — but only
  * OUTSIDE fenced code blocks: a `---` line inside a triple-backtick fence is real
  * content (tables, YAML, etc.) and must be preserved. Mirrors the fence-splitting
  * pattern of `escapeMarkdownUnderscoreEmphasis`.
  *
  * Whole lines are filtered out (not blanked), so no empty row is left behind where
- * the rule was. Note: a `---` directly under a heading is a setext H2 underline,
- * not an HR — out of scope here (pre-existing behavior), flagged in the audit.
+ * the rule was. A `---` directly under a column-0 paragraph line is a setext H2
+ * underline, not an HR — it is kept so the heading renders. Box-drawing variants
+ * (─━═) are decorative, never setext, so they always strip.
  */
 export function stripMarkdownHorizontalRules(text: string): string {
   const parts = text.split(/(```[\s\S]*?```)/)
   return parts
     .map((part, i) => {
       if (i % 2 === 1) return part
-      return part
-        .split("\n")
-        .filter((line) => !/^[-─━═]{3,}\s*$/.test(line))
-        .join("\n")
+      const lines = part.split("\n")
+      const out: string[] = []
+      for (let j = 0; j < lines.length; j++) {
+        const line = lines[j]!
+        if (/^[-─━═]{3,}\s*$/.test(line)) {
+          const prev = j > 0 ? lines[j - 1]! : ""
+          if (/^-{3,}\s*$/.test(line) && isSetextHeadingParagraph(prev)) {
+            out.push(line)
+            continue
+          }
+          continue
+        }
+        out.push(line)
+      }
+      return out.join("\n")
     })
     .join("")
 }

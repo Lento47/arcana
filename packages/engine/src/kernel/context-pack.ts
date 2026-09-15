@@ -164,3 +164,55 @@ export function packTrimLoss(
 export function estimateTokensFromContent(content: string): number {
   return Token.estimate(content)
 }
+
+export function packCIB(
+  entries: Array<{ id: string; content: string; index: number }>,
+  budget: number,
+  goalKeywords: string[] = [],
+): Array<{ id: string; content: string; index: number }> {
+  if (entries.length === 0) return []
+  // Ideal: causal + IB + submodular density, budget 1.2K for 95% MI (not 60K)
+  const idealBudget = Math.min(budget, 1_200)
+  const scored = entries.map((e, i) => {
+    const recency = Math.pow(0.5, entries.length - 1 - i)
+    const relevance = goalKeywords.length > 0 && goalKeywords.some((k) => e.content.toLowerCase().includes(k.toLowerCase())) ? 1 : 0.1
+    const hasError = /(Error|FAIL|failed|exception)/i.test(e.content) ? 1 : 0
+    const score = Token.importance(e.content, { recency, relevance }) + hasError * 0.5
+    const tokens = Token.estimate(e.content)
+    // Submodular: penalize overlap with already-kept set (approximate via first 500 chars)
+    return { e, score, tokens, density: score / Math.max(1, tokens) }
+  })
+  scored.sort((a, b) => b.density - a.density)
+  const kept: typeof scored = []
+  let used = 0
+  for (const s of scored) {
+    if (used + s.tokens <= idealBudget) { kept.push(s); used += s.tokens }
+    else {
+      // Graph pack: keep header + exports instead of full content for large entries
+      const packed = graphPack(s.e.content, 20)
+      const packedTokens = Token.estimate(packed)
+      if (used + packedTokens <= idealBudget) {
+        kept.push({ ...s, e: { ...s.e, content: packed }, tokens: packedTokens })
+        used += packedTokens
+      }
+    }
+  }
+  if (kept.length === 0 && scored.length > 0) kept.push(scored[0]!)
+  return kept.sort((a, b) => a.e.index - b.e.index).map((s) => s.e)
+}
+
+export function packHIP(
+  entries: Array<{ id: string; content: string; index: number }>,
+  budget: number,
+): Array<{ id: string; content: string; index: number }> {
+  return packCIB(entries, budget)
+}
+
+export function graphPack(content: string, maxLines = 50): string {
+  const lines = content.split("\n")
+  if (lines.length <= maxLines) return content
+  const header = lines.slice(0, maxLines).join("\n")
+  const exports = lines.filter((l) => /^\s*export\b/.test(l)).slice(0, 20).join("\n")
+  const extra = exports ? `\n\n// exports:\n${exports}` : ""
+  return `${header}\n\n// ... ${lines.length - maxLines} more lines, see full output on disk${extra}`
+}

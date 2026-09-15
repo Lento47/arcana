@@ -1,4 +1,3 @@
-import { mkdir } from "node:fs/promises"
 import type { CommandModule } from "yargs"
 
 import { LearningStore, openMemoryDB, runLearningDataCommand } from "@arcana/memory"
@@ -22,7 +21,7 @@ export const MlDataCommand: CommandModule = {
   async handler(args) {
     const config = await loadConfig()
     const dataDir = getDataDir(config)
-    await mkdir(dataDir, { recursive: true })
+    // openMemoryDB ensures the data directory exists; no raw fs here.
     const store = new LearningStore(openMemoryDB(dataDir))
     try {
       const command = runLearningDataCommand(store, process.cwd(), {

@@ -2203,12 +2203,23 @@ export const layer = Layer.effect(
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
             const contextAssemblyStarted = Date.now()
+            const lastUserText = (() => {
+              const idx = msgs.findLastIndex((m) => m.info.role === "user")
+              if (idx === -1) return ""
+              const p = msgs[idx]!.parts.find((x) => x.type === "text" && !x.ignored && !x.synthetic)
+              return p && "text" in p ? (p.text as string) : ""
+            })()
+            const keywords = lastUserText
+              .toLowerCase()
+              .split(/\W+/)
+              .filter((w) => w.length >= 4)
+              .slice(0, 20)
             const [skills, env, instructions, modelMsgs, memory] = yield* Effect.all([
               sys.skills(agent),
               sys.environment(model),
               instruction.system().pipe(Effect.orDie),
               MessageV2.toModelMessagesEffect(msgs, model),
-              sys.memory(),
+              sys.memory({ keywords }),
             ])
             msg.latency = {
               ...(msg.latency ?? { attempts: [] }),

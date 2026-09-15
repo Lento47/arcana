@@ -37,6 +37,7 @@ import { displaySessionTitle } from "./util/session"
 import { isSpinnerStyle, nextSpinnerStyle, spinnerStyleName } from "./util/spinner-style"
 import { densityName, isDensity, nextDensity } from "./shell/command-spine/spine-types"
 import { errorMessage } from "./util/error"
+import { dialogWidth } from "./util/geometry"
 import { DialogAlert } from "./ui/dialog-alert"
 import path from "node:path"
 import type { TuiPluginHost } from "./plugin/runtime"
@@ -91,19 +92,31 @@ async function runEngineCli(
  * never mutate state invisibly.
  */
 async function runBridgedCommand(
-  deps: { dialog: any; toast: any },
+  deps: { dialog: any; toast: any; renderer: CliRenderer },
   verb: string,
   args: string[] = [],
 ): Promise<void> {
   try {
-    const result = await runEngineCli(verb, args)
+    const isStats = verb === "stats"
+    // Stats is a report rather than a full-screen inspector: give it the
+    // large report card, then reserve the card border and alert padding for
+    // the inner box-drawn frame.
+    const statsFrameWidth = isStats ? Math.max(20, dialogWidth(deps.renderer.width, "large") - 8) : undefined
+    const result = await runEngineCli(
+      verb,
+      args,
+      process.cwd(),
+      statsFrameWidth === undefined ? {} : { ARCANA_STATS_WIDTH: String(statsFrameWidth) },
+    )
     const text = [result.stdout, result.stderr].filter(Boolean).join("\n")
     deps.dialog.replace(() => (
       <DialogAlert
         title={`arcana ${verb}${args.length ? " " + args.join(" ") : ""} — exit ${result.exitCode}`}
         message={text || "(no output)"}
+        preformatted={isStats}
       />
     ))
+    if (isStats) deps.dialog.setSize("large")
     if (result.exitCode !== 0) {
       deps.toast.show({ title: `arcana ${verb} exited ${result.exitCode}`, variant: "warning" })
     }

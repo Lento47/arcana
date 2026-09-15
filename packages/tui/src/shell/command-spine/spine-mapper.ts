@@ -249,6 +249,44 @@ function stripTaskXml(output: string): string {
  */
 const INSPECT_AUTO_EXPAND_MAX_LINES = 2
 
+/**
+ * Display-side output caps. The engine raises its model-side limits freely
+ * (read streams 1M lines / 100MB, glob/grep return 10k rows); the terminal
+ * renderer cannot hold that. A ten-thousand-row listing overflows the native
+ * TextBuffer allocation (hard crash) and multi-megabyte bodies stall frames.
+ * These cap what reaches the renderer while the summary/note still state the
+ * true totals, so "truncated in the TUI" never masquerades as "the tool
+ * returned less".
+ */
+const MAX_DISPLAY_LISTING = 500
+const MAX_DISPLAY_BODY_LINES = 2000
+
+/** Number of lines in `text` — scans without materializing a split array
+ *  (a 1M-line body would otherwise allocate a million-element array). */
+function lineCount(text: string): number {
+  let n = 0
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10 /* \n */) n++
+  }
+  return n + 1 // matches text.split("\n").length
+}
+
+/** First `cap` lines of `text` as one string (or full text when ≤ cap lines),
+ *  no intermediate array. Returns { text, total } so the caller can state the
+ *  real total in the footer. */
+function capBodyText(text: string, cap: number): { text: string; total: number } {
+  let newlines = 0
+  let i = 0
+  for (; i < text.length && newlines < cap; i++) {
+    if (text.charCodeAt(i) === 10 /* \n */) newlines++
+  }
+  const total = newlines + 1
+  if (i >= text.length) return { text, total } // ≤ cap lines
+  // i sits just past the cap-th newline; the text after it is more lines.
+  // Drop that newline so the caller's "\n… footer" doesn't produce a blank line.
+  return { text: text.slice(0, i - 1), total }
+}
+
 /** Engine boilerplate reminder — for the model, not a useful TUI callout. */
 
 function formatInspectFileSummary(path: string, meta: Pick<ParsedReadBody, "lineStart" | "lineEnd" | "totalLines">): string {
@@ -1064,37 +1102,55 @@ function toolPartToEntries(
 
   const listing = renderedOutput.listing
   const isListing = renderedOutput.label === "listing" && !!listing?.length
+  // True entry count for the summary — computed before any display slicing so a
+  // capped listing still reports the engine's real total ("N entries").
+  const listingTotal = isListing ? (renderedOutput.totalLines ?? listing!.length) : 0
+  // A pure "{n} entries" listing note duplicates the chip summary + receipt
+  // ("path · N entries" + "N shown"). Drop it; keep engine warnings like
+  // "(Results are truncated...)" and the display-cap footer below.
+  let listingBodyNote =
+    isListing && renderedOutput.bodyNote?.trim()
+      ? (/^\d+ entries$/i.test(renderedOutput.bodyNote.trim()) ? undefined : renderedOutput.bodyNote)
+      : renderedOutput.bodyNote
 
   if (isListing) {
     const pathForSummary = filePath || summary || "directory"
-    const n = renderedOutput.totalLines ?? listing!.length
+    const n = listingTotal
     summary = `${pathForSummary} · ${n} entr${n === 1 ? "y" : "ies"}`
     if (receipt && receipt.status === "ok") {
       receipt = {
         ...receipt,
-        summary: `${listing!.length} shown`,
+        summary: `${n} shown`,
         command: undefined,
       }
     }
   } else if (resolved.tool === "read" && (filePath || renderedOutput.lineStart !== undefined)) {
+    // The chip summary already carries the range ("path · L1–12 of 12 lines")
+    // and the receipt the count ("12 lines"). Trim a "Showing lines 1-12 of 12."
+    // engine footer down to its actionable continuation hint ("Use offset=…").
+    if (renderedOutput.bodyNote) {
+      listingBodyNote = renderedOutput.bodyNote
+        .replace(/^Showing lines \d+\s*-\s*\d+( of \d+)?\.?\s*/i, "")
+        .trim() || undefined
+    }
     const pathForSummary = filePath || summary || "file"
     summary = formatInspectFileSummary(pathForSummary, {
       lineStart: renderedOutput.lineStart,
       lineEnd: renderedOutput.lineEnd,
       totalLines: renderedOutput.totalLines,
     })
-    const lineCount =
+    const readLineCount =
       renderedOutput.lineStart !== undefined && renderedOutput.lineEnd !== undefined
         ? renderedOutput.lineEnd - renderedOutput.lineStart + 1
         : body
-          ? body.split("\n").length
+          ? lineCount(body)
           : undefined
     if (receipt && receipt.status === "ok") {
       receipt = {
         ...receipt,
         summary:
-          lineCount !== undefined
-            ? `${lineCount} line${lineCount === 1 ? "" : "s"}`
+          readLineCount !== undefined
+            ? `${readLineCount} line${readLineCount === 1 ? "" : "s"}`
             : receipt.summary,
         command: undefined,
       }
@@ -1119,7 +1175,7 @@ function toolPartToEntries(
     }
   }
 
-  const lineCount = body ? body.split("\n").length : 0
+  const bodyLines = body ? lineCount(body) : 0
   const listingCount = listing?.length ?? 0
   const isGrep = resolved.tool === "grep" || resolved.tool === "ripgrep"
   // Tools: collapse by default. Failures + true one-liners may auto-open.
@@ -1132,28 +1188,47 @@ function toolPartToEntries(
       toolKind !== "inspect"
       && !isGrep
       && !!body
-      && lineCount > 0
-      && lineCount <= 10
+      && bodyLines > 0
+      && bodyLines <= 10
     )
     || (
       toolKind === "inspect"
       && !isGrep
       && !isListing
       && !!body
-      && lineCount > 0
-      && lineCount <= INSPECT_AUTO_EXPAND_MAX_LINES
+      && bodyLines > 0
+      && bodyLines <= INSPECT_AUTO_EXPAND_MAX_LINES
     )
 
   const hasExpandableBody = (!!body && !diff) || isListing
 
-  // Cap expanded body size so opening "show matches" stays scannable
+  // Cap what reaches the renderer. Engine output limits (1M lines / 10k rows)
+  // are model-facing; the terminal cannot paint them — a huge listing overflows
+  // the native TextBuffer (crash) and multi-MB bodies stall frames. The caps
+  // below are display-only: collapsed summaries keep the true totals, and the
+  // trailing note says the rest was elided so the user can refine the query.
   let displayBody = body && !diff && !renderedOutput.report && !isListing ? body : undefined
-  if (displayBody && isGrep) {
-    const lines = displayBody.split("\n")
-    if (lines.length > 24) {
-      displayBody = lines.slice(0, 24).join("\n") + `\n… (${lines.length - 24} more — refine the query)`
+  if (displayBody) {
+    // Grep match dumps stay tight (24) so they never drown assistant replies;
+    // other tool bodies (reads, run output) get a generous-but-bounded cap.
+    const cap = isGrep ? 24 : MAX_DISPLAY_BODY_LINES
+    const total = lineCount(displayBody)
+    if (total > cap) {
+      displayBody = capBodyText(displayBody, cap).text + `\n… (${total - cap} more — refine the query)`
     }
   }
+
+  // Listings get the same bounded preview — rows × width would otherwise push
+  // the layout past the native buffer's cell budget.
+  const displayListing = isListing && listing!.length > MAX_DISPLAY_LISTING
+    ? listing!.slice(0, MAX_DISPLAY_LISTING)
+    : isListing
+      ? listing
+      : undefined
+  const listingNote =
+    isListing && listing!.length > MAX_DISPLAY_LISTING
+      ? `… (${listing!.length - MAX_DISPLAY_LISTING} more entries — refine the query)`
+      : undefined
 
   return [
     {
@@ -1179,13 +1254,13 @@ function toolPartToEntries(
       body: displayBody,
       bodyLabel: renderedOutput.report ? "report" : renderedOutput.label,
       bodyHint: renderedOutput.bodyHint || (resolved.tool === "read" ? filePath : undefined),
-      bodyNote: renderedOutput.bodyNote,
+      bodyNote: [listingBodyNote, listingNote].filter(Boolean).join(" · ") || undefined,
       liveOutput: running ? preliminaryToolOutput(state) : undefined,
       collapsible: !!diff || !!renderedOutput.report || hasExpandableBody,
       expandedByDefault: expandDefault,
       receipt,
       diff,
-      listing: isListing ? listing : undefined,
+      listing: displayListing,
       reminders: renderedOutput.reminders.length ? renderedOutput.reminders : undefined,
       report: renderedOutput.report,
       table: renderedOutput.table,
