@@ -35,7 +35,7 @@ export function ArcanaSurface(props: { title: string; path?: string; meta?: stri
             <b>ARCANA / {props.title}</b>
           </text>
           <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-            esc
+            [esc] close
           </text>
         </box>
         <Show when={props.meta}>{(meta) => <text fg={theme.textMuted}>{meta()}</text>}</Show>

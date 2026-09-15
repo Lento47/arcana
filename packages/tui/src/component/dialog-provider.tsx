@@ -412,7 +412,7 @@ function AutoMethod(props: AutoMethodProps) {
           {props.title}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
+          [esc] close
         </text>
       </box>
       <box gap={1}>

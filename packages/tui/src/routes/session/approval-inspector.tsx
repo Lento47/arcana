@@ -68,7 +68,7 @@ export function ApprovalInspector(props: {
           {a().state} · version {a().version}
         </text>
         <box flexGrow={1} />
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>[Esc] Close</text>
+        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>[esc] close</text>
       </box>
 
       <scrollbox

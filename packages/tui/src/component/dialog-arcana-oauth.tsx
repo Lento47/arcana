@@ -271,7 +271,7 @@ export function ArcanaOAuthMethod(props: ArcanaOAuthMethodProps) {
           {Glyph.sigil} Sign in with arcana
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
+          [esc] close
         </text>
       </box>
       <Show when={phase() === "starting"}>

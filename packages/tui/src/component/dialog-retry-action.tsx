@@ -94,7 +94,7 @@ export function DialogRetryAction(props: DialogRetryActionProps) {
             {props.title}
           </text>
           <text fg={theme.textMuted} bg={textBg()} onMouseUp={() => dialog.clear()}>
-            esc
+            [esc] dismiss
           </text>
         </box>
         <box gap={0}>

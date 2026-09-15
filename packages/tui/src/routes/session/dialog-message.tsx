@@ -210,7 +210,7 @@ export function DialogMessage(props: {
         <text fg={theme.primary} attributes={TextAttributes.BOLD} flexShrink={0}>Acts</text>
         <text fg={theme.textMuted} flexShrink={0}>scry…_</text>
         <box flexGrow={1} />
-        <text fg={theme.textMuted} flexShrink={0} onMouseUp={clear}>[Esc] Close</text>
+        <text fg={theme.textMuted} flexShrink={0} onMouseUp={clear}>[esc] close</text>
       </box>
 
       {/* Body: compact rail timeline */}

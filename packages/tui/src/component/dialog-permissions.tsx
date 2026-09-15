@@ -163,7 +163,7 @@ export function DialogPermissions() {
           Permissions status
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
+          [esc] close
         </text>
       </box>
 

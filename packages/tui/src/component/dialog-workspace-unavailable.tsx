@@ -42,7 +42,7 @@ export function DialogWorkspaceUnavailable(props: { onRestore?: () => boolean | 
           Workspace Unavailable
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
+          [esc] close
         </text>
       </box>
       <text fg={theme.textMuted} wrapMode="word">

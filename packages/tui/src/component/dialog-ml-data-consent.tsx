@@ -174,7 +174,7 @@ export function DialogMlDataConsent(props: DialogMlDataConsentProps) {
           Signal Engine learning consent
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
+          [esc] close
         </text>
       </box>
 

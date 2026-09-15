@@ -80,7 +80,7 @@ export function DialogPrompt(props: DialogPromptProps) {
           {props.title}
         </text>
         <text fg={theme.textMuted} flexShrink={0} onMouseUp={() => dialog.clear()}>
-          esc
+          [esc] cancel
         </text>
       </box>
       <box width="100%" minWidth={0} gap={1}>

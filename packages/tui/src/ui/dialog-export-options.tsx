@@ -88,7 +88,7 @@ export function DialogExportOptions(props: DialogExportOptionsProps) {
           Export Options
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
+          [esc] cancel
         </text>
       </box>
       <box gap={1}>

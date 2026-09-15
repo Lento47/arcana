@@ -77,7 +77,7 @@ export function DialogWorkspaceFileChanges(props: {
           {props.title ?? "File Changes Found"}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
-          esc
+          [esc] close
         </text>
       </box>
       <box paddingLeft={2} paddingRight={2}>
