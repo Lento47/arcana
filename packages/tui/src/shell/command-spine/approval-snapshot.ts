@@ -93,6 +93,7 @@ export function resolveApprovalSnapshot(
     expires: shortTime(approval.expiresAt),
     contractRevision: numberValue(approval.contractRevision),
     executionId: approval.executionId ?? asStringTrimmed(executedPayload.executionId),
+    reason: asStringTrimmed(requestedPayload.reason),
     arguments: Array.isArray(executedPayload.arguments)
       ? executedPayload.arguments.filter((arg): arg is string => typeof arg === "string")
       : undefined,

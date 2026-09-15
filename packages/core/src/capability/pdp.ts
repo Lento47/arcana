@@ -125,6 +125,7 @@ export type DenyReasonCode =
   | "DENY_NO_INTENT_BINDING"
   | "DENY_INTENT_STORE_UNAVAILABLE"
   | "DENY_REMOTE_CONTENT_INJECTION"
+  | "DENY_MISSING_TOOL_REASON"
 
 export type ApprovalReasonCode =
   | "REQUIRE_APPROVAL_HIGH_RISK"
@@ -134,6 +135,7 @@ export type ApprovalReasonCode =
   | "REQUIRE_APPROVAL_EXTERNAL_WRITE"
   | "REQUIRE_APPROVAL_REMOTE_WRITE"
   | "REQUIRE_APPROVAL_UNTRUSTED_LOCAL_WRITE"
+  | "REQUIRE_APPROVAL_REMOTE_CONTENT"
   | "REQUIRE_APPROVAL_INTENT"
 
 export type AllowReasonCode = "ALLOW_CAPABILITY_MATCH" | "ALLOW_INTENT_BINDING"
@@ -962,6 +964,19 @@ export function evaluate(
     return buildDecision(request, context, "DENY", reasons, capResult.matchedCapabilityIds, timestamp)
   }
 
+  // Operator-facing reason: model-initiated consequential actions must state
+  // WHY they are being called. The reason is bound into the request hash and
+  // shown in the approval gate. Operator/CLI surfaces (no MODEL_OUTPUT
+  // provenance) are exempt, so kernel/CLI mediation is unchanged.
+  if (intentRisk !== "LOW" && request.provenance.includes("MODEL_OUTPUT") && !request.reason?.trim()) {
+    reasons.push({
+      code: "DENY_MISSING_TOOL_REASON",
+      message: "Tool call must include a short reason; it is shown to the operator before approval",
+      severity: "critical",
+    })
+    return buildDecision(request, context, "DENY", reasons, capResult.matchedCapabilityIds, timestamp)
+  }
+
   let intentRequiresBinding = false
   if (intentRisk !== "LOW" && context.intentBindings !== undefined) {
     const bindings = context.intentBindings
@@ -1113,11 +1128,11 @@ function evaluateIntentBindingLocal(
     )
     if (!hasUserBinding) {
       reasons.push({
-        code: "DENY_REMOTE_CONTENT_INJECTION",
-        message: "Remote content cannot introduce consequential actions without user binding",
-        severity: "critical",
+        code: "REQUIRE_APPROVAL_REMOTE_CONTENT",
+        message: "Remote content requires explicit operator approval before this action",
+        severity: "warning",
       })
-      return { decision: "DENY", reasons }
+      return { decision: "REQUIRE_APPROVAL", reasons }
     }
   }
 

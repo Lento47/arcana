@@ -216,6 +216,12 @@ export interface AuthorizationRequest {  schemaVersion: "1"
   parentInstanceId?: string
   onBehalfOf?: string
   toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
+
+  // ── Operator-facing tool reason (optional) ──────────────────────────
+  // Short model-supplied justification for this exact call, shown in the
+  // approval gate. Hashed via the tagged "tool-reason-v1" block so legacy
+  // request hashes are unchanged when absent.
+  reason?: string
 }
 
 // ─── Authorization Decision ───────────────────────────────────────────

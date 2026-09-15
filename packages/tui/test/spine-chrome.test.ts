@@ -225,6 +225,17 @@ describe("approvalGateFacts", () => {
     expect(groups.meta.some((row) => row.label === "principal")).toBe(true)
     expect(groups.meta.some((row) => row.label === "expires")).toBe(true)
   })
+
+  test("approval fact groups surface the model reason in primary chips", () => {
+    const groups = approvalFactGroups({
+      tool: "mcp",
+      action: "network.write",
+      reason: "connect to the operator-configured MCP server",
+    }, "wide")
+    expect(groups.primary.find((row) => row.label === "reason")?.value).toBe(
+      "connect to the operator-configured MCP server",
+    )
+  })
 })
 
 describe("task / chat / prompt / code chrome", () => {

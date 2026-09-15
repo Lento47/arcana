@@ -80,6 +80,8 @@ export type ApprovalRequestSnapshot = {
   policyVersion: string
   contractRevision: number
   riskClass: RiskClass
+  /** Model-supplied justification for the call, shown in the approval gate. */
+  reason?: string
   diffPreview?: DiffPreview
   artifactPreview?: ArtifactPreview
 }
@@ -224,6 +226,7 @@ export function buildApprovalRequestSnapshot(
     policyVersion: meta.policyVersion ?? POLICY_VERSION,
     contractRevision: meta.contractRevision,
     riskClass: meta.riskClass,
+    ...(request.reason?.trim() ? { reason: request.reason.trim() } : {}),
     ...(meta.diffPreview ? { diffPreview: meta.diffPreview } : {}),
     ...(meta.artifactPreview ? { artifactPreview: meta.artifactPreview } : {}),
   }

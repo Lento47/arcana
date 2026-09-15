@@ -67,6 +67,13 @@ export function canonicalizeRequest(req: AuthorizationRequest): Buffer {
     parts.push(labelArr(req.criterionIds ?? []))
   }
 
+  // Operator-facing tool reason — tagged extension, emitted only when present
+  // so legacy request hashes are unchanged.
+  if (req.reason !== undefined) {
+    parts.push(str("tool-reason-v1"))
+    parts.push(str(req.reason))
+  }
+
   // Action
   parts.push(str(req.tool))
   parts.push(str(req.action))

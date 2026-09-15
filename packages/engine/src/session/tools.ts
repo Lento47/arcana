@@ -396,6 +396,26 @@ function mcpToolResult(
 }
 
 /**
+ * Every model-facing tool must state WHY it is being called ("reason"). The
+ * operator sees it in the approval gate; the PDP binds it into the exact
+ * request hash. Injected at the single schema projection point so built-in
+ * and MCP tools are covered, then stripped before execution so tools and
+ * servers never receive it.
+ */
+export function attachToolReason(schema: {
+  properties?: Record<string, unknown>
+  required?: readonly string[]
+}): void {
+  schema.properties = { ...(schema.properties ?? {}) }
+  schema.properties.reason = {
+    type: "string",
+    description:
+      "Why this call is needed — one short sentence, shown to the operator when approval is required.",
+  }
+  schema.required = [...new Set([...(schema.required ?? []), "reason"])]
+}
+
+/**
  * Extract provenance labels for a tool call at the production boundary.
  *
  * Classification rules:
@@ -712,10 +732,17 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     agent: input.agent,
   })) {
     const schema = ProviderTransform.schema(input.model, ToolJsonSchema.fromTool(item))
+    attachToolReason(schema as { properties?: Record<string, unknown>; required?: readonly string[] })
     tools[item.id] = tool({
       description: item.description,
       inputSchema: jsonSchema(schema),
       execute(args, options) {
+        // Operator-facing reason: injected into every tool schema above;
+        // stripped here so the tool itself never receives it. The PDP binds
+        // it into the exact request hash.
+        const rawArgs = args as Record<string, unknown>
+        const reason = typeof rawArgs.reason === "string" ? rawArgs.reason.trim() : ""
+        delete rawArgs.reason
         // Phase 1: tier admission — AI SDK fans out tools eagerly; pools bound
         // concurrent read/network/write/shell so multi-tool turns cannot stampede.
         return run.promise(
@@ -814,6 +841,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
                     ? [...new Set([...extractProvenance(item.id, args as Record<string, unknown>), "ACTIVE_CONTRACT" as ProvenanceLabel])]
                     : extractProvenance(item.id, args as Record<string, unknown>),
                 sensitivity: extractSensitivity(item.id, args as Record<string, unknown>),
+                reason: reason || undefined,
               })
               yield* IntentRuntime.ensureRuntimeBinding(authReq, intentAuthority, eventStore).pipe(
                 Effect.catch(() => Effect.succeed(undefined)),
@@ -1100,10 +1128,14 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
 
     const schema = yield* Effect.promise(() => Promise.resolve(asSchema(item.inputSchema).jsonSchema))
     const transformed = ProviderTransform.schema(input.model, { ...schema, properties: schema.properties ?? {} })
+    attachToolReason(transformed as { properties?: Record<string, unknown>; required?: readonly string[] })
     item.inputSchema = jsonSchema(transformed)
     item.execute = (args, opts) =>
       run.promise(
         Effect.gen(function* () {
+          const rawMcpArgs = args as Record<string, unknown>
+          const reason = typeof rawMcpArgs.reason === "string" ? rawMcpArgs.reason.trim() : ""
+          delete rawMcpArgs.reason
           const ctx = context(args, opts)
           const mcpCost = toolBudgetCost(key, args as Record<string, unknown>)
           yield* budget.checkOrBlock(ctx.sessionID, mcpCost)
@@ -1131,6 +1163,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             args: args as Record<string, unknown>,
             provenance: ["MCP_DESCRIPTION" as ProvenanceLabel],
             sensitivity: extractSensitivity(key, args as Record<string, unknown>),
+            reason: reason || undefined,
           })
           yield* IntentRuntime.ensureRuntimeBinding(mcpAuthReq, mcpIntentAuthority, eventStore).pipe(
             Effect.catch(() => Effect.succeed(undefined)),

@@ -83,6 +83,7 @@ describe("Wave 3 Group D1–D2: Remote content injection", () => {
       resource: { kind: "network", host: "attacker.example" },
       tool: "http_client",
       provenance: ["UNTRUSTED_LOCAL_SOURCE", "MODEL_OUTPUT"],
+      reason: "publish the fetched summary",
     })
 
     // intentBindings: [] triggers intent binding enforcement for HIGH risk
@@ -94,7 +95,9 @@ describe("Wave 3 Group D1–D2: Remote content injection", () => {
       decision.reasons.some(
         (r) =>
           r.code === "DENY_NO_INTENT_BINDING" ||
-          r.code === "DENY_REMOTE_CONTENT_INJECTION",
+          r.code === "DENY_REMOTE_CONTENT_INJECTION" ||
+          r.code === "REQUIRE_APPROVAL_UNTRUSTED_LOCAL_WRITE" ||
+          r.code === "REQUIRE_APPROVAL_REMOTE_CONTENT",
       ),
     ).toBe(true)
   })
@@ -126,6 +129,7 @@ describe("Wave 3 Group D1–D2: Remote content injection", () => {
           r.code === "DENY_REMOTE_CONTENT_INJECTION" ||
           r.code === "REQUIRE_APPROVAL" ||
           r.code === "REQUIRE_APPROVAL_INTENT" ||
+          r.code === "REQUIRE_APPROVAL_REMOTE_CONTENT" ||
           r.code === "DENY_NO_INTENT_BINDING",
       ),
     ).toBe(true)

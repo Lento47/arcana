@@ -129,6 +129,8 @@ export interface ToolCallContext {
   toolInstance?: { toolId: string; origin?: string; schemaHash?: string }
   // ── K7 consequential-argument influence claims (optional) ───────────
   influenceClaims?: import("./types").ArgumentInfluenceClaim[]
+  /** Short model-supplied justification, shown in the approval gate. */
+  reason?: string
 }
 
 /**
@@ -176,6 +178,7 @@ export function buildAuthorizationRequest(ctx: ToolCallContext): AuthorizationRe
     onBehalfOf: ctx.onBehalfOf,
     toolInstance: ctx.toolInstance,
     influenceClaims: ctx.influenceClaims,
+    reason: ctx.reason,
   }
 }
 

@@ -117,6 +117,8 @@ export type SpineApprovalSnapshot = {
   contractRevision?: number
   executionId?: string
   arguments?: string[]
+  /** Model-supplied justification for the exact request. */
+  reason?: string
 }
 
 /**

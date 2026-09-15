@@ -81,6 +81,29 @@ describe("ApprovalRequestSnapshot builder", () => {
     const s = resourceToCanonicalString({ kind: "network", host: "api.example.com", path: "/v1/users" })
     expect(s).toBe("kind=network path=/v1/users host=api.example.com")
   })
+
+  test("carries the tool reason into the snapshot and the request hash", () => {
+    const bare = makeRequest()
+    const reasoned = makeRequest({ reason: "summarize the README for the operator" })
+
+    // The reason is bound into exact-request identity: a binding for the bare
+    // request must never authorize the reasoned one, and vice versa.
+    expect(computeRequestHash(reasoned)).not.toBe(computeRequestHash(bare))
+
+    const snapshot = buildApprovalRequestSnapshot(
+      reasoned,
+      { approvalId: "appr_reason", requestHash: computeRequestHash(reasoned), contractRevision: 1, riskClass: "HIGH" },
+      args,
+    )
+    expect(snapshot.reason).toBe("summarize the README for the operator")
+    expect(
+      buildApprovalRequestSnapshot(
+        bare,
+        { approvalId: "appr_bare", requestHash: computeRequestHash(bare), contractRevision: 1, riskClass: "HIGH" },
+        args,
+      ).reason,
+    ).toBeUndefined()
+  })
 })
 
 describe("sensitive argument redaction", () => {

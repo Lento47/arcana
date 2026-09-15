@@ -69,6 +69,18 @@ describe("approval snapshot resolution (PR6)", () => {
     expect(snapshot.change).toBeUndefined()
   })
 
+  test("carries the model reason from the requested event", () => {
+    const events = [
+      event("req-1", "authorization.requested", approval.requestHash, {
+        tool: "mcp",
+        action: "network.write",
+        reason: "connect to the operator-configured MCP server",
+      }),
+    ]
+    const snapshot = resolveApprovalSnapshot(approval, events as never)
+    expect(snapshot.reason).toBe("connect to the operator-configured MCP server")
+  })
+
   test("change summary derives only from real executed arguments", () => {
     const withArgs = resolveApprovalSnapshot(
       { ...approval, state: "CONSUMED", executionId: "exec-1" },

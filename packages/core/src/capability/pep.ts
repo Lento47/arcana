@@ -319,6 +319,7 @@ export function authorizeAndExecuteEffect<T>(
         contractRevision: req.contractRevision,
         criterionIds: req.criterionIds ? [...req.criterionIds] : undefined,
         workspaceId: req.workspaceId,
+        ...(req.reason?.trim() ? { reason: req.reason.trim() } : {}),
       },
     })
 
