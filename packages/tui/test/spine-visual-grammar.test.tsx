@@ -246,7 +246,11 @@ describe("Command Spine visual grammar", () => {
       expect(frame, `width ${width}`).toContain("Check approval lifecycle")
       expect(frame, `width ${width}`).toContain("Approval")
       expect(frame, `width ${width}`).toContain("Verification failed")
-      expect(frame, `width ${width}`).toContain("critical authority states")
+      // The inline speaker marker costs the prose column two cells, so the
+      // closing sentence can wrap inside this phrase at the narrowest width;
+      // both fragments must still be present.
+      expect(frame, `width ${width}`).toContain("critical authority")
+      expect(frame, `width ${width}`).toContain("states remained visible")
     }
   }, 30_000)
 

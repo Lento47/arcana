@@ -38,8 +38,9 @@ export function ActivityReel(props: {
   const phase = createMemo(() => motion?.phase() ?? 0)
   const elapsed = createMemo(() => elapsedLabel({ view: props.view, layout: props.layout, phase: phase() }))
   // Settled cards say what they did; a live card stays calm while steps land.
+  // The gist is capped so a long shell command cannot dominate the line.
   const gist = createMemo(() =>
-    props.view.streaming === true ? "" : activityStepGist(props.view.children ?? []),
+    props.view.streaming === true ? "" : truncate(activityStepGist(props.view.children ?? []), 44),
   )
   const activityWidth = createMemo(() => {
     const width = typeof props.contentWidth === "number" && Number.isFinite(props.contentWidth)

@@ -170,6 +170,8 @@ function RowHeader(props: {
   onDisclosureMouseUp?: (event: MouseEvent) => void
   /** Dismiss affordance ("×") for cancellable rows (approval banners). */
   onDismiss?: () => void
+  /** The row body already renders this outcome; suppress the header copy. */
+  outcomeHidden?: boolean
 }) {
   const { theme } = useTheme()
   const [hovered, setHovered] = createSignal(false)
@@ -215,6 +217,7 @@ function RowHeader(props: {
         streaming={props.view.streaming === true}
         thinking={props.view.thinking}
         cueID={props.cueID}
+        outcomeHidden={props.outcomeHidden}
         onDisclosureMouseUp={props.onDisclosureMouseUp}
         onDismiss={props.onDismiss}
       />
@@ -739,6 +742,7 @@ export function SpineEntry(props: {
                   focused={props.focused}
                   disclosure={displayDisclosure()}
                   nodeSummary={nodeSummary()}
+                  outcomeHidden={bodyExpanded() && (hasToolBody() || hasListing())}
                   onHeaderMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                   onDisclosureMouseUp={toggle().headerToggleable ? handleHeaderMouseUp : undefined}
                 />

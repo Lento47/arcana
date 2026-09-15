@@ -495,6 +495,36 @@ test("settled work reel shows the first concrete step beside its counts", async 
   }
 })
 
+test("expanded tool rows render the outcome once, not in header and body", async () => {
+  const entry: SpineEntryModel = {
+    id: "list-1",
+    index: 1,
+    elapsed: "+164ms",
+    kind: "inspect",
+    glyph: "▷",
+    label: "list",
+    summary: "L:\\PROJECTS\\freeconomics\\src\\freeconomics",
+    body: "No files found",
+    receipt: { label: "list", status: "ok", summary: "No files found" },
+    collapsible: true,
+    source: { messageID: "list-1", partID: "list-part", kind: "tool" },
+  }
+  const app = await testRender(
+    () => withProviders(() => (
+      <box flexDirection="column" width="100%" height="100%">
+        <SpineEntry entry={entry} layout="wide" contentWidth={90} expanded />
+      </box>
+    )),
+    { width: 120, height: 10, useMouse: true, enableMouseMovement: true },
+  )
+  try {
+    const frame = await capture(app)
+    expect(frame.match(/No files found/g)?.length).toBe(1)
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
 test("subagent title opens its session while the disclosure toggles its preview", async () => {
   const agentEntry: SpineEntryModel = {
     id: "agent-entry",

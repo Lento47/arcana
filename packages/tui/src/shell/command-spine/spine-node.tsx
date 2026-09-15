@@ -83,6 +83,8 @@ export function SpineNode(props: {
   onDisclosureMouseUp?: (event: MouseEvent) => void
   /** Dismiss affordance ("×") for cancellable rows (approval banners). */
   onDismiss?: () => void
+  /** The row body already renders this outcome; suppress the header copy. */
+  outcomeHidden?: boolean
 }) {
   const { theme } = useTheme()
   const motion = useSpineMotion()
@@ -343,6 +345,7 @@ export function SpineNode(props: {
           disclosure={disclosure()}
           layout={layout()}
           contentWidth={props.contentWidth}
+          outcomeHidden={props.outcomeHidden}
           onDisclosureMouseUp={props.onDisclosureMouseUp}
           onMouseUp={props.onDismiss ? () => props.onDismiss?.() : undefined}
         />

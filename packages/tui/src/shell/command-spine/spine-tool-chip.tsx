@@ -47,6 +47,8 @@ export function SpineToolChip(props: {
   disclosure?: "▸" | "▾" | ""
   layout?: SpineLayout
   contentWidth?: number
+  /** The row body already renders this outcome; suppress the header copy. */
+  outcomeHidden?: boolean
   onMouseUp?: (event: MouseEvent) => void
   onDisclosureMouseUp?: (event: MouseEvent) => void
 }) {
@@ -79,7 +81,7 @@ export function SpineToolChip(props: {
   })
   const elapsed = createMemo(() => (props.elapsed ?? "").trim())
   const disclosure = createMemo(() => props.disclosure ?? "")
-  const showOutcome = createMemo(() => layout() !== "minimal" && !!outcomeText())
+  const showOutcome = createMemo(() => layout() !== "minimal" && !!outcomeText() && props.outcomeHidden !== true)
   const showElapsed = createMemo(() => layout() !== "minimal" && !!elapsed())
   const showDisclosure = createMemo(() => !!disclosure())
   const statusColor = createMemo(() => {

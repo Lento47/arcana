@@ -1,10 +1,8 @@
-import { Show, createMemo } from "solid-js"
+import { createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { Glyph } from "../../branding"
 import {
-  compactSpineElapsed,
   SPINE_CHAT_CARD_CHROME,
-  spineElapsedMax,
   spineRailCell,
   spineRailWidth,
   type SpineKind,
@@ -17,13 +15,16 @@ import type { StreamFrameGate } from "../../util/stream-frame"
 /**
  * Conversation voice — one column, one accent line.
  *
- *   [┃][pad 2][ ✦ speaker  live               +1.2s ]
- *   [┃][pad 2][ prose…                                   ]
+ *   [┃][pad 2][ ✦ prose…                                  ]
  *
- * CRITICAL wrap rule: markdown sits in a SINGLE column with paddingLeft —
- * never a row of [rail | markdown]. A rail sibling + width% collapses wrap.
- * The left accent is the card border; the glyph occupies a 2-col rail cell
- * so it lines up with tool glyphs in the same content column.
+ * The speaker glyph sits INLINE with the first prose line (a fixed marker
+ * cell, not a header row): a lone "✦ + timestamp" line above every message
+ * was pure noise in long sessions. Liveness is carried by the stream caret
+ * and the composer cue, so no per-message elapsed/timestamp is rendered here.
+ *
+ * CRITICAL wrap rule: markdown sits in a SINGLE column with an explicit
+ * width — never a row whose markdown width is left to percentages. The marker
+ * cell is subtracted from the measured content width.
  */
 export function SpineChatCard(props: {
   kind: SpineKind
@@ -45,21 +46,8 @@ export function SpineChatCard(props: {
 
   const kind = () => props.kind
   const isUser = createMemo(() => kind() === "ask")
-  const isAssistant = createMemo(() => kind() === "plan" || kind() === "ok")
-  const streaming = createMemo(() => props.streaming === true)
   const text = createMemo(() => props.text ?? "")
   const focused = () => props.focused === true
-  const showTimeChrome = createMemo(() => props.layout !== "minimal")
-  const elapsedText = createMemo(() => {
-    if (!showTimeChrome() || !isAssistant()) return ""
-    return compactSpineElapsed(props.elapsed, spineElapsedMax(props.layout))
-  })
-  const timestampText = createMemo(() => {
-    if (!showTimeChrome()) return ""
-    return (props.timestamp ?? "").trim()
-  })
-  const hasRightTime = createMemo(() => !!(elapsedText() || timestampText()))
-
   const speakerColor = createMemo(() => {
     if (isUser()) return theme.spineAsk
     return theme.spineBrand
@@ -69,10 +57,10 @@ export function SpineChatCard(props: {
     if (focused()) return theme.accent
     return speakerColor()
   })
-  const timeColor = createMemo(() => theme.spineGutterElapsed)
   const railW = createMemo(() => spineRailWidth(props.layout))
   const accentGlyph = createMemo(() => (isUser() ? Glyph.diamond : Glyph.star))
   const glyphCell = createMemo(() => spineRailCell(accentGlyph(), railW()))
+  const markerWidth = createMemo(() => railW() + 1)
 
   // Assistant prose stays open on the session surface. User prompts retain a
   // faint fill so turn boundaries remain clear without becoming chat bubbles.
@@ -88,14 +76,14 @@ export function SpineChatCard(props: {
   // Missing width (first paint) -> undefined: card sizes naturally, no floor.
   const bodyWidth = createMemo(() => {
     if (typeof props.contentWidth === "number" && Number.isFinite(props.contentWidth)) {
-      return Math.max(1, Math.floor(props.contentWidth))
+      return Math.max(1, Math.floor(props.contentWidth) - markerWidth())
     }
     return undefined
   })
 
   return (
     <box
-      flexDirection="column"
+      flexDirection="row"
       flexShrink={0}
       width="100%"
       minWidth={0}
@@ -110,55 +98,29 @@ export function SpineChatCard(props: {
       paddingTop={isUser() ? 1 : 0}
       paddingBottom={1}
     >
-      {/* Header: glyph only — no speaker text. Matches the user-prompt
-          RowHeader treatment (glyph-only chip) so the visual grammar is
-          consistent across the chat voice. Assistant identity comes from
-          the bordered card chrome and the glyph color (spineBrand). */}
-      <box flexDirection="row" flexShrink={0} alignItems="center" width="100%" gap={1}>
-        <box width={railW()} flexShrink={0}>
-          <text fg={speakerColor()} wrapMode="none">
-            {glyphCell()}
-          </text>
-        </box>
-        <Show when={!isUser() && streaming()}>
-          <text fg={theme.accent} wrapMode="none">
-            live
-          </text>
-        </Show>
-        <box flexGrow={1} minWidth={1} />
-        <Show when={hasRightTime()}>
-          <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
-            <Show when={elapsedText()}>
-              <text fg={timeColor()} wrapMode="none">
-                {elapsedText()}
-              </text>
-            </Show>
-            <Show when={timestampText()}>
-              <text fg={timeColor()} wrapMode="none">
-                {timestampText()}
-              </text>
-            </Show>
-          </box>
-        </Show>
+      {/* Marker cell — the speaker glyph lines up with the first prose line. */}
+      <box width={railW()} flexShrink={0} paddingRight={1}>
+        <text fg={speakerColor()} wrapMode="none">
+          {glyphCell()}
+        </text>
       </box>
 
       {/*
         BODY — exact legacy TextPart pattern:
-        flexShrink={0} minWidth={0} [optional numeric width] + markdown.
-        NO rail sibling. Accent is the card left border only.
+        flexShrink={0} minWidth={0} [explicit width] + markdown.
+        NO further rail sibling. Accent is the card left border only.
       */}
       <box
         flexShrink={0}
         minWidth={0}
         width={bodyWidth() ?? ("100%" as any)}
-        paddingLeft={0}
       >
         <SpineProse
           kind={kind()}
           text={text()}
           contentWidth={bodyWidth()}
           bodyLabel={bodyLabel()}
-          streaming={streaming()}
+          streaming={props.streaming === true}
           focused={focused()}
           reminders={props.reminders}
           streamFrame={props.streamFrame}
