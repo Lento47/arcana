@@ -31,21 +31,27 @@ function View(props: { api: TuiPluginApi; session_id: string }) {
           <b>ARTIFACTS</b>
         </text>
         <For each={visible()}>
-          {(item) => (
-            <box
-              onMouseUp={() => setSelectedId(selectedId() === item.id ? null : item.id)}
-            >
-              <text
-                fg={selectedId() === item.id ? theme().accent : theme().textMuted}
-                wrapMode="none"
-                truncate
+          {(item) => {
+            const [hovered, setHovered] = createSignal(false)
+            return (
+              <box
+                onMouseUp={() => setSelectedId(selectedId() === item.id ? null : item.id)}
+                onMouseOver={() => setHovered(true)}
+                onMouseOut={() => setHovered(false)}
+                backgroundColor={hovered() ? theme().backgroundElement : undefined}
               >
-                {item.type === "svg" || item.type === "html" ? "◈ " : "▣ "}
-                {item.title}
-                <text fg={theme().textMuted}> v{item.version}</text>
-              </text>
-            </box>
-          )}
+                <text
+                  fg={selectedId() === item.id ? theme().accent : theme().textMuted}
+                  wrapMode="none"
+                  truncate
+                >
+                  {item.type === "svg" || item.type === "html" ? "◈ " : "▣ "}
+                  {item.title}
+                  <text fg={theme().textMuted}> v{item.version}</text>
+                </text>
+              </box>
+            )
+          }}
         </For>
         <Show when={hidden() > 0}>
           <text fg={theme().textMuted}>+{hidden()} more in ~/.arcana/artifacts</text>

@@ -1,6 +1,6 @@
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
-import { createMemo, Show } from "solid-js"
+import { createMemo, createSignal, Show } from "solid-js"
 import { abbreviateHome } from "../../runtime"
 import { useTuiPaths } from "../../context/runtime"
 import { APP_NAME, Glyph } from "../../branding"
@@ -16,6 +16,7 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
     ),
   )
   const done = createMemo(() => props.api.kv.get("dismissed_getting_started", false))
+  const [dismissHovered, setDismissHovered] = createSignal(false)
   const show = createMemo(() => !has() && !done())
   const path = createMemo(() => {
     const session = props.api.state.session.get(props.sessionID)
@@ -50,7 +51,12 @@ function View(props: { api: TuiPluginApi; sessionID: string }) {
               <text fg={theme().text}>
                 <b>Getting started</b>
               </text>
-              <text fg={theme().textMuted} onMouseDown={() => props.api.kv.set("dismissed_getting_started", true)}>
+              <text
+                fg={dismissHovered() ? theme().text : theme().textMuted}
+                onMouseDown={() => props.api.kv.set("dismissed_getting_started", true)}
+                onMouseOver={() => setDismissHovered(true)}
+                onMouseOut={() => setDismissHovered(false)}
+              >
                 ✕
               </text>
             </box>

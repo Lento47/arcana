@@ -13,13 +13,21 @@ function changeCountWidth(item: { additions: number; deletions: number }) {
 
 function View(props: { api: TuiPluginApi; session_id: string }) {
   const [open, setOpen] = createSignal(true)
+  const [hovered, setHovered] = createSignal(false)
   const theme = () => props.api.theme.current
   const list = createMemo(() => props.api.state.session.diff(props.session_id))
 
   return (
     <Show when={list().length > 0}>
       <box>
-        <box flexDirection="row" gap={1} onMouseDown={() => list().length > 2 && setOpen((x) => !x)}>
+        <box
+          flexDirection="row"
+          gap={1}
+          onMouseDown={() => list().length > 2 && setOpen((x) => !x)}
+          onMouseOver={() => setHovered(true)}
+          onMouseOut={() => setHovered(false)}
+          backgroundColor={hovered() && list().length > 2 ? theme().backgroundElement : undefined}
+        >
           <Show when={list().length > 2}>
             <text fg={theme().text}>{open() ? "▼" : "▶"}</text>
           </Show>

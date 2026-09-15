@@ -1,4 +1,4 @@
-import { createContext, useContext, type ParentProps, Show, Switch, Match, For } from "solid-js"
+import { createContext, useContext, createSignal, type ParentProps, Show, Switch, Match, For } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useTheme } from "../context/theme"
 import { useTerminalDimensions } from "@opentui/solid"
@@ -38,45 +38,53 @@ export function Toast() {
       zIndex={4000}
     >
       <For each={toast.toasts.slice(-MAX_VISIBLE)}>
-        {(item) => (
-          <box
-            maxWidth={Math.min(60, dimensions().width - 6)}
-            paddingLeft={2}
-            paddingRight={1}
-            paddingTop={1}
-            paddingBottom={1}
-            backgroundColor={theme.backgroundPanel}
-            borderColor={theme[item.variant]}
-            border={["left", "right"]}
-            customBorderChars={SplitBorder.customBorderChars}
-            flexDirection="row"
-            gap={1}
-            alignItems="flex-start"
-          >
-            <box flexGrow={1}>
-              <Show when={item.title}>
-                <text attributes={TextAttributes.BOLD} fg={theme.text}>
-                  {item.title}
-                </text>
-              </Show>
-              <Switch>
-                <Match when={item.variant === "error"}>
-                  <Scramble error text={item.message} fg={theme.error} />
-                </Match>
-                <Match when={true}>
-                  <text fg={theme.text} wrapMode="word">
-                    {item.message}
+        {(item) => {
+          const [dismissHovered, setDismissHovered] = createSignal(false)
+          return (
+            <box
+              maxWidth={Math.min(60, dimensions().width - 6)}
+              paddingLeft={2}
+              paddingRight={1}
+              paddingTop={1}
+              paddingBottom={1}
+              backgroundColor={theme.backgroundPanel}
+              borderColor={theme[item.variant]}
+              border={["left", "right"]}
+              customBorderChars={SplitBorder.customBorderChars}
+              flexDirection="row"
+              gap={1}
+              alignItems="flex-start"
+            >
+              <box flexGrow={1}>
+                <Show when={item.title}>
+                  <text attributes={TextAttributes.BOLD} fg={theme.text}>
+                    {item.title}
                   </text>
-                </Match>
-              </Switch>
+                </Show>
+                <Switch>
+                  <Match when={item.variant === "error"}>
+                    <Scramble error text={item.message} fg={theme.error} />
+                  </Match>
+                  <Match when={true}>
+                    <text fg={theme.text} wrapMode="word">
+                      {item.message}
+                    </text>
+                  </Match>
+                </Switch>
+              </box>
+              <box flexShrink={0}>
+                <text
+                  fg={dismissHovered() ? theme.text : theme.textMuted}
+                  onMouseUp={() => toast.dismiss(item.id)}
+                  onMouseOver={() => setDismissHovered(true)}
+                  onMouseOut={() => setDismissHovered(false)}
+                >
+                  ✕
+                </text>
+              </box>
             </box>
-            <box flexShrink={0}>
-              <text fg={theme.textMuted} onMouseUp={() => toast.dismiss(item.id)}>
-                ✕
-              </text>
-            </box>
-          </box>
-        )}
+          )
+        }}
       </For>
     </box>
   )
