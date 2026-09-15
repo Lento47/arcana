@@ -101,8 +101,6 @@ export function SpineApprovalGate(props: {
       flexShrink={0}
       minWidth={0}
       gap={0}
-      paddingTop={1}
-      paddingBottom={1}
       paddingLeft={1}
       paddingRight={1}
       border={true}
@@ -110,7 +108,7 @@ export function SpineApprovalGate(props: {
       borderColor={riskColor(risk(), theme)}
       backgroundColor={theme.backgroundPanel}
     >
-      <box flexDirection="row" flexShrink={0} alignItems="center" gap={1} paddingBottom={1}>
+      <box flexDirection="row" flexShrink={0} alignItems="center" gap={1}>
         <text fg={theme.warning} attributes={TextAttributes.BOLD}>
           {facts().title}
         </text>
@@ -120,7 +118,7 @@ export function SpineApprovalGate(props: {
         </box>
       </box>
 
-      <box flexDirection="column" flexShrink={0} gap={1} paddingBottom={1}>
+      <box flexDirection="column" flexShrink={0} gap={0} paddingTop={1} paddingBottom={1}>
         <For each={primaryRows()}>
           {(row) => (
             <box flexDirection="row" flexShrink={0} gap={1} minWidth={0}>

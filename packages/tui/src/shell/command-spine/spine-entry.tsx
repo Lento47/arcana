@@ -187,7 +187,10 @@ function RowHeader(props: {
     >
       <SpineRail
         layout={props.layout}
-        kind={props.view.kind}
+        // Governance groups use kind "ok" (a chat kind that suppresses the
+        // rail) but render as spine rows: keep the rail column so the label
+        // never runs into the gutter, and show the group's status glyph.
+        kind={props.view.kind === "ok" ? undefined : props.view.kind}
         // B8 audit: think uses "" so SpineRail falls back to the "│" rule
         // (nullish-coalesce). Fail rows render an empty cell — a single space
         // is a width-1 symbol so spineRailCell pads to the rail column without
