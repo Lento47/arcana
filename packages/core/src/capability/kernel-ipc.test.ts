@@ -225,3 +225,27 @@ describe("kernel IPC server (S4 M-c)", () => {
     }
   })
 })
+
+it("kernel dispatch filters authority environment before executing", async () => {
+  let environment: Record<string, string> | undefined
+  const path = `${listenPath}-environment`
+  const kernel = await startKernelServer({
+    listenPath: path,
+    dbPath: ":memory:",
+    sessionId: "s-environment",
+    spawnExecutor: (_argv, options) => {
+      environment = options?.env
+      return { stdout: "ok", stderr: "", exitCode: 0 }
+    },
+  })
+  try {
+    const result = await ipcSpawnViaKernel(path, {
+      sessionId: "s-environment", argv: ["mock-process"],
+      env: { ARCANA_KERNEL_PIPE: "privileged", NODE_OPTIONS: "inject", KEEP: "yes" },
+    })
+    expect(result.status).toBe("EXECUTED")
+    expect(environment).toEqual({ KEEP: "yes" })
+  } finally {
+    await kernel.close()
+  }
+})

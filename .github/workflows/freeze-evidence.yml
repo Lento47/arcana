@@ -35,7 +35,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Arcana
         uses: ./.github/actions/setup-arcana
@@ -67,7 +67,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Arcana
         uses: ./.github/actions/setup-arcana
@@ -85,7 +85,7 @@ jobs:
 
       - name: Upload engine test log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: engine-test-log-${{ github.sha }}
           path: packages/engine/engine-test.log
@@ -100,11 +100,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Download engine test log
         if: always()
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: engine-test-log-${{ github.sha }}
           path: engine-log

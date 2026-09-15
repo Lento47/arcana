@@ -7,9 +7,13 @@ import {
   type LearningScopeType,
 } from "@arcana/ml/learning"
 import { createHash, randomBytes, randomUUID } from "node:crypto"
-import { closeSync, existsSync, mkdirSync, openSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs"
 import path from "node:path"
 
+import {
+  learningExportBoundary,
+  type LearningExportBoundary,
+  type LearningExportFileHandle,
+} from "./learning-export-boundary.js"
 import { LearningStore } from "./learning-store.js"
 
 export type LearningExportOptions = {
@@ -85,13 +89,17 @@ function rekeyLabel(label: LearningLabelV1, exportSecret: string): LearningLabel
  * are never overwritten, and all stable internal references are re-keyed for
  * this export so separate exports cannot be joined by identifier.
  */
-export function exportLearningDataset(store: LearningStore, options: LearningExportOptions): LearningExportResult {
+export function exportLearningDataset(
+  store: LearningStore,
+  options: LearningExportOptions,
+  boundary: LearningExportBoundary = learningExportBoundary,
+): LearningExportResult {
   const output = path.resolve(options.output)
   const manifestPath = `${output}.manifest.json`
   if (options.includeContent && !options.acknowledgePrivateData) {
     throw new Error("Content export requires --acknowledge-private-data.")
   }
-  if (existsSync(output) || existsSync(manifestPath)) {
+  if (boundary.exists(output) || boundary.exists(manifestPath)) {
     throw new Error("Export destination already exists; refusing to overwrite it.")
   }
   if (options.scopeType === "workspace" && !options.workspace?.trim()) {
@@ -114,14 +122,14 @@ export function exportLearningDataset(store: LearningStore, options: LearningExp
   const redactionCounts: Record<string, number> = {}
   const hash = createHash("sha256")
   const parent = path.dirname(output)
-  mkdirSync(parent, { recursive: true })
+  boundary.ensureDirectory(parent)
   const temporary = path.join(parent, `.${path.basename(output)}.${randomUUID()}.tmp`)
-  let fd: number | undefined
+  let handle: LearningExportFileHandle | undefined
   try {
-    fd = openSync(temporary, "wx", 0o600)
+    handle = boundary.openExclusive(temporary)
     const writeRecord = (record: unknown): void => {
       const line = `${JSON.stringify(record)}\n`
-      writeSync(fd!, line, undefined, "utf8")
+      handle!.write(line)
       hash.update(line, "utf8")
     }
     for (const example of examples) {
@@ -133,12 +141,12 @@ export function exportLearningDataset(store: LearningStore, options: LearningExp
     for (const label of labels) {
       writeRecord({ type: "label", data: rekeyLabel(label, exportSecret) })
     }
-    closeSync(fd)
-    fd = undefined
-    renameSync(temporary, output)
+    handle.close()
+    handle = undefined
+    boundary.rename(temporary, output)
   } catch (error) {
-    if (fd !== undefined) closeSync(fd)
-    if (existsSync(temporary)) rmSync(temporary, { force: true })
+    handle?.close()
+    if (boundary.exists(temporary)) boundary.remove(temporary)
     throw error
   }
 
@@ -159,11 +167,11 @@ export function exportLearningDataset(store: LearningStore, options: LearningExp
   })
   const manifestJson = `${JSON.stringify(data, null, 2)}\n`
   try {
-    writeFileSync(manifestPath, manifestJson, { encoding: "utf8", flag: "wx", mode: 0o600 })
+    boundary.writeFileExclusive(manifestPath, manifestJson)
   } catch (error) {
     // The dataset was created by this call and is removed if its integrity
     // manifest cannot be committed, avoiding a misleading partial export.
-    if (existsSync(output)) rmSync(output, { force: true })
+    if (boundary.exists(output)) boundary.remove(output)
     throw error
   }
   const manifestSha256 = createHash("sha256").update(manifestJson, "utf8").digest("hex")
@@ -180,8 +188,8 @@ export function exportLearningDataset(store: LearningStore, options: LearningExp
       manifestSha256,
     })
   } catch (error) {
-    if (existsSync(output)) rmSync(output, { force: true })
-    if (existsSync(manifestPath)) rmSync(manifestPath, { force: true })
+    if (boundary.exists(output)) boundary.remove(output)
+    if (boundary.exists(manifestPath)) boundary.remove(manifestPath)
     throw error
   }
   return { output, manifest: manifestPath, auditId, data }

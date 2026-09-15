@@ -9,8 +9,8 @@
 import type { SpawnExecutor } from "./spawn-executor"
 
 export interface SandboxBudget {
-  /** Address-space cap for the child tree (Linux: ulimit -v). */
-  maxMemoryMB: number
+  /** Optional per-process address-space cap inherited by children on Linux. */
+  maxMemoryMB?: number
   /** Wall-clock budget — reported in enforcement(), enforced by the caller. */
   toolTimeoutMs: number
 }
@@ -43,12 +43,12 @@ const STRIPPED_ENV_KEYS = new Set(["NODE_OPTIONS"])
 
 function sanitizeEnvFactory(platform: SandboxPlatform) {
   return (env: Record<string, string> | undefined): Record<string, string> | undefined => {
-    if (!env) return undefined
     const out: Record<string, string> = {}
-    for (const [k, v] of Object.entries(env)) {
-      if (STRIPPED_ENV_KEYS.has(k)) continue
-      if (STRIPPED_ENV_PREFIXES.some((p) => k.startsWith(p))) continue
-      out[k] = v
+    for (const [k, v] of Object.entries(env ?? process.env)) {
+      const key = platform === "win32" ? k.toUpperCase() : k
+      if (STRIPPED_ENV_KEYS.has(key)) continue
+      if (STRIPPED_ENV_PREFIXES.some((p) => key.startsWith(p))) continue
+      if (typeof v === "string") out[k] = v
     }
     return out
   }
@@ -59,7 +59,7 @@ function linuxApply(argv: string[], maxMemoryMB: number): string[] {
   const kb = Math.max(1, Math.floor((maxMemoryMB * 1024 * 1024) / 1024))
   // `exec "$@"` replaces the shell AFTER limits are set — one process, no
   // extra PID in the tree, limits inherited by the payload.
-  const script = `ulimit -v ${kb}; exec "$@"`
+  const script = `ulimit -Sv ${kb} && ulimit -Hv ${kb} && exec "$@"`
   return ["/bin/sh", "-c", script, "sh", ...argv]
 }
 
@@ -67,18 +67,22 @@ export function buildSandboxProfile(
   budget: SandboxBudget,
   platform: SandboxPlatform = (process.platform as SandboxPlatform) ?? "linux",
 ): SandboxSpawnProfile {
+  if (budget.maxMemoryMB !== undefined && (!Number.isFinite(budget.maxMemoryMB) || budget.maxMemoryMB <= 0)) {
+    throw new Error("maxMemoryMB must be a finite positive number")
+  }
   switch (platform) {
     case "linux":
       return {
         platform,
-        apply: (argv) => linuxApply(argv, budget.maxMemoryMB),
+        apply: (argv) => budget.maxMemoryMB === undefined ? [...argv] : linuxApply(argv, budget.maxMemoryMB),
         sanitizeEnv: sanitizeEnvFactory(platform),
         enforcement: () => ({
           enforced: [
-            `address-space ≤ ${budget.maxMemoryMB}MB (ulimit -v, inherited by whole child tree)`,
+            ...(budget.maxMemoryMB === undefined ? [] : [`per-process address-space ≤ ${budget.maxMemoryMB}MB (hard ulimit, inherited by children)`]),
             "ARCANA_* / NODE_OPTIONS stripped from child env",
           ],
           gaps: [
+            ...(budget.maxMemoryMB === undefined ? ["no memory limit configured"] : ["address-space limit is per process, not aggregate tree memory"]),
             `wall-clock timeout (${budget.toolTimeoutMs}ms) must be enforced by the spawn CALLER`,
             "filesystem/network containment requires namespaces or a jailer (bubblewrap/firejail) — future work",
           ],
@@ -112,6 +116,8 @@ export function buildSandboxProfile(
           ],
         }),
       }
+    default:
+      throw new Error(`unsupported sandbox platform: ${platform}`)
   }
 }
 

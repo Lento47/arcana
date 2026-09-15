@@ -35,7 +35,7 @@ jobs:
           }
 
       - name: Checkout assessed candidate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.candidate_tag }}
           fetch-depth: 0
