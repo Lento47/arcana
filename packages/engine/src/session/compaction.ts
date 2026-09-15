@@ -49,6 +49,7 @@ import {
   META_LAST_COMPACT_AT,
   META_PENDING_COMPACT_PASS,
   readLastCompactTokens,
+  rebaseCompactBaseline,
   shouldInterCompact,
   usageForHysteresis,
   type InterCompactPass,
@@ -245,6 +246,8 @@ export interface Interface {
     agent: string
     model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
     tokens: SessionV1.Assistant["tokens"]
+    /** Completion time of the message that produced `tokens` (rebase guard). */
+    completedAt?: number
     reason: "preflight" | "post_turn"
   }) => Effect.Effect<boolean>
   /**
@@ -256,6 +259,8 @@ export interface Interface {
     agent: string
     model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
     tokens: SessionV1.Assistant["tokens"]
+    /** Completion time of the message that produced `tokens` (rebase guard). */
+    completedAt?: number
     step: number
   }) => Effect.Effect<boolean>
 }
@@ -948,6 +953,8 @@ export const layer = Layer.effect(
       agent: string
       model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
       tokens: SessionV1.Assistant["tokens"]
+      /** Completion time of the message that produced `tokens` (rebase guard). */
+      completedAt?: number
       reason: "preflight" | "post_turn"
     }) {
       const cfg = yield* config.get()
@@ -970,7 +977,18 @@ export const layer = Layer.effect(
 
       const sess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (!sess) return false
-      const meta = (sess.metadata ?? {}) as Record<string, unknown>
+      let meta = (sess.metadata ?? {}) as Record<string, unknown>
+      // Rebase the provisional post-compaction baseline to provider usage once a
+      // genuine post-compaction measurement exists (same metric as `count`).
+      const rebased = rebaseCompactBaseline(meta, { count, completedAt: input.completedAt })
+      if (rebased.rebound) {
+        yield* session.setMetadata({ sessionID: input.sessionID, metadata: rebased.metadata })
+        yield* Effect.logInfo("inter compact baseline rebased", {
+          count,
+          sessionID: input.sessionID,
+        })
+        meta = rebased.metadata
+      }
       const lastTokens = readLastCompactTokens(meta)
       // alreadyHot: percent gate already satisfied via isOverflow (hard ceiling OK).
       if (
@@ -1042,6 +1060,8 @@ export const layer = Layer.effect(
       agent: string
       model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
       tokens: SessionV1.Assistant["tokens"]
+      /** Completion time of the message that produced `tokens` (rebase guard). */
+      completedAt?: number
       step: number
     }) {
       const cfg = yield* config.get()
@@ -1063,7 +1083,17 @@ export const layer = Layer.effect(
 
       const sess = yield* session.get(input.sessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (!sess) return false
-      const meta = (sess.metadata ?? {}) as Record<string, unknown>
+      let meta = (sess.metadata ?? {}) as Record<string, unknown>
+      // Same rebase as maybeInter: provider-measured baseline once one exists.
+      const rebased = rebaseCompactBaseline(meta, { count, completedAt: input.completedAt })
+      if (rebased.rebound) {
+        yield* session.setMetadata({ sessionID: input.sessionID, metadata: rebased.metadata })
+        yield* Effect.logInfo("intra compact baseline rebased", {
+          count,
+          sessionID: input.sessionID,
+        })
+        meta = rebased.metadata
+      }
       const lastTokens = readLastCompactTokens(meta)
 
       // Hard usable breach: only relaxes min steps (to 2), never hysteresis (P4 M1/M2).

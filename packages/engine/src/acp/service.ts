@@ -650,7 +650,7 @@ function makeUsageService(sdk: OpencodeClient) {
           sessionId: params.sessionID,
           update: {
             sessionUpdate: "usage_update",
-            used: message.tokens.input + message.tokens.cache.read,
+            used: UsageService.contextUsedTokens(message.tokens),
             size,
             cost: { amount: UsageService.totalSessionCost(messages), currency: "USD" },
           },

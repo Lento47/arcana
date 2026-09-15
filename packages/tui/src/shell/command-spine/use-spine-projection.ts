@@ -13,9 +13,11 @@ import { spineProseWidth, spineGutterDigits, type SpineLayout, type SpineEntry }
 import { messagesToSpineEntriesCached, type SpineEntriesCache } from "./spine-mapper"
 import { buildStatusSegments } from "./spine-segments"
 import {
-  contextTokenCount,
+  compactNowPercent,
+  compactSoonPercent,
+  compactionAutoEnabled,
+  contextUsageFor,
   hasContextUsage,
-  usableContextWindow,
 } from "../../util/context-pressure"
 import { isLocalPermissionRequest, pendingGateEntries } from "./spine-gates"
 import {
@@ -116,13 +118,11 @@ export function useSpineProjection(props: ShellProps, input: {
     if (!last) return undefined
     const provider = sync.data.provider?.find((p) => p.id === last.providerID)
     const limit = provider?.models[last.modelID]?.limit
-    if (!limit || limit.context <= 0) return undefined
-    const tokens = contextTokenCount(last.tokens)
-    const usable = usableContextWindow(limit)
-    return {
-      percent: Math.round((tokens / limit.context) * 100),
-      overBudget: usable > 0 && tokens >= usable,
-    }
+    return contextUsageFor({
+      tokens: last.tokens,
+      limit,
+      compaction: sync.data.config.compaction,
+    })
   })
   const headerSegments = createMemo(() => {
     const session = sync.data.session?.find((s) => s.id === props.sessionID)
@@ -148,6 +148,9 @@ export function useSpineProjection(props: ShellProps, input: {
       model: modelName(),
       ctxPercent: ctxUsage()?.percent ?? null,
       ctxOverBudget: ctxUsage()?.overBudget,
+      ctxSoonPercent: compactSoonPercent(sync.data.config.compaction),
+      ctxNowPercent: compactNowPercent(sync.data.config.compaction),
+      ctxAuto: compactionAutoEnabled(sync.data.config.compaction),
       state: props.sessionStatus?.()?.type,
       path: session?.directory,
       drive,

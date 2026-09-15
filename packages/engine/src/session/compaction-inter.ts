@@ -21,6 +21,13 @@ export const META_LAST_COMPACT_SOURCE_TOKENS = "__arcana_last_compact_source_tok
 export const META_LAST_COMPACT_RESULT_TOKENS = "__arcana_last_compact_result_tokens"
 export const META_LAST_COMPACT_AT = "__arcana_last_compact_at"
 export const META_LAST_COMPACT_PASS = "__arcana_last_compact_pass"
+/**
+ * Provisional baseline marker. `META_LAST_COMPACT_RESULT_TOKENS` is written
+ * from a text estimator (no provider call exists on the compacted material
+ * yet); the first provider usage measured *after* the compaction rebases the
+ * baseline to the same metric as the hysteresis decision (provider count).
+ */
+export const META_LAST_COMPACT_RESULT_PENDING = "__arcana_last_compact_result_pending"
 
 export type InterCompactPass = "inter" | "intra" | "inline" | "manual"
 
@@ -133,7 +140,38 @@ export function compactSuccessMetadata(
     [META_LAST_COMPACT_TOKENS]: input.resultTokens,
     [META_LAST_COMPACT_SOURCE_TOKENS]: input.sourceTokens,
     [META_LAST_COMPACT_RESULT_TOKENS]: input.resultTokens,
+    // The result side is an estimate until the next provider usage lands.
+    [META_LAST_COMPACT_RESULT_PENDING]: true,
     [META_LAST_COMPACT_AT]: Date.now(),
     [META_LAST_COMPACT_PASS]: input.pass,
   }
+}
+
+/**
+ * Replace the estimated post-compaction baseline with a provider-measured
+ * count, once one exists. `completedAt` is the completion time of the
+ * assistant message that produced `count`; messages that completed before
+ * the compaction (the summary itself, preserved tail) are pre-compaction
+ * measurements and must not rebase the baseline. Safe to call on every
+ * decision: no-ops without the pending marker, and leaves the marker in
+ * place until a genuine post-compaction measurement arrives.
+ */
+export function rebaseCompactBaseline(
+  metadata: Record<string, unknown> | undefined,
+  input: { count: number; completedAt?: number },
+): { metadata: Record<string, unknown>; rebound: boolean } {
+  const current = metadata ?? {}
+  if (current[META_LAST_COMPACT_RESULT_PENDING] !== true) return { metadata: current, rebound: false }
+  const compactedAt = current[META_LAST_COMPACT_AT]
+  if (typeof input.completedAt !== "number" || !Number.isFinite(input.completedAt)) {
+    return { metadata: current, rebound: false }
+  }
+  if (typeof compactedAt !== "number" || !Number.isFinite(compactedAt) || input.completedAt < compactedAt) {
+    return { metadata: current, rebound: false }
+  }
+  const next = { ...current }
+  next[META_LAST_COMPACT_TOKENS] = input.count
+  next[META_LAST_COMPACT_RESULT_TOKENS] = input.count
+  delete next[META_LAST_COMPACT_RESULT_PENDING]
+  return { metadata: next, rebound: true }
 }

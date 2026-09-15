@@ -219,7 +219,8 @@ describe("acp usage", () => {
           sessionId: "ses_1",
           update: {
             sessionUpdate: "usage_update",
-            used: 15,
+            // canonical tokenCount: 10 input + 20 output + 5 cache.read
+            used: 35,
             size: 128_000,
             cost: { amount: 3, currency: "USD" },
           },
@@ -237,6 +238,39 @@ describe("acp usage", () => {
                 output: 20,
                 reasoning: 0,
                 cache: { read: 5, write: 0 },
+              },
+            }),
+          ]),
+        }),
+      ),
+    )
+  })
+
+  it.effect("counts cache writes in usage_update.used", () => {
+    const updates: SessionNotification[] = []
+    return Effect.gen(function* () {
+      const usage = yield* UsageService.Service
+      yield* usage.sendUpdate({
+        connection: connection(updates),
+        sessionID: "ses_1",
+        directory: "/workspace",
+      })
+
+      const update = updates[0]?.update as { sessionUpdate: string; used: number }
+      // 10 input + 20 output + 5 cache.read + 13 cache.write
+      expect(update.sessionUpdate).toBe("usage_update")
+      expect(update.used).toBe(48)
+    }).pipe(
+      Effect.provide(
+        fakeLayer({
+          messages: Effect.succeed([
+            assistant({
+              cost: 2,
+              tokens: {
+                input: 10,
+                output: 20,
+                reasoning: 0,
+                cache: { read: 5, write: 13 },
               },
             }),
           ]),

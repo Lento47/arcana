@@ -21,16 +21,13 @@
  * the plugin isn't visible (e.g. the command spine).
  */
 import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
+import type { AssistantMessage } from "@arcana/sdk/v2"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
 import { useTuiConfig } from "../../config"
-import { contextPressure } from "../../util/context-pressure"
+import { contextUsageFor, hasContextUsage } from "../../util/context-pressure"
 import { formatSessionMetrics, type SessionMetricSnapshot } from "./metrics"
 import { useTerminalDimensions, type JSX } from "@opentui/solid"
-
-function clampPercent(pct: number): number {
-  return Math.max(0, Math.min(100, pct))
-}
 
 export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { state?: string; expiresAt?: string } | null }): JSX.Element {
   const { theme } = useTheme()
@@ -71,7 +68,8 @@ export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { sta
   })
 
   // Context pressure uses the LAST assistant message's cumulative tokens
-  // (matches the existing top statusbar + sidebar context plugins).
+  // (matches the top statusbar + sidebar context plugins). Selection and
+  // thresholds share util/context-pressure so every surface agrees.
   const lastAssistant = createMemo(() => {
     const sid = props.sessionID
     if (!sid) return undefined
@@ -79,18 +77,23 @@ export function SessionMetricsBar(props: { sessionID?: string; freeUsage?: { sta
     return msgs.findLast((m) => m.role === "assistant")
   })
 
-  const percent = createMemo(() => {
-    const last = lastAssistant() as { tokens?: { input: number; output: number; reasoning: number; cache: { read: number; write: number } }; providerID?: string; modelID?: string } | undefined
-    if (!last?.tokens) return undefined
-    const total = last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
-    if (!total) return undefined
-    const model = sync.data.provider.find((p) => p.id === last.providerID)?.models[last.modelID ?? ""]
-    const limit = (model as { limit?: { context?: number } } | undefined)?.limit?.context
-    if (!limit) return undefined
-    return clampPercent(Math.round((total / limit) * 100))
+  const usage = createMemo(() => {
+    const sid = props.sessionID
+    if (!sid) return undefined
+    const msgs = sync.data.message[sid] ?? []
+    const last = msgs.findLast(
+      (m): m is AssistantMessage => m.role === "assistant" && hasContextUsage(m.tokens),
+    )
+    if (!last) return undefined
+    const model = sync.data.provider.find((p) => p.id === last.providerID)?.models[last.modelID]
+    return contextUsageFor({
+      tokens: last.tokens,
+      limit: model?.limit,
+      compaction: sync.data.config.compaction,
+    })
   })
 
-  const pressure = createMemo(() => contextPressure(percent()))
+  const pressure = createMemo(() => usage()?.pressure)
 
   // Per-turn TTFT from the last assistant message's latest attempt.
   const ttft = createMemo(() => {

@@ -60,6 +60,14 @@ describe("spine-segments.buildStatusSegments (S3)", () => {
     expect(buildStatusSegments({ ctxPercent: COMPACT_NOW_PERCENT, ctxOverBudget: true })[0]?.tone).toBe("error")
   })
 
+  test("ctx honors configured thresholds and the auto gate", () => {
+    // threshold_percent 90: 89 stays info, 90 warns
+    expect(buildStatusSegments({ ctxPercent: 89, ctxSoonPercent: 90, ctxNowPercent: 95 })[0]?.tone).toBe("info")
+    expect(buildStatusSegments({ ctxPercent: 90, ctxSoonPercent: 90, ctxNowPercent: 95 })[0]?.tone).toBe("warning")
+    // hard breach does not imply compaction when auto is disabled
+    expect(buildStatusSegments({ ctxPercent: 10, ctxOverBudget: true, ctxAuto: false })[0]?.tone).toBe("info")
+  })
+
   test("ctx omitted when percent missing or non-finite", () => {
     expect(buildStatusSegments({ ctxPercent: null })).toEqual([])
     expect(buildStatusSegments({ ctxPercent: Number.NaN })).toEqual([])

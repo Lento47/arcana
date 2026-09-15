@@ -1923,6 +1923,7 @@ export const layer = Layer.effect(
                   agent: lastUser.agent,
                   model: lastUser.model,
                   tokens: lastFinished.tokens,
+                  completedAt: lastFinished.time.completed,
                   reason: "preflight",
                 })
                 .pipe(Effect.catch(() => Effect.succeed(false)))
@@ -2066,6 +2067,7 @@ export const layer = Layer.effect(
                 agent: lastUser.agent,
                 model: lastUser.model,
                 tokens: lastFinished.tokens,
+                completedAt: lastFinished.time.completed,
                 step,
               })
               .pipe(Effect.catch(() => Effect.succeed(false)))
@@ -2412,6 +2414,7 @@ export const layer = Layer.effect(
             agent: lastUser.agent,
             model: lastUser.model,
             tokens: lastFinished.tokens,
+            completedAt: lastFinished.time.completed,
             reason: "post_turn",
           })
         }).pipe(Effect.catch(() => Effect.void), Effect.ignore)

@@ -4,12 +4,8 @@ import { useSync } from "../../context/sync"
 import { useTheme } from "../../context/theme"
 import type { AssistantMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
-import { contextPressure } from "../../util/context-pressure"
+import { contextUsageFor, hasContextUsage } from "../../util/context-pressure"
 import { useCommandShortcut, useOpencodeKeymap } from "../../keymap"
-
-function clampPercent(pct: number): number {
-  return Math.max(0, Math.min(100, pct))
-}
 
 function compactTailText(message: unknown) {
   const item = message as { role?: string; toolName?: string; content?: string }
@@ -52,20 +48,26 @@ export function SubagentFooter() {
 
   const usage = createMemo(() => {
     const msg = messages()
-    const last = msg.findLast((item): item is AssistantMessage => item.role === "assistant" && item.tokens.output > 0)
+    const last = msg.findLast(
+      (item): item is AssistantMessage => item.role === "assistant" && hasContextUsage(item.tokens),
+    )
     if (!last) return
-    const tokens =
-      last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
-    if (tokens <= 0) return
     const model = sync.data.provider.find((item) => item.id === last.providerID)?.models[last.modelID]
-    const percent = model?.limit.context ? clampPercent(Math.round((tokens / model.limit.context) * 100)) : undefined
-    const pressure = contextPressure(percent)
+    const snapshot = contextUsageFor({
+      tokens: last.tokens,
+      limit: model?.limit,
+      compaction: sync.data.config.compaction,
+    })
+    if (snapshot.tokens <= 0) return
     const cost = session()?.cost ?? 0
     return {
-      context: percent !== undefined ? `${Locale.number(tokens)} / ${percent}%` : Locale.number(tokens),
-      pressure,
+      context:
+        snapshot.percent !== null
+          ? `${Locale.number(snapshot.tokens)} / ${snapshot.percent}%`
+          : Locale.number(snapshot.tokens),
+      pressure: snapshot.pressure,
       cost: cost > 0 ? Locale.currency(cost) : undefined,
-      urgent: pressure === "compact now",
+      urgent: snapshot.pressure === "compact now",
     }
   })
 

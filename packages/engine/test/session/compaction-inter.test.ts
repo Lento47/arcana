@@ -4,12 +4,14 @@ import {
   hysteresisTokensFromMessages,
   META_LAST_COMPACT_AT,
   META_LAST_COMPACT_PASS,
+  META_LAST_COMPACT_RESULT_PENDING,
   META_LAST_COMPACT_RESULT_TOKENS,
   META_LAST_COMPACT_SOURCE_TOKENS,
   META_LAST_COMPACT_TOKENS,
   minInterTokenDelta,
   passesCompactHysteresis,
   readLastCompactTokens,
+  rebaseCompactBaseline,
   shouldInterCompact,
   usageForHysteresis,
 } from "../../src/session/compaction-inter"
@@ -213,5 +215,61 @@ describe("compaction-inter.metadata", () => {
         alreadyHot: true,
       }),
     ).toBe(true)
+  })
+
+  test("successful compact marks the result baseline pending rebase", () => {
+    const meta = compactSuccessMetadata(undefined, {
+      sourceTokens: 150_000,
+      resultTokens: 18_000,
+      pass: "inter",
+    })
+    expect(meta[META_LAST_COMPACT_RESULT_PENDING]).toBe(true)
+    expect(readLastCompactTokens(meta)).toBe(18_000)
+  })
+
+  test("rebase is a no-op without the pending marker", () => {
+    const meta = { [META_LAST_COMPACT_TOKENS]: 18_000, [META_LAST_COMPACT_AT]: Date.now() }
+    const result = rebaseCompactBaseline(meta, { count: 42_000, completedAt: Date.now() + 1_000 })
+    expect(result.rebound).toBe(false)
+    expect(result.metadata).toBe(meta)
+  })
+
+  test("rebase waits for a genuine post-compaction measurement", () => {
+    const meta = compactSuccessMetadata(undefined, {
+      sourceTokens: 150_000,
+      resultTokens: 18_000,
+      pass: "inter",
+    })
+    // No completion time yet (caller cannot prove ordering) — stay pending.
+    expect(rebaseCompactBaseline(meta, { count: 42_000 }).rebound).toBe(false)
+    // Pre-compaction measurement (summary itself / preserved tail) — stay pending.
+    const pre = rebaseCompactBaseline(meta, { count: 140_000, completedAt: (meta[META_LAST_COMPACT_AT] as number) - 5 })
+    expect(pre.rebound).toBe(false)
+    expect(pre.metadata[META_LAST_COMPACT_RESULT_PENDING]).toBe(true)
+    // Post-compaction measurement — rebase both baseline keys and clear marker.
+    const post = rebaseCompactBaseline(meta, { count: 42_000, completedAt: (meta[META_LAST_COMPACT_AT] as number) + 1 })
+    expect(post.rebound).toBe(true)
+    expect(post.metadata[META_LAST_COMPACT_TOKENS]).toBe(42_000)
+    expect(post.metadata[META_LAST_COMPACT_RESULT_TOKENS]).toBe(42_000)
+    expect(META_LAST_COMPACT_RESULT_PENDING in post.metadata).toBe(false)
+    expect(post.metadata[META_LAST_COMPACT_SOURCE_TOKENS]).toBe(150_000)
+    expect(post.metadata[META_LAST_COMPACT_PASS]).toBe("inter")
+    // Same-metric hysteresis: growth is now measured from the provider count.
+    expect(
+      shouldInterCompact({
+        count: 96_000,
+        context: 96_000,
+        lastCompactTokens: readLastCompactTokens(post.metadata),
+        alreadyHot: true,
+      }),
+    ).toBe(true)
+    expect(
+      shouldInterCompact({
+        count: 44_000,
+        context: 96_000,
+        lastCompactTokens: readLastCompactTokens(post.metadata),
+        alreadyHot: true,
+      }),
+    ).toBe(false)
   })
 })

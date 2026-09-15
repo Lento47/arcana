@@ -2,7 +2,13 @@ import type { AssistantMessage } from "@arcana/sdk/v2"
 import type { TuiPlugin, TuiPluginApi } from "@arcana/plugin/tui"
 import type { BuiltinTuiPlugin } from "../builtins"
 import { Locale } from "../../util/locale"
-import { COMPACT_NOW_PERCENT, COMPACT_SOON_PERCENT, contextPressure as pressureFromPercent } from "../../util/context-pressure"
+import {
+  compactNowPercent,
+  compactSoonPercent,
+  contextUsageFor,
+  hasContextUsage,
+  type CompactionLite,
+} from "../../util/context-pressure"
 import { Lexicon, Glyph } from "../../branding"
 import { ShimmerText } from "../../component/shimmer-text"
 import { selectedForeground } from "../../context/theme"
@@ -20,10 +26,6 @@ function renderBar(pct: number): BarSegment[] {
   for (let i = 0; i < Math.max(0, filled); i++) segments.push({ filled: true })
   for (let i = 0; i < Math.max(0, empty); i++) segments.push({ filled: false })
   return segments
-}
-
-function clampPercent(pct: number): number {
-  return Math.max(0, Math.min(100, pct))
 }
 
 /**
@@ -44,11 +46,11 @@ function compactModelName(value: string): string {
   return Locale.truncate(value, 50)
 }
 
-function tokenStateLabel(percent: number | null, compacting: boolean): string {
+function tokenStateLabel(percent: number | null, compacting: boolean, soon: number, now: number): string {
   if (compacting) return "compacting"
   if (percent === null) return "unbounded"
-  if (percent >= COMPACT_NOW_PERCENT) return "critical"
-  if (percent >= COMPACT_SOON_PERCENT) return "high"
+  if (percent >= now) return "critical"
+  if (percent >= soon) return "high"
   return "healthy"
 }
 
@@ -77,7 +79,7 @@ function View(props: { api: TuiPluginApi }) {
 
   const latestUsageAssistant = createMemo(() => {
     return sessionMessages().findLast(
-      (item): item is AssistantMessage => item.role === "assistant" && item.tokens.output > 0,
+      (item): item is AssistantMessage => item.role === "assistant" && hasContextUsage(item.tokens),
     )
   })
 
@@ -88,13 +90,13 @@ function View(props: { api: TuiPluginApi }) {
     return compactModelName(provider?.models[last.modelID]?.name ?? last.modelID)
   })
 
+  const compaction = createMemo<CompactionLite | undefined>(() => api.state?.config?.compaction)
+
   const usage = createMemo(() => {
     const last = latestUsageAssistant()
     if (!last) return undefined
-    const tokens =
-      last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
-    const limit = api.state?.provider?.find((item) => item.id === last.providerID)?.models[last.modelID]?.limit?.context
-    return { tokens, percent: limit ? clampPercent(Math.round((tokens / limit) * 100)) : null }
+    const limit = api.state?.provider?.find((item) => item.id === last.providerID)?.models[last.modelID]?.limit
+    return contextUsageFor({ tokens: last.tokens, limit, compaction: compaction() })
   })
 
   const cost = createMemo(() => {
@@ -118,9 +120,8 @@ function View(props: { api: TuiPluginApi }) {
   })
 
   const contextPressure = createMemo(() => {
-    const pct = usage()?.percent
-    if (pct === null || pct === undefined || compacting()) return undefined
-    const label = pressureFromPercent(pct)
+    if (compacting()) return undefined
+    const label = usage()?.pressure
     if (label === "compact now") return { label: "COMPACT NOW", color: theme().error }
     if (label === "compact soon") return { label: "COMPACT SOON", color: theme().warning }
     return undefined
@@ -199,7 +200,10 @@ function View(props: { api: TuiPluginApi }) {
               <text fg={theme().primary}>
                 <For each={renderBar(u().percent!)}>
                   {(seg) => {
-                    const fillColor = u().percent! > 95 ? theme().error : u().percent! > 80 ? theme().warning : theme().primary
+                    const soon = compactSoonPercent(compaction())
+                    const now = compactNowPercent(compaction())
+                    const fillColor =
+                      u().percent! >= now ? theme().error : u().percent! >= soon ? theme().warning : theme().primary
                     return <span style={{ fg: seg.filled ? fillColor : theme().textMuted }}>{seg.filled ? "▰" : "▱"}</span>
                   }}
                 </For>
@@ -220,7 +224,12 @@ function View(props: { api: TuiPluginApi }) {
               </Show>
               <span style={{ fg: compacting() ? theme().warning : theme().textMuted }}>
                 {" "}
-                {tokenStateLabel(value().percent, compacting())}
+                {tokenStateLabel(
+                  value().percent,
+                  compacting(),
+                  compactSoonPercent(compaction()),
+                  compactNowPercent(compaction()),
+                )}
               </span>
             </text>
           )}

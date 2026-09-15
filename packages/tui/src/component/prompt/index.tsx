@@ -41,7 +41,7 @@ import { usePromptStash } from "../../prompt/stash"
 import { DialogStash } from "../dialog-stash"
 import { type AutocompleteRef, Autocomplete, ARCANA_PROMPT_SLASHES } from "./autocomplete"
 import { useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
-import type { FilePart, Session, UserMessage } from "@arcana/sdk/v2"
+import type { AssistantMessage, FilePart, Session, UserMessage } from "@arcana/sdk/v2"
 import { Locale } from "../../util/locale"
 import { errorMessage } from "../../util/error"
 import { logMessageDebug } from "../../util/message-debug"
@@ -57,7 +57,7 @@ import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
-import { contextPressure } from "../../util/context-pressure"
+import { contextUsageFor, hasContextUsage } from "../../util/context-pressure"
 import { SessionMetricsBar } from "./metrics-bar"
 import { VoiceWave, isVoiceUiActive } from "../voice-wave"
 import { useArgs } from "../../context/args"
@@ -1890,18 +1890,23 @@ export function Prompt(props: PromptProps) {
     return msgs.findLast((m) => m.role === "assistant")
   })
 
-  const pressurePercent = createMemo(() => {
-    const last = lastAssistant() as { tokens?: { input: number; output: number; reasoning: number; cache: { read: number; write: number } }; providerID?: string; modelID?: string } | undefined
-    if (!last?.tokens) return undefined
-    const total = last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
-    if (!total) return undefined
-    const model = sync.data.provider.find((p) => p.id === last.providerID)?.models[last.modelID ?? ""]
-    const limit = (model as { limit?: { context?: number } } | undefined)?.limit?.context
-    if (!limit) return undefined
-    return Math.max(0, Math.min(100, Math.round((total / limit) * 100)))
+  const usage = createMemo(() => {
+    const sid = props.sessionID
+    if (!sid) return undefined
+    const msgs = sync.data.message[sid] ?? []
+    const last = msgs.findLast(
+      (m): m is AssistantMessage => m.role === "assistant" && hasContextUsage(m.tokens),
+    )
+    if (!last) return undefined
+    const model = sync.data.provider.find((p) => p.id === last.providerID)?.models[last.modelID]
+    return contextUsageFor({
+      tokens: last.tokens,
+      limit: model?.limit,
+      compaction: sync.data.config.compaction,
+    })
   })
 
-  const pressure = createMemo(() => contextPressure(pressurePercent()))
+  const pressure = createMemo(() => usage()?.pressure)
 
   const ttft = createMemo(() => {
     const last = lastAssistant() as { latency?: { attempts?: Array<{ firstContentMs?: number }> } | undefined } | undefined

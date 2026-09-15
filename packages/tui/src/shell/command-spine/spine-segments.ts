@@ -19,6 +19,11 @@ export type SpineSegmentSource = {
    * eats the window. Escalates tone to at least warning.
    */
   ctxOverBudget?: boolean
+  /** Config-aware band overrides (`compaction.threshold_percent`); defaults otherwise. */
+  ctxSoonPercent?: number
+  ctxNowPercent?: number
+  /** false when `compaction.auto === false` — do not imply compaction will run. */
+  ctxAuto?: boolean
   /** Turn state from sessionStatus — "idle" is omitted as noise. */
   state?: string
   /** Working directory — shown on the header path line in wide/compact. */
@@ -45,10 +50,12 @@ export function buildStatusSegments(src: SpineSegmentSource): StatusSegment[] {
     segments.push({ key: "model", label: "model", value: src.model, tone: "brand" })
   }
   if (src.ctxPercent != null && Number.isFinite(src.ctxPercent)) {
+    const soon = src.ctxSoonPercent ?? COMPACT_SOON_PERCENT
+    const now = Math.max(src.ctxNowPercent ?? COMPACT_NOW_PERCENT, soon)
     const tone: StatusTone =
-      src.ctxPercent >= COMPACT_NOW_PERCENT
+      src.ctxPercent >= now
         ? "error"
-        : src.ctxPercent >= COMPACT_SOON_PERCENT || src.ctxOverBudget === true
+        : src.ctxPercent >= soon || (src.ctxAuto !== false && src.ctxOverBudget === true)
           ? "warning"
           : "info"
     segments.push({ key: "ctx", label: "ctx", value: `${src.ctxPercent}%`, tone })

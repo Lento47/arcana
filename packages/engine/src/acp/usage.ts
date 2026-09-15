@@ -5,6 +5,7 @@ import { InstanceStore } from "@/project/instance-store"
 import { ProviderV2 } from "@arcana/core/provider"
 import { ModelV2 } from "@arcana/core/model"
 import { Provider } from "@/provider/provider"
+import { tokenCount } from "@/session/overflow"
 import { Context, Effect, Layer, SynchronizedRef } from "effect"
 
 export type AssistantTokenCost = Pick<OpenCodeAssistantMessage, "cost" | "tokens">
@@ -107,6 +108,17 @@ export function totalSessionCost(messages: readonly SessionMessage[]): number {
     .reduce((sum, message) => sum + message.info.cost, 0)
 }
 
+/**
+ * ACP `usage_update.used` = "Tokens currently in context" (schema.json UsageUpdate).
+ * Use the canonical engine metric (provider total, else non-overlapping sum) so
+ * the ACP surface can never disagree with engine compaction pressure. The old
+ * `input + cache.read` formula silently dropped `cache.write` and the response
+ * tokens that stay in context.
+ */
+export function contextUsedTokens(tokens: AssistantTokenCost["tokens"]): number {
+  return tokenCount(tokens)
+}
+
 export function findContextLimit(
   providers: Record<ProviderV2.ID, Provider.Info>,
   providerID: ProviderV2.ID,
@@ -204,7 +216,7 @@ export const layer = Layer.effect(
             sessionId: input.sessionID,
             update: {
               sessionUpdate: "usage_update",
-              used: message.tokens.input + message.tokens.cache.read,
+              used: contextUsedTokens(message.tokens),
               size,
               cost: { amount: totalSessionCost(messages), currency: "USD" },
             },
