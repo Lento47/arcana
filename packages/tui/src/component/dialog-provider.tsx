@@ -184,7 +184,7 @@ export function createDialogProviderOptions() {
   async function promptCustomProvider(): Promise<{ id: string; baseURL?: string } | undefined> {
     while (true) {
       const value = await DialogPrompt.show(dialog, "Other", {
-        placeholder: "Provider id or base URL",
+        placeholder: "Provider id or base URL…",
         description: () => (
           <text fg={theme.textMuted}>
             Short id like {"tokenrouter"} — or paste your provider's base URL (e.g. https://api.tokenrouter.com/v1)
@@ -444,7 +444,7 @@ function CodeMethod(props: CodeMethodProps) {
   return (
     <DialogPrompt
       title={props.title}
-      placeholder="Authorization code"
+      placeholder="Authorization code…"
       busy={busy()}
       busyText="Verifying code…"
       onConfirm={async (value) => {
@@ -593,7 +593,7 @@ function ApiMethod(props: ApiMethodProps) {
   return (
     <DialogPrompt
       title={props.title}
-      placeholder="API key"
+      placeholder="API key…"
       description={description as any}
       busy={busy()}
       busyText={phase()}

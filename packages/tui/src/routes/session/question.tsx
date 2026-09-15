@@ -419,7 +419,7 @@ export function QuestionPrompt(props: { request: QuestionRequest; directory?: st
                           ref={(value) => { textarea = value as unknown as TextareaRenderable }}
                           height={3}
                           initialValue={customValues()[index()] ?? ""}
-                          placeholder="Type a custom answer"
+                          placeholder="Type a custom answer…"
                           focused={true}
                         />
                       }>

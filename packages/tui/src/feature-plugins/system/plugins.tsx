@@ -47,7 +47,7 @@ function Install(props: { api: TuiPluginApi }) {
   return (
     <props.api.ui.DialogPrompt
       title="Install Plugin"
-      placeholder="npm package name"
+      placeholder="npm package name…"
       busy={busy()}
       busyText="Installing plugin…"
       description={() => (
