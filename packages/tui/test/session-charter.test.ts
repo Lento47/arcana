@@ -63,9 +63,19 @@ describe("projectSessionCharter", () => {
       governed: { key: "governed", label: "1 governed", tone: "ok" },
     })
     const line = joinHeaderStatus(items)
-    expect(line).toBe("live | proposed | P1 valid | 1 governed")
-    expect(line).not.toContain("livecontract")
+    expect(line).toBe("proposed | P1 valid | 1 governed")
+    expect(line).not.toContain("proposedP1")
     expect(line).not.toContain("valid1")
+  })
+
+  test("healthy runtime state adds no LIVE chip; degraded keeps one", () => {
+    expect(buildHeaderStatusItems({ live: "live", liveTone: "ok" })).toEqual([])
+    expect(
+      buildHeaderStatusItems({ live: "offline", liveTone: "muted" }).map((item) => item.key),
+    ).toEqual(["live"])
+    expect(
+      buildHeaderStatusItems({ live: "degraded", liveTone: "error" }).map((item) => item.label),
+    ).toEqual(["degraded"])
   })
 
   test("fitHeaderStatusItems drops path then session before live/contract", () => {

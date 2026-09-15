@@ -102,7 +102,10 @@ export function buildHeaderStatusItems(input: {
   governed?: SessionCharterChip
   pending?: number
 }): HeaderStatusItem[] {
-  const items: HeaderStatusItem[] = [{ key: "live", label: input.live, tone: input.liveTone }]
+  // A healthy runtime is the default state; a "LIVE" chip on every header is
+  // noise. Only degraded/offline runtime states earn a chip.
+  const items: HeaderStatusItem[] =
+    input.liveTone === "ok" ? [] : [{ key: "live", label: input.live, tone: input.liveTone }]
   if (input.charter) {
     items.push(input.charter.contract, input.charter.proof)
   } else if (input.proofFallback) {

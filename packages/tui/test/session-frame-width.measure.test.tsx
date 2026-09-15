@@ -271,7 +271,8 @@ test("modern wide header gives the session title priority and keeps metadata sec
 
   expect(frame).toContain("ARCANA")
   expect(frame).toContain("/ hello")
-  expect(frame).toContain("◆ LIVE")
+  // A healthy runtime adds no chip; degraded/offline states do.
+  expect(frame).not.toContain("◆ LIVE")
   expect(frame).toContain("P1 ✓ verified")
   expect(frame).toContain("5 governed")
   expect(frame).toContain("⎇ arcanagov")
