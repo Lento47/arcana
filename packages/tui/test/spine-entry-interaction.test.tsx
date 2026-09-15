@@ -137,8 +137,9 @@ test("right-click opens entry actions without changing disclosure", async () => 
 
   try {
     const initialFrame = await capture(app)
-    // Collapsed thinking is progressive: verb + duration, not the monologue.
-    const header = findText(initialFrame, "Thought")
+    // Collapsed thinking shows its summary (the mapper's operational lead);
+    // the monologue body stays one disclosure away.
+    const header = findText(initialFrame, "reasoning header")
 
     await app.mockMouse.moveTo(header.x, header.y)
     await app.mockMouse.click(header.x, header.y, MouseButton.RIGHT)
@@ -166,7 +167,7 @@ test("right-click without a menu handler still does not toggle local disclosure"
   try {
     const initialFrame = await capture(app)
     expect(initialFrame).not.toContain("full reasoning body")
-    const header = findText(initialFrame, "Thought")
+    const header = findText(initialFrame, "reasoning header")
 
     await app.mockMouse.click(header.x, header.y, MouseButton.RIGHT)
     await renderSettled(app)
@@ -203,7 +204,7 @@ test("left-click anywhere on a collapsed thinking row expands it", async () => {
 
   try {
     const initialFrame = await capture(app)
-    const header = findText(initialFrame, "Thought")
+    const header = findText(initialFrame, "reasoning header")
     await app.mockMouse.click(1, header.y, MouseButton.LEFT)
 
     expect(await captureUntil(app, "full reasoning body")).toContain("full reasoning body")
@@ -234,7 +235,7 @@ test("plain row click fires onFocus exactly once (M4: no double on mousedown+up)
 
   try {
     const initialFrame = await capture(app)
-    const header = findText(initialFrame, "Thought")
+    const header = findText(initialFrame, "reasoning header")
 
     // Click in the left gutter column — outside the toggleable header box — so
     // only the row box handlers fire. mockMouse.click dispatches mousedown,

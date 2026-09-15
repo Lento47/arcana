@@ -1767,7 +1767,7 @@ Diff excerpts can be improved later.`,
     expect(plan!.streaming).toBe(false)
   })
 
-  test("reasoning + text, message completed, session idle: think flips to Thought and plan shimmer stops", () => {
+  test("reasoning + text, message completed, session idle: meta-language reasoning keeps the settled verb and plan shimmer stops", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a-complete-chat", { completed: 5000 })
     parts.push({
       id: "p-reason",
@@ -1804,7 +1804,7 @@ Diff excerpts can be improved later.`,
     expect(plan!.streaming).toBe(false)
   })
 
-  test("reasoning + text mid-stream (session busy): think flips to Thought when superseded, plan still shimmering", () => {
+  test("reasoning + text mid-stream (session busy): meta-language reasoning keeps the settled verb, plan still shimmering", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a-mid-chat")
     parts.push({
       id: "p-reason",
@@ -1840,7 +1840,7 @@ Diff excerpts can be improved later.`,
     expect(plan!.streaming).toBe(true)
   })
 
-  test("consecutive completed thinks keep Thought verb (no ditto collapse)", () => {
+  test("consecutive completed thinks keep their own lead (no ditto collapse)", () => {
     const { messages: msgs, parts } = makeAssistantMessage("a-two-thoughts")
     parts.push({
       id: "p-r1",
@@ -1884,10 +1884,10 @@ Diff excerpts can be improved later.`,
 
     const thinks = result.filter((e) => e.kind === "think")
     expect(thinks.length).toBeGreaterThanOrEqual(2)
-    // Both completed reasoning blocks keep their verb — dedupeFilePaths must
-    // never collapse consecutive "Thought" rows to the file ditto marker.
-    expect(thinks[0]!.summary).toBe("Thought")
-    expect(thinks[1]!.summary).toBe("Thought")
+    // Both completed reasoning blocks carry their own lead line —
+    // dedupeFilePaths must never collapse consecutive rows to the ditto marker.
+    expect(thinks[0]!.summary).toContain("First check the status.")
+    expect(thinks[1]!.summary).toContain("Then push the branch.")
     expect(thinks.some((e) => e.summary === "⟐")).toBe(false)
   })
 

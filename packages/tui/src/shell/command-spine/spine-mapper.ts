@@ -342,12 +342,27 @@ function isLowSignalThinkingLine(line: string): boolean {
   return /^(?:more detail|details?|step by step|step one|next step|continuing)(?:\b|\.|…|\.\.\.)/i.test(line.trim())
 }
 
+/** Reasoning leads that are model meta-language, not the operational idea. */
+const META_REASONING_LEAD =
+  /^(the user|they|let me|okay\b|ok\b|i(?:'ll|'m|'ve| will| need| should| can| must| want| think))/i
+
 function thinkingSummary(text: string, seed: string, streaming: boolean): string {
   // Prefer OpenAI-style **Title** — compact slug for the spine header.
   const content = text.trim()
   if (!content) return streaming ? "Thinking" : "Thought"
   const titleMatch = content.match(/^\*\*([^*\n]+)\*\*(?:\r?\n\r?\n|$)/)
   if (titleMatch?.[1]) return truncate(titleMatch[1].trim(), 36)
+  // Untitled reasoning: lead with the first OPERATIONAL line once settled — a
+  // literal "Thought" stub carries no information and reads as noise in a long
+  // session. Meta-language leads ("The user wants…") stay out of the header;
+  // the full reasoning is one disclosure away either way.
+  if (!streaming) {
+    const operational = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0 && !META_REASONING_LEAD.test(line))
+    if (operational) return truncate(operational, 36)
+  }
   // Fixed verb — avoids confusing glyph salad across entries.
   // Flips to past tense once the reasoning part has ended.
   return streaming ? "Thinking" : "Thought"

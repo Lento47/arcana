@@ -493,7 +493,10 @@ export function SpineEntry(props: {
     // duration; the reasoning title/body only appears when expanded.
     if (isThinkRow()) {
       const summary = (view() as Exclude<SpineEntryView, ChatEntry>).summary
-      if (!streaming()) return expanded() ? summary : "Thought"
+      // Collapsed reasoning shows its mapper summary — the extracted `**Title**`
+      // when one exists, "Thought" otherwise. Masking the title with a literal
+      // "Thought" turned every settled think row into a content-free stub.
+      if (!streaming()) return summary
       return "Thinking…"
     }
     return (view() as Exclude<SpineEntryView, ChatEntry>).summary
