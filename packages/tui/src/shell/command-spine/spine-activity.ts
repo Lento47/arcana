@@ -143,10 +143,46 @@ type PendingActivity = {
   units: SpineEntry[]
 }
 
+/** Rebuild a reel from a changed child set, keeping its stable identity. */
+function rebuildActivity(parent: SpineEntry, children: SpineEntry[], elapsedMs: number | undefined): SpineEntry {
+  const streaming = children.some((child) => child.streaming === true)
+  return {
+    ...parent,
+    glyph: streaming ? "●" : "✓",
+    streaming,
+    elapsedMs,
+    elapsed: elapsedMs !== undefined ? formatElapsedMs(elapsedMs) : parent.elapsed,
+    summary: summarizeWorkActivity(children, streaming),
+    children,
+    activity: parent.activity ? { ...parent.activity, childCount: children.length } : parent.activity,
+  }
+}
+
+/** Sum measured work time across reels; undefined when neither side measured. */
+function addElapsed(a: number | undefined, b: number | undefined): number | undefined {
+  const parts = [a, b].filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0,
+  )
+  if (parts.length === 0) return undefined
+  return parts.reduce((sum, value) => sum + value, 0)
+}
+
+function isSettledActivity(entry: SpineEntry): boolean {
+  return entry.activity?.type === "work" && entry.streaming !== true
+}
+
+function isSettledWorkRow(entry: SpineEntry): boolean {
+  return entry.activity === undefined && entry.streaming !== true && isWorkActivityEntry(entry)
+}
+
 /**
  * Collapse contiguous work rows into a stable activity parent. Existing tool
  * bursts are flattened only when they join a qualifying reel, preventing
  * nested disclosure trees while retaining every original child entry.
+ *
+ * A second pass merges adjacent SETTLED reels so a run of short turns reads as
+ * one work card instead of a wall of per-turn cards. Active reels, prose,
+ * failures, approvals and delegation rows remain boundaries.
  */
 export function collapseWorkActivities(entries: readonly SpineEntry[]): SpineEntry[] {
   const result: SpineEntry[] = []
@@ -197,5 +233,29 @@ export function collapseWorkActivities(entries: readonly SpineEntry[]): SpineEnt
   }
 
   flush()
-  return result
+
+  const merged: SpineEntry[] = []
+  for (const entry of result) {
+    const prev = merged[merged.length - 1]
+    if (prev && isSettledActivity(prev)) {
+      if (isSettledActivity(entry)) {
+        merged[merged.length - 1] = rebuildActivity(
+          prev,
+          [...(prev.children ?? []), ...(entry.children ?? [])],
+          addElapsed(prev.elapsedMs, entry.elapsedMs),
+        )
+        continue
+      }
+      if (isSettledWorkRow(entry)) {
+        merged[merged.length - 1] = rebuildActivity(
+          prev,
+          [...(prev.children ?? []), entry],
+          addElapsed(prev.elapsedMs, entry.elapsedMs),
+        )
+        continue
+      }
+    }
+    merged.push(entry)
+  }
+  return merged
 }

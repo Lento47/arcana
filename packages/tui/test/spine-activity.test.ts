@@ -155,4 +155,52 @@ describe("spine activity reel projection", () => {
     expect(view.children).toHaveLength(2)
     expect(view.children[0]!.streaming).toBe(true)
   })
+
+  test("merges adjacent settled reels into one card and sums measured work time", () => {
+    const rows = collapseWorkActivities([
+      turnEntry("run-1", "run", "turn-1", { elapsedMs: 10 }),
+      turnEntry("run-2", "run", "turn-1", { elapsedMs: 15 }),
+      turnEntry("run-3", "run", "turn-2", { elapsedMs: 20 }),
+      turnEntry("run-4", "run", "turn-2", { elapsedMs: 25 }),
+    ])
+    expect(rows).toHaveLength(1)
+    const activity = rows[0]!
+    expect(activity.id).toBe("activity:run-1")
+    expect(activity.activity).toEqual({ type: "work", turnID: "turn-1", childCount: 4 })
+    expect(activity.children?.map((child) => child.id)).toEqual(["run-1", "run-2", "run-3", "run-4"])
+    expect(activity.summary).toBe("4 actions · 4 tools")
+    expect(activity.elapsedMs).toBe(70)
+    expect(activity.streaming).toBe(false)
+  })
+
+  test("keeps prose and active reels as merge boundaries", () => {
+    const rows = collapseWorkActivities([
+      turnEntry("run-1", "run", "turn-1", { elapsedMs: 10 }),
+      turnEntry("run-2", "run", "turn-1", { elapsedMs: 15 }),
+      turnEntry("plan-1", "plan", "turn-2"),
+      turnEntry("run-3", "run", "turn-3", { elapsedMs: 20, streaming: true }),
+      turnEntry("run-4", "run", "turn-3", { elapsedMs: 25 }),
+    ])
+    expect(rows.map((row) => row.id)).toEqual(["activity:run-1", "plan-1", "activity:run-3"])
+    expect(rows[2]!.streaming).toBe(true)
+  })
+
+  test("absorbs a settled step row after a reel but never an active one", () => {
+    const absorbed = collapseWorkActivities([
+      turnEntry("run-1", "run", "turn-1", { elapsedMs: 10 }),
+      turnEntry("run-2", "run", "turn-1", { elapsedMs: 15 }),
+      turnEntry("think-9", "think", "turn-9", { elapsedMs: 5 }),
+    ])
+    expect(absorbed).toHaveLength(1)
+    expect(absorbed[0]!.children?.map((child) => child.id)).toEqual(["run-1", "run-2", "think-9"])
+    expect(absorbed[0]!.summary).toBe("3 actions · 2 tools · 1 thought")
+    expect(absorbed[0]!.elapsedMs).toBe(30)
+
+    const active = collapseWorkActivities([
+      turnEntry("run-1", "run", "turn-1", { elapsedMs: 10 }),
+      turnEntry("run-2", "run", "turn-1", { elapsedMs: 15 }),
+      turnEntry("think-9", "think", "turn-9", { streaming: true }),
+    ])
+    expect(active.map((row) => row.id)).toEqual(["activity:run-1", "think-9"])
+  })
 })
