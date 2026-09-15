@@ -442,6 +442,59 @@ test("activity reel expands once and exposes the original work steps", async () 
   }
 })
 
+test("settled work reel shows the first concrete step beside its counts", async () => {
+  const settled: SpineEntryModel = {
+    id: "activity:turn-1",
+    index: 1,
+    elapsed: "+3.2s",
+    kind: "think",
+    glyph: "✓",
+    label: "work",
+    summary: "3 actions · 2 tools · 1 thought",
+    collapsible: true,
+    expandedByDefault: false,
+    streaming: false,
+    activity: { type: "work", turnID: "turn-1", childCount: 3 },
+    source: { messageID: "turn-1", kind: "reasoning" },
+    children: [
+      { id: "think-1", index: 1, elapsed: "", kind: "think", glyph: "●", label: "think", summary: "Plan the change" },
+      {
+        id: "run-1",
+        index: 2,
+        elapsed: "+400ms",
+        kind: "run",
+        glyph: "✓",
+        label: "run",
+        summary: "bun test packages/tui",
+      },
+      {
+        id: "inspect-1",
+        index: 3,
+        elapsed: "+600ms",
+        kind: "inspect",
+        glyph: "✓",
+        label: "inspect",
+        summary: "packages/tui/src",
+      },
+    ],
+  }
+  const app = await testRender(
+    () => withProviders(() => (
+      <box flexDirection="column" width="100%" height="100%">
+        <SpineEntry entry={settled} layout="wide" contentWidth={90} expanded={false} />
+      </box>
+    )),
+    { width: 120, height: 8, useMouse: true, enableMouseMovement: true },
+  )
+  try {
+    const frame = await capture(app)
+    expect(frame).toContain("3 actions")
+    expect(frame).toContain("bun test packages/tui")
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
 test("subagent title opens its session while the disclosure toggles its preview", async () => {
   const agentEntry: SpineEntryModel = {
     id: "agent-entry",

@@ -100,6 +100,21 @@ export function summarizeWorkActivity(units: readonly Pick<SpineEntry, "kind">[]
   return parts.join(" · ")
 }
 
+const GIST_KINDS = new Set<SpineKind>(["run", "inspect", "patch", "fix"])
+
+/**
+ * A settled card's one-line "what it did" gist: the first concrete tool step
+ * (the entry point of the work), falling back to the last step for think-only
+ * or agent-only bursts. Counts alone never tell two cards apart.
+ */
+export function activityStepGist(
+  units: readonly { readonly kind: SpineKind; readonly summary?: string }[],
+): string {
+  const firstTool = units.find((entry) => GIST_KINDS.has(entry.kind) && entry.summary?.trim())
+  const chosen = firstTool ?? [...units].reverse().find((entry) => entry.summary?.trim())
+  return chosen?.summary?.trim().replace(/\s+/g, " ") ?? ""
+}
+
 function buildWorkActivity(units: SpineEntry[], turnID: string): SpineEntry {
   const first = units[0]!
   const elapsedMs = elapsedFor(units)

@@ -6,6 +6,7 @@ import type { ActivityEntry } from "./spine-entry-view"
 import { displayWidth, truncate } from "../../util/locale"
 import { useSpineMotion } from "./spine-motion"
 import { SpineRail } from "./spine-rail"
+import { activityStepGist } from "./spine-activity"
 
 function elapsedLabel(props: { view: ActivityEntry; layout: SpineLayout; phase: number }): string {
   void props.phase
@@ -36,6 +37,10 @@ export function ActivityReel(props: {
   // a different child or otherwise animate the activity summary.
   const phase = createMemo(() => motion?.phase() ?? 0)
   const elapsed = createMemo(() => elapsedLabel({ view: props.view, layout: props.layout, phase: phase() }))
+  // Settled cards say what they did; a live card stays calm while steps land.
+  const gist = createMemo(() =>
+    props.view.streaming === true ? "" : activityStepGist(props.view.children ?? []),
+  )
   const activityWidth = createMemo(() => {
     const width = typeof props.contentWidth === "number" && Number.isFinite(props.contentWidth)
       ? Math.floor(props.contentWidth)
@@ -55,8 +60,10 @@ export function ActivityReel(props: {
     const prefixWidth = displayWidth(`${status} · `)
     const tailWidth = tail ? displayWidth(` · ${tail}`) + displayWidth(` ${hint}`) : displayWidth(` ${hint}`)
     const summaryBudget = Math.max(1, width - prefixWidth - tailWidth)
+    const detail =
+      gist() && gist() !== props.view.summary ? `${props.view.summary} · ${gist()}` : props.view.summary
     return {
-      summary: truncate(props.view.summary, summaryBudget),
+      summary: truncate(detail, summaryBudget),
       tail,
       hint,
     }

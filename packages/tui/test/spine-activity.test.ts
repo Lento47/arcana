@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { SpineEntry } from "../src/shell/command-spine/spine-types"
 import { toSpineEntryView } from "../src/shell/command-spine/spine-entry-view"
 import {
+  activityStepGist,
   collapseWorkActivities,
   isWorkActivityEntry,
   isWorkActivityKind,
@@ -202,5 +203,26 @@ describe("spine activity reel projection", () => {
       turnEntry("think-9", "think", "turn-9", { streaming: true }),
     ])
     expect(active.map((row) => row.id)).toEqual(["activity:run-1", "think-9"])
+  })
+
+  test("settled cards gist their first concrete step", () => {
+    expect(
+      activityStepGist([
+        { kind: "think", summary: "Plan the change" },
+        { kind: "run", summary: "  bun test packages/tui  " },
+        { kind: "inspect", summary: "packages/tui/src" },
+      ]),
+    ).toBe("bun test packages/tui")
+  })
+
+  test("gist falls back to the last step when the burst has no tool", () => {
+    expect(
+      activityStepGist([
+        { kind: "think", summary: "first thought" },
+        { kind: "think", summary: "second thought" },
+      ]),
+    ).toBe("second thought")
+    expect(activityStepGist([{ kind: "run", summary: "   " }])).toBe("")
+    expect(activityStepGist([])).toBe("")
   })
 })
