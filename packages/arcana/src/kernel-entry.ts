@@ -6,6 +6,7 @@
 // Binds a local socket/pipe and mediates effect requests from agent
 // processes. The workspace .arcana/authority.db is owned by THIS process.
 
+import { buildSandboxProfile } from "@arcana/core/capability/sandbox-profile"
 import { startKernelServer } from "@arcana/core/capability/kernel-ipc"
 import { join } from "node:path"
 import { homedir } from "node:os"
@@ -21,19 +22,29 @@ const dbPath = process.env.ARCANA_AUTHORITY_DB
 
 const sessionId = process.env.ARCANA_SESSION_ID ?? "kernel-default"
 
-console.log(`[kernel] starting on ${listenPath}`)
-console.log(`[kernel] authority db: ${dbPath}`)
+console.error(`[kernel] starting on ${listenPath}`)
+console.error(`[kernel] authority db: ${dbPath}`)
+
+const sandboxBudget = {
+  maxMemoryMB: process.env.ARCANA_KERNEL_MAX_MEMORY_MB === undefined
+    ? undefined : Number(process.env.ARCANA_KERNEL_MAX_MEMORY_MB),
+  toolTimeoutMs: 30_000,
+}
+console.error(`[kernel] restrictions: ${JSON.stringify(buildSandboxProfile(sandboxBudget).enforcement())}`)
 
 const handle = await startKernelServer({
   listenPath,
   dbPath,
   sessionId,
+  sandboxBudget,
 })
 
-console.log(`[kernel] listening on ${handle.path}`)
+console.error(`[kernel] listening on ${handle.path}`)
 
-process.on("SIGINT", async () => {
-  console.log("[kernel] shutting down")
+const shutdown = async () => {
+  console.error("[kernel] shutting down")
   await handle.close()
   process.exit(0)
-})
+}
+process.once("SIGINT", shutdown)
+process.once("SIGTERM", shutdown)

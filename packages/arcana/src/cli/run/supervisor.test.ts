@@ -50,3 +50,26 @@ describe("S4 supervised kernel launch", () => {
     }
   }, 30_000)
 })
+
+it("CLI gatedSpawn cold-starts from another cwd and shares readiness across concurrent calls", async () => {
+  const workDir = mkdtempSync(join(tmpdir(), "s4-cli-cold-"))
+  const authorityModule = join(import.meta.dir, "..", "..", "agent", "authority.ts")
+  const script = `
+    const { gatedSpawn } = await import(${JSON.stringify(authorityModule)});
+    const results = await Promise.all([1, 2].map(() => gatedSpawn("shell", [process.execPath, "-e", "console.log('child-ok')"])));
+    console.log("REVIEW_RESULTS=" + JSON.stringify(results));
+    process.exit(results.every(r => r.status === "EXECUTED" && r.stdout.includes("child-ok")) ? 0 : 1);
+  `
+  const env = { ...process.env }
+  delete env.ARCANA_KERNEL_PIPE
+  delete env.ARCANA_KERNEL_ENTRY
+  delete env.ARCANA_AUTHORITY_DB
+  delete env.ARCANA_SESSION_ID
+  env.ARCANA_TRANSPORT = "ipc"
+  const agent = Bun.spawn([process.execPath, "-e", script], { cwd: workDir, env, stdout: "pipe", stderr: "pipe" })
+  const [code, stdout, stderr] = await Promise.all([
+    agent.exited, new Response(agent.stdout).text(), new Response(agent.stderr).text(),
+  ])
+  expect({ code, stderr, stdout }).toMatchObject({ code: 0 })
+  expect(stdout).toContain("REVIEW_RESULTS=")
+}, 30_000)
