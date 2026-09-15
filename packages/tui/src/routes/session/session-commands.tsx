@@ -81,7 +81,7 @@ export type SessionCommandsDeps = {
   renderer: any
   paths: { cwd: string }
   openEditor: (o: any) => Promise<any>
-  writeExport: (f: string, c: string) => Promise<void>
+  writeExport: (f: string, c: string, opts?: { skipOverwriteCheck?: boolean }) => Promise<boolean>
   hasForegroundTasks: () => boolean
   hasParent: () => boolean
   navigate: (r: any) => void
@@ -722,7 +722,11 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
             const filename = options.filename.trim()
             const filepath = path.join(exportDir, filename)
 
-            await writeExport(filepath, transcript)
+            const saved = await writeExport(filepath, transcript)
+            if (!saved) {
+              dialog.clear()
+              return
+            }
 
             // Open with EDITOR if available
             const result = await openEditor({
@@ -734,7 +738,9 @@ export function buildSessionCommands(deps: SessionCommandsDeps): SessionCommandS
                 paths.cwd,
             })
             if (result !== undefined) {
-              await writeExport(filepath, result)
+              // The file was created by this export moments ago; overwriting it
+              // with the operator's edited version is the intended flow.
+              await writeExport(filepath, result, { skipOverwriteCheck: true })
             }
 
             toast.show({ message: `Session exported to ${filename}`, variant: "success" })

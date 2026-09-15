@@ -16,7 +16,7 @@ import {
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import path from "node:path"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, writeFile, stat } from "node:fs/promises"
 import { recordTuiFeedback } from "../../feedback"
 import { Flag } from "@arcana/core/flag/flag"
 import type { AuthorityAffordance } from "@arcana/core/crypto/authority-affordance"
@@ -203,9 +203,30 @@ const EMPTY_MESSAGES: Message[] = []
 export function Session() {
   const setEpilogue = useEpilogue()
   const clipboard = useClipboard()
-  const writeExport = async (file: string, content: string) => {
+  const writeExport = async (
+    file: string,
+    content: string,
+    opts?: { skipOverwriteCheck?: boolean },
+  ): Promise<boolean> => {
     await mkdir(path.dirname(file), { recursive: true })
+    if (!opts?.skipOverwriteCheck) {
+      // Never replace an existing file without an explicit confirmation: the
+      // transcript write is destructive and the filename is operator-supplied.
+      const exists = await stat(file).then(
+        () => true,
+        () => false,
+      )
+      if (exists) {
+        const confirmed = await DialogConfirm.show(
+          dialog,
+          "Overwrite File",
+          `${file} already exists. Overwriting it cannot be undone.`,
+        )
+        if (confirmed !== true) return false
+      }
+    }
     await writeFile(file, content)
+    return true
   }
   const pluginRuntime = usePluginRuntime()
   const route = useRouteData("session")
