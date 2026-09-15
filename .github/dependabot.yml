@@ -5,8 +5,12 @@
 
 version: 2
 updates:
+  # Dependabot reads this file from the default branch (master), but version
+  # updates must land on the active line (arcanagov) until the canonical branch
+  # cutover. Without target-branch, every update is opened against stale master.
   - package-ecosystem: "npm"
     directory: "/"
+    target-branch: "arcanagov"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
@@ -14,12 +18,27 @@ updates:
     labels:
       - "dependencies"
       - "security"
+    groups:
+      # Patch/minor updates arrive as one reviewable batch. Major updates stay
+      # ungrouped (individual PRs) so breaking upgrades — e.g. AI SDK Gateway 4
+      # and OpenTelemetry — are assessed deliberately, never bulk-merged.
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "arcanagov"
     schedule:
       interval: "weekly"
     labels:
       - "dependencies"
       - "ci"
-
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
